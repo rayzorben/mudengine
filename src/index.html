@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-16">
+    <title>MudEngine</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <script defer src="render.js"></script>
+    <script>
+      const ipc = require('electron').ipcRenderer
+      document.addEventListener('DOMContentLoaded', () => {
+        ipc.send('application-ready', '');
+      });
+    </script>
+  </head>
+  <body>
+    <div id="search-bar" style="display:none;">
+      <input id="search-input" type="text" placeholder="Type a command...">
+      <input id="command-input" type="text" style="display:none;">
+      <ul id="command-list"></ul>
+    </div>
+    <div id="main" class="container">
+      <div id="console" class="container-child">
+        <span id="history"></span>
+        <span id="viewport"></span>
+      </div>
+      <div id="notification-box" class="container-child">
+        <div id="report"></div>
+      </div>
+    </div>
+    <!--<div id="status-bar"><span id="message"></span><span id="navigation"></span><span id="rate"></span></div>-->
+  </body>
+</html>

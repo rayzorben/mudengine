@@ -1,0 +1,30 @@
+{
+    "username": "",
+    "password": "",
+    "realm": "1",
+    "bbs": {
+        "name": "GreaterMUD Non-PvP",
+        "host": "mud.paramud.com",
+        "port": 2427,
+        "timeout": 10000
+    },
+    "health": {
+        "below": 240,
+        "to": 70,
+        "run": 30,
+        "hang": 100,
+        "heal": {
+            "rest": 85,
+            "combat": 65
+        }
+    },
+    "attack": {
+        "command": "pu"
+    },
+    "idleCommand": "l",
+    "customStylesheet": {
+        ".ansi-fg-27": {
+            "background-color": "rgb(0,0,0)"
+        }
+    }
+}
