@@ -20,6 +20,6 @@
   },
   "dependencies": {
     "better-sqlite3": "^8.5.0",
-    "@electron-rebuild": "^3.2.9"
+    "@electron/rebuild": "^3.2.9"
   }
 }
