@@ -7,7 +7,7 @@ For now, in order to run make sure you have node/npm installed then
 
 1. clone the repo `git clone https://github.com/rayzorben/mudengine.git`
 1. install dependencies `npm install`
-1. may not be necessary but if running on linux or arm or you get a message about better-sqlite3 wrong version run `npx electron-rebuild`
+1. rebuild better-sqlite3 especially needed if switching from windows/linux or vice-versa `npx electron-rebuild`
 1. modify src/config/user.json with username/password/bbs details
 1. run with `npm start`
 
