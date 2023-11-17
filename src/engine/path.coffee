@@ -152,7 +152,7 @@ getNextPath = (path) ->
     currentNode = path[0]
     nextNode = path[1]
 
-    direction = null
+    result = null
     for dir, child of currentNode?.children
         if child == nextNode
             result =
@@ -162,12 +162,12 @@ getNextPath = (path) ->
             result = getInstructionText result
             break
 
-    direction
-    
-removeNext = -> path.shift()
+    result
+
+removeNext = (path) -> path.shift()
 
 getInstructionText = (next) ->
-    return unless next.instructions
+    return next unless next.instructions
     [all, command, value] = /^(Door|Alignment|Text|Key|Level|Item|Toll|Hidden\/Searchable):?\s?(.*)$/.exec(next.instructions)
     switch command
         when "Text" then next.command = value.split(/,/)[0].trim()

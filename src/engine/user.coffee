@@ -240,7 +240,7 @@ class User extends EventEmitter
     log.toConsole 'debug', process, 'onError'
     @inRealm false
     #TODO: fix
-    #@reconnect()
+    @reconnect()
 
   onData: (buffer) ->
     return if buffer.length == 0
@@ -275,7 +275,6 @@ class User extends EventEmitter
     log.toConsole 'silly', process, 'data: ' + data.replaceAll /\u001B/g, ''
     ansiLine = /(?<=\u001B\[79D)|(Welcome to the official \w+ server!)/
 
-    console.log "======================================================"
     data.split ansiLine
     .filter (line) -> line isnt undefined and line.length > 0
     .forEach (line) =>
@@ -386,7 +385,7 @@ class User extends EventEmitter
     @sendline ''
     setTimeout =>
       @route = search this, [@currentRoom.map, @currentRoom.room], [map, room], null
-    , 300
+    , 100
 
   stopRoute: ->
     console.log "Stopping route..." if @route.length >= 1
@@ -396,6 +395,22 @@ class User extends EventEmitter
     [map, room] = location.split(/\D+/).filter(Boolean)
     directions = search this, [@currentRoom.map, @currentRoom.room], [map, room], null
     @printToViewport r for r in route(directions)
+
+  doSneak: ->
+    if not @isSneaking() and @status.health > 0 and @currentRoom?.mobs?.length is 0
+      return @sendline 'sn'
+
+    return false
+
+  doStep: ->
+    @currentDirection = next @route if @route and @route.length isnt 0
+    return false unless @currentDirection
+    return @processStep @currentDirection
+
+  processStep: (step) ->
+    return @sendline step.command if step.command
+    return @sendline "sea #{step.direction.toLowerCase()}" if step.search
+    return @sendline step.direction.toLowerCase() if step.direction
 
 
   ###
@@ -435,30 +450,6 @@ class User extends EventEmitter
 
   onIdle: @event "idle", ->
     @sendline @idle.shift() if options.engine.allOn and @idle.length > 0 and not @isTyping()
-
-  doSneak: ->
-    if not @isSneaking() and @status.health > 0 and @currentRoom?.mobs?.length is 0
-      return @sendline 'sn'
-
-    return false
-
-  doStep: ->
-    return unless @roomChanged()
-
-    @roomChanged false
-    @isSneaking no # reset if Sneaking... message is found
-
-    dir = next @route if @route and @route.length isnt 0
-    return false unless dir
-
-    console.log "doStep lastCommand #{@lastCommand?.replaceAll /\n/g, '\\n'}"
-
-    return @processStep dir
-
-  processStep: (step) ->
-    return @sendline step.command if step.command
-    return @sendline "sea #{step.direction}" if step.search
-    return @sendline step.direction if step.direction
 
   onStep: @event "step", ->
     return if @isTyping()
@@ -544,11 +535,22 @@ class User extends EventEmitter
       when "bash-failed" then _commandQueue.shift()
       when "command-no-effect" then _commandQueue.shift()
       when "equip-failed" then return
+      when "search-failed" then return
 
   onRoom: @event 'room', (room) -> return
   onNewRoom: @event 'new-room', (room) ->
     @roomChanged true
+    @isSneaking false
+
+    @currentDirection = null
+    @route.shift()
+
     persist.upsert { user: @id, type: "location" }, { map: room.map, room: room.room }
+
+  onExitFound: @event 'exit-found', (direction) ->
+    @currentDirection.search = false
+    # clear the search flag for the current direction so that the next step moves
+    # should we sleep if search failed - onCommandFailed "search-failed"
 
   onStatus: @event 'status', (status) -> return
   onWho: @event 'who', (player) ->
@@ -563,6 +565,7 @@ class User extends EventEmitter
   onMobMiss: @event 'mob-miss', (source, damage) -> @onMobAttacking source
 
   onSneak: @event 'sneak', (status) -> @isSneaking status
+
 
   onUserExperience: @event 'experience', (stats) -> return
   onUserGainExperience: @event 'experience-gained', (exp) ->
