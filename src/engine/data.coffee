@@ -19,10 +19,10 @@ close = ->
 data = init()
 
 rooms =
-  queryAllRooms: data.prepare "SELECT * FROM rooms"
-  queryByNameLike: data.prepare "SELECT [Name], [Map Number] AS Map, [Room Number] AS Room FROM rooms WHERE name LIKE ?"
+  queryAllRooms: data.prepare "SELECT * FROM Rooms"
+  queryByNameLike: data.prepare "SELECT [Name], [Map Number] AS Map, [Room Number] AS Room FROM Rooms WHERE name LIKE ?"
   queryByName: data.prepare "SELECT * FROM Rooms WHERE Name=?"
-  queryByLocation: data.prepare "SELECT [Name], [Map Number] AS Map, [Room Number] AS Room FROM rooms WHERE [Map Number]=? AND [Room Number]=?"
+  queryByLocation: data.prepare "SELECT [Name], [Map Number] AS Map, [Room Number] AS Room FROM Rooms WHERE [Map Number]=? AND [Room Number]=?"
   queryByExits: data.prepare "SELECT * FROM Rooms WHERE Name=? AND N <> ? AND S <> ? AND E <> ? AND W <> ? AND NW <> ? AND NE <> ? AND SE <> ? AND SW <> ? AND U <> ? AND D <> ?"
   queryById: data.prepare "SELECT * FROM Rooms WHERE [Map Number] = ? AND [Room Number] = ?"
   allRooms: -> rooms.queryAllRooms.all()

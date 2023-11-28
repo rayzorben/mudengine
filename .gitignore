@@ -95,3 +95,4 @@ resources/*-shm
 resources/*-wal
 resources/*.ldb
 resources/mdb2sqlite
+resources/soul.json

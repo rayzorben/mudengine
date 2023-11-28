@@ -34,7 +34,7 @@ logCheck = (level, module) ->
     options.logLevels.indexOf(level.toLowerCase()) <= options.logLevels.indexOf(options.logModule[module])
 
 logFormat = (level, module, message, skip = false, color = colors.reset) ->
-    str = if skip then '' else "#{color}#{module.toUpperCase().padStart(10, ' ')}:#{level.toUpperCase().padStart(7, ' ')}:"
+    str = if skip then '' else "#{color}#{module.toUpperCase().padStart(12, ' ')}:#{level.toUpperCase().padStart(7, ' ')}: "
     str + "#{message}#{colors.reset}"
 
 toStdout = (level, module, message) ->

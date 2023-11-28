@@ -157,6 +157,7 @@ class Room extends RoomBase
     @here = []
     return unless result = /^Also here: (?<who>[*\w,\r\n ]+)\.$/gm.exec @line
 
+    log.toConsole 'sillly', 'mobs', "Also here: #{result.groups.who}"
     result.groups.who.split /, /
     .forEach (who) =>
       @here.push who.replace /\r\n/, ' '
@@ -180,6 +181,9 @@ class Room extends RoomBase
     @mobs = @here.filter (name) -> mobs.some (mob) -> mob.Name == name.replaceAll mobPrefixes, ''
     @players = @here.filter (name) -> not (mobs.some (mob) -> mob.Name == name.replaceAll mobPrefixes, '')
 
+    log.toConsole 'sillly', 'mobs', "mobs: #{@mobs}"
+    log.toConsole 'sillly', 'mobs', "players: #{@players}"
+
     whoNeeded = false
     @players.forEach (player, index) =>
       who = @user.who?.find (x) -> x.first == player
@@ -195,12 +199,14 @@ class Room extends RoomBase
     @mobs.forEach (mob, index) =>
       match = mobs.filter (x) -> x.Name == mob.replaceAll mobPrefixes, ''
       return (=>
+        log.toConsole 'sillly', 'mobs', "matched only 1 #{match[0]}"
         @mobs[index] = match.shift()
       )() if match.length is 1
 
       summoned = data.monsters.bySummon mob, @map, @room if @map and @room
 
       return (=>
+        log.toConsole 'sillly', 'mobs', "summoned mob #{summoned[0]}"
         @mobs[index] = summoned.shift()
       )() if summoned?.length is 1
 
@@ -208,8 +214,11 @@ class Room extends RoomBase
       found = mobs.find (x) -> (x.Number == lairmobs[0]) if lairmobs?.length >= 1
 
       return (=>
+        log.toConsole 'sillly', 'mobs', "lair mob #{found}"
         @mobs[index] = found
       )() if found
+
+      log.toConsole 'sillly', 'mobs', "not found mob #{mob}"
 
 
   hiddenExits: ->

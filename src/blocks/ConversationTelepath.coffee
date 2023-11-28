@@ -14,7 +14,7 @@ class ConversationTelepath extends Conversation
   @child = MudBlock.derived.add this
 
   process: ->
-    vaue = super.process()
+    value = super.process()
     @user.onTelepath this, @source, @message
     return value
 

@@ -1,10 +1,19 @@
 { app, BrowserWindow, ipcMain } = require 'electron'
 
+log = require('./common/colorlog.coffee')
 path = require('path')
 User = require('./engine/user')
+options = require('./config/options.coffee')
 { db, rooms: db.rooms } = require './engine/data.coffee'
 
 mainWindow = undefined
+args = undefined
+options.isPackaged = app.isPackaged
+resourcePath = if app.isPackaged then process.resourcesPath else path.join __dirname + "/../resources"
+
+app.commandLine.appendSwitch('ignore-gpu-blacklist');
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
 
 createWindow = ->
     mainWindow = new BrowserWindow(
@@ -16,7 +25,7 @@ createWindow = ->
             enableRemoteModule: true
     )
     mainWindow.loadFile path.join(__dirname, 'index.html')
-
+    
 app.on 'ready', -> createWindow()
 app.on 'window-all-closed', ->
 	app.quit() unless process.platform == 'darwin'
@@ -25,9 +34,10 @@ app.on 'activate', ->
 
 app.whenReady () ->
 .then () ->
-	mainWindow.webContents.openDevTools()
-	mainWindow.maximize()
-	mainWindow.webContents.on 'did-finish-load', -> init()
+    args = process.argv.slice(2);
+    mainWindow.webContents.openDevTools() if options.ui.showDeveloperToolsOnLoad
+    mainWindow.maximize()
+    mainWindow.webContents.on 'did-finish-load', -> init()
 
 init = ->
     user = new User
@@ -43,7 +53,9 @@ init = ->
     user.on 'notify-alert', (message) -> mainWindow?.webContents.send 'notification-alert', message
     user.on 'viewport-print', (message) -> mainWindow?.webContents.send 'viewport-print', message
 
-    user.load path.resolve(__dirname, './config/user.json')
+    userConfig = if args.length > 0 then args[0] else path.resolve(resourcePath, 'user.json')
+    log.toConsole 'info', 'application', "Loaded user configuration from #{userConfig}"
+    user.load userConfig
     user.connect()
 
     ipcMain.on 'request-user-data', (event) -> mainWindow?.webContents.send 'user-data', user.output()
