@@ -69,6 +69,7 @@ class MudBlock
   merge: (child) ->
     Object.getOwnPropertyNames child
     .forEach (prop) => @[prop] = child[prop] if typeof child[prop] isnt 'function'
+    #.forEach (prop) => @[prop] = child[prop] if not child[prop]? and typeof child[prop] isnt 'function'
 
 #TODO: \d silver|copper|gold|runic drops to the ground.
 #TODO: find death messages and remove them from the room or rescan

@@ -5,8 +5,8 @@ MudBlock = require './MudBlock.coffee'
 @match    = meta 'match' # regex to match this block
 @commands   = meta 'commands' # allowable commands for this block
 
-@match /^Recent Deaths:/m,
-@commands [..."profile".getSubsets(1)],
+@match /^(Recent Deaths:|Location:)/m,
+@commands [..."profile".getSubsets(1), "rm", "roo", "room"],
 class UserProfile extends MudBlock
   @child = MudBlock.derived.add this
 

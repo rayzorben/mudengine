@@ -30,8 +30,8 @@ colors =
         crimson: "\u001B[48m"
 
 logCheck = (level, module) ->
-    return options.logLevels.indexOf(level.toLowerCase()) <= options.logLevels.indexOf(options.logLevel.toLowerCase()) if module is undefined or options.logModule[module] is undefined
-    options.logLevels.indexOf(level.toLowerCase()) <= options.logLevels.indexOf(options.logModule[module])
+    return options().logLevels.indexOf(level.toLowerCase()) <= options().logLevels.indexOf(options().logLevel.toLowerCase()) if module is undefined or options().logModule[module] is undefined
+    options().logLevels.indexOf(level.toLowerCase()) <= options().logLevels.indexOf(options().logModule[module])
 
 logFormat = (level, module, message, skip = false, color = colors.reset) ->
     str = if skip then '' else "#{color}#{module.toUpperCase().padStart(12, ' ')}:#{level.toUpperCase().padStart(7, ' ')}: "

@@ -4,7 +4,8 @@ module.exports = {
     extraResource: [
       "./resources/gmud20230902.sqlite",
       "./resources/icons/",
-      "./resources/user.json"
+      "./resources/user.json",
+      "./resources/config.yaml"
     ],
   },
   rebuildConfig: {},

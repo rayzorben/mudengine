@@ -6,7 +6,7 @@ _db = null
 
 init = ->
   if not _db
-    _db = new sqlite3 path.resolve(__dirname, options.database)
+    _db = new sqlite3 path.resolve(__dirname, options().database)
     _db.pragma 'journal_mode = WAL'
   _db
 
@@ -37,6 +37,7 @@ monsters =
   queryMobSummon: data.prepare "SELECT * FROM Monsters WHERE Name = ? AND [Summoned By] LIKE ?"
   byName: (name) -> monsters.queryMobByName.all name
   bySummon: (name, map, room) -> monsters.queryMobSummon.all name, "%Room #{map}/#{room}%"
+  bySummonMap: (name, map) -> monsters.queryMobSummon.all name, "%Group%: #{map}/%"
   byList: (names) ->
     query = data.prepare "SELECT * FROM Monsters WHERE Name IN (#{Array(names.length).fill('?').join(',')})"
     query.all names

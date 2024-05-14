@@ -8,7 +8,7 @@ options = require('./config/options.coffee')
 
 mainWindow = undefined
 args = undefined
-options.isPackaged = app.isPackaged
+options().isPackaged = app.isPackaged
 resourcePath = if app.isPackaged then process.resourcesPath else path.join __dirname + "/../resources"
 
 app.commandLine.appendSwitch('ignore-gpu-blacklist');
@@ -35,7 +35,7 @@ app.on 'activate', ->
 app.whenReady () ->
 .then () ->
     args = process.argv.slice(2);
-    mainWindow.webContents.openDevTools() if options.ui.showDeveloperToolsOnLoad
+    mainWindow.webContents.openDevTools() if options().ui.showDeveloperToolsOnLoad
     mainWindow.maximize()
     mainWindow.webContents.on 'did-finish-load', -> init()
 
@@ -53,7 +53,7 @@ init = ->
     user.on 'notify-alert', (message) -> mainWindow?.webContents.send 'notification-alert', message
     user.on 'viewport-print', (message) -> mainWindow?.webContents.send 'viewport-print', message
 
-    userConfig = if args.length > 0 then args[0] else path.resolve(resourcePath, 'user.json')
+    userConfig = if args.length > 0 then args[0] else path.resolve(resourcePath, 'soul.json')
     log.toConsole 'info', 'application', "Loaded user configuration from #{userConfig}"
     user.load userConfig
     user.connect()

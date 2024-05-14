@@ -154,7 +154,7 @@ class User extends EventEmitter
   commands: -> _commandList
 
   suppressMessages: ->
-    return _commandQueue.length >= options.engine.maxQueuedCommands
+    return _commandQueue.length >= options().engine.maxQueuedCommands
 
   pushCommand: (command) ->
     _commandQueue.push command.toLowerCase().trimCommand()
@@ -193,7 +193,7 @@ class User extends EventEmitter
     inventoryItem.equipped = ''
 
   toggleAllOn: ->
-    options.engine.allOn = not options.engine.allOn
+    options().engine.allOn = not options().engine.allOn
     @sendline ''
 
   evalCommand: (command) ->
@@ -449,7 +449,7 @@ class User extends EventEmitter
     @idleCommand 'exp'
 
   onIdle: @event "idle", ->
-    @sendline @idle.shift() if options.engine.allOn and @idle.length > 0 and not @isTyping()
+    @sendline @idle.shift() if options().engine.allOn and @idle.length > 0 and not @isTyping()
 
   onStep: @event "step", ->
     return if @isTyping()
@@ -541,7 +541,7 @@ class User extends EventEmitter
   onNewRoom: @event 'new-room', (room) ->
     @roomChanged true
     @isSneaking false
-
+    
     @currentDirection = null
     @route.shift()
 

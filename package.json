@@ -25,9 +25,10 @@
   "dependencies": {
     "@electron/rebuild": "^3.2.9",
     "better-sqlite3": "^8.5.0",
-    "telnet-stream": "^1.1.0",
     "coffeescript": "^2.7.0",
+    "electron-squirrel-startup": "^1.0.0",
     "jsdom": "^22.1.0",
-    "electron-squirrel-startup": "^1.0.0"
+    "telnet-stream": "^1.1.0",
+    "yaml": "^2.4.1"
   }
 }

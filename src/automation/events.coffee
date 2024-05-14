@@ -12,7 +12,7 @@ eventHandler = (user) ->
         clearInterval user.eventIdleTimeout if user.eventIdleTimeout
         user.eventIdleTimeout = setInterval ->
             user.idleCommand user.config.idleCommand ? "\n" if user.inRealm() and not user.isTyping()
-        , user.options.engine.idleCommandSend * 1000
+        , user.options().engine.idleCommandSend * 1000
 
     user.on 'room-changed', (room) ->
       #user.notify "#{ room.name } entered."

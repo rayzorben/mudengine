@@ -97,7 +97,7 @@ addToViewport = (data) ->
 		current.innerHTML = viewport.toHTML()
 
 		# remove old entries from history that go beyond maxHistoryLines
-		history.firstChild.remove() while history.childElementCount > options.ui.maxHistoryLines
+		history.firstChild.remove() while history.childElementCount > options().ui.maxHistoryLines
 		applyCSS userConfig.customStylesheet if userConfig
 
 appendToHistory = (htmlString) ->
