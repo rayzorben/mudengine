@@ -49,6 +49,8 @@ import {
 import { Belongings, peekSpellbook } from './session/Belongings';
 import type { BelongingsSink } from '../shared/belongings';
 import { NO_LORE, type MobLore } from '../shared/lore';
+import { SpellMessageBook, spellLoreOf, type SpellLore } from '../shared/spell-messages';
+import { loadSpellMessages } from './world/SpellMessages';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
@@ -151,6 +153,8 @@ let realms: RealmLibrary | null = null;
  * relocates it with everything else.
  */
 let lore: RealmLore | null = null;
+/** The shipped spell message table, read once on first use. See `spellLoreFor`. */
+let spellMessages: SpellMessageBook | null = null;
 /**
  * What is known about the other players on every realm dialled.
  *
@@ -267,6 +271,28 @@ function loreFor(id: SessionId): MobLore {
   // Before the store exists there is nothing to learn from and nowhere to
   // learn to, which is the honest answer rather than a reason to throw.
   return lore?.forRealm(world?.info.source ?? 'none', world) ?? NO_LORE;
+}
+
+/**
+ * The sentences a spell prints when it lands and when it ends.
+ *
+ * The shipped half is one file for every realm (`resources/world/
+ * spell-messages.csv`, the server's message data by spell name); the learned
+ * half is kept by `RealmLore` beside the monster health, keyed on the realm
+ * for the same reason — a sentence the server prints for a spell is a fact
+ * about the world. Before the store exists the shipped table is still read,
+ * and what is learned then goes nowhere, which is the honest answer.
+ */
+function spellLoreFor(id: SessionId): SpellLore {
+  spellMessages ??= loadSpellMessages(
+    path.join(resourcesDir(), 'world', 'spell-messages.csv'),
+    (message) => announce('world', message)
+  );
+  const world = worldFor(id);
+  return (
+    lore?.spellsFor(world?.info.source ?? 'none', spellMessages) ??
+    spellLoreOf(spellMessages, new SpellMessageBook())
+  );
 }
 
 /**
@@ -1160,6 +1186,7 @@ function createHost(): SessionHost {
     worldFor,
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
+    spellLoreFor,
     memoryFor: splitMemoryFor,
     fightsFor,
     talkFor,

@@ -428,6 +428,12 @@ export const RULES: Rule[] = [
    */
   { type: 'spell-refused', pattern: /^You have already cast a spell this round!/ },
   /*
+   * The same refusal in the kai vocabulary — `pres` a beat after `tige` in
+   * captures/192. One cast per round is one *power* per round too, so the
+   * mid-round tick hears it under the same type.
+   */
+  { type: 'spell-refused', pattern: /^You have already invoked a power this round!/ },
+  /*
    * The wrong book was asked for, and the answer names the right one —
    * captured live (`npm run probe:spellbook`, 2026-09-01): a KAI character's
    * `sp` gets the first sentence, a spellbook caster's `pow` the second.
@@ -466,6 +472,25 @@ export const RULES: Rule[] = [
      */
     type: 'spell-cast',
     pattern: /^(?<caster>You) cast (?<spell>[\w' -]+?), and .+[.!]$/
+  },
+  /*
+   * A kai power's confirmation does not say `cast` at all. `You invoke the
+   * way of the tiger.` (corpus: swan 20, tiger 4, mantis 1) and `You use your
+   * knowledge of pressure points!` (corpus, and live on the sanctioned realm
+   * 2026-09-04). Both are the same fact as `You cast X, and …` — a self cast
+   * that landed — and were classified as `unknown`, so neither power ever
+   * reached `CharacterState.buffs` and `Blessings` recast both on its 30s
+   * retry floor all evening (`logs/2026-09-04_12-28-42_main.mudcap.jsonl`).
+   * The onset that follows (`You feel ferocious!`, `You are using pressure
+   * points!`) is per-power realm message data and is not the signal.
+   */
+  {
+    type: 'spell-cast',
+    pattern: /^(?<caster>You) invoke the (?<spell>way of the [\w' -]+?)\.$/
+  },
+  {
+    type: 'spell-cast',
+    pattern: /^(?<caster>You) use your knowledge of (?<spell>[\w' -]+?)!$/
   },
   {
     /*
@@ -1951,7 +1976,15 @@ export const BATCH_RULES: BatchRule[] = [
     type: 'player-status',
     header: /^Name:\s+[\w\s]+\s+Lives\/CP:\s+\d+\/\d+/,
     shape: 'object',
-    maxLines: 16,
+    /*
+     * Nine rows of figures and then one line per active buff — the server
+     * prints each effect's own onset sentence at the foot of the sheet, and
+     * `CharacterTracker` reads that tail as the authoritative listing of what
+     * is up. Sixteen cut the tail at seven buffs, and a buff cut off the
+     * sheet reads as a buff that ended; the status line terminates the batch
+     * long before this cap is reached.
+     */
+    maxLines: 24,
     qualifiers: [
       /^Name:\s+(?<first>\w+) (?<last>\w*)\s+Lives\/CP:\s+(?<lives>\d+)\/(?<cp>\d+)/,
       /*

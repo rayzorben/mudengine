@@ -1,5 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  SpellMessageBook,
+  spellKey,
+  spellLoreOf,
+  type SpellLore
+} from '../../shared/spell-messages';
 
 import {
   emptyLore,
@@ -59,12 +65,28 @@ interface LoreFile {
    * learned simply has none, and a reader of the older shape ignores the key.
    */
   slots?: Record<string, Record<string, SlotLoreEntry>>;
+  /**
+   * The start and stop sentences the wire taught for spells the shipped table
+   * (`resources/world/spell-messages.csv`) has none for, per realm, keyed by
+   * the spell's name. Optional for the same reason `slots` is.
+   */
+  spells?: Record<string, Record<string, LearnedSpellMessages>>;
+}
+
+/** What one realm taught about one spell's sentences. Either half may be absent. */
+export interface LearnedSpellMessages {
+  start?: { text: string; at: number };
+  stop?: { text: string; at: number };
 }
 
 export class RealmLore {
   private readonly learned = new Map<string, Map<string, MobLoreEntry>>();
   /** The slot words, per realm, per `Worn` code. See `SlotLoreEntry`. */
   private readonly slots = new Map<string, Map<number, SlotLoreEntry>>();
+  /** Learned spell sentences, per realm, per spell. See `spellsFor`. */
+  private readonly spells = new Map<string, Map<string, LearnedSpellMessages>>();
+  /** The learned half of each realm's `SpellLore`, built once per realm. */
+  private readonly spellBooks = new Map<string, SpellMessageBook>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
@@ -88,6 +110,56 @@ export class RealmLore {
       slotWordsFor: (worn) => this.slotWordsFor(key, worn),
       observeSlot: (worn, word, at) => this.observeSlot(key, worn, word, at)
     };
+  }
+
+  /**
+   * The spell sentences one realm reads by: the shipped table first, and
+   * behind it what this realm's wire has taught.
+   *
+   * Learning is keyed by realm exactly as monster health is — a sentence the
+   * server prints for a spell is a fact about the world, not about who cast
+   * it — and every learn and unlearn is said out loud, because a persisted
+   * sentence that ends a shield is a decision somebody must be able to read.
+   */
+  spellsFor(realm: string, shipped: SpellMessageBook): SpellLore {
+    this.load();
+    const key = realmKey(realm);
+    let learned = this.spellBooks.get(key);
+    if (!learned) {
+      learned = new SpellMessageBook();
+      for (const [spell, entry] of this.spells.get(key) ?? []) {
+        if (entry.start) learned.add(spell, 'start', entry.start.text);
+        if (entry.stop) learned.add(spell, 'stop', entry.stop.text);
+      }
+      this.spellBooks.set(key, learned);
+    }
+    return spellLoreOf(shipped, learned, {
+      learned: (spell, kind, text, at) => {
+        let table = this.spells.get(key);
+        if (!table) {
+          table = new Map();
+          this.spells.set(key, table);
+        }
+        const name = spellKey(spell);
+        table.set(name, { ...table.get(name), [kind]: { text, at } });
+        this.schedule();
+        this.options.notify?.(t('notices.world.lore.spellLearned', { spell: name, kind, text }));
+      },
+      unlearned: (spell, kind) => {
+        const table = this.spells.get(key);
+        const name = spellKey(spell);
+        const entry = table?.get(name);
+        if (!table || !entry) return;
+        const { [kind]: gone, ...rest } = entry;
+        if (gone === undefined) return;
+        if (Object.keys(rest).length === 0) table.delete(name);
+        else table.set(name, rest);
+        this.schedule();
+        this.options.notify?.(
+          t('notices.world.lore.spellUnlearned', { spell: name, kind, text: gone.text })
+        );
+      }
+    });
   }
 
   /* --------------------------------------------------------------- slots */
@@ -305,6 +377,15 @@ export class RealmLore {
       }
       this.slots.set(realmKey(realm), table);
     }
+    for (const [realm, entries] of Object.entries(file.spells ?? {})) {
+      if (typeof entries !== 'object' || entries === null) continue;
+      const table = new Map<string, LearnedSpellMessages>();
+      for (const [name, value] of Object.entries(entries)) {
+        const entry = readSpellEntry(value);
+        if (entry && spellKey(name).length > 0) table.set(spellKey(name), entry);
+      }
+      this.spells.set(realmKey(realm), table);
+    }
   }
 
   /** True once the file was found unparseable; nothing is written over it. */
@@ -347,12 +428,27 @@ export class RealmLore {
       );
     }
 
+    const spells: NonNullable<LoreFile['spells']> = {};
+    for (const [realm, table] of this.spells) {
+      if (table.size === 0) continue;
+      spells[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
+    }
+
     const temporary = `${this.options.file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
       fs.writeFileSync(
         temporary,
-        `${JSON.stringify({ v: 1, realms, ...(Object.keys(slots).length > 0 ? { slots } : {}) } satisfies LoreFile, null, 2)}\n`
+        `${JSON.stringify(
+          {
+            v: 1,
+            realms,
+            ...(Object.keys(slots).length > 0 ? { slots } : {}),
+            ...(Object.keys(spells).length > 0 ? { spells } : {})
+          } satisfies LoreFile,
+          null,
+          2
+        )}\n`
       );
       fs.renameSync(temporary, this.options.file);
     } catch (error) {
@@ -383,6 +479,22 @@ export class RealmLore {
 }
 
 const EMPTY_ANSWER = { max: null, source: null, span: null } as const;
+
+/** One learned spell entry, or null when neither half is a sentence. */
+function readSpellEntry(value: unknown): LearnedSpellMessages | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const half = (raw: unknown): { text: string; at: number } | undefined => {
+    if (typeof raw !== 'object' || raw === null) return undefined;
+    const { text, at } = raw as Record<string, unknown>;
+    if (typeof text !== 'string' || text.trim().length === 0) return undefined;
+    return { text: text.trim(), at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
+  };
+  const start = half(record['start']);
+  const stop = half(record['stop']);
+  if (!start && !stop) return null;
+  return { ...(start ? { start } : {}), ...(stop ? { stop } : {}) };
+}
 
 /** One slot entry, or null. Only non-empty strings count as words. */
 function readSlotEntry(value: unknown): SlotLoreEntry | null {

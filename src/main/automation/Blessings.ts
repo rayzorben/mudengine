@@ -290,7 +290,12 @@ export class Blessings {
     if (state.inCombat && !entry.inCombat) return false;
     if (!manaAtLeast(state, entry.minMana)) return false;
 
-    const held = state.buffs.find((buff) => this.sameSpell(buff.spell, entry.spell));
+    // Under its name or any other the establishing sentence could have
+    // meant: `You feel lucky!` is five spells, and a configured `bless` is up
+    // whichever of them the server actually applied.
+    const held = state.buffs.find((buff) =>
+      [buff.spell, ...(buff.candidates ?? [])].some((name) => this.sameSpell(name, entry.spell))
+    );
     if (held !== undefined && !this.lapsed(held, entry, now)) return false;
 
     // `@self`, not this character's name: a self cast goes out bare, so it

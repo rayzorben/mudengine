@@ -64,6 +64,7 @@ import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world
 import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
+import { NO_SPELL_LORE, spellKey, wordsOf, type SpellLore } from '../../shared/spell-messages';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
@@ -258,6 +259,28 @@ function leftRoom(before: Room, after: Room): boolean {
   );
 }
 
+/** The `spells` group of a spell-message block: `|`-separated spell names. */
+function splitSpells(group: string | undefined): string[] {
+  if (group === undefined) return [];
+  return group
+    .split('|')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+}
+
+/**
+ * Whether a line nothing recognised is shaped like an effect sentence: one
+ * sentence, beginning with a capital and ending in a full stop or a bang,
+ * carrying no figure and no speech, and short. Every start and stop in the
+ * shipped table passes; a listing row, a status line, a damage line and a
+ * `You say` do not. This is a gate on what may be *learned*, not a reader —
+ * nothing is typed from it.
+ */
+export function looksLikeEffectSentence(text: string): boolean {
+  if (!/^[A-Z][^\d"]*[.!]$/.test(text)) return false;
+  return wordsOf(text).length <= 14;
+}
+
 export class CharacterTracker {
   private state: CharacterState = structuredClone(EMPTY_CHARACTER);
 
@@ -348,6 +371,29 @@ export class CharacterTracker {
   private lastSelfCast: { spell: string; at: number } | null = null;
   /** Learned `onset effect (lower) → spell name`, so the `st` timer can be attributed. */
   private buffEffects = new Map<string, string>();
+  /**
+   * Sentences nothing recognised, seen while buffs whose ending the client
+   * does not know were up — each with the buffs it could have ended. An `st`
+   * sheet resolves them: a suspect the sheet still lists is not it, and one
+   * suspect left that the sheet has stopped listing is the buff the sentence
+   * ended, which is then learned. Bounded, and aged out by
+   * `tuning.spells.pendingStopMs`.
+   */
+  private pendingStops: Array<{ text: string; at: number; suspects: string[] }> = [];
+  /**
+   * Buffs a *learned* ending removed, by spell key, with when. A buff that
+   * reappears unprompted inside `tuning.spells.stopContradictionMs` — the
+   * `st` sheet still listing it, typically — is the wire saying the learned
+   * sentence was not its ending, and the lesson is taken back.
+   */
+  private readonly recentlyStopped = new Map<string, number>();
+  /**
+   * Whether an `st` sheet would settle something: a sentence nothing
+   * recognised has just been read as, or held as, the ending of a buff whose
+   * start the sheet would print. Set here, taken by `takeSheetRequest`, and
+   * acted on by `Routines` — the tracker records and never sends.
+   */
+  private sheetWanted = false;
 
   /**
    * Where this character's own record is kept between sessions — the balances
@@ -391,7 +437,15 @@ export class CharacterTracker {
      * where what other sessions on the same realm learn comes from. Last, and
      * defaulting to a realm that knows nothing, for the reason `fights` does.
      */
-    private players: RealmPlayers = NO_REALM_PLAYERS
+    private players: RealmPlayers = NO_REALM_PLAYERS,
+    /**
+     * The realm's sentences for an effect landing and ending — the shipped
+     * table and what this realm's wire has taught — and where a new one is
+     * taught. Defaults to knowing none, which leaves the frames in
+     * `patterns.ts` and the watchdog clock as the only readers of a buff's
+     * life, exactly as before the table existed.
+     */
+    private readonly spellLore: SpellLore = NO_SPELL_LORE
   ) {
     // Classification asks the realm's monster table and the roster, so a blow
     // that puts its attacker in the room comes back here to do it.
@@ -686,6 +740,9 @@ export class CharacterTracker {
     this.vault = null;
     this.lastSelfCast = null;
     this.buffEffects.clear();
+    this.pendingStops = [];
+    this.recentlyStopped.clear();
+    this.sheetWanted = false;
   }
 
   /**
@@ -708,6 +765,10 @@ export class CharacterTracker {
    */
   leaveRealm(): boolean {
     this.expect.dropHint();
+    // The buffs go with the realm, and so does every half-learned ending.
+    this.pendingStops = [];
+    this.recentlyStopped.clear();
+    this.sheetWanted = false;
     if (this.state.phase === 'unknown' && this.state.room.name === null) return false;
     this.state = {
       ...this.state,
@@ -1515,29 +1576,205 @@ export class CharacterTracker {
   }
 
   /**
-   * The `st` sheet's buff timers, applied to the buffs they name.
+   * Whether an `st` sheet has been wanted since this was last asked.
    *
-   * `You feel safe from evil! (90s)` states when `protection from evil` ends,
-   * but only the learned onset map (`buffEffects`) knows *which* buff `safe
-   * from evil` is. An unlearned effect is left alone — refusing to guess,
-   * because attributing a countdown to the wrong shield is worse than none —
-   * and a countdown for a buff not on the list is ignored the same way. The
-   * server's statement, so it overwrites any earlier `expiresAt`.
+   * A flag taken rather than an event fired, because the answer is wanted
+   * once per burst of questions, not once per line: three emotes in a row
+   * while one buff's ending is unknown are one sheet. Cleared by the taking.
    */
-  private applyBuffTimers(buffs: readonly ActiveBuff[], text: string, at: number): ActiveBuff[] {
-    const stated = new Map<string, number>();
-    for (const match of text.matchAll(/You feel (?<effect>[\w' -]+?)! \((?<seconds>\d+)s\)/g)) {
-      const effect = match.groups?.['effect']?.trim().toLowerCase();
-      const seconds = Number(match.groups?.['seconds']);
-      const spell = effect ? this.buffEffects.get(effect) : undefined;
-      if (spell !== undefined && Number.isFinite(seconds)) {
-        stated.set(spell.toLowerCase(), at + seconds * 1000);
+  takeSheetRequest(): boolean {
+    const wanted = this.sheetWanted;
+    this.sheetWanted = false;
+    return wanted;
+  }
+
+  /**
+   * The `st` sheet is the authoritative listing of what is up.
+   *
+   * The server prints each active effect's own onset sentence at the foot of
+   * the sheet — `You feel ferocious!`, `You are using pressure points!` —
+   * and Paramud adds a countdown (`You feel safe from evil! (90s)`). Read
+   * with the same rule every listing in this client follows: it establishes
+   * the list and the broadcasts maintain it. A buff whose start sentence is
+   * known and is not on the sheet has ended without a sentence this client
+   * read, and goes; one whose start nobody knows cannot be judged and stays
+   * for its clock. The sheet's own lines have already arrived as
+   * `spell-onset` blocks and added whatever was missing, so this half only
+   * removes and times.
+   *
+   * It is also where a pending ending is settled: a suspect the sheet still
+   * lists was not ended by the sentence, and one suspect left that the sheet
+   * has positively dropped is the buff the sentence ended.
+   */
+  private readSheet(s: CharacterState, text: string, at: number): ActiveBuff[] {
+    const up = new Set<string>();
+    const timers = new Map<string, number>();
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (line.length === 0) continue;
+      const timed = /^(?<line>.+?)\s*\((?<seconds>\d+)s\)$/.exec(line);
+      const sentence = timed?.groups?.['line'] ?? line;
+      const seconds = timed ? Number(timed.groups?.['seconds']) : null;
+      for (const name of this.spellsBegunBy(sentence)) {
+        up.add(spellKey(name));
+        if (seconds !== null && Number.isFinite(seconds)) {
+          timers.set(spellKey(name), at + seconds * 1000);
+        }
       }
     }
-    if (stated.size === 0) return buffs.map((buff) => ({ ...buff }));
-    return buffs.map((buff) => {
-      const expiresAt = stated.get(buff.spell.toLowerCase());
-      return expiresAt === undefined ? { ...buff } : { ...buff, expiresAt };
+
+    const kept: ActiveBuff[] = [];
+    for (const buff of s.buffs) {
+      const names = this.buffNames(buff);
+      const listed = names.some((name) => up.has(spellKey(name)));
+      if (!listed && this.knowsStart(buff)) continue;
+      const expiresAt = names
+        .map((name) => timers.get(spellKey(name)))
+        .find((v) => v !== undefined);
+      // The server's statement, so it overwrites any earlier `expiresAt`.
+      kept.push(expiresAt === undefined ? { ...buff } : { ...buff, expiresAt });
+    }
+    this.settlePending(up, at);
+    return kept;
+  }
+
+  /** Every spell a sheet line says is up: the table's starts, then the learned onset map. */
+  private spellsBegunBy(sentence: string): string[] {
+    const hit = this.spellLore.match(sentence);
+    const names =
+      hit !== null && hit.starts.length > 0 && hit.stops.length === 0 ? [...hit.starts] : [];
+    const effect = /^You feel (?<effect>[\w' -]+?)!$/.exec(sentence)?.groups?.['effect'];
+    const learned = effect ? this.buffEffects.get(effect.trim().toLowerCase()) : undefined;
+    if (learned !== undefined && !names.some((name) => this.namesOneSpell(name, learned))) {
+      names.push(learned);
+    }
+    return names;
+  }
+
+  private settlePending(up: ReadonlySet<string>, at: number): void {
+    this.pendingStops = this.pendingStops.filter((pending) => {
+      if (at - pending.at > tuning().spells.pendingStopMs) return false;
+      pending.suspects = pending.suspects.filter((name) => !up.has(spellKey(name)));
+      if (pending.suspects.length === 0) return false;
+      if (pending.suspects.length > 1) return true;
+      const name = pending.suspects[0]!;
+      // Learned only on a positive statement: the sheet knows this buff's
+      // start and has stopped printing it. A buff the sheet cannot speak
+      // about keeps the sentence waiting.
+      if (this.spellLore.startOf(name) === null) return true;
+      this.spellLore.learn(name, 'stop', pending.text, pending.at);
+      return false;
+    });
+  }
+
+  /**
+   * A buff established with no cast in front of it, right after a learned
+   * ending removed the same buff, is the wire saying the ending was wrong.
+   * A recast comes in through its own cast frame and never reaches here.
+   */
+  private noteContradiction(names: readonly string[], at: number): void {
+    for (const name of names) {
+      const stoppedAt = this.recentlyStopped.get(spellKey(name));
+      if (stoppedAt === undefined) continue;
+      this.recentlyStopped.delete(spellKey(name));
+      if (at - stoppedAt <= tuning().spells.stopContradictionMs) {
+        this.spellLore.unlearn(name, 'stop');
+      }
+    }
+  }
+
+  /**
+   * Buffs that have ended. A cast confirmation and its ending are a measured
+   * duration — the only statement of one this client trusts, the realm's
+   * `Dur` column being in units nothing on hand establishes — but only where
+   * the ending was *recognised*: a sentence learned this instant is a
+   * conclusion, and a duration measured from it would be one too. Own casts
+   * only: a party member's duration scales with their level. The pending
+   * endings drop these as suspects, because whatever ended them was not the
+   * sentence nothing recognised.
+   */
+  private buffsEnded(ended: readonly ActiveBuff[], at: number, recognised: boolean): void {
+    for (const buff of ended) {
+      if (recognised && buff.by === null) {
+        const seconds = (at - buff.appliedAt) / 1000;
+        if (seconds > 0) this.belongings.rememberSpellDuration(buff.spell, seconds);
+      }
+      const names = this.buffNames(buff);
+      for (const pending of this.pendingStops) {
+        pending.suspects = pending.suspects.filter(
+          (name) => !names.some((held) => this.namesOneSpell(held, name))
+        );
+      }
+    }
+    this.pendingStops = this.pendingStops.filter((pending) => pending.suspects.length > 0);
+  }
+
+  private withBuff(s: CharacterState, buff: ActiveBuff): CharacterState {
+    const kept = s.buffs.filter((held) => !this.buffMatches(held, this.buffNames(buff)));
+    // A list-size bound, not a knob: nothing legitimate holds this many.
+    return { ...s, buffs: [...kept.slice(-15), buff] };
+  }
+
+  /** The spell and every other it might be. */
+  private buffNames(buff: ActiveBuff): string[] {
+    return [buff.spell, ...(buff.candidates ?? [])];
+  }
+
+  private buffMatches(buff: ActiveBuff, names: readonly string[]): boolean {
+    return this.buffNames(buff).some((held) =>
+      names.some((name) => this.namesOneSpell(held, name))
+    );
+  }
+
+  /**
+   * Whether two spellings name one spell — exactly, or through the realm's
+   * spell table so its two spellings of one row (name and abbreviation)
+   * cannot make one buff two.
+   */
+  private namesOneSpell(a: string, b: string): boolean {
+    if (spellKey(a) === spellKey(b)) return true;
+    const rowA = this.world?.spellNamed(a) ?? null;
+    const rowB = this.world?.spellNamed(b) ?? null;
+    return rowA !== null && rowB !== null && rowA.id === rowB.id;
+  }
+
+  private knowsStart(buff: ActiveBuff): boolean {
+    return this.buffNames(buff).some(
+      (name) =>
+        this.spellLore.startOf(name) !== null ||
+        [...this.buffEffects.values()].some((learned) => this.namesOneSpell(learned, name))
+    );
+  }
+
+  private knowsStop(buff: ActiveBuff): boolean {
+    return this.buffNames(buff).some((name) => this.spellLore.stopOf(name) !== null);
+  }
+
+  /** Whether this character's own listing says it can cast the spell. */
+  private knowsSpell(s: CharacterState, name: string): boolean {
+    return (s.spellbook ?? []).some(
+      (known) =>
+        this.namesOneSpell(known.name, name) ||
+        (known.short !== null && spellKey(known.short) === spellKey(name))
+    );
+  }
+
+  /** Whether a sentence names this character, anybody in the room or anybody in the party. */
+  private namesSomebody(s: CharacterState, text: string): boolean {
+    const names = [
+      s.name,
+      ...s.room.occupants.map((who) => who.name),
+      ...s.party.members.map((member) => member.name)
+    ];
+    const lower = text.toLowerCase();
+    return names.some((name) => {
+      if (name === null || name.trim().length === 0) return false;
+      const needle = name.trim().toLowerCase();
+      const at = lower.indexOf(needle);
+      if (at < 0) return false;
+      const before = at === 0 ? ' ' : lower[at - 1]!;
+      const after = lower[at + needle.length] ?? ' ';
+      return !/[a-z0-9']/.test(before) && !/[a-z0-9]/.test(after);
     });
   }
 
@@ -2087,7 +2324,7 @@ export class CharacterTracker {
           // Paramud's `st` prints a countdown after each active buff; the
           // batch swallows those lines, so they are read out of the sheet text
           // and attributed through the learned onset map. See `applyBuffTimers`.
-          buffs: this.applyBuffTimers(s.buffs, block.text, block.at),
+          buffs: this.readSheet(s, block.text, block.at),
           name: g['first'] ?? s.name,
           fullName: g['first'] ? [g['first'], g['last'] ?? ''].join(' ').trim() : s.fullName,
           race: g['race'] ?? s.race,
@@ -3461,12 +3698,66 @@ export class CharacterTracker {
        */
       case 'spell-onset': {
         const effect = g['effect']?.trim().toLowerCase();
+        const candidates = splitSpells(g['spells']);
         const cast = this.lastSelfCast;
-        if (effect && cast && block.at - cast.at <= tuning().spells.onsetWindowMs) {
-          this.buffEffects.set(effect, cast.spell);
-          this.lastSelfCast = null;
+        const followsCast = cast !== null && block.at - cast.at <= tuning().spells.onsetWindowMs;
+
+        /*
+         * No table entry: the `You feel …!` frame alone. Everything it can
+         * teach comes from the cast it follows — the effect word for the `st`
+         * timer, and the whole sentence as that spell's start, so the next
+         * time it is printed with no cast in front of it (a potion, the `st`
+         * sheet) the buff is still recognised.
+         */
+        if (candidates.length === 0) {
+          if (followsCast) {
+            if (effect) this.buffEffects.set(effect, cast.spell);
+            this.spellLore.learn(cast.spell, 'start', block.text.trim(), block.at);
+            this.lastSelfCast = null;
+          }
+          return null;
         }
-        return null;
+
+        /*
+         * The table names the spells this sentence begins. A cast a moment
+         * ago naming one of them settles which — and the cast frame has
+         * already put that buff on the list, so this only adds it where the
+         * frame refused because the realm's row called the spell instant: the
+         * table has just said it lasts, and the table is the server's own
+         * statement about this very spell.
+         */
+        const named = followsCast
+          ? candidates.find((candidate) => this.namesOneSpell(candidate, cast.spell))
+          : undefined;
+        if (followsCast && named !== undefined) {
+          if (effect) this.buffEffects.set(effect, cast.spell);
+          this.lastSelfCast = null;
+          if (s.buffs.some((buff) => this.buffMatches(buff, [cast.spell]))) return null;
+          return this.withBuff(s, { spell: cast.spell, by: null, appliedAt: cast.at });
+        }
+
+        /*
+         * Unprompted: the `st` sheet restating what is up, a potion, an
+         * item, or a cast whose frame this client does not read. Already on
+         * the list is the common case (the sheet) and changes nothing — the
+         * cast's own `appliedAt` is the honest one. Otherwise the buff is
+         * established from the sentence itself, named for the one candidate
+         * the spellbook knows where that settles it and the first otherwise,
+         * with the rest kept as candidates rather than thrown away: `You feel
+         * lucky!` is five spells, and a reader asking whether bless is up
+         * must be answered yes whichever of the five it really is.
+         */
+        if (s.buffs.some((buff) => this.buffMatches(buff, candidates))) return null;
+        const inBook = candidates.filter((candidate) => this.knowsSpell(s, candidate));
+        const spell = inBook.length === 1 ? inBook[0]! : candidates[0]!;
+        const rest = candidates.filter((candidate) => candidate !== spell);
+        this.noteContradiction(candidates, block.at);
+        return this.withBuff(s, {
+          spell,
+          by: null,
+          appliedAt: block.at,
+          ...(rest.length > 0 ? { candidates: rest } : {})
+        });
       }
 
       /*
@@ -3492,32 +3783,13 @@ export class CharacterTracker {
        */
       case 'user-buff-expired': {
         const spell = g['spell']?.trim();
-        if (!spell) return null;
-        const named = this.world?.spellNamed(spell) ?? null;
-        const ended: typeof s.buffs = [];
-        const buffs = s.buffs.filter((buff) => {
-          const held = this.world?.spellNamed(buff.spell) ?? null;
-          const matches =
-            buff.spell.toLowerCase() === spell.toLowerCase() ||
-            (named !== null && held !== null && held.id === named.id);
-          if (matches) ended.push(buff);
-          return !matches;
-        });
-        if (buffs.length === s.buffs.length) return null;
-        /*
-         * A cast confirmation and its wear-off frame are a measured duration
-         * — the only statement of one this client trusts, the realm's `Dur`
-         * column being in units nothing on hand establishes. Own casts only:
-         * a party member's duration scales with *their* level, and would be
-         * remembered against the wrong caster. `Blessings` reads it back as
-         * the watchdog behind endings the client cannot read.
-         */
-        for (const buff of ended) {
-          if (buff.by !== null) continue;
-          const seconds = (block.at - buff.appliedAt) / 1000;
-          if (seconds > 0) this.belongings.rememberSpellDuration(buff.spell, seconds);
-        }
-        return { ...s, buffs };
+        const names = splitSpells(g['spells']);
+        if (names.length === 0 && spell) names.push(spell);
+        if (names.length === 0) return null;
+        const ended = s.buffs.filter((buff) => this.buffMatches(buff, names));
+        if (ended.length === 0) return null;
+        this.buffsEnded(ended, block.at, true);
+        return { ...s, buffs: s.buffs.filter((buff) => !ended.includes(buff)) };
       }
 
       /*
@@ -3993,6 +4265,52 @@ export class CharacterTracker {
          */
         this.room.describe(block.text);
         // Not a state change: republishing here would show half a paragraph.
+        return null;
+      }
+
+      /*
+       * A line nothing read is still evidence about the buffs, two ways.
+       *
+       * Right after this character's own cast it is the spell's onset
+       * sentence in a form no frame knows, and it is learned as that spell's
+       * start. Otherwise, while buffs whose ending the client cannot
+       * recognise are up, it may be one of them ending: with one such buff it
+       * is taken to be, learned and acted on (the `st` sheet can still take
+       * it back, see `noteContradiction`); with several it is held as a
+       * pending ending and the next sheet says which. Only a sentence shaped
+       * like an effect — one sentence, no figure, nobody in the room named —
+       * is considered at all, so a listing row or an emote never becomes a
+       * lesson.
+       */
+      case 'unknown': {
+        const text = block.text.trim();
+        if (!looksLikeEffectSentence(text) || this.namesSomebody(s, text)) return null;
+        const cast = this.lastSelfCast;
+        if (cast !== null && block.at - cast.at <= tuning().spells.onsetWindowMs) {
+          this.spellLore.learn(cast.spell, 'start', text, block.at);
+          this.lastSelfCast = null;
+          return null;
+        }
+        const suspects = s.buffs.filter((buff) => !this.knowsStop(buff));
+        if (suspects.length === 0) return null;
+        // Either way the sheet is worth asking for, if it can speak: a
+        // suspect whose start it would print is one it can confirm gone, or
+        // still up — which is the contradiction that takes a lesson back.
+        this.sheetWanted ||= suspects.some((buff) => this.knowsStart(buff));
+        if (suspects.length === 1) {
+          const buff = suspects[0]!;
+          this.spellLore.learn(buff.spell, 'stop', text, block.at);
+          this.recentlyStopped.set(spellKey(buff.spell), block.at);
+          this.buffsEnded([buff], block.at, false);
+          return { ...s, buffs: s.buffs.filter((held) => held !== buff) };
+        }
+        this.pendingStops.push({
+          text,
+          at: block.at,
+          suspects: suspects.map((buff) => buff.spell)
+        });
+        // A list-size bound, not a knob: a sheet resolves these long before.
+        if (this.pendingStops.length > 20) this.pendingStops.shift();
         return null;
       }
 

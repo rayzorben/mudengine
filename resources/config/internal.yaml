@@ -422,6 +422,15 @@ tuning:
     # How soon after a cast an onset line (`You feel safe from evil!`) is
     # learned as that spell's, so the `st` timer can be attributed to it.
     onsetWindowMs: 3000
+    # How long a sentence nothing recognised is kept as a possible ending for a
+    # buff whose ending is unknown, waiting for an `st` sheet to settle it.
+    pendingStopMs: 600000
+    # How soon after a learned ending removed a buff the buff reappearing
+    # unprompted counts as the wire contradicting the lesson.
+    stopContradictionMs: 120000
+    # The least often an `st` is asked for to settle a buff ending nothing
+    # recognised.
+    sheetAskMs: 30000
 
   # Drinking on the character's behalf — `Potions`.
   potions:

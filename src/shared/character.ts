@@ -118,6 +118,16 @@ export interface ActiveBuff {
    * of the real expiry rather than on a watchdog that may be minutes off.
    */
   expiresAt?: number;
+  /**
+   * The other spells this buff could be, when the sentence that established
+   * it belongs to several — `You feel lucky!` is bless, chant, weapon major
+   * bless, glass orb and dark blessing, one message record between them. Set
+   * only for a buff established by such a sentence with no cast to name it;
+   * `spell` is the likeliest (the one the spellbook knows, else the first)
+   * and these are the rest, so a reader asking *is bless up* is answered yes
+   * whichever of them it really is. Absent when the buff was named by a cast.
+   */
+  candidates?: readonly string[];
 }
 
 /**

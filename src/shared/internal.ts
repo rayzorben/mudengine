@@ -467,7 +467,26 @@ const TUNING_DEFAULTS = {
      * same tick, so this only has to reject an unrelated `You feel …!` a room
      * or a potion prints much later.
      */
-    onsetWindowMs: 3000
+    onsetWindowMs: 3000,
+    /**
+     * How long an unread sentence is kept as a possible ending for the buffs
+     * whose ending the client does not know, waiting for an `st` sheet to say
+     * which of them is gone. Past this the sentence is forgotten unresolved.
+     */
+    pendingStopMs: 600_000,
+    /**
+     * How soon after a *learned* ending removed a buff the same buff
+     * reappearing unprompted — on an `st` sheet, typically — counts as the
+     * wire contradicting the lesson, so the sentence is unlearned. A recast
+     * arrives through its own cast frame and never trips this.
+     */
+    stopContradictionMs: 120_000,
+    /**
+     * The least often an `st` is asked for to settle a buff ending nothing
+     * recognised. One ask per new question would be one per room emote in a
+     * crowded room; this is the floor between two.
+     */
+    sheetAskMs: 30_000
   },
   /** Drinking on the character's behalf — `Potions`. */
   potions: {

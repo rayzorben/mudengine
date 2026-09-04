@@ -6,6 +6,7 @@ import path from 'node:path';
 import { RealmLore, realmKey } from '../RealmLore';
 import type { WorldGraph } from '../WorldGraph';
 import { mobNameCandidates } from '../../../shared/mobs';
+import { SpellMessageBook } from '../../../shared/spell-messages';
 
 /** The two rows this realm names. */
 const rows: Record<string, { name: string; hp: number; span?: [number, number] }> = {
@@ -257,5 +258,69 @@ describe('what the listing calls a worn slot', () => {
     lore.save();
     expect(fs.statSync(file).size).toBe(size);
     expect(fs.statSync(file).mtimeMs).toBe(before);
+  });
+});
+
+/*
+ * What the wire teaches about a spell's sentences is kept per realm beside
+ * the monster health, and said out loud each time, because a persisted
+ * sentence that ends a shield is a decision somebody must be able to read.
+ */
+describe('the spell sentences a realm taught', () => {
+  const shipped = SpellMessageBook.fromRows([
+    { spell: 'bless', start: 'You feel lucky!', stop: 'The effects of bless wear off!' }
+  ]);
+
+  it('learns where the shipped table is silent, persists, and reads back', () => {
+    const said: string[] = [];
+    const realm = store((message) => said.push(message));
+    const lore = realm.spellsFor('gmud.sqlite', shipped);
+    lore.learn('strange glow', 'start', 'You shimmer with a strange light.', 5);
+    lore.learn('strange glow', 'stop', 'The strange light fades.', 65);
+    // The shipped table already speaks for bless.
+    lore.learn('bless', 'stop', 'You feel less lucky.', 70);
+    expect(said).toHaveLength(2);
+    expect(said[0]).toContain('strange glow');
+    expect(said[0]).toContain('You shimmer with a strange light.');
+
+    expect(lore.match('You shimmer with a strange light.')).toEqual({
+      starts: ['strange glow'],
+      stops: []
+    });
+    expect(lore.match('You feel lucky!')?.starts).toEqual(['bless']);
+    expect(lore.stopOf('bless')).toBe('The effects of bless wear off!');
+
+    realm.flush();
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
+    expect(file.spells[realmKey('gmud.sqlite')]['strange glow']).toEqual({
+      start: { text: 'You shimmer with a strange light.', at: 5 },
+      stop: { text: 'The strange light fades.', at: 65 }
+    });
+
+    const again = store().spellsFor('gmud.sqlite', shipped);
+    expect(again.startOf('strange glow')).toBe('You shimmer with a strange light.');
+    expect(again.stopOf('strange glow')).toBe('The strange light fades.');
+    // Another realm learned nothing.
+    expect(store().spellsFor('paradigm.sqlite', shipped).startOf('strange glow')).toBeNull();
+  });
+
+  it('takes a lesson back, and says so', () => {
+    const said: string[] = [];
+    const realm = store((message) => said.push(message));
+    const lore = realm.spellsFor('gmud.sqlite', shipped);
+    lore.learn('strange glow', 'start', 'You shimmer with a strange light.', 5);
+    lore.learn('strange glow', 'stop', 'The room grows quiet.', 65);
+    lore.unlearn('strange glow', 'stop');
+    lore.unlearn('strange glow', 'stop');
+    expect(said).toHaveLength(3);
+    expect(said[2]).toContain('The room grows quiet.');
+    expect(lore.stopOf('strange glow')).toBeNull();
+    expect(lore.startOf('strange glow')).toBe('You shimmer with a strange light.');
+
+    realm.flush();
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
+    expect(file.spells[realmKey('gmud.sqlite')]['strange glow']).toEqual({
+      start: { text: 'You shimmer with a strange light.', at: 5 }
+    });
   });
 });

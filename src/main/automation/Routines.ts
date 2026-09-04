@@ -103,6 +103,8 @@ export class Routines {
    * has said `KAI=` or `MA=` (the prompt, the stat sheet, or a listing).
    */
   private askedBook: 'spells' | 'powers' | null = null;
+  /** When the stat sheet was last asked for to settle a buff ending; null is never. */
+  private sheetAskedAt: number | null = null;
   /** The wrong-book correction has run, so it can only run once. */
   private bookCorrected = false;
 
@@ -119,6 +121,7 @@ export class Routines {
 
   /** New connection: forget that we ever probed, and who we looked at. */
   reset(): void {
+    this.sheetAskedAt = null;
     this.probed = false;
     this.toLookAt = [];
     this.lookedAt.clear();
@@ -417,6 +420,35 @@ export class Routines {
         reason: t('automation.routines.reasonTrained')
       });
     }
+  }
+
+  /**
+   * A sentence nothing recognised may have ended a buff, and the stat sheet
+   * is what says which — it prints each active effect's own start sentence
+   * at its foot, so `CharacterTracker.readSheet` can drop what is gone,
+   * settle a pending ending, or take back a lesson the wire contradicts.
+   *
+   * Asked for on the tracker's word (`takeSheetRequest`), never on the shape
+   * of a line: the shape that admits every one of the table's 431 sentences
+   * also admits `The thug nods.`, and a sheet per emote would spend the
+   * budget a fight is fought with on a question already answered. So the
+   * tracker says when a sheet would settle something and this asks once per
+   * `tuning.spells.sheetAskMs` at most — `probe` band, coalesced onto the
+   * entry probe's own key for the command, so an `st` already queued is
+   * this ask rather than a second one. Unconditional within
+   * `routines.enabled`, as the level-up `exp` is: the client already asks
+   * for this sheet on the way in.
+   */
+  askSheet(now: number = Date.now()): void {
+    if (!this.config.enabled) return;
+    if (this.sheetAskedAt !== null && now - this.sheetAskedAt < tuning().spells.sheetAskMs) return;
+    this.sheetAskedAt = now;
+    this.queue.enqueue({
+      command: 'st',
+      priority: 'probe',
+      coalesceKey: 'probe:st',
+      reason: t('automation.routines.reasonBuffEnding')
+    });
   }
 
   /**

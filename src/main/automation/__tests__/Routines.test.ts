@@ -515,3 +515,30 @@ describe('asking again after training', () => {
     expect(commandsIn(queue)).not.toContain('exp');
   });
 });
+
+/*
+ * The stat sheet asked for to settle a buff ending: on the tracker's word,
+ * paced, coalesced onto the entry probe's own `st`.
+ */
+describe('asking for the stat sheet to settle a buff ending', () => {
+  const commandsIn = (queue: CommandQueue): string[] =>
+    queue.snapshot.pending.map((intent) => intent.command);
+
+  it('asks once per floor, in the probe band, and not again inside it', () => {
+    const { routines, queue } = make();
+    routines.askSheet(1_000);
+    routines.askSheet(2_000);
+    routines.askSheet(29_000);
+    expect(commandsIn(queue)).toEqual(['st']);
+    expect(queue.snapshot.pending[0]?.priority).toBe('probe');
+    // Past the floor it asks again — and the ask coalesces onto the one still queued.
+    routines.askSheet(31_001);
+    expect(commandsIn(queue).filter((command) => command === 'st')).toHaveLength(1);
+  });
+
+  it('asks nothing with automation off', () => {
+    const { routines, queue } = make({ enabled: false });
+    routines.askSheet(1_000);
+    expect(commandsIn(queue)).toEqual([]);
+  });
+});
