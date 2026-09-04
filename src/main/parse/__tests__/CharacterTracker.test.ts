@@ -22,6 +22,12 @@ import type { Discovery } from '../../../shared/memory';
 import type { RoomOccupant } from '../../../shared/character';
 import type { PlayerFacts, RealmPlayers } from '../../../shared/players';
 import { NO_BELONGINGS } from '../../../shared/belongings';
+import {
+  SpellMessageBook,
+  spellLoreOf,
+  type SpellLore,
+  type SpellMessageKind
+} from '../../../shared/spell-messages';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -34,7 +40,8 @@ const TUNING = DEFAULT_INTERNAL.tuning;
  * the real classifier, because what a line *is* depends on the command before
  * it.
  */
-type Step = string | { send: string };
+/** A line, a command this character typed, or a pause in the stream. */
+type Step = string | { send: string } | { wait: number };
 
 /**
  * The names off a room's occupant list.
@@ -52,9 +59,10 @@ function play(
   world?: WorldGraph,
   lore?: MobLore,
   fights?: FightSink,
-  players?: RealmPlayers
+  players?: RealmPlayers,
+  spellLore?: SpellLore
 ): CharacterTracker {
-  const tracker = new CharacterTracker(world, lore, undefined, fights, players);
+  const tracker = new CharacterTracker(world, lore, undefined, fights, players, spellLore);
   /*
    * Wired the way `SessionManager` wires it, and that matters here rather than
    * being ceremony: a combat line carries the monster's name inside a run of
@@ -62,13 +70,23 @@ function play(
    * say where it ends. A classifier built without them classifies the line and
    * names nothing, which is not what the client does.
    */
-  const classifier = new Classifier({
-    present: () => tracker.current.room.occupants.map((who) => who.name),
-    mob: (name) => world?.mob(name)
-  });
+  const classifier = new Classifier(
+    {
+      present: () => tracker.current.room.occupants.map((who) => who.name),
+      mob: (name) => world?.mob(name)
+    },
+    spellLore ? (text) => spellLore.match(text) : undefined
+  );
   let seq = 0;
+  // Lines are a millisecond apart unless a step says otherwise, so a test
+  // about what happens *later* says how much later.
+  let clock = 0;
   for (const step of steps) {
     if (typeof step !== 'string') {
+      if ('wait' in step) {
+        clock += step.wait;
+        continue;
+      }
       tracker.observeCommand(step.send);
       classifier.observeCommand(step.send);
       continue;
@@ -77,7 +95,7 @@ function play(
     seq += 1;
     const line: StreamLine = {
       seq,
-      at: 1_700_000_000_000 + seq,
+      at: 1_700_000_000_000 + seq + clock,
       text: plain,
       plain,
       terminator: 'newline'
@@ -6156,6 +6174,50 @@ describe('the duration spells confirmed on this character', () => {
     expect(gone.current.buffs).toEqual([]);
   });
 
+  /*
+   * The kai vocabulary: no `cast`, no target, and the ending names the power.
+   * Both powers sat off this list for a whole session while `Blessings`
+   * recast them every thirty seconds (2026-09-04).
+   */
+  it("is established by a kai power's own confirmation and ended by its stop", () => {
+    const up = play([
+      '[HP=334/KAI=9]:',
+      'You use your knowledge of pressure points!',
+      'You are using pressure points!',
+      'You invoke the way of the tiger.',
+      'You feel ferocious!'
+    ]);
+    expect(up.current.buffs.map((buff) => buff.spell)).toEqual([
+      'pressure points',
+      'way of the tiger'
+    ]);
+    // The ending is the power's own sentence, read from the table rather than a frame.
+    const table = spellLoreOf(
+      SpellMessageBook.fromRows([
+        {
+          spell: 'pressure points',
+          start: 'You are using pressure points!',
+          stop: 'You stop using pressure points.'
+        }
+      ]),
+      new SpellMessageBook()
+    );
+    const down = play(
+      [
+        '[HP=334/KAI=9]:',
+        'You use your knowledge of pressure points!',
+        'You invoke the way of the tiger.',
+        'You stop using pressure points.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      table
+    );
+    expect(down.current.buffs.map((buff) => buff.spell)).toEqual(['way of the tiger']);
+  });
+
   it('records who blessed this character, for the wear-off notification', () => {
     const tracker = play(['[HP=34]:', 'Naji casts bless on you!']);
     expect(tracker.current.buffs[0]).toMatchObject({ spell: 'bless', by: 'Naji' });
@@ -6235,6 +6297,407 @@ describe('the duration spells confirmed on this character', () => {
     expect(left.current.buffs).toHaveLength(1);
     left.leaveRealm();
     expect(left.current.buffs).toEqual([]);
+  });
+});
+
+/*
+ * The spell message table: the server's own sentence for each effect landing
+ * and ending, keyed by spell, and what the wire teaches where the table is
+ * silent. Reported 2026-09-04 as two kai powers recast every thirty seconds:
+ * the powers' sentences matched no frame, so nothing put them on this list
+ * or took them off it.
+ */
+describe('the spell message table and what it teaches', () => {
+  const SHEET = [
+    'Name: Vaelor                           Lives/CP:     41/0',
+    'Race: Half-Ogre   Exp: 40077160        Perception:     68',
+    'Class: Mystic     Level: 28            Stealth:       101',
+    'Hits:   334/334   Armour Class:   0/32 Thievery:        0',
+    'Kai:      2/27                         Traps:           0',
+    '                                       Picklocks:       0',
+    'Strength:  100    Agility: 80          Tracking:        0',
+    'Intellect: 60     Health:  85          Martial Arts:  166',
+    'Willpower: 30     Charm:   60          MagicRes:       52'
+  ];
+  /** The `st` sheet with the given effect lines at its foot, terminated by the prompt. */
+  const sheet = (...tail: string[]): string[] => [...SHEET, ...tail, '[HP=334/KAI=2]:'];
+
+  function table(): {
+    lore: SpellLore;
+    taught: Array<{ spell: string; kind: SpellMessageKind; text: string }>;
+    forgot: Array<{ spell: string; kind: SpellMessageKind }>;
+  } {
+    const taught: Array<{ spell: string; kind: SpellMessageKind; text: string }> = [];
+    const forgot: Array<{ spell: string; kind: SpellMessageKind }> = [];
+    const shipped = SpellMessageBook.fromRows([
+      {
+        spell: 'way of the tiger',
+        start: 'You feel ferocious!',
+        stop: 'The effects of way of the tiger wear off!'
+      },
+      {
+        spell: 'pressure points',
+        start: 'You are using pressure points!',
+        stop: 'You stop using pressure points.'
+      },
+      { spell: 'speed', start: 'You feel fast!', stop: 'You slow down.' },
+      { spell: 'way of the mantis', start: 'You feel fast!', stop: 'You slow down.' },
+      { spell: 'bless', start: 'You feel lucky!', stop: 'The effects of bless wear off!' },
+      { spell: 'chant', start: 'You feel lucky!', stop: 'The effects of bless wear off!' }
+    ]);
+    const lore = spellLoreOf(shipped, new SpellMessageBook(), {
+      learned: (spell, kind, text) => taught.push({ spell, kind, text }),
+      unlearned: (spell, kind) => forgot.push({ spell, kind })
+    });
+    return { lore, taught, forgot };
+  }
+  const names = (tracker: CharacterTracker): string[] =>
+    tracker.current.buffs.map((buff) => buff.spell);
+
+  it('establishes a buff from the table’s own sentence, with no cast in front of it', () => {
+    const { lore } = table();
+    const tracker = play(
+      ['[HP=34]:', 'You are using pressure points!'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(names(tracker)).toEqual(['pressure points']);
+    // The sheet restating it a minute later changes nothing, least of all when it was applied.
+    const restated = play(
+      [
+        '[HP=34]:',
+        'You are using pressure points!',
+        { wait: 60_000 },
+        'You are using pressure points!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(restated.current.buffs).toHaveLength(1);
+    expect(restated.current.buffs[0]!.appliedAt).toBe(tracker.current.buffs[0]!.appliedAt);
+  });
+
+  it('ends a buff by its own sentence, whatever shape the sentence has', () => {
+    const { lore } = table();
+    const tracker = play(
+      ['[HP=34]:', 'You cast speed on yourself!', { wait: 30_000 }, 'You slow down.'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(tracker.current.buffs).toEqual([]);
+  });
+
+  it('keeps every spell a shared sentence could mean as candidates', () => {
+    const { lore } = table();
+    const tracker = play(
+      ['[HP=34]:', 'You feel lucky!'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(tracker.current.buffs).toHaveLength(1);
+    expect(tracker.current.buffs[0]).toMatchObject({ spell: 'bless', candidates: ['chant'] });
+    // The cast a moment before names which, and no candidates are kept.
+    const cast = play(
+      ['[HP=34]:', 'You cast chant on yourself!', 'You feel lucky!'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(cast.current.buffs).toHaveLength(1);
+    expect(cast.current.buffs[0]!.spell).toBe('chant');
+    expect(cast.current.buffs[0]!.candidates).toBeUndefined();
+    // And the shared ending ends it under either name.
+    const gone = play(
+      ['[HP=34]:', 'You feel lucky!', 'The effects of bless wear off!'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(gone.current.buffs).toEqual([]);
+  });
+
+  it('reads the stat sheet as the listing of what is up', () => {
+    const { lore } = table();
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast bless on yourself!',
+        'You feel lucky!',
+        'You cast strange glow on yourself!',
+        { wait: 120_000 },
+        ...sheet('You feel ferocious!')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    // bless: its start is known and the sheet did not print it — gone.
+    // strange glow: nothing knows its start, so the sheet cannot judge it — kept.
+    // way of the tiger: on the sheet, on the list.
+    expect(names(tracker).sort()).toEqual(['strange glow', 'way of the tiger']);
+  });
+
+  it('learns the start of a spell the table lacks from the cast it follows', () => {
+    const { lore, taught } = table();
+    play(
+      ['[HP=34]:', 'You cast strange glow on yourself!', 'You shimmer with a strange light.'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught).toEqual([
+      { spell: 'strange glow', kind: 'start', text: 'You shimmer with a strange light.' }
+    ]);
+    // Learned, the sentence establishes the buff on its own — and the sheet can now judge it.
+    const later = play(
+      ['[HP=34]:', 'You shimmer with a strange light.', { wait: 60_000 }, ...sheet()],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(later.current.buffs).toEqual([]);
+  });
+
+  /*
+   * The line naming the thug is nobody's lesson, and a line ten seconds after
+   * the cast is not its onset — it is, by the single-suspect rule, taken for
+   * the ending of the one buff whose ending nobody knows, which is what the
+   * next `st` sheet exists to confirm or take back.
+   */
+  it('does not learn a start from a line that arrives long after the cast, or that names somebody', () => {
+    const { lore, taught } = table();
+    play(
+      [
+        'Town Square',
+        'Also here: thug.',
+        'Obvious exits: north',
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'The thug nods.',
+        { wait: 10_000 },
+        'You shimmer with a strange light.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.filter((lesson) => lesson.kind === 'start')).toEqual([]);
+    expect(taught.map((lesson) => lesson.text)).not.toContain('The thug nods.');
+  });
+
+  it('learns the one unknown ending when one such buff is up, and acts on it', () => {
+    const { lore, taught } = table();
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 60_000 },
+        'The strange light fades.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.map((lesson) => `${lesson.kind}: ${lesson.text}`)).toEqual([
+      'start: You shimmer with a strange light.',
+      'stop: The strange light fades.'
+    ]);
+    expect(tracker.current.buffs).toEqual([]);
+  });
+
+  it('holds an ending against several suspects until the sheet says which', () => {
+    const { lore, taught } = table();
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 5_000 },
+        'You cast odd hum on yourself!',
+        'You hum oddly.',
+        { wait: 60_000 },
+        'The strange light fades.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    // Two buffs with unknown endings: nothing is concluded yet.
+    expect(names(tracker).sort()).toEqual(['odd hum', 'strange glow']);
+    expect(taught.filter((lesson) => lesson.kind === 'stop')).toEqual([]);
+
+    const settled = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 5_000 },
+        'You cast odd hum on yourself!',
+        'You hum oddly.',
+        { wait: 60_000 },
+        'The strange light fades.',
+        { wait: 2_000 },
+        ...sheet('You hum oddly.')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    // The sheet still lists odd hum, so the sentence was not its ending; it has
+    // stopped listing strange glow, whose start it knows — that is the one.
+    expect(names(settled)).toEqual(['odd hum']);
+    expect(taught.filter((lesson) => lesson.kind === 'stop')).toEqual([
+      { spell: 'strange glow', kind: 'stop', text: 'The strange light fades.' }
+    ]);
+  });
+
+  it('takes back a learned ending the sheet contradicts', () => {
+    const { lore, taught, forgot } = table();
+    const tracker = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 60_000 },
+        'The room grows quiet.',
+        { wait: 5_000 },
+        ...sheet('You shimmer with a strange light.')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(taught.some((lesson) => lesson.text === 'The room grows quiet.')).toBe(true);
+    expect(forgot).toEqual([{ spell: 'strange glow', kind: 'stop' }]);
+    expect(lore.stopOf('strange glow')).toBeNull();
+    expect(names(tracker)).toEqual(['strange glow']);
+  });
+
+  it('wants the stat sheet only when a sheet could settle the question', () => {
+    const { lore } = table();
+    // A learned start means the sheet would print it: one buff, one unknown ending — ask.
+    const single = play(
+      [
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 60_000 },
+        'The strange light fades.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(single.takeSheetRequest()).toBe(true);
+    // Taken once.
+    expect(single.takeSheetRequest()).toBe(false);
+
+    // Nothing knows this buff's start, so no sheet could show it: no ask.
+    const blind = play(
+      ['[HP=34]:', 'You cast odd hum on yourself!', { wait: 60_000 }, 'The hum dies away.'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(blind.takeSheetRequest()).toBe(false);
+
+    // A line naming somebody in the room is nobody's question.
+    const emote = play(
+      [
+        'Town Square',
+        'Also here: thug.',
+        'Obvious exits: north',
+        '[HP=34]:',
+        'You cast strange glow on yourself!',
+        'You shimmer with a strange light.',
+        { wait: 60_000 },
+        'The thug nods.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(emote.takeSheetRequest()).toBe(false);
+  });
+
+  it('measures a duration only from an ending it recognised', () => {
+    const { lore } = table();
+    const durations: Record<string, number> = {};
+    const tracker = new CharacterTracker(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    tracker.useBelongings({
+      ...NO_BELONGINGS,
+      rememberSpellDuration: (spell, seconds) => {
+        durations[spell] = seconds;
+      }
+    });
+    const classifier = new Classifier(undefined, (text) => lore.match(text));
+    let at = 1_700_000_000_000;
+    const feed = (plain: string, after = 1): void => {
+      at += after;
+      const { block, batch } = classifier.classify({
+        seq: at,
+        at,
+        text: plain,
+        plain,
+        terminator: 'newline'
+      });
+      tracker.apply(block);
+      if (batch) tracker.apply(batch, batch.rows);
+    };
+    feed('[HP=34]:');
+    feed('You cast speed on yourself!');
+    feed('You cast strange glow on yourself!');
+    feed('You shimmer with a strange light.');
+    feed('You slow down.', 60_000);
+    feed('The strange light fades.', 10_000);
+    expect(Object.keys(durations)).toEqual(['speed']);
+    expect(durations['speed']).toBeCloseTo(60, 0);
   });
 });
 

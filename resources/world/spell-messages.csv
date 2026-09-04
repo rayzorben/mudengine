@@ -1,0 +1,621 @@
+spell_id,spell_name,start,stop,desc_msg_id,cast_start_self,cast_start_target,cast_start_room,start_msg_id
+4,ethereal shield,You feel protected!,The effects of ethereal shield wear off!,8531,,,,
+6,resist cold,You feel resistant to cold!,The effects of resist cold wear off!,8526,,,,
+7,smite,You feel powerful!,The effects of smite wear off!,8532,,,,
+9,resist fire,You feel resistant to fire!,The effects of resist fire wear off!,8527,,,,
+14,bless,You feel lucky!,The effects of bless wear off!,8539,,,,
+15,curse,You feel unlucky!,The effects of curse wear off!,8540,,,,
+20,holy aura,You feel safe from evil!,You no longer feel safe from evil!,8541,,,,
+21,unholy aura,You feel safe from good!,You no longer feel safe from good!,8542,,,,
+23,chant,You feel lucky!,The effects of bless wear off!,8539,,,,
+24,protective aura,You are surrounded in a silvery aura!,The silvery aura fades.,158,,,,
+26,starlight,You are surrounded by a shimmering light!,Your starlight spell fades away.,2092,,,,
+28,resist fire,You feel resistant to fire!,The effects of resist fire wear off!,8527,,,,
+29,resist cold,You feel resistant to cold!,The effects of resist cold wear off!,8526,,,,
+32,resist lightning,You feel resistant to lightning!,The effects of resist lightning wear off!,8529,,,,
+34,barkskin,You feel tough!,The effects of barkskin wear off!,8528,,,,
+37,way of the owl,You feel strong-willed!,The effects of way of the owl wear off!,8546,,,,
+38,way of the tiger,You feel ferocious!,The effects of way of the tiger wear off!,8547,,,,
+39,way of the cat,You feel stealthy!,The effects of way of the cat wear off!,8548,,,,
+40,way of the rat,You are immune to poison!,The way of the rat wears off.,587,,,,
+42,song of valour,You feel confident!,The effects of valour wear off!,8605,,,,
+43,song of misfortune,You feel unlucky!,The effects of misfortune wear off!,8606,,,,
+45,song of brilliance,You feel smart!,Your intelligence returns to normal.,8549,,,,
+46,song of wisdom,You feel wise!,Your wisdom returns to normal.,8550,,,,
+47,song of might,You feel strong!,Your strength returns to normal.,8551,,,,
+48,song of agility,You feel agile!,Your agility returns to normal.,8552,,,,
+51,flash,You are blind!,You can see again!,8534,,,,
+52,magic armour,You feel armoured!,The effects of magic armour wear off!,8533,,,,
+53,song of dazzling,You are confused!,The effects of confusion wear off!,8538,,,,
+57,speed,You feel fast!,You slow down.,8537,,,,
+58,deathtouch,,,,You reach out and touch %s!,%s reaches out and touches you!,%s reaches out and touches %s!,760
+59,slow,You feel slow!,You speed up.,8536,,,,
+60,fear,You are afraid!,The effects of fear wear off!,8543,,,,
+61,greater curse,You feel VERY unlucky!,The effects of greater curse wear off.,549,,,,
+62,divine favour,You feel EXTREMELY lucky!,The effects of divine favour wear off.,550,,,,
+63,confusion,You are confused!,The effects of confusion wear off!,8538,,,,
+64,shockshield,You are surrounded by a shield of lightning!,The effects of shockshield wear off!,8535,,,,
+66,hold person,Your legs are paralyzed!,You can move again!,8544,,,,
+67,divine disfavour,You feel EXTREMELY unlucky!,The effects of divine disfavour wear off.,551,,,,
+68,mute,You are silenced!,You can talk again!,78,,,,
+69,magebind,Your powers are drained from you!,You feel your mystical energies return.,1827,,,,
+71,burning aura,You are on fire!,The flames enveloping you die down!,8596,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+73,black wind,You are blind!,You can see again!,8534,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+75,blight,You feel unlucky!,The effects of curse wear off!,8540,,,,
+77,blind,You are blind!,You can see again!,8534,,,,
+79,spits a stream of venom,You feel ill.,The effects of the poison wear off!,8575,,,,
+80,bites,You feel ill.,The effects of the poison wear off!,8575,,,,
+81,savagely bites,You feel ill.,The effects of the poison wear off!,8575,,,,
+83,high-pitched scream,You feel confused!,The effects of the death dog's shriek wear off!,8560,,,,
+84,breathes,You are blind!,The effects of the mummy's breath wears off!,8521,,,,
+85,speaks in a booming voice,You feel cursed!,The effects of the mummy's curse wears off!,8561,,,,
+91,alertness,You feel perceptive!,The effects of alertness wear off!,8525,,,,
+93,entangle,You are entangled!,The effects of entangle wear off!,8530,,,,
+96,song of foolishness,You feel foolish!,Your wisdom returns to normal.,8553,,,,
+97,song of stupidity,You feel dull!,Your intelligence returns to normal.,8554,,,,
+98,song of weakness,You feel weak!,Your strength returns to normal.,8555,,,,
+99,song of clumsiness,You feel clumsy!,Your agility returns to normal.,8556,,,,
+100,song of traveling,Your load is lightened!,The effects of song of traveling wear off.,8557,,,,
+103,way of the boar,You feel berserk!,The effects of way of the boar wear off.,8558,,,,
+105,way of the monkey,You feel evasive!,The effects of way of the monkey wear off.,8559,,,,
+106,way of the mantis,You feel fast!,You slow down.,8537,,,,
+107,protection from evil,You feel safe from evil!,You no longer feel safe from evil!,8541,,,,
+108,protection from good,You feel safe from good!,You no longer feel safe from good!,8542,,,,
+114,weapon major bless,You feel lucky!,The effects of bless wear off!,8539,,,,
+116,envelops,You are on fire!,The flames enveloping you die down!,8596,,,,
+118,incense,,The effects of the incense wear off.,8608,,,,
+120,fireball,,,,You throw a fireball!,%s throws a fireball!,%s throws a fireball!,100
+125,paralyze,Your legs are paralyzed!,You can move again!,8544,,,,
+127,weakness touch,You feel weak!,You feel your strength return.,52,,,,
+128,stunned,You are stunned!,You are no longer stunned.,57,,,,
+129,blur,You are blurred!,The effects of blur wear off.,68,,,,
+130,shadowform,You are a shadow!,You return to your normal form.,70,,,,
+131,stinking cloud,You feel nauseous!,You feel less sick.,71,,,,
+132,mageshield,You feel protected!,Your mageshield shimmers and fades.,73,,,,
+133,dancing blades,,,,You sketch a sharp symbol in the air.,%s sketches a sharp symbol in the air.,%s sketches a sharp symbol in the air.,102
+134,vulnerability,You feel vulnerable!,You feel safer now.,81,,,,
+135,ice storm,You are freezing!,You are no longer freezing.,84,You wave your hands about expansively.,%s makes a sweeping gesture.,%s makes a sweeping gesture.,104
+137,senselessness,You feel oblivious!,Your awareness returns to normal.,85,,,,
+138,rapid healing,You are healing faster!,Your healing rate returns to normal.,86,,,,
+139,acid rain,You are covered in acid!,The acid covering you dries up.,87,You clutch at the sky.,%s clutches at the sky.,%s clutches at the sky.,106
+140,chaos storm,,,,You wave your hands about menacingly.,%s makes a menacing gesture!,%s makes a menacing gesture!,108
+141,partial petrification,You are partially petrified!,Your body returns to normal.,88,,,,
+142,poison cloud,You feel ill.,The effects of the poison wear off!,8575,,,,
+143,rotting flesh,You are rotting!,The disease dies down.,90,You point your finger at %s and utter a harsh word!,%s points at you and utters a harsh word!,%s points at %s and utters a harsh word!,279
+144,iron faith,Your resistance is strengthened!,The effects of iron faith wear off.,91,,,,
+146,greater bless,You feel VERY lucky!,The effects of greater bless wear off.,93,,,,
+147,glitterdust,You are glittering!,The glittering dust wears off.,94,,,,
+148,holy armour,You feel protected!,The effects of holy armour wear off!,95,,,,
+149,unholy armour,You feel protected!,The effects of unholy armour wear off!,96,,,,
+154,mental blast,,,,You use the silvery skullcap.,%s puts his hands on his silvery skullcap.,%s puts his hands on his silvery skullcap.,114
+155,eagle helm,Your eyes are tingling!,Your awareness returns to normal.,117,,,,
+157,amethyst pendant,You are blurred!,The effects of blur wear off.,68,,,,
+158,shadow cloak,You are a shadow!,You return to your normal form.,70,,,,
+159,blazing inferno,,,,You cross your bracers!,%s crosses their bracers!,%s crosses their bracers!,123
+161,white satin gloves,,,,You lay hands on %s.,%s lays hands on you!,%s lays hands on %s!,234
+162,dark touch,,,,You lay hands on %s.,%s lays hands on you!,%s lays hands on %s!,234
+163,opal ring,,,,You point your opal ring at %s.,%s points an opal ring at you!,%s points an opal ring at %s!,129
+165,multicoloured sash,You feel evasive!,Your quickness returns to normal.,132,,,,
+168,winged sandals,You feel fast!,You slow down.,8537,,,,
+169,mirrored shield,You feel fast!,You slow down.,8537,,,,
+171,ebony greataxe,You feel unlucky!,The effects of curse wear off!,8540,Your ebony greataxe glitters darkly.,,%s's ebony greataxe glitters darkly.,138
+173,thunderstaff-lbol,,,,You raise your thunderstaff up high!,%s raises a thunderstaff up high!,%s raises a thunderstaff up high!,141
+175,frost sceptre-fjet,,,,You point your ice sceptre at %s!,%s points an ice sceptre at you!,%s points an ice sceptre at %s!,227
+176,frost sceptre-chill touch,You are chilled!,The chill fades away.,145,,,,
+177,flay,You feel ill.,The effects of the poison wear off!,8575,,,,
+179,heavy black rod,You are blind!,You can see again!,8534,,,,
+183,green potion,You feel fast!,You slow down.,8537,,,,
+186,silvery potion,Your body begins to tingle!,The tingling fades away.,3426,,,,
+187,orange potion,You feel heroic!,Your heroism wears off.,160,,,,
+189,black orb,Your legs are petrified!,Your legs return to normal.,163,,,,
+190,iron tube,,,,A gout of flame erupts from your iron tube!,A gout of flame erupts from %s's iron tube!,A gout of flame erupts from %s's iron tube!,165
+191,shriek,You are confused!,The effects of confusion wear off!,8538,,,,
+192,quake,,,,,%s raises his staff in the air!,,192
+193,roar,You are too scared to flee!,You feel braver.,194,,,,
+194,freeze,You are frozen to the ground!,You become unfrozen.,196,,The %s makes a sweeping gesture.,,198
+196,black curse,A black curse is upon you!,Your vision returns to normal.,202,,,,
+199,rose book confuse,You are confused!,The effects of confusion wear off!,8538,,,,
+200,blind book,You are blind!,You can see again!,8534,,,,
+201,rip,You are bleeding all over the place!,You stop bleeding.,236,,,,
+202,banshee's wail,You are deathly afraid!,You don't feel quite so afraid anymore.,247,,,,
+207,ember,,,,You glow bright red and point a finger at %s!,%s glows bright red and points a finger at you!,%s glows bright red and points a finger at %s!,3088
+209,tower of flame,,,,,The %s points at you and clenches his fist!,The %s points at %s and clenches his fist!,277
+211,soul rip,,,,You begin to chant in a fierce tone!,%s begins to chant in a fierce tone!,%s begins to chant in a fierce tone!,3086
+212,chaos storm,,,,,The %s makes a menacing gesture!,,283
+214,black gem,You are blind and dizzy!,You are no longer blind and dizzy.,293,,,,
+216,sphere of implosion,,,,You point your finger at %s and utter a harsh word!,%s points at you and utters a harsh word!,%s points at %s and utters a harsh word!,279
+234,engulfs,You are engulfed!,You are freed!,365,,,,
+237,thick webbing,You are trapped in webbing!,You are freed from the webbing!,382,,,,
+238,spits,You feel dizzy and weak!,You are no longer dizzy and weak!,388,,,,
+239,summon fire elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+240,summon ice elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+241,summon lightning elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+242,summon stone elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+243,fireball,,,,,The %s throws a fireball!,,395
+249,yellow fungus,You are paralyzed!,You can move again.,441,,,,
+250,red fungus,You feel ill.,The effects of the poison wear off!,8575,,,,
+251,paralyze,Your legs are paralyzed!,You can move again!,8544,,,,
+253,black wind,You are blind!,You can see again!,8534,,,,
+255,corrosion,You feel vulnerable!,You feel safer now.,81,,,,
+256,solid fog,You feel slow!,You speed up.,8536,,,,
+259,rain of blood,,,,,The %s clutches at the sky!,,480
+260,vortex of pain,You are in agony!,The intense pain fades away.,483,,The %s makes a sweeping gesture!,,484
+261,flame shower,,,,,The %s raises its arms in the air!,,490
+262,engulf in flame,You are engulfed in flames!,The flames enveloping you die down.,493,,The greater hellion points at you with a bony claw!,The %s points at %s with a bony claw!,492
+264,mystic mist,You are confused!,The effects of confusion wear off!,8538,,The %s makes a sweeping gesture.,,198
+269,song of life,You are healing faster!,The song of life wears off.,603,,,,
+270,song of silence,You are silenced!,You can talk again!,78,,,,
+271,song of lethargy,You feel slow!,You speed up.,8536,,,,
+272,song of quickness,You feel fast!,You slow down.,8537,,,,
+274,song of stunning,You are stunned!,You are no longer stunned.,57,,,,
+275,song of shockwave,,,,You play an angry tune!,%s plays an angry tune!,%s plays an angry tune!,605
+276,song of heroism,You feel heroic!,The feeling of heroism wears off.,559,,,,
+278,song of evasion,You are protected from attack!,Your evasiveness wears off.,561,,,,
+279,note of destruction,,,,You place the battlehorn to your lips and blow a single note!,,%s places the battlehorn to their lips and blows a single note!,2680
+281,mana storm,,,,You make a complex gesture!,%s makes a complex gesture!,%s makes a complex gesture!,564
+282,solid fog,You feel slow!,You speed up.,8536,You raise your hands in the air!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,566
+283,wind of haste,You feel fast!,You slow down.,8537,You raise your hands in the air!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,568
+284,corrosion,You feel vulnerable!,You feel safer now.,81,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+286,mystic mist,You are confused!,The effects of confusion wear off!,8538,,The %s makes a sweeping gesture.,,198
+287,spirit horde,,,,You scatter some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,572
+288,dragonfire,,,,You make a complex circling gesture!,%s makes a complex circling gesture!,%s makes a complex circling gesture!,578
+289,stoneskin,Your skin is as hard as stone!,Your skin returns to normal.,579,,,,
+291,creeping doom,You are covered in deadly insects!,The insects biting and stinging you die off.,580,,,,
+292,maelstrom,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+294,plague,You are plagued!,The plague dies down.,584,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,583
+295,earthquake,,,,You make a sharp gesture!,%s makes a sharp gesture!,%s makes a sharp gesture!,586
+297,way of the tortoise,You feel tough!,The way of the tortoise wears off.,589,,,,
+298,way of the bear,"You feel strong, but clumsy!",The way of the bear wears off.,590,,,,
+299,way of the cobra,You feel ill.,The effects of the poison wear off!,8575,You jab %s with a vicious strike!,%s jabs you viciously!,%s jabs %s viciously!,591
+300,hypnotic hands,You are confused!,The effect of hypnotic hands wears off.,593,You move your hands about in an intricate pattern!,%s weaves an intricate pattern in the air!,%s weaves an intricate pattern in the air!,595
+301,way of the exploding fist,,,,You deliver a swift punch to %s!,%s punches you viciously!,%s delivers a swift punch to %s!,597
+302,pressure points,You are using pressure points!,You stop using pressure points.,599,,,,
+303,hand of death,You are affected by hand of death!,The effects of hand of death wear off.,602,You place your palm on %s's chest!,%s places a palm on your chest!,%s places a palm on %s's chest!,601
+304,zeal,You are filled with divine power!,The righteousness wears off.,816,,,,
+305,smoke bomb,You are blind!,You can see again!,8534,,,,
+307,globe of invulnerability,You are protected by a globe of invulnerability!,The globe of invulnerability shimmers and fails.,638,You move both arms in a circling gesture.,%s moves both arms in a circling gesture.,%s moves both arms in a circling gesture.,623
+308,sphere of isolation,You are surrounded by a mirrored sphere!,The mirrored sphere surrounding you vanishes with a loud pop!,639,You make a short chopping gesture.,%s makes a short chopping gesture.,%s makes a short chopping gesture.,625
+309,ethereal chains,You are restrained by silvery manacles!,The silvery manacles restraining you shimmer and fade.,640,You make a quick grasping gesture.,%s makes a quick grasping gesture.,%s makes a quick grasping gesture.,626
+311,judgement of doom,"You have been Judged, your doom is upon you!",Your judgement of doom has been lifted.,876,You sketch a mystical symbol in the air.,%s sketches a mystical symbol in the air.,%s sketches a mystical symbol in the air.,631
+312,Eye of Magnus,The Eye of Magnus watches over you.,The glowing eye floating above your head vanishes in a puff of smoke.,641,You pass your hands over your eyes.,%s makes a complex gesture.,%s makes a complex gesture.,633
+314,combat fury,You are consumed by a berserker fury!,The berserker fury consuming you subsides.,642,You sketch a sharp symbol in the air.,%s sketches a sharp symbol in the air.,%s sketches a sharp symbol in the air.,637
+318,knockdown,You are flat on your back!,You get back on your feet.,648,,,,
+319,firebomb,,,,,The %s hurls a clay flask!,,652
+321,drops,,,,,"The %s lifts you high into the air, then drops you!","The %s lifts %s high into the air, then lets go!",677
+322,breathes a greenish cloud,You are partially petrified!,Your body returns to normal.,88,,,,
+323,diseased,You are diseased!,The disease dies down.,692,,,,
+327,paralyzed,You are paralyzed!,The paralysis wears off!,731,,,,
+328,gazes,You are confused!,The effects of confusion wear off!,8538,,,,
+329,thin tendrils,You are bound by sticky threads!,The organic cords binding you dissolve!,739,,,,
+330,violet fluid,You are covered in a burning violet fluid!,The violet fluid covering you dries up.,741,,,,
+331,mermex poison,You are dizzy and disoriented from poison!,The dizzying poison runs its course.,744,,,,
+332,sunbolt wand,,,,"You point the gnarled wand at %s, and utter ""Shirzak!""","%s points a gnarled wand at you and utters ""Shirzak!""","%s points a gnarled wand at %s and utters ""Shirzak!""",755
+337,pool,You feel tranquil and soothed!,The  feeling of tranquility wears off.,771,You drink some of the glowing liquid.,,%s drinks some glowing liquid.,770
+339,violet fluid mist,You are covered in a burning violet fluid!,The violet fluid covering you dries up.,741,,,,
+340,area entrap,You are bound by sticky threads!,The organic cords binding you dissolve!,739,,,,
+341,green beam,,,,,A fleshy black organ pokes out from the queen's chest plates!,A fleshy black organ pokes out from the queen's chest plates!,784
+345,frenzy,You are in a battle frenzy!,Your frenzied state wears off.,811,You lay your hand upon %s's head.,%s lays a hand upon your head.,%s lays a hand upon %s's head.,810
+346,mass frenzy,You are in a battle frenzy!,Your frenzied state wears off.,811,You close your eyes and chant loudly. %s,%s begins to chant loudly.,%s begins to chant loudly. %s,814
+347,righteousness,You are filled with divine power!,The righteousness wears off.,816,You close your eyes and begin to pray.,%s begins to pray in a solemn tone.,%s begins to pray in a solemn tone.,815
+348,blood ritual,You are affected by a blood ritual!,The effects of the blood ritual wear off.,820,You begin to chant an evil blood ritual.,%s begins to chant an evil blood ritual in a deep voice.,%s begins to chant an evil blood ritual in a deep voice.,819
+349,regeneration,You are regenerating quickly!,You stop regenerating.,823,You lower your head and begin to chant in arcane tones.,%s begins to chant in arcane tones.,%s begins to chant in arcane tones.,822
+350,way of the troll,You are regenerating quickly!,You stop regenerating.,823,,,,
+351,whip entangle,You are pulled off-balance!,You regain your balance.,827,,,,
+352,beat up,,,,,"The %s beats the living tar out of you, and you black out!","The %s beats the living tar out of %s, who is dragged away!",831
+353,sharp blade,"You are bleeding from a jagged, painful wound!",The painful bleeding wound closes.,838,,,,
+355,pale green lichen,You have an altered perception of reality!,You shake your head dazedly as the effects of the lichen wear off.,896,,,,
+356,black cauldron,,,,You step into the black cauldron.,,%s steps into the black cauldron.,901
+362,leprosy,You are covered in festering wounds!,The festering wounds covering your body close abruptly.,920,The %s shrieks a word in an evil-sounding tongue!,The %s shrieks a word in an evil-sounding tongue!,The %s shrieks a word in an evil-sounding tongue!,921
+363,summon silver skull,,,,,,"The %s waves her sinister skull wand about, chanting madly!",925
+365,bee poison,You feel ill.,The effects of the poison wear off!,8575,,,,
+368,gold dust,You are cursed by a leprechaun!,The leprechaun's curse wears off!,944,,,,
+369,bee honey,You feel a surge of power run through you!,The surge of power fades.,951,,,,
+372,sleep,You are lulled into a magical slumber!,You awaken from the unnatural slumber.,958,,,,
+373,mushroom poison,You feel deathly ill!,The deathly sickness wears off.,982,,,,
+374,mass entangle,You are entangled!,The effects of entangle wear off!,8530,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+380,creature illusion,You are distracted by illusionary attackers!,"Without a sound, the illusionary attackers vanish.",1018,,The %s makes an arcane gesture!,The %s makes an arcane gesture!,1016
+381,gibbers,You are confused!,The effects of confusion wear off!,8538,,,,
+384,divine intervention,You are protected by divine power!,You feel vulnerable.,1014,You lift up your emerald-tipped crozier and invoke its divine power!,,%s lifts up the emerald-tipped crozier and invokes its divine power!,1030
+385,chain lightning,,,,"You grip the dragonclaw staff tightly, and the orb begins to glow!",,"%s grips the dragonclaw staff tightly, and the orb begins to glow!",1015
+390,powerless,You feel powerless!,You suddenly feel your strength return!,1040,,,,
+391,necromantic beam,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+392,petrification,You are transformed into stone!,Your body returns to its normal state!,1049,,The %s gazes right into your eyes!,The %s gazes at %s!,1050
+393,stone to flesh,,,,"You begin chanting softly, and lay your hand on %s's head.","%s begins chanting softly, and lays a hand on your head.","%s begins chanting softly, and lays a hand on %s's head.",1052
+395,hold person,Your legs are paralyzed!,You can move again!,8544,,An eyestalk of the %s gazes at you!,An eyestalk of the %s gazes at %s!,2746
+396,slow,You feel slow!,You speed up.,8536,,An eyestalk of the %s gazes at you!,An eyestalk of the %s gazes at %s!,2746
+397,fear,You are afraid!,The effects of fear wear off!,8543,,An eyestalk of the %s gazes at you!,An eyestalk of the %s gazes at %s!,2746
+398,death ray,,,,,The beholder gazes at you with an eyestalk!,The %s gazes at %s with an eyestalk!,1065
+402,bleeding,You are bleeding from an unholy wound!,The unholy wound closes up.,1102,,,,
+404,sacrifice,,,,You call upon the chaotic power of the forgotten gods!,%s calls upon the chaotic power of the forgotten gods!,%s calls upon the chaotic power of the forgotten gods!,1106
+405,chaos shield,You are surrounded by a chaos shield!,The chaos shield fizzles out.,1109,You draw chaotic energy from the ether!,%s draws chaotic energy from the ether!,%s draws chaotic energy from the ether!,1108
+406,mana flux,You are affected by a mana flux!,The mana flux dissipates rapidly.,1112,You draw power from the mana surrounding you!,%s draws power from the nearby mana!,%s draws power from the nearby mana!,1111
+407,eye of the beholder,Your eyes are tingling!,Your awareness returns to normal.,117,,,,
+409,constriction,You are being constricted by a magical serpent!,The serpent shrivels up and falls away.,1147,,,,
+410,envelops,You are on fire!,The flames enveloping you die down!,8596,,,,
+413,firestorm,,,,You cross your paired dragonblades and cut the air!,%s crosses paired dragonblades and cuts through the air!,,1152
+414,burning,You are on fire!,The flames scorching you die down.,1153,,,,
+421,cosmos spell,You are filled with cosmic energy!,The cosmic energy fizzles out.,1162,You raise your cosmic staff high in the air!,,%s raises the cosmic staff high in the air!,1160
+422,barkskin,You feel tough!,The effects of barkskin wear off!,8528,,,,
+423,feeblemind,You feel moronic!,You feel your intelligence return.,1170,,,,
+424,weakness,You feel weak and powerless!,You feel your strength return.,1172,,,,
+425,blasts,You are stunned!,You are no longer stunned.,57,,,,
+428,chakram,,,,You invoke the power of the chakram!,%s invokes the power of the chakram!,%s invokes the power of the chakram!,1189
+430,terror,You are afraid!,The effects of fear wear off!,8543,,,,
+432,energy drain,,,,,The %s fires a tendril of energy at you!,The %s fires a tendril of energy at %s!,1211
+433,energy vortex,,,,,The %s twirls his nexus spear above his head!,,1213
+435,banish,You are afflicted by teleportation sickness!,The teleportation sickness wears off.,1218,You raise your hands and chant a forgotten ritual!,,"%s begins to chant a strange, haunting ritual!",1216
+439,time distortion,You are caught in a time distortion field!,You speed up.,1304,,%s utters a guttural incantation.,,3371
+440,globe of darkness,You are enveloped in darkness!,The unnatural darkness lifts.,1312,,The %s makes a clutching gesture!,The %s makes a clutching gesture!,1311
+441,shadowstrike,,,,,The %s makes a sharp gesture!,The %s makes a sharp gesture!,1314
+443,darkness hits,An unnatural darkness surrounds you!,The unnatural darkness dissipates.,1322,,,,
+445,disease,You are diseased!,The disease dies down.,1337,,,,
+446,plague,You are afflicted with a hideous plague!,The hideous plague wears off.,1345,You hurl a flask onto the ground!,%s hurls a flask onto the ground!,%s hurls a flask onto the ground!,1346
+447,remove bonds,,,,You rub your diamond-studded ring.,%s rubs a diamond-studded ring.,%s rubs a diamond-studded ring.,1348
+448,cross of vengeance,You are surrounded by a brilliant light!,The light from the Cross of Vengeance winks out.,1352,You hold aloft the Cross of Vengeance!,,%s holds aloft the Cross of Vengeance!,1350
+449,arcane tome incantation,You have memorized an arcane incantation!,The arcane incantation slips from memory.,1354,You read from your arcane tome.,,%s reads from an arcane tome.,1353
+450,pristine scroll,,,,"You read the strange, pristine scroll.","%s reads a strange, pristine scroll.","%s reads a strange, pristine scroll.",1356
+479,zaps,You are stunned by electrical shock!,The shock wears off!,1448,,,,
+521,cloud of spores,You are plagued by horrible hallucinations!,The awful hallucinations slowly die off.,1539,,,,
+523,spore zombie curse,You are covered in deadly spores!,The spores covering your body finally consume you!,1542,,,,
+527,whirlwind of fire,,,,,The %s makes a sweeping gesture.,,198
+532,dragon fear effect,You are overcome by dragonfear!,,1568,,,,
+533,vile oil,You are nauseated!,You recover from being nauseated.,1575,,,,
+538,sand breath,,,,,"The %s inhales deeply, and blasts out a burning cone of sand!",,1602
+539,sand blind,You are blinded by the sand!,You can see again.,1600,,,,
+542,telekinesis,,,,,The %s glares at you!,The %s glares at %s!,1614
+543,molecular agitation,,,,,The %s glares at you!,The %s glares at %s!,1614
+544,cell adjustment,,,,,,The %s concentrates!,1617
+553,explosion,,,,,The %s hurls a shimmering sphere on the ground!,,1652
+562,flesh-eater,,,,,%s spews a jet of green droplets at you!,%s spews a jet of green droplets at %s!,1667
+563,area flesh-eater,,,,,%s spews a cloud of green droplets into the air!,,1669
+592,summon zombie cat,,,,,The %s makes an arcane gesture!,,533
+594,globule,You are held by the queen's spit!,You can move again.,1743,,,,
+633,mistweed trap,You are unconscious.,"You awaken, groggy and confused from the poison.",1871,,,,
+634,mistweed save,You are drowsy and disoriented!,You feel better.,1872,,,,
+664,glass orb,You feel lucky!,The effects of bless wear off!,8539,,,,
+665,crystal orb,,,,You rub your crystal orb!,,%s rubs a crystal orb!,1919
+666,granite orb,You feel powerful!,The effects of smite wear off!,8532,,,,
+667,marble orb,,,,You rub your marble orb!,,%s rubs a marble orb!,1921
+668,ashwood wand,You feel VERY lucky!,The effects of greater bless wear off.,93,,,,
+669,teak wand,,,,You point your teak wand at %s!,%s points a teak wand at you!,%s points a teak wand at %s!,1923
+670,mahogany wand,,,,You point your mahogany wand at %s!,%s points a mahogany wand at you!,%s points a mahogany wand at %s!,1924
+671,pine wand,,,,You point your pine wand at %s!,%s points a pine wand at you!,%s points a pine wand at %s!,1925
+672,darkwood rod,,,,You brandish your darkwood rod at %s!,%s brandishes a darkwood rod at you!,%s brandishes a darkwood rod at %s!,1927
+673,silverwood rod,,,,You brandish your silverwood rod at %s!,%s brandishes a silverwood rod at you!,%s brandishes a silverwood rod at %s!,1928
+674,rosewood rod,You are healing faster!,Your healing rate returns to normal.,86,,,,
+675,birch rod,You are regenerating quickly!,You stop regenerating.,823,,,,
+676,cedar rod,You feel fast!,You slow down.,8537,,,,
+694,dart poison,You feel ill.,The effects of the poison wear off!,8575,,,,
+704,poison,You feel ill.,The effects of the poison wear off!,8575,,,,
+706,forked lightning,,,,You raise your hands and utter a word of power!,%s raises a hand and utters a word of power!,%s raises a hand and utters a word of power!,1999
+716,elemental fury,,,,You summon the power of the elements!,%s makes a mighty gesture!,%s makes a mighty gesture!,2037
+721,soulstrike,,,,You make a powerful incantation!,%s makes a powerful incantation!,%s makes a powerful incantation!,2042
+738,crescent moon staff,,,,"You lift up your crescent moon staff, and invoke its power!","%s lifts up a crescent moon staff, and invokes its power!","%s lifts up a crescent moon staff, and invokes its power!",2076
+739,rainbow stone,,,,The rainbow stone glows brightly!,The rainbow stone glows brightly!,%s's rainbow stone glows brightly!,2079
+744,annointed hands,,,,You lay hands on %s.,%s lays hands on you!,%s lays hands on %s!,234
+745,sunstone bracelet,You are surrounded by an orange glow!,The orange glow surrounding you fades.,2095,,,,
+748,chaos surge,Chaotic energy surrounds your being!,The chaotic energy fades away.,3430,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+749,eldritch fury,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+750,wizard knock,,,,You wave your hands about expansively.,%s makes a sweeping gesture.,%s makes a sweeping gesture.,104
+759,dark blessing,You feel lucky!,The effects of bless wear off!,8539,,,,
+760,wasp poison,You feel ill.,The effects of the poison wear off!,8575,,,,
+761,spider poison,You feel ill.,The effects of the poison wear off!,8575,,,,
+762,net,You are entangled in a net!,You work yourself free.,2119,,,,
+763,voodoo stab,,,,The tasloi shaman takes a pin and stabs his doll!,,,2169
+769,petrification,You are transformed into stone!,Your body returns to its normal state!,1049,,,,
+770,giant skeleton shriek,You are too scared to flee!,You feel braver.,194,,,,
+771,blizzard,,,,You sketch a mystical symbol in the air.,%s sketches a mystical symbol in the air.,%s sketches a mystical symbol in the air.,631
+773,stormcrown,,,,You invoke the storm crown!,%s invokes the storm crown!,,2154
+774,thunderstun,You are stunned!,You are no longer stunned.,57,,,,
+775,thunderclap,,,,You sketch a mystical symbol in the air.,%s sketches a mystical symbol in the air.,%s sketches a mystical symbol in the air.,631
+777,voodoo stun,You are stunned!,You are no longer stunned.,57,,,,
+786,stormcrown thunderstun,You are stunned!,You are no longer stunned.,57,,,,
+788,skull-beam,,,,You raise your skull-capped staff in the air!,%s raises their skull-capped staff in the air!,%s raises their skull-capped staff in the air!,2225
+789,lightning shot,,,,You strike your stormmetal bracers together!,%s strikes the stormmetal bracers together!,%s strikes the stormmetal bracers together!,2227
+790,combust,,,,,The %s glares at you!,The %s glares at %s!,2229
+792,song of the elements,You feel protected from the elements.,You are no longer protected from the elements!,2304,,,,
+794,dae asp poison 3,Venom runs through your veins!,The effects of the poison wear off!,2543,,,,
+795,constriction,You are caught in the snake's coils.,You break free of the coils!,2269,,,,
+797,dae asp poison 1,You feel ill.,The effects of the poison wear off!,8575,,,,
+798,dae asp poison 2,Venom runs through your veins!,The effects of the poison wear off!,2543,,,,
+799,wing cut,You bleed from a deep gash!,You stop bleeding.,2271,,,,
+801,song of battle,Your blood races in your veins!,You begin to feel calmer.,2296,,,,
+803,song of soothing,You feel soothed.,Your meditative state ends.,2298,,,,
+804,merciful grace,,,,You raise a hand to the heavens!,%s raises a hand to the heavens!,%s raises a hand to the heavens!,2351
+805,acid tempest,,,,You summon a powerful tempest into the room!,%s summons a powerful tempest into the room!,%s summons a powerful tempest into the room!,2305
+807,grall bite,Your energies have been dampened!,The dampening effect has gone!,2306,,,,
+808,grall claw,You feel magic being ripped from your body!,,2308,,,,
+809,jeweled viper death,Your blood runs cold as ice!,The chill leaves your body!,2310,,,,
+811,web entangle,You are entangled!,The effects of entangle wear off!,8530,,,,
+812,web slow,You feel slow!,You speed up.,8536,,,,
+813,misc,You feel oblivious!,Your awareness returns to normal.,85,,,,
+816,divine courage,You feel very courageous!,You begin to feel less courageous.,2395,,,,
+818,mamba fear effect,You are overcome by fear!,,2400,,,,
+820,mamba poison,You feel ill.,The effects of the poison wear off!,8575,,,,
+821,AG Wail,You are deathly afraid!,You don't feel quite so afraid anymore.,247,,,,
+822,terror,You have gone mad!,The effects of the madness wear off!,2405,,,,
+833,bone necklace,You are affected by a mana flux!,The mana flux dissipates rapidly.,1112,,,,
+836,fear,You are afraid!,The effects of fear wear off!,8543,,,,
+837,entangle,Your feet are incased in coral!,You can move again!,2429,,,,
+844,salca dart,You feel weighed down!,Your strength returns!,2452,,,,
+845,fangblade poison,You feel ill.,The effects of the poison wear off!,8575,You utter a word of power and point your blade at %s!,%s utters a word of power and points their blade at you!,%s utters a word of power and points their blade at %s!,3437
+846,bane dart,,The magic courses through your body once again!,2453,,,,
+847,net,You are entangled in a net!,You work yourself free.,2119,,,,
+848,chain,You are caught in a chain!,You get back on your feet.,2470,,,,
+853,wrathful curse,You feel unlucky!,The effects of curse wear off!,8540,,,,
+854,nature tap,You feel the power of a nature tap!,Your tap into nature leaves your body!,2512,You tap into the wild forces of nature!,%s taps into the wild forces of nature!,%s taps into the wild forces of nature!,2511
+858,form of the dragon,The spirit of the dragon inhabits your body!,The spirit of the dragon has left your body!,2440,,,,
+859,heros tabard,You feel protected!,The protective magic fades.,2521,,,,
+860,inquisitors cloak,You are blind!,You can see once more!,2522,,,,
+861,firebrand cape,The fire of battle burns within your veins!,You lose the battle frenzy!,2523,,,,
+862,folds of worship,You feel at one with the gods!,Your spiritual link fades to normal!,2524,,,,
+863,faithkeeper,You feel the gods power manifest within you!,The guidance fades!,2525,,,,
+864,death's shadow,The feeling of real ultimate power flows through you!,The feeling of power fades away!,2526,,,,
+865,shawl of fortune,The grace of the ancient gypsies flows through you!,The ancient gypsy grace leaves your body!,2529,,,,
+866,tails of battle,The dance of battle fills your mind!,The battle song fades!,2531,,,,
+867,runed cape,Eldritch power surges within you!,The surge fades away!,2533,,,,
+868,leafwoven cloak,The energy of the earth flows through you!,The energies return to the land!,2535,,,,
+869,mantle of the woodsman,The feel of the hunt pulses in your veins!,The spirit of the hunt dissipates!,2537,,,,
+870,peasant cloak,Your mind is at peace!,The chaos of the world returns!,2539,,,,
+872,cloak of faith,You feel the power of the gods touch your body!,The blessing fades away!,2542,,,,
+873,smite,You feel powerful!,The effects of smite wear off!,8532,,,,
+874,speed,You feel fast!,You slow down.,8537,,,,
+875,magic armour,You feel armoured!,The effects of magic armour wear off!,8533,,,,
+876,rapid healing,You are healing faster!,Your healing rate returns to normal.,86,,,,
+879,form of the crane,The spirit of the crane inhabits your body!,The spirit of the crane has left your body!,2439,,,,
+880,form of the gorilla,The spirit of the gorilla inhabits your body!,The spirit of the gorilla has left your body!,2441,,,,
+881,form of the monkey,The spirit of the monkey inhabits your body!,The spirit of the monkey has left your body!,2442,,,,
+882,form of the viper,The spirit of the viper inhabits your body!,The spirit of the viper has left your body!,2444,,,,
+884,envelops,You are on fire!,The flames enveloping you die down!,8596,,,,
+897,globe of the elements,A globe of the elements surrounds you!,The globe dissipates into nothing!,2604,,,,
+899,necromantic storm,,,,,%s makes a vile gesture and speaks in a guttural tongue!,,3204
+900,frigid blast of wind,You are frozen to the ground!,You become unfrozen.,196,,,,
+905,poison darts,You feel ill.,The effects of the poison wear off!,8575,,,,
+917,carved ivory mask,A glowing flame gives you magical sight.,The glowing flame floating over you vanishes without a sound.,2644,You pass your hand over the mask and invoke its power!,,%s's mask glows softly!,2917
+923,bridge jump,,,,You find yourself in the ice cold river!,,,2798
+927,earthquake hold,You are flat on your back!,You get back on your feet.,648,,,,
+928,black curse,You feel VERY unlucky!,The effects of greater curse wear off.,549,,,,
+930,phoenix terror,You are afraid!,The effects of fear wear off!,8543,,,,
+932,planewalker wail,You are deathly afraid!,You don't feel quite so afraid anymore.,247,,,,
+933,darkness,You are enveloped in darkness!,The unnatural darkness lifts.,1312,,"The %s exudes a strange, overpowering aura.",,1828
+934,drenched in acid,You are covered in acid!,The acid covering you dries up.,87,,,,
+937,gruesome curse,You don't feel so good.,"You begin to feel better, the taint removed.",2700,You utter a guttural incantation.,%s utters a guttural incantation.,%s utters a guttural incantation.,1292
+938,wretched boils,Boils fester all over your body!,The boils vanish from your body.,2699,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+939,paralysis,Your legs are paralyzed!,You can move again!,8544,,,,
+940,fear,You are afraid!,The effects of fear wear off!,8543,,,,
+946,burrows,Something is burrowing into you!,,2749,,,,
+947,burrows deeper,You are on the doorstep of death!,,2750,,,,
+949,frail,You feel weak and powerless!,You feel your strength return.,1172,,,,
+951,convulsions,You are in convulsions!,Your body returns to normal.,2752,,,,
+952,disease,You are diseased!,The disease dies down.,692,,,,
+953,lacerate,You are bleeding all over the place!,You stop bleeding.,236,,,,
+954,death ray,,,,,The beholder gazes at you with an eyestalk!,The beholder gazes at %s with an eyestalk!,1061
+955,necromantic beam,,,,,The beholder gazes at you with an eyestalk!,The beholder gazes at %s with an eyestalk!,1061
+956,frail,You feel weak and powerless!,You feel your strength return.,1172,,The beholder gazes at you with an eyestalk!,The beholder gazes at %s with an eyestalk!,1061
+957,fear,You are afraid!,The effects of fear wear off!,8543,,,,
+958,necro drain,You feel your lifeforce begin to drain!,Your lifeforce is back to normal.,2768,,,,
+960,entangles,You are entangled!,The effects of entangle wear off!,8530,,,,
+961,rosebush sleep,You are lulled to sleep by a toxic fragerance!,You awaken from unnatural slumber.,3041,,,,
+963,necro drain,You feel your lifeforce begin to drain!,Your lifeforce is back to normal.,2768,,,,
+965,card-wizard,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+966,card-priest,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+967,card-knight,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+968,card-chariot,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+969,card-grail,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+970,card-sun,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+971,card-wheel of fortune,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+972,card-angel,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+973,card-death,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+974,card-fool,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+975,card-swamp,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+976,card-void,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+983,card-demon,The gaze of luck is upon you.,The gaze of luck is no longer upon you!,2763,,,,
+985,lacerate,You are bleeding all over the place!,You stop bleeding.,236,,,,
+986,sdfsdfsdfsdfs,You are diseased!,The disease dies down.,692,,,,
+991,deeply bite,,,,You reach out and grab %s by the neck!,%s reaches out and grabs your neck!,%s reaches out and grabs %s's neck!,3035
+992,plague,You are plagued!,The plague dies down.,584,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,583
+1003,frozen spike,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+1004,manashield,You are surrounded by a shield of mana!,Your manashield dissolves into nothingness.,2804,,,,
+1005,exalted word,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+1006,gaunts,,,,You lay hands on %s.,%s lays hands on you!,%s lays hands on %s!,234
+1008,necromantic bolt,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+1009,sunburst,,,,You raise your necklace and invoke its power!,%s raises their necklace and invokes its power!,%s raises their necklace and invokes its power!,2844
+1010,unholy light,,,,You open your great maw!,The %s opens their great maw!,The %s opens their great maw!,2870
+1011,shadow breath,,,,,The %s inhales deeply and blasts out a cone of shadows!,,2840
+1012,rejuvinating field,You are regenerating quickly!,You stop regenerating.,823,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+1013,resist lightning,You feel resistant to lightning!,The effects of resist lightning wear off!,8529,,,,
+1014,song of enlightenment,Your mind is enlightened!,The feeling of enlightenment passes.,2792,,,,
+1015,freezing,You are freezing!,You are no longer freezing.,84,,,,
+1016,natural prowess,Wild forces of nature enhance your prowess!,The forces of nature leave you.,2513,,,,
+1018,chain lightning,,,,You move your hands in a mystical pattern!,%s moves their hands in a mystical pattern!,%s moves their hands in a mystical pattern!,2802
+1019,cloud of decay,The taint of decay envelopes you!,The taint of decay leaves you!,3478,You wave your hands about expansively.,%s makes a sweeping gesture.,%s makes a sweeping gesture.,104
+1020,ethereal taint,Tainted ether surrounds you!,The tainted ether vanishes!,3480,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+1021,song of futility,The feeling of futility encompasses your thoughts.,The feeling of futility wears off!,3476,,,,
+1022,song of hopelessness,"A dark, menacing cloud appears, flooding the room!","A dark, menacing cloud appears, flooding the room!",3477,,,,
+1024,plague,A plague is consuming your flesh!,The plague has left your ravaged body.,2833,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+1025,damnation,You are damned!,The malaise of your soul has lifted.,2830,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+1026,spore cloud,Your lungs are filled with spores!,Your lungs fill with fresh air.,2803,You toss some spores into the air!,%s tosses some spores into the air!,%s tosses some spores into the air!,2801
+1033,blind globe,You are enveloped in darkness!,The unnatural darkness lifts.,1312,,,,
+1035,stinky cloud,You feel nauseous!,You feel less sick.,71,,,,
+1038,prismatic beam,,,,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+1039,restoration,,,,You lay your hands upon %s.,%s lays hands upon you.,%s lays hands upon %s.,635
+1041,bladed sphere,You are surrounded by a sphere of blades!,Your sphere disappears into thin air.,2881,,,,
+1042,glacial mist,You are freezing!,You are no longer freezing.,84,You clutch at the sky.,%s clutches at the sky.,%s clutches at the sky.,106
+1046,protective shell,You are encompassed by a protective shell!,Your protective shell vanishes into nothing.,2876,,,,
+1047,boulder,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+1048,inferno,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+1053,resist stone,You feel resistant to stone!,The effects of resist stone wear off!,3481,,,,
+1055,BCNS,You are stunningly attractive!,Your charm returns to normal.,3498,,,,
+1056,dark binding,Your energies are bound to the earth!,Your energies flow unbound.,3132,You lower your head and begin to chant in arcane tones.,%s begins to chant in arcane tones.,%s begins to chant in arcane tones.,822
+1057,hellstorm,,,,You scatter some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,572
+1058,eldritch storm,,,,You raise your hands in the air!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,566
+1059,divine healing,,,,"Your hand glows with a golden aura, and you touch %s.","%s's hand glows with a golden aura, and they touch you.","%s's hand glows with a golden aura, and they touch %s.",2926
+1060,priestly benediction,You are filled with a feeling of grace.,The feeling subsides.,2927,,,,
+1061,dark transfusion,You are filled with a feeling of grace.,The feeling subsides.,2927,,,,
+1062,barbskin,Iron spikes protrude from your skin!,Your skin returns to normal.,2878,,,,
+1063,comet,,,,You move your hands about in an intricate pattern!,%s weaves an intricate pattern in the air!,%s weaves an intricate pattern in the air!,595
+1064,yellow beam,You feel slow!,You speed up.,8536,,,,
+1065,violet beam,You are confused!,The effects of confusion wear off!,8538,,,,
+1066,black beam,You are blind!,You can see again!,8534,,,,
+1067,red beam,You feel weak and powerless!,You feel your strength return.,1172,,,,
+1068,green beam,You feel ill.,The effects of the poison wear off!,8575,,,,
+1069,yellow wave,You feel slow!,You speed up.,8536,,,,
+1070,violet wave,You are confused!,The effects of confusion wear off!,8538,,,,
+1071,black wave,You are blind!,You can see again!,8534,,,,
+1072,red wave,You feel weak and powerless!,You feel your strength return.,1172,,,,
+1073,green wave,You feel ill.,The effects of the poison wear off!,8575,,,,
+1074,prismatic blast,,,,You make an arcane gesture!,%s makes an arcane gesture!,%s makes an arcane gesture!,570
+1081,tainted word,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+1093,web,You are caught in a cocoon!,You break free of the cocoon!,2971,,,,
+1095,rotten eye,You feel nauseous!,You feel less sick.,71,,,,
+1096,balanced word,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+1098,angelic halo,A halo appears over your head!,Your halo vanishes!,2923,,,,
+1099,balanced sight,You have the clarity of an ordered mind.,The clarity has vanished.,2924,,,,
+1100,gypsy combo,,,,You make a powerful incantation!,%s makes a powerful incantation!,%s makes a powerful incantation!,2042
+1102,infernal darkness,An unnatural darkness surrounds you!,The unnatural darkness dissipates.,1322,,,,
+1103,song of knowledge,You feel smart!,Your intelligence returns to normal.,8549,,,,
+1104,song of sageness,You feel wise!,Your wisdom returns to normal.,8550,,,,
+1106,song of force,You feel strong!,Your strength returns to normal.,8551,,,,
+1108,song of swiftness,You feel agile!,Your agility returns to normal.,8552,,,,
+1109,strut,You are mesmerized!,The effects of the hot pants wear off!,3373,,,,
+1110,sleep,You are lulled into a magical slumber!,You awaken from the unnatural slumber.,958,,,,
+1111,beholder death,You feel nauseous!,You feel less sick.,71,,,,
+1112,earthbind,Your energies are bound to the earth!,Your energies flow unbound.,3132,You lower your head and begin to chant in arcane tones.,%s begins to chant in arcane tones.,%s begins to chant in arcane tones.,822
+1113,monster dark plague,A plague is consuming your flesh!,The plague has left your ravaged body.,2833,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+1118,lunar beam,,,,,The %s points at you and clenches his fist!,The %s points at %s and clenches his fist!,277
+1129,bubbling blue potion,You feel nauseous!,You feel less sick.,71,,,,
+1134,leprosy,You are covered in festering wounds!,The festering wounds covering your body close abruptly.,920,The %s shrieks a word in an evil-sounding tongue!,The %s shrieks a word in an evil-sounding tongue!,The %s shrieks a word in an evil-sounding tongue!,921
+1138,mana dead,Something has poisoned your mana!,Your mana returns to normal.,3019,,,,
+1141,web,You are caught in a cocoon!,You break free of the cocoon!,2971,,,,
+1155,jagged lightning bolt,,,,You point your iron wand at %s!,%s points their iron wand at you!,%s points their iron wand at %s!,3138
+1156,ruby staff,,,,You point your ruby staff at %s!,%s points their ruby staff at you!,%s points their ruby staff at %s!,3139
+1159,fist of death,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+1162,rainbow1,Boils fester all over your body!,The boils vanish from your body.,2699,,,,
+1163,rainbow2,You feel dizzy and weak!,You are no longer dizzy and weak!,388,,,,
+1165,rain of blood,,,,,The %s clutches at the sky!,,480
+1169,spear slam knockdown,You are flat on your back!,You get back on your feet.,648,,,,
+1173,destructo smash,,,,"You raise your hammer high, and smash it into the ground!","%s raises their hammer high, and smashes it into the ground!","%s raises their hammer high, and smashes it into the ground!",3055
+1176,mass entangle,You are entangled!,The effects of entangle wear off!,8530,,The %s makes an arcane gesture!,,533
+1178,fear1,You are afraid!,The effects of fear wear off!,8543,,,,
+1179,fear2,You are too scared to flee!,You feel braver.,194,,,,
+1180,fear3,You are deathly afraid!,You don't feel quite so afraid anymore.,247,,,,
+1185,blur,You are blurred!,The effects of blur wear off.,68,,,,
+1186,smite,You feel powerful!,The effects of smite wear off!,8532,,,,
+1188,yellow beam,You feel slow!,You speed up.,8536,,,,
+1189,violet beam,You are confused!,The effects of confusion wear off!,8538,,,,
+1190,black beam,You are blind!,You can see again!,8534,,,,
+1191,red beam,You feel weak and powerless!,You feel your strength return.,1172,,,,
+1192,green beam,You feel ill.,The effects of the poison wear off!,8575,,,,
+1193,green beam,You feel ill.,The effects of the poison wear off!,8575,,,,
+1194,stoneskin,Your skin is as hard as stone!,Your skin returns to normal.,579,,,,
+1197,spirit horde,,,,,%s scatters some ashes in a sweeping motion!,,3203
+1198,demon summon,,,,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+1203,tail quake,,,,,The %s slams its tail into the ground!,,3172
+1206,fungus cloud,Your lungs are filled with spores!,Your lungs fill with fresh air.,2803,,,,
+1209,gnaj bolt,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+1212,gnaj explosion,,,,,A chilling wave of dark energy erupts from the remains of the %s!,,2309
+1215,eldritch storm,,,,You glow bright red and point a finger at %s!,%s glows bright red and points a finger at you!,%s glows bright red and points a finger at %s!,3088
+1222,ether death,,,,You draw chaotic energy from the ether!,%s draws chaotic energy from the ether!,%s draws chaotic energy from the ether!,1108
+1230,fear,You are afraid!,The effects of fear wear off!,8543,,,,
+1234,kill enigma,You are covered in acid!,The acid covering you dries up.,87,,%s throws a potion to the ground!,,3196
+1237,wretched boils,Boils fester all over your body!,The boils vanish from your body.,2699,,,,
+1238,gruesome curse,You don't feel so good.,"You begin to feel better, the taint removed.",2700,,,,
+1240,burning death,You are on fire!,The flames enveloping you die down!,8596,,,,
+1241,starbeam,,,,You point your silverwood staff at %s and invoke its power!,%s points the silverwood staff at you!,%s points the silverwood staff at %s!,1034
+1242,sdfsdfsdffsdfsd,You are confused!,The effects of confusion wear off!,8538,You raise your hands in the air!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,574
+1244,stun,You are stunned!,You are no longer stunned.,57,,,,
+1245,knockdown,You are flat on your back!,You get back on your feet.,648,,,,
+1247,hellstorm,,,,,%s scatters some ashes in a sweeping motion!,,3203
+1248,bloodstone bracers,You are stunned!,You are no longer stunned.,57,,%s crosses their bracers!,,3206
+1249,bone necklace,You are affected by a mana flux!,The mana flux dissipates rapidly.,1112,,,,
+1250,roar,You are too scared to flee!,You feel braver.,194,,,,
+1255,gust of wind,You are flat on your back!,You get back on your feet.,648,,,,
+1261,dirty pool,,,,You drink from the oasis pool.,,%s drinks from the oasis pool.,3235
+1262,bolt of light,,,,You begin to glow brightly!,%s begins to glow brightly!,%s begins to glow brightly!,2103
+1265,ruby-encrusted fire,,,,You cross your bracers!,%s crosses their bracers!,%s crosses their bracers!,123
+1266,bloodstone bracers,You are stunned!,You are no longer stunned.,57,You cross your bracers!,%s crosses their bracers!,%s crosses their bracers!,123
+1269,ice shield,You feel resistant to cold!,The effects of resist cold wear off!,8526,,,,
+1270,fire shield,You feel resistant to fire!,The effects of resist fire wear off!,8527,,,,
+1271,lightning shield,You feel resistant to lightning!,The effects of resist lightning wear off!,8529,,,,
+1301,barbed tentacles,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+1302,energy vortex,,,,,"%s flaps its huge wings, and speaks a vile word!",,3257
+1310,sandstorm,A sandstorm surrounds you!,"The sandstorm subsides, allowing your scathed flesh to heal.",3406,You move your hands about in an intricate pattern!,%s weaves an intricate pattern in the air!,%s weaves an intricate pattern in the air!,595
+1311,glacial blades,,,,You make a complex circling gesture!,%s makes a complex circling gesture!,%s makes a complex circling gesture!,578
+1312,,You are stunned!,You are no longer stunned.,57,,,,
+1313,voodoo doll,,,,You glare at %s as you invoke your voodoo doll!,%s glares at you as they invoke their voodoo doll!,%s glares at %s as they invoke their voodoo doll!,3419
+1314,camouflage,You are covered in magical camouflage!,The magic camouflage fades away!,3422,,,,
+1315,unholy fanaticism,You are in a state of fanatical fury!,You feel yourself becoming calmer.,2171,,,,
+1316,blessed vision,,,,You close your eyes and recite a prayer.,%s closes their eyes and recites a prayer.,%s closes their eyes and recites a prayer.,2808
+1317,curing wind,,,,You raise a hand to the heavens!,%s raises a hand to the heavens!,%s raises a hand to the heavens!,2351
+1318,foot quake,,,,,The %s stomps its feet in rage!,The %s stomps its feet in rage!,3275
+1319,spike spin,,,,You curl into a ball!,%s curls into a ball!,%s curls into a ball!,3278
+1336,galacial mist,You are freezing!,You are no longer freezing.,84,,The %s clutches at the sky!,,480
+1353,chain lightning,,,,The %s suddenly turns dark!,,,3355
+1355,wretched boils,Boils fester all over your body!,The boils vanish from your body.,2699,,,,
+1362,partial petrification,You are partially petrified!,Your body returns to normal.,88,,The %s gazes right into your eyes!,The %s gazes at %s!,1050
+1363,ice storm,You are freezing!,You are no longer freezing.,84,You wave your hands about expansively.,%s makes a sweeping gesture.,%s makes a sweeping gesture.,104
+1364,petrification,You are transformed into stone!,Your body returns to its normal state!,1049,,The %s gazes right into your eyes!,The %s gazes at %s!,1050
+1366,poison bite,You feel ill.,The effects of the poison wear off!,8575,,,,
+1367,exorcism,,,,You glow a brilliant white and point a finger at %s!,%s glows a brilliant white and points a finger at you!,%s glows a brilliant white and points a finger at %s!,3443
+1369,earthquake,,,,,The %s makes a sharp gesture!,The %s makes a sharp gesture!,1314
+1373,ray of petrification,You are transformed into stone!,Your body returns to its normal state!,1049,,The %s gazes right into your eyes!,The %s gazes at %s!,1050
+1374,maelstrom,,,,,The %s makes a sweeping gesture.,,198
+1377,serenity,You feel calm and serene.,The feeling of serenity fades away.,3403,,,,
+1378,profane link,A profane link is enhancing your power!,The link fades away into nothingness.,3404,,,,
+1379,ice shield,You feel resistant to cold!,The effects of resist cold wear off!,8526,,,,
+1380,fire shield,You feel resistant to fire!,The effects of resist fire wear off!,8527,,,,
+1381,glacial skin,Your skin is covered in hardened protective ice!,The protective ice melts and your skin returns to normal.,3442,,,,
+1382,shimmering mirage,You are fading in and out of view!,The shimmering glow fades away.,3415,,,,
+1383,sacred bastion,You are surrounded in a silvery aura!,The silvery aura fades.,158,You close your eyes and recite a prayer.,%s closes their eyes and recites a prayer.,%s closes their eyes and recites a prayer.,2808
+1384,hellfire shield,You are surrounded by an aura of hellfire!,The flames die down into nothingness.,3421,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+1388,song of beauty,You feel radiant!,Your charm returns to normal.,3440,,,,
+1389,song of ugliness,You feel repulsive!,Your charm returns to normal.,3441,,,,
+1391,mesmerize,You are mesmerized!,You are no longer mesmerized!,3450,,"%s dances around you, intoxicating you with her movements!",,3451
+1392,Dancing fire,,,,,%s raises and furls her skirts!,%s raises and furls her skirts!,3452
+1393,magma wave,,,,,"%s raises her head and arms, and the magma begins to rise!",,3454
+1394,incinerate,,,,,%s lowers her head and raises her arms!,,3456
+1395,kiss of Vasili,,,,,"%s kisses her palm, and waves her hand across the room!",,3458
+1396,magma bubbles,,,,,"%s swallows a ball of magma, and starts blowing molten bubbles!",,3460
+1397,dancing fire,,,,You raise and furl your skirts!,%s raises and furls their skirts!,%s raises and furls their skirts,3462
+5000,boulder,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+5001,dark plague,A plague is consuming your flesh!,The plague has left your ravaged body.,2833,You make a vile gesture and speak in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,%s makes a vile gesture and speaks in a guttural tongue!,2831
+5002,frozen spike,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+5003,inferno,,,,You point your finger at %s and clench your fist.,%s points a finger at you and clenches a fist.,%s points a finger at %s and clenches a fist.,621
+5004,ember,,,,You glow bright red and point a finger at %s!,%s glows bright red and points a finger at you!,%s glows bright red and points a finger at %s!,3088
+5005,acid tempest,,,,You summon a powerful tempest into the room!,%s summons a powerful tempest into the room!,%s summons a powerful tempest into the room!,2305
+5006,summon fire elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+5007,summon ice elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+5008,summon lightning elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+5009,summon stone elemental,,,,You make a sweeping gesture!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,552
+5011,earthquake,,,,You make a sharp gesture!,%s makes a sharp gesture!,%s makes a sharp gesture!,586
+5014,chain lightning,,,,You move your hands in a mystical pattern!,%s moves their hands in a mystical pattern!,%s moves their hands in a mystical pattern!,2802
+5015,bladed sphere,You are surrounded by a sphere of blades!,Your sphere disappears into thin air.,2881,,,,
+5016,hellstorm,,,,You scatter some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,572
+5018,sphere of implosion,,,,You point your finger at %s and utter a harsh word!,%s points at you and utters a harsh word!,%s points at %s and utters a harsh word!,279
+5019,blizzard,,,,You sketch a mystical symbol in the air.,%s sketches a mystical symbol in the air.,%s sketches a mystical symbol in the air.,631
+5020,eldritch storm,,,,You raise your hands in the air!,%s makes a sweeping gesture!,%s makes a sweeping gesture!,566
+5021,forked lightning,,,,You raise your hands and utter a word of power!,%s raises a hand and utters a word of power!,%s raises a hand and utters a word of power!,1999
+5023,dragonfire,,,,You make a complex circling gesture!,%s makes a complex circling gesture!,%s makes a complex circling gesture!,578
+5024,spirit horde,,,,You scatter some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,%s scatters some ashes in a sweeping motion!,572
+5027,ice storm,You are freezing!,You are no longer freezing.,84,You wave your hands about expansively.,%s makes a sweeping gesture.,%s makes a sweeping gesture.,104
+5031,exalted word,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+5032,tainted word,,,,You raise your palm towards %s!,%s raises their palm towards you!,%s raises their palm towards %s!,1046
+5033,soul rip,,,,You begin to chant in a fierce tone!,%s begins to chant in a fierce tone!,%s begins to chant in a fierce tone!,3086
+5034,soulstrike,,,,You make a powerful incantation!,%s makes a powerful incantation!,%s makes a powerful incantation!,2042
+5050,dice roll,,You shake your dice and roll!,8644,,,,
+5101,breathes,Suffocating fumes overwhelm you!,The suffocating fumes dissipate.,8706,,,,
+5103,spear of dark energy,,,,You make a sharp gesture towards %s!,%s makes a sharp gesture!,%s makes a sharp gesture!,8711
+5106,blast of sand,,,,You make a sharp gesture towards %s!,%s makes a sharp gesture!,%s makes a sharp gesture!,8711
+5107,thrash,,,,,"The %s thrashes about, and the ceiling begins to collapse!",,8723
+5108,horrid wound,You are losing blood quickly!,You staunch the flow of blood.,8726,,,,
+5109,stone temple poison,You feel ill.,The effects of the poison wear off!,8730,,,,
+5110,paralyzed,You are paralyzed!,The paralysis wears off!,731,,,,
+5111,stone regeneration,You are regenerating quickly!,You stop regenerating.,823,You lower your head and begin to chant in arcane tones.,%s begins to chant in arcane tones.,The %s begins to quiver as it casts a spell!,8732
+5112,clay flask,You are in a dream state!,The long lucid dream ends.,8738,,,,
+5114,nightfall,An unnatural darkness surrounds you!,The unnatural darkness dissipates.,1322,,,,
+5118,sunder armor,Your defenses are vulnerable!,Your defenses return to normal.,8751,,,,
+5120,disease,You are diseased!,The disease dies down.,692,,,,
+5123,searing flames,,,,You make a sharp gesture towards %s!,%s raises a fiery hand!,%s raises a fiery hand!,8756
+5126,diffusive blast,You are flat on your back!,You get back on your feet.,648,,,,
+5128,pain,,,,,The %s raises his palm towards you!,The %s raises him palm towards %s !,8768
+5129,cataclysm,,,,,%s gestures toward the heavens as the clouds part!,,8770

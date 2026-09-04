@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { SpellMessageBook, spellLoreOf } from '../../../shared/spell-messages';
 import { Classifier, foregroundCodes, looksLikeRoomName, tailAfterPrompt } from '../Classifier';
 import type { BlockType } from '../../../shared/blocks';
 import type { StreamLine } from '../../../shared/types';
@@ -1211,6 +1212,17 @@ describe('spells', () => {
       target: 'you'
     });
     expect(expectType('Celyn casts speed on you.', 'spell-cast')['target']).toBe('you');
+    // A kai power's confirmation, which never says `cast`: a self cast with no target.
+    expect(expectType('You invoke the way of the tiger.', 'spell-cast')).toMatchObject({
+      caster: 'You',
+      spell: 'way of the tiger'
+    });
+    expect(expectType('You invoke the way of the tiger.', 'spell-cast')['target']).toBeUndefined();
+    expect(expectType('You use your knowledge of pressure points!', 'spell-cast')).toMatchObject({
+      caster: 'You',
+      spell: 'pressure points'
+    });
+    expect(classify('You have already invoked a power this round!').type).toBe('spell-refused');
     expect(expectType('Eagle casts greater healing on you!', 'spell-cast')).toMatchObject({
       spell: 'greater healing',
       target: 'you'
@@ -2078,5 +2090,65 @@ describe('a floor listing that answers a search', () => {
     classifier.observeCommand('search');
     classifier.observeCommand('n');
     expect(feed(classifier, 'You notice a rusty key here.').type).toBe('room-hidden-items');
+  });
+});
+
+/*
+ * The spell message table: the server's own sentence for an effect landing
+ * and ending, per spell (`resources/world/spell-messages.csv`), consulted for
+ * the whole line where no frame reads it and to refine the two frame types
+ * that do. Everything else the frames decided stands.
+ */
+describe('the spell message table', () => {
+  const lore = spellLoreOf(
+    SpellMessageBook.fromRows([
+      {
+        spell: 'pressure points',
+        start: 'You are using pressure points!',
+        stop: 'You stop using pressure points.'
+      },
+      { spell: 'bless', start: 'You feel lucky!', stop: 'The effects of bless wear off!' },
+      { spell: 'chant', start: 'You feel lucky!', stop: 'The effects of bless wear off!' },
+      { spell: 'flash', start: 'You are blind!', stop: 'You can see again!' },
+      {
+        spell: 'song of hopelessness',
+        start: 'A dark cloud appears!',
+        stop: 'A dark cloud appears!'
+      }
+    ]),
+    new SpellMessageBook()
+  );
+  const read = (plain: string) =>
+    new Classifier(NAMES, (text) => lore.match(text)).classify(line(plain)).block;
+
+  it('reads a sentence no frame knows as the start or the end it is', () => {
+    expect(read('You are using pressure points!')).toMatchObject({
+      type: 'spell-onset',
+      groups: { spells: 'pressure points' }
+    });
+    expect(read('You stop using pressure points.')).toMatchObject({
+      type: 'user-buff-expired',
+      groups: { spell: 'pressure points', spells: 'pressure points' }
+    });
+  });
+
+  it('refines the frame types with every spell the sentence belongs to', () => {
+    expect(read('You feel lucky!')).toMatchObject({
+      type: 'spell-onset',
+      groups: { effect: 'lucky', spells: 'bless|chant' }
+    });
+    expect(read('The effects of bless wear off!')).toMatchObject({
+      type: 'user-buff-expired',
+      groups: { spell: 'bless', spells: 'bless|chant' }
+    });
+  });
+
+  it('leaves every other verdict alone, and a sentence that is both ends', () => {
+    // An affliction with its own two-ended state machine, not the start of `flash`.
+    expect(read('You are blind!').type).toBe('user-blinded');
+    expect(read('A dark cloud appears!').type).toBe('unknown');
+    expect(read('You stop using pressure points.').type).toBe('user-buff-expired');
+    // Without the table the same line is what the frames make of it.
+    expect(classify('You stop using pressure points.').type).toBe('unknown');
   });
 });

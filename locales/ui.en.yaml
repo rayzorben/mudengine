@@ -357,6 +357,11 @@ notices:
         paused until it is fixed or removed.'
       readError: 'could not read {file}: {message}'
       writeError: 'could not write {file}: {message}'
+      spellLearned: 'Learned the {kind} of {spell}: "{text}"'
+      spellUnlearned: 'Unlearned the {kind} of {spell}: "{text}" — the stat sheet still showed it'
+    spellMessages:
+      readError: 'could not read the spell message table {file}: {message}'
+      empty: 'the spell message table {file} holds no rows; buff endings fall back to the frames'
     players:
       parseSuspended:
         '{fileName} will not parse ({message}). Nothing more about other players is kept on
@@ -2507,6 +2512,7 @@ automation:
     reasonRosterUnknown: a name arrived without a listing to explain it
     reasonSpellbook: reading the spellbook
     reasonTrained: trained, so the experience to the next level has changed
+    reasonBuffEnding: a sentence nothing recognised may have ended a buff; the stat sheet says which
     spellbookCorrected: Asked for the wrong book — the realm says to list {book}, so asking that instead.
   walk:
     alreadyThere: Already there.

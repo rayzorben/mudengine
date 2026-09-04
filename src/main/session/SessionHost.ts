@@ -29,6 +29,7 @@ import { BUSY_PHASES, SessionManager, type RealmMemory } from './SessionManager'
 import type { InternalConfig } from '../../shared/internal';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { MobLore } from '../../shared/lore';
+import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import type { FightSink } from '../../shared/fights';
 import {
   Push,
@@ -82,6 +83,12 @@ export interface SessionHostOptions {
    * giant rat's health on the other.
    */
   loreFor(id: SessionId): MobLore;
+  /**
+   * The realm's spell sentences for *this character's* realm — shipped and
+   * learned — per session for the reason `loreFor` is. Optional: a host with
+   * no table leaves the tracker reading buffs from the frames alone.
+   */
+  spellLoreFor?(id: SessionId): SpellLore;
   /**
    * Where what *this character* learns about the realm is kept.
    *
@@ -356,7 +363,8 @@ export class SessionHost {
       this.options.loreFor(id),
       this.options.memoryFor(id),
       this.options.fightsFor(id),
-      this.options.playersFor(id)
+      this.options.playersFor(id),
+      this.options.spellLoreFor?.(id) ?? NO_SPELL_LORE
     );
 
     manager.configureInternal(this.options.internal());

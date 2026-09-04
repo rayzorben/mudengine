@@ -96,6 +96,23 @@ describe('keeping a blessing up on this character', () => {
     blessings.dispose();
   });
 
+  /*
+   * `You feel lucky!` is five spells, and a buff established from that
+   * sentence alone is named for one and carries the rest: a configured
+   * blessing among the rest is up, and is not recast on the retry floor.
+   */
+  it('is held by a buff that names the blessing only as a candidate', () => {
+    const blessings = new Blessings(spells([armour]), true, queue);
+    blessings.onCharacter(
+      state({
+        buffs: [{ spell: 'chant', by: null, appliedAt: Date.now(), candidates: ['protection'] }]
+      })
+    );
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toEqual([]);
+    blessings.dispose();
+  });
+
   /* Before anything has been measured, the shipped watchdog is the clock. */
   it('expires an unread ending by the shipped watchdog when nothing is measured', () => {
     const blessings = new Blessings(spells([armour]), true, queue);

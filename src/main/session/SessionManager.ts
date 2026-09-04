@@ -54,6 +54,7 @@ import { bankKey, type CharacterState, type SessionPhase } from '../../shared/ch
 import { wireItem } from '../../shared/entities';
 import type { WorldGraph } from '../world/WorldGraph';
 import { NO_LORE, type MobLore } from '../../shared/lore';
+import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../../shared/players';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
@@ -617,14 +618,21 @@ export class SessionManager {
      * character dialling the same address. Defaults to a realm that knows
      * nothing, which is what every test wants.
      */
-    players: RealmPlayers = NO_REALM_PLAYERS
+    players: RealmPlayers = NO_REALM_PLAYERS,
+    /**
+     * The realm's sentences for an effect landing and ending, shipped and
+     * learned. Per realm like the lore beside it, and defaulting to none for
+     * the same reason.
+     */
+    spellLore: SpellLore = NO_SPELL_LORE
   ) {
     this.tracker = new CharacterTracker(
       world,
       lore,
       (discovery) => this.remember(discovery),
       fights,
-      players
+      players,
+      spellLore
     );
     this.useRealm(players);
     /*
@@ -649,10 +657,15 @@ export class SessionManager {
      * with every room and every arrival, and a snapshot taken at construction
      * would name monsters from a room the character left an hour ago.
      */
-    this.classifier = new Classifier({
-      present: () => this.tracker.current.room.occupants.map((who) => who.name),
-      mob: (name) => world?.mob(name)
-    });
+    this.classifier = new Classifier(
+      {
+        present: () => this.tracker.current.room.occupants.map((who) => who.name),
+        mob: (name) => world?.mob(name)
+      },
+      // And the spell message table, for the whole-line sentences no frame
+      // reads; a lookup because what has been learned changes as the session runs.
+      (text) => spellLore.match(text)
+    );
     this.world = world;
     this.feed = new TerminalFeed(
       {
@@ -2219,6 +2232,9 @@ export class SessionManager {
     const lineChanged = this.tracker.apply(block);
     const batchChanged = batch ? this.tracker.apply(batch, batch.rows) : false;
     const changed = lineChanged || batchChanged;
+    // The tracker records that a stat sheet would settle a buff ending; the
+    // routine is what asks for one. Facts fan out, actions funnel in.
+    if (this.tracker.takeSheetRequest()) this.routines.askSheet();
 
     /*
      * Any prompt is an acknowledgement: the server has finished with the last

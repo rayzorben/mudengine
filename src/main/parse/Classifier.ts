@@ -13,6 +13,7 @@ import { commandOf } from '../../shared/commands';
 import { nameAtEnd, nameInMessage, nameLeading, type NameSources } from '../../shared/mobs';
 import { BATCH_RULES, RULES, STATUS_LINE, type BatchRule, type Rule } from './patterns';
 import type { StreamLine } from '../../shared/types';
+import type { SpellMessageHit } from '../../shared/spell-messages';
 import { tuning } from '../app/tuning';
 
 /** SGR foreground codes present in a raw line, in order of appearance. */
@@ -244,7 +245,16 @@ export class Classifier {
    * honest degradation: everything downstream already treats a missing name as
    * "a blow landed and nothing knows what threw it".
    */
-  constructor(private readonly names?: NameSources) {}
+  constructor(
+    private readonly names?: NameSources,
+    /**
+     * What a whole line means as a spell message — the realm's own sentence
+     * for an effect landing or ending, from `resources/world/spell-messages.csv`
+     * and what the wire has taught. A lookup rather than the table, as `names`
+     * is, because what has been learned changes while the session runs.
+     */
+    private readonly spells?: (text: string) => SpellMessageHit | null
+  ) {}
 
   /** Records an outbound command. Not cleared on use: two lines may need it. */
   observeCommand(command: string): void {
@@ -333,7 +343,11 @@ export class Classifier {
   }
 
   private classifyLine(line: StreamLine, text: string): Block {
-    const block = this.answerSearch(line, text, this.matchLine(line, text));
+    const block = this.answerSearch(
+      line,
+      text,
+      this.asSpellMessage(line, text, this.matchLine(line, text))
+    );
 
     /*
      * Anything with a marker of its own ends the description: `Also here:`,
@@ -423,6 +437,60 @@ export class Classifier {
     }
 
     return this.build(line, 'unknown', {}, text, 0);
+  }
+
+  /**
+   * The spell message table's reading of a line, where the table has one.
+   *
+   * Only three verdicts are open to correction: `unknown`, because the table
+   * knows sentences no frame does (`You are using pressure points!`, `You
+   * slow down.`); and the two frame-matched types it refines, `spell-onset`
+   * and `user-buff-expired`, which then carry *which* spells the sentence
+   * belongs to rather than an effect word or a name to be resolved later.
+   * Every other type stands — `You are blind!` is an affliction with its own
+   * two-ended state machine, and the table calling it the start of `flash`
+   * would be a second opinion on a settled fact. A sentence the table holds
+   * as both a start and a stop cannot be read as either and is left as the
+   * frames read it.
+   *
+   * The spells travel in `spells`, `|`-separated: a group is a string, and a
+   * spell's name never holds that character.
+   */
+  private asSpellMessage(line: StreamLine, text: string, block: Block): Block {
+    if (!this.spells) return block;
+    if (
+      block.type !== 'unknown' &&
+      block.type !== 'spell-onset' &&
+      block.type !== 'user-buff-expired'
+    ) {
+      return block;
+    }
+    const hit = this.spells(text);
+    if (!hit) return block;
+    const begins = hit.starts.length > 0;
+    const ends = hit.stops.length > 0;
+    if (begins === ends) return block;
+    const confidence = Math.max(block.confidence, tuning().parse.baseConfidence);
+    if (begins) {
+      return this.build(
+        line,
+        'spell-onset',
+        { ...block.groups, spells: hit.starts.join('|') },
+        text,
+        confidence
+      );
+    }
+    return this.build(
+      line,
+      'user-buff-expired',
+      {
+        ...block.groups,
+        spell: block.groups['spell'] ?? hit.stops[0],
+        spells: hit.stops.join('|')
+      },
+      text,
+      confidence
+    );
   }
 
   /**
