@@ -1,0 +1,201 @@
+# Installable redistributables for Linux, Windows and macOS, on a release tag.
+#
+#   git tag v0.6.0 && git push origin v0.6.0
+#
+# Each platform is built on its own runner, because none of them can be built
+# properly from another: a .dmg is made with Apple's hdiutil, the NSIS installer
+# needs the Windows toolchain, and AppImage and .deb are Linux tooling.
+# `scripts/package.mjs` refuses locally for the same three reasons.
+#
+# The builds do NOT publish themselves. Each uploads its files as a workflow
+# artifact and one final job collects them into the release, so three jobs
+# finishing at once cannot race each other over the same release, and
+# `workflow_dispatch` gives you all three platforms to test with without
+# publishing anything.
+#
+# Unsigned, deliberately and for now. Windows shows a SmartScreen warning and
+# macOS needs Ctrl-click -> Open; the release notes say so rather than leaving
+# somebody to work it out. Signing is a matter of adding secrets and the two
+# `env:` blocks noted below — no restructuring.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Create a GitHub release from the build (tag builds always do)'
+        type: boolean
+        default: false
+
+# Read by default; only the job that creates the release asks for more.
+permissions:
+  contents: read
+
+# One release at a time. Two tags pushed within a minute of each other used to
+# be two runs uploading to whichever release existed.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Everything that can fail without a runner per platform, once.
+  #
+  # A tag is a promise, so this is the last place to catch a broken one — and
+  # the version check below is the one that has no other guard: the tag names
+  # the release and `package.json` names every artifact inside it, so a mismatch
+  # ships `mudengine-0.5.0-win-x64-setup.exe` under a release called v0.6.0 and
+  # nothing anywhere says which is right.
+  verify:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: The tag and package.json must agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}."
+            echo "Bump the version in package.json, or retag. Every artifact is named after package.json."
+            exit 1
+          fi
+          echo "v${pkg}"
+
+      - run: npm run lint
+
+      # The unit suite and the realm conversions. `test:realm` converts the real
+      # Access database in `mdb/`, which is the path a derivative realm depends
+      # on and the one thing `npm test` deliberately leaves out for speed.
+      - run: npm run test:full
+
+  build:
+    name: ${{ matrix.name }}
+    needs: verify
+    strategy:
+      # One platform failing must not cancel the other two: a Windows toolchain
+      # problem is not a reason to lose a finished Linux build you could have
+      # shipped, and knowing whether it broke everywhere is the useful signal.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            name: Linux (AppImage, deb, tar.gz)
+          - os: windows-latest
+            platform: win
+            name: Windows (installer, zip)
+          - os: macos-latest
+            platform: mac
+            name: macOS (dmg, zip — Intel and Apple silicon)
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build and package
+        # `--publish never`: this workflow's release job does the publishing.
+        # electron-builder will otherwise try to create a release of its own the
+        # moment it sees a tag and a token.
+        run: |
+          npm run build
+          npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          # Signing goes here when there are certificates: CSC_LINK and
+          # CSC_KEY_PASSWORD for Windows and macOS, plus APPLE_ID,
+          # APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID for notarization.
+          # Unset, electron-builder builds unsigned rather than failing.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only the installable files. `dist/` also holds unpacked application
+      # directories, which are the same bytes again and hundreds of megabytes of
+      # them.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mudengine-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.tar.gz
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+
+  release:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # A tag publishes. A manual run publishes only when asked, so the workflow
+    # can be used to get something to test with.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: What is being published
+        run: ls -lh artifacts
+
+      # `gh` is on the runner and needs no third-party action. `--draft` so
+      # somebody reads the notes before it is announced; delete the flag to
+      # publish outright.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in v*) ;; *) tag="v${version}" ;; esac
+
+          cat > notes.md <<'NOTES'
+          ### Install
+
+          | | |
+          |---|---|
+          | **Windows** | `-win-x64-setup.exe` — the installer. `-win-x64.zip` if you would rather not install. |
+          | **macOS** | `-mac-arm64.dmg` on Apple silicon, `-mac-x64.dmg` on Intel. |
+          | **Linux** | `.AppImage` runs anywhere (`chmod +x`, then run it). `.deb` for Debian and Ubuntu. |
+
+          ### These builds are not signed
+
+          Windows shows a SmartScreen warning: **More info → Run anyway**.
+          macOS refuses on a double-click: **Ctrl-click the app → Open**, or
+          `xattr -dr com.apple.quarantine /Applications/mudengine.app`.
+
+          ### What is in it
+
+          Paradigm's six realms are configured out of the box — the four game
+          realms and the two test realms — and the world the client walks is
+          built from Paradigm's own database, 57,511 rooms. Add your account on
+          the Characters page in Settings; it is kept on your own machine and
+          nothing else reads it.
+          NOTES
+
+          gh release create "$tag" artifacts/* \
+            --title "mudengine $version" \
+            --notes-file notes.md \
+            --draft

@@ -1,0 +1,59 @@
+# Every push and every pull request: does the tree still hold together?
+#
+# Deliberately not the whole gate. `npm run gate` also builds and drives the
+# real UI over CDP against a fake host (`npm run smoke`), which needs a display
+# and takes minutes; that is a pre-commit check on a developer's machine, run
+# once against a finished diff. What runs here is the part that is fast, has no
+# display and catches the things a reviewer cannot see: formatting, types, the
+# 1,600 unit tests, and the realm conversion.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Formatting, then both tsconfig projects.
+      - run: npm run lint
+
+      # `test:full` rather than `test`: the realm conversions read the real
+      # Access database in `mdb/` and are the only proof that a derivative
+      # realm's world file still converts. They cost about twenty seconds and
+      # are kept out of the fast loop for exactly that reason — which makes CI
+      # the place they belong.
+      - run: npm run test:full
+
+
+# `npm run capture:corpus` is deliberately NOT here. It replays the 218 recorded
+# sessions through the real classifier and prints what it could not read — a
+# report for somebody to read, which exits zero unless `captures/` is empty. A
+# green tick from a check that cannot go red is worse than no check, and this
+# repository has been bitten by exactly that (`capture:corpus` was dead for a
+# day without going red). Run it by hand when a pattern changes.
+#
+# `npm run smoke` is not here either, for a different reason: it drives the real
+# UI over CDP and needs a display, so it wants xvfb and several minutes. It is
+# the pre-commit gate on a developer's machine — `npm run gate` — run once
+# against a finished diff.

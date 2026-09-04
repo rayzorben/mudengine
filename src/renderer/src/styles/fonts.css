@@ -1,0 +1,51 @@
+/*
+ * The console's default face, shipped with the client.
+ *
+ * `terminal.font.family` has named this since the beginning and it was never
+ * loaded: the .ttf sat in `resources/` where nothing reads it, so the default
+ * resolved only on a machine that happened to have it *installed*. Everywhere
+ * else — which is every Windows and macOS machine, and most Linux ones — the
+ * stack fell through to Lucida Console or DejaVu Sans Mono, and the client
+ * every player saw was not the client it was designed against.
+ *
+ * Declared here, so the family name the config asks for is one the renderer can
+ * always resolve. It is the descendant of the legacy project's Lucida
+ * Programmer stack and is verified to cover U+2500-U+259F at spacing=100 —
+ * which is the requirement, not the preference: the game draws maps, box frames
+ * and stat columns in character cells, and a face missing the box-drawing range
+ * shears all three.
+ *
+ * `font-display: block` deliberately, as with the faces below. A swap would
+ * paint the opening banner in a fallback and then re-lay it out, and the banner
+ * is the first thing anybody judges the client by.
+ */
+@font-face {
+  font-family: 'LucidaProgrammer Nerd Font Mono';
+  src: url('../assets/fonts/LucidaProgrammerNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/*
+ * Authentic IBM PC text-mode faces, salvaged from the megamind-client asset set
+ * (originally from int10h.org's Oldschool PC Font pack). CP437 box-drawing and
+ * block glyphs render correctly only with one of these.
+ */
+@font-face {
+  font-family: 'Web437 IBM VGA 8x16';
+  src: url('../assets/fonts/Web437_IBM_VGA_8x16.woff') format('woff');
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Web437 IBM VGA 9x16';
+  src: url('../assets/fonts/Web437_IBM_VGA_9x16.woff') format('woff');
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Web437 IBM EGA 8x14';
+  src: url('../assets/fonts/Web437_IBM_EGA_8x14.woff') format('woff');
+  font-display: block;
+}

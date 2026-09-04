@@ -1,0 +1,129 @@
+# A character.
+#
+# Copy this into the `profiles/` directory beside your options file and give it
+# the character's name -- `thorn.yaml` makes a character whose id is `thorn`.
+# That id names the session, the log file, the capture and the tab, so renaming
+# the file renames all of them at once, and `grep thorn` finds everything.
+#
+# The directory is watched. Add, edit or remove a file and the client picks it
+# up within about half a second. A file that will not parse, or that cannot name
+# a realm, is reported in the terminal and skipped -- the other characters load
+# regardless. One broken character file never costs you the rest of them.
+#
+# EVERYTHING BELOW IS OPTIONAL EXCEPT `server`. A character made from the
+# settings screen takes a copy of the Global defaults and states them here; one
+# written by hand states only what it wants different, and inherits the rest.
+
+# Display name. Defaults to the filename.
+name: Thorn the Unready
+
+# Which realm. Required, and the one thing with no default: a character that
+# cannot name a realm is skipped rather than pointed at `connection:`, because
+# a defaulted character is a tab that silently dials somewhere you never chose.
+# (The key is still spelled `server:`; the word on screen is Realm.)
+#
+# Either the name of a realm in `servers/<id>/server.yaml` -- seven ship: the
+# six Paradigm realms and GMUD (5X), which is the default a new character made
+# from the settings screen starts on (`DEFAULT_REALM_NAME` in
+# `src/shared/config.ts` is the other half of that pair):
+server: GMUD (5X)
+#
+# ...or spelled out here, if it is only used by this character:
+# server:
+#   host: paramud.mudinfo.net
+#   port: 2323
+#   encoding: cp437
+
+# Which credentials. Inline, always -- there is no shared account store, so two
+# characters on the same BBS account each state their own username and
+# password here, and if they drift apart that is on you to notice.
+#
+# Paradigm runs ONE account for all of your characters: the username and
+# password below are the same on every one of them, and what actually picks
+# the character is the slot number in the `login.steps` list further down.
+# account:
+#   username: ''
+#   password: ''
+
+# The menu answers that get this character into the realm.
+#
+# USUALLY LEAVE THIS OUT. The menus belong to the realm -- every character on
+# one meets the same ones -- so they live in `servers/<id>/server.yaml`. State
+# a list here only to *differ*, which in practice means a different character
+# slot, and it replaces the realm's list rather than adding to it.
+#
+# `enabled` defaults to true as soon as an account resolves -- a character
+# exists to say "this is me, log me in". It is ignored without a username and
+# password, and the safety rules are unchanged: a rejected password is never
+# retried, a prompt that comes back a second time stops the sequence, and a
+# missing answer leaves the prompt for you.
+#
+# login:
+#   steps:
+#     - when: 'Please enter your selection'
+#       send: P
+#     - when: 'Please select a realm'
+#       send: '1'
+#     # The character slot -- this is what differs between two characters on
+#     # one account, and the usual reason to state a list here at all.
+#     - when: 'Please select a character'
+#       send: '2'
+#     - when: '[PARADIGM]'
+#       send: E
+#     - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+#       send: ''
+
+# Dial this character when the client starts.
+autoConnect: false
+
+# Dial it again when a connection is LOST -- a link that dropped, a server that
+# went away. On by default, and not the same question as the one above: that one
+# opens a connection you did not ask for, this one puts back the one you had.
+# A character left standing in the realm while its client sits at a closed
+# socket is a character being killed while nobody is watching.
+#
+# It never fires for a disconnect you asked for -- pressing Disconnect, hanging
+# up on low health, dialling a second realm, quitting -- and never once you have
+# typed your way out to the menu, because dialling back would put you in the
+# realm you just left, with your password. The waits are 0s, 5s, 10s and then
+# 15s for as long as it takes; `tuning.reconnect` in internal.yaml is where
+# those live.
+autoReconnect: true
+
+# Identity colour, for the tab and the focused pane's edge: cyan, green, amber
+# or violet. Omit it and one is picked from the character's name, stably -- so
+# adding a character never repaints the ones you already had.
+# accent: amber
+
+# ---------------------------------------------------------------------------
+# Anything below here is an overlay on your options file. In a hand-written
+# file, add only what this character wants DIFFERENT from the others.
+#
+# A record merges key by key. Anything else replaces, lists included: stating
+# `automation.rules` here means *these rules*, not these as well as the global
+# ones. Appending would make it impossible to remove a global rule for one
+# character, and silently dropping the global set would be worse.
+# ---------------------------------------------------------------------------
+
+# automation:
+#   idle:
+#     afterSeconds: 90
+#   # What this character keeps in stock, and where it buys it. The Self card
+#   # and the item panel write this list; a hand-written one reads the same.
+#   supplies:
+#     items:
+#       - { name: torch, min: 3, max: 7, shop: General Store, at: { map: 1, room: 2147 } }
+
+# ui:
+#   vitals:
+#     # A warrior has no mana, and a bar that reads 0% of nothing is a lie about
+#     # a number that decides whether you run.
+#     mana:
+#       warn: 0
+#       low: 0
+#       critical: 0
+
+# logging:
+#   # Capture only this character while developing a pattern, rather than all of
+#   # them.
+#   capture: true

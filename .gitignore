@@ -1,0 +1,90 @@
+# Without the trailing slash as well: a worktree that shares the main
+# checkout's dependencies does it with a *symlink*, and `node_modules/` matches
+# only a directory — so the link showed up as an untracked file in every
+# `git status` and was one `git add -A` away from being committed.
+node_modules
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+.vite/
+resources/config/*.local.*
+
+# TypeScript incremental build state: a local cache, and it changes on every
+# build. Tracking it means every run shows a diff nobody wrote.
+*.tsbuildinfo
+# What a development run used to leave inside the checkout.
+#
+# The client keeps its files under the platform's own user directory now
+# (`~/.config/mudengine` and friends -- see `src/main/app/home.ts`), so nothing
+# here should reappear. These stay because a checkout that predates the move
+# still has them and one `git add -A` away is somebody's password in a commit.
+resources/config/user.yaml
+resources/config/user.yaml.*
+resources/config/profiles/
+resources/config/realms/
+resources/config/mob-lore.json*
+resources/config/memory/
+resources/config/fights/
+
+# Session recordings. `logging.capture` is on by default (see
+# `resources/config/default.yaml`), so these accumulate from ordinary play.
+#
+# They land in <userData>/logs unless `logging.directory` says otherwise --
+# and it may well point somewhere in this tree, which is why these are matched
+# by name anywhere rather than at one path. They hold everything the server
+# sent and every command sent back, which on a manual login includes a
+# password: `npm run check:secrets` exists for exactly this, and these must
+# never be committed.
+*.mudcap.jsonl
+logs/
+
+# MegaMUD itself: 27MB of somebody else's program, its help file and 4,490
+# recorded paths. Read from (docs/mega-paramud.md) and converted by
+# `npm run build:loops`; the converted loops are committed, this is not.
+mega-paramud/
+captures/
+# Claude Code's own working tree: agents, skills and worktrees it writes for
+# itself. It has never been committed and must not be -- `settings.local.json`
+# under it holds machine-specific permissions, and the rest is a cache of this
+# machine's assistant configuration, not of the project.
+.claude/
+
+# Prose is kept locally, not in the repository. CLAUDE.md, TODO.md, CHANGELOG.md
+# and everything under docs/ are working notes that change on almost every
+# session; tracking them meant every commit carried a diff of the notes taken
+# while making it. They still exist on disk -- `git rm --cached` took them out
+# of the index and left the files alone.
+#
+# `*.MD` is here because the case matters on Linux and does not on the machines
+# these files came from.
+*.md
+*.MD
+
+# Screenshots dropped in the root while looking at something. `image*.png`
+# rather than `image-*.png`: the first one a paste produces is `image.png`,
+# with no number, and the hyphenated form is exactly the pattern that misses it.
+image*.png
+
+# The todo queue is prose plus pasted screenshots, all of it local — the
+# working notes rule above, applied to the one directory that exists to hold
+# them. The `*.md` pattern already caught the words; the assets beside them
+# (a paste renamed by hand, an archived screenshot named after its todo)
+# escaped `image*.png` one filename at a time.
+todo/
+docs/
+
+# The one exception, and it is deliberate: the root README is the front page
+# of the repository, so it is the one piece of prose worth keeping under
+# version control. Only the root one -- `/README.md`, anchored. It used to be
+# `!**/README.md`, which pulled in `build/README.md` and, before `docs/` was
+# ignored as a directory, `docs/greatermud/README.md`; those are working notes
+# like everything else and were taken out of the index in the same change.
+!/README.md
+
+# Reference source cloned for comparison, never ours to track. `MMUD-Explorer`
+# is a 138 MB VB6 tree with a realm database in it; it is read here and lives
+# nowhere in this repository's history.
+.scratch/

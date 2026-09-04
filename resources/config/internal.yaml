@@ -1,0 +1,932 @@
+# mudengine — internal settings
+#
+# How the client behaves about its *own* commands. Not the options file: that
+# one is yours, and every value in it is a choice about a character. This one
+# is the client's, kept where it can still be read and edited, and reloaded the
+# moment it is saved.
+#
+# Nothing in a profile can override it, on purpose: two characters that
+# disagreed about which of the client's housekeeping shows in the console would
+# be two consoles that behave differently for no reason a player chose.
+
+terminal:
+  quiet:
+    # Commands the client sends on its own behalf whose echo and answer stay
+    # out of the console — `rm` is asked on every arrival so the map knows
+    # where it is, and answers with a line nobody reads. Only what automation
+    # sends is ever quiet; anything you type is always shown, and so is
+    # anything the server volunteers in the middle of an answer — a monster
+    # walking in, somebody talking — because that is not the answer.
+    enabled: true
+    # The first word of the command, as the client sends it.
+    #
+    # The client never sends `l` on its own behalf any more: a look tells
+    # everybody in the room that this character is looking around, which is
+    # spam in company and a tell in a fight. It re-reads the room with a bare
+    # Enter, which prints the same block and says nothing to anybody. That has
+    # no first word, so it answers to `enter` here -- add it to keep the idle
+    # and mid-fight re-reads out of the console as well.
+    commands:
+      - rm
+      - look
+
+  # Decorate what the console recognises: a glyph beside a shop or bank's
+  # name, and a monster's, item's or spell's name that can be clicked for what
+  # the realm knows about it. Drawn outside the character grid, so nothing the
+  # server lays out in rows and columns moves.
+  enrich: true
+
+# Which commands the palette (Ctrl/Cmd K) pins to the top on a fresh client.
+#
+# The palette opens on a pinned section and four collapsed headings; expanding
+# one shows the rest of that group, and typing finds every command there is --
+# pinning curates the shelf, it does not lock the warehouse. A pinned command
+# is drawn at the top *instead of* in its own group, so no row is ever in the
+# list twice.
+#
+# This is the shelf you start with, not the shelf you keep: the pin at the end
+# of any row (or Ctrl/Cmd P on the highlighted one) moves a command on or off
+# it, and that is remembered without rewriting this file. Editing a line here
+# still wins for the command it changes its mind about.
+#
+# Patterns are command ids, exact or with a trailing `*`: `loop:*` is every
+# loop your character defines, `pane:*` every split. They are matched against
+# the group the command itself belongs to. Stating this block replaces the
+# default list whole.
+palette:
+  pinned:
+    character:
+      - settings
+    navigate:
+      - route
+      - 'loop:*'
+      - 'loop:stop'
+    # Nothing in View is reached often enough to earn a permanent row; expand
+    # the heading, or pin what you use with one click.
+    layout:
+      - 'pane:*'
+      - 'cards:reset'
+
+# Which buttons the toolbar draws on a fresh client.
+#
+# The toolbar is one row of glyphs docked above the console -- automation you
+# reach for while playing, and the transport controls beside it. Every one is a
+# toggle whose answer lives in the character's own file, so pressing one edits
+# `automation:` there and the button and the settings screen can never disagree
+# about what the character is doing.
+#
+# The vocabulary is far longer than a row, so this is the row you *start* with:
+# the `...` at the end of the toolbar lists every button there is and pins or
+# unpins it, and that choice is remembered without rewriting this file. Editing
+# a line here still wins for the button it changes its mind about. Stating this
+# block replaces the default list whole.
+#
+# Names are button ids. The switches are `automation` (the master), `combat`,
+# `retaliate`, `engageWhileWalking`, `retreat`, `hangUp`, `loot`, `drop`,
+# `search`, `autoDeposit`, `openDoors`, `pickLocks`, `bashDoors`, `sneak`,
+# `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
+# `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,
+# `loop:open` (the shelf of every loop), `loop:toggle`, `loop:stop` and
+# `walk:stop`.
+toolbar:
+  pinned:
+    - connect
+    # Put the kit back on, from what the client saw in each slot. A death takes
+    # everything off and leaves it in the pack, so this is the first press of
+    # that recovery -- which is why it sits beside the dial rather than with the
+    # loop's transport. Greyed when there is nothing in the pack to put back.
+    - 'gear:restore'
+    - automation
+    - combat
+    - retaliate
+    - loot
+    # Searching every room, on the row rather than in the kebab: it costs a
+    # command per room, so it is the kind of switch somebody turns on for one
+    # corridor and off again -- and one you toggle that often behind a menu is
+    # one you stop toggling.
+    - search
+    - 'loop:open'
+    - 'loop:toggle'
+    - 'loop:stop'
+    - 'walk:stop'
+
+# Every number the client uses to decide something.
+#
+# The rule this block exists for: no value that makes a determination is
+# written into the code that acts on it. A timeout too short for your link, a
+# retry count one too few for your realm, a cap that truncates a listing your
+# server actually sends -- every one of those used to be a code change for a
+# number. They are all here, so the answer is an edit to this file.
+#
+# Read once at startup and again on every save, like the rest of this file.
+# Anything you leave out keeps the value below; anything unreadable does too,
+# and a key this client has never heard of is ignored rather than carried.
+# Durations end in `Ms` and are milliseconds and floor at 1 -- a
+# zero-millisecond timer spins a core -- and a value that is a fraction here
+# stays one, clamped to 0-1.
+#
+# Most of these should never need touching. They are here so that when one
+# does, you can fix it without waiting for a release.
+tuning:
+  # Framing, negotiation and the socket itself — `src/main/net/`.
+  net:
+    # How long to wait for a socket to open before giving up on it.
+    #
+    # Generous for a BBS on a slow link and far short of the operating
+    # system's own patience, which is what matters: the OS gives up on an
+    # unanswered SYN after roughly two minutes, and a client that waits that
+    # long has already stopped being usable.
+    connectTimeoutMs: 15000
+
+    # Trailing window in which repeated geometry changes coalesce into one
+    # NAWS report. A pane transition remeasures on every frame; without this,
+    # one drag puts a report on the wire per frame of it.
+    nawsCoalesceMs: 150
+
+    # Cap on a single unterminated line held in the framing buffer. Past this
+    # the content is not a line in any useful sense and is released as one:
+    # losing the framing beats losing the process.
+    maxPendingBytes: 65536
+
+    # Longest partial escape sequence held back while the rest of it is
+    # awaited. CSI sequences in this domain are far shorter; the cap only
+    # stops a stuck stream when a lone ESC arrives and nothing follows.
+    maxPartialEscapeBytes: 32
+
+    # How long after `end()` a closing socket is destroyed outright. `end()`
+    # waits for the FIN handshake; this guarantees the socket is gone even if
+    # the peer never replies.
+    destroyDelayMs: 250
+
+  # Dialling back a connection that was LOST — `src/main/session/Reconnect.ts`.
+  #
+  # A character asks for this in its own profile (`autoReconnect`, on by
+  # default); these are the waits it uses. The ladder is
+  # `min(maxDelayMs, attempts * stepMs)`, so out of the box the first attempt is
+  # immediate and the rest wait 5s, 10s, then 15s for as long as it takes.
+  #
+  # It never fires for a disconnect you asked for — pressing Disconnect, the
+  # low-health hang-up, switching realms, quitting — and never once you have
+  # left the realm on purpose.
+  reconnect:
+    # What each consecutive failure adds to the wait before the next one.
+    stepMs: 5000
+
+    # Where the wait stops growing, and sits for every attempt afterwards. On a
+    # link that takes a minute to come back, raise this rather than editing a
+    # schedule.
+    maxDelayMs: 15000
+
+    # Consecutive failures before the client stops and says so. Effectively no
+    # limit: a router that comes back at 4am should find the client still
+    # asking.
+    maxAttempts: 999999
+
+    # Consecutive connections that OPENED and were dropped before they settled,
+    # before the client stops and says so. Far lower than maxAttempts and
+    # bounding a different thing: an outage refuses or never answers, and
+    # dialling that for as long as it takes is the point of the number above. A
+    # server that accepts and hangs up seconds later is a full BBS, a realm
+    # rebooting -- or a front end answering a refused password with a sentence
+    # this client has no pattern for, where the credentials would go back out on
+    # every rung.
+    maxFlaps: 5
+
+    # How long a connection has to hold before the NEXT loss starts the ladder
+    # over rather than continuing it. Without it, a server that accepts and
+    # immediately drops — a full BBS, a realm rebooting — would be dialled again
+    # as fast as TCP allows, for ever.
+    settledMs: 30000
+
+  # Reading the stream — `src/main/parse/`.
+  parse:
+    # A text match on its own. Most blocks never get a colour opinion.
+    baseConfidence: 0.8
+
+    # Text match plus the colour the rule expected.
+    colourAgrees: 0.95
+
+    # Text matched, but not in the colour this rule usually wears.
+    colourDisagrees: 0.6
+
+    # Cap on description lines held for one room. A description is defined by
+    # what it is *not*, so a room that never completes must not accumulate
+    # without bound. Comfortably above the longest seen from the live server.
+    descriptionLines: 20
+
+    # Cap on the lines of a `who` listing -- the one listing whose length is the
+    # realm's business rather than the pattern's, because it has one row per
+    # person logged in. What actually ends the listing is the status line the
+    # server prints after it; this is the backstop for a realm whose prompt this
+    # client has never met, so it has to sit above any population you play on.
+    # It was 60 beside the pattern, and a busier realm silently lost everybody
+    # past the sixtieth row -- a `who` on screen with the client calling the
+    # person on it offline.
+    rosterLines: 400
+
+    # How often a monster heals itself, in milliseconds.
+    #
+    # A monster regenerates on a server tick and nothing announces it, so a
+    # wound estimate built from damage alone only ever falls and drifts below
+    # the truth as a fight drags on. The realm data states the amount per
+    # monster; this is the cadence.
+    #
+    # 30s on GreaterMUD (6 rounds of 5s) and 90s on stock MajorMUD (18 rounds).
+    # A realm running faster than its own clock -- a test server, say -- wants
+    # this scaled to match, which is why it is a setting and not a constant.
+    mobRegenMs: 30000
+
+    # Remembered attackers in one fight. The names matter, not the count.
+    maxAttackers: 12
+
+    # Monsters tracked in one fight. The oldest ledger is dropped.
+    maxLedgers: 8
+
+    # Unanswered directions remembered. Deep enough for a burst a player can
+    # type or a walk can enqueue, shallow enough that a client which has lost
+    # the thread stops pretending.
+    maxPendingMoves: 12
+
+    # And how long one of them may wait before the client gives up on it. The
+    # cap above and this one are the same claim on two axes -- "this client has
+    # lost the thread" -- and only the depth one used to exist. A sentence the
+    # parser cannot read answering a move leaves the claim outstanding for ever,
+    # and running away, walking a route, running a loop and hitting back all
+    # stand down while one is. Long enough for a step the server is slow with;
+    # short enough that a fight is still a fight when it lapses.
+    staleMoveMs: 8000
+
+    # Pack changes held against a listing that has not finished arriving. A
+    # listing takes about a second; this covers what a person or a fight can
+    # do in one, and no more.
+    maxPackChanges: 16
+
+    # Possible rooms kept for the resolution trace.
+    maxRoomCandidates: 8
+
+    # The band a line has to be inside to be read as a room's name.
+    #
+    # Tuned against the capture corpus: the shipped realm's longest is well
+    # inside the ceiling, and the floor is what keeps a two-letter answer from
+    # being taken for a place. Losing a name is not cosmetic — the room block
+    # completes with nothing to look up, so the client stops knowing where it
+    # is standing.
+    roomNameMinChars: 3
+
+    roomNameMaxChars: 60
+
+  # The one writer to the socket, and what drives it.
+  queue:
+    # How long a half-typed line keeps holding automation after the last
+    # keystroke, before it is written off as abandoned. It has to survive any
+    # pause a person actually takes mid-word — a release landing in the middle
+    # of one produced `lpu thin kobold thief`, said out loud in the room
+    # (captured live, 2026-08-26) — and it must not silence the keep-alive for
+    # a whole evening because somebody typed two characters and walked away.
+    abandonedLineMs: 20000
+
+    # How long after the last combat message `mid-round` fires.
+    midRoundMs: 100
+
+    # A floor on the idle poll rate, not on the configured quiet period.
+    # Unreachable from any options file — it exists so a config that arrived
+    # here unnormalised cannot spin a timer hot.
+    minIdleTickMs: 100
+
+    # The shortest gap between two roster catch-up `who` commands.
+    #
+    # Somebody entering the realm is a fact about who is online, and only a
+    # listing settles what they are. Asking on each arrival would spend a
+    # command per arrival on a busy realm; asking only when the character next
+    # goes quiet meant one that fights and walks all evening never asked at all
+    # -- a `who` on screen and a record saying "offline" on the same screen.
+    # So it is a debounce: the first arrival asks, and the arrivals inside the
+    # window are answered by the same listing.
+    rosterAskMs: 60000
+
+    # Decision-trace entries kept; it answers "why did it do that?".
+    traceLimit: 200
+
+  # Fighting on the character's behalf — `AutoCombat`.
+  combat:
+    # How long after the last combat line a round verb goes out. Inside a
+    # round rather than between rounds, and the one piece of timing worth
+    # taking from `tproxy`. It also collapses a burst of six combat lines into
+    # the one round they are.
+    roundMs: 100
+
+    # The shortest gap between two attempts to open a fight on the same thing.
+    # Not pacing — pacing comes from the prompt — but a floor on *asking*: an
+    # attack refused for a reason this client cannot see leaves the room
+    # exactly as it was.
+    engageCooldownMs: 4000
+
+    # How long an arrival sentence stays pending its own state change. Short,
+    # because what it bounds is the case where the change never comes.
+    arrivalWindowMs: 2000
+
+    # How long a typed `break` stands auto-combat down. The stand-down ends
+    # early when the player attacks or the room changes; this is the backstop
+    # for standing still.
+    breakStandoffMs: 30000
+
+    # How old a sighting of the leader's target may be before it is nobody's.
+    assistFreshMs: 60000
+
+  # How a monster's hazards are priced when auto-combat decides what to hit
+  # first. A blow is hit points and needs no pricing; everything else a
+  # monster can do is priced in rounds of the whole room's blows against this
+  # character — a round spent paralysed costs whatever everything in the room
+  # lands in a round, because that is exactly what happens during it.
+  menace:
+    # A round held (HoldPerson): unable to leave, in a realm where leaving is
+    # the only escape. Whole rounds, like afraid, summon and teleported; the
+    # three halves below are fractions of one.
+    held: 1
+
+    # A round confused, scaled by the spell's stated chance of an action
+    # misfiring.
+    confused: 0.5
+
+    # A round blind.
+    blinded: 0.5
+
+    # A round slowed.
+    slowed: 0.25
+
+    # A round afraid, scaled by the stated chance of being shoved out of the
+    # room.
+    afraid: 1
+
+    # One summoned ally: a fresh monster, in this room, now.
+    summon: 2
+
+    # Being teleported somewhere the character did not choose.
+    teleported: 1
+
+    # Multiplier for a spell that reaches everybody in the room: it lands on
+    # the character whoever the monster is facing, and on the party besides.
+    roomWide: 2
+
+    # How many three-second effect ticks of a poison or a lasting damage spell
+    # are counted. A bite that poisons for a hundred ticks runs five minutes
+    # and is cured or outrun long before that; twenty is a minute.
+    lastingTicks: 20
+
+    # The least one round of the room is worth, in hit points. A room of pure
+    # casters lands no blows, and a round held in it is still not free.
+    unitFloor: 10
+
+    # A death spell fires once; it is spread over this many rounds so it
+    # counts towards the order — taken early, at full health — without
+    # outweighing every round of blows before it.
+    deathOverRounds: 5
+
+  # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
+  spells:
+    # How long a heal proposal stays worth sending.
+    healExpiresMs: 3000
+
+    # Long enough for the next status line to say whether the heal worked.
+    healCooldownMs: 6000
+
+    # How long a cure proposal stays worth sending.
+    cureExpiresMs: 3000
+
+    # How often the blessing maintainer looks at what has lapsed.
+    buffTickMs: 1000
+
+    # How long a blessing proposal stays worth sending. Never urgent.
+    buffExpiresMs: 10000
+
+    # The gap between blessing proposals, module-wide: one blessing at a
+    # time, at the pace the server confirms casts, because a second spell in
+    # the same round is answered with a refusal.
+    blessCooldownMs: 6000
+
+    # How long a proposed blessing that was never confirmed is trusted to be
+    # in flight before it is proposed again — a cast refused, under-manaed or
+    # expired in the queue. The cures' own retry, for the same reason.
+    blessRetryMs: 30000
+
+    # The watchdog behind a self blessing whose duration has never been
+    # measured: how long the buff is trusted when no wear-off frame is read.
+    # Once a cast→wear-off pair has been observed, the measured duration
+    # (plus blessSlack) replaces this.
+    blessWatchdogMs: 300000
+
+    # Slack on a measured duration, as a fraction of it: the watchdog fires
+    # this much after the buff should have ended, so the wear-off frame —
+    # the honest signal — always gets to speak first.
+    blessSlack: 0.25
+    # How soon after a cast an onset line (`You feel safe from evil!`) is
+    # learned as that spell's, so the `st` timer can be attributed to it.
+    onsetWindowMs: 3000
+
+  # Drinking on the character's behalf — `Potions`.
+  potions:
+    expiresMs: 3000
+
+    # Long enough for the next status line to say whether it worked.
+    cooldownMs: 6000
+
+  # Picking things up — `AutoLoot`.
+  loot:
+    expiresMs: 5000
+
+  # Readying a light before a dark step — `AutoLight`. A `light` or `remove`
+  # still queued after this is for a room already left.
+  light:
+    expiresMs: 4000
+
+  # Keeping the pack stocked — `Supplies`. `buyTimeoutMs` is how long a `buy`
+  # may go unanswered by `You just bought …` before it is taken as refused;
+  # `retryMs` how long a refused item is left alone; `maxLegs` how many times
+  # the walk to the shop is planned again after a fight stops it.
+  supplies:
+    buyTimeoutMs: 8000
+    expiresMs: 6000
+    retryMs: 300000
+    maxLegs: 4
+    # The whole errand's deadline, after which it gives the lap back — a leg
+    # superseded by another walk raises no ending of its own.
+    errandTimeoutMs: 300000
+
+  # Shedding named junk — `AutoDrop`.
+  drop:
+    expiresMs: 5000
+
+  # Looking for what a room did not print — `AutoSearch`. Shorter than the
+  # loot's on purpose: a search is about the room the character is standing in,
+  # so one still queued after it has walked out would look somewhere else.
+  search:
+    expiresMs: 3000
+
+  # Banking the purse — `AutoDeposit`.
+  banking:
+    # Long enough for the deposit sentence to move the purse; without it a
+    # status line arriving before the answer would propose the same deposit
+    # again.
+    cooldownMs: 10000
+    expiresMs: 10000
+
+  # Sitting down — `Recovery`.
+  rest:
+    # Generous, unlike an attack's: what this reacts to is a number that moves
+    # slowly, and a `rest` that arrives two seconds late is still a rest.
+    expiresMs: 5000
+
+    # How long a proposed `rest` is trusted to be in flight before it is asked
+    # for again. `(Resting)` is the server's answer and does not exist until the
+    # `rest` has been answered, so with eight probe replies outstanding at login
+    # eight status lines came back before the first one did and each proposed
+    # another — eight `You are now resting.` inside 80ms, measured 2026-09-02.
+    # Bounded rather than permanent, so a `rest` the server swallowed is still
+    # asked for again; cleared the moment the flag does arrive.
+    askedMs: 3000
+
+  # Commands on a clock — `Events`.
+  events:
+    tickMs: 1000
+
+    # How long a proposal stays worth sending. A timed command is not urgent.
+    expiresMs: 10000
+
+  # Walking a planned route — `Walker`.
+  walk:
+    # How long one hold lasts before the walk tries the step again.
+    holdMs: 1500
+
+    # How many holds run back to back before it walks on regardless.
+    maxHolds: 3
+
+    # How long a route waits out a fight before it gives up on the journey.
+    #
+    # A fight normally ends by itself — the monster dies, the character runs,
+    # or the character does — so the hold that waits for it needs no clock. This
+    # is the floor under the case where *nothing in this client can end it*:
+    # auto-combat and the retreat are both off by default, so a wandering monster
+    # can open on an unattended character with neither of the two things that
+    # would finish the fight switched on, and the route would stand there
+    # silently for the evening.
+    #
+    # Generous on purpose: a fight this client is actually fighting is seconds,
+    # so two minutes only ever expires on one it is not.
+    fightHoldMs: 120000
+
+    # How much longer than this realm's own slowest answer a step may go
+    # unanswered before the walk sends one bare Enter to force a status line out
+    # of the server.
+    #
+    # A margin over a measurement, never a claim about the server. This used to
+    # be the whole deadline and meant "a move is answered in well under a
+    # second" — true of one realm, stated about all of them. Paradigm's movement
+    # round is a measured 1,239ms, so the fallback fired on every step of every
+    # walk, and the bare Enter it sends is answered with a full reprint of the
+    # room: every room appeared twice, all the way round the lap.
+    #
+    # The walk now measures what a move actually costs on your realm and this is
+    # the headroom on top. It is also the whole deadline until a move has been
+    # answered once, which is the only moment there is nothing to measure
+    # against. One per step; the full stepTimeoutMs runs behind it before the
+    # walk gives up.
+    nudgeAfterMs: 1000
+
+    # How many recent move answers that deadline is measured over.
+    #
+    # The statistic is the slowest of them: the deadline exists to be later than
+    # a normal answer, and one fast answer says nothing about the slow case — a
+    # step whose room dead reckoning had already placed answers in a millisecond
+    # and is not evidence the realm is quick. A window rather than an all-time
+    # maximum, so one lagged answer ages out instead of standing the fallback
+    # down for the evening.
+    nudgeSamples: 5
+
+    # Confirmed steps kept for a retreat to look back over.
+    recentSteps: 5
+
+    # How far below a barrier's stated number the character's own skill may
+    # sit and still be worth spending a command on.
+    #
+    # **Not measured.** The realm records one number per barrier and nothing
+    # says what a roll against it looks like. The two differ because the two
+    # attempts do not cost the same: a failed pick costs a command, a failed
+    # bash costs a command *and* health, so the cheaper attempt is allowed the
+    # longer reach.
+    bashMargin: 10
+
+    pickMargin: 20
+
+    # How many searches one hidden exit is worth before the walk gives up. The
+    # router already priced the leg including the search, so spending the
+    # command keeps a promise rather than making a new decision.
+    searchTries: 2
+
+  # Running a loop — `LoopRunner`.
+  loop:
+    # Consecutive non-combat failures before the loop gives up on itself.
+    maxFailures: 3
+
+    # How many times a lost loop asks the realm where it is before giving up.
+    maxLocates: 5
+
+    # How long to give a fact already on its way before asking for it. Long
+    # enough that the answer normally arrives first, short enough that a move
+    # the server swallowed does not leave a loop reporting progress it is not
+    # making.
+    locateWaitMs: 2500
+
+    # How long an arrival stands in a stop that asked for no longer.
+    #
+    # Not a politeness pause. Engagement fires from character state while the
+    # character is *standing somewhere*, and a loop that advanced the moment
+    # each leg confirmed walked past twelve laps of monsters engaging nothing.
+    dwellMs: 2000
+
+    # How long a loop stands still after an escape before it will plan again.
+    #
+    # An escape leaves the character one room from what it ran from, and the
+    # lap's next leg is planned from where it landed. The health hold
+    # (`restTo`) covers running away hurt; this is the floor under it,
+    # for running away from a crowd at full health.
+    escapeSettleMs: 8000
+
+    # The margin a lap held for health resumes above the floor it paused at,
+    # when no ceiling is set.
+    #
+    # `restTo` is the ceiling and also the resume floor -- but `restTo: 0` means
+    # *the single sit-down* rather than *no hysteresis*. Read literally, a lap
+    # would resume marching at exactly the health it paused at and the next hit
+    # would put it straight back, at status-line cadence. So a 0 ceiling resumes
+    # this fraction of maximum above the floor instead.
+    resumeMarginWhenUncapped: 0.1
+
+  # How many commands one press or one `@` may spend.
+  #
+  # One budget, because it is one budget: each `wear`, `get` or `drop` comes
+  # out of the same allowance the fight is being fought with, and a pack's
+  # worth of them queued behind an escape is the failure pacing exists to
+  # prevent. Said out loud when it bites, rather than silently doing ten of
+  # eighteen.
+  spending:
+    # One `@get-all`, or one `@drop-all`.
+    maxGets: 10
+
+    # One press of the gear button.
+    maxGear: 10
+
+  # What one session keeps in memory for the diagnostics cards.
+  session:
+    # Negotiation records the diagnostics pane can look back over.
+    telnetLogLimit: 500
+
+    # Framed lines retained; the terminal keeps the real backscroll.
+    lineLogLimit: 500
+
+    # Sent commands the decision trace keeps — enough to cover the minute
+    # before something went wrong, which is the window anyone asks about.
+    sentLogLimit: 60
+
+    # Safety decisions kept. Small on purpose: these are rare by construction,
+    # so a long list means something is wrong rather than something is busy.
+    safetyLogLimit: 40
+
+    # How long a `safe-haven` retreat waits for the fight to end.
+    retreatPatienceMs: 20000
+
+    # How long a `safe-haven` retreat waits for the escape move to land.
+    retreatSettleMs: 5000
+
+    # Minimum gap between decision-trace publishes. The queue changes several
+    # times a second in combat and every change interests a diagnostics card
+    # and nothing else.
+    automationPublishMs: 250
+
+    # Actions offered on the room line the console just printed. Capped
+    # because a row of eight buttons pushes the room's name off the screen.
+    roomActions: 4
+
+    # Cap on the half-typed line the client keeps a copy of. Past this it is
+    # not a command anybody is typing, and dropping it beats growing for ever.
+    outboundLineLimit: 512
+
+    # How long a direction the player typed is watched for its room before it
+    # is written off. A walk or a loop stands down when the player moves the
+    # character themselves, and it is the arrival that says they did — a
+    # direction into a wall moves nobody and must not end a lap.
+    playerMoveWindowMs: 15000
+
+    # How often the heal, the potion, the cures and the resting re-decide with
+    # no new status line to decide from.
+    #
+    # Everything automated hangs off a state change and a state change needs a
+    # status line — which a standing, idle character gets only when the server's
+    # own regeneration moves a vital, once every thirty seconds. So a decision
+    # deferred on a clock of its own (a heal's cooldown, a cure's retry) was not
+    # taken when the clock lapsed: it was taken whenever the game next spoke, or
+    # whenever you pressed Enter. Measured 2026-09-02, a cast came off a
+    # six-second cooldown at 97.6s and went out at 120.5s, on a keystroke.
+    #
+    # Blessings owns this same clock for itself and is deliberately not driven
+    # from here.
+    reconsiderMs: 1000
+
+  # What the client writes to disk about a character and a realm.
+  records:
+    # How long the fight log holds records before writing them.
+    fightFlushMs: 2000
+
+    # How many it holds if a flush never happens.
+    fightsHeld: 2000
+
+    # How long the conversation log holds lines before writing them.
+    talkFlushMs: 2000
+
+    # How many it holds if a flush never happens.
+    talkHeld: 500
+
+    # How long a balance change waits before it is written.
+    belongingsWriteDelayMs: 2000
+
+    # Vaults kept for one character. The shipped realm has seven banks; a file
+    # past this is one being fed something that is not a bank name.
+    maxVaults: 100
+
+    # How long a discovery waits before it is written. A discovery happens
+    # while somebody is walking, which is the one time this process must not
+    # touch a disk.
+    memoryWriteDelayMs: 2000
+
+    # Observations one character keeps.
+    memoryLimit: 2000
+
+    # How long learned monster health waits before it is written.
+    loreSaveDelayMs: 5000
+
+    # Learned monsters per realm. The shipped realm names about 1,450 and
+    # learning is only for the ones it does not, so a file past this is keyed
+    # on something that is not a monster name.
+    maxLearned: 4000
+
+    # How long a walk's destination waits before it is written.
+    destinationsSaveDelayMs: 5000
+
+    # Destinations kept per realm. Generous: a row is one place somebody
+    # deliberately walked to, so the list grows at the speed a person plays
+    # rather than at the speed the server talks, and the whole point of it is
+    # that somewhere visited months ago is still the answer to a search.
+    maxDestinations: 500
+
+    # Recent destinations offered above the realm's own answer.
+    #
+    # Five, because the list is a *shortcut* and not the search: past a handful
+    # it stops being scannable at a glance and starts being a second set of
+    # results to read, which is the thing it exists to save somebody from.
+    destinationsShown: 5
+
+    # How long a change to the player book waits before it is written.
+    playersSaveDelayMs: 5000
+
+    # Players per realm. Low deliberately: the registry rides on
+    # `CharacterState`, which is structured-cloned to the window on every
+    # status line.
+    maxPlayers: 1000
+
+    # How long a book that could not read its file waits before retrying.
+    playersRetryMs: 30000
+
+  # The realm knowledge base — conversion, routing and the local map.
+  world:
+    # Converted realms kept on disk. Editing a realm leaves the old conversion
+    # behind, which makes going back free and was unbounded until this.
+    keepRealms: 8
+
+    # Ceiling on placed rooms, so a dense area cannot produce a vast grid.
+    mapCells: 200
+
+    # What a barrier the character cannot force costs to route through.
+    #
+    # Priced as a wall that can still be walked through when there is no other
+    # way at all — never `null`, because refusing outright would hide the only
+    # route there is.
+    wallCost: 100000
+
+    # What a room-script teleport costs over an ordinary step, so the router
+    # prefers plain corridors unless the portal genuinely shortens the way —
+    # usually across maps, which is what most of them are for.
+    portalPenalty: 3
+
+  # The process itself.
+  app:
+    # How long a quitting client waits for its last message to reach a pipe
+    # nobody may be reading. The one thing worse than losing the message is not
+    # exiting at all.
+    exitDrainMs: 500
+
+  # Watching the files the client owns.
+  files:
+    # One listing twice a second costs nothing.
+    pollIntervalMs: 500
+
+    # Collapses the burst of writes an editor emits into a single reload.
+    debounceMs: 80
+
+  # The window's own numbers.
+  #
+  # Read through `src/renderer/src/lib/tuning.ts`, which is fed the moment
+  # this file reaches the window. A render that happened before it arrived ran
+  # on these defaults, which is the correct fallback rather than a gap.
+  view:
+    # Diagnostics log kept in renderer memory.
+    telnetLogLimit: 500
+
+    # Framed lines kept for the Stream card.
+    lineLogLimit: 200
+
+    # Remembered conversation. Generous, because the point of keeping it is
+    # that somebody can come back to what they missed.
+    talkLimit: 500
+
+    # Remembered notices. Same reasoning, same generosity.
+    noticeLimit: 400
+
+    # The most panes worth having; see docs/profiles.md §7.3.
+    maxPanes: 4
+
+    # Minimum gap between chrome state flushes in a window. Pushed facts queue
+    # and paint together at most this often, so a busy realm cannot make the
+    # cards re-render per line. The console itself never waits on this.
+    chromeFlushMs: 100
+
+    # Characters per second above which the window is under pressure.
+    streamHighWater: 1500
+
+    # Consecutive high samples before quieting the chrome. The entry used to
+    # have no hysteresis at all, so one sample over the line dimmed the whole
+    # window -- and at a 250ms sample that is 375 characters, which is a single
+    # combat round with its colour codes. The chrome pulsed once per round for
+    # as long as you were fighting. Four samples is one second of sustained
+    # pressure; a burst shorter than that has finished painting anyway.
+    streamHighSamples: 4
+
+    # Consecutive calm samples before relaxing, so it cannot flicker.
+    streamCalmSamples: 8
+
+    streamSampleMs: 250
+
+    # Long enough that typing a sentence is one save, short enough that
+    # somebody who stops to think has been saved by the time they look up.
+    autoSaveDelayMs: 700
+
+    # How far an undo will go back. Bounded so a long session cannot grow.
+    historyDepth: 50
+
+    # Below this height the rail cannot show three cards comfortably.
+    compactHeight: 820
+
+    compactWidth: 1180
+
+    # How old a sighting of what a party member is fighting may be.
+    fightingFreshMs: 60000
+
+    # Where a monster's bar turns from green to amber to red.
+    #
+    # **Not chosen, and changing them makes the client contradict itself.**
+    # These are the server's own wound bands (`src/shared/wounds.ts`)
+    # collapsed to three, so the colour and the word under it can never
+    # disagree. They are here because everything is; they are the two numbers
+    # in this block least likely to be worth moving.
+    woundCaution: 0.7
+
+    woundCritical: 0.3
+
+    # The width below which the console stops being a character grid.
+    #
+    # **Not a preference either.** The game lays out maps and stat columns by
+    # counting characters and the server repaints its status line with a
+    # literal `CSI 79 D`; there is no width this client can report that
+    # changes what it sends.
+    minColumns: 80
+
+    # Advance widths differing by more than this fraction count as uneven.
+    fontTolerance: 0.02
+
+    # The longest name the console will try to recognise, in words. Eight,
+    # counted against the shipped realm's room table rather than chosen: 396
+    # of its 55,806 names are six words or more.
+    maxNameWords: 8
+
+    # How far the pointer must travel before a press becomes a drag. Not zero:
+    # a card header carries a close button, and a press that dragged
+    # immediately would make it unclickable for anyone whose hand is not
+    # perfectly still.
+    dragSlop: 5
+
+    # Between a popover and its anchor, and between a popover and the edge.
+    popoverGap: 8
+
+    popoverMargin: 8
+
+    # How close a popup menu may come to the edge of the window.
+    menuMargin: 4
+
+    # Room radius on the map, and the margin that keeps one in the viewBox.
+    mapRoomRadius: 3
+
+    # How far out the local map walks, as the bounds a *measured* radius is
+    # clamped into.
+    #
+    # The card asks for the radius its own size can show rather than always
+    # asking for five, which is what it did until 2026-08-31: a map dragged
+    # twice as tall drew the same six rooms twice as large, because the viewBox
+    # scaled the picture and nothing ever fetched more of it.
+    #
+    # The floor is what a rail card can show and the ceiling is what stops a
+    # full-screen float walking the whole realm — the search is exponential in
+    # the radius, and `world.mapCells` alone bounds the result, not the work.
+    mapRadiusMin: 2
+    mapRadiusMax: 12
+
+    # How many pixels one room's cell wants, at each end of the Map card's
+    # density slider -- sparse first, dense second. The legibility budget: how
+    # small a room may be drawn and still be a thing somebody can point at.
+    #
+    # There was one figure, 34, until 2026-09-02, and it decided for the player
+    # how much of the realm a map showed. The ends are chosen so a rail-sized
+    # card (about 200px on the short side) spans 5x5 rooms at the sparse end
+    # and 20x20 at the dense one; the middle lands at 25, close to the single
+    # figure it replaces. A float is bigger and shows more at every setting.
+    # `mapRadiusMin` went 3 -> 2 with them: 5x5 is a radius of two, and the old
+    # floor would have quietly refused the sparse end.
+    mapRoomPixelsSparse: 40
+    mapRoomPixelsDense: 10
+
+    # How often a card redraws a running clock — the uptime readout, and how
+    # long a loop has been going. A second, because that is the unit shown.
+    clockTickMs: 1000
+
+    # How long a room search waits after the last keystroke, and the shortest
+    # query worth running.
+    #
+    # The realm has 55,806 rooms and a two-letter query matches a lot of them.
+    # Shared by the route panel's own field and by the palette, which searches
+    # the same index — two debounces that drifted would be two surfaces
+    # answering the same typing at different speeds.
+    roomSearchDebounceMs: 150
+
+    roomSearchMinChars: 2
+
+    # The server's own combat pulse, in milliseconds. Damage per round is the
+    # one figure that needs a length for a round, and the stream carries blows
+    # rather than ticks. Five seconds is what MegaMUD's own status bar counted
+    # down; a derivative that pulses differently is a number to change here.
+    combatRoundMs: 5000
+
+    # How long a scope must have run before the Combat Stats card claims a rate
+    # for it. The rates divide a total by the scope's own clock, which is
+    # answerable from the first millisecond and absurd there -- 66 experience
+    # 300ms in reads as 792,000/hr, and "Will level in" as nine seconds. A
+    # Deliberately short: the complaint these rates were fixed for was a dash
+    # where a figure was wanted, at forty seconds elapsed, so a longer floor
+    # would put that dash back for the first minute of every session.
+    rateFloorMs: 5000

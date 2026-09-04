@@ -1,0 +1,34 @@
+# Paradigm Game 3.
+#
+# One of the six Paradigm realms this client ships, the same six MegaMUD's own
+# Paradigm distribution defines (`mega-paramud/BBS/*/BBS.INI`).
+#
+# `resources/servers/paradigm-game-1-pve/server.yaml` is the annotated copy:
+# what each key is for, why the menus live on the realm and the account does
+# not, and why none of these names a `database:`. Only the realm number below
+# differs between them.
+
+name: Paradigm Game 3
+host: paramud.mudinfo.net
+port: 2323
+encoding: cp437
+
+login:
+  - when: 'Please enter your selection'
+    send: P
+  # Which realm on this server.
+  - when: 'Please select a realm'
+    send: '3'
+  # The character slot. A second character on this realm states its own
+  # `login.steps` on its own file rather than editing this.
+  - when: 'Please select a character'
+    send: '1'
+  - when: '[PARADIGM]'
+    send: E
+  - when: Accept these realm rules to continue
+    send: '1'
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: ''
+
+# No `database:`: the world that ships with the client is Paradigm's own,
+# built from `default-pmud.mdb`.

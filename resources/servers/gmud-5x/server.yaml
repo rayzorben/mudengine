@@ -1,0 +1,67 @@
+# GMUD (5X) -- a GreaterMUD realm, and the one a new character starts on.
+#
+# `resources/servers/paradigm-game-1-pve/server.yaml` is the annotated copy:
+# what each key is for, why the menus live on the realm and the account does
+# not, and why the directory name is the id while the `name` below is what a
+# player reads and what a character's `server:` key refers to.
+#
+# This is the realm `profile.default.yaml` names and the one the settings
+# screen offers first when you add a character, which is a deliberate choice
+# rather than an accident of sorting: `DEFAULT_REALM_NAME` in
+# `src/shared/config.ts` states it, and `shipped.test.ts` holds the two ends
+# together so the constant and this file cannot drift apart.
+
+name: GMUD (5X)
+host: 70.176.151.219
+port: 2427
+encoding: cp437
+
+# GreaterMUD puts up the same WorldGroup menus Paradigm does, and answers them
+# with the same words -- captured from a live GreaterMUD server (`orohost`,
+# 2026-09-03): the service menu, a realm list, and then `[PARADIGM]:` for the
+# in-realm menu, which is what that server prints whatever it is running.
+#
+# Its realm list has one entry, and it puts up no character menu at all. Both
+# rows are here regardless, because a row that matches nothing is never used
+# and a menu with no row stalls: `Please select a character` costs nothing on a
+# realm that never asks it, and answering it is the difference between logging
+# in and sitting at a prompt on one that does.
+login:
+  - when: 'Please enter your selection'
+    send: P
+  - when: 'Please select a realm'
+    send: '1'
+  # The character slot. One is the sensible default and the wrong answer for
+  # your second character -- that one states `login.steps` on its own file.
+  - when: 'Please select a character'
+    send: '1'
+  - when: '[PARADIGM]'
+    send: E
+  # Two menus a WorldGroup front end can add. Neither was seen on the realm
+  # this was captured from; a row that matches nothing costs nothing.
+  - when: Accept these realm rules to continue
+    send: '1'
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: ''
+
+# The world file every character playing here walks, and this realm is the
+# reason that key exists.
+#
+# The world built into the client (`resources/world/`) is Paradigm's, built from
+# `default-pmud.mdb` -- so a character playing *here* would walk the wrong map,
+# and everything the map answers (routing, the local map, a room lookup) would
+# be answering about somewhere else. GreaterMUD's own database therefore ships
+# beside this file, and this names it.
+#
+# **Relative, not absolute.** A path spelled out in full would exist on the one
+# computer that wrote it and nowhere else; a relative one resolves against the
+# client's own resources, which is `resources/` in a checkout and somewhere else
+# entirely inside an installed package. `RealmLibrary.resolve` is the one place
+# that knows the difference.
+#
+# It is converted ONCE into the same normalised form the built-in world already
+# has -- a couple of seconds, on the first connection -- and cached in
+# `realms/`; it is never queried while you are playing. Replace it with a path
+# to your own .mdb, .accdb, .sqlite or .db if you play a realm whose data has
+# moved on from this file, and the next launch reconverts.
+database: mdb/gmud20230902.mdb

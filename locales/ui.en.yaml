@@ -1,0 +1,2594 @@
+# Every word the client's chrome shows, in one place.
+#
+# Components look these up with t('section.key') — see src/shared/i18n.ts.
+# The rules for the words themselves are docs/terminology.md: labels of at
+# most four words, one-sentence tooltips, the realm's own vocabulary for
+# anything the realm names, MegaMUD's words where a player already has them,
+# and one word per thing (a synonym is a bug).
+#
+# {name} is a placeholder the code fills in at render time. Some strings are
+# asserted verbatim by scripts/smoke.mjs — check before rewording.
+#
+# src/shared/__tests__/i18n-coverage.test.ts fails the build for a key used
+# in code but absent here, and for a key here that nothing reads.
+# The client itself: window title, the error boundary, running twice.
+app:
+  supplies:
+    invalidList: The supplies list sent was not one this client could read, so nothing was written.
+  automation:
+    unknownSwitch: Unrecognized automation switch.
+  config:
+    reloadFailed: Options not reloaded — {error}
+    internalTemplateAdded: 'Added to internal.yaml, from the template: {added}.'
+    templateAdded: 'Added to your options file, from the template: {added}.'
+    templateReconcileFailed: Options file left alone — {error}
+  gpu:
+    softwareCompositing: 'The window is not drawn by the GPU (compositing {compositing}, rasterization {rasterization}, WebGL {webgl}): every frame is composed in software, which is why typing and scrolling crawl. Check the graphics driver, or how the client was launched.'
+  connect:
+    invalidTarget: Invalid connection target.
+    noCharacterFile: 'Connection failed: Character "{id}" has no realm configured.'
+  crash:
+    guardNotice: 'Client error encountered. Background sessions remain connected: {message}'
+  dialog:
+    allFilesFilter: All files
+    chooseRealmTitle: Choose a realm database
+    realmDatabaseFilter: Realm database
+  errorBoundary:
+    body: Active character sessions are unaffected. Reload to restore interface.
+    heading: UI Rendering Error
+    reload: Reload window
+  instance:
+    alreadyRunning: This profile is already running. Switched to existing window.
+  loop:
+    invalidName: Invalid path/loop name.
+    invalidLoop: Invalid loop definition.
+    notFound: No loop named {name} in this character's options.
+    unknownScope: Invalid loop scope.
+  onboarding:
+    noCharactersYet:
+      No characters configured, so the settings screen is open on a new one. Ctrl/⌘ , reopens it; nothing
+      connects until a character exists.
+  profiles:
+    fileGoneStillConnected:
+      The file for "{id}" is gone, but the character is still connected. Disconnect to
+      close it.
+    incompleteDraft: 'Character configuration incomplete: Realm is required.'
+    invalidId: A character’s file name may only use letters, numbers, - and _.
+    loadFailed: Character not loaded — {error}
+    noSuchCharacter: No such character.
+    stillConnected: '{name} is still connected.'
+  quit:
+    cancelButton: Cancel
+    confirmButton: Quit and disconnect
+    consequenceDetail:
+      Quitting disconnects them. On a PvP realm an unclean disconnect can cost items,
+      or the character.
+    dialogTitle: Quit mudengine
+    whoIsConnected:
+      many: '{count} characters are still in the realm: {names}.'
+      one: '{name} is still in the realm.'
+  remotes:
+    invalidName: Unrecognized remote (@) command.
+  route:
+    invalidPayload: Invalid route path.
+    noRealmData: No realm data loaded
+    unknownRoom: Current room unknown. Move or look to locate character.
+  servers:
+    invalidDraft: A realm needs a name, a host and a port between 1 and 65535.
+    noSuchServer: No such realm.
+  session:
+    notConnected: Not connected.
+  settings:
+    invalidGlobalDraft: Invalid settings payload.
+  window:
+    createFailed: Could not open a window.
+    noMainWindow: There is no main window to move it to.
+    nothingToGather: Nothing to gather.
+    onlyCharacterHere: That is the only character in this window.
+    unknownCaller: Unknown calling window.
+  windowTitle: mudengine
+# Lines the client itself prints into the terminal or pushes as one-off notices.
+notices:
+  config:
+    servers:
+      noHost: '{file} does not name a host, so it is not a realm'
+      readError: '{file} could not be read: {message}'
+  migration:
+    lightStated:
+      one:
+        'Lighting a torch before a dark room is now a setting, on by default, and was written into
+        {count} file with the paragraph that explains it: {fileList}'
+      many:
+        'Lighting a torch before a dark room is now a setting, on by default, and was written into
+        {count} files with the paragraph that explains it: {fileList}'
+    suppliesStated:
+      'A supplies block was written into {file} — the things a character keeps in stock and where
+      it buys them. Empty, so nothing changes until an item is added.'
+    anonymousConnectionDropped:
+      'The account and "connect on launch" under connection: were removed from {file}. The client no
+      longer connects without a character; each character''s own file carries its account.'
+    bankAskedOnEntry:
+      many:
+        '`bank` was added to the entry probe in {count} files, before the closing look. A balance
+        is now kept between sessions; this refreshes the one vault you can reach on the way in.
+        {fileList}'
+      one: '`bank` was added to the entry probe in {count} file, before the closing look. A balance
+        is now kept between sessions; this refreshes the one vault you can reach on the way in.
+        {fileList}'
+    blessingsKeyedOnSpell:
+      many:
+        'A blessing row is now named by its spell alone, and only party rows carry a recast clock
+        — a self blessing recasts on the wear-off the game prints, with a watchdog measured from
+        your own casts. {count} files were rewritten to the new shape. {fileList}'
+      one: 'A blessing row is now named by its spell alone, and only party rows carry a recast clock
+        — a self blessing recasts on the wear-off the game prints, with a watchdog measured from
+        your own casts. {count} file was rewritten to the new shape. {fileList}'
+    blessingsMerged:
+      many: 'Buffs and party blessings became one list — spells.blessings, recast on wear-off events
+        with the old interval as the clock behind them — and {count} files were rewritten with their
+        rows carried across. {fileList}'
+      one: 'Buffs and party blessings became one list — spells.blessings, recast on wear-off events
+        with the old interval as the clock behind them — and {count} file was rewritten with its
+        rows carried across. {fileList}'
+    charactersMoved: Characters moved from {from} to {to}.
+    conversationLogKept:
+      "The Talk card's history is now kept on disk and restored when the client starts. The two
+      settings — whether, and for how many days — were written into your options file with the
+      paragraph that explains them."
+    entityPredicates:
+      many:
+        "Three settings were added to {count} files, all off: pick up anything over a value, never
+        pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
+        the realm a question about a thing, which the client could not do until items carried the
+        realm's own row. {fileList}"
+      one: "Three settings were added to {count} file, all off: pick up anything over a value, never
+        pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
+        the realm a question about a thing, which the client could not do until items carried the
+        realm's own row. {fileList}"
+    gmudRealmAdded:
+      '{realm} was added to your realms ({file}). It is the realm a new character starts on; the
+      six Paradigm realms beside it are unchanged.'
+    gmudRealmFailed: 'The {realm} realm could not be added to your realms: {reason}'
+    healSplit:
+      many: 'Healing is two spells now — one cast on this character and one cast on a party member,
+        because the realm marks which spells may be cast on whom. `healPartyWith` and a `healTo`
+        ceiling were written into {count} files; a file that was already healing the party kept
+        its spell. {fileList}'
+      one: 'Healing is two spells now — one cast on this character and one cast on a party member,
+        because the realm marks which spells may be cast on whom. `healPartyWith` and a `healTo`
+        ceiling were written into {count} file; a file that was already healing the party kept
+        its spell. {fileList}'
+    lookNoLongerBroadcast:
+      many:
+        'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
+        in the room you are looking around. A bare Enter does it silently, so the idle command and
+        the closing look on entering the realm were changed in {count} files. {fileList}'
+      one:
+        'The client no longer re-reads rooms with `l` — it prints the same block and tells everybody
+        in the room you are looking around. A bare Enter does it silently, so the idle command and
+        the closing look on entering the realm were changed in {count} file. {fileList}'
+    loopShelfPinned:
+      'The Loops button was added to your toolbar. It opens every loop the client knows —
+      Ctrl/Cmd L, or the circular arrow beside the transport controls.'
+    tuningKeysChanged:
+      'Your internal.yaml was brought up to date: added {added}; removed {removed}. The values are
+      the shipped ones, so nothing behaves differently — what changes is that they are in the file
+      you edit. {file}'
+    tuningNothingAdded: nothing
+    tuningNothingRemoved: nothing
+    autoReconnectStated:
+      many:
+        '"Reconnect if the connection drops" was written into {count} character files, on, with the
+        paragraph that explains it. It is what they were already doing. {fileList}'
+      one:
+        '"Reconnect if the connection drops" was written into {count} character file, on, with the
+        paragraph that explains it. It is what it was already doing. {fileList}'
+    newAutomationStated:
+      many:
+        'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
+        the reaction to a player attacking — were written into {count} files with the paragraphs
+        that explain them. All off, which is what the client was already doing. {fileList}'
+      one:
+        'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
+        the reaction to a player attacking — were written into {count} file with the paragraphs
+        that explain them. All off, which is what the client was already doing. {fileList}'
+    diagnosticsPreferenceDropped:
+      many:
+        '"ui.showDiagnostics" was removed from {count} files: the diagnostics cards are now hidden on
+        every launch and "Show diagnostics" in the command palette shows them for as long as the
+        window is open. {fileList}'
+      one:
+        '"ui.showDiagnostics" was removed from {count} file: the diagnostics cards are now hidden on
+        every launch and "Show diagnostics" in the command palette shows them for as long as the
+        window is open. {fileList}'
+    doorForcingStated:
+      many:
+        'Picking and bashing locked doors are now settings, and were written into {count} files with
+        the paragraph that explains them. Both are off, which is what the client was already doing.
+        {fileList}'
+      one:
+        'Picking and bashing locked doors are now settings, and were written into {count} file with
+        the paragraph that explains them. Both are off, which is what the client was already doing.
+        {fileList}'
+    gearButtonPinned:
+      'A gear button was added to your toolbar, beside the dial. It puts back what the client
+      last saw in each worn slot — the first press after a death.'
+    globalLoopsLifted:
+      many:
+        '{count} loops moved out of the options file into {globalLoopsDir}; every character inherits
+        them.'
+      one:
+        '{count} loop moved out of the options file into {globalLoopsDir}; every character inherits
+        them.'
+    mapDensityStated:
+      'The Map card has a density slider now, so "view.mapRoomPixels" became the two ends it
+      chooses between and was removed from your tuning file. Any figure you had set there was
+      the answer to a different question and is not carried into either end.'
+    optionsMoved: Options moved from {from} to {to}.
+    partyRemotesStated:
+      '"automation.remotes.party" was written into {file}: the remotes anybody who has joined this
+      character''s party may ask for. It ships with @health and @bless-expired on it, which is
+      what the client was already answering with — nothing changes until "remotes.enabled" is on.'
+    profileLoopsLifted:
+      many: '{count} loops moved out of {characterId} into {loopsDir}.'
+      one: '{count} loop moved out of {characterId} into {loopsDir}.'
+    realmOwnsDatabase:
+      many:
+        'The world database belongs to the realm now rather than to each character: two characters
+        on one realm walk one map. It was written into {realmCount} realm files and the old
+        `world:` key removed from {characterCount} character files.'
+      one:
+        'The world database belongs to the realm now rather than to each character: two characters
+        on one realm walk one map. It was written into {realmCount} realm file and the old
+        `world:` key removed from {characterCount} character files.'
+    realmOwnsDatabaseCleared:
+      'The world database belongs to the realm now rather than to each character. Nothing named
+      one, so nothing moved and every realm keeps the world that ships; the unread `world:` key
+      was removed from {characterCount} files.'
+    rosterCapStated:
+      '"tuning.parse.rosterLines" was added to your tuning file. The `who` listing''s cap was 60
+      lines beside the pattern, so a realm with more adventurers than that lost everybody past
+      the sixtieth row — including from the record that says who is online.'
+    nudgeWindowStated:
+      'A walk now measures how long your realm takes to answer a move and waits that long before
+      asking for a prompt, instead of assuming a second. Paradigm takes 1.24s, so the old figure
+      made every ordinary step look late and printed every room twice.
+      "tuning.walk.nudgeSamples" was added to your tuning file beside it.'
+    stepNudgeStated:
+      "A walk that has sent a step and heard nothing now asks the realm for a prompt after a
+      second rather than waiting out the whole deadline. The interval was written into your
+      tuning file, beside the walk's other figures."
+    profilesFolded:
+      many:
+        '{count} character files moved into directories of their own, so each can carry loops of its
+        own.'
+      one: 1 character file moved into a directory of its own, so it can carry loops of its own.
+    restCeiling:
+      many: 'A resting ceiling was added to {count} files, off: keep sitting back down until health
+        reaches it. Casting turns out to break a rest and standing regenerates six times slower, so
+        without it one heal ended the resting for the whole recovery. {fileList}'
+      one: 'A resting ceiling was added to {count} file, off: keep sitting back down until health
+        reaches it. Casting turns out to break a rest and standing regenerates six times slower, so
+        without it one heal ended the resting for the whole recovery. {fileList}'
+    escapeIsADirection:
+      many: 'Running away was renamed from flee to retreat in {count} files, and any flee or
+        reverse-step strategy is now step-back. There is no flee command on this server family —
+        the client sent it eleven times in one fight on 2 September 2026 and every one came back
+        "Your command had no effect." The escape sends a direction now: the way you came where that
+        is known, an exit of the room otherwise, and nothing at all rather than a word that does
+        nothing. Your threshold and your switch are unchanged. {fileList}'
+      one: 'Running away was renamed from flee to retreat in {count} file, and any flee or
+        reverse-step strategy is now step-back. There is no flee command on this server family —
+        the client sent it eleven times in one fight on 2 September 2026 and every one came back
+        "Your command had no effect." The escape sends a direction now: the way you came where that
+        is known, an exit of the room otherwise, and nothing at all rather than a word that does
+        nothing. Your threshold and your switch are unchanged. {fileList}'
+    escapeSettle:
+      'The loop settling figure was renamed from fledSettleMs to escapeSettleMs in {file}, with
+      your number kept.'
+    restOnePair:
+      many:
+        'The loop pause and resume figures were folded into the resting pair in {count} files, and
+        your numbers came with them. Nothing rests while a loop is marching, so a pause figure under
+        the resting floor left the character walking while it was too hurt to sit down. {fileList}'
+      one: 'The loop pause and resume figures were folded into the resting pair in {count} file, and
+        your numbers came with them. Nothing rests while a loop is marching, so a pause figure under
+        the resting floor left the character walking while it was too hurt to sit down. {fileList}'
+    roundMacroDropped:
+      many:
+        'The round combat macro was removed from {count} files: no class has to ask for its attack
+        every round, so those commands were spent to be answered by nothing. One attack verb starts
+        the fight and the realm rolls it. {fileList}'
+      one: 'The round combat macro was removed from {count} file: no class has to ask for its attack
+        every round, so those commands were spent to be answered by nothing. One attack verb starts
+        the fight and the realm rolls it. {fileList}'
+    restThresholdsDropped:
+      many:
+        'The "stand up at" health thresholds were removed from {count} files: nothing sends a command
+        to stand a character up any more, because moving or attacking ends a rest by itself.
+        {fileList}'
+      one:
+        'The "stand up at" health thresholds were removed from {count} file: nothing sends a command to
+        stand a character up any more, because moving or attacking ends a rest by itself.
+        {fileList}'
+    serversLifted:
+      many: '{count} realms moved out of the options file into {serversDir}.'
+      one: '{count} realm moved out of the options file into {serversDir}.'
+    shopStockShared:
+      many: "{count} things shops were found to stock moved into the realm's own record, across
+        {realmCount} realms: what a counter sells is the world's fact rather than one
+        character's, so every character on a realm now knows it without re-learning it."
+      one:
+        "{count} thing a shop was found to stock moved into the realm's own record: what a counter
+        sells is the world's fact rather than one character's, so every character on a realm now
+        knows it without re-learning it."
+    remotes:
+      one: '"automation.peers" is now "automation.remotes", and permission is stated per @ command
+        rather than per person: 1 file was converted. Everyone the old file allowed keeps every
+        command this client can answer, written out by name; a gang that was trusted keeps the same
+        list. Edit either from the Gang card or by clicking a name. {fileList}'
+      many: '"automation.peers" is now "automation.remotes", and permission is stated per @ command
+        rather than per person: {count} files were converted. Everyone the old files allowed keeps
+        every command this client can answer, written out by name; a gang that was trusted keeps
+        the same list. Edit either from the Gang card or by clicking a name. {fileList}'
+      partyGroundDropped:
+        'The "party" ground is gone and was not carried across: a party is a group anybody can
+        invite anybody into, so it was a permission anybody could grant themselves. Name the people
+        you meant, or grant your gang.'
+  panes:
+    splitTooNarrowKeep:
+      Side by side would leave each console about {columns} columns, and this realm
+      formats to {minColumns}. Keep them stacked, or set a smaller terminal font size.
+    splitTooNarrowStack:
+      Side by side would leave each console about {columns} columns, and this realm
+      formats to {minColumns}. Stack them instead, or set a smaller terminal font size.
+  session:
+    closeRefused: '{refusalReason} Disconnect it before closing the tab.'
+  world:
+    converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
+    converting: Converting the realm database {file}…
+    destinations:
+      readError: 'could not read {file}: {message}'
+      writeError: 'could not write {file}: {message}'
+    fallback: '{problem} Falling back to the realm this client ships with.'
+    lore:
+      parseSuspended:
+        '{fileName} will not parse ({message}). Monster health learned from fighting is
+        paused until it is fixed or removed.'
+      readError: 'could not read {file}: {message}'
+      writeError: 'could not write {file}: {message}'
+    players:
+      parseSuspended:
+        '{fileName} will not parse ({message}). Nothing more about other players is kept on
+        disk until it is fixed or removed; characters still share what they see while the
+        client runs.'
+      readError:
+        'could not read {file} ({message}). Nothing more about other players is kept on disk
+        until it can be read; characters still share what they see while the client runs.'
+      writeError: 'could not write {file}: {message}'
+    memory:
+      invalidFile: '{fileName} is not a memory file — starting fresh.'
+      readError: 'Could not read {fileName}: {message}'
+      saveError: 'Could not save {fileName}: {message}'
+    belongings:
+      invalidFile:
+        '{fileName} is not a record file. Bank balances and worn slots are not kept on disk
+        until it is fixed or removed; what this session sees is still shown.'
+      readError:
+        'Could not read {fileName} ({message}). Bank balances and worn slots are not kept on
+        disk until it can be read; what this session sees is still shown.'
+      saveError: 'Could not save {fileName}: {message}'
+    problemConvertFailed: 'Could not read the realm database {file}: {reason}.'
+    problemEmptyConversion: The converted realm at {file} has no rooms in it.
+    problemUnreadableIdentity: 'Cannot read the realm database at {path}: {reason}.'
+    shippedLoaded: '{rooms} rooms from {source} in {ms}ms'
+    shippedMissing: no realm data at {path}. Routing and the map will not work; run `npm run build:world`.
+    shippedRealmLabel: shipped realm
+# The Loops modal: the shelf of every loop, grouped by area, opened from
+# anywhere. The Loop card drives the loop that is running; this is where one
+# is found.
+loops:
+  dialogLabel: Loops
+  filterLabel: Find a loop
+  filterPlaceholder: Search every loop…
+  filterPlaceholderLoading: Reading the loops…
+  loading: Reading the loops…
+  noLoops: No loops. Write one in a `loops` directory, or add the shipped ones from Settings.
+  noMatches: No loop matches that.
+  catalogueFailed: 'The shipped loops could not be read: {reason}. Your own loops are still listed.'
+  held: walking
+  groupCount:
+    one: '{count} loop'
+    many: '{count} loops'
+  section:
+    recent: Last walked
+    start: Starts here
+    waypoint: Passes through here
+  stopsCount:
+    one: '{count} stop'
+    many: '{count} stops'
+  destinationLabel: Add To
+  destination:
+    character: 'To {name}'
+    realm: 'To {name}'
+    none: Don't Add
+  startedKept: 'Started {loopName}, and kept it.'
+  startedOnly: 'Started {loopName}.'
+  paletteLabel: 'Loops: find one to walk'
+# Command palette: entries, groups, hints and chrome.
+palette:
+  character:
+    closeDisconnectFirstHint: disconnect it first
+    closeLabel: 'Close character: {characterName}'
+    connectLabel: Connect
+    connectRealmLabel: 'Connect: {realmName}'
+    disconnectLabel: Disconnect
+    gatherLabel: Bring every character into this window
+    openLabel: 'Open character: {characterName}'
+    popinLabel: 'Move to the main window: {characterName}'
+    popoutLabel: 'Move to a new window: {characterName}'
+    popoutOnlyHint: the only character here
+    serversLabel: 'Settings: add or edit a realm…'
+    settingsClientLabel: 'Settings: MudEngine itself…'
+    settingsDefaultsLabel: 'Settings: what a new realm or character starts with…'
+    settingsLabel: 'Settings: add or edit a character, realm or password…'
+    askHealthLabel: 'Ask {name} for their health'
+    askHealthRefused:
+      'Not asked: {name} — this character is not in the realm, or the same question is already
+      waiting to go.'
+    showIdleStatus: idle
+    showLabel: 'Show: {characterName}'
+  dialogLabel: Command palette
+  filterLabel: Filter commands
+  filterPlaceholder: Type a command, or a room to go to…
+  groups:
+    character: Character
+    found: Go to
+    layout: Layout
+    navigate: Navigate
+    pinned: Pinned
+    view: View
+  layout:
+    cardAlwaysHint: it leaves the rail while it has nothing to say
+    cardAlwaysLabel: '{cardName} card: always show'
+    cardHideEmptyHint: it holds its place whether or not it has anything to say
+    cardHideEmptyLabel: '{cardName} card: hide while empty'
+    paneflowNeedsColumnsHint: needs {minColumns} columns each
+    paneflowRowsCheapHint: rows are cheap, columns are not
+    panesSideBySideLabel: Panes side by side
+    panesStackedLabel: Panes stacked
+    resetCardsHint: back to the shipped arrangement
+    resetCardsLabel: Reset this character’s cards
+    showCardHint: in this character’s rail
+    showCardLabel: 'Show card: {cardName}'
+    splitLabel: 'Split: also show {characterName}'
+    splitSideBySideHint: side by side
+    splitStackedHint: stacked
+    unsplitLabel: Close this pane
+    unsplitPanesHint: '{paneCount} panes'
+    widthsResetHint: the console and the rails back to their defaults
+    widthsResetLabel: Reset pane widths
+  navigate:
+    gotoLabel: 'Goto: {roomName}'
+    gotoVisitedHint: '{roomReference} · {agoText}'
+    loopLabel: 'Loop: {loopName}'
+    loopStopHint: and stop the walk with it
+    loopStopLabel: Stop looping
+    loopStopsHint:
+      many: '{stopCount} stops'
+      one: '{stopCount} stop'
+    routeLabel: Route to room
+    searchLabel: Search the console
+  noMatches: No matching command, and no room by that name.
+  pin:
+    pinTitle: Pin to the top ({chord})
+    unpinTitle: Unpin ({chord})
+  view:
+    configLabel: Show the options file
+    densityAutoHint: auto · {density}
+    densityLabel: Change how tightly things are packed
+    focusLabel: Put the caret back in the console
+    hideCardsLabel: Hide the cards
+    hideDiagnosticsLabel: Hide diagnostics
+    hudNotInRealmHint: not in the realm
+    jumpLabel: Jump to latest
+    logsLabel: Show the session logs
+    logsNotKeptHint: not being kept
+    profilesLabel: Show the characters folder
+    profilesLoadedHint: '{count} loaded'
+    profilesNoneHint: none yet
+    showCardsLabel: Show the cards
+    showDiagnosticsLabel: Show diagnostics
+    tabsLeftHint: roomier, costs columns
+    tabsOnLeftLabel: Tabs on the left
+    tabsOnTopLabel: Tabs on top
+    tabsTopHint: compact, costs rows
+    themeCycleLabel: Cycle theme
+    themeCycleSystemHint: system · {themeLabel}
+    themeFollowSystemLabel: 'Theme: follow the system'
+    themeLabel: 'Theme: {themeLabel}'
+    themeSystemHint: light or dark as the OS says
+# The console chrome: search bar, jump to latest, selection and clipboard.
+terminal:
+  actions:
+    depositAll: Deposit All
+    depositAllTitle: Deposit purse into bank vault ({amount} copper)
+    exitTitle: 'Take exit: {command}'
+    withdrawAll: Withdraw All
+    withdrawAllTitle: Withdraw all coins from bank vault ({amount} copper)
+  contextMenu:
+    copy: Copy
+    paste: Paste
+  fontNotFixedPitch: "{fontName} is not fixed-pitch ('{widest}' is wider than '{narrowest}') — maps
+    and frames will not align."
+  jumpToLatest: Jump to latest ↓
+  search:
+    closeLabel: Close search
+    inputLabel: Find in backscroll
+    matchCount: '{currentMatch}/{totalMatches}'
+    nextLabel: Next match
+    noMatches: none
+    placeholder: Find in backscroll…
+    previousLabel: Previous match
+  backscrollRestoreFailed:
+    Could not restore this character's backscroll ({message}) — showing new output
+    only.
+# The character rail: tabs, dial buttons, the kebab.
+# What each toolbar button is called. The row shows only a glyph, so this is
+# the tooltip, the accessible name and the row in the button picker — the
+# words follow the settings screen's, because the two edit the same key.
+toolbar:
+  provideLight: Auto-Light (Torch in Dark Rooms)
+  supplies: Auto-Buy Supplies
+  assistLeader: Auto-Assist Leader
+  autoDeposit: Auto-Deposit (Bank Coins)
+  automation: Auto (On/Off)
+  bashDoors: Auto-Bash Doors
+  combat: Auto-Combat
+  connect: Connect
+  defendParty: Auto-Defend Party
+  disconnect: Disconnect
+  drop: Auto-Drop Junk
+  engageWhileWalking: Combat While Moving / Path Combat
+  retreat: Auto-Retreat (Combat)
+  gangpath: Allow Remotes on Gangpath
+  hangUp: Auto-Hangup (Panic Disconnect)
+  healParty: Auto-Heal Party Members
+  lookAtPlayers: Auto-Inspect New Players
+  loot: Auto-Get Cash
+  openDoors: Auto-Open Doors
+  pauseLoop: Pause Loop
+  pickLocks: Auto-Pick Locks
+  remotes: Remote Control (@ commands)
+  restoreGear: Re-equip Gear / Auto-Equip
+  restWithLeader: Follower Auto-Rest
+  search: Auto-Search Rooms
+  resumeLoop: Resume Loop
+  retaliate: Retaliate When Attacked
+  sneak: Auto-Sneak on Move
+  openLoops: Path Library / Select Loop
+  stopLoop: Stop Loop
+  stopWalk: Stop Movement
+tabs:
+  head:
+    newCharacterAria: New character
+    newCharacterTooltip: New character…
+    settingsAria: Settings
+    settingsTooltip: Settings…
+  tab:
+    activityConnecting: connecting
+    activityDisconnected: disconnected
+    activityWalking: walking {done}/{total}
+    alertPlural: '{count} alerts'
+    alertSingular: 1 alert
+    closeAria: Close {characterName}
+    dialClosingTooltip: Closing…
+    dialConnectAria: Connect {characterName}
+    dialConnectingTooltip: Connecting…
+    dialDisconnectAria: Disconnect {characterName}
+    dialStopRetryingAria: Stop reconnecting {characterName}
+    dragHint: Drag to reorder the characters
+    editAria: Edit {characterName}…
+    markError: error
+    markFighting: fighting
+    markHurt: hurt
+    markLooping: looping
+    markMeditating: meditating
+    markOffline: offline
+    markPvp: attacked! (PvP)
+    markRecovering: recovering
+    markShopping: shopping
+    markResting: resting
+    markRestingTo: resting to {percent}%
+    markRestingToFull: resting to full
+    markStopped: stopped
+    markWalking: walking
+    whoTooltip: '{characterName} ({realmName})'
+# The status rail under the console.
+statusRail:
+  action:
+    tooltip: What automation is doing
+    walking: walking {done}/{total}
+    queued: queued {depth} · {command}
+  chars:
+    count: '{count} chars'
+  density:
+    autoLabel: auto · {density}
+    tooltip: Cycle information density ({shortcut})
+  narrow:
+    chip: narrow
+    tooltip: The realm always formats for {columns} columns; narrower, maps and stat columns wrap —
+      close a rail or shrink the terminal font.
+  palette:
+    button: Commands
+  phase:
+    closing: Closing
+    connected: Connected
+    connecting: Connecting
+    connectTooltip: Connect this character ({shortcut})
+    disconnected: Disconnected
+    disconnectTooltip: Disconnect this character ({shortcut})
+    error: Error
+    idle: Idle
+    negotiating: Negotiating
+    resolving: Resolving
+  pressure:
+    burst: burst {rate} c/s
+    tooltip: Animation paused while the realm is sending fast
+  target:
+    none: no realm
+# The pane handles between the console and the rails.
+splitter:
+  aria:
+    bottomStripHeight: Bottom strip height
+    cardRailWidth: Card rail width
+    tabRailWidth: Character rail width
+    topStripHeight: Top strip height
+  tooltip: '{paneName} — drag, or use the arrow keys; double-click to reset'
+# Shared listing chrome: find, filter chips, sorting, the N-of-M line.
+table:
+  chip:
+    hide: Hide {facetLabel}
+    show: Show {facetLabel}
+  narrowedCount: '{shown} of {total}'
+  noMatches: Nothing here matches.
+  showAll: Show all
+  sortByColumn: Sort by {columnLabel}
+# The bento cards, by card; cards.titles is the vocabulary the rail and picker share.
+cards:
+  alerts:
+    badge:
+      critical: '{count} critical'
+      kept: '{count} kept'
+      warning: '{count} warning'
+    columns:
+      channel: Channel
+      whatHappened: What happened
+      when: When
+    combat:
+      playerAttacking: '{name} is attacking you — hanging up is penalised for five minutes'
+    empty: Nothing yet.
+    find: Find in the record
+    party:
+      memberHealth: '{name} is at {percent}%'
+    realm:
+      becameHostile: '{name} is in the realm — {alignment}{titleSuffix}'
+      entered: '{name} entered the realm'
+      seen: '{name} is in the realm{alignmentSuffix}'
+    room:
+      mobArrived: '{name} is in the room — {dispositionWord}'
+      mobArrivedUncertainSuffix: ', by the worst of what the realm says'
+      playerArrived: '{name} is in the room — {alignment}'
+    severity:
+      info: info
+      warning: warning
+      critical: critical
+    tableCaption: Event & Alert Log
+    title: Alerts
+    vitals:
+      crossing: '{label} {level}: {current} of {max}'
+      manaLabel: Mana
+  banks:
+    badge: '{count} banked'
+    copper: '{copper} copper coins (cc)'
+    copyRow: '{name}: {copper} copper coins (cc)'
+    none: No balance on record. Send 'bank' to query vault.
+    title: Banks
+    total: '{copper} copper coins (cc) in all'
+  automation:
+    badge:
+      off: off
+      queueStatus: '{depth} queued · {inFlight} in flight'
+      standingDown: standing down
+    emptyDisabled: Automation disabled.
+    emptySent: No automated commands sent.
+    headings:
+      engagements: Active Engagements
+      queued: Queued
+      rules: Rules
+      safety: Safety
+      sent: Sent
+    ruleBlockedPrefix: 'Blocked: {guard}'
+    engagedPrefix: Engaged target
+    engagedBecause: 'Engaged: {reason}'
+    safetyRefusedPrefix: 'Refused: {reason}'
+    title: Automation
+  chrome:
+    close: Close panel
+    copy: Copy this card
+    more: More
+    settings: Settings for this card
+    pin: 'Pin: keep in view for every character'
+    toolbarLabel: '{cardTitle} actions'
+    unpin: 'Unpin: follow the shown character'
+  combat:
+    badge:
+      clear: clear
+      engaged: engaged
+      onYou: '{count} attacking'
+    damage:
+      mine: 'Dealt: {damage}'
+      others: 'Party/Others: {damage}'
+    empty: Not in combat.
+    noTarget: No target engaged.
+    provenance:
+      learned: learned by fighting
+      unknown: uncatalogued monster
+      worldData: world data
+      worldDataRange: world data, {low}–{high}
+    readout:
+      blows: Rounds / Swings
+      looked: Looked
+      onDeathCasts: casts a spell when it dies
+      onDeathLabel: On Death
+      noAttackers: nothing yet
+      onYou: Attacking
+    title: Combat
+  copyMenu:
+    copy: Copy
+    copyCard: Copy card
+    copyLine: Copy line
+  float:
+    resizeTooltip: Resize
+  header:
+    dragHint: Drag to rearrange, or onto the console to float
+    resizeHint: Drag to change the card's height; double-click to reset it
+  gang:
+    actions:
+      askMembersTooltip: Request the gang roster (bg)
+    badge:
+      allowed: '{count} allowed'
+      none: nothing shared
+    column:
+      class: Class
+      level: Lvl
+      online: Status
+      race: Race
+    find: Find a member
+    fromListing: '{online} of {total} online'
+    fromRoster:
+      Online gang members only. Request the listing for the full membership, with levels and offline
+      members.
+    levelShort: 'L{level}'
+    noGangMembers: Not in a gang.
+    offline: 'off'
+    online: 'on'
+    rankTooltip: '{rank}'
+    shortListing:
+      The gang reports {expected} members and this client could read {read}. The rest of the
+      listing was in a format it does not know.
+    tabRemotes: Remotes
+    tableCaption: The members of this character's gang
+    gangpathHint: When disabled, incoming gangpath (@) commands are ignored.
+    gangpathLabel: Allow Remotes on Gangpath
+    legend: Anybody in {gang}
+    legendUnknown: Anybody in this character's gang
+    noMembers: nobody else from {gang} is on the roster
+    offWarning:
+      Remote control is off for this character, so nothing here is answered. Enable it in Settings ›
+      Remotes.
+    switchWarning: One list, for whichever gang this character is in. Leave {gang} for another and the new one inherits it.
+    title: Gang
+    unknownGang: Gang affiliation unknown. Send 'who' to update gang roster.
+    noGang: Not in a gang, so nothing here grants anybody anything.
+  gangDetail:
+    ariaLabel: What is known about {gang}
+    chip:
+      own: this character's gang
+    count: '{count} known, {online} on'
+    emptyHint: Membership of {gang} unknown. A 'who' listing names the gang beside everybody online and in it.
+    fromListing: From a gang listing, so offline members are included.
+    fromRoster:
+      Online members, from the roster. No command lists another gang's membership, so this is all
+      the client has been told.
+    known: Known members
+    name: Gang
+    noneKnown: none known
+    openTooltip: What is known about {gang}
+    ownHint: This character's own gang; the Gang card holds what its members may ask for.
+    title: Gang
+  inventory:
+    carriedBadge: '{count} carried'
+    coin:
+      copper:
+        long: copper
+        mid: cop
+        short: c
+      gold:
+        mid: gold
+        short: g
+      platinum:
+        long: platinum
+        mid: plat
+        short: p
+      runic:
+        long: runic
+        mid: run
+        short: r
+      silver:
+        long: silver
+        mid: sil
+        short: s
+    columns:
+      weight: Weight
+    copy:
+      keysPrefix: 'keys: {keyList}'
+      wealthPrefix: 'wealth: {amountText}'
+    dropAll: Drop all
+    emptyUnseen: Inventory unread. Send 'i' to update.
+    equipAll: Equip all
+    equipTooltip: Equip {item}
+    findPlaceholder: Find in inventory
+    blocked:
+      byClass: 'Only {classList} may use this'
+      byClassUnnamed: This character’s class may not use this
+      byLevel: 'Needs level {needed}; this character is {have}'
+      byRace: 'Only {raceList} may use this'
+      byRaceUnnamed: This character’s race may not use this
+      byStrength: 'Needs {needed} strength; this character has {have}'
+    inUseStatus: Equipped / Worn
+    inUseTooltip: Equipped or held; no listing has named the slot yet
+    realmSlotTooltip: From the world data's Worn code; no listing has printed this slot yet
+    keysLabel: Keys
+    removeTooltip: Unequip {item}
+    tableCaption: What this character is carrying
+    tableEmpty: Carrying nothing.
+    title: Inventory
+    wealthLabel: Wealth
+  link:
+    flagBinary: BINARY
+    flagEcho: ECHO
+    flagOff: no {flagLabel}
+    flagSga: SGA
+    flagsLabel: Flags
+    localLabel: Local
+    noneValue: none
+    remoteLabel: Remote
+    tabTrafficLabel: Traffic
+    title: Link
+    trafficEmpty: No negotiation yet.
+  map:
+    badgeFoldedCount: '{roomCount} · {droppedCount} dropped'
+    badgeRoomCount: '{roomCount} rooms'
+    badgeTooltipDropped: Rooms the grid could not place
+    emptyNoLocation: Location not known yet.
+    emptyNoWorldData: The world data has nothing for here.
+    legendBank: bank
+    legendLair: lair
+    legendRoute: route
+    legendShop: shop
+    legendShut: shut
+    legendStop: stop
+    legendVertical: up/down
+    legendYou: you
+    roomTooltip: Route to {roomName}
+    svgAriaLabel: '{roomCount} rooms around {roomName}'
+    svgAriaLabelDestination: '{roomCount} rooms around the destination, {roomName}'
+    title: Map
+    destinationFallback: the destination
+    hereFallback: here
+  # Where the character is going, in the two ways it can be going anywhere: a
+  # route somebody chose and walks once, or a loop walked round and round. One
+  # card, two faces, and the face follows whichever is actually happening —
+  # so neither half says a word about the other any more.
+  navigation:
+    loop:
+      actions:
+        pause: Pause Loop
+        play: Start Selected Loop
+        resume: Resume Loop
+        reverse: Reverse Path Direction
+        skip: Skip Waypoint
+        stop: Stop Loop
+      directionBackward: backward
+      directionForward: forward
+      directionLabel: Direction
+      endedLabel: Ended
+      lapsLabel: Loops Completed
+      madeLabel: XP Gained
+      meterLabel: '{stop}/{stops} · {stopName}'
+      pickerLabel: Select Path / Loop
+      runningForLabel: Running for
+      statusFighting: fighting
+      statusRetreated: recovering
+      statusErrand: shopping
+      statusOffline: offline
+      statusPaused: paused
+      statusResting: resting
+      statusRunning: running
+      statusStopped: stopped
+      title: Loop
+    route:
+      badgeArrived: arrived
+      badgeStopped: stopped
+      endedReason: 'Ended: {reason}'
+      gatedLabel: Gated
+      meterLabel: '{done}/{total} steps'
+      roomTooltip: Open {roomName} in the route panel
+      sendingLabel: Sending
+      stopButton: Stop Movement / Cancel Route
+      title: Route
+      towardLabel: Heading
+    title: Navigation
+  party:
+    badge:
+      hurt: '{count} hurt'
+      invited: '{count} invited'
+      together: '{count} together'
+    bar:
+      hp: HP
+      mana: MA
+    empty: Not in a Party (Solo)
+    groups:
+      back: Back
+      front: Front
+      invited: Invited
+      middle: Middle
+      rankUnknown: Rank unknown
+    fighting: 'fighting {target}'
+    followAria: 'Follow {name}'
+    followButton: Follow
+    leaveAction: Leave Party
+    notYetListed: not yet listed
+    ofMax: '{percent}% of {max}'
+    title: Party
+  picker:
+    addChip: + {cardLabel}
+    tooltip: Put {cardLabel} back on the rail
+    tooltipDraggable: Put {cardLabel} back on the rail — or drag it where you want it
+  player:
+    access:
+      allowedValue: '{granted} of {total}'
+      answering: Answering
+      gang: Gang
+      gangGrantsNothing: this character grants its gang nothing
+      gangNotShared: not in {gang}
+      gangShareTooltip: They share {gang}, so the gang's grants apply to them
+      gangUnknown: gang unknown — a who listing showing their row and this character's settles it
+      nothingAllowed: nothing granted — no @ command is answered for them
+      off: off for this character
+      offWarning:
+        Remote control is off for this character, so nothing below is answered. Enable it in
+        Settings › Remotes.
+      party: Party
+      partyGrantsNothing: this character grants its party nothing
+      partyNotShared: has not joined this character's party
+      partyShareTooltip: They have joined this character's party, so the party's grants apply to them
+      stanceGroupAria: '@ commands from {name}'
+      tried: Tried
+      triedValue:
+        many: '{commandsSent} commands — last @{lastCommand}'
+        one: '{commandsSent} command — last @{lastCommand}'
+    ariaLabel: About {name}
+    chip:
+      offline: offline
+      party: party
+    commandsValue: '{commandsSent} sent — last @{lastCommand} {agoText}'
+    detail:
+      commands: Commands
+      gang: Gang
+      health: Health
+      lastOnline: Last online
+      lastSeen: Last seen
+      where: Where
+    healthNeverAnswered: no reply — request with @health
+    lastOnlineNow: now
+    neverInRoom: never
+    equipmentAsOf: Equipped, as of {agoText}
+    equipmentNeverLooked: Equipment unknown. Send 'look {name}' to inspect.
+    equipmentNothing: No equipment visible on {name} ({agoText}).
+    tabAccess: Access
+    tabEquipment: Worn
+    title: Player
+    unknownName: No record for {name} yet.
+  players:
+    badge:
+      asking: '{asking} asking'
+      known: '{count} known'
+    caption: Everyone seen on this realm
+    column:
+      seen: Seen
+    emptyInGame: No players seen on this realm yet; they appear as they speak, arrive or share a room.
+    facet:
+      asking: asking
+      gone: offline
+      here: here
+    title: Players
+  realm:
+    badge:
+      hostile: '{hostile} hostile'
+      online: '{count} online'
+    caption: Who else is in the realm
+    column:
+      name: Name
+      standing: Standing
+      title: Title
+    emptyInGame: Roster unread. Send 'who' to update.
+    emptyOffline: Not in the realm.
+    facet:
+      hostile: hostile
+      lawful: lawful
+      neutral: neutral
+      unknown: unknown
+    findPlaceholder: Find a name
+    justArrived: just arrived
+    nameTitle: Show what is known about {name}
+    selfTitle: This is you
+    title: Realm
+  reference:
+    emptyPrompt: Type a name, or click one on a card.
+    item:
+      armour:
+        acFigure: AC {ac}
+        drFigure: DR {dr}
+        madeOfLabel: Made of
+        stopsLabel: Damage Reduction (DR)
+      effectPercent: '{value}%'
+      effectPlus: '+{value}'
+      effectReference: '#{value}'
+      effectsLabel: Effects
+      effectsMore:
+        many: '+{count} more the client cannot read'
+        one: '+1 more the client cannot read'
+      droppedByLabel: Dropped by
+      noDetail: Named in the world data, with no further detail.
+      priceNote: 'Base Value: {price} (pre-markup)'
+      shopPlaces: (in {count} places)
+      shopRouteTitle: Plan a route to {room}
+      soldByLabel: Sold by
+      usesLabel: Uses
+      usesMany: '{count} charges'
+      usesOnce: Single use / 1 charge
+      weapon:
+        accuracyNote: ' · +{accuracy} accuracy'
+        damageLabel: Damage
+        needsLabel: Needs
+        needsStrength: '{strength} strength'
+        skillLabel: Skill
+        speedLabel: Speed
+      wornLabel: Worn
+    kind:
+      class: class
+      item: item
+      monster: monster
+      race: race
+      spell: spell
+    class:
+      combatFigure: 'fights {combat}'
+      combatLabel: Fights at
+      mageryLabel: Magery
+    mob:
+      costAlways: 'Alignment Penalty: -10 on attack (silent penalty)'
+      costLabel: Cost
+      costMaybe: 'Alignment Penalty: -10 on attack, possible (silent penalty)'
+      defenceFigure: '{ac} AC, {dr} DR'
+      defenceLabel: Defence
+      dropsLabel: Drops
+      experienceLabel: Experience Value (XP)
+      followsFigure: '{percent}%'
+      followsLabel: Pursuit Chance
+      magicResistLabel: Magic resist
+      regenFigure: '{hp} hp'
+      regenLabel: HP Regen (per tick)
+      undeadLabel: Undead
+      undeadYes: 'yes'
+      healthRange: '{low}–{high} hp'
+      healthRangeNote: ' — rows sharing this name disagree; the bar works high'
+      foughtDamage: ' — {damage} damage dealt over {blows} swings, on average'
+      foughtDuration: ' — about {seconds}s a fight'
+      foughtJoined: ' — {joined} joined halfway'
+      foughtLabel: Fought
+      foughtLast: ' — last {agoText}'
+      foughtOnceKilled: once, and killed it
+      foughtOnceNot: once, and did not kill it
+      foughtTimes: '{fights} times, {kills} killed'
+      healthSingle: '{hp} hp'
+      learnedKills:
+        many: killed {kills} times
+        one: killed once
+      learnedLabel: Learned
+      learnedLeastKill: ' — the least that killed it: {hp} hp'
+      learnedSurvived: ' — seen to survive {hp} hp'
+      temperLabel: Disposition / Aggression
+      temperUncertainNote: ' — the world data disagrees with itself'
+      temperUnknown: not stated in the world data
+    notFound: The world data does not name it.
+    race:
+      agl: Agility
+      chm: Charm
+      exp: '{percent}% of the standard rate'
+      expLabel: Experience
+      hea: Health
+      hpPerLevel: '+{hp} a level'
+      hpPerLevelLabel: Hit points
+      int: Intellect
+      span: '{low} to {high}'
+      str: Strength
+      strFigure: 'STR {high}'
+      wil: Willpower
+    popover:
+      ariaLabel: About {name}
+      pending: Looking up {name}…
+    searchAriaLabel: Look something up
+    searchPlaceholder: Look something up…
+    spell:
+      capLabel: Cap
+      castAs: c {shortName}
+      castAsLabel: Cast as
+      growsLabel: Grows
+      growsPerLevel: '+{amount} a level'
+      growsPerLevels: '+{amount} every {levels} levels'
+      growsSplit: 'low {low}, high {high}'
+      lastsLabel: Lasts
+      levelFigure: L{level}
+      outOfReachNote: ' — out of reach yet'
+      powerLabel: Power
+      powerRange: '{min}–{max}'
+    title: Reference
+  room:
+    actions:
+      askLocationTooltip: Ask the realm where you are (rm, quietly)
+    badge:
+      ambiguousMatches: '{count} matches'
+      ambiguousTooltip: several rooms share this name and exit set
+      resolvedByTooltip: resolved by {method}
+    answers:
+      leadsTo: '→ {roomRef}'
+      noEffectKnown: the realm does not say what it does
+      sendTooltip: Send “{phrase}” — the realm’s own word for it
+    bank:
+      copper: '{copper} copper coins (cc)'
+      onDeposit: On deposit
+      unasked: Balance unread. Send 'bank' to query vault.
+    copy:
+      atCoordinates: at {map}/{number}
+      exitsLine: 'exits: {exitList}'
+      hereLine: 'here: {occupantList}'
+      hiddenLine: 'hidden: {itemList}'
+      itemsLine: 'items: {itemList}'
+      lightLine: 'light: {light}'
+      lightLineDeadReckoning: 'light: {light} — placed by dead reckoning'
+      lightLineRemembered: 'light: {light} — room as last read, before the dark'
+    empty: No room yet.
+    exits:
+      none: no exits
+      unseen: exits unseen
+    faces:
+      bank: Bank
+      inn: Inn
+      shop: Shop
+      tavern: Tavern
+      temple: Temple
+      trainer: Trainer
+    found:
+      elsewherePlural: '{count} more found elsewhere'
+      elsewhereSingular: 1 more found elsewhere
+      forgetAriaLabel: Forget "{command}"
+      forgetStockTooltip: Forget this — the counter does not sell it
+      forgetTooltip: Forget this — it was not a real way through
+      newExitChip: new exit
+      newRoomChip: new room
+      soldItemChip: sold item
+      unnamedDestination: somewhere unnamed
+    itemLookupTooltip: What the world data says about it
+    light:
+      deadReckoning: placed by dead reckoning
+      remembered: as last read, before the dark
+      unplaced: nothing says which room this is
+    occupant:
+      alignCostChip: −10 align
+      alignCostUncertainChip: −10 align?
+      alwaysCostly: attacking it costs you 10 alignment
+      charmedChip: charmed
+      dependsOnStanding: '{word} — depends on your standing, which is not known'
+      hostileUncertainChip: hostile?
+      player: a player
+      playerFree: a player — the realm charges nothing to attack them
+      sometimesCostly: attacking it may cost you 10 alignment
+      uncertainName: the world data disagrees with itself about this name
+      unknownKind: nothing has said whether this is a player or a monster
+      unplacedMonster: a monster the world data cannot place
+    readout:
+      hereLabel: Here
+      hiddenLabel: Hidden
+      hiddenTooltip: Turned up by a search; the room does not list it, and cash here needs its quantity
+      itemsLabel: Items
+    shop:
+      asideListed:
+        Prices as the counter quoted them — {listed} listed, {unlisted} the world data names and
+        the counter did not. The world data is the lead; the counter is the authority.
+      asideNoMarkup: What the world data says it stocks — the shop itself is the authority.
+      asideWithMarkup:
+        Base prices; this shop marks up {markup}%. What the realm data says it stocks — the
+        shop is the authority.
+      cantUseChip: can't use
+      columnItem: Item
+      columnPrice: Price
+      emptyStock: The realm data lists no stock for it.
+      findPlaceholder: Find in the stock
+      notListedChip: not listed
+      shortChip: short
+      shortTooltip:
+        More than the cash on hand when it was last listed ({wealth} copper); a coin picked up since is not
+        counted here.
+      tableCaption: What this shop stocks
+    lair:
+      aside: What the world data says can spawn here. What is here now is the room's own line above.
+      unnamed: The world data marks this a lair, and names none of what spawns here — monsters this
+        client's data was not built from.
+      health: '{hp} hp'
+      healthSpan: '{low}–{high} hp'
+      upTo:
+        many: up to {max} at once
+        one: one at a time
+    tabs:
+      answers: Answers
+      found: Found
+      lair: Lair
+    title: Room
+  route:
+    alreadyHere: You are already here.
+    destination:
+      exits: 'exits: {exitList}'
+      lairChip: lair
+      shopChip: shop
+    closeAria: Close route panel
+    dialogLabel: Route to a room
+    noRoomByName: No room by that name.
+    noRoomByReference: The realm has no room {roomRef}.
+    noRouteFallback: No route.
+    reasons:
+      unknownDestinationRoom: Unknown destination {roomId}
+      unknownStartRoom: Unknown start room {roomId}
+    routeSummary: '{stepCount} steps · cost {cost}'
+    searchAria: Find a room
+    searchPlaceholder: Room name, or 1/2150
+    typeMoreChars: Type at least two characters.
+    walkButton: Walk it
+    walkTooltip: Walk this route (Enter)
+  session:
+    encoding: Encoding
+    grid: Grid
+    gridValue: '{cols}×{rows}'
+    host: Host
+    noTarget: no realm
+    rate: Rate
+    rateValue: '{rate} c/s'
+    title: Session
+  settings:
+    followsClient: Follow the client’s own theme
+    followsClientShort: Client
+    heading: '{cardTitle} · this character'
+    hideWhenEmpty: Auto-Hide this card.
+    paletteLegend: 'Palette: {themeLabel}'
+    panelLabel: Settings for the {cardTitle} card
+    map:
+      density: Density
+      densityValue: '{percent}% dense'
+    talk:
+      layout: Message format
+      layouts:
+        condensed: Condensed
+        condensedAligned: Condensed, aligned
+        original: Original
+      stampFormat: Date and time format
+      stamps: Show the date and time.
+  self:
+    title: Self
+    badge:
+      lit: '{item} lit'
+      short: '{count} short'
+    groups:
+      attributes: Attributes
+      skills: Skills
+      sight: Sight
+    labels:
+      agility: Agility
+      armour: Armour class / DR
+      charm: Charm
+      exp: Experience
+      health: Health
+      here: Here
+      intellect: Intellect
+      lit: Lit
+      lives: Lives / CP
+      magicRes: Magic resistance
+      martialArts: Martial arts
+      nightVision: Night vision
+      perception: Perception
+      picklocks: Picklocks
+      seesDownTo: Sees down to
+      spellcasting: Spellcasting
+      stealth: Stealth
+      strength: Strength
+      thievery: Thievery
+      tracking: Tracking
+      traps: Traps
+      willpower: Willpower
+    sight:
+      # Beside the night-vision figure while the stat sheet has not named the race.
+      raceUnknown: race not yet read
+      litFormat: '{item} (reach {reach})'
+      nothingLit: nothing lit
+      # The darkest room level the character can read, unlit and with the lit light.
+      downToFormat: '{unlit} unlit, {lit} lit'
+      hereUnknown: room not placed
+      hereFormat: 'level {level}, seen {seen} — {reading}'
+      readable: readable
+      # The server's own phrase for the room, the check on the arithmetic.
+      serverSaid: 'server said {phrase}'
+    tabs:
+      pack: Pack
+      supplies: Supplies
+    supplies:
+      keepLabel: Keep in pack
+      min: min
+      max: max
+      buyFromLabel: Buy from
+      noShop: no shop chosen
+      soldNowhere: The realm lists no shop for this.
+      shopAt: '{shop} — {room}'
+      removeTooltip: Stop keeping {item}
+      itemTooltip: Open the item, where the shop is chosen
+      columnHave: Have
+      packUnread: The pack has not been read yet; send 'i'.
+      columnShop: Shop
+      tableCaption: Items kept in stock
+      empty: Nothing kept in stock yet.
+      howToAdd: To keep an item, click its name in the pack and set a minimum on its panel.
+      switchedOff: Auto-buy is switched off on the toolbar; the list is kept but nothing is bought.
+      copyRow: '{item}: {have} carried, keep {min}–{max}, from {shop}'
+  stats:
+    attackingLabel: Attacking
+    avg: avg {mean}
+    badge:
+      nothingYet: nothing yet
+    coinsLabel: Coins collected
+    column:
+      count: Count
+      kind: Attack Type
+      mean: Avg
+      share: Share
+      span: Min-Max
+    dealtLabel: Damage dealt
+    deflectedLabel: Deflected
+    dodgedLabel: Dodged
+    empty: Nothing has been fought yet.
+    expMadeLabel: Exp. made
+    expNeededLabel: Exp. needed
+    # Named with its level where the table can say which: the next level is
+    # often already paid for, and `Exp. needed` alone read as though it were not.
+    expNeededToLevel: Exp. needed, level {level}
+    expRateLabel: Exp. rate
+    incomeRateLabel: Income rate
+    killRateLabel: Kill rate
+    killedLabel: Killed
+    kind:
+      backstab: Backstab
+      cast: Cast
+      crit: Crit
+      melee: Melee
+      miss: Miss
+    noSwings: Nothing has swung yet.
+    percent: '{value}%'
+    perRoundLabel: Damage a round
+    ratePerHour: '{value}/hr'
+    resetAction: Reset Combat Statistics
+    sneakLabel: Sneak
+    span: '{least}–{most}'
+    tableCaption: Accuracy
+    takenLabel: Damage taken
+    title: Combat Stats
+    willLevelLabel: Will level in
+  standby:
+    connectionFailed: The connection failed.
+    dialling: Dialling…
+    hangingUp: Hanging up…
+    hint: The rest of the cards come back as soon as this character is in the realm.
+    lastKnownAs: Last known as {name}.
+    loginPrompt: At a login prompt or menu.
+    notConnected: Not connected.
+    title: Offline
+    waitingForRealm: Connected, waiting for the realm.
+  stream:
+    empty: No lines framed yet.
+    terminatorTooltip: terminated by {terminator}
+    title: Stream
+  talk:
+    channels:
+      auction: auction
+      broadcast: broadcast
+      direct: direct
+      gang: gang
+      gossip: gossip
+      say: say
+      telepath: telepath
+      yell: yell
+    empty:
+      noMatch: Nothing said matches.
+      none: Nobody has said anything yet.
+    find: Find in what was said
+    # The heading's faces, in the realm's own channel words where one exists.
+    tabs:
+      all: Talk
+      gossip: Gos
+      auction: Auc
+      broadcast: Br
+      gang: Gang
+      telepath: Tele
+      local: Local
+    messageInputAria: Say something
+    messagePlaceholder: message, or start with . " > / gos auc br - gb bg
+    # The direction on this character's own receipts: `telepath to Brackle`.
+    sentTo: to
+    title: Talk
+  # The toolbar: one row of glyphs, no text on the row itself. Every label
+  # here is a tooltip, an accessible name and a row in the kebab's menu.
+  toolbar:
+    emptyRow: No buttons pinned — the … lists them all.
+    pickButtons: Toolbar buttons
+    pin: 'Pin: {label}'
+    title: Toolbar
+    unpin: 'Unpin: {label}'
+  translucency:
+    sliderLabel: How solid this card is
+    sliderStatus: Card {fillPercent}% solid, text {textPercent}%
+  vitals:
+    badge:
+      combat: combat
+      idle: idle
+      meditating: meditating
+      phaseAuthenticating: authenticating
+      resting: resting
+      sneaking: sneaking
+    emptyNotInRealm: Not in the realm yet.
+    askExpTooltip: Read the experience table
+    expCaption: What each level costs
+    expColumn:
+      experience: Experience
+      level: Level
+      needed: Needed
+    # Points at the control on this face, never at the console: a card telling
+    # somebody to type the thing it can send itself is the RealmCard failure.
+    expEmpty: No experience table yet.
+    expEmptyOffline: No experience table yet, and nowhere to ask.
+    # Where the numbers came from, said out loud: a figure this client worked
+    # out must not read like one the server sent.
+    expProvenance:
+      database: worked out from the realm data
+      mixed: part the realm's own table, part worked out from the realm data
+      realm: the realm's own table
+    expReached: reached
+    # Beside a figure this client worked out rather than read off the wire.
+    workedOut: worked out
+    labels:
+      class: Class
+      earned: Earned
+      level: Level
+      toLevel: To level
+    level:
+      caution: low
+      critical: critical
+    rateFormat: '{rate} exp/h'
+    sessionExpFormat: +{sessionExp} exp
+    tabExp: Exp
+    title: Vitals
+    # Which level the figure beside it is counting towards. `To level` on its
+    # own could only ever mean the next one, which is the reading that was
+    # wrong for a character standing on experience it has not trained for.
+    toLevelFormat: To level {level}
+# The local map: legend entries and the obstacle wording localMap composes.
+map:
+  obstacle:
+    copper: '{amount} copper'
+    door: Door
+    doorDifficulty: Door — {forcing}
+    doorLabel: Door, {forcing}
+    droppedBySuffix: ' — dropped by {mobs}'
+    gold: '{amount} gold'
+    hidden: Hidden
+    hiddenSearchable: Hidden — search for it
+    itemNumberFallback: '#{itemId}'
+    itemUnknown: unknown
+    keyFallbackName: 'key #{keyId}'
+    keyLabel: 'Key: {itemName}'
+    keyLabelForced: 'Key: {itemName}, {forcing}'
+    levelDetail: '{window}'
+    levelMaximum: Level {maxLevel} and under
+    levelMinimum: Level {minLevel}+
+    levelRange: Levels {minLevel}–{maxLevel}
+    levelRestricted: Level restricted
+    locked: 'Locked: needs {itemName}{source}{pickClause}'
+    needsItem: 'Needs an item: {itemName}'
+    needsPhrase: Needs a phrase, not a direction
+    orForcedSuffix: ', or {forcing}'
+    pickOnly: pick {difficulty}
+    pickOrBash: pick/bash {difficulty}
+    sayCommand: 'Say: {command}'
+    soldAtSuffix: ' — sold at {shops}'
+    toll: Toll to pass
+    tollDetail: 'Toll: {price} to pass'
+    tollLabel: 'Toll: {price}'
+    trapDamage: Trap — {damage} damage
+    trapped: Trapped
+# The settings screens. Labels of at most four words; hints of one sentence.
+settings:
+  actions:
+    confirmKeep: Keep it
+    confirmRemoveCharacter: Remove this character?
+    confirmYes: Yes, remove
+    createCharacter: Create character
+    remove: Remove
+  advanced:
+    toggle: 'Advanced: {label}'
+    togglePlain: Advanced
+  advancedWire: the wire
+  alerts:
+    channel:
+      combat: combat
+      command: command
+      items: items
+      movement: movement
+      party: party
+      presence: presence
+      realm: realm
+      room: room
+      session: session
+      stealth: stealth
+      vitals: vitals
+    minimumCritical: Only critical
+    minimumHint:
+      The quietest alert kept. Critical is act-now, warning is something that did not work,
+      info is the record.
+    minimumInfo: Everything
+    minimumLabel: Keep
+    minimumWarning: Warnings and worse
+    muteHint: A muted channel raises nothing at all, at any level.
+    muteLabel: Never Raise
+    note:
+      A player attacking you is always critical, and a monster attacking you is never an alert at
+      all — the terminal already says both.
+  autoSave:
+    saveDidNotAnswer: The save did not answer.
+  characters:
+    cannotLoad: cannot load
+    emptyChoose: Choose a character, or make a new one.
+    emptyNone: No characters yet. Make one — it needs a name and somewhere to play.
+    new: + New character
+    removed: Character removed. Its file was backed up beside it.
+    saved: '{characterName} saved.'
+  client:
+    appearance:
+      advancedConsole: the console
+      consoleFontHint: A monospace fallback and the bundled CP437 face are always appended.
+      consoleFontLabel: Console Font
+      consoleFontPlaceholder: LucidaProgrammer Nerd Font Mono
+      cursorBar: Bar
+      cursorBlink: Blink Cursor
+      cursorBlock: Block
+      cursorStyleLabel: Cursor
+      cursorUnderline: Underline
+      densityAuto: Auto
+      densityComfortable: Comfortable
+      densityCompact: Compact
+      densityLabel: Density
+      fontSizeLabel: Size, px
+      scrollbackLabel: Scrollback, Lines
+      showHud: Show Cards Beside Console
+      tabPlacementLabel: Character Tabs
+      tabsLeft: Down the side
+      tabsTop: Across the top
+      uiFontHint: Everything except the console, which is always fixed-pitch. Blank uses the console face.
+      uiFontLabel: Interface Font
+      uiFontPlaceholder: the same face as the console
+      vitalCautionPercent: '{vitalName} Caution, %'
+      vitalCriticalPercent: Critical, %
+      vitalsLegend: Vital Bar Thresholds
+      vitalsNote: Fractions of maximum, never points, so one number holds at every level. A maximum
+        nothing has stated yet reads as unknown rather than critical.
+      vitalHealth: Health
+      vitalMana: Mana
+    records:
+      advancedLogSize: how big a log gets
+      captureHint: A raw transcript, kept so a line the client could not read can be looked at later.
+      captureLabel: Record Raw Transcript
+      conversationDaysHint:
+        Anything older is dropped when the client starts. A year by default, and at least one
+        day — to keep nothing, turn the switch above off instead.
+      conversationDaysLabel: Keep Conversations, Days
+      conversationsHint:
+        The Talk card starts where it left off instead of empty. Only the conversation channels
+        are kept, so the file cannot hold a password.
+      conversationsLabel: Persist Conversations
+      enabled: Keep Session Log
+      fightsHint:
+        'Nothing reads it, which is the point: every question worth asking about how a character
+        fights needs a record that predates the question.'
+      fightsLabel: Write Fight Log
+      folderLabel: Folder
+      folderPlaceholder: beside the options file
+      maxBytesLabel: New Log After, Bytes
+      note: What the client writes down. Every one of these is a file beside the options, and the
+        recordings hold everything the realm sent and every command sent back — including, on a
+        hand-typed login, a password.
+    tabs:
+      appearance: Appearance
+      records: Records
+  combat:
+    attackForMe: Auto-Attack
+    attackLegend: Attack
+    attacksLegend: Attacks
+    attackVerbHint:
+      The realm’s own word. A verb this class cannot use is dropped the first time the realm
+      says so.
+    attackVerbLabel: Attack Command
+    attackVerbPlaceholder: a
+    attackWithPlaceholder: a
+    avoidHint: Names as the realm spells them, separated by commas.
+    avoidDeathSpellHint:
+      146 monsters cast something when they die, and nothing in the stream says so until it
+      already has.
+    avoidDeathSpellLabel: Avoid Death-Spell Monsters
+    avoidKindLegend: What the Realm Says
+    avoidLabel: Avoid / Ignore Monsters
+    avoidUndeadHint: From the realm's own Undead column. Retaliation is unaffected.
+    avoidUndeadLabel: Avoid Undead
+    maxMonsterExpHint:
+      Will not open on anything the realm says is worth more than this. 0 never refuses, and a
+      monster the realm cannot place is not refused by it.
+    maxMonsterExpLabel: Max Monster Experience
+    minMobsLabel: Min Monsters in Room
+    minMobsHint:
+      Will not open a fight in a room holding fewer than this — for a character whose value is an
+      area spell. 0 never refuses.
+    maxTargetHealthHint:
+      Will not open on anything the realm gives more health than this. 0 never refuses, and a
+      monster the realm cannot place is not refused by it.
+    maxTargetHealthLabel: Max Target Health
+    avoidPlaceholder: town guard, priest
+    engageAll: Attack All Monsters
+    engageHint:
+      What the world data says about a monster, never its name — one it calls good is attacked only
+      if named below.
+    engageHostile: Hostile / Aggressive Only
+    engageLabel: Attack Target Selection
+    engageLikely: Suspected Hostiles Only
+    engageNone: Retaliate Only
+    hitBack: Retaliate When Attacked
+    hitBackHint: Swings at whatever is already swinging at this character. Cannot open a fight.
+    masterSwitch: Enable Auto-Combat
+    masterSwitchHint: The master switch. With this off nothing below sends anything, whatever it says.
+    maxMobsHint: Will not open a fight in a room holding more than this. 0 never refuses.
+    maxMobsLabel: Max Monsters in Room
+    minHealthHint: Will not open a fight below this. 0 always opens.
+    minHealthLabel: Min Health %
+    monstersLegend: Monsters
+    openerHint: Sent for the first blow of a fight only. Blank for none.
+    openerLabel: Opening Attack
+    openerPlaceholder: bs
+    openingFightsWarning: Opening fights unasked can cost a character; the default only retaliates.
+    openWarning: With this on, the client opens fights by itself — never on a player.
+    preferHint: In this order, whatever the setting above says. Still never a player.
+    preferLabel: Attack Priority List
+    preferPlaceholder: wererat shaman
+    refreshHint: Rounds between looks, so a monster that died or walked in is noticed. 0 never looks.
+    refreshLabel: Room Look Interval (Rounds)
+    rulesPointerNote:
+      When to cast, when to buff and when to loot are automation.rules in the options
+      file — guard expressions with comments explaining why, which is what YAML is good at and this
+      screen is not.
+    whileWalking: Combat Along Path
+    whileWalkingHint: A route waits a fight out and walks on, so this makes the journey a lap.
+  crumbs:
+    characters: Characters
+    global: Global
+    mudEngine: MudEngine
+    realms: Realms
+  dialog:
+    closeAria: Close settings
+    ariaLabel: Settings
+  footer:
+    openConfig: Options file
+    openProfiles: Characters folder
+  formActions:
+    idle: Saved as you type.
+    notSaved: Not saved.
+    redo: Redo
+    saved: Saved.
+    saving: Saving…
+    undo: Undo
+    undoTitle: Undo the last change
+  global:
+    combat:
+      advancedPacing: looking around and how fast to send
+      pacingMinGapLabel: Least Gap, ms
+      pacingNote:
+        'How fast commands may go out is measured from the status line, not guessed: the realm
+        accepts about twenty in flight and silently discards the rest.'
+      pacingTimeoutLabel: Give Up After, ms
+      pacingWindowLabel: In Flight
+    loading: Reading the options file…
+    movement:
+      advancedWalking: walking, and staying connected
+      clearRouteLabel: Route Timeout (sec)
+      idleAfterLabel: Anti-Idle Interval (sec)
+      idleCommandLabel: Anti-Idle Command
+      idleCommandPlaceholder: l
+      idleEnabled: Enable Anti-Idle (Prevent Disconnect)
+      loopsNote:
+        Every character can walk these, whatever realm it plays on. A realm’s own loops go on its
+        page, and a character’s on its own.
+      onEnterHint:
+        What the client asks the realm once, on the way in. Every one of these is a command
+        spent, so the list is short on purpose.
+      onEnterLabel: Post-Login / Entry Commands
+      onEnterPlaceholder: rm, st, i, exp, sc, l
+      onPartyChangeLabel: Party Change Commands
+      onPartyChangePlaceholder: party
+      stepTimeoutHint:
+        Spent twice per step — once waiting for the command to reach the wire, once waiting for
+        the realm to answer it — with one forced prompt between them. The wait before a step is
+        given up on is about twice this.
+      stepTimeoutLabel: Wait Per Step, ms
+    realm:
+      hostPlaceholder: paramud.mudinfo.net
+      loginMenuSendPlaceholder: '1'
+      loginMenusNote:
+        When the realm prints the text on the left, the client sends what is on the right. A
+        new realm starts with these; each realm keeps its own on its page afterwards.
+      noteBeforeCharacter: Until you have made a character, this is also the address the client connects to.
+    saved: Settings saved.
+    startingValuesNote:
+      Starting values. A new realm or character takes a copy of these when you make it
+      and keeps its own from then on, so changing them here changes what the next one starts with
+      and leaves the ones you already have alone.
+    tabs:
+      realm: Realm
+  health:
+    belowHealthLabel: Below Health %
+    retreatHint:
+      Walking out of the fight breaks combat and carries none of the penalty a disconnect does.
+      There is no flee command on this server family, so the way out is always a direction — the
+      one you came in by where that is known, and an exit of this room otherwise.
+    retreatLabel: Auto-Retreat
+    retreatLegend: Auto-Retreat
+    retreatStrategyHint:
+      How far to go. step-back is the one move out. safe-haven takes the same move and then walks
+      to the room below once the fight is over. Which exit is chosen is not a setting — the way you
+      came is always preferred over one you have never used.
+    retreatStrategyLabel: Retreat Strategy
+    safeHavenHint: Named as a loop stop is, with the map/room so a shared name is not guessed at.
+    safeHavenLabel: Safe Room / Retreat Room
+    safeHavenPlaceholder: Newhaven, Town Gates 1/2150
+    hangUpCleanHint: Leave this on. The five-minute PvP window is invisible on screen.
+    hangUpCleanLabel: Refuse Likely Penalties
+    hangUpLabel: Auto-Hangup / Emergency Disconnect
+    hangUpLegend: Auto-Hangup
+    hangUpOnPlayer: Hangup on Player Sighting
+    hangUpWarning:
+      An unclean disconnect costs a share of maximum health, and at low health it kills — use
+      Auto-Retreat.
+    meditateBelowHint: Sends med below this. Ignored for a class with no mana.
+    meditateBelowLabel: Meditate If Below Mana %
+    outnumberedHint: A health threshold notices being swarmed too late. 0 never.
+    outnumberedLabel: Retreat If Attackers Exceed
+    pvpActionHint:
+      What to do about the fight itself. Retreat runs the moment the attack is seen, whatever
+      Auto-Retreat says — a player opening on you is not a health threshold.
+    pvpActionLabel: PvP Reaction
+    pvpLegend: Attacked by a Player
+    pvpNotifyHint: Says so on the gangpath (bg), once per attacker per five-minute window, with the
+      room and your health riding along. It speaks to your whole gang.
+    pvpNotifyLabel: Broadcast PvP Alert to Gang (bg)
+    potionBelowHint: 0 never drinks. Only when the pack lists one.
+    drinkHealingBelowLabel: 'Auto-Potion: HP Threshold %'
+    drinkManaBelowLabel: 'Auto-Potion: Mana Threshold %'
+    healingPotionLabel: Health Potion Item
+    manaPotionLabel: Mana Potion Item
+    potionLegend: Potions
+    potionNote:
+      Drunk when the figure falls below the threshold and the pack lists the potion. The result
+      arrives on the next status line, like every vital.
+    potionVerbHint: Both are the realm's own commands. drink is the one seen consuming a potion.
+    potionVerbLabel: Verb
+    recoverLegend: Recover
+    restBelowHint: Sends rest out of combat below this, and holds a running loop still at the same
+      figure. 0 never rests and never pauses a loop.
+    restBelowLabel: Rest If Below HP %
+    restToHint:
+      Sits back down after something breaks the rest, and walks a held loop on again, once health
+      reaches this. Casting breaks a rest and standing regenerates six times slower, so this is
+      what gives you rest, heal, rest, heal. 0 rests once and resumes at the floor. Lifted to Rest
+      If Below if it is under it.
+    restToLabel: Keep Resting To HP %
+    restingNote: One pair for both, because nothing rests while a loop is marching — a separate
+      pause figure under the resting floor left the character walking while it was too hurt to sit
+      down. Resting is a state the character is in, and only moving, attacking and casting break
+      it, so nothing is sent while the status line already says (Resting), and nothing is ever
+      spent standing up, because the next command you wanted does that for free.
+  hint:
+    ariaLabel: What this does
+  login:
+    addStep: Add a menu
+    legend: Login Menus, This Character
+    note: 'Usually empty: the menus belong to {realmOrAddress}. Anything here replaces that script
+      rather than being added to it.'
+    noteFallbackAddress: the address this character dials
+    removeStepAria: Remove step {stepNumber}
+    removeStepTitle: Remove this menu
+    stepSendAria: Send, step {stepNumber}
+    stepSendPlaceholder: '2'
+    stepWhenAria: When the realm says, step {stepNumber}
+    stepWhenPlaceholder: Please select a character
+  loopPicker:
+    done: Done
+    emptyCatalogue: No loops shipped with this build. A loop is still four lines of YAML in automation.loops.
+    loading: Reading the shipped loops…
+    noMatches: Nothing matches “{query}”.
+    searchAriaLabel: Search the shipped loops
+    searchPlaceholder: Search {count} shipped loops
+    stopsCount:
+      many: '{count} stops'
+      one: '{count} stop'
+    searchPlaceholderLoading: Search the shipped loops
+  loopSection:
+    addLoop: Add a loop
+    empty: None. A loop is a list of rooms walked in sequence; add one below, and start it from the palette.
+    heading: Loops
+    inheritedNote: 'It also walks {count} it does not own, edited where {itLivesOrTheyLive}:'
+    removeAriaLabel: Remove {loopName}
+    removeTitle: Take this loop off
+    scopeGlobal: every character
+    scopeRealm: this realm
+  movement:
+    provideLight: Auto-Light (Torch in Dark Rooms)
+    provideLightHint:
+      Readies a carried torch or lantern before a step into a room the character could not read,
+      worked out from the room's level, the race's night vision and what is worn. On by default.
+    lightDimRooms: Light Dim Rooms Too
+    lightDimRoomsHint:
+      Also in rooms the server describes anyway (dimly lit, barely visible). Spends the torch on a
+      preference rather than a need.
+    extinguishInLight: Put the Light Out in Lit Rooms
+    extinguishInLightHint:
+      Removes the lit torch in a room that does not need it, while nothing is walking the character,
+      so a torch lasts the sewer rather than the walk there.
+    legend: Walking a Route
+    loopsNote: These belong to this character alone. Loops for everyone who plays a realm go on that
+      realm’s page; loops for every character go on the Global page. How long to wait in a room, and
+      walking a corridor there and back, are linger and bounce in the file.
+    loopsWarning: These loops name rooms in the world that ships with the client, and this character
+      uses its own.
+    bankDepositHint:
+      At a bank counter with cash on hand over the threshold, deposits everything above the
+      retained amount and asks the vault its figure. Never on an unread balance.
+    bankDepositLabel: Auto-Deposit Coins
+    bankKeepHint: What stays on hand for tolls and shops. 100 copper is a gold crown.
+    bankKeepLabel: Retain Cash on Hand
+    bankLegend: Banking
+    bankThresholdHint:
+      Deposits only once cash on hand exceeds this, so a lap is not spent on small change.
+      100 copper is a gold crown.
+    bankThresholdLabel: Minimum Deposit Threshold
+    dropEnabledHint: Only what you name below is ever dropped, and never anything worn, wielded or
+      lit. The realm data does not mark quest items, so this list is the one authority on junk.
+    dropEnabledLabel: Auto-Drop Junk Items
+    dropItemsHint: Matched by prefix, because that is how the realm reads drop.
+    dropItemsLabel: Junk Item Names
+    dropItemsPlaceholder: rusty sword, torch
+    dropLegend: Dropping Junk
+    dropWhenEncumberedHint: Waits for the realm itself to grade the load as anything but None on the
+      inventory listing. Off, junk is dropped as soon as it turns up in the pack.
+    dropWhenEncumberedLabel: Drop Only When Encumbered
+    lootCoins: Auto-Get Cash
+    lootCoinKindsHint:
+      Which coins are worth bending down for. The cheap ones are most of what drops and every get
+      is a command; unticking them all takes none.
+    lootCoinKindsLabel: Coins to Collect
+    lootConvertAtLabel: Convert When
+    lootConvertWithHint:
+      An item that turns small coin into large — GreaterMUD's coin bag. The client cannot tell
+      which item does this, so name it yourself. MajorMUD has none.
+    lootConvertWithLabel: Convert Cash With
+    lootGradeHeavy: Heavy
+    lootGradeMedium: Medium
+    lootGradeNever: Never
+    lootStopAtGradeHint:
+      Stop collecting coins once the server grades the load this heavily. The grade is the
+      server's own word, read off the inventory listing.
+    lootStopAtGradeLabel: Stop Collecting At
+    lootMinPriceHint:
+      Also takes anything the realm prices at or above this, in copper. 0 never does, and an item
+      the realm cannot price is never taken by it.
+    lootMinPriceLabel: Auto-Get Over Value
+    lootMaxEncumbranceHint:
+      Never picks anything heavier up, whatever the list says. 0 never refuses; an item the realm
+      cannot weigh is not refused.
+    lootMaxEncumbranceLabel: Max Item Weight
+    dropWorthlessHint:
+      Drops anything the realm prices at zero. Only its explicit zero, never an item it says
+      nothing about, and never one it marks Not Droppable.
+    dropWorthlessLabel: Auto-Drop Worthless Items
+    searchEnabledHint:
+      The realm hides exits, and a route may be planned through one nobody has looked
+      for. Never in combat, never while resting, and once per room rather than once per status line.
+    searchEnabledLabel: Auto-Search Rooms
+    searchLegend: Searching
+    searchTriesHint: Each try is a command out of the same budget the fighting is done from. Whether
+      one look is enough has never been measured.
+    searchTriesLabel: Searches Per Room
+    lootItemsHint:
+      Matched by prefix, because that is how the realm reads get. Nothing here weighs, values or
+      sells.
+    lootItemsLabel: Auto-Get Items List
+    lootItemsPlaceholder: gem, scroll
+    lootLegend: Auto-Looting
+    bashDoors: Auto-Bash Doors
+    bashDoorsHint:
+      Brute force, when your strength is close to what the realm records for the door. It
+      costs health, and a bashed door is open already.
+    bashTries: Bashes Per Door
+    note: Where to walk is chosen from the map, not here.
+    openDoors: Auto-Open Doors
+    openDoorsHint: A route stops at a shut door unless this is on. A locked one costs a command per try.
+    openTries: Tries Per Door
+    pickLocks: Auto-Pick Locks
+    pickLocksHint: Tried before bashing, because it costs no health. Needs picklocks near what the
+      realm records for the lock; the door is opened for you afterwards.
+    pickTries: Picks Per Door
+    sneak: Auto-Sneak on Move
+    sneakHint: Decides whether the next room notices you arrive. Sneaking can fail.
+  remotes:
+    addPlayerLabel: Grant Player Permissions
+    addPlayerPlaceholder: Ardren
+    addPlayerHint: As the realm spells it. Clicking a name on the Realm or Players card opens the
+      same permissions beside the listing.
+    answerHint: Off, an @ command is read and ignored — answering needs the other character to run
+      mudengine too.
+    channelWarning:
+      A channel by which another player’s typing moves the character — it answers nobody
+      until something below is granted, and @kill and @hangup are always refused.
+    enabledLabel: Enable Remote Control
+    gangLegend: Gang Permissions
+    gangWarning: Membership is read from the who listing — this character's row and the asker's must
+      both name the same gang. Until a listing has shown both, the gang grants nobody anything.
+    gangpathHint: 'A gangpath answer is spoken to the whole gang — “gb @exp” is answered “gb
+      {Made…}” where every member sees both halves.'
+    gangpathLabel: Allow Remotes on Gangpath
+    legend: Answering Other Players
+    playerLegend: Permissions for {name}
+    partyListNote:
+      There is a third list on the Party page — what anybody who has joined this character's
+      party may ask for. It ships with @health and @bless-expired on it, and nothing else.
+    removePlayer: Remove
+    removePlayerTitle: Take every permission back off {name}
+    remoteControlNote:
+      Answers @health, @do, @join, @forget, @get-all, @party, @wait and @ok on its own;
+      every other @ command is read and reported, never answered.
+    replyRoutingNote: The answer goes back the way the question came — ask by telepath to be answered.
+  party:
+    assistHint:
+      Swing at what the leader — whoever this character follows — was last seen hitting, while it
+      is still in the room. Never a player; still under the combat health floor.
+    assistLabel: Auto-Assist Leader
+    blessingsMoved:
+      Blessing the party lives on the Spells tab now — one list for self and party, in priority
+      order, recast on wear-off events with a clock behind them.
+    defendHint:
+      Swing at a monster seen attacking any party member, while it is still in the room. The fight came to the
+      party, so it fires whatever Attack Target Selection says. Never a player.
+    defendLabel: Auto-Defend Party
+    legend: Following
+    remotesLegend: Party @ commands
+    remotesNote:
+      What anybody who has **joined** this party may ask this character for. An invitation
+      nobody accepted is not membership, and a Deny on somebody by name still beats this.
+    remotesOffWarning:
+      Answering @ commands is off for this character, so nothing here is answered yet. The
+      switch is on the Remotes page.
+    restHint: Out of combat only, like every rest. Meditates only for a class with mana.
+    restLabel: Rest With Leader
+    warning:
+      Whether the realm's command window is per connection or per host is unmeasured. These make
+      a second automated character useful; turning them on is choosing to run that experiment.
+  profile:
+    accentLabel: Colour
+    autoConnectLabel: Connect on Start
+    autoReconnectHint:
+      Only for a connection that was lost. Pressing Disconnect, hanging up on low health or
+      leaving the realm yourself all stop it. Waits 0s, 5s, 10s, then 15s.
+    autoReconnectLabel: Reconnect if the Connection Drops
+    copyFromHint: Everything but the name and password — a starting point, not a link to later changes.
+    copyFromLabel: Copy From
+    copyFromNone: Nothing — start empty
+    encodingHint:
+      CP437 unless you know the realm has moved on — its banners are block glyphs that are
+      not valid UTF-8.
+    encodingLabel: Encoding
+    hostLabel: Host
+    hostPlaceholder: paramud.mudinfo.net
+    idHint:
+      Letters, numbers, - and _ — names the file, the log and the tab, separate from the display
+      name.
+    idLabel: File Name
+    idPlaceholder: thorn
+    manageRealms: Manage realms…
+    namePlaceholder: Thorn the Unready
+    passwordHint: Kept in this character’s own file, and never shown back.
+    passwordLabel: Password
+    passwordPlaceholderSet: •••••••• — leave blank to keep it
+    passwordPlaceholderUnset: none set
+    playsOnElsewhere: Somewhere else — type the address
+    playsOnLabel: Plays On
+    portLabel: Port
+    themeInherit: As set in MudEngine
+    themeLabel: Theme
+    themeSystem: Follow the system
+    usernameLabel: Username
+  realms:
+    confirmRemove: Remove this realm?
+    databaseBrowse: Browse…
+    databaseClear: Clear
+    empty: Choose a realm, or add one.
+    loginLegend: Login Menus
+    loginNote:
+      When the realm prints the text on the left, the client sends what is on the right. Leave
+      the answer blank to send a bare Enter, which several menus want.
+    loopsNote:
+      Every character that plays here can walk these, without being told to. A character may
+      add loops of its own on its own page.
+    nameHint: What your characters call this realm. Renaming it moves every character that plays here.
+    nameLabel: Name
+    namePlaceholder: Paradigm Game 1 PVE
+    new: + New realm
+    removed: Realm removed.
+    saved: '{realmName} saved.'
+    stepSendPlaceholder: '1'
+    stepWhenPlaceholder: Please select a realm
+    submit: Add realm
+  sections:
+    character: Character
+    login: Login
+  spells:
+    addBlessing: Add a blessing
+    blessingDownAria: Move blessing {number} down
+    blessingDuplicate:
+      An earlier row already casts this spell at this target — only that one is kept when this
+      saves.
+    blessingDownTitle: Lower priority
+    blessingFallback: Recast After, s
+    blessingFallbackAria: Blessing {number} fallback seconds
+    blessingInCombat: In Combat
+    blessingMinMana: Not Below Mana %
+    blessingMinManaAria: Blessing {number} mana floor %
+    blessingOverHeal: Before Healing
+    blessingSpellAria: Blessing {number} spell
+    blessingTargetAria: Blessing {number} target
+    blessingTargetParty: Party
+    blessingTargetSelf: Self
+    blessingUpAria: Move blessing {number} up
+    blessingUpTitle: Higher priority
+    blessingsLegend: Auto-Buff / Blessings
+    blessingsNote:
+      Spells the client keeps active for you. When the game says one has worn off, it is cast
+      again straight away. The top of the list is cast first, and blessings on yourself always
+      come before ones on the party. A blessing on a party member recasts on its own timer,
+      because its wear-off shows on their screen, not yours.
+    notifyWearOffLabel: Notify Caster on Buff Wear-Off
+    notifyWearOffHint:
+      When a party member's blessing on this character wears off, telepath them @bless-expired so
+      their client recasts at once instead of on its clock. Both ends must run mudengine.
+    cureBlindnessLabel: Cure Blindness Spell
+    cureDiseaseLabel: Cure Disease Spell
+    cureLegend: Cures
+    cureNote: Cast the moment the game says you are blinded, poisoned or diseased, and again after
+      thirty seconds if it still shows. A blank field does nothing. A field is greyed out when
+      your spellbook has nothing that cures it.
+    curePoisonLabel: Cure Poison Spell
+    cureHint: The spell to cast when this lands on you. Blank does nothing.
+    cureClosedHint: Your spellbook has no spell that cures this, so there is nothing to cast.
+    bookUnreadNote:
+      This character's spellbook hasn't been read yet. The client reads it automatically the
+      next time the character logs in; until then these fields can't suggest anything.
+    pickerPlaceholder: search spells
+    removeBlessingAria: Remove blessing {number}
+    removeBlessingTitle: Remove
+    areaCastHint:
+      Cast bare — c <spell>, no target — when the fight is crowded enough. Refused while a monster the realm
+      calls good stands in the room, because an AE spell hits everything there.
+    areaCastLabel: Area Effect (AE) / Room Spell
+    areaMinManaHint:
+      The AE spell is the expensive one, so its floor is the higher of this and the ordinary mana floor. 0
+      defers to that floor alone.
+    areaMinManaLabel: AE Spell Min Mana %
+    areaMinMobsHint:
+      Targets at or above which the AE spell is chosen — what is in this fight or would join
+      it, never a shopkeeper.
+    areaMinMobsLabel: AE Min Targets
+    castHint:
+      Sent as c <spell> <target> on the mid-round tick. The whole name — the realm matches on a
+      prefix.
+    castLabel: Combat Spell (Round Spell)
+    healBelowInCombatHint:
+      A separate floor while fighting. 0 uses the one beside it for both; set it lower so a scratch
+      does not cost a round.
+    healBelowInCombatLabel: Heal In Combat Below %
+    healBelowLabel: Heal If Below HP %
+    healHint: Cast on this character, bare. Only spells the realm lets you cast on yourself are offered.
+    healLabel: Self Healing Spell
+    healLegend: Healing
+    healNoSelfCast: The realm says this spell cannot be cast on yourself.
+    healNoPartyCast: The realm says this spell cannot be cast on another character.
+    healParty: Auto-Heal Party Members
+    healPartyHint: A member the roster has not listed has no health to read, and is never healed on a guess.
+    healPartyWithHint:
+      Cast on the member who is hurt. Only spells the realm lets you cast on another character
+      are offered.
+    healPartyWithLabel: Party Healing Spell
+    healToHint: Keep healing that target until it is back to this. 0 casts once at the threshold.
+    healToLabel: Heal Up To HP %
+    legend: Attack Spell
+    minManaHint: Falls through to the round attacks below this. 0 always casts.
+    minManaLabel: Not Below Mana %
+    note: Buffs, heals and everything conditional are automation.rules in the options file.
+    rulesPointerNote:
+      One cast, chosen by a number, on the mid-round tick — which is the one thing about
+      a spell a rule cannot express. Everything else a caster wants is automation.rules.
+  tabs:
+    alerts: Alerts
+    combat: Combat
+    health: Health
+    movement: Movement
+    party: Party
+    remotes: Remotes
+    spells: Spells
+    talk: Talk
+  talk:
+    legend: Other Players
+    lookHint:
+      Once per person, on an idle moment rather than the instant they arrive, and never during a
+      fight. What they wear shows on their Worn tab with the time it was read.
+    lookLabel: Auto-Inspect Players
+    lookWarning: A look is a command from the same budget walking and fighting spend from, and
+      the server tells the person they were looked at.
+  worldDatabaseHint: Blank for the bundled world; point at your own .mdb or SQLite copy for a realm
+    whose rooms differ.
+  worldDatabaseLabel: World Database
+  worldDatabasePlaceholder: the world that ships with the client
+# What the settings editor says when a save is refused.
+errors:
+  settings:
+    characterNotFound: No character called {id}.
+    duplicateRealmName: There is already a realm called {name}.
+    globalAddressMismatch: the address did not survive being saved
+    loopScopeUnknown: Nowhere to put that loop — the character or realm it named is not there.
+    remoteNameRequired: No name given.
+    realmInUse: '{name} is still where {users} {playsOrPlay}. Move them first, or they would have
+      nowhere to connect.'
+    realmNotFound: There is no realm called {name}.
+    realmSaveMismatch: the saved realm does not match what was asked for
+    realmSaveVerifyFailed: the realm did not survive being saved
+    profileUnreadable: could not be read
+# What a session reports: connection, walking, safety, memory.
+session:
+  supplies:
+    abandonedDied: the character died
+    noShopAt: 'room {map}/{room} holds no shop in the realm data'
+    noShopNamed: no shop is named for it
+    shopUnplaced: 'the realm places no room for a shop called {shop}'
+    shopAmbiguous: '{count} rooms hold a shop called {shop}; choose one on the item panel'
+  connection:
+    closedByRemote: Connection closed by remote host.
+    connected: Connected to {host}:{port}.
+    connecting: Connecting to {host}:{port} ({encoding})…
+    disconnected: Disconnected.
+    failed: 'Connection failed: {detail}'
+    socketError: 'Connection error: {message}'
+  loop:
+    ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'
+    locateReason: the loop lost its place
+    locateUnavailable:
+      This realm has no “{command}” command, so it was said out loud rather than answered. The
+      client will work out where it is from the rooms it walks into instead.
+    noRealmData: No realm data.
+    stoppedDied: you were killed, and the realm has moved you
+    stoppedDisconnected: you disconnected
+    stoppedLeftRealm: you left the realm
+    stoppedRealmChanged: this is a different realm
+    unknownRoom: I cannot tell which room you are in.
+    unknownStopName: The realm data has no room called {name}.
+    pausedForRemote: '{who} asked the party to wait'
+  memory:
+    forgot: 'Forgot: "{command}" from {from}.'
+    learned: 'Learned: {discovery}.'
+  parser:
+    fault: Something on this line could not be read; the console is unaffected. {message}
+  probe:
+    askedFromCard: asked from a card
+  reconnect:
+    dialFailed: 'Could not dial again: {detail}'
+    gaveUp: Gave up reconnecting. Press Connect to dial again.
+    switchedOff: Reconnect is switched off for this character now, so it was not dialled again.
+    keptDropping:
+      The realm accepted the connection and dropped it again {count} times, so the client has
+      stopped dialling. Something is refusing this character rather than the link being down —
+      check the password and the realm before pressing Connect.
+    leftRealm: You left the realm, so the connection was not dialled again.
+    loginRefused: The realm refused the login, so the connection was not dialled again.
+    noTarget: Connection lost, but there is no address to dial again.
+    now: Connection lost. Reconnecting…
+    waiting: Reconnect failed. Trying again in {seconds}s (attempt {attempt}).
+    waitingToBePlaced: Back in the realm; what was underway walks on once the client knows which room you are in.
+  safety:
+    escapeDoublesBack: 'Running {direction}: {why}. It doubles back onto the way we came.'
+    escapeKnown: 'Running {direction}: {why}. The realm knows where that exit goes.'
+    escapeNoExit:
+      'Not running: {why}, but this room has named no exit and there is nothing behind us to
+      retrace. Standing and fighting.'
+    escapeNoExitReason: no exit known from this room
+    escapePrinted: 'Running {direction}: {why}. It is the exit the room listed.'
+    escapeReason: 'safety: {why}'
+    escapeRetrace: 'Retreating {direction}, the way we came: {why}.'
+    retreatBecause: Retreating to safe room ({room}) after getting out
+    retreatDropped: 'Not retreating to {room}: you were killed, and the realm has moved you.'
+    retreatGaveUp: 'Not retreating to {room}: the fight never ended.'
+    retreatPlanned: 'Retreating to {room}: {stepCount} steps.'
+    retreatRefused: 'Could not retreat to {room}: {reason}'
+    retreatUnplaced: 'Not retreating to {room}: the room never resolved after the move.'
+    hangingUp: 'Hanging up: {why}. Penalty likely — {reasons}.'
+    hangUpRefused: Not hanging up — {why}. {reasons}. Disconnecting now would be penalised; walk out instead.
+    hangingUpClean: 'Hanging up: {why}.'
+    penaltyLikely: 'penalty likely: {reasons}'
+    pvpAlertReason: 'safety: telling the gang about {attacker}'
+    pvpAlerted: 'Telling the gang: {attacker} is attacking.'
+    pvpNoGang: 'Not telling anyone about {attacker}: the roster shows you in no gang.'
+    pvpNoGangReason: the roster shows no gang to tell
+    whyHealth: health at {percent}
+    whyAttackers: '{count} attackers'
+    whyCompany: Player present in room (PvP abort)
+    whyPvp: '{attacker} opened on you'
+  realm:
+    left: Left the realm. Everything known about this character is forgotten; entering again asks
+      for it afresh.
+  walk:
+    claimLapsed:
+      Nothing answered “{command}” in {seconds}s, so the client has given up waiting for it and is
+      taking the room on screen as where you are. Running away, walking a route and running a loop
+      all wait for a step, so they were held until now.
+    claimLapsedUntyped:
+      Nothing answered the last move in {seconds}s, so the client has given up waiting for it and is
+      taking the room on screen as where you are. Running away, walking a route and running a loop
+      all wait for a step, so they were held until now.
+    exitRefused: The realm data promised an exit {direction} that the realm refuses; routes will avoid it.
+    readLapsed:
+      Nothing answered “{command}” in {seconds}s, so the client has stopped waiting for it. It was a
+      re-read rather than a step, so nothing was held up by it.
+    readLapsedUntyped:
+      Nothing answered the last re-read in {seconds}s, so the client has stopped waiting for it.
+      Nothing was held up by it.
+    stoppedByPlayer: you asked it to
+    stoppedConnectionClosed: the connection closed
+    stoppedLeftRealm: you left the realm
+    resumed: Back in the realm; picking the walk to {destination} back up from here.
+    notResumed: 'Not walking on to {destination}: {reason}'
+  world:
+    realmMismatch: The realm says you are in room {map},{room}, which the loaded realm data does not
+      have — this character's world.database may not match this realm. Routes will fail from here.
+# What the automations say: loops, login, peers, hang-up.
+automation:
+  combat:
+    reason: 'auto-combat: {why}'
+    reasonArrivalUnplaced: 'auto-combat: something walked in the realm data could not place'
+    reasonRefresh: 'auto-combat: re-reading the room'
+    reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the AE spell'
+    reasonRoundSpell: 'auto-combat: round spell'
+    refusedAlreadyFighting: already fighting {target}
+    refusedAvoided: '{target} is on the avoid list'
+    refusedCostly: Attacking {target} causes an alignment penalty (-10 points).
+    refusedDeathSpell: 'the realm says {target} casts a spell when it dies'
+    refusedEngageNone: engage is set to none, so nothing is opened unasked
+    refusedTooTough: '{target} has {hp} health and maxTargetHealth is {cap}'
+    refusedUndead: 'the realm marks {target} undead'
+    refusedMaxMobs: '{here} monsters here, and maxMobs is {max}'
+    refusedMinMobs: 'only {here} monsters here, and minMobs is {min}'
+    refusedTooRich: '{target} is worth {exp} experience and maxMonsterExperience is {cap}'
+    refusedMinHealth: 'health is {percent}% and minHealth is {floor}%'
+    refusedMovePending: a step is still waiting for its room
+    refusedNotHostile: the realm does not say {target} attacks first
+    refusedRetreating: Retreat in progress
+    refusedStandDown: you typed break
+    refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
+    refusedWalking: walking a route, and whileWalking is off
+    standDown: Auto-combat is standing down after break; it resumes when you move or attack.
+    verbRefused: The realm refused {verb}; dropping it from this character's attacks for this session.
+    whyHitBack: hitting back
+    whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {hp} hp{hazards})'
+    whyInRoom: in the room
+    whyMostDangerous: 'the most dangerous of {count} here ({perRound} hp a round against you, {hp} hp{hazards})'
+    whyPreferred: named under prefer
+    whyUnweighed: 'first of {count} here: the realm cannot weigh {target}, and unknown is not safe'
+    hazardList: '; {list}'
+    hazard:
+      afraid: frightens
+      blinded: blinds
+      confused: confuses
+      damage: casts damage
+      drain: drains life
+      held: paralyses
+      poison: poisons
+      slowed: slows
+      summon: calls for help
+      teleported: teleports you
+      wide: room-wide
+  blessing:
+    reason: 'blessing: {name}'
+    notifyReason: 'telling {caster} their {spell} wore off'
+  cure:
+    reason: 'cure: {affliction}'
+  gear:
+    capped:
+      'Only {max} were sent; {more} more were left. Each one is a command out of the same budget
+      a fight is fought with.'
+    missing: 'The pack no longer holds {count}: {items}.'
+  hangUp:
+    reasonInCombat: you are in combat
+    reasonMobEngaged: something in the room is still attacking you
+    reasonMobOnSight: 'in the room and attacks on sight: {names}'
+    reasonMobUnplaced: 'in the room and not placed by the realm data, so may attack: {names}'
+    reasonPvpNamed: PvP with {name} in the last five minutes ({minutes} to go)
+    reasonPvpUnnamed: PvP in the last five minutes ({minutes} to go)
+  heal:
+    reasonParty: 'heal: {memberName} is at {percent}%'
+    reasonSelf: 'heal: health is low'
+  login:
+    credentialMissing: No {credentialType} configured — finish logging in yourself.
+    leftOnPurpose: Left the realm on purpose; automatic login stands down until the next connection.
+    promptRepeated: The {credentialType} prompt came back. Automatic login stopped rather than retrying.
+    reasonCredential: 'login: {credentialType}'
+    reasonMenu: answering "{promptText}"
+    rejected: Login rejected. Automatic login stopped — check the credentials in your options file.
+  loops:
+    heldForErrand: Loop held — going shopping; it walks on from the shop.
+    walkingOnAfterErrand: Walking on from the shop.
+    giveUpReason: 'could not reach {stopName}: {why}'
+    mended: Mended; the loop walks on.
+    reasonLeftRealm: the character left the realm
+    reasonStopMissing: that stop is not in the loop
+    refusalNotInRealm: Not in the realm.
+    skippingStop: 'Skipping {stopName}: {why}'
+    started: 'Looping {loopName}: {stopCount} stops.'
+    stopped: 'Loop stopped: {reason}'
+    tooHurt: Health below path threshold; resting to recover.
+    heldAfterEscape: Ran away; the loop holds here until the fight is over and health is back.
+    walkingOnAfterEscape: Recovered from the retreat; the loop walks on.
+    heldOffline: Connection lost; the loop holds until you are back in the realm.
+    walkingOnAfterReconnect: Back in the realm; the loop walks on from here.
+    fallbackNextStop: the next stop
+    fallbackStop: a stop
+    fallbackWhy: the walk failed
+    paused: Loop paused; the leg being walked has stopped.
+    resumed: Loop resumed from here.
+    skipped: 'Skipping {stopName} at your request.'
+    reversed: Loop turned round; it takes effect at the next stop.
+    refusalNotPaused: The loop is not paused.
+    refusalNotLooping: Nothing is looping.
+    refusalNotBounce: Only a bounce loop has a direction to reverse.
+  banking:
+    reasonConfirm: 'banking: asking the vault its figure'
+    reasonCount: 'banking: restating cash on hand before it is spent'
+    reasonDeposit: 'banking: cash on hand over the threshold — depositing {surplus} copper, retaining {keep}'
+  drop:
+    reasonJunk: 'drop: {item} is on the junk list'
+    reasonWorthless: 'drop: the realm prices {item} at nothing'
+  light:
+    reasonLook: 'reading the room by the {item} just lit'
+    becauseDark: '{room} is too dark to read'
+    reasonRemoveSpent: 'putting the spent {item} down before lighting another'
+    reasonLight: 'lighting {item} for {room}'
+    guessedReach: 'the realm does not say how far {item} reaches; tried anyway'
+    reasonExtinguish: 'putting {item} out — this room is lit'
+    becauseLit: '{room} is lit and nothing is walking'
+    refusalNothingCarried: no light source in the pack
+    refusalNothingUsable: 'every light carried is spent: {items}'
+    refusalNothingReaches: 'no carried light makes it readable: {items}'
+  supplies:
+    abandonedPlayerMoved: you took over
+    abandonedEscape: the character is running away
+    refusalTookTooLong: the errand took too long and gave the lap back
+    abandonedLeftRealm: the realm was left
+    abandonedConnectionClosed: the connection closed
+    abandonedSwitchedOff: auto-buy was switched off
+    refusalNotSold: '{shop} does not list {item}'
+    refusalCannotAfford: '{item} is quoted at {price} copper and the purse holds {wealth}'
+    refusalUnreachable: 'could not reach {shop}: {why}'
+    refusalNoShop: 'nowhere to buy {item}: {why}'
+    refusalNoRoute: 'no route to {shop}: {why}'
+    going: 'Going to {shop} for {item} — {have} carried, keeping at least {min} ({steps} steps).'
+    becauseShort: '{item}: {have} carried, keeping at least {min}'
+    becauseShortRefused: '{item}: fewer than {min} carried'
+    reasonList: 'asking the counter what it sells, for {item}'
+    reasonBuy: 'buying {item} ({bought} of {wanted})'
+    refusalNoListing: '{shop} did not answer list'
+    refusalUnconfirmed: 'the counter did not confirm buying {item}'
+    bought: 'Bought {count} {item} at {shop}; {have} carried.'
+    boughtSome: 'Bought {count} of {wanted} {item}, then stopped: {why}'
+    refused: 'Not buying {item}: {why}'
+  loot:
+    reasonCoinsDropped: 'loot: {count} {coin} on the floor'
+    reasonConvert: 'loot: using {item} to convert cash'
+    reasonListed: 'loot: {item} listed here'
+    reasonWorth: 'loot: {item} is over the value threshold'
+  party:
+    reasonAssist: 'assist: {leader} is fighting {target}'
+    reasonDefend: 'defend: {target} is attacking {member}'
+    reasonRestWithLeader: 'resting with {leader}'
+    reasonMeditateWithLeader: 'meditating with {leader}'
+  search:
+    reason: 'search: looking for what this room did not print'
+  potion:
+    reasonHealth: 'potion: health is low'
+    reasonMana: 'potion: mana is low'
+  remotes:
+    followerReady: '{from} is ready.'
+    followerWait: '{from} asked the party to wait.'
+    dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
+    dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
+    getAllCapped: '{from} sent @get-all; took the first {max} of {total} listed.'
+    getAllEmpty: '{from} sent @get-all and nothing is listed on the floor.'
+    healthUnknown: '{from} asked @health and no stat sheet has stated a maximum yet, so nothing was sent.'
+    answerUnknown: '{from} asked @{raw} and this client does not have that number yet, so nothing was sent.'
+    haveUncaptured:
+      '{from} asked @have {item}; {count} carried, and MegaMUD has only ever been seen answering for
+      one ({yes: 1}), so nothing was sent.'
+    ranDo: 'Remote execution (@do) by {from}: "{command}"'
+    ranParty: '{from} asked the party to "{command}".'
+    reasonAnswering: answering {name}
+    reasonAsking: asking {who} {body}
+    reasonDo: '@do from {from}'
+    reasonDropAll: '@drop-all from {from}'
+    reasonForget: '@forget from {from}'
+    reasonGetAll: '@get-all from {from}'
+    reasonInvite: '@invite from {from}'
+    reasonJoin: '@join from {from}'
+    reasonParty: '@party from {from}'
+    refusal:
+      hangup: an unclean disconnect costs a percentage of maximum health and is fatal at low health;
+        walking out is the escape that works
+      kill:
+        this client never attacks a player on its own account; the first blow opens the five-minute
+        window that makes a disconnect fatal, and the thing on the other end is a person
+      panic: the half of it this client could obey is the hangup, which is the refusal above
+      relog: it hangs up first, and hanging up is the refusal above
+    refusedDenied: '{from} sent @{raw}; ignored — @{raw} is denied to {from} by name.'
+    refusedGangpathOff: '{from} sent @{raw} on the gangpath; ignored, because this character does
+      not answer on the gangpath. Turn it on from the Gang card, or ask by telepath.'
+    refusedNotGranted: '{from} sent @{raw}; ignored — {from} has not been granted
+      @{raw}.{unresolvedClause}'
+    refusedRealmWide: '{from} sent @{raw} on a realm-wide channel; ignored, because a message to
+      everybody logged in is not a message to this character. Ask by telepath.'
+    refusedUnsupported: '{from} sent @{raw}; refused — {reason}'
+    unread: Unsupported remote command @{raw} from {from}.
+    unresolvedGang:
+      " The gang grants it, and nothing has said yet whether they share this character's gang —
+      a who listing that shows both rows settles it."
+    notInParty:
+      ' The party grants it, and they are not on the party listing — a party command settles
+      it, and an invitation nobody accepted is not membership.'
+  recovery:
+    reasonHealth: 'recovery: health is low'
+    reasonMana: 'recovery: mana is low'
+    verbRefused: The realm answered {verb} with "Your command had no effect."; not proposing it again this session.
+  routines:
+    enteringRealm: Asking the realm for {commands}.
+    reasonEnterRealm: entering the realm
+    reasonIdle: idle
+    reasonPartyChanged: the party changed
+    reasonLookAtPlayer: Looking at somebody this character has not seen before
+    reasonRosterUnknown: a name arrived without a listing to explain it
+    reasonSpellbook: reading the spellbook
+    reasonTrained: trained, so the experience to the next level has changed
+    spellbookCorrected: Asked for the wrong book — the realm says to list {book}, so asking that instead.
+  walk:
+    alreadyThere: Already there.
+    arrived: Arrived at {stepName}.
+    darkLightSpent: '{stepName} is dark and your {lightName} is spent.'
+    barrierHeld: Door bash failed (door held).
+    barrierNotAllowed: Door locked (forcing/picking disabled).
+    barrierTooHard: Requires {wanted}; this character has {picklocks} picklocks and {strength} strength.
+    barrierUnknownSkill: unknown
+    healthHolding: Too hurt to travel; waiting here until health is back.
+    healthResumed: Health is back; walking on.
+    reasonAmbiguous: I can no longer tell which room you are in
+    reasonBarrier: '{barrier} blocked {command}. {detail}'
+    reasonBashing: bashing the {barrier} to {stepName}
+    reasonCombat: a fight started
+    reasonDarkUnresolved: Room is {lightLevel}; unable to identify location without light source.
+    reasonDied: you were killed, and the realm has moved you
+    reasonFightUnending: nothing here is ending the fight, so the route is not waiting any longer
+    reasonLostAfterFight: the fight ended somewhere the client could not place
+    reasonMoveUnanswered: the fight ended with {command} still unanswered, so there is nowhere to plan from
+    reasonNotQueued: the client refused to send {command}
+    reasonNotSent: '{command} never left the client'
+    reasonNudge: forcing an answer after {command}
+    reasonOpening: opening the {barrier} to {stepName}
+    reasonPicking: picking the {barrier} to {stepName}
+    reasonPlayerTookOver: you moved the character yourself
+    reasonRefused: the game refused {command}
+    reasonSearching: searching for the hidden way to {stepName}
+    reasonSneak: sneaking before the route
+    reasonStepping: walking to {stepName}
+    reasonTimeout: nothing came back after {command}
+    reasonWrongRoom: Off path / Navigation desync ({roomName}).
+    refusalDisabled: Automation is disabled.
+    refusalInCombat: You are in combat, so I will not walk out of the fight.
+    refusalMoveInFlight: A move has not been answered yet, so I cannot tell which room to plan
+      from. Try again in a moment.
+    refusalNoRoute: No route to there.
+    refusalStaleRoute: That route starts somewhere else. Plan it again from here.
+    refusalUnknownStart: I cannot tell which room you are in, so I will not start walking.
+    started:
+      many: Walking {stepCount} steps to {destination}.
+      one: Walking {stepCount} step to {destination}.
+    stopped: 'Walk stopped: {reason}'
+    superseded: 'Dropped the walk to {destination}; something else is steering now.'
+    fallbackMove: the move
+    fallbackLight: light
+    fallbackBarrier: door
+# How a sighting of another player is phrased, shared by the people cards.
+players:
+  sighting:
+    daysAgo: '{days}d ago'
+    hoursAgo: '{hours}h ago'
+    justNow: just now
+    minutesAgo: '{minutes}m ago'
+    secondsAgo: '{seconds}s ago'
+    noRoom: not seen in a room
+    roomNumber: room {roomNumber}
+    unplacedRoom: a room the client could not place
+# The @ command permission grid, shared by the Player flyout, the Gang card and
+# the settings screen. The command names themselves are closed-union vocabulary
+# rendered as itself (`@health`) and stay in code, like every other union here.
+remotes:
+  allow: Allow
+  allowAll: Allow all
+  allowAllTitle: Grant every @ command this client can actually answer
+  allowTitle: Answer @{remote} for {name}
+  clearAll: Clear all
+  clearAllTitle: Take every @ command back off, allowed and denied alike
+  deny: Deny
+  denyTitle: Never answer @{remote} for {name}, whatever the gang or the party grants
+  findPlaceholder: Find an @ command
+  fromGang: from the gang
+  fromParty: from the party
+  granted: '{granted} of {total} granted'
+  noMatch: No @ command matches “{query}”.
+  on: 'On'
+  onPartyTitle: Let anybody who has joined this party ask for @{remote}
+  onTitle: Let anybody in the gang ask for @{remote}
+  showAll: Show all
+  showing: '{shown} of {total}'
+  support:
+    refused: always refused
+    refusedTitle: Refused for everybody, however granted — this client declines it on its own account.
+    unread: no captured reply
+    unreadTitle: '{because}'
