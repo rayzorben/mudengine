@@ -16,10 +16,44 @@ import type { StreamLine } from '../../shared/types';
 import type { SpellMessageHit } from '../../shared/spell-messages';
 import { tuning } from '../app/tuning';
 
+/*
+ * The patterns the per-line path evaluates, compiled once.
+ *
+ * A regex literal inside a function is compiled once by the engine but
+ * *allocated* on every evaluation; measured 2026-09-04 (todo 01), an inline
+ * literal `.test` costs about twice a hoisted one (60ns against 32ns) and a
+ * `new RegExp` per call nine times (287ns). These run on every line the
+ * server prints — `foregroundCodes` on all of them, `looksLikeRoomName` on
+ * every line no other rule claimed — so they live here. A pattern evaluated
+ * only inside a matched block's branch stays where it reads best.
+ */
+const SGR = /\x1B\[([0-9;]*)m/g;
+const SPACES = /\s+/;
+const ANY_SPACE = /\s/;
+const WORD_EDGE = /^[^A-Za-z0-9&]+|[^A-Za-z0-9.&]+$/g;
+const TITLE_START = /^[A-Z0-9&]/;
+const SENTENCE_MARKS = /[!?;:]/;
+const TWO_COLUMN_GAPS = /(?:\S\s{2,}\S.*){2}/;
+const PROSE_STOP = /(?<=[A-Za-z]{5})\.(?=\s|$)/;
+const PRONOUN_LED = /^(You|He|She|It|They|We|I)\b/;
+/**
+ * The opening of a status line, which ends a batch and is never folded into
+ * one. Case-insensitive throughout: the batch terminator already accepted
+ * `[hp=` and the two fold guards did not, and one constant cannot disagree
+ * with itself.
+ */
+const STATUS_LINE_START = /^\[(?:HP|H)=/i;
+const ADDRESSED_COMMAND = /^([/>])\s*([A-Za-z][\w'-]*)\s+(\S.*)$/;
+const CAPITALISED_FIRST_WORD = /^([A-Z][\w'-]*)\s/;
+const ARTICLE = /^(?:The|A|An)$/;
+const GRAMMAR_TARGET = /^(?:critically )?\w+ (?:the )?(?<target>[A-Za-z][\w' -]*)$/;
+const POSSESSIVE_LED = /^(?:a|an|your|his|her|its|their) /i;
+const CONNECTIVE = / (?:at|with|upon|on|into|through|from|and) /i;
+
 /** SGR foreground codes present in a raw line, in order of appearance. */
 export function foregroundCodes(raw: string): number[] {
   const codes: number[] = [];
-  for (const match of raw.matchAll(/\x1B\[([0-9;]*)m/g)) {
+  for (const match of raw.matchAll(SGR)) {
     for (const part of (match[1] ?? '').split(';')) {
       const value = Number.parseInt(part, 10);
       if (value >= 30 && value <= 37) codes.push(value);
@@ -72,10 +106,10 @@ const TITLE_CONNECTORS = new Set([
  * reliably because the game titles its rooms and writes its prose in sentences.
  */
 function titleCased(text: string): boolean {
-  for (const [index, raw] of text.split(/\s+/).entries()) {
-    const word = raw.replace(/^[^A-Za-z0-9&]+|[^A-Za-z0-9.&]+$/g, '');
+  for (const [index, raw] of text.split(SPACES).entries()) {
+    const word = raw.replace(WORD_EDGE, '');
     if (word === '') continue;
-    if (/^[A-Z0-9&]/.test(word)) continue;
+    if (TITLE_START.test(word)) continue;
     if (index > 0 && TITLE_CONNECTORS.has(word.toLowerCase())) continue;
     return false;
   }
@@ -100,7 +134,7 @@ export function looksLikeRoomName(text: string): boolean {
   const { roomNameMinChars, roomNameMaxChars } = tuning().parse;
   if (text.length < roomNameMinChars || text.length > roomNameMaxChars) return false;
   // Sentence punctuation a title never carries.
-  if (/[!?;:]/.test(text)) return false;
+  if (SENTENCE_MARKS.test(text)) return false;
   /*
    * Two runs of spaces inside the line are *columns*, not a name. `Item
    * Quantity    Price` — the heading over a shop's stock — is title-cased and
@@ -109,17 +143,17 @@ export function looksLikeRoomName(text: string): boolean {
    * names in the shipped realm carry a single doubled space (`Crumbling
    * Catacombs, West Stairwell`), and none carries two.
    */
-  if (/(?:\S\s{2,}\S.*){2}/.test(text)) return false;
+  if (TWO_COLUMN_GAPS.test(text)) return false;
   /*
    * A full stop is allowed only where it abbreviates. `St.` and `Rd.` end a
    * short token; a sentence's full stop follows a whole word, so a stop after
    * five or more letters is prose.
    */
-  if (/(?<=[A-Za-z]{5})\.(?=\s|$)/.test(text)) return false;
+  if (PROSE_STOP.test(text)) return false;
   // Pronoun-led lines are prose, not titles. "You" is by far the commonest.
   // `The`, `A` and `An` are *not* here: they begin plenty of real rooms, and
   // title case already separates `The Silver River` from `The city wall is...`.
-  if (/^(You|He|She|It|They|We|I)\b/.test(text)) return false;
+  if (PRONOUN_LED.test(text)) return false;
   return titleCased(text);
 }
 
@@ -267,7 +301,7 @@ export class Classifier {
      * refused send whose receipt never comes is overwritten by the next
      * addressed message rather than cleared by guesswork.
      */
-    const address = /^([/>])\s*([A-Za-z][\w'-]*)\s+(\S.*)$/.exec(this.lastCommand);
+    const address = ADDRESSED_COMMAND.exec(this.lastCommand);
     if (address) {
       this.addressed = {
         sigil: address[1] as '/' | '>',
@@ -277,7 +311,7 @@ export class Classifier {
     }
 
     // A bare `search`, in any of the realm's four spellings for it.
-    if (commandOf(this.lastCommand) === 'Search' && !/\s/.test(this.lastCommand)) {
+    if (commandOf(this.lastCommand) === 'Search' && !ANY_SPACE.test(this.lastCommand)) {
       this.searching = true;
     }
   }
@@ -544,8 +578,8 @@ export class Classifier {
       groups['attacker'] = leading;
       rest = middle.slice(leading.length);
     } else if (rule.nameFallback) {
-      const word = /^([A-Z][\w'-]*)\s/.exec(middle);
-      if (word && !/^(?:The|A|An)$/.test(word[1] ?? '')) {
+      const word = CAPITALISED_FIRST_WORD.exec(middle);
+      if (word && !ARTICLE.test(word[1] ?? '')) {
         groups['attacker'] = word[1];
         rest = middle.slice(word[0].length);
       }
@@ -730,7 +764,7 @@ export class Classifier {
      * population. See `BatchRule.maxLines`.
      */
     const cap = rule.maxLines === 'roster' ? tuning().parse.rosterLines : rule.maxLines;
-    const done = lines.length >= cap || /^\[(?:hp|h)=/i.test(text);
+    const done = lines.length >= cap || STATUS_LINE_START.test(text);
     if (!done) return undefined;
 
     const rows: Array<Record<string, string>> = [];
@@ -785,14 +819,14 @@ export class Classifier {
  * giant crab`). Those name nothing here and wait for the room to say.
  */
 function targetByGrammar(middle: string): string | null {
-  const match = /^(?:critically )?\w+ (?:the )?(?<target>[A-Za-z][\w' -]*)$/.exec(middle.trim());
+  const match = GRAMMAR_TARGET.exec(middle.trim());
   const target = match?.groups?.['target'];
   if (!target) return null;
-  if (/^(?:a|an|your|his|her|its|their) /i.test(target)) return null;
-  if (/ (?:at|with|upon|on|into|through|from|and) /i.test(` ${target} `)) return null;
+  if (POSSESSIVE_LED.test(target)) return null;
+  if (CONNECTIVE.test(` ${target} `)) return null;
   // A monster's name is at most four words (`captain of the guard`); a spell's
   // effect text is a sentence, and a sentence is not a target.
-  if (target.split(/\s+/).length > 4) return null;
+  if (target.split(SPACES).length > 4) return null;
   return target;
 }
 
@@ -818,7 +852,7 @@ function foldWraps(rule: BatchRule, lines: string[]): string[] {
   let open = false;
   for (const line of lines) {
     const starts = rule.qualifiers.some((qualifier) => qualifier.test(line));
-    if (!starts && open && line.length > 0 && !/^\[(?:HP|H)=/.test(line)) {
+    if (!starts && open && line.length > 0 && !STATUS_LINE_START.test(line)) {
       folded[folded.length - 1] = `${folded[folded.length - 1]} ${line}`;
       continue;
     }
@@ -843,7 +877,7 @@ function assembleWraps(rule: BatchRule, lines: string[]): string[] {
   const out: string[] = [];
   let open = false;
   for (const [index, line] of lines.entries()) {
-    if (index === 0 || line.trim().length === 0 || /^\[(?:HP|H)=/.test(line)) {
+    if (index === 0 || line.trim().length === 0 || STATUS_LINE_START.test(line)) {
       out.push(line);
       open = false;
       continue;

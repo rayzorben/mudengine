@@ -180,6 +180,40 @@ describe('on arriving somewhere dark', () => {
     expect(sent).toEqual(['light torch']);
   });
 
+  /*
+   * The decision was once per room, full stop — so a light that reached the
+   * pack after the arrival was never considered. Live, 2026-09-04: a very dark
+   * room, an empty pack refused out loud, then a glowing pearl on the next `i`
+   * and nothing lit for the rest of the stay. The pack changing is a new
+   * question about the same room; the same pack again is not.
+   */
+  it('decides again when a light reaches the pack after arriving in the dark', () => {
+    const auto = make();
+    const empty = character([]);
+    const dark: CharacterState = {
+      ...empty,
+      room: { ...empty.room, map: 1, number: 607, light: 'very dark', lightLevel: -175 }
+    };
+    auto.onCharacter(dark, false);
+    auto.onCharacter(dark, false);
+    drain();
+    expect(sent).toEqual([]);
+    expect(decisions.map((decision) => decision.acted)).toEqual([false]);
+
+    const pearl = torch({ name: 'glowing pearl', abilities: [[54, 25]] });
+    const withPearl = character([pearl], 0, { room: dark.room });
+    auto.onCharacter(withPearl, false);
+    auto.onCharacter(withPearl, false);
+    drain();
+    expect(sent).toEqual(['light glowing pearl']);
+
+    // Lit, the same room asks nothing more.
+    const lit = character([{ ...pearl, equipped: true, slot: 'Readied' }], 0, { room: dark.room });
+    auto.onCharacter(lit, false);
+    drain();
+    expect(sent).toEqual(['light glowing pearl']);
+  });
+
   it('reads the room again once the light is lit in a room the server would not describe', () => {
     const auto = make();
     const base = character([torch({ equipped: true, slot: 'Readied' })]);

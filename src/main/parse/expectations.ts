@@ -104,6 +104,9 @@ export interface LapsedClaim {
 
 /** Abbreviations of `look`, which the game accepts from one letter up. */
 const LOOK_WORDS = new Set(['l', 'lo', 'loo', 'look']);
+/** Compiled once: `observeCommand` reads every command that goes out. */
+const SPACES = /\s+/;
+const SYS_GOTO = /^sys\s+go(?:to)?\s+(\d{1,3})\s+(\d{1,6})\b/i;
 
 /** The ten directions, for recognising a movement command. */
 export const MOVE_COMMANDS: Record<string, Direction> = {
@@ -151,7 +154,7 @@ function expect(command: string): Expectation | null {
 
   if (LOOK_WORDS.has(text)) return { kind: 'reread', command: text };
 
-  const [verb, target] = text.split(/\s+/);
+  const [verb, target] = text.split(SPACES);
   if (verb !== undefined && target !== undefined && LOOK_WORDS.has(verb) && MOVE_COMMANDS[target]) {
     return { kind: 'peek', command: text };
   }
@@ -411,7 +414,7 @@ export class Expectations {
         this.unmodelled = null;
         this.pending = [];
         this.looking = [];
-        const target = /^sys\s+go(?:to)?\s+(\d{1,3})\s+(\d{1,6})\b/i.exec(command.trim());
+        const target = SYS_GOTO.exec(command.trim());
         this.teleport = target ? { map: Number(target[1]), number: Number(target[2]) } : null;
         /*
          * A teleport moves the character further than any step, but it is not

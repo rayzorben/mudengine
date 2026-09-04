@@ -238,16 +238,21 @@ export class NameIndex {
    * space at all. Read one row at a time, neither half is a name, and the
    * item that folded was the one item that could not be clicked.
    *
-   * Each row is read on its own first and those hits stand: they are what
-   * the row said before its neighbours were consulted, and a name that
-   * straddles a boundary is added only where it overlaps none of them —
-   * otherwise `small` ending one row and `shield of light` opening the next
-   * would be read as `small shield`, taking away a name that was clickable
-   * before. A hard break is joined as a space and only that marker is
-   * collapsed, so a candidate within a row is still compared verbatim and
-   * column padding never bridges two words. A straddle is accepted only when
-   * the two halves are adjacent bare words: `silk.` above `trousers` stays
-   * two words, as it should.
+   * Each row is read on its own first, and a name that straddles a boundary
+   * is added only where it takes no *part* of one of those hits — otherwise
+   * `small` ending one row and `shield of light` opening the next would be
+   * read as `small shield`, taking away a name that was clickable before. A
+   * straddle that **contains** a within-row hit whole replaces it, because the
+   * longer name is the more specific claim — the least-stripping rule `find`
+   * already applies within a row: `glowing` ending one row and `pearl`
+   * opening the next is the `glowing pearl` the listing named, and the bare
+   * `pearl` the second row read on its own is a different item with a
+   * different price (seen live 2026-09-04: the folded pearl linked to the
+   * gem, and `glowing` linked to nothing). A hard break is joined as a space
+   * and only that marker is collapsed, so a candidate within a row is still
+   * compared verbatim and column padding never bridges two words. A straddle
+   * is accepted only when the two halves are adjacent bare words: `silk.`
+   * above `trousers` stays two words, as it should.
    */
   findAcross(rows: Row[]): SpanHit[] {
     const starts: number[] = [];
@@ -275,27 +280,34 @@ export class NameIndex {
       };
     };
 
-    // Offsets into `joined`, so a straddle can be checked against them.
-    const taken: Word[] = [];
-    const hits: SpanHit[] = [];
+    // What each row said on its own, with offsets into `joined` so a straddle
+    // can be checked against them.
+    const within: Array<Word & { hit: SpanHit }> = [];
     rows.forEach((row, line) => {
       for (const hit of this.find(row.text)) {
         const from = starts[line]! + hit.start;
-        taken.push({ start: from, end: starts[line]! + hit.end });
-        hits.push({
-          ...hit,
-          text: row.text.slice(hit.start, hit.end),
-          start: locate(from),
-          end: locate(from + hit.end - hit.start)
+        within.push({
+          start: from,
+          end: starts[line]! + hit.end,
+          hit: {
+            ...hit,
+            text: row.text.slice(hit.start, hit.end),
+            start: locate(from),
+            end: locate(from + hit.end - hit.start)
+          }
         });
       }
     });
 
+    const straddles: SpanHit[] = [];
+    // A within-row hit a straddle swallowed whole; it is no longer offered.
+    const swallowed = new Set<Word>();
     const words = tokenize(joined);
     for (let line = 1; line < rows.length; line += 1) {
       const boundary = starts[line]!;
       let best: SpanHit | undefined;
       let bestWords = 0;
+      let bestEats: Word[] = [];
       // Read once per row, as above.
       const maxWords = tuning().maxNameWords;
       for (let at = 0; at < words.length && words[at]!.start < boundary; at += 1) {
@@ -303,17 +315,26 @@ export class NameIndex {
           const first = words[at]!;
           const last = words[at + span - 1]!;
           if (last.end <= boundary) break;
-          if (taken.some((w) => w.start < last.end && first.start < w.end)) continue;
+          const touched = within.filter((w) => w.start < last.end && first.start < w.end);
+          // Taking part of a name already found is refused; taking all of it is
+          // the longer claim winning.
+          if (touched.some((w) => w.start < first.start || w.end > last.end)) continue;
           const hit = hitAt(first.start, last.end);
           if (hit === undefined) continue;
           best = hit;
           bestWords = span;
+          bestEats = touched;
           break;
         }
       }
-      if (best !== undefined) hits.push(best);
+      if (best !== undefined) {
+        straddles.push(best);
+        for (const eaten of bestEats) swallowed.add(eaten);
+      }
     }
 
+    const hits = within.filter((w) => !swallowed.has(w)).map((w) => w.hit);
+    hits.push(...straddles);
     return hits.sort((a, b) => a.start.line - b.start.line || a.start.col - b.start.col);
   }
 
@@ -343,12 +364,20 @@ interface Word {
   end: number;
 }
 
+/**
+ * A run of letters, digits, apostrophes and hyphens. Compiled once — this
+ * runs per word of every row the console is asked about — and global, so it
+ * carries `lastIndex` between calls: `tokenize` resets it before each loop
+ * rather than trusting the last one to have run off the end.
+ */
+const WORD = /[A-Za-z0-9][A-Za-z0-9'\-]*/g;
+
 /** Runs of letters, digits, apostrophes and hyphens, by column. */
 function tokenize(row: string): Word[] {
   const words: Word[] = [];
-  const pattern = /[A-Za-z0-9][A-Za-z0-9'\-]*/g;
+  WORD.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(row)) !== null) {
+  while ((match = WORD.exec(row)) !== null) {
     words.push({ start: match.index, end: match.index + match[0].length });
   }
   return words;

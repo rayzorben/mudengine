@@ -405,7 +405,8 @@ automation:
 
     # Light, before the dark -- MegaMUD's AutoLight.
     #
-    # `provideLight` readies a carried torch or lantern before a step into a room
+    # `provideLight` readies a carried light -- a torch, a lantern, a glowing
+    # pearl, anything the realm files as a light -- before a step into a room
     # the character could not otherwise read, and on arriving in one. ON BY
     # DEFAULT, the one automated thing that is: the decision is the server's own
     # arithmetic (the room's level, plus the race's night vision, plus what is

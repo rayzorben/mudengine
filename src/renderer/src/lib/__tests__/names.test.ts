@@ -129,6 +129,27 @@ describe('finding a name folded across two rows', () => {
     expect(hits.map((hit) => hit.name)).toEqual(['shield of light']);
   });
 
+  /*
+   * The other direction: a straddle that contains a within-row name whole is
+   * the longer, more specific claim and takes its place — the rule `find`
+   * already applies within a row. Live, 2026-09-04: a carried listing folded
+   * between `glowing` and `pearl`, and the bare `pearl` the second row read on
+   * its own is a different item at a different price; `glowing` linked to
+   * nothing at all.
+   */
+  it('lets a straddle that contains a shorter name whole replace it', () => {
+    const pearls = realm({ items: ['glowing pearl', 'pearl', 'glass jug'] });
+    const rows = broken(
+      'copper farthings, silver ring (Finger), silver holy amulet, glass jug, glowing',
+      'pearl',
+      'You have no keys.'
+    );
+    expect(pearls.findAcross(rows).map((hit) => [hit.name, hit.start, hit.end])).toEqual([
+      ['glass jug', { line: 0, col: 60 }, { line: 0, col: 69 }],
+      ['glowing pearl', { line: 0, col: 71 }, { line: 1, col: 5 }]
+    ]);
+  });
+
   /* Only the fold marker collapses; padding inside a row is compared verbatim. */
   it('does not bridge column padding within a row', () => {
     expect(index.findAcross(broken('padded          boots'))).toEqual([]);

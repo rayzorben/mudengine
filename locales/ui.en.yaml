@@ -543,7 +543,7 @@ terminal:
 # the tooltip, the accessible name and the row in the button picker — the
 # words follow the settings screen's, because the two edit the same key.
 toolbar:
-  provideLight: Auto-Light (Torch in Dark Rooms)
+  provideLight: Auto-Light (Light Dark Rooms)
   supplies: Auto-Buy Supplies
   assistLeader: Auto-Assist Leader
   autoDeposit: Auto-Deposit (Bank Coins)
@@ -1866,10 +1866,11 @@ settings:
     scopeGlobal: every character
     scopeRealm: this realm
   movement:
-    provideLight: Auto-Light (Torch in Dark Rooms)
+    provideLight: Auto-Light (Light Dark Rooms)
     provideLightHint:
-      Readies a carried torch or lantern before a step into a room the character could not read,
-      worked out from the room's level, the race's night vision and what is worn. On by default.
+      Readies a carried light — a torch, a lantern, a glowing pearl, anything the realm files as
+      one — before a step into a room the character could not read, and on arriving in one, worked
+      out from the room's level, the race's night vision and what is worn. On by default.
     lightDimRooms: Light Dim Rooms Too
     lightDimRoomsHint:
       Also in rooms the server describes anyway (dimly lit, barely visible). Spends the torch on a

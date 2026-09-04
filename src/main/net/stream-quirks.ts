@@ -65,6 +65,14 @@ export function applyQuirks(text: string, quirks: QuirkOptions): string {
  * strips ANSI. Returns the text safe to emit now plus the fragment to prepend
  * to the next chunk.
  */
+// Compiled once: this runs on every chunk the socket delivers.
+/** A complete CSI sequence ends with a byte in the range 0x40-0x7E. */
+const COMPLETE_CSI = /^\x1B\[[0-9;?]*[\x40-\x7E]/;
+/** A complete two-character escape (e.g. ESC c, ESC 7) is also finished. */
+const COMPLETE_TWO_CHAR = /^\x1B[^[\]]/;
+/** OSC sequences terminate with BEL or ST. */
+const COMPLETE_OSC = /^\x1B\][^\x07\x1B]*(\x07|\x1B\\)/;
+
 export function splitTrailingEscape(text: string): { emit: string; hold: string } {
   const start = text.lastIndexOf('\x1B');
   if (start === -1) return { emit: text, hold: '' };
@@ -72,12 +80,9 @@ export function splitTrailingEscape(text: string): { emit: string; hold: string 
   const tail = text.slice(start);
   if (tail.length > tuning().net.maxPartialEscapeBytes) return { emit: text, hold: '' };
 
-  // A complete CSI sequence ends with a byte in the range 0x40-0x7E.
-  if (/^\x1B\[[0-9;?]*[\x40-\x7E]/.test(tail)) return { emit: text, hold: '' };
-  // A complete two-character escape (e.g. ESC c, ESC 7) is also finished.
-  if (/^\x1B[^[\]]/.test(tail)) return { emit: text, hold: '' };
-  // OSC sequences terminate with BEL or ST.
-  if (/^\x1B\][^\x07\x1B]*(\x07|\x1B\\)/.test(tail)) return { emit: text, hold: '' };
+  if (COMPLETE_CSI.test(tail)) return { emit: text, hold: '' };
+  if (COMPLETE_TWO_CHAR.test(tail)) return { emit: text, hold: '' };
+  if (COMPLETE_OSC.test(tail)) return { emit: text, hold: '' };
 
   return { emit: text.slice(0, start), hold: tail };
 }

@@ -86,7 +86,15 @@ export class AutoLight {
   private decidedIn: string | null = null;
   /** When a light was last asked for, so an extinguish cannot race it. */
   private litAt = 0;
-  /** The room an arrival light was proposed in. */
+  /**
+   * The room an arrival light was decided in, **and the lights it was decided
+   * over** (`arrivalKey`). Keyed on the room alone, the decision was taken
+   * once per room and never again — so a light that reached the pack *after*
+   * the arrival (bought, picked up, or, as on 2026-09-04, sysop-created in a
+   * very dark room) was never considered: the refusal said *no light source in
+   * the pack* and stood for the rest of the stay, with a glowing pearl on the
+   * `i` listing. The pack changing is a new question about the same room.
+   */
   private arrivalLitIn: string | null = null;
 
   constructor(
@@ -150,10 +158,12 @@ export class AutoLight {
        * The server said the room is dark, whatever the realm recorded. Once
        * per room: the phrase is restated on every look and every repaint.
        */
-      if (here !== null && this.arrivalLitIn === here) return;
+      const decision =
+        here === null ? null : arrivalKey(here, carriedLights(state.inventory.items));
+      if (decision !== null && this.arrivalLitIn === decision) return;
       const dark = isBlinding(phrase) || this.config.lightDimRooms;
       if (!dark) return;
-      this.arrivalLitIn = here;
+      this.arrivalLitIn = decision;
       /*
        * The realm's level where it records one — and `undefined`, not zero,
        * where it does not. The server has just said this room is dark; pricing
@@ -324,6 +334,16 @@ export class AutoLight {
       acted: true
     });
   }
+}
+
+/**
+ * One arrival decision per room *per pack of lights*: the names, whether each
+ * is lit and what charge it has left, so a light acquired, lit or spent in the
+ * room asks the question again and nothing else does.
+ */
+function arrivalKey(room: string, lights: readonly CarriedLight[]): string {
+  const pack = lights.map((light) => `${light.name}:${light.lit ? 1 : 0}:${light.charges ?? '?'}`);
+  return `${room}|${pack.sort().join(',')}`;
 }
 
 function roomKey(state: CharacterState): string | null {

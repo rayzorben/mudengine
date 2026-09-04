@@ -85,6 +85,9 @@ export const ABANDON_MS = 2_000;
  */
 export const BARE_ENTER = 'enter';
 
+/** Compiled once: `sent` runs for every command that goes out. */
+const SPACES = /\s+/;
+
 /**
  * Block types the server volunteers rather than answers with.
  *
@@ -172,7 +175,7 @@ export class TerminalFeed {
     const typed = command.trim();
     // A bare Enter has no first word to key on, and it is the client's own
     // room read — so it answers to `BARE_ENTER` rather than to nothing.
-    const word = typed.length === 0 ? BARE_ENTER : (typed.split(/\s+/)[0]?.toLowerCase() ?? '');
+    const word = typed.length === 0 ? BARE_ENTER : (typed.split(SPACES)[0]?.toLowerCase() ?? '');
     const quiet = from === 'automation' && this.source.isQuiet(word);
     this.queue.push({ command, quiet, at: this.source.now() });
     this.expire();

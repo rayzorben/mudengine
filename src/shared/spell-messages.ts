@@ -65,11 +65,14 @@ export function spellKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/** Compiled once: `wordsOf` runs on every line the classifier could not type. */
+const SPACES = /\s+/;
+
 /** The words of a sentence, which is what the trie is keyed on. */
 export function wordsOf(sentence: string): string[] {
   return sentence
     .trim()
-    .split(/\s+/)
+    .split(SPACES)
     .filter((word) => word.length > 0);
 }
 
