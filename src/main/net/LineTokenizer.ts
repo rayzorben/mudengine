@@ -135,6 +135,9 @@ export class LineTokenizer {
  * parser rule is matched against.
  */
 const ANSI = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/g;
+// Compiled once, like `ANSI`: `plainText` runs on every line the server prints.
+const LINE_END = /\r?\n$/;
+const TRAILING_CR = /\r$/;
 
 export function stripAnsi(text: string): string {
   return text.replace(ANSI, '');
@@ -149,7 +152,5 @@ export function stripAnsi(text: string): string {
  * (docs/legacy-assessment.md §5, consequence 3).
  */
 export function plainText(line: FramedLine): string {
-  return stripAnsi(line.text)
-    .replace(/\r?\n$/, '')
-    .replace(/\r$/, '');
+  return stripAnsi(line.text).replace(LINE_END, '').replace(TRAILING_CR, '');
 }

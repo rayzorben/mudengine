@@ -35,9 +35,12 @@ export interface Sort {
 export function terms(query: string): string[] {
   return query
     .toLowerCase()
-    .split(/\s+/)
+    .split(SPACES)
     .filter((term) => term.length > 0);
 }
+
+/** Compiled once: `terms` runs on every keystroke in a find field, per row. */
+const SPACES = /\s+/;
 
 /**
  * Does this row answer the query?
