@@ -1,0 +1,95 @@
+# A realm -- the MUD you connect to -- in a directory of its own.
+#
+# The directory's name (`paradigm-game-1-pve`) is the id. It is how this realm's
+# files are found and it never changes; the `name` below is what a player
+# reads, what the palette offers as "Connect: <name>", and what a character
+# refers to in its own `server:` key. Renaming one is therefore an edit to this
+# file rather than a move, which is what keeps the loops beside it attached.
+#
+# Six of these ship, one per Paradigm realm, because that is what Paradigm
+# actually runs -- four game realms on one port and two test realms on another,
+# distinguished by the realm number in the `login:` script below. They are the
+# same six entries MegaMUD's own Paradigm distribution ships
+# (`mega-paramud/BBS/*/BBS.INI`).
+#
+# Copy this directory to add another. The settings screen writes them too --
+# Realms, in Settings, or "Settings: add or edit a realm..." in the palette.
+#
+# This file is the annotated one; the five beside it state the same keys
+# without repeating the prose.
+
+name: Paradigm Game 1 PVE
+host: paramud.mudinfo.net
+port: 2323
+
+# cp437 is the right answer for MajorMUD and its derivatives: the shade and
+# block glyphs the banner opens with are invalid UTF-8 and wrong in Latin-1.
+# `utf8` and `latin1` are here for a derivative that has genuinely moved on.
+encoding: cp437
+
+# How to get through this realm's menus, in `when` / `send` pairs matched on
+# the prompt's own text -- anywhere in the line, case-insensitively.
+#
+# **On the realm rather than on each character**, because every character on
+# one realm meets the same menus. What is genuinely per character is the
+# account and the character slot, and a character that needs to differ states
+# its own `login.steps` and replaces this whole list.
+#
+# Matched, never sequenced: each row is used once, in whatever order the menus
+# arrive, so a realm with one character simply never reaches the character
+# menu. Enter is always assumed, so `send: ''` is a bare Enter -- which is a
+# real answer several menus want, not "no answer".
+#
+# Your account name and password are NOT here. They belong to a character, in
+# `profiles/<id>/profile.yaml`, because they are the one thing two people
+# sharing this file must not share. Paradigm runs one account with several
+# character slots, so the slot number is the row two of your characters
+# differ on -- state it on the character, not here.
+login:
+  # The service menu. Paradigm is `P`.
+  - when: 'Please enter your selection'
+    send: P
+  # THE ONE ROW THAT DIFFERS BETWEEN THESE SIX FILES: which realm on this
+  # server. Game 1 is realm 1, Game 2 is realm 2, and the two test realms are
+  # 1 and 2 again on port 2324.
+  - when: 'Please select a realm'
+    send: '1'
+  # The character slot. One is the sensible default and the wrong answer for
+  # your second character -- that one states `login.steps` on its own file.
+  - when: 'Please select a character'
+    send: '1'
+  - when: '[PARADIGM]'
+    send: E
+  # A menu the server added later (a rules gate, in this case) gets a row the
+  # same way; one nobody has configured is left alone silently.
+  - when: Accept these realm rules to continue
+    send: '1'
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: ''
+
+# The world file every character playing here walks: every room, exit, door,
+# shop, item, monster and spell the client knows about. It draws the map, plans
+# routes and answers a lookup, so nothing it can answer costs a command.
+#
+# A path to a MegaMUD database -- .mdb or .accdb (needs nothing installed), or
+# .sqlite / .db (needs the sqlite3 command).
+#
+# Empty, or absent as here, means the world that ships with the client -- and
+# the world that ships with the client IS Paradigm's: `resources/world/` is
+# built from `default-pmud.mdb`, the database Paradigm distributes with
+# MegaMUD (`npm run build:world`). So these six realms need no `database:` key
+# at all. Name one only if you are playing a realm whose data has moved on
+# from that file, or a private realm of your own.
+#
+# A file named here is converted ONCE into the same normalised form and cached
+# in `realms/`; it is never queried while you are playing. Edit the database
+# and the next launch reconverts it.
+#
+# A file that cannot be read is reported and the shipped world is used instead
+# -- said every time, not once, because playing against the wrong map is only
+# survivable if you know you are.
+#
+# **On the realm rather than on each character**, like the menus above: two
+# characters on one realm cannot be walking two different maps.
+#
+# database: /path/to/your-realm.mdb

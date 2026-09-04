@@ -1,0 +1,172 @@
+{
+  "name": "mudengine",
+  "version": "0.5.0",
+  "description": "Modern cross-platform client, terminal and reactive automation engine for MajorMUD / GreaterMUD / Paradigm",
+  "author": "Raymond Bennett <raymond.bennett@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/rayben/mudengine",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rayben/mudengine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rayben/mudengine/issues"
+  },
+  "type": "module",
+  "main": "./out/main/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "electron-vite preview",
+    "build": "npm run typecheck && electron-vite build",
+    "build:world": "node --import ./scripts/lib/register.mjs scripts/build-world.mjs",
+    "build:loops": "node --import ./scripts/lib/register.mjs scripts/build-loops.mjs",
+    "capture:analyse": "node --import ./scripts/lib/register.mjs scripts/analyse-capture.mjs",
+    "capture:corpus": "node --import ./scripts/lib/register.mjs scripts/analyse-corpus.mjs",
+    "check:reckoning": "node --import ./scripts/lib/register.mjs scripts/check-reckoning.mjs",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:realm": "vitest run --config vitest.realm.config.ts",
+    "test:full": "npm run test && npm run test:realm",
+    "test:watch": "vitest",
+    "gate": "npm run lint && npm run test:full && electron-vite build && node scripts/smoke.mjs",
+    "lint": "prettier --check \"src/**/*.{ts,tsx,css}\" && npm run typecheck",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "dist": "node scripts/package.mjs",
+    "pack:dir": "npm run check:secrets && npm run build && electron-builder --dir && npm run check:secrets",
+    "dist:linux": "npm run check:secrets && npm run build && electron-builder --linux && npm run check:secrets",
+    "dist:win": "npm run check:secrets && npm run build && electron-builder --win && npm run check:secrets",
+    "dist:mac": "npm run check:secrets && npm run build && electron-builder --mac && npm run check:secrets",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "check:live": "npm run build && node --import ./scripts/lib/register.mjs scripts/live-check.mjs",
+    "check:secrets": "node --import ./scripts/lib/register.mjs scripts/check-secrets.mjs",
+    "check:first-run": "npm run build && node scripts/first-run.mjs",
+    "profile:ui": "electron-vite build --sourcemap && node scripts/profile-ui.mjs",
+    "soak": "node --import ./scripts/lib/register.mjs scripts/soak.mjs",
+    "soak:report": "node scripts/soak-report.mjs",
+    "probe:naws": "node --import ./scripts/lib/register.mjs scripts/naws-probe.mjs",
+    "probe:pacing": "node --import ./scripts/lib/register.mjs scripts/pacing-probe.mjs",
+    "probe:room": "node --import ./scripts/lib/register.mjs scripts/room-probe.mjs",
+    "probe:who": "node --import ./scripts/lib/register.mjs scripts/who-probe.mjs",
+    "probe:tour": "node --import ./scripts/lib/register.mjs scripts/tour-probe.mjs",
+    "probe:talk": "node --import ./scripts/lib/register.mjs scripts/talk-probe.mjs",
+    "probe:party": "node --import ./scripts/lib/register.mjs scripts/party-probe.mjs",
+    "probe:combat": "node --import ./scripts/lib/register.mjs scripts/combat-probe.mjs",
+    "probe:rest": "node --import ./scripts/lib/register.mjs scripts/rest-probe.mjs",
+    "probe:stealth": "node --import ./scripts/lib/register.mjs scripts/stealth-probe.mjs",
+    "probe:pvp": "node --import ./scripts/lib/register.mjs scripts/pvp-probe.mjs",
+    "probe:play": "node --import ./scripts/lib/register.mjs scripts/play-probe.mjs",
+    "probe:dark": "node --import ./scripts/lib/register.mjs scripts/dark-probe.mjs",
+    "probe:remotes": "node --import ./scripts/lib/register.mjs scripts/remotes-probe.mjs",
+    "probe:gang": "node --import ./scripts/lib/register.mjs scripts/gang-probe.mjs",
+    "probe:look": "node --import ./scripts/lib/register.mjs scripts/look-probe.mjs",
+    "probe:bank": "node --import ./scripts/lib/register.mjs scripts/bank-probe.mjs",
+    "probe:megamud": "node --import ./scripts/lib/register.mjs scripts/megamud-probe.mjs",
+    "probe:spellbook": "node --import ./scripts/lib/register.mjs scripts/spellbook-probe.mjs",
+    "probe:signal": "node scripts/signal-probe.mjs"
+  },
+  "build": {
+    "appId": "com.raymondbennett.mudengine",
+    "productName": "mudengine",
+    "copyright": "Copyright © 2026 Raymond Bennett",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/main/**",
+      "out/preload/**",
+      "out/renderer/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": ".",
+        "filter": [
+          "**/*",
+          "!config/user.yaml*",
+          "!config/*.local.*",
+          "!config/profiles/**",
+          "!config/realms/**",
+          "!config/mob-lore.json*",
+          "!config/memory/**",
+          "!config/fights/**",
+          "!*.ttf"
+        ]
+      }
+    ],
+    "publish": null,
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "tar.gz", "arch": ["x64"] }
+      ],
+      "category": "Game",
+      "synopsis": "Client and automation engine for MajorMUD, GreaterMUD and Paradigm",
+      "maintainer": "Raymond Bennett <raymond.bennett@gmail.com>"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${name}-${version}-win-${arch}-setup.${ext}"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.games",
+      "identity": null
+    },
+    "dmg": {
+      "artifactName": "${name}-${version}-mac-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-unicode11": "^0.8.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
+    "iconv-lite": "^0.6.3",
+    "mdb-reader": "^3.2.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/react-test-renderer": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "prettier": "^3.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-test-renderer": "^18.3.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.21.5": true
+  }
+}

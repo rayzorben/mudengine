@@ -1,0 +1,229 @@
+/*
+ * Design tokens — the single source of truth for the UI language documented in
+ * docs/ui-design.md. Component styles reference tokens only; a literal colour,
+ * duration or radius anywhere else is a bug.
+ *
+ * Colour is owned by the theme registry in `src/shared/themes.ts`, not by this
+ * file. `useTheme` writes every colour-bearing token below as an inline custom
+ * property on the root element at runtime. The values here are the dark
+ * theme's, restated so that the first paint — and any headless render, where no
+ * theme has been applied yet — is correct rather than unstyled.
+ *
+ * Two consequences worth knowing before editing:
+ *
+ * 1. An inline custom property beats every selector. A token the theme sets may
+ *    therefore never be re-declared in a rule below and expected to win. The
+ *    stream-pressure block is the one place that needs to override a colour, so
+ *    `--text-lo` is composed here from two tokens the theme *does* set rather
+ *    than being set by the theme directly.
+ * 2. Everything that is not colour — shape, motion, density, typography — stays
+ *    here and is the same in every theme. Themes change what the instrument is
+ *    made of, never its layout, and never the terminal grid.
+ */
+
+:root {
+  /* Overwritten by the theme; see `useTheme`. */
+  color-scheme: dark;
+
+  /* ---------------------------------------------------------- neutrals */
+  --ink-void: #12151a;
+  --ink-card: #1a1f26;
+  --ink-raised: #222933;
+  --ink-line: #2a323d;
+  --ink-edge: #3a4452;
+
+  /* The terminal's own ground. Derived from the theme's terminal palette so
+   * the frame and the slate inside it cannot drift apart. */
+  --ink-slate: #000000;
+
+  --text-hi: #dbe1e9;
+  --text: #a9b3c1;
+
+  /* Read through `--text-lo` below, never directly. */
+  --text-lo-normal: #7f8996;
+  --text-lo-quiet: #69727e;
+
+  /* ---------------- accents: the terminal's EGA hues, pulled back */
+  --accent: #6fd3de;
+  --ok: #6fcf8b;
+  --pending: #e8b468;
+  --danger: #ef7d7d;
+  --marker: #c79ae8;
+
+  /* Ink laid over a filled accent. Dark-on-tinted in dark themes; light themes
+   * darken their accents to stay legible as text and flip this to white. */
+  --on-accent: #0c1116;
+
+  /*
+   * Tonal fills. A chip or a soft highlight is the accent at low opacity over
+   * the surface beneath, not a saturated block — one recipe that lands
+   * correctly in both a light and a dark theme, because it composes with
+   * whatever is behind it rather than assuming.
+   */
+  --tone-weak: 12%;
+  --tone: 18%;
+  --tone-strong: 26%;
+
+  /* ------------------------------------------------------------- glass */
+  --glass-blur: blur(18px) saturate(1.3);
+  --glass-rim: inset 0 1px 0 rgb(255 255 255 / 6%);
+  --glass-shadow: 0 6px 24px rgb(0 0 0 / 32%);
+  --scrim: rgb(10 13 18 / 58%);
+
+  /* -------------------------------------------------------- elevation
+   *
+   * Depth is a shadow and a half-step of surface tone, never an offset block.
+   * Dark themes lift mostly by lightening the surface; light themes mostly by
+   * casting, which is why both values are theme-supplied.
+   */
+  --elev-1: 0 1px 2px rgb(0 0 0 / 30%);
+  --elev-2: 0 3px 10px rgb(0 0 0 / 34%);
+
+  /* Hairline weight. Structure comes from tone and elevation; a border is a
+   * seam, not an outline. */
+  --rule: 1px;
+  --focus-ring: 2px;
+
+  /* ------------------------------------------------------------ shape */
+  --r-card: 14px;
+  --r-control: 10px;
+  --r-chip: 6px;
+  --r-pill: 999px;
+
+  /* ----------------------------------------------------------- motion */
+  /* The one gold in the chrome: the glyph beside a bank's name in the console. */
+  --mark-bank: #e6c34a;
+  --dur-tint: 120ms;
+  --dur-control: 180ms;
+  --dur-surface: 260ms;
+  --dur-enter: 420ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ------------------------------------------------------------- type
+   *
+   * The client is monospace throughout. The console has to be — the game lays
+   * its maps, frames and stat columns out in character cells — and the chrome
+   * follows it so the whole instrument reads as one surface rather than a web
+   * app wrapped around a terminal.
+   *
+   * `--font-ui-family` and `--font-ui-base` are overwritten at runtime from
+   * `ui.font` in the options file (see App.tsx). The values here are what the
+   * first paint uses, before the config has crossed the bridge, and what a
+   * headless render falls back to — so they must stay a valid stack, not a
+   * placeholder.
+   */
+  --font-ui-family:
+    'LucidaProgrammer Nerd Font Mono', 'Lucida Console', 'Consolas', 'Menlo', 'DejaVu Sans Mono',
+    'Liberation Mono', 'Courier New', monospace;
+  --font-ui-base: 13px;
+
+  /* Chrome labels. Follows the configured UI font, which may be proportional
+   * if the user asks for that — this is the one surface where it is allowed. */
+  --font-sans: var(--font-ui-family);
+
+  /* Data chrome: counters, wire summaries, negotiated option lists. Always
+   * fixed-pitch regardless of configuration, because these are columns. */
+  --font-mono:
+    'LucidaProgrammer Nerd Font Mono', 'Lucida Console', 'Consolas', 'Menlo', 'DejaVu Sans Mono',
+    'Liberation Mono', 'Courier New', monospace;
+
+  /* The bundled CP437 bitmap faces, for anything imitating the stream itself. */
+  --font-dos: 'Web437 IBM VGA 8x16', 'Perfect DOS VGA 437', var(--font-mono);
+}
+
+/*
+ * The tokens that are *composed* from the colour tokens above, declared once
+ * for the root and, identically, for a card wearing a palette of its own.
+ *
+ * Two separate reasons they are here rather than in the block above:
+ *
+ * 1. **Muted text is composed rather than themed directly**, so the
+ *    stream-pressure rule below can still win. An inline custom property beats
+ *    every selector, and `useTheme` writes the theme inline on the root — see
+ *    the note at the top of this file.
+ * 2. **A `var()` inside a custom property is substituted where the property is
+ *    declared, not where it is used.** `--glass-fill` computed on `:root`
+ *    therefore carries the *root's* `--ink-card` into every card that inherits
+ *    it, however the card repaints itself. A card wearing its own palette
+ *    (`CardSettings.theme`, written as inline tokens by `BentoCard`) has to
+ *    re-derive these, and it does it from the same declaration rather than a
+ *    copy of it — one recipe, two selectors, so the two cannot drift.
+ */
+:root,
+.card[data-card-theme] {
+  --text-lo: var(--text-lo-normal);
+
+  /* The derived map. Built from the accents above rather than from literals of
+     its own, so a new theme repaints it without touching the map, and it keeps
+     the same pulled-back saturation everything else does. */
+  --map-room: color-mix(in srgb, var(--text-lo) 26%, transparent);
+  --map-room-edge: color-mix(in srgb, var(--text-lo) 55%, transparent);
+  --map-link: color-mix(in srgb, var(--text-lo) 45%, transparent);
+
+  /* Glass: the card fill, and the stronger one for a surface over a surface. */
+  --glass-fill: color-mix(in srgb, var(--ink-card) 74%, transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--ink-card) 88%, transparent);
+}
+
+/*
+ * Density. Chrome only — the terminal font is user-controlled and independent,
+ * because changing it would change the character grid and therefore what the
+ * server is told over NAWS.
+ */
+:root,
+:root[data-density='comfortable'] {
+  --gap: 12px;
+  --pad-card: 14px;
+  --control-h: 32px;
+  --font-ui: var(--font-ui-base);
+  --font-micro: calc(var(--font-ui-base) - 2px);
+  --rail-w: 340px;
+  /* Wide enough for a name, health in numbers and a room name. See §3.8. */
+  --tab-rail-w: 200px;
+}
+
+:root[data-density='compact'] {
+  --gap: 8px;
+  --pad-card: 9px;
+  --control-h: 26px;
+  --font-ui: calc(var(--font-ui-base) - 1px);
+  --font-micro: calc(var(--font-ui-base) - 3px);
+  --rail-w: 300px;
+  --tab-rail-w: 176px;
+}
+
+/*
+ * Stream pressure. Above the throughput threshold the chrome goes quiet so the
+ * eye stays on the terminal: motion is suspended and card chrome desaturates a
+ * step. See docs/ui-design.md §3.7.
+ */
+:root[data-pressure='high'] {
+  --glass-blur: blur(10px) saturate(1);
+}
+
+/* And the same step quieter inside a card wearing its own palette, which
+   re-declared `--text-lo` above and would otherwise be the one surface that
+   stayed loud while everything around it went quiet. */
+:root[data-pressure='high'],
+:root[data-pressure='high'] .card[data-card-theme] {
+  --text-lo: var(--text-lo-quiet);
+}
+
+:root[data-pressure='high'] *,
+:root[data-pressure='high'] *::before,
+:root[data-pressure='high'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
