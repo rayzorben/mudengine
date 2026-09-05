@@ -31,6 +31,7 @@ import type { InternalConfig } from '../shared/internal';
 import type { LoopProgress } from '../shared/loops';
 import type { WalkProgress } from '../shared/walk';
 import type { AutomationSnapshot } from '../shared/automation';
+import type { RoomVerdict } from '../shared/verdict';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -130,6 +131,7 @@ const api: IpcApi = {
   onWalk: (handler) => subscribe<Addressed<WalkProgress>>(Push.walk, handler),
   onLoop: (handler) => subscribe<Addressed<LoopProgress>>(Push.loop, handler),
   onAutomation: (handler) => subscribe<Addressed<AutomationSnapshot>>(Push.automation, handler),
+  onVerdict: (handler) => subscribe<Addressed<RoomVerdict>>(Push.verdict, handler),
   onNotice: (handler) => subscribe<Notice>(Push.notice, handler),
   onSessions: (handler) => subscribe<SessionSummary[]>(Push.sessions, handler),
   onProfiles: (handler) => subscribe<ProfileSummary[]>(Push.profiles, handler),

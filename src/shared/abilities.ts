@@ -380,6 +380,15 @@ export const HAZARD_ABILITY = {
 } as const;
 
 /**
+ * A monster's own dodge, in points — its `Abil-n = 34` slot
+ * (`Mobs/MobType.cs:169`). The one ability the *character's* side of the
+ * arithmetic reads off a monster: `prowess.swing` turns a fraction of landed
+ * blows away by it, through the same diminishing-returns curve the server
+ * applies to a player's dodge.
+ */
+export const DODGE_ABILITY = 34;
+
+/**
  * The abilities worth putting on a card, and what each one *is*.
  *
  * The enum names 235 ids and a card that listed all of them would be a table

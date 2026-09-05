@@ -17,7 +17,8 @@ import {
 } from '../../../shared/character';
 import { classifyOccupant, type AlignmentCost, type MobDisposition } from '../../../shared/mobs';
 import type { Block } from '../../../shared/blocks';
-import type { MobEntity } from '../../../shared/entities';
+import type { ItemEntity, MobEntity } from '../../../shared/entities';
+import type { RealmFamily } from '../../../shared/realm';
 import type { MobAttack } from '../../../shared/world';
 
 const automation: AutomationConfig = {
@@ -136,7 +137,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function make(config: CombatConfig, enabled = true, spells?: SpellsConfig): AutoCombat {
+function make(
+  config: CombatConfig,
+  enabled = true,
+  spells?: SpellsConfig,
+  realmClass?: () => { combat: number | null; magery: number | null; family: RealmFamily | null }
+): AutoCombat {
   return new AutoCombat(
     config,
     enabled,
@@ -145,7 +151,9 @@ function make(config: CombatConfig, enabled = true, spells?: SpellsConfig): Auto
       notice: (m) => notices.push(m),
       decided: (decision) => decisions.push(decision)
     },
-    spells ?? DEFAULT_CONFIG.automation.spells
+    spells ?? DEFAULT_CONFIG.automation.spells,
+    undefined,
+    realmClass
   );
 }
 
@@ -167,6 +175,35 @@ describe('opening a fight', () => {
     auto.onCharacter(
       state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] } })
     );
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
+  /* MegaMUD's PoliteAttacks: a monster a stranger was seen fighting is left to
+     them, and the trace says whose it was. Joining is the default, as it is
+     MegaMUD's own, so the switch is what makes a character stand aside. */
+  it('leaves a monster somebody outside the party is already fighting, when told to', () => {
+    const spokenFor = (at: number) =>
+      state({
+        room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] },
+        combat: { ...EMPTY_CHARACTER.combat, claimed: { 'giant rat': { by: 'Rend', at } } }
+      });
+    const polite = make(combat({ joinFights: false }));
+    polite.onCharacter(spokenFor(Date.now()));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      'giant rat — Rend is already fighting giant rat, and joinFights is off'
+    ]);
+
+    // The default joins.
+    make(combat()).onCharacter(spokenFor(Date.now()));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+
+    // And a sighting two minutes old says nothing about now, polite or not.
+    sent = [];
+    make(combat({ joinFights: false })).onCharacter(spokenFor(Date.now() - 120_000));
     drain();
     expect(sent).toEqual(['a giant rat']);
   });
@@ -450,6 +487,97 @@ describe('which one to go for', () => {
     expect(acted?.target).toBe('wererat shaman');
     expect(acted?.because).toContain('the most dangerous of 2');
     expect(acted?.because).toContain('40 hp');
+  });
+
+  /* The character's own side of the arithmetic: a sheet `prowess` can read, a
+     sword in hand, the class row the sheet does not print, and the server's
+     family — the four things `verdictFor` needs before rounds are knowable. */
+  const armed = () => ({ combat: 4, magery: null, family: 'greatermud' as const });
+  const sword: ItemEntity = {
+    name: 'short sword',
+    source: 'hybrid',
+    slot: 'Weapon Hand',
+    equipped: true,
+    charges: null,
+    kind: 'weapon',
+    weapon: { min: 5, max: 12, speed: 20, strength: 30 }
+  };
+  const swordsman = (room: CharacterState['room']): CharacterState =>
+    state({
+      room,
+      progress: {
+        ...EMPTY_CHARACTER.progress,
+        level: 10,
+        agility: 60,
+        intellect: 50,
+        charm: 55,
+        willpower: 50,
+        health: 60,
+        strength: 55
+      },
+      inventory: { ...EMPTY_CHARACTER.inventory, items: [sword] }
+    });
+
+  /* Once the order is decided on rounds, the sentence names rounds — not the
+     health the ranking stopped using. */
+  it('names the rounds and the health the fight costs when it ranked on them', () => {
+    const auto = make(combat(), true, undefined, armed);
+    auto.onCharacter(swordsman(weighed));
+    drain();
+    const acted = decisions.find((decision) => decision.acted);
+    expect(acted?.because).toMatch(/up to \d+ rounds and \d+ hp to kill/);
+    expect(acted?.because).not.toContain('40 hp');
+  });
+
+  /* The monster's own armour reaches the roll. Two fighters alike in every
+     way but one in plate: it turns blows away, takes more rounds to remove,
+     and so costs more per round of the time it takes — second, whatever the
+     room order says. With `{}` as the target every monster was unarmoured. */
+  it('prices the monster’s armour into the rounds, so the armoured one waits', () => {
+    const auto = make(combat(), true, undefined, armed);
+    auto.onCharacter(
+      swordsman({
+        ...EMPTY_CHARACTER.room,
+        occupants: [
+          fighter('armoured thug', 60, [bite(4, 9)], { armour: 400 }),
+          fighter('thug', 60, [bite(4, 9)])
+        ]
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  /* The one preference the verdict leaves to the player. An ogre with six
+     thousand health costs this swordsman far more than a tenth of its own,
+     and the refusal names both figures — from the same `Verdict` the card
+     draws, so the card and the engine cannot disagree about a bad fight. */
+  it('declines a fight expected to cost more than the stated share of health, and says so', () => {
+    const auto = make(combat({ maxFightCost: 0.1 }), true, undefined, armed);
+    const me = swordsman({
+      ...EMPTY_CHARACTER.room,
+      occupants: [fighter('ogre', 6000, [bite(40, 60)])]
+    });
+    auto.onCharacter({ ...me, vitals: { ...me.vitals, hp: 100, hpMax: 100 } });
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()[0]).toMatch(
+      /^ogre — the fight with ogre would cost up to \d+ hp of your 100$/
+    );
+  });
+
+  /* Unknown is not expensive: a monster the realm cannot cost is still opened
+     on, or auto-combat would be off by another name on a lineage the client
+     has no arithmetic for. */
+  it('takes a fight whose cost is unknown, whatever the share', () => {
+    const auto = make(combat({ maxFightCost: 0.1 }), true, undefined, armed);
+    const me = swordsman({
+      ...EMPTY_CHARACTER.room,
+      occupants: [mob('giant rat', 'hostile')]
+    });
+    auto.onCharacter({ ...me, vitals: { ...me.vitals, hp: 100, hpMax: 100 } });
+    drain();
+    expect(sent).toEqual(['a giant rat']);
   });
 
   it('takes a named one first, whatever the weighing says', () => {
@@ -1132,6 +1260,9 @@ describe('casting in a fight', () => {
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1156,6 +1287,9 @@ describe('casting in a fight', () => {
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1182,6 +1316,9 @@ describe('casting in a fight', () => {
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1207,6 +1344,9 @@ describe('casting in a fight', () => {
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1240,6 +1380,9 @@ describe('casting in a fight', () => {
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1279,6 +1422,9 @@ describe('casting in a fight', () => {
       areaAttack: 'poison cloud',
       areaMinMobs: 3,
       areaMinMana: 0.35,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1311,6 +1457,93 @@ describe('casting in a fight', () => {
       vi.advanceTimersByTime(200);
       drain();
       expect(sent).toEqual(['c ma giant rat']);
+    });
+
+    /* MegaMUD's FailoverSpellAttacks: the server says the round spell has no
+       effect on this target, so the fallback stands in for the rest of the
+       fight rather than the same immune spell being paid for every round. */
+    /* These run several rounds, so the room re-read `refreshRounds` sends on
+       the third is switched off: what is under test is what a round *casts*. */
+    const rounds = () => combat({ engage: 'none', refreshRounds: 0 });
+
+    it('casts the fallback once the round spell is refused as having no effect', () => {
+      const auto = make(rounds(), true, spells({ attackFallback: 'mmis' }));
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat']);
+      auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat', 'c mmis giant rat']);
+      expect(notices.some((line) => line.includes('mmis'))).toBe(true);
+    });
+
+    it('leaves the fight to the round attacks with no fallback, and says so once', () => {
+      const auto = make(rounds(), true, spells());
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
+      auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat']);
+      expect(notices.filter((line) => line.includes('no effect'))).toHaveLength(1);
+    });
+
+    /* MegaMUD's MaxCastCnt, counted on the server's confirmation: a fizzle is
+       not a cast, and the round after one casts again. */
+    it('stops casting after the configured casts per target', () => {
+      const auto = make(rounds(), true, spells({ attackCasts: 1 }));
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      auto.onBlock(block('spell-failed'));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat', 'c ma giant rat']);
+      auto.onBlock(block('spell-cast', { caster: 'You', spell: 'ma', target: 'giant rat' }));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat', 'c ma giant rat']);
+    });
+
+    /* A heal confirmed in the same window is a different spell and spends
+       nothing of the round spell's count. */
+    it('counts only the spell it proposed', () => {
+      const auto = make(rounds(), true, spells({ attackCasts: 1 }));
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      auto.onBlock(block('spell-cast', { caster: 'You', spell: 'minor healing' }));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat', 'c ma giant rat']);
+    });
+
+    it('starts the count again on a new target', () => {
+      const auto = make(rounds(), true, spells({ attackCasts: 1 }));
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      auto.onBlock(block('spell-cast', { caster: 'You', spell: 'ma', target: 'giant rat' }));
+      const next = crowded(1);
+      auto.onCharacter({ ...next, combat: { ...next.combat, target: 'kobold thief' } });
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['c ma giant rat', 'c ma kobold thief']);
     });
 
     it('casts the crowd spell bare at the threshold', () => {

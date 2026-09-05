@@ -8,6 +8,9 @@ import {
 } from './menace';
 import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
 import type { RealmFamily } from './realm';
+import { DODGE_ABILITY } from './abilities';
+import type { CharacterState, RoomOccupant } from './character';
+import type { MobEntity } from './entities';
 
 /**
  * *Can I fight this?* — one answer, read by the card and by the engine.
@@ -101,16 +104,87 @@ export function verdictFor(
   return { menace, rounds, cost };
 }
 
+/** What `targetOf` reads off a monster: the realm's columns and its ability slots. */
+export type TargetEntity = Pick<MobEntity, 'armour' | 'damageResist' | 'abilities' | 'hp'>;
+
+/**
+ * The monster's side of the roll, in the sheet's units.
+ *
+ * `Monsters.ArmourClass` and `DamageResist` are the server's internal figures,
+ * and the roll divides both by ten — `PlayerAttackType.GetDefense` is
+ * `(target.AC + secondary) / 10`, the blow is `rand(min, max) − DR / 10`
+ * (docs/greatermud/combat.md) — which is also the form the character's own
+ * sheet already prints. So `prowess.swing` takes the divided figure from both
+ * sides and the division happens here, once. Dodge is the row's `Abil-n = 34`
+ * slot, in points, and there is no unit to convert.
+ *
+ * **`AutoCombat` used to pass `{}` here.** `hitChance` takes an unread armour
+ * class as none — the answer that makes every blow land — so with the entity
+ * never consulted every monster was priced as unarmoured, and the rounds
+ * figure, labelled *at most*, was smaller than the truth for anything in
+ * armour: a bound in the wrong direction, which is the confidently wrong
+ * answer the ranking exists to avoid. Found reading the code for the
+ * `explain()` fix (2026-09-05), not by a fight; `AutoCombat.test.ts` holds the
+ * case.
+ */
+export function targetOf(entity: TargetEntity | undefined): {
+  armourClass?: number;
+  damageResist?: number;
+  dodge?: number;
+  hp?: number;
+} {
+  if (entity === undefined) return {};
+  const dodge = entity.abilities?.find(([id]) => id === DODGE_ABILITY)?.[1];
+  return {
+    ...(entity.armour !== undefined ? { armourClass: entity.armour / 10 } : {}),
+    ...(entity.damageResist !== undefined ? { damageResist: entity.damageResist / 10 } : {}),
+    ...(dodge !== undefined ? { dodge } : {}),
+    ...(entity.hp !== undefined ? { hp: entity.hp } : {})
+  };
+}
+
+/**
+ * The character's side of the sheet, read off the state.
+ *
+ * One reading, shared by the engine's ranking and the room's appraisal,
+ * because two copies of *which sheet figure feeds which formula* agree until
+ * one is edited. `combat` and `magery` are the class row's — the sheet prints
+ * neither — and a null row leaves both null, which `prowess` answers with
+ * null rather than a guess.
+ */
+export function prowessSheetOf(
+  state: Pick<CharacterState, 'progress' | 'inventory'>,
+  cls: { combat: number | null; magery: number | null }
+): ProwessSheet {
+  const { encumbrance, encumbranceMax } = state.inventory;
+  return {
+    level: state.progress.level,
+    agility: state.progress.agility,
+    intellect: state.progress.intellect,
+    charm: state.progress.charm,
+    willpower: state.progress.willpower,
+    health: state.progress.health,
+    strength: state.progress.strength,
+    spellcasting: state.progress.spellcasting,
+    combatLevel: cls.combat,
+    mageryLevel: cls.magery,
+    encumbrancePercent:
+      encumbrance === null || encumbranceMax === null || encumbranceMax <= 0
+        ? null
+        : (100 * encumbrance) / encumbranceMax
+  };
+}
+
 /**
  * Every monster in a room, weighed both ways.
  *
  * One call, because the menace half must be a room at a time. Same order in as
- * out, so a caller can index straight back into its own list.
+ * out, so a caller can index straight back into its own list. Each subject is
+ * the entity as the room lists it — `{}` for one the realm cannot place, which
+ * weighs as unknown on both sides.
  */
 export function weighVerdicts(
-  subjects: ReadonlyArray<
-    MenaceSubject & { armourClass?: number; damageResist?: number; dodge?: number }
-  >,
+  subjects: ReadonlyArray<MenaceSubject & TargetEntity>,
   player: MenacePlayer,
   weights: MenaceWeights,
   sheet: ProwessSheet,
@@ -119,8 +193,91 @@ export function weighVerdicts(
 ): Verdict[] {
   const menaces = weighRoom(subjects, player, weights);
   return subjects.map((subject, index) =>
-    verdictFor(menaces[index] ?? null, subject, sheet, weapon, family)
+    verdictFor(menaces[index] ?? null, targetOf(subject), sheet, weapon, family)
   );
+}
+
+/**
+ * The room the character is standing in, appraised.
+ *
+ * This is the surface [05](docs/mudplay/05-can-i-fight-this.md) §4 asks for
+ * on the Room card — *the verdict a player wants on arrival is about the
+ * room* — and the engine's `rankByVerdict` reads the same `Verdict`s, so the
+ * card and the decision cannot disagree.
+ */
+export interface RoomVerdict {
+  /**
+   * One entry per occupant that is not a person, in the room's own order, with
+   * the occupant line's word for it. A stranger the realm cannot place is
+   * here with a null verdict rather than left out: an appraisal that quietly
+   * dropped the one thing it could not weigh would read as complete.
+   */
+  monsters: Array<{ name: string; verdict: Verdict }>;
+  /**
+   * Health clearing the room is expected to cost — the sum of every monster's
+   * `cost`, and **null the moment one of them is unknown**, because a total
+   * that leaves a monster out is smaller than the truth and looks the same.
+   * A `bound`, as every `cost` under it is.
+   */
+  cost: Reckoning<number> | null;
+}
+
+export const EMPTY_ROOM_VERDICT: RoomVerdict = { monsters: [], cost: null };
+
+/** Every occupant the room lists that is not a person — the ones a verdict is about. */
+export function appraiseRoom(
+  occupants: ReadonlyArray<Pick<RoomOccupant, 'name' | 'kind' | 'mob'>>,
+  player: MenacePlayer,
+  weights: MenaceWeights,
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon | null,
+  family: RealmFamily | null
+): RoomVerdict {
+  const monsters = occupants.filter((who) => who.kind !== 'player');
+  if (monsters.length === 0) return EMPTY_ROOM_VERDICT;
+  const verdicts = weighVerdicts(
+    monsters.map((who) => who.mob ?? {}),
+    player,
+    weights,
+    sheet,
+    weapon,
+    family
+  );
+  let total = 0;
+  let complete = true;
+  for (const verdict of verdicts) {
+    if (verdict.cost === null) complete = false;
+    else total += verdict.cost.value;
+  }
+  return {
+    monsters: monsters.map((who, index) => ({ name: who.name, verdict: verdicts[index]! })),
+    cost: complete ? { value: total, from: 'bound' } : null
+  };
+}
+
+/**
+ * What of an appraisal a reader can see, so a publisher pushes on change and
+ * not on every status line: the names, and each figure to the unit it is drawn
+ * at. Two appraisals with the same key draw the same row.
+ */
+export function roomVerdictKey(appraisal: RoomVerdict): string {
+  // Rounds are drawn rounded *up* when they are a bound — a ceiling rounded
+  // down stops being one — and to the nearest otherwise; health to the nearest.
+  const rounds = (reckoning: Reckoning<number> | null): string =>
+    reckoning === null
+      ? '-'
+      : `${reckoning.from === 'bound' ? Math.ceil(reckoning.value) : Math.round(reckoning.value)}${reckoning.from[0]}`;
+  const health = (reckoning: Reckoning<number> | null): string =>
+    reckoning === null ? '-' : `${Math.round(reckoning.value)}${reckoning.from[0]}`;
+  return [
+    ...appraisal.monsters.map(
+      ({ name, verdict }) =>
+        `${name}:${verdict.menace === null ? '-' : Math.round(verdict.menace.perRound)}:${rounds(
+          verdict.rounds
+        )}:${health(verdict.cost)}`
+    ),
+    health(appraisal.cost)
+  ].join('|');
 }
 
 /**

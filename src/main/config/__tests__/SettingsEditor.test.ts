@@ -38,6 +38,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   username: 'someone',
   password: 'secret-value',
   changePassword: true,
+  afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
   autoConnect: false,
   autoReconnect: true,
   accent: 'cyan',
@@ -47,6 +48,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   retreat: {
     enabled: false,
     belowHealth: 0.3,
+    belowMana: 0,
     whenOutnumbered: 0,
     strategy: 'step-back',
     safeHavenRoom: ''
@@ -586,6 +588,7 @@ describe('what a character plays against, and what keeps it alive', () => {
         retreat: {
           enabled: true,
           belowHealth: 0.4,
+          belowMana: 0,
           whenOutnumbered: 3,
           strategy: 'step-back',
           safeHavenRoom: ''
@@ -598,6 +601,7 @@ describe('what a character plays against, and what keeps it alive', () => {
         retreat: {
           enabled: false,
           belowHealth: 0.4,
+          belowMana: 0,
           whenOutnumbered: 3,
           strategy: 'step-back',
           safeHavenRoom: ''

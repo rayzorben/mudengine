@@ -337,6 +337,8 @@ export class SessionHost {
         loop: (progress) => this.options.toAll(Push.loop, { session: id, payload: progress }),
         automation: (snapshot) =>
           this.options.toAll(Push.automation, { session: id, payload: snapshot }),
+        verdict: (appraisal) =>
+          this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         state: (state) => {
           this.options.toAll(Push.state, { session: id, payload: state });
           // The tab rail renders connection phase, so the roster changes too.

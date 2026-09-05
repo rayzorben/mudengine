@@ -14,6 +14,7 @@ import {
 } from '@shared/abilities';
 import { ITEM_KIND_WORD } from '@shared/items';
 import type { RealmFamily } from '@shared/character';
+import type { Verdict } from '@shared/verdict';
 import type {
   ShopPlace,
   WorldClass,
@@ -34,6 +35,8 @@ export type ReferenceEntry =
       mob: WorldMob;
       learned: MobLoreEntry | null;
       fights: FightSummary | null;
+      /** *Can I fight this?* — against the character as it stands; null when the realm cannot weigh it. */
+      verdict: Verdict | null;
     }
   | { kind: 'item'; name: string; item: WorldItem }
   | { kind: 'spell'; name: string; spell: WorldSpell }
@@ -47,7 +50,8 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       name: mob.name,
       mob,
       learned: found.learned?.[mob.name] ?? null,
-      fights: found.fights?.[mob.name] ?? null
+      fights: found.fights?.[mob.name] ?? null,
+      verdict: found.verdicts?.[mob.name] ?? null
     })),
     ...found.items.map((item): ReferenceEntry => ({ kind: 'item', name: item.name, item })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
@@ -143,18 +147,55 @@ function MobDetail({
   mob,
   learned,
   fights,
+  verdict,
   realm,
   classNames
 }: {
   mob: WorldMob;
   learned: MobLoreEntry | null;
   fights: FightSummary | null;
+  verdict: Verdict | null;
   realm: RealmFamily | null;
   classNames: Record<number, string>;
 }) {
   const word = mob.disposition === null ? null : DISPOSITION_WORD[mob.disposition];
   return (
     <dl className="readout">
+      {/*
+        *Can I fight this?* — first, because it is the question the dossier
+        below exists to answer, and it is the same `Verdict` auto-combat ranks
+        on (`src/shared/verdict.ts`), so this row and the engine's choice
+        cannot disagree. Three figures with the provenance in the words: what
+        it costs to leave standing, what it costs to kill, and the health the
+        fight is expected to take -- *up to*, because each is a bound in the
+        honest direction. A missing half reads as unknown, never as a number,
+        and on the MajorMUD lineage every half is missing until captures fill
+        the arithmetic in.
+      */}
+      <dt>{t('cards.verdict.label')}</dt>
+      <dd>
+        {verdict === null || verdict.menace === null ? (
+          <span className="quiet-note">{t('cards.verdict.unknown')}</span>
+        ) : (
+          <>
+            {t('cards.verdict.perRound', { hp: Math.round(verdict.menace.perRound) })}
+            <span className="quiet">
+              {verdict.rounds === null
+                ? t('cards.verdict.roundsUnknown')
+                : verdict.rounds.from === 'bound'
+                  ? t('cards.verdict.roundsBound', { rounds: Math.ceil(verdict.rounds.value) })
+                  : t('cards.verdict.roundsAbout', { rounds: Math.round(verdict.rounds.value) })}
+            </span>
+            {verdict.cost !== null && (
+              <span className="chip">
+                {verdict.cost.from === 'bound'
+                  ? t('cards.verdict.costBound', { hp: Math.round(verdict.cost.value) })
+                  : t('cards.verdict.costAbout', { hp: Math.round(verdict.cost.value) })}
+              </span>
+            )}
+          </>
+        )}
+      </dd>
       <dt>{t('cards.player.detail.health')}</dt>
       <dd>
         {mobHealth(mob)}
@@ -1196,6 +1237,7 @@ export default function ReferenceDetail({
           learned={entry.learned}
           mob={entry.mob}
           realm={realm}
+          verdict={entry.verdict}
         />
       )}
       {entry.kind === 'item' && (

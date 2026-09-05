@@ -1037,7 +1037,127 @@ describe.runIf(realm !== null && realm.size > 0)('keeping track while walking', 
       expect(`${tracker.current.room.map},${tracker.current.room.number}`).toBe('1,219');
     }
   );
+
+  it.runIf(realm !== null && realm.size > 0)(
+    'a look the server refuses does not hold up the moves behind it',
+    () => {
+      /*
+       * `2026-09-05_06-17-12_festus`, t=12182876: `l s` at a wall answered
+       * `There are no exits to the south!`, the peek stayed queued, and the
+       * next two room blocks were each read as the claim before them — the
+       * Main Room as the look, the Universal Trainer as the `n` — so the
+       * character stayed filed in the corridor it had walked out of, the
+       * trainer (one of three by that name) could not be placed, and the `e`
+       * was written off eight seconds later, on the training screen.
+       */
+      const tracker = play(
+        [
+          'Location:   1,350',
+          "Adventurer's Guild, South Corridor",
+          'Obvious exits: north, west',
+          { send: 'l s' },
+          'There are no exits to the south!',
+          { send: 'n' },
+          { send: 'e' },
+          "Adventurer's Guild, Main Room",
+          'Obvious exits: north, south, east, west',
+          "Adventurer's Guild, Universal Trainer",
+          'Obvious exits: west'
+        ],
+        realm!
+      );
+      expect(tracker.current.room).toMatchObject({
+        map: 1,
+        number: 1376,
+        resolvedBy: 'movement'
+      });
+      expect(tracker.pendingMoves).toBe(0);
+    }
+  );
 });
+
+/*
+ * A room block that arrives after the client has given up on the move it
+ * answers is not a second look at the room being stood in.
+ *
+ * `2026-09-04_22-01-13_festus.mudcap.jsonl`, t=24422627–24430802: a loop's `w`
+ * out of Dark Cave 1/865 was answered 8,175ms later — the server lagged — and
+ * the claim lapsed at `staleMoveMs` on the line before its own answer. The
+ * room that then arrived, `Dark Cave` with `Obvious exits: east`, is 1/866,
+ * and the tracker carried 1/865 forward on the strength of the name. Every
+ * reprint that night said the same and re-affirmed the same wrong room; the
+ * loop planned `w` out of 1/866 three times, was refused three times, and
+ * stopped, and the character stood in the lair until morning.
+ */
+describe.runIf(realm !== null && realm.size > 0)(
+  'a late answer to a move the client gave up on',
+  () => {
+    /** A tracker on the real realm, fed a line at a time so a claim can lapse mid-stream. */
+    function session(): { tracker: CharacterTracker; feed: (lines: string[]) => void } {
+      const tracker = new CharacterTracker(realm!);
+      const classifier = new Classifier({
+        present: () => tracker.current.room.occupants.map((who) => who.name),
+        mob: (name) => realm!.mob(name)
+      });
+      let seq = 0;
+      const feed = (lines: string[]): void => {
+        for (const plain of lines) {
+          seq += 1;
+          const line: StreamLine = {
+            seq,
+            at: 1_700_000_000_000 + seq,
+            text: plain,
+            plain,
+            terminator: 'newline'
+          };
+          const { block, batch } = classifier.classify(line);
+          tracker.apply(block);
+          if (batch) tracker.apply(batch);
+          // As `SessionManager` does, on every line.
+          tracker.expireStaleClaims(Date.now());
+        }
+      };
+      return { tracker, feed };
+    }
+
+    const EAST_CAVE = ['Dark Cave', 'Obvious exits: west, southeast'];
+    const WEST_CAVE = ['Dark Cave', 'Obvious exits: east'];
+
+    it('resolves the arrival by its exits rather than carrying the old room forward', () => {
+      const { tracker, feed } = session();
+      feed(['Location:   1,865', ...EAST_CAVE]);
+      expect(tracker.current.room).toMatchObject({ map: 1, number: 865 });
+
+      tracker.observeCommand('w');
+      // The server is eight seconds behind: the claim lapses on the line before
+      // its own answer arrives.
+      const life = DEFAULT_INTERNAL.tuning.parse.staleMoveMs;
+      expect(tracker.expireStaleClaims(Date.now() + life)).toEqual([{ command: 'w', moved: true }]);
+      expect(tracker.pendingMoves).toBe(0);
+
+      feed(WEST_CAVE);
+      // 1/865 has no east exit, so this cannot be a re-look at it. One step from
+      // 1/865 there is exactly one Dark Cave whose exits fit.
+      expect(tracker.current.room).toMatchObject({
+        map: 1,
+        number: 866,
+        resolvedBy: 'neighbour'
+      });
+    });
+
+    it('still keeps a placed room across a re-look whose exits fit', () => {
+      // The positive control: the carry-forward this narrows is what keeps
+      // `pro`'s certainty across a `l`, and it must go on doing that.
+      const { tracker, feed } = session();
+      feed(['Location:   1,865', ...EAST_CAVE, ...EAST_CAVE]);
+      expect(tracker.current.room).toMatchObject({
+        map: 1,
+        number: 865,
+        resolvedBy: 'coordinates'
+      });
+    });
+  }
+);
 
 /*
  * A socket that closes takes the character out of the realm, and nothing else.
@@ -1600,7 +1720,8 @@ describe('the fight this character is in', () => {
       health: null,
       attackers: [],
       lastBlowAt: null,
-      blows: 0
+      blows: 0,
+      claimed: {}
     });
   });
 });
@@ -7888,5 +8009,57 @@ describe('what a search turns up', () => {
     expect(tracker.current.room.name).toBe('Silver Street');
     expect(tracker.current.room.hidden).toEqual([]);
     expect(tracker.current.room.hiddenCash).toBeNull();
+  });
+});
+
+/*
+ * What somebody *outside* the party is fighting — the fact `combat.joinFights`
+ * (MegaMUD's PoliteAttacks) reads before opening on a monster. The same
+ * volunteered sentences `party.engaged` is read from, for everybody it ignores;
+ * keyed by the monster, and forgotten with the room.
+ */
+describe('what a stranger was last seen fighting', () => {
+  const inParty = [
+    '[HP=33]:',
+    'The following people are in your travel party:',
+    '  Vaelor                        (Warrior)             [H:100%]  - Frontrank',
+    '  Soul                          (Paladin)    [M:100%] [H:100%]  - Backrank',
+    '[HP=33]:',
+    'You are following Soul.'
+  ];
+  const room = [
+    'Newhaven, Village Entrance',
+    '    Welcome to Newhaven! You are standing at the crude wooden gates.',
+    'Also here: giant rat.',
+    'Obvious exits: north, south, west, southeast'
+  ];
+
+  it('records a stranger’s opening and a stranger’s swing against the monster', () => {
+    const opened = play(['[HP=33]:', 'Rend moves to attack giant rat!']);
+    expect(opened.current.combat.claimed['giant rat']?.by).toBe('Rend');
+    const swung = play(['[HP=33]:', 'Rend swings at giant rat with his axe!']);
+    expect(swung.current.combat.claimed['giant rat']?.by).toBe('Rend');
+  });
+
+  /* A member's fight is `party.engaged`, and joining it is assisting; a blow
+     aimed at this character is this character's fight. */
+  it('records neither a party member’s fight nor a blow on this character', () => {
+    const tracker = play([
+      ...inParty,
+      'Soul moves to attack giant rat!',
+      'Rend moves to attack you!'
+    ]);
+    expect(tracker.current.combat.claimed).toEqual({});
+    expect(tracker.current.party.engaged['Soul']?.target).toBe('giant rat');
+  });
+
+  it('forgets every claim when the room changes', () => {
+    const tracker = play([
+      ...room,
+      'Rend moves to attack giant rat!',
+      'Newhaven, Weapons Shop',
+      'Obvious exits: south'
+    ]);
+    expect(tracker.current.combat.claimed).toEqual({});
   });
 });

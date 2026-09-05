@@ -67,6 +67,7 @@
     "probe:bank": "node --import ./scripts/lib/register.mjs scripts/bank-probe.mjs",
     "probe:megamud": "node --import ./scripts/lib/register.mjs scripts/megamud-probe.mjs",
     "probe:spellbook": "node --import ./scripts/lib/register.mjs scripts/spellbook-probe.mjs",
+    "probe:statall": "node --import ./scripts/lib/register.mjs scripts/statall-probe.mjs",
     "probe:signal": "node scripts/signal-probe.mjs"
   },
   "build": {

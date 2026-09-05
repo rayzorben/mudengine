@@ -339,8 +339,45 @@ export interface LoggingConfig {
  * it is not making, which is a worse lie than stopping. Nothing here is a
  * pacing constant -- pacing comes from the prompt, in `PacingConfig`.
  */
+/**
+ * Away from keyboard — MegaMUD's `AutoAfk`, `AfkTimeout` and `AfkReply`.
+ *
+ * The whole point of running a character unattended is that nobody is there,
+ * and the one thing the realm's other players cannot see is that. A telepath
+ * to a character that never answers reads as rude, or as a bot to report; a
+ * reply saying the player is away is what a person would leave. `Afk`
+ * (`src/main/automation/Afk.ts`) answers an incoming telepath with `reply`
+ * once nothing has been typed into this session for `afterMinutes`, once per
+ * sender per `tuning.afk.replyEveryMs`, and never for an `@` command, which
+ * `Remotes` answers. Off by default, unlike MegaMUD's (`AutoAfk=1`,
+ * `AfkTimeout=5`, `AfkReply={AFK}`): a client that telepaths strangers unasked
+ * is a behaviour to opt into. The reply defaults to MegaMUD's own frame, which
+ * other MegaMUD clients recognise.
+ */
+export interface AfkConfig {
+  enabled: boolean;
+  /** Minutes without a keystroke into this session before the player is away. */
+  afterMinutes: number;
+  /** What an incoming telepath is answered with while away. Blank answers nothing. */
+  reply: string;
+}
+
 export interface WalkConfig {
   stepTimeoutMs: number;
+  /**
+   * Experience per hour below which a running loop is stopped — MegaMUD's
+   * `MinExpRate` with `LogoffLowExp`, both `0` (off) in its own defaults and
+   * off here. A lap that has stopped working — the lair empty tonight, a door
+   * shut, a monster that no longer dies — looks exactly like a lap that is
+   * working, for as long as nobody is watching, which for a character grinding
+   * unattended is all night. The rate is measured over the lap since it
+   * started (or resumed, or came back online) and judged only after
+   * `tuning.loop.expRateGraceMs`, because the first minutes of any lap are
+   * walking to the first lair. Stopped out loud with the two figures, and the
+   * tab reads `stopped`; MegaMUD logs off, which this client does not do on
+   * its own (`automation.safety.hangUp` says why). 0 never stops.
+   */
+  minExpPerHour: number;
   /**
    * How long a finished walk stays on screen before the card clears itself.
    *
@@ -435,6 +472,14 @@ export interface RetreatConfig {
   enabled: boolean;
   /** Fraction of maximum health below which the character runs. */
   belowHealth: number;
+  /**
+   * Also run below this fraction of maximum mana — MegaMUD's `ManaRun%`. A
+   * caster out of mana is losing whatever the health bar says: its next round
+   * lands nothing, and the round after that is the monster's. 0 (MegaMUD's own
+   * default) never runs for mana; a class with no pool has a null maximum and
+   * is never judged by it, as everywhere.
+   */
+  belowMana: number;
   /**
    * Also run when this many things are hitting it at once.
    *
@@ -591,6 +636,19 @@ export interface CombatConfig {
    */
   retaliate: boolean;
   /**
+   * Open on a monster somebody **outside the party** is already fighting.
+   *
+   * MegaMUD's *PoliteAttacks*, inverted so that the default keeps what this
+   * client did before the field existed — MegaMUD's own default is
+   * `PoliteAttacks=0`, join. Off, a monster `combat.claimed` holds (a
+   * stranger seen swinging at it within `tuning.combat.assistFreshMs`) is
+   * refused with the stranger's name in the trace: opening on it is stealing
+   * a kill, and on a PvP realm it is an invitation. A party member's fight is
+   * never a claim — joining that is assisting, and has its own switch.
+   * Hitting back ignores this, as it ignores every other limit here.
+   */
+  joinFights: boolean;
+  /**
    * Do not open a fight when this many monsters are in the room. 0 never
    * refuses.
    *
@@ -599,6 +657,20 @@ export interface CombatConfig {
    * before the first swing.
    */
   maxMobs: number;
+  /**
+   * Do not open on a monster whose fight is expected to cost more than this
+   * share of **current** health. 0 never refuses.
+   *
+   * The one preference docs/mudplay/05 leaves to the player — *how hard a
+   * fight am I willing to take* — read against the same `Verdict` the cards
+   * draw and the ranking orders on, so the card, the engine and this refusal
+   * cannot disagree. The cost is a bound (`prowess.swing`), so a monster is
+   * declined when its *at most* figure reaches the share. An unknown cost is
+   * not a high one: refusing it would make auto-combat useless on a lineage
+   * whose arithmetic the client does not have. Hitting back ignores this, as
+   * it ignores every other limit here.
+   */
+  maxFightCost: number;
   /**
    * Do not open a fight below this fraction of maximum health. 0 disables.
    *
@@ -1319,6 +1391,22 @@ export interface MovementConfig {
    * does not state is one the client cannot promise is lit.
    */
   extinguishInLight: boolean;
+  /**
+   * Walk on while the server says this character is blind. Off, a route or a
+   * loop stands still until sight returns — MegaMUD's `IgnoreBlind`, whose
+   * default (`0`) waits, and inverted here so that off means wait. A blind
+   * character cannot read the room it walks into and misses every swing, so
+   * a step taken blind is a step into a lair it will not see. `held`
+   * (paralysis) always holds and has no switch: a step while held is a
+   * command spent to be refused. See `afflictionHolding` in `walk.ts`.
+   */
+  walkWhileBlind: boolean;
+  /**
+   * Walk on while poisoned. Off, the walk waits the poison out — MegaMUD's
+   * `IgnorePoison` default. A cure under `spells.cures` ends the wait sooner.
+   * Disease is not a movement matter and has no switch.
+   */
+  walkWhilePoisoned: boolean;
 }
 
 /**
@@ -1372,6 +1460,35 @@ export interface SpellsConfig {
    * the fight. An unknown maximum never blocks it, as everywhere.
    */
   areaMinMana: number;
+  /**
+   * The spell cast instead of `attack` for the rest of a fight once the server
+   * has said `attack` has no effect on the target — MegaMUD's `AttackSpl2`
+   * with `FailoverSpellAttacks`. Blank means none: the round attacks carry
+   * the fight, and the refusal is said once.
+   *
+   * `Your spell has no effect on <name>.` is the server saying the monster is
+   * immune (`spell-ineffective`), and without this a caster on a loop paid
+   * for the same spell every round of every fight with that monster, all
+   * night, for nothing. The whole name, as `attack` is.
+   */
+  attackFallback: string;
+  /**
+   * How many times the round spell (or its fallback) is cast per target —
+   * MegaMUD's `MaxCastCnt`, whose own default is **1**: open with the spell,
+   * then let the melee round carry it. **0 is no limit here**, which is what
+   * this client did before the field existed; MegaMUD reads 0 as none, and
+   * that reading is not carried because a blank field must not silently
+   * stop a caster casting. Counted on the server's confirmation, so a cast
+   * that fizzled is not one of them; a new target starts the count again.
+   */
+  attackCasts: number;
+  /**
+   * The same cap for the area spell — MegaMUD's `MultCastCnt`. 0 is no limit.
+   * The area spell is the expensive one, and a room that took three of them
+   * and is still standing is one the single-target spell and the melee round
+   * finish more cheaply.
+   */
+  areaCasts: number;
   /**
    * The spell to heal **this character** with. Blank heals nobody.
    *
@@ -1648,6 +1765,8 @@ export interface AutomationConfig {
   search: SearchConfig;
   /** Banking the purse at a counter — MegaMUD's StashCoin. */
   banking: BankingConfig;
+  /** Answering for a player who is not at the keyboard — MegaMUD's AutoAfk. */
+  afk: AfkConfig;
   /** Keeping the pack stocked. See `SuppliesConfig`. */
   supplies: SuppliesConfig;
   /** Answering another player's `@` commands — MegaMUD's remote control. */
@@ -1862,7 +1981,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Comfortably longer than the queue's own acknowledgement timeout, so a
     // step is not abandoned while the arbiter is still waiting its turn to
     // send it.
-    walk: { clearAfterSeconds: 15, stepTimeoutMs: 8000 },
+    walk: { clearAfterSeconds: 15, stepTimeoutMs: 8000, minExpPerHour: 0 },
     safety: {
       // Off, and refusing when on. See `HangUpConfig`: the panic button every
       // MegaMUD-era client offers is, here, a way to die.
@@ -1875,6 +1994,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       retreat: {
         enabled: false,
         belowHealth: 0.3,
+        belowMana: 0,
         whenOutnumbered: 0,
         cooldownMs: 3000,
         strategy: 'step-back',
@@ -1892,7 +2012,9 @@ export const DEFAULT_CONFIG: AppConfig = {
       opener: '',
       engage: 'hostile',
       retaliate: true,
+      joinFights: true,
       maxMobs: 0,
+      maxFightCost: 0,
       minHealth: 0,
       whileWalking: false,
       refreshRounds: 3,
@@ -1966,6 +2088,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     loops: [],
     events: [],
+    afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
     movement: {
       openDoors: false,
       openTries: 1,
@@ -1976,13 +2099,18 @@ export const DEFAULT_CONFIG: AppConfig = {
       sneak: false,
       provideLight: true,
       lightDimRooms: false,
-      extinguishInLight: true
+      extinguishInLight: true,
+      walkWhileBlind: false,
+      walkWhilePoisoned: false
     },
     spells: {
       attack: '',
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0.35,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -2690,7 +2818,9 @@ function normalizeAutomation(value: unknown): AutomationConfig {
       // about to answer, which looks exactly like a broken route.
       stepTimeoutMs: int(walk['stepTimeoutMs'], d.walk.stepTimeoutMs, 1000, 120_000),
       // Zero is meaningful: keep it until something else happens.
-      clearAfterSeconds: int(walk['clearAfterSeconds'], d.walk.clearAfterSeconds, 0, 3600)
+      clearAfterSeconds: int(walk['clearAfterSeconds'], d.walk.clearAfterSeconds, 0, 3600),
+      // Zero is off. Capped where no realm's experience curve reaches in an hour.
+      minExpPerHour: int(walk['minExpPerHour'], d.walk.minExpPerHour, 0, 100_000_000)
     },
     safety: normalizeSafety(raw['safety']),
     combat: normalizeCombat(raw['combat']),
@@ -2702,6 +2832,20 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     banking: normalizeBanking(raw['banking']),
     supplies: normalizeSupplies(raw['supplies']),
     remotes: normalizeRemotes(raw['remotes'], d.remotes),
+    afk: {
+      enabled: bool(isRecord(raw['afk']) ? raw['afk']['enabled'] : undefined, d.afk.enabled),
+      // A minute at least: a shorter absence is a pause for thought, and a day
+      // at most, because past that it is off by another name.
+      afterMinutes: int(
+        isRecord(raw['afk']) ? raw['afk']['afterMinutes'] : undefined,
+        d.afk.afterMinutes,
+        1,
+        1440
+      ),
+      reply: str(isRecord(raw['afk']) ? raw['afk']['reply'] : undefined, d.afk.reply)
+        .trim()
+        .slice(0, 120)
+    },
     talk: {
       lookAtPlayers: bool(
         isRecord(raw['talk']) ? raw['talk']['lookAtPlayers'] : undefined,
@@ -2932,7 +3076,9 @@ function normalizeMovement(value: unknown): MovementConfig {
     sneak: bool(raw['sneak'], d.sneak),
     provideLight: bool(raw['provideLight'], d.provideLight),
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
-    extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight)
+    extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),
+    walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
+    walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned)
   };
 }
 
@@ -2986,6 +3132,9 @@ function normalizeSpells(value: unknown): SpellsConfig {
     areaAttack: str(raw['areaAttack'], d.areaAttack).trim(),
     areaMinMobs: int(raw['areaMinMobs'], d.areaMinMobs, 1, 99),
     areaMinMana: fraction(raw['areaMinMana'], d.areaMinMana),
+    attackFallback: str(raw['attackFallback'], d.attackFallback).trim(),
+    attackCasts: int(raw['attackCasts'], d.attackCasts, 0, 99),
+    areaCasts: int(raw['areaCasts'], d.areaCasts, 0, 99),
     heal: str(raw['heal'], d.heal).trim(),
     healPartyWith: str(raw['healPartyWith'], d.healPartyWith).trim(),
     healBelow: fraction(raw['healBelow'], d.healBelow),
@@ -3096,9 +3245,11 @@ function normalizeCombat(value: unknown): CombatConfig {
     opener: typeof raw['opener'] === 'string' ? raw['opener'].trim().split(/\s+/)[0] || '' : '',
     engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
     retaliate: bool(raw['retaliate'], d.retaliate),
+    joinFights: bool(raw['joinFights'], d.joinFights),
     // Capped where the retreat guard is, for the same reason: a room holding more
     // than twenty things is not a number anybody is tuning against.
     maxMobs: int(raw['maxMobs'], d.maxMobs, 0, 20),
+    maxFightCost: fraction(raw['maxFightCost'], d.maxFightCost),
     minHealth: fraction(raw['minHealth'], d.minHealth),
     whileWalking: bool(raw['whileWalking'], d.whileWalking),
     // Capped low on purpose: every round is a fraction of a second, so a client
@@ -3147,6 +3298,7 @@ function normalizeSafety(value: unknown): SafetyConfig {
     retreat: {
       enabled: bool(retreat['enabled'], f.enabled),
       belowHealth: fraction(retreat['belowHealth'], f.belowHealth),
+      belowMana: fraction(retreat['belowMana'], f.belowMana),
       // Zero is meaningful: never run merely because there are several.
       whenOutnumbered: int(retreat['whenOutnumbered'], f.whenOutnumbered, 0, 20),
       // Floored at a second. Anything shorter retries before the server has

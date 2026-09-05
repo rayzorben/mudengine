@@ -6,6 +6,8 @@
  * import. Dependency-free, like everything else here.
  */
 import type { RoomId } from './world';
+import type { Afflictions } from './character';
+import type { MovementConfig } from './config';
 
 export type WalkStatus =
   /** Nothing planned. */
@@ -89,7 +91,38 @@ export interface WalkProgress {
    * chip, the server has already said `*Combat Engaged*` in the room, and a
    * line per monster on a twenty-step journey is the chrome talking over it.
    */
-  hold: 'health' | 'fight' | null;
+  hold: WalkHold;
+}
+
+/**
+ * Why a walk is standing still. `blind`, `held` and `poisoned` are the
+ * afflictions the server has stated and the walk waits out — MegaMUD's
+ * `IgnoreBlind` / `IgnorePoison` defaults, which wait — see
+ * `afflictionHolding`.
+ */
+export type WalkHold = 'health' | 'fight' | 'blind' | 'held' | 'poisoned' | null;
+
+/**
+ * Which stated affliction stands a walk still, or null.
+ *
+ * **One predicate for the walker and the loop**, because two halves of one
+ * gate in two files agree until one is edited (`fightIsRunning`'s own lesson).
+ * Paralysis always holds: a step while held is a command spent to be refused,
+ * and nothing in the options can make that a good idea. Blindness and poison
+ * hold unless the player says otherwise — `walkWhileBlind`,
+ * `walkWhilePoisoned` — because a blind character walking into a lair cannot
+ * read the room it arrives in and misses every swing, and MegaMUD's own
+ * defaults wait both out. Disease is not a movement matter and is left to the
+ * cure. `unknown` never holds: nobody having said is not *yes*.
+ */
+export function afflictionHolding(
+  afflictions: Afflictions,
+  movement: Pick<MovementConfig, 'walkWhileBlind' | 'walkWhilePoisoned'>
+): 'blind' | 'held' | 'poisoned' | null {
+  if (afflictions.held === 'yes') return 'held';
+  if (afflictions.blind === 'yes' && !movement.walkWhileBlind) return 'blind';
+  if (afflictions.poisoned === 'yes' && !movement.walkWhilePoisoned) return 'poisoned';
+  return null;
 }
 
 export const IDLE_WALK: WalkProgress = {

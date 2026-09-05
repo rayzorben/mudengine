@@ -125,6 +125,32 @@ describe('the queue of moves', () => {
     expect(memory.count).toBe(0);
   });
 
+  it('a refused look takes back its peek, and never a move', () => {
+    const memory = new Expectations();
+    memory.observeCommand('l s', inGame);
+    memory.observeCommand('n', inGame);
+    expect(memory.count).toBe(2);
+
+    // `There are no exits to the south!` answers the look; the step behind it
+    // is still waiting on its room.
+    expect(memory.shiftPeekRefused()).toBe(true);
+    expect(memory.head()).toMatchObject({ kind: 'move', direction: 'n' });
+
+    // The same sentence from `lock n` queued nothing, and takes nothing.
+    expect(memory.shiftPeekRefused()).toBe(false);
+    expect(memory.moves).toBe(1);
+  });
+
+  it('a refused look skips a re-read whose room never came', () => {
+    // A bare Enter cannot be refused, so one still queued ahead of the look is
+    // one the server never answered — `shiftRefused`'s own reading.
+    const memory = new Expectations();
+    memory.noteReread(true);
+    memory.observeCommand('l s', inGame);
+    expect(memory.shiftPeekRefused()).toBe(true);
+    expect(memory.count).toBe(0);
+  });
+
   it('a refused command is never learned as a way through the realm', () => {
     const memory = new Expectations();
     memory.observeCommand('jump cliff', inGame);

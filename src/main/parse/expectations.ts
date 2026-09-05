@@ -597,6 +597,36 @@ export class Expectations {
   }
 
   /**
+   * The peek a *look refusal* has just answered — `There are no exits to the
+   * south!`, which is what `l s` gets at a wall, a hidden exit nobody has
+   * found, a text exit or a remote-action one (`TryLookThroughExit`: the look
+   * path, never the move path). Returns whether anything was taken.
+   *
+   * Only a peek at the head is taken, after the re-reads a refusal skips for
+   * the reason `shiftRefused` gives. A move at the head is left alone: the
+   * server answers in order, so a move sent before the look would already
+   * have had its room or its own refusal, and `lock <direction>` prints the
+   * same sentence having queued nothing — which is why this cannot shift
+   * blindly the way `shiftRefused` does for a sentence that only a move earns.
+   *
+   * Unconsumed, the peek stayed at the head and every room block after it
+   * answered one claim late: the next move's room was read as the peek and
+   * discarded, the one after that as the wrong move, and the move behind
+   * *that* was written off by `expire` with nothing left to answer it
+   * (`2026-09-05_06-17-12_festus.mudcap.jsonl`, t=12182876–12197847: `l s`,
+   * `n`, `e` into the Universal Trainer; the character stayed filed in the
+   * corridor it had walked out of, the trainer's room could not be placed,
+   * and `e` was given up on eight seconds later, on the training screen).
+   */
+  shiftPeekRefused(): boolean {
+    let ahead = 0;
+    while (this.pending[ahead]?.kind === 'reread') ahead += 1;
+    if (this.pending[ahead]?.kind !== 'peek') return false;
+    this.pending.splice(0, ahead + 1);
+    return true;
+  }
+
+  /**
    * The server refused a command outright — `You say "<it>"`, which is what
    * this server does with a word it does not have. Returns whether that
    * answered something queued.

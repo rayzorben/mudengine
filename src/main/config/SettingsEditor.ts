@@ -352,6 +352,7 @@ export class SettingsEditor {
           [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
+          [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
           [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts]
@@ -883,6 +884,7 @@ export class SettingsEditor {
         search: { ...config.automation.search },
         banking: { ...config.automation.banking },
         remotes: { ...config.automation.remotes },
+        afk: { ...config.automation.afk },
         talk: { ...config.automation.talk }
       },
       loops
@@ -967,6 +969,7 @@ export class SettingsEditor {
         set(['automation', 'drop'], { ...draft.automation.drop });
         set(['automation', 'banking'], { ...draft.automation.banking });
         set(['automation', 'remotes'], { ...draft.automation.remotes });
+        set(['automation', 'afk'], { ...draft.automation.afk });
       },
       verify: (value) => {
         /*
@@ -1090,6 +1093,7 @@ export class SettingsEditor {
         health: effective?.automation.health ?? DEFAULT_CONFIG.automation.health,
         movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
         remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
+        afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
         talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
         /*
          * This character's *own* loops, from its own directory — not the
@@ -1198,6 +1202,7 @@ function retreatOf(retreat: RetreatConfig): ProfileEditable['retreat'] {
   return {
     enabled: retreat.enabled,
     belowHealth: retreat.belowHealth,
+    belowMana: retreat.belowMana,
     whenOutnumbered: retreat.whenOutnumbered,
     strategy: retreat.strategy,
     safeHavenRoom: retreat.safeHavenRoom
@@ -1237,6 +1242,7 @@ function blank(id: string): ProfileEditable {
     health: DEFAULT_CONFIG.automation.health,
     movement: DEFAULT_CONFIG.automation.movement,
     remotes: DEFAULT_CONFIG.automation.remotes,
+    afk: DEFAULT_CONFIG.automation.afk,
     talk: DEFAULT_CONFIG.automation.talk,
     loops: [],
     inherited: [],

@@ -30,6 +30,7 @@ import type {
   MovementConfig,
   RemotesConfig,
   TalkConfig,
+  AfkConfig,
   Server,
   SpellsConfig,
   RetreatStrategy,
@@ -46,6 +47,7 @@ import type { ProfileAccent } from './profiles';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
+import type { RoomVerdict } from './verdict';
 import type { Route, WorldLookup, WorldNames, WorldRoom } from './world';
 import type { Visited } from './destinations';
 import type {
@@ -122,6 +124,8 @@ export interface AttachSnapshot {
   walk: WalkProgress;
   loop: LoopProgress;
   automation: AutomationSnapshot;
+  /** The room as appraised when the window attached; `Push.verdict` carries every change after. */
+  verdict: RoomVerdict;
   /** Negotiation history, for the traffic card. */
   telnet: TelnetEvent[];
   /**
@@ -280,6 +284,8 @@ export interface ProfileEditable {
   retreat: {
     enabled: boolean;
     belowHealth: number;
+    /** MegaMUD's `ManaRun%`; 0 never. */
+    belowMana: number;
     whenOutnumbered: number;
     strategy: RetreatStrategy;
     safeHavenRoom: string;
@@ -307,6 +313,8 @@ export interface ProfileEditable {
    * one being played by hand left out of it.
    */
   remotes: RemotesConfig;
+  /** Answering for an absent player. Resolved, like the rest. */
+  afk: AfkConfig;
   /** What this character learns about other people. Resolved, like the rest. */
   talk: TalkConfig;
   /**
@@ -722,6 +730,14 @@ export const Push = {
   loop: 'loop:progress',
   /** The decision trace, coalesced. See `AUTOMATION_PUBLISH_MS`. */
   automation: 'automation:trace',
+  /**
+   * The room appraised — *can I fight this?* for every monster in it and for
+   * the room as a whole — on change. Beside `character` rather than inside
+   * it: the state is the tracker's reading of the wire, and this is arithmetic
+   * over it that needs the class row and the server's family, which only main
+   * holds. See `RoomVerdict`.
+   */
+  verdict: 'session:verdict',
   /** A session was loaded or unloaded. */
   sessions: 'sessions:changed',
   /** The set of characters on disk changed. */
@@ -932,6 +948,7 @@ export interface IpcApi {
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;
+  onVerdict(handler: (message: Addressed<RoomVerdict>) => void): () => void;
   onNotice(handler: (notice: Notice) => void): () => void;
   onSessions(handler: (sessions: SessionSummary[]) => void): () => void;
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;

@@ -264,7 +264,9 @@ describe('a character', () => {
         // template's `true` for the light is the file's, not the payload's.
         provideLight: false,
         lightDimRooms: false,
-        extinguishInLight: false
+        extinguishInLight: false,
+        walkWhileBlind: false,
+        walkWhilePoisoned: false
       });
       // The whole spell name: the realm matches a spell on a prefix, so `ice`
       // would cast whatever begins with it.
@@ -275,6 +277,9 @@ describe('a character', () => {
         areaMinMana: 0,
         heal: '',
         healPartyWith: '',
+        attackFallback: '',
+        attackCasts: 0,
+        areaCasts: 0,
         healBelow: 0,
         healBelowInCombat: 0,
         healTo: 0,
@@ -315,7 +320,9 @@ describe('a character', () => {
         sneak: false,
         provideLight: false,
         lightDimRooms: false,
-        extinguishInLight: false
+        extinguishInLight: false,
+        walkWhileBlind: false,
+        walkWhilePoisoned: false
       });
       expect(draft?.spells).toEqual({
         attack: '',
@@ -329,6 +336,9 @@ describe('a character', () => {
         healTo: 0,
         healParty: false,
         minMana: 0,
+        attackFallback: '',
+        attackCasts: 0,
+        areaCasts: 0,
         cures: { blindness: '', poison: '', disease: '' },
         blessings: [],
         notifyPartyOnWearOff: false
@@ -443,7 +453,11 @@ describe('a character', () => {
         maxMonsterExperience: 0,
         engage: 'all',
         retaliate: false,
+        // Absent above too, and it defaults on: MegaMUD's own default joins.
+        joinFights: true,
         maxMobs: 3,
+        // Absent above, so it takes its default: a refusal nobody asked for is off.
+        maxFightCost: 0,
         minHealth: 0.4,
         refreshRounds: 3,
         whileWalking: true,

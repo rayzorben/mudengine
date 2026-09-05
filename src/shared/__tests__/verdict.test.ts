@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { rankByVerdict, verdictFor, wieldedWeapon, type Verdict } from '../verdict';
-import type { Menace } from '../menace';
+import {
+  appraiseRoom,
+  prowessSheetOf,
+  rankByVerdict,
+  roomVerdictKey,
+  targetOf,
+  verdictFor,
+  wieldedWeapon,
+  type Verdict
+} from '../verdict';
+import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
+import type { MobEntity } from '../entities';
+import type { MobAttack } from '../world';
+import { EMPTY_CHARACTER } from '../character';
 
 const SHEET: ProwessSheet = {
   level: 10,
@@ -148,5 +160,180 @@ describe('what is being swung', () => {
   it('takes the first of two rather than choosing between them', () => {
     const second = { equipped: true, kind: 'weapon', weapon: { min: 50, max: 60 } };
     expect(wieldedWeapon([sword, second])).toBe(SWORD);
+  });
+});
+
+describe('the monster’s side of the roll', () => {
+  const thug: MobEntity = {
+    name: 'thug',
+    rawName: 'thug',
+    source: 'hybrid',
+    charmed: false,
+    disposition: 'hostile',
+    uncertain: false,
+    costly: 'never',
+    hp: 60,
+    armour: 400,
+    damageResist: 30,
+    abilities: [
+      [1, 5],
+      [34, 12]
+    ]
+  };
+
+  /* `PlayerAttackType.GetDefense` is `(AC + secondary) / 10`; the sheet's own
+     figure is already divided, so the realm's column is divided here, once. */
+  it('divides the realm’s armour and resistance by ten, and reads dodge off slot 34', () => {
+    expect(targetOf(thug)).toEqual({ armourClass: 40, damageResist: 3, dodge: 12, hp: 60 });
+  });
+
+  it('claims nothing about a monster the realm cannot place', () => {
+    expect(targetOf(undefined)).toEqual({});
+    expect(targetOf({})).toEqual({});
+  });
+});
+
+describe('the character’s side of the sheet', () => {
+  it('reads the sheet and the class row, and the pack as a percentage', () => {
+    const state = {
+      progress: { ...EMPTY_CHARACTER.progress, level: 10, agility: 60, strength: 55 },
+      inventory: { ...EMPTY_CHARACTER.inventory, encumbrance: 30, encumbranceMax: 120 }
+    };
+    const sheet = prowessSheetOf(state, { combat: 4, magery: null });
+    expect(sheet.level).toBe(10);
+    expect(sheet.agility).toBe(60);
+    expect(sheet.combatLevel).toBe(4);
+    expect(sheet.mageryLevel).toBeNull();
+    expect(sheet.encumbrancePercent).toBe(25);
+  });
+
+  /* Unread is not light: the 33% threshold grants two bonuses below it, and an
+     unread pack must not be granted them. */
+  it('leaves the pack unknown when either figure is unread', () => {
+    const state = {
+      progress: EMPTY_CHARACTER.progress,
+      inventory: { ...EMPTY_CHARACTER.inventory, encumbrance: 30, encumbranceMax: null }
+    };
+    expect(prowessSheetOf(state, { combat: null, magery: null }).encumbrancePercent).toBeNull();
+  });
+});
+
+describe('the room, appraised', () => {
+  const weights: MenaceWeights = {
+    held: 1,
+    confused: 0.5,
+    blinded: 0.5,
+    slowed: 0.25,
+    afraid: 1,
+    summon: 2,
+    teleported: 1,
+    roomWide: 2,
+    lastingTicks: 20,
+    unitFloor: 10,
+    deathOverRounds: 5
+  };
+  const player: MenacePlayer = { armourClass: 30, damageResist: 2, magicRes: 0 };
+  const bite: MobAttack = { kind: 'melee', chance: 1, accuracy: 45, min: 4, max: 9, energy: 1000 };
+  const fighter = (name: string, over: Partial<MobEntity> = {}): MobEntity => ({
+    name,
+    rawName: name,
+    source: 'hybrid',
+    charmed: false,
+    disposition: 'hostile',
+    uncertain: false,
+    costly: 'never',
+    hp: 60,
+    profiles: [{ attacks: [bite], casts: [] }],
+    ...over
+  });
+  const occupant = (name: string, mob?: MobEntity, kind: 'mob' | 'player' | 'unknown' = 'mob') => ({
+    name,
+    kind,
+    ...(mob === undefined ? {} : { mob })
+  });
+
+  it('prices every monster and sums what clearing the room costs', () => {
+    const appraisal = appraiseRoom(
+      [occupant('thug', fighter('thug')), occupant('nasty thug', fighter('nasty thug'))],
+      player,
+      weights,
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    expect(appraisal.monsters.map((entry) => entry.name)).toEqual(['thug', 'nasty thug']);
+    const costs = appraisal.monsters.map((entry) => entry.verdict.cost?.value ?? 0);
+    expect(costs.every((cost) => cost > 0)).toBe(true);
+    expect(appraisal.cost).toEqual({ value: costs[0]! + costs[1]!, from: 'bound' });
+  });
+
+  /* A total that leaves out the one thing it could not weigh is smaller than
+     the truth and looks the same, so the total is unknown instead. */
+  it('answers an unknown total the moment one monster cannot be costed', () => {
+    const appraisal = appraiseRoom(
+      [occupant('thug', fighter('thug')), occupant('stranger', undefined, 'unknown')],
+      player,
+      weights,
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    expect(appraisal.monsters).toHaveLength(2);
+    expect(appraisal.monsters[1]?.verdict.cost).toBeNull();
+    expect(appraisal.cost).toBeNull();
+  });
+
+  it('leaves people out, and an empty room is nothing to appraise', () => {
+    const people = appraiseRoom(
+      [occupant('Naji', undefined, 'player')],
+      player,
+      weights,
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    expect(people.monsters).toEqual([]);
+    expect(people.cost).toBeNull();
+  });
+
+  /* The MajorMUD lineage has no source behind it: rounds and cost are unknown,
+     never borrowed from the other family's arithmetic. */
+  it('answers unknown on a family whose arithmetic it does not have', () => {
+    const appraisal = appraiseRoom(
+      [occupant('thug', fighter('thug'))],
+      player,
+      weights,
+      SHEET,
+      SWORD,
+      'majormud'
+    );
+    expect(appraisal.monsters[0]?.verdict.menace).not.toBeNull();
+    expect(appraisal.monsters[0]?.verdict.rounds).toBeNull();
+    expect(appraisal.cost).toBeNull();
+  });
+
+  /* The publisher pushes on the key changing: the names and the drawn figures.
+     Two appraisals of one room key alike; a monster with a hundred times the
+     health takes visibly more rounds and costs visibly more, and does not. */
+  it('keys on what a reader would see', () => {
+    const one = () =>
+      appraiseRoom(
+        [occupant('thug', fighter('thug'))],
+        player,
+        weights,
+        SHEET,
+        SWORD,
+        'greatermud'
+      );
+    const tougher = appraiseRoom(
+      [occupant('thug', fighter('thug', { hp: 6000 }))],
+      player,
+      weights,
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    expect(roomVerdictKey(one())).toBe(roomVerdictKey(one()));
+    expect(roomVerdictKey(one())).not.toBe(roomVerdictKey(tougher));
   });
 });

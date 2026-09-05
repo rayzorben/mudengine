@@ -385,6 +385,8 @@ interface CharacterForm {
   pvpAction: PvpAction;
   retreat: boolean;
   retreatBelow: string;
+  /** MegaMUD's `ManaRun%`, as a percentage string like `retreatBelow`. */
+  retreatBelowMana: string;
   retreatOutnumbered: string;
   retreatStrategy: string;
   retreatHaven: string;
@@ -401,7 +403,11 @@ interface CharacterForm {
   combatOpener: string;
   combatEngage: EngagePolicy;
   combatRetaliate: boolean;
+  /** Open on a monster a stranger is already fighting — MegaMUD's PoliteAttacks, inverted. */
+  combatJoinFights: boolean;
   combatMaxMobs: string;
+  /** Share of current health a fight may be expected to cost, as a percentage string. */
+  combatMaxFightCost: string;
   /** Following somebody — `automation.party`. */
   partyAssist: boolean;
   partyDefend: boolean;
@@ -433,6 +439,10 @@ interface CharacterForm {
   spellAreaAttack: string;
   spellAreaMinMobs: string;
   spellAreaMinMana: string;
+  /** The fallback once the round spell has no effect, and the per-target cast caps (0 is no limit). */
+  spellAttackFallback: string;
+  spellAttackCasts: string;
+  spellAreaCasts: string;
   /**
    * The heal, per character: a spell cast on this character, a spell cast on a
    * member, and the pair of figures that start and stop the casting.
@@ -463,6 +473,9 @@ interface CharacterForm {
   provideLight: boolean;
   lightDimRooms: boolean;
   extinguishInLight: boolean;
+  /** Conditions as waits, inverted: off waits blindness / poison out. */
+  walkWhileBlind: boolean;
+  walkWhilePoisoned: boolean;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -475,6 +488,10 @@ interface CharacterForm {
   /** Alerts — what this character is worth interrupting you for. */
   alertMinimum: Severity;
   alertMuted: string[];
+  /** `automation.afk` — answering for an absent player. */
+  afkEnabled: boolean;
+  afkAfterMinutes: string;
+  afkReply: string;
   /** Whether this character answers another player's `@` commands. */
   answerRemotes: boolean;
   lookAtPlayers: boolean;
@@ -516,6 +533,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     login: entry.login,
     retreat: entry.retreat.enabled,
     retreatBelow: String(Math.round(entry.retreat.belowHealth * 100)),
+    retreatBelowMana: String(Math.round(entry.retreat.belowMana * 100)),
     retreatOutnumbered: String(entry.retreat.whenOutnumbered),
     retreatStrategy: entry.retreat.strategy,
     retreatHaven: entry.retreat.safeHavenRoom,
@@ -532,7 +550,9 @@ function formOf(entry: ProfileEditable): CharacterForm {
     combatOpener: entry.combat.opener,
     combatEngage: entry.combat.engage,
     combatRetaliate: entry.combat.retaliate,
+    combatJoinFights: entry.combat.joinFights,
     combatMaxMobs: String(entry.combat.maxMobs),
+    combatMaxFightCost: String(Math.round(entry.combat.maxFightCost * 100)),
     partyAssist: entry.party.assistLeader,
     partyDefend: entry.party.defendParty,
     partyRest: entry.party.restWithLeader,
@@ -561,6 +581,9 @@ function formOf(entry: ProfileEditable): CharacterForm {
     spellAreaAttack: entry.spells.areaAttack,
     spellAreaMinMobs: String(entry.spells.areaMinMobs),
     spellAreaMinMana: percent(entry.spells.areaMinMana),
+    spellAttackFallback: entry.spells.attackFallback,
+    spellAttackCasts: String(entry.spells.attackCasts),
+    spellAreaCasts: String(entry.spells.areaCasts),
     spellHeal: entry.spells.heal,
     spellHealPartyWith: entry.spells.healPartyWith,
     spellHealBelow: percent(entry.spells.healBelow),
@@ -581,11 +604,16 @@ function formOf(entry: ProfileEditable): CharacterForm {
     provideLight: entry.movement.provideLight,
     lightDimRooms: entry.movement.lightDimRooms,
     extinguishInLight: entry.movement.extinguishInLight,
+    walkWhileBlind: entry.movement.walkWhileBlind,
+    walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
     alertMinimum: entry.alerts.minimum,
     alertMuted: entry.alerts.mute,
+    afkEnabled: entry.afk.enabled,
+    afkAfterMinutes: String(entry.afk.afterMinutes),
+    afkReply: entry.afk.reply,
     answerRemotes: entry.remotes.enabled,
     remoteGangpath: entry.remotes.gangpath,
     remoteGang: [...entry.remotes.gang],
@@ -673,6 +701,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     retreat: {
       enabled: form.retreat,
       belowHealth: (Number.parseInt(form.retreatBelow, 10) || 0) / 100,
+      belowMana: (Number.parseInt(form.retreatBelowMana, 10) || 0) / 100,
       whenOutnumbered: Number.parseInt(form.retreatOutnumbered, 10) || 0,
       strategy: RETREAT_STRATEGIES.includes(form.retreatStrategy as RetreatStrategy)
         ? (form.retreatStrategy as RetreatStrategy)
@@ -685,7 +714,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       opener: form.combatOpener,
       engage: form.combatEngage,
       retaliate: form.combatRetaliate,
+      joinFights: form.combatJoinFights,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
+      maxFightCost: (Number.parseInt(form.combatMaxFightCost, 10) || 0) / 100,
       minHealth: (Number.parseInt(form.combatMinHealth, 10) || 0) / 100,
       whileWalking: form.combatWhileWalking,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
@@ -724,6 +755,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       areaAttack: form.spellAreaAttack.trim(),
       areaMinMobs: Math.max(1, Number.parseInt(form.spellAreaMinMobs, 10) || 3),
       areaMinMana: fractionOf(form.spellAreaMinMana),
+      attackFallback: form.spellAttackFallback.trim(),
+      attackCasts: Math.max(0, Number.parseInt(form.spellAttackCasts, 10) || 0),
+      areaCasts: Math.max(0, Number.parseInt(form.spellAreaCasts, 10) || 0),
       heal: form.spellHeal.trim(),
       healPartyWith: form.spellHealPartyWith.trim(),
       healBelow: fractionOf(form.spellHealBelow),
@@ -752,10 +786,17 @@ function draftOf(form: CharacterForm): ProfileDraft {
       sneak: form.sneak,
       provideLight: form.provideLight,
       lightDimRooms: form.lightDimRooms,
-      extinguishInLight: form.extinguishInLight
+      extinguishInLight: form.extinguishInLight,
+      walkWhileBlind: form.walkWhileBlind,
+      walkWhilePoisoned: form.walkWhilePoisoned
     },
     loops: form.loops,
     alerts: { minimum: form.alertMinimum, mute: form.alertMuted },
+    afk: {
+      enabled: form.afkEnabled,
+      afterMinutes: Math.max(1, Number.parseInt(form.afkAfterMinutes, 10) || 5),
+      reply: form.afkReply.trim()
+    },
     remotes: {
       enabled: form.answerRemotes,
       gangpath: form.remoteGangpath,
@@ -874,6 +915,7 @@ function emptyForm(
   const spells = defaults?.automation.spells ?? DEFAULT_SPELLS;
   const alerts = defaults?.ui.alerts ?? DEFAULT_ALERTS;
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
+  const afk = defaults?.automation.afk ?? DEFAULT_CONFIG.automation.afk;
   const talk = defaults?.automation.talk ?? DEFAULT_CONFIG.automation.talk;
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
@@ -922,6 +964,7 @@ function emptyForm(
     login: [],
     retreat: retreat.enabled,
     retreatBelow: percent(retreat.belowHealth),
+    retreatBelowMana: percent(retreat.belowMana),
     retreatOutnumbered: String(retreat.whenOutnumbered),
     retreatStrategy: retreat.strategy,
     retreatHaven: retreat.safeHavenRoom,
@@ -936,7 +979,9 @@ function emptyForm(
     combatOpener: combat.opener,
     combatEngage: combat.engage,
     combatRetaliate: combat.retaliate,
+    combatJoinFights: combat.joinFights,
     combatMaxMobs: String(combat.maxMobs),
+    combatMaxFightCost: percent(combat.maxFightCost),
     partyAssist: party.assistLeader,
     partyDefend: party.defendParty,
     partyRest: party.restWithLeader,
@@ -962,6 +1007,9 @@ function emptyForm(
     spellAreaAttack: spells.areaAttack,
     spellAreaMinMobs: String(spells.areaMinMobs),
     spellAreaMinMana: percent(spells.areaMinMana),
+    spellAttackFallback: spells.attackFallback,
+    spellAttackCasts: String(spells.attackCasts),
+    spellAreaCasts: String(spells.areaCasts),
     spellHeal: spells.heal,
     spellHealPartyWith: spells.healPartyWith,
     spellHealBelow: percent(spells.healBelow),
@@ -982,11 +1030,16 @@ function emptyForm(
     provideLight: movement.provideLight,
     lightDimRooms: movement.lightDimRooms,
     extinguishInLight: movement.extinguishInLight,
+    walkWhileBlind: movement.walkWhileBlind,
+    walkWhilePoisoned: movement.walkWhilePoisoned,
     loops: [],
     // `ProfileDraft` types this as a plain string, since a draft is a payload
     // parsed at the boundary; the form holds the closed union.
     alertMinimum: (alerts.minimum as Severity) ?? DEFAULT_ALERTS.minimum,
     alertMuted: [...alerts.mute],
+    afkEnabled: afk.enabled,
+    afkAfterMinutes: String(afk.afterMinutes),
+    afkReply: afk.reply,
     answerRemotes: remotes.enabled,
     remoteGangpath: remotes.gangpath,
     remoteGang: [...remotes.gang],
@@ -2245,6 +2298,13 @@ export default function SettingsScreen({
                               name="retaliate"
                               onChange={(value) => patch({ combatRetaliate: value })}
                             />
+                            <CheckField
+                              checked={form.combatJoinFights}
+                              hint={t('settings.combat.joinFightsHint')}
+                              label={t('settings.combat.joinFights')}
+                              name="join-fights"
+                              onChange={(value) => patch({ combatJoinFights: value })}
+                            />
                             {/* What it opens fights with, and the three limits
                                 that qualify it, on one row: each of the
                                 numbers is meaningless without the policy
@@ -2276,6 +2336,14 @@ export default function SettingsScreen({
                                 name="max-mobs"
                                 onChange={(value) => patch({ combatMaxMobs: value })}
                                 value={form.combatMaxMobs}
+                              />
+                              <NumberField
+                                hint={t('settings.combat.maxFightCostHint')}
+                                label={t('settings.combat.maxFightCostLabel')}
+                                name="max-fight-cost"
+                                figure={ofHealth(form.combatMaxFightCost)}
+                                onChange={(value) => patch({ combatMaxFightCost: value })}
+                                value={form.combatMaxFightCost}
                               />
                               <NumberField
                                 hint={t('settings.combat.minMobsHint')}
@@ -2492,6 +2560,14 @@ export default function SettingsScreen({
                                 value={form.retreatBelow}
                               />
                               <NumberField
+                                hint={t('settings.health.belowManaHint')}
+                                label={t('settings.health.belowManaLabel')}
+                                name="retreat-mana"
+                                figure={ofMana(form.retreatBelowMana)}
+                                onChange={(value) => patch({ retreatBelowMana: value })}
+                                value={form.retreatBelowMana}
+                              />
+                              <NumberField
                                 hint={t('settings.health.outnumberedHint')}
                                 label={t('settings.health.outnumberedLabel')}
                                 name="outnumbered"
@@ -2612,6 +2688,21 @@ export default function SettingsScreen({
                           spells={shownBook.spells}
                           value={form.spellAttack}
                         />
+                        <SpellField
+                          hint={t('settings.spells.fallbackCastHint')}
+                          label={t('settings.spells.fallbackCastLabel')}
+                          name="spell-fallback"
+                          onChange={(value) => patch({ spellAttackFallback: value })}
+                          spells={shownBook.spells}
+                          value={form.spellAttackFallback}
+                        />
+                        <NumberField
+                          hint={t('settings.spells.attackCastsHint')}
+                          label={t('settings.spells.attackCastsLabel')}
+                          name="attack-casts"
+                          onChange={(value) => patch({ spellAttackCasts: value })}
+                          value={form.spellAttackCasts}
+                        />
                         <NumberField
                           hint={t('settings.spells.minManaHint')}
                           label={t('settings.spells.minManaLabel')}
@@ -2642,6 +2733,13 @@ export default function SettingsScreen({
                           onChange={(value) => patch({ spellAreaMinMana: value })}
                           figure={ofMana(form.spellAreaMinMana)}
                           value={form.spellAreaMinMana}
+                        />
+                        <NumberField
+                          hint={t('settings.spells.areaCastsHint')}
+                          label={t('settings.spells.areaCastsLabel')}
+                          name="area-casts"
+                          onChange={(value) => patch({ spellAreaCasts: value })}
+                          value={form.spellAreaCasts}
                         />
                         <p className="settings-note">{t('settings.spells.note')}</p>
                       </fieldset>
@@ -2963,6 +3061,39 @@ export default function SettingsScreen({
                       <p className="settings-note">{t('settings.alerts.note')}</p>
                     </fieldset>
                   )}
+                  {/*
+                    Beside the alerts, because both are about a player who is
+                    not looking: alerts are what they hear about the character,
+                    and this is what the character says for them.
+                  */}
+                  {section === 'alerts' && (
+                    <fieldset className="settings-menus">
+                      <legend>{t('settings.afk.legend')}</legend>
+                      <div className="settings-inline">
+                        <CheckField
+                          checked={form.afkEnabled}
+                          hint={t('settings.afk.enabledHint')}
+                          label={t('settings.afk.enabled')}
+                          name="afk-enabled"
+                          onChange={(value) => patch({ afkEnabled: value })}
+                        />
+                        <NumberField
+                          hint={t('settings.afk.afterHint')}
+                          label={t('settings.afk.afterLabel')}
+                          name="afk-after"
+                          onChange={(value) => patch({ afkAfterMinutes: value })}
+                          value={form.afkAfterMinutes}
+                        />
+                        <TextField
+                          hint={t('settings.afk.replyHint')}
+                          label={t('settings.afk.replyLabel')}
+                          name="afk-reply"
+                          onChange={(value) => patch({ afkReply: value })}
+                          value={form.afkReply}
+                        />
+                      </div>
+                    </fieldset>
+                  )}
 
                   {section === 'movement' && (
                     <>
@@ -3068,6 +3199,20 @@ export default function SettingsScreen({
                             />
                           </>
                         )}
+                        <CheckField
+                          checked={form.walkWhileBlind}
+                          hint={t('settings.movement.walkWhileBlindHint')}
+                          label={t('settings.movement.walkWhileBlind')}
+                          name="walk-while-blind"
+                          onChange={(value) => patch({ walkWhileBlind: value })}
+                        />
+                        <CheckField
+                          checked={form.walkWhilePoisoned}
+                          hint={t('settings.movement.walkWhilePoisonedHint')}
+                          label={t('settings.movement.walkWhilePoisoned')}
+                          name="walk-while-poisoned"
+                          onChange={(value) => patch({ walkWhilePoisoned: value })}
+                        />
                         <p className="settings-note">{t('settings.movement.note')}</p>
                       </fieldset>
 

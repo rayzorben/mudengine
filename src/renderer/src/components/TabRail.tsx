@@ -249,6 +249,23 @@ function attention(
   if (view.walk.status === 'walking' && view.walk.hold === 'health') {
     return { level: 'info', label: t('tabs.tab.markRecovering') };
   }
+  /*
+   * Waiting out a stated affliction, on a route or between a lap's legs.
+   * `warn`, unlike the holds above: a condition is something the person may
+   * want to come and cure, and `walking` or `looping` here would be the tab
+   * saying the character is moving when it is standing still and blind.
+   */
+  const afflicted =
+    (view.walk.status === 'walking' &&
+      (view.walk.hold === 'blind' || view.walk.hold === 'held' || view.walk.hold === 'poisoned') &&
+      view.walk.hold) ||
+    (view.loop.status === 'running' &&
+      (view.loop.hold === 'blind' || view.loop.hold === 'held' || view.loop.hold === 'poisoned') &&
+      view.loop.hold) ||
+    null;
+  if (afflicted === 'blind') return { level: 'warn', label: t('tabs.tab.markBlind') };
+  if (afflicted === 'held') return { level: 'warn', label: t('tabs.tab.markHeld') };
+  if (afflicted === 'poisoned') return { level: 'warn', label: t('tabs.tab.markPoisoned') };
   if (view.walk.status === 'walking') return { level: 'info', label: t('tabs.tab.markWalking') };
   if (view.loop.status === 'running') return { level: 'info', label: t('tabs.tab.markLooping') };
 

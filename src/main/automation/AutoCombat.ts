@@ -78,8 +78,14 @@ import { ATTACK_COMMANDS, commandOf, REREAD_ROOM } from '../../shared/commands';
 import type { CombatConfig, PartyConfig, SpellsConfig } from '../../shared/config';
 import type { MobEntity } from '../../shared/entities';
 import { weighRoom, type HazardKind, type Menace } from '../../shared/menace';
-import { rankByVerdict, verdictFor, wieldedWeapon, type Verdict } from '../../shared/verdict';
-import type { ProwessSheet } from '../../shared/prowess';
+import {
+  prowessSheetOf,
+  rankByVerdict,
+  targetOf,
+  verdictFor,
+  wieldedWeapon,
+  type Verdict
+} from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
 import { attacksOnSight } from '../../shared/mobs';
 import { resolveSpell, spellCost } from '../../shared/spellcraft';
@@ -186,6 +192,17 @@ export class AutoCombat {
   private opened: { at: number; target: string } | null = null;
   /** True once this fight's opener has been spent. */
   private openerSpent = false;
+  /**
+   * The round spell last proposed, and when. The only record of *which* spell
+   * `Your spell has no effect on …` is about — the sentence names the target
+   * and never the spell — and of which spell a cast confirmation counts
+   * against. Dropped with the fight.
+   */
+  private lastCast: { spell: string; at: number } | null = null;
+  /** Spells the server has said have no effect on the current target, this fight. */
+  private readonly ineffective = new Set<string>();
+  /** Confirmed casts against the current target, by configured spell — `attackCasts` / `areaCasts`. */
+  private readonly casts = new Map<string, number>();
   /** Set while an escape is in flight; nothing opens a fight through it. */
   private retreating = false;
   /** True while `Walker` has a route running. */
@@ -237,6 +254,9 @@ export class AutoCombat {
       areaAttack: '',
       areaMinMobs: 3,
       areaMinMana: 0.35,
+      attackFallback: '',
+      attackCasts: 0,
+      areaCasts: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -502,6 +522,12 @@ export class AutoCombat {
         this.arrivedAt = Date.now();
         return;
 
+      case 'spell-ineffective':
+        this.noteIneffective();
+        return;
+      case 'spell-cast':
+        this.noteCast(block);
+        return;
       case 'attack-refused': {
         const skill = block.groups['skill']?.toLowerCase() ?? '';
         const words = REFUSED_WORDS[skill];
@@ -553,6 +579,16 @@ export class AutoCombat {
   onCharacter(state: CharacterState): void {
     const was = this.state;
     this.state = state;
+    /*
+     * A new target opens the per-target book again: the casts spent and the
+     * spells found to have no effect are facts about the monster that *was* in
+     * front of the character, and the next one may well take the spell the
+     * last one shrugged off. MegaMUD's `ClearOnceEngaged`, read literally.
+     */
+    if ((was?.combat.target ?? null) !== state.combat.target) {
+      this.ineffective.clear();
+      this.casts.clear();
+    }
 
     if (!this.enabled || !this.config.enabled) return;
     if (state.phase !== 'in-game') return;
@@ -641,21 +677,18 @@ export class AutoCombat {
       (name) => !this.isPlayer(state, name) && !this.config.avoid.includes(mobKey(name))
     );
     if (candidates.length === 0) return false;
-    const menaces = this.weigh(
-      state,
-      candidates.map(
-        (name) =>
-          state.room.occupants.find(
-            (who) => who.kind === 'mob' && mobKey(who.name) === mobKey(name)
-          )?.mob
-      )
+    const entities = candidates.map(
+      (name) =>
+        state.room.occupants.find((who) => who.kind === 'mob' && mobKey(who.name) === mobKey(name))
+          ?.mob
     );
-    const verdicts = this.verdicts(state, menaces);
+    const menaces = this.weigh(state, entities);
+    const verdicts = this.verdicts(state, menaces, entities);
     const [first] = rankByVerdict(verdicts);
     const attacker = candidates[first ?? 0] ?? candidates[0]!;
     return this.swing(
       attacker,
-      this.explain(attacker, menaces[first ?? 0] ?? null, candidates.length, true)
+      this.explain(attacker, verdicts[first ?? 0] ?? null, candidates.length, true)
     );
   }
 
@@ -725,27 +758,24 @@ export class AutoCombat {
    * ship, and it costs nothing: `verdictFor` answers null rounds and the
    * ranking falls back to exactly the order it produced before.
    */
-  private verdicts(state: CharacterState, menaces: ReadonlyArray<Menace | null>): Verdict[] {
+  private verdicts(
+    state: CharacterState,
+    menaces: ReadonlyArray<Menace | null>,
+    entities: ReadonlyArray<MobEntity | undefined>
+  ): Verdict[] {
     const { combat, magery, family } = this.realmClass();
-    const { encumbrance, encumbranceMax } = state.inventory;
-    const sheet: ProwessSheet = {
-      level: state.progress.level,
-      agility: state.progress.agility,
-      intellect: state.progress.intellect,
-      charm: state.progress.charm,
-      willpower: state.progress.willpower,
-      health: state.progress.health,
-      strength: state.progress.strength,
-      spellcasting: state.progress.spellcasting,
-      combatLevel: combat,
-      mageryLevel: magery,
-      encumbrancePercent:
-        encumbrance === null || encumbranceMax === null || encumbranceMax <= 0
-          ? null
-          : (100 * encumbrance) / encumbranceMax
-    };
+    /*
+     * The sheet and the target are read by the shared functions the Room card's
+     * appraisal reads (`SessionManager.publishVerdict`), so the figure the
+     * engine ranks on and the figure the card draws come from one reading.
+     * `targetOf` is what puts the monster's own armour into the roll; this
+     * once passed `{}`, and priced every monster as unarmoured — see there.
+     */
+    const sheet = prowessSheetOf(state, { combat, magery });
     const weapon = wieldedWeapon(state.inventory.items);
-    return menaces.map((menace) => verdictFor(menace, {}, sheet, weapon, family));
+    return menaces.map((menace, index) =>
+      verdictFor(menace, targetOf(entities[index]), sheet, weapon, family)
+    );
   }
 
   /**
@@ -754,31 +784,66 @@ export class AutoCombat {
    * One monster needs no explaining. Several do, and the figures the order
    * was decided on go into the sentence, because a number nobody can read
    * back is a decision nobody can question: *the most dangerous of 3 here
-   * (18 hp a round against you, 70 hp; paralyses)* is what makes "why the
-   * rat and not the ogre" answerable from the card.
+   * (18 hp a round against you, up to 4 rounds and 72 hp to kill; paralyses)*
+   * is what makes "why the rat and not the ogre" answerable from the card.
+   *
+   * **The figures are the verdict's, because the order is.** For a day this
+   * ranked on `rankByVerdict` and explained with the monster's health — the
+   * figure `rankByMenace` had used and this no longer did — so the trace
+   * explained a decision by a number that did not make it, which is worse
+   * than a wrong sentence: it is a right-looking one.
    */
   private explain(
     target: string,
-    menace: Menace | null,
+    verdict: Verdict | null,
     count: number,
     hittingBack: boolean
   ): string {
     if (count <= 1) {
       return hittingBack ? t('automation.combat.whyHitBack') : t('automation.combat.whyInRoom');
     }
-    if (menace === null) return t('automation.combat.whyUnweighed', { count, target });
+    const menace = verdict?.menace ?? null;
+    if (verdict === null || menace === null) {
+      return t('automation.combat.whyUnweighed', { count, target });
+    }
     const words = menace.hazards.map((kind) => hazardWord(kind));
     if (menace.wide) words.push(t('automation.combat.hazard.wide'));
     const figures = {
       count,
       perRound: Math.round(menace.perRound),
-      hp: menace.hp,
+      costs: this.costWords(verdict, menace),
       hazards:
         words.length === 0 ? '' : t('automation.combat.hazardList', { list: words.join(', ') })
     };
     return hittingBack
       ? t('automation.combat.whyHitBackMostDangerous', figures)
       : t('automation.combat.whyMostDangerous', figures);
+  }
+
+  /**
+   * What removing it costs — the second half of `explain`'s sentence.
+   *
+   * Rounds and health when `prowess` could say, because those are what
+   * `rankByVerdict` ordered on; the monster's health when it could not,
+   * because that is when the ranking fell back to `menace.weight` and the
+   * health *is* the figure that decided. Each answer names the number that
+   * actually made the choice.
+   *
+   * The rounds are rounded **up** and the word is *up to*: the figure is a
+   * bound in the honest direction (`prowess.swing`), and a bound rounded down
+   * stops being one. A figure with any other provenance is *about*, so that
+   * the day `stated` arrives from `stat all` the sentence does not go on
+   * claiming a ceiling the server has replaced with a reading.
+   */
+  private costWords(verdict: Verdict, menace: Menace): string {
+    const { rounds, cost } = verdict;
+    if (rounds === null || cost === null) {
+      return t('automation.combat.costByHealth', { hp: menace.hp });
+    }
+    const figures = { rounds: Math.ceil(rounds.value), cost: Math.round(cost.value) };
+    return rounds.from === 'bound'
+      ? t('automation.combat.costBound', figures)
+      : t('automation.combat.costEstimate', figures);
   }
 
   /**
@@ -1025,6 +1090,22 @@ export class AutoCombat {
         continue;
       }
       /*
+       * Somebody outside the party is already fighting it — MegaMUD's
+       * *PoliteAttacks*. The sighting is the tracker's (`combat.claimed`) and
+       * it ages out on the same clock a sighting of the leader's target does:
+       * both are one sentence about somebody else's fight, and a minute later
+       * neither says anything about now.
+       */
+      const claim = state.combat.claimed[mobKey(who.name)];
+      if (
+        !this.config.joinFights &&
+        claim !== undefined &&
+        Date.now() - claim.at <= tuning().combat.assistFreshMs
+      ) {
+        decline(who, t('automation.combat.refusedClaimed', { target: who.name, player: claim.by }));
+        continue;
+      }
+      /*
        * Attacking it would certainly cost the character ten evil points,
        * cumulatively, for as long as it plays. No setting spends that unasked;
        * `prefer` above is how somebody asks.
@@ -1097,15 +1178,45 @@ export class AutoCombat {
     if (willing.length === 0) {
       return why === null || considered === null ? null : { target: null, considered, why };
     }
-    const menaces = this.weigh(
-      state,
-      willing.map((who) => who.mob)
-    );
-    const [first] = rankByVerdict(this.verdicts(state, menaces));
-    const pick = willing[first ?? 0] ?? willing[0]!;
+    const entities = willing.map((who) => who.mob);
+    const menaces = this.weigh(state, entities);
+    const verdicts = this.verdicts(state, menaces, entities);
+    /*
+     * The one preference the verdict leaves to the player: how hard a fight
+     * to take. `cost` is the health the fight is expected to take off this
+     * character, a bound, and a monster whose bound reaches the stated share
+     * of *current* health is declined with both figures — read from the same
+     * `Verdict` the card draws, so what the card calls a bad fight the engine
+     * declines. An unknown cost is not a high one: on a lineage whose
+     * arithmetic the client does not have every cost is unknown, and refusing
+     * them all would be auto-combat switched off by another name.
+     */
+    const hp = state.vitals.hp;
+    const share = this.config.maxFightCost;
+    const affordable = willing.map((who, index) => {
+      if (share <= 0 || hp === null) return true;
+      const cost = verdicts[index]?.cost ?? null;
+      if (cost === null || cost.value < share * hp) return true;
+      decline(
+        who,
+        t('automation.combat.refusedTooCostly', {
+          target: who.name,
+          cost: Math.round(cost.value),
+          hp
+        })
+      );
+      return false;
+    });
+    const candidates = willing.filter((_, index) => affordable[index]);
+    if (candidates.length === 0) {
+      return why === null || considered === null ? null : { target: null, considered, why };
+    }
+    const kept = verdicts.filter((_, index) => affordable[index]);
+    const [first] = rankByVerdict(kept);
+    const pick = candidates[first ?? 0] ?? candidates[0]!;
     return {
       target: pick.name,
-      because: this.explain(pick.name, menaces[first ?? 0] ?? null, willing.length, false)
+      because: this.explain(pick.name, kept[first ?? 0] ?? null, candidates.length, false)
     };
   }
 
@@ -1269,6 +1380,7 @@ export class AutoCombat {
           ? t('automation.combat.reasonRoundAreaSpell')
           : t('automation.combat.reasonRoundSpell')
       });
+      this.lastCast = { spell: cast.spell, at: Date.now() };
     }
   }
 
@@ -1390,7 +1502,11 @@ export class AutoCombat {
      * never `countMobs`, which counts a shopkeeper and a guard dog alike.
      */
     const area = this.spells.areaAttack.trim();
-    if (area.length > 0) {
+    if (
+      area.length > 0 &&
+      !this.ineffective.has(area) &&
+      !this.capped(area, this.spells.areaCasts)
+    ) {
       const costly = state.room.occupants.some(
         (who) => who.kind === 'mob' && who.costly === 'always'
       );
@@ -1405,11 +1521,96 @@ export class AutoCombat {
       }
     }
 
-    const spell = this.spells.attack.trim();
-    if (spell.length === 0) return null;
+    const attack = this.spells.attack.trim();
+    if (attack.length === 0) return null;
+    /*
+     * Once the server has said the round spell has no effect on this target,
+     * the fallback stands in for the rest of the fight — MegaMUD's
+     * `FailoverSpellAttacks`. No fallback, or the fallback refused too, and
+     * the round attacks carry it: the fallback is never cast *first*, because
+     * it is what is cast when the first choice cannot be, not a second spell.
+     */
+    const spell = this.ineffective.has(attack) ? this.spells.attackFallback.trim() : attack;
+    if (spell.length === 0 || this.ineffective.has(spell)) return null;
+    if (this.capped(spell, this.spells.attackCasts)) return null;
     if (this.spells.minMana <= 0) return { spell, area: false };
     if (fraction === null) return { spell, area: false };
     return fraction < this.spells.minMana ? null : { spell, area: false };
+  }
+
+  /** Whether a per-target cap has been spent on this spell. 0 is no cap. */
+  private capped(spell: string, cap: number): boolean {
+    return cap > 0 && (this.casts.get(spell) ?? 0) >= cap;
+  }
+
+  /**
+   * The round spell last proposed, while its intent is still live. The intent
+   * expires at `roundMs × 20` (`roundSpell`), and a sentence arriving after
+   * that is about a cast this module did not make — a hand-typed one, or a
+   * heal, which confirm under frames of their own.
+   */
+  private liveCast(): { spell: string; at: number } | null {
+    const cast = this.lastCast;
+    if (cast === null) return null;
+    return Date.now() - cast.at <= tuning().combat.roundMs * 20 ? cast : null;
+  }
+
+  /**
+   * `Your spell has no effect on <name>.` — the server saying the monster is
+   * immune to what was just cast. The sentence never names the spell, so it is
+   * about the round spell last proposed, while that proposal is live.
+   *
+   * Said out loud once per spell per target, because the cost of silence was a
+   * caster on a loop paying for the same spell every round of every fight with
+   * that monster, all night — and because what the client does next is a
+   * decision a person should be able to read back. The server's own sentence,
+   * with the target in it, is on the Alerts card; this states the consequence.
+   */
+  private noteIneffective(): void {
+    const cast = this.liveCast();
+    if (cast === null || this.ineffective.has(cast.spell)) return;
+    this.ineffective.add(cast.spell);
+    const fallback = this.spells.attackFallback.trim();
+    if (cast.spell === this.spells.areaAttack.trim()) {
+      this.events.notice?.(t('automation.combat.spellIneffectiveArea', { spell: cast.spell }));
+    } else if (fallback.length > 0 && fallback !== cast.spell && !this.ineffective.has(fallback)) {
+      this.events.notice?.(
+        t('automation.combat.spellIneffective', { spell: cast.spell, fallback })
+      );
+    } else {
+      this.events.notice?.(
+        t('automation.combat.spellIneffectiveNoFallback', { spell: cast.spell })
+      );
+    }
+  }
+
+  /**
+   * A cast the server confirmed, counted against the spell this module
+   * proposed — and only that one. The confirmation names the spell in full
+   * (`You cast magic missile on giant rat!`) where the configuration may hold
+   * the short word, so every spelling the resolver knows for the proposed
+   * spell is accepted and nothing else is: a heal confirmed in the same
+   * window is a different spell and must not spend the round spell's count.
+   * A fizzle (`spell-failed`) confirms nothing and so counts nothing.
+   */
+  private noteCast(block: Block): void {
+    if (block.groups['caster'] !== 'You' || block.groups['announced'] !== undefined) return;
+    const cast = this.liveCast();
+    if (cast === null) return;
+    const said = (block.groups['spell'] ?? '').trim().toLowerCase();
+    if (said.length === 0) return;
+    const found = resolveSpell(cast.spell, this.state?.spellbook, this.realmSpell);
+    const spellings = [
+      cast.spell,
+      found.word,
+      found.known?.name,
+      found.known?.short,
+      found.realm?.name
+    ]
+      .filter((name): name is string => typeof name === 'string')
+      .map((name) => name.trim().toLowerCase());
+    if (!spellings.includes(said)) return;
+    this.casts.set(cast.spell, (this.casts.get(cast.spell) ?? 0) + 1);
   }
 
   private armRound(): void {
@@ -1458,6 +1659,9 @@ export class AutoCombat {
   private endFight(): void {
     this.openerSpent = false;
     this.rounds = 0;
+    this.lastCast = null;
+    this.ineffective.clear();
+    this.casts.clear();
     this.clearRound();
   }
 

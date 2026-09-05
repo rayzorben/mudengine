@@ -839,6 +839,18 @@ export interface Combat {
   lastBlowAt: number | null;
   /** Blows exchanged in this fight, for a card that says how it is going. */
   blows: number;
+  /**
+   * Monsters somebody **outside the party** was last seen fighting, keyed by
+   * `mobKey` of the monster as the sentence spelled it: `<Name> moves to
+   * attack <mob>!`, a hit or a miss naming both sides. A party member's fight
+   * is `party.engaged`, which assisting acts on; this is everybody else's, and
+   * it is the fact MegaMUD's *PoliteAttacks* reads (`combat.joinFights`) —
+   * opening on a monster another player is already working is stealing the
+   * kill, and on a PvP realm it is an invitation. Newest sighting per monster;
+   * how old one may be before it is nobody's is the consumer's, and the room
+   * changing forgets the lot.
+   */
+  claimed: Record<string, { by: string; at: number }>;
 }
 
 export const NO_COMBAT: Combat = {
@@ -848,7 +860,8 @@ export const NO_COMBAT: Combat = {
   attackers: [],
   health: null,
   lastBlowAt: null,
-  blows: 0
+  blows: 0,
+  claimed: {}
 };
 
 /**

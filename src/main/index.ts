@@ -89,6 +89,7 @@ import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
+import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
 import { EMPTY_MAP } from '../shared/map';
 import { asRoomReference, asRoute, roomId, type ShopPlace } from '../shared/world';
 import { errorMessage } from '../shared/values';
@@ -1686,6 +1687,7 @@ function registerIpc(): void {
       walk: manager?.walker.progress ?? IDLE_WALK,
       loop: manager?.loops.progress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
+      verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
       // The Talk card's history. Only for a session that exists: attach never
@@ -1878,11 +1880,19 @@ function registerIpc(): void {
         if (place !== undefined) shopPlaces[key] = place;
       }
     }
+    /*
+     * And *can I fight this?* — each monster named, weighed against the
+     * character as it stands at this moment, by the session's own arithmetic
+     * so the card reads exactly what auto-combat ranks on. A session with no
+     * manager (a stale id) has no character to weigh against and gets none.
+     */
+    const verdicts = host?.get(session)?.manager.appraise(found.mobs.map((mob) => mob.name)) ?? {};
     return {
       ...found,
       ...(Object.keys(learned).length > 0 ? { learned } : {}),
       ...(Object.keys(fights).length > 0 ? { fights } : {}),
-      ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {})
+      ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
+      ...(Object.keys(verdicts).length > 0 ? { verdicts } : {})
     };
   });
 

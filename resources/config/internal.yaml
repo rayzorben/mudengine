@@ -610,6 +610,19 @@ tuning:
     # this fraction of maximum above the floor instead.
     resumeMarginWhenUncapped: 0.1
 
+    # How long a lap runs before its experience rate is held against
+    # `automation.walk.minExpPerHour`. The first minutes of any lap are the walk
+    # to the first lair, at no experience at all, and a floor judged then would
+    # stop every lap on the way out of town.
+    expRateGraceMs: 900000
+
+  # Answering for an absent player; see `automation.afk` in the options file.
+  afk:
+    # How often one sender is told the player is away. A person who telepaths
+    # twice in a minute has been answered once; a reply per line is a client
+    # arguing with them.
+    replyEveryMs: 600000
+
   # How many commands one press or one `@` may spend.
   #
   # One budget, because it is one budget: each `wear`, `get` or `drop` comes

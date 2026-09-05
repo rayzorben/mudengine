@@ -221,12 +221,10 @@ notices:
         '{count} loop moved out of the options file into {globalLoopsDir}; every character inherits
         them.'
     databaseZipped:
-      many:
-        'The realm databases are kept zipped now -- a fifth of the size, and read without being
+      many: 'The realm databases are kept zipped now -- a fifth of the size, and read without being
         unpacked. {count} realm files named a loose copy that is no longer there, and now name the
         archive beside it.'
-      one:
-        'The realm databases are kept zipped now -- a fifth of the size, and read without being
+      one: 'The realm databases are kept zipped now -- a fifth of the size, and read without being
         unpacked. A realm file named a loose copy that is no longer there, and now names {file}.'
     mapDensityStated:
       'The Map card has a density slider now, so "view.mapRoomPixels" became the two ends it
@@ -612,6 +610,9 @@ tabs:
     markOffline: offline
     markPvp: attacked! (PvP)
     markRecovering: recovering
+    markBlind: blind
+    markHeld: held
+    markPoisoned: poisoned
     markShopping: shopping
     markResting: resting
     markRestingTo: resting to {percent}%
@@ -927,6 +928,9 @@ cards:
       statusFighting: fighting
       statusRetreated: recovering
       statusErrand: shopping
+      statusBlind: blind
+      statusHeld: held
+      statusPoisoned: poisoned
       statusOffline: offline
       statusPaused: paused
       statusResting: resting
@@ -1050,6 +1054,19 @@ cards:
     nameTitle: Show what is known about {name}
     selfTitle: This is you
     title: Realm
+  verdict:
+    label: Fight
+    unknown: the realm cannot weigh it
+    perRound: '{hp} hp a round against you'
+    roundsBound: 'up to {rounds} rounds to kill'
+    roundsAbout: 'about {rounds} rounds to kill'
+    roundsUnknown: rounds unknown
+    costBound: 'up to {hp} hp'
+    costAbout: 'about {hp} hp'
+    roomCostBound: 'up to {hp} hp to clear'
+    roomCostAbout: 'about {hp} hp to clear'
+    roomUnknown: cost to clear unknown
+    ofYours: 'of your {hp}'
   reference:
     emptyPrompt: Type a name, or click one on a card.
     item:
@@ -1558,6 +1575,16 @@ settings:
     toggle: 'Advanced: {label}'
     togglePlain: Advanced
   advancedWire: the wire
+  afk:
+    legend: Away From Keyboard
+    enabled: Auto-Reply to Telepaths When Away
+    enabledHint:
+      Once nothing has been typed into this character for the minutes below, an incoming telepath is
+      answered with the reply — once per sender every ten minutes, never for an @ command.
+    afterLabel: Away After, min
+    afterHint: Minutes without a keystroke into this character before it counts as unattended.
+    replyLabel: Away Reply
+    replyHint: "MegaMUD's own {AFK} is what other MegaMUD clients recognise; say anything you like."
   alerts:
     channel:
       combat: combat
@@ -1691,10 +1718,18 @@ settings:
     engageNone: Retaliate Only
     hitBack: Retaliate When Attacked
     hitBackHint: Swings at whatever is already swinging at this character. Cannot open a fight.
+    joinFights: Join Others' Fights
+    joinFightsHint:
+      Open on a monster somebody outside your party is already fighting. Off is MegaMUD's Polite
+      Attacks — the monster is left to them, and the trace says whose it was.
     masterSwitch: Enable Auto-Combat
     masterSwitchHint: The master switch. With this off nothing below sends anything, whatever it says.
     maxMobsHint: Will not open a fight in a room holding more than this. 0 never refuses.
     maxMobsLabel: Max Monsters in Room
+    maxFightCostHint:
+      Will not open on a monster the fight is expected to cost more than this share of current health,
+      by the same figure the Room card draws. A monster the realm cannot cost is not refused. 0 never.
+    maxFightCostLabel: Max Fight Cost, % of HP
     minHealthHint: Will not open a fight below this. 0 always opens.
     minHealthLabel: Min Health %
     monstersLegend: Monsters
@@ -1765,6 +1800,11 @@ settings:
         the realm to answer it — with one forced prompt between them. The wait before a step is
         given up on is about twice this.
       stepTimeoutLabel: Wait Per Step, ms
+      minExpRateHint:
+        Stops a running loop whose experience per hour has fallen under this, once it has run a
+        quarter of an hour — a lap that has stopped working looks like one that is working until
+        somebody checks. 0 never stops.
+      minExpRateLabel: Stop Loop Under Exp/Hour
     realm:
       hostPlaceholder: paramud.mudinfo.net
       loginMenuSendPlaceholder: '1'
@@ -1781,6 +1821,10 @@ settings:
       realm: Realm
   health:
     belowHealthLabel: Below Health %
+    belowManaLabel: Below Mana %
+    belowManaHint:
+      Also run under this share of mana — MegaMUD's ManaRun%. A caster with an empty pool is losing
+      whatever the health bar says. 0 never runs for mana.
     retreatHint:
       Walking out of the fight breaks combat and carries none of the penalty a disconnect does.
       There is no flee command on this server family, so the way out is always a direction — the
@@ -1885,6 +1929,14 @@ settings:
     lightDimRoomsHint:
       Also in rooms the server describes anyway (dimly lit, barely visible). Spends the torch on a
       preference rather than a need.
+    walkWhileBlind: Walk While Blind
+    walkWhileBlindHint:
+      Off, a route or a loop stands still until sight returns — MegaMUD's IgnoreBlind default. A blind
+      character cannot read the room it walks into.
+    walkWhilePoisoned: Walk While Poisoned
+    walkWhilePoisonedHint:
+      Off, a route or a loop stands still until the poison runs its course — MegaMUD's IgnorePoison
+      default. Paralysis always holds; a step while held is refused.
     extinguishInLight: Put the Light Out in Lit Rooms
     extinguishInLightHint:
       Removes the lit torch in a room that does not need it, while nothing is walking the character,
@@ -2145,6 +2197,16 @@ settings:
       Sent as c <spell> <target> on the mid-round tick. The whole name — the realm matches on a
       prefix.
     castLabel: Combat Spell (Round Spell)
+    fallbackCastHint:
+      Cast instead for the rest of the fight once the game says the combat spell has no effect on
+      the target. Blank leaves the fight to the round attacks.
+    fallbackCastLabel: Fallback Spell
+    attackCastsHint:
+      Casts of the combat spell per target, then the round attacks carry it. 0 is no limit;
+      MegaMUD's own default is 1.
+    attackCastsLabel: Casts Per Target
+    areaCastsHint: Casts of the AE spell per fight. 0 is no limit.
+    areaCastsLabel: AE Casts Per Fight
     healBelowInCombatHint:
       A separate floor while fighting. 0 uses the one beside it for both; set it lower so a scratch
       does not cost a round.
@@ -2280,6 +2342,7 @@ session:
     pvpNoGang: 'Not telling anyone about {attacker}: the roster shows you in no gang.'
     pvpNoGangReason: the roster shows no gang to tell
     whyHealth: health at {percent}
+    whyMana: mana at {percent}
     whyAttackers: '{count} attackers'
     whyCompany: Player present in room (PvP abort)
     whyPvp: '{attacker} opened on you'
@@ -2334,6 +2397,8 @@ automation:
     refusedMinHealth: 'health is {percent}% and minHealth is {floor}%'
     refusedMovePending: a step is still waiting for its room
     refusedNotHostile: the realm does not say {target} attacks first
+    refusedClaimed: '{player} is already fighting {target}, and joinFights is off'
+    refusedTooCostly: 'the fight with {target} would cost up to {cost} hp of your {hp}'
     refusedRetreating: Retreat in progress
     refusedStandDown: you typed break
     refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
@@ -2341,9 +2406,15 @@ automation:
     standDown: Auto-combat is standing down after break; it resumes when you move or attack.
     verbRefused: The realm refused {verb}; dropping it from this character's attacks for this session.
     whyHitBack: hitting back
-    whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {hp} hp{hazards})'
+    whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {costs}{hazards})'
     whyInRoom: in the room
-    whyMostDangerous: 'the most dangerous of {count} here ({perRound} hp a round against you, {hp} hp{hazards})'
+    whyMostDangerous: 'the most dangerous of {count} here ({perRound} hp a round against you, {costs}{hazards})'
+    costByHealth: '{hp} hp'
+    costBound: 'up to {rounds} rounds and {cost} hp to kill'
+    costEstimate: 'about {rounds} rounds and {cost} hp to kill'
+    spellIneffective: '{spell} has no effect here; casting {fallback} instead for this fight.'
+    spellIneffectiveArea: '{spell} has no effect here; the combat spell carries this fight.'
+    spellIneffectiveNoFallback: '{spell} has no effect here, and no fallback spell is set; the round attacks carry this fight.'
     whyPreferred: named under prefer
     whyUnweighed: 'first of {count} here: the realm cannot weigh {target}, and unknown is not safe'
     hazardList: '; {list}'
@@ -2386,18 +2457,24 @@ automation:
     reasonCredential: 'login: {credentialType}'
     reasonMenu: answering "{promptText}"
     rejected: Login rejected. Automatic login stopped — check the credentials in your options file.
+  afk:
+    reasonReply: away reply
+    replied: 'Told {player} you are away.'
   loops:
     heldForErrand: Loop held — going shopping; it walks on from the shop.
     walkingOnAfterErrand: Walking on from the shop.
     giveUpReason: 'could not reach {stopName}: {why}'
     mended: Mended; the loop walks on.
     reasonLeftRealm: the character left the realm
+    reasonLowExp: 'the experience rate fell to {rate}/h, under the {floor}/h floor'
     reasonStopMissing: that stop is not in the loop
     refusalNotInRealm: Not in the realm.
     skippingStop: 'Skipping {stopName}: {why}'
     started: 'Looping {loopName}: {stopCount} stops.'
     stopped: 'Loop stopped: {reason}'
     tooHurt: Health below path threshold; resting to recover.
+    afflicted: Waiting out a condition before the next leg.
+    afflictionOver: The condition has passed; the loop walks on.
     heldAfterEscape: Ran away; the loop holds here until the fight is over and health is back.
     walkingOnAfterEscape: Recovered from the retreat; the loop walks on.
     heldOffline: Connection lost; the loop holds until you are back in the realm.
@@ -2542,6 +2619,10 @@ automation:
     barrierUnknownSkill: unknown
     healthHolding: Too hurt to travel; waiting here until health is back.
     healthResumed: Health is back; walking on.
+    holdingBlind: Blind; waiting here until you can see again.
+    holdingHeld: Paralysed; waiting here until you can move again.
+    holdingPoisoned: Poisoned; waiting here until it runs its course.
+    afflictionResumed: The condition has passed; walking on.
     reasonAmbiguous: I can no longer tell which room you are in
     reasonBarrier: '{barrier} blocked {command}. {detail}'
     reasonBashing: bashing the {barrier} to {stepName}

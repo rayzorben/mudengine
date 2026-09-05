@@ -114,6 +114,9 @@ const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeCh
   'comms-throttled': { severity: 'warning', channel: 'command' },
   'attack-refused': { severity: 'warning', channel: 'combat' },
   'attack-ineffective': { severity: 'warning', channel: 'combat' },
+  /* The spell is landing and doing nothing: the monster is immune. The
+     sentence names the target, so the card is where the target is read. */
+  'spell-ineffective': { severity: 'warning', channel: 'combat' },
   /* The realm's conscience refused the attack: evil warnings are on. */
   'attack-warned': { severity: 'warning', channel: 'combat' },
   /* Somebody sizing up the room, or you. On a PvP realm, the moment before. */

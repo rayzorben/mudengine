@@ -53,7 +53,12 @@
  * the question and two answers to one question disagree the moment one is
  * edited.
  */
-import type { WalkProgress, WalkStatus } from '../../shared/walk';
+import {
+  afflictionHolding,
+  type WalkHold,
+  type WalkProgress,
+  type WalkStatus
+} from '../../shared/walk';
 import {
   roomId,
   type Direction,
@@ -326,7 +331,7 @@ export class Walker {
    * already waiting, exactly as it does for a lap — and for `fight` it is what
    * says the route still has somewhere to be when the fight ends.
    */
-  private hold: 'health' | 'fight' | null = null;
+  private hold: WalkHold = null;
   /**
    * Whether this walk is one the walker itself decides fitness for.
    *
@@ -513,7 +518,7 @@ export class Walker {
    * status line has not arrived. Refusing the rest there would put the route
    * back to marching at whatever health the fight left it.
    */
-  get holding(): 'health' | 'fight' | null {
+  get holding(): WalkHold {
     return this.status === 'walking' ? this.hold : null;
   }
 
@@ -1499,6 +1504,8 @@ export class Walker {
   private holdBeforeSending(state: CharacterState): boolean {
     // Health first, and outside the beat's budget — see `holdForHealth`.
     if (this.holdForHealth(state)) return true;
+    // Then a condition the server has stated, on the same terms.
+    if (this.holdForAffliction(state)) return true;
     /*
      * A fight running here is not "no quarry", and it is outside the budget
      * too. `holdAt` asks whether engagement *would open* on something in this
@@ -1885,7 +1892,9 @@ export class Walker {
    */
   private holdForHealth(state: CharacterState): boolean {
     if (!this.wantsHealthHold(state)) {
-      if (this.hold !== null) {
+      // Only its own hold: a walk standing still blind is not one whose health
+      // has come back.
+      if (this.hold === 'health') {
         this.hold = null;
         if (!this.quiet) this.events.notice?.(t('automation.walk.healthResumed'));
         this.publish();
@@ -1927,6 +1936,54 @@ export class Walker {
         ? resumeAtHealth(this.config.health, tuning().loop.resumeMarginWhenUncapped)
         : restBelow;
     return hp / hpMax < floor;
+  }
+
+  /**
+   * Stand still while the server says the character is blind, held or
+   * poisoned — MegaMUD's `IgnoreBlind` / `IgnorePoison` defaults, which wait
+   * (2026-09-05, MegaMUD §3.6). On the health hold's own terms: a hold, not an
+   * ending; not bounded by `walk.maxHolds`, because what bounds it is the
+   * condition passing (or a cure under `spells.cures` ending it sooner); and
+   * re-asked on the beat's timer against `stateNow`, because the flag moves
+   * only when the server says so and that sentence may land between beats.
+   *
+   * For a loop's leg as much as for a route: the leg is a walk, and a blind
+   * character walking into the next lair is the same character whichever
+   * asked. The predicate is shared with `LoopRunner` (`afflictionHolding`),
+   * which holds the lap *between* legs and reports it; this holds the step
+   * *within* one.
+   *
+   * Said out loud on the way in and out for a route, because a route reading
+   * *29 steps to …* that does not move is indistinguishable from a broken
+   * client; silent for a loop's leg, which reports its own holds.
+   */
+  private holdForAffliction(state: CharacterState): boolean {
+    const reason = afflictionHolding(state.afflictions, this.config.movement);
+    if (reason === null) {
+      if (this.hold === 'blind' || this.hold === 'held' || this.hold === 'poisoned') {
+        this.hold = null;
+        if (!this.quiet) this.events.notice?.(t('automation.walk.afflictionResumed'));
+        this.publish();
+      }
+      return false;
+    }
+    if (this.hold !== reason) {
+      this.hold = reason;
+      if (!this.quiet) {
+        if (reason === 'blind') this.events.notice?.(t('automation.walk.holdingBlind'));
+        else if (reason === 'held') this.events.notice?.(t('automation.walk.holdingHeld'));
+        else this.events.notice?.(t('automation.walk.holdingPoisoned'));
+      }
+      this.publish();
+    }
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (this.status !== 'walking') return;
+      if (this.holdBeforeSending(this.events.stateNow?.() ?? state)) return;
+      this.sendCurrent();
+    }, tuning().walk.holdMs);
+    this.holdTimer.unref?.();
+    return true;
   }
 
   private sendCurrent(fresh = true): void {
