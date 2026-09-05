@@ -118,6 +118,7 @@ const api: IpcApi = {
   names: (session) => ipcRenderer.invoke(Invoke.names, session),
   ask: (session, command) => ipcRenderer.invoke(Invoke.ask, session, command),
   gear: (session, action, item) => ipcRenderer.invoke(Invoke.gear, session, action, item),
+  terminalAct: (session, action) => ipcRenderer.invoke(Invoke.terminalAct, session, action),
   askRemote: (session, who, name) => ipcRenderer.invoke(Invoke.askRemote, session, who, name),
 
   onData: (handler) => subscribe<Addressed<StreamChunk>>(Push.data, handler),

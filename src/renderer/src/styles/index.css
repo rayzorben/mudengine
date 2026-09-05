@@ -251,6 +251,20 @@ option {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /*
+   * A performance rule before it is a visual one. Blink re-decides an `auto`
+   * scrollbar inside every layout that passes through the rail, and a
+   * keystroke in any card's field is one: the rail was marked *scrollbar
+   * changed* twice per keystroke, every card's inline size moved with it, and
+   * every card was laid out again at each width -- the map's SVG four times,
+   * every room and corridor in it. Measured 2026-09-04 (`npm run profile:ui`,
+   * `talk`, `--invalidations`): 28ms of layout per keystroke with the card
+   * bodies' bases fixed, 1ms with the gutter reserved, and 6,120 *SVG changed*
+   * invalidations in a 33-key run went to none. The strip it reserves is the
+   * width the scrollbar takes whenever the rail overflows, which on a rail of
+   * nine cards is always.
+   */
+  scrollbar-gutter: stable;
 }
 
 /*
@@ -519,8 +533,22 @@ option {
   margin-right: auto;
 }
 
+/*
+ * `flex: 1 1 0`, not `auto`, and the zero is load-bearing.
+ *
+ * A card's body is sized by the card and never by what is in it -- the rule
+ * every placement already enforces from above. With `flex-basis: auto` the
+ * card's own flex layout nevertheless re-measured the body from its contents,
+ * at an indefinite height, every time a layout passed through the card -- and
+ * a keystroke in the Talk composer is one, because the input's ancestors are
+ * dirtied up to the rail. That measure pass walked five hundred lines of
+ * backlog to learn a height the fill was about to decide anyway. Measured
+ * 2026-09-04 (`npm run profile:ui`, `talk`): with this and the scroller's
+ * basis below, layout per keystroke fell from 64ms to 28ms; the rail's gutter
+ * took the rest. A zero basis has nothing to measure.
+ */
 .card > .body {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   padding: 0 var(--pad-card) var(--pad-card);
   transition: padding var(--dur-control) var(--ease-out);
@@ -551,8 +579,13 @@ option {
   overflow: hidden;
 }
 
+/*
+ * The same zero basis one level down, for the same reason: the scroller is
+ * sized by the fill, and with `auto` the pane's flex layout measured five
+ * hundred lines of Talk to learn a height it was never going to use.
+ */
 .card > .body.paned > .scroller {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -5701,7 +5734,16 @@ tr:hover .row-action.worn,
      dialog growing past the window with a long roster of characters. */
   height: min(760px, 90vh);
   overflow: hidden;
-  width: min(900px, 94vw);
+  /*
+   * Wide, because the height is the scarce dimension and the width was not
+   * being spent. At 900px the character form was three 190px tracks, so a
+   * section of switches was a column of one-per-row with two thirds of the
+   * dialog empty beside it and everything below it pushed off the bottom. Four
+   * tracks is what pays for itself: a switch and the count it discloses land on
+   * one line, and two switches share a line. `94vw` still caps it, so a narrow
+   * window shrinks the dialog rather than the dialog overflowing the window.
+   */
+  width: min(1180px, 94vw);
 }
 
 .settings-head {
@@ -6066,9 +6108,35 @@ tr:hover .row-action.worn,
 .settings-advanced-body {
   display: grid;
   gap: var(--field-gap);
-  /* Wide enough for the longest label this screen has -- "Or this many on you"
-     and its mark -- on one line. */
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /*
+   * The track minimum, and it is chosen for the *count* of tracks rather than
+   * for one label.
+   *
+   * It used to be 190px, "wide enough for the longest label this screen has --
+   * 'Or this many on you' and its mark -- on one line", which stopped being
+   * true the moment a longer one was written: `Auto-Potion: Mana Threshold %`
+   * is twenty-nine characters and wraps at any width this dialog can offer.
+   * Wrapping is not the failure it once was either -- a field is a two-row
+   * subgrid, so a label that takes two lines no longer drops its own control
+   * below its neighbours'.
+   *
+   * What the number decides now is how many columns a fieldset gets, and the
+   * useful threshold is **four**: a switch is two columns, so four is where two
+   * switches share a line rather than each taking one.
+   *
+   * Four needs `4 x min + 3 x gap` to fit, and the narrowest fieldset that has
+   * to reach it is the one on the character page of a 1100px window -- measured
+   * at 718px of content, not the 752px the arithmetic suggests, because the
+   * form keeps a 4px gutter and the scroll bar takes its own width. 180px was
+   * tried and gave three tracks there: every switch alone on a line, which is
+   * the defect. 165px needs 690px, which leaves ~28px of margin -- enough that
+   * a scroll bar appearing does not silently drop a column, which an 8px margin
+   * would. The cost is a field track of 172-198px rather than 199px, and a
+   * couple more captions wrapping; the subgrid means a wrapped caption no
+   * longer drops its own control out of line, which is what makes that cost
+   * payable.
+   */
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
   /* Content-sized rows. A grid's default `align-content` stretches auto rows to
      fill the container, and the form is a scroll region taller than its fields:
      without this, four fields on a tall dialog are spread down it. */
@@ -6094,6 +6162,53 @@ tr:hover .row-action.worn,
 }
 
 /*
+ * ...except that a checkbox row takes *two* columns rather than the row, once
+ * there are two columns to take.
+ *
+ * A sentence is not a caption, which is why a check is wider than a field --
+ * and it is not a paragraph either, which is what a whole row made it. Movement
+ * was the case that was reported: six switches and two counts, each on a line
+ * of its own, six hundred pixels tall with two thirds of the width empty beside
+ * every one of them. The same shape is on Records, Party, Drop and Monsters.
+ * `.settings-checks` -- the alerts grid -- had already settled this for a list
+ * of channels ("eleven of them stacked is a column of scrolling"); this is the
+ * same answer for the switches that are not a list.
+ *
+ * **Two rows as well as two columns, and that is the load-bearing half.** Every
+ * field on this screen is a two-row subgrid so that labels share one track and
+ * controls share the next. A one-row item among them auto-places into whichever
+ * half-band is free, so a check would land in a *label* track beside somebody
+ * else's input -- and the next field after it would start a band nothing above
+ * it shared. Spanning both rows keeps every child of the grid the same shape,
+ * so bands stay bands. The grid subtracts the gutter it spans before
+ * distributing an item's height, so a band holding only checks is exactly as
+ * tall as a check: the second track costs nothing.
+ *
+ * `align-self: end` puts the box on the control line rather than floating it in
+ * the middle of a band, so a switch beside a field reads level with the input
+ * beside it rather than level with that input's caption.
+ *
+ * **The media query is the overflow guard, and it is not decoration.** An item
+ * spanning two columns in a grid that has one creates an *implicit* third
+ * column, and the row then overflows its container with no scrollbar to say so.
+ * The narrowest field grid on the screen is a fieldset inside the character
+ * form -- the dialog less its padding, the character list, the gutter and the
+ * fieldset's own border -- which is about 282px narrower than the window. At
+ * 800px that is 454px, comfortably two 165px tracks; below it there is only one
+ * track and a check correctly goes back to taking the row. The floor matters
+ * because the window's own minimum is 720px (`createWindow`), which is inside
+ * the range where this would otherwise overflow.
+ */
+@media (min-width: 800px) {
+  :is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+    > .settings-check {
+    align-self: end;
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+}
+
+/*
  * A control with its own button beside it -- the world database and its
  * chooser. Not a field grid: a "Choose..." button stretched to a full column is
  * a button pretending to be a field. It shared `.settings-inline` because both
@@ -6112,7 +6227,8 @@ tr:hover .row-action.worn,
 
 /*
  * A checkbox row is the one field that reads left to right, and it carries a
- * hint after its label rather than inside it.
+ * hint after its label rather than inside it. How much of the row it takes is
+ * decided by the field grid above, not here -- two columns where there are two.
  *
  * It used to say this twice -- here with `!important` on every line, and again
  * as `.settings-form .settings-check` -- because it was fighting
@@ -6870,6 +6986,24 @@ tr:hover .row-action.worn,
   font-size: 0.86em;
   line-height: 1.45;
   margin: 2px 0 0;
+}
+
+/*
+ * Prose stops at a measure, and the fields do not.
+ *
+ * The two want opposite things from a wide dialog. A field grid *wants* the
+ * whole width -- more tracks is more settings per band, which is what the width
+ * was widened for. A sentence does not: the Global page has no character list
+ * beside it, so at a full-width dialog every note and warning on it ran to
+ * eleven hundred pixels, and a line that long is one the eye loses its place
+ * returning from. Stated in `ch` so it tracks whatever UI font the options file
+ * names, rather than as a pixel figure chosen against one font.
+ *
+ * On the paragraphs rather than on `.settings-form`, because a cap on the form
+ * would take the tracks with it.
+ */
+.settings-form :is(.settings-note, .settings-warn, .settings-label) {
+  max-width: 78ch;
 }
 
 /*

@@ -11,10 +11,12 @@
  *   into an indexed graph rather than queried per line. The CoffeeScript engine
  *   issued synchronous SQLite queries from inside block parsing, per line, on
  *   the main thread — this exists so that is not possible.
- * - **Either shape of realm file.** `.mdb` is what the game's own tooling
- *   produces and what every derivative distributes; `.sqlite` is an extraction
- *   of one. `RealmSource` hides the difference and needs nothing installed for
- *   the `.mdb` case, which the `.sqlite` case does (`sqlite3`).
+ * - **Either shape of realm file, zipped or loose.** `.mdb` is what the game's
+ *   own tooling produces and what every derivative distributes; `.sqlite` is an
+ *   extraction of one; a `.zip` holding one of those is how either is actually
+ *   handed out, and how this repository keeps its own. `RealmSource` hides all
+ *   of it and needs nothing installed for the `.mdb` case, which the `.sqlite`
+ *   case does (`sqlite3`).
  *
  * The conversion itself lives in `src/main/world/buildRealm.ts`, shared with
  * the runtime path that converts a realm a player has chosen — so a
@@ -46,8 +48,13 @@ import { buildRealm } from '../src/main/world/buildRealm.ts';
  * because Access pads fixed-width text with NULs and the `.mdb` reader strips
  * it. That is the correct spelling — see CLAUDE.md, where those sixteen rooms
  * were unfindable by name until both ends trimmed.
+ *
+ * **Zipped**, since 2026-09-04: 22 MB of Access file is 2.7 MB of archive, and
+ * `RealmSource` reads the one inside without unpacking it. The world this
+ * command emits is byte-for-byte what the loose file produced — the archive is
+ * a container, and nothing downstream of the reader can tell.
  */
-const DEFAULT_SOURCE = path.resolve('mdb/default-pmud.mdb');
+const DEFAULT_SOURCE = path.resolve('mdb/2026-07-26-pmud.zip');
 const source = process.argv[2] ?? DEFAULT_SOURCE;
 const outDir = path.resolve('resources/world');
 const outFile = path.join(outDir, 'rooms.jsonl.gz');

@@ -5840,6 +5840,10 @@ const drag = async (from, to) => {
             const mark = row.querySelector('.hint-mark');
             return {
               label: span?.innerText.trim() ?? '',
+              // Whether this field opens its container, which is what makes it
+              // able to say anything about the *first* column -- see the
+              // group-of-one check below.
+              first: row === group.firstElementChild,
               left: Math.round(box.left),
               width: Math.round(box.width),
               top: Math.round(box.top),
@@ -5876,7 +5880,14 @@ const drag = async (from, to) => {
     'and starts at a shared column position, not at one its own group invented',
     JSON.stringify(lefts)
   );
-  const single = columns.find((group) => group.length === 1);
+  /*
+   * And the group has to *open* with that field for its position to say
+   * anything: a group may now begin with a switch -- Auto-Retreat and its
+   * threshold are one row -- and a checkbox is two columns wide, so the field
+   * after it correctly starts in the third. Without this the check would read
+   * a deliberate layout as the collapse it exists to catch.
+   */
+  const single = columns.find((group) => group.length === 1 && group[0].first);
   check(
     single === undefined || single[0].left === lefts[0],
     'a group holding one field starts in the first column rather than filling the row',
@@ -5975,6 +5986,123 @@ const drag = async (from, to) => {
     'with recovering above both, because it comes first in a fight going wrong',
     JSON.stringify(escapes)
   );
+
+  /*
+   * The Movement section, and the layout half of this screen that a DOM
+   * assertion about words cannot see.
+   *
+   * It was reported as a picture: six switches and two counts, each on a line
+   * of its own, running off the bottom of the dialog with two thirds of the
+   * width empty beside every one of them. A checkbox row took the whole row
+   * because its label is a sentence rather than a caption -- true, and not a
+   * reason to spend 900px on twenty characters. So a check is two columns now,
+   * and this is the measurement of that, because nothing about it changes a
+   * single string on the screen.
+   *
+   * Three things are asserted, and each is a way the change could be wrong:
+   * that two switches actually share a line (otherwise nothing happened), that
+   * every switch is the same width (the uniform-column rule the fields already
+   * follow), and that no field grid overflows -- an item spanning two columns
+   * in a grid that has one creates an implicit third and pushes the row out of
+   * the dialog, which is the failure the media-query floor exists to prevent.
+   */
+  check(
+    await clickText('.settings-sections .crumb', 'movement'),
+    'its Movement section is reachable'
+  );
+  await sleep(200);
+  const switches = JSON.parse(
+    await evaluate(`
+      JSON.stringify([...document.querySelectorAll('.settings-form .settings-check')].map((el) => {
+        const box = el.getBoundingClientRect();
+        return {
+          label: el.innerText.trim(),
+          left: Math.round(box.left),
+          top: Math.round(box.top),
+          width: Math.round(box.width)
+        };
+      }))
+    `)
+  );
+  check(switches.length >= 4, 'the Movement section draws its switches', String(switches.length));
+  const shared = switches.filter(
+    (one) => switches.some((other) => other !== one && other.top === one.top)
+  );
+  check(
+    shared.length >= 2,
+    'and two switches share a line rather than taking one each',
+    JSON.stringify(shared.map((s) => s.label))
+  );
+  const switchWidths = [...new Set(switches.map((s) => s.width))];
+  check(
+    switchWidths.length === 1,
+    'and every switch is the same width, whichever group it is in',
+    JSON.stringify(switchWidths)
+  );
+  /*
+   * The overflow floor, asked of the laid-out element rather than computed from
+   * the window: a grid whose item spans more columns than it has does not
+   * report an error, it just gets wider than its box.
+   */
+  const spilling = JSON.parse(
+    await evaluate(`
+      JSON.stringify([...document.querySelectorAll(
+        '.settings-form, .settings-menus, .settings-inline, .settings-advanced-body'
+      )].filter((el) => el.scrollWidth > el.clientWidth + 1)
+        .map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth))
+    `)
+  );
+  check(spilling.length === 0, 'and no field grid is wider than its box', JSON.stringify(spilling));
+
+  /*
+   * And the count a switch discloses lands beside it, not under whichever
+   * switch happened to wrap above it. "Bashes per door" beneath "Auto-Pick
+   * Locks" is a number attached to the wrong setting, which is the thing that
+   * makes this a grouping change and not only a shorter one.
+   */
+  check(
+    await evaluate(`
+      (() => {
+        const box = [...document.querySelectorAll('.settings-check')]
+          .find((l) => /auto-open doors/i.test(l.innerText));
+        const input = box?.querySelector('input');
+        if (!input || input.checked) return false;
+        input.click();
+        return true;
+      })()
+    `),
+    'opening doors on the way can be switched on'
+  );
+  await sleep(200);
+  const paired = JSON.parse(
+    await evaluate(`
+      (() => {
+        const box = [...document.querySelectorAll('.settings-check')]
+          .find((l) => /auto-open doors/i.test(l.innerText));
+        const tries = document.querySelector('[data-field="open-tries"]');
+        if (!box || !tries) return JSON.stringify({ found: false });
+        const a = box.getBoundingClientRect();
+        const b = tries.getBoundingClientRect();
+        return JSON.stringify({
+          found: true,
+          beside: Math.round(b.left) > Math.round(a.left),
+          // The count is a label above its control, so it is taller than the
+          // switch: what makes them one row is that the switch sits inside the
+          // count's vertical span, not that the two tops agree.
+          sameRow: a.top >= b.top - 1 && a.bottom <= b.bottom + 1,
+          check: [Math.round(a.left), Math.round(a.top), Math.round(a.bottom)],
+          count: [Math.round(b.left), Math.round(b.top), Math.round(b.bottom)]
+        });
+      })()
+    `)
+  );
+  check(
+    paired.found && paired.beside && paired.sameRow,
+    'and the count it discloses is on the same row, to its right',
+    JSON.stringify(paired)
+  );
+
+  await capture('smoke-settings-movement.png', 'switches in columns, each with its own count');
 
   /*
    * The Remotes section: whether this character answers another player's `@`

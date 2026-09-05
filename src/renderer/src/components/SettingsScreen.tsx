@@ -2245,20 +2245,24 @@ export default function SettingsScreen({
                               name="retaliate"
                               onChange={(value) => patch({ combatRetaliate: value })}
                             />
-                            <SelectField
-                              hint={t('settings.combat.engageHint')}
-                              label={t('settings.combat.engageLabel')}
-                              name="engage"
-                              onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
-                              options={[
-                                { value: 'none', label: t('settings.combat.engageNone') },
-                                { value: 'hostile', label: t('settings.combat.engageHostile') },
-                                { value: 'likely', label: t('settings.combat.engageLikely') },
-                                { value: 'all', label: t('settings.combat.engageAll') }
-                              ]}
-                              value={form.combatEngage}
-                            />
+                            {/* What it opens fights with, and the three limits
+                                that qualify it, on one row: each of the
+                                numbers is meaningless without the policy
+                                beside it. */}
                             <div className="settings-inline">
+                              <SelectField
+                                hint={t('settings.combat.engageHint')}
+                                label={t('settings.combat.engageLabel')}
+                                name="engage"
+                                onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
+                                options={[
+                                  { value: 'none', label: t('settings.combat.engageNone') },
+                                  { value: 'hostile', label: t('settings.combat.engageHostile') },
+                                  { value: 'likely', label: t('settings.combat.engageLikely') },
+                                  { value: 'all', label: t('settings.combat.engageAll') }
+                                ]}
+                                value={form.combatEngage}
+                              />
                               <NumberField
                                 hint={t('settings.combat.minHealthHint')}
                                 label={t('settings.combat.minHealthLabel')}
@@ -2463,31 +2467,40 @@ export default function SettingsScreen({
 
                       <fieldset className="settings-menus">
                         <legend>{t('settings.health.retreatLegend')}</legend>
-                        <CheckField
-                          checked={form.retreat}
-                          hint={t('settings.health.retreatHint')}
-                          label={t('settings.health.retreatLabel')}
-                          name="retreat"
-                          onChange={(value) => patch({ retreat: value })}
-                        />
-                        {form.retreat && (
-                          <div className="settings-inline">
-                            <NumberField
-                              label={t('settings.health.belowHealthLabel')}
-                              name="retreat-health"
-                              figure={ofHealth(form.retreatBelow)}
-                              onChange={(value) => patch({ retreatBelow: value })}
-                              value={form.retreatBelow}
-                            />
-                            <NumberField
-                              hint={t('settings.health.outnumberedHint')}
-                              label={t('settings.health.outnumberedLabel')}
-                              name="outnumbered"
-                              onChange={(value) => patch({ retreatOutnumbered: value })}
-                              value={form.retreatOutnumbered}
-                            />
-                          </div>
-                        )}
+                        {/*
+                          The switch and the two figures it runs on are one
+                          row. A switch is two columns and a threshold is one,
+                          so the three fit a band with room to spare -- and a
+                          check alone above them spent a whole band saying
+                          nothing the legend had not already said.
+                        */}
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.retreat}
+                            hint={t('settings.health.retreatHint')}
+                            label={t('settings.health.retreatLabel')}
+                            name="retreat"
+                            onChange={(value) => patch({ retreat: value })}
+                          />
+                          {form.retreat && (
+                            <>
+                              <NumberField
+                                label={t('settings.health.belowHealthLabel')}
+                                name="retreat-health"
+                                figure={ofHealth(form.retreatBelow)}
+                                onChange={(value) => patch({ retreatBelow: value })}
+                                value={form.retreatBelow}
+                              />
+                              <NumberField
+                                hint={t('settings.health.outnumberedHint')}
+                                label={t('settings.health.outnumberedLabel')}
+                                name="outnumbered"
+                                onChange={(value) => patch({ retreatOutnumbered: value })}
+                                value={form.retreatOutnumbered}
+                              />
+                            </>
+                          )}
+                        </div>
                         {form.retreat && (
                           <>
                             <SelectField
@@ -2522,23 +2535,25 @@ export default function SettingsScreen({
                           it is one of the more reliable ways to die.
                         */}
                         <p className="settings-warn">{t('settings.health.hangUpWarning')}</p>
-                        <CheckField
-                          checked={form.hangUp}
-                          label={t('settings.health.hangUpLabel')}
-                          name="hangup"
-                          onChange={(value) => patch({ hangUp: value })}
-                        />
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.hangUp}
+                            label={t('settings.health.hangUpLabel')}
+                            name="hangup"
+                            onChange={(value) => patch({ hangUp: value })}
+                          />
+                          {form.hangUp && (
+                            <NumberField
+                              label={t('settings.health.belowHealthLabel')}
+                              name="hangup-health"
+                              figure={ofHealth(form.hangUpBelow)}
+                              onChange={(value) => patch({ hangUpBelow: value })}
+                              value={form.hangUpBelow}
+                            />
+                          )}
+                        </div>
                         {form.hangUp && (
                           <>
-                            <div className="settings-inline">
-                              <NumberField
-                                label={t('settings.health.belowHealthLabel')}
-                                name="hangup-health"
-                                figure={ofHealth(form.hangUpBelow)}
-                                onChange={(value) => patch({ hangUpBelow: value })}
-                                value={form.hangUpBelow}
-                              />
-                            </div>
                             <CheckField
                               checked={form.hangUpOnlyWhenClean}
                               hint={t('settings.health.hangUpCleanHint')}
@@ -2953,57 +2968,74 @@ export default function SettingsScreen({
                     <>
                       <fieldset className="settings-menus">
                         <legend>{t('settings.movement.legend')}</legend>
-                        <CheckField
-                          checked={form.openDoors}
-                          hint={t('settings.movement.openDoorsHint')}
-                          label={t('settings.movement.openDoors')}
-                          name="open-doors"
-                          onChange={(value) => patch({ openDoors: value })}
-                        />
-                        {form.openDoors && (
-                          <NumberField
-                            label={t('settings.movement.openTries')}
-                            name="open-tries"
-                            onChange={(value) => patch({ openTries: value })}
-                            value={form.openTries}
+                        {/*
+                          A switch and the count it discloses are one row, not
+                          two — `.settings-inline` for the reason it exists,
+                          *keep these together*. It is not only shorter: a check
+                          is two columns and a count is one, so left to flow
+                          they pack three-to-a-band and a count lands under
+                          whichever switch happened to wrap above it. "Bashes
+                          per door" sitting beneath "Auto-Pick Locks" is a
+                          number attached to the wrong switch, which is worse
+                          than the height it saved.
+                        */}
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.openDoors}
+                            hint={t('settings.movement.openDoorsHint')}
+                            label={t('settings.movement.openDoors')}
+                            name="open-doors"
+                            onChange={(value) => patch({ openDoors: value })}
                           />
-                        )}
+                          {form.openDoors && (
+                            <NumberField
+                              label={t('settings.movement.openTries')}
+                              name="open-tries"
+                              onChange={(value) => patch({ openTries: value })}
+                              value={form.openTries}
+                            />
+                          )}
+                        </div>
                         {/*
                           Picking above bashing, in the order the walker tries
                           them — and for the reason it does: one costs a
                           command and the other costs a command and some
                           health.
                         */}
-                        <CheckField
-                          checked={form.pickLocks}
-                          hint={t('settings.movement.pickLocksHint')}
-                          label={t('settings.movement.pickLocks')}
-                          name="pick-locks"
-                          onChange={(value) => patch({ pickLocks: value })}
-                        />
-                        {form.pickLocks && (
-                          <NumberField
-                            label={t('settings.movement.pickTries')}
-                            name="pick-tries"
-                            onChange={(value) => patch({ pickTries: value })}
-                            value={form.pickTries}
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.pickLocks}
+                            hint={t('settings.movement.pickLocksHint')}
+                            label={t('settings.movement.pickLocks')}
+                            name="pick-locks"
+                            onChange={(value) => patch({ pickLocks: value })}
                           />
-                        )}
-                        <CheckField
-                          checked={form.bashDoors}
-                          hint={t('settings.movement.bashDoorsHint')}
-                          label={t('settings.movement.bashDoors')}
-                          name="bash-doors"
-                          onChange={(value) => patch({ bashDoors: value })}
-                        />
-                        {form.bashDoors && (
-                          <NumberField
-                            label={t('settings.movement.bashTries')}
-                            name="bash-tries"
-                            onChange={(value) => patch({ bashTries: value })}
-                            value={form.bashTries}
+                          {form.pickLocks && (
+                            <NumberField
+                              label={t('settings.movement.pickTries')}
+                              name="pick-tries"
+                              onChange={(value) => patch({ pickTries: value })}
+                              value={form.pickTries}
+                            />
+                          )}
+                        </div>
+                        <div className="settings-inline">
+                          <CheckField
+                            checked={form.bashDoors}
+                            hint={t('settings.movement.bashDoorsHint')}
+                            label={t('settings.movement.bashDoors')}
+                            name="bash-doors"
+                            onChange={(value) => patch({ bashDoors: value })}
                           />
-                        )}
+                          {form.bashDoors && (
+                            <NumberField
+                              label={t('settings.movement.bashTries')}
+                              name="bash-tries"
+                              onChange={(value) => patch({ bashTries: value })}
+                              value={form.bashTries}
+                            />
+                          )}
+                        </div>
                         <CheckField
                           checked={form.sneak}
                           hint={t('settings.movement.sneakHint')}
@@ -3160,16 +3192,18 @@ export default function SettingsScreen({
                 <div className="settings-form empty">{t('settings.realms.empty')}</div>
               ) : (
                 <form className="settings-form" onSubmit={(event) => void submitServer(event)}>
-                  <TextField
-                    hint={t('settings.realms.nameHint')}
-                    inputRef={firstFieldRef}
-                    label={t('settings.realms.nameLabel')}
-                    name="server-name"
-                    onChange={(value) => setServerForm({ ...serverForm, name: value })}
-                    placeholder={t('settings.realms.namePlaceholder')}
-                    value={serverForm.name}
-                  />
+                  {/* What the realm is called and where it is: one row, since
+                      neither half identifies it on its own. */}
                   <div className="settings-inline">
+                    <TextField
+                      hint={t('settings.realms.nameHint')}
+                      inputRef={firstFieldRef}
+                      label={t('settings.realms.nameLabel')}
+                      name="server-name"
+                      onChange={(value) => setServerForm({ ...serverForm, name: value })}
+                      placeholder={t('settings.realms.namePlaceholder')}
+                      value={serverForm.name}
+                    />
                     <TextField
                       label={t('settings.profile.hostLabel')}
                       name="server-host"

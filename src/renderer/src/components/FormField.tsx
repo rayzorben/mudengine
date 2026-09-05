@@ -48,7 +48,7 @@ export interface FormFieldProps {
    * A fact about the *value*, in the same way `spellCheck` is, and not about
    * the page it happens to be on: a comma-separated list of monster names, a
    * filesystem path, a font stack, or a control with a button beside it is
-   * unreadable in a 190px track, and every one of those is unreadable there on
+   * unreadable in a 165px track, and every one of those is unreadable there on
    * every screen it appears on. Everything else is one column wide, which is
    * the default precisely because it is the answer for almost every field.
    */
@@ -333,9 +333,17 @@ export function SelectField({
 }
 
 /**
- * `wide` is not offered: a checkbox row is a sentence read left to right and
- * already takes the whole row, so a field that could say otherwise would be a
- * setting with no effect.
+ * `wide` is not offered, and the reason changed shape without changing answer.
+ *
+ * It used to be that a checkbox row already took the whole row, so a prop
+ * saying "take the whole row" could have no effect. A check is **two columns**
+ * now -- a sentence is wider than a caption and narrower than a paragraph, and
+ * one switch per row spent six hundred pixels on Movement's six. What has not
+ * changed is that the width is a fact about the *shape* of a checkbox row
+ * rather than about any one setting's value, which is what `wide` is for on the
+ * other faces: a monster list needs the room wherever it appears, and no
+ * checkbox does. The two columns are in `index.css` beside the field grid,
+ * along with the floor that keeps a narrow dialog from overflowing.
  */
 export interface CheckFieldProps extends Omit<FaceProps, 'wide'> {
   checked: boolean;

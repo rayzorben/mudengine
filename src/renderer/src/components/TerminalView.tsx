@@ -12,7 +12,13 @@ import { t } from '../lib/i18n';
 import { measurePitch } from '../lib/fonts';
 import type { TerminalConfig } from '@shared/config';
 import type { TerminalPalette } from '@shared/themes';
-import type { StreamChunk, TerminalAction, TerminalMark, TerminalSize } from '@shared/types';
+import type {
+  StreamChunk,
+  TerminalAction,
+  TerminalActionName,
+  TerminalMark,
+  TerminalSize
+} from '@shared/types';
 import { consoleWriter, noticeSequence, type ConsoleWriter } from '../lib/console';
 import type { NameIndex, SpanHit } from '../lib/names';
 import type { Box } from '../lib/menu';
@@ -79,6 +85,15 @@ export interface TerminalViewProps {
    * this project refuses.
    */
   onChooseRoom?(name: string): void;
+  /**
+   * A console button main runs, rather than one that sends text.
+   *
+   * `Deposit All` names an action and carries no figure, because the figure is
+   * not knowable until the `i` it sends has been answered — see
+   * `TerminalIntentAction`. The renderer's job is to say which button was
+   * pressed and nothing else.
+   */
+  onAct?(action: TerminalActionName): void;
   /** Live presentation options from the YAML file. */
   settings: TerminalConfig;
   /** The resolved CSS font stack for `settings.font.family`. */
@@ -118,6 +133,7 @@ export default function TerminalView({
   onSelectPlayer,
   onSelectGang,
   onChooseRoom,
+  onAct,
   reportSize = true,
   settings,
   fontStack,
@@ -181,7 +197,8 @@ export default function TerminalView({
     onInspect,
     onSelectPlayer,
     onSelectGang,
-    onChooseRoom
+    onChooseRoom,
+    onAct
   });
   handlers.current = {
     onInput,
@@ -191,7 +208,8 @@ export default function TerminalView({
     onInspect,
     onSelectPlayer,
     onSelectGang,
-    onChooseRoom
+    onChooseRoom,
+    onAct
   };
 
   /*
@@ -743,9 +761,10 @@ export default function TerminalView({
              */
             term.write(`${MARK_INDENT}${segment.text}`, () => {
               if (marker) {
-                decorate(term, marker, mark, segment.text, (command) =>
-                  handlers.current.onInput?.(`${command}\r`)
-                );
+                decorate(term, marker, mark, segment.text, {
+                  send: (command) => handlers.current.onInput?.(`${command}\r`),
+                  act: (action) => handlers.current.onAct?.(action)
+                });
               }
               if (last) settle();
             });
@@ -980,12 +999,26 @@ const MARK_INDENT = '  ';
  * measurement's.
  */
 const ANSI = /\x1b\[[0-9;]*m/g;
+
+/**
+ * What a button beside a room's name can do: type, or ask main to act.
+ *
+ * Two callbacks rather than one, because they are two different things and
+ * conflating them is what the old `Deposit All` did — a command composed in
+ * main when the line was drawn and typed by the renderer when it was pressed,
+ * with a stale figure inside it.
+ */
+interface Press {
+  send(command: string): void;
+  act(action: TerminalActionName): void;
+}
+
 function decorate(
   term: Terminal,
   marker: IMarker,
   mark: TerminalMark,
   text: string,
-  send: (command: string) => void
+  press: Press
 ): void {
   const decoration = term.registerDecoration({ marker, x: 0, width: MARK_INDENT.length });
   if (!decoration) return;
@@ -999,7 +1032,7 @@ function decorate(
     element.setAttribute('aria-label', mark.label);
     element.innerHTML = MARK_GLYPH[mark.icon];
   });
-  if (mark.actions?.length) actionButtons(term, marker, mark.actions, text, send);
+  if (mark.actions?.length) actionButtons(term, marker, mark.actions, text, press);
 }
 
 /**
@@ -1016,16 +1049,17 @@ function decorate(
  * records — the terminal font is configurable and the pane is resizable, so a
  * width decided here would be wrong for somebody.
  *
- * A press sends the command down the path a keystroke takes — the Talk card's
- * rule — and hands the caret straight back, because this is a control that is
- * clicked and never typed into.
+ * A press either sends the button's commands down the path a keystroke takes —
+ * the Talk card's rule — or names its action for main to run, and hands the
+ * caret straight back either way, because this is a control that is clicked
+ * and never typed into.
  */
 function actionButtons(
   term: Terminal,
   marker: IMarker,
   actions: readonly TerminalAction[],
   text: string,
-  send: (command: string) => void
+  press: Press
 ): void {
   /*
    * One cell of air after the **visible** text.
@@ -1055,12 +1089,14 @@ function actionButtons(
       // attempt to park the caret, and leaves keyboard focus alone.
       button.addEventListener('mousedown', (event) => event.preventDefault());
       /*
-       * Each command down the same path a keystroke takes, in order. The
-       * arbiter paces them exactly as it paces typing, so `i` and the deposit
-       * that reads its answer arrive as two commands rather than one line.
+       * Either the realm's own commands, each down the same path a keystroke
+       * takes and in order — or, for a button whose payload depends on a fact
+       * that has to be read first, the *name* of the action, which main runs.
+       * Nothing here composes a command from a number.
        */
       button.addEventListener('click', () => {
-        for (const command of action.commands) send(command);
+        if (action.act !== undefined) press.act(action.act);
+        else for (const command of action.commands) press.send(command);
       });
       element.append(button);
     }

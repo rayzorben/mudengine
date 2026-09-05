@@ -3,15 +3,21 @@ import { useMemo } from 'react';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { runsOf, type NameIndex } from '../lib/names';
-import { isSelf, PlayerName } from '../lib/players';
+import { isOwnName, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
-import type { CharacterState } from '@shared/character';
 
 export interface NamedTextProps {
   text: string;
   /** The console's own index — the realm's names and the people this character knows. */
   index: NameIndex;
-  character: CharacterState;
+  /**
+   * This character's own name, which is the one name that is never a control.
+   *
+   * The name and not the character: a status line replaces the character
+   * object ten times a second in a fight, and a memoised line that took the
+   * whole of it would redraw on every one for a name that has not changed.
+   */
+  self: string | null;
   /** A monster's, an item's or a spell's name clicked: the realm's answer. */
   inspect(name: string, anchor: HTMLElement): void;
   /** A person's name clicked: the Player flyout. */
@@ -28,7 +34,7 @@ export interface NamedTextProps {
  * about what is a name: a person opens the Player flyout, anything the realm
  * knows opens its answer, and the rest of the sentence stays what it was.
  */
-export default function NamedText({ text, index, character, inspect, onSelect }: NamedTextProps) {
+export default function NamedText({ text, index, self, inspect, onSelect }: NamedTextProps) {
   /*
    * Searched once per sentence, not once per render: the Alerts card redraws
    * on wire traffic and its listing grows all evening. The index is one
@@ -48,7 +54,7 @@ export default function NamedText({ text, index, character, inspect, onSelect }:
               key={at}
               name={run.text}
               onSelect={onSelect}
-              self={isSelf(character, run.text)}
+              self={isOwnName(self, run.text)}
             />
           );
         }

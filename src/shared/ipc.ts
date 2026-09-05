@@ -54,6 +54,7 @@ import type {
   StreamChunk,
   StreamLine,
   TelnetEvent,
+  TerminalActionName,
   TerminalSize
 } from './types';
 
@@ -673,6 +674,23 @@ export const Invoke = {
    */
   gear: 'gear:act',
   /**
+   * A button beside a room's name that main runs: `Deposit All`.
+   *
+   * `gear:act`'s rule applied to the console, and for a sharper reason than
+   * "main holds the facts". The banking sequence has to *read a fact and then
+   * act on it* — send `i`, wait for the listing that answers it, and only then
+   * name a figure — and a list of strings composed when the line was drawn
+   * cannot express that: the `Deposit All` that shipped as `['i', 'deposit
+   * 192600', 'bank']` had its number fixed before its own refresh was sent.
+   * See `TerminalIntentAction`.
+   *
+   * Whether the client took it. False is either a refusal that has already
+   * said itself out loud — the realm does not call this room a bank, and a
+   * `deposit` typed anywhere else is broadcast to everybody in it — or a press
+   * that rode the request already in flight, which reports its own outcome.
+   */
+  terminalAct: 'terminal:act',
+  /**
    * A question for another player's client — `@health` at somebody, by name.
    * From the palette: `Remotes.ask` was reachable only from a party
    * forming, and a command nobody can find does not exist.
@@ -896,6 +914,8 @@ export interface IpcApi {
   ask(session: SessionId, command: string): Promise<boolean>;
   /** A gear button. Resolves to how many commands were queued. See the channel. */
   gear(session: SessionId, action: GearAction, item?: string): Promise<number>;
+  /** A console button main runs. Whether it was taken; a refusal says so itself. */
+  terminalAct(session: SessionId, action: TerminalActionName): Promise<boolean>;
   /**
    * Telepaths `@<name>` at `who`, on this character's behalf. Whether the
    * arbiter took it: false at a menu, and false for a repeat of a question

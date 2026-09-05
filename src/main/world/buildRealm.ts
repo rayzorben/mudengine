@@ -4,6 +4,7 @@ import { itemsInScripts, parseRoomScript } from './roomScript';
 import { itemKind } from '../../shared/items';
 import { MIN_LEVEL_ABILITY } from '../../shared/abilities';
 import type { MobAttack, MobCast, MobProfile } from '../../shared/world';
+import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
   alignmentCost,
   costsAlignment,
@@ -58,8 +59,10 @@ import {
  * | 18 | What an entity needs that the file did not carry: `Items.Gettable`, `Not Droppable` and `Limit`; `Monsters.Type` (undecoded), `AvgDmg`, `CharmLVL`, `MidSpell-0..4` and `DeathSpell`. `Rooms.NPC` had been *written* since the file began and read by nothing — the read side arrives here |
  * | 19 | No new column: `ExpTable` on a race and a class is written when it is **non-zero** rather than when it is positive. Stock MajorMUD prices a Thief at `-20`, and it is a term of `100 + race + class` — the multiplier the whole experience table is built from — so dropping the sign charged one a fifth more per level than the realm does. The number is bumped for the *cache*: `RealmLibrary.identity` keys a converted realm on the format, the path, the size and the mtime, and none of the last three moves when the converter changes, so a player who had already converted their own database would have kept the bug this fixes, silently |
  * | 20 | How a monster fights, **per row**: the five `Att…` slot groups (type, effective chance, accuracy or spell, damage or cast odds and level, energy, hit spell) and the five `MidSpell…` groups with their marginal per-round chance and cast level — `BuiltMob.pf` — and `Spells.TypeOfResists`. Auto-combat had every monster's `AvgDmg` and nothing about *how* it was dealt, so it could not weigh a paralysing caster against a biter, and took the room in the order the server listed it |
+ * | 22 | `Spells.Diff` — how much easier or harder a spell is than the caster's own spellcasting figure, signed and ranging −200 to 200 across both databases on this machine. `indexSpells` read twelve columns and never that one, so the client held every input to the server's cast-success roll except the one that varies per spell, and a caster could not be told which of two spells would actually land |
+ * | 21 | The database's own account of itself — the `Info` table, whole (`build`), and the formula family read off it (`family`). A table `buildRealm.ts` had never opened, so the client could not say which of the two lineages' arithmetic a realm runs, nor which build of which data set any derived number came from |
  */
-export const REALM_FORMAT = 20;
+export const REALM_FORMAT = 22;
 
 /** The ten directions, in the column order every export of this table uses. */
 export const DIRECTIONS = ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW', 'U', 'D'] as const;
@@ -78,6 +81,24 @@ export interface BuiltRealm {
     spells: BuiltSpell[];
     races: BuiltRace[];
     classes: BuiltClass[];
+    /**
+     * The database's own account of itself — format 21, the `Info` row whole.
+     *
+     * Absent when the file has no `Info` table or its row is empty, which is
+     * the honest answer for a derivative that dropped it: a realm that cannot
+     * say what build it is does not get given one.
+     */
+    build?: RealmBuild;
+    /**
+     * Which lineage's arithmetic this data set belongs to, read from `build`.
+     *
+     * Written out rather than re-derived on load so that the *conversion* is
+     * where the reading happens — one place, versioned by `REALM_FORMAT`, so a
+     * change to how the family is read reconverts every player's realm instead
+     * of quietly disagreeing with the file already on their disk. Absent when
+     * the database does not say, which is never a fallback to the other family.
+     */
+    family?: RealmFamily;
     /**
      * Every item name the realm has, for recognising one in a line of text.
      *
@@ -236,6 +257,13 @@ export interface BuiltSpell {
   energy?: number;
   /** Duration, in the realm's own units. */
   dur?: number;
+  /**
+   * `Spells.Diff` — format 22. Signed; see the write side for why.
+   *
+   * Short, like every key here, because this file is 55,806 lines of JSON and
+   * a full word per spell is a megabyte for nothing.
+   */
+  dif?: number;
   /**
    * `Abil-n` / `AbilVal-n` — format 14, and the same pairs an item carries.
    *
@@ -944,6 +972,8 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
   const races = indexRaces(source);
   const classes = indexClasses(source);
   const itemNames = indexItemNames(source);
+  const build = indexBuild(source);
+  const family = familyOfBuild(build);
 
   return {
     lines,
@@ -958,6 +988,8 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
       spells,
       races,
       classes,
+      ...(build === null ? {} : { build }),
+      ...(family === null ? {} : { family }),
       itemNames
     },
     stats: {
@@ -1069,6 +1101,23 @@ export function indexSpells(source: RealmSource): BuiltSpell[] {
     // every zero here; absent reads back as the cast that lands.
     const resists = number(row['TypeOfResists']);
     if (resists !== null && resists > 0 && resists !== BLANK_AS_NUMBER) entry.res = resists;
+    /*
+     * How much easier or harder this spell is than the caster's own figure —
+     * format 22, and the one input to `Spell.Cast`'s roll that varies per
+     * spell (`chance = min(100, SpellCasting + Diff)`).
+     *
+     * **Signed, and written whenever it is not zero** rather than when it is
+     * positive. 167 spells state a negative power for the same reason and this
+     * column has the same shape: `ethereal shield` is −5 on the Paradigm
+     * database, which is a spell that is *harder* than the caster's figure
+     * suggests, and dropping the sign would make it easier. Zero is the
+     * realm's *neither*, left out like every other zero here and read back as
+     * the spell that costs its caster nothing either way.
+     */
+    const difficulty = number(row['Diff']);
+    if (difficulty !== null && difficulty !== 0 && difficulty !== BLANK_AS_NUMBER) {
+      entry.dif = difficulty;
+    }
     const ab = abilityPairs(row);
     if (ab.length > 0) entry.ab = ab;
     /*
@@ -1111,6 +1160,46 @@ function span(row: Record<string, unknown>, stat: string): [number, number] | un
   const high = number(row[`x${stat}`]);
   if (low === null || high === null || low <= 0 || high <= 0) return undefined;
   return [low, high];
+}
+
+/**
+ * The database's own account of itself — the `Info` table.
+ *
+ * One row of seven columns, and until format 21 `buildRealm.ts` never opened
+ * it: not the family, not the data set's version, not its build date, not its
+ * update URL. All of that was in the file and invisible to the client, not
+ * even as a warning.
+ *
+ * Carried whole rather than reduced to the family, because **provenance is
+ * part of the answer**: every derived number this client will grow has to be
+ * able to say which build of which data set it came from, and `Custom` on the
+ * shipped realm reading `Gmud 1.6 Final` beside a `Dat File Version` of
+ * `v1.11p` is what makes *how does it know that* answerable.
+ *
+ * More than one row is not something any distribution does; the first is taken
+ * and the rest ignored rather than refused, for the same reason every other
+ * reader here is forgiving — a realm file is a file a player points at.
+ */
+export function indexBuild(source: RealmSource): RealmBuild | null {
+  const info = source.table('Info');
+  const row = info?.rows[0];
+  if (row === undefined) return null;
+
+  const word = (column: string): string | null => {
+    const value = text(row[column]).trim();
+    return value.length === 0 ? null : value;
+  };
+
+  const build: RealmBuild = {
+    nmr: word('NMR Version'),
+    data: word('Dat File Version'),
+    date: word('Date'),
+    time: word('Time'),
+    custom: word('Custom'),
+    legit: number(row['Legit']),
+    updateUrl: word('UpdateURL')
+  };
+  return isEmptyBuild(build) ? null : build;
 }
 
 /**

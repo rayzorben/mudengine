@@ -2629,3 +2629,79 @@ describe('light before the dark, and the supplies list', () => {
     expect(parse(fs.readFileSync(profile(), 'utf8'))['automation']).toBeUndefined();
   });
 });
+
+/*
+ * The realm databases became zips on 2026-09-04 and the loose copies went, so a
+ * realm file naming one by its old name names a file that is not there. Left
+ * alone, that is the announced fallback to the shipped world on every single
+ * connection — for a rename nobody made on purpose.
+ */
+describe('the realm databases were zipped', () => {
+  const realm = (): string => home.server('greatermud-local').file;
+
+  function stating(database: string): void {
+    fs.mkdirSync(path.dirname(realm()), { recursive: true });
+    fs.writeFileSync(
+      realm(),
+      `name: GreaterMUD (local)\nhost: orohost\nport: 2427\n# my map\ndatabase: ${database}\n`,
+      'utf8'
+    );
+  }
+
+  const stated = (): unknown => parse(fs.readFileSync(realm(), 'utf8'))['database'];
+
+  it('rewrites the shipped relative path on the name alone', () => {
+    // Relative can only have come from a file the client ships, and that file
+    // is gone from the package by definition — there is nothing to check.
+    stating('mdb/gmud20230902.mdb');
+    migrate();
+    expect(stated()).toBe(path.join('mdb', '2023-09-02-gmud.zip'));
+    expect(said.some((m) => m.includes('2023-09-02-gmud.zip'))).toBe(true);
+    // The comment above the key is the documentation in these files.
+    expect(fs.readFileSync(realm(), 'utf8')).toContain('# my map');
+  });
+
+  it('rewrites an absolute path only when the archive is really beside it', () => {
+    const mine = path.join(dir, 'realms');
+    fs.mkdirSync(mine, { recursive: true });
+    stating(path.join(mine, 'default-pmud.mdb'));
+    migrate();
+    // Nothing there to point at: the path stands, and the fallback says so at
+    // connection time as it always has.
+    expect(stated()).toBe(path.join(mine, 'default-pmud.mdb'));
+    expect(said.some((m) => m.includes('zipped'))).toBe(false);
+
+    fs.writeFileSync(path.join(mine, '2026-07-26-pmud.zip'), 'not really an archive');
+    migrate();
+    expect(stated()).toBe(path.join(mine, '2026-07-26-pmud.zip'));
+  });
+
+  it('leaves a path that still resolves alone, whatever it names', () => {
+    const mine = path.join(dir, 'realms');
+    fs.mkdirSync(mine, { recursive: true });
+    // Both files present: their loose copy is still there, so it is still
+    // their answer. A migration that edited a path that resolves would be
+    // answering a question nobody asked.
+    fs.writeFileSync(path.join(mine, 'default-pmud.mdb'), 'x');
+    fs.writeFileSync(path.join(mine, '2026-07-26-pmud.zip'), 'x');
+    stating(path.join(mine, 'default-pmud.mdb'));
+    migrate();
+    expect(stated()).toBe(path.join(mine, 'default-pmud.mdb'));
+  });
+
+  it('leaves a private realm alone: this is two renames, not a rule about .mdb', () => {
+    const mine = path.join(dir, 'realms');
+    fs.mkdirSync(mine, { recursive: true });
+    stating(path.join(mine, 'my-own-realm.mdb'));
+    migrate();
+    expect(stated()).toBe(path.join(mine, 'my-own-realm.mdb'));
+    expect(said.some((m) => m.includes('zipped'))).toBe(false);
+  });
+
+  it('says so once, not on every launch', () => {
+    stating('mdb/gmud20230902.mdb');
+    migrate();
+    migrate();
+    expect(said.filter((m) => m.includes('zipped'))).toHaveLength(0);
+  });
+});

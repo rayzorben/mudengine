@@ -77,7 +77,10 @@ import { ownAlignment, type CharacterState, type RoomOccupant } from '../../shar
 import { ATTACK_COMMANDS, commandOf, REREAD_ROOM } from '../../shared/commands';
 import type { CombatConfig, PartyConfig, SpellsConfig } from '../../shared/config';
 import type { MobEntity } from '../../shared/entities';
-import { rankByMenace, weighRoom, type HazardKind, type Menace } from '../../shared/menace';
+import { weighRoom, type HazardKind, type Menace } from '../../shared/menace';
+import { rankByVerdict, verdictFor, wieldedWeapon, type Verdict } from '../../shared/verdict';
+import type { ProwessSheet } from '../../shared/prowess';
+import type { RealmFamily } from '../../shared/realm';
 import { attacksOnSight } from '../../shared/mobs';
 import { resolveSpell, spellCost } from '../../shared/spellcraft';
 import { mobKey, type WorldSpell } from '../../shared/world';
@@ -253,7 +256,26 @@ export class AutoCombat {
      * new question would be another callback threaded from `SessionManager`.
      * See `resolveSpell`.
      */
-    private readonly realmSpell: (name: string) => WorldSpell | null = () => null
+    private readonly realmSpell: (name: string) => WorldSpell | null = () => null,
+    /**
+     * What the *character's* side of the arithmetic needs and the stat sheet
+     * does not print: the realm's `CombatLVL` and `MageryLVL` for this class,
+     * and which lineage's formulas the server runs.
+     *
+     * Injected the way `realmSpell` is, and for the same reason: this module
+     * must not hold a realm graph or a session. Defaulting to nothing means a
+     * character whose class the realm cannot place ranks exactly as it did
+     * before — by menace over health — rather than not ranking at all.
+     */
+    private readonly realmClass: () => {
+      combat: number | null;
+      magery: number | null;
+      family: RealmFamily | null;
+    } = () => ({
+      combat: null,
+      magery: null,
+      family: null
+    })
   ) {}
 
   /**
@@ -628,7 +650,8 @@ export class AutoCombat {
           )?.mob
       )
     );
-    const [first] = rankByMenace(menaces);
+    const verdicts = this.verdicts(state, menaces);
+    const [first] = rankByVerdict(verdicts);
     const attacker = candidates[first ?? 0] ?? candidates[0]!;
     return this.swing(
       attacker,
@@ -682,6 +705,47 @@ export class AutoCombat {
         deathOverRounds
       }
     );
+  }
+
+  /**
+   * The other half of each monster's price: what it costs to **kill**.
+   *
+   * `menace.weight` orders by `perRound / hp`, with health standing in for the
+   * time a monster takes to remove — which is only proportional to it while
+   * every monster takes the same damage per round from this character. It never
+   * is: two monsters with the same health, one of which this character hits
+   * half as often, take twice as long and are worth killing in the other order.
+   * `rankByVerdict` uses the rounds where they are knowable.
+   *
+   * **Read from the same function the card reads.** If the Reference card calls
+   * a monster a bad fight and this picks it anyway, one of them is lying, and
+   * one shared `Verdict` is the only thing that keeps them honest.
+   *
+   * Every input absent is the ordinary case on a realm this client does not
+   * ship, and it costs nothing: `verdictFor` answers null rounds and the
+   * ranking falls back to exactly the order it produced before.
+   */
+  private verdicts(state: CharacterState, menaces: ReadonlyArray<Menace | null>): Verdict[] {
+    const { combat, magery, family } = this.realmClass();
+    const { encumbrance, encumbranceMax } = state.inventory;
+    const sheet: ProwessSheet = {
+      level: state.progress.level,
+      agility: state.progress.agility,
+      intellect: state.progress.intellect,
+      charm: state.progress.charm,
+      willpower: state.progress.willpower,
+      health: state.progress.health,
+      strength: state.progress.strength,
+      spellcasting: state.progress.spellcasting,
+      combatLevel: combat,
+      mageryLevel: magery,
+      encumbrancePercent:
+        encumbrance === null || encumbranceMax === null || encumbranceMax <= 0
+          ? null
+          : (100 * encumbrance) / encumbranceMax
+    };
+    const weapon = wieldedWeapon(state.inventory.items);
+    return menaces.map((menace) => verdictFor(menace, {}, sheet, weapon, family));
   }
 
   /**
@@ -1037,7 +1101,7 @@ export class AutoCombat {
       state,
       willing.map((who) => who.mob)
     );
-    const [first] = rankByMenace(menaces);
+    const [first] = rankByVerdict(this.verdicts(state, menaces));
     const pick = willing[first ?? 0] ?? willing[0]!;
     return {
       target: pick.name,

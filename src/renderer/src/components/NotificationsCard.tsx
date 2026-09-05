@@ -156,8 +156,8 @@ function NotificationsCard({
         <span className="alert-text">
           {names && character && inspect && onSelect ? (
             <NamedText
-              character={character}
               index={names}
+              self={character.name}
               inspect={inspect}
               onSelect={onSelect}
               text={notice.text}

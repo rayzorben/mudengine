@@ -194,10 +194,14 @@ describe('every fact the parser produces reaches something', () => {
     /*
      * `user-trains` was here — *"the price of a level; wealth is re-read from
      * the next listing"* — and the exemption dissolved on 2026-09-03. An
-     * exemption is a claim with a date on it, and this one was only ever true
-     * of the *price*: the receipt also says the level changed, which makes
-     * `Exp needed for next level` wrong with nothing on this realm's status
-     * line to correct it. `Routines.onBlock` asks `exp` on it now.
+     * exemption is a claim with a date on it, and this one was wrong about
+     * both halves of the receipt. The level: it makes `Exp needed for next
+     * level` wrong with nothing on this realm's status line to correct it, so
+     * `Routines.onBlock` asks `exp` on it. The **price**: nothing forces the
+     * listing it was waiting for, so the purse simply stayed high until
+     * somebody happened to type `i` — 2,200 copper of it, all the way to a
+     * bank counter, on 2026-09-04. `CharacterTracker` spends it now, exactly
+     * as it spends `user-buys`.
      */
   };
 

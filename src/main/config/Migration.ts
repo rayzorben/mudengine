@@ -161,6 +161,7 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheLightAndSupplies(home, note);
   theTuningBlockGainedKeys(home, note, options.internalTemplate);
   theRealmsGainedGmud(home, note, options.shippedRealms);
+  theDatabasesWereZipped(home, note);
 }
 
 /**
@@ -237,6 +238,73 @@ function theRealmsGainedGmud(
     return;
   }
   note(t('notices.migration.gmudRealmAdded', { realm: DEFAULT_REALM_NAME, file: target.file }));
+}
+
+/**
+ * The realm databases were zipped, and a realm file still names the loose one.
+ *
+ * A 20 MB Access file is 2.4 MB compressed and `RealmSource` reads the archive
+ * without unpacking it, so on 2026-09-04 both the database this client ships
+ * and the ones this repository builds from became `.zip`s and the loose copies
+ * went. A realm file naming one of those by its old name now names a file that
+ * is not there — which is the announced fallback to the shipped world, said on
+ * every connection, for a rename nobody made on purpose.
+ *
+ * **Two cases, and only one of them may be assumed.**
+ *
+ * - A **relative** path can only have come from a file this client ships
+ *   (`RealmLibrary.resolve`), so `mdb/gmud20230902.mdb` means the shipped
+ *   database and nothing else. It is rewritten on the name alone: the file it
+ *   named is gone from the package by definition.
+ * - An **absolute** path is the player's own, and is rewritten only on
+ *   evidence — the file it names has to be missing *and* the archive has to be
+ *   sitting where it was. Anything else is somebody's own layout, and a
+ *   migration that edited a path that still resolves would be answering a
+ *   question nobody asked.
+ *
+ * Names are matched whole, against the two that were actually renamed. A rule
+ * of the shape *"swap .mdb for .zip"* would rewrite every private realm on the
+ * machine into a file that does not exist.
+ */
+const ZIPPED_DATABASES = new Map<string, string>([
+  ['gmud20230902.mdb', '2023-09-02-gmud.zip'],
+  ['default-pmud.mdb', '2026-07-26-pmud.zip']
+]);
+
+function theDatabasesWereZipped(home: Home, note: (message: string) => void): void {
+  const rewritten: string[] = [];
+
+  for (const id of directories(home.serversDir)) {
+    edit(home.server(id).file, (document) => {
+      const stated = document.getIn(['database']);
+      if (typeof stated !== 'string') return false;
+      const named = stated.trim();
+      if (named.length === 0) return false;
+
+      const archive = ZIPPED_DATABASES.get(path.basename(named));
+      if (archive === undefined) return false;
+
+      const zipped = path.join(path.dirname(named), archive);
+      if (path.isAbsolute(named) && (fs.existsSync(named) || !fs.existsSync(zipped))) return false;
+
+      document.setIn(['database'], zipped);
+      rewritten.push(archive);
+      return true;
+    });
+  }
+
+  if (rewritten.length === 0) return;
+  /*
+   * The archive's own name, never the path it sits at: these are names this
+   * repository ships, while the directory around one is the player's, and
+   * `realmOwnsTheDatabase` one screen up refuses to print that for the reason
+   * it gives there.
+   */
+  note(
+    rewritten.length === 1
+      ? t('notices.migration.databaseZipped.one', { file: rewritten[0] as string })
+      : t('notices.migration.databaseZipped.many', { count: rewritten.length })
+  );
 }
 
 /**
@@ -947,7 +1015,7 @@ function realmOwnsTheDatabase(home: Home, note: (message: string) => void): void
 const DATABASE_COMMENT = [
   ' The world file every character playing here walks. Empty or absent is the',
   ' world that ships with the client; a derivative such as Paradigm names its',
-  ' own .mdb, .accdb, .sqlite or .db.',
+  ' own .mdb, .accdb, .sqlite or .db, or a .zip holding one.',
   '',
   ' Moved here out of the characters that stated it: two characters on one',
   ' realm cannot be walking two different maps.'

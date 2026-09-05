@@ -220,6 +220,14 @@ notices:
       one:
         '{count} loop moved out of the options file into {globalLoopsDir}; every character inherits
         them.'
+    databaseZipped:
+      many:
+        'The realm databases are kept zipped now -- a fifth of the size, and read without being
+        unpacked. {count} realm files named a loose copy that is no longer there, and now name the
+        archive beside it.'
+      one:
+        'The realm databases are kept zipped now -- a fifth of the size, and read without being
+        unpacked. A realm file named a loose copy that is no longer there, and now names {file}.'
     mapDensityStated:
       'The Map card has a density slider now, so "view.mapRoomPixels" became the two ends it
       chooses between and was removed from your tuning file. Any figure you had set there was
@@ -386,6 +394,8 @@ notices:
     problemConvertFailed: 'Could not read the realm database {file}: {reason}.'
     problemEmptyConversion: The converted realm at {file} has no rooms in it.
     problemUnreadableIdentity: 'Cannot read the realm database at {path}: {reason}.'
+    realmBuild: 'Realm data {source}: {build}, {family}.'
+    realmBuildFamilyUnknown: does not name a formula family, so nothing that needs one is computed
     shippedLoaded: '{rooms} rooms from {source} in {ms}ms'
     shippedMissing: no realm data at {path}. Routing and the map will not work; run `npm run build:world`.
     shippedRealmLabel: shipped realm
@@ -517,7 +527,7 @@ palette:
 terminal:
   actions:
     depositAll: Deposit All
-    depositAllTitle: Deposit purse into bank vault ({amount} copper)
+    depositAllTitle: Read the purse and deposit all of it into this bank vault
     exitTitle: 'Take exit: {command}'
     withdrawAll: Withdraw All
     withdrawAllTitle: Withdraw all coins from bank vault ({amount} copper)
@@ -2177,8 +2187,8 @@ settings:
     lookLabel: Auto-Inspect Players
     lookWarning: A look is a command from the same budget walking and fighting spend from, and
       the server tells the person they were looked at.
-  worldDatabaseHint: Blank for the bundled world; point at your own .mdb or SQLite copy for a realm
-    whose rooms differ.
+  worldDatabaseHint: Blank for the bundled world; point at your own .mdb, SQLite copy, or a .zip
+    holding one, for a realm whose rooms differ.
   worldDatabaseLabel: World Database
   worldDatabasePlaceholder: the world that ships with the client
 # What the settings editor says when a save is refused.
@@ -2274,6 +2284,9 @@ session:
     whyCompany: Player present in room (PvP abort)
     whyPvp: '{attacker} opened on you'
   realm:
+    familyDisagrees:
+      This server is {server} and the realm data in {source} is {data}. Both are kept, and nothing
+      that depends on one family's arithmetic will be computed from the other's.
     left: Left the realm. Everything known about this character is forgotten; entering again asks
       for it afresh.
   walk:
@@ -2400,9 +2413,13 @@ automation:
     refusalNotLooping: Nothing is looping.
     refusalNotBounce: Only a bounce loop has a direction to reverse.
   banking:
+    notAtCounter:
+      Nothing was deposited — the realm does not call this room a bank. A deposit typed anywhere
+      else is said out loud to everybody standing in it.
+    nothingToBank: Nothing was deposited — the listing says the purse is empty.
     reasonConfirm: 'banking: asking the vault its figure'
     reasonCount: 'banking: restating cash on hand before it is spent'
-    reasonDeposit: 'banking: cash on hand over the threshold — depositing {surplus} copper, retaining {keep}'
+    reasonDeposit: 'banking: depositing {surplus} copper of the listed purse, retaining {keep}'
   drop:
     reasonJunk: 'drop: {item} is on the junk list'
     reasonWorthless: 'drop: the realm prices {item} at nothing'

@@ -17,6 +17,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { RealmLibrary } from '../RealmLibrary';
+import { WorldGraph } from '../WorldGraph';
+import { REALM_FORMAT } from '../buildRealm';
 
 /**
  * The realm the repository ships, so this runs on any checkout.
@@ -33,8 +35,15 @@ import { RealmLibrary } from '../RealmLibrary';
  * about, from the other direction. A missing file is a legitimate reason to
  * skip on somebody else's checkout and a silent hole on the one that has it,
  * and nothing distinguishes the two. Whoever renames it next has to come here.
+ * It has happened twice now: the realms were zipped on 2026-09-04 and this
+ * names the archive, which is the shape the repository keeps them in.
+ *
+ * **And the archive is the point, not an inconvenience it works around.** This
+ * is the only test that converts a real realm out of a real zip, so it is what
+ * proves `RealmSource` reads one — the loose `.mdb` it used to name is not in
+ * the repository any more, and a fixture would prove the fixture.
  */
-const REAL_MDB = process.env['MUDENGINE_TEST_MDB'] ?? path.resolve('mdb/default-pmud.mdb');
+const REAL_MDB = process.env['MUDENGINE_TEST_MDB'] ?? path.resolve('mdb/2026-07-26-pmud.zip');
 
 let dir = '';
 let shippedFile = '';
@@ -76,13 +85,30 @@ afterEach(() => {
  */
 const withRealm = fs.existsSync(REAL_MDB) ? describe : describe.skip;
 
+/**
+ * A copy of the realm, under a name of this test's choosing.
+ *
+ * **Keeping the extension**, because the extension is how `openRealm` chooses a
+ * reader: a `.zip` copied to `realm.mdb` is handed to the Access reader, which
+ * refuses it, and the conversion these tests are about never happens. The
+ * symptom was an empty cache directory and an assertion about pruning — which
+ * is a long way from the cause.
+ */
+const copyOfRealm = (into: string): string => {
+  const copy = path.join(into, `realm${path.extname(REAL_MDB)}`);
+  fs.copyFileSync(REAL_MDB, copy);
+  return copy;
+};
+
 withRealm('converting a realm somebody chose', () => {
   it('reads it, and uses it instead of the shipped one', () => {
     const loaded = library().load(REAL_MDB);
     expect(loaded.problem).toBeUndefined();
     // Not the three-room fixture: this is the real realm.
     expect(loaded.graph.size).toBeGreaterThan(50_000);
-    expect(loaded.source).toContain('.mdb');
+    // Named after the file it was built from, archive and all: provenance is
+    // half of what a converted realm is for.
+    expect(loaded.source).toContain(path.basename(REAL_MDB));
   }, 120_000);
 
   it('converts once and reads the cache after that', () => {
@@ -106,8 +132,7 @@ withRealm('converting a realm somebody chose', () => {
    * path alone would keep routing against a realm that had changed.
    */
   it('reconverts when the file changes underneath it', () => {
-    const copy = path.join(dir, 'realm.mdb');
-    fs.copyFileSync(REAL_MDB, copy);
+    const copy = copyOfRealm(dir);
     library().load(copy);
     expect(fs.readdirSync(cacheDir)).toHaveLength(1);
 
@@ -150,8 +175,7 @@ withRealm('keeping the cache from growing forever', () => {
 
   it('drops the least recently used past the cap', () => {
     const seeded = seedCache(12);
-    const copy = path.join(dir, 'realm.mdb');
-    fs.copyFileSync(REAL_MDB, copy);
+    const copy = copyOfRealm(dir);
     library().load(copy);
 
     const left = fs.readdirSync(cacheDir).filter((name) => name.endsWith('.jsonl.gz'));
@@ -175,7 +199,7 @@ withRealm('keeping the cache from growing forever', () => {
  * asserts the file exists, which is not the same as it converting.
  */
 describe('the realm database the client ships', () => {
-  const SHIPPED_DB = 'mdb/gmud20230902.mdb';
+  const SHIPPED_DB = 'mdb/2023-09-02-gmud.zip';
   const resources = path.resolve('resources');
 
   it('is where the shipped realm says it is', () => {
@@ -207,5 +231,47 @@ describe('the realm database the client ships', () => {
      * drops the lot the first time the wire contradicts a row of it.
      */
     expect(loaded.graph.experiencePercent('Kang', 'Mystic')).toBe(330);
+
+    /*
+     * And the database's own account of itself, which format 21 added and
+     * which is the whole reason anything downstream may branch on a family.
+     *
+     * **`Custom`, and never `Legit`.** Both databases on this machine were read
+     * on 2026-09-04 and they settle the claim MudPlay's `RealmType` rests on:
+     *
+     * | file | Custom | Legit |
+     * |---|---|---|
+     * | `2023-09-02-gmud.zip` (GreaterMUD) | `Gmud 1.6 Final` | 0 |
+     * | `gmud.mdb` (GreaterMUD, an older build no longer kept) | `Gmud 1.3 Final` | 0 |
+     * | `2026-07-26-pmud.zip` (Paradigm) | `Paradigm` | 2 |
+     *
+     * MudPlay reads `Legit == 2` as GreaterMUD. On these three files it is the
+     * *Paradigm* database that says 2 and both GreaterMUD ones that say 0, so
+     * that rule would name every one of them the wrong lineage. Recorded in
+     * docs/game-behaviour.md; asserted here so a conversion that starts reading
+     * the wrong column fails rather than quietly answering backwards.
+     */
+    const build = loaded.graph.info.build;
+    expect(build?.custom).toBe('Gmud 1.6 Final');
+    expect(build?.data).toBe('v1.11p');
+    expect(build?.legit).toBe(0);
+    expect(loaded.graph.info.family).toBe('greatermud');
   }, 120_000);
+
+  it('reads the shipped Paradigm world as the other lineage', () => {
+    /*
+     * The shipped `resources/world/` is built from Paradigm's own database while
+     * `DEFAULT_REALM_NAME` points a new character at a GreaterMUD server, so
+     * the two families genuinely differ in the configuration this client
+     * ships. That is not a defect to reconcile — the data says what exists and
+     * the server says how the arithmetic runs — and `SessionManager` says it
+     * out loud rather than picking one.
+     */
+    const shipped = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+
+    expect(shipped.info.version).toBe(REALM_FORMAT);
+    expect(shipped.info.build?.custom).toBe('Paradigm');
+    expect(shipped.info.build?.legit).toBe(2);
+    expect(shipped.info.family).toBe('majormud');
+  });
 });

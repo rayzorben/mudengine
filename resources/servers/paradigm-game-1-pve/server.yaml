@@ -72,11 +72,12 @@ login:
 # routes and answers a lookup, so nothing it can answer costs a command.
 #
 # A path to a MegaMUD database -- .mdb or .accdb (needs nothing installed), or
-# .sqlite / .db (needs the sqlite3 command).
+# .sqlite / .db (needs the sqlite3 command). A .zip holding exactly one of
+# those is read without being unpacked, which is how they are distributed.
 #
 # Empty, or absent as here, means the world that ships with the client -- and
 # the world that ships with the client IS Paradigm's: `resources/world/` is
-# built from `default-pmud.mdb`, the database Paradigm distributes with
+# built from the database Paradigm distributes with
 # MegaMUD (`npm run build:world`). So these six realms need no `database:` key
 # at all. Name one only if you are playing a realm whose data has moved on
 # from that file, or a private realm of your own.
@@ -92,4 +93,4 @@ login:
 # **On the realm rather than on each character**, like the menus above: two
 # characters on one realm cannot be walking two different maps.
 #
-# database: /path/to/your-realm.mdb
+# database: /path/to/your-realm.zip

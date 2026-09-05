@@ -31,4 +31,4 @@ login:
     send: ''
 
 # No `database:`: the world that ships with the client is Paradigm's own,
-# built from `default-pmud.mdb`.
+# built from the database Paradigm distributes (`mdb/2026-07-26-pmud.zip`).

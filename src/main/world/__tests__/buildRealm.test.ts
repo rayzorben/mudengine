@@ -53,8 +53,17 @@ describe('recognising a realm file', () => {
 
   /* A wrong guess here is a confident, silent, empty realm. */
   it('refuses anything else rather than guessing', () => {
-    expect(realmKind('/x/realm.zip')).toBeNull();
     expect(realmKind('/x/realm')).toBeNull();
+    expect(realmKind('/x/realm.txt')).toBeNull();
+  });
+
+  /*
+   * A zip is a container, not a shape: `openRealm` looks inside one and asks
+   * this same question about what it finds. Saying `mdb` here would be claiming
+   * a reader can be chosen before the archive has been opened.
+   */
+  it('is not what says a zip can be opened', () => {
+    expect(realmKind('/x/realm.zip')).toBeNull();
   });
 });
 

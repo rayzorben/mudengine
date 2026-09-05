@@ -60,6 +60,13 @@ import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { describeDiscovery, discoveryKey, type Discovery } from '../../shared/memory';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
+import {
+  familiesDisagree,
+  familyToldBy,
+  REALM_FAMILY_LABEL,
+  type RealmFamilies,
+  type RealmFamily
+} from '../../shared/realm';
 import { STATUS_LINE } from '../parse/patterns';
 import { TerminalFeed } from './TerminalFeed';
 import {
@@ -329,6 +336,23 @@ export class SessionManager {
    */
   private readonly feed: TerminalFeed;
   private readonly world: WorldGraph | undefined;
+  /**
+   * Which lineage's arithmetic *this server* runs, once the wire has said so.
+   *
+   * A second field beside the realm data's own family rather than a
+   * reconciliation of the two, because they are two different facts and the
+   * shipped configuration has them disagreeing legitimately: a Paradigm-built
+   * world file is the map for a GreaterMUD default realm. Neither may overwrite
+   * the other; a disagreement is said out loud and kept.
+   *
+   * Set once and never revised — the tells are positive statements about what
+   * this server has, and a session does not change server mid-connection.
+   * Cleared with the rest of the per-connection state on `reset`, because a
+   * different realm may be a different family.
+   */
+  private serverFamily: RealmFamily | null = null;
+  /** So the disagreement is stated once a session and not once a block. */
+  private familyStated = false;
   private internal: InternalConfig = DEFAULT_INTERNAL;
   private readonly lineLog: StreamLine[] = [];
   private seq = 0;
@@ -848,7 +872,25 @@ export class SessionManager {
         }
       },
       automation.spells,
-      (name) => this.world?.spellNamed(name) ?? null
+      (name) => this.world?.spellNamed(name) ?? null,
+      /*
+       * The character's own side of the combat arithmetic, read at the point
+       * of use for the reason `realmSpell` above is: `this.world` arrives with
+       * `useRealm` and the class is not known until a stat sheet has been read.
+       *
+       * `serverFamily` and not the realm data's, deliberately: this decides
+       * which *formulas* run, and the formulas are the server's. The two can
+       * legitimately differ — see `noteFamily` — and on the shipped
+       * configuration they do.
+       */
+      () => {
+        const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
+        return {
+          combat: row?.combat ?? null,
+          magery: row?.magery ?? null,
+          family: this.serverFamily
+        };
+      }
     );
 
     /*
@@ -934,12 +976,20 @@ export class SessionManager {
      * room's name, because thirteen rooms can share one and a `deposit` typed
      * outside a bank is said out loud.
      */
-    this.deposit = new AutoDeposit(automation.banking, automation.enabled, this.queue, (state) => {
-      if (state.room.map === null || state.room.number === null) return false;
-      const here = this.world?.byId(roomId(state.room.map, state.room.number));
-      if (!here || here.shop === undefined) return false;
-      return this.world?.shop(here.shop)?.kind === 'bank';
-    });
+    this.deposit = new AutoDeposit(
+      automation.banking,
+      automation.enabled,
+      this.queue,
+      (state) => {
+        if (state.room.map === null || state.room.number === null) return false;
+        const here = this.world?.byId(roomId(state.room.map, state.room.number));
+        if (!here || here.shop === undefined) return false;
+        return this.world?.shop(here.shop)?.kind === 'bank';
+      },
+      // A press that banks nothing has to say why, or it is indistinguishable
+      // from a button that does not work — which is what it was.
+      { notice: (message) => this.sink.notice(message) }
+    );
     /*
      * The other half of running several characters at once: `@health` answered
      * over a telepath costs no command, where the party roster costs one and
@@ -1822,6 +1872,23 @@ export class SessionManager {
   }
 
   /**
+   * The console's `Deposit All`, pressed.
+   *
+   * Nothing crosses from the renderer but the name of the action: the purse,
+   * the realm's word on what is a bank, and the verb the wire has been seen to
+   * take all live here, and the figure is not known until the `i` this sends
+   * has been answered. `AutoDeposit` owns the whole sequence — see its header
+   * for why the old three-command button could not work.
+   *
+   * The `user` band because a person pressed it: it outranks housekeeping and
+   * is not silenced by the automation master switch, which is off for anybody
+   * who only wants the button.
+   */
+  depositAll(): boolean {
+    return this.deposit.request(0, 'user', this.tracker.current);
+  }
+
+  /**
    * Asks another player's client something, on this character's behalf.
    *
    * The same telepath `Remotes` sends when a party forms, offered from
@@ -1871,6 +1938,44 @@ export class SessionManager {
   }
 
   /**
+   * Which lineage this server belongs to, from a block already being read.
+   *
+   * Free: `exp` and `rm` are both commands the client already sends, and the
+   * three tells `familyToldBy` reads are positive statements — *this server
+   * has `rm`*, *this server printed a level table* — so nothing is concluded
+   * from an absence. See `shared/realm.ts` for why that matters: an `exp`
+   * summary with no table yet is not evidence of GreaterMUD, and a fold that
+   * counted absences would answer confidently on the first prompt of every
+   * session.
+   *
+   * Said out loud, once, and only when it is **news**: a server whose family
+   * matches the realm data's is the ordinary case and needs no sentence. A
+   * disagreement does, because it is the shipped configuration today — a
+   * Paradigm-built world file is the map for a GreaterMUD default realm — and
+   * because everything computed downstream has to pick one of the two. The
+   * client does not pick. It says which is which and lets both stand.
+   */
+  private noteFamily(block: Block): void {
+    if (this.serverFamily !== null) return;
+    const reading = familyToldBy(block);
+    if (reading === null) return;
+    this.serverFamily = reading.family;
+    if (this.familyStated) return;
+
+    const data = this.world?.info.family ?? null;
+    const families: RealmFamilies = { data, server: reading.family };
+    if (data === null || !familiesDisagree(families)) return;
+    this.familyStated = true;
+    this.sink.notice(
+      t('session.realm.familyDisagrees', {
+        server: REALM_FAMILY_LABEL[reading.family],
+        data: REALM_FAMILY_LABEL[data],
+        source: this.world?.info.source ?? ''
+      })
+    );
+  }
+
+  /**
    * What the realm about to be dialled knows about its players.
    *
    * The host calls this with the *dialled* address before `connect`, because a
@@ -1888,6 +1993,10 @@ export class SessionManager {
     this.forgetPlayers();
     // A different realm may have the word this one refused. See `locateWord`.
     this.locateWord = 'rm';
+    // And a different realm may be a different family. The tells are cheap and
+    // arrive again; carrying the last realm's answer forward would not.
+    this.serverFamily = null;
+    this.familyStated = false;
     this.tracker.useRealm(players);
     // A vault and a kit are the server's, so they are re-keyed with the roster
     // and not with the character. See `SessionHostOptions.belongingsAt`.
@@ -2099,6 +2208,8 @@ export class SessionManager {
       this.locateWord = null;
     }
 
+    this.noteFamily(block);
+
     /*
      * The player's own direction was refused, so nobody moved and nobody took
      * the wheel. Disarmed before the walker sees the block, because the walker
@@ -2235,6 +2346,14 @@ export class SessionManager {
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
     if (this.tracker.takeSheetRequest()) this.routines.askSheet();
+    /*
+     * A pack listing is the fact a requested deposit is waiting on: it is what
+     * restates the purse, and the figure the deposit names is composed from it
+     * *here* rather than beside the `i` that asked for it. After `apply`, which
+     * is what makes `current` the listing's own figure rather than the one the
+     * client believed a moment ago — the whole of the bug this shape replaced.
+     */
+    if (batch?.type === 'user-inventory') this.deposit.onListing(this.tracker.current);
 
     /*
      * Any prompt is an acknowledgement: the server has finished with the last

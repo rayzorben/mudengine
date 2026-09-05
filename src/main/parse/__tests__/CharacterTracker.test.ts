@@ -5504,7 +5504,7 @@ describe('gang membership changing while playing', () => {
  * item already moved between the pack and the shop — the money did not, so a
  * shop trip left the purse describing the character as it was before it.
  */
-describe('a shop trip moves the purse', () => {
+describe('a figure the server quoted moves the purse', () => {
   /*
    * `Wealth:` is a qualifier *inside* the inventory batch, not a line of its
    * own, so the purse is seeded the way the wire seeds it — with a listing.
@@ -5542,6 +5542,34 @@ describe('a shop trip moves the purse', () => {
    */
   it('floors at nothing rather than going negative', () => {
     expect(purse(['You just bought crystal flask for 980 copper farthings.'], 100)).toBe(0);
+  });
+
+  /*
+   * A level is bought too, and this was the last way money left the purse that
+   * nothing moved. Both figures are the reported ones
+   * (`logs/2026-09-04_20-39-52_festus`): two trains in the Paladin guild, 1000
+   * then 1200, against a `Wealth:` that fell from 192600 to 190400 — and the
+   * Deposit All button spent the whole walk back to Godfrey naming the number
+   * before them.
+   */
+  it('takes what a level cost', () => {
+    expect(
+      purse(
+        [
+          'You hand over 1000 copper farthings to train to the next level!',
+          'Welcome to level 7!',
+          'You hand over 1200 copper farthings to train to the next level!',
+          'Welcome to level 8!'
+        ],
+        192_600
+      )
+    ).toBe(190_400);
+  });
+
+  /* Unknown is not rich here either — the same refusal a purchase makes. */
+  it('leaves an unread purse unread across a level', () => {
+    const tracker = play(['You hand over 1000 copper farthings to train to the next level!']);
+    expect(tracker.current.inventory.wealth).toBeNull();
   });
 });
 

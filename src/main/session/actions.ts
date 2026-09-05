@@ -43,29 +43,21 @@
  * text it is printed beside. Requested directly, and kept to the two-word
  * shape the terminal has room for.
  *
- * ## The amount is a number the client already has
+ * ## An amount is not a thing a button may carry
  *
- * `deposit` takes a figure in copper, and `inventory.wealth` is exactly that —
- * `Wealth: 123456 copper farthings` is the server's own normalisation over the
- * five denominations, printed on every `i` and captured live against
- * `sys addcopper` (2026-08-29: 123,456 added, `Wealth:` said 123456). So the
- * button names a number the server itself stated in the unit the command
- * wants. `depo all` is *not* sent: the realm's transcripts have only ever
- * shown a figure, and an unrecognised command here is said out loud.
+ * The exits above are safe to compose here because the realm's own text does
+ * not go stale between the line being printed and the button being pressed. A
+ * *figure* does, and `Deposit All` used to carry one: `['i', 'deposit 192600',
+ * 'bank']`, composed the moment the room's name printed, with a note saying
+ * the `i` was what made the figure current by the time the deposit was read.
+ * It cannot be — the number is a literal by then, and all three strings leave
+ * the client together. It was measured doing exactly that
+ * (`logs/2026-09-04_20-39-52_festus`) against a purse two levels' training had
+ * left 2,200 copper high, and this server refuses an over-deposit in silence.
  *
- * **The purse is maintained, not merely seeded.** Every way money moves that
- * the wire announces now moves it: a listing states all five counts and the
- * total, coins picked up move their own denomination, and a purchase or sale
- * moves the total by the exact copper the server quoted (`withSpend`). That
- * last one was the gap — `buy flask` for 980 left the item moving and the
- * money still, so a shop trip made the figure stale by exactly the price.
- *
- * **Where it can still drift, the button refreshes first.** Coins from a chest
- * and other unannounced gains are real, so the action sends `i` and then the
- * deposit: the listing is authoritative and restates the purse a fraction of a
- * second before the figure is used. That is the maintained-listing shape the
- * whole client follows — the broadcasts keep it true for free, and a command
- * establishes it when being exactly right matters.
+ * So the deposit is a `TerminalIntentAction`: the button names the action and
+ * `AutoDeposit` runs it, sending the `i` and composing the figure from the
+ * listing that answers it. Nothing about the amount is decided here.
  */
 import type { TerminalAction } from '../../shared/types';
 import type { ShopKind } from '../../shared/world';
@@ -99,45 +91,24 @@ function exitActions(commands: readonly string[]): TerminalAction[] {
 /**
  * The bank's buttons: read the purse and bank it, or take the vault out.
  *
- * `i` first, always — not only when the figure looks stale. The listing is
- * authoritative and costs one command, and the alternative is a client that
- * banks a number it merely believes: coins out of a chest, a corpse or a
- * quest reward arrive with nothing on the wire announcing them, so no amount
- * of maintaining covers every case. Refreshing is the maintained-listing rule
- * applied where being exactly right matters.
+ * The deposit names an action rather than commands, for the reason in the
+ * header — its figure is not knowable until the `i` it sends has been
+ * answered, and a list of strings cannot wait for anything. `wealth` is
+ * therefore read here for one thing only: **whether to offer the button at
+ * all**. Null is nobody having said rather than nothing to bank, and a button
+ * offered on an absence is one whose only outcome is a refusal.
  *
- * The figure sent is the one the client holds *now*, and the `i` in front of it
- * is what makes that figure current by the time the deposit is read. It is
- * offered at all only once a listing has stated a purse — before that
- * `inventory.wealth` is null, which is nobody having said rather than nothing
- * to bank, and a button reading `deposit 0` would act on an absence.
+ * That is a weaker claim than the figure it used to carry, and deliberately:
+ * the maintained purse can be stale in either direction, so the offer is a
+ * guess and the amount is not. A press that finds an empty purse says so.
  */
 function bankActions(wealth: number | null, bankBalance: number | null): TerminalAction[] {
   const actions: TerminalAction[] = [];
   if (wealth !== null && wealth > 0) {
     actions.push({
       label: t('terminal.actions.depositAll'),
-      /*
-       * `i` before, and `bank` after.
-       *
-       * The `i` makes the purse current, so the figure this button sends is
-       * the one the character is actually carrying rather than one the client
-       * merely believes.
-       *
-       * The `bank` after is now the *authority*, not the only source. Since
-       * `CharacterTracker.creditVault` a deposit made in a room whose vault
-       * has answered maintains that balance for free, exactly as the pack and
-       * the roster are maintained — but the first press in a bank that has
-       * not been asked has nothing to maintain, and that press is when the
-       * Bank face is most looked at. One command establishes the figure and
-       * every later press keeps it true.
-       *
-       * Safe to send here and nowhere else: `bank` is in the server's own
-       * command table, it is offered only in a room the realm calls a bank,
-       * and it answers for the vault standing in front of the character.
-       */
-      commands: ['i', `deposit ${wealth}`, 'bank'],
-      title: t('terminal.actions.depositAllTitle', { amount: wealth })
+      act: 'deposit-all',
+      title: t('terminal.actions.depositAllTitle')
     });
   }
   /*
@@ -150,7 +121,7 @@ function bankActions(wealth: number | null, bankBalance: number | null): Termina
    * an empty account, and a button reading `withdraw 0` would act on an
    * absence exactly as `deposit 0` would.
    *
-   * `i` **after**, unlike the deposit's `i` before, and it is kept even though
+   * `i` **after**, unlike the deposit's, and it is kept even though
    * `You withdrew N copper farthings.` is now read (`user-withdraws`) and the
    * purse maintained from it. Two reasons it still earns its command: the
    * maintained figure can only move a purse the client already has a number

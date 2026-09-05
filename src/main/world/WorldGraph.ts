@@ -63,6 +63,13 @@ import { spellTargeting } from '../../shared/spellcraft';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
 import type { RoomExit } from '../../shared/character';
 import type { SpellOption } from '../../shared/ipc';
+import {
+  asRealmFamily,
+  familyOfBuild,
+  readRealmBuild,
+  type RealmBuild,
+  type RealmFamily
+} from '../../shared/realm';
 
 /**
  * A room-script teleport the router may walk — `dive pool`, `go vortex`.
@@ -337,6 +344,15 @@ export interface WorldMeta {
   source: string;
   rooms: number;
   generatedAt: string;
+  /**
+   * Which lineage's arithmetic this realm data belongs to — format 21.
+   *
+   * `null` on a realm converted by an older build, and on one whose `Info`
+   * table does not name a lineage. Never guessed at: see `shared/realm.ts`.
+   */
+  family: RealmFamily | null;
+  /** The database's own `Info` row, whole. `null` before format 21. */
+  build: RealmBuild | null;
 }
 
 export class WorldGraph {
@@ -360,7 +376,14 @@ export class WorldGraph {
   private readonly portals = new Map<RoomId, PortalExit[]>();
   /** Lowercased name -> every room that bears it. Names are far from unique. */
   private readonly byName = new Map<string, WorldRoom[]>();
-  private meta: WorldMeta = { version: 0, source: 'none', rooms: 0, generatedAt: '' };
+  private meta: WorldMeta = {
+    version: 0,
+    source: 'none',
+    rooms: 0,
+    generatedAt: '',
+    family: null,
+    build: null
+  };
   /** Items some exit requires, by number. Only those; see `build-world.mjs`. */
   private readonly items = new Map<number, WorldItem>();
   /**
@@ -478,6 +501,19 @@ export class WorldGraph {
     const taken = rowNamed(this.classes, className);
     if (!found || !taken) return null;
     return 100 + (found.expTable ?? 0) + (taken.expTable ?? 0);
+  }
+
+  /**
+   * The realm's own row for a class name.
+   *
+   * `CombatLVL` and `MageryLVL` are inputs to the server's own accuracy, swing
+   * and mana-regeneration formulas (`shared/prowess.ts`) and the stat sheet
+   * prints neither — the realm is the only place either is stated. Null for a
+   * name the realm cannot place, and for a realm converted before v10, which
+   * carries no class table at all.
+   */
+  classNamed(name: string): WorldClass | null {
+    return rowNamed(this.classes, name) ?? null;
   }
 
   /** Every spell the realm names, in table order. */
@@ -1237,11 +1273,20 @@ export class WorldGraph {
       }
 
       if (index === 0 && typeof parsed['v'] === 'number') {
+        /*
+         * Format 21's two fields, both parsed rather than trusted: the header
+         * is a file on the player's disk, and one converted by an older build
+         * carries neither. `asRealmFamily` is what stops a hand-edited header
+         * naming a third family that every calculator would then fall through.
+         */
+        const build = readRealmBuild(parsed['build']);
         graph.meta = {
           version: parsed['v'] as number,
           source: String(parsed['source'] ?? 'unknown'),
           rooms: Number(parsed['rooms'] ?? 0),
-          generatedAt: String(parsed['generatedAt'] ?? '')
+          generatedAt: String(parsed['generatedAt'] ?? ''),
+          family: asRealmFamily(parsed['family']) ?? familyOfBuild(build),
+          build
         };
         graph.loadMobs(parsed['mobs']);
         // Only present from v2 on; an older realm file simply names no items.
@@ -1533,6 +1578,17 @@ export class WorldGraph {
         const value = Number(record[key]);
         if (Number.isFinite(value) && value > 0) spell[field] = value;
       }
+      /*
+       * How much easier or harder than the caster's own figure — format 22.
+       *
+       * Read on its own and **not** in the loop above, because that loop takes
+       * only values above zero and this column is signed: 100 of the shipped
+       * realm's spells state a negative difficulty, and a spell that is harder
+       * than it looks would have been silently read as one that is neither.
+       * Same reason `pw` is read separately.
+       */
+      const difficulty = Number(record['dif']);
+      if (Number.isFinite(difficulty) && difficulty !== 0) spell.difficulty = difficulty;
       // What casting it does — format 14, and the whole of what a spell card
       // said nothing about: 1,985 of the realm's 1,990 spells carry these.
       const abilities = readAbilities(record);

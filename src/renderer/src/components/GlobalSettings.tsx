@@ -332,13 +332,13 @@ export default function GlobalSettings({
                 ]}
                 value={draft.terminal.cursorStyle}
               />
+              <CheckField
+                checked={draft.terminal.cursorBlink}
+                label={t('settings.client.appearance.cursorBlink')}
+                name="global-cursor-blink"
+                onChange={(value) => patch('terminal', { cursorBlink: value })}
+              />
             </div>
-            <CheckField
-              checked={draft.terminal.cursorBlink}
-              label={t('settings.client.appearance.cursorBlink')}
-              name="global-cursor-blink"
-              onChange={(value) => patch('terminal', { cursorBlink: value })}
-            />
             <TextField
               hint={t('settings.client.appearance.uiFontHint')}
               label={t('settings.client.appearance.uiFontLabel')}
@@ -879,15 +879,17 @@ export default function GlobalSettings({
           <fieldset className="settings-menus">
             <legend>{t('settings.health.retreatLegend')}</legend>
             <p className="settings-note">{t('settings.health.retreatHint')}</p>
-            <CheckField
-              checked={draft.automation.retreat.enabled}
-              label={t('settings.health.retreatLabel')}
-              name="global-retreat"
-              onChange={(value) =>
-                automation({ retreat: { ...draft.automation.retreat, enabled: value } })
-              }
-            />
+            {/* The switch and the two figures it runs on are one row, the same
+                shape a character's own Health tab draws them in. */}
             <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.retreat.enabled}
+                label={t('settings.health.retreatLabel')}
+                name="global-retreat"
+                onChange={(value) =>
+                  automation({ retreat: { ...draft.automation.retreat, enabled: value } })
+                }
+              />
               <NumberField
                 label={t('settings.health.belowHealthLabel')}
                 name="global-retreat-health"
@@ -949,15 +951,15 @@ export default function GlobalSettings({
           <fieldset className="settings-menus">
             <legend>{t('settings.health.hangUpLegend')}</legend>
             <p className="settings-warn">{t('settings.health.hangUpWarning')}</p>
-            <CheckField
-              checked={draft.automation.hangUp.enabled}
-              label={t('settings.health.hangUpLabel')}
-              name="global-hangup"
-              onChange={(value) =>
-                automation({ hangUp: { ...draft.automation.hangUp, enabled: value } })
-              }
-            />
             <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.hangUp.enabled}
+                label={t('settings.health.hangUpLabel')}
+                name="global-hangup"
+                onChange={(value) =>
+                  automation({ hangUp: { ...draft.automation.hangUp, enabled: value } })
+                }
+              />
               <NumberField
                 label={t('settings.health.belowHealthLabel')}
                 name="global-hangup-health"
@@ -1276,37 +1278,92 @@ export default function GlobalSettings({
         <>
           <fieldset className="settings-menus">
             <legend>{t('settings.movement.legend')}</legend>
-            <CheckField
-              checked={draft.automation.movement.openDoors}
-              hint={t('settings.movement.openDoorsHint')}
-              label={t('settings.movement.openDoors')}
-              name="global-open-doors"
-              onChange={(value) =>
-                automation({ movement: { ...draft.automation.movement, openDoors: value } })
-              }
-            />
+            {/*
+              A switch and the count it discloses are one row, and the count is
+              beside the switch it belongs to rather than in a run of three at
+              the foot of the fieldset. They were: "Tries per door", "Pick
+              tries" and "Bash tries" sat below every switch on the page, so the
+              only thing saying which count belonged to which switch was the
+              order they happened to be written in. One setting, one shape, on
+              every page that shows it -- the character's own Movement tab pairs
+              them the same way.
+            */}
+            <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.movement.openDoors}
+                hint={t('settings.movement.openDoorsHint')}
+                label={t('settings.movement.openDoors')}
+                name="global-open-doors"
+                onChange={(value) =>
+                  automation({ movement: { ...draft.automation.movement, openDoors: value } })
+                }
+              />
+              <NumberField
+                label={t('settings.movement.openTries')}
+                name="global-open-tries"
+                onChange={(value) =>
+                  automation({
+                    movement: {
+                      ...draft.automation.movement,
+                      openTries: Number.parseInt(value, 10) || 0
+                    }
+                  })
+                }
+                value={draft.automation.movement.openTries}
+              />
+            </div>
             {/*
               Picking above bashing, in the order the walker tries them: one
               costs a command and the other costs a command and some health.
             */}
-            <CheckField
-              checked={draft.automation.movement.pickLocks}
-              hint={t('settings.movement.pickLocksHint')}
-              label={t('settings.movement.pickLocks')}
-              name="global-pick-locks"
-              onChange={(value) =>
-                automation({ movement: { ...draft.automation.movement, pickLocks: value } })
-              }
-            />
-            <CheckField
-              checked={draft.automation.movement.bashDoors}
-              hint={t('settings.movement.bashDoorsHint')}
-              label={t('settings.movement.bashDoors')}
-              name="global-bash-doors"
-              onChange={(value) =>
-                automation({ movement: { ...draft.automation.movement, bashDoors: value } })
-              }
-            />
+            <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.movement.pickLocks}
+                hint={t('settings.movement.pickLocksHint')}
+                label={t('settings.movement.pickLocks')}
+                name="global-pick-locks"
+                onChange={(value) =>
+                  automation({ movement: { ...draft.automation.movement, pickLocks: value } })
+                }
+              />
+              <NumberField
+                label={t('settings.movement.pickTries')}
+                name="global-pick-tries"
+                onChange={(value) =>
+                  automation({
+                    movement: {
+                      ...draft.automation.movement,
+                      pickTries: Number.parseInt(value, 10) || 0
+                    }
+                  })
+                }
+                value={draft.automation.movement.pickTries}
+              />
+            </div>
+            <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.movement.bashDoors}
+                hint={t('settings.movement.bashDoorsHint')}
+                label={t('settings.movement.bashDoors')}
+                name="global-bash-doors"
+                onChange={(value) =>
+                  automation({ movement: { ...draft.automation.movement, bashDoors: value } })
+                }
+              />
+              <NumberField
+                label={t('settings.movement.bashTries')}
+                name="global-bash-tries"
+                onChange={(value) =>
+                  automation({
+                    movement: {
+                      ...draft.automation.movement,
+                      bashTries: Number.parseInt(value, 10) || 0
+                    }
+                  })
+                }
+                value={draft.automation.movement.bashTries}
+              />
+            </div>
             <CheckField
               checked={draft.automation.movement.sneak}
               hint={t('settings.movement.sneakHint')}
@@ -1352,45 +1409,6 @@ export default function GlobalSettings({
                 />
               </>
             )}
-            <NumberField
-              label={t('settings.movement.openTries')}
-              name="global-open-tries"
-              onChange={(value) =>
-                automation({
-                  movement: {
-                    ...draft.automation.movement,
-                    openTries: Number.parseInt(value, 10) || 0
-                  }
-                })
-              }
-              value={draft.automation.movement.openTries}
-            />
-            <NumberField
-              label={t('settings.movement.pickTries')}
-              name="global-pick-tries"
-              onChange={(value) =>
-                automation({
-                  movement: {
-                    ...draft.automation.movement,
-                    pickTries: Number.parseInt(value, 10) || 0
-                  }
-                })
-              }
-              value={draft.automation.movement.pickTries}
-            />
-            <NumberField
-              label={t('settings.movement.bashTries')}
-              name="global-bash-tries"
-              onChange={(value) =>
-                automation({
-                  movement: {
-                    ...draft.automation.movement,
-                    bashTries: Number.parseInt(value, 10) || 0
-                  }
-                })
-              }
-              value={draft.automation.movement.bashTries}
-            />
           </fieldset>
 
           <fieldset className="settings-menus">
@@ -1597,16 +1615,21 @@ export default function GlobalSettings({
 
           <fieldset className="settings-menus">
             <legend>{t('settings.movement.bankLegend')}</legend>
-            <CheckField
-              checked={draft.automation.banking.autoDeposit}
-              hint={t('settings.movement.bankDepositHint')}
-              label={t('settings.movement.bankDepositLabel')}
-              name="global-bank-deposit"
-              onChange={(value) =>
-                automation({ banking: { ...draft.automation.banking, autoDeposit: value } })
-              }
-            />
+            {/*
+              The switch and the two figures it spends are one row: a threshold
+              and a float mean nothing without the switch that acts on them, and
+              a check alone on a band wastes a row saying so.
+            */}
             <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.banking.autoDeposit}
+                hint={t('settings.movement.bankDepositHint')}
+                label={t('settings.movement.bankDepositLabel')}
+                name="global-bank-deposit"
+                onChange={(value) =>
+                  automation({ banking: { ...draft.automation.banking, autoDeposit: value } })
+                }
+              />
               <NumberField
                 hint={t('settings.movement.bankThresholdHint')}
                 label={t('settings.movement.bankThresholdLabel')}
@@ -1678,15 +1701,17 @@ export default function GlobalSettings({
                 value={draft.automation.walk.clearAfterSeconds}
               />
             </div>
-            <CheckField
-              checked={draft.automation.idle.enabled}
-              label={t('settings.global.movement.idleEnabled')}
-              name="global-idle"
-              onChange={(value) =>
-                automation({ idle: { ...draft.automation.idle, enabled: value } })
-              }
-            />
+            {/* The switch, when it fires and what it sends: one row, because
+                the two figures mean nothing without the switch above them. */}
             <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.idle.enabled}
+                label={t('settings.global.movement.idleEnabled')}
+                name="global-idle"
+                onChange={(value) =>
+                  automation({ idle: { ...draft.automation.idle, enabled: value } })
+                }
+              />
               <NumberField
                 label={t('settings.global.movement.idleAfterLabel')}
                 name="global-idle-after"
