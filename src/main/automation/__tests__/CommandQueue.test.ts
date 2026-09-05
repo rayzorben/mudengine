@@ -250,6 +250,50 @@ describe('a re-proposed intent', () => {
   });
 });
 
+/*
+ * A word this realm does not have. An unrecognised command on this server
+ * family is *said out loud in the room*, so sending one is not a wasted
+ * command — it is a broadcast, and a probe on a clock is one per ask for the
+ * evening.
+ */
+describe('a command the realm has no word for', () => {
+  const withAnswer = (unavailable: (command: string) => boolean): CommandQueue => {
+    sent = [];
+    return new CommandQueue(base, { send: (command) => sent.push(command), unavailable });
+  };
+
+  it('is refused before it reaches the wire, and says it was', () => {
+    const asked: string[] = [];
+    const q = withAnswer((command) => {
+      asked.push(command);
+      return command === 'rm';
+    });
+    expect(q.enqueue({ command: 'rm', priority: 'probe' })).toBe(false);
+    expect(q.enqueue({ command: 'st', priority: 'probe' })).toBe(true);
+    expect(sent).toEqual(['st']);
+    expect(asked).toEqual(['rm', 'st']);
+    q.dispose();
+  });
+
+  /*
+   * The player may be finding out, and they outrank automation everywhere else
+   * in this class too. Nothing typed is ever held back on the client's opinion
+   * of what the realm knows.
+   */
+  it('never refuses the person at the keyboard', () => {
+    const q = withAnswer(() => true);
+    expect(q.enqueue({ command: 'rm', priority: 'user' })).toBe(true);
+    expect(sent).toEqual(['rm']);
+    q.dispose();
+  });
+
+  /* No answerer at all is "the realm has every word", the behaviour before. */
+  it('sends everything when nobody is answering', () => {
+    queue.enqueue({ command: 'rm', priority: 'probe' });
+    expect(sent).toEqual(['rm']);
+  });
+});
+
 describe('the master switch', () => {
   it('drops automation when disabled but still passes the player through', () => {
     const off = make({ enabled: false });

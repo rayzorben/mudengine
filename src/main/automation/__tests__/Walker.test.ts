@@ -888,14 +888,43 @@ describe('a door in the way', () => {
       notice: (m) => notices.push(m)
     });
 
+  /*
+   * The step is no longer queued behind the `open`: the two answers that
+   * decide the next rung come back first (`Walker.sendOpen`). It goes out on
+   * the door opening — or, as here, on the deadline that stands in for a
+   * success sentence this client did not read.
+   */
   it('opens it and takes the step again', () => {
     const open = withMovement({ openDoors: true, openTries: 1 });
     open.start(ROUTE, at(1, 1));
     open.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'open e']);
+
+    open.onBlock(block('door-changed', { barrier: 'door', state: 'open' }));
+    vi.advanceTimersByTime(200);
 
     expect(open.progress.status).toBe('walking');
     expect(sent).toEqual(['e', 'open e', 'e']);
+    open.dispose();
+  });
+
+  /*
+   * `The <…> is now open.` is read out of the server's source and only ever
+   * captured with `door` in it, so a realm that phrases it some third way
+   * would leave the walk waiting on a sentence nothing matches. The deadline
+   * sends the step anyway — the behaviour this had before `open` waited for
+   * an answer at all, one round trip later.
+   */
+  it('takes the step anyway when nothing answers the open', () => {
+    const open = withMovement({ openDoors: true, openTries: 1 });
+    open.start(ROUTE, at(1, 1));
+    open.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'open e']);
+
+    vi.advanceTimersByTime(TUNING.walk.nudgeAfterMs + 50);
+    expect(moves(sent)).toEqual(['e', 'open e', 'e']);
     open.dispose();
   });
 
@@ -915,24 +944,57 @@ describe('a door in the way', () => {
     open.dispose();
   });
 
-  /* A locked door answers the same way every time. */
-  it('gives up after the tries it was given', () => {
+  /*
+   * A locked gate answers the same way every time, so the budget runs out —
+   * and with nothing else turned on the walk **holds** rather than ending. It
+   * is a shut door, not a broken route: see `Walker.holdAtBarrier`.
+   */
+  it('holds after the tries it was given, and says so once', () => {
     const open = withMovement({ openDoors: true, openTries: 1 });
     open.start(ROUTE, at(1, 1));
     open.onBlock(block('direction-failed', { barrier: 'gate' }));
     vi.advanceTimersByTime(200);
-    open.onBlock(block('direction-failed', { barrier: 'gate' }));
+    open.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
 
-    expect(open.progress.status).toBe('stopped');
-    expect(sent).toEqual(['e', 'open e', 'e']);
+    expect(open.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    expect(sent).toEqual(['e', 'open e']);
+    expect(notices.at(-1)).toContain('gate');
+
+    // And the whole ladder again on its own clock, with no second line about
+    // the same shut gate.
+    const said = notices.length;
+    vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+    expect(moves(sent)).toEqual(['e', 'open e', 'e']);
+    open.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    open.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    expect(moves(sent)).toEqual(['e', 'open e', 'e', 'open e']);
+    expect(notices.length).toBe(said);
     open.dispose();
   });
 
-  it('stops at a door when it was not asked to open one', () => {
+  /* And the rounds are bounded, or an unattended character stands there all
+     evening at a door nothing in this client is working on. */
+  it('gives up on the door once the rounds are spent', () => {
+    const open = withMovement({ openDoors: true, openTries: 1 });
+    open.start(ROUTE, at(1, 1));
+    for (let round = 0; round <= TUNING.walk.barrierRetries; round += 1) {
+      open.onBlock(block('direction-failed', { barrier: 'gate' }));
+      vi.advanceTimersByTime(200);
+      open.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+      vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+    }
+
+    expect(open.progress.status).toBe('stopped');
+    expect(open.progress.reason).toContain('gate');
+    open.dispose();
+  });
+
+  it('holds at a door when it was not asked to open one', () => {
     walker.start(ROUTE, at(1, 1));
     walker.onBlock(block('direction-failed', { barrier: 'door' }));
 
-    expect(walker.progress.status).toBe('stopped');
+    expect(walker.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     expect(sent).toEqual(['e']);
   });
 
@@ -945,15 +1007,18 @@ describe('a door in the way', () => {
     open.start(ROUTE, at(1, 1));
     open.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
+    open.onBlock(block('door-changed', { barrier: 'door', state: 'open' }));
+    vi.advanceTimersByTime(200);
     open.onCharacter(at(1, 2, { room: { ...EMPTY_CHARACTER.room, map: 1, number: 2 } }));
     vi.advanceTimersByTime(200);
+    // The second step's own door, and its own `open`.
     open.onBlock(block('direction-failed', { barrier: 'door' }));
-    // Past the pacing window's own timeout: six commands with no prompt to
+    // Past the pacing window's own timeout: five commands with no prompt to
     // acknowledge them is more credit than the queue holds, which is the
     // queue's job and not this one's.
     vi.advanceTimersByTime(3000);
 
-    expect(sent).toEqual(['e', 'open e', 'e', 'e', 'open e', 'e', NUDGE]);
+    expect(sent).toEqual(['e', 'open e', 'e', 'e', 'open e', 'e']);
     open.dispose();
   });
 });
@@ -998,14 +1063,15 @@ describe('a locked barrier in the way', () => {
     walk.onCharacter(skilled(60, 0));
     walk.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
-    // `The door is locked.` — opening is spent, whatever the budget said.
+    // `The door is locked.` — opening is spent, whatever the budget said, and
+    // the move that used to be queued behind the `open` is never sent.
     walk.onBlock(block('open-failed', { barrier: 'door', reason: 'locked' }));
-    walk.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
 
-    // One `open`, not three. The two it did not send are the point.
-    expect(sent).toEqual(['e', 'open e', 'e']);
-    expect(walk.progress.status).toBe('stopped');
+    // One `open`, not three, and no second `e`. What it did not send is the
+    // point of the whole change.
+    expect(sent).toEqual(['e', 'open e']);
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     walk.dispose();
   });
 
@@ -1017,18 +1083,19 @@ describe('a locked barrier in the way', () => {
     walk.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
     walk.onBlock(block('open-failed', { barrier: 'door', reason: 'locked' }));
-    walk.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
 
-    expect(sent).toEqual(['e', 'open e', 'e', 'bas e']);
+    // Straight from the locked answer to the bash: no move spent on a door
+    // the client has just been told is locked.
+    expect(sent).toEqual(['e', 'open e', 'bas e']);
 
     // `Your attempts to bash through fail!` — one more, and no more than that.
     walk.onBlock(block('bash-failed'));
-    // Past the pacing window's own timeout: five commands with no prompt to
+    // Past the pacing window's own timeout: four commands with no prompt to
     // acknowledge them is more credit than the queue holds, which is the
     // queue's business and not this one's.
     vi.advanceTimersByTime(3000);
-    expect(sent).toEqual(['e', 'open e', 'e', 'bas e', 'bas e', NUDGE]);
+    expect(sent).toEqual(['e', 'open e', 'bas e', 'bas e', NUDGE]);
 
     /*
      * `You bashed the door open.` The barrier is open and the character has
@@ -1037,7 +1104,7 @@ describe('a locked barrier in the way', () => {
      */
     walk.onBlock(block('door-changed', { barrier: 'door', state: 'open' }));
     vi.advanceTimersByTime(3000);
-    expect(sent).toEqual(['e', 'open e', 'e', 'bas e', 'bas e', NUDGE, 'e', NUDGE]);
+    expect(sent).toEqual(['e', 'open e', 'bas e', 'bas e', NUDGE, 'e', NUDGE]);
     expect(walk.progress.status).toBe('walking');
     walk.dispose();
   });
@@ -1056,23 +1123,26 @@ describe('a locked barrier in the way', () => {
     walk.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
     walk.onBlock(block('open-failed', { barrier: 'door', reason: 'locked' }));
-    walk.onBlock(block('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
 
     // Strength is well past the number and picklocks only just inside it, and
     // the pick still goes first: it is the attempt that costs no health.
-    expect(sent).toEqual(['e', 'open e', 'e', 'pi e']);
+    expect(sent).toEqual(['e', 'open e', 'pi e']);
 
     // `Your skill fails you this time.` — the same sentence a failed disarm
     // gets, read as a pick only because the walker asked the question.
     walk.onBlock(block('skill-failed'));
     vi.advanceTimersByTime(3000);
-    expect(sent).toEqual(['e', 'open e', 'e', 'pi e', 'pi e', NUDGE]);
+    expect(sent).toEqual(['e', 'open e', 'pi e', 'pi e', NUDGE]);
 
-    // `You successfully unlocked the door.` — unlocked and still shut.
-    walk.onBlock(block('door-changed', { state2: 'unlocked' }));
+    /*
+     * `You successfully unlocked the door.` — unlocked and still shut, so an
+     * `open` goes first. That `open` is a rung like any other now, so the step
+     * follows its answer rather than being queued blind behind it.
+     */
+    walk.onBlock(block('door-changed', { barrier2: 'door', state2: 'unlocked' }));
     vi.advanceTimersByTime(3000);
-    expect(sent).toEqual(['e', 'open e', 'e', 'pi e', 'pi e', NUDGE, 'open e', 'e', NUDGE]);
+    expect(moves(sent)).toEqual(['e', 'open e', 'pi e', 'pi e', 'open e', 'e']);
     walk.dispose();
   });
 
@@ -1092,9 +1162,10 @@ describe('a locked barrier in the way', () => {
     vi.advanceTimersByTime(200);
 
     expect(sent).toEqual(['e', 'pi e', 'bas e']);
-    expect(walk.progress.status).toBe('stopped');
-    // And it says which door and what it wanted, rather than `the game
-    // refused e`.
+    // Every rung spent, so it waits at the door rather than ending the
+    // journey — and it says which door and what it wanted, rather than `the
+    // game refused e`.
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     expect(notices.at(-1)).toContain('door');
     walk.dispose();
   });
@@ -1110,7 +1181,7 @@ describe('a locked barrier in the way', () => {
     walk.onBlock(block('direction-failed', { barrier: 'door' }));
 
     expect(sent).toEqual(['e']);
-    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     walk.dispose();
   });
 
@@ -1121,7 +1192,7 @@ describe('a locked barrier in the way', () => {
     walk.onBlock(block('direction-failed', { barrier: 'door' }));
 
     expect(sent).toEqual(['e']);
-    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     expect(notices.at(-1)).toContain('1000');
     walk.dispose();
   });
@@ -1137,7 +1208,71 @@ describe('a locked barrier in the way', () => {
     walk.onBlock(block('direction-failed', { barrier: 'door' }));
 
     expect(sent).toEqual(['e']);
-    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    walk.dispose();
+  });
+
+  /*
+   * A bash is the one rung paid for in hit points — `You take 1 damage for
+   * bashing the gate!` — and the ladder now repeats, so without this a
+   * character can knock itself out at a door with nothing else in the room
+   * threatening it. `restBelow` is the figure that already says this character
+   * does not travel below this.
+   */
+  it('will not spend a bash while the character is under the travel floor', () => {
+    const hurt = (fraction: number): CharacterState => {
+      const state = skilled(400, 0);
+      return { ...state, vitals: { ...state.vitals, hp: fraction * 100, hpMax: 100 } };
+    };
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, bashDoors: true, bashTries: 3 } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        stateNow: () => hurt(0.2)
+      }
+    );
+    // A loop's leg: `holdWhenHurt` off, because `LoopRunner` holds the lap
+    // between legs. That is the walk this gate exists for — within a leg
+    // nothing else is watching the health.
+    walk.start(gated(door({ bashDifficulty: 41 })), hurt(0.2), { holdWhenHurt: false });
+    walk.onCharacter(hurt(0.2));
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+
+    // Nothing bashed, and it waits at the door instead of ending the journey:
+    // the health is what the wait is for.
+    expect(sent).toEqual(['e']);
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    walk.dispose();
+  });
+
+  it('bashes once the health is back', () => {
+    let fraction = 0.2;
+    const state = (): CharacterState => {
+      const base = skilled(400, 0);
+      return { ...base, vitals: { ...base.vitals, hp: fraction * 100, hpMax: 100 } };
+    };
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, bashDoors: true, bashTries: 3 } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        stateNow: () => state()
+      }
+    );
+    walk.start(gated(door({ bashDifficulty: 41 })), state(), { holdWhenHurt: false });
+    walk.onCharacter(state());
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e']);
+
+    fraction = 0.9;
+    vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+
+    expect(moves(sent)).toEqual(['e', 'e', 'bas e']);
     walk.dispose();
   });
 

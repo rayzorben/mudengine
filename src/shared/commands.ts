@@ -649,6 +649,76 @@ export const ATTACK_COMMANDS: ReadonlySet<CommandName> = new Set([
 export const REREAD_ROOM = '';
 
 /**
+ * Commands in the table above that the **MajorMUD lineage does not have**.
+ *
+ * Two realms ship in this client and they are not the same server. Sending a
+ * word a realm has no entry for costs a command out of the budget walking and
+ * fighting spend from, and on a clock it costs one per ask for the evening.
+ *
+ * **Command names, and every spelling comes free** through `commandOf`, which
+ * is what the server does.
+ *
+ * ## Measured, on one authorised session
+ *
+ * `bbs.bearfather.net`, majorMUD v1.11p-WG3NT, 2026-09-05: forty read-only
+ * words from the table above, one per second, and what came back. `Your
+ * command had no effect.` is that lineage's answer to a word it has no entry
+ * for — see `src/shared/realm.ts` for why that sentence and not GreaterMUD's
+ * spoken refusal.
+ *
+ * **Two positive controls make the reading mean something**, because the same
+ * sentence could have been what a present command answers when its arguments
+ * are missing or the room is wrong. It is not:
+ *
+ * - `stock` → `Syntax: STOCK {item} {price} {currency}` — a present command
+ *   with no arguments gets *syntax help*.
+ * - `list` → `You cannot LIST if you are not in a shop!` — a present command
+ *   in the wrong room gets *the reason*.
+ *
+ * So `Your command had no effect.` is absence, and these seven are absent:
+ * `Room` (`rm`), `Abilities` (`ab`), `Deaths`, `Roll`, `NParty`, `Recover` and
+ * `Appraise`.
+ *
+ * ## `Profile` is **not** one of them, and that correction cost nothing but
+ * asking
+ *
+ * `docs/game-behaviour.md` said *"MajorMUD has neither `rm` nor `pro`"* and
+ * this list said so too, for one day. Half of it was wrong: `pro` answers
+ * there in full — `Display Mode`, `Statusline`, `Allow Telepaths`, sixteen
+ * more lines of the character's own preferences. What it does not carry is
+ * `Location:`, which is the *only* part GreaterMUD's `pro` is read for.
+ *
+ * The claim came from a reading rather than a capture, and the shape of the
+ * error is the usual one: *this realm has no locate command* generalised into
+ * *this realm has no such word*. `familyToldBy` was right anyway and is now
+ * better evidenced — both lineages answer `pro`, and only GreaterMUD's answer
+ * carries coordinates, so the tell tests the **groups** and not the type.
+ *
+ * ## What the client actually sends is the part that mattered
+ *
+ * Of the commands this client puts on the wire by itself — `rm`, `st`, `i`,
+ * `exp`, `sc`, `gb`, `bank`, `spells`/`pow`, `party`, `rest`, `med`, `sea`,
+ * `sn`, `l`, `list` — **only `rm` is missing**. Everything else answered. So
+ * the cost of the whole question was one wasted command per connection, and
+ * the client already retired that one.
+ *
+ * A word joins this list when something says so. The client does not need the
+ * whole difference to be safe, because **the wire teaches it the rest**:
+ * `SessionManager` retires any word this file's table names that the realm
+ * refuses, for the connection. This list is what it knows before the first
+ * refusal, which is the only place a list beats learning.
+ */
+export const GREATERMUD_ONLY: ReadonlySet<CommandName> = new Set([
+  'Room',
+  'Abilities',
+  'Deaths',
+  'Roll',
+  'NParty',
+  'Recover',
+  'Appraise'
+]);
+
+/**
  * Words that look like commands, are not in the table above, and have been
  * sent by this client anyway.
  *

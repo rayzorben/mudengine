@@ -250,6 +250,16 @@ function attention(
     return { level: 'info', label: t('tabs.tab.markRecovering') };
   }
   /*
+   * Standing at a shut door, running the ladder again on its own clock.
+   * `warn` for the afflictions' reason: nothing in this client is working on
+   * the door, so it is a state somebody may want to come and look at, and a
+   * tab reading `walking` for a character standing at a portcullis is the tab
+   * saying it is moving when it is not.
+   */
+  if (view.walk.status === 'walking' && view.walk.hold === 'barrier') {
+    return { level: 'warn', label: t('tabs.tab.markBlocked') };
+  }
+  /*
    * Waiting out a stated affliction, on a route or between a lap's legs.
    * `warn`, unlike the holds above: a condition is something the person may
    * want to come and cure, and `walking` or `looping` here would be the tab

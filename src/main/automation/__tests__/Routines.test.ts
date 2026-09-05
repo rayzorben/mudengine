@@ -432,10 +432,11 @@ describe('reading the spellbook', () => {
 });
 
 /*
- * Training is the one thing that makes `Exp needed for next level` wrong, and
- * this realm's status line carries no `Need=` field to correct it — so without
- * an ask, *Exp. needed* and *Will level in* read against the level before the
- * one the character is on, for the rest of the session.
+ * A sentence that says a number changed without saying what to leaves the
+ * client holding a figure nothing will ever correct — *Exp. needed* and *Will
+ * level in* read against the level before the one the character is on, for the
+ * rest of the session, and the maxima and the purse do the same. What each
+ * sentence invalidated is `src/shared/staleness.ts`; this is the asking.
  *
  * The sentences are from the recorded sessions: six trains across five of
  * them, each `You hand over N copper farthings to train to the next level!`,
@@ -459,6 +460,47 @@ describe('asking again after training', () => {
     // Coalesced by intent: a character that trained twice in a breath asks once.
     routines.onBlock(trained);
     expect(commandsIn(queue).filter((command) => command === 'exp')).toHaveLength(1);
+  });
+
+  /*
+   * And the other two things a train invalidates. The maxima are rolled on the
+   * level, and the sentence itself states a price handed over — so the purse
+   * `Wealth:` and the coin counts are wrong from that line and nothing else
+   * says so.
+   */
+  it('asks for the sheet and the pack as well, each once', () => {
+    const { routines, queue } = make();
+    routines.onBlock(trained);
+    routines.onBlock(trained);
+    expect(commandsIn(queue).filter((command) => command === 'st')).toHaveLength(1);
+    expect(commandsIn(queue).filter((command) => command === 'i')).toHaveLength(1);
+  });
+
+  /*
+   * MajorMUD says it differently and prints no welcome behind it, so the
+   * sentence is the whole of the news there.
+   */
+  it('reads MajorMUD’s phrasing of a train', () => {
+    const { routines, queue } = make();
+    routines.onBlock({
+      type: 'user-trains',
+      groups: { price: 'nothing', level: '11' },
+      at: Date.now()
+    } as never);
+    expect(commandsIn(queue)).toEqual(expect.arrayContaining(['st', 'exp', 'i']));
+  });
+
+  /*
+   * `train stats` is a telnet field screen with no answer, so the only thing
+   * on the wire that says it happened is the paragraph the screen prints on
+   * the way out. It rewrites the attributes and the maximum hit points and
+   * spends character points rather than coin — so the sheet, and only the
+   * sheet.
+   */
+  it('asks for the sheet alone when the stats were retrained', () => {
+    const { routines, queue } = make();
+    routines.onBlock({ type: 'user-stats-assigned', groups: {}, at: Date.now() } as never);
+    expect(commandsIn(queue)).toEqual(['st']);
   });
 
   /*

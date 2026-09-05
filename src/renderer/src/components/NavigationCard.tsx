@@ -505,6 +505,15 @@ function walkChip(walk: WalkProgress) {
   if (walk.status === 'walking' && walk.hold === 'poisoned') {
     return <span className="chip warn">{t('cards.navigation.loop.statusPoisoned')}</span>;
   }
+  /*
+   * A shut door the ladder could not get past this round. `warn`, with the
+   * afflictions rather than with resting and fighting: the walk is waiting for
+   * something nothing in this client is working on, and whether to go round it
+   * is a decision only the person can make.
+   */
+  if (walk.status === 'walking' && walk.hold === 'barrier') {
+    return <span className="chip warn">{t('cards.navigation.route.badgeBlocked')}</span>;
+  }
   if (walk.status === 'walking') {
     return (
       <span className="chip">

@@ -93,6 +93,17 @@ const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeCh
   'user-reads-spell': { severity: 'info', channel: 'session' },
   /* Leaving on purpose; automatic login stands down, and the rail should say why. */
   'user-exits-realm': { severity: 'info', channel: 'session' },
+  /*
+   * Leaving by accident, charged for on the way back in.
+   *
+   * `warning` and not `info`: this is the realm saying it took something from
+   * the character, and it is the one moment the hang-up penalty — otherwise a
+   * reading of the server's source that nobody dares measure — is visible at
+   * all. It arrives in the welcome banner, several screens above where anybody
+   * is looking by the time they are playing, so the card keeping it is the
+   * whole point.
+   */
+  'user-disconnect-penalty': { severity: 'warning', channel: 'session' },
 
   /*
    * A command did not do what was asked.

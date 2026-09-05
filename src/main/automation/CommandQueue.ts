@@ -81,6 +81,29 @@ export interface QueueEvents {
    * emergency can go out clean. See the emergency exception in `drain`.
    */
   clearTypedLine?(): void;
+  /**
+   * Whether this realm has no such word, so the command must not be sent.
+   *
+   * Asked of **automation only**, and asked here because this is the one
+   * funnel every automated command goes through — the same reason `send`
+   * files the command for the tracker and the classifier here rather than at
+   * each proposer.
+   *
+   * It exists because an unrecognised command on this server family is not
+   * refused quietly: it is *said out loud in the room*, to everybody standing
+   * there. So a probe on a clock is not a wasted command, it is a broadcast
+   * per ask for the evening. `SessionManager` owns the answer, because it is
+   * the one that knows which lineage the server belongs to and which words it
+   * has already heard the realm speak aloud.
+   *
+   * A **person** typing one is never refused. They may be finding out, and
+   * the player outranks automation everywhere else in this class too.
+   *
+   * Saying so is the answerer's job, not this one's: it knows what it knows
+   * and can say it once per word, where a line per dropped intent would be a
+   * line per probe.
+   */
+  unavailable?(command: string): boolean;
 }
 
 export class CommandQueue {
@@ -139,6 +162,15 @@ export class CommandQueue {
   enqueue(intent: Intent): boolean {
     if (!this.config.enabled && intent.priority !== 'user') return false;
     if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return false;
+    /*
+     * A word this realm does not have. Refused rather than sent, and said out
+     * loud by whoever answered — a safety feature that silently declines is
+     * worse than one that was never offered, and this one declines by *not
+     * broadcasting a command into a room full of people*.
+     */
+    if (intent.priority !== 'user' && this.events.unavailable?.(intent.command) === true) {
+      return false;
+    }
 
     if (intent.coalesceKey !== undefined) {
       const existing = this.pending.find((queued) => queued.coalesceKey === intent.coalesceKey);
