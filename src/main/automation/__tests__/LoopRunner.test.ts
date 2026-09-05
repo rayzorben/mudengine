@@ -7,6 +7,7 @@ afterEach(() => vi.useRealTimers());
 import { LoopRunner, type LoopPlanner } from '../LoopRunner';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG } from '../../../shared/config';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import type { Loop } from '../../../shared/loops';
 import type { Route } from '../../../shared/world';
 
@@ -1087,5 +1088,122 @@ describe('losing the connection', () => {
     runner.noteOffline();
     expect(runner.carried).toBe(false);
     expect(runner.progress.status).toBe('idle');
+  });
+});
+
+/*
+ * Conditions as waits between legs — the loop's half of the gate the walker
+ * holds within a leg, reading the one predicate (`afflictionHolding`). The chip
+ * and the tab say which condition, because a lap standing still blind that
+ * read `running` would be the card saying the opposite of what is happening.
+ */
+describe('waiting out a condition between legs', () => {
+  it('holds the lap while blind, says which, and lets go when sight returns', () => {
+    const { planner: p, walked } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    runner.configure(DEFAULT_CONFIG.automation.health, DEFAULT_CONFIG.automation.movement);
+    runner.start(loop, state());
+    const legs = walked.length;
+    runner.onCharacter(state({ afflictions: { ...EMPTY_CHARACTER.afflictions, blind: 'yes' } }));
+    expect(runner.progress).toMatchObject({ status: 'running', hold: 'blind' });
+    expect(notices).toContain(t('automation.loops.afflicted'));
+    vi.advanceTimersByTime(5_000);
+    expect(walked.length).toBe(legs);
+    runner.onCharacter(state());
+    expect(runner.progress.hold).toBeNull();
+    expect(notices).toContain(t('automation.loops.afflictionOver'));
+  });
+
+  it('walks on blind when the movement block says so', () => {
+    const { planner: p } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure(DEFAULT_CONFIG.automation.health, {
+      ...DEFAULT_CONFIG.automation.movement,
+      walkWhileBlind: true
+    });
+    runner.start(loop, state());
+    runner.onCharacter(state({ afflictions: { ...EMPTY_CHARACTER.afflictions, blind: 'yes' } }));
+    expect(runner.progress.hold).toBeNull();
+  });
+});
+
+/*
+ * MegaMUD's `MinExpRate`: a lap that has stopped working looks exactly like one
+ * that is working for as long as nobody is watching. Judged after the grace,
+ * from an anchor that moves on start, resume and coming back online, so the
+ * walk out of town and an hour offline are not the measurement.
+ */
+describe('the experience floor', () => {
+  const walkWith = (minExpPerHour: number) => ({
+    ...DEFAULT_CONFIG.automation.walk,
+    minExpPerHour
+  });
+  const earned = (exp: number) => state({ progress: { ...EMPTY_CHARACTER.progress, exp } });
+  const GRACE = DEFAULT_INTERNAL.tuning.loop.expRateGraceMs;
+
+  it('stops the lap out loud once the rate has fallen under the floor, after the grace', () => {
+    let clock = 1_000_000;
+    const { planner: p } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) }, () => clock);
+    runner.configure(
+      DEFAULT_CONFIG.automation.health,
+      DEFAULT_CONFIG.automation.movement,
+      walkWith(1000)
+    );
+    runner.start(loop, earned(5000));
+    // Under the floor but inside the grace: the walk out of town is not the measurement.
+    clock += GRACE / 2;
+    runner.onCharacter(earned(5050));
+    expect(runner.progress.status).toBe('running');
+    // Past the grace at 50 experience in the time: far under 1000 an hour.
+    clock += GRACE;
+    runner.onCharacter(earned(5050));
+    expect(runner.progress.status).toBe('stopped');
+    expect(runner.progress.reason).toContain('1000');
+    expect(notices.some((line) => line.includes('1000'))).toBe(true);
+  });
+
+  it('leaves a lap alone with no floor, or while the rate holds', () => {
+    let clock = 1_000_000;
+    const { planner: p } = planner();
+    const off = new LoopRunner(p, {}, () => clock);
+    off.configure(
+      DEFAULT_CONFIG.automation.health,
+      DEFAULT_CONFIG.automation.movement,
+      walkWith(0)
+    );
+    off.start(loop, earned(5000));
+    clock += GRACE * 2;
+    off.onCharacter(earned(5000));
+    expect(off.progress.status).toBe('running');
+
+    const earning = new LoopRunner(planner().planner, {}, () => clock);
+    earning.configure(
+      DEFAULT_CONFIG.automation.health,
+      DEFAULT_CONFIG.automation.movement,
+      walkWith(1000)
+    );
+    earning.start(loop, earned(5000));
+    clock += GRACE * 2;
+    // Two grace periods at 30 minutes each is an hour: 5,000 made is 5,000 an hour.
+    earning.onCharacter(earned(10_000));
+    expect(earning.progress.status).toBe('running');
+  });
+
+  /* Unread is never low. */
+  it('judges nothing while the experience figure has never been read', () => {
+    let clock = 1_000_000;
+    const runner = new LoopRunner(planner().planner, {}, () => clock);
+    runner.configure(
+      DEFAULT_CONFIG.automation.health,
+      DEFAULT_CONFIG.automation.movement,
+      walkWith(1000)
+    );
+    runner.start(loop, state());
+    clock += GRACE * 2;
+    runner.onCharacter(state());
+    expect(runner.progress.status).toBe('running');
   });
 });

@@ -361,7 +361,17 @@ export type LoopStatus = 'idle' | 'running' | 'paused' | 'stopped';
  * be back in the realm and placed before planning on from there. Null is a
  * loop that is walking or dwelling as planned.
  */
-export type LoopHold = 'fight' | 'health' | 'retreated' | 'errand' | 'offline' | null;
+export type LoopHold =
+  | 'fight'
+  | 'health'
+  | 'retreated'
+  | 'errand'
+  | 'offline'
+  /** Waiting out a stated affliction before the next leg — see `afflictionHolding` in `walk.ts`. */
+  | 'blind'
+  | 'held'
+  | 'poisoned'
+  | null;
 
 export interface LoopProgress {
   status: LoopStatus;

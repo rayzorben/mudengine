@@ -12,6 +12,7 @@ import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
 import type { AlignmentCost, MobDisposition } from './mobs';
+import type { Verdict } from './verdict';
 
 /** The ten directions the game uses. */
 export type Direction = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'u' | 'd';
@@ -666,6 +667,16 @@ export interface WorldLookup {
   learned?: Record<string, MobLoreEntry>;
   /** What this character's own fight record says about each monster named, where it says anything. */
   fights?: Record<string, FightSummary>;
+  /**
+   * *Can I fight this?* — each monster named, weighed against the character as
+   * it stands right now: what it costs to leave standing, what it costs to
+   * kill, and the health the fight is expected to take. By the monster's
+   * name. The same `Verdict` auto-combat ranks on, so the card and the engine
+   * cannot disagree; absent for a query that named no monster, and a monster
+   * the realm cannot weigh has a verdict whose halves are null rather than no
+   * key, because *unknown* is an answer the card draws.
+   */
+  verdicts?: Record<string, Verdict>;
   /**
    * Where each shop named in a returned item's `Sold by` row is, by the shop's
    * name lower-cased.

@@ -4,9 +4,14 @@ import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
 import { Walker } from '../Walker';
 import { DEFAULT_CONFIG } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  NO_AFFLICTIONS,
+  type Afflictions,
+  type CharacterState
+} from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
-import type { AutomationConfig } from '../../../shared/config';
+import type { AutomationConfig, MovementConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
@@ -15,7 +20,7 @@ const TUNING = DEFAULT_INTERNAL.tuning;
 const config: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
   pacing: { window: 4, minGapMs: 0, ackTimeoutMs: 1000 },
-  walk: { stepTimeoutMs: 5000, clearAfterSeconds: 15 }
+  walk: { stepTimeoutMs: 5000, clearAfterSeconds: 15, minExpPerHour: 0 }
 };
 
 /** Three rooms in a line: 1/1 -e-> 1/2 -e-> 1/3. */
@@ -2384,5 +2389,76 @@ describe('what a walk still owes across a lost connection', () => {
   it('a walk whose owner plans it again is not offered back', () => {
     expect(walker.start(ROUTE, at(1, 1), { resumeAfterLoss: false })).toBeNull();
     expect(walker.journey).toBeNull();
+  });
+});
+
+/*
+ * Conditions as waits — MegaMUD's `IgnoreBlind` / `IgnorePoison` defaults,
+ * which wait the condition out before the script goes on. A blind character
+ * cannot read the room it walks into; a held one is refused the step outright.
+ * On the health hold's own terms: a hold, not an ending, re-asked on the beat.
+ */
+describe('waiting out a condition', () => {
+  const afflicted = (over: Partial<Afflictions>): CharacterState => {
+    const state = at(1, 1);
+    state.afflictions = { ...NO_AFFLICTIONS, ...over };
+    return state;
+  };
+  const walkerWith = (movement: Partial<MovementConfig>) => {
+    let current = at(1, 1);
+    const walk = new Walker({ ...config, movement: { ...config.movement, ...movement } }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => current
+    });
+    return {
+      walk,
+      become: (state: CharacterState) => {
+        current = state;
+      }
+    };
+  };
+
+  it('holds the step while blind, and walks on when sight returns', async () => {
+    const { walk, become } = walkerWith({});
+    expect(walk.start(ROUTE, afflicted({ blind: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.status).toBe('walking');
+    expect(walk.progress.hold).toBe('blind');
+    expect(notices).toContain(t('automation.walk.holdingBlind'));
+    become(afflicted({ blind: 'no' }));
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERNAL.tuning.walk.holdMs + 600);
+    expect(walk.progress.hold).toBeNull();
+    expect(sent).toHaveLength(1);
+    expect(notices).toContain(t('automation.walk.afflictionResumed'));
+    walk.dispose();
+  });
+
+  it('walks on blind when told to', async () => {
+    const { walk } = walkerWith({ walkWhileBlind: true });
+    expect(walk.start(ROUTE, afflicted({ blind: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sent).toHaveLength(1);
+    expect(walk.progress.hold).toBeNull();
+    walk.dispose();
+  });
+
+  /* No switch for paralysis: a step while held is a command spent to be refused. */
+  it('always waits while held, whatever the switches say', async () => {
+    const { walk } = walkerWith({ walkWhileBlind: true, walkWhilePoisoned: true });
+    expect(walk.start(ROUTE, afflicted({ held: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('held');
+    walk.dispose();
+  });
+
+  /* Unknown is not yes: nobody having said the character is blind is not a reason to stand still. */
+  it('does not hold on a condition nobody has stated', async () => {
+    const { walk } = walkerWith({});
+    expect(walk.start(ROUTE, afflicted({}))).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sent).toHaveLength(1);
+    walk.dispose();
   });
 });

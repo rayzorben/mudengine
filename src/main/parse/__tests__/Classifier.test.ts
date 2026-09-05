@@ -269,6 +269,17 @@ describe('combat', () => {
       expectType('Your fists have no effect against this golem!', 'attack-ineffective')['weapon']
     ).toBe('fists');
   });
+
+  /* The server composes three spellings (`Player.cs:5919`, `:6195`, `:6249`);
+     two are in the corpus. The target is read where there is one; the spell is
+     never named, which is why `AutoCombat` keeps the cast it proposed. */
+  it('reads a spell that has no effect, in all three of the server’s spellings', () => {
+    expect(
+      expectType('Your spell has no effect on adult red dragon.', 'spell-ineffective')['target']
+    ).toBe('adult red dragon');
+    expectType('Your spell has no effect against this monster!', 'spell-ineffective');
+    expectType('Your spell has no effect in this room!', 'spell-ineffective');
+  });
 });
 
 /*
@@ -410,6 +421,10 @@ describe('conversation, movement, items', () => {
   it('reads movement failures', () => {
     expectType('There is no exit in that direction!', 'direction-failed');
     expectType('The door is closed in that direction!', 'direction-failed');
+    // A refused *look* is not a refused move: the walker acts on the other one.
+    expect(expectType('There are no exits to the south!', 'peek-failed')['direction']).toBe(
+      'south'
+    );
     expect(expectType('You hear movement to the north.', 'heard-movement')['direction']).toBe(
       'north'
     );

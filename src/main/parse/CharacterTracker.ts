@@ -1459,10 +1459,16 @@ export class CharacterTracker {
     const moved = reduced !== null && leftRoom(before.room, reduced.room);
     // A quotation and a vault both belong to the room they were given in.
     if (moved) this.vault = null;
-    const next =
+    let next =
       reduced !== null && reduced.shopListing !== null && moved
         ? { ...reduced, shopListing: null }
         : reduced;
+    // And so does what other people were fighting: a monster spoken for in the
+    // room just left says nothing about the one this room lists under the
+    // same name.
+    if (next !== null && moved && Object.keys(next.combat.claimed).length > 0) {
+      next = { ...next, combat: { ...next.combat, claimed: {} } };
+    }
     /*
      * The player registry is folded *after* the reducer and from the state it
      * produced, so it needs no case of its own among the 74 — see
@@ -2400,6 +2406,18 @@ export class CharacterTracker {
         return null;
 
       /*
+       * A look down an exit the server would not describe — `There are no
+       * exits to the south!`. The peek it answers is consumed and nothing
+       * moves, exactly as a refused direction consumes its move: left queued,
+       * the peek answered the *next* room block, which was a real move's, and
+       * the character stayed filed in the room it had walked out of. See
+       * `Expectations.shiftPeekRefused` for the capture and the bound.
+       */
+      case 'peek-failed':
+        this.expect.shiftPeekRefused();
+        return null;
+
+      /*
        * `You may not do that while you are mortally wounded!` — the server
        * refusing whatever was sent, without naming it.
        *
@@ -2789,10 +2807,36 @@ export class CharacterTracker {
           // the name parsed last time: `pro` states a location and no name at
           // all, so comparing parsed names would fail on the very first look
           // after asking — which is the case this exists for.
+          /*
+           * And the printed exits have to be consistent with standing there,
+           * because the name alone is blind: 83.85% of this realm's edges lead
+           * to a room with the origin's name, so a block arriving with no move
+           * on the queue is not therefore a re-look. A move the client *gave
+           * up on* is the case (`Expectations.expire`): the server took 8,175ms
+           * to answer a loop's `w` out of Dark Cave 1/865, the claim lapsed at
+           * `staleMoveMs` on the line before its own answer, and the room that
+           * then arrived — `Dark Cave`, `Obvious exits: east`, which is 1/866 —
+           * was carried forward as 1/865 (exits west, southeast) on the
+           * strength of its name. Every idle reprint that night printed the
+           * same exits and re-affirmed the same wrong room, so no later fact
+           * could correct it; the loop planned `w` out of a room whose only
+           * exit is east, was refused three times, and stopped, and the
+           * character stood in the lair until morning
+           * (`2026-09-04_22-01-13_festus.mudcap.jsonl`, t=24430802).
+           *
+           * The test is the same one-sided subset the move guard above makes:
+           * the server can only print exits the realm has, so a block printing
+           * one the anchored room lacks cannot be that room, whatever the name
+           * says. A re-look that fits keeps its certainty; one that does not
+           * falls through to `resolveRoom`'s neighbour rung, which is the rung
+           * for exactly this — something moved the character and no queued
+           * direction says which way.
+           */
           const sameRoomAgain =
             anchor !== undefined &&
             anchor !== null &&
-            anchor.name.trim().toLowerCase() === room.name.trim().toLowerCase();
+            anchor.name.trim().toLowerCase() === room.name.trim().toLowerCase() &&
+            !cannotBe(anchor, exits);
 
           if (sameRoomAgain) {
             room.map = s.room.map;
@@ -4136,9 +4180,12 @@ export class CharacterTracker {
           int(g['damage']) ?? 0
         );
         // A party member's blow on a monster is what the leader is fighting;
-        // a monster's blow on a member is the fight brought to the party.
+        // a monster's blow on a member is the fight brought to the party; and
+        // a stranger's blow on a monster is that monster spoken for.
         const engaged = engagedBy(hit ?? s, g['attacker'], g['target'], block.at) ?? hit;
-        return threatenedBy(engaged ?? s, g['attacker'], g['target'], block.at) ?? engaged;
+        const threatened =
+          threatenedBy(engaged ?? s, g['attacker'], g['target'], block.at) ?? engaged;
+        return claimedBy(threatened ?? s, g['attacker'], g['target'], block.at) ?? threatened;
       }
 
       /*
@@ -4155,6 +4202,7 @@ export class CharacterTracker {
         if (target) next = { ...next, room: this.withOccupant(next, target) };
         next = engagedBy(next, attacker, target, block.at) ?? next;
         next = threatenedBy(next, attacker, target, block.at) ?? next;
+        next = claimedBy(next, attacker, target, block.at) ?? next;
         return next === s ? null : next;
       }
 
@@ -4173,7 +4221,8 @@ export class CharacterTracker {
         // fight — theirs as attacker, or brought to them as target.
         if (!/^you$/i.test(target)) {
           const engaged = engagedBy(s, attacker, target, block.at);
-          return threatenedBy(engaged ?? s, attacker, target, block.at) ?? engaged;
+          const threatened = threatenedBy(engaged ?? s, attacker, target, block.at) ?? engaged;
+          return claimedBy(threatened ?? s, attacker, target, block.at) ?? threatened;
         }
         return this.fight.blowOnMe(s, block.at, attacker);
       }
@@ -4384,6 +4433,56 @@ function engagedBy(
   return {
     ...s,
     party: { ...s.party, engaged: { ...s.party.engaged, [member.name]: { target: mob, at } } }
+  };
+}
+
+/**
+ * Somebody **outside the party** was seen hitting, missing or opening on a
+ * monster: that monster is spoken for, which is the fact `combat.joinFights`
+ * (MegaMUD's *PoliteAttacks*) reads before opening on it.
+ *
+ * The same volunteered sentences `engagedBy` reads, for everybody `engagedBy`
+ * ignores. Never this character, never a party member (theirs is `engaged`,
+ * and joining a member's fight is assisting), and never anything the room
+ * lists as a monster — a monster's blow on a monster is a fight between two
+ * things nobody owns. The target is never a person: a player being hit is
+ * that player's PvP fight, not a claim. An attacker the room has *not* listed
+ * still claims: the sentence names a capitalised somebody swinging at a
+ * monster, and the cost of reading a named NPC as a person is a fight
+ * politely not joined, where the cost of the other error is stealing a kill.
+ * Keyed by `mobKey` of the monster with its article dropped, as
+ * `player-misses` already spells it. Null when nothing changed.
+ */
+function claimedBy(
+  s: CharacterState,
+  attacker: string | undefined,
+  target: string | undefined,
+  at: number
+): CharacterState | null {
+  if (!attacker || !target || /^you$/i.test(attacker) || /^you$/i.test(target)) return null;
+  const who = attacker.trim().replace(/^(?:The|A|An) /, '');
+  const own = s.name?.toLowerCase() ?? null;
+  if (own !== null && who.toLowerCase() === own) return null;
+  if (s.party.members.some((entry) => entry.name.toLowerCase() === who.toLowerCase())) return null;
+  const listed = s.room.occupants.find((there) => there.name.toLowerCase() === who.toLowerCase());
+  if (listed !== undefined && listed.kind === 'mob') return null;
+  const mob = target
+    .trim()
+    .replace(/^(?:The|A|An) /, '')
+    .replace(/[.!]+$/, '');
+  if (
+    s.room.occupants.some(
+      (there) => there.kind === 'player' && there.name.toLowerCase() === mob.toLowerCase()
+    )
+  ) {
+    return null;
+  }
+  const key = mobKey(mob);
+  const held = s.combat.claimed[key];
+  if (held && held.by === who && held.at === at) return null;
+  return {
+    ...s,
+    combat: { ...s.combat, claimed: { ...s.combat.claimed, [key]: { by: who, at } } }
   };
 }
 

@@ -210,7 +210,18 @@ export function accuracy(
     weapon?.strength !== undefined && sheet.strength !== null && weapon.strength > sheet.strength;
   if (heavy) acc -= 15;
 
-  return { value: Math.max(1, acc), from: weapon === null ? 'source' : 'bound' };
+  /*
+   * `source` only when every term is in hand. A weapon may grant accuracy the
+   * client cannot enumerate, and an **unread pack** withholds the light-load
+   * bonus above rather than granting it — so either makes this a floor, and a
+   * floor is a `bound`. Measured 2026-09-05 (`npm run probe:statall`): with the
+   * pack unread the client said 30 where the server printed 45, and the 15 it
+   * was short was exactly the bonus it had rightly withheld.
+   */
+  return {
+    value: Math.max(1, acc),
+    from: weapon === null && enc !== null ? 'source' : 'bound'
+  };
 }
 
 /**
@@ -261,16 +272,32 @@ export function dodgedFraction(dodgeValue: number | null, accuracyValue: number)
 }
 
 /**
- * How many blows a round buys — `CalcEnergyUsed`, `Player.cs:5503`, against the
- * 1,000 energy a round grants.
+ * How many blows a round buys — `PlayerAttackType.Swings`, which is
+ * `CalcEnergyUsedWithEncum` (`Player.cs:5520`) against the 1,000 energy a
+ * round grants, **rounded to three decimals and never floored**:
  *
- *     energy  = Speed * 1000 / ((((level * (combat + 2)) + 45) * (AGI + 150)) * 1500 / 9000)
- *     energy *= ((StrReq - STR) * 3 + 200) / 200      only while STR < StrReq
- *     energy *= (enc% / 2 + 75) / 100
+ *     energy  = Speed * 1000 div ((((level * CombatLVL) + 45) * (AGI + 150)) * 1500 div 9000)
+ *     energy  = ((StrReq - STR) * 3 + 200) * energy div 200      only while STR < StrReq
+ *     energy  = energy * (enc% div 2 + 75) div 100
+ *     swings  = round(1000 / energy, 3)
  *
- * At least one: a round always buys a swing, however slow the weapon, because
- * the server's loop spends energy it has and this client must not report a
- * character that cannot attack at all.
+ * Integer division throughout, in the server's order. Three things a first
+ * transcription got wrong and the wire corrected (`npm run probe:statall`,
+ * 2026-09-05, the first `stat all` this client ever captured):
+ *
+ * - **The combat term is `level × CombatLVL`**, not `level × (CombatLVL + 2)`.
+ *   `CalcEnergyUsed` does add two — and its only caller hands it
+ *   `CharClass.CombatLevel − 2` (`PlayerAttackType.cs:512`), so the two cancel.
+ *   The notes in docs/greatermud/player-and-world.md recorded the routine and
+ *   not its caller.
+ * - **Swings are a fraction.** The sheet printed `1.842` for the attack and
+ *   `0.921` for the bash, and the server's own average-per-round multiplies by
+ *   that fraction (`dmg * Swings`, capped at `Misc.maxSwings`, six). A whole
+ *   number here understated a 1.842-swing character by nearly half and
+ *   carried `source` while doing it; the floor of one was wrong in the other
+ *   direction, for a bash that swings less than once a round.
+ * - **An unread pack is taken as full**, the fewest swings, so the answer is
+ *   then a floor and says so.
  */
 export function swingsPerRound(
   sheet: ProwessSheet,
@@ -284,18 +311,29 @@ export function swingsPerRound(
   if (held === null) return null;
   const [level, agility, combat] = held as [number, number, number];
 
-  const divisor = Math.trunc(((level * (combat + 2) + 45) * (agility + 150) * 1500) / 9000);
+  const divisor = Math.trunc(((level * combat + 45) * (agility + 150) * 1500) / 9000);
   if (divisor <= 0) return null;
-  let energy = (speed * 1000) / divisor;
+  let energy = Math.trunc((speed * 1000) / divisor);
   const strReq = weapon?.strength;
   if (strReq !== undefined && sheet.strength !== null && sheet.strength < strReq) {
-    energy *= ((strReq - sheet.strength) * 3 + 200) / 200;
+    energy = Math.trunc((((strReq - sheet.strength) * 3 + 200) * energy) / 200);
   }
-  const enc = sheet.encumbrancePercent ?? 100;
-  energy *= (enc / 2 + 75) / 100;
+  const enc = sheet.encumbrancePercent;
+  const encum = Math.trunc(enc ?? 100);
+  energy = Math.trunc((energy * (Math.trunc(encum / 2) + 75)) / 100);
   if (energy <= 0) return null;
-  return { value: Math.max(1, Math.floor(1000 / energy)), from: 'source' };
+  return {
+    value: Math.round((1000 / energy) * 1000) / 1000,
+    from: enc === null ? 'bound' : 'source'
+  };
 }
+
+/**
+ * The most blows the server will let a round land — `Misc.maxSwings`. The
+ * sheet prints the uncapped figure; the damage loop and the sheet's own
+ * average use `Swings > 6 ? 6 : Swings` (`PlayerAttackType.cs:654`).
+ */
+export const MAX_SWINGS = 6;
 
 /** What a swing is expected to do to one target, and how long the target lasts. */
 export interface Swing {
@@ -377,7 +415,7 @@ export function swing(
   const swings = swingsPerRound(sheet, weapon, family);
   let rounds: Reckoning<number> | null = null;
   if (mean !== null && mean > 0 && target.health !== null && target.health > 0) {
-    const perRound = lands * mean * (swings?.value ?? 1);
+    const perRound = lands * mean * Math.min(MAX_SWINGS, swings?.value ?? 1);
     if (perRound > 0) rounds = { value: target.health / perRound, from: 'bound' };
   }
 

@@ -357,6 +357,35 @@ automation:
     # yourself.
     clearAfterSeconds: 15
 
+    # Experience per hour below which a running loop is stopped -- MegaMUD's
+    # MinExpRate with LogoffLowExp, both off in its own defaults and off here
+    # (0). A lap that has stopped working -- the lair empty tonight, a door
+    # shut, a monster that no longer dies -- looks exactly like one that is
+    # working for as long as nobody is watching, which unattended is all night.
+    # Measured over the lap since it started (or resumed, or came back online)
+    # and judged only after `tuning.loop.expRateGraceMs` in internal.yaml, so
+    # the walk out of town is not the measurement. Stopped out loud with both
+    # figures; the tab reads `stopped`. MegaMUD logs off instead, which this
+    # client does not do on its own.
+    minExpPerHour: 0
+
+  # Away from keyboard -- MegaMUD's AutoAfk, AfkTimeout and AfkReply.
+  #
+  # The whole point of an unattended character is that nobody is there, and
+  # the one thing the realm's other players cannot see is that. A telepath to
+  # a character that never answers reads as rude, or as a bot to report; a
+  # reply saying you are away is what a person would leave. Once nothing has
+  # been typed into this character for `afterMinutes`, an incoming telepath is
+  # answered with `reply` -- once per sender every ten minutes
+  # (`tuning.afk.replyEveryMs`), never for an `@` command, which `remotes:`
+  # answers instead. Off by default where MegaMUD's is on: telepathing
+  # strangers unasked is something to opt into. The reply is MegaMUD's own
+  # frame, which other MegaMUD clients recognise; say anything you like.
+  afk:
+    enabled: false
+    afterMinutes: 5
+    reply: '{AFK}'
+
   # What a planned route is allowed to do on the way -- MegaMUD's Movement.
   #
   # `walk:` above is the *timing* of a route and belongs to the walker; these
@@ -418,6 +447,18 @@ automation:
     provideLight: true
     lightDimRooms: false
     extinguishInLight: true
+
+    # Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
+    # defaults (0) wait the condition out before the script goes on. Off, a
+    # route or a loop stands still while the server says the character is
+    # blind or poisoned, and walks on when it says the condition has passed;
+    # the card and the tab say which condition it is waiting out. A blind
+    # character cannot read the room it walks into and misses every swing.
+    # Paralysis always holds -- a step while held is a command spent to be
+    # refused -- and disease is left to the cure. A cure spell under `spells:`
+    # ends the wait sooner.
+    walkWhileBlind: false
+    walkWhilePoisoned: false
 
   # Keeping the pack stocked -- MegaMUD's Must Have Minimum.
   #
@@ -809,6 +850,24 @@ automation:
     areaMinMobs: 3
     areaMinMana: 0.35
 
+    # The spell cast instead of `attack` for the rest of a fight once the
+    # server says `Your spell has no effect on <monster>.` -- MegaMUD's
+    # AttackSpl2 with FailoverSpellAttacks. The monster is immune, and
+    # without this a caster on a loop paid for the same spell every round of
+    # every such fight, all night, for nothing. Blank means none: the round
+    # attacks carry the fight, and the refusal is said once.
+    attackFallback: ''
+
+    # How many times the round spell (or its fallback) is cast per target,
+    # and the same for the area spell -- MegaMUD's MaxCastCnt / MultCastCnt.
+    # 0 is no limit. MegaMUD's own default is 1: open with the spell, then let
+    # the melee round carry the fight, which is what a caster with a small
+    # pool wants for a night's grinding. Counted on the server's confirmation
+    # (a cast that fizzles is not one), and a new target starts the count
+    # again.
+    attackCasts: 0
+    areaCasts: 0
+
     # Heal if below -- MegaMUD's Health tab, kept beside the attack spell
     # because it is the same mechanism: one cast, chosen by a number, under
     # the same `minMana` floor.
@@ -919,6 +978,15 @@ automation:
     # every limit below.
     retaliate: true
 
+    # Open on a monster somebody outside your party is already fighting --
+    # MegaMUD's PoliteAttacks, inverted so that `true` keeps what the client
+    # did before the setting existed (MegaMUD's own default joins). `false` is
+    # polite: a monster a stranger was seen swinging at in the last minute is
+    # left to them, and the trace says whose it was. Stealing a kill is rude
+    # everywhere and on a PvP realm it is an invitation. A party member's
+    # fight is never a claim -- joining that is assisting, under `party:`.
+    joinFights: true
+
     # What to open a fight with, when nothing has touched you yet.
     #
     #   none      only hit back
@@ -955,6 +1023,16 @@ automation:
     # 0 never refuses. MegaMUD calls this Max Monsters, and it is the cheapest
     # place to decline being swarmed: a health threshold notices too late.
     maxMobs: 0
+
+    # Do not open on a monster whose fight is expected to cost more than this
+    # share of your *current* health -- the one preference the "can I fight
+    # this?" verdict leaves to you. The figure is the same one the Room and
+    # Reference cards draw, an upper bound from the realm's own arithmetic, so
+    # what the card calls a bad fight the engine declines, with both figures
+    # in the trace. A monster the realm cannot cost is not refused by this:
+    # unknown is not expensive, and refusing it would make auto-combat useless
+    # on a lineage whose arithmetic the client does not have. 0 never refuses.
+    maxFightCost: 0
 
     # Open fights while walking a planned route.
     #
@@ -1085,6 +1163,13 @@ automation:
 
       # Fraction of maximum health below which you run.
       belowHealth: 0.3
+
+      # Also run below this fraction of maximum mana -- MegaMUD's ManaRun%. A
+      # caster out of mana is losing whatever the health bar says: the next
+      # round lands nothing and the one after is the monster's. 0 never runs
+      # for mana (MegaMUD's own default); a class with no pool is never judged
+      # by it.
+      belowMana: 0
 
       # Also run when this many things are hitting you at once, at any health.
       # 0 never does. Being fought by three things is the situation a health

@@ -1296,6 +1296,24 @@ describe('running away', () => {
     expect(notices.find((notice) => RAN.test(notice))).toMatch(/attackers/);
   });
 
+  /* MegaMUD's ManaRun%: a caster with an empty pool is losing whatever the
+     health bar says. The prompt states both figures, and the mana one is the
+     trigger here — the health stays full throughout. */
+  it('runs when mana falls under its floor, whatever the health says', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, undefined, escaping({ belowMana: 0.2 }));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write(ROOM);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=100/100,MA=5/50]:\r\n');
+
+    await until(() => notices.some((notice) => RAN.test(notice)));
+    expect(notices.find((notice) => RAN.test(notice))).toMatch(/mana at 10%/);
+  });
+
   it('does not count one attacker as being outnumbered', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping({ whenOutnumbered: 2 }));

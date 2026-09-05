@@ -491,6 +491,20 @@ function walkChip(walk: WalkProgress) {
   if (walk.status === 'walking' && walk.hold === 'fight') {
     return <span className="chip bad">{t('cards.navigation.loop.statusFighting')}</span>;
   }
+  /*
+   * Waiting out what the server said is on the character. `warn`, unlike the
+   * two holds above: a condition is something somebody may want to come and
+   * cure, where resting and fighting are the lap going as planned.
+   */
+  if (walk.status === 'walking' && walk.hold === 'blind') {
+    return <span className="chip warn">{t('cards.navigation.loop.statusBlind')}</span>;
+  }
+  if (walk.status === 'walking' && walk.hold === 'held') {
+    return <span className="chip warn">{t('cards.navigation.loop.statusHeld')}</span>;
+  }
+  if (walk.status === 'walking' && walk.hold === 'poisoned') {
+    return <span className="chip warn">{t('cards.navigation.loop.statusPoisoned')}</span>;
+  }
   if (walk.status === 'walking') {
     return (
       <span className="chip">
@@ -551,6 +565,17 @@ function loopChip(loop: LoopProgress) {
   // thing every hold on this card exists to prevent.
   if (loop.status === 'running' && loop.hold === 'errand') {
     return <span className="chip info">{t('cards.navigation.loop.statusErrand')}</span>;
+  }
+  // Waiting out a stated affliction before the next leg; `warn` for the
+  // reason the walk's own chip gives — a condition may want curing.
+  if (loop.status === 'running' && loop.hold === 'blind') {
+    return <span className="chip warn">{t('cards.navigation.loop.statusBlind')}</span>;
+  }
+  if (loop.status === 'running' && loop.hold === 'held') {
+    return <span className="chip warn">{t('cards.navigation.loop.statusHeld')}</span>;
+  }
+  if (loop.status === 'running' && loop.hold === 'poisoned') {
+    return <span className="chip warn">{t('cards.navigation.loop.statusPoisoned')}</span>;
   }
   if (loop.status === 'running') {
     return <span className="chip on">{t('cards.navigation.loop.statusRunning')}</span>;

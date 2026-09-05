@@ -241,6 +241,15 @@ export type BlockType =
    * damage lines that would otherwise say so never arrive.
    */
   | 'attack-ineffective'
+  /**
+   * A spell that landed and did nothing — `Your spell has no effect on <name>.`,
+   * `… against this monster!`, `… in this room!` (`Player.cs:5919`, `:6195`,
+   * `:6249`; captures/041, 059, 078, 105). The spell is never named: what was
+   * cast is the command that provoked it, which `AutoCombat` keeps, and that
+   * is what lets it fall through to `spells.attackFallback` rather than pay
+   * for the same immune spell every round for the rest of the fight.
+   */
+  | 'spell-ineffective'
   | 'user-gain-experience'
   /**
    * `<Name> moves to attack you!` — a player opening on this character, and
@@ -357,6 +366,15 @@ export type BlockType =
   // movement
   | 'comms-throttled'
   | 'direction-failed'
+  /**
+   * `There are no exits to the south!` — a *look* down a direction the server
+   * would not describe: a wall, or a hidden, text or remote-action exit. The
+   * look path's refusal and never the move path's (that one is
+   * `direction-failed`), which is why it is its own type: `Walker` acts on a
+   * refused direction as its step being refused, and a player's look during a
+   * walk is not. The tracker consumes the peek it answers.
+   */
+  | 'peek-failed'
   | 'bash-failed'
   | 'heard-movement'
   /**
@@ -680,6 +698,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'mob-wounded': 'combat',
   'attack-refused': 'combat',
   'attack-ineffective': 'combat',
+  'spell-ineffective': 'combat',
   'user-gain-experience': 'combat',
   'player-attacks': 'combat',
   'player-misses': 'combat',
@@ -714,6 +733,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
 
   'comms-throttled': 'failure',
   'direction-failed': 'movement',
+  'peek-failed': 'failure',
   'bash-failed': 'movement',
   'heard-movement': 'movement',
   'door-changed': 'movement',

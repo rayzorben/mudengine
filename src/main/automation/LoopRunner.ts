@@ -47,7 +47,14 @@ export { NO_LOOP, type LoopProgress, type LoopStatus };
 import { t } from '../app/i18n';
 import { fightIsRunning } from './Walker';
 import type { CharacterState } from '../../shared/character';
-import { DEFAULT_CONFIG, resumeAtHealth, type HealthConfig } from '../../shared/config';
+import {
+  DEFAULT_CONFIG,
+  resumeAtHealth,
+  type HealthConfig,
+  type MovementConfig,
+  type WalkConfig
+} from '../../shared/config';
+import { afflictionHolding } from '../../shared/walk';
 import type { RoomId, Route } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
@@ -135,6 +142,26 @@ export class LoopRunner {
   /** Holding for health; see `health.restBelow`. */
   private hurt = false;
   /**
+   * Holding for a stated affliction — blind, held or poisoned — between legs;
+   * see `afflictionHolding`. The walker holds the step *within* a leg on the
+   * same predicate, so the two cannot disagree about whether to move.
+   */
+  private afflicted: 'blind' | 'held' | 'poisoned' | null = null;
+  private movement: MovementConfig = DEFAULT_CONFIG.automation.movement;
+  private walk: WalkConfig = DEFAULT_CONFIG.automation.walk;
+  /**
+   * Where the experience rate is measured from, for `walk.minExpPerHour` —
+   * the lap's start, its resume, or its return from a lost connection,
+   * whichever was last. Its own anchor rather than `startedAt` / `expAtStart`,
+   * which the card draws as *running for* and *experience made* over the
+   * whole lap: an hour offline would otherwise read as an hour at no
+   * experience and stop a lap that was working. Null while the figure the
+   * rate needs has never been read.
+   */
+  private rateSince: { at: number; exp: number } | null = null;
+  /** Set by `noteOnline`, which has no state to anchor on; the next `onCharacter` does it. */
+  private reanchor = false;
+  /**
    * Holding because the character ran away; see `noteEscaped`.
    *
    * Its own flag rather than `hurt`, because the two clear on different facts:
@@ -186,8 +213,14 @@ export class LoopRunner {
   ) {}
 
   /** Applies a config load or reload. Takes effect on the next status line. */
-  configure(health: HealthConfig): void {
+  configure(
+    health: HealthConfig,
+    movement: MovementConfig = this.movement,
+    walk: WalkConfig = this.walk
+  ): void {
     this.health = health;
+    this.movement = movement;
+    this.walk = walk;
   }
 
   get progress(): LoopProgress {
@@ -212,11 +245,13 @@ export class LoopRunner {
             ? 'fight'
             : this.hurt
               ? 'health'
-              : this.escaped
-                ? 'retreated'
-                : this.errand
-                  ? 'errand'
-                  : null
+              : this.afflicted !== null
+                ? this.afflicted
+                : this.escaped
+                  ? 'retreated'
+                  : this.errand
+                    ? 'errand'
+                    : null
         : null,
       startedAt: this.startedAt,
       expAtStart: this.expAtStart,
@@ -234,6 +269,7 @@ export class LoopRunner {
     this.failures = 0;
     this.locates = 0;
     this.hurt = false;
+    this.afflicted = null;
     this.escaped = false;
     this.offline = false;
     this.forward = true;
@@ -256,6 +292,7 @@ export class LoopRunner {
     // Null stays null: experience made is only ever a difference between two
     // numbers the client had, never a difference from zero.
     this.expAtStart = state.progress.exp;
+    this.anchorRate(state);
     // From the stop nearest to hand: starting at the top of the list would
     // walk the character back past everything it is standing next to.
     this.index = this.nearestStop();
@@ -314,9 +351,36 @@ export class LoopRunner {
     this.escaped = false;
     // And outranks an errand: whoever owns it hears the walk superseded.
     this.errand = false;
+    // A pause of any length is not a lap earning nothing.
+    this.anchorRate(state);
     this.events.notice?.(t('automation.loops.resumed'));
     this.publish();
     return this.advance(false);
+  }
+
+  /** Starts the experience-rate measurement over from this moment. See `rateSince`. */
+  private anchorRate(state: CharacterState): void {
+    this.rateSince =
+      state.progress.exp === null ? null : { at: this.now(), exp: state.progress.exp };
+  }
+
+  /**
+   * Whether the lap's experience rate has fallen under `walk.minExpPerHour` —
+   * MegaMUD's `MinExpRate`, judged only once `tuning.loop.expRateGraceMs` has
+   * passed since the anchor, because the first minutes of any lap are the walk
+   * to the first lair. Returns the rate when it has, and null otherwise; an
+   * unread experience figure is never a low one.
+   */
+  private rateUnderFloor(state: CharacterState): number | null {
+    const floor = this.walk.minExpPerHour;
+    if (floor <= 0 || this.status !== 'running') return null;
+    const anchor = this.rateSince;
+    const exp = state.progress.exp;
+    if (anchor === null || exp === null) return null;
+    const elapsed = this.now() - anchor.at;
+    if (elapsed < tuning().loop.expRateGraceMs) return null;
+    const rate = ((exp - anchor.exp) * 3_600_000) / elapsed;
+    return rate < floor ? rate : null;
   }
 
   /**
@@ -383,11 +447,13 @@ export class LoopRunner {
     this.waiting = false;
     this.lingering = false;
     this.hurt = false;
+    this.afflicted = null;
     this.escaped = false;
     this.errand = false;
     this.offline = false;
     this.startedAt = null;
     this.expAtStart = null;
+    this.rateSince = null;
     this.publish();
   }
 
@@ -460,6 +526,9 @@ export class LoopRunner {
     this.offline = false;
     if (this.status !== 'running') return;
     this.locates = 0;
+    // An hour offline is not an hour at no experience: the rate starts over
+    // from the first state that arrives back in the realm.
+    this.reanchor = true;
     /*
      * A dwell the loss interrupted gets its timer back for whatever is left
      * of it. `noteOffline` put the timer down, and `onCharacter` only ends a
@@ -659,6 +728,10 @@ export class LoopRunner {
       this.stop(t('automation.loops.reasonLeftRealm'));
       return;
     }
+    if (this.reanchor) {
+      this.reanchor = false;
+      this.anchorRate(state);
+    }
     // A hold is a fact the card draws, so its edges are published; the value
     // itself changes once per fight, not once per status line.
     /*
@@ -680,6 +753,44 @@ export class LoopRunner {
       // Fighting is the point; nothing to decide until it is over.
       this.waiting = true;
       return;
+    }
+    /*
+     * A lap that has stopped working looks exactly like one that is working
+     * for as long as nobody is watching. Judged after the fight, so a kill in
+     * progress is finished, and before the holds, because a lap resting for
+     * an hour under `restBelow` at no experience is the case this exists for.
+     */
+    const rate = this.rateUnderFloor(state);
+    if (rate !== null) {
+      this.stop(
+        t('automation.loops.reasonLowExp', {
+          rate: Math.round(rate),
+          floor: this.walk.minExpPerHour
+        })
+      );
+      return;
+    }
+    /*
+     * A condition the server has stated holds the lap between legs — MegaMUD's
+     * `IgnoreBlind` / `IgnorePoison` defaults. Before the health hold, because
+     * a poisoned character under `restBelow` is resting *and* waiting, and the
+     * chip should say the thing that will still be true when the health is
+     * back. The edge is published and said once each way.
+     */
+    const affliction = afflictionHolding(state.afflictions, this.movement);
+    if (affliction !== null) {
+      if (this.afflicted !== affliction) {
+        if (this.afflicted === null) this.events.notice?.(t('automation.loops.afflicted'));
+        this.afflicted = affliction;
+        this.waiting = true;
+        this.publish();
+      }
+      return;
+    }
+    if (this.afflicted !== null) {
+      this.afflicted = null;
+      this.events.notice?.(t('automation.loops.afflictionOver'));
+      this.publish();
     }
     const fraction =
       state.vitals.hp !== null && state.vitals.hpMax ? state.vitals.hp / state.vitals.hpMax : null;

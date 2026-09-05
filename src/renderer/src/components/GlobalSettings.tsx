@@ -533,6 +533,15 @@ export default function GlobalSettings({
               automation({ combat: { ...draft.automation.combat, retaliate: value } })
             }
           />
+          <CheckField
+            checked={draft.automation.combat.joinFights}
+            hint={t('settings.combat.joinFightsHint')}
+            label={t('settings.combat.joinFights')}
+            name="global-join-fights"
+            onChange={(value) =>
+              automation({ combat: { ...draft.automation.combat, joinFights: value } })
+            }
+          />
 
           <div className="settings-inline">
             <TextField
@@ -596,7 +605,18 @@ export default function GlobalSettings({
                   }
                 })
               }
-              value={draft.automation.combat.maxMobs}
+              value={String(draft.automation.combat.maxMobs)}
+            />
+            <NumberField
+              hint={t('settings.combat.maxFightCostHint')}
+              label={t('settings.combat.maxFightCostLabel')}
+              name="global-max-fight-cost"
+              onChange={(value) =>
+                automation({
+                  combat: { ...draft.automation.combat, maxFightCost: fraction(value) }
+                })
+              }
+              value={percent(draft.automation.combat.maxFightCost)}
             />
             <NumberField
               hint={t('settings.combat.minMobsHint')}
@@ -901,6 +921,17 @@ export default function GlobalSettings({
                 value={percent(draft.automation.retreat.belowHealth)}
               />
               <NumberField
+                hint={t('settings.health.belowManaHint')}
+                label={t('settings.health.belowManaLabel')}
+                name="global-retreat-mana"
+                onChange={(value) =>
+                  automation({
+                    retreat: { ...draft.automation.retreat, belowMana: fraction(value) }
+                  })
+                }
+                value={percent(draft.automation.retreat.belowMana)}
+              />
+              <NumberField
                 hint={t('settings.health.outnumberedHint')}
                 label={t('settings.health.outnumberedLabel')}
                 name="global-outnumbered"
@@ -1033,6 +1064,30 @@ export default function GlobalSettings({
               spells={realmSpells}
               value={draft.automation.spells.attack}
             />
+            <SpellField
+              hint={t('settings.spells.fallbackCastHint')}
+              label={t('settings.spells.fallbackCastLabel')}
+              name="global-spell-fallback"
+              onChange={(value) =>
+                automation({ spells: { ...draft.automation.spells, attackFallback: value } })
+              }
+              spells={realmSpells}
+              value={draft.automation.spells.attackFallback}
+            />
+            <NumberField
+              hint={t('settings.spells.attackCastsHint')}
+              label={t('settings.spells.attackCastsLabel')}
+              name="global-attack-casts"
+              onChange={(value) =>
+                automation({
+                  spells: {
+                    ...draft.automation.spells,
+                    attackCasts: Math.max(0, Number.parseInt(value, 10) || 0)
+                  }
+                })
+              }
+              value={String(draft.automation.spells.attackCasts)}
+            />
             <NumberField
               hint={t('settings.spells.minManaHint')}
               label={t('settings.spells.minManaLabel')}
@@ -1078,6 +1133,20 @@ export default function GlobalSettings({
                 })
               }
               value={percent(draft.automation.spells.areaMinMana)}
+            />
+            <NumberField
+              hint={t('settings.spells.areaCastsHint')}
+              label={t('settings.spells.areaCastsLabel')}
+              name="global-area-casts"
+              onChange={(value) =>
+                automation({
+                  spells: {
+                    ...draft.automation.spells,
+                    areaCasts: Math.max(0, Number.parseInt(value, 10) || 0)
+                  }
+                })
+              }
+              value={String(draft.automation.spells.areaCasts)}
             />
           </div>
           <fieldset className="settings-menus">
@@ -1409,6 +1478,26 @@ export default function GlobalSettings({
                 />
               </>
             )}
+            <CheckField
+              checked={draft.automation.movement.walkWhileBlind}
+              hint={t('settings.movement.walkWhileBlindHint')}
+              label={t('settings.movement.walkWhileBlind')}
+              name="global-walk-while-blind"
+              onChange={(value) =>
+                automation({ movement: { ...draft.automation.movement, walkWhileBlind: value } })
+              }
+            />
+            <CheckField
+              checked={draft.automation.movement.walkWhilePoisoned}
+              hint={t('settings.movement.walkWhilePoisonedHint')}
+              label={t('settings.movement.walkWhilePoisoned')}
+              name="global-walk-while-poisoned"
+              onChange={(value) =>
+                automation({
+                  movement: { ...draft.automation.movement, walkWhilePoisoned: value }
+                })
+              }
+            />
           </fieldset>
 
           <fieldset className="settings-menus">
@@ -1671,6 +1760,26 @@ export default function GlobalSettings({
             picking={picking}
           />
 
+          {/*
+            Not behind Advanced: a floor that stops the lap is a decision about
+            the character's night, not a number with a right answer already.
+          */}
+          <div className="settings-inline">
+            <NumberField
+              hint={t('settings.global.movement.minExpRateHint')}
+              label={t('settings.global.movement.minExpRateLabel')}
+              name="global-min-exp-rate"
+              onChange={(value) =>
+                automation({
+                  walk: {
+                    ...draft.automation.walk,
+                    minExpPerHour: Math.max(0, Number.parseInt(value, 10) || 0)
+                  }
+                })
+              }
+              value={String(draft.automation.walk.minExpPerHour)}
+            />
+          </div>
           <Advanced label={t('settings.global.movement.advancedWalking')}>
             <div className="settings-inline">
               <NumberField
@@ -1862,6 +1971,46 @@ export default function GlobalSettings({
             ]}
             value={draft.ui.alerts.minimum}
           />
+          {/*
+            Beside the alerts, because both are about a player who is not
+            looking: alerts are what they hear about the character, and this
+            is what the character says for them.
+          */}
+          <fieldset className="settings-menus">
+            <legend>{t('settings.afk.legend')}</legend>
+            <div className="settings-inline">
+              <CheckField
+                checked={draft.automation.afk.enabled}
+                hint={t('settings.afk.enabledHint')}
+                label={t('settings.afk.enabled')}
+                name="global-afk-enabled"
+                onChange={(value) =>
+                  automation({ afk: { ...draft.automation.afk, enabled: value } })
+                }
+              />
+              <NumberField
+                hint={t('settings.afk.afterHint')}
+                label={t('settings.afk.afterLabel')}
+                name="global-afk-after"
+                onChange={(value) =>
+                  automation({
+                    afk: {
+                      ...draft.automation.afk,
+                      afterMinutes: Math.max(1, Number.parseInt(value, 10) || 5)
+                    }
+                  })
+                }
+                value={String(draft.automation.afk.afterMinutes)}
+              />
+              <TextField
+                hint={t('settings.afk.replyHint')}
+                label={t('settings.afk.replyLabel')}
+                name="global-afk-reply"
+                onChange={(value) => automation({ afk: { ...draft.automation.afk, reply: value } })}
+                value={draft.automation.afk.reply}
+              />
+            </div>
+          </fieldset>
           <fieldset className="settings-menus">
             <legend>{t('settings.alerts.muteLabel')}</legend>
             <div className="settings-checks">

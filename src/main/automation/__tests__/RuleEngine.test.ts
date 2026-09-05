@@ -390,6 +390,7 @@ describe('guards over the fight', () => {
       health: null,
       lastBlowAt: 1,
       blows: 1,
+      claimed: {},
       ...over
     }
   });

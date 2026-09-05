@@ -88,6 +88,12 @@ describe('accuracy — Player.CalcAccuracy', () => {
     // client, so the figure can only be a floor.
     expect(accuracy(SHEET, null, 'greatermud')?.from).toBe('source');
     expect(accuracy(SHEET, SWORD, 'greatermud')?.from).toBe('bound');
+    // An unread pack withholds the light-load bonus, so unarmed or not the
+    // figure is a floor. Measured: 30 against the server's 45 with the pack
+    // unread, the 15 short being exactly the bonus withheld.
+    expect(accuracy({ ...SHEET, encumbrancePercent: null }, null, 'greatermud')?.from).toBe(
+      'bound'
+    );
   });
 });
 
@@ -126,11 +132,42 @@ describe('what a defender’s dodge turns away', () => {
 });
 
 describe('swings per round — CalcEnergyUsed against 1,000', () => {
-  it('answers a whole number of blows, at least one', () => {
-    const swings = swingsPerRound(SHEET, SWORD, 'greatermud');
-    expect(swings?.from).toBe('source');
-    expect(swings?.value).toBeGreaterThanOrEqual(1);
-    expect(Number.isInteger(swings?.value)).toBe(true);
+  /* By hand, in the server's integer order: divisor trunc((10·4 + 45)(60 +
+     150)·1500 / 9000) = 2975; energy trunc(2,000,000 / 2975) = 672; the pack
+     at 20% makes it trunc(672 · 85 / 100) = 571; 1000 / 571 to three places. */
+  it('answers the server’s own fraction, to three decimals', () => {
+    expect(swingsPerRound(SHEET, { ...SWORD, speed: 2000 }, 'greatermud')).toEqual({
+      value: 1.751,
+      from: 'source'
+    });
+  });
+
+  /* The combat term is level × CombatLVL: the routine adds two and its caller
+     subtracts two first. With the +2 left in, the divisor would be 3675 and
+     the figure 2.165. */
+  it('uses the class’s combat level whole, not plus two', () => {
+    const value = swingsPerRound(SHEET, { ...SWORD, speed: 2000 }, 'greatermud')!.value;
+    expect(value).toBe(1.751);
+    expect(value).not.toBe(2.165);
+  });
+
+  /* An unread pack is taken as full — the fewest swings — so the answer is a
+     floor: trunc(672 · 125 / 100) = 840, and 1000 / 840. */
+  it('takes an unread pack as full and says the answer is a floor', () => {
+    expect(
+      swingsPerRound(
+        { ...SHEET, encumbrancePercent: null },
+        { ...SWORD, speed: 2000 },
+        'greatermud'
+      )
+    ).toEqual({ value: 1.19, from: 'bound' });
+  });
+
+  it('can be less than one, as a bash on the sheet is', () => {
+    // A very slow weapon: energy well over the round's 1,000.
+    const slow = swingsPerRound(SHEET, { ...SWORD, speed: 20000 }, 'greatermud')!;
+    expect(slow.value).toBeLessThan(1);
+    expect(slow.value).toBeGreaterThan(0);
   });
 
   it('gives a slower weapon no more swings than a faster one', () => {

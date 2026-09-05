@@ -25,6 +25,7 @@ import { AutoLoot } from '../automation/AutoLoot';
 import { AutoLight } from '../automation/AutoLight';
 import { Supplies } from '../automation/Supplies';
 import { Remotes } from '../automation/Remotes';
+import { Afk } from '../automation/Afk';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import { Blessings } from '../automation/Blessings';
@@ -89,6 +90,16 @@ import type {
   TerminalSize
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
+import {
+  appraiseRoom,
+  EMPTY_ROOM_VERDICT,
+  prowessSheetOf,
+  roomVerdictKey,
+  weighVerdicts,
+  wieldedWeapon,
+  type RoomVerdict,
+  type Verdict
+} from '../../shared/verdict';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -316,6 +327,11 @@ export interface SessionSink {
    * to pace the stream.
    */
   automation?(snapshot: AutomationSnapshot): void;
+  /**
+   * The room appraised — every monster's verdict and what clearing the room
+   * is expected to cost — on change. The same `Verdict` auto-combat ranks on.
+   */
+  verdict?(appraisal: RoomVerdict): void;
 }
 
 export class SessionManager {
@@ -351,6 +367,8 @@ export class SessionManager {
    * different realm may be a different family.
    */
   private serverFamily: RealmFamily | null = null;
+  /** What the last pushed appraisal drew as, so a status line that moves no figure pushes nothing. */
+  private lastVerdictKey = '';
   /** So the disagreement is stated once a session and not once a block. */
   private familyStated = false;
   private internal: InternalConfig = DEFAULT_INTERNAL;
@@ -544,6 +562,7 @@ export class SessionManager {
   /** Keeping the pack stocked. See `Supplies`. */
   private readonly supplies: Supplies;
   private readonly remotes: Remotes;
+  private readonly afk: Afk;
   private readonly heal: AutoHeal;
   private readonly potions: Potions;
   private readonly cures: Cures;
@@ -883,14 +902,7 @@ export class SessionManager {
        * legitimately differ — see `noteFamily` — and on the shipped
        * configuration they do.
        */
-      () => {
-        const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
-        return {
-          combat: row?.combat ?? null,
-          magery: row?.magery ?? null,
-          family: this.serverFamily
-        };
-      }
+      () => this.realmClass()
     );
 
     /*
@@ -996,6 +1008,14 @@ export class SessionManager {
      * gives a percentage. Off unless the options file says otherwise — it is a
      * channel by which somebody else's typing moves this character.
      */
+    /*
+     * Answering for an absent player: a telepath that arrives after nothing
+     * has been typed here for a while is told so. Reads the same keystrokes
+     * the queue's hold does, and nothing automation sends.
+     */
+    this.afk = new Afk(automation.afk, automation.enabled, this.queue, {
+      notice: (message) => this.sink.notice(message)
+    });
     this.remotes = new Remotes(automation, this.queue, {
       notice: (message) => this.sink.notice(message),
       // What the character is doing, for `@status`, at the moment it is asked.
@@ -1467,6 +1487,7 @@ export class SessionManager {
     this.light.reset();
     this.supplies.reset();
     this.remotes.reset();
+    this.afk.reset();
     this.heal.reset();
     this.potions.reset();
     this.cures.reset();
@@ -1591,6 +1612,8 @@ export class SessionManager {
         this.login.observeCommand(command);
         this.classifier.observeCommand(command);
         this.noteSent(command, 'user');
+        // A person is at the keyboard: the away clock starts over.
+        this.afk.noteAttended();
       } else {
         // The player pressing Return on an empty line reprints the room just
         // as the walker's nudge does, and the block it produces has to be
@@ -1703,6 +1726,9 @@ export class SessionManager {
     const was = this.phaseWas;
     this.phaseWas = state.phase;
     if (was === 'in-game' && state.phase !== 'in-game') this.leftTheRealm();
+    // Entering the realm starts the away clock: a character autoconnected and
+    // never touched is away after the timeout like any other.
+    if (was !== 'in-game' && state.phase === 'in-game') this.afk.noteAttended();
   }
 
   /**
@@ -1813,6 +1839,7 @@ export class SessionManager {
     this.light.reset();
     this.supplies.reset();
     this.remotes.reset();
+    this.afk.reset();
     this.heal.reset();
     this.potions.reset();
     this.cures.reset();
@@ -1926,12 +1953,13 @@ export class SessionManager {
     this.light.configure(automation.movement, automation.enabled);
     this.supplies.configure(automation.supplies, automation.enabled);
     this.remotes.configure(automation);
+    this.afk.configure(automation.afk, automation.enabled);
     this.heal.configure(automation.spells, automation.enabled);
     this.potions.configure(automation.health, automation.enabled);
     this.cures.configure(automation.spells, automation.enabled);
     this.blessings.configure(automation.spells, automation.enabled);
     this.events.configure(automation.events, automation.enabled);
-    this.loops.configure(automation.health);
+    this.loops.configure(automation.health, automation.movement, automation.walk);
     this.rules.load(automation.rules);
     this.login.configure(login);
     this.secret = login.password;
@@ -2268,6 +2296,7 @@ export class SessionManager {
     this.light.onBlock(block, this.tracker.current);
     this.supplies.onBlock(block, this.tracker.current);
     this.remotes.onBlock(block, this.tracker.current);
+    this.afk.onBlock(block, this.tracker.current);
     /*
      * The spellbook ask correcting itself: a wrong-book refusal names the
      * right listing, and a level-up invalidates the one on file.
@@ -2959,12 +2988,23 @@ export class SessionManager {
     const hurt = fraction !== null && fraction <= safety.belowHealth;
     const outnumbered =
       safety.whenOutnumbered > 0 && state.combat.attackers.length >= safety.whenOutnumbered;
-    if (!hurt && !outnumbered) return;
+    /*
+     * MegaMUD's `ManaRun%`: a caster with an empty pool is losing whatever the
+     * health bar says. A null maximum — a class with no pool, or a sheet not
+     * yet read — is never a low one, the rule every threshold here follows.
+     */
+    const { mana, manaMax } = state.vitals;
+    const manaFraction = mana !== null && manaMax !== null && manaMax > 0 ? mana / manaMax : null;
+    const drained =
+      safety.belowMana > 0 && manaFraction !== null && manaFraction <= safety.belowMana;
+    if (!hurt && !outnumbered && !drained) return;
 
     this.lastAskedToEscape = now;
     const why = hurt
       ? t('session.safety.whyHealth', { percent: this.percentText(fraction) })
-      : t('session.safety.whyAttackers', { count: state.combat.attackers.length });
+      : drained
+        ? t('session.safety.whyMana', { percent: this.percentText(manaFraction) })
+        : t('session.safety.whyAttackers', { count: state.combat.attackers.length });
     this.escape(state, why, now);
   }
 
@@ -3597,6 +3637,105 @@ export class SessionManager {
    */
   private publishCharacter(): void {
     this.sink.character(this.tracker.current);
+    this.publishVerdict();
+  }
+
+  /**
+   * The character's own side of the combat arithmetic, for the engine's
+   * ranking and the room's appraisal alike: the realm's `CombatLVL` and
+   * `MageryLVL` for this class — the stat sheet prints neither — and which
+   * lineage's formulas the server runs.
+   *
+   * Read at the point of use rather than captured, because `this.world`
+   * arrives with `useRealm` and the class is not known until a stat sheet
+   * has been read. `serverFamily` and not the realm data's, deliberately:
+   * this decides which *formulas* run, and the formulas are the server's.
+   * The two can legitimately differ — see `noteFamily` — and on the shipped
+   * configuration they do.
+   */
+  private realmClass(): {
+    combat: number | null;
+    magery: number | null;
+    family: RealmFamily | null;
+  } {
+    const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
+    return {
+      combat: row?.combat ?? null,
+      magery: row?.magery ?? null,
+      family: this.serverFamily
+    };
+  }
+
+  /**
+   * *Can I fight this room?* — pushed beside the character, on change.
+   *
+   * Computed here and not in the renderer because three of its inputs live
+   * only in main: the class row, the server's family and the menace prices in
+   * `internal.yaml`. And computed here rather than inside `AutoCombat` because
+   * the answer is owed to a player with automation **off** — the Room card is
+   * for a person deciding whether to open, and the engine's ranking is one
+   * consumer of the same function, not its owner. The key keeps a status line
+   * that moves no drawn figure from costing a push.
+   */
+  private publishVerdict(): void {
+    const appraisal = this.verdict;
+    const key = roomVerdictKey(appraisal);
+    if (key === this.lastVerdictKey) return;
+    this.lastVerdictKey = key;
+    this.sink.verdict?.(appraisal);
+  }
+
+  /** The room as it stands, appraised against the character as it stands. See `appraiseRoom`. */
+  get verdict(): RoomVerdict {
+    const state = this.tracker.current;
+    if (state.phase !== 'in-game' || state.room.occupants.length === 0) return EMPTY_ROOM_VERDICT;
+    const { combat, magery, family } = this.realmClass();
+    return appraiseRoom(
+      state.room.occupants,
+      this.menacePlayer(state),
+      tuning().menace,
+      prowessSheetOf(state, { combat, magery }),
+      wieldedWeapon(state.inventory.items),
+      family
+    );
+  }
+
+  /**
+   * One monster each, by name, for the Reference card's lookup — the same
+   * arithmetic as the room's, run on a room of one, so a monster looked up
+   * from the console reads exactly as it would standing in front of it.
+   *
+   * A name the realm cannot place gets no key: the lookup already answers only
+   * with the realm's own rows, so an unplaceable name here is one the caller
+   * invented rather than one the card will draw.
+   */
+  appraise(names: readonly string[]): Record<string, Verdict> {
+    const state = this.tracker.current;
+    const { combat, magery, family } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery });
+    const weapon = wieldedWeapon(state.inventory.items);
+    const player = this.menacePlayer(state);
+    const verdicts: Record<string, Verdict> = {};
+    for (const name of names) {
+      const entity = this.world?.buildMobEntity(name);
+      if (entity === undefined || entity.source === 'wire') continue;
+      const [verdict] = weighVerdicts([entity], player, tuning().menace, sheet, weapon, family);
+      if (verdict !== undefined) verdicts[name] = verdict;
+    }
+    return verdicts;
+  }
+
+  /** The three sheet figures a monster's blow or cast is measured against. */
+  private menacePlayer(state: CharacterState): {
+    armourClass: number | null;
+    damageResist: number | null;
+    magicRes: number | null;
+  } {
+    return {
+      armourClass: state.progress.armourClass,
+      damageResist: state.progress.damageResist,
+      magicRes: state.progress.magicRes
+    };
   }
 
   /** Applies a partial state update, refreshes negotiation, and publishes. */

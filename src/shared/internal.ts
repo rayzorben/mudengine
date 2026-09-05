@@ -710,7 +710,23 @@ const TUNING_DEFAULTS = {
      * a multiplier: a proportional margin is nothing at all under a low floor,
      * which is the character that most needs the gap.
      */
-    resumeMarginWhenUncapped: 0.1
+    resumeMarginWhenUncapped: 0.1,
+    /**
+     * How long a lap runs before its experience rate is held against
+     * `automation.walk.minExpPerHour`. The first minutes of any lap are the
+     * walk to the first lair, at no experience at all, and a floor judged
+     * then would stop every lap on the way out of town.
+     */
+    expRateGraceMs: 900_000
+  },
+  /** Answering for an absent player; see `automation.afk`. */
+  afk: {
+    /**
+     * How often one sender is told the player is away. A person who telepaths
+     * twice in a minute has been answered once; a reply per line is a client
+     * arguing with them.
+     */
+    replyEveryMs: 600_000
   },
   /**
    * How many commands one press or one `@` may spend.

@@ -167,7 +167,7 @@ export interface GlobalDraft {
     onPartyChange: string;
     idle: { enabled: boolean; afterSeconds: number; command: string };
     pacing: { window: number; minGapMs: number; ackTimeoutMs: number };
-    walk: { stepTimeoutMs: number; clearAfterSeconds: number };
+    walk: { stepTimeoutMs: number; clearAfterSeconds: number; minExpPerHour: number };
     hangUp: ProfileDraft['hangUp'];
     retreat: ProfileDraft['retreat'];
     pvp: ProfileDraft['pvp'];
@@ -180,6 +180,9 @@ export interface GlobalDraft {
       areaAttack: string;
       areaMinMobs: number;
       areaMinMana: number;
+      attackFallback: string;
+      attackCasts: number;
+      areaCasts: number;
       heal: string;
       healPartyWith: string;
       healBelow: number;
@@ -206,6 +209,7 @@ export interface GlobalDraft {
     search: { enabled: boolean; tries: number };
     banking: { autoDeposit: boolean; depositThresholdCopper: number; keepCopper: number };
     remotes: ProfileDraft['remotes'];
+    afk: ProfileDraft['afk'];
     talk: ProfileDraft['talk'];
   };
   /** The loops every character may walk: `global/loops/`. */
@@ -314,6 +318,8 @@ export interface ProfileDraft {
   retreat: {
     enabled: boolean;
     belowHealth: number;
+    /** MegaMUD's `ManaRun%`: also run below this fraction of maximum mana. 0 never. */
+    belowMana: number;
     whenOutnumbered: number;
     strategy: RetreatStrategy;
     safeHavenRoom: string;
@@ -338,7 +344,11 @@ export interface ProfileDraft {
     opener: string;
     engage: EngagePolicy;
     retaliate: boolean;
+    /** Open on a monster a stranger is already fighting. See `CombatConfig`. */
+    joinFights: boolean;
     maxMobs: number;
+    /** Share of current health a fight may be expected to cost before it is declined. 0 never. */
+    maxFightCost: number;
     minHealth: number;
     whileWalking: boolean;
     refreshRounds: number;
@@ -386,6 +396,9 @@ export interface ProfileDraft {
     provideLight: boolean;
     lightDimRooms: boolean;
     extinguishInLight: boolean;
+    /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
+    walkWhileBlind: boolean;
+    walkWhilePoisoned: boolean;
   };
   /**
    * The loops this character walks — `automation.loops`.
@@ -408,6 +421,10 @@ export interface ProfileDraft {
     areaAttack: string;
     areaMinMobs: number;
     areaMinMana: number;
+    /** See `SpellsConfig`: the fallback once the round spell has no effect, and the per-target cast caps. */
+    attackFallback: string;
+    attackCasts: number;
+    areaCasts: number;
     /**
      * The heal, per character.
      *
@@ -446,6 +463,8 @@ export interface ProfileDraft {
    * global switch would make that impossible to express.
    */
   remotes: RemotesDraft;
+  /** `automation.afk` as the form edits it. See `AfkConfig`. */
+  afk: { enabled: boolean; afterMinutes: number; reply: string };
   /** `automation.talk` — what this character learns about other people. */
   talk: TalkDraft;
 }
@@ -599,6 +618,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const spells = isRecord(value['spells']) ? value['spells'] : {};
   const alerts = isRecord(value['alerts']) ? value['alerts'] : {};
   const remotes = isRecord(value['remotes']) ? value['remotes'] : {};
+  const afk = isRecord(value['afk']) ? value['afk'] : {};
 
   return {
     name,
@@ -634,6 +654,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     retreat: {
       enabled: retreat['enabled'] === true,
       belowHealth: Math.min(1, Math.max(0, Number(retreat['belowHealth']) || 0)),
+      belowMana: Math.min(1, Math.max(0, Number(retreat['belowMana']) || 0)),
       whenOutnumbered: Math.min(
         20,
         Math.max(0, Math.trunc(Number(retreat['whenOutnumbered']) || 0))
@@ -662,7 +683,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // The one boolean here that defaults *on*, because it is the one that
       // cannot start a fight: something is already swinging. See `CombatConfig`.
       retaliate: combat['retaliate'] !== false,
+      // Defaults on, like `retaliate`: MegaMUD's own default joins, and a blank
+      // field must not silently make a character stand aside.
+      joinFights: combat['joinFights'] !== false,
       maxMobs: Math.min(20, Math.max(0, Math.trunc(Number(combat['maxMobs']) || 0))),
+      maxFightCost: Math.min(1, Math.max(0, Number(combat['maxFightCost']) || 0)),
       minHealth: Math.min(1, Math.max(0, Number(combat['minHealth']) || 0)),
       whileWalking: combat['whileWalking'] === true,
       // Capped low: every round is a fraction of a second, so a client asked to
@@ -719,6 +744,9 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       bashTries: Math.min(10, Math.max(0, Math.trunc(Number(movement['bashTries']) || 0))),
       sneak: movement['sneak'] === true,
       provideLight: movement['provideLight'] === true,
+      // Off by default, MegaMUD's own: a blank field waits the condition out.
+      walkWhileBlind: movement['walkWhileBlind'] === true,
+      walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
       lightDimRooms: movement['lightDimRooms'] === true,
       extinguishInLight: movement['extinguishInLight'] === true
     },
@@ -738,6 +766,13 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         typeof spells['areaAttack'] === 'string' ? spells['areaAttack'].trim().slice(0, 40) : '',
       areaMinMobs: Math.max(1, Math.min(99, Math.round(Number(spells['areaMinMobs']) || 3))),
       areaMinMana: unit(spells['areaMinMana']),
+      attackFallback:
+        typeof spells['attackFallback'] === 'string'
+          ? spells['attackFallback'].trim().slice(0, 40)
+          : '',
+      // 0 is no limit, so a missing or unreadable figure is the unlimited one.
+      attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
+      areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
       heal: typeof spells['heal'] === 'string' ? spells['heal'].trim().slice(0, 40) : '',
       healPartyWith:
         typeof spells['healPartyWith'] === 'string'
@@ -759,6 +794,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         ? String(alerts['minimum'])
         : 'info',
       mute: words(alerts['mute'], 24)
+    },
+    afk: {
+      enabled: afk['enabled'] === true,
+      afterMinutes: Math.max(1, Math.min(1440, Math.round(Number(afk['afterMinutes']) || 5))),
+      reply: typeof afk['reply'] === 'string' ? afk['reply'].trim().slice(0, 120) : ''
     },
     remotes: {
       enabled: remotes['enabled'] === true,
@@ -870,7 +910,9 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       },
       walk: {
         stepTimeoutMs: clamp(walk['stepTimeoutMs'], 200, 60_000, 4000),
-        clearAfterSeconds: clamp(walk['clearAfterSeconds'], 0, 3600, 20)
+        clearAfterSeconds: clamp(walk['clearAfterSeconds'], 0, 3600, 20),
+        // Zero is off, so a missing or unreadable figure is the off one.
+        minExpPerHour: clamp(walk['minExpPerHour'], 0, 100_000_000, 0)
       },
       hangUp: asIf.hangUp,
       retreat: asIf.retreat,
@@ -879,11 +921,15 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       party: asIf.party,
       health: asIf.health,
       movement: asIf.movement,
+      afk: asIf.afk,
       spells: {
         attack: text(spells['attack']).slice(0, 40),
         areaAttack: text(spells['areaAttack']).slice(0, 40),
         areaMinMobs: Math.max(1, Math.min(99, Math.round(Number(spells['areaMinMobs']) || 3))),
         areaMinMana: unit(spells['areaMinMana']),
+        attackFallback: text(spells['attackFallback']).slice(0, 40),
+        attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
+        areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
         heal: text(spells['heal']).slice(0, 40),
         healPartyWith: text(spells['healPartyWith']).slice(0, 40),
         healBelow: unit(spells['healBelow']),

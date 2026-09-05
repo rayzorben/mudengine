@@ -120,6 +120,7 @@ import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
+import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import type { Block } from '@shared/blocks';
 import type { Discovery } from '@shared/memory';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
@@ -180,6 +181,8 @@ interface SessionView {
   walk: WalkProgress;
   loop: LoopProgress;
   automation: AutomationSnapshot;
+  /** The room appraised — *can I fight this?* — beside the character it is about. */
+  verdict: RoomVerdict;
   lines: StreamLine[];
   telnet: TelnetEvent[];
   /**
@@ -272,6 +275,7 @@ const EMPTY_VIEW: SessionView = {
   walk: IDLE_WALK,
   loop: NO_LOOP,
   automation: EMPTY_AUTOMATION,
+  verdict: EMPTY_ROOM_VERDICT,
   lines: [],
   telnet: [],
   talk: [],
@@ -482,6 +486,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           forget={ctx.forget}
           inspect={ctx.inspect}
           learned={view.learned}
+          verdict={view.verdict}
         />
       );
     case 'map':
@@ -1493,6 +1498,7 @@ export default function App() {
         walk: snapshot.walk,
         loop: snapshot.loop,
         automation: snapshot.automation,
+        verdict: snapshot.verdict,
         lines: snapshot.lines.slice(-tuning().lineLogLimit),
         telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
         // The conversation log's tail: main keeps what was said on disk, so a
@@ -1668,6 +1674,9 @@ export default function App() {
       ),
       api.onAutomation(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, automation: payload }))
+      ),
+      api.onVerdict(({ session: id, payload }) =>
+        patchView(id, (v) => ({ ...v, verdict: payload }))
       ),
       api.onTelnet(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, telnet: capped(v.telnet, payload, tuning().telnetLogLimit) }))

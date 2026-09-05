@@ -20,6 +20,7 @@ import {
 import { type Discovery } from '@shared/memory';
 import type { SessionId } from '@shared/ipc';
 import type { Alignment, CharacterState, RoomExit, RoomOccupant } from '@shared/character';
+import type { RoomVerdict } from '@shared/verdict';
 import { attacksOnSight, DISPOSITION_WORD } from '@shared/mobs';
 
 export interface RoomCardProps extends CardChrome {
@@ -56,6 +57,12 @@ export interface RoomCardProps extends CardChrome {
    * record from one moment beside a room from another.
    */
   learned: Discovery[];
+  /**
+   * The room appraised — *can I fight this?* Pushed beside the character it is
+   * about and for the same reason `learned` is passed in: the row and the
+   * occupants it prices are one moment.
+   */
+  verdict: RoomVerdict;
 }
 
 /** Compass order, so exits always read in the same sequence regardless of the
@@ -77,7 +84,16 @@ function sortExits(exits: RoomExit[]): RoomExit[] {
  * `CharacterTracker`. A partially assembled room is worse than the previous
  * one, because it looks current.
  */
-function RoomCard({ character, session, inspect, forget, ask, learned, ...chrome }: RoomCardProps) {
+function RoomCard({
+  character,
+  session,
+  inspect,
+  forget,
+  ask,
+  learned,
+  verdict,
+  ...chrome
+}: RoomCardProps) {
   const { room } = character;
   const located = room.map !== null && room.number !== null;
   /*
@@ -112,7 +128,7 @@ function RoomCard({ character, session, inspect, forget, ask, learned, ...chrome
   const lair = room.lair ?? null;
   const answers = room.commands ?? [];
 
-  const face = <RoomBody character={character} inspect={inspect} shop={shop} />;
+  const face = <RoomBody character={character} inspect={inspect} shop={shop} verdict={verdict} />;
   /*
    * The counter's own listing, kept on state by the tracker for as long as the
    * character stands in this room. A room the realm data has no shop for can
@@ -398,8 +414,9 @@ function describe(who: RoomOccupant, mine: Alignment | null): string {
 function RoomBody({
   character,
   inspect,
-  shop
-}: Pick<RoomCardProps, 'character' | 'inspect'> & {
+  shop,
+  verdict
+}: Pick<RoomCardProps, 'character' | 'inspect' | 'verdict'> & {
   shop: WorldShop | null;
 }) {
   const { room, phase } = character;
@@ -530,6 +547,55 @@ function RoomBody({
                       <>
                         {t('cards.room.bank.copper', { copper: vault.copper.toLocaleString() })}{' '}
                         <span className="quiet-note">({ago(vault.at, Date.now())})</span>
+                      </>
+                    )}
+                  </dd>
+                </>
+              )}
+
+              {/*
+               * The verdict before the names, because it is the question the
+               * names raise: *can I fight this room?* One row for the room —
+               * the Reference card answers about one monster — and the figure
+               * is the health clearing it is expected to cost, held against
+               * the health the character has, which is the one comparison
+               * that decides anything. A bound, so *up to*; loud only when the
+               * bound reaches the character's own health. Unknown is said as
+               * itself: a stranger the realm cannot weigh leaves the total
+               * unknown rather than smaller. The same `Verdict` auto-combat
+               * ranks on (`src/shared/verdict.ts`), so this row and the
+               * engine's choice cannot disagree.
+               */}
+              {verdict.monsters.length > 0 && (
+                <>
+                  <dt>{t('cards.verdict.label')}</dt>
+                  <dd>
+                    {verdict.cost === null ? (
+                      <span className="quiet-note">{t('cards.verdict.roomUnknown')}</span>
+                    ) : (
+                      <>
+                        <span
+                          className={
+                            character.vitals.hp !== null &&
+                            verdict.cost.value >= character.vitals.hp
+                              ? 'chip bad'
+                              : undefined
+                          }
+                        >
+                          {verdict.cost.from === 'bound'
+                            ? t('cards.verdict.roomCostBound', {
+                                hp: Math.round(verdict.cost.value)
+                              })
+                            : t('cards.verdict.roomCostAbout', {
+                                hp: Math.round(verdict.cost.value)
+                              })}
+                        </span>
+                        {character.vitals.hp !== null && (
+                          <span className="quiet-note">
+                            {' '}
+                            {t('cards.verdict.ofYours', { hp: character.vitals.hp })}
+                          </span>
+                        )}
                       </>
                     )}
                   </dd>

@@ -413,6 +413,20 @@ export const RULES: Rule[] = [
     pattern: /^Your (?<weapon>weapon|fists) (?:has|have) no effect against this (?<target>.+?)!/
   },
   /*
+   * A spell that landed and achieved nothing: the monster is immune to it, or
+   * the room refuses it. Three spellings, all composed in the server's own code
+   * (`Player.cs:5919`, `:6195`, `:6249`), two of them in the corpus —
+   * `Your spell has no effect on adult red dragon.` (captures/078, 105) and
+   * `Your spell has no effect in this room!` (captures/041, 059). The sentence
+   * names the target where it has one and never the spell; the spell is the
+   * command that provoked it, which is `AutoCombat`'s to remember.
+   */
+  {
+    type: 'spell-ineffective',
+    pattern:
+      /^Your spell has no effect (?:on (?<target>.+?)\.|against this monster!|in this room!)$/
+  },
+  /*
    * Spells, seen in the corpus rather than read out of the server.
    *
    * The *effect* of a spell is per-spell realm data (`Forked lightning streaks
@@ -956,6 +970,22 @@ export const RULES: Rule[] = [
   { type: 'player-disconnects', pattern: /^(?<player>\w+) just disconnected!!!/ },
 
   /* --------------------------------------------------------- movement */
+  /*
+   * `There are no exits to the south!` — the server refusing to describe a
+   * direction: what `l s` gets at a wall, a hidden exit nobody has found, a
+   * text exit or a remote-action one. It is the **look** path's sentence and
+   * never the move path's — `TryLookThroughExit` in HiddenExit.cs, TextExit.cs
+   * and RemoteActionExit.cs (and `lock <direction>`), where a move is refused
+   * with `There is no exit in that direction!`. Live 2026-09-05
+   * (`2026-09-05_06-17-12_festus.mudcap.jsonl`, t=12182876) and five times in
+   * the corpus. Unread, the peek it answers stayed at the head of the
+   * expectation queue and every room block after it answered one claim late;
+   * see `Expectations.shiftPeekRefused`. Its own type rather than a fourth
+   * `direction-failed` shape because `Walker` acts on that one as its step
+   * being refused, and a player's look during a walk is not. The direction is
+   * the server's own word and is kept as printed.
+   */
+  { type: 'peek-failed', pattern: /^There are no exits to the (?<direction>[a-z]+)!/ },
   { type: 'direction-failed', pattern: /^There is no exit in that direction!/ },
   /*
    * The barrier is captured because the two `direction-failed` shapes are not
