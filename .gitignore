@@ -88,3 +88,15 @@ docs/
 # is a 138 MB VB6 tree with a realm database in it; it is read here and lives
 # nowhere in this repository's history.
 .scratch/
+
+# Realm databases are kept zipped, here and on GitHub.
+#
+# A 20 MB Access file compresses to 2.4 MB, and `RealmSource` reads a `.zip`
+# holding one as readily as the loose file -- so the loose copy is eight times
+# the size for nothing, in every clone and in every installer. The unpacked
+# file is what you get from double-clicking the archive, and `git add -A` after
+# that would put both in the commit. The archives themselves ARE tracked:
+# `resources/mdb/` ships one, and the rest are what `npm run build:world` and
+# `npm run test:realm` read.
+*.mdb
+*.accdb
