@@ -657,7 +657,35 @@ const TUNING_DEFAULTS = {
      * router already priced the leg including the search, so spending the
      * command keeps a promise rather than making a new decision.
      */
-    searchTries: 2
+    searchTries: 2,
+    /**
+     * How long a walk stands at a shut door it could not force before running
+     * the whole ladder again.
+     *
+     * The figure is the one the report asked for. It is long enough that a
+     * character resting under `restBelow` gets several status lines of
+     * recovery between rounds — which is the case the retry exists for, since
+     * a bash costs health and the rung that spends it is refused while the
+     * character is too hurt to travel.
+     */
+    barrierRetryMs: 5_000,
+    /**
+     * How many times the ladder is run again before the walk gives up on the
+     * door.
+     *
+     * `fightHoldMs`'s argument in the other shape: a hold whose end nothing in
+     * this client can bring about needs a floor under it, or an unattended
+     * character stands at a portcullis sending `bas w` all evening. What ends
+     * *this* hold is the door opening — by this character's next bash, by a
+     * lock that rolls better, or by somebody else walking through it — and
+     * none of the three is guaranteed to happen at all.
+     *
+     * Twelve rounds at five seconds is a minute of trying, which is far longer
+     * than the ladder used to get (it stopped on the first exhausted round)
+     * and short enough that a lap whose route is genuinely walled off is
+     * reported rather than silently stalled.
+     */
+    barrierRetries: 12
   },
   /** Running a loop — `LoopRunner`. */
   loop: {

@@ -138,14 +138,62 @@ describe('the family the wire states', () => {
     expect(familyToldBy(block('user-profile'))).toBeNull();
   });
 
-  it('reads rm said out loud as the MajorMUD lineage', () => {
-    expect(familyToldBy(block('command-not-understood', { message: 'rm' }))).toEqual({
-      family: 'majormud',
-      tell: 'locate-spoken'
-    });
-    // Any other refused command says nothing about the family: every realm
-    // refuses words it does not have.
+  it('reads a GreaterMUD-only command said out loud as the MajorMUD lineage', () => {
+    for (const message of ['rm', 'room', 'ab', 'deaths']) {
+      // Every spelling, because the word is resolved through the realm's own
+      // table rather than compared as text — `rm`, `roo` and `room` are one
+      // command to the server.
+      expect(familyToldBy(block('command-not-understood', { message })), message).toEqual({
+        family: 'majormud',
+        tell: 'gmud-command-spoken'
+      });
+    }
+    // A command both lineages have says nothing: every realm refuses words it
+    // does not have, and this one is not one of them.
     expect(familyToldBy(block('command-not-understood', { message: 'gold' }))).toBeNull();
+    /*
+     * And a word the table does not have at all says nothing either. A text
+     * exit is room data — `go manhole` is missing from every realm's command
+     * table by construction — so refusing one is not evidence of a lineage.
+     */
+    expect(familyToldBy(block('command-not-understood', { message: 'go manhole' }))).toBeNull();
+  });
+
+  /*
+   * How the MajorMUD lineage actually refuses a word it does not have —
+   * measured on bbs.bearfather.net 2026-09-05 (majorMUD v1.11p-WG3NT), where
+   * `rm` came back `Your command had no effect.` privately, twice, and was
+   * never spoken in the room. docs/game-behaviour.md had read GreaterMUD's
+   * `You say "<command>"` onto the other lineage.
+   */
+  it('reads a GreaterMUD-only command refused as the MajorMUD lineage', () => {
+    const refusal = block('command-no-effect');
+    expect(familyToldBy(refusal, 'rm')).toEqual({
+      family: 'majormud',
+      tell: 'gmud-command-refused'
+    });
+    expect(familyToldBy(refusal, 'ab')).toMatchObject({ family: 'majormud' });
+
+    /*
+     * And `pro` is **not** one of them, which is the correction the session
+     * that measured all this paid for. MajorMUD answers `pro` in full and
+     * simply puts no `Location:` in the answer, so the *type* is no tell and
+     * only the groups are — see the `user-profile` case above.
+     */
+    expect(familyToldBy(refusal, 'pro')).toBeNull();
+    expect(familyToldBy(block('command-not-understood', { message: 'pro' }))).toBeNull();
+
+    /*
+     * And the limit that makes it safe. The same sentence answers a word the
+     * realm *does* have that did nothing — `med` for a class with no mana,
+     * measured — so only a command whose absence separates the lineages says
+     * anything about which lineage this is.
+     */
+    expect(familyToldBy(refusal, 'med')).toBeNull();
+    expect(familyToldBy(refusal, 'st')).toBeNull();
+    // And the sentence names nothing, so with no echo behind it there is no
+    // command to judge.
+    expect(familyToldBy(refusal)).toBeNull();
   });
 
   it('concludes nothing from an ordinary block', () => {

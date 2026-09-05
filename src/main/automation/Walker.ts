@@ -75,8 +75,13 @@ import { t } from '../app/i18n';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
 
-/** Which way a locked barrier is being forced, while the attempt is in flight. */
-type Forcing = 'bash' | 'pick';
+/**
+ * The attempt on a barrier that is on the wire, while it is.
+ *
+ * `open` is one of them rather than a fire-and-forget: its answer decides the
+ * next rung, and the step is no longer queued behind it — see `sendOpen`.
+ */
+type Forcing = 'bash' | 'pick' | 'open';
 
 /**
  * The nudge's coalesce key — by intent, so a walk cannot queue two of them.
@@ -243,6 +248,16 @@ export class Walker {
   private bashed = 0;
   private picked = 0;
   private locked = false;
+  /**
+   * How many times the whole ladder has been run again at the barrier the step
+   * in flight is standing at.
+   *
+   * Not per step like the three above — those are reset every time the step is
+   * sent, which is exactly what a retry does, so a counter reset there could
+   * never bound anything. This one is cleared by a **confirmed step**: the
+   * fact that says the character got past the door. See `holdAtBarrier`.
+   */
+  private barrierRounds = 0;
   /** Searches spent looking for the hidden exit at the step in flight. */
   private searched = 0;
   /**
@@ -696,6 +711,7 @@ export class Walker {
     // combat does to a loop's leg — would leave the next one starting with the
     // budget already spent and its first step unheld.
     this.holds = 0;
+    this.barrierRounds = 0;
     // A health hold belongs to the walk that was waiting, not to the next one:
     // left set, a fresh route would be measured against the *resume* ceiling
     // before it had held for anything, and would announce recovering from a
@@ -845,6 +861,7 @@ export class Walker {
     this.warnedLight = null;
     this.strength = null;
     this.picklocks = null;
+    this.barrierRounds = 0;
     this.forgetBarrier();
     this.publish();
   }
@@ -914,6 +931,10 @@ export class Walker {
    * Nothing here retries a rung it has already been refused on: `open` at a
    * locked door answers the same word every time, which is a command per
    * attempt spent to be told what the client already knows.
+   *
+   * And nothing waits for an answer it already has. `The gate is locked.` is
+   * the whole of the news; the move queued behind the `open` that provoked it
+   * is taken back rather than sent to be refused — see `onOpenRefused`.
    */
   onBlock(block: Block): void {
     if (this.status !== 'walking') return;
@@ -960,23 +981,17 @@ export class Walker {
         this.onRefusedStep(block);
         return;
       case 'open-failed':
-        /*
-         * `The door is locked.` — `open` cannot help from here on, whatever
-         * `openTries` is left. Nothing is sent in answer: the direction was
-         * already queued behind the `open` that provoked this, and the
-         * `direction-failed` it comes back with is what takes the next rung.
-         */
-        if (block.groups['reason'] === 'locked') this.locked = true;
+        this.onOpenRefused(block);
         return;
       case 'bash-failed':
         // Only when the walker is the one bashing. A hand-typed `bas` at a
         // door the player is dealing with themselves is not the walk's news.
-        if (this.forcing === 'bash') this.forceAgainOrStop();
+        if (this.forcing === 'bash') this.forceAgainOrHold();
         return;
       case 'skill-failed':
         // The same sentence answers a failed trap disarm, so it means "the
         // pick missed" only while the walker has one in flight.
-        if (this.forcing === 'pick') this.forceAgainOrStop();
+        if (this.forcing === 'pick') this.forceAgainOrHold();
         return;
       case 'door-changed':
         this.onBarrierChanged(block);
@@ -984,6 +999,48 @@ export class Walker {
       default:
         return;
     }
+  }
+
+  /**
+   * `open` came back refused, so that rung is spent and the next one is taken
+   * now.
+   *
+   * **The step is no longer queued behind the `open`**, which is what makes
+   * this worth reading at all. It used to be, so that the `direction-failed`
+   * it came back with would take the next rung — a move sent to be told `The
+   * gate is closed!` a second time, out of the budget the walk is walked with.
+   * Reported from the wire with the whole exchange in it:
+   *
+   *     [HP=112/MA=16]:e          The gate is closed!
+   *     [HP=112/MA=16]:open e     The gate is locked.
+   *     [HP=112/MA=16]:e          The gate is closed!   <- this one
+   *     [HP=112/MA=16]:bas e      You bashed the gate open.
+   *
+   * Cancelling it from the queue instead does not work and looking at why is
+   * the useful part: the queue's window is three commands and its gap is
+   * 350ms, while this realm answers a command in a measured 1,239ms — so the
+   * step is on the wire long before its answer could recall it. *A sent
+   * command cannot be recalled* is the rule, and the fix has to be not sending
+   * it. `sendOpen` therefore waits for the `open`'s own answer, of which this
+   * is one and `door-changed` is the other.
+   *
+   * `The door is locked.` additionally spends **every** remaining `openTries`:
+   * a lock answers the same word every time, so repeating the rung is a
+   * command per attempt spent to be told what the client already knows. The
+   * other shape (`That is not a door or a gate!`) leaves the budget alone and
+   * simply moves on, because it says the realm data was wrong about the
+   * barrier rather than anything about a lock.
+   */
+  private onOpenRefused(block: Block): void {
+    if (this.forcing !== 'open') return;
+    this.forcing = null;
+    if (block.groups['reason'] === 'locked') this.locked = true;
+
+    const step = this.route?.steps[this.index];
+    if (step === undefined) return;
+    const barrier = block.groups['barrier'] ?? t('automation.walk.fallbackBarrier');
+    if (this.force(step, barrier)) return;
+    this.holdAtBarrier(step, barrier);
   }
 
   /**
@@ -1030,19 +1087,16 @@ export class Walker {
         this.config.movement.openDoors &&
         this.opened < this.config.movement.openTries
       ) {
-        this.opened += 1;
-        this.queue.enqueue({
-          command: `open ${step.direction}`,
-          priority: 'movement',
-          reason: t('automation.walk.reasonOpening', { barrier, stepName: step.name })
-        });
-        // And the step again behind it. `sendCurrent` re-arms the deadline,
-        // which is what keeps the walk from timing out on the door's own round
-        // trip.
-        this.sendCurrent(false);
+        this.sendOpen(step, barrier);
         return;
       }
       if (this.force(step, barrier)) return;
+      /*
+       * Every rung spent and the way still shut. It waits and runs the ladder
+       * again rather than ending the journey — see `holdAtBarrier`.
+       */
+      this.holdAtBarrier(step, barrier);
+      return;
     }
 
     if (step !== undefined && barrier === undefined) {
@@ -1160,17 +1214,18 @@ export class Walker {
 
   /**
    * The forcing attempt in flight came back a failure. Try the next one, or
-   * end the walk saying which door and what it wanted.
+   * stand at the door and run the whole ladder again in a moment.
    */
-  private forceAgainOrStop(): void {
+  private forceAgainOrHold(): void {
     this.forcing = null;
     const step = this.route?.steps[this.index];
     if (step === undefined) {
       this.stopRefused(step, undefined);
       return;
     }
-    if (this.force(step, t('automation.walk.fallbackBarrier'))) return;
-    this.stopRefused(step, t('automation.walk.fallbackBarrier'));
+    const barrier = t('automation.walk.fallbackBarrier');
+    if (this.force(step, barrier)) return;
+    this.holdAtBarrier(step, barrier);
   }
 
   /**
@@ -1202,6 +1257,7 @@ export class Walker {
     if (
       movement.bashDoors &&
       this.bashed < movement.bashTries &&
+      !this.tooHurtToBash() &&
       meetsBarrier(need?.bashDifficulty, this.strength, tuning().walk.bashMargin, stated)
     ) {
       this.bashed += 1;
@@ -1211,7 +1267,181 @@ export class Walker {
     return false;
   }
 
-  private sendForcing(kind: Forcing, command: string, step: RouteStep, barrier: string): void {
+  /**
+   * Whether a bash costs more health than this character has to spend.
+   *
+   * *"You take 1 damage for bashing the gate!"* — the server prints it in the
+   * room, and a bash is the one rung of the ladder that is paid for in hit
+   * points. Before the ladder could be run again that was bounded by
+   * `bashTries` and then the walk ended; now it repeats, and `bashTries` a
+   * round for `barrierRetries` rounds is a character that can knock itself out
+   * at a door with nothing else in the room threatening it.
+   *
+   * `restBelow` is the figure that already says *this character does not
+   * travel below this*, and forcing a door is how this step travels — so it is
+   * the same line, applied to the one rung that spends health. The pick is
+   * ungated: it costs a command and nothing else.
+   *
+   * Read straight off the config rather than through `wantsHealthHold`, which
+   * is gated on `holdWhenHurt`. That option answers *who is responsible for
+   * resting this walk*, and the walk that turns it off — a loop's leg, held
+   * for health by `LoopRunner` **between** legs and not within one — is
+   * exactly the walk that would otherwise stand at a door bashing all night.
+   *
+   * Unknown never refuses, the rule every threshold here follows: a null
+   * maximum is absence, not a low number.
+   */
+  private tooHurtToBash(): boolean {
+    const { restBelow } = this.config.health;
+    if (restBelow <= 0) return false;
+    const state = this.events.stateNow?.();
+    if (state === undefined) return false;
+    const { hp, hpMax } = state.vitals;
+    if (hp === null || hpMax === null || hpMax <= 0) return false;
+    return hp / hpMax < restBelow;
+  }
+
+  /**
+   * Stand at a shut door the ladder could not get past, and run the whole
+   * ladder again in a moment.
+   *
+   * *"we shouldn't actually stop we should just wait and retry in case health
+   * low"* — reported with the transcript in `onOpenRefused`. Every reason the
+   * ladder runs out is a reason that may not be true a moment later: the bash
+   * that was refused because the character is under `restBelow` is affordable
+   * once `Recovery` has sat it down, the lock that took three failed rolls may
+   * take the fourth, and a gate is a thing other people walk through. Ending
+   * the journey at the first exhausted round meant a lap died at a shut door
+   * and an unattended character stood in a corridor until somebody looked.
+   *
+   * On the health hold's terms, and it deliberately differs in one:
+   *
+   * - **A hold is not an ending.** The route, the destination and the step
+   *   count all survive, and `WalkProgress.hold` says why the character is
+   *   standing still.
+   * - **The retry goes through `holdBeforeSending`**, so health, a stated
+   *   affliction and the quarry beat all outrank it — which is what makes
+   *   *wait in case health is low* mean something rather than merely
+   *   describing the delay.
+   * - **`forgetBarrier` gives the ladder its budget back**, because the round
+   *   is the same three questions asked again of a door whose answers may
+   *   have changed. That is why the bound is counted here and not in the
+   *   per-step counters, which the retry itself resets.
+   * - **It is bounded, unlike the health hold.** What ends that one is the
+   *   character healing, which `Recovery` is doing precisely because the walk
+   *   is standing still. Nothing in this client is working on the door, so
+   *   this is `fightHoldMs`'s argument in another shape: a floor under a hold
+   *   whose end nobody here can bring about. Past `walk.barrierRetries` the
+   *   walk stops the way it always did, saying which door and what it wanted.
+   *
+   * Said out loud once per barrier rather than once per round: a line every
+   * five seconds about the same shut door is the chrome talking over the room.
+   */
+  private holdAtBarrier(step: RouteStep, barrier: string): void {
+    if (this.barrierRounds >= tuning().walk.barrierRetries) {
+      this.stopRefused(step, barrier);
+      return;
+    }
+    if (this.barrierRounds === 0 && !this.quiet) {
+      this.events.notice?.(
+        t('automation.walk.barrierHolding', { barrier, detail: this.barrierDetail(step) })
+      );
+    }
+    this.barrierRounds += 1;
+    // The step's deadline was timing a move the refusal has already answered.
+    this.clearTimer();
+    this.hold = 'barrier';
+    this.publish();
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (this.status !== 'walking') return;
+      /*
+       * The round is over, so its hold is let go before anything else is
+       * asked: `holdForHealth` claims a walk only when nothing else is
+       * holding it, and a `barrier` left standing here would silence the one
+       * hold this retry exists to give way to.
+       */
+      this.hold = null;
+      const state = this.events.stateNow?.();
+      if (state !== undefined && this.holdBeforeSending(state)) return;
+      this.sendCurrent();
+    }, tuning().walk.barrierRetryMs);
+    this.holdTimer.unref?.();
+  }
+
+  /**
+   * Ask the barrier to open, and wait for the answer rather than queueing the
+   * step behind it.
+   *
+   * The step used to go out behind the `open` unconditionally, so a locked
+   * door cost a move to be refused a second time before the ladder moved on
+   * (`onOpenRefused` has the transcript). Waiting means the two answers that
+   * decide the next rung — `door-changed` and `open-failed` — are read before
+   * anything else is spent.
+   *
+   * **And the deadline sends the step rather than giving up**, which is the
+   * difference between this and `sendForcing`. A bash and a pick have their
+   * successes and their failures in the corpus; `The <…> is now open.` is
+   * read out of the server's source with only `door` ever captured, so a
+   * realm that phrases it some third way would leave this waiting on a
+   * sentence nothing matches. Falling back to the step is exactly what this
+   * did before, one round trip later — the old behaviour as the *worst* case
+   * instead of the only one.
+   */
+  private sendOpen(step: RouteStep, barrier: string): void {
+    const command = `open ${step.direction}`;
+    this.opened += 1;
+    this.forcing = 'open';
+    this.stepSent = false;
+    const queued = this.queue.enqueue({
+      command,
+      priority: 'movement',
+      reason: t('automation.walk.reasonOpening', { barrier, stepName: step.name }),
+      onSent: () => this.noteOpenSent(step)
+    });
+    if (!queued) {
+      this.stop(t('automation.walk.reasonNotQueued', { command }));
+      return;
+    }
+    if (!this.stepSent) this.waitForSend(command);
+    this.publish();
+  }
+
+  /**
+   * The `open` is on the wire. Give the realm its round, and take the step
+   * anyway if nothing this client reads comes back — see `sendOpen`.
+   */
+  private noteOpenSent(step: RouteStep): void {
+    // A late `onSent` from an attempt this walk has moved past decides
+    // nothing, exactly as in `noteStepSent`.
+    if (this.status !== 'walking' || this.route?.steps[this.index] !== step) return;
+    this.stepSent = true;
+    this.stepSentAt = Date.now();
+    this.clearTimer();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.status !== 'walking' || this.forcing !== 'open') return;
+      this.forcing = null;
+      /*
+       * Through the holds, because this fires on a clock rather than on an
+       * answer: a fight, low health or a stated affliction may have arrived
+       * while the door was being asked, and a movement command released here
+       * would walk the character out of a fight `cancelQueued` cannot recall
+       * it from.
+       */
+      const now = this.events.stateNow?.();
+      if (now !== undefined && this.holdBeforeSending(now)) return;
+      this.sendCurrent(false);
+    }, this.nudgeAfter());
+    this.timer.unref?.();
+  }
+
+  private sendForcing(
+    kind: 'bash' | 'pick',
+    command: string,
+    step: RouteStep,
+    barrier: string
+  ): void {
     this.forcing = kind;
     this.stepSent = false;
     const queued = this.queue.enqueue({
@@ -1272,6 +1502,15 @@ export class Walker {
     }
     if (!movement.pickLocks && !movement.bashDoors) {
       return t('automation.walk.barrierNotAllowed');
+    }
+    /*
+     * Before the skill comparison below, because it is a different answer: the
+     * character may be strong enough and simply too hurt to spend the health
+     * a bash costs. Reading `requires 41; this character has 60 strength`
+     * there would be the client contradicting itself.
+     */
+    if (movement.bashDoors && this.tooHurtToBash()) {
+      return t('automation.walk.barrierTooHurt');
     }
     const need = step.requirement;
     const wanted = need?.pickDifficulty ?? need?.bashDifficulty;
@@ -1402,6 +1641,9 @@ export class Walker {
     this.forgetNudge();
     this.index += 1;
     this.holds = 0;
+    // The door is behind the character, which is the one fact that says the
+    // ladder got past it. See `barrierRounds`.
+    this.barrierRounds = 0;
     /*
      * And the step is the other half of `leavingAFight`'s bound.
      *

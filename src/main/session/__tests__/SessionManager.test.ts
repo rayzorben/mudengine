@@ -3340,3 +3340,120 @@ describe('picking up after a lost connection', () => {
     expect(manager.walker.progress.status).not.toBe('walking');
   });
 });
+
+/*
+ * A word this realm does not have, learned from the realm saying it out loud.
+ *
+ * `You say "<command>"` is this server family's answer to a word its dispatch
+ * table has no entry for — speech in the room, seen by everybody standing
+ * there. It used to retire `rm` and nothing else, so every other word the
+ * realm spoke aloud was asked again on the next tick and said again.
+ */
+describe('a command this realm has no word for', () => {
+  const dial = () => ({ host: '127.0.0.1', port, encoding: 'cp437' as const });
+
+  it('is said once, and only for words the realm’s own table names', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    // The locate keeps its own sentence: a realm with no `rm` is one where
+    // knowing where the character stands is dead reckoning and nothing else.
+    const retired = t('session.loop.locateUnavailable', { command: 'rm' });
+    socket.write('You say "rm"\r\n');
+    await until(() => notices.includes(retired));
+    expect(notices.filter((line) => line === retired)).toHaveLength(1);
+
+    /*
+     * Again under another spelling, and it is the same fact — not a second
+     * line about it. The server does no prefix matching and `rm`, `roo` and
+     * `room` are one command to it, which is why the set holds command names.
+     */
+    socket.write('You say "room"\r\n');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(notices.filter((line) => line === retired)).toHaveLength(1);
+    expect(
+      notices.some((line) => line === t('session.realm.commandUnavailable', { command: 'room' }))
+    ).toBe(false);
+
+    /*
+     * And a word the command table does not name says nothing. A text exit is
+     * room data — `go manhole` is missing from every realm's table by
+     * construction — so refusing one here is not a fact about this realm's
+     * vocabulary, and retiring it would take a real way through the realm
+     * away from every room that has one.
+     */
+    const before = notices.length;
+    socket.write('You say "go manhole"\r\n');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(notices).toHaveLength(before);
+  });
+
+  /*
+   * How the MajorMUD lineage actually refuses it — measured on
+   * bbs.bearfather.net 2026-09-05, where `rm` came back `Your command had no
+   * effect.` privately rather than being spoken in the room. The sentence
+   * names nothing, so the word is the status line's own echo.
+   */
+  it('learns it from MajorMUD’s quiet refusal, off the status line’s echo', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=40/MA=7]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    socket.write('[HP=40/MA=7]:rm' + PROMPT_REPAINT);
+    socket.write('Your command had no effect.\r\n');
+    await until(() => notices.includes(t('session.loop.locateUnavailable', { command: 'rm' })));
+
+    // And that is the lineage as well, so `ab` is never tried either.
+    expect(manager.queue.enqueue({ command: 'ab', priority: 'probe' })).toBe(false);
+    // `pro` is not on the list — MajorMUD answers it, it just carries no
+    // coordinates — so it is left alone.
+    expect(manager.queue.enqueue({ command: 'pro', priority: 'probe' })).toBe(true);
+
+    /*
+     * The limit that makes it safe: the same sentence answers a word the realm
+     * *does* have that did nothing — `med` for a class with no mana — so it
+     * must not retire an arbitrary command the way a spoken refusal can.
+     */
+    socket.write('[HP=40/MA=7]:sea' + PROMPT_REPAINT);
+    socket.write('Your command had no effect.\r\n');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(manager.queue.enqueue({ command: 'sea', priority: 'probe' })).toBe(true);
+  });
+
+  /*
+   * The lineage answers the question the first try would have answered, and
+   * the first try is the broadcast. Once a tell has said MajorMUD, every
+   * GreaterMUD-only command is refused without ever being sent.
+   */
+  it('refuses a GreaterMUD-only command outright once the lineage is known', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    /*
+     * `rm` spoken aloud is both facts at once: this realm has no `rm`, and a
+     * realm with no `rm` is the MajorMUD lineage. The second is the one under
+     * test — `ab` is never sent at all, so the refusal that would have taught
+     * it is never spent.
+     */
+    socket.write('You say "rm"\r\n');
+    await until(() => notices.includes(t('session.loop.locateUnavailable', { command: 'rm' })));
+
+    expect(manager.queue.enqueue({ command: 'ab', priority: 'probe' })).toBe(false);
+    expect(notices).toContain(t('session.realm.commandUnavailable', { command: 'ab' }));
+    // A command both lineages have is untouched, and so is `pro` — measured
+    // present on MajorMUD, carrying no coordinates rather than no answer.
+    expect(manager.queue.enqueue({ command: 'st', priority: 'probe' })).toBe(true);
+    expect(manager.queue.enqueue({ command: 'pro', priority: 'probe' })).toBe(true);
+  });
+});

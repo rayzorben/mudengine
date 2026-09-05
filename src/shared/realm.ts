@@ -1,4 +1,5 @@
 import type { Block } from './blocks';
+import { commandOf, GREATERMUD_ONLY } from './commands';
 
 /**
  * Which formula family a realm belongs to, and where that was read from.
@@ -185,8 +186,16 @@ export type FamilyTell =
   | 'experience-table'
   /** `rm` answered with coordinates, so this server has the word. */
   | 'locate-answered'
-  /** `rm` was said out loud in the room, so this server does not have it. */
-  | 'locate-spoken';
+  /**
+   * A command only GreaterMUD has was said out loud in the room, so this
+   * server does not have it.
+   */
+  | 'gmud-command-spoken'
+  /**
+   * A command only GreaterMUD has came back `Your command had no effect.`,
+   * which is how the MajorMUD lineage refuses a word it does not have.
+   */
+  | 'gmud-command-refused';
 
 export interface FamilyReading {
   family: RealmFamily;
@@ -207,24 +216,67 @@ export interface FamilyReading {
  *   the summary line alone: zero tables across every recorded `orohost`
  *   session against three in one Paradigm session (`shared/experience.ts`).
  * - **`user-profile` carrying `Location:` ⇒ GreaterMUD.** The `map,room` pair
- *   is `rm`'s answer, and MajorMUD has neither `rm` nor `pro`. `Recent Deaths:`
- *   matches the same block type and is *not* a tell — it is `pro`'s heading,
- *   which is why the groups are tested rather than the type.
- * - **`command-not-understood` naming `rm` ⇒ MajorMUD.** An unrecognised
- *   command there is not refused quietly, it is spoken aloud in the room, and
- *   `SessionManager` already retires the locate word on exactly this line.
+ *   is `rm`'s answer. `Recent Deaths:` matches the same block type and is
+ *   *not* a tell — it is `pro`'s heading, which is why the groups are tested
+ *   rather than the type.
  *
- * Neither costs a command the client does not already send.
+ *   That distinction turned out to be load-bearing rather than fastidious.
+ *   This comment used to add *"and MajorMUD has neither `rm` nor `pro`"*, read
+ *   out of docs/game-behaviour.md; measured on `bbs.bearfather.net`
+ *   2026-09-05, **MajorMUD answers `pro` in full** — sixteen lines of the
+ *   character's own preferences — and simply puts no `Location:` in it.
+ *   Testing the type would have read that as GreaterMUD; testing the groups
+ *   reads it as nothing, which is right.
+ * - **A GreaterMUD-only command refused ⇒ MajorMUD**, in **two** shapes,
+ *   because the two lineages refuse a word they do not have differently and
+ *   this client believed for a while that they did it the same way.
+ *
+ *   `Your command had no effect.` (`command-no-effect`) is what the MajorMUD
+ *   lineage answers, measured on `bbs.bearfather.net` 2026-09-05 (majorMUD
+ *   v1.11p-WG3NT): `rm` at the prompt, that sentence back, twice, privately.
+ *   The sentence **names nothing**, so the command comes from the status
+ *   line's own echo — `SessionManager.answering`, the slot
+ *   `Recovery.noteNoEffect` already reads — and is passed in.
+ *
+ *   `You say "rm"` (`command-not-understood`) is the *GreaterMUD* family's
+ *   answer, measured on `orohost` (`exits`, `time`, `stats`, `gold` all came
+ *   back as speech). docs/game-behaviour.md read that behaviour onto MajorMUD
+ *   and it was wrong: a reading is not a capture. It is kept as a tell because
+ *   it still says something true — a server that does not have `rm` is not
+ *   GreaterMUD, whatever it does about it — but it is no longer the shape this
+ *   is expected to arrive in.
+ *
+ *   **Resolved through `commandOf`, never compared as text.** `rm`, `roo` and
+ *   `room` are one command to the server and would be three strings here, and
+ *   a word the table does not have at all — `go manhole`, a typo — says
+ *   nothing about the lineage: a text exit is room data, so it is missing from
+ *   *every* realm's command table by construction.
+ *
+ *   **And only a `GREATERMUD_ONLY` word.** `Your command had no effect.` is
+ *   also what a realm answers a word it *does* have that did nothing — `med`
+ *   for a class with no mana, measured — so it is a tell about the lineage
+ *   only for a command whose absence is the thing that separates them.
+ *
+ * None costs a command the client does not already send.
  */
-export function familyToldBy(block: Block): FamilyReading | null {
+export function familyToldBy(block: Block, answering: string | null = null): FamilyReading | null {
   if (block.type === 'user-experience-table') {
     return { family: 'majormud', tell: 'experience-table' };
   }
   if (block.type === 'user-profile' && block.groups['room'] !== undefined) {
     return { family: 'greatermud', tell: 'locate-answered' };
   }
-  if (block.type === 'command-not-understood' && block.groups['message'] === 'rm') {
-    return { family: 'majormud', tell: 'locate-spoken' };
+  if (block.type === 'command-not-understood') {
+    const spoken = commandOf(block.groups['message'] ?? '');
+    if (spoken !== null && GREATERMUD_ONLY.has(spoken)) {
+      return { family: 'majormud', tell: 'gmud-command-spoken' };
+    }
+  }
+  if (block.type === 'command-no-effect') {
+    const refused = commandOf(answering ?? '');
+    if (refused !== null && GREATERMUD_ONLY.has(refused)) {
+      return { family: 'majormud', tell: 'gmud-command-refused' };
+    }
   }
   return null;
 }

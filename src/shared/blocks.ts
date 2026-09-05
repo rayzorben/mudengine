@@ -101,6 +101,24 @@ export type BlockType =
    * establishes the figure, this keeps it true without spending a command.
    */
   | 'user-lives'
+  /**
+   * `The gods have punished you appropriately.` — the realm charging this
+   * character for how the *last* session ended, printed on the way in under
+   * `Last time you were on, you disconnected while playing.`
+   *
+   * The one wire confirmation this client has that the hang-up penalty is
+   * real. `HangUpConfig` and docs/greatermud/combat.md are otherwise built on
+   * a **reading** of the server's source, because measuring the penalty means
+   * disconnecting on purpose on a realm where being wrong costs a character —
+   * so `hangUp` defaults to off and to refusing when on. This does not settle
+   * what the penalty costs, nor which of the five conditions gate it; it
+   * settles that the server applies one, and that a plain disconnect while in
+   * the realm is enough to earn it.
+   *
+   * MajorMUD's wording, measured 2026-09-05 and absent from both the
+   * GreaterMUD source and all 218 captures.
+   */
+  | 'user-disconnect-penalty'
   | 'user-levels'
   /** `You hand over N copper farthings to train to the next level!` */
   | 'user-trains'
@@ -122,6 +140,23 @@ export type BlockType =
    * this spell instead. Captured on the live realm 2026-09-03.
    */
   | 'user-reads-spell'
+  /**
+   * The character came out of the stat-assignment screen having saved.
+   *
+   * `train stats` is not a command with an answer — `TrainCommand.cs:75` puts
+   * the player into `PlayerWaitState.TrainStats`, which is the same telnet
+   * field screen character creation uses — so nothing the client can read says
+   * that the six attributes were just rewritten. What it *can* read is the
+   * paragraph the screen prints on the way out, unconditionally and only when
+   * `SAVE` was chosen (`AssignStatsState`): the suicide-password notice.
+   *
+   * That paragraph is the fact, wearing somebody else's words. `SetStats` and
+   * `BaseMaxHP = CalcMaxHP()` run one line above it, so the sheet the client
+   * is holding is wrong from there on — see `src/shared/staleness.ts`. Leaving
+   * the screen with `EXIT` changes nothing and prints none of it, which is
+   * exactly the discrimination this needs.
+   */
+  | 'user-stats-assigned'
   /** `You gain 10 CPs` / `You gain 0 additional lives.` — the rest of the level. */
   | 'user-gains'
   | 'player-status'
@@ -668,10 +703,12 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-health': 'status',
   'user-dies': 'presence',
   'user-lives': 'status',
+  'user-disconnect-penalty': 'session',
   'user-levels': 'status',
   'user-trains': 'status',
   'user-learns': 'status',
   'user-reads-spell': 'status',
+  'user-stats-assigned': 'status',
   'user-gains': 'status',
   'player-status': 'status',
   spellbook: 'status',

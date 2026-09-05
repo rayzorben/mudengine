@@ -571,6 +571,26 @@ tuning:
     # command keeps a promise rather than making a new decision.
     searchTries: 2
 
+    # How long a walk stands at a shut door it could not force before running
+    # the whole ladder — open, pick, bash — again.
+    #
+    # Long enough that a character resting under restBelow gets several status
+    # lines of recovery between rounds, which is the case the retry exists for:
+    # a bash costs health, and the rung that spends it is refused while the
+    # character is too hurt to travel.
+    barrierRetryMs: 5000
+
+    # How many times that ladder is run again before the walk gives up on the
+    # door.
+    #
+    # fightHoldMs's argument in the other shape: a hold whose end nothing in
+    # this client can bring about needs a floor under it, or an unattended
+    # character stands at a portcullis sending `bas w` all evening. What ends
+    # this one is the door opening — by the next bash, by a lock that rolls
+    # better, or by somebody else walking through it — and none of the three is
+    # guaranteed. Twelve rounds at five seconds is a minute of trying.
+    barrierRetries: 12
+
   # Running a loop — `LoopRunner`.
   loop:
     # Consecutive non-combat failures before the loop gives up on itself.

@@ -99,8 +99,16 @@ export interface WalkProgress {
  * afflictions the server has stated and the walk waits out — MegaMUD's
  * `IgnoreBlind` / `IgnorePoison` defaults, which wait — see
  * `afflictionHolding`.
+ *
+ * `barrier` is a shut door the ladder could not get past *this time round*:
+ * every `open`, pick and bash the step was given has been spent and the way
+ * is still closed. It is a hold rather than an ending because the reasons it
+ * failed are mostly temporary — the character is too hurt to spend another
+ * bash, the lock wanted one more roll, somebody else is about to walk through
+ * — and a route that ends at a door has to be noticed and asked for again by
+ * hand. See `Walker.holdAtBarrier`.
  */
-export type WalkHold = 'health' | 'fight' | 'blind' | 'held' | 'poisoned' | null;
+export type WalkHold = 'health' | 'fight' | 'blind' | 'held' | 'poisoned' | 'barrier' | null;
 
 /**
  * Which stated affliction stands a walk still, or null.

@@ -109,6 +109,40 @@ export const RULES: Rule[] = [
   },
 
   { type: 'user-exits-realm', pattern: /^You will exit after a period of silent meditation\./ },
+  /*
+   * `The gods have punished you appropriately.` — the realm charging this
+   * character for how the *last* session ended, printed on the way in, one
+   * line under `Last time you were on, you disconnected while playing.`
+   *
+   * **It is here, in the session section, because of where it must not be.**
+   * Left unmatched it fell through to `mob-misses` — `^The …\byou\b…[.!]$` is
+   * the frame a monster's swing wears, and that pattern's own comment named
+   * this class as a loose end *"stated rather than guarded"* on the strength of
+   * a live capture in which it never happened. It happens: measured twice on
+   * `bbs.bearfather.net` (the player's own capture and the authorised session
+   * after it, both 2026-09-05), where every unclean reconnect read the welcome
+   * banner as a blow — no attacker, since nothing places `gods`, but a bumped
+   * round clock and blow count at the moment a character is standing in a room
+   * it has not looked at yet. `RULES` is first-match-wins, so a rule above the
+   * combat frames is the whole fix.
+   *
+   * **And it is a fact worth having rather than an exclusion.** The hang-up
+   * penalty is the one thing in this client's safety model that was a *reading
+   * of the server's source* and not a capture — docs/greatermud/combat.md says
+   * so in as many words, because measuring it means disconnecting on purpose on
+   * a realm where being wrong costs a character. This sentence is the server
+   * stating that it applied one. What it *cost* is still unmeasured, and the
+   * conditions that gate it are still invisible; what is settled is that the
+   * penalty is real and that a plain disconnect while in the realm earns it.
+   *
+   * MajorMUD's wording, and only its wording: it is in neither the GreaterMUD
+   * source nor any of the 218 captures, so nothing here claims the other
+   * lineage says it at all.
+   */
+  {
+    type: 'user-disconnect-penalty',
+    pattern: /^The gods have punished you appropriately\.$/
+  },
 
   /* ----------------------------------------------------------- status */
   { type: 'status-line', pattern: STATUS_LINE },
@@ -172,6 +206,45 @@ export const RULES: Rule[] = [
   {
     type: 'user-trains',
     pattern: /^You hand over (?<price>\d+) copper farthings to train to the next level!/
+  },
+  /*
+   * MajorMUD's phrasing of the same event, and the client was blind to it:
+   *
+   *     [HP=58/MA=39]:train
+   *     [HP=60/MA=44]:You hand over nothing and you receive training to attain level 11.
+   *     You receive the following:
+   *     15 additional character points
+   *     4 additional lives
+   *
+   * `captures/004:869` and `captures/177:34`, both with `nothing` as the
+   * price — so the amount is captured verbatim rather than as digits, since
+   * a word is one of the shapes it takes. There is no `Welcome to level N!`
+   * behind it on that realm, which is why the sentence names the level
+   * itself and why reading it matters: without this, a MajorMUD character
+   * trained and every figure the client held for it went on reading against
+   * the level before, for the session.
+   */
+  {
+    type: 'user-trains',
+    pattern:
+      /^You hand over (?<price>.+?) and you receive training to attain level (?<level>\d+)\.$/
+  },
+  /*
+   * Coming out of the stat-assignment screen having saved — the only thing on
+   * the wire that says `train stats` happened. Printed unconditionally on
+   * `SAVE` and never on `EXIT` (`AssignStatsState`, the server's own source),
+   * one line above which `SetStats` and `BaseMaxHP = CalcMaxHP()` have already
+   * run. Live on Paradigm 2026-09-05, the four lines verbatim after the
+   * `Char. Creation` field screen and before the room reprinted.
+   *
+   * The **first** line of the four is matched: the paragraph is hard-wrapped
+   * by the server at its own width, and the first line is the one whose start
+   * is an anchor rather than a continuation. Nothing else in the realm's
+   * vocabulary begins this way.
+   */
+  {
+    type: 'user-stats-assigned',
+    pattern: /^To prevent accidental suicide or reroll, these commands$/
   },
   {
     type: 'user-learns',
@@ -307,15 +380,37 @@ export const RULES: Rule[] = [
    * that happens to mention the reader does not become a combat line, and a
    * quotation mark anywhere disqualifies both: speech is not a swing.
    *
-   * The loose end, stated rather than guarded: a *description* sentence
-   * beginning `The`, containing `you` and ending in a full stop would match —
-   * `The path leads you north.` is the shape. Measured against a live capture
-   * it does not happen: 87 room descriptions and 108 lines beginning `The`,
-   * none claimed. And the guard that would rule it out — refusing the pattern
-   * while inside a room description — is the one that would re-introduce the
-   * bug this replaced, by dropping a monster that attacked while the room was
-   * still printing. A missed attack costs a character; a lost description line
-   * costs a line.
+   * The loose end, and it is no longer hypothetical: a sentence beginning
+   * `The`, containing `you` and ending in a full stop matches whether or not
+   * anything swung. It was written up as *"stated rather than guarded"* on the
+   * strength of one live capture — 87 room descriptions, 108 lines beginning
+   * `The`, none claimed — and `The gods have punished you appropriately.`
+   * walked straight through it on a MajorMUD board (2026-09-05).
+   *
+   * **Measured, now, rather than assumed.** Across the 218 captures, 239
+   * distinct shapes reach this rule and 208 of them carry ` at you`, which is
+   * the frame the server composes by default (`Mob.cs:1672` — `<Name>
+   * <missMsg> at you, but you dodge out of the way!`). Of the 31 that do not,
+   * five are not blows at all: `The ghost hands you a weapon.`, `The organic
+   * cords binding you dissolve.`, `The flames enveloping you die down.`, `The
+   * wall swivels rapidly around, moving you into another room.` and `The
+   * haunting spirit softly moans as you hail it, and turns to face you.` The
+   * other 26 are real — `misses you with its nexus spear`, `envelops you in
+   * flames`, `casts hold person on you`, `sweeps your feet out from under you`
+   * — and every one of them is a realm's own `MissMessage.Line1` template,
+   * which is data and can be any sentence at all.
+   *
+   * **So the frame stays generous and the exceptions are lifted out above
+   * it.** Requiring ` at you` would drop 26 real shapes to catch five; and the
+   * guard that would rule the class out — refusing the pattern while inside a
+   * room description — is the one that would re-introduce the bug this
+   * replaced, by dropping a monster that attacked while the room was still
+   * printing. A missed attack costs a character; a lost description line costs
+   * a line. What a false match actually costs is a bumped round clock and blow
+   * count with **no attacker**, because nothing here names one — which is why
+   * a sentence that arrives on a *clock*, once per session, earned its own
+   * rule (`user-disconnect-penalty`, in the session section above) while five
+   * that arrive once in 46,000 lines did not.
    */
   {
     type: 'mob-hits',
@@ -996,7 +1091,7 @@ export const RULES: Rule[] = [
    */
   {
     type: 'direction-failed',
-    pattern: /^The (?<barrier>door|gate) is closed(?: in that direction)?!/
+    pattern: /^The (?<barrier>door|gate|portcullis) is closed(?: in that direction)?!/
   },
   /*
    * `You may not go through this exit!` — a gate on alignment or level, not a
@@ -1081,10 +1176,24 @@ export const RULES: Rule[] = [
   { type: 'direction-failed', pattern: /^You are too heavy to move!/ },
   { type: 'bash-failed', pattern: /^Your attempts to bash through fail!/ },
   { type: 'heard-movement', pattern: /^You hear movement to the (?<direction>\w+)\./ },
+  /*
+   * The barrier's own state, and the noun is substituted here exactly as it is
+   * in `You bashed the … open.` below: docs/greatermud/movement.md lists
+   * `door`, `gate` and `portcullis` for one frame. Anchoring on the word
+   * `door` was harmless while the step went out behind every `open` anyway —
+   * the direction's own refusal took the next rung — and stopped being so when
+   * `Walker.sendOpen` started waiting for this sentence, because a *gate*'s
+   * success would then have matched nothing. The player's own transcript is
+   * the wire's word on the substitution (`The gate is closed!`, `The gate is
+   * locked.`, `You bashed the gate open.`, live 2026-09-05); only `door` has
+   * ever been captured for this particular sentence, so the noun is the
+   * closed list the source names rather than a free run of words — `The way
+   * ahead is now open.` is a room description, not a door.
+   */
   {
     type: 'door-changed',
     pattern:
-      /^(?:The door (?:is|was) (?:now |already )?(?<state>open|closed)\.|You successfully (?<state2>unlocked) the door\.)$/
+      /^(?:The (?<barrier>door|gate|portcullis) (?:is|was) (?:now |already )?(?<state>open|closed)\.|You successfully (?<state2>unlocked) the (?<barrier2>door|gate|portcullis)\.)$/
   },
   /*
    * `You bashed the door open.` — the other way a barrier ends up open, and
@@ -1155,7 +1264,10 @@ export const RULES: Rule[] = [
   { type: 'target-ambiguous', pattern: /^Please be more specific\./ },
   { type: 'open-failed', pattern: /^That is not a door or a gate!/ },
   // `open` at a locked door, captured live in the arena (`npm run probe:play`).
-  { type: 'open-failed', pattern: /^The (?<barrier>door|gate) is (?<reason>locked)\.$/ },
+  {
+    type: 'open-failed',
+    pattern: /^The (?<barrier>door|gate|portcullis) is (?<reason>locked)\.$/
+  },
   { type: 'user-list-failed', pattern: /^You cannot LIST if you are not in a shop!/ },
   { type: 'command-ignored', pattern: /^You are typing too quickly - command ignored/ },
   { type: 'slow-down', pattern: /^Why don't you slow down for a few seconds\?/ },

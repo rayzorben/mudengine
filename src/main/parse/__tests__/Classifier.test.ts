@@ -449,6 +449,54 @@ describe('conversation, movement, items', () => {
     expect(expectType('Masta just entered the Realm.', 'player-enters')['player']).toBe('Masta');
     expect(expectType('Masta just left the Realm.', 'player-exits')['player']).toBe('Masta');
   });
+
+  /*
+   * The welcome banner charging for the last session, and the reason it has a
+   * rule of its own: `^The …\byou\b…[.!]$` is the frame a monster's swing
+   * wears, so unmatched it was read as a **blow**. No attacker — nothing
+   * places `gods` — but a bumped round clock and blow count on every unclean
+   * reconnect, at the moment a character is standing in a room it has not
+   * looked at yet. Measured twice on bbs.bearfather.net, 2026-09-05.
+   *
+   * `RULES` is first-match-wins, so the assertion that matters is the *type*:
+   * a rule added below the combat frames would leave this test passing on
+   * `mob-misses`.
+   */
+  it('reads the disconnect penalty rather than a blow from the gods', () => {
+    expectType('The gods have punished you appropriately.', 'user-disconnect-penalty');
+    /*
+     * And the frame it had to be lifted out of still works, in both the shapes
+     * the server composes it in — the default (`<Name> <missMsg> at you, but
+     * you dodge out of the way!`, Mob.cs:1672) and a realm's own
+     * `MissMessage.Line1` template, which is what the corpus's 31 non-`at you`
+     * shapes are.
+     */
+    expectType('The large lashworm lunges at you!', 'mob-misses');
+    expectType('The Lord of the Hunt misses you with its nexus spear.', 'mob-misses');
+  });
+
+  /*
+   * Both realms' way of saying a level was trained for, and the one thing on
+   * the wire that says `train stats` happened. Each of the three leaves a
+   * figure the client is holding out of date — see `src/shared/staleness.ts`.
+   */
+  it('reads the training sentences, on both realms', () => {
+    expect(
+      expectType('You hand over 250 copper farthings to train to the next level!', 'user-trains')[
+        'price'
+      ]
+    ).toBe('250');
+    // MajorMUD, `captures/004:869` and `captures/177:34` — and the price is a
+    // word there, which is why it is captured verbatim rather than as digits.
+    expect(
+      expectType(
+        'You hand over nothing and you receive training to attain level 11.',
+        'user-trains'
+      )
+    ).toMatchObject({ price: 'nothing', level: '11' });
+    // Coming out of the stat screen having saved, live on Paradigm.
+    expectType('To prevent accidental suicide or reroll, these commands', 'user-stats-assigned');
+  });
 });
 
 describe('unknown lines', () => {

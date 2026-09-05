@@ -51,7 +51,8 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
 import type { CharacterState } from '../../shared/character';
-import type { Block } from '../../shared/blocks';
+import type { Block, BlockType } from '../../shared/blocks';
+import { REFRESH, staleAfter, type StaleFact } from '../../shared/staleness';
 import { tuning } from '../app/tuning';
 
 export interface RoutineEvents {
@@ -376,8 +377,8 @@ export class Routines {
       return;
     }
     /*
-     * Trained, so the figure on file is wrong — the same correction the
-     * spellbook gets above, applied to the other thing a level invalidates.
+     * A sentence that said a number changed without saying what to. The
+     * *what* is `src/shared/staleness.ts`, declared as data; this is the ask.
      *
      * `Exp needed for next level` comes from `exp` or from the stat sheet, and
      * on this realm the status line carries no `Need=` field to maintain it
@@ -385,15 +386,17 @@ export class Routines {
      * level a character trained for left *Exp. needed* and *Will level in* on
      * the Combat Stats card reading against the level before it, for the rest
      * of the session — a readout confidently stating a number the client had
-     * no business believing.
+     * no business believing. The maxima on the sheet and the purse a train was
+     * paid out of are the same failure in two more places.
      *
-     * **Both sentences, one ask.** `You hand over 250 copper farthings to train
-     * to the next level!` is the one the request named and the one that says a
-     * command was spent to reach a new level; `Welcome to level 7!` is the one
-     * that states the fact the figure depends on. On this realm they arrive
-     * together and always have — six trains across the recorded sessions, each
-     * with its welcome on the next line — so the second costs nothing, and if
-     * a realm ever separated them the figure would still be corrected.
+     * **Both training sentences, and the welcome too.** `You hand over 250
+     * copper farthings to train to the next level!` says a command was spent
+     * to reach a new level; `Welcome to level 7!` states the fact the figures
+     * depend on. On this realm they arrive together and always have — six
+     * trains across the recorded sessions, each with its welcome on the next
+     * line — so the second costs nothing (one coalesced intent, not two), and
+     * on **MajorMUD**, where a train prints its own sentence and no welcome at
+     * all, the figures are still corrected.
      *
      * The three lines a trainer prints that are *not* a level are none of
      * these types: `Training will cost 50 copper farthings!`, `You can not
@@ -401,25 +404,36 @@ export class Routines {
      * to train!` all classify as `unknown` (checked against the real
      * classifier), so asking a trainer what it charges spends nothing.
      *
-     * `probe` band and coalesced by one key: the least urgent thing in the
-     * client, so it can never displace an attack, an escape or a walk step —
-     * and a level is exactly the moment a character is standing in a guild
-     * rather than in a fight. Unconditional within `routines.enabled` like the
-     * spellbook correction above: the client already asked for this figure on
-     * the way in, and this is that same ask staying true rather than a new one
-     * nobody chose.
+     * `probe` band and coalesced: the least urgent thing in the client, so it
+     * can never displace an attack, an escape or a walk step — and a level is
+     * exactly the moment a character is standing in a guild rather than in a
+     * fight. Unconditional within `routines.enabled` like the spellbook
+     * correction above: the client already asked for these figures on the way
+     * in, and this is that same ask staying true rather than a new one nobody
+     * chose.
      */
-    if (block.type === 'user-trains' || block.type === 'user-levels') {
-      this.queue.enqueue({
-        command: 'exp',
-        priority: 'probe',
-        // The key the entry probe already builds for this command
-        // (`probe:${command}`), so the two are one intent rather than two
-        // spellings of it — coalesce by intent is the whole rule.
-        coalesceKey: 'probe:exp',
-        reason: t('automation.routines.reasonTrained')
-      });
+    const stale = staleAfter(block.type);
+    if (stale.length > 0) this.refresh(stale, this.whyStale(block.type));
+  }
+
+  /** Asks for each stale fact once, in the words of whatever made it stale. */
+  private refresh(facts: readonly StaleFact[], reason: string): void {
+    for (const fact of facts) {
+      const { command, coalesceKey } = REFRESH[fact];
+      this.queue.enqueue({ command, priority: 'probe', coalesceKey, reason });
     }
+  }
+
+  /**
+   * Why the refresh is going out, for the decision trace.
+   *
+   * The words stay here and the table stays data, because `locales/ui.en.yaml`
+   * is the only place copy lives and a key looked up through a variable is a
+   * key `i18n-coverage.test.ts` cannot check. Two literal calls instead.
+   */
+  private whyStale(type: BlockType): string {
+    if (type === 'user-stats-assigned') return t('automation.routines.reasonStatsTrained');
+    return t('automation.routines.reasonTrained');
   }
 
   /**

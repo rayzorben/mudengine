@@ -610,6 +610,7 @@ tabs:
     markOffline: offline
     markPvp: attacked! (PvP)
     markRecovering: recovering
+    markBlocked: blocked
     markBlind: blind
     markHeld: held
     markPoisoned: poisoned
@@ -939,6 +940,7 @@ cards:
       title: Loop
     route:
       badgeArrived: arrived
+      badgeBlocked: blocked
       badgeStopped: stopped
       endedReason: 'Ended: {reason}'
       gatedLabel: Gated
@@ -2347,6 +2349,9 @@ session:
     whyCompany: Player present in room (PvP abort)
     whyPvp: '{attacker} opened on you'
   realm:
+    commandUnavailable:
+      This realm has no “{command}” command, so it was said out loud in the room rather than
+      answered. Automation will not send it here again.
     familyDisagrees:
       This server is {server} and the realm data in {source} is {data}. Both are kept, and nothing
       that depends on one family's arithmetic will be computed from the other's.
@@ -2606,7 +2611,9 @@ automation:
     reasonLookAtPlayer: Looking at somebody this character has not seen before
     reasonRosterUnknown: a name arrived without a listing to explain it
     reasonSpellbook: reading the spellbook
-    reasonTrained: trained, so the experience to the next level has changed
+    reasonTrained: trained, so the sheet, the experience to the next level and the purse
+      have all changed
+    reasonStatsTrained: the stats were retrained, so the sheet has changed
     reasonBuffEnding: a sentence nothing recognised may have ended a buff; the stat sheet says which
     spellbookCorrected: Asked for the wrong book — the realm says to list {book}, so asking that instead.
   walk:
@@ -2614,8 +2621,10 @@ automation:
     arrived: Arrived at {stepName}.
     darkLightSpent: '{stepName} is dark and your {lightName} is spent.'
     barrierHeld: Door bash failed (door held).
+    barrierHolding: 'The {barrier} is still shut; waiting here and trying again. {detail}'
     barrierNotAllowed: Door locked (forcing/picking disabled).
     barrierTooHard: Requires {wanted}; this character has {picklocks} picklocks and {strength} strength.
+    barrierTooHurt: Too hurt to spend a bash on it.
     barrierUnknownSkill: unknown
     healthHolding: Too hurt to travel; waiting here until health is back.
     healthResumed: Health is back; walking on.
