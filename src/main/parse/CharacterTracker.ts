@@ -3350,6 +3350,30 @@ export class CharacterTracker {
       }
 
       /*
+       * `You hand over 1200 copper farthings to train to the next level!` — a
+       * purchase in every sense that matters here: the server states an exact
+       * figure in copper, the unit `Wealth:` normalises into, and the money is
+       * gone. Read for the same reason `user-buys` is, and it was the last way
+       * money left the purse that nothing moved.
+       *
+       * `vocabulary.test.ts` exempted this type for three phases as *"the price
+       * of a level; wealth is re-read from the next listing"*. Nothing forces
+       * that listing: two trains in a guild left the maintained purse 2,200
+       * copper high for the rest of the walk back to Godfrey, and the Deposit
+       * All button then asked the vault for money the character did not have —
+       * which this server refuses in **silence**, so neither the player nor the
+       * client had anything to read (`logs/2026-09-04_20-39-52_festus`, 1000 +
+       * 1200 against a `Wealth:` that fell by exactly 2200).
+       *
+       * The level half of the receipt is `Routines`' — it asks `exp`, because a
+       * level is what makes *Exp. needed* wrong. This is the other half.
+       */
+      case 'user-trains': {
+        const price = int(g['price']);
+        return price === null ? null : withSpend(s, -price);
+      }
+
+      /*
        * A banking round moves two figures in opposite directions, and the
        * sentence states only one of them.
        *

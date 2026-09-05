@@ -136,9 +136,21 @@ export function isKnownPlayer(character: CharacterState, name: string): boolean 
   return character.online.some((entry) => playerKey(entry.name) === key);
 }
 
+/**
+ * Whether a name is this character's own, given only the character's name.
+ *
+ * For a memoised row that must not take the whole character: every status
+ * line the server prints replaces the character object, and a row keyed on it
+ * would redraw ten times a second in a fight for a name that has not changed.
+ * `isSelf` is this test read off the character, so the two cannot disagree.
+ */
+export function isOwnName(self: string | null, name: string): boolean {
+  return self !== null && playerKey(self) === playerKey(name);
+}
+
 /** Whether a name is this character's own, filed the one way every name is. */
 export function isSelf(character: CharacterState, name: string): boolean {
-  return character.name !== null && playerKey(character.name) === playerKey(name);
+  return isOwnName(character.name, name);
 }
 
 /**

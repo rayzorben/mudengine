@@ -8,6 +8,7 @@ import { WorldGraph } from './WorldGraph';
 import { buildRealm, REALM_FORMAT } from './buildRealm';
 import { openRealm } from './RealmSource';
 import { tuning } from '../app/tuning';
+import { REALM_FAMILY_LABEL } from '../../shared/realm';
 
 /**
  * Every realm the client has been asked for, converted once and kept.
@@ -55,7 +56,7 @@ export interface RealmLibraryOptions {
    * **beside them** rather than a path on the machine that wrote it.
    *
    * `resources/servers/gmud-5x/server.yaml` says `database:
-   * mdb/gmud20230902.mdb`, and that file ships. An absolute path there would
+   * mdb/2023-09-02-gmud.zip`, and that file ships. An absolute path there would
    * exist on exactly one computer, which is why `shipped.test.ts` refused one
    * for as long as every shipped realm used the built-in world — and why the
    * answer is a *relative* path rather than an exception to that rule.
@@ -97,10 +98,48 @@ export class RealmLibrary {
           ms: Date.now() - started
         })
       );
+      this.announceBuild(graph);
     } else {
       this.options.notify?.(t('notices.world.shippedMissing', { path: this.options.shippedFile }));
     }
     return graph;
+  }
+
+  /**
+   * What the realm database says about itself, said out loud once per realm.
+   *
+   * The `Info` row was in every realm file this client has ever read and
+   * invisible to it until format 21 — not the data set's version, not its build
+   * date, not which of the two lineages' arithmetic it belongs to. It is
+   * announced rather than merely stored because **provenance is part of the
+   * answer**: a derived number has to be able to say which build of which data
+   * it came from, and the first place a person looks for that is the line that
+   * already tells them how many rooms loaded.
+   *
+   * A realm that does **not** name a family says so in the same sentence,
+   * because that is a refusal — everything downstream of it will decline to
+   * compute — and a safety feature that declines silently is worse than one
+   * never offered.
+   *
+   * Once per graph: `shippedGraph` memoises and `load` announces only on the
+   * path that has just read a file, so switching between two converted realms
+   * does not re-announce either.
+   */
+  private announceBuild(graph: WorldGraph): void {
+    const { build, family, source } = graph.info;
+    if (build === null) return;
+    const stated = [build.custom, build.data === null ? null : `data ${build.data}`, build.date]
+      .filter((part): part is string => part !== null && part.length > 0)
+      .join(', ');
+    if (stated.length === 0) return;
+    this.options.notify?.(
+      t('notices.world.realmBuild', {
+        source,
+        build: stated,
+        family:
+          family === null ? t('notices.world.realmBuildFamilyUnknown') : REALM_FAMILY_LABEL[family]
+      })
+    );
   }
 
   /**
@@ -169,6 +208,7 @@ export class RealmLibrary {
       return fallback(t('notices.world.problemEmptyConversion', { file: path.basename(wanted) }));
     }
     this.graphs.set(key, graph);
+    this.announceBuild(graph);
     return { graph, source: graph.info.source };
   }
 

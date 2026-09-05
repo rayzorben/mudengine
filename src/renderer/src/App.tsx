@@ -146,6 +146,7 @@ import type {
   ConnectionTarget,
   StreamLine,
   TelnetEvent,
+  TerminalActionName,
   TerminalSize
 } from '@shared/types';
 import { setTuning, tuning } from './lib/tuning';
@@ -2423,6 +2424,19 @@ export default function App() {
    * lists what it matched; a name matching exactly one room opens on that room,
    * which is what the search field there already does with a typed name.
    */
+  /*
+   * A console button main runs, addressed to the character whose terminal it
+   * was pressed in — not to the focused pane, which may be a different one.
+   *
+   * Nothing crosses but the action's name. The figure a `Deposit All` needs is
+   * not knowable here, and was not knowable in main either at the moment the
+   * line was drawn, which is the whole reason this is an action rather than a
+   * list of commands (`TerminalIntentAction`).
+   */
+  const actInConsole = useCallback((sid: SessionId, action: TerminalActionName) => {
+    void api.terminalAct(sid, action);
+  }, []);
+
   const chooseRoomNamed = useCallback(
     (name: string) => {
       void api.searchRooms(session, name).then((rooms) => {
@@ -4243,6 +4257,7 @@ export default function App() {
                   onInput={handleInput}
                   onInspect={inspectAt}
                   onChooseRoom={chooseRoomNamed}
+                  onAct={actInConsole}
                   onResize={handleResize}
                   onSelectPlayer={selectPlayer}
                   onSelectGang={selectGang}

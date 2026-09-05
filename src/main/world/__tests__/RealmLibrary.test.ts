@@ -38,7 +38,7 @@ afterEach(() => {
 
 describe('a realm database that ships beside the client', () => {
   /*
-   * `GMUD (5X)` names `mdb/gmud20230902.mdb` — relative, because an absolute
+   * `GMUD (5X)` names `mdb/2023-09-02-gmud.zip` — relative, because an absolute
    * path in a shipped file exists on the one computer that wrote it and every
    * install would fall back with a notice. It has to resolve against the
    * client's own resources, which is `resources/` in a checkout and somewhere

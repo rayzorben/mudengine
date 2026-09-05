@@ -5,7 +5,7 @@ import { FindField } from './CardTable';
 import { t } from '../lib/i18n';
 import NamedText from './NamedText';
 import type { NameIndex } from '../lib/names';
-import { isKnownPlayer, isSelf, PlayerName } from '../lib/players';
+import { isKnownPlayer, isOwnName, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { matches } from '../lib/table';
 import { linkify } from '../lib/linkify';
@@ -18,7 +18,8 @@ import {
   talkChannel,
   TALK_CHANNELS,
   type TalkChannel,
-  type TalkLayout
+  type TalkLayout,
+  type TalkStamp
 } from '@shared/talk';
 import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
@@ -167,6 +168,333 @@ function originalOf(message: Block): string {
 const CHANNEL_WORDS = TALK_CHANNELS.map((entry) => entry.word);
 
 /**
+ * Who a name on a line is, filed once per roster rather than once per line.
+ *
+ * `isKnownPlayer` and `isSelf` read three things off the character — its own
+ * name, the registry and the roster — and every status line the server prints
+ * replaces the character object they sit on without changing any of the
+ * three. A line memoised on the character would therefore redraw on every
+ * status line, which in a fight is ten times a second for five hundred lines;
+ * built once per *value* of those three instead, it holds until a `who` lands
+ * or somebody logs in, and a line can be memoised on it.
+ */
+interface People {
+  /** This character's own name: the one name on a line that is never a control. */
+  self: string | null;
+  /** Whether the registry or the roster knows this person — the one test of which a name is. */
+  known(name: string): boolean;
+}
+
+interface TalkLineProps {
+  message: Block;
+  layout: TalkLayout;
+  stamped: boolean;
+  stampFormat: TalkStamp;
+  people: People | null;
+  names: NameIndex | null;
+  /**
+   * `names.version`, beside the index it belongs to and never read here.
+   *
+   * The index is one object per character whose people change *in place*, so
+   * a memo comparing the index alone would hold a sentence linked against
+   * last hour's roster. The number is what makes a roster change a prop
+   * change; `NamedText` re-searches on it for the same reason.
+   */
+  namesVersion: number;
+  onSelect?(name: string, anchor: PopoverAnchor): void;
+  inspect?(name: string, anchor: HTMLElement): void;
+}
+
+/**
+ * One line of the backlog, drawn once and left alone.
+ *
+ * Every prop is a value or a reference that holds for as long as the fact it
+ * carries does — the block itself is never replaced, the layout is a word,
+ * `people` is keyed by value, the index is per character — so a line renders
+ * when it arrives and again only when the card is re-arranged or the roster
+ * moves. Without this boundary a new line, a status line and a find-field
+ * keystroke each rebuilt all five hundred: `linkify` over every sentence, the
+ * name index over every run, React reconciling the lot.
+ */
+const TalkLine = memo(function TalkLine(props: TalkLineProps) {
+  const { message, layout, stamped, stampFormat, people, names, onSelect, inspect } = props;
+  const outbound = RECEIPTS.has(message.type) && message.groups['message'] === undefined;
+  return (
+    <div className="line" data-channel={message.type}>
+      {/*
+        The time the classifier stamped the block, never the moment
+        this rendered: a backlog restored from the conversation log
+        is hours old, and drawing "now" beside it would be the card
+        lying about when the conversation happened.
+      */}
+      {stamped && <span className="stamp">{formatTalkStamp(message.at, stampFormat)}</span>}
+      {layout === 'original' ? (
+        /*
+          The realm's own sentence, with both the links and the names
+          in it as controls.
+
+          The speaker is inside the text here rather than in a column
+          of its own, so it is found the way the Alerts card finds
+          one — through the console's own index. Without that, the
+          default layout would be the one that quietly took the
+          clickable names away.
+
+          **Nested, not interleaved.** `linkify` splits first and
+          `NamedText` searches each run it did *not* claim, which
+          composes two passes that both cut the same string without
+          either knowing about the other. A web address is not a
+          place a player's name is looked for, so nothing is lost by
+          the order; the other order would have `NamedText` cutting a
+          URL in half around a word that happened to be a monster.
+        */
+        <span className="said">
+          {linkify(originalOf(message)).map((part, at) =>
+            part.href !== undefined ? (
+              <a
+                href={part.href}
+                key={`${at}-${part.href}`}
+                // `_blank` goes through main's window-open handler,
+                // which refuses the app frame and any scheme but http.
+                rel="noreferrer noopener"
+                target="_blank"
+              >
+                {part.text}
+              </a>
+            ) : names && people && inspect && onSelect ? (
+              <NamedText
+                index={names}
+                inspect={inspect}
+                key={at}
+                onSelect={onSelect}
+                self={people.self}
+                text={part.text}
+              />
+            ) : (
+              part.text
+            )
+          )}
+        </span>
+      ) : (
+        <>
+          <span className="channel">{CHANNELS[message.type] ?? message.type}</span>
+          {/* A name the registry or the roster knows is the control that
+          opens their card; a name only a line carried — the recipient
+          of this character's own telepath — stays text, because the
+          card it would open says nothing is known. */}
+          <span className="who">
+            {outbound && `${t('cards.talk.sentTo')} `}
+            {message.groups['player'] === undefined ? (
+              t('cards.map.legendYou')
+            ) : onSelect && people && people.known(message.groups['player']) ? (
+              <PlayerName
+                className="name"
+                name={message.groups['player']}
+                onSelect={onSelect}
+                self={isOwnName(people.self, message.groups['player'])}
+              />
+            ) : (
+              message.groups['player']
+            )}
+          </span>
+          {/*
+            The message verbatim; the parser already stripped the framing.
+            On this character's own receipts the body is `sent` — bound by
+            the classifier from the command, because the server confirms a
+            telepath without echoing it.
+
+            Split into runs of text and the web addresses between them, so a
+            link somebody gossiped can be followed rather than retyped —
+            and *split*, never `dangerouslySetInnerHTML`, because this text
+            is written by other players on a MUD.
+          */}
+          <span className="said">
+            {linkify(message.groups['sent'] ?? message.groups['message'] ?? message.text).map(
+              (part, at) =>
+                part.href === undefined ? (
+                  part.text
+                ) : (
+                  <a
+                    href={part.href}
+                    key={`${at}-${part.href}`}
+                    // `_blank` goes through main's window-open handler, which
+                    // refuses the app frame and refuses any scheme but http.
+                    rel="noreferrer noopener"
+                    target="_blank"
+                  >
+                    {part.text}
+                  </a>
+                )
+            )}
+          </span>
+        </>
+      )}
+    </div>
+  );
+});
+
+interface ComposerProps {
+  /** The channel the box is pointed at, and every channel it can be pointed at. */
+  channel: TalkChannel;
+  options: readonly TalkChannel[];
+  /** Points the composer at a channel, remembering it where it can be. */
+  point(next: TalkChannel): void;
+  /** Sends a line — `ConversationCardProps.onSend`. Absent offline, and the box with it. */
+  send?(line: string): void;
+}
+
+/**
+ * The reply box and its picker, owning what is being typed.
+ *
+ * The draft is this component's state and nobody else's, and that is the
+ * whole reason it is a component. It was state on the card, so every keystroke
+ * re-rendered the card — five hundred lines of backlog, each run through
+ * `linkify` and the name index and reconciled again — before the typed
+ * character could be painted, and a player watched their own words crawl into
+ * the box. A key pressed here now redraws a form of two controls; the figures
+ * are in `mudengine-ui` under *the window redraws what changed*.
+ */
+function Composer({ channel, options, point, send }: ComposerProps) {
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Below the hooks and before the form, so a character that drops keeps the
+  // half-typed line for when it is back — which is what the card did while the
+  // draft was its own state, and what a mounted-then-unmounted box would lose.
+  if (!send) return null;
+
+  const say = (): void => {
+    /*
+     * Still verbatim, and now with a channel in front of it when one is needed.
+     *
+     * The realm's own vocabulary is the vocabulary — `gos`, `auc`, `br`, `gb` —
+     * and a client that rewrote it would be a second thing to keep in step with
+     * a command table it does not own. What `compose` adds is the *prefix*, and
+     * only when the line does not already begin with a channel: type `br yo`
+     * and it broadcasts and moves the picker, so the next line goes there too
+     * without being told again. See `shared/talk.ts`.
+     */
+    const said = compose(draft, channel);
+    if (said === null) return;
+    if (said.channel.word !== channel.word) point(said.channel);
+    /*
+     * An address with nothing after it — `/Soul` — moves the picker and sends
+     * nothing. It names somebody to talk to and says nothing to them, and the
+     * server's answer to that is a scolding that costs a command.
+     */
+    if (said.command !== null) send(said.command);
+    setDraft('');
+  };
+
+  return (
+    <form
+      className="conversation-say"
+      onSubmit={(event: FormEvent) => {
+        event.preventDefault();
+        say();
+      }}
+    >
+      {/*
+            The picker, and it is a `select` rather than a row of pills: this is
+            one choice out of six sitting on the same line as the box it
+            qualifies, which is what a select is, and a row of six pills here
+            would take the width the message needs.
+
+            **No `keepFocus` on the mousedown, and that is the whole reason this
+            could not be opened.** A native select raises its popup on
+            *mousedown*, so preventing that default suppressed the popup and
+            left a control that could be read and never changed — a dropdown
+            that does not drop down. The rule it was borrowed from is for
+            controls that are clicked and never typed into, and a select is
+            operated with the keyboard too. So it takes the caret, says so with
+            `data-owns-keys` while it holds it so a bare hotkey stands down, and
+            hands it to the message box on the way out, which is where the next
+            keystroke was always going.
+
+            The rows say the *label*, not the command word. Four of the six read
+            perfectly well as words, and two of them are `.` and `"` — a row
+            that says `"` says nothing. It also stops the card speaking two
+            vocabularies: the filters above already name the same channels in
+            the same words.
+          */}
+      <select
+        aria-label={t('cards.alerts.columns.channel')}
+        data-owns-keys="true"
+        onChange={(event) => {
+          const chosen = options.find((entry) => entry.word === event.target.value);
+          if (chosen) point(chosen);
+          inputRef.current?.focus();
+        }}
+        onKeyDown={(event) => {
+          /*
+           * Escape hands the keyboard back, exactly as it does from the
+           * message box beside it. Opening the picker and changing nothing
+           * would otherwise leave the caret parked on chrome, and a held
+           * caret is a swallowed keystroke. A native popup takes its own
+           * Escape first, so this is the one that arrives after it closes.
+           */
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          event.currentTarget.blur();
+        }}
+        value={channel.word}
+      >
+        {options.map((entry) => (
+          <option key={entry.word} value={entry.word}>
+            {entry.label}
+          </option>
+        ))}
+      </select>
+      <input
+        aria-label={t('cards.talk.messageInputAria')}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          /*
+           * Enter is handled here rather than left to the form's implicit
+           * submission — the same reason the route panel handles its own:
+           * implicit submission is a browser default that is easy to lose,
+           * and CDP does not drive it, so the smoke test cannot prove the
+           * thing a player actually does.
+           */
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            say();
+            return;
+          }
+          /*
+           * Escape hands the keyboard back to the game.
+           *
+           * This is the one surface in the HUD that holds the caret while
+           * you are playing, and a held caret is a swallowed keystroke —
+           * which can cost a character. Enter deliberately does *not* hand
+           * it back: this is a composer, and a conversation is more than
+           * one line. Escape is the way out, and it is the key that leaves
+           * every other surface too.
+           */
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          setDraft('');
+          inputRef.current?.blur();
+        }}
+        /*
+         * What the box does, in the box. The channel is already showing to
+         * the left, so the placeholder's job is the part nobody would
+         * guess: that a line starting with one of the realm's own openers
+         * goes there instead. Listing every opener `compose` acts on beats
+         * naming two of them — `/` and `>` address one person and the
+         * picker cannot offer either until somebody has been named, and a
+         * player who can see `.` and `"` does not have to discover that
+         * say and yell are punctuation here. Glyphs first, then words, so
+         * the run reads as one vocabulary rather than a sentence.
+         */
+        placeholder={t('cards.talk.messagePlaceholder')}
+        ref={inputRef}
+        spellCheck={false}
+        value={draft}
+      />
+    </form>
+  );
+}
+
+/**
  * What everyone is saying.
  *
  * This is a social game, and the channels are most of it: a player who misses a
@@ -275,9 +603,7 @@ function ConversationCard({
    * remembered, for the reason the query is not: a search is asked now.
    */
   const [finding, setFinding] = useState(false);
-  const [draft, setDraft] = useState('');
   const logRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   /*
    * The faces with anything behind them, in their fixed order. The whole
@@ -305,6 +631,30 @@ function ConversationCard({
           ])
       ),
     [messages, face, query]
+  );
+
+  /*
+   * Who is a person, keyed by value — see `People`. The key is every fact
+   * `isKnownPlayer` and `isOwnName` read, so the closure below is stale only
+   * in ways those two cannot observe; the `askableKey` in `App.tsx` is the
+   * same shape for the same reason.
+   */
+  const peopleKey =
+    character === undefined
+      ? null
+      : [
+          character.name ?? '',
+          ...Object.keys(character.players),
+          ...character.online.map((entry) => entry.name)
+        ].join('\n');
+  const people = useMemo<People | null>(
+    () =>
+      character === undefined
+        ? null
+        : { self: character.name, known: (name) => isKnownPlayer(character, name) },
+    // The character is deliberately not a dependency: it is a new object on
+    // every status line, and the key already says when what is read off it moved.
+    [peopleKey]
   );
 
   /*
@@ -352,265 +702,23 @@ function ConversationCard({
             {query.length > 0 ? t('cards.talk.empty.noMatch') : t('cards.talk.empty.none')}
           </div>
         ) : (
-          shown.map((message) => {
-            const outbound = RECEIPTS.has(message.type) && message.groups['message'] === undefined;
-            return (
-              <div
-                className="line"
-                data-channel={message.type}
-                key={`${message.seq}-${message.at}`}
-              >
-                {/*
-                  The time the classifier stamped the block, never the moment
-                  this rendered: a backlog restored from the conversation log
-                  is hours old, and drawing "now" beside it would be the card
-                  lying about when the conversation happened.
-                */}
-                {stamped && (
-                  <span className="stamp">{formatTalkStamp(message.at, stampFormat)}</span>
-                )}
-                {layout === 'original' ? (
-                  /*
-                    The realm's own sentence, with both the links and the names
-                    in it as controls.
-                    
-                    The speaker is inside the text here rather than in a column
-                    of its own, so it is found the way the Alerts card finds
-                    one — through the console's own index. Without that, the
-                    default layout would be the one that quietly took the
-                    clickable names away.
-
-                    **Nested, not interleaved.** `linkify` splits first and
-                    `NamedText` searches each run it did *not* claim, which
-                    composes two passes that both cut the same string without
-                    either knowing about the other. A web address is not a
-                    place a player's name is looked for, so nothing is lost by
-                    the order; the other order would have `NamedText` cutting a
-                    URL in half around a word that happened to be a monster.
-                  */
-                  <span className="said">
-                    {linkify(originalOf(message)).map((part, at) =>
-                      part.href !== undefined ? (
-                        <a
-                          href={part.href}
-                          key={`${at}-${part.href}`}
-                          // `_blank` goes through main's window-open handler,
-                          // which refuses the app frame and any scheme but http.
-                          rel="noreferrer noopener"
-                          target="_blank"
-                        >
-                          {part.text}
-                        </a>
-                      ) : names && character && inspect && onSelect ? (
-                        <NamedText
-                          character={character}
-                          index={names}
-                          inspect={inspect}
-                          key={at}
-                          onSelect={onSelect}
-                          text={part.text}
-                        />
-                      ) : (
-                        part.text
-                      )
-                    )}
-                  </span>
-                ) : (
-                  <>
-                    <span className="channel">{CHANNELS[message.type] ?? message.type}</span>
-                    {/* A name the registry or the roster knows is the control that
-                    opens their card; a name only a line carried — the recipient
-                    of this character's own telepath — stays text, because the
-                    card it would open says nothing is known. */}
-                    <span className="who">
-                      {outbound && `${t('cards.talk.sentTo')} `}
-                      {message.groups['player'] === undefined ? (
-                        t('cards.map.legendYou')
-                      ) : onSelect &&
-                        character &&
-                        isKnownPlayer(character, message.groups['player']) ? (
-                        <PlayerName
-                          className="name"
-                          name={message.groups['player']}
-                          onSelect={onSelect}
-                          self={isSelf(character, message.groups['player'])}
-                        />
-                      ) : (
-                        message.groups['player']
-                      )}
-                    </span>
-                    {/*
-                  The message verbatim; the parser already stripped the framing.
-                  On this character's own receipts the body is `sent` — bound by
-                  the classifier from the command, because the server confirms a
-                  telepath without echoing it.
-
-                  Split into runs of text and the web addresses between them, so a
-                  link somebody gossiped can be followed rather than retyped —
-                  and *split*, never `dangerouslySetInnerHTML`, because this text
-                  is written by other players on a MUD.
-                */}
-                    <span className="said">
-                      {linkify(
-                        message.groups['sent'] ?? message.groups['message'] ?? message.text
-                      ).map((part, at) =>
-                        part.href === undefined ? (
-                          part.text
-                        ) : (
-                          <a
-                            href={part.href}
-                            key={`${at}-${part.href}`}
-                            // `_blank` goes through main's window-open handler, which
-                            // refuses the app frame and refuses any scheme but http.
-                            rel="noreferrer noopener"
-                            target="_blank"
-                          >
-                            {part.text}
-                          </a>
-                        )
-                      )}
-                    </span>
-                  </>
-                )}
-              </div>
-            );
-          })
+          shown.map((message) => (
+            <TalkLine
+              inspect={inspect}
+              key={`${message.seq}-${message.at}`}
+              layout={layout}
+              message={message}
+              names={names ?? null}
+              namesVersion={names?.version ?? 0}
+              onSelect={onSelect}
+              people={people}
+              stamped={stamped}
+              stampFormat={stampFormat}
+            />
+          ))
         )}
       </div>
     </>
-  );
-
-  const say = (): void => {
-    if (!onSend) return;
-    /*
-     * Still verbatim, and now with a channel in front of it when one is needed.
-     *
-     * The realm's own vocabulary is the vocabulary — `gos`, `auc`, `br`, `gb` —
-     * and a client that rewrote it would be a second thing to keep in step with
-     * a command table it does not own. What `compose` adds is the *prefix*, and
-     * only when the line does not already begin with a channel: type `br yo`
-     * and it broadcasts and moves the picker, so the next line goes there too
-     * without being told again. See `shared/talk.ts`.
-     */
-    const said = compose(draft, channel);
-    if (said === null) return;
-    if (said.channel.word !== channel.word) point(said.channel);
-    /*
-     * An address with nothing after it — `/Soul` — moves the picker and sends
-     * nothing. It names somebody to talk to and says nothing to them, and the
-     * server's answer to that is a scolding that costs a command.
-     */
-    if (said.command !== null) onSend(said.command);
-    setDraft('');
-  };
-
-  const composer = onSend && (
-    <form
-      className="conversation-say"
-      onSubmit={(event: FormEvent) => {
-        event.preventDefault();
-        say();
-      }}
-    >
-      {/*
-            The picker, and it is a `select` rather than a row of pills: this is
-            one choice out of six sitting on the same line as the box it
-            qualifies, which is what a select is, and a row of six pills here
-            would take the width the message needs.
-
-            **No `keepFocus` on the mousedown, and that is the whole reason this
-            could not be opened.** A native select raises its popup on
-            *mousedown*, so preventing that default suppressed the popup and
-            left a control that could be read and never changed — a dropdown
-            that does not drop down. The rule it was borrowed from is for
-            controls that are clicked and never typed into, and a select is
-            operated with the keyboard too. So it takes the caret, says so with
-            `data-owns-keys` while it holds it so a bare hotkey stands down, and
-            hands it to the message box on the way out, which is where the next
-            keystroke was always going.
-
-            The rows say the *label*, not the command word. Four of the six read
-            perfectly well as words, and two of them are `.` and `"` — a row
-            that says `"` says nothing. It also stops the card speaking two
-            vocabularies: the filters above already name the same channels in
-            the same words.
-          */}
-      <select
-        aria-label={t('cards.alerts.columns.channel')}
-        data-owns-keys="true"
-        onChange={(event) => {
-          const chosen = options.find((entry) => entry.word === event.target.value);
-          if (chosen) point(chosen);
-          inputRef.current?.focus();
-        }}
-        onKeyDown={(event) => {
-          /*
-           * Escape hands the keyboard back, exactly as it does from the
-           * message box beside it. Opening the picker and changing nothing
-           * would otherwise leave the caret parked on chrome, and a held
-           * caret is a swallowed keystroke. A native popup takes its own
-           * Escape first, so this is the one that arrives after it closes.
-           */
-          if (event.key !== 'Escape') return;
-          event.preventDefault();
-          event.currentTarget.blur();
-        }}
-        value={channel.word}
-      >
-        {options.map((entry) => (
-          <option key={entry.word} value={entry.word}>
-            {entry.label}
-          </option>
-        ))}
-      </select>
-      <input
-        aria-label={t('cards.talk.messageInputAria')}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          /*
-           * Enter is handled here rather than left to the form's implicit
-           * submission — the same reason the route panel handles its own:
-           * implicit submission is a browser default that is easy to lose,
-           * and CDP does not drive it, so the smoke test cannot prove the
-           * thing a player actually does.
-           */
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            say();
-            return;
-          }
-          /*
-           * Escape hands the keyboard back to the game.
-           *
-           * This is the one surface in the HUD that holds the caret while
-           * you are playing, and a held caret is a swallowed keystroke —
-           * which can cost a character. Enter deliberately does *not* hand
-           * it back: this is a composer, and a conversation is more than
-           * one line. Escape is the way out, and it is the key that leaves
-           * every other surface too.
-           */
-          if (event.key !== 'Escape') return;
-          event.preventDefault();
-          setDraft('');
-          inputRef.current?.blur();
-        }}
-        /*
-         * What the box does, in the box. The channel is already showing to
-         * the left, so the placeholder's job is the part nobody would
-         * guess: that a line starting with one of the realm's own openers
-         * goes there instead. Listing every opener `compose` acts on beats
-         * naming two of them — `/` and `>` address one person and the
-         * picker cannot offer either until somebody has been named, and a
-         * player who can see `.` and `"` does not have to discover that
-         * say and yell are punctuation here. Glyphs first, then words, so
-         * the run reads as one vocabulary rather than a sentence.
-         */
-        placeholder={t('cards.talk.messagePlaceholder')}
-        ref={inputRef}
-        spellCheck={false}
-        value={draft}
-      />
-    </form>
   );
 
   /*
@@ -621,7 +729,7 @@ function ConversationCard({
   const content = (
     <>
       {feed}
-      {composer}
+      <Composer channel={channel} options={options} point={point} send={onSend} />
     </>
   );
   const tabs: CardTab[] = faces.map((entry) => ({

@@ -7,10 +7,11 @@
  *
  * Stands up a fake host that answers like the realm — server echo, the
  * `ESC[79D ESC[K` prompt repaint, a status line after every event — launches
- * the built app, and drives it through four situations a player is in every
+ * the built app, and drives it through six situations a player is in every
  * evening: sitting at the prompt, typing a command, typing *while a fight
- * prints*, and a listing arriving all at once. For each it records, from
- * inside the window:
+ * prints*, a listing arriving all at once, and typing into the Talk card's
+ * reply box with an evening's backlog behind it — alone, and while a fight
+ * prints. For each it records, from inside the window:
  *
  * - **every React commit and which components rendered in it**, through the
  *   DevTools hook React looks for at load (which is why the page is reloaded
@@ -772,7 +773,7 @@ function summariseTrace(events) {
 const results = [];
 /** `--only=idle,typing` runs a subset, for iterating on one situation. */
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-async function scenario(name, run) {
+async function scenario(name, run, { viaConsole = true } = {}) {
   if (only && !only.includes(name)) return null;
   log(`${name} …`);
   await evaluate(`(() => {
@@ -835,7 +836,7 @@ async function scenario(name, run) {
   const hops = [];
   let chunkAt = 0;
   let byteAt = 0;
-  for (let i = 0; i < keys.length; i += 1) {
+  for (let i = 0; viaConsole && i < keys.length; i += 1) {
     const down = snap.epoch + keys[i].t;
     let wireIndex = -1;
     for (let j = byteAt; j < bytes.length; j += 1) {
@@ -863,6 +864,20 @@ async function scenario(name, run) {
       total: echo && echo.painted !== null ? snap.epoch + echo.painted - down : null
     });
   }
+
+  /*
+   * Each keystroke to the paint after it, off the Event Timing API — the one
+   * clock that runs through style, layout and paint. A frame callback does
+   * not: it fires *before* the frame's layout, so a key whose handler was
+   * quick and whose layout was slow read as quick there (the first version of
+   * this figure did exactly that and disagreed with the event durations
+   * beside it by an order of magnitude). The API reports only events of 16ms
+   * or more, so the count against the keys pressed says how many were slow at
+   * all. The wire hops above are the console's — a key typed into a card
+   * never reaches the host until Enter — so this is the figure the Talk card
+   * is graded by.
+   */
+  const slowKeys = snap.events.filter((e) => e.name === 'keydown');
 
   const result = {
     name,
@@ -915,6 +930,11 @@ async function scenario(name, run) {
       frame: spread(hops.map((h) => h.frame).filter((v) => v !== null)),
       total: spread(hops.map((h) => h.total).filter((v) => v !== null)),
       unmatched: hops.filter((h) => h.back === null).length
+    },
+    keyPaint: {
+      keys: snap.keys.length,
+      slow: slowKeys.length,
+      duration: spread(slowKeys.map((e) => e.duration))
     },
     cpu
   };
@@ -971,6 +991,87 @@ await scenario('burst', async () => {
   await sleep(4000);
 });
 
+/*
+ * The Talk card, with an evening's backlog behind it and the composer holding
+ * the caret. It is put away by default, so it is brought out the way a player
+ * brings it out — from the palette — and filled from the host up to
+ * `talkLimit`, which is the size it reaches on a busy realm. Nothing typed
+ * here reaches the wire until Enter, so these two are graded by the frame
+ * after each key rather than by the echo.
+ */
+const TALK_BACKLOG = 500;
+async function openTalk() {
+  const voices = ['Nathaniel', 'Grimjaw', 'Soul'];
+  const words = ['anyone selling a rope', 'orc rogue in the arena again', 'meet me at the docks'];
+  host.say(
+    Array.from(
+      { length: TALK_BACKLOG },
+      (_, i) => `\x1b[0;36m${voices[i % 3]} gossips: ${words[i % 3]} (${i})\x1b[0m`
+    )
+  );
+  await sleep(3000);
+  // Typed into the palette, not browsed: the card toggles are deliberately
+  // not pinned, so typing is how a person reaches them.
+  const chord = { key: 'k', code: 'KeyK', windowsVirtualKeyCode: 75, modifiers: 2 };
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', ...chord });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...chord });
+  await sleep(300);
+  const palette = await evaluate(`(() => {
+    const el = document.querySelector('.palette input');
+    if (!el) return false;
+    const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+    set.call(el, 'Show card: Talk');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  if (!palette) throw new Error('the palette did not open');
+  await sleep(250);
+  const found = await evaluate(`(() => {
+    const row = [...document.querySelectorAll('.palette li')]
+      .find((li) => li.innerText.includes('Show card: Talk'));
+    if (row) row.click();
+    return !!row;
+  })()`);
+  if (!found) throw new Error('the palette offered no Talk card');
+  await sleep(500);
+  const state = await evaluate(`(() => {
+    const input = document.querySelector('.conversation-say input');
+    if (!input) return { lines: 0, focused: false };
+    input.focus();
+    return {
+      lines: document.querySelectorAll('.conversation-log .line').length,
+      focused: document.activeElement === input
+    };
+  })()`);
+  if (!state.focused) throw new Error('the Talk composer did not take the caret');
+  log(`Talk on the rail, ${state.lines} lines behind the composer`);
+}
+
+if (!only || only.some((name) => name.startsWith('talk'))) await openTalk();
+await scenario(
+  'talk',
+  async () => {
+    await type(SENTENCE, 50);
+    await sleep(300);
+    await press('\r');
+    await sleep(700);
+  },
+  { viaConsole: false }
+);
+await scenario(
+  'talk-in-a-fight',
+  async () => {
+    const done = fight(4);
+    await sleep(500);
+    await type(SENTENCE, 50);
+    await sleep(300);
+    await press('\r');
+    await done;
+    await sleep(700);
+  },
+  { viaConsole: false }
+);
+
 const shot = await cdp('Page.captureScreenshot', { format: 'png' });
 fs.writeFileSync(path.join(OUT, 'screen.png'), Buffer.from(shot.data, 'base64'));
 
@@ -1020,6 +1121,8 @@ for (const r of results) {
     log(`  chunk → next frame: ${sp(r.keys.frame)}`);
     log(`  keydown → frame:    ${sp(r.keys.total)}`);
   }
+  if (r.keyPaint.keys > 0)
+    log(`keystrokes ≥16ms to paint: ${r.keyPaint.slow} of ${r.keyPaint.keys}; ${sp(r.keyPaint.duration)}`);
 }
 
 fs.writeFileSync(

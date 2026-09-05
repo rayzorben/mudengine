@@ -111,10 +111,10 @@ connection:
 #
 # The realm's `database:` key is there too -- the world file every character
 # playing there walks. Empty is the world that ships with the client, and the
-# world that ships with the client is Paradigm's own (`default-pmud.mdb`,
-# 57,511 rooms), so none of the six shipped realms names one. A realm whose
-# data has moved on, or a private realm of your own, names its own .mdb,
-# .accdb, .sqlite or .db, which is converted ONCE into the same normalised
+# world that ships with the client is Paradigm's own (57,511 rooms), so none of
+# the six shipped realms names one. A realm whose data has moved on, or a
+# private realm of your own, names its own .mdb, .accdb, .sqlite or .db -- or a
+# .zip holding one -- which is converted ONCE into the same normalised
 # form and cached in `realms/`, never queried while you are playing. It used to
 # be stated per character, which was the same answer written out once per
 # character on that realm and as many places for it to drift.

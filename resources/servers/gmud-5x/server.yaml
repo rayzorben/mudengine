@@ -48,7 +48,7 @@ login:
 # reason that key exists.
 #
 # The world built into the client (`resources/world/`) is Paradigm's, built from
-# `default-pmud.mdb` -- so a character playing *here* would walk the wrong map,
+# Paradigm's own database -- so a character playing *here* would walk the wrong map,
 # and everything the map answers (routing, the local map, a room lookup) would
 # be answering about somewhere else. GreaterMUD's own database therefore ships
 # beside this file, and this names it.
@@ -62,6 +62,11 @@ login:
 # It is converted ONCE into the same normalised form the built-in world already
 # has -- a couple of seconds, on the first connection -- and cached in
 # `realms/`; it is never queried while you are playing. Replace it with a path
-# to your own .mdb, .accdb, .sqlite or .db if you play a realm whose data has
+# to your own .mdb, .accdb, .sqlite or .db -- or a .zip holding one, which is
+# how a realm is usually distributed -- if you play a realm whose data has
 # moved on from this file, and the next launch reconverts.
-database: mdb/gmud20230902.mdb
+#
+# **A zip, because that is a tenth of the size.** The database inside this one
+# is 20 MB and the archive is 2.4 MB, and it is read straight out of the
+# archive: nothing has to be unpacked, here or by you.
+database: mdb/2023-09-02-gmud.zip

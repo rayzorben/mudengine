@@ -135,7 +135,9 @@ export interface Server {
    */
   login: LoginStep[];
   /**
-   * Path to a realm database — `.mdb`, `.accdb`, `.sqlite` or `.db`.
+   * Path to a realm database — `.mdb`, `.accdb`, `.sqlite` or `.db`, or a
+   * `.zip` holding exactly one of those, which is how a realm is distributed
+   * and how this repository keeps its own.
    *
    * **On the realm, because that is what it is a property of.** The client
    * ships one realm — the GreaterMUD database it was built from — and that is

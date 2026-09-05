@@ -5,7 +5,7 @@ import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
-import type { StreamChunk, TerminalSize } from '@shared/types';
+import type { StreamChunk, TerminalActionName, TerminalSize } from '@shared/types';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { TerminalPalette } from '@shared/themes';
@@ -24,6 +24,8 @@ export interface SessionTerminalProps {
   onSelectGang?(session: SessionId, name: string, at: PopoverAnchor): void;
   /** A room's name clicked in the console: the route panel, on that room. */
   onChooseRoom?(name: string): void;
+  /** A console button main runs — `Deposit All`. See `TerminalIntentAction`. */
+  onAct?(session: SessionId, action: TerminalActionName): void;
   /** Whether a pane is currently showing this character. */
   shown: boolean;
   /** Whether this is the pane the keyboard is talking to. */
@@ -87,6 +89,7 @@ function SessionTerminal({
   onChunk,
   onSnapshot,
   onSearchResult,
+  onAct,
   index,
   onInspect,
   onSelectPlayer,
@@ -200,6 +203,12 @@ function SessionTerminal({
     (name: string, at: PopoverAnchor) => onSelectGang?.(session, name, at),
     [onSelectGang, session]
   );
+  // And the same for a console button: the counter it is asked at belongs to
+  // this terminal's character, never to whichever pane has the keyboard.
+  const act = useCallback(
+    (action: TerminalActionName) => onAct?.(session, action),
+    [onAct, session]
+  );
 
   return (
     <div
@@ -217,6 +226,7 @@ function SessionTerminal({
         onSelectPlayer={selectPlayer}
         onSelectGang={selectGang}
         onChooseRoom={onChooseRoom}
+        onAct={act}
         onReady={handleReady}
         onResize={resize}
         // Search belongs to the terminal being read, so only the focused pane

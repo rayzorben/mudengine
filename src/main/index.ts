@@ -24,6 +24,7 @@ import { migrateHome } from './config/Migration';
 import { homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
+import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
 import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from './session/SessionManager';
@@ -91,7 +92,13 @@ import { EMPTY_AUTOMATION } from '../shared/automation';
 import { EMPTY_MAP } from '../shared/map';
 import { asRoomReference, asRoute, roomId, type ShopPlace } from '../shared/world';
 import { errorMessage } from '../shared/values';
-import { asConnectionTarget, type ConnectionTarget, type TerminalSize } from '../shared/types';
+import {
+  asConnectionTarget,
+  TERMINAL_ACTIONS,
+  type ConnectionTarget,
+  type TerminalActionName,
+  type TerminalSize
+} from '../shared/types';
 import {
   asGlobalDraft,
   asLoop,
@@ -1992,6 +1999,31 @@ function registerIpc(): void {
   );
 
   /*
+   * A button beside a room's name that main runs: `Deposit All`.
+   *
+   * Nothing crosses but the name of the action, checked against the closed
+   * list — `gear:act`'s rule, and here it carries more weight than usual,
+   * because the whole reason this is not a list of commands is that the
+   * figure a deposit names is not knowable until the `i` it sends has been
+   * answered. `SessionManager.depositAll` owns the wait; see `AutoDeposit`.
+   *
+   * A refusal — nothing to bank, or a button pressed from the backscroll
+   * beside a room the character left — reports itself as a notice, so `false`
+   * here is never silent.
+   */
+  ipcMain.handle(Invoke.terminalAct, (_event, session: SessionId, action: unknown): boolean => {
+    if (typeof action !== 'string' || !(TERMINAL_ACTIONS as readonly string[]).includes(action)) {
+      return false;
+    }
+    const manager = host?.get(session)?.manager;
+    if (!manager) return false;
+    switch (action as TerminalActionName) {
+      case 'deposit-all':
+        return manager.depositAll();
+    }
+  });
+
+  /*
    * A question at another player, from the palette. Parsed, for the same
    * reason `ask` is: a name is a word the realm accepts as one, and the
    * command is one of the closed list — anything else is refused rather than
@@ -2088,8 +2120,10 @@ function registerIpc(): void {
    * A native picker for a realm database.
    *
    * A path typed by hand is a path typed wrong, and the failure — a realm that
-   * cannot be read — shows up only after connecting. The filters name the two
-   * shapes `RealmSource` understands rather than offering everything.
+   * cannot be read — shows up only after connecting. The filters name what
+   * `RealmSource` understands rather than offering everything, and they name it
+   * from `REALM_EXTENSIONS` rather than restating it: a dialog offering a file
+   * the reader then refuses is a file a player can choose and not use.
    */
   ipcMain.handle(Invoke.chooseRealm, async (event) => {
     // Owned by the window that asked, so the sheet is attached to it on macOS
@@ -2102,7 +2136,7 @@ function registerIpc(): void {
       filters: [
         {
           name: t('app.dialog.realmDatabaseFilter'),
-          extensions: ['mdb', 'accdb', 'sqlite', 'db', 'sqlite3']
+          extensions: [...REALM_EXTENSIONS]
         },
         { name: t('app.dialog.allFilesFilter'), extensions: ['*'] }
       ]

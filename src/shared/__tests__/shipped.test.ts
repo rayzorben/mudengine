@@ -148,7 +148,7 @@ describe('the realms the client ships', () => {
      * they are standing in — which degrades honestly (the client says it is
      * lost) and is useless, and there is no other check that would notice.
      */
-    expect(realmOf('gmud-5x')?.database).toBe('mdb/gmud20230902.mdb');
+    expect(realmOf('gmud-5x')?.database).toBe('mdb/2023-09-02-gmud.zip');
   });
 
   it('leaves the Paradigm six on the built-in world, which is already theirs', () => {

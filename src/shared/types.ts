@@ -123,29 +123,69 @@ export interface TerminalMark {
 }
 
 /**
- * One button beside a recognised line.
+ * A button beside a room's name that main runs, rather than one that sends
+ * text.
  *
- * `command` is sent verbatim down the path a keystroke takes, so the tracker
- * observes it, a walk stands down and the capture records it — the Talk card's
- * rule, for the same reason: a second route to the socket is a second copy of
- * all of that, and copies drift.
+ * The closed list `gear:act` already keeps, applied to the console: what
+ * crosses the wire is a name from this list and never a command, because the
+ * figures a banking command needs live in main and a renderer composing one
+ * would be a second reading of them.
  */
-export interface TerminalAction {
+export const TERMINAL_ACTIONS = ['deposit-all'] as const;
+export type TerminalActionName = (typeof TERMINAL_ACTIONS)[number];
+
+interface TerminalActionFace {
   /** What the button says. Short — it has to fit on the line's own row. */
   label: string;
-  /**
-   * The commands sent verbatim, in order, when it is pressed.
-   *
-   * A list rather than one string because an action may need to *refresh a
-   * fact before acting on it*: `Deposit All` sends `i` and then the deposit,
-   * so the figure it names is the one the listing just restated rather than
-   * whatever the maintained total had drifted to. Each goes down the path a
-   * keystroke takes, so the tracker sees each one and the queue paces them.
-   */
-  commands: string[];
   /** The tooltip, and what a screen reader gets: the label alone is terse. */
   title: string;
 }
+
+/**
+ * A button whose payload is its commands, fixed when the line was drawn.
+ *
+ * Sent verbatim down the path a keystroke takes, so the tracker observes each
+ * one, a walk stands down and the capture records it — the Talk card's rule,
+ * for the same reason: a second route to the socket is a second copy of all of
+ * that, and copies drift.
+ *
+ * **A command composed here can only carry facts that do not go stale**, which
+ * is why the realm's own exit text is what this shape is for. A *number* must
+ * not be baked into one: see `TerminalIntentAction`.
+ */
+export interface TerminalCommandAction extends TerminalActionFace {
+  commands: string[];
+  act?: never;
+}
+
+/**
+ * A button that names an action for main to run when it is pressed.
+ *
+ * **This exists because a refresh cannot refresh its own ask.** `Deposit All`
+ * used to be three commands — `i`, `deposit <n>`, `bank` — composed together
+ * when the room's name printed, on the documented belief that "the `i` in
+ * front of it is what makes that figure current by the time the deposit is
+ * read". It never could: `<n>` was already a literal by then, and all three
+ * strings left the client in the same millisecond
+ * (`logs/2026-09-04_20-39-52_festus`, t=771361), with the corrected `Wealth:`
+ * arriving 71ms after the deposit was already on the wire. The purse had
+ * drifted by two levels' training, the vault was asked for 2,200 copper the
+ * character did not have, and this server refuses that in **silence** — so the
+ * button did nothing, twice, and only worked on the press after a bare Enter
+ * happened to reprint the room and compose it again.
+ *
+ * So the amount is not decided here at all. Main sends the `i`, waits for the
+ * listing that answers it, and composes the deposit from *that*. A fact fans
+ * out and the action funnels in, which is the shape everything else automated
+ * already follows.
+ */
+export interface TerminalIntentAction extends TerminalActionFace {
+  act: TerminalActionName;
+  commands?: never;
+}
+
+/** One button beside a recognised line. */
+export type TerminalAction = TerminalCommandAction | TerminalIntentAction;
 
 export interface StreamChunk {
   /** Monotonic sequence number; lets the renderer detect dropped frames. */

@@ -497,6 +497,19 @@ export interface WorldSpell {
    */
   targets?: number;
   /**
+   * `Spells.Diff` — how much easier or harder this spell is than the caster's
+   * own spellcasting figure. Format 22.
+   *
+   * The one input to the server's cast roll that varies per spell:
+   * `chance = min(100, SpellCasting + Diff)` (`Spells/Spell.cs:2092`). Signed,
+   * and kept signed — `ethereal shield` is −5 on the Paradigm database, a
+   * spell that is *harder* than the caster's figure suggests, and clamping it
+   * would make every such spell look easier than it is. Absent is the realm's
+   * own zero: a spell that neither helps nor hinders. `shared/prowess.ts`
+   * reads it.
+   */
+  difficulty?: number;
+  /**
    * `Spells.TypeOfResists` — whether a target's magic resistance can turn the
    * whole cast away. Format 20.
    *

@@ -31,45 +31,31 @@ describe('an exit the realm names a command for', () => {
   });
 
   /*
-   * Captured live 2026-08-29: `sys addcopper vaelor 123456` then `i` printed
-   * `Wealth: 123456 copper farthings`. `Wealth:` is the server's own
-   * normalisation into copper, which is the unit `deposit` takes, so the
-   * button names a figure the server itself stated.
+   * **The button carries no figure, and this test is the regression.**
+   *
+   * It used to be `['i', 'deposit 123456', 'bank']`, composed when the room's
+   * name printed and documented as refreshing its own figure — which it cannot
+   * do, because the number is a literal by then and all three strings leave
+   * the client together (`logs/2026-09-04_20-39-52_festus`, t=771361: the
+   * corrected `Wealth:` arrived 71ms after the deposit was on the wire, and
+   * the over-deposit it caused was refused in silence). What the console sends
+   * now is the name of an action; `AutoDeposit` sends the `i` and composes the
+   * amount from the listing that answers it.
    */
-  it('reads the purse before banking it', () => {
+  it('names an action and never a figure', () => {
     expect(actionsFor('bank', [], 123_456)).toEqual([
       {
         label: 'Deposit All',
-        commands: ['i', 'deposit 123456', 'bank'],
-        title: 'Deposit purse into bank vault (123456 copper)'
+        act: 'deposit-all',
+        title: 'Read the purse and deposit all of it into this bank vault'
       }
     ]);
   });
 
   /*
-   * The `i` is unconditional. Coins out of a chest, a corpse or a quest reward
-   * arrive with nothing on the wire announcing them, so no amount of
-   * maintaining covers every case — and the listing is authoritative.
-   */
-  it('always refreshes first, never banks a number it merely believes', () => {
-    const [action] = actionsFor('bank', [], 500);
-    expect(action?.commands[0]).toBe('i');
-  });
-
-  /*
-   * And re-reads the vault after. Nothing maintains a balance — a deposit's own
-   * sentence names no bank, so it cannot be credited to one — which makes the
-   * moment just after this press the one where the balance on screen is most
-   * wrong and most looked at.
-   */
-  it('asks the vault what it holds once the money is in it', () => {
-    const [action] = actionsFor('bank', [], 500);
-    expect(action?.commands.at(-1)).toBe('bank');
-  });
-
-  /*
-   * Null is nobody having said, and unknown is not zero: a button reading
-   * `deposit 0` would be acting on an absence.
+   * Null is nobody having said, and unknown is not zero: a button offered on
+   * an absence has no outcome but a refusal. The purse decides only *whether*
+   * to offer it — never what it deposits.
    */
   it('offers nothing until a listing has stated a purse', () => {
     expect(actionsFor('bank', [], null)).toEqual([]);
@@ -83,8 +69,8 @@ describe('an exit the realm names a command for', () => {
 
   it('puts the shop’s own action before the way out', () => {
     const actions = actionsFor('bank', ['go manhole'], 500);
-    expect(actions.map((a) => a.commands.join('; '))).toEqual([
-      'i; deposit 500; bank',
+    expect(actions.map((a) => a.act ?? a.commands.join('; '))).toEqual([
+      'deposit-all',
       'go manhole'
     ]);
   });
@@ -105,7 +91,7 @@ describe('an exit the realm names a command for', () => {
 
     expect(deposit?.label).toBe('Deposit All');
     expect(exit?.label).toBe('go manhole');
-    expect(exit?.label).toBe(exit?.commands[0]);
+    expect(exit?.label).toBe(exit?.commands?.[0]);
   });
 });
 
