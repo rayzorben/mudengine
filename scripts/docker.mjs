@@ -34,8 +34,15 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /** The repository the image is published under. */
 const IMAGE = process.env['MUDENGINE_IMAGE'] ?? 'rayzorben/mudengine';
 
-/** The port the container publishes, matching the Dockerfile's EXPOSE. */
-const PORT = process.env['MUDENGINE_PORT'] ?? '8080';
+/**
+ * The host port `docker:run` publishes the container's 8080 on.
+ *
+ * Its own name, not `MUDENGINE_PORT`: that one is the port the *client*
+ * listens on, inside the container and under `npm run web` alike, and a
+ * shell that set it to 9000 would otherwise mean two different things to
+ * two commands.
+ */
+const PUBLISH_PORT = process.env['MUDENGINE_PUBLISH_PORT'] ?? '8080';
 
 function version() {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -115,11 +122,11 @@ requireDocker();
  * to read never exists on this disk for it to walk.
  *
  * So the second half is asked of the image directly, and it is asked as a
- * *positive* check rather than a grep for a password. Two layers already
- * exclude the user's files — `.dockerignore` keeps them out of the build
- * context and `extraResources` in package.json keeps them out of the package —
- * and what is worth verifying is that both still work, which is a question
- * about **which files are there**, answerable exactly.
+ * *positive* check rather than a grep for a password. `.dockerignore` keeps
+ * the user's files out of the build context, and the Dockerfile copies
+ * `resources/` from that context whole — so what is worth verifying is that
+ * the exclusion still works, which is a question about **which files are
+ * there**, answerable exactly.
  *
  * A grep would be the weaker check twice over: it needs a password to search
  * for, and finding none in an image whose config directory it failed to locate
@@ -134,7 +141,7 @@ function refuseUserFilesInImage(image) {
   );
 
   if (listing.status !== 0) {
-    console.error('\nCould not list the image\'s config directory, so nothing was verified.');
+    console.error("\nCould not list the image's config directory, so nothing was verified.");
     console.error('That is a failure, not a pass: the check did not run.');
     console.error(listing.stderr?.trim() ?? '');
     process.exit(1);
@@ -155,8 +162,10 @@ function refuseUserFilesInImage(image) {
 
   const leaked = present.filter((name) => forbidden.includes(name));
   if (leaked.length > 0) {
-    console.error(`\nThe image carries files that belong to whoever built it: ${leaked.join(', ')}`);
-    console.error('Fix .dockerignore and the extraResources filter in package.json before pushing.');
+    console.error(
+      `\nThe image carries files that belong to whoever built it: ${leaked.join(', ')}`
+    );
+    console.error('Fix .dockerignore before pushing.');
     process.exit(1);
   }
 
@@ -183,14 +192,19 @@ if (action === 'run') {
   // does not depend on a directory existing with the right ownership -- the
   // image runs as uid 1000 and a bind-mounted host directory owned by anybody
   // else is a container that cannot write its own options file.
+  //
+  // The client prints where it is listening and, on the first start, the
+  // password it generated. `MUDENGINE_PASSWORD` in this shell's environment
+  // is passed through so a chosen password can be chosen here too.
+  const chosen = process.env['MUDENGINE_PASSWORD'];
   run('docker', [
     'run',
     '--rm',
-    '--init',
     '--publish',
-    `${PORT}:8080`,
+    `${PUBLISH_PORT}:8080`,
     '--volume',
     'mudengine:/config',
+    ...(chosen ? ['--env', `MUDENGINE_PASSWORD=${chosen}`] : []),
     '--name',
     'mudengine',
     versioned

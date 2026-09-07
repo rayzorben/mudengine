@@ -43,6 +43,11 @@ app:
     reload: Reload window
   instance:
     alreadyRunning: This profile is already running. Switched to existing window.
+    homeHeld:
+      '{home} is already in use by another mudengine (pid {pid}). Two clients on one home
+      write the same files and dial the same characters; stop the other one first, or delete
+      {file} if it is not running.'
+    staleLock: The lock left by pid {pid}, which is no longer running, was taken over.
   loop:
     invalidName: Invalid path/loop name.
     invalidLoop: Invalid loop definition.
@@ -88,9 +93,17 @@ app:
   window:
     createFailed: Could not open a window.
     noMainWindow: There is no main window to move it to.
+    noSecondWindow:
+      This client is running in a browser tab, which has no second window to move a
+      character into.
     nothingToGather: Nothing to gather.
     onlyCharacterHere: That is the only character in this window.
     unknownCaller: Unknown calling window.
+  home:
+    outside: That path is outside the client's home directory, so it was not listed.
+    unreadable: '{path} could not be listed: {message}'
+  clipboard:
+    none: This host has no clipboard of its own; the window keeps one instead.
   windowTitle: mudengine
 # Lines the client itself prints into the terminal or pushes as one-off notices.
 notices:
@@ -2997,3 +3010,41 @@ remotes:
     refusedTitle: Refused for everybody, however granted — this client declines it on its own account.
     unread: no captured reply
     unreadTitle: '{because}'
+# Serving the window over HTTP (MUDENGINE_WEB=1): the sign-in page main draws,
+# and what a browser tab says when the desktop's answer is not available.
+web:
+  login:
+    title: mudengine — sign in
+    heading: mudengine
+    lead: This client is behind a password. Enter it to open the console.
+    passwordLabel: Password
+    submit: Sign in
+    wrong: That is not the password.
+    cleartext:
+      'This connection is not encrypted: the password travels in the clear. Use it only on a
+      link you trust, or put a TLS proxy in front of the client.'
+  link:
+    lost: The connection to the client was lost. Waiting for it to answer again…
+  clipboard:
+    readRefused:
+      The browser would not hand the clipboard to the client; paste with Ctrl+V or
+      Shift+Insert, which the browser handles itself.
+    writeRefused: The browser would not take the copy; select the text and copy it yourself.
+  picker:
+    unavailable: There is nothing here to choose a realm database with.
+  rpc:
+    noHandler: Nothing in the client answers {channel}.
+# The client's files, listed in the window, where the host has no file manager.
+browser:
+  title: The client's files
+  pickTitle: Choose a realm database
+  pickScope:
+    'From the client''s own files under {root} — the machine the client runs on, not this
+    one. Put a database there first.'
+  up: Up
+  copyPath: Copy path
+  close: Close
+  loading: Listing…
+  empty: Nothing here.
+  use: use this file
+  realmChip: realm

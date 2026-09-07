@@ -392,6 +392,9 @@ export default function CommandPalette({
                     <li
                       aria-selected={list.isActive(index)}
                       data-active={list.isActive(index) ? 'true' : 'false'}
+                      // The command's id, so a harness can ask which commands
+                      // are offered without being keyed on their English.
+                      data-command={command.id}
                       data-group-end={
                         block.boxed && within === block.items.length - 1 ? 'true' : undefined
                       }

@@ -1077,6 +1077,37 @@ const TUNING_DEFAULTS = {
     debounceMs: 80
   },
   /**
+   * Serving the window over HTTP (`MUDENGINE_WEB=1`; see `main/host/web/`).
+   */
+  web: {
+    /**
+     * The largest message a browser tab may send on the socket. A settings
+     * draft or a loop handed over whole is tens of kilobytes; anything near
+     * this is not a call the window makes, and reading it would be holding a
+     * megabyte on behalf of whoever sent it.
+     */
+    maxMessageBytes: 1_048_576,
+    /**
+     * How much may be queued for a tab that has stopped reading before it is
+     * closed. The game stream keeps arriving whether or not a tab takes it,
+     * and a stalled one would otherwise hold it all in memory until the ping
+     * sweep noticed. Several seconds of a busy fight, at most.
+     */
+    maxBufferedBytes: 8_388_608,
+    /**
+     * How long a wrong password waits for its answer. A guess a second is
+     * what the delay costs an attacker; nothing at all is what it costs
+     * somebody who mistyped once.
+     */
+    loginDelayMs: 1000,
+    /**
+     * How often the client pings each tab. A proxy closes an idle socket and
+     * a tab that vanished never says goodbye; a ping unanswered by the next
+     * one is how either is found, and the interval is what it costs.
+     */
+    pingIntervalMs: 20000
+  },
+  /**
    * The window's own numbers.
    *
    * Read through `src/renderer/src/lib/tuning.ts`, which is fed the moment
@@ -1086,6 +1117,12 @@ const TUNING_DEFAULTS = {
   view: {
     /** Diagnostics log kept in renderer memory. */
     telnetLogLimit: 500,
+    /**
+     * How often a browser tab that lost its socket tries the client again
+     * before reloading itself. Web mode only; the desktop window has no socket
+     * to lose.
+     */
+    webReconnectMs: 1500,
     /** Framed lines kept for the Stream card. */
     lineLogLimit: 200,
     /**

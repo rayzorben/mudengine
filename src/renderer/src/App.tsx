@@ -59,6 +59,8 @@ import VitalsCard from './components/VitalsCard';
 import SelfCard from './components/SelfCard';
 import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
+import HomeBrowser from './components/HomeBrowser';
+import { registerRealmPicker } from './lib/pickers';
 import LoopBuilderCard, { type BuilderDestination } from './components/LoopBuilderCard';
 import ToolbarCard from './components/ToolbarCard';
 import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
@@ -154,6 +156,7 @@ import {
   NO_SESSION,
   type AttachSnapshot,
   type ProfileSummary,
+  type Revealed,
   type SessionId,
   type SessionSummary
 } from '@shared/ipc';
@@ -1578,6 +1581,40 @@ export default function App() {
   }, [activeTerminal]);
 
   /**
+   * A directory of the client's, drawn in the window.
+   *
+   * Two things open it. Revealing a path — the options file, the characters
+   * folder, the logs — answers `listed` from a host that has no file manager
+   * to open on the machine the files are on, and the listing is what the
+   * window shows instead of nothing. And the realm picker in web mode: the
+   * bridge asks the window for one (`lib/pickers.ts`) because the disk being
+   * chosen from is the client's, and `pick` is the promise it is waiting on.
+   */
+  const [browsing, setBrowsing] = useState<{
+    start: string | null;
+    pick: ((file: string | null) => void) | null;
+  } | null>(null);
+
+  const closeBrowser = useCallback(() => {
+    setBrowsing(null);
+    returnFocus();
+  }, [returnFocus]);
+
+  /** Reveal through the host, and show the listing where the host could not open one. */
+  const reveal = useCallback((ask: () => Promise<Revealed>) => {
+    void ask().then((revealed) => {
+      if (revealed.how === 'listed') setBrowsing({ start: revealed.path, pick: null });
+    });
+  }, []);
+
+  useEffect(() => {
+    registerRealmPicker(
+      () => new Promise((resolve) => setBrowsing({ start: null, pick: resolve }))
+    );
+    return () => registerRealmPicker(null);
+  }, []);
+
+  /**
    * Say the client is ready exactly once.
    *
    * It used to be announced by the terminal registering, which was one event
@@ -2385,11 +2422,11 @@ export default function App() {
     () => ({
       load: (sid: SessionId) => api.getDebug(sid),
       save: (sid: SessionId) => api.saveDebug(sid),
-      reveal: () => void api.revealLogs(),
+      reveal: () => reveal(() => api.revealLogs()),
       subscribe: (handler: (sid: SessionId, record: DebugRecord) => void) =>
         api.onDebug(({ session: sid, payload }) => handler(sid, payload))
     }),
-    [api]
+    [api, reveal]
   );
   const closeDebug = useCallback(() => {
     setDebugOpen(false);
@@ -2430,15 +2467,15 @@ export default function App() {
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
       saveGlobal: (draft: GlobalDraft) => api.saveGlobal(draft),
-      revealConfig: () => void api.revealConfig(),
-      revealProfiles: () => void api.revealProfiles(),
+      revealConfig: () => reveal(() => api.revealConfig()),
+      revealProfiles: () => reveal(() => api.revealProfiles()),
       chooseRealm: () => api.chooseRealm(),
       // The shelf of shipped loops, for the Movement tab. Asked for when
       // that picker opens rather than with the snapshot: four hundred
       // loops, and most visits to that screen are about a password.
       loadLoops: () => api.loopCatalogue()
     }),
-    [api]
+    [api, reveal]
   );
 
   /**
@@ -3350,19 +3387,28 @@ export default function App() {
               hint: connected ? t('palette.character.closeDisconnectFirstHint') : undefined,
               group: 'character' as const,
               run: () => closeSession(session)
-            },
-            /*
-             * Moving a character to a window of its own, and back.
-             *
-             * A command and not a drag, deliberately: Electron has no built-in
-             * for dragging a tab between windows, and doing it properly means a
-             * hand-rolled drag session, a drop protocol between windows and a
-             * fallback for the drag that ends over nothing. This is the whole
-             * capability minus the gesture, and the gesture can follow now that
-             * the capability is proven (docs/profiles.md §7.4).
-             *
-             * The session does not move — nothing here touches a socket.
-             */
+            }
+          ]
+        : []),
+      /*
+       * Moving a character to a window of its own, and back.
+       *
+       * A command and not a drag, deliberately: Electron has no built-in
+       * for dragging a tab between windows, and doing it properly means a
+       * hand-rolled drag session, a drop protocol between windows and a
+       * fallback for the drag that ends over nothing. This is the whole
+       * capability minus the gesture, and the gesture can follow now that
+       * the capability is proven (docs/profiles.md §7.4).
+       *
+       * The session does not move — nothing here touches a socket.
+       *
+       * Not offered in a browser tab, which has no second window to move
+       * anything into: main refuses each of these there with a reason, and
+       * the command is withheld as well, because a command that is found and
+       * does nothing is worse than one that cannot be found.
+       */
+      ...(showTabs && api.host !== 'web'
+        ? [
             {
               id: 'popout',
               icon: 'popout' as const,
@@ -3691,7 +3737,7 @@ export default function App() {
         // learned it should still find the row. A label is how a thing reads,
         // keywords are how it is found.
         keywords: ['reveal', 'open', 'yaml', 'file', 'folder', 'config', 'options'],
-        run: () => void api.revealConfig()
+        run: () => reveal(() => api.revealConfig())
       },
       {
         id: 'profiles',
@@ -3703,7 +3749,7 @@ export default function App() {
             : t('palette.view.profilesNoneHint'),
         group: 'view',
         keywords: ['reveal', 'open', 'folder', 'profiles', 'characters'],
-        run: () => void api.revealProfiles()
+        run: () => reveal(() => api.revealProfiles())
       },
       {
         id: 'logs',
@@ -3712,7 +3758,7 @@ export default function App() {
         hint: config.logging.enabled ? undefined : t('palette.view.logsNotKeptHint'),
         group: 'view',
         keywords: ['reveal', 'open', 'folder', 'logs', 'records', 'transcript'],
-        run: () => void api.revealLogs()
+        run: () => reveal(() => api.revealLogs())
       },
 
       // Layout: what is on screen and how it is arranged -- panes and cards.
@@ -3862,6 +3908,7 @@ export default function App() {
      */
     [
       api,
+      reveal,
       config.servers,
       sessions,
       profiles,
@@ -3989,6 +4036,7 @@ export default function App() {
      */
     ...(asked === null &&
     flyout === null &&
+    browsing === null &&
     routeOpen &&
     !paletteOpen &&
     !loopsOpen &&
@@ -3997,6 +4045,7 @@ export default function App() {
       : []),
     ...(asked === null &&
     flyout === null &&
+    browsing === null &&
     searchOpen &&
     !paletteOpen &&
     !loopsOpen &&
@@ -4006,6 +4055,7 @@ export default function App() {
       : []),
     ...(asked === null &&
     flyout === null &&
+    browsing === null &&
     railOpen &&
     !paletteOpen &&
     !loopsOpen &&
@@ -4023,6 +4073,7 @@ export default function App() {
      */
     ...(asked === null &&
     flyout === null &&
+    browsing === null &&
     debugOpen &&
     !paletteOpen &&
     !loopsOpen &&
@@ -4995,6 +5046,15 @@ export default function App() {
         open={loopsOpen}
         realmName={profiles.find((profile) => profile.id === session)?.serverName ?? ''}
       />
+
+      {/*
+        The client's files, listed in the window, where the host has no file
+        manager to open them in — and the realm picker in web mode, which
+        chooses from the client's disk rather than the viewer's.
+      */}
+      {browsing !== null && (
+        <HomeBrowser onClose={closeBrowser} onPick={browsing.pick} start={browsing.start} />
+      )}
 
       {/*
         The way in for somebody who has not read the source. Everything it does

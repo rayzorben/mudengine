@@ -60,61 +60,68 @@ declines to act, it tells you that too.
 
 ## Running it in a container
 
-There is an image, and it is the whole client rather than a cut-down web
-version of it:
+There is an image, and it is the client served over HTTP: main runs as a Node
+server, the window is served to your browser, and the game sockets, the files
+and the automation stay in the container.
 
 ```
 docker run --rm -p 8080:8080 -v mudengine:/config rayzorben/mudengine:latest
 ```
 
-Then open the address it prints — `http://localhost:8080/vnc.html` — and sign
-in with the username and password it printed on first start.
+Then open `http://localhost:8080/` and sign in with the password the
+container printed on its first start.
 
-**What is actually running.** mudengine is an Electron application: a desktop
-window, not a web server. The container runs the real client on a virtual
-display and serves a remote-framebuffer client over HTTP, so every feature
-works because it *is* the application. The alternative — serving the renderer
-and replacing the main process with a server — is a rewrite of the whole
-client rather than a packaging job, since main owns the game sockets, the
-files on disk, the world database and the automation arbiter.
+**What is actually running.** The same client as the desktop one, under a
+different host: `src/main/host/WebHost.ts` carries the typed IPC contract over
+one WebSocket per browser tab instead of Electron's IPC, and everything else in
+main is untouched. Nothing is drawn in the container. (An earlier image ran the
+desktop client on a virtual display behind noVNC; it was 1.5GB of Xvfb, a
+window manager and Electron's GTK stack, and it is gone.)
 
 | | |
 |---|---|
 | `-p 8080:8080` | the port the browser connects to. |
-| `-v mudengine:/config` | **keep this.** It is `MUDENGINE_HOME`: your options file, realms, characters and logs. Without it they are deleted with the container. |
+| `-v mudengine:/config` | **keep this.** It is `MUDENGINE_HOME`: your options file, realms, characters, logs and the access password. Without it they are deleted with the container. |
 | `-e MUDENGINE_PASSWORD=…` | choose the password instead of having one generated. |
-| `-e MUDENGINE_USERNAME=…` | the sign-in name. Defaults to `mudengine`. |
-| `-e MUDENGINE_SCREEN=1920x1080x24` | the size of the virtual display, and so of the window. |
 
 **The password.** On the first start the container generates one, prints it
-once, and saves it to `/config/.access-password` on the volume. Later starts do
-not reprint it. Delete that file to have a new one made, or set
-`MUDENGINE_PASSWORD` to choose your own.
+once, and saves it to `/config/.access-password` on the volume. Later starts
+do not reprint it. Delete that file to have a new one made, or set
+`MUDENGINE_PASSWORD` to choose your own. Signing in sets a session cookie for
+the browser; the socket that carries the game and the settings screen is
+refused on the upgrade without one, and refused from any other origin.
 
-**Read this before exposing the port.** The framebuffer is behind that
-password — a browser with no credentials is served the noVNC page and refused
-the socket, so it sees a login prompt and nothing of the game — but **the
-connection is not encrypted**. The password travels in an HTTP header. On
-anything other than a machine you are sitting at, put a TLS-terminating proxy
-in front of it.
+**Read this before exposing the port.** The connection is **not encrypted**:
+the password travels as a form field and the session as a cookie. On anything
+other than a machine you are sitting at, put a TLS-terminating proxy in front
+of it, and set `MUDENGINE_TRUST_PROXY=1` so the client believes the proxy's
+`X-Forwarded-Proto` — without it the client assumes cleartext whatever a
+header says, because a header is something anybody can send. Outside a
+container the client binds to `127.0.0.1` unless `MUDENGINE_BIND` says
+otherwise; the image binds to every address because the published port is
+the only way in.
 
-**The log says `ERROR` a few times on start, and that is expected.** Chromium
-looks for a D-Bus system bus and a GPU, and a container has neither:
+**One client per home.** The client takes `.lock` under its home on start and
+refuses to start beside another client on the same files, naming the pid
+that holds it — two clients on one home write the same records and dial the
+same characters. A lock left by a client that died is taken over and said so.
 
-```
-ERROR:bus.cc(407)] Failed to connect to the bus: ... /run/dbus/system_bus_socket
-ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
-```
+**What a browser tab cannot do.** Moving a character to a second window is a
+desktop feature and the tab does not offer it. *Show the options file* and its
+siblings list the directory in the window instead of opening a file manager
+on a machine you are not at, and choosing a realm database browses the
+container's `/config` — copy a database there first. Copy and paste use the
+browser's own clipboard.
 
-Both are harmless — the client falls back to software rendering and does not
-use the bus. They are left in rather than silenced because the alternative is
-turning down Chromium's log level, which would hide real errors along with
-these. If the container says `healthy` and the page draws, it is working.
+**Bind mounts.** The image runs as uid 1000. A bind-mounted directory owned by
+anybody else is a container that cannot write its options file; the named
+volume above is the form that needs no arrangement.
 
 Building it yourself is `npm run docker:build`, which reads the tag out of
 `package.json` so it cannot drift from the release it belongs to.
 `npm run docker:run` runs what that built. Pushing is a separate command on
-purpose.
+purpose. The same server runs outside a container with `npm run build && npm
+run web`.
 
 ## Where it stands
 

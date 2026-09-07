@@ -92,6 +92,61 @@ export interface Addressed<T> {
 }
 
 /**
+ * What the window is running under.
+ *
+ * `electron` is the desktop client: a `BrowserWindow` with the preload as its
+ * bridge, and the operating system behind it — a file manager to reveal a
+ * path in, a native picker, a clipboard main can read. `web` is the same
+ * renderer served over HTTP to a browser tab, bridged over a WebSocket
+ * (`src/shared/rpc.ts`), with none of those: the window says so where it
+ * matters rather than offering a control that cannot work.
+ */
+export type HostKind = 'electron' | 'web';
+
+/**
+ * What revealing a path did.
+ *
+ * On the desktop the operating system's file manager opens and that is the
+ * whole answer. In a browser tab there is no file manager on the machine the
+ * files are on — the client is running somewhere else — so the path is
+ * *shown* instead, in a listing the window draws (`Invoke.browseHome`). Said
+ * in the answer rather than guessed from the host kind, so the window acts on
+ * what happened.
+ */
+export type Revealed = { how: 'opened' } | { how: 'listed'; path: string };
+
+/** One row of a directory under the client's home. */
+export interface DirectoryEntry {
+  name: string;
+  kind: 'file' | 'directory' | 'other';
+  /** Bytes, for a file; null where the size means nothing. */
+  size: number | null;
+  /** Whether `RealmSource` could read this file as a realm database. */
+  realm: boolean;
+}
+
+/**
+ * A directory under the client's home, listed for the window to show.
+ *
+ * Names and sizes only — never contents. The options file and every profile
+ * in this tree hold the player's realm password, and a listing that served
+ * bytes would be serving that to whoever holds the browser tab.
+ */
+export interface HomeListing {
+  /** The home root; nothing outside it is ever listed, and the picker says so. */
+  root: string;
+  /** The directory listed, absolute. */
+  dir: string;
+  /** Its parent, or null at the root. */
+  parent: string | null;
+  /** The file the request named, when it named one, so the window can mark it. */
+  selected: string | null;
+  entries: DirectoryEntry[];
+  /** Why the listing is empty, when it is for a reason rather than a fact. */
+  error: string | null;
+}
+
+/**
  * An engine message to surface inline in the terminal.
  *
  * `session` is null when the message is about the client rather than a
@@ -575,6 +630,14 @@ export const Invoke = {
   revealProfiles: 'config:reveal-profiles',
   /** Reveal the session log directory in the OS file manager. */
   revealLogs: 'log:reveal',
+  /**
+   * List one directory under the client's home, for a window that cannot
+   * open a file manager on the machine the files are on.
+   *
+   * Confined to the home root: a path that resolves outside it is refused
+   * with a reason, never listed. See `HomeListing`.
+   */
+  browseHome: 'home:browse',
 
   /*
    * The system clipboard, read and written in main.
@@ -795,6 +858,13 @@ export const Push = {
 } as const;
 
 export interface IpcApi {
+  /**
+   * Which host this window is running under. A fact the bridge states about
+   * itself — the preload is only ever Electron's, the web bridge only ever a
+   * browser's — so the window can decline to offer what the host cannot do.
+   */
+  readonly host: HostKind;
+
   clientReady(): void;
   input(session: SessionId, data: string): void;
   resize(session: SessionId, size: TerminalSize): void;
@@ -882,9 +952,15 @@ export interface IpcApi {
   getConfig(): Promise<ConfigSnapshot>;
   /** The client's internal settings — the palette's pinned commands live here. */
   getInternal(): Promise<InternalConfig>;
-  revealConfig(): Promise<void>;
-  revealProfiles(): Promise<void>;
-  revealLogs(): Promise<void>;
+  /** Each resolves to what happened: opened on the desktop, or a path to list. */
+  revealConfig(): Promise<Revealed>;
+  revealProfiles(): Promise<Revealed>;
+  revealLogs(): Promise<Revealed>;
+  /**
+   * A directory under the client's home, or the one holding the file named.
+   * Null means the root. Never contents — see `HomeListing`.
+   */
+  browseHome(target: string | null): Promise<HomeListing>;
   /** Put the terminal's selection on the system clipboard. */
   copyText(text: string): Promise<void>;
   /** What is on the system clipboard, for a paste into the terminal. */

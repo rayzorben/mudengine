@@ -140,6 +140,35 @@ describe('remembering the arrangement', () => {
     expect(workspace().restore()).toEqual([['thorn']]);
   });
 
+  /*
+   * A host with no second window opens one rail and never restores the
+   * pop-outs it read. Its saves must carry them through untouched, or one
+   * run in a browser tab erases the desktop's arrangement.
+   */
+  it('keeps pop-outs a run never restored, so a one-rail host cannot erase them', () => {
+    const desktop = workspace();
+    desktop.open(1);
+    desktop.open(2);
+    desktop.move('thorn', 2);
+    desktop.save();
+
+    const oneRail = workspace();
+    oneRail.open(1);
+    oneRail.reorder(1, ['soul', 'vaelor']);
+    oneRail.save();
+
+    // The desktop's next launch: the main window, then a window per restored
+    // group, exactly as `ElectronHost.open` makes them.
+    const later = workspace();
+    later.open(1);
+    const groups = later.restore();
+    expect(groups).toEqual([['thorn']]);
+    later.open(2);
+    for (const session of groups[0]!) later.move(session, 2);
+    expect(later.sessionsFor(1)).toEqual(['soul', 'vaelor']);
+    expect(later.sessionsFor(2)).toEqual(['thorn']);
+  });
+
   it('says nothing about the main window, because that is whatever is left', () => {
     const space = workspace();
     space.open(1);

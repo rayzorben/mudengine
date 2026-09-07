@@ -161,6 +161,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE: rayzorben/mudengine
+      # Read into the job's environment once, because `secrets` is not among
+      # the contexts a step-level `if:` may name — a step `if` that reads
+      # `secrets.X` is refused at parse time and the whole run fails, where
+      # the intent was to skip one step. `env` is available to a step `if`.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -177,27 +182,29 @@ jobs:
       # No credentials, no login, and the build below still runs. A fork's pull
       # request has no access to the secrets and must not fail for it.
       #
-      # The condition reads `secrets` directly and deliberately not a
-      # step-level `env`: a step's own `env:` block is applied *after* its `if`
-      # is evaluated, so a condition naming one is always comparing against an
-      # empty string and the step never runs. It type-checks as YAML and fails
-      # silently, which is the worst shape a guard can have.
+      # The condition reads the *job's* `env`, set from the secret above. A
+      # step's own `env:` is applied after its `if` is evaluated, so that
+      # would always compare against an empty string; and `secrets` itself is
+      # not a context a step `if` may name, so reading it here is refused at
+      # parse time and fails the whole run. The job-level `env` is the one
+      # shape that is both evaluated in time and allowed.
       - name: Sign in to Docker Hub
-        if: secrets.DOCKERHUB_USERNAME != ''
+        if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # linux/amd64 only, which is what package.json's linux targets already
-      # say: the image carries an Electron built for x64, and an arm64 image
-      # would need an arm64 Electron and a reason to want one.
+      # linux/amd64 only. Nothing in the image is architecture-specific any
+      # more — it is Node and JavaScript, since the web host replaced the
+      # framebuffer image — so an arm64 build is one line here plus a QEMU
+      # setup step, and waits for somebody to want it.
       - name: Build, and push only when this is a release
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && secrets.DOCKERHUB_USERNAME != '' }}
+          push: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && env.DOCKERHUB_USERNAME != '' }}
           tags: |
             ${{ env.IMAGE }}:${{ steps.v.outputs.version }}
             ${{ env.IMAGE }}:latest
