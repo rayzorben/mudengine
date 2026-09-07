@@ -1,21 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import Icon from './Icon';
 import PopupMenu from './PopupMenu';
+import PopoverHead, { PopoverSizer } from './PopoverHead';
 import { useCopyMenu } from '../hooks/useCopyMenu';
-import { keepFocus } from '../lib/focus';
+import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { membersOf, type Member } from '../lib/gangs';
 import { t } from '../lib/i18n';
 import { PlayerName } from '../lib/players';
-import {
-  anchorNode,
-  anchorRect,
-  placePopover,
-  scrollMovesAnchor,
-  type PopoverAnchor,
-  type PopoverPlacement
-} from '../lib/popover';
+import { type PopoverAnchor } from '../lib/popover';
 import { ownGang, type CharacterState } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
 import { playerKey } from '@shared/players';
@@ -94,8 +87,6 @@ export default function GangFlyout({
   onDismiss,
   returnFocus
 }: GangFlyoutProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [placed, setPlaced] = useState<PopoverPlacement | null>(null);
   const copy = useCopyMenu();
 
   const members = useMemo(() => membersOf(character, asked.name), [character, asked.name]);
@@ -115,82 +106,25 @@ export default function GangFlyout({
     own === undefined ? null : own !== null && own.toLowerCase() === asked.name.toLowerCase();
 
   /*
-   * Measured before paint from the panel's own size, then placed — the first
-   * pass renders it hidden so this is a measurement rather than a guess, the
-   * way `PlayerFlyout` and `ReferencePopover` do. Re-measured when the
-   * membership changes, because a member arriving adds a row.
+   * Where it sits, how wide it is, and everything it does to itself. One hook,
+   * shared with the Player flyout and the Reference popover, because the three
+   * are one panel drawing three things — and had already grown three copies of
+   * this that differed in two places.
    *
-   * A row that has left the document leaves the panel beside nothing, so it
-   * goes.
+   * Escape hands the caret back here and a click-away does not, because a
+   * click has already put it somewhere.
    */
-  useLayoutEffect(() => {
-    const panel = ref.current?.getBoundingClientRect();
-    if (!panel) return;
-    const within = anchorNode(asked.anchor);
-    if (within !== null && 'isConnected' in within && !(within as Node).isConnected) {
-      onDismiss();
-      return;
-    }
-    setPlaced(
-      placePopover(
-        anchorRect(asked.anchor),
-        { width: panel.width, height: panel.height },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
-  }, [asked, members, onDismiss]);
-
-  const menuOpen = copy.menu !== null;
-  useEffect(() => {
-    const away = (event: PointerEvent): void => {
-      const target = event.target as Node | null;
-      if (target && ref.current?.contains(target)) return;
-      if (!(target instanceof Element)) {
-        onDismiss();
-        return;
-      }
-      // The copy menu is a portal outside the panel, and choosing an entry in
-      // it must not put the panel away. A containment test, not "is the menu
-      // open" — see `PlayerFlyout` for the click-twice bug that distinction
-      // fixes.
-      if (target.closest('.popup-menu') !== null) return;
-      /*
-       * A press on anything that *opens* a panel is left to its own click,
-       * which replaces this one rather than toggling it — the guard
-       * `PlayerFlyout` carries, and for the same bug: without it the press
-       * dismissed, the click re-opened, and the panel flashed at the origin
-       * for a frame on the way back in.
-       */
-      if (target.closest('[data-opens]') !== null) return;
-      onDismiss();
-    };
-    const key = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      // While the copy menu is up, Escape is the menu's.
-      if (menuOpen) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onDismiss();
-      returnFocus();
-    };
-    // Only a scroll that actually moved the name this hangs off closes it —
-    // `scrollMovesAnchor` has the whole reason.
-    const scrolled = (event: Event): void => {
-      if (!scrollMovesAnchor(event.target, anchorNode(asked.anchor))) return;
-      onDismiss();
-    };
-    document.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', key, true);
-    // Anything that moves the anchor closes the panel rather than chasing it.
-    window.addEventListener('resize', onDismiss);
-    window.addEventListener('scroll', scrolled, true);
-    return () => {
-      document.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', key, true);
-      window.removeEventListener('resize', onDismiss);
-      window.removeEventListener('scroll', scrolled, true);
-    };
-  }, [asked, menuOpen, onDismiss, returnFocus]);
+  const escape = useCallback(() => {
+    onDismiss();
+    returnFocus();
+  }, [onDismiss, returnFocus]);
+  const frame = usePopoverFrame({
+    anchor: asked.anchor,
+    measure: [members],
+    menuOpen: copy.menu !== null,
+    onDismiss,
+    onEscape: escape
+  });
 
   // Every entry hands the caret back — see `BentoCard` for why the hook does
   // not do this itself.
@@ -208,85 +142,75 @@ export default function GangFlyout({
     <div
       aria-label={t('cards.gangDetail.ariaLabel', { gang: asked.name })}
       className="surface popover gang-flyout"
-      data-side={placed?.side ?? 'right'}
       onContextMenu={copy.onContextMenu}
-      ref={ref}
       role="dialog"
-      style={{
-        top: placed?.top ?? 0,
-        left: placed?.left ?? 0,
-        visibility: placed === null ? 'hidden' : 'visible'
-      }}
+      {...frame.props}
     >
-      <header className="popover-head">
-        <h2>
-          <span className="crumbs">
-            <span className="crumb" data-active="true">
-              {t('cards.gangDetail.title')}
-            </span>
+      <PopoverHead
+        onClose={onDismiss}
+        onGrab={frame.onGrab}
+        onPin={frame.togglePin}
+        pinned={frame.pinned}
+      >
+        <span className="crumbs">
+          <span className="crumb" data-active="true">
+            {t('cards.gangDetail.title')}
           </span>
-        </h2>
-        <button
-          aria-label={t('cards.chrome.close')}
-          className="card-action card-close"
-          onClick={onDismiss}
-          onMouseDown={keepFocus}
-          title={t('cards.chrome.close')}
-          type="button"
-        >
-          <Icon name="close" />
-        </button>
-      </header>
+        </span>
+      </PopoverHead>
 
-      <dl className="readout gang-detail">
-        <dt>{t('cards.gangDetail.name')}</dt>
-        <dd>
-          {asked.name}
-          {isOwn === true ? (
-            <span className="chip on">{t('cards.gangDetail.chip.own')}</span>
-          ) : null}
-        </dd>
+      {/* The heading stays put; everything under it is what scrolls. */}
+      <div className="popover-body">
+        <dl className="readout gang-detail">
+          <dt>{t('cards.gangDetail.name')}</dt>
+          <dd>
+            {asked.name}
+            {isOwn === true ? (
+              <span className="chip on">{t('cards.gangDetail.chip.own')}</span>
+            ) : null}
+          </dd>
 
-        <dt>{t('cards.gangDetail.known')}</dt>
-        <dd>
-          {members.length === 0
-            ? t('cards.gangDetail.noneKnown')
-            : t('cards.gangDetail.count', { count: members.length, online })}
-        </dd>
-      </dl>
+          <dt>{t('cards.gangDetail.known')}</dt>
+          <dd>
+            {members.length === 0
+              ? t('cards.gangDetail.noneKnown')
+              : t('cards.gangDetail.count', { count: members.length, online })}
+          </dd>
+        </dl>
 
-      {members.length === 0 ? (
-        /*
-         * Nothing known is not "nobody in it". No command lists another gang's
-         * membership, so an empty panel is this client's own ignorance and says
-         * so — drawn as an empty gang it would be a claim the wire never made.
-         */
-        <p className="empty">{t('cards.gangDetail.emptyHint', { gang: asked.name })}</p>
-      ) : (
-        <ul className="gang-members">
-          {members.map((row) => (
-            <li key={playerKey(row.name)} data-online={row.online ? 'true' : 'false'}>
-              <MemberRow
-                onSelect={(name, anchor) => onSelectPlayer(asked.session, name, anchor)}
-                row={row}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+        {members.length === 0 ? (
+          /*
+           * Nothing known is not "nobody in it". No command lists another gang's
+           * membership, so an empty panel is this client's own ignorance and says
+           * so — drawn as an empty gang it would be a claim the wire never made.
+           */
+          <p className="empty">{t('cards.gangDetail.emptyHint', { gang: asked.name })}</p>
+        ) : (
+          <ul className="gang-members">
+            {members.map((row) => (
+              <li key={playerKey(row.name)} data-online={row.online ? 'true' : 'false'}>
+                <MemberRow
+                  onSelect={(name, anchor) => onSelectPlayer(asked.session, name, anchor)}
+                  row={row}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
 
-      {/*
+        {/*
         Where the facts came from. `who` knows who is *online* and in a gang and
         nothing else; `bg` — which only ever answers for this character's own
         gang — carries the level, the race, the class and the members who are
         not logged in. A panel that did not say which it was showing would read
         as a complete membership either way.
       */}
-      <p className="quiet-note gang-source">
-        {listed ? t('cards.gangDetail.fromListing') : t('cards.gangDetail.fromRoster')}
-      </p>
+        <p className="quiet-note gang-source">
+          {listed ? t('cards.gangDetail.fromListing') : t('cards.gangDetail.fromRoster')}
+        </p>
 
-      {isOwn === true && <p className="quiet-note">{t('cards.gangDetail.ownHint')}</p>}
+        {isOwn === true && <p className="quiet-note">{t('cards.gangDetail.ownHint')}</p>}
+      </div>
 
       {copy.menu !== null && copyItems.length > 0 && (
         <PopupMenu
@@ -298,6 +222,7 @@ export default function GangFlyout({
           }}
         />
       )}
+      <PopoverSizer onReset={frame.onSizeReset} onSize={frame.onSize} />
     </div>,
     document.body
   );

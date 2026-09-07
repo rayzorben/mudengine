@@ -80,6 +80,10 @@ console.log(
 );
 console.log(`  ${built.stats.spells} spells`);
 console.log(
+  `  ${built.stats.quests} quests in ${built.stats.questSteps} steps, ` +
+    'assembled from the realm’s own text blocks'
+);
+console.log(
   `  ${built.stats.itemNames} item names for the console to recognise, ` +
     `${built.stats.races} races, ${built.stats.classes} classes`
 );
@@ -98,6 +102,10 @@ console.log(`  ${built.stats.withExits.toLocaleString()} rooms with exits`);
 console.log(`  ${built.stats.withInstructions.toLocaleString()} exits carrying an instruction`);
 console.log(
   `  ${built.stats.scripted.toLocaleString()} rooms that answer a typed word — see roomScript.ts`
+);
+console.log(
+  `  ${built.stats.levered.toLocaleString()} rooms holding a lever, opening ` +
+    `${built.stats.openableHere.toLocaleString()} hidden exits where they stand — see parseAction`
 );
 console.log(
   `wrote ${path.relative(process.cwd(), outFile)} (${(size / 1024 / 1024).toFixed(2)} MB)`

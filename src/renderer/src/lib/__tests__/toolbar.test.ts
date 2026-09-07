@@ -22,6 +22,7 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   stopLoop: vi.fn(),
   stopWalk: vi.fn(),
   openLoops: vi.fn(),
+  openBuilder: vi.fn(),
   ...over
 });
 
@@ -148,5 +149,29 @@ describe('the shipped toolbar row', () => {
     const { toolbar } = DEFAULT_INTERNAL;
     const named = shippedToolbar(toolbar.pinned, ids);
     expect([...toolbar.pinned].filter((pattern) => !named.has(pattern))).toEqual([]);
+  });
+});
+
+describe('the loop builder on the toolbar', () => {
+  /* The same rule the shelf follows: the builder plans on the shown
+     character's realm, so a pinned float's toolbar does not draw it. */
+  it('is not drawn where there is nobody to open it for', () => {
+    const ids = toolbarButtons(subject({ openBuilder: null })).map((button) => button.id);
+    expect(ids).not.toContain('loop:build');
+  });
+
+  it('sits beside the shelf, and is never greyed', () => {
+    const buttons = toolbarButtons(subject({ loop: 'idle' }));
+    const ids = buttons.map((button) => button.id);
+    expect(ids.indexOf('loop:build')).toBe(ids.indexOf('loop:open') + 1);
+    expect(buttons.find((button) => button.id === 'loop:build')?.disabled).toBeUndefined();
+  });
+
+  it('opens the builder when pressed', () => {
+    const openBuilder = vi.fn();
+    toolbarButtons(subject({ openBuilder }))
+      .find((button) => button.id === 'loop:build')
+      ?.run();
+    expect(openBuilder).toHaveBeenCalledTimes(1);
   });
 });

@@ -19,6 +19,7 @@
  * traversed by walking a direction at all — you have to send `go crimson
  * portal` — so a route that emits `w` there simply does not work.
  */
+import { asAlignment } from '../../shared/alignment';
 import { COPPER_PER } from '../../shared/coins';
 import type { Requirement, RequirementKind } from '../../shared/world';
 
@@ -123,6 +124,165 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
     }
   }
 
+  if (kind === 'class') {
+    /*
+     * `Class: 3 OK, 0 NO`, and that is the **only** shape in the shipped
+     * realm — 54 exits, surveyed, every one of them written that way.
+     *
+     * Both numbers are `Classes` row ids and `0` is the realm's empty slot, so
+     * a zero is dropped rather than stored: kept, it would read as *class zero
+     * may pass* and turn an allow-list into a wall for everybody. That is the
+     * `Level: 37 to 0` lesson above, in a second column.
+     */
+    const gate = /^Class:\s*(\d+)\s*OK(?:\s*,\s*(\d+)\s*NO)?/i.exec(text);
+    if (gate) {
+      const ok = Number(gate[1]);
+      const no = gate[2] === undefined ? 0 : Number(gate[2]);
+      if (ok > 0) requirement.classOk = ok;
+      if (no > 0) requirement.classNo = no;
+    }
+  }
+
+  if (kind === 'race') {
+    /*
+     * `Race: 13 OK, 0 NO`, and that is the only shape either database on this
+     * machine holds — two exits in each, both written exactly that way.
+     *
+     * The same allow/deny pair the class gate states, because on the server it
+     * is the same code one case further down: `RoomManager.LoadRooms` case 14
+     * is case 13 with `Races` where `Classes` was, and `RaceRestrictedExit` is
+     * `ClassRestrictedExit` with the word changed. So the parse is the class
+     * parse, `0` dropped for the same reason — kept, it would read as *race
+     * zero may pass* and shut the exit against everybody.
+     */
+    const gate = /^Race:\s*(\d+)\s*OK(?:\s*,\s*(\d+)\s*NO)?/i.exec(text);
+    if (gate) {
+      const ok = Number(gate[1]);
+      const no = gate[2] === undefined ? 0 : Number(gate[2]);
+      if (ok > 0) requirement.raceOk = ok;
+      if (no > 0) requirement.raceNo = no;
+    }
+  }
+
+  if (kind === 'alignment') {
+    /*
+     * `Alignment: Saint to Seedy` — a window on the standing scale, which the
+     * realm writes in words and the server holds as two evil-point figures
+     * (`AlignmentExit` compares `Player.EvilPoints` against them). The words
+     * are the bands those figures fall in, so comparing bands is exact: a
+     * bound can only have been written as a word if it sat on one.
+     *
+     * Fourteen exits in each database and four distinct windows in each, every
+     * endpoint one of `Saint`, `Neutral`, `Outlaw`, `Seedy`, `Fiend`. **The
+     * spelling is the realm's, not the roster's** — `Fiend` here against
+     * `FIEND` in a `who` — which is why the words go through
+     * `alignmentRank`'s case-insensitive lookup rather than being compared as
+     * strings anywhere.
+     *
+     * A word neither the realm nor the roster names leaves **both** ends
+     * absent rather than one: half a window is not a window, and a gate with a
+     * minimum and no maximum would read as *everybody above Saint*, which is
+     * the reassuring guess. Absent is an unreadable gate, and the router
+     * discourages those rather than opening them.
+     */
+    const range = /^Alignment:\s*([A-Za-z]+)\s+to\s+([A-Za-z]+)/i.exec(text);
+    if (range) {
+      const low = asAlignment(range[1]!);
+      const high = asAlignment(range[2]!);
+      if (low !== null && high !== null) {
+        requirement.minAlignment = low;
+        requirement.maxAlignment = high;
+      }
+    }
+  }
+
+  if (kind === 'ability') {
+    /*
+     * `Ability: 152 w/value 1 to 1` — an `Abilities` id and the window the
+     * character's **sum** of it has to fall in (`AbilityExit`, reading
+     * `GetAbility(id).Sum`).
+     *
+     * Nine exits in the shipped realm, seven in the other, eight distinct
+     * instructions between them. The ids that occur are `DaoLordQuest` (134),
+     * `Rune` (152), `Mandos Quest` (200) and `GuildmasterQuest` (204) — quest
+     * counters, which the wire states nowhere. So what this parse buys is the
+     * one case that *can* be priced: `Ability: 0 w/value 0 to 0`, where the id
+     * is the realm's empty slot and the server builds a plain exit (case 23).
+     * Dropping the zero is what makes that exit free instead of a condition
+     * nobody can meet.
+     */
+    const gate = /^Ability:\s*(\d+)\s*w\/value\s*(\d+)\s*to\s*(\d+)/i.exec(text);
+    if (gate) {
+      // The id alone. The window is matched so the shape is proved read, and
+      // then dropped: nothing can price it without the character's ability sum,
+      // and the chip already shows the instruction verbatim.
+      const id = Number(gate[1]);
+      if (id > 0) requirement.abilityId = id;
+    }
+  }
+
+  if (kind === 'cast') {
+    /*
+     * `Cast: pre-0, post-1257` — the spells fired at whoever walks the exit,
+     * before the step and after it. 293 exits in each database, 25 distinct.
+     *
+     * `0` is *no spell* on both halves and is dropped, which also settles
+     * `Cast: pre-0, post-0`: the server builds a plain exit when neither
+     * resolves (`RoomManager.LoadRooms` case 22), and one exit in each
+     * database is written that way.
+     *
+     * What the spells *do* is not in this string and is not this function's
+     * to answer — `WorldGraph.resolveSpells` reads the realm's spell table
+     * once at load. See `Requirement.spellEffect` for why that matters more
+     * than the ids do.
+     */
+    const spells = /^Cast:\s*pre-(\d+)\s*,\s*post-(\d+)/i.exec(text);
+    if (spells) {
+      const pre = Number(spells[1]);
+      const post = Number(spells[2]);
+      if (pre > 0) requirement.castPre = pre;
+      if (post > 0) requirement.castPost = post;
+    }
+  }
+
+  if (kind === 'spell') {
+    /*
+     * `Spell Trap: 905` — 22 exits in each database, 21 of them `poison
+     * darts`. A trap rather than a gate: `SpellTrapExit.CanMoveThroughExit`
+     * returns `true` unconditionally, so the whole of what it costs is what
+     * the spell does, which `WorldGraph.resolveSpells` reads.
+     */
+    const spell = /^Spell\s*Trap:\s*(\d+)/i.exec(text);
+    if (spell) {
+      const id = Number(spell[1]);
+      if (id > 0) requirement.spellId = id;
+    }
+  }
+
+  if (kind === 'item') {
+    /*
+     * `Item: 191` and `Ticket/Item: 924` — an `Items` row id the character has
+     * to be carrying (`ItemRequiredExit` walks `Inventory.ItemStacks`). 267
+     * exits in the shipped realm, 26 distinct ids, and the two commonest are
+     * `rope and grapple` (157) and `manhole` (57).
+     *
+     * Stored in `keyId`, which is the same fact a `Key:` instruction states —
+     * *this exit wants that item in the pack* — and reading it here is what
+     * makes the Room card's item chip name the rope instead of shrugging;
+     * `describeObstacle` has read `keyId` for the item case since it was
+     * written, against a field nothing set.
+     *
+     * `Item: 0` is the realm's empty slot and the server builds a plain exit
+     * for it (case 3), so the zero is dropped and the exit costs nothing —
+     * one such exit in each database.
+     */
+    const item = /^(?:Ticket\/)?Item:\s*(\d+)/i.exec(text);
+    if (item) {
+      const id = Number(item[1]);
+      if (id > 0) requirement.keyId = id;
+    }
+  }
+
   if (kind === 'toll') {
     /*
      * `Toll: 5`, a bare number the realm writes with no unit. It is **gold** —
@@ -154,9 +314,81 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
 
   if (kind === 'hidden') {
     // `Hidden/Searchable` can be revealed with `search <direction>`.
-    // `Hidden/Needs N Actions` and `Hidden/Unknown` cannot, from data alone.
     requirement.searchable = /searchable/i.test(text);
+    /*
+     * `Hidden/Needs 2 Actions, specific order` — how many levers, and whether
+     * they have to be pulled in the realm's own numbering. **What** those
+     * actions are is not in this string: it is in the direction columns of
+     * whichever rooms hold the levers (see `parseAction`), so the join is made
+     * in `buildRealm` and lands on `Requirement.actions`.
+     */
+    const needs = /Needs\s+(\d+)\s+Actions?(?:,\s*(specific|any)\s+order)?/i.exec(text);
+    if (needs) {
+      requirement.actionsNeeded = Number(needs[1]);
+      requirement.actionsOrdered = needs[2]?.toLowerCase() === 'specific';
+    }
   }
 
   return requirement;
+}
+
+/**
+ * A lever, read out of a **direction column that is not an exit**.
+ *
+ * The realm stores what a room *does* in the same ten columns it stores where
+ * a room *leads*, in one of two shapes surveyed out of both databases on this
+ * machine (299 cells in each, 33 spellings, 296 with a phrase behind them):
+ *
+ *     Action#1 [on the S exit of this room]: pull lever, move lever, pull lev
+ *     Action [on the N exit of room 1/1331]: pull lever, push lever, move lever
+ *
+ * `parseExit` returns null for both, so **every one of them has been dropped
+ * since the converter was written** — which is todo 01: the realm said a
+ * concealed passage south out of 10/4 needs one action, said in the room's own
+ * `W` column that the action is `pull lever`, and the client walked `s`, was
+ * refused, and struck a real corridor out of every route for the session.
+ *
+ * The storage direction is deliberately **not** recorded. `10/4 W` and `10/3
+ * E` hold levers whose exits are `S` and `N`; the column is a slot, not a
+ * meaning, and keeping it would invite a reader to treat it as one.
+ *
+ * Null for anything that is not this shape, and for the three cells in each
+ * database whose phrase list is empty — a lever with no word to say is not a
+ * lever anybody can pull.
+ */
+export function parseAction(raw: unknown): ParsedAction | null {
+  if (raw === null || raw === undefined) return null;
+  const text = String(raw).trim();
+  const match =
+    /^Action(?:#(\d+))?\s*\[on the ([A-Za-z]{1,2}) exit of (?:this room|room (\d+)\/(\d+))\]\s*:\s*(\S.*)$/i.exec(
+      text
+    );
+  if (!match) return null;
+  const say = match[5]!
+    .split(',')
+    .map((phrase) => phrase.trim())
+    .filter((phrase) => phrase.length > 0);
+  if (say.length === 0) return null;
+  const action: ParsedAction = { direction: match[2]!.toLowerCase(), say };
+  // `Action#n` numbers the levers for a `specific order` exit. A bare `Action`
+  // is the only one, so its order is not a fact the data states.
+  if (match[1] !== undefined) action.index = Number(match[1]);
+  if (match[3] !== undefined) {
+    action.map = Number(match[3]);
+    action.room = Number(match[4]);
+  }
+  return action;
+}
+
+/** One `Action …` cell, read. `map`/`room` absent means the room it sits in. */
+export interface ParsedAction {
+  /** The exit it opens, canonical short. */
+  direction: string;
+  /** Every phrase the realm accepts, its own first. */
+  say: string[];
+  /** `Action#n` — its place when the exit wants them in order. */
+  index?: number;
+  /** The room the exit is in, when it is not this one. */
+  map?: number;
+  room?: number;
 }

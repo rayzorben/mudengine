@@ -560,6 +560,24 @@ export interface Inventory {
    * thresholds behind it are unsampled; `@enc` answers with it.
    */
   encumbranceWord: string | null;
+  /**
+   * When an `i` listing last landed, or null if none ever has.
+   *
+   * The difference between *carrying nothing* and *nobody has looked*, which
+   * `items: []` cannot state and which the router needs before it may treat a
+   * missing item as a wall: without it, an exit gated on `rope and grapple`
+   * would be shut against every character that has never listed its pack — and
+   * 157 of the shipped realm's exits are gated on exactly that. Null is not
+   * zero, here as everywhere.
+   *
+   * A *time* rather than a flag, because the same fact answers the next
+   * question after it: how old the pack is. `i` is in the default
+   * `onEnterRealm`, so it is set within a second of entering the realm — but
+   * the probe list is the player's, and a character configured never to ask on
+   * the way in is a legitimate choice that must not silently become a
+   * character that cannot route.
+   */
+  listedAt: number | null;
 }
 
 /**
@@ -1330,7 +1348,8 @@ export const EMPTY_CHARACTER: CharacterState = {
     coins: NO_COINS,
     encumbrance: null,
     encumbranceMax: null,
-    encumbranceWord: null
+    encumbranceWord: null,
+    listedAt: null
   },
   online: [],
   shopListing: null,

@@ -863,6 +863,10 @@ describe('what kind of thing an item is', () => {
       n: 'quarterstaff',
       type: 1,
       worn: 1,
+      // `-1` is the realm saying *unlimited*, and it is kept from format 25 on:
+      // absent used to mean both that and *nothing said*, which are opposite
+      // answers to whether invoking the item costs anything.
+      uses: -1,
       wpn: { min: 2, max: 12, spd: 1200, str: 30, kind: 1 }
     });
   });
@@ -873,13 +877,21 @@ describe('what kind of thing an item is', () => {
       n: 'padded boots',
       type: 0,
       worn: 5,
+      uses: -1,
       arm: { ac: 10, dr: 1, kind: 1 }
     });
   });
 
-  /* `-1` is unlimited and is not a count; `0` for `Worn` is not a slot. */
-  it('keeps a use count only when it is one', () => {
+  /*
+   * `0` is the realm's empty cell and is left out; `-1` is *unlimited* and is
+   * kept, because it is a fact and not an absence. Thirty-nine items in the
+   * shipped realm are unlimited-use spell casters, and dropping the `-1` had
+   * made every one of them read as though the realm had said nothing.
+   */
+  it('keeps a use count, including the realm’s unlimited', () => {
     expect(built.get(500)).toEqual({ id: 500, n: 'scroll of flash', type: 9, uses: 1 });
+    expect(built.get(100)?.uses).toBe(-1);
+    expect(built.get(7)?.uses).toBeUndefined();
   });
 
   /* A derivative without the column names no kinds rather than defaulting one. */
@@ -916,5 +928,165 @@ describe('a place that sells nothing', () => {
       })
     );
     expect(built).toEqual([{ id: 8, n: 'Bank of Godfrey', items: [], t: 7 }]);
+  });
+});
+
+/*
+ * The levers, joined onto both ends — todo 01, format 23.
+ *
+ * The realm stores a room's levers in the same ten columns as its exits, and
+ * every one was dropped until now. The join is what makes them usable: the room
+ * holding a lever gains it as a word it answers, and a gated exit gains the
+ * phrases where they are all within reach.
+ */
+describe('a lever the realm keeps in a direction column', () => {
+  /** The reported room, verbatim: a concealed passage south and the lever here. */
+  const smallChamber = () =>
+    buildRealm(
+      fake({
+        Rooms: [
+          room({
+            'Map Number': 10,
+            'Room Number': 4,
+            Name: 'Small Chamber',
+            S: '10/3 (Hidden/Needs 1 Actions, any order)',
+            U: '10/5',
+            W: 'Action#1 [on the S exit of this room]: pull lever, move lever, pull lev'
+          }),
+          room({ 'Map Number': 10, 'Room Number': 3, Name: 'Passage', N: '10/4' })
+        ]
+      }),
+      '2026-09-06'
+    );
+
+  /** One line of the built world, read back — the shape the file actually has. */
+  interface BuiltRoom {
+    m: number;
+    r: number;
+    x: Record<string, { m: number; r: number; i?: string; a?: unknown[] } | undefined>;
+    cmd?: unknown[];
+  }
+
+  const roomAt = (built: ReturnType<typeof buildRealm>, address: string): BuiltRoom =>
+    built.lines
+      .map((line) => JSON.parse(line) as BuiltRoom)
+      .find((entry) => `${entry.m}/${entry.r}` === address)!;
+
+  it('becomes a word the room holding it answers, saying what it opens', () => {
+    const here = roomAt(smallChamber(), '10/4');
+    expect(here.cmd).toEqual([
+      {
+        say: ['pull lever', 'move lever', 'pull lev'],
+        opens: { room: '10/4', direction: 's' }
+      }
+    ]);
+  });
+
+  it('and the phrases land on the exit it opens', () => {
+    const here = roomAt(smallChamber(), '10/4');
+    expect(here.x['s']).toEqual({
+      m: 10,
+      r: 3,
+      i: 'Hidden/Needs 1 Actions, any order',
+      a: [{ say: ['pull lever', 'move lever', 'pull lev'] }]
+    });
+    expect(smallChamber().stats.levered).toBe(1);
+    expect(smallChamber().stats.openableHere).toBe(1);
+  });
+
+  /* The column is a slot, not a direction: `W` here holds the `S` exit's lever. */
+  it('does not become an exit of its own', () => {
+    expect(Object.keys(roomAt(smallChamber(), '10/4').x)).toEqual(['s', 'u']);
+  });
+
+  /*
+   * The other shape, and the reason the exit gets nothing: a detour to another
+   * room is a route this planner does not plan, so the phrases stay off the
+   * exit and only the room holding the lever says what it does.
+   */
+  it('records where a lever is when it is not in the room the exit leaves', () => {
+    const built = buildRealm(
+      fake({
+        Rooms: [
+          room({
+            'Map Number': 1,
+            'Room Number': 1331,
+            Name: 'Inner Gate',
+            N: '1/1375 (Hidden/Needs 1 Actions, any order)',
+            E: '1/1339'
+          }),
+          room({
+            'Map Number': 1,
+            'Room Number': 1339,
+            Name: 'Guardroom',
+            W: '1/1331',
+            N: 'Action [on the N exit of room 1/1331]: pull lever, push lever'
+          }),
+          room({ 'Map Number': 1, 'Room Number': 1375, Name: 'Courtyard', S: '1/1331' })
+        ]
+      }),
+      '2026-09-06'
+    );
+    expect(roomAt(built, '1/1339').cmd).toEqual([
+      { say: ['pull lever', 'push lever'], opens: { room: '1/1331', direction: 'n' } }
+    ]);
+    // The exit knows where the lever is, so the client can say so — and knows
+    // it is not here, so nothing prices it as openable in place.
+    expect(roomAt(built, '1/1331').x['n']!.a).toEqual([
+      { say: ['pull lever', 'push lever'], at: { map: 1, room: 1339 } }
+    ]);
+    expect(built.stats.openableHere).toBe(0);
+  });
+
+  /*
+   * 28 of the shipped realm's 217 gated exits state a count no number of levers
+   * matches — one says 1,278. Sending the levers that were found would be a
+   * command spent on a passage that stays shut, so the exit keeps the pricing
+   * it has always had.
+   */
+  it('refuses the join when the realm’s own count disagrees', () => {
+    const built = buildRealm(
+      fake({
+        Rooms: [
+          room({
+            'Map Number': 2,
+            'Room Number': 1,
+            Name: 'Vault',
+            S: '2/2 (Hidden/Needs 3 Actions, specific order)',
+            W: 'Action#1 [on the S exit of this room]: twist knot'
+          }),
+          room({ 'Map Number': 2, 'Room Number': 2, Name: 'Inner Vault', N: '2/1' })
+        ]
+      }),
+      '2026-09-06'
+    );
+    expect(roomAt(built, '2/1').x['s']!.a).toBeUndefined();
+    // The room still answers the word: what it opens is a fact either way.
+    expect(roomAt(built, '2/1').cmd).toHaveLength(1);
+    expect(built.stats.openableHere).toBe(0);
+  });
+
+  /* `Action#n` is the order a `specific order` exit wants them pulled in. */
+  it('keeps several levers in the realm’s own order', () => {
+    const built = buildRealm(
+      fake({
+        Rooms: [
+          room({
+            'Map Number': 7,
+            'Room Number': 20,
+            Name: 'Knotted Hall',
+            SW: '7/21 (Hidden/Needs 2 Actions, specific order)',
+            W: 'Action#2 [on the SW exit of this room]: push knot',
+            E: 'Action#1 [on the SW exit of this room]: twist knot, turn knot'
+          }),
+          room({ 'Map Number': 7, 'Room Number': 21, Name: 'Alcove', NE: '7/20' })
+        ]
+      }),
+      '2026-09-06'
+    );
+    expect(roomAt(built, '7/20').x['sw']!.a).toEqual([
+      { say: ['twist knot', 'turn knot'] },
+      { say: ['push knot'] }
+    ]);
   });
 });

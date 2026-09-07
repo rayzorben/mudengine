@@ -1,29 +1,26 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
-import MapPlan, { MapLegend } from './MapPlan';
+import { MapLegend } from './MapPlan';
+import MapView from './MapView';
 import { t } from '../lib/i18n';
+import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
-import {
-  DEFAULT_MAP_DENSITY,
-  EMPTY_MAP,
-  radiusForBox,
-  roomPixelsFor,
-  type LocalMap
-} from '@shared/map';
-import { errorMessage } from '@shared/values';
+import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@shared/map';
 import type { CharacterState } from '@shared/character';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
+import { roomId } from '@shared/world';
 
 export interface MapCardProps extends CardChrome {
   character: CharacterState;
   /**
    * The neighbourhood around a room, out to `radius` rooms.
    *
-   * The radius is the card's, measured from its own laid-out box — see
-   * `radiusForBox`. It used to be main's default of five whatever the card was
-   * drawn in, so a floating map dragged bigger drew the same rooms larger.
+   * The radius is the view's, measured from its own laid-out box and the zoom
+   * it is at — see `radiusForView`. It used to be main's default of five
+   * whatever the card was drawn in, so a floating map dragged bigger drew the
+   * same rooms larger.
    */
   load(map: number, room: number, radius: number): Promise<LocalMap>;
   /** Plan a route to a room on the map. Never walks it — see below. */
@@ -43,6 +40,12 @@ export interface MapCardProps extends CardChrome {
    */
   walk: WalkProgress;
   loop: LoopProgress;
+  /**
+   * Open the loop builder. Null on a pinned float, where the builder is the
+   * shown character's and a control that opened it for somebody else would
+   * plan on the wrong realm — so the action is not drawn at all.
+   */
+  onBuild: (() => void) | null;
 }
 
 /**
@@ -54,88 +57,90 @@ export interface MapCardProps extends CardChrome {
  * rooms it could not place rather than drawing a confident picture that is
  * wrong: a MUD is not Euclidean, and two exits can lead to the same place.
  *
- * Drawn as vector shapes. It was character cells first, on the argument that
- * the game draws its own maps that way — but this map is not the game's. It is
- * derived by the client and never crosses the wire, so the character-cell rule
- * that governs the console does not reach it. It is chrome, and chrome follows
- * the design language.
+ * Looked at through `MapView`, which the loop builder shares: the wheel zooms
+ * about the pointer, a drag on the background pans, and the neighbourhood
+ * fetched is whatever the window can see. What is this card's is the centre —
+ * always where the character is, so every step recentres the picture — and
+ * the zoom, which it keeps as its density setting.
  */
-function MapCard({ character, load, loop, onChoose, walk, ...chrome }: MapCardProps) {
+function MapCard({ character, load, loop, onBuild, onChoose, walk, ...chrome }: MapCardProps) {
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
   const { map: area, number } = character.room;
-  const box = useRef<HTMLDivElement>(null);
-  const { mapRadiusMin, mapRadiusMax, mapRoomPixelsSparse, mapRoomPixelsDense } = tuning();
-  const [radius, setRadius] = useState(mapRadiusMin);
+  const here = area === null || number === null ? null : roomId(area, number);
+  const { mapRoomPixelsSparse: sparse, mapRoomPixelsDense: dense } = tuning();
   /*
    * How much of the realm to fit on the card, from the gear in its own action
    * column. Read off `chrome.settings` — already this card's settings for
    * *this* character, addressed the way a pinned float's are — rather than
    * taken as a prop, which would be a second route to the same value.
    *
-   * It chooses the room *budget*, not the room count: the count is still
-   * measured from the laid-out box below, so a map dragged twice as big shows
-   * more of the realm at every setting, which is what `radiusForBox` was
-   * written for.
+   * It chooses how small a room may be drawn, not the room count: the count
+   * is still measured from the laid-out box, so a map dragged twice as big
+   * shows more of the realm at every setting.
    */
-  const perRoom = roomPixelsFor(
-    chrome.settings?.value.mapDensity ?? DEFAULT_MAP_DENSITY,
-    mapRoomPixelsSparse,
-    mapRoomPixelsDense
-  );
+  const density = chrome.settings?.value.mapDensity ?? DEFAULT_MAP_DENSITY;
 
   /*
-   * How far out to walk is a property of how big this card *is*, so it is
-   * measured from the laid-out element and re-measured whenever that changes.
-   * A railed map has a declared height and settles once; a float is dragged,
-   * and every drag is a new answer.
-   *
-   * `ResizeObserver` rather than a window resize listener: a float is resized
-   * without the window changing at all, and a splitter drag changes the rail's
-   * width with the window fixed. The observer is the only thing that hears
-   * both. The same measure-the-element rule the purse row already follows.
-   *
-   * `setRadius` with the same number is a no-op in React, so a resize that
-   * does not cross a room boundary costs a measurement and no fetch.
+   * The zoom, and the setting are one number read two ways. The wheel moves
+   * the zoom at once and writes it into the setting once the hand has
+   * stopped (`mapZoomSettleMs`) — a wheel reports a dozen events a second and
+   * every write re-lays the workspace out — and the slider moves the setting,
+   * which the zoom then follows. A setting that already says what the zoom
+   * is, because the zoom just wrote it, moves nothing.
    */
-  useLayoutEffect(() => {
-    const node = box.current;
-    if (node === null) return;
-    const measure = (): void => {
-      const rect = node.getBoundingClientRect();
-      setRadius(radiusForBox(rect.width, rect.height, perRoom, mapRadiusMin, mapRadiusMax));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-    // `perRoom` is a dependency, not only the tuning behind it: moving the
-    // slider must re-measure without waiting for the card to be resized.
-  }, [perRoom, mapRadiusMin, mapRadiusMax]);
+  const [zoom, setZoom] = useState(() => roomPixelsFor(density, sparse, dense));
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const settle = useRef<number | null>(null);
+  const pending = useRef<number | null>(null);
+  const write = chrome.settings?.onChange;
+  const writeRef = useRef(write);
+  writeRef.current = write;
+
+  const flush = useCallback((): void => {
+    if (settle.current !== null) {
+      window.clearTimeout(settle.current);
+      settle.current = null;
+    }
+    const perRoom = pending.current;
+    pending.current = null;
+    if (perRoom === null || writeRef.current === undefined) return;
+    const at = densityFor(perRoom, sparse, dense);
+    // Cleared back to nothing where it agrees with the shipped answer, as the
+    // slider does: what is stored is what somebody chose.
+    writeRef.current({ mapDensity: at === DEFAULT_MAP_DENSITY ? undefined : at });
+  }, [sparse, dense]);
+  // A zoom still waiting to be written when the card goes is written then.
+  useEffect(() => flush, [flush]);
+
+  const onZoom = useCallback(
+    (perRoom: number): void => {
+      setZoom(perRoom);
+      pending.current = perRoom;
+      if (settle.current !== null) window.clearTimeout(settle.current);
+      settle.current = window.setTimeout(flush, tuning().mapZoomSettleMs);
+    },
+    [flush]
+  );
 
   useEffect(() => {
-    if (area === null || number === null) {
-      setMap(EMPTY_MAP);
-      return;
-    }
-    let live = true;
-    void load(area, number, radius)
-      .then((next) => {
-        // The room can change while this is in flight; a late answer must not
-        // paint a map of somewhere the character has already left.
-        if (live) setMap(next);
-      })
-      .catch((error) => {
-        // A failed fetch must not leave the previous room's map on screen with
-        // the `you` marker in the wrong place — an empty card refuses where a
-        // stale one lies. The cause has no room on the card, so it goes to the
-        // console rather than nowhere.
-        console.error(`[map] local map ${area}/${number}: ${errorMessage(error)}`);
-        if (live) setMap(EMPTY_MAP);
-      });
-    return () => {
-      live = false;
-    };
-  }, [area, number, load, radius]);
+    if (densityFor(zoomRef.current, sparse, dense) === density) return;
+    // The slider moved: it outranks a wheel still waiting to be written down.
+    if (settle.current !== null) window.clearTimeout(settle.current);
+    settle.current = null;
+    pending.current = null;
+    setZoom(roomPixelsFor(density, sparse, dense));
+  }, [density, sparse, dense]);
+
+  /* One element for as long as the reason holds, so the view's memo holds too. */
+  const empty = useMemo(
+    () => (
+      <div className="empty">
+        {area === null ? t('cards.map.emptyNoLocation') : t('cards.map.emptyNoWorldData')}
+      </div>
+    ),
+    [area]
+  );
 
   const badge =
     map.dropped > 0 ? (
@@ -152,33 +157,44 @@ function MapCard({ character, load, loop, onChoose, walk, ...chrome }: MapCardPr
     );
 
   return (
-    <BentoCard {...chrome} badge={badge} className="map-card" scroll title={t('cards.map.title')}>
+    <BentoCard
+      {...chrome}
+      actions={
+        onBuild === null
+          ? undefined
+          : [{ id: 'build', label: t('cards.map.buildAction'), icon: 'flag', run: onBuild }]
+      }
+      badge={badge}
+      className="map-card"
+      scroll
+      title={t('cards.map.title')}
+    >
       {/*
-       * The measured box, and always present — including while the card is
-       * empty. A ref on the picture itself would detach whenever there was
-       * nothing to draw, so the card would lose its size exactly when it was
-       * about to be told where the character is, and come back at the floor
-       * radius for one fetch.
-       *
-       * It is the picture's own area rather than the card's: the legend takes
-       * a fixed strip at the bottom, and measuring the whole body would count
-       * rows the map is never drawn in.
+       * The picture's own area, always present — including while there is
+       * nothing to draw, so the view keeps its measured size across the
+       * moment it is told where the character is. It is the picture's area
+       * rather than the card's: the legend takes a fixed strip at the bottom.
        */}
-      <div className="map-box" ref={box}>
-        {map.cells.length === 0 ? (
-          <div className="empty">
-            {area === null ? t('cards.map.emptyNoLocation') : t('cards.map.emptyNoWorldData')}
-          </div>
-        ) : (
-          /*
-           * Clicking a room *plans* a route to it; it does not walk one. The
-           * route panel shows the steps and asks. Showing the plan first is
-           * the whole reason walking is a separate, deliberate action — a map
-           * click is the easiest possible way to send a character somewhere
-           * by accident.
-           */
-          <MapPlan map={map} onChoose={onChoose} path={walk.path} stops={loop.remainingStops} />
-        )}
+      <div className="map-box">
+        {/*
+         * Clicking a room *plans* a route to it; it does not walk one. The
+         * route panel shows the steps and asks. Showing the plan first is
+         * the whole reason walking is a separate, deliberate action — a map
+         * click is the easiest possible way to send a character somewhere
+         * by accident.
+         */}
+        <MapView
+          centre={here}
+          empty={empty}
+          load={load}
+          name="map"
+          onChoose={onChoose}
+          onLoaded={setMap}
+          onZoom={onZoom}
+          path={walk.path}
+          stops={loop.remainingStops}
+          zoom={zoom}
+        />
       </div>
       <MapLegend />
     </BentoCard>

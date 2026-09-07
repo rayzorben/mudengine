@@ -684,6 +684,7 @@ describe('the loops a character owns', () => {
     name: 'Newhaven arena',
     stops: [{ room: 'Newhaven, Arena 1/2150' }, { room: 'Dungeon, Entrance 1/2152', linger: 20 }],
     bounce: true,
+    prefer: true,
     category: UNCATEGORISED
   };
 
@@ -713,8 +714,11 @@ describe('the loops a character owns', () => {
     expect(parse(fs.readFileSync(file('vaelor', 'newhaven-arena'), 'utf8'))).toEqual({
       name: 'Newhaven arena',
       bounce: true,
+      prefer: true,
       stops: ['Newhaven, Arena 1/2150', { room: 'Dungeon, Entrance 1/2152', linger: 20 }]
     });
+    // And it reads back as it was written, preference included.
+    expect(owned('vaelor')).toEqual([arena]);
   });
 
   /*

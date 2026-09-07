@@ -4,13 +4,19 @@
  * The MegaMUD accuracy window's question — *how am I actually doing* — asked of
  * the only evidence there is, which is the stream. Two rules shape all of it:
  *
- * - **Only what the wire tells apart.** MegaMUD's window has rows for weapon
- *   procs, off-hand hits and four spell slots; those are *its own
- *   configuration* rather than anything the server says. What this server
+ * - **Only what the wire tells apart, or the realm does.** MegaMUD's window has
+ *   rows for weapon procs, off-hand hits and four spell slots; those are *its
+ *   own configuration* rather than anything the server says. What this server
  *   distinguishes on a landed blow is `You surprise <verb> …` from
  *   `You critically <verb> …` from `You <verb> …` from `You cast <spell> at …`,
  *   and that is what is counted. A row invented for the rest would be a
  *   confident zero.
+ * - **And `proc` is the exemption that dissolved** (2026-09-06). This file used
+ *   to name the weapon-proc row as the example of one the wire cannot tell
+ *   apart, which was true of the *sentence* and never of the client: the realm
+ *   states which item fires a chance-on-hit and `Damage` was booking every one
+ *   of them to the rest of the room. An exemption is a claim with a date on it;
+ *   the realm data that dissolves this one was already shipped.
  * - **A backstab is `surprise`, and it was here all along.** This file used to
  *   say the corpus held no frame for MegaMUD's `BS:` row. It holds five
  *   captures of it (2026-09-02): `bs buttah` → `*Combat Engaged*` → `You
@@ -37,10 +43,16 @@
  * three-line templates stored per weapon, per monster and per spell — so
  * `slice`, `punch`, `skewer` and `hurl your chakram at` are all the same kind
  * of event wearing different words. What is fixed is the adverb and the cast.
+ *
+ * `proc` is the one kind no frame states. A weapon's chance-on-hit prints the
+ * spell's own message with the target and the number substituted in and names
+ * **nobody** — `A shining spark strikes cave worm for 3 damage!` — so it is
+ * read from the realm's item row and the round it landed in rather than off
+ * the line. See `CharacterTracker.readsAsProc`.
  */
-export type BlowKind = 'melee' | 'critical' | 'backstab' | 'spell';
+export type BlowKind = 'melee' | 'critical' | 'backstab' | 'spell' | 'proc';
 
-export const BLOW_KINDS: readonly BlowKind[] = ['melee', 'critical', 'backstab', 'spell'];
+export const BLOW_KINDS: readonly BlowKind[] = ['melee', 'critical', 'backstab', 'spell', 'proc'];
 
 /** What one kind of blow has amounted to. */
 export interface BlowTally {
@@ -141,7 +153,13 @@ export interface CombatTally {
 export const NO_TALLY: CombatTally = {
   since: null,
   at: null,
-  dealt: { melee: NO_BLOWS, critical: NO_BLOWS, backstab: NO_BLOWS, spell: NO_BLOWS },
+  dealt: {
+    melee: NO_BLOWS,
+    critical: NO_BLOWS,
+    backstab: NO_BLOWS,
+    spell: NO_BLOWS,
+    proc: NO_BLOWS
+  },
   missed: 0,
   taken: NO_BLOWS,
   turned: 0,
@@ -154,59 +172,6 @@ export const NO_TALLY: CombatTally = {
   engagedMs: 0,
   engagedSince: null
 };
-
-/**
- * A stored reading of the totals, read back as one.
- *
- * The Reset baseline lives in `localStorage`, which is a boundary like any
- * other: a value written by an older build, a hand edit or a half-written
- * write all arrive here. Parsed field by field rather than cast, and a shape
- * that is not one answers null — which the card reads as *no baseline*, the
- * one answer that is never wrong.
- */
-export function readTally(value: unknown): CombatTally | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const raw = value as Record<string, unknown>;
-  const num = (key: string): number => {
-    const found = raw[key];
-    return typeof found === 'number' && Number.isFinite(found) ? found : 0;
-  };
-  const stamp = (key: string): number | null => {
-    const found = raw[key];
-    return typeof found === 'number' && Number.isFinite(found) ? found : null;
-  };
-  const blows = (from: unknown): BlowTally => {
-    if (typeof from !== 'object' || from === null) return NO_BLOWS;
-    const row = from as Record<string, unknown>;
-    const one = (key: string): number =>
-      typeof row[key] === 'number' && Number.isFinite(row[key]) ? (row[key] as number) : 0;
-    const edge = (key: string): number | null =>
-      typeof row[key] === 'number' && Number.isFinite(row[key]) ? (row[key] as number) : null;
-    return { hits: one('hits'), damage: one('damage'), least: edge('least'), most: edge('most') };
-  };
-  const dealtRaw = (raw['dealt'] ?? {}) as Record<string, unknown>;
-  return {
-    since: stamp('since'),
-    at: stamp('at'),
-    dealt: {
-      melee: blows(dealtRaw['melee']),
-      critical: blows(dealtRaw['critical']),
-      backstab: blows(dealtRaw['backstab']),
-      spell: blows(dealtRaw['spell'])
-    },
-    missed: num('missed'),
-    taken: blows(raw['taken']),
-    turned: num('turned'),
-    dodged: num('dodged'),
-    sneakTried: num('sneakTried'),
-    sneakFailed: num('sneakFailed'),
-    coins: num('coins'),
-    kills: num('kills'),
-    experience: num('experience'),
-    engagedMs: num('engagedMs'),
-    engagedSince: stamp('engagedSince')
-  };
-}
 
 /**
  * Which kind of blow a landed line was.
@@ -281,7 +246,8 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
       melee: blowsBetween(now.dealt.melee, baseline.dealt.melee),
       critical: blowsBetween(now.dealt.critical, baseline.dealt.critical),
       backstab: blowsBetween(now.dealt.backstab, baseline.dealt.backstab),
-      spell: blowsBetween(now.dealt.spell, baseline.dealt.spell)
+      spell: blowsBetween(now.dealt.spell, baseline.dealt.spell),
+      proc: blowsBetween(now.dealt.proc, baseline.dealt.proc)
     },
     missed: now.missed - baseline.missed,
     taken: blowsBetween(now.taken, baseline.taken),
@@ -398,7 +364,11 @@ export function perRound(tally: CombatTally, now: number, roundMs: number): numb
   return damageDealt(tally) / (engaged / roundMs);
 }
 
-/** Every point of damage this character has dealt, across the three kinds. */
+/**
+ * Every point of damage this character has dealt, whatever kind of blow it
+ * was — a weapon's proc included, because those points came off the monster
+ * like every other point. (It said *three kinds* while there were four.)
+ */
 export function damageDealt(tally: CombatTally): number {
   return BLOW_KINDS.reduce((total, kind) => total + tally.dealt[kind].damage, 0);
 }

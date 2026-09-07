@@ -1,9 +1,12 @@
 import type { RealmSource } from './RealmSource';
 import { number, text } from './values';
 import { itemsInScripts, parseRoomScript } from './roomScript';
+import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
 import { MIN_LEVEL_ABILITY } from '../../shared/abilities';
-import type { MobAttack, MobCast, MobProfile } from '../../shared/world';
+import type { Quest } from '../../shared/quests';
+import { indexQuests } from './indexQuests';
+import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
   alignmentCost,
@@ -60,9 +63,13 @@ import {
  * | 19 | No new column: `ExpTable` on a race and a class is written when it is **non-zero** rather than when it is positive. Stock MajorMUD prices a Thief at `-20`, and it is a term of `100 + race + class` — the multiplier the whole experience table is built from — so dropping the sign charged one a fifth more per level than the realm does. The number is bumped for the *cache*: `RealmLibrary.identity` keys a converted realm on the format, the path, the size and the mtime, and none of the last three moves when the converter changes, so a player who had already converted their own database would have kept the bug this fixes, silently |
  * | 20 | How a monster fights, **per row**: the five `Att…` slot groups (type, effective chance, accuracy or spell, damage or cast odds and level, energy, hit spell) and the five `MidSpell…` groups with their marginal per-round chance and cast level — `BuiltMob.pf` — and `Spells.TypeOfResists`. Auto-combat had every monster's `AvgDmg` and nothing about *how* it was dealt, so it could not weigh a paralysing caster against a biter, and took the room in the order the server listed it |
  * | 22 | `Spells.Diff` — how much easier or harder a spell is than the caster's own spellcasting figure, signed and ranging −200 to 200 across both databases on this machine. `indexSpells` read twelve columns and never that one, so the client held every input to the server's cast-success roll except the one that varies per spell, and a caster could not be told which of two spells would actually land |
+ * | 23 | **The levers.** A room's ten direction columns hold what it *does* as well as where it leads, in two shapes surveyed out of both databases (`Action#1 [on the S exit of this room]: pull lever, move lever` and `Action [on the N exit of room 1/1331]: …`) — 299 cells in each, and `parseExit` returns null for every one, so the converter had dropped the lot since it was written. Both ends are joined here: the room holding a lever gains it as a word it answers (`RoomCommand.opens`), and an exit stating `Hidden/Needs N Actions` gains the phrases (`Requirement.actions`) where the count matches and every lever is in the room the exit leaves. Without it the realm said *there is a concealed passage south and the lever is in this room*, the client walked into it, was refused, and struck a real corridor out of every route for the session — todo 01 |
  * | 21 | The database's own account of itself — the `Info` table, whole (`build`), and the formula family read off it (`family`). A table `buildRealm.ts` had never opened, so the client could not say which of the two lineages' arithmetic a realm runs, nor which build of which data set any derived number came from |
+ * | 24 | **The quests.** No realm database has a Quests table, and both on this machine hold the same ten without one — but `TBInfo` holds 4,355 scripts, and between their gates and their rewards they state every quest completely. `indexQuests.ts` finds the counters by which abilities are both granted and demanded, walks the blocks forward from every monster's greeting and every room's script, and comes out with who to ask, where they stand, the word to say, what it costs and what it pays. The client had 1,914 monsters and no way to tell which of them wanted anything |
+ * | 25 | `Items.UseCount` keeps the realm's **`-1`** instead of dropping it. Absent had meant both *the realm says nothing* and *the realm says for ever*, which are opposite answers to the one question that decides whether invoking an item costs anything — and 39 items in the shipped realm, nine of them weapons casting a bless, read as unstated. See `AutoInvoke` |
+ * | 26 | **A quest step's alternatives, kept apart.** A text block holds one line per class — fifteen on the alignment chains — and each line is a complete route with its own gate, its own price and its own reward. `stepsInBlock` merged lines advancing the same counter to the same rank by *unioning* them, so a step said **be a Warrior and a Witchunter**, be level 22 and level 20 at once, and take all fifteen classes' perks: a wrong answer rather than a long one, on 23 of the 251 steps and every one of the three great chains. What every route shares stays on the step; the rest is `QuestStep.ways` (`shareRoutes`). Bumped for the **cache**, like format 19: a player who had already converted their own database would otherwise keep the union for ever, since none of the path, size or mtime `RealmLibrary.identity` also keys on moves when the converter changes |
  */
-export const REALM_FORMAT = 22;
+export const REALM_FORMAT = 26;
 
 /** The ten directions, in the column order every export of this table uses. */
 export const DIRECTIONS = ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW', 'U', 'D'] as const;
@@ -114,6 +121,14 @@ export interface BuiltRealm {
      * table would be an order of magnitude more for facts nothing asked for.
      */
     itemNames: string[];
+    /**
+     * The realm's quests, assembled from its text blocks. See `indexQuests.ts`.
+     *
+     * Empty for a realm with no `TBInfo` table, and for one whose blocks chain
+     * no ability — which is the honest answer for a derivative that scripts
+     * nothing, rather than a promise of a book with nothing in it.
+     */
+    quests: Quest[];
   };
   /** Counts worth reporting, and worth refusing an empty realm on. */
   stats: {
@@ -122,6 +137,10 @@ export interface BuiltRealm {
     withInstructions: number;
     /** Rooms that answer a typed word, from `Rooms.CMD`. */
     scripted: number;
+    /** Rooms holding a lever — a direction column that is not an exit. */
+    levered: number;
+    /** Action-gated exits whose every lever is pulled in the room they leave. */
+    openableHere: number;
     items: number;
     mobs: number;
     shops: number;
@@ -129,6 +148,8 @@ export interface BuiltRealm {
     races: number;
     classes: number;
     itemNames: number;
+    quests: number;
+    questSteps: number;
   };
 }
 
@@ -162,7 +183,20 @@ export interface BuiltItem {
   wpn?: { min: number; max: number; spd?: number; str?: number; acc?: number; kind?: number };
   /** Armour's `ArmourClass`, `DamageResist`, `ArmourType`. Only when `type` is armour's. */
   arm?: { ac?: number; dr?: number; kind?: number };
-  /** `UseCount` when it is a positive count; `-1` means unlimited and is left out. */
+  /**
+   * `UseCount`: how many times the item may be used, and **`-1` for
+   * unlimited**, which is written out rather than dropped — format 25.
+   *
+   * It used to be dropped, on the reasoning that a card showing `-1 uses` is
+   * nonsense. That is true of the *display* and it cost the fact: absent then
+   * meant both *the realm says nothing* and *the realm says for ever*, which
+   * are opposite answers to the one question that decides whether invoking an
+   * item is free. Thirty-nine items in the shipped realm are unlimited-use
+   * spell casters — nine of them weapons that cast a sixty-tick bless — and
+   * every one of them read as *unstated*.
+   *
+   * `0` is still left out: it is the realm's empty cell, not a count.
+   */
   uses?: number;
   /**
    * `Abil-n` / `AbilVal-n`, the realm's effect system — format 12.
@@ -550,13 +584,41 @@ export interface BuiltMob {
  * `1/41 (Door [1000 picklocks/strength])` → destination plus raw instruction.
  * `0` means no exit at all.
  */
-export function parseExit(raw: unknown): { m: number; r: number; i?: string } | null {
+/**
+ * One exit as the world file writes it: where it goes, the realm's own
+ * instruction, and — format 23 — the levers that open it where they are all in
+ * the room it leaves from. See `RequirementAction`.
+ */
+export interface BuiltExit {
+  m: number;
+  r: number;
+  i?: string;
+  a?: RequirementAction[];
+}
+
+/**
+ * A lever as the first pass found it, before either join.
+ *
+ * `in` is the room whose column held it — where it is pulled. `at` is the room
+ * whose exit it opens, which is usually but not always the same one. Keeping
+ * both is the whole of what makes the two joins possible, and the difference
+ * between them is what decides whether an exit can be opened where it stands.
+ */
+interface Lever {
+  in: { map: number; room: number };
+  at: { map: number; room: number };
+  direction: string;
+  say: string[];
+  index?: number;
+}
+
+export function parseExit(raw: unknown): BuiltExit | null {
   if (raw === null || raw === undefined) return null;
   const text = String(raw).trim();
   if (text.length === 0 || text === '0') return null;
   const match = /^(\d+)\/(\d+)(?:\s*\((.+)\))?$/.exec(text);
   if (!match) return null;
-  const exit: { m: number; r: number; i?: string } = {
+  const exit: BuiltExit = {
     m: Number(match[1]),
     r: Number(match[2])
   };
@@ -858,6 +920,12 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
   let withExits = 0;
   let withInstructions = 0;
   let placed = 0;
+  /*
+   * Every lever in the realm, collected on the first pass and joined on the
+   * second — the exit a lever opens is usually in another row and sometimes in
+   * another map, so neither half can be finished while the rows are being read.
+   */
+  const levers: Lever[] = [];
 
   // Sorted the way the build script's query sorted, so a realm converted at
   // runtime and one built at build time produce byte-identical output.
@@ -876,10 +944,29 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
     if (map === null || roomNumber === null) continue;
     placed += 1;
 
-    const exits: Record<string, { m: number; r: number; i?: string }> = {};
+    const exits: Record<string, BuiltExit> = {};
     for (const direction of DIRECTIONS) {
       const exit = parseExit(row[direction]);
-      if (!exit) continue;
+      if (!exit) {
+        /*
+         * A direction column that is not a destination is a **lever** — format
+         * 23. Both databases on this machine hold 299 of them and the
+         * converter has dropped every one since it was written; see
+         * `parseAction`. The storage column is a slot, not a direction, so
+         * what is kept is which exit the lever opens and where it is pulled.
+         */
+        const lever = parseAction(row[direction]);
+        if (lever) {
+          levers.push({
+            in: { map, room: roomNumber },
+            at: { map: lever.map ?? map, room: lever.room ?? roomNumber },
+            direction: lever.direction,
+            say: lever.say,
+            ...(lever.index === undefined ? {} : { index: lever.index })
+          });
+        }
+        continue;
+      }
       exits[direction.toLowerCase()] = exit;
       if (exit.i) {
         withInstructions += 1;
@@ -954,17 +1041,77 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
    * Serialised here rather than in the loop above because the phrases name
    * items, and the item index is only complete at this point.
    */
+  /*
+   * The levers, joined onto both ends — format 23.
+   *
+   * Two joins from one list, because a lever is two facts about two rooms: it
+   * is a word the room holding it answers (`cmd`, with `opens` saying what
+   * for), and it is what the gated exit needs (`Requirement.actions`, so the
+   * router can price it and the walker can send it).
+   */
+  const byExit = new Map<string, Lever[]>();
+  const byRoom = new Map<string, Lever[]>();
+  for (const lever of levers) {
+    const exitKey = `${lever.at.map}/${lever.at.room}:${lever.direction}`;
+    const roomKey = `${lever.in.map}/${lever.in.room}`;
+    (byExit.get(exitKey) ?? byExit.set(exitKey, []).get(exitKey)!).push(lever);
+    (byRoom.get(roomKey) ?? byRoom.set(roomKey, []).get(roomKey)!).push(lever);
+  }
+  // The realm's own order where it numbers them, and the order the rows were
+  // read in otherwise — which is what `any order` makes harmless.
+  for (const found of byExit.values()) found.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
   const lines: string[] = [];
   let scripted = 0;
+  let levered = 0;
+  let openableHere = 0;
   for (const { room, cmd } of drafts) {
     const action = cmd === null ? undefined : scripts.get(cmd);
-    if (action !== undefined) {
-      const answers = parseRoomScript(action, (id) => named.get(id));
-      if (answers.length > 0) {
-        room['cmd'] = answers;
-        scripted += 1;
-      }
+    const answers = action === undefined ? [] : parseRoomScript(action, (id) => named.get(id));
+    if (answers.length > 0) scripted += 1;
+
+    const here = `${room['m'] as number}/${room['r'] as number}`;
+    /*
+     * The levers pulled *in* this room become words it answers, each saying
+     * which exit it opens. A lever whose exit is somewhere else says so with
+     * its full address; one in this room says the direction alone, because
+     * repeating the room somebody is standing in is noise.
+     */
+    const mine = byRoom.get(here) ?? [];
+    for (const lever of mine) {
+      answers.push({
+        say: lever.say,
+        opens: { room: `${lever.at.map}/${lever.at.room}`, direction: lever.direction }
+      });
     }
+    if (answers.length > 0) room['cmd'] = answers;
+    if (mine.length > 0) levered += 1;
+
+    /*
+     * And the other end: an exit stating `Needs N Actions` gets the phrases,
+     * but **only when the realm's count matches what was found and every one
+     * of them is pulled in this very room**. Either half short and the exit
+     * keeps the pricing it has always had: sending some of the levers for a
+     * passage that needs more is a command spent on a wall, and a detour to
+     * another room is a route this planner does not plan. What is recorded
+     * either way is *where* each lever is, so the client can say so.
+     */
+    const exits = room['x'] as Record<string, BuiltExit>;
+    for (const [direction, exit] of Object.entries(exits)) {
+      if (exit.i === undefined) continue;
+      const found = byExit.get(`${here}:${direction}`);
+      if (found === undefined || found.length === 0) continue;
+      const needs = /Needs\s+(\d+)\s+Actions?/i.exec(exit.i);
+      if (needs === null || Number(needs[1]) !== found.length) continue;
+      const acts = found.map((lever) =>
+        lever.in.map === lever.at.map && lever.in.room === lever.at.room
+          ? { say: lever.say }
+          : { say: lever.say, at: { map: lever.in.map, room: lever.in.room } }
+      );
+      exit.a = acts;
+      if (acts.every((act) => act.at === undefined)) openableHere += 1;
+    }
+
     lines.push(JSON.stringify(room));
   }
 
@@ -974,6 +1121,16 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
   const itemNames = indexItemNames(source);
   const build = indexBuild(source);
   const family = familyOfBuild(build);
+  /*
+   * The realm's quests, assembled from its own text blocks — the realm has no
+   * Quests table and never had one. See `indexQuests.ts` for the derivation,
+   * and why the counters are found rather than listed.
+   *
+   * Last, because it wants the class, race and spell indexes to name what a
+   * step demands and pays, and re-reading those tables for a name would be a
+   * second opinion about the same rows.
+   */
+  const quests = indexQuests(source, { classes, races, spells });
 
   return {
     lines,
@@ -990,20 +1147,25 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
       classes,
       ...(build === null ? {} : { build }),
       ...(family === null ? {} : { family }),
-      itemNames
+      itemNames,
+      quests
     },
     stats: {
       rooms: placed,
       withExits,
       withInstructions,
       scripted,
+      levered,
+      openableHere,
       items: items.length,
       mobs: mobs.length,
       shops: shops.length,
       spells: spells.length,
       races: races.length,
       classes: classes.length,
-      itemNames: itemNames.length
+      itemNames: itemNames.length,
+      quests: quests.length,
+      questSteps: quests.reduce((total, quest) => total + quest.steps.length, 0)
     }
   };
 }
@@ -1692,8 +1854,10 @@ export function indexItems(source: RealmSource, needed: Set<number>): BuiltItem[
     const kind: Pick<BuiltItem, 'type' | 'worn' | 'wpn' | 'arm' | 'uses'> = { type };
     const worn = positive(item, 'Worn');
     if (worn !== undefined) kind.worn = worn;
-    const uses = positive(item, 'UseCount');
-    if (uses !== undefined) kind.uses = uses;
+    // Any non-zero count, so the realm's `-1` (unlimited) survives; see
+    // `BuiltItem.uses` for what dropping it cost.
+    const uses = number(item['UseCount']);
+    if (uses !== null && uses !== 0) kind.uses = uses;
     if (itemKind(type) === 'weapon') {
       const min = number(item['Min']) ?? 0;
       const max = number(item['Max']) ?? 0;

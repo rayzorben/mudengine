@@ -40,8 +40,16 @@ import { REREAD_ROOM } from './commands';
 /** Chrome density, mirroring the `useDensity` preference. */
 export type DensityPreference = 'auto' | 'comfortable' | 'compact';
 
-/** Which edge the character tabs sit on. */
-export type TabsPreference = 'top' | 'left';
+/**
+ * Which edge the character tabs sit on.
+ *
+ * `left` and `right` are the same rail mirrored, and the mirror takes the card
+ * rail with it: whichever side the tabs are on, the cards are on the other. It
+ * is one setting rather than two because the two side rails cannot share an
+ * edge — a client that let both be asked for on the left would have to pick a
+ * winner, and the pick would be arbitrary.
+ */
+export type TabsPreference = 'top' | 'left' | 'right';
 
 /** One realm-specific prompt the block vocabulary does not cover. */
 export interface LoginStep {
@@ -194,6 +202,11 @@ export interface UiConfig {
    * — and buys room for vitals in numbers, the room name and what the character
    * is doing. `top` costs rows, which are cheap, and collapses to a name, a
    * state dot and a bar. See docs/ui-design.md §3.8.
+   *
+   * `right` is `left` mirrored, and mirrors the whole workspace: the tabs take
+   * the right edge and the card rail takes the left. It costs exactly what
+   * `left` costs — which side of the console each rail is on is the player's
+   * hand and their monitor, not a trade.
    */
   tabs: TabsPreference;
   /**
@@ -207,6 +220,16 @@ export interface UiConfig {
    * client.
    */
   showHud: boolean;
+  /**
+   * The client's own mark, in the status rail.
+   *
+   * On by default: this is the one place the client says what it is, and a
+   * brand nobody ever sees is the same as none. Off is offered because a status
+   * rail is a line of facts about the session and somebody may not want a mark
+   * on it — not because the mark is in the way of anything, which it is not:
+   * it takes the height the line already has.
+   */
+  showLogo: boolean;
   /** Where the HUD meters turn yellow and red. */
   vitals: VitalsUiConfig;
   /** What reaches the Alerts card. */
@@ -1065,8 +1088,9 @@ export interface SearchConfig {
    *
    * The server may answer a first `search` with nothing and a second with an
    * exit — nothing in the realm data or on the wire says whether one look is
-   * enough, and `walk.searchTries` already exists for the same unknown on the
-   * walker's side. One by default: a room searched three times is three
+   * enough, which is also why the walker's own search for a *named* hidden
+   * exit is paced rather than counted (`walk.searchRetryMs`). One by default:
+   * a room searched three times is three
    * commands, and the honest answer to "how many does it take" is that nobody
    * has measured it.
    */
@@ -1407,6 +1431,24 @@ export interface MovementConfig {
    * Disease is not a movement matter and has no switch.
    */
   walkWhilePoisoned: boolean;
+  /**
+   * Pick up a key an exit of this room needs, when it is lying on the floor of
+   * it — and only then.
+   *
+   * **On by default**, which `provideLight` is the precedent for and the same
+   * argument makes: the rule everything else here follows — off until asked —
+   * exists because a wrong action costs a character, and the wrong action here
+   * costs one `get` and the weight of a key. Refusing costs the corridor. It
+   * was reported as a client standing on sixty-six bone keys being told the
+   * door beside it needed a bone key (2026-09-06).
+   *
+   * The conjunction is narrow and is the whole of the setting: the realm names
+   * the item the exit demands, no listing has shown it in the pack, and the
+   * floor holds a name that can only be that row. See `AutoKeys` for why this
+   * cannot be the walker's barrier ladder — a keyed edge is pruned before any
+   * step exists to be refused at.
+   */
+  collectKeys: boolean;
 }
 
 /**
@@ -1557,6 +1599,22 @@ export interface SpellsConfig {
   healTo: number;
   /** Whether party members are healed at all. The toolbar's own toggle. */
   healParty: boolean;
+  /**
+   * Ask a carried item for the blessing it can cast, when that blessing is not
+   * up — MegaMUD's `AutoBless`, for the half of it this client had no answer
+   * to: a *weapon* that blesses.
+   *
+   * The realm states the whole of it. An item's `CastsSp` names a spell, and
+   * where `UseCount` is `-1` the server lets it be used for ever — nine
+   * weapons in the shipped realm cast a sixty-tick bless that way, costing no
+   * mana and no charge, and nothing in this client ever asked for one.
+   *
+   * Off by default, like everything automated. **Only unlimited items**: one
+   * with three charges spent on a buff is three charges somebody was saving,
+   * and the realm has to say `-1` — silence is not unlimited. See
+   * `AutoInvoke`.
+   */
+  invokeItems: boolean;
   /**
    * Do not cast below this fraction of maximum mana. 0 always casts.
    *
@@ -1835,10 +1893,19 @@ const GENERIC_MONOSPACE = 'monospace';
  * which of the shipped realms is the default rather than leaving it to whichever
  * directory sorts first.
  *
- * `resources/servers/gmud-5x/server.yaml` is the realm and
+ * `resources/servers/paradigm-game-1-pve/server.yaml` is the realm and
  * `resources/config/profile.default.yaml` names it too; `shipped.test.ts` holds
  * all three together, because a template and its constant are a closed pair and
  * this repository has watched one drift already (`internal.yaml`, 2026-08-28).
+ *
+ * **Paradigm, and it is the same realm the built-in world is built from.** It
+ * was `GMUD (5X)` for two days (2026-09-03 to 2026-09-05), which meant a new
+ * character's realm and the map shipped beside it were two different games:
+ * that realm had to carry a 2.4 MB database of its own into every installer,
+ * and every claim about a room, a route or a monster was answered from the
+ * wrong realm the moment either half was got wrong. `resources/world/` is
+ * built from Paradigm's own database (`mdb/2026-07-26-pmud.zip`, see
+ * `scripts/build-world.mjs`), so this default and that file are one realm.
  *
  * Changing the default is therefore editing this line and the template beside
  * it, not renaming a directory to sort earlier — which is what the settings
@@ -1847,7 +1914,7 @@ const GENERIC_MONOSPACE = 'monospace';
  * A name no realm on disk answers to falls back to the first realm there is: a
  * player who deleted this one still gets a realm rather than a blank field.
  */
-export const DEFAULT_REALM_NAME = 'GMUD (5X)';
+export const DEFAULT_REALM_NAME = 'Paradigm Game 1 PVE';
 
 export const DEFAULT_CONFIG: AppConfig = {
   connection: {
@@ -1911,6 +1978,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     theme: DEFAULT_THEME,
     tabs: 'left',
     showHud: true,
+    showLogo: true,
     // Half and a quarter: the same numbers `megamind-client` shipped for
     // `restIfBelow` / `runIfBelow`, and the ones a MajorMUD player already has
     // in their head. Fractions, so they hold at every level.
@@ -2101,7 +2169,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       lightDimRooms: false,
       extinguishInLight: true,
       walkWhileBlind: false,
-      walkWhilePoisoned: false
+      walkWhilePoisoned: false,
+      collectKeys: true
     },
     spells: {
       attack: '',
@@ -2117,6 +2186,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0.15,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -2170,6 +2240,7 @@ export const AUTOMATION_SWITCHES = {
   sneak: ['movement', 'sneak'],
   provideLight: ['movement', 'provideLight'],
   healParty: ['spells', 'healParty'],
+  invokeItems: ['spells', 'invokeItems'],
   assistLeader: ['party', 'assistLeader'],
   defendParty: ['party', 'defendParty'],
   restWithLeader: ['party', 'restWithLeader'],
@@ -2396,7 +2467,7 @@ export function normalizeConfig(input: unknown): AppConfig {
     },
     ui: {
       font: normalizeFont(ui['font'], DEFAULT_CONFIG.ui.font),
-      tabs: oneOf(ui['tabs'], ['top', 'left'] as const, DEFAULT_CONFIG.ui.tabs),
+      tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, DEFAULT_CONFIG.ui.tabs),
       density: oneOf(
         ui['density'],
         ['auto', 'comfortable', 'compact'] as const,
@@ -2406,6 +2477,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       // added to `themes.ts` becomes selectable without touching this file.
       theme: isThemePreference(ui['theme']) ? ui['theme'] : DEFAULT_CONFIG.ui.theme,
       showHud: bool(ui['showHud'], DEFAULT_CONFIG.ui.showHud),
+      showLogo: bool(ui['showLogo'], DEFAULT_CONFIG.ui.showLogo),
       vitals: normalizeVitals(ui['vitals']),
       alerts: normalizeAlerts(ui['alerts'])
     },
@@ -3078,7 +3150,8 @@ function normalizeMovement(value: unknown): MovementConfig {
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
     extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
-    walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned)
+    walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
+    collectKeys: bool(raw['collectKeys'], d.collectKeys)
   };
 }
 
@@ -3151,6 +3224,7 @@ function normalizeSpells(value: unknown): SpellsConfig {
       return to === 0 ? 0 : Math.max(to, below);
     })(),
     healParty: bool(raw['healParty'], d.healParty),
+    invokeItems: bool(raw['invokeItems'], d.invokeItems),
     minMana: fraction(raw['minMana'], d.minMana),
     cures: normalizeCures(raw['cures']),
     blessings: normalizeBlessings(raw['blessings']),

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { asRoomReference, asRoute } from '../world';
+import {
+  asRoomReference,
+  asRoute,
+  openableHere,
+  parseLair,
+  trapsAlong,
+  type RouteStep
+} from '../world';
 import { asConnectionTarget } from '../types';
 
 /** A route the pathfinder would really produce. */
@@ -141,5 +148,145 @@ describe('asRoomReference', () => {
 
   it('accepts room 0, which is a room and not an absence', () => {
     expect(asRoomReference('0/0')).toEqual({ map: 0, room: 0 });
+  });
+});
+
+describe('trapsAlong', () => {
+  const step = (requirement: RouteStep['requirement']): RouteStep => ({
+    from: '1/1',
+    to: '1/2',
+    direction: 'n',
+    command: 'n',
+    name: 'Somewhere',
+    requirement,
+    dark: false
+  });
+
+  it('counts nothing on a route with no traps', () => {
+    const steps = [step(null), step({ kind: 'door', raw: 'Door' })];
+    expect(trapsAlong(steps)).toEqual({ count: 0, worst: null });
+  });
+
+  it('counts every trapped step and keeps the heaviest stated damage', () => {
+    const steps = [
+      step({ kind: 'trap', raw: 'Trap, 40 damage', damage: 40 }),
+      step(null),
+      step({ kind: 'trap', raw: 'Trap, 400 damage', damage: 400 }),
+      step({ kind: 'trap', raw: 'Trap, 150 damage', damage: 150 })
+    ];
+    expect(trapsAlong(steps)).toEqual({ count: 3, worst: 400 });
+  });
+
+  it('is null, not zero, when no trap states a damage', () => {
+    // A derivative may write a bare `Trap`; *up to 0 damage* would be a
+    // reassuring number the data never gave.
+    expect(trapsAlong([step({ kind: 'trap', raw: 'Trap' })])).toEqual({ count: 1, worst: null });
+  });
+
+  /*
+   * A `Spell Trap:` exit is a trap by the server's own reckoning — it refuses
+   * nobody and fires a spell at whoever walks it — and it carries its damage in
+   * the same field, read off the realm's spell table. Leaving it out said *no
+   * traps on this route* about a route through 21 exits that shoot poison
+   * darts.
+   */
+  it('counts a spell trap, whose hurt comes from the spell table', () => {
+    const steps = [
+      step({ kind: 'trap', raw: 'Trap, 400 damage', damage: 400 }),
+      step({ kind: 'spell', raw: 'Spell Trap: 905', spellId: 905, damage: 16 }),
+      step({ kind: 'spell', raw: 'Spell Trap: 851', spellId: 851 })
+    ];
+    expect(trapsAlong(steps)).toEqual({ count: 3, worst: 400 });
+  });
+
+  it('ignores a stated damage on a step that is not a trap', () => {
+    const steps = [step({ kind: 'door', raw: 'Door', damage: 99 } as never)];
+    expect(trapsAlong(steps)).toEqual({ count: 0, worst: null });
+  });
+});
+
+describe('parseLair', () => {
+  /* GreaterMUD's own spelling, and what docs/greatermud/player-and-world.md records. */
+  it('reads the slot count and the monster numbers', () => {
+    expect(parseLair('(Max 2): 1141,2175,2176,')).toEqual({
+      max: 2,
+      ids: [1141, 2175, 2176]
+    });
+  });
+
+  /*
+   * Paradigm's export appends its own spawn parameters, and every one of the
+   * shipped realm's 14,068 lairs carries them. Read as monster numbers they put
+   * four creatures the realm never placed onto the Room card's lair face.
+   */
+  it('refuses the exporter’s bracketed parameters as monsters', () => {
+    expect(parseLair('(Max 2): 781,190,[6-30-31-2]')).toEqual({
+      max: 2,
+      ids: [781, 190]
+    });
+    // The Temple Healer's own lair: one healer, not a healer plus a lashworm,
+    // two ghouls and a giant rat.
+    expect(parseLair('(Max 1): 47,[2-16-16-1]')).toEqual({ max: 1, ids: [47] });
+  });
+
+  /*
+   * The `(Max n)` clause is removed whole rather than the first number being
+   * dropped. A descriptor stating no maximum would otherwise lose a monster.
+   */
+  it('keeps every number when no maximum is stated', () => {
+    expect(parseLair('12,44,')).toEqual({ max: null, ids: [12, 44] });
+  });
+
+  it('de-duplicates, and names nothing for a blank descriptor', () => {
+    expect(parseLair('(Max 2): 5,5,7,')).toEqual({ max: 2, ids: [5, 7] });
+    // GreaterMUD writes a single space into every ordinary room's column.
+    expect(parseLair(' ')).toEqual({ max: null, ids: [] });
+    expect(parseLair('')).toEqual({ max: null, ids: [] });
+  });
+
+  /* Zero is the realm's own way of saying nothing, not monster #0. */
+  it('drops a zero', () => {
+    expect(parseLair('(Max 1): 0,')).toEqual({ max: 1, ids: [] });
+  });
+});
+
+/*
+ * *Can this be opened where it stands* — one reading, because the price, the
+ * chip and the walker's rung each ask it and three copies agree only until one
+ * is edited.
+ */
+describe('openableHere', () => {
+  const gated = (actions?: Array<{ say: string[]; at?: { map: number; room: number } }>) => ({
+    kind: 'hidden' as const,
+    raw: 'Hidden/Needs 1 Actions, any order',
+    searchable: false,
+    ...(actions === undefined ? {} : { actions })
+  });
+
+  it('is true when every lever is in the room the exit leaves', () => {
+    expect(openableHere(gated([{ say: ['pull lever'] }]))).toBe(true);
+    expect(openableHere(gated([{ say: ['twist knot'] }, { say: ['push knot'] }]))).toBe(true);
+  });
+
+  it('is false when any lever is somewhere else', () => {
+    expect(openableHere(gated([{ say: ['pull lever'], at: { map: 1, room: 1339 } }]))).toBe(false);
+    expect(openableHere(gated([{ say: ['a'] }, { say: ['b'], at: { map: 1, room: 2 } }]))).toBe(
+      false
+    );
+  });
+
+  /* The realm naming no lever, and a realm converted before they were read,
+     are the same answer as far as anything acting on this goes. */
+  it('is false when the realm names no lever at all', () => {
+    expect(openableHere(gated())).toBe(false);
+    expect(openableHere(gated([]))).toBe(false);
+  });
+
+  it('is false for anything that is not a hidden exit', () => {
+    expect(openableHere(null)).toBe(false);
+    expect(openableHere({ kind: 'door', raw: 'Door' })).toBe(false);
+    expect(openableHere({ kind: 'hidden', raw: 'Hidden/Searchable', searchable: true })).toBe(
+      false
+    );
   });
 });

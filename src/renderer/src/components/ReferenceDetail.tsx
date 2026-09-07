@@ -1,5 +1,5 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
@@ -15,7 +15,10 @@ import {
 import { ITEM_KIND_WORD } from '@shared/items';
 import type { RealmFamily } from '@shared/character';
 import type { Verdict } from '@shared/verdict';
+import { roomId } from '@shared/world';
 import type {
+  MobPlaces,
+  MobSpawn,
   ShopPlace,
   WorldClass,
   WorldItem,
@@ -37,6 +40,8 @@ export type ReferenceEntry =
       fights: FightSummary | null;
       /** *Can I fight this?* — against the character as it stands; null when the realm cannot weigh it. */
       verdict: Verdict | null;
+      /** Where the realm puts it; null where it puts it nowhere. See `MobPlaces`. */
+      places: MobPlaces | null;
     }
   | { kind: 'item'; name: string; item: WorldItem }
   | { kind: 'spell'; name: string; spell: WorldSpell }
@@ -51,7 +56,8 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       mob,
       learned: found.learned?.[mob.name] ?? null,
       fights: found.fights?.[mob.name] ?? null,
-      verdict: found.verdicts?.[mob.name] ?? null
+      verdict: found.verdicts?.[mob.name] ?? null,
+      places: found.mobPlaces?.[mob.name] ?? null
     })),
     ...found.items.map((item): ReferenceEntry => ({ kind: 'item', name: item.name, item })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
@@ -140,6 +146,133 @@ export function entryFigure(entry: ReferenceEntry): string | null {
 }
 
 /**
+ * Where the realm puts a monster, as places you can plan a walk to.
+ *
+ * The answer to *where do I find one of these*, which until now the client
+ * held and could not draw: `Rooms.NPC` and `Rooms.Lair` were read forwards
+ * only, so the Room card could say what a lair holds and nothing could say
+ * where a monster is. See `WorldGraph.mobPlaces`.
+ *
+ * **A group of one room is a place; a group of several is a choice.** One room
+ * is a button that opens the route panel on it, exactly as a shop's name in
+ * `Sold by` is. Several rooms of one name open *in place* into their addresses,
+ * each its own button — never a button that walks to the first of them, which
+ * is the guess this project refuses everywhere a walk is at the end of it. It
+ * discloses rather than opening a second panel, because the panel a room opens
+ * is the one this row is a way into.
+ */
+function SpawnsIn({
+  spawns,
+  more,
+  onRoom,
+  onResize
+}: {
+  spawns: readonly MobSpawn[];
+  more: number;
+  onRoom: ((map: number, room: number) => void) | null;
+  onResize: (() => void) | null;
+}) {
+  /*
+   * Which group is open, by its own identity rather than its index: the answer
+   * is re-fetched as the query narrows, and an index would keep a *different*
+   * group open under the pointer.
+   */
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <dd>
+      {spawns.map((spawn, index) => {
+        const key = `${spawn.via}:${spawn.roomName}`;
+        const only = spawn.count === 1 ? spawn.rooms[0] : undefined;
+        const showing = open === key;
+        return (
+          <Fragment key={key}>
+            {index > 0 && ', '}
+            {onRoom === null ? (
+              spawn.roomName
+            ) : only !== undefined ? (
+              <button
+                className="lookup"
+                onClick={() => onRoom(only.map, only.room)}
+                title={t('cards.reference.item.shopRouteTitle', { room: spawn.roomName })}
+                type="button"
+              >
+                {spawn.roomName}
+              </button>
+            ) : (
+              <button
+                aria-expanded={showing}
+                className="lookup"
+                onClick={() => {
+                  setOpen(showing ? null : key);
+                  // The panel this may be drawn in is placed against its
+                  // measured size, so a disclosure that makes it taller has to
+                  // say so or it is left hanging off the bottom of the window.
+                  // The Player flyout's faces are the same shape.
+                  onResize?.();
+                }}
+                title={t('cards.reference.mob.spawnChooseTitle', { room: spawn.roomName })}
+                type="button"
+              >
+                {spawn.roomName}
+              </button>
+            )}
+            {spawn.count > 1 && (
+              <span className="quiet">
+                {' '}
+                {t('cards.reference.mob.spawnCount', { count: spawn.count })}
+              </span>
+            )}
+            {/* The lair's slot count, where every room in the group agrees on
+                one — see `MobSpawn.max`. Worded *to a room* rather than *at
+                once*, because a group is several rooms and the figure is each
+                room's: `Snowy Plains ×3 (up to 2 at once)` reads as two across
+                the three, which is not what the realm said about any of them. */}
+            {spawn.max !== null &&
+              (spawn.max === 1 ? (
+                <span className="quiet"> {t('cards.reference.mob.spawnMax.one')}</span>
+              ) : (
+                <span className="quiet">
+                  {' '}
+                  {t('cards.reference.mob.spawnMax.many', { max: spawn.max })}
+                </span>
+              ))}
+            {showing && onRoom !== null && (
+              <span className="spawn-rooms">
+                {spawn.rooms.map((room) => (
+                  <button
+                    className="lookup"
+                    key={`${room.map}/${room.room}`}
+                    onClick={() => onRoom(room.map, room.room)}
+                    title={t('cards.reference.item.shopRouteTitle', { room: spawn.roomName })}
+                    type="button"
+                  >
+                    {roomId(room.map, room.room)}
+                  </button>
+                ))}
+                {/* The group is capped, so a group with more rooms than it
+                    lists says so rather than reading as the whole set. */}
+                {spawn.rooms.length < spawn.count && (
+                  <span className="quiet">
+                    {t('cards.reference.mob.spawnRoomsMore', {
+                      count: spawn.count - spawn.rooms.length
+                    })}
+                  </span>
+                )}
+              </span>
+            )}
+          </Fragment>
+        );
+      })}
+      {/* And so does the list of groups. A truncated answer that reads as a
+          whole one is the lie a cap is otherwise free to tell. */}
+      {more > 0 && (
+        <span className="quiet">{t('cards.reference.mob.spawnMore', { count: more })}</span>
+      )}
+    </dd>
+  );
+}
+
+/**
  * What one monster is, spelled out. The same facts the Room card compresses
  * into chips, given the space to be sentences — this is the detail.
  */
@@ -148,17 +281,32 @@ function MobDetail({
   learned,
   fights,
   verdict,
+  places,
   realm,
-  classNames
+  classNames,
+  onRoom,
+  onResize
 }: {
   mob: WorldMob;
   learned: MobLoreEntry | null;
   fights: FightSummary | null;
   verdict: Verdict | null;
+  places: MobPlaces | null;
   realm: RealmFamily | null;
   classNames: Record<number, string>;
+  onRoom: ((map: number, room: number) => void) | null;
+  onResize: (() => void) | null;
 }) {
   const word = mob.disposition === null ? null : DISPOSITION_WORD[mob.disposition];
+  /*
+   * Split at the point of display rather than in two fields on the wire: it is
+   * one index and one cap over the realm's placements, and which of the two
+   * claims each carries is `via`. The overflow count belongs to the list as a
+   * whole and the ranking puts every resident ahead of every lair, so it can
+   * only ever have come off the lair end.
+   */
+  const residents = places?.spawns.filter((spawn) => spawn.via === 'npc') ?? [];
+  const lairs = places?.spawns.filter((spawn) => spawn.via === 'lair') ?? [];
   return (
     <dl className="readout">
       {/*
@@ -376,6 +524,27 @@ function MobDetail({
             so this is a lead rather than a drop table.
           */}
           <dd>{mob.drops.join(', ')}</dd>
+        </>
+      )}
+      {/*
+        And where to go for one — last, beside the drop table, because these
+        are the two rows somebody acts on rather than reads: what killing it
+        pays, and where it is. The realm's two placements are two different
+        claims and are two rows: `Rooms.NPC` says this creature *lives* here,
+        while a lair says it is one candidate for a regeneration slot. Stating
+        the second as the first would promise a monster that is one of five the
+        room might have up.
+      */}
+      {residents.length > 0 && (
+        <>
+          <dt>{t('cards.reference.mob.livesLabel')}</dt>
+          <SpawnsIn more={0} onResize={onResize} onRoom={onRoom} spawns={residents} />
+        </>
+      )}
+      {lairs.length > 0 && (
+        <>
+          <dt>{t('cards.reference.mob.spawnsLabel')}</dt>
+          <SpawnsIn more={places?.more ?? 0} onResize={onResize} onRoom={onRoom} spawns={lairs} />
         </>
       )}
     </dl>
@@ -846,9 +1015,17 @@ function ItemDetail({
         <>
           <dt>{t('cards.reference.item.usesLabel')}</dt>
           <dd>
-            {item.uses === 1
-              ? t('cards.reference.item.usesOnce')
-              : t('cards.reference.item.usesMany', { count: item.uses })}
+            {/*
+              `-1` is the realm saying *for ever*, and it arrives here from
+              format 25 on — before that it was dropped, so unlimited and
+              unstated were the same absence. Drawn as a word: a row reading
+              `-1 charges` is the number leaking through a label.
+            */}
+            {item.uses === -1
+              ? t('cards.reference.item.usesUnlimited')
+              : item.uses === 1
+                ? t('cards.reference.item.usesOnce')
+                : t('cards.reference.item.usesMany', { count: item.uses })}
           </dd>
         </>
       )}
@@ -1194,6 +1371,17 @@ export interface ReferenceDetailProps {
    */
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /**
+   * That the detail has become a different size on its own account — a spawn
+   * group opened into its rooms.
+   *
+   * Null on a card, whose box is fixed and whose body scrolls; the slide-out
+   * panel passes one, because it is *placed* against its measured size and a
+   * disclosure that grows it would otherwise leave it hanging off the bottom of
+   * the window. The Player flyout's faces are in its `measure` list for exactly
+   * this, and this is the same fact from a component that owns the state.
+   */
+  onResize?: (() => void) | null;
+  /**
    * This character's supplies list and the write, for the *Keep in pack*
    * controls on an item. Null where there is no character to write for — a
    * card on a pinned float, whose list belongs to somebody else — and the
@@ -1201,6 +1389,15 @@ export interface ReferenceDetailProps {
    * than none.
    */
   supplies?: SupplyList | null;
+  /**
+   * Whether to draw the name row.
+   *
+   * False inside the slide-out panel, whose own heading carries the name — a
+   * panel's heading has to stay put now that it holds the pin, the close glyph
+   * and the drag grip, and the body below it scrolls. Two name rows, one of
+   * them scrolling away, would say the same word twice and only sometimes.
+   */
+  heading?: boolean;
 }
 
 /**
@@ -1219,23 +1416,30 @@ export default function ReferenceDetail({
   shopPlaces = {},
   onRoom = null,
   onName = null,
-  supplies = null
+  onResize = null,
+  supplies = null,
+  heading = true
 }: ReferenceDetailProps) {
   return (
     <div
       className="reference-detail"
       data-kind={entry.kind === 'item' ? (entry.item.kind ?? 'item') : entry.kind}
     >
-      <div className="reference-name">
-        {entry.name}
-        <span className="chip quiet">{entryWord(entry)}</span>
-      </div>
+      {heading && (
+        <div className="reference-name">
+          {entry.name}
+          <span className="chip quiet">{entryWord(entry)}</span>
+        </div>
+      )}
       {entry.kind === 'mob' && (
         <MobDetail
           classNames={classNames}
           fights={entry.fights}
           learned={entry.learned}
           mob={entry.mob}
+          onResize={onResize}
+          onRoom={onRoom}
+          places={entry.places}
           realm={realm}
           verdict={entry.verdict}
         />

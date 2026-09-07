@@ -200,6 +200,24 @@ export interface BentoCardProps {
   pinned?: boolean;
   onPin?(next: boolean): void;
   /**
+   * Drawn as its heading alone — the name, the badge, and the controls beside
+   * them — with the body put away, and the control that says which way it goes.
+   *
+   * **The toggle is in the heading and not in the action column**, which is the
+   * one control on a card that is not. The column is measured against the
+   * card's own box, and a rolled card's box *is* one heading — so the toggle
+   * put there would be the first thing to fold behind the kebab on exactly the
+   * cards it is the only way out of. The heading is what a rolled card is, so
+   * the control that unrolls it is drawn at full size in the part that remains.
+   *
+   * Everything else in the column folds on a rolled card, which is the fold
+   * doing its job rather than the failure it was written for: there is
+   * genuinely no room, and the kebab spells each folded control out with its
+   * label, which at that size reads better than six unlabelled glyphs.
+   */
+  rolled?: boolean;
+  onRoll?(next: boolean): void;
+  /**
    * What this card is set to for this character, and how to change it.
    *
    * Part of the rail's concern rather than the card's, like closing and
@@ -249,6 +267,8 @@ export type CardChrome = Pick<
   | 'returnFocus'
   | 'pinned'
   | 'onPin'
+  | 'rolled'
+  | 'onRoll'
   | 'settings'
 >;
 
@@ -279,6 +299,8 @@ export default function BentoCard({
   copyText,
   pinned,
   onPin,
+  rolled,
+  onRoll,
   settings,
   actions,
   cardId,
@@ -531,6 +553,7 @@ export default function BentoCard({
       ref={frame}
       data-card-theme={worn}
       data-dragging={dragging ? 'true' : undefined}
+      data-rolled={rolled ? 'true' : undefined}
       onContextMenu={copy.onContextMenu}
       /*
        * Two alphas, from one slider, never a single `opacity` on the section.
@@ -627,6 +650,40 @@ export default function BentoCard({
             type="range"
             value={Math.round(translucency.solidity * 100)}
           />
+        )}
+        {/*
+          Roll the card up to this heading, or back down to the whole card.
+
+          Last in the heading, nearest the action column, which is where
+          Material puts an expansion panel's chevron and therefore where the
+          eye already looks for one. Always drawn and quiet until the card is
+          pointed at — the card grip's rule: an affordance you have to find by
+          hovering is one most people never find, and a rail nobody knows can
+          be rolled flat is worth nothing.
+
+          The glyph states which way the press goes, as the pin's does: a
+          rolled card offers the way down, an open one the way up.
+        */}
+        {onRoll && (
+          <button
+            aria-expanded={rolled !== true}
+            aria-label={rolled === true ? t('cards.chrome.rollDown') : t('cards.chrome.rollUp')}
+            className="card-roll"
+            // A stable hook for the harness, like the action column's glyphs:
+            // matching on an English label would stop finding this the moment
+            // somebody reworded it.
+            data-action="roll"
+            onClick={() => onRoll(rolled !== true)}
+            // A card is read, never typed into. The heading is also the drag
+            // handle, and `useCardDrag.begin` already refuses a press whose
+            // target is a control inside it — the close glyph and the face
+            // crumbs live by the same rule.
+            onMouseDown={keepFocus}
+            title={rolled === true ? t('cards.chrome.rollDown') : t('cards.chrome.rollUp')}
+            type="button"
+          >
+            <Icon name={rolled === true ? 'chevronDown' : 'chevronUp'} />
+          </button>
         )}
       </header>
 
@@ -737,8 +794,13 @@ export default function BentoCard({
         pointed at, like the action column, and never only on hover of the
         grip itself — an affordance you have to find by hovering is one most
         people never find.
+
+        Not on a rolled card: its height is its heading, so a grip there would
+        write a height nothing draws and then hand back a card that had
+        silently changed size when it was rolled down again. The height it was
+        dragged to is kept and comes back with it.
       */}
-      {onResize && (
+      {onResize && rolled !== true && (
         <span
           aria-hidden="true"
           className="card-resize"

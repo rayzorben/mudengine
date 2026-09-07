@@ -58,6 +58,15 @@ function Float({
   children: ReactNode;
 }) {
   const [resizing, setResizing] = useState(false);
+  /*
+   * A rolled card is its heading, and nothing else, wherever it is standing.
+   *
+   * So the wrapper stops declaring a height and takes the card's own — the
+   * float's `h` is *kept*, not thrown away, and comes back the moment it is
+   * rolled down again, exactly as a rail card's dragged height does. Sizing it
+   * meanwhile would write a figure nothing draws.
+   */
+  const rolled = layout.isRolled(float.id);
 
   /*
    * What the move handler reads, carried outside the resize effect's
@@ -121,20 +130,23 @@ function Float({
        * in front was moved out of the way.
        */
       onPointerDownCapture={() => layout.raise(float.id)}
+      data-rolled={rolled ? 'true' : undefined}
       style={{
         left: `${float.x * 100}%`,
         top: `${float.y * 100}%`,
         width: `${float.w * 100}%`,
-        height: `${float.h * 100}%`
+        ...(rolled ? {} : { height: `${float.h * 100}%` })
       }}
     >
       {children}
-      <span
-        aria-hidden="true"
-        className="float-grip"
-        onPointerDown={onGrip}
-        title={t('cards.float.resizeTooltip')}
-      />
+      {!rolled && (
+        <span
+          aria-hidden="true"
+          className="float-grip"
+          onPointerDown={onGrip}
+          title={t('cards.float.resizeTooltip')}
+        />
+      )}
     </div>
   );
 }

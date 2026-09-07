@@ -34,7 +34,9 @@ import {
   type Affliction,
   type KnownSpell,
   type RealmFamily,
-  type ActiveBuff
+  type ActiveBuff,
+  type Stealth,
+  ownAlignment
 } from '../../shared/character';
 import {
   derivedExperienceTable,
@@ -42,12 +44,13 @@ import {
   withRealmExperience,
   type ExperienceLevel
 } from '../../shared/experience';
-import { classifyOccupant } from '../../shared/mobs';
+import { attacksOnSight, classifyOccupant } from '../../shared/mobs';
 import {
   gained,
   lost,
   parseCarriedEntries,
   parseCoinEntry,
+  parseKeyEntries,
   withBankBalance,
   withEquipped,
   withOwnEquipment,
@@ -65,11 +68,12 @@ import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, spellKey, wordsOf, type SpellLore } from '../../shared/spell-messages';
+import { afflictionOnset } from './patterns';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { LEARN_SPELL_ABILITY } from '../../shared/abilities';
-import { bareName, sameItem, WORN_SLOT } from '../../shared/items';
+import { bareName, countedName, itemHitProcs, sameItem, WORN_SLOT } from '../../shared/items';
 import { learnLoadout } from '../../shared/gear';
 import { isWoundBand } from '../../shared/wounds';
 import { FightTracker, playerDies } from './combat';
@@ -191,7 +195,17 @@ const SPOKEN: Array<[string, Direction]> = [
   ['east', 'e'],
   ['west', 'w'],
   ['up', 'u'],
-  ['down', 'd']
+  ['down', 'd'],
+  /*
+   * The server's other pair of words for the same two ways, and the exits that
+   * carry them are always qualified: `Obvious exits: north, open trap door
+   * below` — 20 lines across the corpus, in five captures, and never a bare
+   * `below`. Read as nothing until now, so a vertical exit the server printed
+   * was a direction no route could plan on and no walk could recognise as
+   * found. Last, so `above`/`below` never shadow a suffix match on `up`/`down`.
+   */
+  ['above', 'u'],
+  ['below', 'd']
 ];
 
 /**
@@ -248,6 +262,35 @@ function list(value: string | undefined): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+/**
+ * The same, for a listing of **things**, which this server separates with
+ * commas and never with `and`.
+ *
+ * `list` splits on ` and ` too, and that is wrong wherever an item's own name
+ * contains the word: the shipped realm has two — `rope and grapple` and `black
+ * and white serpent ring` — and the first is the item 157 of its exits are
+ * gated on, so the router could never see one in a pack that held it. Both
+ * appear in the corpus inside real listings, comma-separated
+ * (`captures/044`: `… lyrist's companion (Back), black and white serpent ring
+ * (Finger), jeweled main-gauche (Off-Hand) …`; `captures/119`: `You notice …
+ * 2 rope and grapple, 2 mine pass, …`), and across all 218 captures **not one**
+ * of the four listings this splits — 600 `You notice`, 25 `You are carrying`,
+ * 17 key lines, and the coins inside them — uses ` and ` as a separator.
+ *
+ * `list` keeps the ` and ` for the listings measured the same way and left
+ * alone: `Also here:` (1,240 lines), `Obvious exits:` (2,628) and the bare
+ * purse sentence, which has one sample in the corpus and is prose, where a
+ * final `and` is exactly what prose does. Widening a rule past its evidence in
+ * either direction is the thing this file refuses.
+ */
+function itemList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((entry) => entry.trim().replace(/\.$/, ''))
+    .filter((entry) => entry.length > 0);
+}
+
 /** Whether the character stands somewhere else than it did. See `apply`. */
 function leftRoom(before: Room, after: Room): boolean {
   if (before === after) return false;
@@ -260,6 +303,28 @@ function leftRoom(before: Room, after: Room): boolean {
 }
 
 /** The `spells` group of a spell-message block: `|`-separated spell names. */
+/**
+ * A block that may sit between this character's blow and the proc it fired
+ * without breaking the two apart.
+ *
+ * Exactly two things do, and both are the terminal rather than the realm: the
+ * status line the server repaints in place after every write, and the blank
+ * lines it pads with. Measured over all 581 procs in the recorded sessions of
+ * 2026-09-06 — nothing else has ever appeared in that gap, and anything else
+ * appearing there is another actor's line interleaved. See
+ * `FightTracker.landed`.
+ *
+ * `unknown` is admitted **only when it carries no text**. An unclassified line
+ * with words in it is somebody doing something — `Vulcan makes a complex
+ * circling gesture!` is the start message of the cast that produced
+ * captures/168's false candidate — and letting those through would give the
+ * binding back the reach this exists to take away.
+ */
+function isProcHousekeeping(block: Block): boolean {
+  if (block.type === 'status-line') return true;
+  return block.type === 'unknown' && block.text.trim().length === 0;
+}
+
 function splitSpells(group: string | undefined): string[] {
   if (group === undefined) return [];
   return group
@@ -411,6 +476,34 @@ export class CharacterTracker {
   /** The confirmed moves behind this character. See the `trail` getter. */
   private backtrail: TrailStep[] = [];
 
+  /**
+   * Whether `Sneaking...` has been printed since the last move was committed.
+   *
+   * **This is the only thing on this realm that says a character is still
+   * unseen**, and it is a fact about the *move*, not about the `sn` that asked
+   * for it. `MoveCommand` prints the line on a successful move if and only if
+   * the character is sneaking (`goodToGo && plyr.BoundTo.Sneaking`), so its
+   * presence confirms stealth held and its absence says it broke.
+   *
+   * Reading it that way round is not a preference — it is the only reading
+   * available. `Player.BreakStealth()` is called from about thirty places
+   * (every door opened, bashed or picked, a trap, a hidden exit, `rest`,
+   * `meditate`, equipping, buying, sharing, casting, walking into a wall) and
+   * **it prints nothing at all**. The one sentence that announces stealth
+   * ending, `You are no longer sneaking.`, comes from the `break` command
+   * alone. So a client that waits to be told will wait for ever, which is
+   * exactly what this one did: `stealth` went to `sneaking` on the first
+   * `Sneaking...` and stayed there for the rest of the session, and
+   * `Walker.sneakFirst` — which stands down while the character is already
+   * sneaking — therefore never sent another `sn` after the first.
+   *
+   * The `sn` reply cannot serve instead, and this is the part that is easy to
+   * get wrong: `SneakCommand` prints `Attempting to sneak...` on success **and
+   * on the failure branch whose perception roll also fails**. The two are
+   * byte-identical, so the reply is not evidence either way.
+   */
+  private sneakedThisMove = false;
+
   constructor(
     private readonly world?: WorldGraph,
     private readonly lore: MobLore = NO_LORE,
@@ -481,6 +574,28 @@ export class CharacterTracker {
    */
   observeReread(): void {
     this.expect.noteReread(this.state.phase === 'in-game');
+  }
+
+  /**
+   * A command the server threw away before it looked at it — `You fumble in
+   * confusion!`, named by the status line that echoed it.
+   *
+   * `ActionFigure.CheckConfusion` runs at the top of `Player.HandleCommand`
+   * and `return`s on a hit, so whatever was sent did not run and **no room is
+   * coming for it**. That is the same fact `command-not-understood` carries,
+   * and it is consumed the same way — by matching the *text*, because most
+   * commands queue nothing at all and shifting the queue for one of those
+   * would take the answer a real move is still waiting for.
+   *
+   * The sentence names nothing, which is why the command comes from the echo
+   * (`SessionManager.answering`) rather than from the block. Null is a bare
+   * prompt: nobody can say what was fumbled, so nothing is consumed.
+   *
+   * Left stranded, the expectation poisons dead reckoning exactly as the
+   * refused `go manhole` did — the only position this client has ever lost.
+   */
+  noteFumbled(command: string | null): void {
+    if (command !== null) this.expect.refused(command);
   }
 
   /**
@@ -882,6 +997,29 @@ export class CharacterTracker {
    *   a room block for where the character already stands, and `n` recorded as
    *   leading from a room to itself would make `s` the way out of it.
    */
+  /**
+   * A move landed. Say whether this character is still unseen, and forget.
+   *
+   * Called from the two places a move is committed — the described arrival and
+   * the dark one — for the reason `rememberTheWayBack` states about living
+   * there: a walker step, a typed direction and a party follow all reach them
+   * the same way. Unlike the trail, this refuses **nothing**: an unplaced room,
+   * an ambiguous one and a teleport are all moves, and stealth breaks on a move
+   * whether or not the client could work out where it landed.
+   *
+   * `seen` rather than `unknown` when the line did not come, because it is not
+   * an absence of evidence: the server prints it on every sneaking move, so a
+   * move without it is the server saying this character was visible. That is
+   * also the direction this project's rule about unknown points — the
+   * reassuring answer is the dangerous one, and here the reassuring answer is
+   * `sneaking`.
+   */
+  private stealthAfterMove(): Stealth {
+    const settled: Stealth = this.sneakedThisMove ? 'sneaking' : 'seen';
+    this.sneakedThisMove = false;
+    return settled;
+  }
+
   private rememberTheWayBack(s: CharacterState, room: Room, moved: Direction | null): void {
     if (moved === null) return;
     if (room.map === null || room.number === null) return;
@@ -923,6 +1061,43 @@ export class CharacterTracker {
   ): ItemEntity {
     const world = this.world;
     return world === undefined ? wireItem(name, observed) : world.buildItemEntity(name, observed);
+  }
+
+  /**
+   * A floor, from the one sentence that prints one — the open floor a look
+   * lists and the concealed one a search turns up are the same grammar.
+   *
+   * One method for both because the two cases had the same eight lines twice,
+   * which is how they came to be wrong in the same way: the floor **counts**
+   * (`You notice 6 silver nobles, 66 bone key, iron ring, 2 amethyst ring
+   * here.` — reported 2026-09-06; `2 rope and grapple, 2 mine pass` in
+   * captures/119), and the figure was left glued to the front of the name. The
+   * realm's index is keyed on `bone key`, so nothing on that floor could be
+   * priced, looked up on the Reference card, or recognised as the key the door
+   * across the room demands.
+   *
+   * The count goes where the wire's other observations about *this* one go —
+   * `ItemEntity.count`, which the pack's own listing has always used and
+   * whose absence means one. Passing it also makes the entry `hybrid` rather
+   * than `mdb`, which is the truer label anyway: something the server printed
+   * lying here is a row *with* an observation against it.
+   */
+  private floorListing(text: string | undefined): {
+    items: ItemEntity[];
+    cash: CurrencyEntity | null;
+  } {
+    const items: ItemEntity[] = [];
+    let cash: CurrencyEntity | null = null;
+    for (const entry of itemList(text)) {
+      const coin = parseCoinEntry(entry);
+      if (coin !== null) {
+        cash = addCoins(cash, coin.denomination, coin.count);
+        continue;
+      }
+      const { count, name } = countedName(entry);
+      items.push(this.itemEntity(name, count > 1 ? { count } : {}));
+    }
+    return { items, cash };
   }
 
   /**
@@ -1085,6 +1260,58 @@ export class CharacterTracker {
   }
 
   /**
+   * The same attacker, held to *whether the realm says it would swing at all*.
+   *
+   * Only for the loose miss frame. `mob-hits` carries ` for <n> damage!` and
+   * is a blow beyond argument; `mob-misses` is `^The …you….` — deliberately
+   * generous, because a monster's miss text is realm data and the shipped
+   * realm ships 482 templates naming `you`, only 29 of which say ` at you`.
+   * That frame is also the shape of an ordinary sentence about somebody
+   * standing in the room.
+   *
+   * **Reported 2026-09-06 (todo 00), and the cost was not the one the frame's
+   * own note predicted.** `ask wound mission` at the Temple Healer answered
+   * `The wounded messenger looks you up and down.`; it classified as a miss,
+   * `wounded messenger` was in `Also here:` so `nameInMessage` named it, and
+   * auto-combat's retaliation — the one path that ignores `engage`, the
+   * disposition and the ten evil points, because *something is already
+   * swinging* — sent `aa wounded messenger` twice at a Lawful Good quest NPC.
+   * `patterns.ts` says a false match costs "a bumped round clock and blow
+   * count with **no attacker**, because nothing here names one"; that is true
+   * of `The gods have punished you appropriately.`, whose subject is not in
+   * the room, and false of every sentence about an occupant.
+   *
+   * So the realm's own answer to *would this have opened a fight* is asked
+   * before a miss is booked as one. Three deliberate narrownesses:
+   *
+   * - **Only where the realm is sure.** `attacksOnSight` answers `null` for a
+   *   monster it cannot place and for an alignment-dependent one before a
+   *   `who` has said where this character stands, and `null` keeps the
+   *   attribution — unknown is never the reassuring answer.
+   * - **Never once provoked.** A passive monster fights back, so a name this
+   *   character is already fighting, or that is already on `attackers`, is
+   *   taken at its word.
+   * - **A blow still counts.** The round clock and the blow count move with no
+   *   attacker, which is exactly the cost the frame's note claims — and a
+   *   monster that really is swinging is filed by its first landed blow, one
+   *   round later. Dropping the attribution is recoverable; ten evil points
+   *   charged to the character are not.
+   */
+  private swingingAtMe(s: CharacterState, attacker: string | undefined): string | undefined {
+    if (attacker === undefined) return undefined;
+    const key = mobKey(attacker);
+    // Already in this fight, either way round: taken at its word.
+    if (mobKey(s.combat.target ?? '') === key) return attacker;
+    if (s.combat.attackers.some((name) => mobKey(name) === key)) return attacker;
+
+    const who = s.room.occupants.find((entry) => mobKey(entry.name) === key);
+    // Not a monster the room has placed — a player, an `unknown`, or somebody
+    // no listing has named. None of those is the realm's to answer for.
+    if (who === undefined || who.kind !== 'mob') return attacker;
+    return attacksOnSight(who.disposition, ownAlignment(s)) === false ? undefined : attacker;
+  }
+
+  /**
    * The room, with one more name in it if it was not there already.
    *
    * The maintained half of the room listing: a command establishes who is
@@ -1229,7 +1456,13 @@ export class CharacterTracker {
     this.attachRealm(room);
     this.rememberTheWayBack(s, room, expectation.direction);
 
-    return { ...s, room, combat };
+    /*
+     * A move in the dark breaks stealth exactly as a lit one does, and the
+     * server prints `Sneaking...` for it just the same — the line comes out of
+     * `MoveCommand` before any room description, so it arrives whether or not
+     * the room that follows can be seen or placed.
+     */
+    return { ...s, room, combat, stealth: this.stealthAfterMove() };
   }
 
   /**
@@ -1447,7 +1680,35 @@ export class CharacterTracker {
 
   apply(block: Block, rows?: Array<Record<string, string>>): boolean {
     const before = this.state;
-    const reduced = this.reduce(block, rows);
+    /*
+     * Whether this block is a weapon's chance-on-hit, decided **before** the
+     * reducer and handed to both readers of it.
+     *
+     * The fight ledger and the accuracy table have to agree about the same
+     * blow, and the verdict reads a memory the reducer is about to write — the
+     * blow this character last landed. Deciding it once, here, is what keeps
+     * the two answers from being asked either side of that write.
+     */
+    const proc = this.readsAsProc(block, before);
+    /*
+     * And anything that is *not* the proc breaks the binding it would have
+     * ridden on, unless it is the prompt or a blank line.
+     *
+     * The server composes a proc into the same write as the blow that fired
+     * it — all 581 in the recorded sessions of 2026-09-06 arrive with nothing
+     * but status-line repaints in the gap. A line in between means another
+     * actor's got interleaved, and that is exactly when attribution stops
+     * being safe: `A withering blast of dragonfire sears storm giant king for
+     * 163 damage!` (captures/168) is article-led, names nobody, lands on the
+     * monster this character last hit — and is Vulcan's, four lines and two
+     * other players later. A window alone cannot tell those apart, because
+     * the server writes the whole round in one breath.
+     *
+     * Before the reducer, so this character's own next blow clears the old
+     * binding and then arms a new one in `FightTracker.hit`.
+     */
+    if (!proc && !isProcHousekeeping(block)) this.fight.interrupt();
+    const reduced = this.reduce(block, rows, proc);
     /*
      * A quotation belongs to the shop it was made in. When a block puts the
      * character in a *different* room, the counter's listing goes with the
@@ -1470,6 +1731,36 @@ export class CharacterTracker {
       next = { ...next, combat: { ...next.combat, claimed: {} } };
     }
     /*
+     * **A room the character could read is proof it can see** — the second
+     * half of todo 02, asked for as *"if you get a room you know you can see,
+     * so likely blind can be removed"*.
+     *
+     * The server does not describe a room to a blind character: it answers a
+     * look, a peek and a move alike with `You are blind.` and prints no room
+     * at all (`room-unseen`, and the report's own transcript — `n` answered
+     * by that one line). So a block that completed a room is the wire stating
+     * sight, and it is the backstop for every ending the client cannot read:
+     * a spell whose stop sentence no table holds, a cure somebody else cast,
+     * a condition that lapsed while the socket was down.
+     *
+     * **Only a stated blindness is cleared.** `unknown` is left alone, because
+     * turning it into `no` would move the flag on the first room of every
+     * session for every character nobody has ever blinded — a state change per
+     * character per session for a fact nothing reads differently (`unknown`
+     * already holds no walk). The rule that only the wire moves a flag is
+     * unbroken; this *is* the wire.
+     *
+     * Decided here rather than in the `room-exits` case for the reason the
+     * shop quotation above is: one place, so no path through that case's
+     * fifteen returns can forget it.
+     */
+    if (block.type === 'room-exits') {
+      const seen = next ?? this.state;
+      if (seen.afflictions.blind === 'yes') {
+        next = { ...seen, afflictions: { ...seen.afflictions, blind: 'no' } };
+      }
+    }
+    /*
      * The player registry is folded *after* the reducer and from the state it
      * produced, so it needs no case of its own among the 74 — see
      * `src/main/parse/players.ts` for why that placement rather than a line in
@@ -1488,7 +1779,7 @@ export class CharacterTracker {
      * off the *transition*, so it is given both states rather than only the
      * one the reducer produced.
      */
-    const tally = trackTally(base.tally, block, base, before);
+    const tally = trackTally(base.tally, block, base, before, proc);
     if (!next) {
       if (base === this.state && players === this.state.players && tally === this.state.tally)
         return false;
@@ -2009,7 +2300,70 @@ export class CharacterTracker {
     };
   }
 
-  private reduce(block: Block, rows?: Array<Record<string, string>>): CharacterState | null {
+  /**
+   * Whether an unattributed damage line is a chance-on-hit off this
+   * character's own gear.
+   *
+   * The sentence a proc prints is the spell's own message data with the target
+   * and the number substituted in — `A shining spark strikes cave worm for 3
+   * damage!` — and there is **no attacker in it to read**. Booking it to
+   * `Damage.others` was therefore a guess, and the guess that costs this
+   * character credit for the kill it is about to make; reported 2026-09-06
+   * with the Combat card reading `Dealt: 48 / Party/Others: 3` in a room the
+   * character was alone in.
+   *
+   * Three things have to hold, and each is evidence rather than taste:
+   *
+   * 1. **The sentence named nobody.** `A` is an article and articles are never
+   *    attackers, so `Classifier` leaves the group out. A line that *does* name
+   *    somebody is that somebody's, whatever else is true.
+   * 2. **The realm says this character wields something that fires one.**
+   *    `Items.Abil-n` carries `PercentSpell` immediately before `CastsSp`
+   *    (`itemHitProcs`), which is the pair `ItemType.cs` refuses to rewrite
+   *    into a `use` — a `shimmering longsword` is a forty-per-cent chance of
+   *    `silvery mace`, and its power of 1–3 is the 1, 2 and 3 the spark line
+   *    carries. This is the only thing on the client that can attribute the
+   *    blow at all.
+   * 3. **It is the line the server wrote with this character's own last blow**
+   *    — same monster, nothing but the repainted prompt in between, and that
+   *    blow still has procs left to give. A proc is composed into the same
+   *    write as the blow that fired it: all 581 in the recorded sessions of
+   *    2026-09-06 arrive with nothing else in the gap, median 3 ms behind.
+   *    This is the gate that keeps a party member's article-led spell out —
+   *    `A withering blast of dragonfire sears storm giant king for 163
+   *    damage!` (captures/168) names nobody and lands on the monster this
+   *    character last hit, and is Vulcan's, four lines and two other players
+   *    later. `parse.procWindowMs` bounds the other end, where a blow is
+   *    followed by silence and then an unattributed line. **How many** is the
+   *    realm's answer too: a round can carry several such lines, and the
+   *    count of procs the equipped kit can fire is the ceiling on how many of
+   *    them are this character's.
+   *
+   * All of it, so it declines rather than guesses: no realm loaded, an item
+   * the index does not carry, or a pack nothing has listed all leave the blow
+   * exactly where it was.
+   */
+  private readsAsProc(block: Block, state: CharacterState): boolean {
+    if (block.type !== 'user-hits') return false;
+    const groups = block.groups ?? {};
+    // A line that names an attacker is that attacker's, and `you` as the
+    // target is a blow on this character rather than one it dealt.
+    if (groups['attacker'] !== undefined) return false;
+    const target = groups['target'];
+    if (target === undefined || /^you$/i.test(target)) return false;
+    const allowance = state.inventory.items.reduce(
+      (total, held) => total + (held.equipped ? itemHitProcs(held).length : 0),
+      0
+    );
+    return allowance > 0 && this.fight.justStruck(target, block.at, allowance);
+  }
+
+  private reduce(
+    block: Block,
+    rows?: Array<Record<string, string>>,
+    /** See `readsAsProc`. Only the `user-hits` case reads it. */
+    proc = false
+  ): CharacterState | null {
     const s = this.state;
     const g = block.groups;
 
@@ -2129,6 +2483,17 @@ export class CharacterTracker {
         return {
           ...s,
           phase: 'in-game',
+          /*
+           * Nobody arrives in the realm sneaking.
+           *
+           * `leaveRealm` leaves `unknown` behind because "seen" would be a
+           * claim about a realm the character is no longer in; walking back
+           * into one settles it, and the server settles it the same way —
+           * `Player.Sneaking` is not carried across a login. Only on the
+           * *transition*, because this case runs on every status line and
+           * `sneak` sets `sneaking` mid-session.
+           */
+          stealth: s.phase === 'in-game' ? s.stealth : 'seen',
           lastStatusAt: block.at,
           vitals: {
             ...s.vitals,
@@ -2403,7 +2768,25 @@ export class CharacterTracker {
         // A bare Enter cannot be refused, so a re-read still queued ahead of
         // the move this answers never got its room. See `shiftRefused`.
         this.expect.shiftRefused();
-        return null;
+        /*
+         * And both of these break stealth, silently, which is the whole
+         * difficulty with tracking it (see `sneakedThisMove`).
+         *
+         * `MoveCommand`'s no-exit branch calls `BreakStealth()` beside the
+         * sentence — walking into a wall is loud, and the server says so in
+         * the room (`<name> runs into the wall to the <direction>.`). Bashing
+         * a door does the same in `Door.cs`.
+         *
+         * `direction-failed` covers four causes and only one of them is
+         * proven to break stealth, so this is stated as the deliberately
+         * pessimistic reading: `seen` is the answer that costs one `sn` if it
+         * is wrong, and `sneaking` is the one that walks a character into a
+         * lair believing it is hidden. The flag is cleared with it, or a
+         * `Sneaking...` from before a refused move would be spent on the next
+         * one.
+         */
+        this.sneakedThisMove = false;
+        return s.stealth === 'seen' ? null : { ...s, stealth: 'seen' };
 
       /*
        * A look down an exit the server would not describe — `There are no
@@ -2468,26 +2851,18 @@ export class CharacterTracker {
       case 'room-items': {
         /*
          * One comma-separated line mixing things and coins, exactly as the
-         * pack listing does — so it is split the same way. Coins fold into
-         * `room.cash` rather than joining the item list: `18 gold` among the
-         * items lands in the paste of what is lying here and reads as
+         * pack listing does — so it is split the same way, on commas and
+         * **not** on `and`: `You notice … 2 rope and grapple, 2 mine pass …`
+         * is one item and not two (`captures/119`). See `itemList`. Coins fold
+         * into `room.cash` rather than joining the item list: `18 gold` among
+         * the items lands in the paste of what is lying here and reads as
          * something to `get` by name.
          */
-        const entries = list(g['items']);
-        const items: ItemEntity[] = [];
-        let cash: CurrencyEntity | null = null;
-        for (const entry of entries) {
-          const coin = parseCoinEntry(entry);
-          if (coin !== null) {
-            cash = addCoins(cash, coin.denomination, coin.count);
-            continue;
-          }
-          items.push(this.itemEntity(entry));
-        }
-        this.room.items(items);
+        const floor = this.floorListing(g['items']);
+        this.room.items(floor.items);
         // A listing is authoritative and replaces what is there — including
         // saying there are no coins, which a fold could not.
-        this.room.cash(cash);
+        this.room.cash(floor.cash);
         return null;
       }
 
@@ -2506,18 +2881,8 @@ export class CharacterTracker {
        * open floor with it, since a listing replaces what is there.
        */
       case 'room-hidden-items': {
-        const entries = list(g['items']);
-        const items: ItemEntity[] = [];
-        let cash: CurrencyEntity | null = null;
-        for (const entry of entries) {
-          const coin = parseCoinEntry(entry);
-          if (coin !== null) {
-            cash = addCoins(cash, coin.denomination, coin.count);
-            continue;
-          }
-          items.push(this.itemEntity(entry));
-        }
-        return { ...s, room: { ...s.room, hidden: items, hiddenCash: cash } };
+        const floor = this.floorListing(g['items']);
+        return { ...s, room: { ...s.room, hidden: floor.items, hiddenCash: floor.cash } };
       }
 
       /*
@@ -2674,6 +3039,18 @@ export class CharacterTracker {
         const movedSomehow = expectation?.kind === 'move';
 
         /*
+         * And whether the character is still unseen, computed here for the
+         * reason `combat` below is: ahead of the early returns, so every way
+         * out of this case agrees about it and none of them can forget.
+         *
+         * It has to be read *before* the returns for a second reason the fight
+         * does not have — `stealthAfterMove` clears the flag, so calling it at
+         * each return would make the first one that fired the only one that
+         * worked.
+         */
+        const stealth = movedSomehow ? this.stealthAfterMove() : s.stealth;
+
+        /*
          * What a search turned up here, carried across a reprint of the same
          * room.
          *
@@ -2757,7 +3134,7 @@ export class CharacterTracker {
           // knows has to be hung off it again or it is simply gone.
           this.attachRealm(room);
           this.room.discard();
-          return { ...s, room };
+          return { ...s, room, stealth };
         }
 
         const teleported = this.world && room.name ? this.expect.takeTeleport() : null;
@@ -2777,7 +3154,7 @@ export class CharacterTracker {
             // to before.
             this.attachRealm(room);
             this.room.discard();
-            return { ...s, room, combat };
+            return { ...s, room, combat, stealth };
           }
         }
 
@@ -2866,7 +3243,7 @@ export class CharacterTracker {
              */
             this.attachRealm(room);
             this.room.discard();
-            return { ...s, room };
+            return { ...s, room, stealth };
           }
 
           const located = resolveRoom(this.world, {
@@ -2921,9 +3298,10 @@ export class CharacterTracker {
         this.rememberTheWayBack(s, room, moved);
 
         this.room.discard();
-        // `combat` is the leave-behind computed above, ahead of the early
-        // returns, so every way out of this case agrees about the fight.
-        return { ...s, room, combat };
+        // `combat` and `stealth` are both computed above, ahead of the early
+        // returns, so every way out of this case agrees about the fight and
+        // about whether this character is still unseen.
+        return { ...s, room, combat, stealth };
       }
 
       case 'who-list': {
@@ -3291,16 +3669,19 @@ export class CharacterTracker {
         const item = g['item'];
         if (!item) return null;
         // Somebody else picked it up: gone from the floor, not into our pack.
-        if (g['player'] !== undefined) return withoutRoomItem(s, item);
+        if (g['player'] !== undefined) return withoutRoomItem(s, item, int(g['count']) ?? 1);
         const count = int(g['count']) ?? 1;
         this.notePack(block.seq, item, true, count);
         /*
-         * Off the floor by name, which is an approximation the floor list
-         * cannot improve on: the room says `padded gloves` once however many
-         * lie there, so taking one of two clears the entry and the next
-         * `You notice` puts the other back.
+         * Off the floor by name and **by the count the sentence states**. The
+         * name is still all the floor can be searched by, but the pile is no
+         * longer all-or-nothing: the room prints `66 bone key` and taking one
+         * leaves sixty-five, which is what the next `You notice` will say.
+         * Before the count was split off the name never matched a counted
+         * entry at all, so this was documented as an approximation that
+         * cleared the entry and waited for the room to restate it.
          */
-        return withoutRoomItem(withItem(s, item, count), item);
+        return withoutRoomItem(withItem(s, item, count), item, count);
       }
 
       /*
@@ -3487,10 +3868,15 @@ export class CharacterTracker {
         const item = g['item'];
         if (!item) return null;
         if (g['player'] !== undefined)
-          return withRoomItem(s, item, (name) => this.itemEntity(name));
+          return withRoomItem(s, item, (name) => this.itemEntity(name), int(g['count']) ?? 1);
         const dropped = int(g['count']) ?? 1;
         this.notePack(block.seq, item, false, dropped);
-        return withRoomItem(withoutItem(s, item, dropped), item, (name) => this.itemEntity(name));
+        return withRoomItem(
+          withoutItem(s, item, dropped),
+          item,
+          (name) => this.itemEntity(name),
+          dropped
+        );
       }
 
       /*
@@ -3571,7 +3957,7 @@ export class CharacterTracker {
         const carried =
           // "Nothing!" is the game saying the list is empty, not an item.
           carrying && !/^nothing!?$/i.test(carrying.trim())
-            ? list(carrying).flatMap((entry) => parseCarriedEntries(entry))
+            ? itemList(carrying).flatMap((entry) => parseCarriedEntries(entry))
             : [];
         for (const item of carried) {
           if (item.slot === null) continue;
@@ -3598,7 +3984,7 @@ export class CharacterTracker {
           copper: 0
         };
         if (carrying) {
-          for (const entry of list(carrying)) {
+          for (const entry of itemList(carrying)) {
             const coin = parseCoinEntry(entry);
             if (coin) coins[coin.denomination] = coin.count;
           }
@@ -3607,12 +3993,23 @@ export class CharacterTracker {
           ...s,
           inventory: {
             items: this.replayPack(block.seq, carried),
-            keys: list(g['keys']),
+            /*
+             * The keys, counted the same way the carried half is: `2 bone key`
+             * is two keys and not one called "2 bone key". See
+             * `parseKeyEntries` for the corpus behind it and for the reported
+             * failure it caused — the router asking the realm for an item
+             * named with a figure on the front, finding nothing, and calling a
+             * door the character had the key to a wall.
+             */
+            keys: itemList(g['keys']).flatMap((entry) => parseKeyEntries(entry)),
             wealth: int((g['wealth'] ?? '').replace(/,/g, '')),
             coins,
             encumbrance: int(g['encumbrance']),
             encumbranceMax: int(g['encumbranceMax']),
-            encumbranceWord: g['encumbranceWord']?.trim() || null
+            encumbranceWord: g['encumbranceWord']?.trim() || null,
+            // The listing landed: from here the pack is a fact rather than a
+            // silence, and an exit that wants something in it can be judged.
+            listedAt: block.at
           }
         };
       }
@@ -3665,7 +4062,16 @@ export class CharacterTracker {
        * to believe a character is hidden while it is walking into a lair in
        * plain sight. Only `Sneaking...` says so.
        */
+      /*
+       * `Sneaking...` is printed by `MoveCommand` on a successful move and
+       * only while the character actually is sneaking, so it is both the fact
+       * and the receipt for the move it precedes. The flag is what
+       * `stealthAfterMove` reads when that move commits; see its declaration
+       * for why the absence of this line is the only thing that can say
+       * stealth broke.
+       */
       case 'user-sneaking':
+        this.sneakedThisMove = true;
         return s.stealth === 'sneaking' ? null : { ...s, stealth: 'sneaking' };
 
       case 'user-not-sneaking':
@@ -3854,10 +4260,48 @@ export class CharacterTracker {
         const names = splitSpells(g['spells']);
         if (names.length === 0 && spell) names.push(spell);
         if (names.length === 0) return null;
-        const ended = s.buffs.filter((buff) => this.buffMatches(buff, names));
-        if (ended.length === 0) return null;
+        /*
+         * **A wear-off ends whatever its own start turned on**, which for four
+         * spells is a *condition* rather than a buff (todo 02, 2026-09-06,
+         * reported as *"it doesnt detect blind wearing off"*).
+         *
+         * `The effects of the mummy's breath wears off!` is the stop sentence
+         * of spell 84 in `spell-messages.csv`, whose **start** is `You are
+         * blind!`. The onset therefore reached `afflictions.blind` through
+         * `user-blinded` and the ending reached here — where nothing on
+         * `buffs` matched `breathes`, so the case returned null and the flag
+         * stayed `yes` for the rest of the session. Captured in the report:
+         * the condition wore off, the character read three rooms in a row, and
+         * `Walker` then held a seventeen-step route with *Blind; waiting here
+         * until you can see again.*
+         *
+         * The table already pairs the two sentences, which is the whole of the
+         * user's *"start and stop spells should know what effects they are
+         * adding and removing"*: ask it what this ending stops, ask it what
+         * those spells start, and ask `patterns.ts` what such a sentence turns
+         * **on**. One statement of each onset pattern, read from both ends.
+         *
+         * `blind` is not the only one it answers — the table pairs `You are
+         * blind and dizzy!` with `You are no longer blind and dizzy.` and
+         * `You are blinded by the sand!` with `You can see again.` (a full
+         * stop, which `user-blind-ends` does not match) — and it is silent
+         * for every buff whose start is ordinary flavour text, which is all
+         * of them but these.
+         */
+        let next = s;
+        for (const name of names) {
+          const start = this.spellLore.startOf(name);
+          const condition = start === null ? null : afflictionOnset(start);
+          if (condition === null) continue;
+          next = afflicted(next, condition, 'no') ?? next;
+        }
+        const ended = next.buffs.filter((buff) => this.buffMatches(buff, names));
+        // A wear-off naming nothing on the list is still a fact — a debuff
+        // ending, or a buff cast before this session — and may have turned a
+        // condition off above even when it ends no buff.
+        if (ended.length === 0) return next === s ? null : next;
         this.buffsEnded(ended, block.at, true);
-        return { ...s, buffs: s.buffs.filter((buff) => !ended.includes(buff)) };
+        return { ...next, buffs: next.buffs.filter((buff) => !ended.includes(buff)) };
       }
 
       /*
@@ -4156,8 +4600,15 @@ export class CharacterTracker {
        * the attacker names what it is fighting.
        */
       case 'mob-hits':
-      case 'mob-misses':
         return this.fight.blowOnMe(s, block.at, this.vouchedFor(s, g));
+
+      /*
+       * The same blow without ` for <n> damage!` behind it, which is also the
+       * shape of any sentence about somebody standing here — so the realm is
+       * asked whether the thing named would have swung. See `swingingAtMe`.
+       */
+      case 'mob-misses':
+        return this.fight.blowOnMe(s, block.at, this.swingingAtMe(s, this.vouchedFor(s, g)));
 
       /*
        * This character swung and missed.
@@ -4177,7 +4628,8 @@ export class CharacterTracker {
           block.at,
           g['target'],
           this.vouchedFor(s, g),
-          int(g['damage']) ?? 0
+          int(g['damage']) ?? 0,
+          proc
         );
         // A party member's blow on a monster is what the leader is fighting;
         // a monster's blow on a member is the fight brought to the party; and

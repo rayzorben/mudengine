@@ -119,3 +119,71 @@ describe('reading an effect the realm states more than once', () => {
     expect(effectValues(5, [], 'mob')).toEqual([]);
   });
 });
+
+/*
+ * And where the realm puts each monster, off the same answer. Keyed by the
+ * monster's own name, as the lore and the verdicts are, so the card reads all
+ * four out of one round trip.
+ */
+describe("where a monster is found rides beside the realm's answer", () => {
+  it('lands on the monster it names and nowhere else', () => {
+    const entries = flattenLookup({
+      mobs: [
+        {
+          name: 'wounded messenger',
+          hp: 9999,
+          disposition: null,
+          uncertain: false,
+          costly: 'never'
+        },
+        { name: 'wounded sailor', hp: 30, disposition: null, uncertain: false, costly: 'never' }
+      ],
+      items: [],
+      spells: [],
+      races: [],
+      classes: [],
+      classNames: {},
+      mobPlaces: {
+        'wounded messenger': {
+          rooms: 1,
+          more: 0,
+          spawns: [
+            {
+              via: 'npc',
+              roomName: 'Temple Healer',
+              count: 1,
+              rooms: [{ map: 1, room: 527 }],
+              max: null
+            }
+          ]
+        }
+      }
+    });
+    expect(
+      entries.map((entry) => (entry.kind === 'mob' ? (entry.places?.rooms ?? null) : 'x'))
+    ).toEqual([1, null]);
+    const messenger = entries[0];
+    expect(messenger?.kind === 'mob' ? messenger.places?.spawns[0]?.roomName : null).toBe(
+      'Temple Healer'
+    );
+  });
+
+  /*
+   * A realm that places a monster nowhere contributes no key, and null is what
+   * leaves the rows off the card — never an empty list, which would draw a
+   * heading over nothing.
+   */
+  it('is null for a monster the realm places nowhere', () => {
+    const entries = flattenLookup({
+      mobs: [
+        { name: 'summoned wisp', hp: 5, disposition: null, uncertain: false, costly: 'never' }
+      ],
+      items: [],
+      spells: [],
+      races: [],
+      classes: [],
+      classNames: {}
+    });
+    expect(entries[0]?.kind === 'mob' ? entries[0].places : 'x').toBeNull();
+  });
+});

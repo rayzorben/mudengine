@@ -79,7 +79,7 @@ import {
 } from '../../shared/remotes';
 import { t } from '../app/i18n';
 import { CLIENT_NAME, CLIENT_VERSION } from '../app/version';
-import { bareName } from '../../shared/items';
+import { bareName, countedLabel } from '../../shared/items';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
 
@@ -629,7 +629,14 @@ export class Remotes {
         return;
       }
       case 'what':
-        this.say(from, command, formatWhat(state.room.items.map((item) => item.name)), prefix);
+        /*
+         * `countedLabel`, because the floor counts and the reply frame is what
+         * another client parses: the room prints `66 bone key` and answering
+         * `{bone key}` would be this client's own split leaking into a
+         * captured shape. The count moved onto the entity on 2026-09-06 and
+         * this is where it is put back, exactly as the Room card does.
+         */
+        this.say(from, command, formatWhat(state.room.items.map(countedLabel)), prefix);
         return;
       case 'have': {
         if (command.argument === null) return;

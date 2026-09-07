@@ -19,6 +19,38 @@ export type { MapObstacle };
 /** How a room leaves the plane. `null` when it does not. */
 export type Vertical = 'up' | 'down' | 'both' | null;
 
+/**
+ * A way out of a room that the plane cannot draw as a corridor: up, down, or
+ * a scripted teleport.
+ *
+ * The map places rooms by compass direction and joins the ones it placed, so
+ * a way that leaves the plane has always been a *mark* on the room — the
+ * chevrons — and never something a reader could act on: the room above was
+ * not on the picture and nothing said which room it was. The loop builder
+ * needs exactly that answer, because *route me up from here* is a click on
+ * the way up, and a click has to name where it goes. So each of these
+ * carries its destination, the realm's name for it and the command that
+ * takes it, composed where the realm data lives (`localMap`).
+ *
+ * `command` is what a walker would send — `u`, `d`, or the portal's own
+ * phrase (`go vortex`). A vertical exit with a `Text:` instruction carries
+ * that phrase rather than the bare direction, for the reason `RouteStep.
+ * command` does: the direction does not work there.
+ */
+export interface MapAway {
+  kind: 'up' | 'down' | 'teleport';
+  to: RoomId;
+  name: string;
+  command: string;
+  /**
+   * What stands in the way, when the realm says something does — a door on
+   * the way up, a level a portal wants. A way out offered as a plain control
+   * with the price the realm already stated thrown away would be the map
+   * saying "up" about a door the character cannot open.
+   */
+  obstacle?: MapObstacle;
+}
+
 export interface MapCell {
   id: RoomId;
   name: string;
@@ -30,6 +62,11 @@ export interface MapCell {
   exits: Direction[];
   /** What stands in the way, per direction. Absent where the way is open. */
   blocked?: Partial<Record<Direction, MapObstacle>>;
+  /**
+   * The ways out that leave the plane, with where each one lands. Absent
+   * when there are none, which is most rooms. See {@link MapAway}.
+   */
+  away?: MapAway[];
   /**
    * Which way this room leaves the plane, if it does.
    *
@@ -106,7 +143,9 @@ export const MAP_CELL = 10;
  * A fraction rather than a room count, because what the slider actually
  * chooses is *how small a room may be drawn* — the count still comes from the
  * card's own measured box, so a map dragged twice as big still shows more of
- * the realm at every setting. See `roomPixelsFor`.
+ * the realm at every setting. See `roomPixelsFor`, and `zoomFloor` in the
+ * renderer for the one case the dense end is not honoured: a window so large
+ * that the widest fetch could not fill it.
  */
 export const DEFAULT_MAP_DENSITY = 0.5;
 
@@ -124,55 +163,14 @@ export const DEFAULT_MAP_DENSITY = 0.5;
  * refused: this comes out of `localStorage`, and a map that drew nothing
  * because a stored fraction was 1.2 would be a card broken by its own history.
  *
- * Pure and here rather than beside the card, for `radiusForBox`' reason: it is
+ * Pure and here rather than beside the card, for `layoutMap`'s reason: it is
  * a function of the layout with edge cases worth testing, and the suite runs
- * with no DOM.
+ * with no DOM. How many rooms then fit is the window's question
+ * (`radiusForView`, in the renderer), measured from the laid-out box.
  */
 export function roomPixelsFor(density: number, sparse: number, dense: number): number {
   const at = Number.isFinite(density) ? Math.max(0, Math.min(1, density)) : DEFAULT_MAP_DENSITY;
   return sparse + at * (dense - sparse);
-}
-
-/**
- * How far out to walk for a card of this size.
- *
- * The map used to ask for five rooms in every direction whatever it was drawn
- * in, and the viewBox scaled whatever came back to fit. On the rail that is
- * right — the card has a declared height and does not move. Dragged out to a
- * float and made twice as big, it drew *the same six rooms twice as large*:
- * the picture grew and the neighbourhood did not, which is the one thing a map
- * being made bigger is for.
- *
- * So the radius is **measured**, not chosen. `width` and `height` are the
- * laid-out box in pixels; `perRoom` is how much room one cell wants to stay
- * pointable-at. The result is the count of rooms that fit across the *smaller*
- * side, halved because a radius reaches both ways from the centre.
- *
- * Pure, and here rather than beside the card, for the reason `layoutMap` is:
- * this is a function of the layout, it has edge cases worth testing, and the
- * suite runs with no DOM to measure anything in.
- *
- * The smaller side, deliberately. A wide short card that asked for the radius
- * its *width* could show would fetch rooms the height then has to scale away —
- * the viewBox fits the whole extent, so the constraining side is the one that
- * decides what is legible.
- *
- * A box with no size yet — the first paint, a card in a collapsed pane — is
- * `min`, never zero: a map that fetched nothing while it was being measured
- * would flash empty on every mount.
- */
-export function radiusForBox(
-  width: number,
-  height: number,
-  perRoom: number,
-  min: number,
-  max: number
-): number {
-  const side = Math.min(width, height);
-  if (!Number.isFinite(side) || side <= 0 || !Number.isFinite(perRoom) || perRoom <= 0) return min;
-  // Rooms across the box, then out from the middle.
-  const across = side / perRoom;
-  return Math.max(min, Math.min(max, Math.floor(across / 2)));
 }
 
 /** What a room is, for choosing its shape and colour. First match wins. */
@@ -188,6 +186,8 @@ export interface MapNode {
   here: boolean;
   /** Which way this room also leads, which a plane cannot show. */
   vertical: Vertical;
+  /** The off-plane ways out, for a picture that lets a reader take one. */
+  away?: MapAway[];
 }
 
 /** A corridor between two rooms the map is showing. */
@@ -291,7 +291,8 @@ export function layoutMap(map: LocalMap): MapDrawing {
       ...at(cell),
       kind: kindOf(cell, here),
       here,
-      vertical: cell.vertical
+      vertical: cell.vertical,
+      ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {})
     };
   });
 
@@ -312,9 +313,31 @@ export function layoutMap(map: LocalMap): MapDrawing {
  * drawing when the step into it is confirmed rather than the renderer having
  * to work out which are behind.
  */
+/**
+ * One corridor of the way, oriented the way it is walked.
+ *
+ * `x1,y1` is where the step starts and `x2,y2` where it ends — which is **not**
+ * necessarily the drawing's own order for that link. A corridor is stored once,
+ * from whichever end the layout reached first, and a lap that comes back along
+ * it walks it the other way; drawing the arrow off the link's own coordinates
+ * would point half the lap backwards.
+ */
+export interface MapTrailLeg {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /**
+   * Which colour band this leg is drawn in — 0 for the first pass over fresh
+   * corridors, one higher each time the way starts doubling back over ground
+   * it has already covered.
+   */
+  band: number;
+}
+
 export interface MapTrail {
   /** The corridors the route runs along, in the order it walks them. */
-  legs: Array<{ x1: number; y1: number; x2: number; y2: number }>;
+  legs: MapTrailLeg[];
   /** Rooms the route has still to enter that the map is showing. */
   rooms: ReadonlySet<RoomId>;
   /** Loop stops still owed this lap that the map is showing. */
@@ -347,16 +370,60 @@ export const NO_TRAIL: MapTrail = { legs: [], rooms: new Set(), stops: new Set()
 export function trailOf(
   drawing: MapDrawing,
   path: readonly RoomId[],
-  stops: readonly RoomId[]
+  stops: readonly RoomId[],
+  bands = 1
 ): MapTrail {
   const shown = new Set(drawing.nodes.map((node) => node.id));
   const corridors = new Map(drawing.links.map((link) => [pairKey(link.from, link.to), link]));
 
   const legs: MapTrail['legs'] = [];
+  /*
+   * A lap that comes back the way it went draws one line over another, and the
+   * picture then says a corridor is on the way rather than on the way *twice*
+   * — which is precisely what somebody building a loop is looking at the map
+   * to check.
+   *
+   * So the way changes colour when it starts covering ground it has already
+   * covered, and keeps the new colour going forward.
+   *
+   * **On the rising edge, not per repeated corridor.** Walking back down a
+   * five-room corridor is five repeats, and bumping at each would spend every
+   * band before the lap had crossed itself once. What is worth marking is the
+   * moment the way *starts* doubling back; the legs after it, new or not, are
+   * the same pass and stay the same colour until it doubles back again.
+   *
+   * **Counted over the corridors the map actually draws.** A route runs
+   * through rooms the layout may have dropped, and a band that changed for an
+   * invisible repeat would be a colour change with nothing on screen to
+   * explain it. The band is a property of the picture, so it is decided by the
+   * picture.
+   */
+  const walked = new Set<string>();
+  const ceiling = Math.max(1, Math.floor(bands)) - 1;
+  let band = 0;
+  let doublingBack = false;
   for (let index = 1; index < path.length; index += 1) {
-    const link = corridors.get(pairKey(path[index - 1]!, path[index]!));
+    const from = path[index - 1]!;
+    const to = path[index]!;
+    const key = pairKey(from, to);
+    const link = corridors.get(key);
     if (link === undefined) continue;
-    legs.push({ x1: link.x1, y1: link.y1, x2: link.x2, y2: link.y2 });
+
+    const again = walked.has(key);
+    if (again && !doublingBack) band = Math.min(band + 1, ceiling);
+    doublingBack = again;
+    walked.add(key);
+
+    // Oriented by travel rather than by the link's own ends, so the arrow on
+    // it points the way the character goes. See `MapTrailLeg`.
+    const forward = link.from === from;
+    legs.push({
+      x1: forward ? link.x1 : link.x2,
+      y1: forward ? link.y1 : link.y2,
+      x2: forward ? link.x2 : link.x1,
+      y2: forward ? link.y2 : link.y1,
+      band
+    });
   }
 
   return {

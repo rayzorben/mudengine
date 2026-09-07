@@ -1,0 +1,43 @@
+# What the image build does NOT need, and what it costs to send anyway.
+#
+# The build context is streamed to the daemon before anything runs, so an
+# entry here is time saved on every build. The two big ones are deliberate:
+# `mdb/` holds the realm databases (`test:realm` converts them; the image
+# never does) and `captures/` holds 218 recorded sessions for the corpus
+# replay. `resources/world/` is NOT excluded — the converted world is what
+# ships, and the app reads it at runtime.
+
+.git
+.github
+node_modules
+dist
+out
+.scratch
+todo
+
+# Recorded sessions and the realm databases: build inputs for the test suite
+# and the world conversion, never for the application.
+captures
+mdb
+mega-paramud
+
+# Prose. None of it is read by a build, and `docs/greatermud/` alone is large.
+docs
+*.md
+!README.md
+
+# Anything of the user's that might be sitting in a working tree. The image
+# must never carry somebody's options file, and the extraResources filter in
+# package.json says the same thing one layer further in.
+resources/config/user.yaml*
+resources/config/*.local.*
+resources/config/profiles
+resources/config/realms
+resources/config/memory
+resources/config/fights
+resources/config/mob-lore.json*
+
+# Build artefacts and editor droppings.
+*.log
+.DS_Store
+Thumbs.db

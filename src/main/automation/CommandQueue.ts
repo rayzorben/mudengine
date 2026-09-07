@@ -69,6 +69,16 @@ export interface Intent {
 interface Queued extends Intent {
   seq: number;
   enqueuedAt: number;
+  /**
+   * The earliest this may go out, for an intent put back after the server
+   * threw it away (`resendLast`). Absent on everything else.
+   *
+   * `drain` **skips** an intent that is not due rather than waiting on it: an
+   * escape must never queue behind a walk step that is serving out a
+   * confusion delay, and blocking the whole queue on the head is exactly how
+   * that would happen.
+   */
+  notBefore?: number;
 }
 
 export interface QueueEvents {
@@ -111,6 +121,20 @@ export class CommandQueue {
   private inFlight = 0;
   private seq = 0;
   private lastSentAt = 0;
+  /**
+   * What has been written to the socket lately, oldest first, so an intent can
+   * be put back when the server says it threw that one away.
+   *
+   * A **list** rather than the last one: the window allows several commands in
+   * flight, and the entry probe alone puts seven on the wire in a breath — so
+   * the command a fumble is about is routinely two or three sends back. Bounded
+   * by the acknowledgement timeout on the way in, since anything older than
+   * that has been answered or written off.
+   *
+   * Only automation's: the player's own typing never comes through this class,
+   * which is what makes `resendLast` unable to replay something a person typed.
+   */
+  private recentlySent: Array<{ intent: Queued; at: number }> = [];
   /**
    * While the player has a half-typed line, automation stands down.
    *
@@ -200,6 +224,74 @@ export class CommandQueue {
   }
 
   /**
+   * Puts back the command the server has just said it threw away.
+   *
+   * `You fumble in confusion!` is the server discarding whatever was sent
+   * *before it looked at it* — `ActionFigure.CheckConfusion` runs at the top of
+   * `Player.HandleCommand` and `return`s on a hit — so the decision that
+   * produced the command is still the right decision and nothing acted on it.
+   * Reported as todo 02: a loop's `e` was fumbled, nothing re-sent it, and the
+   * walk waited out its eight-second deadline and gave up. Confusion lasts
+   * long enough to eat several in a row.
+   *
+   * **At the head, by keeping its original `seq`.** It was enqueued before
+   * everything now pending, so the ordering the queue already has puts it
+   * first within its band — no new mechanism, and an escape still outranks it.
+   *
+   * **After the delay the server itself imposes.** A fumble sets a 1,000ms
+   * `DelayCommand` on the character (`ActionFigure.CheckConfusion`), so the
+   * next status line arrives *inside* it and a resend on that line would be
+   * sent into a wait. `tuning.queue.fumbleRetryMs` is the server's own
+   * figure, which is a reading rather than a guess — and erring long costs
+   * latency where erring short costs the command again.
+   *
+   * **Only what this queue sent, and only what the server named.** The caller
+   * passes the command the status line echoed; a mismatch means the fumbled
+   * command was not the one in flight — the player typed one — and nothing is
+   * put back. The player's own input never comes through this class at all,
+   * which is the other half of *not manual user commands*.
+   *
+   * Returns whether anything was put back, so the caller can say so.
+   */
+  resendLast(command: string | null): boolean {
+    if (command === null) return false;
+    const now = Date.now();
+    // Anything this old has been answered or written off, so it cannot be what
+    // the server has just thrown away.
+    const oldest = now - this.config.pacing.ackTimeoutMs;
+    this.recentlySent = this.recentlySent.filter((entry) => entry.at >= oldest);
+    const wanted = command.trim().toLowerCase();
+    /*
+     * The newest match. Two sends of one command are the same bytes with the
+     * same intent behind them, so which of the pair the server threw away
+     * changes nothing about what goes back.
+     */
+    const at = this.recentlySent
+      .map((entry) => entry.intent.command.trim().toLowerCase())
+      .lastIndexOf(wanted);
+    if (at === -1) return false;
+    // Taken out, so one fumble puts one command back. The resend joins the
+    // list when it is sent, which is what makes a confusion that eats four in
+    // a row four resends rather than a loop over one intent.
+    const last = this.recentlySent.splice(at, 1)[0]!.intent;
+    const notBefore = now + tuning().queue.fumbleRetryMs;
+    /*
+     * Its own deadline is moved with it. An intent that expires while the
+     * character is confused is one the proposer would rather drop — the
+     * expiry is *worthless if it arrives late* — but an expiry measured
+     * against a send that never ran would drop a command that was never
+     * given its chance.
+     */
+    const expiresAt =
+      last.expiresAt === undefined
+        ? undefined
+        : Math.max(last.expiresAt, notBefore + (last.expiresAt - last.enqueuedAt));
+    this.pending.push({ ...last, notBefore, ...(expiresAt === undefined ? {} : { expiresAt }) });
+    this.pump();
+    return true;
+  }
+
+  /**
    * Drops queued intents matching a predicate.
    *
    * The reason the queue exists: a decision made two seconds ago may no longer
@@ -220,6 +312,10 @@ export class CommandQueue {
     this.inFlight = 0;
     this.outstanding = [];
     this.typingHeld = false;
+    // Nothing is in flight any more, so there is nothing a fumble could be
+    // about — and replaying a command from before a disconnect is the one
+    // thing `resendLast` must never do.
+    this.recentlySent = [];
   }
 
   /**
@@ -326,7 +422,21 @@ export class CommandQueue {
     // intents keeps the order they were decided in.
     this.pending.sort((a, b) => PRIORITY[b.priority] - PRIORITY[a.priority] || a.seq - b.seq);
 
-    const next = this.pending.shift()!;
+    /*
+     * The first intent that is *due*. Only a resend after a fumble is ever not
+     * due (`resendLast`), and it is skipped rather than waited on: the server
+     * holds the character for a second after throwing a command away, and an
+     * escape queued behind that second would be an escape that arrives after
+     * the fight. A wake is scheduled for the soonest one held back so nothing
+     * sits in the queue waiting for another intent to arrive and drain it.
+     */
+    const at = this.pending.findIndex((intent) => (intent.notBefore ?? 0) <= now);
+    if (at === -1) {
+      const soonest = Math.min(...this.pending.map((intent) => intent.notBefore ?? 0));
+      this.schedule(Math.max(1, soonest - now));
+      return;
+    }
+    const next = this.pending.splice(at, 1)[0]!;
     /*
      * The one exception to the typing hold, and it is documented as one: an
      * emergency — an escape — outranks even the player. It cannot simply be
@@ -344,11 +454,32 @@ export class CommandQueue {
     this.inFlight += 1;
     this.outstanding.push(now);
     this.lastSentAt = now;
+    /*
+     * Trimmed **on the way in**, which is what makes the bound real: the only
+     * other trim is inside `resendLast`, and that runs on a fumble — an event
+     * that fires while a character is confused and approximately never
+     * otherwise. Left to it, this grew one entry per automated command for the
+     * life of the session (~29,000 over an unattended night), each holding the
+     * `onSent` closure a walk step captures, so every leg walked all night
+     * stayed reachable. The reviewer's find, 2026-09-06.
+     */
+    this.recentlySent = this.recentlySent.filter(
+      (entry) => entry.at >= now - this.config.pacing.ackTimeoutMs
+    );
+    this.recentlySent.push({ intent: next, at: now });
     this.events.send(next.command, next);
     // After the write, because that is the fact being reported: the bytes are
     // on the socket and whatever answers now is answering this.
     next.onSent?.();
 
+    /*
+     * Anything left is either due — and waits `minGapMs` — or held back, and
+     * that wake is the `at === -1` branch above: this schedule brings the
+     * drain round, that one re-schedules for the remainder. A second wake
+     * computed here would be a filter per drain feeding a branch that cannot
+     * be reached, since `next` is due by construction and therefore never one
+     * of the held.
+     */
     if (this.pending.length > 0) this.schedule(this.config.pacing.minGapMs);
   }
 

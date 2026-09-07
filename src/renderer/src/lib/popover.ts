@@ -65,6 +65,66 @@ export function placePopover(anchor: Box, panel: Size, viewport: Size): PopoverP
 }
 
 /**
+ * How wide the panel should be, given where the name it hangs off is.
+ *
+ * `.popover` was a flat `width: 300px`. On a monster with a sentence to say
+ * that turns the value column into one word per line and twenty lines tall,
+ * and since the panel caps its own height it then *scrolls* — so the answer
+ * somebody clicked for sat below the fold on a screen with room for it three
+ * times over. The height was the symptom; the width was the cause.
+ *
+ * The room available is the room `placePopover` will find, computed the same
+ * way from the same numbers, so the two cannot disagree: the wider of the two
+ * sides is what a panel that side would get, and the width chosen from it is
+ * therefore a width that side still has room for. Where neither side has room
+ * for the floor the panel is going below, above or over the anchor instead, and
+ * the room there is the window less its margins.
+ *
+ * Pure, and the same reason `placePopover` is: an anchor hard against either
+ * edge, an anchor wider than the window, and a window narrower than the floor
+ * are all cases somebody meets and nobody clicks through by hand.
+ */
+export function popoverWidth(
+  anchor: Box,
+  viewport: Size,
+  range: { min: number; max: number }
+): number {
+  const { popoverGap: gap, popoverMargin: margin } = tuning();
+  // Exactly the two tests `placePopover` makes, rearranged to say how much
+  // rather than whether.
+  const toTheRight = viewport.width - anchor.right - gap - margin;
+  const toTheLeft = anchor.left - gap - margin;
+  const beside = Math.max(toTheRight, toTheLeft);
+  const room = beside >= range.min ? beside : viewport.width - margin * 2;
+  return Math.max(range.min, Math.min(room, range.max));
+}
+
+/**
+ * A panel kept inside the window, whatever it has been dragged or sized to.
+ *
+ * Used by both gestures and by the window resize a *pinned* panel no longer
+ * dismisses on: a pinned panel has stopped being placed against its anchor, so
+ * nothing else would stop a window dragged narrower leaving it off screen with
+ * no way to reach its own close button. The margin is the same one every
+ * placement keeps.
+ *
+ * A panel larger than the window is pinned to the top-left rather than
+ * centred: the controls are in its heading, and the corner that must stay
+ * reachable is the one they are in.
+ */
+export function clampPanel(
+  at: { top: number; left: number },
+  panel: Size,
+  viewport: Size
+): { top: number; left: number } {
+  const { popoverMargin: margin } = tuning();
+  return {
+    top: Math.max(margin, Math.min(at.top, viewport.height - panel.height - margin)),
+    left: Math.max(margin, Math.min(at.left, viewport.width - panel.width - margin))
+  };
+}
+
+/**
  * What a panel hangs off, and what scrolling would move it.
  *
  * A control is its own answer: it is an element, so the browser can be asked

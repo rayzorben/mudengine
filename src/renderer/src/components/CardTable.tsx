@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react';
 
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
@@ -126,6 +126,27 @@ export interface CardTableProps<Row> {
   returnFocus?(): void;
   /** Handle on the scroll region, for a table that pins itself to its newest row. */
   scrollerRef?: RefObject<HTMLDivElement>;
+  /**
+   * The key of the row whose *detail* the card is drawing under the table.
+   *
+   * A card with a detail panel — the quest book's timeline, opened from a row —
+   * has state the table knows nothing about, and a filter that hides the row
+   * used to leave the panel behind: click a quest, mute its facet, and its
+   * steps stayed on screen under a table that no longer listed it. The table is
+   * the only thing that knows what survived the chips and the find field, so it
+   * is the thing that has to say when the row is gone.
+   *
+   * A key rather than the row, so this is a primitive an effect can depend on
+   * without a new identity every render.
+   */
+  detailKey?: string | null;
+  /**
+   * Called when `detailKey` names a row that is no longer on screen.
+   *
+   * The card closes its panel; the table never touches it. Give a stable
+   * callback — it is an effect dependency.
+   */
+  onDetailHidden?(): void;
 }
 
 export interface FindFieldProps {
@@ -242,7 +263,9 @@ export default function CardTable<Row>({
   empty,
   className,
   returnFocus,
-  scrollerRef
+  scrollerRef,
+  detailKey = null,
+  onDetailHidden
 }: CardTableProps<Row>): React.JSX.Element {
   const [query, setQuery] = useState('');
 
@@ -304,6 +327,20 @@ export default function CardTable<Row>({
 
   // Where each row came in, so a key survives being filtered and sorted.
   const order = new Map(rows.map((row, at) => [row, at]));
+
+  /*
+   * Whether the card's open detail is still one of the rows on screen.
+   *
+   * Reported from an effect and not from this render, because the card acts on
+   * it by setting state and a card told during a render would be setting state
+   * during its parent's. Both dependencies are primitives, so the effect runs
+   * when the answer changes rather than on every keystroke in the find field.
+   */
+  const detailShown =
+    detailKey === null || shown.some((row) => keyOf(row, order.get(row) ?? 0) === detailKey);
+  useEffect(() => {
+    if (!detailShown) onDetailHidden?.();
+  }, [detailShown, onDetailHidden]);
 
   /** Everything back: the query cleared and every muted facet unmuted. */
   const showAll = (): void => {

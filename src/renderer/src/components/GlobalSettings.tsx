@@ -215,6 +215,7 @@ export default function GlobalSettings({
   return (
     <form
       className="settings-form"
+      data-section={shown}
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
@@ -235,6 +236,7 @@ export default function GlobalSettings({
             aria-selected={shown === id}
             className="crumb"
             data-active={shown === id ? 'true' : 'false'}
+            data-section={id}
             key={id}
             onClick={() => setSection(id)}
             onMouseDown={keepFocus}
@@ -294,6 +296,7 @@ export default function GlobalSettings({
               onChange={(value) => patch('ui', { tabs: value as GlobalDraft['ui']['tabs'] })}
               options={[
                 { value: 'left', label: t('settings.client.appearance.tabsLeft') },
+                { value: 'right', label: t('settings.client.appearance.tabsRight') },
                 { value: 'top', label: t('settings.client.appearance.tabsTop') }
               ]}
               value={draft.ui.tabs}
@@ -305,6 +308,12 @@ export default function GlobalSettings({
             label={t('settings.client.appearance.showHud')}
             name="global-hud"
             onChange={(value) => patch('ui', { showHud: value })}
+          />
+          <CheckField
+            checked={draft.ui.showLogo}
+            label={t('settings.client.appearance.showLogo')}
+            name="global-show-logo"
+            onChange={(value) => patch('ui', { showLogo: value })}
           />
 
           <Advanced label={t('settings.client.appearance.advancedConsole')}>
@@ -1207,6 +1216,15 @@ export default function GlobalSettings({
                 automation({ spells: { ...draft.automation.spells, healParty: value } })
               }
             />
+            <CheckField
+              checked={draft.automation.spells.invokeItems}
+              hint={t('settings.spells.invokeItemsHint')}
+              label={t('settings.spells.invokeItemsLabel')}
+              name="global-invoke-items"
+              onChange={(value) =>
+                automation({ spells: { ...draft.automation.spells, invokeItems: value } })
+              }
+            />
             <SpellField
               hint={t('settings.spells.healPartyWithHint')}
               label={t('settings.spells.healPartyWithLabel')}
@@ -1496,6 +1514,15 @@ export default function GlobalSettings({
                 automation({
                   movement: { ...draft.automation.movement, walkWhilePoisoned: value }
                 })
+              }
+            />
+            <CheckField
+              checked={draft.automation.movement.collectKeys}
+              hint={t('settings.movement.collectKeysHint')}
+              label={t('settings.movement.collectKeys')}
+              name="global-collect-keys"
+              onChange={(value) =>
+                automation({ movement: { ...draft.automation.movement, collectKeys: value } })
               }
             />
           </fieldset>

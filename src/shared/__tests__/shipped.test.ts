@@ -80,11 +80,11 @@ function realmOf(id: string) {
 }
 
 describe('the realms the client ships', () => {
-  it('is Paradigm’s six and GMUD, one directory per realm', () => {
+  it('is Paradigm’s six, one directory per realm', () => {
     // A count, so deleting one is a decision somebody makes here rather than a
-    // directory that goes missing.
+    // directory that goes missing. `gmud-5x` was a seventh between 2026-09-03
+    // and 2026-09-05, and taking it out was a decision made in this list.
     expect(shipped).toEqual([
-      'gmud-5x',
       'paradigm-game-1-pve',
       'paradigm-game-2-pvp',
       'paradigm-game-3',
@@ -124,37 +124,37 @@ describe('the realms the client ships', () => {
   });
 
   /*
-   * And the seventh is pinned literally, exactly as the six are.
+   * And the realm the default names is pinned literally, address and all.
    *
    * `reachableFromAnywhere` is the property every shipped realm must have; it
    * is not a substitute for somebody having *stated* where a realm dials. Left
-   * to the property alone, this realm's host could be changed to any public
-   * address — a different server, somebody's VPS — and the suite would stay
-   * green, which is the hole the Paradigm literal was closing before there was
-   * a second realm to cover.
+   * to the property alone, the one realm a new character lands on could be
+   * changed to any public address — a different server, somebody's VPS — and
+   * the suite would stay green.
    */
-  it('dials GMUD at the address it was added for', () => {
-    const server = realmOf('gmud-5x');
+  it('dials the default realm at Paradigm’s own address', () => {
+    const server = realmOf('paradigm-game-1-pve');
     expect(server?.name).toBe(DEFAULT_REALM_NAME);
-    expect(server?.host).toBe('70.176.151.219');
-    expect(server?.port).toBe(2427);
+    expect(server?.host).toBe(PARADIGM_HOST);
+    expect(server?.port).toBe(2323);
   });
 
-  it('gives GMUD its own map, because the built-in one is Paradigm’s', () => {
+  it('ships no realm database at all, because the built-in world is the realm', () => {
     /*
-     * The realm the client defaults to is a GreaterMUD one and the world built
-     * into the client is Paradigm's. Left to the built-in map, every new
-     * character would resolve rooms against names that are not in the realm
-     * they are standing in — which degrades honestly (the client says it is
-     * lost) and is useless, and there is no other check that would notice.
+     * Every shipped realm is Paradigm's and `resources/world/` is built from
+     * Paradigm's own database (`mdb/2026-07-26-pmud.zip`,
+     * `scripts/build-world.mjs`), so there is nothing left for a shipped realm
+     * to name and nothing for the installer to carry.
+     *
+     * `GMUD (5X)` was the exception for two days and it is the reason this is
+     * asserted rather than assumed: a GreaterMUD realm on Paradigm's map is a
+     * client that cannot say where anybody is standing, so it had to bring a
+     * 2.4 MB database of its own — into every installer, for a realm nobody had
+     * asked for. A `database:` reappearing here means that trade is being made
+     * again, and it should be made on purpose.
      */
-    expect(realmOf('gmud-5x')?.database).toBe('mdb/2023-09-02-gmud.zip');
-  });
-
-  it('leaves the Paradigm six on the built-in world, which is already theirs', () => {
-    for (const id of shipped.filter((name) => name.startsWith('paradigm-'))) {
-      expect(realmOf(id)?.database).toBe('');
-    }
+    for (const id of shipped) expect(realmOf(id)?.database).toBe('');
+    expect(fs.existsSync(path.resolve('resources/mdb'))).toBe(false);
   });
 
   it.each(shipped.filter((id) => id.startsWith('paradigm-')))('%s answers Paradigm', (id) => {

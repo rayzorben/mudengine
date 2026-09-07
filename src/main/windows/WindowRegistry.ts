@@ -18,6 +18,12 @@
  *   line, and read only by the Stream card, which is hidden by default. A
  *   window says whether it is showing that card (`Send.diagnostics`), so the
  *   common case pays nothing per line at all.
+ * - `toDebugging` is the same shape for `debug`, and it is a **second flag
+ *   rather than the same one**. That feed produces several records per framed
+ *   line and only `DebugView` subscribes to it; riding the diagnostics flag,
+ *   opening the Session/Link/Traffic/Stream rail — or leaving a Stream float
+ *   pinned — serialised three or four extra messages per line of output to a
+ *   window that discarded every one of them on arrival.
  * - `toAll` is for the coalesced, low-rate facts — state, character, walk,
  *   automation. A window renders those for every session in its tab rail
  *   whether or not it is showing that session's terminal, so they go
@@ -41,13 +47,20 @@ interface Entry {
   attached: Set<SessionId>;
   /** Whether this window asked for the per-line diagnostics feed. */
   diagnostics: boolean;
+  /** Whether this window is showing the debug view. Its own flag; see above. */
+  debugging: boolean;
 }
 
 export class WindowRegistry {
   private readonly entries = new Map<number, Entry>();
 
   add(window: WindowLike): void {
-    this.entries.set(window.id, { window, attached: new Set(), diagnostics: false });
+    this.entries.set(window.id, {
+      window,
+      attached: new Set(),
+      diagnostics: false,
+      debugging: false
+    });
   }
 
   remove(windowId: number): void {
@@ -113,6 +126,21 @@ export class WindowRegistry {
   toDiagnostics<T>(channel: string, message: Addressed<T>): void {
     for (const entry of this.live()) {
       if (entry.diagnostics && entry.attached.has(message.session)) {
+        entry.window.send(channel, message);
+      }
+    }
+  }
+
+  /** A window opened or closed the debug view. */
+  setDebugging(windowId: number, on: boolean): void {
+    const entry = this.entries.get(windowId);
+    if (entry) entry.debugging = on;
+  }
+
+  /** The debug feed: attached windows showing the view, and no others. */
+  toDebugging<T>(channel: string, message: Addressed<T>): void {
+    for (const entry of this.live()) {
+      if (entry.debugging && entry.attached.has(message.session)) {
         entry.window.send(channel, message);
       }
     }

@@ -844,6 +844,7 @@ export class SettingsEditor {
         density: config.ui.density,
         tabs: config.ui.tabs,
         showHud: config.ui.showHud,
+        showLogo: config.ui.showLogo,
         vitals: {
           hp: { ...config.ui.vitals.hp },
           mana: { ...config.ui.vitals.mana }
@@ -936,6 +937,7 @@ export class SettingsEditor {
         set(['ui', 'density'], draft.ui.density);
         set(['ui', 'tabs'], draft.ui.tabs);
         set(['ui', 'showHud'], draft.ui.showHud);
+        set(['ui', 'showLogo'], draft.ui.showLogo);
         for (const vital of ['hp', 'mana'] as const) {
           set(['ui', 'vitals', vital, 'caution'], draft.ui.vitals[vital].caution);
           set(['ui', 'vitals', vital, 'critical'], draft.ui.vitals[vital].critical);
@@ -1266,6 +1268,7 @@ function loopNode(loop: Loop): Record<string, unknown> {
   return {
     name: loop.name,
     ...(loop.bounce === true ? { bounce: true } : {}),
+    ...(loop.prefer === true ? { prefer: true } : {}),
     stops: loop.stops.map((stop) =>
       stop.linger === undefined
         ? quoted(stop.room)

@@ -41,10 +41,10 @@ import {
 import { fileSlug } from '../../shared/files';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
-import { DEFAULT_CONFIG, DEFAULT_REALM_NAME } from '../../shared/config';
+import { DEFAULT_CONFIG } from '../../shared/config';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { DENOMINATIONS } from '../../shared/character';
-import type { Home } from '../app/home';
+import { SERVER_FILE, type Home } from '../app/home';
 import { directoryNames } from './dirs';
 import { discoveryKey, type Discovery } from '../../shared/memory';
 import { realmKey } from '../world/RealmLore';
@@ -83,28 +83,24 @@ export interface MigrationOptions {
    * is wrong in the file it documents.
    */
   internalTemplate?: string;
-  /**
-   * The shipped realms directory, so a realm added to it after somebody's home
-   * was created still reaches them.
-   *
-   * `seedServers` copies this **only when `servers/` does not exist at all**,
-   * which is right — a realm somebody deleted must not come back on every
-   * launch — and which means a realm added later reaches nobody who has already
-   * run the client. That is the invisible-setting failure applied to a
-   * directory, and this repository has shipped it once already: the tab rail
-   * was complete and tested and did not appear, because the options file it was
-   * read from had no profiles directory.
-   */
-  shippedRealms?: string;
   /** Said out loud: into the console and the terminal. */
   note: (message: string) => void;
 }
 
 /**
- * The directory `GMUD (5X)` ships in — the id, which never changes, against the
- * name in the file, which is what a character refers to and what a player reads.
+ * The realm `GMUD (5X)` was, in the three strings needed to recognise the copy
+ * this client itself seeded onto somebody's disk.
+ *
+ * **Literals rather than constants, deliberately.** Nothing in the client
+ * refers to this realm any more — it left the distribution on 2026-09-05 — so
+ * there is no constant left to point at, and inventing one would be a name
+ * suggesting the realm still exists somewhere. These three strings exist only
+ * so `theGmudRealmLeft` can tell the seeded copy from a realm a player has
+ * since made their own under the same directory name.
  */
 const GMUD_REALM_ID = 'gmud-5x';
+const GMUD_REALM_NAME = 'GMUD (5X)';
+const GMUD_REALM_HOST = '70.176.151.219';
 
 /** What the state directories are called, so a legacy root moves whole. */
 const STATE = ['memory', 'fights', 'realms', 'logs'];
@@ -159,85 +155,105 @@ export function migrateHome(options: MigrationOptions): void {
   theLoopSettlesAfterAnEscape(home, note, options.internalTemplate);
   statedAutoReconnect(home, note);
   statedTheLightAndSupplies(home, note);
+  statedTheConditionWaits(home, note);
+  statedTheKeyPickup(home, note);
   theTuningBlockGainedKeys(home, note, options.internalTemplate);
-  theRealmsGainedGmud(home, note, options.shippedRealms);
+  theGmudRealmLeft(home, note);
   theDatabasesWereZipped(home, note);
+  statedTheMark(home, note);
 }
 
 /**
- * `GMUD (5X)` reaches a home that already has a `servers/` directory.
+ * `GMUD (5X)` leaves the disk of anybody the client seeded it onto.
  *
- * The realm is shipped in `resources/servers/gmud-5x/` and is what
- * `DEFAULT_REALM_NAME` and `profile.default.yaml` name, so a new character
- * starts on it — and `seedServers` would never put it on the disk of anybody
- * who has run this client before, because it copies the whole directory or
- * nothing. A default naming a realm the player does not have is the settings
- * screen falling back to whichever realm sorts first, silently.
+ * It shipped for two days (2026-09-03 to 2026-09-05) as the realm a new
+ * character started on, and `theRealmsGainedGmud` — the migration this one
+ * replaces — copied it into homes that already had a `servers/` directory. It
+ * is gone from `resources/servers/` now, and with it the 2.4 MB GreaterMUD
+ * database it named: the default is a Paradigm realm again, which is the realm
+ * `resources/world/` was built from, so a new character's realm and its map are
+ * one game. What is left behind is the copy on somebody's disk, dialling a
+ * third-party address this repository no longer ships and naming a `database:`
+ * that has left the package.
  *
- * **Matched by name, not by directory.** Somebody who added this realm by hand
- * has it under an id of their own choosing, and a second entry dialling the
- * same address is one nobody can tell apart on the Realms page — and a repeated
- * name is dropped after the first, so the copy would be a row that never wins.
+ * **It is removed only where there is provably nothing of the player's in it.**
+ * Three things have to hold, and any one of them failing leaves the directory
+ * exactly as it is:
  *
- * The honest limit is `askedTheBankOnEntry`'s, one level up: a *directory* has
- * no way to say "I deleted this on purpose" either, so somebody who removes the
- * realm gets it back on the next launch. The alternative is a record of which
- * migrations have run, which is a second file about the user's files, and this
- * client does not keep one. It is bounded — one realm, once, and it is the one
- * the client currently defaults to.
+ * - The file still says `GMUD (5X)` at `70.176.151.219`. A directory somebody
+ *   has repurposed carries this client's id and their realm, and the id is the
+ *   less important half.
+ * - Nothing sits beside `server.yaml` — no `loops/`, no `server.yaml.bak`. A
+ *   loop is a fact about the realm and may be the only copy of an evening's
+ *   work (`mudengine-config`: a removed server keeps its loops), and a `.bak`
+ *   is the settings screen's record that the file was edited.
+ * - No character names it. Somebody who made a character there plays there,
+ *   with their own credentials, and this is not the code that ends that.
+ *
+ * **The keeping branch says nothing**, which is the one part worth arguing for.
+ * A migration that cannot finish and announces so on every launch is the
+ * `findMissingSettings` failure: a complaint that repeats for as long as the
+ * file stays as it is. There is nothing to complain about anyway — the realm
+ * still works, and its dangling `database:` is already reported at every
+ * connection by the fallback that exists for exactly this, deliberately said
+ * every time rather than once, because playing against the wrong map is only
+ * survivable if you know you are.
  */
-function theRealmsGainedGmud(
-  home: Home,
-  note: (message: string) => void,
-  shippedRealms: string | undefined
-): void {
-  if (!shippedRealms) return;
-  const source = path.join(shippedRealms, GMUD_REALM_ID, 'server.yaml');
-  if (!fs.existsSync(source)) return;
-  // A home with no `servers/` at all is `seedServers`' job, and it copies every
-  // shipped realm rather than this one. Doing it here too would race it.
-  if (!fs.existsSync(home.serversDir)) return;
+function theGmudRealmLeft(home: Home, note: (message: string) => void): void {
+  const target = home.server(GMUD_REALM_ID);
+  if (!fs.existsSync(target.file)) return;
 
-  for (const id of directories(home.serversDir)) {
-    const file = home.server(id).file;
+  let beside: string[];
+  try {
+    beside = fs.readdirSync(target.dir);
+  } catch {
+    return;
+  }
+  if (beside.some((name) => name !== SERVER_FILE)) return;
+
+  try {
+    const document = parseDocument(fs.readFileSync(target.file, 'utf8'));
+    /*
+     * A file that will not parse is not evidence that this is the seeded copy
+     * — it is evidence of nothing at all — and deleting a directory on a
+     * `catch` is how a migration takes something it was never shown.
+     */
+    if (document.errors.length > 0) return;
+    if (document.getIn(['name']) !== GMUD_REALM_NAME) return;
+    if (document.getIn(['host']) !== GMUD_REALM_HOST) return;
+  } catch {
+    return;
+  }
+
+  for (const id of directories(home.profilesDir)) {
+    const file = home.profile(id).file;
     if (!fs.existsSync(file)) continue;
     try {
       const document = parseDocument(fs.readFileSync(file, 'utf8'));
-      /*
-       * A file that will not parse **stops this**, rather than being skipped
-       * past. It is not evidence that the realm is absent — the realm this is
-       * about may be exactly what that file names — and adding a second one
-       * beside it is the duplicate name the header refuses. `parseDocument`
-       * collects syntax errors rather than throwing, so this is the common
-       * case of an unreadable realm file and the `catch` below is the rare one;
-       * they have to agree, and for a while they did not.
-       */
+      // Same refusal as above, and for the stronger reason: an unreadable
+      // character file may be the character that plays on this realm.
       if (document.errors.length > 0) return;
-      const name = document.getIn(['name']);
-      const called = String(typeof name === 'string' && name.length > 0 ? name : id);
-      if (called.toLowerCase() === DEFAULT_REALM_NAME.toLowerCase()) return;
+      const named = document.getIn(['server']);
+      if (typeof named === 'string' && named.toLowerCase() === GMUD_REALM_NAME.toLowerCase()) {
+        return;
+      }
     } catch {
       return;
     }
   }
 
-  const target = home.server(GMUD_REALM_ID);
-  // Never over a directory that is already there, whatever is in it: this is
-  // code writing into files somebody else owns.
-  if (fs.existsSync(target.dir)) return;
   try {
-    fs.mkdirSync(target.dir, { recursive: true });
-    fs.copyFileSync(source, target.file);
+    fs.rmSync(target.dir, { recursive: true });
   } catch (error) {
     note(
       t('notices.migration.gmudRealmFailed', {
-        realm: DEFAULT_REALM_NAME,
+        realm: GMUD_REALM_NAME,
         reason: String(error)
       })
     );
     return;
   }
-  note(t('notices.migration.gmudRealmAdded', { realm: DEFAULT_REALM_NAME, file: target.file }));
+  note(t('notices.migration.gmudRealmRemoved', { realm: GMUD_REALM_NAME, dir: target.dir }));
 }
 
 /**
@@ -783,6 +799,47 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
       ? t('notices.migration.restCeiling.one', params)
       : t('notices.migration.restCeiling.many', params)
   );
+}
+
+/**
+ * States `ui.showLogo` in an options file that already has a `ui:` block.
+ *
+ * The same gap `statedDoorForcing` and `statedTheRestCeiling` cover, one block
+ * along: `reconcileWithTemplate` brings a whole absent top-level block across
+ * with its comments and **deliberately never reaches inside one**, so a key
+ * added to `ui:` afterwards reaches nobody who has already run the client.
+ * `normalizeConfig` still defaults it, so the mark is drawn either way — but a
+ * setting absent from the file is one nobody reading the file can find, which
+ * is the invisible-setting failure this repository keeps writing migrations for.
+ *
+ * The options file only. `showLogo` is a fact about the client rather than
+ * about a character — it is offered on the MudEngine page beside the density
+ * and the tab placement — so writing it into every profile would put a
+ * per-character override in front of somebody who never asked for one.
+ *
+ * Beside `showHud`, not appended: the two are the same question asked about two
+ * pieces of chrome, and a mark filed under the vitals thresholds reads as a
+ * third unrelated setting. Falls back to appending when the file states
+ * `showHud` nowhere.
+ */
+function statedTheMark(home: Home, note: (message: string) => void): void {
+  let stated = false;
+  edit(home.options, (document) => {
+    const ui = document.getIn(['ui'], true);
+    if (!isMap(ui) || ui.has('showLogo')) return false;
+    const pair = document.createPair('showLogo', true) as Pair;
+    const at = ui.items.findIndex(
+      (item) => isScalar(item.key) && String(item.key.value) === 'showHud'
+    );
+    if (at === -1) ui.items.push(pair);
+    else ui.items.splice(at + 1, 0, pair);
+    if (isScalar(pair.key)) pair.key.commentBefore = SHOW_LOGO_COMMENT;
+    stated = true;
+    return true;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.markStated', { file: home.options }));
 }
 
 /**
@@ -1949,6 +2006,13 @@ const NUDGE_SAMPLES_COMMENT = ` How many recent move answers that deadline is me
  one lagged answer ages out instead of standing the fallback down for the
  evening.`;
 
+const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
+
+ On by default: it is the one place the client says what it is, and a brand
+ nobody ever sees is the same as none. Turn it off if you would rather the
+ status rail held nothing but facts about the session -- it is not in the way of
+ anything either way, since it takes the height that line already has.`;
+
 const REST_TO_COMMENT = ` Keep sitting back down until health reaches this; 0 is the single sit-down at
  the figure above, which is what this client did before the key existed. The
  server keeps you resting long past \`restBelow\` for free, so that figure only
@@ -2036,6 +2100,41 @@ const LIGHT_COMMENT = ` Light, before the dark -- MegaMUD's AutoLight.
  describes anyway (\`dimly lit\`, \`barely visible\`). \`extinguishInLight\` puts
  the light out again in a room that does not need it, while nothing is walking
  the character, so a torch lasts the sewer rather than the walk to it.`;
+
+const CONDITION_WAIT_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [
+  ['walkWhileBlind', false],
+  ['walkWhilePoisoned', false]
+];
+
+const KEY_PICKUP_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [['collectKeys', true]];
+
+/** The template's own words for it, so the two files read alike. */
+const KEY_PICKUP_COMMENT = ` The key to the door in front of you.
+
+ A keyed exit with no key and nothing a picklock can do about it is a wall the
+ router plans around -- so there is no step to be refused at and no route to
+ press Walk on, and the only moment the client can do anything about it is
+ while the character is standing in the room. ON BY DEFAULT, for the reason
+ \`provideLight\` is: the whole of the wrong action is one \`get\` and the weight
+ of a key, and the whole of refusing is the corridor.
+
+ Narrow on purpose. It fires only where the realm names the item an exit of
+ this room demands, no listing has shown that item in the pack, and the floor
+ holds a name that can only be that row -- the realm has three \`iron key\`s,
+ and a door opened on a coin toss is the confidently wrong answer the router
+ refuses everywhere else. One \`get\` per key per room, said out loud.`;
+
+/** The template's own words for the pair, so the two files read alike. */
+const CONDITION_WAIT_COMMENT = `
+ Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
+ defaults (0) wait the condition out before the script goes on. Off, a
+ route or a loop stands still while the server says the character is
+ blind or poisoned, and walks on when it says the condition has passed;
+ the card and the tab say which condition it is waiting out. A blind
+ character cannot read the room it walks into and misses every swing.
+ Paralysis always holds -- a step while held is a command spent to be
+ refused -- and disease is left to the cure. A cure spell under \`spells:\`
+ ends the wait sooner.`;
 
 const SUPPLIES_COMMENT = ` Keeping the pack stocked -- MegaMUD's Must Have Minimum.
 
@@ -2933,6 +3032,117 @@ function statedTheLightAndSupplies(home: Home, note: (message: string) => void):
   if (supplied) note(t('notices.migration.suppliesStated', { file: home.options }));
 }
 
+/**
+ * Waiting a stated condition out, 2026-09-05 — and the file that never got it.
+ *
+ * `walkWhileBlind` and `walkWhilePoisoned` reached the type, the shipped
+ * template, both readers (`afflictionHolding`, for the walker within a leg and
+ * the loop between them) and both settings pages on the day they were added,
+ * and reached **nobody's own options file**, because
+ * `reconcileWithTemplate` copies a whole absent top-level block and
+ * deliberately never reaches inside one. `normalizeConfig` still applies the
+ * default, so a route standing still while the character is blind is correct
+ * behaviour — and a player looking for the switch that changes it finds
+ * `automation.movement` ending at `extinguishInLight`, with nothing in the
+ * file to say the wait is a choice at all. That is the invisible-setting
+ * failure `statedDoorForcing` and `statedTheLightAndSupplies` were each
+ * written for, one pair of keys along.
+ *
+ * The template's own paragraph goes with them, because here the comments are
+ * the documentation, and it is the half that says what the defaults refuse to
+ * do: paralysis always holds, and disease is left to the cure.
+ *
+ * The key-into-a-map shape, so it is idempotent against somebody who has since
+ * set either to `true` — a key stays added whatever its value. Nothing stated
+ * is overwritten.
+ */
+function statedTheConditionWaits(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const movement = document.getIn(['automation', 'movement'], true);
+      if (!isMap(movement)) return false;
+
+      let changed = false;
+      let first: Pair | null = null;
+      for (const [key, value] of CONDITION_WAIT_DEFAULTS) {
+        if (movement.has(key)) continue;
+        const pair = document.createPair(key, value) as Pair;
+        movement.items.push(pair);
+        if (first === null) first = pair;
+        changed = true;
+      }
+      if (!changed) return false;
+      if (first !== null && isScalar(first.key)) first.key.commentBefore = CONDITION_WAIT_COMMENT;
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.conditionWaitsStated.one', params)
+      : t('notices.migration.conditionWaitsStated.many', params)
+  );
+}
+
+/**
+ * Bending down for a key an exit here needs, 2026-09-06 (todo 01).
+ *
+ * `collectKeys` ships on, so a file that predates it works correctly from the
+ * built-in default and says nothing about it — which is the invisible-setting
+ * failure `statedTheLightAndSupplies` and `statedTheConditionWaits` were each
+ * written for, one key along. `reconcileWithTemplate` copies a whole absent
+ * top-level block and deliberately never reaches inside one, so
+ * `automation.movement` in somebody's own file would go on ending at
+ * `walkWhilePoisoned` while the client picked keys up.
+ *
+ * The template's own paragraph goes with it, because here the comments are the
+ * documentation and this one's substance is the *narrowness*: what it will not
+ * do is the half somebody deciding whether to leave it on needs.
+ *
+ * The key-into-a-map shape, so it is idempotent against somebody who has since
+ * set it to `false` — a key stays added whatever its value. Nothing stated is
+ * overwritten.
+ */
+function statedTheKeyPickup(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const movement = document.getIn(['automation', 'movement'], true);
+      if (!isMap(movement)) return false;
+
+      let changed = false;
+      let first: Pair | null = null;
+      for (const [key, value] of KEY_PICKUP_DEFAULTS) {
+        if (movement.has(key)) continue;
+        const pair = document.createPair(key, value) as Pair;
+        movement.items.push(pair);
+        if (first === null) first = pair;
+        changed = true;
+      }
+      if (!changed) return false;
+      if (first !== null && isScalar(first.key)) first.key.commentBefore = KEY_PICKUP_COMMENT;
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.keyPickupStated.one', params)
+      : t('notices.migration.keyPickupStated.many', params)
+  );
+}
+
 function statedAutoReconnect(home: Home, note: (message: string) => void): void {
   const stated: string[] = [];
 
@@ -3060,6 +3270,47 @@ function theTuningBlockGainedKeys(
 
     addKey('parse', 'staleMoveMs', DEFAULT_INTERNAL.tuning.parse.staleMoveMs);
     addKey('view', 'rateFloorMs', DEFAULT_INTERNAL.tuning.view.rateFloorMs);
+    /*
+     * The slide-out panels' own bounds (2026-09-05, todo 03). The two widths
+     * are the ones that matter most: the whole complaint was that a fixed
+     * 300px panel is wrong for somebody's screen, and the numbers they would
+     * reach for would otherwise be absent from the file they would open.
+     */
+    addKey('view', 'popoverWidthMin', DEFAULT_INTERNAL.tuning.view.popoverWidthMin);
+    addKey('view', 'popoverWidthMax', DEFAULT_INTERNAL.tuning.view.popoverWidthMax);
+    addKey('view', 'popoverMinHeight', DEFAULT_INTERNAL.tuning.view.popoverMinHeight);
+    /* The debug window's two bounds (todo 05): main's ring, and the window's. */
+    addKey('session', 'debugLogLimit', DEFAULT_INTERNAL.tuning.session.debugLogLimit);
+    addKey('view', 'debugRows', DEFAULT_INTERNAL.tuning.view.debugRows);
+    /* What a step on a saved route costs (2026-09-05, the loop builder). */
+    addKey('world', 'preferredStepCost', DEFAULT_INTERNAL.tuning.world.preferredStepCost);
+    /* The wheel on a map: how much a notch zooms, and when the card writes it down. */
+    addKey('view', 'mapZoomStepPercent', DEFAULT_INTERNAL.tuning.view.mapZoomStepPercent);
+    addKey('view', 'mapZoomSettleMs', DEFAULT_INTERNAL.tuning.view.mapZoomSettleMs);
+    /*
+     * How long a command the realm threw away waits before it goes again
+     * (2026-09-06, todo 02) — the server's own 1,000ms fumble delay.
+     */
+    addKey('queue', 'fumbleRetryMs', DEFAULT_INTERNAL.tuning.queue.fumbleRetryMs);
+    /*
+     * And the two that replace `walk.searchTries` below (todo 04): the beat
+     * between two searches for a hidden exit, which is now unbounded, and the
+     * count a lever exit still keeps. Added beside the drop rather than in a
+     * migration of their own, so somebody who opens the file looking for the
+     * retired number finds what took its place in the same paragraph.
+     */
+    addKey('walk', 'searchRetryMs', DEFAULT_INTERNAL.tuning.walk.searchRetryMs);
+    addKey('walk', 'searchSayEveryMs', DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs);
+    /*
+     * How often a walk that is searching asks the server to reprint the room
+     * (2026-09-06, todo 03). `You found an exit to the south!` does not reprint
+     * it, so the walk went on searching a room whose exit it had already found;
+     * a success always asks now, and a failure every this many. In the
+     * template's own order — a file somebody opens should read the way the
+     * documentation they are comparing it against does.
+     */
+    addKey('walk', 'searchRecheckEvery', DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery);
+    addKey('walk', 'leverTries', DEFAULT_INTERNAL.tuning.walk.leverTries);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -3073,6 +3324,16 @@ function theTuningBlockGainedKeys(
     };
 
     dropKey('combat', 'movePendingMs');
+    /*
+     * The search ceiling, retired: a `Hidden/Searchable` exit is one the realm
+     * says a search reveals, and giving up after two rolls of a skill check
+     * struck a real corridor out of every route for the session (todo 04).
+     * The number is deliberately **not** carried into `searchRetryMs` — a
+     * count of searches and a delay between them are not the same quantity,
+     * and writing 2 into a milliseconds field would be the migration inventing
+     * a figure.
+     */
+    dropKey('walk', 'searchTries');
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);

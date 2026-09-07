@@ -6,7 +6,7 @@ import { attackChances, rowProfile } from '../buildRealm';
 import { openRealm } from '../RealmSource';
 import { WorldGraph } from '../WorldGraph';
 
-const mdb = path.resolve('resources/mdb/2023-09-02-gmud.zip');
+const mdb = path.resolve('mdb/2023-09-02-gmud.zip');
 const shipped = path.resolve('resources/world/rooms.jsonl.gz');
 
 /** The five attack slots the server loads off a row, in slot order. */
@@ -18,8 +18,8 @@ function loadedSlots(row: Record<string, unknown>): number[] {
 }
 
 /*
- * Claims about the GMUD database (`2023-09-02-gmud.zip`), read straight out of the
- * archive it ships in — format 20's
+ * Claims about the GMUD database (`mdb/2023-09-02-gmud.zip`), read straight out
+ * of the archive this repository keeps it in — format 20's
  * reading of the attack and between-round columns, checked against the
  * realm rather than against a fixture that would prove only the fixture.
  */

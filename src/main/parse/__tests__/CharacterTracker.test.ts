@@ -29,6 +29,7 @@ import {
   type SpellMessageKind
 } from '../../../shared/spell-messages';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { swings } from '../../../shared/tally';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
 
@@ -253,6 +254,33 @@ describe('exit parsing', () => {
   it('prefers the longer compass direction', () => {
     expect(parseExit('northeast').direction).toBe('ne');
     expect(parseExit('door northwest')).toEqual({ direction: 'nw', note: 'door' });
+  });
+
+  /*
+   * The server's other pair of words for the vertical ways, and the only two
+   * it uses for them in a printed exit list: `Obvious exits: north, open trap
+   * door below` — 20 lines across five captures, and never a bare `below`.
+   * Unread until 2026-09-06, so a trapdoor the server printed was a direction
+   * no route could plan on, and a walk that searched one out had no way to
+   * recognise it had been found.
+   */
+  it('reads the trapdoor words the corpus prints', () => {
+    expect(parseExit('open trap door below')).toEqual({
+      direction: 'd',
+      note: 'open trap door'
+    });
+    expect(parseExit('open trap door above')).toEqual({
+      direction: 'u',
+      note: 'open trap door'
+    });
+    expect(parseExit('open trapdoor below')).toEqual({ direction: 'd', note: 'open trapdoor' });
+  });
+
+  /* And they never shadow the words they sit beside. */
+  it('still reads up and down themselves', () => {
+    expect(parseExit('up')).toEqual({ direction: 'u', note: null });
+    expect(parseExit('down')).toEqual({ direction: 'd', note: null });
+    expect(parseExit('open trap door up')).toEqual({ direction: 'u', note: 'open trap door' });
   });
 
   it('keeps an unrecognised exit rather than dropping it', () => {
@@ -1708,6 +1736,104 @@ describe('the fight this character is in', () => {
     expect(tracker.current.inCombat).toBe(false);
   });
 
+  /*
+   * A greeting is not a blow — todo 00, reported 2026-09-06.
+   *
+   * `ask wound mission` at the Temple Healer answered `The wounded messenger
+   * looks you up and down.`, which wears the miss frame exactly: `^The …you….`
+   * The messenger was in `Also here:`, so the name resolved, and auto-combat's
+   * retaliation — the one path that ignores the disposition and the ten evil
+   * points — sent `aa wounded messenger` at a Lawful Good quest NPC, twice.
+   */
+  function questNpcWorld(): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-greet-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({
+      v: 5,
+      source: 'test',
+      rooms: 0,
+      generatedAt: 'x',
+      // The realm's own rows: passive, and ten evil points to attack.
+      mobs: [
+        { n: 'wounded messenger', hp: 9999, d: 'p', ep: 'a' },
+        { n: 'orc rogue', hp: 30, d: 'h' }
+      ]
+    });
+    fs.writeFileSync(file, zlib.gzipSync(header + '\n'));
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+
+  const atTheTemple = (...lines: Step[]): CharacterTracker =>
+    play(
+      [
+        '[HP=148/MA=18]:',
+        'Temple Healer',
+        'Also here: wounded messenger, orc rogue.',
+        'Obvious exits: south, down',
+        ...lines
+      ],
+      questNpcWorld()
+    );
+
+  it('does not read a passive monster’s sentence as a blow', () => {
+    const tracker = atTheTemple('The wounded messenger looks you up and down.');
+    expect(tracker.current.combat.attackers).toEqual([]);
+    // The blow still counts, which is exactly what the frame's own note says a
+    // false match costs: a round clock and a blow count with no attacker.
+    expect(tracker.current.combat.blows).toBe(1);
+  });
+
+  /* The realm says the orc rogue would have swung, so its miss is a miss. */
+  it('still reads a hostile monster’s miss as a blow', () => {
+    const tracker = atTheTemple('The orc rogue lunges at you!');
+    expect(tracker.current.combat.attackers).toEqual(['orc rogue']);
+  });
+
+  /*
+   * A passive monster fights back once provoked, so the guard is off the
+   * moment this character is in a fight with it — otherwise attacking a quest
+   * NPC by hand would leave the client unable to see it swinging back.
+   */
+  it('reads a passive monster’s miss once this character has attacked it', () => {
+    const tracker = atTheTemple(
+      { send: 'a wounded messenger' },
+      '*Combat Engaged*',
+      'The wounded messenger looks you up and down.'
+    );
+    expect(tracker.current.combat.target).toBe('wounded messenger');
+    expect(tracker.current.combat.attackers).toEqual(['wounded messenger']);
+  });
+
+  /*
+   * And a landed blow is a blow whatever the realm says about temper: it
+   * carries ` for <n> damage!`, which no sentence about the room wears.
+   */
+  it('reads a passive monster’s landed blow as a blow', () => {
+    const tracker = atTheTemple('The wounded messenger clubs you for 3 damage!');
+    expect(tracker.current.combat.attackers).toEqual(['wounded messenger']);
+  });
+
+  /*
+   * Unknown is never the reassuring answer. A monster the realm cannot place
+   * keeps its attribution, exactly as an unknown maximum never sits a
+   * character down.
+   */
+  it('keeps the attribution for a monster the realm cannot place', () => {
+    const tracker = play(
+      [
+        '[HP=148/MA=18]:',
+        'Dark Alley',
+        'Also here: shambling thing.',
+        'Obvious exits: south',
+        'The shambling thing gropes at you!'
+      ],
+      questNpcWorld()
+    );
+    expect(tracker.current.combat.attackers).toEqual(['shambling thing']);
+  });
+
   /* A fight cannot continue through a closed socket, and a remembered target
      would be the first thing a rule swung at on reconnecting. */
   it('forgets the fight when the character leaves the realm', () => {
@@ -2367,6 +2493,134 @@ describe('what is carried, between listings', () => {
     ]);
   });
 
+  /*
+   * The realm has two items whose *name* contains `and`, and the pack listing
+   * separates with commas alone — so splitting on ` and ` cut both in half.
+   *
+   * It matters beyond the card: `rope and grapple` is the item 157 of the
+   * shipped realm's exits are gated on, so the router could never see one in a
+   * pack that held it. Both sentences below are verbatim from the corpus —
+   * `captures/044` for the ring, `captures/119` for the rope on a floor — and
+   * across all 218 captures no `You are carrying`, `You notice` or key listing
+   * uses ` and ` as a separator.
+   */
+  it('keeps an item whose own name contains the word and', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=34]:');
+    feed(
+      'You are carrying 65 runic coins, black and white serpent ring (Finger), ' +
+        'rope and grapple, jeweled main-gauche (Off-Hand)'
+    );
+    feed('You have no keys.');
+    feed('Encumbrance: 500/3360 - None [14%]');
+    feed('[HP=34]:');
+    expect(held(tracker)).toEqual([
+      'black and white serpent ring',
+      'rope and grapple',
+      'jeweled main-gauche'
+    ]);
+    // The coins still fold into the purse rather than the pack.
+    expect(tracker.current.inventory.coins.runic).toBe(65);
+  });
+
+  it('keeps one on the floor, and a key with the same shape', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=34]:');
+    // `Obvious exits:` is what completes a room; the floor is a draft until it.
+    feed('Guild Street');
+    feed('You notice 41 gold crowns, 2 rope and grapple, 2 mine pass here.');
+    feed('Obvious exits: north');
+    /*
+     * One entry each, which is the whole of the claim about the split: `2 rope
+     * and grapple` is a rope and a count, not `2 rope` and a `grapple`.
+     *
+     * And the count is on the entry rather than on the front of its name
+     * (2026-09-06, todo 01). It was in the name until then, so `rope and
+     * grapple` — the item 157 of the shipped realm's exits are gated on —
+     * could not be found in the realm's index while two of them lay on the
+     * floor, and neither could anything else a room lists more than one of.
+     * The floor no longer expands into instances the way the pack does: sixty-
+     * six bone keys are one line on a card, not sixty-six rows.
+     */
+    expect(tracker.current.room.items.map((item) => item.name)).toEqual([
+      'rope and grapple',
+      'mine pass'
+    ]);
+    expect(tracker.current.room.items.map((item) => item.count)).toEqual([2, 2]);
+
+    feed('You are carrying rope and grapple');
+    feed('You have the following keys: black star key, ancient obsidian key.');
+    feed('Encumbrance: 500/3360 - None [14%]');
+    feed('[HP=34]:');
+    expect(tracker.current.inventory.keys).toEqual(['black star key', 'ancient obsidian key']);
+  });
+
+  /*
+   * The reported failure, 2026-09-06: a character standing in Crypt, Sealed
+   * Tomb with `2 bone key` on its key ring was told the north door needed a
+   * bone key. Nothing was wrong with the door or the pack — the count was
+   * glued to the front of the name, so the realm's row 177 was never found.
+   *
+   * The corpus states both spellings of a counted key line, which is why the
+   * plural is left on the name here and settled against the realm's index by
+   * `WorldGraph.itemIdNamed` instead.
+   */
+  it('counts the keys, in both spellings the realms use', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=148/MA=26]:');
+    feed('You are carrying 4 platinum pieces, katana');
+    feed('You have the following keys: 2 bone key.');
+    feed('Encumbrance: 1844/4128 - Medium [44%]');
+    feed('[HP=148/MA=26]:');
+    expect(tracker.current.inventory.keys).toEqual(['bone key', 'bone key']);
+
+    // captures/002: the same fact with the realm's own plural on it.
+    feed('You are carrying katana');
+    feed('You have the following keys:  2 black star keys.');
+    feed('Encumbrance: 1844/4128 - Medium [44%]');
+    feed('[HP=148/MA=26]:');
+    expect(tracker.current.inventory.keys).toEqual(['black star keys', 'black star keys']);
+  });
+
+  /*
+   * The other half of moving the count off the name: the broadcasts maintain
+   * the floor, and with the name now matching a counted entry a bare filter
+   * would have one `get` erase the sixty-five keys the server still prints.
+   */
+  it('takes one off a counted pile rather than the pile', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=148]:');
+    feed('Crypt, Sealed Tomb');
+    feed('You notice 66 bone key, iron ring here.');
+    feed('Obvious exits: north, south');
+    feed('You took bone key.');
+    expect(tracker.current.room.items.map((item) => [item.name, item.count])).toEqual([
+      ['bone key', 65],
+      ['iron ring', undefined]
+    ]);
+
+    // The count the sentence states, and the entry goes when the pile does.
+    feed('You took 65 bone key.');
+    expect(tracker.current.room.items.map((item) => item.name)).toEqual(['iron ring']);
+
+    // An uncounted entry is one, and goes as it always did.
+    feed('You took iron ring.');
+    expect(tracker.current.room.items).toEqual([]);
+  });
+
+  /* And a drop onto a floor that already lists the name raises the count. */
+  it('adds to a pile already lying here rather than doing nothing', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=148]:');
+    feed('Crypt, Sealed Tomb');
+    feed('You notice 2 amethyst ring here.');
+    feed('Obvious exits: north');
+    feed('You dropped amethyst ring.');
+    expect(tracker.current.room.items.map((item) => [item.name, item.count])).toEqual([
+      ['amethyst ring', 3]
+    ]);
+  });
+
   it('lists the same thing twice when the character has two', () => {
     const { tracker, feed } = carrying();
     feed('You took a torch.');
@@ -2514,9 +2768,20 @@ describe('moving unseen', () => {
   };
 
   it('starts not knowing, which is not the same as being seen', () => {
+    const { tracker } = feeder();
+    expect(tracker.current.stealth).toBe('unknown');
+  });
+
+  /*
+   * And entering the realm settles it, because the server does: `Sneaking` is
+   * not carried across a login, so this is a fact rather than the absence of
+   * one. It used to stay `unknown` until something said otherwise, which read
+   * the same to every consumer and meant the first `sn` went out on a guess.
+   */
+  it('is seen on entering the realm', () => {
     const { tracker, feed } = feeder();
     feed('[HP=33]:');
-    expect(tracker.current.stealth).toBe('unknown');
+    expect(tracker.current.stealth).toBe('seen');
   });
 
   it('is sneaking once the server says so', () => {
@@ -2535,7 +2800,7 @@ describe('moving unseen', () => {
     const { tracker, feed } = feeder();
     feed('[HP=33]:');
     feed('Attempting to sneak...');
-    expect(tracker.current.stealth).toBe('unknown');
+    expect(tracker.current.stealth).not.toBe('sneaking');
   });
 
   it('is seen when it makes a sound, fails, or cannot', () => {
@@ -2550,6 +2815,80 @@ describe('moving unseen', () => {
       feed(line);
       expect(tracker.current.stealth, line).toBe('seen');
     }
+  });
+
+  /*
+   * The heart of it: `BreakStealth()` prints nothing at about thirty call
+   * sites, so the **absence** of `Sneaking...` on a move is the only thing
+   * that can say stealth broke. Before this the flag went up on the first
+   * `Sneaking...` and stayed up for the session, and `Walker.sneakFirst` —
+   * which stands down while the character is already sneaking — never sent
+   * another `sn`.
+   */
+  it('is still sneaking after a move the server announced', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    tracker.observeCommand('e');
+    feed('Sneaking...');
+    feed('Newhaven, Narrow Path');
+    feed('Obvious exits: north, south, east, west');
+    expect(tracker.current.stealth).toBe('sneaking');
+  });
+
+  it('is seen after a move the server did not announce', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    tracker.observeCommand('e');
+    feed('Sneaking...');
+    feed('Newhaven, Narrow Path');
+    feed('Obvious exits: north, south, east, west');
+    expect(tracker.current.stealth, 'the first move kept it').toBe('sneaking');
+
+    // The second move prints no `Sneaking...`, which is the server saying the
+    // character was visible walking into this room.
+    tracker.observeCommand('e');
+    feed('Newhaven, Village Entrance');
+    feed('Obvious exits: north, south, west, southeast');
+    expect(tracker.current.stealth).toBe('seen');
+  });
+
+  /*
+   * A look is not a step, so it says nothing about stealth either. Without
+   * this the room block a `l` produced would be read as a move with no
+   * `Sneaking...` and put a genuinely sneaking character down as seen — one
+   * wasted `sn` per look, and the walker re-asking on every one.
+   */
+  it('is unmoved by a look', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    tracker.observeCommand('e');
+    feed('Sneaking...');
+    feed('Newhaven, Narrow Path');
+    feed('Obvious exits: north, south, east, west');
+
+    tracker.observeCommand('l');
+    feed('Newhaven, Narrow Path');
+    feed('Obvious exits: north, south, east, west');
+    expect(tracker.current.stealth).toBe('sneaking');
+  });
+
+  /*
+   * `MoveCommand`'s no-exit branch calls `BreakStealth()` beside the sentence
+   * — running into a wall is announced to the room — and a bash does the same
+   * in `Door.cs`.
+   */
+  it('is seen after a move the server refused', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    tracker.observeCommand('n');
+    feed('Sneaking...');
+    feed('Newhaven, Narrow Path');
+    feed('Obvious exits: north, south, east, west');
+    expect(tracker.current.stealth).toBe('sneaking');
+
+    tracker.observeCommand('n');
+    feed('There is no exit in that direction!');
+    expect(tracker.current.stealth).toBe('seen');
   });
 
   /* Nobody is sneaking through a closed socket, and "seen" would be a claim
@@ -2718,6 +3057,306 @@ describe('how the target is holding up', () => {
       testLore({ 'giant rat': 12 })
     );
     expect(tracker.current.combat.health?.damage).toEqual({ mine: 4, others: 3 });
+  });
+});
+
+/**
+ * A weapon's chance-on-hit — the blow the sentence attributes to nobody.
+ *
+ * Reported 2026-09-06 (todo 02) with the Combat card reading `Dealt: 48` and
+ * `Party/Others: 3` in a cave the character was alone in. `A shining spark
+ * strikes fierce cave worm for 3 damage!` is the proc spell's own message data
+ * with the target and the number substituted in; there is no attacker in the
+ * line to read, `A` is an article and articles are never attackers, so the
+ * damage fell through to everybody *else* in the room.
+ *
+ * The lines here are the user's own transcript. The realm row is verbatim out
+ * of the shipped realm — `[114, 40]` immediately before `[43, 170]` is a
+ * forty-per-cent chance of `silvery mace`, whose power of 1–3 is the 1, 2 and
+ * 3 that spark line carries.
+ */
+describe('a blow the sentence attributes to nobody', () => {
+  /** The abilities the shipped realm gives item 347, `shimmering longsword`. */
+  const PROC_WEAPON: Array<[number, number]> = [
+    [28, 1],
+    [86, 50],
+    [43, 114],
+    [114, 40],
+    [43, 170],
+    [135, 10]
+  ];
+
+  /** A realm that indexes the weapon, and optionally a second proccing thing. */
+  function realmWithWeapon(
+    abilities: Array<[number, number]>,
+    ring?: Array<[number, number]>
+  ): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-proc-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = {
+      v: 26,
+      source: 'test',
+      rooms: 0,
+      generatedAt: 'x',
+      items: [
+        { id: 347, n: 'shimmering longsword', type: 1, worn: 1, uses: -1, ab: abilities },
+        ...(ring === undefined
+          ? []
+          : [{ id: 348, n: 'spark ring', type: 3, worn: 8, uses: -1, ab: ring }])
+      ]
+    };
+    fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(header) + '\n'));
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+
+  /** The `i` the entry probe sends, with the weapon in the hand. */
+  const WIELDING = [
+    '[HP=148/MA=20]:',
+    'You are carrying shimmering longsword (Weapon Hand), 6 torch',
+    'You have no keys.',
+    'Wealth: 0 copper farthings',
+    'Encumbrance: 500/3360 - None [14%]',
+    '[HP=148/MA=20]:'
+  ];
+
+  /** The cave, so the room names the worm before any blow has to. */
+  const CAVE = [
+    'Dark Cave',
+    'You notice 128 silver nobles, 332 copper farthings here.',
+    'Also here: fierce cave worm.',
+    'Obvious exits: east',
+    '*Combat Engaged*'
+  ];
+
+  const SPARK = 'A shining spark strikes fierce cave worm for 3 damage!';
+
+  it('reads it as this character’s own when the realm says the weapon fires one', () => {
+    const tracker = play(
+      [...WIELDING, ...CAVE, 'You slash fierce cave worm for 25 damage!', SPARK],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 28, others: 0 });
+  });
+
+  /*
+   * And it is counted as its own kind. Folding it into Melee would inflate the
+   * hit count the accuracy share divides by — the proc lands *off* a swing
+   * already in that denominator — and drag the melee average down with a
+   * figure the weapon rolled rather than the character.
+   */
+  it('counts it apart from the swing it landed off', () => {
+    const tally = play(
+      [...WIELDING, ...CAVE, 'You slash fierce cave worm for 25 damage!', SPARK],
+      realmWithWeapon(PROC_WEAPON)
+    ).current.tally;
+    expect(tally.dealt.melee).toEqual({ hits: 1, damage: 25, least: 25, most: 25 });
+    expect(tally.dealt.proc).toEqual({ hits: 1, damage: 3, least: 3, most: 3 });
+    // A proc is not a swing, so it is outside the accuracy denominator.
+    expect(swings(tally)).toBe(1);
+  });
+
+  /*
+   * **The realm is what attributes it, and without that answer the client
+   * declines.** `Spiritual power strikes aged earth dragon for 106 damage!`
+   * (captures/038) has exactly this shape and is somebody else's — Joe's
+   * soulstrike, a line above. A character wielding nothing that procs must not
+   * have such a line credited to it.
+   */
+  it('leaves it with the rest of the room when nothing this character holds procs', () => {
+    const tracker = play(
+      [...WIELDING, ...CAVE, 'You slash fierce cave worm for 25 damage!', SPARK],
+      // The same weapon with the bless alone: a bare `CastsSp` is what `use`
+      // invokes, and it fires nothing on a hit.
+      realmWithWeapon([
+        [28, 1],
+        [43, 114]
+      ])
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 25, others: 3 });
+    expect(tracker.current.tally.dealt.proc.hits).toBe(0);
+  });
+
+  /* No realm at all is the same refusal, from the other end of the same lookup. */
+  it('declines with no realm loaded', () => {
+    const tracker = play([
+      ...WIELDING,
+      ...CAVE,
+      'You slash fierce cave worm for 25 damage!',
+      SPARK
+    ]);
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 25, others: 3 });
+  });
+
+  /*
+   * The round is the other half of the binding, and it is what keeps a party
+   * member's un-named-caster spell out. Measured over 538 procs in the
+   * recorded sessions of 2026-09-06: every one arrived after this character's
+   * own blow on that monster, median 3 ms behind it and slowest 41 ms.
+   */
+  it('refuses one that arrives a round later than the blow it would ride on', () => {
+    const tracker = play(
+      [...WIELDING, ...CAVE, 'You slash fierce cave worm for 25 damage!', { wait: 5_000 }, SPARK],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 25, others: 3 });
+  });
+
+  /* And one that names a monster this character has not just struck. */
+  it('refuses one aimed at something else in the room', () => {
+    const tracker = play(
+      [
+        ...WIELDING,
+        'Dark Cave',
+        'Also here: fierce cave worm, mummy.',
+        'Obvious exits: east',
+        '*Combat Engaged*',
+        'You slash fierce cave worm for 25 damage!',
+        'A shining spark strikes mummy for 3 damage!'
+      ],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    const fought = tracker.current.combat;
+    expect(fought.target).toBe('fierce cave worm');
+    expect(fought.health?.damage).toEqual({ mine: 25, others: 0 });
+    expect(tracker.current.tally.dealt.proc.hits).toBe(0);
+  });
+
+  /*
+   * **The line has to be the one the server wrote with the blow.**
+   *
+   * captures/168, a party of three on the storm giant king. `A withering
+   * blast of dragonfire sears storm giant king for 163 damage!` is
+   * article-led, so it names nobody; it lands on the monster this character
+   * last hit; and the whole round arrives in one breath, so no window can
+   * separate it. It is **Vulcan's** — `Vulcan makes a complex circling
+   * gesture!` is the start message two lines above.
+   *
+   * What separates them is that a proc is composed into the *same write* as
+   * the blow that fired it: all 581 in the recorded sessions arrive with
+   * nothing but a status-line repaint in the gap. Everything here — two
+   * blows by another player, two of his misses and the start message — is
+   * another actor interleaving, and each one breaks the binding.
+   */
+  it('refuses a party member’s article-led spell landing in the same round', () => {
+    const tracker = play(
+      [
+        ...WIELDING,
+        'Dark Cave',
+        'Also here: fierce cave worm.',
+        'Obvious exits: east',
+        '*Combat Engaged*',
+        'You slash fierce cave worm for 25 damage!',
+        'Hari pounds fierce cave worm for 24 damage!',
+        'Hari swings at fierce cave worm!',
+        'Vulcan makes a complex circling gesture!',
+        'A withering blast of dragonfire sears fierce cave worm for 163 damage!'
+      ],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 25, others: 187 });
+    expect(tracker.current.tally.dealt.proc.hits).toBe(0);
+  });
+
+  /*
+   * And the prompt the server repaints after every write does **not** break
+   * it. This is the shape every one of the 581 recorded procs actually has —
+   * `[HP=148/MA=20]:` sits between the blow and the spark on the wire — so a
+   * rule that broke on any intervening block at all would refuse the reported
+   * case itself.
+   */
+  it('is not broken by the status line the server repaints between them', () => {
+    const tracker = play(
+      [
+        ...WIELDING,
+        ...CAVE,
+        'You slash fierce cave worm for 25 damage!',
+        '',
+        '[HP=148/MA=20]:',
+        SPARK
+      ],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 28, others: 0 });
+  });
+
+  /*
+   * A proc is a blow *exchanged*, so it moves the fight's own counter — that
+   * field already counts what lands on this character, which is nothing this
+   * character swung. It stays outside `swings()`, which answers the other
+   * question. Asserted rather than left to fall out of sharing a code path.
+   */
+  it('counts as a blow exchanged, while staying outside the swings', () => {
+    const tracker = play(
+      [...WIELDING, ...CAVE, 'You slash fierce cave worm for 25 damage!', SPARK],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.blows).toBe(2);
+    expect(swings(tracker.current.tally)).toBe(1);
+  });
+
+  /*
+   * A named blow is that name's, whatever this character is wielding. The
+   * realm row says a proc is *possible*, never that a given line was one.
+   */
+  it('never takes a blow the sentence did name', () => {
+    const tracker = play(
+      [
+        ...WIELDING,
+        ...CAVE,
+        'You slash fierce cave worm for 25 damage!',
+        'Borin cleaves fierce cave worm for 5 damage!'
+      ],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 25, others: 5 });
+  });
+
+  /*
+   * **The realm says how many, as well as whether.** A round can carry several
+   * unattributed lines and only some of them are this character's; one
+   * proccing item is one of them, and the second belongs to whoever else is
+   * swinging. The alternative — taking every unattributed line in the window —
+   * is a hope rather than a limit, and the alternative to *that*, consuming
+   * the binding on the first, would only change which wrong answer comes out
+   * when a stranger's spell happens to land first.
+   */
+  it('takes no more procs off one blow than the realm says the kit can fire', () => {
+    const tracker = play(
+      [...WIELDING, ...CAVE, 'You slash fierce cave worm for 25 damage!', SPARK, SPARK],
+      realmWithWeapon(PROC_WEAPON)
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 28, others: 3 });
+    expect(tracker.current.tally.dealt.proc.hits).toBe(1);
+  });
+
+  /*
+   * And two of them where the realm says two: the pair is per *item*, so a
+   * character wielding a second proccing thing fires a second one off the same
+   * blow. The ceiling is read, never assumed to be one.
+   */
+  it('takes both where the kit carries two', () => {
+    const tracker = play(
+      [
+        '[HP=148/MA=20]:',
+        'You are carrying shimmering longsword (Weapon Hand), spark ring (Finger)',
+        'You have no keys.',
+        'Wealth: 0 copper farthings',
+        'Encumbrance: 500/3360 - None [14%]',
+        '[HP=148/MA=20]:',
+        ...CAVE,
+        'You slash fierce cave worm for 25 damage!',
+        SPARK,
+        SPARK
+      ],
+      realmWithWeapon(PROC_WEAPON, [
+        [114, 20],
+        [43, 170]
+      ])
+    );
+    expect(tracker.current.combat.health?.damage).toEqual({ mine: 31, others: 0 });
+    expect(tracker.current.tally.dealt.proc).toEqual({ hits: 2, damage: 6, least: 3, most: 3 });
   });
 });
 
@@ -6276,6 +6915,40 @@ describe('what the server has said is wrong with the character', () => {
     expect(tracker.current.afflictions.diseased).toBe('no');
   });
 
+  /*
+   * todo 02's second half: *"blind is also kind of a special case, if you get
+   * a room you know you can see, so likely blind can be removed."*
+   *
+   * The server does not describe a room to a blind character — a look, a peek
+   * and a move are all answered with `You are blind.` and no room, which is
+   * what `room-unseen` above reads. So a completed room block is the wire
+   * stating sight, and it is the backstop for every ending the client cannot
+   * read: a stop sentence no table holds, somebody else's cure, a condition
+   * that lapsed while the socket was down.
+   */
+  it('reads a room it could see as proof the blindness is over', () => {
+    const tracker = play([
+      '[HP=148/MA=24]:',
+      'You are blind!',
+      '[HP=148/MA=24]:',
+      'Crypt, Shadowed Hall',
+      'Obvious exits: north, east, west'
+    ]);
+    expect(tracker.current.afflictions.blind).toBe('no');
+  });
+
+  /* And a room says nothing about a condition nobody stated: `unknown` is not
+     moved, or the first room of every session would change the flag for every
+     character nobody has ever blinded. */
+  it('leaves an unstated blindness unknown', () => {
+    const tracker = play([
+      '[HP=148/MA=24]:',
+      'Crypt, Shadowed Hall',
+      'Obvious exits: north, east, west'
+    ]);
+    expect(tracker.current.afflictions.blind).toBe('unknown');
+  });
+
   it('forgets on leaving the realm', () => {
     const tracker = play(['[HP=34]:', 'You are blind.']);
     expect(tracker.current.afflictions.blind).toBe('yes');
@@ -6365,6 +7038,90 @@ describe('the duration spells confirmed on this character', () => {
       table
     );
     expect(down.current.buffs.map((buff) => buff.spell)).toEqual(['way of the tiger']);
+  });
+
+  /*
+   * todo 02, 2026-09-06: *"it doesnt detect blind wearing off ... in this case
+   * it is the mummys curse that causes blind and it wore off but it didnt
+   * remove blind."*
+   *
+   * The mummy's breath is spell 84 of `spell-messages.csv`: it **starts** with
+   * `You are blind!` and **stops** with a sentence naming the breath and not
+   * the condition. So the onset reached `afflictions.blind` through
+   * `user-blinded` and the ending reached the buff case, where nothing on
+   * `buffs` matched — and the flag stayed `yes` for the session, holding a
+   * seventeen-step route with *Blind; waiting here until you can see again.*
+   */
+  it("clears the condition a wear-off's own start turned on", () => {
+    const table = spellLoreOf(
+      SpellMessageBook.fromRows([
+        {
+          spell: 'breathes',
+          start: 'You are blind!',
+          stop: "The effects of the mummy's breath wears off!"
+        }
+      ]),
+      new SpellMessageBook()
+    );
+    const blind = play(
+      ['[HP=148/MA=24]:', 'The small mummy breathes on you!', 'You are blind!'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      table
+    );
+    expect(blind.current.afflictions.blind).toBe('yes');
+
+    const over = play(
+      [
+        '[HP=148/MA=24]:',
+        'The small mummy breathes on you!',
+        'You are blind!',
+        "The effects of the mummy's breath wears off!"
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      table
+    );
+    expect(over.current.afflictions.blind).toBe('no');
+  });
+
+  /*
+   * And it does not read every wear-off as a cure. An ordinary blessing's
+   * start is flavour text that turns nothing on, so the condition is left
+   * exactly where it was — which is the positive control for the case above:
+   * a reducer that cleared `blind` on any wear-off at all would pass that one
+   * perfectly.
+   */
+  it('leaves a condition alone when the wear-off starts nothing', () => {
+    const table = spellLoreOf(
+      SpellMessageBook.fromRows([
+        {
+          spell: 'protection from evil',
+          start: 'You feel safe from evil!',
+          stop: 'You no longer feel safe from evil!'
+        }
+      ]),
+      new SpellMessageBook()
+    );
+    const still = play(
+      [
+        '[HP=148/MA=24]:',
+        'You are blind!',
+        'You cast protection from evil, and Festus is surrounded in a white glow!',
+        'You no longer feel safe from evil!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      table
+    );
+    expect(still.current.afflictions.blind).toBe('yes');
+    expect(still.current.buffs).toEqual([]);
   });
 
   it('records who blessed this character, for the wear-off notification', () => {
@@ -8061,5 +8818,47 @@ describe('what a stranger was last seen fighting', () => {
       'Obvious exits: south'
     ]);
     expect(tracker.current.combat.claimed).toEqual({});
+  });
+});
+
+/*
+ * A command the realm threw away — todo 02, reported 2026-09-06.
+ *
+ * `ActionFigure.CheckConfusion` runs at the top of `Player.HandleCommand` and
+ * `return`s on a hit, so `You fumble in confusion!` means whatever was sent did
+ * not run: not a failed move, not a missed swing, not a fizzled cast. No room
+ * is coming for it, and the expectation it queued has to go with it — the same
+ * fact `command-not-understood` carries, in a sentence that names nothing.
+ */
+describe('a command confusion threw away', () => {
+  it('drops the move it queued, so the next room answers the right one', () => {
+    const tracker = play([
+      '[HP=134/MA=24]:',
+      'Rocky Trail',
+      'Obvious exits: north, east',
+      { send: 'e' }
+    ]);
+    expect(tracker.pendingMoves).toBe(1);
+
+    tracker.noteFumbled('e');
+    expect(tracker.pendingMoves).toBe(0);
+  });
+
+  /*
+   * Matched on the text, not consumed blindly: most commands queue nothing at
+   * all, and shifting for one of those would take the answer a real move is
+   * still waiting for.
+   */
+  it('leaves a move alone when the fumbled command was something else', () => {
+    const tracker = play(['[HP=134/MA=24]:', 'Rocky Trail', 'Obvious exits: east', { send: 'e' }]);
+    tracker.noteFumbled('st');
+    expect(tracker.pendingMoves).toBe(1);
+  });
+
+  /* A bare prompt names nothing, so nobody can say what was fumbled. */
+  it('consumes nothing when the status line echoed no command', () => {
+    const tracker = play(['[HP=134/MA=24]:', 'Rocky Trail', 'Obvious exits: east', { send: 'e' }]);
+    tracker.noteFumbled(null);
+    expect(tracker.pendingMoves).toBe(1);
   });
 });

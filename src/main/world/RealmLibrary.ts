@@ -55,11 +55,14 @@ export interface RealmLibraryOptions {
    * Where the client's own files are, so a shipped realm can name a database
    * **beside them** rather than a path on the machine that wrote it.
    *
-   * `resources/servers/gmud-5x/server.yaml` says `database:
-   * mdb/2023-09-02-gmud.zip`, and that file ships. An absolute path there would
-   * exist on exactly one computer, which is why `shipped.test.ts` refused one
-   * for as long as every shipped realm used the built-in world — and why the
-   * answer is a *relative* path rather than an exception to that rule.
+   * No realm ships with a `database:` today: the six that ship are Paradigm's
+   * and `resources/world/` is built from Paradigm's own database, so they walk
+   * the built-in world. `GMUD (5X)` did until 2026-09-05, naming
+   * `mdb/2023-09-02-gmud.zip` — and the rule that made it *relative* is why
+   * this option exists and why it stays. An absolute path in a shipped file
+   * would exist on exactly one computer, which is what `shipped.test.ts`
+   * refuses; a relative one resolves against wherever the client was actually
+   * installed.
    *
    * Optional: everything that constructs this without one — a test, a probe —
    * is naming absolute paths anyway, and a relative path with nowhere to

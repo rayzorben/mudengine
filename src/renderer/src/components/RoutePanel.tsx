@@ -10,6 +10,7 @@ import {
   describeBlock,
   DIRECTION_NAME,
   roomId,
+  trapsAlong,
   type Direction,
   type Route,
   type WorldRoom
@@ -90,6 +91,16 @@ export default function RoutePanel({
   const [target, setTarget] = useState<WorldRoom | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   /**
+   * Which step of the plan on screen the reader has picked out, if any.
+   *
+   * A route is planned to the room that was searched for, and the room somebody
+   * actually wants is often on the way to it — the bank two rooms before the
+   * guild, the corner where the corridor turns. The plan already lists every
+   * one of them, so picking one costs nothing to compute: the prefix of a
+   * route is a route.
+   */
+  const [picked, setPicked] = useState<number | null>(null);
+  /**
    * The realm around the destination, drawn from its own point of view.
    *
    * A route is 329 lines of direction and room name and answers *how to get
@@ -151,6 +162,20 @@ export default function RoutePanel({
       setThere(EMPTY_MAP);
     }
   }, [open]);
+
+  /*
+   * A pick belongs to the plan it was made on, so a new plan drops it.
+   *
+   * Keyed on the route *object*, which is replaced by every `setRoute` — the
+   * four places that plan one, and the close that nulls it. Clearing it at
+   * each of those instead would be wiring that has to be remembered at five
+   * sites, which is the shape this codebase has twice found missing at half of
+   * them; here the cost would be a `Walk here` button offering to walk to the
+   * thirtieth step of a route that is no longer on screen.
+   */
+  useEffect(() => {
+    setPicked(null);
+  }, [route]);
 
   /*
    * The destination's own neighbourhood, fetched when the destination changes.
@@ -432,6 +457,29 @@ export default function RoutePanel({
                         cost: route.cost
                       })}
                     </span>
+                    {/* The traps, counted at the head of the list where the
+                    reader is. Each trapped step wears its own chip below, and
+                    on a forty-step route that chip sits under the fold while
+                    the `Walk it` button does not — a route that hurts should
+                    say so beside the button that walks it. The worst damage is
+                    the number that decides; nothing is said about damage when
+                    no trap states one, because *up to 0* is a figure the data
+                    never gave. */}
+                    {(() => {
+                      const traps = trapsAlong(route.steps);
+                      if (traps.count === 0) return null;
+                      const count =
+                        traps.count === 1
+                          ? t('cards.route.traps.one')
+                          : t('cards.route.traps.many', { trapCount: traps.count });
+                      return (
+                        <span className="chip bad" data-traps={traps.count}>
+                          {traps.worst === null
+                            ? count
+                            : `${count} · ${t('cards.route.trapDamage', { damage: traps.worst })}`}
+                        </span>
+                      );
+                    })()}
                     {/* The one filled control in this panel, per §3.3: walking is
                     the action, everything else here is reading. */}
                     {/* Also the form's default action, so Enter walks it. */}
@@ -441,20 +489,69 @@ export default function RoutePanel({
                   </div>
                   <ol className="route-steps">
                     {route.steps.map((step, index) => (
-                      <li key={`${step.to}-${index}`}>
+                      <li
+                        data-picked={picked === index ? 'true' : 'false'}
+                        key={`${step.to}-${index}`}
+                      >
                         <span className="step-command">{step.command}</span>
-                        <span className="step-name" title={step.name}>
+                        {/*
+                          The room, and the way to stop short at it.
+
+                          `button.lookup` rather than a control of its own: a
+                          name in a row of text is text that happens to be
+                          clickable and takes the row's height, which is the
+                          rule that keeps this list from turning into a column
+                          of 32px controls holding 12px of text.
+
+                          Picking toggles, so the same click undoes it — there
+                          is no other way back from a pick, and a selection you
+                          cannot clear is a mode.
+                        */}
+                        <button
+                          aria-pressed={picked === index}
+                          className="lookup step-name"
+                          onClick={() => setPicked(picked === index ? null : index)}
+                          title={step.name}
+                          type="button"
+                        >
                           {step.name}
-                        </span>
+                        </button>
+                        {picked === index && (
+                          /*
+                            On the row rather than beside `Walk it`, because
+                            `.route-body` scrolls as one: on a forty-seven-step
+                            route the summary is off the top of the panel by
+                            the time somebody has clicked a room near the
+                            bottom, and a button they cannot see is a button
+                            that is not there. `type="button"` because the form
+                            already submits as `Walk it`, and the whole point of
+                            this one is that it walks somewhere else.
+                          */
+                          <button
+                            className="step-walk"
+                            onClick={() =>
+                              walk({ ...route, steps: route.steps.slice(0, index + 1) })
+                            }
+                            title={t('cards.route.walkHereTooltip', { roomName: step.name })}
+                            type="button"
+                          >
+                            {t('cards.route.walkHereButton')}
+                          </button>
+                        )}
                         {/* A gated step is shown, not hidden: the player decides
                         whether a door or a trap is acceptable — and decides it on
                         the *number*. The chip said `toll` for a phase, with the
                         price the gate charges sitting unread in the same object;
                         `obstacle.label` carries it, and the realm's own words are
                         still the tooltip. */}
+                        {/* A trap wears the danger chip and everything else
+                        the pending one: a door is opened and a toll is paid,
+                        and a trap is walked through and taken — the same
+                        split the map draws as a bar against a hazard
+                        triangle. The words carry it; the hue reinforces. */}
                         {step.requirement && (
                           <span
-                            className="chip warn"
+                            className={step.requirement.kind === 'trap' ? 'chip bad' : 'chip warn'}
                             title={step.obstacle?.detail ?? step.requirement.raw}
                           >
                             {step.obstacle?.label ?? step.requirement.kind}

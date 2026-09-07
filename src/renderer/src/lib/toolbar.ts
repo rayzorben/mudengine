@@ -33,6 +33,7 @@ export const TOOLBAR_ACTIONS = [
   'connect',
   'gear:restore',
   'loop:open',
+  'loop:build',
   'loop:toggle',
   'loop:stop',
   'walk:stop'
@@ -55,6 +56,13 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   retreat: 'run',
   hangUp: 'unplug',
   loot: 'coins',
+  /*
+   * The flame, which is what a blessing off an item looks like on screen: the
+   * weapon glows and the sentence lands. Shared with the light switch and
+   * deliberately -- both are *invoking an item*, and a second flame-ish glyph
+   * would be a distinction nobody could read at 14px.
+   */
+  invokeItems: 'flame',
   drop: 'trash',
   // The magnifier, which is what a search is: `search` is the Reference card's
   // own glyph for asking a question of something in front of you.
@@ -137,6 +145,8 @@ function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.supplies');
     case 'provideLight':
       return t('toolbar.provideLight');
+    case 'invokeItems':
+      return t('toolbar.invokeItems');
     default: {
       /* A switch in the union with no label is a button nobody can read. */
       const unreachable: never = name;
@@ -205,6 +215,12 @@ export interface ToolbarSubject {
    * client does with every control bound to nowhere.
    */
   openLoops: (() => void) | null;
+  /**
+   * Open the loop builder — the card a loop is drawn on. Null on a pinned
+   * float for `openLoops`' reason: the builder plans on the shown
+   * character's realm and files into its scope.
+   */
+  openBuilder: (() => void) | null;
 }
 
 /**
@@ -230,6 +246,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     stopLoop,
     stopWalk,
     openLoops,
+    openBuilder,
     canRestoreGear,
     restoreGear
   } = subject;
@@ -292,8 +309,27 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
           }
         ];
 
+  const builder: ToolbarButton[] =
+    openBuilder === null
+      ? []
+      : [
+          {
+            /*
+             * Where a loop is *drawn*, beside where one is found. Never
+             * disabled, for the shelf's reason: the map is there whether or
+             * not the character is looping.
+             */
+            id: 'loop:build',
+            label: t('toolbar.buildLoop'),
+            icon: 'flag',
+            on: false,
+            run: openBuilder
+          }
+        ];
+
   const transport: ToolbarButton[] = [
     ...shelf,
+    ...builder,
     {
       id: 'loop:toggle',
       /*

@@ -694,6 +694,60 @@ describe('lines that only make sense next to the command that caused them', () =
     expect(afterCommand('exp', 'exp')[0]?.type).toBe('command-echo');
   });
 
+  /*
+   * The reported bug, in the shape it was reported in.
+   *
+   * A player pasted a transcript into the console. Every line of it went out
+   * as a command, the server echoed every one back, and the classifier — whose
+   * echo check compared against a single `lastCommand` — recognised only the
+   * **last** of them. The rest were typed against the rule table as though the
+   * game had said them: the room blocks in the paste completed rooms, and the
+   * client learned an edge between two rooms the character had never walked
+   * between.
+   *
+   * The lines here are the paste from the report.
+   */
+  it('recognises every echo of a burst, not only the last', () => {
+    const classifier = new Classifier();
+    const pasted = [
+      '[HP=33/MA=22]:e',
+      'Sneaking...',
+      'Newhaven, Narrow Path',
+      'Obvious exits: north, south, east, west',
+      '[HP=33/MA=22]:e',
+      'Newhaven, Village Entrance',
+      'You notice newbie manual, large sign here.',
+      'Obvious exits: north, south, west, southeast'
+    ];
+    for (const command of pasted) classifier.observeCommand(command);
+
+    const types = pasted.map((text) => classifier.classify(line(text)).block.type);
+    expect(types).toEqual(pasted.map(() => 'command-echo'));
+  });
+
+  /*
+   * And the echo is consumed, so the *game* saying the same words afterwards
+   * is read as the game. Without the splice a queued command would sit there
+   * eating every later line that happened to read the same.
+   */
+  it('stops treating a line as an echo once its command has been answered', () => {
+    const classifier = new Classifier();
+    classifier.observeCommand('Newhaven, Narrow Path');
+    expect(classifier.classify(line('Newhaven, Narrow Path')).block.type).toBe('command-echo');
+    expect(classifier.classify(line('Newhaven, Narrow Path')).block.type).toBe('room-name');
+  });
+
+  /*
+   * An echo the server never sent back must not stall the ones behind it: the
+   * queue is searched and everything skipped is dropped with the match.
+   */
+  it('does not stall on an echo that never came back', () => {
+    const classifier = new Classifier();
+    classifier.observeCommand('swallowed');
+    classifier.observeCommand('exp');
+    expect(classifier.classify(line('exp')).block.type).toBe('command-echo');
+  });
+
   it('does not mistake an echoed command for a room name', () => {
     // `Rest` matches the room-name pattern and passes `looksLikeRoomName`, so
     // without the echo check the client believes it walked into a room by that
@@ -1384,6 +1438,15 @@ describe('the cheap eight', () => {
       expectType("The room is very dark - you can't see anything", 'room-light')['light']
     ).toBe('very dark');
     expectType('Your search revealed nothing.', 'user-search-failed');
+    /*
+     * Both shapes of the success. The corpus has exactly one successful search
+     * in it (`captures/005:187`) and it is the second: a bare adverb with no
+     * `to the` in front of it, which the first pattern could never match — so
+     * a walk searching for a hidden **down** exit had no way to learn it had
+     * found one.
+     */
+    expectType('You found an exit to the south!', 'user-search-succeeded');
+    expectType('You found an exit downwards!', 'user-search-succeeded');
     expectType('You may not go through this exit!', 'direction-failed');
   });
 
@@ -1413,6 +1476,26 @@ describe('the cheap eight', () => {
 
   it('reads the refusal that names what is not here', () => {
     expect(expectType("You don't see soul here.", 'target-missing')['target']).toBe('soul');
+  });
+
+  /*
+   * The command the server threw away before it looked at it — todo 02. 23
+   * lines across five captures, and the reported transcript. It is not a
+   * failed move: `ActionFigure.CheckConfusion` runs at the top of
+   * `Player.HandleCommand` and returns, so nothing that was sent ran.
+   */
+  it('reads a command confusion threw away', () => {
+    expectType('You fumble in confusion!', 'command-fumbled');
+  });
+
+  /*
+   * And only that spelling. The server takes the line from the spell's own
+   * `ConfuseMsg` ability, so the sentence is realm data and a frame cannot be
+   * generalised from a message table; what the corpus has is what is claimed.
+   */
+  it('claims no other wording for it', () => {
+    expectType('You fumble about in confusion!', 'unknown');
+    expectType('Rend fumbles in confusion!', 'unknown');
   });
 
   it('reads the server walking a follower after its leader, captured live', () => {

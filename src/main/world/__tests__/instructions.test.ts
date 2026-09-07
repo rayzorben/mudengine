@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseInstruction } from '../instructions';
+import { parseAction, parseInstruction } from '../instructions';
 
 /**
  * Every string here was taken from the realm database, not invented. The
@@ -159,5 +159,201 @@ describe('what a toll charges', () => {
 
   it('leaves the price absent when the realm states none', () => {
     expect(parseInstruction('Toll')?.tollCopper).toBeUndefined();
+  });
+});
+
+/*
+ * The levers — todo 01, format 23.
+ *
+ * The realm stores what a room *does* in the same ten columns it stores where
+ * it *leads*, and `parseExit` returns null for every one, so the converter had
+ * dropped all 299 of them in each database since it was written.
+ */
+describe('a lever in a direction column', () => {
+  /* 10/4's own `W` column, verbatim — the reported room. */
+  it('reads the exit it opens, and every phrase the realm accepts', () => {
+    expect(
+      parseAction('Action#1 [on the S exit of this room]: pull lever, move lever, pull lev')
+    ).toEqual({
+      direction: 's',
+      index: 1,
+      say: ['pull lever', 'move lever', 'pull lev']
+    });
+  });
+
+  /* 1/1339's `N` column: the lever is here and the exit is two rooms away. */
+  it('reads a lever whose exit is in another room', () => {
+    expect(
+      parseAction('Action [on the N exit of room 1/1331]: pull lever, push lever, move lever')
+    ).toEqual({
+      direction: 'n',
+      map: 1,
+      room: 1331,
+      say: ['pull lever', 'push lever', 'move lever']
+    });
+  });
+
+  /* A bare `Action` is the only one, so its order is not a fact the data states. */
+  it('leaves the index absent where the realm does not number it', () => {
+    expect(parseAction('Action [on the D exit of this room]: pull grate')?.index).toBeUndefined();
+  });
+
+  /*
+   * Three cells in each database name an exit and no phrase. A lever with no
+   * word to say is not a lever anybody can pull.
+   */
+  it('refuses a lever with no phrase behind it', () => {
+    expect(parseAction('Action [on the N exit of this room]:')).toBeNull();
+    expect(parseAction('Action [on the N exit of this room]:   ')).toBeNull();
+  });
+
+  /* Everything else in these columns is a destination or a blank. */
+  it('is null for anything that is not a lever', () => {
+    expect(parseAction('10/3 (Hidden/Needs 1 Actions, any order)')).toBeNull();
+    expect(parseAction('1/1375')).toBeNull();
+    expect(parseAction('0')).toBeNull();
+    expect(parseAction(null)).toBeNull();
+  });
+});
+
+/*
+ * The other half of the same fact: what the gated exit itself states. The
+ * phrases are not in this string — they are in whichever room holds the lever —
+ * so `buildRealm` makes the join and this only reads the count and the order.
+ */
+describe('a hidden exit that needs levers pulled', () => {
+  it('reads how many and whether the order matters', () => {
+    const any = parseInstruction('Hidden/Needs 1 Actions, any order');
+    expect(any?.kind).toBe('hidden');
+    expect(any?.searchable).toBe(false);
+    expect(any?.actionsNeeded).toBe(1);
+    expect(any?.actionsOrdered).toBe(false);
+
+    const ordered = parseInstruction('Hidden/Needs 4 Actions, specific order');
+    expect(ordered?.actionsNeeded).toBe(4);
+    expect(ordered?.actionsOrdered).toBe(true);
+  });
+
+  /* A searchable one needs no levers, and states none. */
+  it('leaves the count absent for a searchable exit', () => {
+    const found = parseInstruction('Hidden/Searchable');
+    expect(found?.searchable).toBe(true);
+    expect(found?.actionsNeeded).toBeUndefined();
+  });
+});
+
+/*
+ * The seven kinds todo 03 left classified and unread — todo 00, 2026-09-06.
+ *
+ * Each shape below is one the survey found in *both* realm databases on this
+ * machine, not one invented to exercise a regex: the counts are in
+ * `WorldGraph.test.ts`'s shipped-realm survey, and a realm that stops holding
+ * them fails there.
+ */
+describe('the conditions a character is born with or carries', () => {
+  it('reads a race gate exactly as it reads a class gate', () => {
+    const gate = parseInstruction('Race: 13 OK, 0 NO');
+    expect(gate?.kind).toBe('race');
+    expect(gate?.raceOk).toBe(13);
+    // Zero is the realm's empty slot in both columns. Kept, it would read as
+    // *race zero may pass* and shut the exit against everybody.
+    expect(gate?.raceNo).toBeUndefined();
+
+    const denied = parseInstruction('Race: 0 OK, 4 NO');
+    expect(denied?.raceOk).toBeUndefined();
+    expect(denied?.raceNo).toBe(4);
+  });
+
+  it('reads a standing window in the realm’s own spelling', () => {
+    const temple = parseInstruction('Alignment: Saint to Seedy');
+    expect(temple?.kind).toBe('alignment');
+    expect(temple?.minAlignment).toBe('Saint');
+    expect(temple?.maxAlignment).toBe('Seedy');
+
+    // `Fiend` here, `FIEND` on the roster — one word, two spellings, which is
+    // why nothing compares them as strings.
+    const pit = parseInstruction('Alignment: Neutral to Fiend');
+    expect(pit?.minAlignment).toBe('Neutral');
+    expect(pit?.maxAlignment).toBe('FIEND');
+  });
+
+  /*
+   * Half a window is not a window. A minimum with no maximum would read as
+   * *everybody above Saint*, which is the reassuring guess — so a word neither
+   * the realm nor the roster names leaves both ends absent and the gate stays
+   * unreadable, which the router discourages rather than opens.
+   */
+  it('leaves both ends absent when it cannot read one of them', () => {
+    const odd = parseInstruction('Alignment: Saint to Sinner');
+    expect(odd?.kind).toBe('alignment');
+    expect(odd?.minAlignment).toBeUndefined();
+    expect(odd?.maxAlignment).toBeUndefined();
+  });
+
+  it('reads an ability gate, and drops the realm’s empty slot', () => {
+    const rune = parseInstruction('Ability: 152 w/value 1 to 1');
+    expect(rune?.kind).toBe('ability');
+    expect(rune?.abilityId).toBe(152);
+    // The window is matched and not stored: nothing can price it without the
+    // character's ability sum, and the chip shows the instruction verbatim.
+    expect(rune?.raw).toContain('1 to 1');
+
+    // `Ability: 0` is an exit the server builds plain, so the id is dropped and
+    // the price reads the absence as *no gate at all*.
+    const none = parseInstruction('Ability: 0 w/value 0 to 0');
+    expect(none?.kind).toBe('ability');
+    expect(none?.abilityId).toBeUndefined();
+  });
+
+  it('reads both spells a cast exit fires, and neither of the zeroes', () => {
+    const scatter = parseInstruction('Cast: pre-0, post-1257');
+    expect(scatter?.kind).toBe('cast');
+    expect(scatter?.castPre).toBeUndefined();
+    expect(scatter?.castPost).toBe(1257);
+    // What the spell *does* is the realm's spell table's answer, not this
+    // string's — `WorldGraph.resolveSpells` makes that join at load.
+    expect(scatter?.spellEffect).toBeUndefined();
+
+    const before = parseInstruction('Cast: pre-681, post-0');
+    expect(before?.castPre).toBe(681);
+    expect(before?.castPost).toBeUndefined();
+
+    const neither = parseInstruction('Cast: pre-0, post-0');
+    expect(neither?.castPre).toBeUndefined();
+    expect(neither?.castPost).toBeUndefined();
+  });
+
+  it('reads the spell a trapped exit fires', () => {
+    const darts = parseInstruction('Spell Trap: 905');
+    expect(darts?.kind).toBe('spell');
+    expect(darts?.spellId).toBe(905);
+  });
+
+  it('reads an item gate into the same field a key gate uses', () => {
+    const rope = parseInstruction('Item: 191');
+    expect(rope?.kind).toBe('item');
+    // One fact — *this exit wants that item in the pack* — so one field, which
+    // is what makes the Room card's chip name the rope.
+    expect(rope?.keyId).toBe(191);
+
+    const ticket = parseInstruction('Ticket/Item: 924');
+    expect(ticket?.kind).toBe('item');
+    expect(ticket?.keyId).toBe(924);
+
+    const empty = parseInstruction('Item: 0');
+    expect(empty?.kind).toBe('item');
+    expect(empty?.keyId).toBeUndefined();
+  });
+
+  /*
+   * The one shape with a single sample and no clock behind it. Classified and
+   * kept verbatim, deliberately not decoded: one exit in the shipped realm
+   * writes it, the other database writes none at all, and inventing units from
+   * one sample is the guess the rest of this file exists to refuse.
+   */
+  it('classifies a timed exit and reads no numbers out of it', () => {
+    const timed = parseInstruction('Timed: 0*5 minutes');
+    expect(timed?.kind).toBe('timed');
+    expect(timed?.raw).toBe('Timed: 0*5 minutes');
   });
 });

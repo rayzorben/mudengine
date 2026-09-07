@@ -21,15 +21,20 @@ import { commandOf, GREATERMUD_ONLY } from './commands';
  * ## Two families are in play at once, legitimately
  *
  * The data says what exists; the server says how the arithmetic runs, and they
- * are **not required to agree**. The shipped configuration today is the proof:
- * `resources/world/` was built from a Paradigm database
- * (`mdb/2026-07-26-pmud.zip`)
- * and `DEFAULT_REALM_NAME` points a new character at a GreaterMUD server. So
- * this is two fields — `RealmFamilies.data` and `RealmFamilies.server` — and a
- * disagreement between them is reported rather than resolved. Picking a winner
- * would be exactly the confidently wrong answer the project refuses; the
+ * are **not required to agree**. The shipped configuration was the proof for
+ * two days: `resources/world/` is built from a Paradigm database
+ * (`mdb/2026-07-26-pmud.zip`) and `DEFAULT_REALM_NAME` pointed a new character
+ * at a GreaterMUD server, so a client straight out of the box disagreed with
+ * itself. That default went back to Paradigm on 2026-09-05 and the two halves
+ * now agree out of the box — which changes nothing here, because a player who
+ * names their own realm's database is one `database:` key away from the same
+ * split, and that is the ordinary case rather than the exotic one.
+ *
+ * So this is two fields — `RealmFamilies.data` and `RealmFamilies.server` — and
+ * a disagreement between them is reported rather than resolved. Picking a
+ * winner would be exactly the confidently wrong answer the project refuses; the
  * player is the only one who can say which half of their setup is the mistake,
- * and on the shipped configuration neither is.
+ * and there are setups where neither is.
  *
  * ## Where a family cannot be read, it is `null`
  *

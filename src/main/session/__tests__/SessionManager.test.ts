@@ -3428,6 +3428,67 @@ describe('a command this realm has no word for', () => {
   });
 
   /*
+   * A command confusion threw away — todo 02, reported 2026-09-06.
+   *
+   * `ActionFigure.CheckConfusion` discards whatever was sent at the top of
+   * `Player.HandleCommand`, so nothing ran. Two facts follow and both are
+   * driven from the echo, because the sentence names nothing: no room is
+   * coming, and the decision that produced the command still holds. In the
+   * report a loop's `e` was fumbled, nothing re-sent it, and the walk waited
+   * out its eight-second deadline and gave up.
+   */
+  it('sends an automated command again when the realm throws it away', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=134/MA=24]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    const written: string[] = [];
+    socket.on('data', (chunk: Buffer) => written.push(chunk.toString('utf8')));
+    manager.queue.enqueue({ command: 'e', priority: 'movement' });
+    await until(() => written.join('').includes('e'));
+
+    socket.write('[HP=134/MA=24]:e' + PROMPT_REPAINT);
+    socket.write('You fumble in confusion!\r\n');
+    await until(() => notices.includes(t('automation.queue.fumbledResend', { command: 'e' })));
+
+    /*
+     * And sent again once the server's own fumble delay has passed. The
+     * prompts are what release the acknowledgement credit the entry probe is
+     * holding, exactly as they do in a real session.
+     */
+    for (let tick = 0; tick < 8; tick += 1) {
+      socket.write('[HP=134/MA=24]:' + PROMPT_REPAINT);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    expect(written.filter((chunk) => chunk.trim() === 'e')).toHaveLength(2);
+  });
+
+  /*
+   * Not a person's own typing. The queue never sees it, and the echo is what
+   * says which of the two the fumbled command was.
+   */
+  it('does not replay an automated command when the player’s own was fumbled', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=134/MA=24]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    manager.queue.enqueue({ command: 'e', priority: 'movement' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    socket.write('[HP=134/MA=24]:bank' + PROMPT_REPAINT);
+    socket.write('You fumble in confusion!\r\n');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(notices.some((line) => line.includes('threw away'))).toBe(false);
+  });
+
+  /*
    * The lineage answers the question the first try would have answered, and
    * the first try is the broadcast. Once a tell has said MajorMUD, every
    * GreaterMUD-only command is refused without ever being sent.
@@ -3455,5 +3516,217 @@ describe('a command this realm has no word for', () => {
     // present on MajorMUD, carrying no coordinates rather than no answer.
     expect(manager.queue.enqueue({ command: 'st', priority: 'probe' })).toBe(true);
     expect(manager.queue.enqueue({ command: 'pro', priority: 'probe' })).toBe(true);
+  });
+});
+
+/*
+ * A corridor the server refuses is avoided for the session — and taken back the
+ * moment the server prints it.
+ *
+ * todo 04, reported with the room number in it: `Crypt, Stone Hallway` 1/1056
+ * leaves north through `Hidden/Needs 2 Actions`, the walk was refused, and the
+ * console said *the realm data promised an exit n that the realm refuses*. The
+ * exit is in the file with both its levers; what the server said was that the
+ * way is **shut**. Two things were wrong with writing that down: the sentence
+ * accused the data of the one thing it had right, and nothing ever took the
+ * entry out again — so a player who walked over and pulled the levers by hand
+ * found every route still avoiding the corridor until they reconnected.
+ */
+describe('a corridor the server refused', () => {
+  const shut = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-shut-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      { m: 1, r: 1, n: 'Stone Hallway', x: { n: { m: 1, r: 2, i: 'Hidden/Passable' } } },
+      { m: 1, r: 2, n: 'Beyond', x: { s: { m: 1, r: 1 } } }
+    ];
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: 2, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  it('says the way is shut rather than absent, and uses it again once the room lists it', async () => {
+    const world = shut();
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm: [],
+      rules: []
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,1\r\nStone Hallway\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 1);
+
+    const route = world.route('1/1', '1/2');
+    expect(route.steps).toHaveLength(1);
+    expect(manager!.walker.start(route, manager!.character)).toBeNull();
+
+    socket.write('There is no exit in that direction!\r\n');
+    /*
+     * **Shut, not invented.** The realm data records this exit as hidden, so
+     * the refusal is the data being right; the other sentence would accuse it
+     * of the one thing it got correct.
+     */
+    await until(() => notices.some((notice) => /shut rather than absent/.test(notice)));
+    expect(notices.some((notice) => /realm data promised/.test(notice))).toBe(false);
+
+    /*
+     * And now somebody pulls the levers by hand and the room lists the way.
+     * A fact the server printed outranks a guess this client made — the same
+     * source `Walker.mustSearchFirst` reads to decide a hidden exit has been
+     * found.
+     */
+    socket.write('Stone Hallway\r\nObvious exits: north, south\r\n');
+    // Canonical short, as every direction on screen is — it is what the realm
+    // database uses and what the refusal above named.
+    await until(() => notices.some((notice) => /The room lists n again/.test(notice)));
+  });
+});
+
+/*
+ * What this character costs to move, as the router prices it — todo 00,
+ * 2026-09-06.
+ *
+ * The whole of that todo is the router learning to read seven conditions, and
+ * every one of them is worthless if the facts never arrive: a price computed
+ * against `raceId: undefined` is the flat discouragement it replaced, and it
+ * would look identical in `WorldGraph`'s own tests, which hand the traveller
+ * in. `travellerNow` is the join, and until now nothing exercised it — the
+ * class join shipped with todo 03 untested at this level for the same reason.
+ *
+ * So this drives the four facts in over the wire, in the blocks the server
+ * actually prints them in, and asks the manager for the traveller.
+ */
+describe('what this character costs to move', () => {
+  /**
+   * One room, and the tables the joins read: the `Races` and `Classes` rows a
+   * stat sheet's words resolve against, and the two item rows a pack's names
+   * do.
+   */
+  const tabled = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-traveller-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({
+            v: 23,
+            source: 'test',
+            rooms: 1,
+            generatedAt: 'x',
+            races: [{ id: 13, n: 'Kang' }],
+            classes: [{ id: 3, n: 'Paladin' }],
+            items: [
+              { id: 191, n: 'rope and grapple' },
+              { id: 1124, n: 'bone key' }
+            ]
+          }),
+          JSON.stringify({ m: 1, r: 1, n: 'Only Room', x: {} })
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  it('joins the sheet, the roster and the pack to what the router prices', async () => {
+    const world = tabled();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: false,
+      onEnterRealm: [],
+      rules: []
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+
+    // The sheet, which names the class and the race in the realm's own words.
+    socket.write(
+      'Name: Festus Marcus                    Lives/CP:      9/1\r\n' +
+        'Race: Kang        Exp: 792666          Perception:     62\r\n' +
+        'Class: Paladin    Level: 10            Stealth:         0\r\n' +
+        'Hits:   148/148   Armour Class:  46/5  Thievery:        0\r\n' +
+        'Mana:     5/26    Spellcasting: 66     Traps:           0\r\n'
+    );
+    // The status line is what closes a block, exactly as it does on the wire.
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.race === 'Kang');
+
+    // The pack, and the keys, which the server prints as two listings.
+    socket.write(
+      'You are carrying rope and grapple, 6 torch.\r\n' +
+        'You have the following keys: bone key.\r\n' +
+        'Wealth: 47000 copper farthings\r\n' +
+        'Encumbrance: 1744/4128 - Medium [42%]\r\n'
+    );
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.inventory.keys.length === 1);
+
+    // The roster, which is the only place the character's own standing appears.
+    socket.write(
+      '         Current Adventurers\r\n' +
+        '         ===================\r\n' +
+        '\r\n' +
+        '    Good Festus Marcus         -  Squire \r\n'
+    );
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.online.length > 0);
+
+    const traveller = manager.travellerNow(manager.character);
+    expect(traveller.classId).toBe(3);
+    expect(traveller.raceId).toBe(13);
+    expect(traveller.alignment).toBe('Good');
+    // Both listings, and only the names this realm can place: `6 torch` is not
+    // in its item table and says nothing rather than guessing a row.
+    expect(traveller.keys?.slice().sort((a, b) => a - b)).toEqual([191, 1124]);
+    // And that the list is an answer rather than a silence, which is what lets
+    // the router treat a missing item as a wall.
+    expect(traveller.packKnown).toBe(true);
+    expect(manager.character.inventory.listedAt).not.toBeNull();
+  });
+
+  /*
+   * And the negative, which is the state every session starts in: nothing has
+   * been read, so every one of them is *nobody has said* — which the router
+   * discourages and never prunes.
+   */
+  it('says nothing about a character nothing has been read for', async () => {
+    const world = tabled();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: false,
+      onEnterRealm: [],
+      rules: []
+    });
+    const traveller = manager.travellerNow(manager.character);
+    expect(traveller.classId).toBeNull();
+    expect(traveller.raceId).toBeNull();
+    expect(traveller.alignment).toBeNull();
+    expect(traveller.keys).toEqual([]);
+    /*
+     * And the empty pack is a **silence**, not a claim. This is the state every
+     * session starts in, and it is the one an `items: []` alone cannot tell
+     * from a character genuinely carrying nothing — get it backwards and the
+     * 157 exits gated on a rope shut against everybody who has never typed `i`.
+     */
+    expect(traveller.packKnown).toBe(false);
   });
 });

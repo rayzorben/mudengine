@@ -231,3 +231,46 @@ describe('against the shipped realm data', () => {
     }
   );
 });
+
+describe('the ways out that leave the plane', () => {
+  it('carries up and down with where each lands', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Foot', x: { u: { m: 1, r: 2 }, d: { m: 1, r: 3 } } },
+      { m: 1, r: 2, n: 'Ledge', x: { d: { m: 1, r: 1 } } },
+      { m: 1, r: 3, n: 'Cellar', x: { u: { m: 1, r: 1 } } }
+    ]);
+    expect(at(localMap(graph, '1/1'), '1/1')?.away).toEqual([
+      { kind: 'up', to: '1/2', name: 'Ledge', command: 'u' },
+      { kind: 'down', to: '1/3', name: 'Cellar', command: 'd' }
+    ]);
+  });
+
+  it("sends the exit's own phrase where the direction does not work", () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Foot', x: { u: { m: 1, r: 2, i: 'Text: climb rope' } } },
+      { m: 1, r: 2, n: 'Ledge', x: {} }
+    ]);
+    expect(at(localMap(graph, '1/1'), '1/1')?.away?.[0]?.command).toBe('climb rope');
+  });
+
+  it('carries the door on the way up, so the control can say so', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Foot', x: { u: { m: 1, r: 2, i: 'Door' } } },
+      { m: 1, r: 2, n: 'Ledge', x: {} }
+    ]);
+    expect(at(localMap(graph, '1/1'), '1/1')?.away?.[0]?.obstacle?.kind).toBe('door');
+  });
+
+  it('leaves out a way to a room the realm does not have', () => {
+    const graph = makeWorld([{ m: 1, r: 1, n: 'Foot', x: { u: { m: 9, r: 9 } } }]);
+    expect(at(localMap(graph, '1/1'), '1/1')?.away).toBeUndefined();
+  });
+
+  it('carries nothing for an ordinary room', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'A', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'B', x: {} }
+    ]);
+    expect(at(localMap(graph, '1/1'), '1/1')?.away).toBeUndefined();
+  });
+});

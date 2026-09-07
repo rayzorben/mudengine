@@ -31,7 +31,15 @@ describe('a rail that has never been arranged', () => {
   it('shows everything except the opt-in cards', () => {
     const layout = normalizeLayout({});
     accountsForEveryCard(layout);
-    expect(layout.away).toEqual(['gang', 'inventory', 'banks', 'conversation', 'stats']);
+    expect(layout.away).toEqual([
+      'builder',
+      'gang',
+      'inventory',
+      'banks',
+      'quests',
+      'conversation',
+      'stats'
+    ]);
     expect(layout.floats).toEqual([]);
   });
 
@@ -389,6 +397,55 @@ describe('a card dragged to a height on the rail', () => {
 
   it('reads a layout written before heights existed as none dragged', () => {
     expect(normalizeLayout({ rail: ['room'] }).heights).toEqual({});
+  });
+});
+
+/*
+ * A card rolled up to its heading. Placement, not preference: it rides beside
+ * the dragged heights rather than in `CardSettings`, so it survives every move
+ * and goes back with the arrangement when `reset` is reached for.
+ */
+describe('a card rolled up to its heading', () => {
+  it('reads the cards a stored layout says are rolled', () => {
+    expect(normalizeLayout({ rolled: ['room', 'map'] }).rolled).toEqual(['room', 'map']);
+  });
+
+  it('drops a name this build no longer has, and holds a repeat once', () => {
+    const stored = ['room', 'ghost', 'room'] as unknown as CardId[];
+    // A duplicate would leave a copy behind when the card was rolled down,
+    // which reads as a toggle that did nothing.
+    expect(normalizeLayout({ rolled: stored }).rolled).toEqual(['room']);
+  });
+
+  it('reads a layout written before rolling existed as none rolled', () => {
+    expect(normalizeLayout({ rail: ['room'] }).rolled).toEqual([]);
+    expect(normalizeLayout({ rolled: 'room' as unknown as CardId[] }).rolled).toEqual([]);
+  });
+
+  /*
+   * The card is still accounted for exactly once. Rolling is not a placement of
+   * its own -- a rolled card is on the rail, in a strip or over the console
+   * like any other, and drawn shorter.
+   */
+  it('leaves the card wherever it actually is', () => {
+    const layout = normalizeLayout({ rail: ['room', 'map'], rolled: ['room'] });
+    accountsForEveryCard(layout);
+    expect(layout.rail.slice(0, 2)).toEqual(['room', 'map']);
+  });
+
+  it('survives the card being moved between lanes', () => {
+    const layout = normalizeLayout({ rail: ['room', 'map'], rolled: ['room'] });
+    expect(docked(layout, 'room', 'below', 0).rolled).toEqual(['room']);
+  });
+
+  /*
+   * `reset` is reached for by somebody untangling a rail they have dragged into
+   * a corner, and a rail rolled flat is that. The heights go the same way; what
+   * is *set* on each card stays, because throwing a theme away with the mess
+   * would make this a control nobody dares press.
+   */
+  it('comes back open when the arrangement is reset', () => {
+    expect(normalizeLayout({ settings: { room: { autoHide: true } } }).rolled).toEqual([]);
   });
 });
 

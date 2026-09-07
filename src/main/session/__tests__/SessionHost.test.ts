@@ -103,6 +103,7 @@ beforeEach(async () => {
     toAttached: (channel, message) => attachedSends.push({ channel, message }),
     // The tests observe the feed as if every window had asked for it.
     toDiagnostics: (channel, message) => attachedSends.push({ channel, message }),
+    toDebugging: (channel, message) => attachedSends.push({ channel, message }),
     toAll: (channel, payload) => {
       if (payload && typeof payload === 'object' && 'session' in payload) {
         allSends.push({ channel, message: payload as Addressed<unknown> });

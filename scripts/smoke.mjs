@@ -19,6 +19,9 @@ import zlib from 'node:zlib';
 import path from 'node:path';
 import { execSync, spawn, spawnSync } from 'node:child_process';
 
+/** This repository's own version, which is the one a bug report must name. */
+const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
 const IAC = 255,
   WILL = 251,
   DO = 253,
@@ -1498,6 +1501,57 @@ check(
   meters?.mana?.fill
 );
 
+/*
+ * And the figures inside the bar survive a larger interface font.
+ *
+ * The bar was a flat 18px with overflow: hidden, measured against the default
+ * chrome type -- and --font-ui-base is written at runtime from ui.font.size, so
+ * a player who asked for larger chrome had the ascenders and descenders of
+ * 334/334 sheared off flat by the bar's own box. It is a floor now rather than
+ * a value, so the box grows with the type past the point it stops fitting.
+ *
+ * Proved by moving the token rather than by restating the arithmetic the
+ * stylesheet already carries: the run's own font is well inside the floor, so a
+ * check at that size would pass whatever the rule said. The previous inline
+ * value is put back exactly -- App writes this token onto the same element from
+ * an effect that will not run again on its own, so removing it would leave the
+ * rest of the run drawing at the stylesheet default.
+ */
+const meterFit = await evaluate(`
+  (() => {
+    const root = document.documentElement;
+    const before = root.style.getPropertyValue('--font-ui-base');
+    const measure = () => {
+      const labels = [...document.querySelectorAll('.meter > .meter-label')];
+      if (labels.length === 0) return null;
+      // Forced layout is the point here, and this runs once.
+      return labels.every((el) => el.scrollHeight <= el.clientHeight + 1);
+    };
+    const small = measure();
+    root.style.setProperty('--font-ui-base', '22px');
+    const large = measure();
+    if (before === '') root.style.removeProperty('--font-ui-base');
+    else root.style.setProperty('--font-ui-base', before);
+    return { small, large, restored: root.style.getPropertyValue('--font-ui-base') === before };
+  })()
+`);
+// The positive control: no labels at all reports null, not "everything fits".
+check(
+  meterFit !== null && meterFit.small === true,
+  'the vital bars hold their own figures',
+  JSON.stringify(meterFit)
+);
+check(
+  meterFit !== null && meterFit.large === true,
+  'and still hold them when the interface font is turned up',
+  JSON.stringify(meterFit)
+);
+check(
+  meterFit !== null && meterFit.restored === true,
+  'and the font token is put back where it was',
+  JSON.stringify(meterFit)
+);
+
 // ------------------------------------------------------ assert: renderer side
 
 /*
@@ -1920,6 +1974,210 @@ check(
   JSON.stringify(mapCard)
 );
 
+/*
+ * And the picture is a window at the card's zoom, not a fit.
+ *
+ * Until 2026-09-05 the viewBox was padded around whatever neighbourhood was
+ * fetched, and the check here was on that padding. The map is looked at
+ * through a window now (MapView, shared with the loop builder): the viewBox
+ * has the picture's own aspect, so a pixel is a known number of map units --
+ * which is what lets the wheel keep the room under the pointer still -- and
+ * the room the character stands in sits at the window's centre until the eye
+ * is moved. Asserted as arithmetic, because where the character happens to be
+ * standing decides nothing about either. The ring's reach is the positive
+ * control: a ring with no radius, or a plan with no rooms, would centre
+ * perfectly.
+ */
+const mapFit = await evaluate(`
+  (() => {
+    const view = document.querySelector('.map-card .map-view');
+    const plan = document.querySelector('.map-card .map-plan');
+    if (view === null || plan === null) return null;
+    const box = view.getBoundingClientRect();
+    const v = (plan.getAttribute('viewBox') || '').split(/\\s+/).map(Number);
+    if (v.length !== 4 || v.some((n) => !Number.isFinite(n))) return null;
+    const [vx, vy, vw, vh] = v;
+    const here = plan.querySelector('.map-room[data-kind="here"] > .map-shape');
+    const ring = plan.querySelector('.map-you');
+    if (here === null || ring === null || box.height === 0) return null;
+    const b = here.getBBox();
+    const r = Number(ring.getAttribute('r'));
+    const stroke = Number.parseFloat(getComputedStyle(ring).strokeWidth) || 0;
+    const round = (n) => Math.round(n * 100) / 100;
+    return {
+      boxAspect: round(box.width / box.height),
+      viewAspect: round(vw / vh),
+      offCentre: round(
+        Math.hypot(b.x + b.width / 2 - (vx + vw / 2), b.y + b.height / 2 - (vy + vh / 2))
+      ),
+      reach: round(r + stroke / 2),
+      half: round(Math.min(vw, vh) / 2)
+    };
+  })()
+`);
+check(
+  mapFit !== null && mapFit.reach > 0 && mapFit.half > 0,
+  'the map states a viewBox and draws a ring with a radius in it',
+  JSON.stringify(mapFit)
+);
+check(
+  mapFit !== null && Math.abs(mapFit.boxAspect - mapFit.viewAspect) <= 0.02,
+  'and the viewBox has the picture’s own aspect, so a pixel is a known distance on the map',
+  JSON.stringify(mapFit)
+);
+check(
+  mapFit !== null && mapFit.offCentre < 0.5 && mapFit.half >= mapFit.reach,
+  'and the character’s room sits at the centre of the window with its ring inside it',
+  JSON.stringify(mapFit)
+);
+
+/*
+ * The wheel zooms about the pointer, and a drag on the background pans.
+ *
+ * Both driven with synthetic events on the real elements, and both graded on
+ * the effect rather than on the handler having run: after a notch in, the map
+ * point under the pointer is where it was and the window is a step narrower;
+ * after a drag, the window has moved by the hand's distance in map units and
+ * no further than the drawing extends. A notch out afterwards puts the zoom
+ * back, so the density this card remembers is the one the run started with.
+ */
+const mapWindow = () =>
+  evaluate(`
+    (() => {
+      const view = document.querySelector('.map-card .map-view');
+      const plan = document.querySelector('.map-card .map-plan');
+      if (view === null || plan === null) return null;
+      const box = view.getBoundingClientRect();
+      const v = (plan.getAttribute('viewBox') || '').split(/\\s+/).map(Number);
+      return { box: { left: box.left, top: box.top, width: box.width, height: box.height }, v };
+    })()
+  `);
+// A constructed event carries whole-pixel client coordinates, so the point
+// is rounded before it is sent and the same rounded point is what the check
+// reads the map through -- or the sub-pixel it lost reads as the map moving.
+const wheelOver = (fractionX, fractionY, deltaY) =>
+  evaluate(`
+    (() => {
+      const view = document.querySelector('.map-card .map-view');
+      if (view === null) return null;
+      const box = view.getBoundingClientRect();
+      const at = {
+        x: Math.round(box.left + box.width * ${fractionX}),
+        y: Math.round(box.top + box.height * ${fractionY})
+      };
+      const event = new WheelEvent('wheel', {
+        deltaY: ${deltaY},
+        clientX: at.x,
+        clientY: at.y,
+        bubbles: true,
+        cancelable: true
+      });
+      view.dispatchEvent(event);
+      // The listener refuses the default, or the rail would scroll with it.
+      return event.defaultPrevented ? at : null;
+    })()
+  `);
+{
+  const before = await mapWindow();
+  const at = await wheelOver(0.25, 0.25, -100);
+  check(at !== null, 'a wheel over the map is claimed by the map');
+  await sleep(250);
+  const after = await mapWindow();
+  // The map point under the event, read through the window it was sent to.
+  const under = (w) =>
+    w === null || at === null
+      ? null
+      : {
+          x: w.v[0] + ((at.x - w.box.left) / w.box.width) * w.v[2],
+          y: w.v[1] + ((at.y - w.box.top) / w.box.height) * w.v[3]
+        };
+  const stillness =
+    before !== null && after !== null && at !== null
+      ? Math.hypot(under(after).x - under(before).x, under(after).y - under(before).y)
+      : Infinity;
+  check(
+    before !== null && after !== null && after.v[2] < before.v[2] && after.v[3] < before.v[3],
+    'a notch rolled away from the reader zooms the map in',
+    JSON.stringify({ before: before?.v, after: after?.v })
+  );
+  check(
+    stillness < 0.05,
+    'about the pointer: the map point under it stays where it was',
+    JSON.stringify({ stillness, before: before?.v, after: after?.v })
+  );
+  check((await wheelOver(0.25, 0.25, 100)) !== null, 'and a notch rolled towards zooms back out');
+  await sleep(250);
+  const back = await mapWindow();
+  check(
+    before !== null && back !== null && Math.abs(back.v[2] - before.v[2]) < 0.05,
+    'to exactly the width it started at',
+    JSON.stringify({ before: before?.v, back: back?.v })
+  );
+}
+{
+  /*
+   * The drag, sideways towards the rooms: the eye can only be taken as far as
+   * the drawing goes, so the expected shift is the hand's distance in map
+   * units capped at the furthest room in that direction -- which is the
+   * extent, because every placed room is drawn. The press is sent to the
+   * SVG itself, which is the background between rooms: the rail may have
+   * scrolled the card off screen by now, and a point looked up on screen
+   * would find nothing there.
+   */
+  const plan = await evaluate(`
+    (() => {
+      const view = document.querySelector('.map-card .map-view');
+      const svg = document.querySelector('.map-card .map-plan');
+      if (view === null || svg === null) return null;
+      const box = view.getBoundingClientRect();
+      const v = (svg.getAttribute('viewBox') || '').split(/\\s+/).map(Number);
+      const here = svg.querySelector('.map-room[data-kind="here"] > .map-shape');
+      if (here === null) return null;
+      const hb = here.getBBox();
+      const hx = hb.x + hb.width / 2;
+      let farthest = 0;
+      for (const shape of svg.querySelectorAll('.map-room > .map-shape')) {
+        const b = shape.getBBox();
+        const dx = b.x + b.width / 2 - hx;
+        if (Math.abs(dx) > Math.abs(farthest)) farthest = dx;
+      }
+      return { v, width: box.width, farthest, press: { x: box.left + 3, y: box.top + 3 } };
+    })()
+  `);
+  check(
+    plan !== null && plan.farthest !== 0,
+    'the picture has a room to pan towards',
+    JSON.stringify(plan)
+  );
+  if (plan !== null && plan.farthest !== 0) {
+    // The hand moves against the eye: to look east, drag west.
+    const hand = plan.farthest > 0 ? -15 : 15;
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.map-card .map-plan');
+        const at = (x, y) => ({
+          pointerId: 7, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1,
+          clientX: x, clientY: y, bubbles: true, cancelable: true
+        });
+        el.dispatchEvent(new PointerEvent('pointerdown', at(${plan.press.x}, ${plan.press.y})));
+        el.dispatchEvent(new PointerEvent('pointermove', at(${plan.press.x + hand}, ${plan.press.y})));
+        el.dispatchEvent(new PointerEvent('pointerup', at(${plan.press.x + hand}, ${plan.press.y})));
+        return true;
+      })()
+    `);
+    await sleep(250);
+    const after = await mapWindow();
+    const unitsPerPixel = plan.v[2] / plan.width;
+    const wanted = Math.sign(plan.farthest) * Math.min(Math.abs(plan.farthest), 15 * unitsPerPixel);
+    const moved = after === null ? null : after.v[0] - plan.v[0];
+    check(
+      moved !== null && Math.abs(moved - wanted) < 0.05 && after.v[1] === plan.v[1],
+      'a drag on the background pans the window by the hand’s distance, and no further than the rooms go',
+      JSON.stringify({ moved, wanted, farthest: plan.farthest })
+    );
+  }
+}
+
 // ------------------------------------------------- assert: the tab says who it is
 //
 // A profile's display name is a filename until the realm says who the character
@@ -2138,6 +2396,73 @@ check(
   );
   await capture('smoke-route-map.png', 'the destination’s neighbourhood in the route panel');
 
+
+  /*
+   * Stopping short at a room on the way.
+   *
+   * The room somebody wants is often *on* the route rather than at the end of
+   * it, and the plan already lists every one — so a step's name is a control
+   * and picking one offers `Walk here`, which walks the prefix.
+   *
+   * Asserted on the geometry as well as on the button existing, because the
+   * failure this guards is a layout one: the button appears inside a row of a
+   * scrolling list, and a row that changed height when it was picked would
+   * move every row under it out from under the hand reaching for the button.
+   * `Walk here` is deliberately never clicked here — walking would take the
+   * character somewhere the checks after this one do not expect.
+   */
+  /*
+   * The height is measured *before* the click and read back after, and the
+   * click and the reading are two `evaluate`s with a wait between them:
+   * React renders on a later task, so a DOM read in the same synchronous block
+   * as the click reports the state before it — which is a check that fails for
+   * a reason that has nothing to do with what it is testing.
+   */
+  const heightBefore = await evaluate(`
+    (() => {
+      const row = document.querySelector('.route-steps li');
+      return row ? String(row.getBoundingClientRect().height) : 'none';
+    })()
+  `);
+  const clicked = await evaluate(`
+    (() => {
+      const name = document.querySelector('.route-steps li button.step-name');
+      if (!name) return 'the step name is not a control';
+      name.click();
+      return 'clicked';
+    })()
+  `);
+  check(clicked === 'clicked', 'a step’s room name is a control', clicked);
+  await sleep(300);
+  const pickStep = await evaluate(`
+    (() => {
+      const row = document.querySelector('.route-steps li');
+      if (!row) return JSON.stringify({ error: 'no steps' });
+      const name = row.querySelector('button.step-name');
+      return JSON.stringify({
+        picked: row.getAttribute('data-picked'),
+        walkHere: !!row.querySelector('.step-walk'),
+        pressed: name ? name.getAttribute('aria-pressed') : null,
+        height: row.getBoundingClientRect().height,
+        others: document.querySelectorAll('.route-steps li[data-picked="true"]').length
+      });
+    })()
+  `);
+  const picked = JSON.parse(pickStep);
+  picked.grew = Math.round(picked.height - Number(heightBefore));
+  check(picked.picked === 'true' && picked.walkHere, 'clicking a step offers Walk here', pickStep);
+  check(picked.pressed === 'true', 'and the step says it is the one picked', pickStep);
+  check(picked.others === 1, 'and it is the only one picked', pickStep);
+  check(picked.grew === 0, 'and the row does not change height when it is picked', pickStep);
+
+  // Toggling off, because a selection nothing can clear is a mode.
+  await evaluate(`document.querySelector('.route-steps li button.step-name').click()`);
+  await sleep(300);
+  const unpick = await evaluate(
+    `document.querySelectorAll('.route-steps li[data-picked="true"]').length`
+  );
+  check(Number(unpick) === 0, 'and clicking it again puts it back', unpick);
+
   /*
    * The one that was broken. Before the fix the panel simply sat there: the
    * list was empty so the navigation hook ignored Enter, and the form had
@@ -2279,6 +2604,26 @@ check(
     socket.write(
       Buffer.from('\x1b[0;36m*Combat Off*\x1b[0m\r\n\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n', 'latin1')
     );
+    /*
+     * **And the room empties**, which the fight ending does not say on its own.
+     *
+     * A lap fights whatever the auto-combat switch says (todo 03,
+     * 2026-09-06): the loop is chosen for what lives on it. This room still
+     * lists the orc rogue the opening volley put in it, so the lap's first act
+     * became `a orc rogue` rather than a step — correct, and not what the
+     * check below is about. A listing is authoritative and replaces what is
+     * there, so the same room reprinted with no `Also here:` line is the
+     * server saying the fight's monsters are gone, which is the state the
+     * fixture was implicitly assuming all along.
+     */
+    socket.write(
+      Buffer.from(
+        '\x1b[1;36mNewhaven, Village Entrance\x1b[0m\r\n' +
+          '\x1b[0;32mObvious exits: \x1b[1;33mnorth\x1b[0;32m, \x1b[1;33msouth\x1b[0m\r\n' +
+          '\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n',
+        'latin1'
+      )
+    );
   }
   await sleep(700);
 
@@ -2369,6 +2714,285 @@ check(
     })()
   `);
   check(routeFace === 'ok', 'the Route face is still reachable by its crumb', String(routeFace));
+
+  /*
+   * ------------------------------------------------- assert: the quest book
+   *
+   * The realm has no Quests table; this book is assembled from the scripts its
+   * NPCs run (`indexQuests.ts`), so the thing worth proving end to end is that
+   * the derivation survives the conversion, the IPC and the card — a book that
+   * is empty here is a chain that broke somewhere along it.
+   *
+   * Brought out of the palette, which is also the check that a put-away card
+   * is reachable at all: a card nobody can find does not exist.
+   */
+  await evaluate(`document.querySelector('.route-panel .route-search button')?.click()`);
+  await sleep(250);
+  await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
+  await sleep(250);
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.palette input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, 'Quest Book');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await sleep(300);
+  const openedQuests = await evaluate(`
+    (() => {
+      const row = [...document.querySelectorAll('.palette li')]
+        .find((li) => /Quest Book/.test(li.innerText));
+      if (!row) return 'no palette entry';
+      // The row itself, as every other palette check here does. A row carries
+      // its own pin control, so a querySelector for a button finds THAT --
+      // which pins the command and never runs it, and the check then passes
+      // while nothing has happened. No backticks in here: this is inside a
+      // template literal and one would end it.
+      row.click();
+      return 'clicked';
+    })()
+  `);
+  check(openedQuests === 'clicked', 'the Quest Book is reachable from the palette', openedQuests);
+  await sleep(500);
+
+  const book = JSON.parse(
+    await evaluate(`
+      (() => {
+        const card = document.querySelector('.quest-card');
+        if (!card) return JSON.stringify({ error: 'no card' });
+        const rows = [...card.querySelectorAll('.quest-table tbody tr')];
+        return JSON.stringify({
+          rows: rows.length,
+          first: rows[0]?.innerText.replace(/\\s+/g, ' ').trim() ?? '',
+          facets: [...card.querySelectorAll('.table-facets .chip')].map((c) => c.innerText.trim())
+        });
+      })()
+    `)
+  );
+  check(book.rows > 0, 'the realm’s quests are assembled and listed', JSON.stringify(book));
+  check(
+    Array.isArray(book.facets) && book.facets.length > 0,
+    'and they can be cut by who each is for',
+    JSON.stringify(book.facets)
+  );
+
+  /*
+   * Hiding is the whole of what this card lets a player record, because the
+   * counters are server-side and no command prints one — so it is the one
+   * behaviour worth driving rather than reading.
+   */
+  const hidQuest = await evaluate(`
+    (() => {
+      const before = document.querySelectorAll('.quest-table tbody tr').length;
+      const hide = document.querySelector('.quest-table tbody tr .row-action');
+      if (!hide) return JSON.stringify({ error: 'no hide control' });
+      hide.click();
+      return JSON.stringify({ before });
+    })()
+  `);
+  await sleep(300);
+  const afterHide = await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`);
+  check(
+    Number(afterHide) === JSON.parse(hidQuest).before - 1,
+    'hiding a quest takes it out of the book',
+    `${hidQuest} -> ${afterHide}`
+  );
+
+  /*
+   * And it can be brought back, or hiding would be a one-way door. Keyed on
+   * the action's own id rather than on an English label, which is what the
+   * rest of this file does and what keeps a reworded button from failing a
+   * check about behaviour.
+   */
+  await evaluate(
+    `document.querySelector('.quest-card [data-action="show-hidden"]')?.click() ?? null`
+  );
+  await sleep(300);
+  const restored = await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`);
+  check(
+    Number(restored) === JSON.parse(hidQuest).before,
+    'and the hidden ones can be brought back',
+    `${restored} of ${JSON.parse(hidQuest).before}`
+  );
+  /*
+   * ------------------------------------- assert: the track under the table
+   *
+   * A quest is a counter and its steps advance it, so opening one draws a
+   * track: a node per step down a connecting line. Driven rather than read,
+   * because the two things worth proving about it are both behaviours.
+   */
+  const openedQuest = JSON.parse(
+    await evaluate(`
+      (() => {
+        const name = document.querySelector('.quest-table tbody tr .lookup');
+        if (!name) return JSON.stringify({ error: 'no quest to open' });
+        const label = name.innerText.trim();
+        name.click();
+        return JSON.stringify({ label });
+      })()
+    `)
+  );
+  await sleep(300);
+  const track = JSON.parse(
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.quest-card .quest-track');
+        if (!el) return JSON.stringify({ error: 'no track' });
+        return JSON.stringify({
+          heading: el.querySelector('h4')?.innerText.trim() ?? '',
+          steps: el.querySelectorAll('.quest-step').length,
+          nodes: el.querySelectorAll('.quest-node').length,
+          done: el.querySelectorAll('.quest-step[data-state="done"]').length,
+          next: el.querySelectorAll('.quest-step[data-state="next"]').length,
+          marked: document.querySelectorAll('.quest-table tbody tr[data-open="true"]').length
+        });
+      })()
+    `)
+  );
+  check(
+    track.steps > 0 && track.nodes === track.steps,
+    'a quest opens into a track with a node on every step',
+    JSON.stringify(track)
+  );
+  /*
+   * Case-folded, because `innerText` reports what is **rendered** and the
+   * heading is `text-transform: uppercase`. Comparing it raw failed the gate
+   * on `SMASH` vs `Smash` — a check about which quest the track belongs to,
+   * failing on a CSS property that has nothing to do with the question.
+   */
+  check(
+    track.heading.toLowerCase() === openedQuest.label.toLowerCase() && track.marked === 1,
+    'and the track names the quest, whose row is marked',
+    JSON.stringify({ ...track, asked: openedQuest.label })
+  );
+  /*
+   * The counters are server-side and no command prints one, so nothing here is
+   * ever inferred: until the player says otherwise every step is outstanding
+   * and exactly one is next. A book that opened with steps already greyed
+   * would be the client guessing in the reassuring direction.
+   */
+  check(
+    track.done === 0 && track.next === 1,
+    'and nothing is done until the player says it is',
+    JSON.stringify(track)
+  );
+
+  await evaluate(`document.querySelector('.quest-card .quest-node')?.click() ?? null`);
+  await sleep(250);
+  const marked = JSON.parse(
+    await evaluate(`
+      (() => JSON.stringify({
+        done: document.querySelectorAll('.quest-card .quest-step[data-state="done"]').length,
+        clear: !!document.querySelector('.quest-card .quest-track-head button')
+      }))()
+    `)
+  );
+  check(
+    marked.done >= 1 && marked.clear,
+    'marking a step greys it, and says how to take it back',
+    JSON.stringify(marked)
+  );
+  await evaluate(`document.querySelector('.quest-card .quest-track-head button')?.click() ?? null`);
+  await sleep(250);
+  check(
+    Number(
+      await evaluate(
+        `document.querySelectorAll('.quest-card .quest-step[data-state="done"]').length`
+      )
+    ) === 0,
+    'and taking it back puts every step back',
+    'cleared'
+  );
+
+  /*
+   * The track is a detail *of a row*, and a filter that hides the row has to
+   * close it. It did not: opening a quest and then muting the facet it is in
+   * left its steps on screen under a table that no longer listed it -- a panel
+   * with nothing visible to say where it came from. The find field is the same
+   * code path and one gesture, so it is what drives it here.
+   *
+   * The positive control is above: the checks that the track was there at all
+   * with a node on every step. Without them "no track" passes just as well for
+   * a track that never rendered.
+   */
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.quest-card .table-find input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, 'zzzz-no-such-quest');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await sleep(300);
+  const orphaned = JSON.parse(
+    await evaluate(`
+      (() => JSON.stringify({
+        rows: document.querySelectorAll('.quest-table tbody tr').length,
+        track: !!document.querySelector('.quest-card .quest-track')
+      }))()
+    `)
+  );
+  check(
+    orphaned.rows === 0 && !orphaned.track,
+    'filtering the opened quest away closes its track',
+    JSON.stringify(orphaned)
+  );
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.quest-card .table-find input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await sleep(300);
+  check(
+    Number(await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`)) ===
+      JSON.parse(hidQuest).before,
+    'and clearing the filter brings the book back',
+    'restored'
+  );
+
+  // Opened again, so the picture below shows the track and not just the table.
+  await evaluate(`document.querySelector('.quest-table tbody tr .lookup')?.click() ?? null`);
+  await sleep(300);
+
+  /*
+   * Into view before the picture. The rail scrolls, and a card brought out at
+   * the foot of it is in the DOM and off the bottom of the screenshot -- which
+   * is a picture that proves nothing while every assertion above it passes.
+   */
+  await evaluate(`
+    (() => {
+      const card = document.querySelector('.quest-card');
+      if (card) card.scrollIntoView({ block: 'center' });
+      return !!card;
+    })()
+  `);
+  await sleep(300);
+  await capture('smoke-quests.png', 'the realm’s quest book');
+
+  /*
+   * And put it back where it was found.
+   *
+   * This card ships put away, and a check that leaves it on the rail changes
+   * what every check after it is looking at -- which is exactly what happened
+   * the first time this ran: the reference panel's own assertion and the card
+   * drag below it both failed, for a card neither of them had heard of.
+   */
+  await evaluate(`document.querySelector('.quest-card [data-action="close"]')?.click() ?? null`);
+  await sleep(300);
+  check(
+    !(await evaluate(`!!document.querySelector('.quest-card')`)),
+    'and the book goes back where it was found'
+  );
   await sleep(200);
   const card = await evaluate(
     `document.querySelector('.navigation-card')?.innerText.replace(/\\s+/g, ' ') ?? ''`
@@ -3822,6 +4446,96 @@ check(
     'and its regeneration and experience value',
     rat.slice(0, 220)
   );
+
+  /*
+   * And **where to find one**, which is the same join as the shop's, made from
+   * the monster's side and driven end to end for the same reason: it is built
+   * in main, crosses on the lookup, and only pays off if the click opens the
+   * route panel.
+   *
+   * `wounded messenger` is the reported case — `Rooms.NPC` on 1/527, Temple
+   * Healer, the row MMUD Explorer prints under *Spawns via* — and the realm
+   * places it in exactly one room, which is what makes the name a control
+   * rather than a disclosure.
+   */
+  {
+    const messenger = await detail('wounded messenger');
+    check(
+      /Lives in/.test(messenger) && /Temple Healer/.test(messenger),
+      'a monster names the room the realm puts it in',
+      messenger.slice(0, 260)
+    );
+
+    const opened = await evaluate(`
+      (() => {
+        const labels = [...document.querySelectorAll('.reference-card .reference-detail dt')];
+        const label = labels.find((dt) => /Lives in/.test(dt.innerText));
+        const button = label && label.nextElementSibling &&
+          label.nextElementSibling.querySelector('button.lookup');
+        if (!button) return false;
+        button.click();
+        return true;
+      })()
+    `);
+    check(opened, 'and the room is a control, not a word');
+    await sleep(600);
+    const panel = await evaluate(`document.querySelector('.route-panel')?.innerText ?? ''`);
+    check(
+      /Temple Healer/.test(panel),
+      'and pressing it opens the routing dialog on that room, where the walk is chosen',
+      panel.slice(0, 200)
+    );
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await sleep(300);
+  }
+
+  /*
+   * A monster the realm scatters is a **choice**, never a button that walks to
+   * whichever of 168 rooms the file listed first. The name opens into the
+   * addresses under it, and a positive control counts them: a group that failed
+   * to open would satisfy "no button that guesses" perfectly.
+   */
+  {
+    const scattered = await detail('giant rat');
+    check(
+      /Spawns in/.test(scattered),
+      'a monster the realm scatters names the places it spawns in',
+      scattered.slice(0, 260)
+    );
+    const before = await evaluate(
+      `document.querySelectorAll('.reference-card .spawn-rooms button.lookup').length`
+    );
+    check(before === 0, 'with its rooms folded away until asked for', String(before));
+    const opened = await evaluate(`
+      (() => {
+        const labels = [...document.querySelectorAll('.reference-card .reference-detail dt')];
+        const label = labels.find((dt) => /Spawns in/.test(dt.innerText));
+        const button = label && label.nextElementSibling &&
+          label.nextElementSibling.querySelector('button.lookup[aria-expanded]');
+        if (!button) return false;
+        button.click();
+        return true;
+      })()
+    `);
+    check(opened, 'and a group of several rooms opens rather than walking to one of them');
+    await sleep(250);
+    const after = await evaluate(
+      `document.querySelectorAll('.reference-card .spawn-rooms button.lookup').length`
+    );
+    check(after > 0, 'and each room under it is its own control', String(after));
+  }
+
   await capture('smoke-reference-detail.png', 'the realm’s whole answer about a monster');
 
   // Put it away again: a check that leaves a card on the rail changes what
@@ -3952,9 +4666,10 @@ check(
     `);
     check(opened, 'a carried item is a name that can be clicked');
     await sleep(400);
-    const detail = await evaluate(
-      `document.querySelector('.reference-popover .reference-detail')?.innerText ?? ''`
-    );
+    // The whole panel, not only its detail: the name and the realm's word for
+    // what kind of thing it is are the panel's *heading* now, beside the pin
+    // and the close glyph, so the detail alone no longer says `weapon`.
+    const detail = await evaluate(`document.querySelector('.reference-popover')?.innerText ?? ''`);
     check(
       detail.length > 0,
       'and clicking it opens the answer beside the name',
@@ -3964,6 +4679,10 @@ check(
       /damage/i.test(detail) && /weapon/i.test(detail),
       'which leads with what a weapon is: its damage',
       detail.slice(0, 120)
+    );
+    check(
+      await evaluate(`!!document.querySelector('.reference-popover .reference-detail')`),
+      'drawn by the same component the Reference card uses'
     );
     check(
       !(await evaluate(`!!document.querySelector('.reference-card')`)) ||
@@ -4092,6 +4811,257 @@ check(
       'and scrolling that does put the answer away, because the name moved'
     );
     await evaluate(`(window.removeEventListener('scroll', window.__countScroll, true), true)`);
+  }
+
+  /*
+   * The panel is a thing you can arrange: as wide as the room beside the name,
+   * moved, pinned, and resized.
+   *
+   * Every one of these is geometry, so nothing but geometry can check it — and
+   * three of the four are gestures, so they are driven with real pointer events
+   * for the reason the card drag already is: the whole risk in a gesture is the
+   * hit-testing, and a check that calls the handler skips the only part that can
+   * be wrong.
+   */
+  {
+    /**
+     * The smallest a panel may be dragged to, as `internal.yaml` ships it.
+     *
+     * From the template the smoke home copies, never restated: that file is a
+     * scratchpad somebody edits to experiment, and a number written into this
+     * harness would make an experiment somewhere else fail here.
+     */
+    const template = fs.readFileSync('resources/config/internal.yaml', 'utf8');
+    const templateNumber = (key) =>
+      Number(new RegExp(`^\\s*${key}:\\s*(\\d+)`, 'm').exec(template)?.[1]);
+    const FLOOR = {
+      width: templateNumber('popoverWidthMin'),
+      height: templateNumber('popoverMinHeight')
+    };
+    const openPanel = async () => {
+      const opened = await evaluate(`
+      (() => {
+        const row = [...document.querySelectorAll('.carried tbody tr')].find(
+          (li) => li.querySelector('.what')?.innerText.trim() === 'quarterstaff'
+        );
+        const name = row?.querySelector('button.lookup');
+        if (!name) return false;
+        name.click();
+        return true;
+      })()
+    `);
+      await sleep(400);
+      return opened && (await evaluate(`!!document.querySelector('.reference-popover')`));
+    };
+    const panelBox = async () =>
+      JSON.parse(
+        await evaluate(`
+        (() => {
+          const el = document.querySelector('.reference-popover');
+          if (!el) return 'null';
+          const b = el.getBoundingClientRect();
+          return JSON.stringify({
+            top: Math.round(b.top), left: Math.round(b.left),
+            width: Math.round(b.width), height: Math.round(b.height),
+            pinned: el.dataset.pinned === 'true'
+          });
+        })()
+      `)
+      );
+    const gripBox = async (selector) =>
+      JSON.parse(
+        await evaluate(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return 'null';
+          const b = el.getBoundingClientRect();
+          return JSON.stringify({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
+        })()
+      `)
+      );
+    const dragBy = async (from, dx, dy) => {
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: from.x,
+        y: from.y,
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+        pointerType: 'mouse'
+      });
+      // Two moves, so the gesture is a drag rather than a jump: a single event
+      // would pass even if the handler only ever read the last position.
+      for (const step of [0.5, 1]) {
+        await cdp('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: from.x + dx * step,
+          y: from.y + dy * step,
+          button: 'left',
+          buttons: 1,
+          pointerType: 'mouse'
+        });
+        await sleep(60);
+      }
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: from.x + dx,
+        y: from.y + dy,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+        pointerType: 'mouse'
+      });
+      await sleep(200);
+    };
+
+    check(await openPanel(), 'the answer opens again, to be arranged');
+    const first = await panelBox();
+    /*
+     * Wider than the 300px it was fixed at, and never wider than the ceiling in
+     * `internal.yaml`. The floor is the check that matters: a panel this narrow
+     * turned a monster's sentence into a column one word wide and twenty lines
+     * tall, and then scrolled the answer below its own fold.
+     */
+    check(
+      first !== null && first.width > 300 && first.width <= 560,
+      'and is drawn as wide as the room beside the name allows',
+      JSON.stringify(first)
+    );
+
+    /*
+     * Moved: take it by the grip in its heading and it follows the pointer.
+     *
+     * Dragged to a *place* rather than by an offset, and that place is the top
+     * left of the window — so the move cannot be clamped by an edge, which
+     * would otherwise make this pass or fail on wherever the pack happened to
+     * put the panel; and the resize below then starts from a corner with the
+     * whole window in front of it.
+     */
+    const TARGET = { top: 70, left: 70 };
+    const grip = await gripBox('.reference-popover .popover-grip');
+    check(grip !== null, 'the panel wears a grip in its heading', JSON.stringify(grip));
+    if (grip !== null && first !== null) {
+      await dragBy(grip, TARGET.left - first.left, TARGET.top - first.top);
+      const moved = await panelBox();
+      check(
+        moved !== null && Math.abs(moved.left - TARGET.left) <= 4,
+        'dragging that grip moves the panel',
+        JSON.stringify({ first, moved })
+      );
+      check(
+        moved !== null && Math.abs(moved.top - TARGET.top) <= 4,
+        'in both directions',
+        JSON.stringify({ first, moved })
+      );
+      /*
+       * And taking hold of it keeps it. A panel somebody has arranged that
+       * vanished on the next click anywhere would throw the arrangement away —
+       * the reason a card dragged off the rail is exempt from the group toggles.
+       */
+      check(
+        moved !== null && moved.pinned === true,
+        'and moving it pins it',
+        JSON.stringify(moved)
+      );
+    }
+
+    /*
+     * Pinned, it survives a click on the console — the exact press that used to
+     * put it away, and still does when it is not pinned (checked below, which is
+     * this one's positive control).
+     */
+    await evaluate(`
+    (() => {
+      const cell = document.querySelector('.terminal-cell');
+      if (!cell) return false;
+      const b = cell.getBoundingClientRect();
+      cell.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, clientX: b.left + 40, clientY: b.top + 40
+      }));
+      return true;
+    })()
+  `);
+    await sleep(250);
+    check(
+      await evaluate(`!!document.querySelector('.reference-popover')`),
+      'a pinned panel stays open when you click elsewhere'
+    );
+
+    // Resized from the corner, with the floor from `internal.yaml` holding.
+    const corner = await gripBox('.reference-popover .popover-sizer');
+    const before = await panelBox();
+    check(corner !== null, 'and wears a corner to resize it by', JSON.stringify(corner));
+    if (corner !== null && before !== null) {
+      await dragBy(corner, 60, 70);
+      const bigger = await panelBox();
+      check(
+        bigger !== null && bigger.width >= before.width + 50 && bigger.height >= before.height + 50,
+        'dragging that corner resizes it',
+        JSON.stringify({ before, bigger })
+      );
+      // The floor: dragged far past it, it stops rather than disappearing.
+      const again = await gripBox('.reference-popover .popover-sizer');
+      if (again !== null) {
+        await dragBy(again, -900, -900);
+        const floored = await panelBox();
+        /*
+         * Read off the shipped template rather than restated here. The smoke
+         * home copies that file, and it is also the one somebody hand-edits to
+         * experiment — a floor written into this harness turns an experiment
+         * with an unrelated key into a red gate in a file that has nothing to
+         * do with what changed.
+         */
+        check(
+          floored !== null && floored.width === FLOOR.width && floored.height === FLOOR.height,
+          'and stops at the size the template calls the floor',
+          JSON.stringify({ floored, FLOOR })
+        );
+      }
+    }
+
+    // Escape still puts a pinned panel away: pinning is not a panel you cannot
+    // get rid of.
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await sleep(250);
+    check(
+      !(await evaluate(`!!document.querySelector('.reference-popover')`)),
+      'and Escape still puts a pinned panel away'
+    );
+
+    /*
+     * The positive control for the pin. An *unpinned* panel must still go on a
+     * click elsewhere, or every check above would pass just as well if the panel
+     * had simply stopped dismissing.
+     */
+    check(await openPanel(), 'a fresh panel opens unpinned');
+    check((await panelBox())?.pinned === false, 'and says so', JSON.stringify(await panelBox()));
+    await evaluate(`
+    (() => {
+      const cell = document.querySelector('.terminal-cell');
+      if (!cell) return false;
+      const b = cell.getBoundingClientRect();
+      cell.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, clientX: b.left + 40, clientY: b.top + 40
+      }));
+      return true;
+    })()
+  `);
+    await sleep(250);
+    check(
+      !(await evaluate(`!!document.querySelector('.reference-popover')`)),
+      'and a click elsewhere still closes one that is not pinned'
+    );
   }
 
   /*
@@ -4824,16 +5794,77 @@ check(
     await evaluate(`!!document.querySelector('.card-picker')`),
     'and the rail offers the put-away ones back at its top'
   );
+  /*
+   * The put-away cards are one control and a list behind it (todo 02), not a
+   * chip each: a rail ships with six cards away and every close adds one, so
+   * the band grew into three rows of buttons above the instrument. The head
+   * chip therefore has to be opened before a card can be picked out of it.
+   */
+  const openPicker = async () =>
+    await evaluate(`
+      (() => {
+        const chip = document.querySelector('.card-picker [data-card-picker]');
+        if (!chip) return false;
+        chip.click();
+        return true;
+      })()
+    `);
+  check(await openPicker(), 'the put-away cards are behind one control at the head of the rail');
+  await sleep(250);
+  check(
+    await evaluate(`!!document.querySelector('.picker-menu')`),
+    'and pressing it opens the list of them'
+  );
   await evaluate(`
     (() => {
-      const chip = [...document.querySelectorAll('.card-picker .chip')]
+      const row = [...document.querySelectorAll('.picker-menu .entry')]
         .find((c) => /Inventory/i.test(c.innerText));
-      if (chip) chip.click();
-      return !!chip;
+      if (row) row.click();
+      return !!row;
     })()
   `);
   await sleep(350);
   check(await evaluate(`!!document.querySelector('.inventory-card')`), 'clicking one puts it back');
+  check(
+    !(await evaluate(`!!document.querySelector('.picker-menu')`)),
+    'and the list closes behind it'
+  );
+
+  /*
+   * And the other control on the row: a card brought out over the console
+   * rather than onto the rail. Floating one had no affordance at all before —
+   * it was reachable only by knowing the chip could be dragged there.
+   */
+  {
+    check(await openPicker(), 'the list opens again');
+    await sleep(250);
+    const floated = await evaluate(`
+      (() => {
+        const glyph = document.querySelector('.picker-menu [data-card-float-chip="stats"]');
+        if (!glyph) return false;
+        glyph.click();
+        return true;
+      })()
+    `);
+    check(floated, 'every row offers a way to open the card over the console');
+    await sleep(350);
+    check(
+      await evaluate(
+        `!!document.querySelector('.float-layer [data-card-float="stats"] .stats-card')`
+      ),
+      'and pressing it floats the card instead of docking it'
+    );
+    // Put it back away, so the rail below here is the one every other check
+    // was written against.
+    await evaluate(`
+      (() => {
+        const close = document.querySelector('[data-card-float="stats"] .card-close');
+        if (close) close.click();
+        return !!close;
+      })()
+    `);
+    await sleep(300);
+  }
   // Leave the rail as it was found.
   await evaluate(`
     (() => {
@@ -4843,6 +5874,209 @@ check(
     })()
   `);
   await sleep(250);
+}
+
+// -------------------------------------- assert: a card rolls up to its heading
+//
+// todo 00: "only show its header with its name and relevant information".
+//
+// Geometry, not words, because nothing about the text changes when this
+// regresses: a card that went on drawing its body at full height while the
+// toggle reported itself rolled would satisfy every check written on labels.
+// The positive control is the roll *down* at the end -- a card that failed to
+// draw its body at all would pass "the body is gone" perfectly.
+{
+  check(
+    (await evaluate(
+      `[...document.querySelectorAll('.rail .card')].every((c) => !!c.querySelector('[data-action=\"roll\"]'))`
+    )) === true,
+    'every card on the rail carries the roll toggle in its heading'
+  );
+
+  const roomShape = async () =>
+    JSON.parse(
+      await evaluate(`
+        (() => {
+          const card = document.querySelector('.room-card');
+          if (!card) return 'null';
+          const body = card.querySelector('.body');
+          const head = card.querySelector('header h2');
+          return JSON.stringify({
+            height: Math.round(card.getBoundingClientRect().height),
+            body: body ? Math.round(body.getBoundingClientRect().height) : -1,
+            heading: head ? head.innerText.replace(/\\s+/g, ' ').trim() : '',
+            rolled: card.getAttribute('data-rolled') === 'true',
+            // The one control that must never fold: a rolled card whose close
+            // had gone behind a kebab drawn off its own bottom edge would be a
+            // card nobody could put away.
+            close: !!card.querySelector('.card-close')
+          });
+        })()
+      `)
+    );
+
+  const whole = await roomShape();
+  check(
+    whole !== null && whole.body > 0 && whole.rolled === false,
+    'the Room card is drawn whole to begin with',
+    JSON.stringify(whole)
+  );
+  const pressRoll = async () =>
+    await evaluate(`
+      (() => {
+        const roll = document.querySelector('.room-card [data-action=\"roll\"]');
+        if (!roll) return false;
+        roll.click();
+        return true;
+      })()
+    `);
+  check(await pressRoll(), 'and the toggle in its heading can be pressed');
+  await sleep(300);
+  const rolled = await roomShape();
+  if (rolled !== null && whole !== null) {
+    check(rolled.rolled === true, 'the card says it is rolled', JSON.stringify(rolled));
+    check(rolled.body <= 0, 'and its body is no longer drawn', JSON.stringify(rolled));
+    check(
+      rolled.height < whole.height,
+      'and the card itself is shorter than it was',
+      `${rolled.height} < ${whole.height}`
+    );
+    // "its name and relevant information": the heading is the whole point of
+    // rolling a card up rather than putting it away.
+    check(
+      rolled.heading.length > 0 && rolled.heading === whole.heading,
+      'while its name stays on screen',
+      `${JSON.stringify(rolled.heading)} vs ${JSON.stringify(whole.heading)}`
+    );
+    check(rolled.close, 'and it can still be put away', JSON.stringify(rolled));
+  }
+
+  /*
+   * Scrolled into view before the shutter, because a capture named for a thing
+   * it does not show is worse than none: the first run of this put the rolled
+   * card below the fold and the picture showed three ordinary cards. The
+   * assertions above are geometric and passed either way -- which is the exact
+   * shape the pack's own `looked like a form` capture exists to catch.
+   *
+   * **And scrolled back**, which the first attempt at this did not do: the rail
+   * is a scroller and every drag below here measures the cards in it, so a
+   * harness that leaves it halfway down changes what those drags are aimed at.
+   * It cost three failures and a crash a hundred checks later, which is the
+   * "leave the rail as it was found" rule this file already keeps twice.
+   */
+  const railTop = Number(
+    await evaluate(`
+      (() => {
+        const rail = document.querySelector('.rail');
+        const card = document.querySelector('.room-card');
+        const was = rail ? rail.scrollTop : 0;
+        if (card) card.scrollIntoView({ block: 'center' });
+        return String(was);
+      })()
+    `)
+  );
+  await sleep(300);
+  await capture('smoke-card-rolled.png', 'the Room card rolled up to its heading');
+  await evaluate(`
+    (() => {
+      const rail = document.querySelector('.rail');
+      if (rail) rail.scrollTop = ${Number.isFinite(railTop) ? railTop : 0};
+      return true;
+    })()
+  `);
+  await sleep(150);
+
+  check(await pressRoll(), 'the toggle presses back the other way');
+  await sleep(300);
+  const again = await roomShape();
+  if (again !== null && whole !== null) {
+    check(
+      again.rolled === false && again.body > 0 && again.height === whole.height,
+      'and the whole card comes back at the height it had',
+      JSON.stringify(again)
+    );
+  }
+}
+
+// ------------------------- assert: a card with its own scroll region rolls too
+//
+// todo 00, 2026-09-06: the check above rolls the **Room** card, whose shown
+// face is a readout, so its body carries no `.paned` -- and `.card >
+// .body.paned` is the rule that beat `display: none` on source order at equal
+// specificity. Every paned card on the rail therefore went on drawing a sliver
+// of its body under the heading (the Reference card, in the report's
+// screenshot) while this file reported the feature working.
+//
+// Found by *kind*, not by name: which cards ship on the rail is a layout
+// decision that has already moved twice, and a check pinned to `.reference-card`
+// would go quiet the day Reference moved to `DEFAULT_AWAY` rather than failing.
+{
+  const panedId = await evaluate(`
+    (() => {
+      const body = document.querySelector('.rail .card > .body.paned');
+      const card = body ? body.closest('.card') : null;
+      return card ? card.getAttribute('data-card') || '' : '';
+    })()
+  `);
+  check(panedId.length > 0, 'the rail has a card that keeps its own scroll region', panedId);
+
+  if (panedId.length > 0) {
+    const sel = `.rail .card[data-card=${JSON.stringify(panedId)}]`;
+    const shape = async () =>
+      JSON.parse(
+        await evaluate(`
+          (() => {
+            const card = document.querySelector(${JSON.stringify(sel)});
+            if (!card) return 'null';
+            const body = card.querySelector('.body');
+            return JSON.stringify({
+              body: body ? Math.round(body.getBoundingClientRect().height) : -1,
+              paned: body ? body.classList.contains('paned') : false,
+              rolled: card.getAttribute('data-rolled') === 'true'
+            });
+          })()
+        `)
+      );
+    const press = async () =>
+      await evaluate(`
+        (() => {
+          const roll = document.querySelector(${JSON.stringify(`${sel} [data-action="roll"]`)});
+          if (!roll) return false;
+          roll.click();
+          return true;
+        })()
+      `);
+
+    // The positive control: it is paned, and it is drawn, before anything is
+    // pressed. Without it "the body is gone" passes for a card that never drew
+    // one -- the same trap the Room card's own roll check records.
+    const open = await shape();
+    check(
+      open !== null && open.paned === true && open.body > 0 && open.rolled === false,
+      'and it is drawn whole, with its own scroller, to begin with',
+      JSON.stringify(open)
+    );
+
+    check(await press(), 'its heading toggle can be pressed');
+    await sleep(300);
+    const shut = await shape();
+    check(
+      shut !== null && shut.rolled === true && shut.body <= 0,
+      'and a paned body is not drawn either -- no sliver under the heading',
+      JSON.stringify(shut)
+    );
+
+    // Left as it was found: every drag below here measures the cards in the
+    // rail, and a card left rolled changes what those drags are aimed at.
+    check(await press(), 'and it rolls back down');
+    await sleep(300);
+    const back = await shape();
+    check(
+      back !== null && back.rolled === false && back.body > 0,
+      'with its body back',
+      JSON.stringify(back)
+    );
+  }
 }
 
 // ------------------------------------------------ assert: the rail rearranges
@@ -4869,8 +6103,22 @@ const boxOf = async (selector) =>
     `)
   );
 
-/** A press, a few moves so the gesture passes the slop threshold, and a release. */
+/**
+ * A press, a few moves so the gesture passes the slop threshold, and a release.
+ *
+ * **A missing box fails its own check rather than ending the run.** `boxOf`
+ * answers `null` for an element that is not there, and reading `.x` off that
+ * threw — which took the whole harness down at the first flaky drag and hid
+ * every check after it. One assertion failing is a result; the run stopping is
+ * the absence of forty of them, and the two used to look the same in the exit
+ * code. Seen on 2026-09-06, where an intermittent docking drag hid the settings
+ * checks two thousand lines below it.
+ */
 const drag = async (from, to) => {
+  if (from === null || from === undefined || to === null || to === undefined) {
+    check(false, 'a drag needs both ends, and one of them was not on screen', JSON.stringify({ from, to }));
+    return;
+  }
   await cdp('Input.dispatchMouseEvent', {
     type: 'mousePressed',
     x: Math.round(from.x),
@@ -4980,6 +6228,227 @@ const drag = async (from, to) => {
   await evaluate(`(document.querySelector(${JSON.stringify(KEY)}).click(), true)`);
   await sleep(1500);
   await capture('smoke-toolbar.png', 'the toolbar docked above the console');
+}
+
+/*
+ * The three bands across the top of the window are one band.
+ *
+ * The rail head (the gear and *New character*), the toolbar strip over the
+ * console, and the chips offering the put-away cards back. They are three
+ * separate components in three grid areas, so nothing but geometry can say
+ * whether they agree -- and they did not: the head was its content's height,
+ * the chips were a chip's, and the toolbar was a control plus a full card's
+ * padding either side, half again as tall as either.
+ *
+ * The *height* is the claim that holds whichever edge the tab rail takes.
+ * Whether the three also start on the same line depends on that edge -- with
+ * the rail across the top it is a row of its own, above the other two -- so
+ * the shared-line check belongs with the placement checks further down, which
+ * drive the rail onto a side. Read off the real boxes, with a positive control
+ * first: all three must be *found* and non-empty, or a band that failed to
+ * render would satisfy "the heights agree" perfectly.
+ */
+const bandBoxes = async () =>
+  JSON.parse(
+    await evaluate(`
+      (() => {
+        const box = (selector) => {
+          const el = document.querySelector(selector);
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          return { top: Math.round(b.top), bottom: Math.round(b.bottom),
+                   height: Math.round(b.height) };
+        };
+        return JSON.stringify({
+          head: box('.tab-rail .rail-head'),
+          toolbar: box('.dock-above [data-card="toolbar"]'),
+          chips: box('.card-picker .chip')
+        });
+      })()
+    `)
+  );
+
+/** One device pixel of tolerance for sub-pixel layout; more is a drift. */
+const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map(pick)) <= 1;
+
+{
+  const bands = await bandBoxes();
+  const rows = [bands.head, bands.toolbar, bands.chips];
+  const drawn = rows.every((row) => row !== null && row.height > 0);
+  check(
+    drawn,
+    'the rail head, the toolbar and the put-away chips are all drawn',
+    JSON.stringify(bands)
+  );
+  if (drawn) {
+    check(
+      agree(rows, (r) => r.height),
+      'and are all one band tall',
+      JSON.stringify(bands)
+    );
+  }
+}
+
+/*
+ * The tab rail takes either side, and the card rail takes the other.
+ *
+ * `ui.tabs: right` is not a rotation of the rail -- it mirrors the whole
+ * workspace, and the two halves of that are easy to get separately wrong. The
+ * grid areas can swap while the *handles* do not, which is what happens when a
+ * splitter's grid area is keyed on which way it grows its pane rather than on
+ * which pane it belongs to: both rails land on the right sides and each is
+ * resized by the other's handle.
+ *
+ * Driven through the palette because that is the surface a person reaches for,
+ * and it is one command in all three states. The rail is put back across the
+ * top at the end, which is what the options file for this run asks for and what
+ * every check below here was written against.
+ */
+{
+  const cycleTabs = async () => {
+    await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
+    await sleep(200);
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.palette input');
+        if (!el) return false;
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+        set.call(el, 'tabs');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await sleep(250);
+    const clicked = await evaluate(`
+      (() => {
+        const row = [...document.querySelectorAll('.palette li')]
+          .find((li) => /Tabs on/.test(li.innerText));
+        if (!row) return false;
+        row.click();
+        return true;
+      })()
+    `);
+    // The grid animates its columns and the console re-fits, which goes out
+    // over NAWS: measure after both have settled, never during.
+    await sleep(700);
+    return String(clicked) === 'true';
+  };
+
+  /** Where each pane and each handle actually is, in one read. */
+  const layout = async () =>
+    JSON.parse(
+      await evaluate(`
+        (() => {
+          const box = (selector) => {
+            const el = document.querySelector(selector);
+            if (!el) return null;
+            const b = el.getBoundingClientRect();
+            return { left: Math.round(b.left), right: Math.round(b.right),
+                     width: Math.round(b.width) };
+          };
+          return JSON.stringify({
+            side: document.querySelector('.tab-rail')?.dataset.side ?? null,
+            railSide: document.querySelector('.workspace')?.dataset.railSide ?? null,
+            tabs: box('.workspace > .tab-rail'),
+            rail: box('.workspace > .rail'),
+            tabSplit: box('.splitter[data-pane="tabs"]'),
+            railSplit: box('.splitter[data-pane="rail"]'),
+            console: box('.terminal-stack')
+          });
+        })()
+      `)
+    );
+
+  const placed = (l) =>
+    l.tabs !== null &&
+    l.rail !== null &&
+    l.console !== null &&
+    l.tabs.width > 0 &&
+    l.rail.width > 0;
+
+  // top -> right. The mirror: tabs to the right of the console, cards to the
+  // left of it, and each rail's own handle in its own gap.
+  check(await cycleTabs(), 'the palette offers one command for where the tabs go');
+  const mirrored = await layout();
+  check(
+    mirrored.side === 'right' && mirrored.railSide === 'left',
+    'and it puts the tabs on the right with the cards on the left',
+    JSON.stringify(mirrored)
+  );
+  check(placed(mirrored), 'both rails are drawn and have width', JSON.stringify(mirrored));
+  if (placed(mirrored)) {
+    check(
+      mirrored.rail.right <= mirrored.console.left && mirrored.tabs.left >= mirrored.console.right,
+      'the console sits between them, cards left and tabs right',
+      JSON.stringify(mirrored)
+    );
+    /*
+     * The half a swapped grid area alone would not catch. Each handle has to
+     * be in the gap beside *its own* pane, or dragging the card rail resizes
+     * the tabs -- which type-checks, lays out plausibly, and is otherwise only
+     * ever found by grabbing the wrong edge.
+     */
+    check(
+      mirrored.railSplit !== null &&
+        mirrored.tabSplit !== null &&
+        mirrored.railSplit.left >= mirrored.rail.right &&
+        mirrored.railSplit.right <= mirrored.console.left &&
+        mirrored.tabSplit.left >= mirrored.console.right &&
+        mirrored.tabSplit.right <= mirrored.tabs.left,
+      'and each handle sits in the gap beside the pane it resizes',
+      JSON.stringify(mirrored)
+    );
+  }
+
+  // right -> left. The shipped arrangement, and the one the three top bands
+  // can be measured against: across the top the head is a row of its own.
+  check(await cycleTabs(), 'pressing it again brings the tabs back to the left');
+  const sided = await layout();
+  check(
+    sided.side === 'left' && sided.railSide === 'right',
+    'with the cards back on the right',
+    JSON.stringify(sided)
+  );
+  if (placed(sided)) {
+    check(
+      sided.tabs.right <= sided.console.left && sided.rail.left >= sided.console.right,
+      'the console sits between them the other way round',
+      JSON.stringify(sided)
+    );
+  }
+  {
+    const beside = await bandBoxes();
+    const three = [beside.head, beside.toolbar, beside.chips];
+    const all = three.every((row) => row !== null && row.height > 0);
+    check(
+      all,
+      'the head, the toolbar and the chips are all drawn beside each other',
+      JSON.stringify(beside)
+    );
+    if (all) {
+      check(
+        agree(three, (r) => r.top),
+        'and the three bands start on one line',
+        JSON.stringify(beside)
+      );
+      check(
+        agree(three, (r) => r.bottom),
+        'and end on it',
+        JSON.stringify(beside)
+      );
+    }
+  }
+  await capture('smoke-tabs-left.png', 'the tab rail down the left, cards on the right');
+
+  // left -> top, which is what the options file for this run asks for and what
+  // everything below was written against.
+  check(await cycleTabs(), 'and again puts them back across the top');
+  const restored = await layout();
+  check(
+    restored.side === 'top',
+    'the rail is back where the options file put it',
+    JSON.stringify(restored)
+  );
 }
 
 {
@@ -5790,6 +7259,26 @@ const drag = async (from, to) => {
    * already has (docs/terminology.md §2.2). Reading either fieldset means
    * opening it first; it is not the one long scroll every field used to share.
    */
+  /*
+   * The Spells section first, because it carries a switch added on 2026-09-06
+   * and a setting nobody can reach is one that was never built.
+   *
+   * Asserted on the field's `name`, which `FormField` requires precisely so a
+   * row can be addressed by something other than the words on it: a check
+   * keyed on the label would fail the next time the copy is improved, which is
+   * not what it is trying to catch.
+   */
+  check(await clickText('.settings-sections .crumb', 'spells'), 'its Spells section is reachable');
+  await sleep(200);
+  check(
+    (await evaluate(
+      // `data-field` is the identity `FormField` puts in the DOM for exactly
+      // this: a row that can be addressed by something other than its words.
+      `!!document.querySelector('.settings-form [data-field="invoke-items"] input')`
+    )) === true,
+    'and blessing from an item can be switched on there'
+  );
+
   check(await clickText('.settings-sections .crumb', 'health'), 'its Health section is reachable');
   await sleep(200);
 
@@ -6025,8 +7514,8 @@ const drag = async (from, to) => {
     `)
   );
   check(switches.length >= 4, 'the Movement section draws its switches', String(switches.length));
-  const shared = switches.filter(
-    (one) => switches.some((other) => other !== one && other.top === one.top)
+  const shared = switches.filter((one) =>
+    switches.some((other) => other !== one && other.top === one.top)
   );
   check(
     shared.length >= 2,
@@ -6682,6 +8171,47 @@ const drag = async (from, to) => {
     );
 
     /*
+     * The client's own mark, and the switch that hides it.
+     *
+     * Two halves, and the second is the one that has ever been the bug: a
+     * setting written into the file that nothing reads is a checkbox somebody
+     * ticks and then waits to see work. So the mark is checked in the DOM
+     * *and* the file is checked for the key, and then it is turned back on —
+     * the screen is a sibling of the status rail rather than a replacement for
+     * it, so the rail stays mounted while this runs.
+     */
+    check(
+      await evaluate(`!!document.querySelector('.status-rail .app-mark')`),
+      'the client draws its own mark in the status rail by default'
+    );
+    const markSwitch = `
+      (() => {
+        const label = [...document.querySelectorAll('.settings-form label')]
+          .find((l) => /mudengine mark/i.test(l.innerText));
+        const box = label?.querySelector('input[type="checkbox"]');
+        if (!box) return false;
+        box.click();
+        return true;
+      })()
+    `;
+    check(await evaluate(markSwitch), 'and the Appearance section offers a switch for it');
+    await sleep(1800);
+    const hidden = fs.existsSync(CONFIG) ? fs.readFileSync(CONFIG, 'utf8') : '';
+    check(/showLogo: false/.test(hidden), 'turning it off reaches the options file');
+    check(
+      !(await evaluate(`!!document.querySelector('.status-rail .app-mark')`)),
+      'and the mark actually goes'
+    );
+    // Back on, so the screenshots below and the rest of the run see the client
+    // as it ships.
+    check(await evaluate(markSwitch), 'and the switch turns it back on');
+    await sleep(1800);
+    check(
+      await evaluate(`!!document.querySelector('.status-rail .app-mark')`),
+      'and the mark comes back'
+    );
+
+    /*
      * The other half of the same file: what a new realm and a new character
      * start from.
      *
@@ -6867,7 +8397,8 @@ const drag = async (from, to) => {
         if (!plus || !tab) return false;
         const a = plus.getBoundingClientRect();
         const b = tab.getBoundingClientRect();
-        return rail.dataset.side === 'left' ? a.top < b.top : a.left < b.left;
+        // Stacked either way down a side; only the top rail runs across.
+        return rail.dataset.side === 'top' ? a.left < b.left : a.top < b.top;
       })()
     `),
     'ahead of the first tab, where it does not move as characters come and go'
@@ -7595,12 +9126,23 @@ const drag = async (from, to) => {
   check(
     await evaluate(`
       (() => {
-        const chip = document.querySelector('[data-card-chip="stats"]');
+        const head = document.querySelector('.card-picker [data-card-picker]');
+        if (head) head.click();
+        return !!head;
+      })()
+    `),
+    'the put-away cards open from the head of the rail'
+  );
+  await sleep(250);
+  check(
+    await evaluate(`
+      (() => {
+        const chip = document.querySelector('.picker-menu [data-card-chip="stats"]');
         if (chip) chip.click();
         return !!chip;
       })()
     `),
-    'the Combat Stats card is offered on the shelf'
+    'the Combat Stats card is offered among them'
   );
   await sleep(300);
   check(
@@ -7737,6 +9279,248 @@ const drag = async (from, to) => {
   await sleep(250);
   await capture('smoke-stats.png', 'the Combat Stats card, whose figures share three columns');
   await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
+}
+
+// ------------------------------------------------ assert: the loop builder
+//
+// A loop drawn by clicking rooms on the map, planned by the same router a walk
+// uses and saved as the fewest waypoints whose routes reproduce it. Opened
+// here from the Map card's own action column — one of its three ways in, the
+// palette and the toolbar being the others — and asserted on what the picture
+// and the list say after each click, and then on the file the save writes.
+//
+// The second room is chosen from the realm data rather than "any room but
+// here": the map joins rooms by exit, and a neighbour behind a door the
+// character cannot force would plan a blocked leg and fail the client for
+// being right about the door.
+{
+  const builder = () =>
+    evaluate(`
+      (() => {
+        const card = document.querySelector('.loop-builder-card');
+        if (!card) return null;
+        const plan = card.querySelector('.map-plan');
+        const save = card.querySelector('.builder-foot .primary');
+        return {
+          floating: !!card.closest('.float'),
+          rooms: plan ? plan.querySelectorAll('.map-room').length : 0,
+          start: plan ? plan.querySelectorAll('.map-start').length : 0,
+          picks: plan ? plan.querySelectorAll('.map-pick').length : 0,
+          legs: plan ? plan.querySelectorAll('.map-trail line').length : 0,
+          waypoints: card.querySelectorAll('.builder-waypoints > li').length,
+          save: save ? save.innerText.trim() : null,
+          saveEnabled: !!save && !save.disabled,
+          status: card.querySelector('.builder-status')?.innerText.trim() ?? null
+        };
+      })()
+    `);
+  const clickRoom = (id) =>
+    evaluate(`
+      (() => {
+        const room = document.querySelector(
+          '.loop-builder-card .map-room[data-room=' + ${JSON.stringify(JSON.stringify(id))} + ']'
+        );
+        if (!room) return false;
+        room.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return true;
+      })()
+    `);
+  const tool = (title) =>
+    evaluate(`
+      (() => {
+        const button = [...document.querySelectorAll('.loop-builder-card .builder-tools button')]
+          .find((b) => (b.getAttribute('title') ?? '').startsWith(${JSON.stringify(title)}));
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      })()
+    `);
+
+  const opened = await evaluate(`
+    (() => {
+      const action = document.querySelector('.map-card [data-action="build"]');
+      if (!action) return false;
+      action.click();
+      return true;
+    })()
+  `);
+  check(opened, 'the Map card offers to build a loop from its action column');
+  await sleep(700);
+  let state = await builder();
+  check(
+    state !== null && state.floating,
+    'and the builder comes out as a float over the console',
+    JSON.stringify(state)
+  );
+  check(
+    state !== null && state.rooms > 0 && state.start === 0 && state.waypoints === 0,
+    'drawn around the character with nothing picked',
+    JSON.stringify(state)
+  );
+  check(
+    state !== null && state.save !== null && !state.saveEnabled,
+    'and nothing to save yet',
+    JSON.stringify(state)
+  );
+
+  /*
+   * Where the character is, and a neighbour joined to it by a plain exit —
+   * off the same realm data the map is drawn from, through the preload.
+   */
+  const rooms = JSON.parse(
+    await evaluate(`
+      (async () => {
+        const character = await window.mudengine.getCharacter('${SESSION}');
+        const here = character.room;
+        if (here.map === null || here.number === null) return JSON.stringify(null);
+        const map = await window.mudengine.localMap('${SESSION}', here.map, here.number, 2);
+        const centre = map.cells.find((cell) => cell.id === map.centre);
+        if (!centre) return JSON.stringify(null);
+        const step = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0], ne: [1, -1], nw: [-1, -1], se: [1, 1], sw: [-1, 1] };
+        for (const direction of centre.exits) {
+          const move = step[direction];
+          if (!move) continue;
+          if (centre.blocked && centre.blocked[direction]) continue;
+          const next = map.cells.find(
+            (cell) => cell.gx === centre.gx + move[0] && cell.gy === centre.gy + move[1]
+          );
+          if (next) return JSON.stringify({ here: centre.id, next: next.id });
+        }
+        return JSON.stringify(null);
+      })()
+    `)
+  );
+  check(
+    rooms !== null,
+    'the character stands somewhere with a plainly joined neighbour to route to',
+    JSON.stringify(rooms)
+  );
+
+  // The first click is the start.
+  check(await clickRoom(rooms.here), 'the room the character stands in can be clicked');
+  await sleep(600);
+  state = await builder();
+  check(
+    state !== null && state.start === 1 && state.waypoints === 1,
+    'the first room clicked is the start, ringed, and the list names it',
+    JSON.stringify(state)
+  );
+  check(state !== null && !state.saveEnabled, 'and a start alone saves nothing');
+
+  // The next click routes there: the way is drawn and both rooms are listed.
+  check(await clickRoom(rooms.next), 'a neighbouring room can be clicked');
+  await sleep(1200);
+  state = await builder();
+  check(
+    state !== null &&
+      state.start === 1 &&
+      state.picks >= 1 &&
+      state.legs > 0 &&
+      state.waypoints === 2,
+    'the next room is routed to: a pick ring, the way drawn along the corridor, two waypoints',
+    JSON.stringify(state)
+  );
+  check(
+    state !== null && state.save === 'Save Route' && state.saveEnabled,
+    'a way with two ends saves as a route',
+    JSON.stringify(state)
+  );
+
+  // Undo takes the pick back; redo brings it back.
+  check(await tool('Undo'), 'undo is offered once there is something to undo');
+  await sleep(700);
+  state = await builder();
+  check(
+    state !== null && state.waypoints === 1 && state.picks === 0,
+    'undo takes the last pick back',
+    JSON.stringify(state)
+  );
+  check(await tool('Redo'), 'and redo is offered after it');
+  await sleep(1200);
+  state = await builder();
+  check(
+    state !== null && state.waypoints === 2,
+    'redo brings the pick back',
+    JSON.stringify(state)
+  );
+
+  // Start over keeps the start and nothing else, as a step undo can take back.
+  check(await tool('Start over'), 'start over is offered once there is a way to take back');
+  await sleep(700);
+  state = await builder();
+  check(
+    state !== null && state.waypoints === 1 && state.start === 1 && state.picks === 0,
+    'start over leaves the start room picked and nothing else',
+    JSON.stringify(state)
+  );
+  check(await tool('Undo'), 'and it is one step of history');
+  await sleep(1200);
+  state = await builder();
+  check(state !== null && state.waypoints === 2, 'undo puts the way back', JSON.stringify(state));
+
+  // Clicking the start again closes the loop.
+  check(await clickRoom(rooms.here), 'the start is still on the picture and can be clicked again');
+  await sleep(1200);
+  state = await builder();
+  check(
+    state !== null && state.save === 'Save Loop' && state.saveEnabled,
+    'clicking the start again closes the loop, and the save says so',
+    JSON.stringify(state)
+  );
+
+  // Save it to the character, under a name typed into the field.
+  const NAME = 'Smoke builder loop';
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.loop-builder-card .builder-foot input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, ${JSON.stringify(NAME)});
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await sleep(200);
+  await evaluate(
+    `(document.querySelector('.loop-builder-card .builder-foot .primary').click(), true)`
+  );
+  await sleep(1500);
+  state = await builder();
+  check(
+    state !== null && state.status !== null && /Saved/.test(state.status),
+    'saving says so on the card',
+    JSON.stringify(state)
+  );
+  const built = path.join(PROFILES_DIR, 'smoke', 'loops', 'smoke-builder-loop.yaml');
+  check(fs.existsSync(built), 'and the loop is on disk in the character’s own directory', built);
+  const builtBody = fs.existsSync(built) ? fs.readFileSync(built, 'utf8') : '';
+  check(
+    builtBody.includes(NAME) && (builtBody.match(/\d+\/\d+/g) ?? []).length >= 2,
+    'naming every stop with its coordinates behind it',
+    builtBody
+  );
+  const listed = await evaluate(
+    `window.mudengine.listLoops('${SESSION}').then((loops) => JSON.stringify(loops.map((l) => l.name)))`
+  );
+  check(
+    JSON.parse(listed).includes(NAME),
+    'and the character’s own loop list has it without a restart',
+    listed
+  );
+  await capture('smoke-builder.png', 'the loop builder, a two-room loop drawn and saved');
+
+  // Put the card away, and the file with it, so nothing later sits under a
+  // float or counts a loop this section wrote.
+  await evaluate(
+    `(document.querySelector('.loop-builder-card [data-action="close"]')?.click(), true)`
+  );
+  await sleep(300);
+  check(
+    !(await evaluate(`!!document.querySelector('.loop-builder-card')`)),
+    'the builder closes from its own action column'
+  );
+  fs.rmSync(built, { force: true });
+  await sleep(800);
 }
 
 // -------------------------------------- assert: who else is in the realm
@@ -9348,6 +11132,250 @@ if (logFiles[0]) {
   check(/^--- session 127\.0\.0\.1:/.test(body), 'the log names the server it recorded');
 }
 
+// ------------------------------------------------------- assert: debug window
+//
+// What the client is doing, in place of the console — and the file somebody
+// sends when they cannot say what went wrong in words.
+//
+// Driven end to end because two of the three claims cannot be made anywhere
+// else. The **geometry** one is the design: the debug view *overlays* the
+// console rather than replacing it, precisely so the terminal is neither
+// unmounted (which would rebuild its scrollback and parser state) nor resized
+// (which goes out over NAWS and re-wraps a scrollback nobody asked to
+// re-wrap) — and only a real window can say whether that held. The **report**
+// one is a file main writes, from a ring only main has.
+{
+  /*
+   * A password this run types at a real prompt, and the mask the client is
+   * required to write down instead of it. The mask's width is fixed on purpose
+   * (`SessionManager.reportable`), so the length is not recorded either.
+   */
+  const SECRET = 'hunter2-not-in-any-file';
+  const MASK = '\u2022'.repeat(8);
+  const geometry = async () =>
+    await evaluate(`document.querySelector('.status-rail .metric b')?.innerText ?? ''`);
+  const before = await geometry();
+
+  await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
+  await sleep(200);
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.palette input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, 'debug');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await sleep(250);
+  const opened = await evaluate(`
+    (() => {
+      const row = [...document.querySelectorAll('.palette li')]
+        .find((li) => /debug window/i.test(li.innerText));
+      if (!row) return false;
+      row.click();
+      return true;
+    })()
+  `);
+  check(String(opened) === 'true', 'the palette offers the debug window');
+  await sleep(900);
+  check(await evaluate(`!!document.querySelector('.debug-view')`), 'and it opens');
+
+  /*
+   * The whole reason it is an overlay. A console that resized would report a
+   * different geometry here, and that geometry is what NAWS carries.
+   */
+  check(
+    (await geometry()) === before && before.length > 0,
+    'the console keeps its geometry, so nothing went out over NAWS',
+    `${before} -> ${await geometry()}`
+  );
+  check(
+    await evaluate(`!!document.querySelector('.terminal-layers .xterm')`),
+    'and the terminal is still mounted underneath, with its scrollback'
+  );
+
+  /*
+   * The pipeline, not merely "some rows". Each of these is a different stage
+   * and a different producer, so a feed wired to one of them and not the
+   * others would pass a count and fail here — and `repaint` is the framing
+   * marker this server family uses instead of a newline, which is the single
+   * most load-bearing thing this window exists to show.
+   */
+  const kinds = JSON.parse(
+    await evaluate(`
+      (() => {
+        const rows = [...document.querySelectorAll('.debug-row')];
+        return JSON.stringify({
+          rows: rows.length,
+          kinds: [...new Set(rows.map((r) => r.dataset.kind))].sort(),
+          repaint: rows.some((r) => (r.querySelector('.tag')?.innerText ?? '') === 'repaint'),
+          escapes: rows.some((r) => (r.querySelector('.what')?.innerText ?? '').includes('\u241b'))
+        });
+      })()
+    `)
+  );
+  check(kinds.rows > 0, 'and it is already full of what happened', JSON.stringify(kinds));
+  for (const kind of ['in', 'line', 'block']) {
+    check(
+      kinds.kinds.includes(kind),
+      `with the ${kind} stage of the pipeline in it`,
+      JSON.stringify(kinds)
+    );
+  }
+  check(kinds.repaint, 'including the status-line repaint that framing turns on');
+  check(kinds.escapes, 'and the escape sequences, made visible rather than swallowed');
+
+  // Muting a stage says how much is hidden, and offers the way back — the
+  // narrowed-table rule, which matters more here than on a card.
+  const muted = await evaluate(`
+    (() => {
+      const chip = document.querySelector('.debug-kind[data-kind="in"]');
+      if (!chip) return false;
+      chip.click();
+      return true;
+    })()
+  `);
+  check(String(muted) === 'true', 'a stage can be muted');
+  await sleep(200);
+  check(
+    await evaluate(`!document.querySelector('.debug-row[data-kind="in"]')`),
+    'and the rows it hid are gone'
+  );
+  check(
+    await evaluate(`!!document.querySelector('.debug-status .quiet')`),
+    'and the view says it is narrowed, and how to undo it'
+  );
+  await evaluate(`(document.querySelector('.debug-status .quiet').click(), true)`);
+  await sleep(200);
+  check(
+    await evaluate(`!!document.querySelector('.debug-row[data-kind="in"]')`),
+    'and showing everything brings them back'
+  );
+
+  /*
+   * Arm the credential check before saving.
+   *
+   * The report is a file whose whole purpose is being sent to somebody else, so
+   * *no password in it* is the claim it lives or dies on — and a claim about a
+   * string that was never sent is no claim at all. The fake host prints the
+   * realm's own prompt (`patterns.ts`: `Please enter your password:`), which is
+   * what arms `SessionManager.awaitingPassword`, and the answer goes down the
+   * path a keystroke takes so it passes through `reportable` exactly as a
+   * player's would.
+   */
+  liveSockets[0]?.write(Buffer.from('\r\nPlease enter your password:', 'latin1'));
+  await sleep(500);
+  await evaluate(
+    `window.mudengine.input(${JSON.stringify(SESSION)}, ${JSON.stringify(`${SECRET}\r`)}), true`
+  );
+  await sleep(600);
+
+  // The bug report itself.
+  const wrote = await evaluate(`
+    (() => {
+      const button = [...document.querySelectorAll('.debug-head .card-action')]
+        .find((b) => /bug report/i.test(b.title ?? ''));
+      if (!button) return false;
+      button.click();
+      return true;
+    })()
+  `);
+  check(String(wrote) === 'true', 'the view offers to save the trace as a bug report');
+  await sleep(1200);
+  const reports = fs.existsSync(LOG_DIR)
+    ? fs.readdirSync(LOG_DIR).filter((name) => name.startsWith('debug-') && name.endsWith('.txt'))
+    : [];
+  check(
+    reports.length === 1,
+    'and one report appears beside the session log',
+    JSON.stringify(reports)
+  );
+  if (reports[0]) {
+    const report = fs.readFileSync(path.join(LOG_DIR, reports[0]), 'utf8');
+    check(
+      /mudengine debug report/.test(report) && /platform +linux|darwin|win32/.test(report),
+      'naming the build and the platform it came from',
+      report.slice(0, 200)
+    );
+    /*
+     * The name the *realm* gave, not the profile's filename. That is
+     * `labelOf`'s documented rule — a display name is a filename until the stat
+     * sheet arrives, and "Smoke Character" identifies nobody to whoever reads
+     * the report. The fixture's sheet says `Rayzor`.
+     */
+    check(
+      /character +Rayzor/.test(report),
+      'and the character as the realm named it, not as the file did',
+      report.slice(0, 200)
+    );
+    /*
+     * And the version is this client's, not Electron's. `app.getVersion()`
+     * answers with Electron's in development, so the first report ever written
+     * said `version 33.4.11` beside `Electron 33.4.11` — a build stamp naming
+     * the wrong program is worse than none.
+     */
+    check(
+      new RegExp(`version {4}${pkg.version.replace(/\./g, '\\.')}`).test(report),
+      'and the version of the client rather than of Electron',
+      report.slice(0, 200)
+    );
+    check(
+      report.split('\n').length > 20,
+      'with the trace in it',
+      `${report.split('\n').length} lines`
+    );
+    /*
+     * The claim the whole feature rests on, **with the control that makes it
+     * mean something**.
+     *
+     * A bare `!report.includes(secret)` is a negative assertion that passes
+     * just as well when the secret was never a candidate — and it was not:
+     * nothing on this socket had asked for a password, so the check would have
+     * gone on passing with the redaction removed entirely. So the run *makes*
+     * it a candidate first: the fake host prints the realm's own password
+     * prompt (the wording `patterns.ts` matches, which is what arms
+     * `awaitingPassword`), a password is typed down the path a keystroke
+     * takes, and the report is then asked for both halves — the mask is in it,
+     * and the password is not.
+     */
+    check(
+      report.includes(MASK),
+      'the password typed at the prompt is in the report as a mask',
+      report.slice(report.indexOf('out ') - 40, report.indexOf('out ') + 80)
+    );
+    check(
+      !report.includes(SECRET) && !report.includes('smoke-password'),
+      'and the password itself is nowhere in it, which is the point of writing it here'
+    );
+    check(
+      report.includes('Passwords are never recorded.'),
+      'and it says so, to whoever is about to attach it'
+    );
+    check(
+      await evaluate(`!!document.querySelector('.debug-saved')`),
+      'and the view says where it went'
+    );
+  }
+
+  // While it is open, which is the only time this picture exists.
+  await capture('smoke-debug.png', 'the debug window over the console');
+
+  // Put it away: everything below this point is about the console.
+  await evaluate(`(document.querySelector('.debug-view .card-close').click(), true)`);
+  await sleep(400);
+  check(
+    !(await evaluate(`!!document.querySelector('.debug-view')`)),
+    'closing it brings the console back'
+  );
+  check(
+    (await geometry()) === before,
+    'with the geometry it never lost',
+    `${before} -> ${await geometry()}`
+  );
+}
+
 // ------------------------------------------------------------------ disconnect
 
 await cdp('Input.dispatchKeyEvent', {
@@ -9665,15 +11693,41 @@ if (jumpShown) {
   `);
   await sleep(250);
 
-  await evaluate(`
-    (() => {
-      const row = [...document.querySelectorAll('.palette li')]
-        .find((li) => /Tabs on the left/.test(li.innerText));
-      if (row) row.click();
-      return !!row;
-    })()
-  `);
-  await sleep(450);
+  /*
+   * Cycled to, not pressed once. There are three placements — `left`, `top`
+   * and `right` — and one command that moves between them, so the row's label
+   * names wherever the *next* press goes. A check that clicked `Tabs on the
+   * left` and expected to arrive there was really asserting how many
+   * placements exist, and it broke the day a third one did.
+   */
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if ((await evaluate(`document.querySelector('.tab-rail')?.dataset.side`)) === 'left') break;
+    await evaluate(`
+      (() => {
+        const row = [...document.querySelectorAll('.palette li')]
+          .find((li) => /Tabs on/.test(li.innerText));
+        if (row) row.click();
+        return !!row;
+      })()
+    `);
+    await sleep(450);
+    // Each press closes the palette, so the next one has to open it again.
+    await evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'k', ctrlKey: true, bubbles: true
+    })), true)`);
+    await sleep(250);
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.palette input');
+        if (!el) return false;
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+        set.call(el, 'tabs');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await sleep(250);
+  }
   check(
     (await evaluate(`document.querySelector('.tab-rail')?.dataset.side`)) === 'left',
     'the rail moves to the other edge from the palette'

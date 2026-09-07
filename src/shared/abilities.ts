@@ -262,7 +262,31 @@ export const ABILITY: Readonly<Record<number, AbilityMeaning>> = {
   1003: { name: 'GrantPicklocks', only: 'greatermud' },
   1004: { name: 'GrantTracking', only: 'greatermud' },
   1100: { name: 'AntiMagicNotOK', only: 'greatermud' },
-  1101: { name: 'UseSpell', only: 'greatermud' },
+  /*
+   * **1101 is `MeetsReqToHit`, not `UseSpell`** — corrected 2026-09-06 against
+   * `GMUDAbilities.cs`, which is the file that owns this range: these ids are
+   * GreaterMUD's own extensions, so the server's constants are not one opinion
+   * among several here, they are the definition.
+   *
+   * The client had `UseSpell` on 1101 and no entry at all for 1102, where the
+   * server puts it. Five weapons in the shipped realm carry 1101 — the
+   * enchanted dagger, the Spirit Dagger of Goijar and the three red iron
+   * weapons — with values 1 to 3, and every one of them was being reported as
+   * casting a spell. `Player.cs` reads it off the **wielded weapon** to decide
+   * whether the wielder can hit at all ("new in GMUD, and allows way more
+   * flexibility"), so it is a magnitude rather than the flag it was shaped as.
+   */
+  1101: { name: 'MeetsReqToHit', only: 'greatermud' },
+  /*
+   * And the real one. `UseCommand` casts `Abilities[UseSpell]` for an item
+   * somebody types `use` at — which is also where a bare `CastsSp` ends up,
+   * because `ItemType.cs` rewrites one into the other as it loads. No row in
+   * either database on this machine carries 1102 directly for that reason; it
+   * is named so that one which does is not reported as nothing.
+   */
+  1102: { name: 'UseSpell', only: 'greatermud' },
+  /* The server spells this `ShadowHome`; `SneakCommand` reads it to decide
+     whether sneaking stands a resting character up. */
   1103: { name: 'ShadowRest', only: 'greatermud' },
   1104: { name: 'AlterSpellHeal', only: 'greatermud' },
   1105: { name: 'AlterSpells', only: 'greatermud' },
@@ -376,7 +400,35 @@ export const HAZARD_ABILITY = {
   holdPerson: 74,
   blind: 107,
   teleportRoom: 140,
-  nonMagical: 144
+  /**
+   * The map half of a teleport, which the room number is meaningless without.
+   *
+   * Nothing weighs it — a spell that moves the character is already weighed by
+   * `teleportRoom` — but `WorldGraph.resolveSpells` asks for either, because
+   * an exit whose spell carries only one of the two still leaves the character
+   * somewhere the exit table does not name.
+   */
+  teleportMap: 141,
+  nonMagical: 144,
+  /**
+   * A realm script, which this client does not convert.
+   *
+   * The odd one out in this table: every other entry names something a spell
+   * *does*, and this names the fact that what it does is not readable. Kept
+   * here because the one thing that reads it — the router, deciding what an
+   * exit's cast is worth — needs it in the same breath as the teleport it is
+   * telling apart from, and a second table for one id would be two places to
+   * keep a number.
+   */
+  textBlock: 148,
+  /**
+   * The spell this one hands the character when it ends.
+   *
+   * A chain rather than an effect, and `WorldGraph.resolveSpells` follows it
+   * for that reason: `holding breath` carries nothing but this, and what it
+   * ends in is `drowning`.
+   */
+  endCast: 151
 } as const;
 
 /**
@@ -596,7 +648,10 @@ export const ABILITY_SHAPE: Readonly<Record<number, AbilityShape>> = {
    * about elsewhere, so a stock realm counts them as unread as before.
    */
   1108: 'flag', // NotForPVP
-  1101: 'flag', // UseSpell
+  // A magnitude the server compares against, not a yes/no: the five weapons
+  // carrying it in the shipped realm state 1, 2 and 3.
+  1101: 'points', // MeetsReqToHit
+  1102: 'reference', // UseSpell — the value is a `Spells` row
   1113: 'percent', // VileWard
   1114: 'percent', // CastOnKill%
   /*

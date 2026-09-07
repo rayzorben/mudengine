@@ -19,6 +19,7 @@
 import {
   STEP,
   type LocalMap,
+  type MapAway,
   type MapCell,
   type MapObstacle,
   type Vertical
@@ -77,6 +78,47 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
       blocked[exit.direction] = describeObstacle(exit.requirement, graph);
     }
     if (Object.keys(blocked).length > 0) cell.blocked = blocked;
+
+    /*
+     * The ways out the plane cannot draw, each with where it lands. Up and
+     * down come off the exit table; a teleport comes off the room's script,
+     * which is why the graph is asked for it separately. A destination the
+     * realm does not have is left out — a control leading to a room that
+     * does not exist is worse than none — and the command is the exit's own
+     * phrase where it states one, because the bare direction does not work
+     * on a `Text:` exit.
+     */
+    const away: MapAway[] = [];
+    for (const exit of room.exits) {
+      if (exit.direction !== 'u' && exit.direction !== 'd') continue;
+      const to = roomId(exit.map, exit.room);
+      const destination = graph.byId(to);
+      if (!destination) continue;
+      away.push({
+        kind: exit.direction === 'u' ? 'up' : 'down',
+        to,
+        name: destination.name,
+        command: exit.requirement?.commands?.[0] ?? exit.direction,
+        ...(exit.requirement ? { obstacle: describeObstacle(exit.requirement, graph) } : {})
+      });
+    }
+    for (const portal of graph.portalsFrom(cell.id)) {
+      const to = roomId(portal.map, portal.room);
+      const destination = graph.byId(to);
+      if (!destination) continue;
+      away.push({
+        kind: 'teleport',
+        to,
+        name: destination.name,
+        command: portal.requirement.commands?.[0] ?? portal.requirement.raw,
+        // An unguarded portal's requirement is only its phrase — the command
+        // above says that — so it is an obstacle only when it wants something.
+        ...(portal.requirement.kind !== 'text'
+          ? { obstacle: describeObstacle(portal.requirement, graph) }
+          : {})
+      });
+    }
+    if (away.length > 0) cell.away = away;
 
     placed.set(cellOf(gx, gy), cell);
     return cell;

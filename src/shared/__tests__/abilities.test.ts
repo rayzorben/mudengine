@@ -357,3 +357,39 @@ describe('naming what an Abil-n means', () => {
     expect(ABILITY_SHAPE[28]).toBe('points');
   });
 });
+
+/*
+ * The GreaterMUD-only range belongs to the server, and two entries in it were
+ * wrong.
+ *
+ * These ids are GreaterMUD's own extensions, so `GMUDAbilities.cs` is not one
+ * opinion among several about them — it is the definition. Audited against it
+ * on 2026-09-06, which found `UseSpell` sitting on 1101 (the server's
+ * `MeetsReqToHit`) and no entry at all on 1102, where the server actually puts
+ * it.
+ *
+ * It was visible: five weapons in the shipped realm carry 1101 — the enchanted
+ * dagger, the Spirit Dagger of Goijar and the three red iron weapons, at
+ * values 1 to 3 — and the Reference card reported every one of them as casting
+ * a spell.
+ *
+ * The source is not in this repository, so this cannot read it. What it can do
+ * is hold the two facts that were wrong, with where they came from, so a
+ * future edit that reintroduces the shift fails here instead of on somebody's
+ * item card.
+ */
+describe('the ids GreaterMUD owns', () => {
+  it('puts MeetsReqToHit on 1101 and UseSpell on 1102', () => {
+    expect(ABILITY[1101]?.name).toBe('MeetsReqToHit');
+    expect(ABILITY[1102]?.name).toBe('UseSpell');
+  });
+
+  /*
+   * And a magnitude, not a flag: the server compares the number off the
+   * wielded weapon (`Player.cs`, `PlayerAttackType.cs`), so drawing it as a
+   * yes/no would throw away the only part of it that varies.
+   */
+  it('reads MeetsReqToHit as a number', () => {
+    expect(ABILITY_SHAPE[1101]).toBe('points');
+  });
+});

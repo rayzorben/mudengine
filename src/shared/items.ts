@@ -239,3 +239,209 @@ export function bareName(name: string): string {
 export function sameItem(a: string, b: string): boolean {
   return bareName(a) === bareName(b);
 }
+
+/**
+ * A listing entry split into how many and what, because the count is not part
+ * of the name.
+ *
+ * Every listing this server prints counts the same way — `2 scroll of magic
+ * missile` in the pack, `66 bone key` on the floor, `2 black star keys` among
+ * the keys — and every one of them reads as an item called "2 …" until the
+ * figure is taken off the front. The pack's own listing has done this since
+ * 2026-08-26 (`parseCarriedEntries`); the other two did not, and the cost was
+ * the reported failure: a character holding `2 bone key` could not be seen to
+ * hold *bone key*, so the realm's row for it was never found and the keyed
+ * door it opens stayed a wall (todo 01).
+ *
+ * **The name is left exactly as the listing spelled it otherwise** — no
+ * article stripped, no annotation taken off, no plural undone. Those are
+ * `bareName`'s job and a caller's, and a realm that pluralises a counted
+ * entry (`2 black star keys` for the row `black star key`, captures/002) is a
+ * name only an index can settle. Guessing here would put a name the realm
+ * does not have into the client's own state.
+ *
+ * **A figure no listing could have written is not a figure**, and the entry is
+ * returned whole with a count of one. `LISTING_COUNT_CEILING` is a sanity
+ * bound rather than a threshold anything decides on — callers expand a count
+ * into that many instances, and `Array.from({ length: 1e23 })` is a thrown
+ * `RangeError` in the middle of the parse path. It lives here because
+ * `src/shared` is dependency-free by rule and cannot read `internal.yaml`.
+ * `count === 1` and no figure at all are deliberately the same answer: one of
+ * a thing is one of a thing.
+ */
+export function countedName(entry: string): { count: number; name: string } {
+  const trimmed = entry.trim();
+  const match = /^(?<count>\d+) (?<rest>\S.*)$/.exec(trimmed);
+  if (!match?.groups) return { count: 1, name: trimmed };
+  const count = Number(match.groups['count']);
+  if (!Number.isSafeInteger(count) || count < 1 || count > LISTING_COUNT_CEILING) {
+    return { count: 1, name: trimmed };
+  }
+  return { count, name: match.groups['rest']!.trim() };
+}
+
+/**
+ * The largest count `countedName` will read off a listing entry.
+ *
+ * The floor of a mummy's crypt held 66 bone keys and a starter shop stocks 31
+ * quarterstaffs, so the realm's own numbers are two orders of magnitude under
+ * this. Anything above it is a garbled line, and reading it as a count is a
+ * caller allocating an array that size.
+ */
+const LISTING_COUNT_CEILING = 10_000;
+
+/**
+ * A counted entry written back the way the server wrote it.
+ *
+ * The inverse of {@link countedName}, and it exists because the split has a
+ * reader on the other side: a card drawing `item.name` alone after the figure
+ * moved onto `count` would show *bone key* where the floor holds sixty-six,
+ * which is a listing that lies about what is there. One statement of the
+ * spelling, so the readout and the clipboard cannot disagree.
+ *
+ * Absent and one are the same answer, because the server prints neither.
+ */
+export function countedLabel(item: { name: string; count?: number }): string {
+  return item.count !== undefined && item.count > 1 ? `${item.count} ${item.name}` : item.name;
+}
+
+/**
+ * A list of instances read back as the server would print it.
+ *
+ * The key ring is held as instances — `2 bone key` is two keys, which is what
+ * lets the realm's row for one be found at all — and a card joining those
+ * would read *bone key, bone key*, then *bone key, bone key, bone key*. Both
+ * spellings are things this server has actually printed (`golden idol, golden
+ * idol` on one realm, `2 golden idols` on another), so neither is wrong; the
+ * counted one is the one that stays readable when a character is standing on a
+ * crypt floor holding sixty-six.
+ *
+ * First appearance decides the order, so the ring does not reshuffle itself
+ * between listings, and the spelling is the listing's own — nothing here
+ * pluralises a name the realm did not.
+ */
+export function countedList(names: readonly string[]): string[] {
+  const order: string[] = [];
+  const counts = new Map<string, number>();
+  for (const name of names) {
+    const seen = counts.get(name);
+    if (seen === undefined) order.push(name);
+    counts.set(name, (seen ?? 0) + 1);
+  }
+  return order.map((name) => countedLabel({ name, count: counts.get(name)! }));
+}
+
+/**
+ * The ability id an item's `Abil-n` slot uses to name a spell it casts.
+ *
+ * `CastsSp` in MegaMUD's vocabulary and `CastSpell` in the server's
+ * (`GMUDAbilities.CastSpell = 43`).
+ */
+const CASTS_SPELL = 43;
+
+/**
+ * And the one that turns the *next* `CastsSp` into a hit-proc instead.
+ *
+ * `GMUDAbilities.PercentSpell = 114`. The server's own comment on this is
+ * *"this is retarded logic, but it's the way MajorMUD works so we're stuck
+ * with it"* — a `CastsSp` preceded by a `PercentSpell` is the chance-on-hit
+ * pair, and a bare one is something the player invokes.
+ */
+const PERCENT_SPELL = 114;
+
+/** What an item casts when it is used, and whether using it costs a charge. */
+export interface ItemInvocation {
+  /** The `Spells` row it casts. */
+  spell: number;
+  /**
+   * True where the realm states `UseCount: -1`.
+   *
+   * The distinction is the whole of whether invoking it is free: 39 items in
+   * the shipped realm are unlimited and 266 are not, and an item with three
+   * charges spent on a buff is three charges somebody was saving.
+   */
+  unlimited: boolean;
+}
+
+/**
+ * What an item casts when somebody types `use <it>`, or null for one that
+ * casts nothing that way.
+ *
+ * **Read out of the server rather than inferred from the ability's name.**
+ * `ItemType.cs` walks an item's ability slots in order and rewrites a bare
+ * `CastSpell` into `UseSpell` as it loads — so an item carrying `CastsSp` with
+ * no `PercentSpell` immediately before it is a `use`-able item, and one with
+ * it is a chance-on-hit proc that no command can trigger. A `shimmering
+ * longsword` carries **both**: `[43, 114]` at slot 2 is the bless it can be
+ * asked for, and `[114, 40], [43, 170]` at slots 3 and 4 are a forty-per-cent
+ * proc it cannot.
+ *
+ * The first bare one wins. No item in either database on this machine carries
+ * two, and picking between them would be a guess about which the player meant.
+ */
+export function itemInvocation(item: {
+  /**
+   * `WorldItem.abilities` — the runtime spelling. The *built* record calls the
+   * same column `ab`; this reads the one the client holds at runtime, which is
+   * the one every caller has.
+   */
+  abilities?: ReadonlyArray<readonly [number, number]>;
+  uses?: number;
+}): ItemInvocation | null {
+  const pairs = item.abilities ?? [];
+  for (let index = 0; index < pairs.length; index += 1) {
+    const pair = pairs[index];
+    if (pair === undefined || pair[0] !== CASTS_SPELL) continue;
+    if (index > 0 && pairs[index - 1]?.[0] === PERCENT_SPELL) continue;
+    const spell = pair[1];
+    // Slot zero is the realm's empty cell, not a spell.
+    if (spell <= 0) continue;
+    return { spell, unlimited: item.uses === -1 };
+  }
+  return null;
+}
+
+/** A chance-on-hit the realm hangs off an item. */
+export interface HitProc {
+  /** The `Spells` row it casts when it fires. */
+  spell: number;
+  /** The realm's own percentage, as `PercentSpell` states it. */
+  chance: number;
+}
+
+/**
+ * The chance-on-hit procs `itemInvocation` deliberately steps over.
+ *
+ * The other half of the same pair, and read the same way round: `ItemType.cs`
+ * leaves a `CastSpell` preceded by a `PercentSpell` alone, so *that* one is the
+ * proc no command can trigger — a `shimmering longsword` carries `[43, 114]`
+ * (the bless `use` invokes) and then `[114, 40], [43, 170]`, a forty-per-cent
+ * chance of casting `silvery mace` on a blow that lands.
+ *
+ * It matters because **the sentence a proc prints names nobody**. `A shining
+ * spark strikes cave worm for 3 damage!` is the spell's own message data with
+ * the target and the number substituted in; there is no attacker in it to
+ * read, and a damage line with no attacker was being booked to everybody
+ * *else* in the room. This is the only thing on the client that can say the
+ * blow was this character's own — the realm stating that what it wields fires
+ * one.
+ *
+ * Every pair, not the first: an item may carry several, and the question the
+ * caller asks is whether this thing procs at all.
+ */
+export function itemHitProcs(item: {
+  abilities?: ReadonlyArray<readonly [number, number]>;
+}): HitProc[] {
+  const pairs = item.abilities ?? [];
+  const found: HitProc[] = [];
+  for (let index = 1; index < pairs.length; index += 1) {
+    const pair = pairs[index];
+    const before = pairs[index - 1];
+    if (pair === undefined || pair[0] !== CASTS_SPELL) continue;
+    if (before === undefined || before[0] !== PERCENT_SPELL) continue;
+    // Slot zero is the realm's empty cell, not a spell.
+    if (pair[1] <= 0) continue;
+    found.push({ spell: pair[1], chance: before[1] });
+  }
+  return found;
+}

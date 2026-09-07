@@ -63,7 +63,17 @@ export function trackTally(
   tally: CombatTally,
   block: Block,
   after: CharacterState,
-  before: CharacterState
+  before: CharacterState,
+  /**
+   * Whether this block was read as a chance-on-hit off this character's own
+   * gear — see `CharacterTracker.readsAsProc`.
+   *
+   * Handed in rather than derived, because the one thing that can attribute
+   * such a line is the realm's item row and the round it landed in, and
+   * neither is anywhere near here. Decided once so the ledger and this table
+   * cannot disagree about the same blow.
+   */
+  proc = false
 ): CombatTally {
   const g = block.groups ?? {};
   let next = tally;
@@ -79,8 +89,18 @@ export function trackTally(
      * here would put another player's damage into this character's average.
      */
     case 'user-hits': {
-      if (/^you$/i.test(g['target'] ?? '') || !isSelf(g['attacker'], after)) break;
-      const kind = blowKind(g['line']);
+      if (/^you$/i.test(g['target'] ?? '')) break;
+      /*
+       * A weapon's proc is this character's damage and **not** one of its
+       * swings, so it gets its own kind rather than being folded into
+       * `melee`: it lands off a swing that is already counted, and adding it
+       * there would inflate the hit count that the accuracy share divides by
+       * and drag the melee average down with a figure a weapon rolled. Its
+       * line names nobody, so `blowKind` has nothing to read and the verdict
+       * arrives from the tracker instead.
+       */
+      const kind = proc ? 'proc' : isSelf(g['attacker'], after) ? blowKind(g['line']) : null;
+      if (kind === null) break;
       count({ dealt: { ...next.dealt, [kind]: withBlow(next.dealt[kind], int(g['damage'])) } });
       break;
     }

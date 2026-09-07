@@ -263,6 +263,7 @@ export class AutoCombat {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -417,6 +418,40 @@ export class AutoCombat {
    */
   noteLooping(looping: boolean): void {
     this.looping = looping;
+  }
+
+  /**
+   * Whether this module will act at all right now.
+   *
+   * The master switch, and then the block's own — except that **a running loop
+   * fights whatever the block says** (todo 03, 2026-09-06). A loop is chosen
+   * *because* of what lives on it; one walked with auto-combat off completes
+   * its laps having gained nothing, and the character comes back after eight
+   * hours at the level it left. `whileWalking` was already overridden here for
+   * that exact argument, and this is the same argument one setting further
+   * out: the switch says what to do about a monster the *player* walked into,
+   * and a loop's monsters are the point of the loop.
+   *
+   * Session-scoped and announced, never written into the player's own file:
+   * the client does not edit somebody's configuration on its own initiative,
+   * and it ends when the loop does — which is what makes it answerable by
+   * stopping the loop rather than by remembering to put a switch back.
+   * `LoopRunner` says it out loud once per lap, because a client that fights
+   * while a switch reads off is otherwise two surfaces disagreeing in silence.
+   */
+  private get acting(): boolean {
+    return this.enabled && (this.config.enabled || this.looping);
+  }
+
+  /**
+   * Whether the loop is the only reason this is acting, so the loop can say so.
+   *
+   * Read by `LoopRunner` at the moment a lap starts; false the rest of the
+   * time, including for a loop on a character whose switch is already on,
+   * where there is nothing to announce.
+   */
+  get fightingBecauseLooping(): boolean {
+    return this.enabled && !this.config.enabled;
   }
 
   /**
@@ -590,7 +625,7 @@ export class AutoCombat {
       this.casts.clear();
     }
 
-    if (!this.enabled || !this.config.enabled) return;
+    if (!this.acting) return;
     if (state.phase !== 'in-game') return;
 
     // A fight that has ended takes its opener and its round cycle with it.
@@ -865,7 +900,7 @@ export class AutoCombat {
    * caller has already refused to plan across an unanswered move.
    */
   quarry(state: CharacterState): boolean {
-    if (!this.enabled || !this.config.enabled) return false;
+    if (!this.acting) return false;
     if (
       this.config.engage === 'none' &&
       this.assistTarget(state) === null &&
@@ -1324,7 +1359,7 @@ export class AutoCombat {
    */
   private round(): void {
     const state = this.state;
-    if (!this.enabled || !this.config.enabled) return;
+    if (!this.acting) return;
     if (state === null || state.phase !== 'in-game') return;
     if (this.retreating) return;
     if (!state.inCombat) return;

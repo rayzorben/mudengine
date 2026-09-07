@@ -8,6 +8,7 @@
  * Dependency-free: the graph is built in the main process, routes are rendered
  * in the renderer.
  */
+import type { Alignment } from './alignment';
 import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
@@ -81,6 +82,47 @@ export const OPPOSITE: Record<Direction, Direction> = {
   d: 'u'
 };
 
+/**
+ * A direction as the *server* words it, or null.
+ *
+ * `DIRECTION_NAME` is the other direction — what this client calls each code —
+ * and it is not enough to read the server with, because the server has more
+ * than one word for the same way. Every entry here is a word a capture shows:
+ *
+ * | Word | Where |
+ * |---|---|
+ * | `north` … `down` | everywhere; `parseExit`'s own list |
+ * | `below`, `above` | `Obvious exits: north, open trap door below` — 20 lines across the corpus |
+ * | `downwards` | `You found an exit downwards!` (`captures/005:187`) |
+ *
+ * `upwards` is the one entry no capture shows, and it is here deliberately: it
+ * is the unmirrored half of a captured pair, a word that costs nothing if no
+ * realm ever prints it, and whose absence leaves a hidden **up** exit searched
+ * for forever by a walk that cannot tell it has been found. That is a different
+ * trade from inventing a *pattern*, which would claim a sentence exists.
+ */
+const SPOKEN_DIRECTION: Readonly<Record<string, Direction>> = {
+  north: 'n',
+  south: 's',
+  east: 'e',
+  west: 'w',
+  northeast: 'ne',
+  northwest: 'nw',
+  southeast: 'se',
+  southwest: 'sw',
+  up: 'u',
+  down: 'd',
+  above: 'u',
+  below: 'd',
+  upwards: 'u',
+  downwards: 'd'
+};
+
+export function asSpokenDirection(input: string): Direction | null {
+  const word = input.trim().toLowerCase();
+  return SPOKEN_DIRECTION[word] ?? asDirection(word);
+}
+
 export const DIRECTION_NAME: Record<Direction, string> = {
   n: 'north',
   s: 'south',
@@ -103,23 +145,35 @@ export const DIRECTION_NAME: Record<Direction, string> = {
  * passable-but-suspect rather than silently dropped: an exit we do not
  * understand is still an exit, and pruning it strands routes.
  */
-export type RequirementKind =
-  | 'door'
-  | 'key'
-  | 'level'
-  | 'toll'
-  | 'text'
-  | 'item'
-  | 'class'
-  | 'race'
-  | 'alignment'
-  | 'ability'
-  | 'cast'
-  | 'spell'
-  | 'trap'
-  | 'hidden'
-  | 'timed'
-  | 'unknown';
+export const REQUIREMENT_KINDS = [
+  'door',
+  'key',
+  'level',
+  'toll',
+  'text',
+  'item',
+  'class',
+  'race',
+  'alignment',
+  'ability',
+  'cast',
+  'spell',
+  'trap',
+  'hidden',
+  'timed',
+  'unknown'
+] as const;
+
+/**
+ * The kinds, as a type.
+ *
+ * Derived from the list rather than declared beside it, for the reason
+ * `ROUTE_BLOCK_KINDS` gives: a closed union has two halves and they move
+ * together. `WorldGraph.test.ts` walks this list and asserts `edgePenalty` and
+ * `edgeBlock` agree about every one of them, so a kind added here and priced
+ * nowhere is a failing test rather than a corridor nobody can explain.
+ */
+export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 
 export interface Requirement {
   kind: RequirementKind;
@@ -130,7 +184,24 @@ export interface Requirement {
    * `Text: go crimson, enter crimson` yields both, first one preferred.
    */
   commands?: string[];
-  /** `Key: 1124` — the item number that opens it. */
+  /**
+   * The item this exit demands, as an `Items` row id.
+   *
+   * Two instructions state one, and they are the same fact from the router's
+   * point of view — *is this thing in the pack*: `Key: 1124` (a lock, which a
+   * picklock may also open) and `Item: 191` (`rope and grapple`, on 157 of the
+   * shipped realm's exits).
+   *
+   * **The `Item:` branch drops a zero and the `Key:` branch does not**, which
+   * is not an oversight. The server builds a plain exit for `Item: 0`
+   * (`RoomManager.LoadRooms` case 3, a reading of the source), so keeping it
+   * would read as *item zero required* and shut the exit against everybody —
+   * the `Level: 37 to 0` lesson in a third column. `Key: 0` occurs in neither
+   * database on this machine, and dropping it would change nothing anyway: a
+   * `Key:` with no id is a lock the realm did not name, which is already
+   * priced as a lock rather than as an open door. Inventing behaviour for a
+   * shape no realm has is the guess this file exists to refuse.
+   */
   keyId?: number;
   /** `[or 301 picklocks/strength]` — the picklocks that substitute for the key. */
   pickDifficulty?: number;
@@ -165,10 +236,198 @@ export interface Requirement {
    * would wave a broke character through a gate it cannot pay.
    */
   tollCopper?: number;
-  /** `Trap, 30 damage`. */
+  /**
+   * `Class: 3 OK, 0 NO` — the one class the realm lets through this exit, and
+   * the one it turns away, as `Classes` row ids. **0 means nobody**.
+   *
+   * `classOk` is an allow-list of one, not a hint: the shipped realm's crypt
+   * is fifteen identical `Crypt, Shadowed Hall` rooms whose east exits carry
+   * ids 1 through 15, one class each, and a Paladin sent through the one
+   * reading `Class: 6 OK` is answered `You may not go through this exit!` on
+   * the wire (todo 03, 2026-09-06). All 54 class-gated exits in the realm are
+   * this one shape, surveyed rather than remembered.
+   *
+   * An id no `Classes` row has names nobody — one exit reads `1984 NO` against
+   * a table of fifteen — and is left to `WorldGraph.classId` to fail to match,
+   * which is the same answer by a shorter road.
+   */
+  classOk?: number;
+  classNo?: number;
+  /**
+   * `Race: 13 OK, 0 NO` — the same allow/deny pair as the class gate, one row
+   * further down the server's own switch (`RoomManager.LoadRooms` case 14 is
+   * case 13 with `Races` in place of `Classes`).
+   *
+   * Two exits in each of the two realm databases on this machine, both reading
+   * `Race: 13 OK, 0 NO`, surveyed rather than remembered. `0` is dropped for
+   * the reason `classNo` is.
+   */
+  raceOk?: number;
+  raceNo?: number;
+  /**
+   * `Alignment: Saint to Seedy` — the window of standing the exit admits.
+   *
+   * The realm writes **words** where the server holds *evil points*:
+   * `AlignmentExit` compares `Player.EvilPoints` against two ints, and the
+   * bands those ints fall in are what the editor rendered here. So comparing
+   * bands is exact rather than approximate — a gate can only be written as a
+   * word if its number sat on a band, and `EvilPointLevels` puts Seedy's
+   * ceiling at 39.99 with Outlaw beginning immediately above it. The scale
+   * itself is `src/shared/alignment.ts`.
+   *
+   * A word neither the realm nor the roster names leaves both ends absent —
+   * an unreadable gate, not an open one. Fourteen exits in each database, four
+   * distinct windows, every endpoint one of `Saint`, `Neutral`, `Outlaw`,
+   * `Seedy`, `Fiend` — note the spelling, which is why the lookup is
+   * case-insensitive.
+   */
+  minAlignment?: Alignment;
+  maxAlignment?: Alignment;
+  /**
+   * `Ability: 152 w/value 1 to 1` — an `Abilities` id and the window its
+   * **sum** on the character has to fall in (`AbilityExit`, which reads
+   * `GetAbility(id).Sum`).
+   *
+   * Nine exits in the shipped realm, eight distinct, and the ids are
+   * `DaoLordQuest` (134), `Rune` (152), `Mandos Quest` (200) and
+   * `GuildmasterQuest` (204) — quest counters the wire states nowhere.
+   *
+   * **The window is matched and deliberately not stored.** Only the id is, and
+   * only so the realm's empty slot can be told from a real gate: `0` means no
+   * gate, the server builds a plain exit for it (case 23), and that exit costs
+   * nothing. The two numbers would be a field produced and read by nobody —
+   * no price can use them without the character's ability sum, and the chip
+   * shows the instruction verbatim, window included.
+   */
+  abilityId?: number;
+  /**
+   * `Cast: pre-0, post-1257` — the spells the realm fires at whoever walks
+   * this exit, before the step and after it. `0` is *no spell* and is dropped.
+   *
+   * **A cast exit never refuses anybody** — `CastExit.CanMoveThroughExit`
+   * returns `true` unconditionally, and `TryMoveThroughExit` moves the
+   * character first and casts second (a reading of the server's source). What
+   * makes it worth pricing is the other half: 217 of the shipped realm's 293
+   * cast exits fire a *teleport*, so the room the exit table names is not the
+   * room the character is standing in a moment later. See `spellEffect`.
+   */
+  castPre?: number;
+  castPost?: number;
+  /**
+   * `Spell Trap: 905` — the spell a trapped exit fires at whoever walks it.
+   *
+   * `SpellTrapExit.CanMoveThroughExit` also returns `true` unconditionally: it
+   * is a trap, not a gate, and the whole of its cost is what the spell does.
+   * 21 of the shipped realm's 22 are `poison darts`.
+   */
+  spellId?: number;
+  /**
+   * What the realm's own spell table says the spells on a `cast` or `spell`
+   * exit do to the character, resolved **once at load** and never in the A*.
+   *
+   * `edgePenalty` runs once per exit per expansion over 55,806 rooms; walking
+   * a spell's ability rows in there would put a table lookup inside the hot
+   * loop for a fact that cannot change after the file is read. So
+   * `WorldGraph.resolveSpells` answers it while the room is being built, the
+   * way `buildRealm` joins the levers.
+   *
+   * - `relocates` — a spell carries `TeleportRoom`/`TeleportMap`, so the
+   *   character ends up somewhere the exit table does not name. Measured on
+   *   the shipped realm: of the 157 exits whose cast is `gloomy teleport`,
+   *   `hallway teleport` or `thievry teleport`, **not one** states a
+   *   destination inside the range its own spell teleports into.
+   * - `script` — a spell hands the character a `TextBlock`, which is a realm
+   *   script this client does not convert. It may do anything, including move
+   *   them; 40 of the 56 are called `pyramid 4 arch fail`.
+   * - `plain` — every ability the spell carries is an effect on the
+   *   character rather than on where it is standing, so the exit is a
+   *   corridor with something cast at whoever uses it.
+   */
+  spellEffect?: 'relocates' | 'script' | 'plain';
+  /**
+   * `Trap, 30 damage` — and what a spell trap is expected to cost, in the same
+   * units, resolved from the realm's own spell table at load.
+   *
+   * One field because it is one fact — *how much this exit hurts* — and two
+   * would let the price and the chip disagree about which to read. A spell
+   * trap whose spell states no hurt this client can read leaves it absent,
+   * which is the trap floor and not a claim that the trap is harmless.
+   */
   damage?: number;
   /** `Hidden/Searchable` — must be searched for before it can be used. */
   searchable?: boolean;
+  /**
+   * `Hidden/Needs 2 Actions` — how many levers the realm says open it.
+   *
+   * Kept beside `actions` rather than derived from it, because the two can
+   * disagree: 28 of the shipped realm's 217 action-gated exits state a count
+   * the data has no matching number of levers for (one says 1,278). A mismatch
+   * is what makes `actions` absent — sending the levers that were found would
+   * be a command spent on a passage that stays shut.
+   */
+  actionsNeeded?: number;
+  /** `specific order` rather than `any order`. */
+  actionsOrdered?: boolean;
+  /**
+   * The levers that open it, in the realm's own order.
+   *
+   * Present when the realm's stated count matches the number of levers found —
+   * **189 of the shipped realm's 217 gated exits**, 39 of which have at least
+   * one lever in another room and carry it as `at`. Absent where the counts
+   * disagree, which is the realm contradicting itself and no basis for sending
+   * anything.
+   *
+   * **`openableHere` is the gate, not this field.** A list with an `at` on any
+   * member is a lever the character has to walk to, which the *router* still
+   * does not plan; it is here so the client can say where it is. Everything
+   * priced or sent in place — `edgePenalty`, the chip, `Walker.pullLevers` —
+   * asks `openableHere` first, and 150 exits answer yes. See `parseAction` for
+   * where the data was hiding.
+   *
+   * Walking to a lever elsewhere is `RemoteLever` and `Walker.fetchLever`,
+   * which read the *rooms'* own commands rather than this field — and have to,
+   * because 25 of the 225 gated exits state no action at all.
+   */
+  actions?: RequirementAction[];
+}
+
+/**
+ * One lever an exit needs pulled, resolved.
+ *
+ * `say` is every phrase the realm accepts and its own spelling is first, the
+ * shape `Requirement.commands` already keeps for a `Text:` exit — and for the
+ * same reason: the client sends one of these, so the list is what it may send
+ * and the order is the realm's preference, not the client's guess.
+ */
+export interface RequirementAction {
+  say: string[];
+  /**
+   * Where it is pulled, when that is not the room the exit leaves from.
+   *
+   * Absent is *here*, which is what makes the exit openable in place. Present
+   * is a detour the router does not plan — but it is what lets the client say
+   * *the lever for this is in Guardroom 1/1339* instead of writing the
+   * corridor off, which is the reported complaint.
+   */
+  at?: { map: number; room: number };
+}
+
+/**
+ * Whether a hidden exit's levers can all be pulled without leaving the room.
+ *
+ * One reading, shared by the price (`edgePenalty`), the chip
+ * (`describeObstacle`) and the walker's own rung (`pullLevers`), because three
+ * copies of *can this be opened from here* agree exactly until one is edited —
+ * the lesson `AutoCombat.quarry` already records.
+ *
+ * The second half of the test and not the whole of it: `buildRealm` writes
+ * `actions` only where the realm's stated count matches the number of levers
+ * found, so a passage whose data disagrees with itself never reaches here.
+ */
+export function openableHere(requirement: Requirement | null): boolean {
+  if (requirement?.kind !== 'hidden') return false;
+  const acts = requirement.actions;
+  return acts !== undefined && acts.length > 0 && acts.every((act) => act.at === undefined);
 }
 
 /**
@@ -687,6 +946,17 @@ export interface WorldLookup {
    * a shop the realm places nowhere simply has no key. See `ShopPlace`.
    */
   shopPlaces?: Record<string, ShopPlace>;
+  /**
+   * Where the realm spawns each monster named, by the monster's name.
+   *
+   * Resolved here for the reason `shopPlaces` is: reading *where does this
+   * thing come from* and walking to one of those places is one round trip, and
+   * the card never needs a channel of its own for a join the realm file can
+   * already make. A monster the realm puts in no room simply has no key —
+   * 153 of the shipped realm's 1,514 names, the summoned and the scripted —
+   * which is the honest answer rather than an empty list reading as *nowhere*.
+   */
+  mobPlaces?: Record<string, MobPlaces>;
 }
 
 /**
@@ -707,6 +977,91 @@ export interface WorldLair {
    * which the face says rather than hides.
    */
   mobs: WorldMob[];
+}
+
+/**
+ * A room's `Lair` descriptor, read.
+ *
+ * **The two databases on this machine spell it differently, and only one of
+ * them was being read correctly.** GreaterMUD writes `(Max 2): 1141,2175,2176,`
+ * — the slot count and the monster numbers, which is what
+ * docs/greatermud/player-and-world.md records. Paradigm's MMUD-Explorer export
+ * appends its own spawn parameters in brackets: `(Max 2): 781,190,[6-30-31-2]`,
+ * every one of its 14,068 lairs. Those four numbers are not monsters, and the
+ * reader took every digit in the string, so the Lucky Strike Casino's lair of
+ * *drunken brawler, drunken gambler* read as that pair plus an **orc rogue, a
+ * grey spider, a mummy and a lashworm** — four monsters the realm never put
+ * there, on the one face a player reads before deciding whether to walk in.
+ * The shipped realm is the Paradigm one, so this was wrong for every lair in
+ * the client.
+ *
+ * Stated as a parse rather than a regex at each use so the lair face and the
+ * spawn index cannot come to different conclusions about what a descriptor
+ * says. The `(Max n)` clause is removed *whole* rather than the first number
+ * being dropped: a descriptor that states no maximum would otherwise lose a
+ * real monster to the slice.
+ */
+export function parseLair(descriptor: string): { max: number | null; ids: number[] } {
+  // Everything from the first bracket on is the exporter's own parameters.
+  const body = (descriptor.split('[')[0] ?? '').replace(/\(Max\s+(\d+)\)\s*:?/i, ' ');
+  const max = /\(Max\s+(\d+)\)/i.exec(descriptor);
+  const ids: number[] = [];
+  for (const match of body.matchAll(/\d+/g)) {
+    const id = Number(match[0]);
+    if (id > 0 && !ids.includes(id)) ids.push(id);
+  }
+  return { max: max ? Number(max[1]) : null, ids };
+}
+
+/**
+ * Where the realm puts a monster, by the name of the room it puts it in.
+ *
+ * Grouped by *name* because that is the answer to the question being asked.
+ * `snow cat` is in 236 rooms of 25 names, and a list of 236 addresses is not
+ * somewhere a person can decide to go; `Snowy Plains` is. The addresses are
+ * carried underneath so a group of several is something to **choose from** —
+ * never a button that walks to whichever room the file listed first, which is
+ * the guess `ShopPlace` already refuses for the same reason.
+ */
+export interface MobSpawn {
+  /**
+   * How the realm puts it there.
+   *
+   * `npc` is `Rooms.NPC` — the room's own resident, one specific creature that
+   * belongs to that room. `lair` is `Rooms.Lair` — a regeneration slot the
+   * monster is one candidate for, so it is *what can be here*, not what is.
+   * The distinction decides whether walking there finds the thing.
+   */
+  via: 'npc' | 'lair';
+  roomName: string;
+  /** How many rooms of that name spawn it, whether or not `rooms` lists them all. */
+  count: number;
+  /** Those rooms, capped — each one a place a walk can be planned to. */
+  rooms: Array<{ map: number; room: number }>;
+  /**
+   * How many may be up at once, where every descriptor in the group agrees.
+   * Null where they disagree or state none — a figure folded from rows that
+   * disagree would be a number the realm never gave.
+   */
+  max: number | null;
+}
+
+/**
+ * Every room the realm spawns one monster in.
+ *
+ * The reverse of `WorldRoom.npcId` and `WorldRoom.lair`, which the client has
+ * carried since the world file began and could only ever read forwards: the
+ * Room card could say *this lair holds a snow cat* and nothing could answer
+ * *where is a snow cat*. That is the question a player has, and the realm data
+ * already held it.
+ */
+export interface MobPlaces {
+  /** The groups, `npc` before `lair` and the widest spread first. Capped. */
+  spawns: MobSpawn[];
+  /** Rooms in all, across every group including the ones the cap left out. */
+  rooms: number;
+  /** Groups the cap left out, so a truncated list says it is one. */
+  more: number;
 }
 
 /**
@@ -1073,6 +1428,53 @@ export interface RoomCommand {
   to?: RoomId;
   /** What it wants, in the realm's own words. */
   need?: string[];
+  /**
+   * The exit this opens — a lever, from a direction column that is not an exit
+   * (`parseAction`).
+   *
+   * The room's scripted answers (`Rooms.CMD`) and its levers are two columns of
+   * the realm and one question for a person standing in the room: *what can I
+   * type here*. So they are one list, and this is what tells them apart — the
+   * Answers face says which exit a lever opens, because `pull lever` with no
+   * consequence beside it is the client repeating the realm at somebody.
+   */
+  opens?: { room: RoomId; direction: string };
+}
+
+/**
+ * A lever that opens some exit, and where it is pulled.
+ *
+ * The other end of `RoomCommand.opens`, indexed by the exit rather than by the
+ * room holding the lever — which is the direction every question about it is
+ * asked from: *this step was refused; is there anything anywhere that opens
+ * it*.
+ *
+ * **Why this is not `Requirement.actions`.** That field is written only where
+ * the exit's own instruction says `Needs N Actions` and the realm's count
+ * matches the levers found, which leaves out the shape this exists for
+ * entirely: `1/1331` north out of Inner Gate reads `Door [301
+ * picklocks/strength]` and says nothing about a lever, while a Guardroom on
+ * each side holds one whose whole purpose is that gate. Measured over the
+ * shipped realm: 225 exits have a lever pointing at them, and 25 of them carry
+ * no `actions` at all — invisible to anything reading the requirement.
+ *
+ * **Several levers for one exit are a set only when the realm counts them**,
+ * and `Requirement.actionsNeeded` is that count. `Needs 2 Actions` with two
+ * levers is two levers to pull; a count smaller than the levers found, or no
+ * count at all, names *alternatives* — the reported gate says `Door` and has a
+ * lever in each Guardroom flanking it, and the wire settled which reading is
+ * right: one pull raised it. `Walker.fetchLever` is where that is acted on.
+ */
+export interface RemoteLever {
+  /** The room it is pulled in. Equal to the exit's own room for 171 of 225. */
+  at: RoomId;
+  /** That room's name, so the client can say where it is sending somebody. */
+  roomName: string;
+  /**
+   * What to type. The realm's own spelling, which is what `say[0]` is
+   * everywhere else a phrase is sent — the rest are synonyms for one lever.
+   */
+  say: string;
 }
 
 /** `map/room`, the key used everywhere. */
@@ -1221,6 +1623,43 @@ export interface RouteStep {
 }
 
 /**
+ * The traps a route walks through, counted, and the worst of them.
+ *
+ * A trap is the one requirement on a route that is neither opened nor paid
+ * nor refused — the route is priced through it (`edgePenalty` charges the
+ * damage) and the character walks it and takes the hit. A route list forty
+ * steps long says so on the step, where a reader scrolling to the `Walk it`
+ * button never looks; the head of the list is where the count belongs, and
+ * the number that decides whether to walk it is the heaviest one.
+ *
+ * `worst` is the largest stated damage, or null when no trap on the route
+ * states one — the realm writes `Trap, 400 damage` for every one in the
+ * shipped file, but a derivative may write a bare `Trap`, and a count with
+ * no damage is still a count. Null is not zero: *up to 0 damage* would be a
+ * reassuring number the data never gave.
+ */
+export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst: number | null } {
+  let count = 0;
+  let worst: number | null = null;
+  for (const step of steps) {
+    /*
+     * A `Spell Trap:` exit counts too, and did not until its spell was read
+     * (todo 00, 2026-09-06). It is a trap by the server's own reckoning —
+     * `SpellTrapExit` lets everybody through and fires a spell at them — and it
+     * carries the same `damage` field, taken from the realm's spell table
+     * rather than the instruction string. Excluding it said *no traps on this
+     * route* about a route through 21 exits that shoot poison darts.
+     */
+    const gate = step.requirement;
+    if (gate?.kind !== 'trap' && gate?.kind !== 'spell') continue;
+    count += 1;
+    const damage = gate.damage;
+    if (damage !== undefined && (worst === null || damage > worst)) worst = damage;
+  }
+  return { count, worst };
+}
+
+/**
  * Why a route could not be walked — the condition, not a sentence about it.
  *
  * A blocked route used to carry one line of free text: *No route from … that
@@ -1235,11 +1674,20 @@ export interface RouteStep {
  * door, and naming one hides the other — so somebody clears the first and is
  * refused again by a condition that was there all along.
  *
- * Only three kinds can actually stop a route, which is what bounds this union:
- * a lock with no key and no skill the realm accepts instead, a level gate, and
- * a toll with nothing to pay it. Everything else is *expensive* rather than
- * impossible, because a route through a trap is better than no route and the
- * player can see the requirement and judge.
+ * What bounds this union is the set of conditions the realm states *and* the
+ * character cannot change by doing anything on the way: a lock with no key and
+ * no skill the realm accepts instead, a level gate, a toll with nothing to pay
+ * it, and the three the character simply **is** — its class, its race and its
+ * standing. Everything else is *expensive* rather than impossible, because a
+ * route through a trap is better than no route and the player can see the
+ * requirement and judge.
+ *
+ * The three born conditions arrived late, and the class one arrived without a
+ * block at all: `edgePenalty` learned to prune a class-gated exit (todo 03,
+ * 2026-09-06) and this union did not learn to say so, so the route that took
+ * the trouble to prune said *the two rooms are not joined in the data*. That
+ * is why the agreement test now walks `REQUIREMENT_KINDS` rather than a list
+ * somebody has to remember to extend.
  */
 export type RouteBlock =
   | {
@@ -1249,8 +1697,19 @@ export type RouteBlock =
       to: RoomId;
       /** Where it leads, named, because a room id is not something to act on. */
       name: string;
-      /** `Key: 1124` — the item number. Look the name up before showing it. */
+      /** `Key: 1124` — the item number, for a surface that wants the id. */
       keyId?: number;
+      /**
+       * What it is called, looked up before the block was built.
+       *
+       * `describeObstacle`'s own header settled this for the chip: *naming a
+       * key means looking it up — `Key: 1124` is not something anyone can do
+       * anything with*. The route's own sentence said `key 1124` for a year
+       * after that, because `describeBlock` is in `src/shared` and has no
+       * realm to ask; `blocksAlong` has one, so the name is put on the block
+       * where the graph is rather than looked for where it is not.
+       */
+      itemName?: string;
     }
   | {
       kind: 'level';
@@ -1282,6 +1741,58 @@ export type RouteBlock =
       tollCopper?: number;
       purseCopper?: number;
     }
+  | {
+      /**
+       * Something the exit wants in the pack, that the pack does not hold.
+       *
+       * `Item: 191` — `rope and grapple`, on 157 of the shipped realm's exits.
+       * Its own kind rather than a second `key`, because the two are different
+       * things to be told: a lock may yield to a picklock and this never does,
+       * and *go and buy a rope* is a different errand from *go and find the
+       * key*.
+       *
+       * Only ever built once a listing has landed. A pack nobody has looked in
+       * does not block, so this block always means *it is not in there* rather
+       * than *nobody knows*.
+       */
+      kind: 'carry';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      itemId?: number;
+      itemName?: string;
+    }
+  | {
+      /**
+       * What the character is, against what the exit admits — one shape for
+       * the three the realm decides at creation and nothing on the route can
+       * change.
+       *
+       * `mine` is the row id or word the character carries and is null while
+       * nobody has read a stat sheet or a roster, which cannot itself block:
+       * an unknown class, race or standing is discouraged and never pruned, so
+       * a block of this kind always names something the realm said no to.
+       * `admits` and `refuses` are whichever half the instruction stated —
+       * `Class: 3 OK, 0 NO` states one of each and drops the zero, and an
+       * alignment window states both ends.
+       */
+      kind: 'born';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      /** Which of the three: the word a sentence puts in front of the numbers. */
+      condition: 'class' | 'race' | 'alignment';
+      mine: string | number | null;
+      /**
+       * What the exit lets through — a `Classes`/`Races` row id for the first
+       * two, and for a standing the **window as one phrase** (`Saint to
+       * Seedy`), because that is one fact with two ends and handing over the
+       * ends would make the sentence reassemble them.
+       */
+      admits?: string | number;
+      /** What it turns away. Class and race only; a standing states no such half. */
+      refuses?: string | number;
+    }
   /** No path at all, gates ignored: the two rooms are not joined in the data. */
   | { kind: 'unreachable' };
 
@@ -1292,7 +1803,7 @@ export type RouteBlock =
  * `describeBlock` is checked against, so a kind added to the type and not
  * described is a failing test rather than a route that refuses in silence.
  */
-export const ROUTE_BLOCK_KINDS = ['key', 'level', 'toll', 'unreachable'] as const;
+export const ROUTE_BLOCK_KINDS = ['key', 'level', 'toll', 'carry', 'born', 'unreachable'] as const;
 
 /**
  * One block as a sentence, naming the condition and the number it wanted.
@@ -1328,11 +1839,24 @@ const COPPER_PER_GOLD = 100;
 export function describeBlock(block: RouteBlock): string {
   switch (block.kind) {
     case 'key':
-      // The item *number* is not something anybody can act on, so it is said
-      // only when there is one and always beside the place it shuts.
+      /*
+       * The name where there is one, and the number only where there is not:
+       * *the angular key, which you do not have* is an errand, and *key 1124*
+       * is a number somebody has to go and look up themselves.
+       */
+      if (block.itemName !== undefined) {
+        return `${block.name} is locked — needs ${block.itemName}, which you do not have`;
+      }
       return block.keyId === undefined
         ? `${block.name} is locked, and nothing you carry opens it`
         : `${block.name} is locked — key ${block.keyId}, which you do not have`;
+
+    case 'carry': {
+      const what = block.itemName ?? (block.itemId === undefined ? null : `item ${block.itemId}`);
+      return what === null
+        ? `${block.name} needs something you are not carrying`
+        : `${block.name} needs ${what}, which you are not carrying`;
+    }
     case 'level': {
       const at =
         block.level === null ? 'and your level is not known yet' : `at level ${block.level}`;
@@ -1358,6 +1882,39 @@ export function describeBlock(block: RouteBlock): string {
         ? `${block.name} charges a toll of ${price}`
         : `${block.name} charges a toll of ${price}, and you have ${coinWords(block.purseCopper)}`;
     }
+    case 'born': {
+      /*
+       * The three the character *is*, in one sentence each. `mine` is never
+       * null here — an unknown class, race or standing is discouraged rather
+       * than pruned, so nothing unknown reaches this — but it is typed
+       * nullable because the traveller's field is, and a sentence that
+       * asserted a value it did not have would be exactly the confident wrong
+       * answer the router refuses everywhere else.
+       */
+      const mine = block.mine === null ? 'yours is not known yet' : `yours is ${block.mine}`;
+      if (block.condition === 'alignment') {
+        // The window arrives already written — `Saint to Seedy` — because it
+        // is one fact with two ends, and splitting it here would make this
+        // sentence reassemble what `instructions.ts` took apart.
+        return block.admits === undefined
+          ? `${block.name} has a standing gate you do not meet, and ${mine}`
+          : `${block.name} admits ${block.admits}, and ${mine}`;
+      }
+      /*
+       * The condition's word only where the value is a bare number — *admits
+       * Gaunt One only* reads as English and *admits Gaunt One race only* does
+       * not, while *admits race 13 only* is the least this can say when the
+       * realm's table does not hold the row.
+       */
+      const say = (value: string | number): string =>
+        typeof value === 'number' ? `${block.condition} ${value}` : value;
+      if (block.refuses !== undefined && block.admits === undefined) {
+        return `${block.name} turns away ${say(block.refuses)}, and ${mine}`;
+      }
+      return block.admits === undefined
+        ? `${block.name} has a ${block.condition} gate you do not meet, and ${mine}`
+        : `${block.name} admits ${say(block.admits)} only, and ${mine}`;
+    }
     case 'unreachable':
       return 'No way there at all — the realm data joins no path between the two';
   }
@@ -1379,6 +1936,67 @@ export interface Route {
    * one line or to look a key's name up.
    */
   blocks?: RouteBlock[];
+}
+
+/**
+ * A loop or route being built by hand on the map, planned as far as it goes.
+ *
+ * The builder's picks are rooms clicked in order; every pair is planned by
+ * the same `WorldGraph.route` a person's route and a loop's leg use, so what
+ * is drawn is what would be walked. `legs` is one route per pair, in order,
+ * and the first blocked one ends the plan — the picks after it are not
+ * planned, because a route on from a room the character cannot reach is a
+ * picture of nothing.
+ *
+ * `path` is every room of every planned leg, opening with the first pick, so
+ * the map can draw the whole way regardless of which rooms turn out to be
+ * waypoints. `waypoints` is the fewest of those rooms whose routes reproduce
+ * `path` exactly — the same reduction `npm run build:loops` applies to
+ * MegaMUD's recorded paths — because a loop here is a list of *places*, and
+ * a pick in the middle of a corridor the planner would walk anyway is a
+ * place nobody chose. Named, because a stop is written down by name with its
+ * coordinates behind it (`Town Gates 1/2150`).
+ */
+export interface LoopDraft {
+  legs: LoopDraftLeg[];
+  path: RoomId[];
+  waypoints: LoopDraftWaypoint[];
+}
+
+export interface LoopDraftLeg {
+  from: RoomId;
+  to: RoomId;
+  route: Route;
+}
+
+export interface LoopDraftWaypoint {
+  id: RoomId;
+  name: string;
+}
+
+/** Nothing picked yet. A constant, so an empty draft is one value everywhere. */
+export const EMPTY_LOOP_DRAFT: LoopDraft = { legs: [], path: [], waypoints: [] };
+
+/**
+ * Narrows a list of room ids that crossed the bridge, or rejects it.
+ *
+ * The builder sends its picks to main to be planned, and each one names a
+ * room to run a search from — so an entry that is not a `map/room` pair is
+ * refused rather than skipped (skipping would plan a different loop from the
+ * one on screen), and the list is bounded because every room on the way is
+ * one A* pass on the main process's own thread. Parse, do not validate: the
+ * typed list or `null`.
+ */
+export function asRoomIds(value: unknown, limit: number): RoomId[] | null {
+  if (!Array.isArray(value) || value.length > limit) return null;
+  const ids: RoomId[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') return null;
+    const reference = asRoomReference(entry);
+    if (reference === null) return null;
+    ids.push(roomId(reference.map, reference.room));
+  }
+  return ids;
 }
 
 /**

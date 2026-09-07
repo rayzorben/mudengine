@@ -26,6 +26,7 @@ import {
 import type { Block } from '../shared/blocks';
 import type { Discovery } from '../shared/memory';
 import type { CharacterState } from '../shared/character';
+import type { DebugRecord } from '../shared/debug';
 import type { ConfigSnapshot } from '../shared/config';
 import type { InternalConfig } from '../shared/internal';
 import type { LoopProgress } from '../shared/loops';
@@ -52,6 +53,7 @@ const api: IpcApi = {
   input: (session: SessionId, data: string) => ipcRenderer.send(Send.input, session, data),
   resize: (session: SessionId, size: TerminalSize) => ipcRenderer.send(Send.resize, session, size),
   diagnostics: (on: boolean) => ipcRenderer.send(Send.diagnostics, on),
+  debugFeed: (on: boolean) => ipcRenderer.send(Send.debugFeed, on),
 
   connect: (session, target?: ConnectionTarget) =>
     ipcRenderer.invoke(Invoke.connect, session, target),
@@ -59,6 +61,8 @@ const api: IpcApi = {
   getState: (session) => ipcRenderer.invoke(Invoke.getState, session),
   getTelnetLog: (session) => ipcRenderer.invoke(Invoke.getTelnetLog, session),
   getLines: (session) => ipcRenderer.invoke(Invoke.getLines, session),
+  getDebug: (session) => ipcRenderer.invoke(Invoke.getDebug, session),
+  saveDebug: (session) => ipcRenderer.invoke(Invoke.saveDebug, session),
   getCharacter: (session) => ipcRenderer.invoke(Invoke.getCharacter, session),
   routeTo: (session, map, room) => ipcRenderer.invoke(Invoke.routeTo, session, map, room),
   walkRoute: (session, route) => ipcRenderer.invoke(Invoke.walkRoute, session, route),
@@ -111,8 +115,10 @@ const api: IpcApi = {
   chooseRealm: () => ipcRenderer.invoke(Invoke.chooseRealm),
   searchRooms: (session, query) => ipcRenderer.invoke(Invoke.searchRooms, session, query),
   worldInfo: (session) => ipcRenderer.invoke(Invoke.worldInfo, session),
+  questBook: (session) => ipcRenderer.invoke(Invoke.questBook, session),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
+  draftLoop: (session, rooms) => ipcRenderer.invoke(Invoke.draftLoop, session, rooms),
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),
   lookup: (session, query) => ipcRenderer.invoke(Invoke.lookup, session, query),
   forget: (session, discovery) => ipcRenderer.invoke(Invoke.forget, session, discovery),
@@ -126,6 +132,7 @@ const api: IpcApi = {
   onState: (handler) => subscribe<Addressed<ConnectionState>>(Push.state, handler),
   onTelnet: (handler) => subscribe<Addressed<TelnetEvent>>(Push.telnet, handler),
   onLine: (handler) => subscribe<Addressed<StreamLine>>(Push.line, handler),
+  onDebug: (handler) => subscribe<Addressed<DebugRecord>>(Push.debug, handler),
   onBlock: (handler) => subscribe<Addressed<Block>>(Push.block, handler),
   onCharacter: (handler) => subscribe<Addressed<CharacterState>>(Push.character, handler),
   onWalk: (handler) => subscribe<Addressed<WalkProgress>>(Push.walk, handler),

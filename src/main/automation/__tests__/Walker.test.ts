@@ -12,8 +12,9 @@ import {
 } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { AutomationConfig, MovementConfig } from '../../../shared/config';
-import type { Route } from '../../../shared/world';
+import type { RemoteLever, Route } from '../../../shared/world';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { wireExit } from '../../../shared/entities';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
 
@@ -221,11 +222,91 @@ describe('refusing to start', () => {
    * pressed the button, and on this realm walking out of a room is the only
    * way to break a fight at all — the client's own retreat does exactly this
    * unasked.
+   *
+   * **On this configuration, which is the stock one** (2026-09-06): `config`
+   * is `DEFAULT_CONFIG.automation`, where `combat` and `safety.retreat` are
+   * both off, so nothing this client runs would end the fight and the step
+   * genuinely *is* the escape. That was always the argument; it was simply
+   * never asked as a question. See `leavingAFight` in `start`.
    */
-  it('walks a route the player asked for straight out of the fight', async () => {
+  it('walks a route the player asked for straight out of a fight nothing will end', async () => {
     expect(walker.start(ROUTE, at(1, 1, { inCombat: true }))).toBeNull();
     await vi.advanceTimersByTimeAsync(50);
     expect(sent).toEqual(['e']);
+  });
+
+  /*
+   * And the character that *will* finish it holds instead — reported
+   * 2026-09-06 as *"the automation when walking just decided to not finish
+   * attacking even though auto combat is on; auto combat should always clear
+   * the room before moving on"*, and measured
+   * (`logs/2026-09-06_11-19-43_festus.mudcap.jsonl`): `aa big skeleton` at
+   * t=7634, `*Combat Engaged*` at t=7703, and the route's opening `n` on the
+   * wire at t=7916 — over a monster auto-combat had just re-engaged, on a
+   * profile with `combat.enabled`, `retaliate` and `whileWalking` all on.
+   *
+   * The pair is the point: same route, same live fight, same button, and the
+   * player's own configuration is the only thing that differs.
+   */
+  it('holds a route the player asked for when auto-combat will clear the room', async () => {
+    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
+    const walk = new Walker(fights, queue, { notice: (m) => notices.push(m) });
+
+    expect(walk.start(ROUTE, at(1, 1, { inCombat: true }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(walk.progress.hold).toBe('fight');
+    expect(walk.walking).toBe(true);
+    expect(sent).toEqual([]);
+    walk.dispose();
+  });
+
+  /*
+   * And it is a hold rather than a stall: the room clears and the journey goes
+   * on. Without this the fix would be the 2026-09-03 refusal wearing the
+   * hold's face, which is the failure that decision was made against.
+   */
+  it('steps off once the fight it held for is over', async () => {
+    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
+    const walk = new Walker(fights, queue, { notice: (m) => notices.push(m) });
+
+    walk.start(ROUTE, at(1, 1, { inCombat: true }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+
+    // The skeleton dies; the character is still standing where it fought.
+    walk.onCharacter(at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(walk.progress.hold).toBeNull();
+    expect(moves(sent)).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * And the escape is not caught by it. A `safe-haven` retreat passes
+   * `resumeAfterFight: false` and leaves `whileFighting` at the player's
+   * default, so reading `canEndAFight` alone would have had it answer the
+   * fight by *stopping* — the walk planned to run from a fight refusing to
+   * take its first step out of it. A walk that will not wait a fight out is
+   * always leaving one.
+   */
+  it('still leaves for a walk that does not wait fights out', async () => {
+    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
+    const walk = new Walker(fights, queue, { notice: (m) => notices.push(m) });
+
+    expect(
+      walk.start(ROUTE, at(1, 1, { inCombat: true }), {
+        holdWhenHurt: false,
+        resumeAfterFight: false,
+        resumeAfterLoss: false
+      })
+    ).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(walk.progress.hold).toBeNull();
+    expect(sent).toEqual(['e']);
+    walk.dispose();
   });
 
   /*
@@ -889,6 +970,112 @@ describe('a door in the way', () => {
     });
 
   /*
+   * A route whose first step is through a door the realm says wants item 177.
+   * `edgePenalty` only plans one of these once a listing has landed and the
+   * pack holds the key, so this is the ordinary shape of a keyed step rather
+   * than a corner.
+   */
+  const KEYED: Route = {
+    ...ROUTE,
+    steps: [{ ...ROUTE.steps[0]!, requirement: { kind: 'key', raw: 'Key: 177', keyId: 177 } }]
+  };
+
+  /*
+   * Reported 2026-09-06: two bone keys in the pack, a hundred and forty-three
+   * on the floor, and the walk bashed the locked door six times without ever
+   * trying the key. The rung goes above pick and bash and answers to neither
+   * switch — see `Walker.force`.
+   */
+  it('uses the key it is carrying rather than bashing the door', () => {
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, bashDoors: true } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        keyToUse: (id) => (id === 177 ? 'bone key' : null)
+      }
+    );
+    walk.start(KEYED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'use bone key e']);
+
+    /*
+     * Unlocked is not open. The key earns the same sentence a successful pick
+     * does — `You successfully unlocked the door.`, `Door.TryUnlock` and the
+     * pick path share it — so it lands in the machinery that was already
+     * there: an `open` first, unconditionally, and then the step again.
+     */
+    walk.onBlock(block('door-changed', { barrier: 'door', state2: 'unlocked' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'use bone key e', 'open e', 'e']);
+    walk.dispose();
+  });
+
+  /* A key the pack does not hold is not typed: the rung yields to the ones
+     under it rather than sending `use  e`. */
+  it('bashes when the key is not in the pack', () => {
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, bashDoors: true } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        keyToUse: () => null
+      }
+    );
+    walk.start(KEYED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'bas e']);
+    walk.dispose();
+  });
+
+  /*
+   * A key that does not match the door answers `Your command had no effect.`
+   * — the commonest line in the game after the status line, which is why it
+   * moves the ladder on only while this walk has a `use` of its own in flight.
+   */
+  it('falls through to the next rung when the key does not fit', () => {
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, bashDoors: true } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        keyToUse: () => 'bone key'
+      }
+    );
+    walk.start(KEYED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'use bone key e']);
+
+    walk.onBlock(block('command-no-effect'));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'use bone key e', 'bas e']);
+    walk.dispose();
+  });
+
+  /* And it is spent once per run of the ladder: a key that did not work will
+     not work on being sent again in the same breath. */
+  it('does not send the key twice in one run of the ladder', () => {
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, bashDoors: false } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        keyToUse: () => 'bone key'
+      }
+    );
+    walk.start(KEYED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('command-no-effect'));
+    vi.advanceTimersByTime(200);
+    expect(sent.filter((c) => c.startsWith('use'))).toEqual(['use bone key e']);
+    walk.dispose();
+  });
+
+  /*
    * The step is no longer queued behind the `open`: the two answers that
    * decide the next rung come back first (`Walker.sendOpen`). It goes out on
    * the door opening — or, as here, on the deadline that stands in for a
@@ -967,9 +1154,57 @@ describe('a door in the way', () => {
     expect(moves(sent)).toEqual(['e', 'open e', 'e']);
     open.onBlock(block('direction-failed', { barrier: 'gate' }));
     vi.advanceTimersByTime(200);
-    open.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
-    expect(moves(sent)).toEqual(['e', 'open e', 'e', 'open e']);
     expect(notices.length).toBe(said);
+    open.dispose();
+  });
+
+  /*
+   * **And the lock is remembered between rounds.** It was not: `forgetBarrier`
+   * cleared it on every retry, so the round that follows sent `open` at a gate
+   * the server had already called locked — twelve rounds of `e`, `open e`,
+   * twenty-four commands to be told twice over what the first two said. The
+   * whole exchange was reported off the wire as todo 01 (`Inner Gate`, a gate
+   * wanting 301 picklocks, a character with none).
+   *
+   * The ladder still runs again — a bash or a pick may roll better, and
+   * somebody else may walk through — so what this asserts is the *shape* of a
+   * round: the direction, and nothing spent on the rung the server has already
+   * answered.
+   */
+  it('never opens again at a gate the server has called locked', () => {
+    const open = withMovement({ openDoors: true, openTries: 3 });
+    open.start(ROUTE, at(1, 1));
+    open.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    open.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    expect(moves(sent)).toEqual(['e', 'open e']);
+
+    for (let round = 0; round < 3; round += 1) {
+      vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+      open.onBlock(block('direction-failed', { barrier: 'gate' }));
+      vi.advanceTimersByTime(200);
+    }
+    // Three more rounds, three more directions, and not one more `open`.
+    expect(moves(sent)).toEqual(['e', 'open e', 'e', 'e', 'e']);
+    expect(open.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    open.dispose();
+  });
+
+  /*
+   * `That is not a door or a gate!` is the other `open-failed` shape and says
+   * nothing about a lock — the realm data was wrong about the barrier — so the
+   * budget is left alone and the next round asks again.
+   */
+  it('opens again after a refusal that was not about a lock', () => {
+    const open = withMovement({ openDoors: true, openTries: 3 });
+    open.start(ROUTE, at(1, 1));
+    open.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    open.onBlock(block('open-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+    open.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['e', 'open e', 'e', 'open e']);
     open.dispose();
   });
 
@@ -1351,6 +1586,76 @@ describe('sneaking before a route', () => {
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['e']);
   });
+
+  /*
+   * `SneakCommand` does everything it does inside `if (CurrentTarget == null
+   * && Room.Mobs.Count == 0)`; the `else` is one line refusing. So an `sn`
+   * sent from a room with a monster in it is a command spent to be refused —
+   * out of the budget the fight in that room is about to be fought with — and
+   * it breaks the character's rest on the way past, because `SneakCommand`
+   * clears `Resting` before it gets as far as saying no.
+   */
+  it('does not spend a sneak the server would refuse', () => {
+    const walk = sneaking();
+    walk.start(
+      ROUTE,
+      at(1, 1, {
+        room: {
+          ...structuredClone(EMPTY_CHARACTER.room),
+          map: 1,
+          number: 1,
+          occupants: [
+            {
+              name: 'giant rat',
+              kind: 'mob',
+              disposition: 'hostile',
+              uncertain: false,
+              costly: 'never',
+              hidden: false,
+              free: false,
+              charmed: false
+            }
+          ]
+        }
+      })
+    );
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * A person in the room is no bar to it, and that is the server's rule rather
+   * than a kindness: `Room.Mobs` holds monsters only.
+   */
+  it('still sneaks with only a player in the room', () => {
+    const walk = sneaking();
+    walk.start(
+      ROUTE,
+      at(1, 1, {
+        room: {
+          ...structuredClone(EMPTY_CHARACTER.room),
+          map: 1,
+          number: 1,
+          occupants: [
+            {
+              name: 'Soul',
+              kind: 'player',
+              disposition: null,
+              uncertain: false,
+              costly: 'never',
+              hidden: false,
+              free: false,
+              charmed: false
+            }
+          ]
+        }
+      })
+    );
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn', 'e']);
+    walk.dispose();
+  });
 });
 
 describe('holding a step where there is quarry', () => {
@@ -1612,17 +1917,40 @@ describe('a hidden exit in the way', () => {
     ]
   };
 
-  it('searches for it and sends the step again', () => {
+  it('searches for it, holds, and sends the step again', () => {
     walker.start(hidden, at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onBlock(block('direction-failed'));
-    vi.advanceTimersByTime(200);
+    expect(walker.progress.hold).toBe('searching');
 
+    vi.advanceTimersByTime(TUNING.walk.searchRetryMs + 50);
     expect(sent).toEqual(['e', 'search e', 'e']);
     expect(walker.progress.status).toBe('walking');
   });
 
-  it('does not blame the edge while the searches are unspent', () => {
+  /*
+   * And it says so again on a slow clock. The barrier's hold says its line
+   * once because it lasts a round and then ends the walk; this one has no
+   * ceiling, so said once the reason a character is standing in a corridor at
+   * 3am is a line eight hours up the scrollback.
+   */
+  it('repeats why it is standing still, on a slow clock', () => {
+    const held = printing(['n', null]);
+    const walk = new Walker(config, queue, {
+      notice: (message) => notices.push(message),
+      stateNow: () => held
+    });
+    walk.start(hidden, held);
+    vi.advanceTimersByTime(TUNING.walk.searchRetryMs * 4);
+    // Four searches, one line: it is not one per round.
+    expect(notices.filter((line) => line.includes('hidden here'))).toHaveLength(1);
+
+    vi.advanceTimersByTime(TUNING.walk.searchSayEveryMs);
+    expect(notices.filter((line) => line.includes('hidden here')).length).toBeGreaterThan(1);
+    walk.dispose();
+  });
+
+  it('does not blame the edge while it is searching', () => {
     const refused: string[] = [];
     let pending = 0;
     walker = new Walker(config, queue, {
@@ -1637,9 +1965,17 @@ describe('a hidden exit in the way', () => {
     expect(refused).toEqual([]);
   });
 
-  /* Once the client has done what the data told it to and the exit still is
-     not there, the refusal is finally news about the edge. */
-  it('blames the edge once the searches are spent', () => {
+  /*
+   * And it **keeps** searching — todo 04, reported 2026-09-06.
+   *
+   * It used to give up after `searchTries` and strike the edge out, which is
+   * the reported transcript exactly: two searches at Outer Keep 1/1368, the
+   * route stopped, the corridor blacklisted, and a hand-typed `sea s` a moment
+   * later answering `You found an exit to the south!`. The realm's own data
+   * says a search reveals this one, so a client that stops asking has decided
+   * the realm is wrong on two rolls of a skill check.
+   */
+  it('goes on searching rather than giving up and blaming the corridor', () => {
     const refused: string[] = [];
     let pending = 0;
     walker = new Walker(config, queue, {
@@ -1647,16 +1983,236 @@ describe('a hidden exit in the way', () => {
       pendingMoves: () => pending
     });
     walker.start(hidden, at(1, 1));
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       vi.advanceTimersByTime(50);
       pending = 1;
       walker.onBlock(block('direction-failed'));
+      pending = 0;
+      vi.advanceTimersByTime(TUNING.walk.searchRetryMs + 50);
     }
 
-    // Two searches, and no third: `SEARCH_TRIES` bounds what one exit is worth.
-    expect(sent.filter((command) => command === 'search e')).toHaveLength(2);
-    expect(refused).toEqual(['1/1|e']);
-    expect(walker.progress.status).toBe('stopped');
+    expect(sent.filter((command) => command === 'search e').length).toBeGreaterThan(2);
+    // Never written down: the refusal is the step the realm data described,
+    // and a corridor struck out is one no route can use for the session.
+    expect(refused).toEqual([]);
+    // And the walk is still alive, which is the whole of what was asked for.
+    expect(walker.progress.status).toBe('walking');
+  });
+
+  /*
+   * *"Do not try the direction first unless it is available."* A found exit
+   * joins the room's own `Obvious exits:` line — `secret passage south`, read
+   * as `s` — so the room answers *is it open yet* and the step is not spent on
+   * a wall the client already knows about.
+   */
+  /** Standing in 1/1 with the room's `Obvious exits:` line as given. */
+  const printing = (...exits: Array<[string, string | null]>): CharacterState =>
+    at(1, 1, {
+      room: {
+        ...structuredClone(EMPTY_CHARACTER.room),
+        map: 1,
+        number: 1,
+        exits: exits.map(([direction, note]) => wireExit(direction, note))
+      }
+    });
+
+  it('searches before the step when the room has not printed the exit', () => {
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(hidden, unfound);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['search e']);
+    expect(walk.progress.hold).toBe('searching');
+    walk.dispose();
+  });
+
+  /* And once it is printed, the step goes out with no search at all — which is
+     what keeps a lap from paying for the same exit every time round. */
+  it('sends the step straight away once the room prints the exit', () => {
+    const found = printing(['e', 'secret passage']);
+    const walk = new Walker(config, queue, { stateNow: () => found });
+    walk.start(hidden, found);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /* A room the server would not describe prints no list, and an empty one is
+     not a claim that the exit is missing. */
+  it('does not read a dark room’s empty exit list as the exit being absent', () => {
+    const dark = printing();
+    const walk = new Walker(config, queue, { stateNow: () => dark });
+    walk.start(hidden, dark);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * ------------------------------------------------ the room is asked again
+   *
+   * todo 03, reported off the wire: eleven `search s` at `Outer Keep,
+   * Intersection`, seven of them answered `You found an exit to the south!`,
+   * and not one step taken. The exit was found on the **first** one — and the
+   * server does not reprint the room when it finds you an exit, so the
+   * `Obvious exits: north, east, west` on screen never gained a south and
+   * `mustSearchFirst` went on holding against a line the server had already
+   * superseded.
+   */
+  it('asks the server to reprint the room when the search succeeds', () => {
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(hidden, unfound);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['search e']);
+
+    walk.onBlock(block('user-search-succeeded', { direction: 'east' }));
+    // A bare Enter, never `l`: a look announces itself to everybody in the room.
+    expect(sent).toEqual(['search e', NUDGE]);
+    walk.dispose();
+  });
+
+  /*
+   * And the reprint gets a beat of its own rather than what is left of the
+   * search's. A search is answered in about a round, so the remainder would
+   * often be too short and the re-ask would send another search at a room whose
+   * answer was still on the wire — which is the loop this exists to end.
+   */
+  it('measures the next beat from the reprint, not from the search', () => {
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(hidden, unfound);
+    vi.advanceTimersByTime(TUNING.walk.searchRetryMs - 200);
+    walk.onBlock(block('user-search-succeeded', { direction: 'east' }));
+    // The search's own beat would have expired here, and nothing happens: the
+    // reprint took the clock with it.
+    vi.advanceTimersByTime(300);
+    expect(sent).toEqual(['search e', NUDGE]);
+    // And at the end of the reprint's own beat the **step** goes out, because
+    // the server has said it found the exit. See `found`.
+    vi.advanceTimersByTime(TUNING.walk.searchRetryMs);
+    expect(sent).toEqual(['search e', NUDGE, 'e']);
+    walk.dispose();
+  });
+
+  /*
+   * **The server's own word is what ends the searching**, not the room's exit
+   * list — which the client cannot always read. `You found an exit downwards!`
+   * (`captures/005:187`) is the corpus's only successful search: it says
+   * neither `down` nor `d`, and the exit it reveals prints as `open trap door
+   * below`, a shape `parseExit` had no word for. Without this the walk searched
+   * every 1.5s for ever, said so once every five minutes, and wrote nothing
+   * down — the search rung has no ceiling (todo 04) and blames no edge.
+   */
+  it('stops searching on the server’s word, whatever the room lists', () => {
+    const down: Route = {
+      ...ROUTE,
+      steps: [
+        {
+          ...ROUTE.steps[0]!,
+          direction: 'd',
+          command: 'd',
+          requirement: { kind: 'hidden', raw: 'Hidden/Searchable', searchable: true }
+        }
+      ]
+    };
+    // The room lists the trapdoor the way the corpus shows it, which is a
+    // direction the exit list alone would never match against `d`… except that
+    // `parseExit` reads `below` now, so the fixture states the harder case: a
+    // room that has not printed it at all.
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(down, unfound);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['search d']);
+
+    walk.onBlock(block('user-search-succeeded', { direction: 'downwards' }));
+    vi.advanceTimersByTime(TUNING.walk.searchRetryMs + 50);
+    expect(sent).toEqual(['search d', NUDGE, 'd']);
+    walk.dispose();
+  });
+
+  /*
+   * And once that reprint lands with the exit in it, the step goes out — which
+   * is the whole of what was stuck. Belt and braces beside `found`: this is the
+   * path a lap takes on its *second* time round, where nothing searched at all
+   * because the room printed the exit from the start.
+   */
+  it('takes the step once the reprinted room carries the exit', () => {
+    let room = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => room });
+    walk.start(hidden, room);
+    vi.advanceTimersByTime(50);
+    walk.onBlock(block('user-search-succeeded', { direction: 'east' }));
+    room = printing(['n', null], ['e', 'secret passage']);
+    vi.advanceTimersByTime(TUNING.walk.searchRetryMs + 50);
+
+    expect(sent).toEqual(['search e', NUDGE, 'e']);
+    expect(walk.progress.hold).toBe(null);
+    walk.dispose();
+  });
+
+  /*
+   * A failure asks too, every `searchRecheckEvery`th time — the other half of
+   * what was asked for. A success can be missed two ways: the sentence arriving
+   * in a burst while the walk was not holding, and somebody else opening the
+   * way. The room is the only thing that settles either.
+   */
+  it('asks for a reprint every few failed searches, and not on the ones between', () => {
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(hidden, unfound);
+    const every = TUNING.walk.searchRecheckEvery;
+    // The first search goes out with the walk; the cadence is counted over the
+    // *answers*, which is what the setting says.
+    for (let answered = 1; answered <= every; answered += 1) {
+      walk.onBlock(block('user-search-failed', { direction: 'east' }));
+      expect(sent.filter((command) => command === NUDGE).length).toBe(answered === every ? 1 : 0);
+      vi.advanceTimersByTime(TUNING.walk.searchRetryMs + 50);
+    }
+    walk.dispose();
+  });
+
+  /*
+   * A search the *player* typed in some other direction is not this step's
+   * news, and the server names the direction it searched.
+   */
+  it('ignores a search answered about another direction', () => {
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(hidden, unfound);
+    vi.advanceTimersByTime(50);
+    walk.onBlock(block('user-search-succeeded', { direction: 'south' }));
+
+    expect(sent).toEqual(['search e']);
+    walk.dispose();
+  });
+
+  /*
+   * `Your search revealed nothing.` names no direction at all, and the walk is
+   * holding on a search of its own — so it counts as this step's, which is the
+   * behaviour before the direction was captured.
+   */
+  it('counts a directionless failure as this step’s', () => {
+    const unfound = printing(['n', null]);
+    const walk = new Walker(config, queue, { stateNow: () => unfound });
+    walk.start(hidden, unfound);
+    for (let answered = 0; answered < TUNING.walk.searchRecheckEvery; answered += 1) {
+      walk.onBlock(block('user-search-failed'));
+      vi.advanceTimersByTime(TUNING.walk.searchRetryMs + 50);
+    }
+    expect(sent.filter((command) => command === NUDGE).length).toBe(1);
+    walk.dispose();
+  });
+
+  /* And a search answered while the walk is not searching is nobody's news. */
+  it('does nothing with a search answer when it is not holding for one', () => {
+    walker.start(ROUTE, at(1, 1));
+    walker.onBlock(block('user-search-succeeded', { direction: 'east' }));
+    expect(sent).toEqual(['e']);
   });
 
   /* A hidden exit the data says no search reveals has nothing to try. */
@@ -1675,6 +2231,180 @@ describe('a hidden exit in the way', () => {
     walker.onBlock(block('direction-failed'));
 
     expect(sent).toEqual(['e']);
+    expect(walker.progress.status).toBe('stopped');
+  });
+});
+
+/*
+ * The other kind of hidden exit — todo 01, reported 2026-09-06.
+ *
+ * The realm said a concealed passage led south out of Small Chamber 10/4 and
+ * said, in the room's own `W` column, that `pull lever` opened it. The
+ * converter had dropped every one of those columns since it was written, so the
+ * walk sent `s`, was told `There is no exit in that direction!` exactly as the
+ * data said it would be, and struck a real corridor out of every route for the
+ * session. Format 23 reads them; this is the rung that acts on them, and it is
+ * `searchFor`'s in every respect that matters.
+ */
+describe('a hidden exit a lever opens', () => {
+  const levered = (
+    actions: Array<{ say: string[]; at?: { map: number; room: number } }>
+  ): Route => ({
+    ...ROUTE,
+    steps: [
+      {
+        ...ROUTE.steps[0]!,
+        requirement: {
+          kind: 'hidden',
+          raw: 'Hidden/Needs 1 Actions, any order',
+          searchable: false,
+          actionsNeeded: actions.length,
+          actions
+        }
+      }
+    ]
+  });
+
+  it('pulls the lever and sends the step again', () => {
+    walker.start(levered([{ say: ['pull lever', 'move lever'] }]), at(1, 1));
+    vi.advanceTimersByTime(50);
+    walker.onBlock(block('direction-failed'));
+    vi.advanceTimersByTime(200);
+
+    // The realm's own spelling, not a synonym: it lists its own first.
+    expect(sent).toEqual(['e', 'pull lever', 'e']);
+    expect(walker.progress.status).toBe('walking');
+  });
+
+  /* `specific order` wants them in the realm's `Action#n` order, which is what
+     `Requirement.actions` is sorted in; `any order` does not care, so one
+     order serves both. */
+  it('pulls several in the realm’s own order', () => {
+    walker.start(levered([{ say: ['twist knot'] }, { say: ['push knot'] }]), at(1, 1));
+    vi.advanceTimersByTime(50);
+    walker.onBlock(block('direction-failed'));
+    vi.advanceTimersByTime(200);
+
+    expect(sent).toEqual(['e', 'twist knot', 'push knot', 'e']);
+  });
+
+  it('does not blame the edge while the levers are unspent', () => {
+    const refused: string[] = [];
+    let pending = 0;
+    walker = new Walker(config, queue, {
+      refused: (from, direction) => refused.push(`${from}|${direction}`),
+      pendingMoves: () => pending
+    });
+    walker.start(levered([{ say: ['pull lever'] }]), at(1, 1));
+    vi.advanceTimersByTime(50);
+    pending = 1;
+    walker.onBlock(block('direction-failed'));
+
+    expect(refused).toEqual([]);
+  });
+
+  /*
+   * A lever two rooms away is a detour this planner does not plan — so nothing
+   * is sent, and the edge is **never** blamed: the client has not done its part
+   * and has no way to, so the refusal says nothing about the corridor. Writing
+   * it down is what took a real way out of every route for the session.
+   */
+  it('sends nothing for a lever in another room, and blames the edge', () => {
+    const refused: string[] = [];
+    let pending = 0;
+    walker = new Walker(config, queue, {
+      refused: (from, direction) => refused.push(`${from}|${direction}`),
+      pendingMoves: () => pending
+    });
+    walker.start(levered([{ say: ['pull lever'], at: { map: 1, room: 1339 } }]), at(1, 1));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      vi.advanceTimersByTime(50);
+      pending = 1;
+      walker.onBlock(block('direction-failed'));
+    }
+
+    expect(sent).toEqual(['e']);
+    // Blamed: the levers are two rooms away and this planner does not detour,
+    // so the leg would be replanned into the same refusal for ever.
+    expect(refused).toEqual(['1/1|e']);
+    expect(walker.progress.status).toBe('stopped');
+  });
+
+  /*
+   * But `Hidden/Passable` — 1,000 of the shipped realm's 1,469 hidden exits —
+   * **is** blamed, as it always was. That is the realm saying the exit works,
+   * so a refusal there is precisely the realm-file-versus-live-server
+   * disagreement `refusedEdges` records. An earlier cut of this exempted every
+   * hidden exit and would have left a lap replanning the identical refused leg
+   * until the loop gave up.
+   */
+  it('still blames a hidden exit the realm says simply works', () => {
+    const refused: string[] = [];
+    let pending = 0;
+    walker = new Walker(config, queue, {
+      refused: (from, direction) => refused.push(`${from}|${direction}`),
+      pendingMoves: () => pending
+    });
+    const passable: Route = {
+      ...ROUTE,
+      steps: [
+        {
+          ...ROUTE.steps[0]!,
+          requirement: { kind: 'hidden', raw: 'Hidden/Passable', searchable: false }
+        }
+      ]
+    };
+    walker.start(passable, at(1, 1));
+    vi.advanceTimersByTime(50);
+    pending = 1;
+    walker.onBlock(block('direction-failed'));
+
+    expect(sent).toEqual(['e']);
+    expect(refused).toEqual(['1/1|e']);
+  });
+
+  /*
+   * And one the realm names no reachable lever for **is** blamed, on the same
+   * rule: a refusal is not news only while the client still has something to
+   * try, and here it has nothing. A route through it is a leg that fails
+   * again, which is what `refusedEdges` exists to stop being replanned.
+   */
+  it('blames an exit whose levers it cannot reach', () => {
+    const refused: string[] = [];
+    let pending = 0;
+    walker = new Walker(config, queue, {
+      refused: (from, direction) => refused.push(`${from}|${direction}`),
+      pendingMoves: () => pending
+    });
+    const sealed: Route = {
+      ...ROUTE,
+      steps: [
+        {
+          ...ROUTE.steps[0]!,
+          requirement: { kind: 'hidden', raw: 'Hidden/Needs 2 Actions', searchable: false }
+        }
+      ]
+    };
+    walker.start(sealed, at(1, 1));
+    vi.advanceTimersByTime(50);
+    pending = 1;
+    walker.onBlock(block('direction-failed'));
+
+    expect(refused).toEqual(['1/1|e']);
+  });
+
+  /* Bounded, exactly as the searches are: one exit is worth so many rounds. */
+  it('stops pulling once the budget is spent', () => {
+    let pending = 0;
+    walker = new Walker(config, queue, { pendingMoves: () => pending });
+    walker.start(levered([{ say: ['pull lever'] }]), at(1, 1));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      vi.advanceTimersByTime(50);
+      pending = 1;
+      walker.onBlock(block('direction-failed'));
+    }
+
+    expect(sent.filter((command) => command === 'pull lever')).toHaveLength(2);
     expect(walker.progress.status).toBe('stopped');
   });
 });
@@ -2071,6 +2801,100 @@ describe('a fight on the way', () => {
   };
 
   const fighting = (map: number, room: number): CharacterState => at(map, room, { inCombat: true });
+
+  /*
+   * Auto-combat turned off while the hold is running — todo 03, reported
+   * 2026-09-06 as *"turning auto combat off during attack should continue even
+   * if attacking"*.
+   *
+   * A fight hold waits for one of three endings and the client owns two:
+   * auto-combat kills the monster, or the retreat walks out. Switching one off
+   * mid-hold withdraws the reason for waiting, and on this realm walking on is
+   * itself how a fight is broken — there is no `flee`.
+   */
+  describe('the reason for waiting withdrawn', () => {
+    /** A configuration that will finish the fight it is holding for. */
+    const fights: AutomationConfig = {
+      ...config,
+      combat: { ...config.combat, enabled: true }
+    };
+
+    /**
+     * A walker on a given configuration, holding a fight that stays running.
+     *
+     * `stateNow` matters here rather than being ceremony: the hold re-asks on
+     * a timer against the state as it is *then*, and a state that stopped
+     * fighting would release the hold for the ordinary reason and prove
+     * nothing about the one under test.
+     */
+    const holding = async (started: AutomationConfig): Promise<Walker> => {
+      const walk = new Walker(started, queue, {
+        notice: (message) => notices.push(message),
+        stateNow: () => fighting(1, 1)
+      });
+      walk.start(ROUTE, at(1, 1));
+      await vi.advanceTimersByTimeAsync(50);
+      walk.onCharacter(fighting(1, 1));
+      expect(walk.progress.hold).toBe('fight');
+      notices.length = 0;
+      return walk;
+    };
+
+    it('walks on when the switch that would end the fight is turned off', async () => {
+      const walk = await holding(fights);
+
+      sent.length = 0;
+      walk.configure({ ...fights, combat: { ...fights.combat, enabled: false } });
+      await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+
+      expect(notices).toContain(t('automation.walk.reasonWalkingThroughFight'));
+      /*
+       * The hold is **let go and the step goes out**, which is the assertion
+       * that matters: `status` is `walking` for a held walk too, so asserting
+       * it alone could not tell the fix from the bug — the first cut said the
+       * line and then re-took the hold with its two-minute clock reset.
+       */
+      expect(walk.progress.hold).toBeNull();
+      expect(sent).toContain('e');
+      walk.dispose();
+    });
+
+    /* The retreat is the other ending the client owns, and either is enough. */
+    it('goes on holding while the retreat could still end it', async () => {
+      const both: AutomationConfig = {
+        ...fights,
+        safety: { ...fights.safety, retreat: { ...fights.safety.retreat, enabled: true } }
+      };
+      const walk = await holding(both);
+
+      sent.length = 0;
+      walk.configure({ ...both, combat: { ...both.combat, enabled: false } });
+      await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+
+      expect(walk.progress.hold).toBe('fight');
+      expect(sent).toEqual([]);
+      expect(notices).toEqual([]);
+      walk.dispose();
+    });
+
+    /*
+     * And a configuration that never could fight holds as it always has,
+     * bounded by `fightHoldMs`. That is the stock one, and holding there is a
+     * settled decision from a separate report — a route abandoned two steps
+     * into twenty-one, in a sewer. This change is the transition and nothing
+     * else.
+     */
+    it('holds as before for a configuration that never could end it', async () => {
+      const walk = await holding(config);
+
+      sent.length = 0;
+      await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs * 3);
+      expect(walk.progress.hold).toBe('fight');
+      expect(sent).toEqual([]);
+      expect(notices).toEqual([]);
+      walk.dispose();
+    });
+  });
 
   it('holds the route rather than ending it, and says nothing about it', async () => {
     const { walk } = walkerThatCanPlan(at(1, 1));
@@ -2595,5 +3419,580 @@ describe('waiting out a condition', () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(sent).toHaveLength(1);
     walk.dispose();
+  });
+});
+
+/*
+ * ------------------------------------------------------------------ levers
+ *
+ * todo 01, reported off the wire: `Inner Gate`, `Obvious exits: closed gate
+ * north`, a gate the realm records as `Door [301 picklocks/strength]` and a
+ * character with 0 picklocks and 86 strength — and the Guardroom one room west
+ * holding the lever that raises it. The client alternated `n` and `open n`
+ * until its budget ran out and never mentioned the lever; the player walked
+ * west and typed `pull lever` themselves.
+ *
+ * The route here is the reported one, shortened: 1/1 -e-> 1/2 through a gate,
+ * with the lever in 1/9.
+ */
+describe('a way something else opens', () => {
+  const GATED: Route = {
+    cost: 1,
+    blocked: false,
+    steps: [
+      {
+        from: '1/1',
+        to: '1/2',
+        direction: 'e',
+        command: 'e',
+        name: 'Courtyard',
+        requirement: { kind: 'door', raw: 'Door [301 picklocks/strength]', pickDifficulty: 301 },
+        dark: false
+      }
+    ]
+  };
+
+  /** 1/1 -w-> 1/9, the one step to the room the lever is pulled in. */
+  const TO_LEVER: Route = {
+    cost: 1,
+    blocked: false,
+    steps: [
+      {
+        from: '1/1',
+        to: '1/9',
+        direction: 'w',
+        command: 'w',
+        name: 'Guardroom',
+        requirement: null,
+        dark: false
+      }
+    ]
+  };
+
+  /** 1/9 -e-> 1/1 -e-> 1/2, the way back and on through the gate. */
+  const BACK: Route = {
+    cost: 2,
+    blocked: false,
+    steps: [
+      {
+        from: '1/9',
+        to: '1/1',
+        direction: 'e',
+        command: 'e',
+        name: 'Inner Gate',
+        requirement: null,
+        dark: false
+      },
+      { ...GATED.steps[0]! }
+    ]
+  };
+
+  const LEVER: RemoteLever = { at: '1/9', roomName: 'Guardroom', say: 'pull lever' };
+
+  /**
+   * A walker wired the way `SessionManager` wires one, with the two answers
+   * only the world can give: what opens this exit, and a route to it.
+   */
+  const withLevers = (
+    levers: readonly RemoteLever[],
+    plans: Record<string, Route | string> = {}
+  ): {
+    walk: Walker;
+    /** Every room a route was asked for, and every edge written off. */
+    asked: string[];
+    /** How the walk ended, if it did — the fact a loop books a leg on. */
+    ends: Array<[boolean, string | null]>;
+    /** Puts the character in a room, as a confirmed step would. */
+    arrive(room: number): void;
+  } => {
+    const asked: string[] = [];
+    const ends: Array<[boolean, string | null]> = [];
+    let here = 1;
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, openDoors: true, openTries: 1 } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        leversFor: () => levers,
+        stateNow: () => at(1, here),
+        replan: (to) => {
+          asked.push(to);
+          return plans[to] ?? 'no route';
+        },
+        // A leg between two rooms the character is in neither of, for checking
+        // an all-or-nothing run before any of it is walked.
+        routeBetween: (from, to) => {
+          asked.push(`${from}->${to}`);
+          return plans[`${from}->${to}`] ?? 'no route';
+        },
+        refused: (from, direction, why) => asked.push(`refused:${from}|${direction}:${why}`),
+        ended: (arrived, reason) => ends.push([arrived, reason])
+      }
+    );
+    return {
+      walk,
+      asked,
+      ends,
+      arrive: (room) => {
+        here = room;
+        walk.onCharacter(at(1, room));
+      }
+    };
+  };
+
+  /*
+   * The whole errand, end to end. The gate refuses, `open` says it is locked,
+   * the character cannot force it — and instead of standing there running the
+   * ladder for a minute, the walk goes west, pulls the lever and comes back
+   * through the gate.
+   */
+  it('goes and pulls the lever, then plans on to where it was going', () => {
+    const { walk, asked, arrive } = withLevers([LEVER], { '1/9': TO_LEVER, '1/2': BACK });
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    // The ladder, then the detour — and no barrier hold, because the walk is
+    // no longer standing at the gate.
+    expect(moves(sent)).toEqual(['e', 'open e', 'w']);
+    expect(asked).toEqual(['1/9']);
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: null });
+    expect(notices.some((line) => line.includes('pull lever'))).toBe(true);
+
+    // Arriving at the Guardroom is the middle of the journey: the lever goes
+    // out, the way back is planned, and the walk carries on.
+    arrive(9);
+    // Past the queue's own acknowledgement window: four commands are already
+    // out and unanswered, and this fixture feeds the queue no status lines.
+    vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+    expect(moves(sent)).toEqual(['e', 'open e', 'w', 'pull lever', 'e']);
+    expect(asked).toEqual(['1/9', '1/2']);
+    expect(walk.progress.status).toBe('walking');
+    walk.dispose();
+  });
+
+  /*
+   * And the arrival at the lever is **not** an arrival: `ended` is what a loop
+   * books a leg on, and a lap that advanced to its next stop here would leave
+   * the gate shut and the stop behind it never reached.
+   */
+  it('does not report the lever room as the journey ending', () => {
+    const { walk, ends, arrive } = withLevers([LEVER], { '1/9': TO_LEVER, '1/2': BACK });
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    arrive(9);
+    vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+
+    expect(ends).toEqual([]);
+    walk.dispose();
+  });
+
+  /*
+   * Once, not once a round. A lever pulled that did not open the gate is not a
+   * lever that opens it, and walking back for it again is a lap of the same
+   * corridor spent on the same refusal.
+   */
+  it('makes the errand once per walk', () => {
+    const { walk, asked, arrive } = withLevers([LEVER], { '1/9': TO_LEVER, '1/2': BACK });
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    arrive(9);
+    vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+    // Back at the gate, still shut.
+    arrive(1);
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    // One route to the lever asked for, not two.
+    expect(asked.filter((entry) => entry === '1/9').length).toBe(1);
+    walk.dispose();
+  });
+
+  /*
+   * The levers are in the room the character is already standing in — 21 of
+   * the shipped realm's exits, whose own instruction says `Door` and never
+   * mentions an action, so nothing reading the requirement could find them.
+   * Pulled where they stand, and the step again behind them.
+   */
+  it('pulls a lever that is in this very room without walking anywhere', () => {
+    const here: RemoteLever = { at: '1/1', roomName: 'Inner Gate', say: 'pull lever' };
+    const { walk, asked } = withLevers([here]);
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    expect(moves(sent)).toEqual(['e', 'open e', 'pull lever', 'e']);
+    expect(asked).toEqual([]);
+    walk.dispose();
+  });
+
+  /*
+   * A set the realm states a count for but names no ordered levers on: with no
+   * `Requirement.actions` there is nothing to walk in the realm's own order,
+   * and `specific order` is six of the eleven such exits. Refused, said once,
+   * and the walk holds at the gate as it always did. (In the shipped realm this
+   * cannot happen — `actions` is written by the same test that makes a set a
+   * set — which is what makes it worth a case here rather than in the data.)
+   */
+  it('refuses a set of levers the realm states no order for, out loud and once', () => {
+    const both: Route = {
+      ...GATED,
+      steps: [
+        {
+          ...GATED.steps[0]!,
+          requirement: {
+            kind: 'hidden',
+            raw: 'Hidden/Needs 2 Actions, specific order',
+            actionsNeeded: 2
+          }
+        }
+      ]
+    };
+    const { walk, asked } = withLevers([LEVER, { ...LEVER, at: '1/8', roomName: 'Cellar' }]);
+    walk.start(both, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    expect(asked).toEqual([]);
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    expect(notices.filter((line) => line.includes('different rooms')).length).toBe(1);
+    vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    expect(notices.filter((line) => line.includes('different rooms')).length).toBe(1);
+    walk.dispose();
+  });
+
+  /*
+   * The reported gate itself: `1/1331` north out of Inner Gate states **no**
+   * action count, and a Guardroom on each side holds a lever. The realm not
+   * having said *how many* is what makes them alternatives rather than a set,
+   * and the wire settled it — the player walked into one of them, typed
+   * `pull lever`, and the gate came up.
+   *
+   * The cheaper room wins. Both are one step here, and the router's own cost is
+   * what decides, so a gatehouse whose other lever is across the map is not
+   * where the walk goes.
+   */
+  it('takes the nearer of two levers when the realm names no count', () => {
+    const far: Route = {
+      cost: 9,
+      blocked: false,
+      steps: [
+        {
+          from: '1/1',
+          to: '1/8',
+          direction: 'n',
+          command: 'n',
+          name: 'Far Guardroom',
+          requirement: null,
+          dark: false
+        }
+      ]
+    };
+    const { walk, asked } = withLevers(
+      [{ ...LEVER, at: '1/8', roomName: 'Far Guardroom' }, LEVER],
+      { '1/8': far, '1/9': TO_LEVER, '1/2': BACK }
+    );
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    // Both asked about, the cheaper walked.
+    expect(asked).toEqual(['1/8', '1/9']);
+    expect(moves(sent)).toEqual(['e', 'open e', 'w']);
+    walk.dispose();
+  });
+
+  /*
+   * And an alternative in the room the character is already standing in beats
+   * walking anywhere at all — 2 of the shipped realm's exits put one lever on
+   * each side of the door and say `Needs 1 Actions`.
+   */
+  it('pulls the alternative that is here rather than walking to the other', () => {
+    const { walk, asked } = withLevers([
+      { ...LEVER, at: '1/8', roomName: 'Far Guardroom' },
+      { at: '1/1', roomName: 'Inner Gate', say: 'pull lever' }
+    ]);
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    expect(asked).toEqual([]);
+    expect(moves(sent)).toEqual(['e', 'open e', 'pull lever', 'e']);
+    walk.dispose();
+  });
+
+  /*
+   * The realm names the lever and there is no way to it. Said out loud, because
+   * a walk that then stands at the gate until its rounds run out is otherwise
+   * indistinguishable from one that never knew.
+   */
+  it('says so when the lever is named and cannot be reached', () => {
+    const { walk } = withLevers([LEVER]);
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    expect(notices.some((line) => line.includes('Guardroom'))).toBe(true);
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    walk.dispose();
+  });
+
+  /*
+   * **One errand at a time.** `detoured` is keyed by the *gate*, so a second
+   * gate met on the errand's own route passes every other guard — and `back` is
+   * taken from the route in flight, which during an errand is the way to the
+   * lever rather than the way the player asked to go. Without this the original
+   * destination is silently replaced by a lever room and arriving there fires
+   * `ended(true)`: the false arrival this whole rung exists to avoid, a loop
+   * booking a leg it never walked.
+   */
+  it('does not start a second errand while one is running', () => {
+    const { walk, asked, ends, arrive } = withLevers([LEVER], { '1/9': TO_LEVER, '1/2': BACK });
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    expect(asked).toEqual(['1/9']);
+
+    // A second gate on the way to the lever. It gets the ordinary ladder --
+    // open, force, then the barrier hold -- and no second errand.
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+
+    expect(asked).toEqual(['1/9']);
+    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
+    expect(ends).toEqual([]);
+
+    // And the errand the walk is still on finishes as itself.
+    arrive(9);
+    vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+    expect(asked).toEqual(['1/9', '1/2']);
+    walk.dispose();
+  });
+
+  /*
+   * `There is no exit in that direction!` is the other way this exit answers —
+   * a remote-action exit is the fourth of that sentence's four causes — and the
+   * edge must **not** be written off while the client still has the lever to
+   * try. Blaming it is what took a real corridor out of every route for a
+   * session in the report this rung was written for.
+   */
+  it('does not blame the edge while a lever it has not pulled is named', () => {
+    const { walk, asked } = withLevers([LEVER], { '1/9': TO_LEVER, '1/2': BACK });
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed'));
+    vi.advanceTimersByTime(200);
+
+    expect(asked).toEqual(['1/9']);
+    expect(asked.some((entry) => entry.startsWith('refused:'))).toBe(false);
+    walk.dispose();
+  });
+
+  /*
+   * ------------------------------------------------------ a round of levers
+   *
+   * todo 04, and the reporter guessed right that it was todo 01's: `Crypt,
+   * Stone Hallway` 1/1056 leaves north through `Hidden/Needs 2 Actions, any
+   * order` with one lever in 1/1038 and another in 1/1044. Todo 01 taught the
+   * client to fetch **one** lever and refused this shape; the report is that
+   * refusal, one room further on — the walk stopped and the console said the
+   * realm data had promised an exit that did not exist, about an exit that
+   * does, with both its levers in the file.
+   */
+  describe('levers the realm spreads over several rooms', () => {
+    /** The reported exit: two levers, two rooms, the realm's own order. */
+    const SET: Route = {
+      ...GATED,
+      steps: [
+        {
+          ...GATED.steps[0]!,
+          requirement: {
+            kind: 'hidden',
+            raw: 'Hidden/Needs 2 Actions, any order',
+            actionsNeeded: 2,
+            actions: [
+              { say: ['pull lever'], at: { map: 1, room: 8 } },
+              { say: ['pull lever'], at: { map: 1, room: 9 } }
+            ]
+          }
+        }
+      ]
+    };
+
+    const step = (from: string, to: string, direction: string, name: string): Route => ({
+      cost: 1,
+      blocked: false,
+      steps: [
+        {
+          from,
+          to,
+          direction: direction as Route['steps'][number]['direction'],
+          command: direction,
+          name,
+          requirement: null,
+          dark: false
+        }
+      ]
+    });
+
+    const WALKABLE = {
+      '1/8': step('1/1', '1/8', 'n', 'First Lever'),
+      '1/9': step('1/8', '1/9', 'e', 'Second Lever'),
+      '1/8->1/9': step('1/8', '1/9', 'e', 'Second Lever'),
+      '1/9->1/1': step('1/9', 's', 's', 'Inner Gate'),
+      '1/2': step('1/9', '1/2', 'e', 'Courtyard')
+    };
+
+    const LEVERS: RemoteLever[] = [
+      { at: '1/8', roomName: 'First Lever', say: 'pull lever' },
+      { at: '1/9', roomName: 'Second Lever', say: 'pull lever' }
+    ];
+
+    /*
+     * The whole round: to the first lever, pull, on to the second, pull, then
+     * the journey the errand interrupted.
+     */
+    it('walks the rooms in the realm’s own order and pulls each lever', () => {
+      const { walk, asked, arrive } = withLevers(LEVERS, WALKABLE);
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+
+      // Checked whole before the first lever: leg one from here, the rest
+      // between rooms the character is not in yet, and the way back to the gate.
+      expect(asked).toEqual(['1/8', '1/8->1/9', '1/9->1/1']);
+      expect(moves(sent)).toEqual(['e', 'n']);
+
+      arrive(8);
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+      expect(moves(sent)).toEqual(['e', 'n', 'pull lever', 'e']);
+
+      arrive(9);
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+      expect(moves(sent)).toEqual(['e', 'n', 'pull lever', 'e', 'pull lever', 'e']);
+      expect(walk.progress.status).toBe('walking');
+      walk.dispose();
+    });
+
+    /* And none of it is an arrival: a loop reads `ended` to book its leg. */
+    it('reports no ending while the round is being walked', () => {
+      const { walk, ends, arrive } = withLevers(LEVERS, WALKABLE);
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+      arrive(8);
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+      arrive(9);
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+
+      expect(ends).toEqual([]);
+      walk.dispose();
+    });
+
+    /*
+     * All or nothing: a leg that cannot be walked means the round buys nothing,
+     * and the levers that *are* reachable would be commands spent on a passage
+     * that stays shut — `buildRealm`'s own reason for refusing a half-matched
+     * list. Nothing is sent, and it is said once.
+     */
+    it('refuses the whole round when one leg cannot be walked', () => {
+      const { walk, asked } = withLevers(LEVERS, {
+        '1/8': WALKABLE['1/8'],
+        '1/9->1/1': WALKABLE['1/9->1/1']
+        // and no route from the first lever to the second
+      });
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+
+      expect(moves(sent)).toEqual(['e']);
+      expect(walk.progress.status).toBe('stopped');
+      expect(notices.filter((line) => line.includes('cannot be walked')).length).toBe(1);
+      // And the corridor is written down as **shut**, not as one the realm data
+      // invented: the exit is real and the way is closed.
+      expect(asked).toContain('refused:1/1|e:shut');
+      walk.dispose();
+    });
+
+    /* And the way back to the gate is part of the check, or the levers buy a
+       room the character cannot leave for the exit they opened. */
+    it('refuses when the last lever’s room cannot get back to the gate', () => {
+      const { walk } = withLevers(LEVERS, {
+        '1/8': WALKABLE['1/8'],
+        '1/8->1/9': WALKABLE['1/8->1/9']
+      });
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+
+      expect(moves(sent)).toEqual(['e']);
+      expect(notices.filter((line) => line.includes('cannot be walked')).length).toBe(1);
+      walk.dispose();
+    });
+
+    /*
+     * Two levers in one room are one visit. The realm's order between them is
+     * the order they are queued in, which is what `specific order` wants.
+     */
+    it('pulls two levers in one room on one visit', () => {
+      const pair: Route = {
+        ...SET,
+        steps: [
+          {
+            ...SET.steps[0]!,
+            requirement: {
+              kind: 'hidden',
+              raw: 'Hidden/Needs 2 Actions, specific order',
+              actionsNeeded: 2,
+              actions: [
+                { say: ['pull red'], at: { map: 1, room: 8 } },
+                { say: ['pull blue'], at: { map: 1, room: 8 } }
+              ]
+            }
+          }
+        ]
+      };
+      const { walk, arrive } = withLevers(
+        [
+          { at: '1/8', roomName: 'Lever Room', say: 'pull red' },
+          { at: '1/8', roomName: 'Lever Room', say: 'pull blue' }
+        ],
+        { '1/8': WALKABLE['1/8'], '1/8->1/1': WALKABLE['1/9->1/1'], '1/2': WALKABLE['1/2'] }
+      );
+      walk.start(pair, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+      arrive(8);
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+
+      expect(moves(sent)).toEqual(['e', 'n', 'pull red', 'pull blue', 'e']);
+      walk.dispose();
+    });
   });
 });

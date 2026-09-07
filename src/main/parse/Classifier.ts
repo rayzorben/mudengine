@@ -220,6 +220,38 @@ export class Classifier {
    */
   private lastCommand = '';
   /**
+   * Every command sent and not yet seen echoed back, oldest first.
+   *
+   * **`lastCommand` above cannot serve for this, and that was a real defect
+   * rather than a tidying opportunity.** The server echoes what it is given,
+   * in order, and does not wait for one command to be answered before echoing
+   * the next — a burst comes back as a run of bare lines, one per command:
+   *
+   *     [HP=120/MA=15]:rm
+   *     aa big cave worm
+   *     st
+   *     i
+   *
+   * With one slot, only the **last** command of a burst could ever equal
+   * `lastCommand`. Every other echo fell through to the rule table and was
+   * typed as though the game had said it. Pasting a transcript into the
+   * console therefore had the client read its own paste as the game: it
+   * completed rooms out of the pasted room blocks and **learned an edge**
+   * between two rooms the character had never walked between, which is a
+   * permanent per-character file.
+   *
+   * This is the third time this codebase has met the same shape — the room
+   * expectations and the look-target queue are both queues for the identical
+   * reason, stated in each: *they go out faster than they are answered.* An
+   * echo is no different, and the slot was written when a command was
+   * something a person typed one at a time.
+   *
+   * Matched from the head and spliced rather than only compared against it, so
+   * one echo the server never sent back cannot stall every echo behind it.
+   * Bounded by `tuning.parse.maxPendingEchoes`.
+   */
+  private pendingEchoes: string[] = [];
+  /**
    * The last addressed message sent — `/soul hi`, `>soul hi` — split into
    * sigil, the name as typed and the body.
    *
@@ -293,6 +325,18 @@ export class Classifier {
   /** Records an outbound command. Not cleared on use: two lines may need it. */
   observeCommand(command: string): void {
     this.lastCommand = command.trim();
+    /*
+     * And onto the queue, which is what the echo check actually reads. An
+     * empty command is a bare Enter: it echoes nothing, so queueing it would
+     * put a value in the queue that no line can ever match and push a real one
+     * out of the back.
+     */
+    if (this.lastCommand.length > 0) {
+      this.pendingEchoes.push(this.lastCommand);
+      if (this.pendingEchoes.length > tuning().parse.maxPendingEchoes) {
+        this.pendingEchoes.shift();
+      }
+    }
     /*
      * An addressed message fills the receipt slot; anything else leaves it.
      * An intervening command does not invalidate what the receipt will
@@ -370,6 +414,7 @@ export class Classifier {
 
   reset(): void {
     this.lastCommand = '';
+    this.pendingEchoes = [];
     this.addressed = null;
     this.searching = false;
     this.inDescription = false;
@@ -406,12 +451,21 @@ export class Classifier {
     /*
      * The server echoes what we send. Checked ahead of the table rather than as
      * a pattern in it, because the thing that makes it an echo is not its shape
-     * — it is that it equals the command just sent. `Rest` typed at the prompt
-     * echoes a line that matches `room-name` and passes `looksLikeRoomName`, so
-     * without this the client would believe it had walked into a room called
-     * Rest.
+     * — it is that it equals a command this client sent. `Rest` typed at the
+     * prompt echoes a line that matches `room-name` and passes
+     * `looksLikeRoomName`, so without this the client would believe it had
+     * walked into a room called Rest.
+     *
+     * Against the **queue** and not against the last command alone: see
+     * `pendingEchoes`. The head is tried first because the server answers in
+     * order, and anything skipped past is dropped with it — an echo that never
+     * came back must not hold up every echo behind it, and a command still
+     * sitting in the queue long after its turn is one more chance to eat a
+     * real line that happens to read the same.
      */
-    if (this.lastCommand.length > 0 && text === this.lastCommand) {
+    const echoed = this.pendingEchoes.indexOf(text);
+    if (echoed !== -1) {
+      this.pendingEchoes.splice(0, echoed + 1);
       return this.build(line, 'command-echo', {}, text, 1);
     }
 

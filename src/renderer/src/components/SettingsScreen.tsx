@@ -462,6 +462,7 @@ interface CharacterForm {
   spellCures: CuresDraft;
   spellBlessings: BlessingDraft[];
   spellNotifyWearOff: boolean;
+  spellInvokeItems: boolean;
   /** Movement — what a route may do on the way. */
   openDoors: boolean;
   openTries: string;
@@ -476,6 +477,8 @@ interface CharacterForm {
   /** Conditions as waits, inverted: off waits blindness / poison out. */
   walkWhileBlind: boolean;
   walkWhilePoisoned: boolean;
+  /** Bend down for a key an exit of this room needs. */
+  collectKeys: boolean;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -594,6 +597,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     spellCures: { ...entry.spells.cures },
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: entry.spells.notifyPartyOnWearOff,
+    spellInvokeItems: entry.spells.invokeItems,
     openDoors: entry.movement.openDoors,
     openTries: String(entry.movement.openTries),
     pickLocks: entry.movement.pickLocks,
@@ -606,6 +610,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     extinguishInLight: entry.movement.extinguishInLight,
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
+    collectKeys: entry.movement.collectKeys,
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
@@ -774,7 +779,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
         ...blessing,
         spell: blessing.spell.trim()
       })),
-      notifyPartyOnWearOff: form.spellNotifyWearOff
+      notifyPartyOnWearOff: form.spellNotifyWearOff,
+      invokeItems: form.spellInvokeItems
     },
     movement: {
       openDoors: form.openDoors,
@@ -788,7 +794,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
       lightDimRooms: form.lightDimRooms,
       extinguishInLight: form.extinguishInLight,
       walkWhileBlind: form.walkWhileBlind,
-      walkWhilePoisoned: form.walkWhilePoisoned
+      walkWhilePoisoned: form.walkWhilePoisoned,
+      collectKeys: form.collectKeys
     },
     loops: form.loops,
     alerts: { minimum: form.alertMinimum, mute: form.alertMuted },
@@ -1020,6 +1027,7 @@ function emptyForm(
     spellCures: { ...spells.cures },
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: spells.notifyPartyOnWearOff,
+    spellInvokeItems: spells.invokeItems,
     openDoors: movement.openDoors,
     openTries: String(movement.openTries),
     pickLocks: movement.pickLocks,
@@ -1032,6 +1040,7 @@ function emptyForm(
     extinguishInLight: movement.extinguishInLight,
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
+    collectKeys: movement.collectKeys,
     loops: [],
     // `ProfileDraft` types this as a plain string, since a draft is a payload
     // parsed at the boundary; the form holds the closed union.
@@ -1937,7 +1946,11 @@ export default function SettingsScreen({
                     : t('settings.characters.emptyChoose')}
                 </div>
               ) : (
-                <form className="settings-form" onSubmit={(event) => void submitCharacter(event)}>
+                <form
+                  className="settings-form"
+                  data-section={section}
+                  onSubmit={(event) => void submitCharacter(event)}
+                >
                   {/*
                     The same pill each face of a card wears (§ "card faces"),
                     reused rather than reinvented: one navigable-heading grammar
@@ -1949,6 +1962,7 @@ export default function SettingsScreen({
                         aria-selected={section === id}
                         className="crumb"
                         data-active={section === id ? 'true' : 'false'}
+                        data-section={id}
                         key={id}
                         onClick={() => setSection(id)}
                         onMouseDown={keepFocus}
@@ -2834,6 +2848,20 @@ export default function SettingsScreen({
                           name="notify-wear-off"
                           onChange={(value) => patch({ spellNotifyWearOff: value })}
                         />
+                        {/*
+                          Beside the blessings this character *casts*, because
+                          it answers the same question from the other side: a
+                          weapon that blesses is a blessing nobody had to
+                          configure, and the list above is where somebody looks
+                          for one.
+                        */}
+                        <CheckField
+                          checked={form.spellInvokeItems}
+                          hint={t('settings.spells.invokeItemsHint')}
+                          label={t('settings.spells.invokeItemsLabel')}
+                          name="invoke-items"
+                          onChange={(value) => patch({ spellInvokeItems: value })}
+                        />
                       </fieldset>
                     </>
                   )}
@@ -3213,6 +3241,13 @@ export default function SettingsScreen({
                           name="walk-while-poisoned"
                           onChange={(value) => patch({ walkWhilePoisoned: value })}
                         />
+                        <CheckField
+                          checked={form.collectKeys}
+                          hint={t('settings.movement.collectKeysHint')}
+                          label={t('settings.movement.collectKeys')}
+                          name="collect-keys"
+                          onChange={(value) => patch({ collectKeys: value })}
+                        />
                         <p className="settings-note">{t('settings.movement.note')}</p>
                       </fieldset>
 
@@ -3336,7 +3371,16 @@ export default function SettingsScreen({
               {serverForm === null ? (
                 <div className="settings-form empty">{t('settings.realms.empty')}</div>
               ) : (
-                <form className="settings-form" onSubmit={(event) => void submitServer(event)}>
+                <form
+                  className="settings-form"
+                  data-section="realm"
+                  onSubmit={(event) => void submitServer(event)}
+                >
+                  {/*
+                    A realm form has no sections, so it states its subject
+                    instead: it is the same thing the Global page's Realm
+                    section edits, and it reads in the same hue.
+                  */}
                   {/* What the realm is called and where it is: one row, since
                       neither half identifies it on its own. */}
                   <div className="settings-inline">
