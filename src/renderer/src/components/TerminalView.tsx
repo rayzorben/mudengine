@@ -656,6 +656,17 @@ export default function TerminalView({
     term.attachCustomKeyEventHandler((event) => {
       const intent = clipboardIntent(event, term.hasSelection());
       if (intent === null) return true;
+      /*
+       * In a browser tab the browser pastes. Returning `false` here without
+       * preventing the default leaves the chord to Chromium, whose own paste
+       * command raises a `paste` event on xterm's textarea, and xterm's
+       * handler feeds it down the same input path `Terminal.paste` does. No
+       * permission is asked — reading the clipboard from script is the one
+       * thing a tab may not do without one — and `Shift Insert` and `Cmd V`
+       * come with it. The desktop keeps intercepting, for the reason
+       * `Invoke.pasteText` records: there the chord is bound to nothing.
+       */
+      if (intent === 'paste' && window.mudengine.host === 'web') return false;
       event.preventDefault();
       if (intent === 'copy') copySelection();
       else pasteClipboard();

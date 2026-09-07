@@ -49,6 +49,9 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): () => voi
 }
 
 const api: IpcApi = {
+  // The preload is only ever Electron's; the web bridge says `web` of itself.
+  host: 'electron',
+
   clientReady: () => ipcRenderer.send(Send.clientReady),
   input: (session: SessionId, data: string) => ipcRenderer.send(Send.input, session, data),
   resize: (session: SessionId, size: TerminalSize) => ipcRenderer.send(Send.resize, session, size),
@@ -104,6 +107,7 @@ const api: IpcApi = {
   revealConfig: () => ipcRenderer.invoke(Invoke.revealConfig),
   revealProfiles: () => ipcRenderer.invoke(Invoke.revealProfiles),
   revealLogs: () => ipcRenderer.invoke(Invoke.revealLogs),
+  browseHome: (target) => ipcRenderer.invoke(Invoke.browseHome, target),
   copyText: (text: string) => ipcRenderer.invoke(Invoke.copyText, text),
   pasteText: () => ipcRenderer.invoke(Invoke.pasteText),
 

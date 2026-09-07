@@ -1,7 +1,59 @@
 import { describe, expect, it } from 'vitest';
+import os from 'node:os';
 import path from 'node:path';
 
-import { homeAt, homeRoot } from '../home';
+import { homeAt, homeRoot, platformUserData } from '../home';
+// The probes' copy of the same three rules, held to this one. Plain
+// JavaScript with no declaration, read for the one function it exports.
+// @ts-expect-error -- scripts/ is untyped by design; see scripts/lib/register.mjs
+import { homeRoot as probeHomeRoot } from '../../../../scripts/lib/home.mjs';
+
+describe('the platform’s own place', () => {
+  it('is what Electron would answer, per platform', () => {
+    expect(platformUserData('linux', {}, '/home/u', 'mudengine')).toBe('/home/u/.config/mudengine');
+    expect(platformUserData('linux', { XDG_CONFIG_HOME: '/xdg' }, '/home/u', 'mudengine')).toBe(
+      '/xdg/mudengine'
+    );
+    expect(platformUserData('darwin', {}, '/Users/u', 'mudengine')).toBe(
+      '/Users/u/Library/Application Support/mudengine'
+    );
+    expect(
+      platformUserData(
+        'win32',
+        { APPDATA: 'C:\\Users\\u\\AppData\\Roaming' },
+        'C:\\Users\\u',
+        'mudengine'
+      )
+    ).toBe(path.join('C:\\Users\\u\\AppData\\Roaming', 'mudengine'));
+    expect(platformUserData('win32', {}, 'C:\\Users\\u', 'mudengine')).toBe(
+      path.join('C:\\Users\\u', 'AppData', 'Roaming', 'mudengine')
+    );
+  });
+
+  /*
+   * The probes state the same rules in `scripts/lib/home.mjs`, because a
+   * probe is a plain Node process too. A web host that landed beside the
+   * desktop's home rather than on it would be a full home nobody can see,
+   * so the two copies are held to one answer here, for the platform this
+   * runs on.
+   */
+  it('agrees with the probes’ copy of the rules', () => {
+    const env = { ...process.env };
+    delete env['MUDENGINE_HOME'];
+    delete env['MUDENGINE_CONFIG'];
+    const saved = { home: process.env['MUDENGINE_HOME'], config: process.env['MUDENGINE_CONFIG'] };
+    delete process.env['MUDENGINE_HOME'];
+    delete process.env['MUDENGINE_CONFIG'];
+    try {
+      expect(platformUserData(process.platform, env, os.homedir(), 'mudengine')).toBe(
+        probeHomeRoot()
+      );
+    } finally {
+      if (saved.home !== undefined) process.env['MUDENGINE_HOME'] = saved.home;
+      if (saved.config !== undefined) process.env['MUDENGINE_CONFIG'] = saved.config;
+    }
+  });
+});
 
 describe('the tree', () => {
   const home = homeAt('/data');

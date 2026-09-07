@@ -70,28 +70,35 @@ const stripComments = {
 } as const;
 
 /**
- * The 500 kB chunk warning is a web-delivery heuristic, and this is not a web
- * target.
+ * The 500 kB chunk warning is a web-delivery heuristic, and the window is a
+ * web target only some of the time.
  *
  * Vite's default exists because half a megabyte of JavaScript over a slow
- * network is a multi-second stall before anything renders. Nothing here
- * crosses a network: `src/main/index.ts` calls `loadFile()` on
- * `out/renderer/index.html`, whose single `<script>` is a relative path read
- * off the local disk, and main and preload are read by Electron's own loader.
- * So both remedies the warning suggests buy nothing they are offered for —
- * `manualChunks` splits a transfer that never happens, and dynamic `import()`
- * defers parse cost rather than removing it, for a window that uses the
- * terminal, the rail and the cards on its first frame regardless.
+ * network is a multi-second stall before anything renders. On the desktop
+ * nothing crosses a network: the window is `loadFile()`d off the local disk
+ * and main and preload are read by Electron's own loader. In web mode
+ * (`MUDENGINE_WEB=1`, `src/main/host/WebHost.ts`) the same bundle *does*
+ * cross one — once. Every asset is named by its content hash and served
+ * `immutable`, so a tab pays the transfer on its first visit and never again
+ * until the client is rebuilt; and the window uses the terminal, the rail and
+ * the cards on its first frame regardless, so the two remedies the warning
+ * suggests would still buy little — `manualChunks` splits a transfer paid
+ * once into several paid once, and dynamic `import()` defers parse cost for
+ * code the first frame needs anyway. Measured before it is decided: if a
+ * first paint over a slow link ever proves too slow, splitting the map, the
+ * settings screen and the quest book off the first frame is the change, and
+ * this paragraph is where to say what it bought.
  *
  * The limit is raised to make the warning mean something, not to silence it.
  * One that fires on every build forever is one nobody reads, and build output
  * is where a genuine size regression shows up first — a dependency bundled by
  * accident, or the comment stripping above coming undone, which last time was
  * 1.4 MB of prose carrying a private hostname into every install. Main and the
- * window get about half again what they measure today (967 kB and 1,385 kB on
- * 2026-09-03), so ordinary growth is quiet and a doubling still speaks up.
- * Preload's is not scaled from its 7 kB: it is the security boundary and has
- * no business growing at all, so 100 kB reads as *something is wrong here*.
+ * window get about half again what they measure (887 kB and 1,558 kB on
+ * 2026-09-07, the window having grown its web bridge), so ordinary growth is
+ * quiet and a doubling still speaks up. Preload's is not scaled from its
+ * 8 kB: it is the security boundary and has no business growing at all, so
+ * 100 kB reads as *something is wrong here*.
  */
 const CHUNK_LIMIT_KB = { main: 1400, preload: 100, renderer: 2000 } as const;
 

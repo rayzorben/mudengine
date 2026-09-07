@@ -39,6 +39,12 @@ export class Workspace {
    * to it.
    */
   private saved: { main: SessionId[]; popouts: SessionId[][] } | null = null;
+  /**
+   * Whether this run has asked for the pop-outs it read. A host with no
+   * second window never does, and `save` then carries them through unread —
+   * see there.
+   */
+  private restored = false;
 
   constructor(
     private readonly options: {
@@ -193,12 +199,30 @@ export class Workspace {
   save(): void {
     const ordered = this.windows().sort((a, b) => a - b);
     const main = this.options.mainWindowId();
+    /*
+     * The pop-outs this run never restored go back as they were read.
+     *
+     * A host with no second window — the client served to a browser tab —
+     * opens one rail and never calls `restore()`. Without this its first save
+     * wrote that one rail and nothing else, and the desktop's arrangement,
+     * which characters live in which window, was gone the next time the
+     * desktop launched: the same failure `open` records for the main rail's
+     * order, written every launch and read never, from the other side. Kept
+     * as read and never reconciled here: the run that restores them is the
+     * one that filters them against what exists.
+     */
+    const kept = this.restored
+      ? []
+      : this.read().popouts.map((sessions) => ({ main: false, sessions }));
     const layout = {
       v: 1,
-      windows: ordered.map((id) => ({
-        main: id === main,
-        sessions: this.owned.get(id) ?? []
-      }))
+      windows: [
+        ...ordered.map((id) => ({
+          main: id === main,
+          sessions: this.owned.get(id) ?? []
+        })),
+        ...kept
+      ]
     };
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
@@ -217,6 +241,7 @@ export class Workspace {
    * dropped rather than recreating an empty window.
    */
   restore(): SessionId[][] {
+    this.restored = true;
     const all = new Set(this.options.allSessions());
     return this.read()
       .popouts.map((group) => group.filter((id) => all.has(id)))

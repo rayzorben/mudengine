@@ -9,11 +9,18 @@
 
 .git
 .github
+.claude
 node_modules
 dist
 out
 .scratch
 todo
+
+# The packaging copy of the font. The renderer bundles the face it draws with
+# as a hashed asset of its own (`src/renderer/src/styles/fonts.css`), and
+# nothing reads this one at runtime; `extraResources` in package.json leaves
+# it out of the desktop package for the same reason.
+resources/*.ttf
 
 # Recorded sessions and the realm databases: build inputs for the test suite
 # and the world conversion, never for the application.

@@ -140,3 +140,28 @@ export function homeRoot(
 
   return { root: userData };
 }
+
+/**
+ * The platform's per-user data directory, computed without Electron.
+ *
+ * Electron answers `app.getPath('userData')` with `<appData>/<name>`, and the
+ * desktop host hands that in. The web host is a plain Node process and has to
+ * give the *same* answer, or a player who ran the desktop client and then
+ * served it would find an empty home beside a full one — so the three
+ * platform rules are stated here, once, and `scripts/lib/home.mjs` mirrors
+ * them for the probes.
+ */
+export function platformUserData(
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  homedir: string,
+  name: string
+): string {
+  if (platform === 'win32') {
+    return path.join(env['APPDATA'] ?? path.join(homedir, 'AppData', 'Roaming'), name);
+  }
+  if (platform === 'darwin') {
+    return path.join(homedir, 'Library', 'Application Support', name);
+  }
+  return path.join(env['XDG_CONFIG_HOME'] ?? path.join(homedir, '.config'), name);
+}

@@ -9281,3 +9281,143 @@ tr:hover .row-action.worn,
   color: var(--danger);
   font-weight: 600;
 }
+
+/* ------------------------------------------------------------ home browser */
+
+/*
+ * A directory of the client's, drawn in the window.
+ *
+ * Only where the host cannot open a file manager on the machine the files
+ * are on — a browser tab — and for the realm picker there, which chooses from
+ * the client's disk rather than the viewer's. The same box every dialog over
+ * the console is drawn in, and rows that are the palette's in shape: a glyph,
+ * a name, a hint at the right.
+ */
+.home-browser {
+  max-height: 72vh;
+}
+
+/*
+ * A file dialog is always the frontmost thing on the screen.
+ *
+ * It is asked for from *inside* another surface — the realm form on the
+ * settings screen is what opens the picker — and the settings scrim sits at
+ * 110, above the palette's 100 the dialog first borrowed. So the dialog
+ * opened behind the screen that asked for it, with the scrim it could not be
+ * reached through drawn over it (2026-09-07). Only the lost-link cover is
+ * higher, because a client that is gone outranks a file that cannot be chosen.
+ */
+.home-browser-scrim {
+  z-index: 150;
+}
+
+.home-browser-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 4px;
+}
+
+.home-browser-title {
+  color: var(--text-hi);
+  flex: 1;
+  font-size: calc(var(--font-ui) - 1px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.home-browser-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.home-browser-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.home-browser-path {
+  border-bottom: 1px solid var(--ink-line);
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  padding: 2px 12px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-browser-scope {
+  color: var(--text-lo);
+  font-size: calc(var(--font-ui) - 1px);
+  padding: 8px 12px 0;
+}
+
+.home-browser-row {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-hi);
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 6px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.home-browser-row:disabled {
+  color: var(--text-lo);
+  cursor: default;
+}
+
+.home-browser-row:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  cursor: pointer;
+}
+
+/* The file that was asked about, marked tonally — the roster's selection rule. */
+.home-browser li[data-selected='true'] .home-browser-row {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.home-browser-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-browser-row .hint {
+  color: var(--text-lo);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- link lost */
+
+/*
+ * The socket to the client has gone (web mode). Drawn by the bridge, outside
+ * React, because the bridge is what knows and it exists before React mounts;
+ * the same glass as the crash panel, over everything, until the page reloads
+ * itself.
+ */
+.link-lost {
+  align-items: center;
+  background: var(--scrim);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 200;
+}
+
+.link-lost-panel {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow), var(--glass-rim);
+  color: var(--text-hi);
+  max-width: 34rem;
+  padding: 20px 26px;
+}
