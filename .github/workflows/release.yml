@@ -264,9 +264,12 @@ jobs:
       - name: What is being published
         run: ls -lh artifacts
 
-      # `gh` is on the runner and needs no third-party action. `--draft` so
-      # somebody reads the notes before it is announced; delete the flag to
-      # publish outright.
+      # `gh` is on the runner and needs no third-party action. Published
+      # outright: it was `--draft` so somebody read the notes before it was
+      # announced, and the cost was that a draft never appears on the
+      # repository's front page — v0.5.0 sat there as one, and the front page
+      # showed no release at all. The notes are the fixed text above, so
+      # there is nothing to read before publishing that was not read here.
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -301,5 +304,4 @@ jobs:
 
           gh release create "$tag" artifacts/* \
             --title "mudengine $version" \
-            --notes-file notes.md \
-            --draft
+            --notes-file notes.md
