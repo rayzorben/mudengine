@@ -206,7 +206,67 @@ export class FightTracker {
    */
   private attacking: string | null = null;
 
+  /**
+   * The last blow this character landed that the *sentence* attributed, and
+   * when.
+   *
+   * The other half of reading a weapon proc. A chance-on-hit prints the
+   * spell's own message data with the target and the number substituted in —
+   * `A shining spark strikes cave worm for 3 damage!` — and there is no
+   * attacker in it to read, so the realm saying this character wields
+   * something that procs is not on its own enough to say *this* line was it.
+   * What binds them is the round: the server writes the proc in the same
+   * breath as the blow that fired it, at the same monster.
+   *
+   * One slot, and only ever written by a blow the wire named — a proc must not
+   * re-arm it, or a chain of unattributed lines would walk itself forward a
+   * round at a time.
+   *
+   * **It survives only the prompt and a blank line.** The server composes a
+   * proc into the same write as the blow that fired it: all 581 in the
+   * recorded sessions of 2026-09-06 arrive with nothing but status-line
+   * repaints between them and this character's own blow. Anything else in the
+   * gap means another actor's line interleaved, which is exactly when
+   * attribution stops being safe — `CharacterTracker.apply` calls `interrupt`
+   * for every such block. Without that, `A withering blast of dragonfire
+   * sears storm giant king for 163 damage!` (captures/168) is article-led,
+   * names nobody, lands on the monster this character last hit and is
+   * **Vulcan's** — four lines and two other players later.
+   *
+   * `used` is how many of that blow's procs have already been claimed, against
+   * the allowance the caller reads off the realm. A round can hold more than
+   * one unattributed line and only some of them are this character's: with one
+   * proccing item equipped exactly one is, and the rest belong to whoever else
+   * is swinging. Bounding it by what the realm says this character can fire is
+   * the difference between a limit and a hope.
+   */
+  private landed: { key: string; at: number; used: number } | null = null;
+
   constructor(private readonly sources: FightSources) {}
+
+  /**
+   * Whether this character's own last named blow landed on `name` inside the
+   * proc window, with one of its `allowance` procs still unclaimed — the round
+   * half of reading an unattributed damage line as a weapon proc. The realm
+   * half is the caller's, and `allowance` is what it found; see
+   * `CharacterTracker.readsAsProc`.
+   */
+  /**
+   * A line arrived between this character's blow and any proc it might have
+   * fired, so the two are no longer the one write the server composed. The
+   * binding goes; the fight is otherwise untouched.
+   */
+  interrupt(): void {
+    this.landed = null;
+  }
+
+  justStruck(name: string, at: number, allowance: number): boolean {
+    const landed = this.landed;
+    if (landed === null || landed.used >= allowance) return false;
+    if (landed.key !== mobKey(name)) return false;
+    const window = tuning().parse.procWindowMs;
+    return at >= landed.at && at - landed.at <= window;
+  }
 
   /**
    * A command went out. An attack with a named target arms the engagement
@@ -225,6 +285,7 @@ export class FightTracker {
   forget(): void {
     this.ledgers.clear();
     this.attacking = null;
+    this.landed = null;
   }
 
   /** `*Combat Engaged*` or `*Combat Off*`. */
@@ -361,13 +422,20 @@ export class FightTracker {
    * A blow that landed, `for <n> damage!`, with both ends already read off it:
    * `attacker` is what the classifier could vouch for, `target` what it
    * struck. `you` as the target is a blow on this character.
+   *
+   * `proc` is the tracker's verdict that this is a chance-on-hit off this
+   * character's own gear — a line the sentence attributes to nobody. It is
+   * decided outside because it asks the realm's item row and the pack, which
+   * is the tracker's, and it is passed rather than re-derived so the ledger
+   * and the accuracy table cannot end up disagreeing about the same blow.
    */
   hit(
     s: CharacterState,
     at: number,
     target: string | undefined,
     attacker: string | undefined,
-    damage: number
+    damage: number,
+    proc = false
   ): CharacterState | null {
     if (target !== undefined && /^you$/i.test(target)) {
       return this.blowOnMe(s, at, attacker);
@@ -386,10 +454,26 @@ export class FightTracker {
 
     // This character swung at something. `You` and its own name both mean
     // the same swing; the server uses whichever the audience needs.
-    const mine =
+    const named =
       attacker !== undefined &&
       (/^you$/i.test(attacker) ||
         (s.name !== null && attacker.toLowerCase() === s.name.toLowerCase()));
+    /*
+     * A weapon's proc is this character's damage even though the sentence
+     * names nobody, and it is *not* a swing this character made — which is
+     * why the two are kept apart here rather than merged into one flag. Only
+     * a named blow arms the binding the proc was read against; see `landed`.
+     *
+     * Sharing the `mine` path from here on is deliberate, and it means a proc
+     * reaches `struck` and counts in `combat.blows`. That field is *blows
+     * exchanged* — it already counts what lands on this character, which is
+     * nothing this character swung — so a blow the weapon landed belongs in
+     * it. `CombatTally.swings` is the field that answers the other question
+     * and it enumerates the kinds a swing can be, so `proc` stays outside it.
+     */
+    const mine = named || proc;
+    if (named) this.landed = { key: mobKey(target), at, used: 0 };
+    else if (proc && this.landed !== null) this.landed.used += 1;
 
     /*
      * Somebody *else's* blow on a monster is recorded and changes nothing
@@ -574,6 +658,9 @@ export class FightTracker {
       this.sources.lore.observe(ledger.key, { damage: total, killed, at });
     }
     this.ledgers.clear();
+    // The fight is over, so nothing after it is one of its procs. See
+    // `landed`: the binding is to a blow inside a round, not to a name.
+    this.landed = null;
   }
 
   /**

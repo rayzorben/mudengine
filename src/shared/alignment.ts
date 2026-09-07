@@ -1,5 +1,5 @@
 /**
- * How the realm ranks a character, worst to best behaved.
+ * How the realm ranks a character.
  *
  * Its own module, and the reason is a cycle rather than a taxonomy.
  * `character.ts` needs `NO_PLAYERS` to build `EMPTY_CHARACTER`, and
@@ -43,4 +43,66 @@ const HOSTILE: readonly Alignment[] = ['Outlaw', 'Criminal', 'Villain', 'FIEND']
 
 export function isHostile(alignment: Alignment | null): boolean {
   return alignment !== null && HOSTILE.includes(alignment);
+}
+
+/**
+ * The words the server's own enum has, in its own order.
+ *
+ * Deliberately **not** `ALIGNMENTS`, whose order is incidental and whose job is
+ * membership. This is a *scale*, and the realm gates exits on a range of it —
+ * `Alignment: Saint to Seedy` is `AlignmentExit(min, max)`, comparing
+ * `Player.EvilPoints` against two figures whose bands these words are — so
+ * comparing them needs an order or nothing can be compared at all.
+ *
+ * `GreaterMUD.Module/Player.cs`'s `Alignment`, read out of the source rather
+ * than captured, and matching the boundaries `EvilPointLevels` states.
+ *
+ * **`Lawful` is deliberately absent**, and `src/shared/mobs.ts` settled why for
+ * `ALIGNMENT_RANGE` before this existed: it is in this client's union and in
+ * the `who` pattern, `GetAlignmentTitle` does not produce it, so there is no
+ * band to place it in and inventing one would decide something on a number
+ * nobody has read. Here that something is a **route** — a rank for `Lawful`
+ * would have a character on a derivative realm pruned from a corridor by an
+ * order this codebase has written down that it must not hold.
+ */
+const ALIGNMENT_SCALE: readonly Alignment[] = [
+  'Saint',
+  'Good',
+  'Neutral',
+  'Seedy',
+  'Outlaw',
+  'Criminal',
+  'Villain',
+  'FIEND'
+];
+
+/**
+ * Where a word sits on that scale, or null for one it does not name.
+ *
+ * Case-insensitive, because the realm's own exit instruction writes `Fiend`
+ * where the roster writes `FIEND`, and null is a first-class answer everywhere
+ * it is asked — `Lawful`, a word from a realm this client has never seen, and
+ * an empty string all read as *nobody has said*, which the router discourages
+ * and never prunes.
+ */
+export function alignmentRank(word: string): number | null {
+  const key = word.trim().toLowerCase();
+  if (key.length === 0) return null;
+  const index = ALIGNMENT_SCALE.findIndex((entry) => entry.toLowerCase() === key);
+  return index < 0 ? null : index;
+}
+
+/**
+ * The scale's own spelling of a word, or null for one it does not name.
+ *
+ * Parse, do not validate: the realm's exit instruction writes a word and the
+ * rest of the client carries a closed union, so the crossing happens once and
+ * everything downstream holds an `Alignment` or nothing. Here beside the scale
+ * rather than at the parser, because deriving it there meant indexing a
+ * *different* array by this function's index — `ALIGNMENTS` has nine words and
+ * this has eight, so `Neutral` came back as `Lawful`.
+ */
+export function asAlignment(word: string): Alignment | null {
+  const rank = alignmentRank(word);
+  return rank === null ? null : ALIGNMENT_SCALE[rank]!;
 }

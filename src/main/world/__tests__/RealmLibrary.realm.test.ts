@@ -187,25 +187,30 @@ withRealm('keeping the cache from growing forever', () => {
 });
 
 /*
- * The realm the client now defaults to, converted from the database that
- * actually ships with it.
+ * A realm a player names for themselves, converted end to end.
  *
- * `GMUD (5X)` is the first shipped realm to name a `database:`, and it names a
- * **relative** path — so what this proves is the whole path a new player takes
- * on their first connection: the file is where the shipped realm says it is,
- * the relative spelling resolves against the resources directory, and 57,511
- * rooms come out the other end rather than a fallback notice and Paradigm's
- * map. Nothing else checks it end to end; `shipped.test.ts` reads the YAML and
- * asserts the file exists, which is not the same as it converting.
+ * **The database is `mdb/2023-09-02-gmud.zip`, and it does not ship.** It did
+ * for two days, because `GMUD (5X)` shipped as the default realm and a
+ * GreaterMUD character walking Paradigm's map is a client that cannot say where
+ * anybody is standing — so the realm carried 2.4 MB of database into every
+ * installer. Both left on 2026-09-05: the default is Paradigm again, which is
+ * the realm `resources/world/` is built from.
+ *
+ * What is left is the path every player who names their own realm takes, which
+ * is now the *only* way a database is ever converted: a `database:` key, an
+ * archive read without unpacking, and 57,511 rooms out the other end rather
+ * than a fallback notice and somebody else's map. Nothing else checks it end to
+ * end, and the relative-versus-absolute spelling it settled is asserted where
+ * it still applies (`RealmLibrary.test.ts`).
  */
-describe('the realm database the client ships', () => {
-  const SHIPPED_DB = 'mdb/2023-09-02-gmud.zip';
-  const resources = path.resolve('resources');
+describe('a realm database a character names', () => {
+  const REALM_DB = '2023-09-02-gmud.zip';
+  const resources = path.resolve('mdb');
 
-  it('is where the shipped realm says it is', () => {
+  it('is where this repository keeps it', () => {
     // A missing file here is a realm that silently falls back to somebody
     // else's map, which is the one failure the fallback cannot make loud.
-    expect(fs.existsSync(path.join(resources, SHIPPED_DB))).toBe(true);
+    expect(fs.existsSync(path.join(resources, REALM_DB))).toBe(true);
   });
 
   it('converts through the relative path the realm names', () => {
@@ -214,7 +219,7 @@ describe('the realm database the client ships', () => {
       cacheDir,
       resourcesDir: resources,
       notify: (message) => notices.push(message)
-    }).load(SHIPPED_DB);
+    }).load(REALM_DB);
 
     expect(loaded.problem).toBeUndefined();
     // Its own rooms, not the built-in world's three.
@@ -260,12 +265,14 @@ describe('the realm database the client ships', () => {
 
   it('reads the shipped Paradigm world as the other lineage', () => {
     /*
-     * The shipped `resources/world/` is built from Paradigm's own database while
-     * `DEFAULT_REALM_NAME` points a new character at a GreaterMUD server, so
-     * the two families genuinely differ in the configuration this client
-     * ships. That is not a defect to reconcile — the data says what exists and
-     * the server says how the arithmetic runs — and `SessionManager` says it
-     * out loud rather than picking one.
+     * The shipped `resources/world/` is built from Paradigm's own database, and
+     * `DEFAULT_REALM_NAME` names a Paradigm realm, so a client out of the box
+     * agrees with itself about the family. The database above is the other
+     * lineage, and naming it is one `database:` key away — which is why the two
+     * are read as different families here rather than assumed to match. A
+     * disagreement is not a defect to reconcile: the data says what exists and
+     * the server says how the arithmetic runs, and `SessionManager` says it out
+     * loud rather than picking one.
      */
     const shipped = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
 

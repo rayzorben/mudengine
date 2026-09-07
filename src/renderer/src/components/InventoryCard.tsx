@@ -16,7 +16,7 @@ import {
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
-import { ITEM_KIND_WORD, type ItemKind } from '@shared/items';
+import { countedList, ITEM_KIND_WORD, type ItemKind } from '@shared/items';
 import type { SessionId } from '@shared/ipc';
 import type { WorldItem } from '@shared/world';
 
@@ -275,7 +275,7 @@ function packCopyText(character: CharacterState): string {
         ]
       : []),
     ...(keys.length > 0
-      ? [t('cards.inventory.copy.keysPrefix', { keyList: keys.join(', ') })]
+      ? [t('cards.inventory.copy.keysPrefix', { keyList: countedList(keys).join(', ') })]
       : []),
     ...items.map((item) =>
       item.slot !== null
@@ -607,7 +607,7 @@ export function InventoryBody({
                 carried things the listing counts, and a `key` filter over
                 the pack answers a different question from this one. */}
                 <dt>{t('cards.inventory.keysLabel')}</dt>
-                <dd>{keys.join(', ')}</dd>
+                <dd>{countedList(keys).join(', ')}</dd>
               </>
             )}
           </dl>

@@ -14,7 +14,15 @@ import { useTabDrag } from '../hooks/useTabDrag';
 import { t } from '../lib/i18n';
 import type { ConnectionState } from '@shared/types';
 
-export type RailSide = 'top' | 'left';
+/**
+ * Which edge the rail takes.
+ *
+ * `left` and `right` are the same rail mirrored — the tabs stack either way and
+ * there is room for words — so everything inside the rail asks *stacked or
+ * across*, never which of the two sides it is. Only the marker on the active
+ * tab knows the difference, because it sits on the edge nearest the console.
+ */
+export type RailSide = 'top' | 'left' | 'right';
 
 /** What the rail needs to know about a character it is not showing. */
 export interface RailView {
@@ -260,6 +268,14 @@ function attention(
     return { level: 'warn', label: t('tabs.tab.markBlocked') };
   }
   /*
+   * Looking for a hidden exit. `info` rather than `warn`, unlike the door
+   * above: this one the client is working on, and it goes on until the exit
+   * turns up — a warning that can stand for an hour stops being read as one.
+   */
+  if (view.walk.status === 'walking' && view.walk.hold === 'searching') {
+    return { level: 'info', label: t('tabs.tab.markSearching') };
+  }
+  /*
    * Waiting out a stated affliction, on a route or between a lap's legs.
    * `warn`, unlike the holds above: a condition is something the person may
    * want to come and cure, and `walking` or `looping` here would be the tab
@@ -349,6 +365,16 @@ function TabRail({
   onEdit,
   onToggleConnection
 }: TabRailProps) {
+  /*
+   * Stacked down an edge, rather than which edge.
+   *
+   * Everything below that used to ask for `left` was asking *is there room for
+   * words* — the health in figures, the room name, and the label on the
+   * `+` button. `right` is the same rail mirrored and has exactly as much room,
+   * so testing for one side would have silently stripped a mirrored rail back
+   * to the across-the-top shape it never asked for.
+   */
+  const stacked = side !== 'top';
   /*
    * The rail is the player's arrangement of their characters, exactly as the
    * card rail is their arrangement of what they watch — so it is dragged, and
@@ -455,7 +481,7 @@ function TabRail({
           type="button"
         >
           <Icon name="plus" />
-          {side === 'left' && <span className="what">{t('tabs.head.newCharacterAria')}</span>}
+          {stacked && <span className="what">{t('tabs.head.newCharacterAria')}</span>}
         </button>
       </div>
 
@@ -657,7 +683,7 @@ function TabRail({
                     <span className="track">
                       <span className="fill" style={{ width: hp === null ? 0 : `${hp * 100}%` }} />
                     </span>
-                    {side === 'left' && (
+                    {stacked && (
                       <span className="figures">
                         {vitals?.hp ?? '—'}
                         {vitals?.hpMax === null || vitals?.hpMax === undefined
@@ -716,9 +742,7 @@ function TabRail({
                   </button>
                 </span>
 
-                {side === 'left' && (room || doing) && (
-                  <span className="where">{doing ?? room}</span>
-                )}
+                {stacked && (room || doing) && <span className="where">{doing ?? room}</span>}
               </div>
             </Fragment>
           );

@@ -86,7 +86,8 @@ palette:
 # `search`, `autoDeposit`, `openDoors`, `pickLocks`, `bashDoors`, `sneak`,
 # `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
 # `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,
-# `loop:open` (the shelf of every loop), `loop:toggle`, `loop:stop` and
+# `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
+# on, by clicking rooms on the map), `loop:toggle`, `loop:stop` and
 # `walk:stop`.
 toolbar:
   pinned:
@@ -236,6 +237,22 @@ tuning:
     # this scaled to match, which is why it is a setting and not a constant.
     mobRegenMs: 30000
 
+    # How long after this character's own landed blow an unattributed damage
+    # line still reads as that blow's weapon proc, in milliseconds.
+    #
+    # The backstop, not the discriminator. What binds a proc to the blow that
+    # fired it is that the server composes the two into one write, so nothing
+    # but the repainted prompt sits between them; any other line in the gap
+    # breaks the binding. A window alone could not do that -- the server
+    # writes a whole round in one breath, so another player's spell is inside
+    # 41ms as readily as a proc is.
+    #
+    # This bounds what adjacency cannot: a blow, a long silence, and then an
+    # unattributed line that is nobody's proc. Measured: 581 procs across the
+    # recorded sessions of 2026-09-06, median 3ms behind the blow and slowest
+    # 41ms.
+    procWindowMs: 1000
+
     # Remembered attackers in one fight. The names matter, not the count.
     maxAttackers: 12
 
@@ -246,6 +263,14 @@ tuning:
     # type or a walk can enqueue, shallow enough that a client which has lost
     # the thread stops pretending.
     maxPendingMoves: 12
+
+    # Commands sent and not yet seen echoed back. The server echoes what it is
+    # given, in order, without waiting for one to be answered before echoing
+    # the next -- so a burst comes back as a run of bare lines, one per command,
+    # and what this client sent has to be a queue rather than one value. It was
+    # one value, and only the last command of any burst was recognised as its
+    # own echo; the rest were read as though the game had said them.
+    maxPendingEchoes: 32
 
     # And how long one of them may wait before the client gives up on it. The
     # cap above and this one are the same claim on two axes -- "this client has
@@ -284,6 +309,16 @@ tuning:
     # (captured live, 2026-08-26) — and it must not silence the keep-alive for
     # a whole evening because somebody typed two characters and walked away.
     abandonedLineMs: 20000
+
+    # How long a command the server threw away waits before it is sent again.
+    #
+    # `You fumble in confusion!` is the server discarding whatever was sent
+    # before it looked at it, and the same branch puts the character in a
+    # 1000ms delay -- so the status line that follows arrives inside that wait
+    # and a resend on it would be sent into a server not listening yet. This is
+    # the server's own figure, and erring long costs latency where erring short
+    # costs the command a second time.
+    fumbleRetryMs: 1000
 
     # How long after the last combat message `mid-round` fires.
     midRoundMs: 100
@@ -566,10 +601,40 @@ tuning:
 
     pickMargin: 20
 
-    # How many searches one hidden exit is worth before the walk gives up. The
-    # router already priced the leg including the search, so spending the
-    # command keeps a promise rather than making a new decision.
-    searchTries: 2
+    # How long a walk stands at a hidden exit between two searches for it.
+    #
+    # There is no count. The realm's own data says a search reveals this exit,
+    # and stopping after two rolls of a skill check would be the client
+    # deciding the realm is wrong -- which is what happened: a hand-typed third
+    # search found the exit a moment after the route had struck the corridor
+    # out. So this is the pace, and the pace is the whole of what bounds it.
+    searchRetryMs: 1500
+
+    # How often a walk repeats the line about the hidden exit it is waiting for.
+    #
+    # The searching has no ceiling, so the hold can outlast a lap -- and said
+    # once, the reason for a standstill is a line eight hours up the scrollback.
+    # Five minutes: never the chrome talking over the game, and short enough
+    # that somebody who looks at the console gets an answer without scrolling.
+    searchSayEveryMs: 300000
+
+    # How many failed searches before the walk asks the server to reprint the
+    # room, rather than only after a search that succeeded.
+    #
+    # A found exit joins the room's own `Obvious exits:` line, and that line is
+    # what the walk reads to decide the exit is there -- but the server says
+    # `You found an exit to the south!` and does not reprint the room. So a
+    # walk went on searching a room whose exit it had already found. A success
+    # always asks for the reprint; this is the same reprint on a count, for the
+    # two ways a success can be missed -- the sentence arriving in a burst, and
+    # somebody else opening the way.
+    searchRecheckEvery: 3
+
+    # How many rounds of levers one action-gated exit is worth. Counted where a
+    # search is paced, because the realm names the exact phrase that opens this
+    # one: a couple of rounds either works or the phrase is not what the realm
+    # claims. A search is a skill check the realm expects to fail sometimes.
+    leverTries: 2
 
     # How long a walk stands at a shut door it could not force before running
     # the whole ladder — open, pick, bash — again.
@@ -664,6 +729,18 @@ tuning:
 
     # Framed lines retained; the terminal keeps the real backscroll.
     lineLogLimit: 500
+
+    # Records the debug window keeps, and therefore how far back a bug report
+    # reaches.
+    #
+    # Larger than the others on purpose: this ring holds every kind of record at
+    # once -- the raw stream, the framed line, the classification, the state
+    # change and the decision -- so one line of the game costs several entries,
+    # and a report that only covers the last few seconds does not cover the
+    # thing you are reporting. It fills whether or not the window is open,
+    # because a trace you have to turn on before the surprise is one that never
+    # catches it.
+    debugLogLimit: 4000
 
     # Sent commands the decision trace keeps — enough to cover the minute
     # before something went wrong, which is the window anyone asks about.
@@ -798,6 +875,15 @@ tuning:
     # usually across maps, which is what most of them are for.
     portalPenalty: 3
 
+    # What a step along a route you saved costs, as a fraction of an ordinary
+    # one. A route drawn on the loop builder and saved (`prefer: true` in its
+    # file) is you saying *this is the way*: every step on it is priced at this
+    # fraction, so the router follows it wherever it can and leaves it only for
+    # a way shorter by more than the discount. A tenth means a saved route of a
+    # hundred rooms still beats a shortcut of eleven. Zero makes it free; one
+    # makes saving a route mean nothing.
+    preferredStepCost: 0.1
+
   # The process itself.
   app:
     # How long a quitting client waits for its last message to reach a pipe
@@ -839,6 +925,15 @@ tuning:
     # and paint together at most this often, so a busy realm cannot make the
     # cards re-render per line. The console itself never waits on this.
     chromeFlushMs: 100
+
+    # Rows the debug window keeps on screen.
+    #
+    # Its own key rather than main's session.debugLogLimit, because the two
+    # bound different costs: main's ring is memory behind a bug report, and this
+    # is DOM in a window that is scrolled through. Wanting a deeper report is
+    # not the same as asking the window to hold more rows, and the window is the
+    # half that gets slow first.
+    debugRows: 4000
 
     # Characters per second above which the window is under pressure.
     streamHighWater: 1500
@@ -909,6 +1004,24 @@ tuning:
 
     popoverMargin: 8
 
+    # How wide a slide-out panel is allowed to be, and how small it may be
+    # dragged.
+    #
+    # It was a flat 300px in the stylesheet, and a panel that narrow turns a
+    # monster's "0 hp a round against you" into a column one word wide and
+    # twenty lines tall -- the panel then scrolls, so the answer you asked for
+    # is below the fold on a screen with room for it three times over. The
+    # width is chosen from the room actually beside the name that was clicked,
+    # between these two: the floor is what the readout's two columns need to
+    # read as columns, and the ceiling is where a line stops being comfortable
+    # to read and starts being a paragraph the eye has to track back across.
+    popoverWidthMin: 300
+
+    popoverWidthMax: 560
+
+    # The smallest a panel may be dragged to and still be worth reading.
+    popoverMinHeight: 120
+
     # How close a popup menu may come to the edge of the window.
     menuMargin: 4
 
@@ -918,14 +1031,18 @@ tuning:
     # How far out the local map walks, as the bounds a *measured* radius is
     # clamped into.
     #
-    # The card asks for the radius its own size can show rather than always
-    # asking for five, which is what it did until 2026-08-31: a map dragged
-    # twice as tall drew the same six rooms twice as large, because the viewBox
-    # scaled the picture and nothing ever fetched more of it.
+    # The view asks for the radius its window can show -- what it reaches from
+    # the centre room at its zoom and pan, measured from the laid-out box --
+    # rather than always asking for five, which is what it did until
+    # 2026-08-31: a map dragged twice as tall drew the same six rooms twice as
+    # large, because the viewBox scaled the picture and nothing ever fetched
+    # more of it.
     #
     # The floor is what a rail card can show and the ceiling is what stops a
-    # full-screen float walking the whole realm — the search is exponential in
+    # full-screen float walking the whole realm -- the search is exponential in
     # the radius, and `world.mapCells` alone bounds the result, not the work.
+    # The ceiling is also where the wheel stops zooming out: a window wider
+    # than the widest fetch would show blank space around it.
     mapRadiusMin: 2
     mapRadiusMax: 12
 
@@ -942,6 +1059,24 @@ tuning:
     # floor would have quietly refused the sparse end.
     mapRoomPixelsSparse: 40
     mapRoomPixelsDense: 10
+
+    # How much one notch of the wheel zooms a map, as a percentage of the
+    # room's size -- in towards the reader, out away -- about the point under
+    # the pointer, between the two ends above.
+    mapZoomStepPercent: 25
+
+    # How many colours the way on a map may use before it stops changing. A lap
+    # that comes back the way it went draws one line over another, so the way
+    # changes colour each time it starts doubling back over ground it has
+    # already covered. Capped because the point is to tell a few passes apart:
+    # past three the map is a colour chart. Bands beyond the cap all draw in
+    # the last colour, which still says "covered before".
+    mapTrailBands: 3
+
+    # How long after the last notch the Map card writes its zoom into its own
+    # settings, where the density slider reads it. One write once the hand has
+    # stopped, rather than one per wheel event.
+    mapZoomSettleMs: 400
 
     # How often a card redraws a running clock — the uptime readout, and how
     # long a loop has been going. A second, because that is the unit shown.

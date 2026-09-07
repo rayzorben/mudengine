@@ -14,7 +14,7 @@ import zlib from 'node:zlib';
  * that has never been seen to happen is a refusal nobody knows the wording of.
  *
  * It is **not** the only archive under test: the reader is also pointed at
- * `resources/mdb/2023-09-02-gmud.zip`, written by somebody else's zip program,
+ * `mdb/2023-09-02-gmud.zip`, written by somebody else's zip program,
  * because a reader tested only against its own writer proves the pair agree
  * rather than that either is right.
  */

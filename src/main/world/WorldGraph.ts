@@ -24,8 +24,11 @@ import zlib from 'node:zlib';
 import { t } from '../app/i18n';
 import { describeObstacle } from './obstacle';
 import { parseInstruction } from './instructions';
+import type { BuiltExit } from './buildRealm';
+import type { Quest, QuestSource, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
+  asRoomReference,
   DIRECTIONS,
   DIRECTION_COMMAND,
   describeBlock,
@@ -41,6 +44,11 @@ import {
   type WorldItem,
   type WorldLookup,
   type ShopPlace,
+  type MobPlaces,
+  type MobSpawn,
+  type RequirementAction,
+  openableHere,
+  parseLair,
   type WorldShop,
   type WorldShopItem,
   type WorldSpell,
@@ -52,12 +60,22 @@ import {
   type MobProfile,
   type WorldNames,
   type RoomCommand,
+  type RemoteLever,
   type WorldRoom,
   type ShopKind,
   shopKind
 } from '../../shared/world';
+import { alignmentRank, type Alignment } from '../../shared/alignment';
+import { HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
-import { ARMOUR_TYPE, WEAPON_CLASS, WEAPON_TYPE, WORN_SLOT, itemKind } from '../../shared/items';
+import {
+  ARMOUR_TYPE,
+  WEAPON_CLASS,
+  WEAPON_TYPE,
+  WORN_SLOT,
+  bareName,
+  itemKind
+} from '../../shared/items';
 import { tuning } from '../app/tuning';
 import { spellTargeting } from '../../shared/spellcraft';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
@@ -82,7 +100,7 @@ import {
  * route step's command is the phrase, exactly as a `Text:` exit's is) and the
  * level gate when the script states one.
  */
-interface PortalExit {
+export interface PortalExit {
   direction: 'portal';
   map: number;
   room: number;
@@ -102,15 +120,89 @@ export interface Traveller {
    * pathfinder, and a server restart may open what this session saw shut.
    */
   refused?: ReadonlySet<string>;
+  /**
+   * Edges along the routes this character prefers, as `from|to` room ids,
+   * both ways.
+   *
+   * A route saved from the loop builder (`Loop.prefer`) is the player saying
+   * *this is the way*, and a step along one costs
+   * `tuning.world.preferredStepCost` of an ordinary step — so the router
+   * follows a saved route wherever it can and leaves it only for a way
+   * shorter by more than the discount. Derived once per session from the
+   * character's own loops (`SessionManager.preferredEdges`), and absent from
+   * the builder's own drafts, which plan plainly so the way drawn is the way
+   * the reduction reproduces.
+   */
+  preferred?: ReadonlySet<string>;
   level?: number | null;
   /** Copper farthings, for tolls. */
   wealth?: number | null;
-  /** Item ids carried, for keyed doors. */
+  /**
+   * The `Items` row ids the pack holds, for a keyed door and an item gate.
+   *
+   * One field because the two instructions ask one question — *is this thing
+   * in the pack* — and the server answers both by walking
+   * `Inventory.ItemStacks`. Filled by `SessionManager.travellerNow` from the
+   * `i` listing, joined name-to-id through the realm's item index and **only
+   * where the name resolves to exactly one row**: twenty of the shipped
+   * realm's 1,915 item names are shared by two or more ids (four of them
+   * keys — `iron key` is three), and a pack that guessed which one it was
+   * holding would open a door on a coin toss.
+   *
+   * Absent, or a name the realm cannot place, is *nobody has said* — never
+   * *not carried*.
+   */
   keys?: number[];
+  /**
+   * Whether an `i` listing has ever landed, so `keys` above means *this is
+   * what is carried* rather than *nobody has looked*.
+   *
+   * The two are one field's worth of difference and the whole of whether a
+   * missing item may be treated as a wall: 157 of the shipped realm's exits
+   * want a `rope and grapple`, and shutting all of them against a character
+   * whose pack has never been listed is the class gate's failure in the
+   * opposite direction. `CharacterState.inventory.listedAt` is the fact; `i`
+   * is in the default entry probe, so it is true within a second of entering
+   * the realm on any ordinary configuration.
+   */
+  packKnown?: boolean;
   /** Picklocks, for a door the realm lets that skill open. */
   pickSkill?: number | null;
   /** Strength, for the same doors — the realm accepts either. */
   strength?: number | null;
+  /**
+   * This character's `Classes` row id, for a class-gated exit.
+   *
+   * The stat sheet prints the realm's own word (`Class: Paladin`) and the
+   * exit states a row id, so the join is `WorldGraph.classId` and it happens
+   * once, at `SessionManager.travellerNow`. Null or absent means nobody has
+   * read a sheet yet, or the realm names no classes — and an unevaluable gate
+   * is discouraged rather than pruned, which is what `edgePenalty` did for
+   * every one of them until this existed.
+   */
+  classId?: number | null;
+  /**
+   * This character's `Races` row id, for a race-gated exit.
+   *
+   * The join `classId` describes, one column across: the sheet prints
+   * `Race: Kang` and the exit states a row id, so `WorldGraph.raceId` makes
+   * it once at `SessionManager.travellerNow`. Two exits in the shipped realm
+   * carry one, which is a small number and exactly the reason it went
+   * unevaluated — the cost of an unevaluable gate is not paid where the gates
+   * are, it is paid where the character is standing when one of them is on
+   * the only short way through.
+   */
+  raceId?: number | null;
+  /**
+   * How the realm ranks this character, for an alignment-gated exit.
+   *
+   * The one fact on this object that does **not** come off the stat sheet:
+   * the sheet does not carry a standing and the `who` roster's own row for
+   * the character is the only place it appears (`ownAlignment`), so it is
+   * null for the first few seconds of every session — which is the ordinary
+   * state and must never close a route.
+   */
+  alignment?: Alignment | null;
 }
 
 /**
@@ -142,6 +234,37 @@ export interface Traveller {
  * credited a warrior's strength against a lock the realm says only picklocks
  * open.
  */
+/**
+ * How a lever is filed and looked up: the exit it opens, not the room that
+ * holds it.
+ *
+ * One spelling, used by the index and by every question put to it, because two
+ * spellings of a key agree exactly until one of them is edited — the same
+ * reason `refusedEdges` keys through one expression.
+ */
+function leverKey(room: RoomId, direction: string): string {
+  return `${room}|${direction}`;
+}
+
+/** Handed back for an exit nothing opens, so no caller allocates to say "none". */
+const NO_LEVERS: readonly RemoteLever[] = [];
+
+/**
+ * The abilities that take hit points off whoever a spell lands on.
+ *
+ * The damaging quarter of `menace.hazardOf`'s switch and nothing else: a spell
+ * trap's price is what it costs to walk through, and being held or blinded for
+ * a round costs a fight rather than a corridor. `Heal` is not in the set
+ * because only a *negative* one is a wound, which is a value test rather than
+ * an id test.
+ */
+const HURTS: ReadonlySet<number> = new Set([
+  HAZARD_ABILITY.damage,
+  HAZARD_ABILITY.damageWithMr,
+  HAZARD_ABILITY.drain,
+  HAZARD_ABILITY.poison
+]);
+
 function gradedCost(skill: number | null | undefined, difficulty: number, base: number): number {
   if (difficulty <= 0) return base;
   const ratio = (skill ?? 0) / difficulty;
@@ -169,24 +292,35 @@ function forcedDoorCost(requirement: Requirement, traveller: Traveller, base: nu
 /**
  * Why this edge is impassable for this traveller, or `null` when it is not.
  *
- * The mirror of {@link edgePenalty}'s three `null`s, and deliberately a separate
- * function rather than a richer return from that one: `edgePenalty` is called
- * once per exit per expansion in the hot loop of an A* over 55,806 rooms, and
- * this is called only along a single already-found path. Same decisions, so the
- * two are asserted against each other in the tests — a penalty of `null` with no
- * block, or a block with a finite penalty, is a disagreement about whether the
- * character can walk somewhere.
+ * The mirror of every `null` {@link edgePenalty} returns, and deliberately a
+ * separate function rather than a richer return from that one: `edgePenalty` is
+ * called once per exit per expansion in the hot loop of an A* over 55,806
+ * rooms, and this is called only along a single already-found path. Same
+ * decisions, so the two are asserted against each other in the tests — over
+ * `REQUIREMENT_KINDS` rather than a hand-written list, because the hand-written
+ * one is what let the class gate ship pruning in silence.
  */
 export function edgeBlock(
   requirement: Requirement | null,
   traveller: Traveller
-): { kind: 'key' | 'level' | 'toll'; requirement: Requirement } | null {
+): {
+  kind: 'key' | 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'item';
+  requirement: Requirement;
+} | null {
   if (!requirement) return null;
   switch (requirement.kind) {
     case 'key': {
       const has = requirement.keyId !== undefined && traveller.keys?.includes(requirement.keyId);
       if (has || requirement.pickDifficulty !== undefined) return null;
-      return { kind: 'key', requirement };
+      // A pack nobody has listed does not say the key is missing, so it does
+      // not block — the mirror of the price above.
+      return traveller.packKnown === true ? { kind: 'key', requirement } : null;
+    }
+
+    case 'item': {
+      const wanted = requirement.keyId;
+      if (wanted === undefined || traveller.keys?.includes(wanted)) return null;
+      return traveller.packKnown === true ? { kind: 'item', requirement } : null;
     }
     case 'level': {
       const level = traveller.level;
@@ -212,10 +346,65 @@ export function edgeBlock(
       if (price === undefined) return purse <= 0 ? { kind: 'toll', requirement } : null;
       return purse < price ? { kind: 'toll', requirement } : null;
     }
+    /*
+     * The three the character *is*. Each is a mirror of its `edgePenalty`
+     * case, and each was a `null` with nothing to say about it until now:
+     * `class` shipped that way with todo 03, and `race` and `alignment` would
+     * have shipped that way with this one. A pruned edge nothing can explain
+     * reports *the two rooms are not joined in the data*, which is untrue and
+     * unactionable at the same time.
+     */
+    case 'class': {
+      const mine = traveller.classId;
+      if (mine === null || mine === undefined) return null;
+      if (requirement.classNo !== undefined && requirement.classNo === mine) {
+        return { kind: 'class', requirement };
+      }
+      if (requirement.classOk !== undefined && requirement.classOk !== mine) {
+        return { kind: 'class', requirement };
+      }
+      return null;
+    }
+
+    case 'race': {
+      const mine = traveller.raceId;
+      if (mine === null || mine === undefined) return null;
+      if (requirement.raceNo !== undefined && requirement.raceNo === mine) {
+        return { kind: 'race', requirement };
+      }
+      if (requirement.raceOk !== undefined && requirement.raceOk !== mine) {
+        return { kind: 'race', requirement };
+      }
+      return null;
+    }
+
+    case 'alignment': {
+      const mine = traveller.alignment;
+      const window = requirement.minAlignment;
+      if (mine === null || mine === undefined || window === undefined) return null;
+      const rank = alignmentRank(mine);
+      const low = alignmentRank(window);
+      const high = alignmentRank(requirement.maxAlignment ?? window);
+      if (rank === null || low === null || high === null) return null;
+      return rank >= low && rank <= high ? null : { kind: 'alignment', requirement };
+    }
+
     default:
       return null;
   }
 }
+
+/**
+ * What a condition nobody can evaluate costs.
+ *
+ * Passable in principle and heavily discouraged in practice: a route through
+ * one is better than no route, and the chip shows the realm's own instruction
+ * so a person can judge. Named because seven cases reached for the same
+ * literal and three of them have since stopped — the ones that stayed are the
+ * ones where the fact genuinely is not in the client, and a shared name makes
+ * that visible in a way a repeated `60` did not.
+ */
+const UNEVALUATED = 60;
 
 export function edgePenalty(requirement: Requirement | null, traveller: Traveller): number | null {
   if (!requirement) return 0;
@@ -231,10 +420,21 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
     case 'key': {
       const has = requirement.keyId !== undefined && traveller.keys?.includes(requirement.keyId);
       if (has) return 4;
-      // No key, and no skill the realm accepts instead: a wall, full stop.
-      if (requirement.pickDifficulty === undefined) return null;
       // Otherwise the lock is picked or the door forced, at the graded cost.
-      return forcedDoorCost(requirement, traveller, 30);
+      if (requirement.pickDifficulty !== undefined)
+        return forcedDoorCost(requirement, traveller, 30);
+      /*
+       * No key, and no skill the realm accepts instead — a wall, but only once
+       * somebody has looked in the pack.
+       *
+       * `Traveller.keys` was documented as *item ids carried* and **nothing
+       * ever set it**, so this pruned every keyed door in the realm on no
+       * evidence at all: the answer was always *you do not have the key*,
+       * because the question had never been asked. Now that the pack answers,
+       * the silence has to be told from the answer, or the fix would keep the
+       * old behaviour under a better name.
+       */
+      return traveller.packKnown === true ? null : UNEVALUATED;
     }
 
     case 'level': {
@@ -266,27 +466,211 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
     }
 
     case 'hidden':
-      // Searchable costs the search; anything else needs actions we cannot
-      // derive from the data, so it is expensive rather than impossible.
-      return requirement.searchable ? 25 : 200;
+      /*
+       * Searchable costs the search — `Walker.searchFor` sends it.
+       *
+       * An action-gated one costs the levers where the realm puts every one of
+       * them in the room the exit leaves from, because `Walker.pullLevers`
+       * sends those too: it is the same rung, priced the same way, one command
+       * per lever. 150 of the shipped realm's 217 are that shape.
+       *
+       * Everything else stays expensive rather than impossible, which is what
+       * this line has always said. The levers are somewhere else, and this
+       * planner still does not plan the detour: `Walker.fetchLever` makes it
+       * **reactively**, when the server refuses the step, for the reason the
+       * search rung already gives — a gate found open is found open, and a lap
+       * should pay for the errand once rather than every time it plans. So the
+       * price is what the edge costs when it is already open, plus a
+       * discouragement, which is what this is.
+       */
+      if (requirement.searchable) return 25;
+      if (openableHere(requirement)) return 25 + 5 * requirement.actions!.length;
+      return 200;
 
     case 'trap':
       // Proportional to the hurt, floored so any trap is worth avoiding.
       return 20 + (requirement.damage ?? 0);
 
-    case 'class':
-    case 'race':
-    case 'alignment':
+    case 'class': {
+      /*
+       * **A class gate is as hard as a level gate, and the realm states it in
+       * numbers** (todo 03, 2026-09-06, reported as *"route from 1, 1377 to 1,
+       * 2260 took the wrong route ... it tried to go east at 1, 1422 which is
+       * the wrong class, it should have tried at 1, 1423"*).
+       *
+       * The shipped realm's crypt is fifteen rooms all called `Crypt, Shadowed
+       * Hall`, whose east exits read `Class: 1 OK` through `Class: 15 OK` —
+       * one class each. Priced as an unevaluable condition, every one of them
+       * cost the same, so A* took whichever lay on the shortest path: a
+       * Paladin (class 3) was routed through 1/1422's `Class: 6 OK` and
+       * answered `You may not go through this exit!`. The walk stopped, and
+       * `SessionManager.refusedEdges` then wrote a **real** corridor off for
+       * the rest of the session — the second cost, and the worse one.
+       *
+       * Nothing had to be learned to fix it: `WorldGraph.classId` already
+       * joined the sheet's word to the realm's row id for item restrictions,
+       * and the exit's own numbers were sitting in `raw`. What was missing was
+       * anybody asking.
+       *
+       * **Unknown stays discouraged, never pruned.** A character whose sheet
+       * nobody has read, or a realm converted before the class table, must
+       * still be given a route — the reassuring guess here is *I can pass*,
+       * and the cost of it is one refusal, where refusing to route at all
+       * strands the character. That is the same direction `level` takes for an
+       * unknown level.
+       */
+      const mine = traveller.classId;
+      if (mine === null || mine === undefined) return UNEVALUATED;
+      if (requirement.classNo !== undefined && requirement.classNo === mine) return null;
+      if (requirement.classOk !== undefined) return requirement.classOk === mine ? 0 : null;
+      // A gate that names neither side is one this reading cannot evaluate.
+      return UNEVALUATED;
+    }
+
+    case 'race': {
+      /*
+       * The class gate one column across, and priced identically because the
+       * server prices it identically: `RaceRestrictedExit` is
+       * `ClassRestrictedExit` with `Races` in place of `Classes`, down to the
+       * refusal it prints. Unknown stays discouraged rather than pruned, for
+       * the reason the class case gives at length.
+       */
+      const mine = traveller.raceId;
+      if (mine === null || mine === undefined) return UNEVALUATED;
+      if (requirement.raceNo !== undefined && requirement.raceNo === mine) return null;
+      if (requirement.raceOk !== undefined) return requirement.raceOk === mine ? 0 : null;
+      return UNEVALUATED;
+    }
+
+    case 'alignment': {
+      /*
+       * A window on the standing scale, and the one gate whose answer changes
+       * while the character stands still — evil points move with what it
+       * kills.
+       *
+       * That is why the *unknown* case matters more here than anywhere else:
+       * the standing comes off the `who` roster and nothing else, so for the
+       * first seconds of every session there is no answer at all. Discouraged,
+       * never pruned. A window the parse could not read leaves both ends
+       * absent and lands here too.
+       */
+      const mine = traveller.alignment;
+      const window = requirement.minAlignment;
+      if (mine === null || mine === undefined || window === undefined) return UNEVALUATED;
+      const rank = alignmentRank(mine);
+      const low = alignmentRank(window);
+      const high = alignmentRank(requirement.maxAlignment ?? window);
+      if (rank === null || low === null || high === null) return UNEVALUATED;
+      return rank >= low && rank <= high ? 0 : null;
+    }
+
     case 'ability':
+      /*
+       * `Ability: 0 w/value 0 to 0` is the realm's empty slot, and the server
+       * builds a plain exit for it — the parse drops the zero, so an absent id
+       * here *is* that exit and it costs nothing.
+       *
+       * Every other ability gate names a quest counter (`DaoLordQuest`,
+       * `Rune`, `Mandos Quest`, `GuildmasterQuest`) that the wire states
+       * nowhere: the server reads `GetAbility(id).Sum`, which folds the race,
+       * the class, everything worn and everything running, and no listing this
+       * client can ask for prints it. So it stays discouraged, and the chip
+       * carries the realm's own words for a person to judge by.
+       */
+      return requirement.abilityId === undefined ? 0 : UNEVALUATED;
+
     case 'cast':
+      /*
+       * **A cast exit never refuses anybody**, and 217 of the shipped realm's
+       * 293 move the character somewhere the exit table does not name.
+       *
+       * `CastExit.CanMoveThroughExit` returns `true` unconditionally and
+       * `TryMoveThroughExit` moves first and casts second (a reading of the
+       * server's source, not a capture). So the old flat discouragement was
+       * wrong twice over: it priced 76 plain corridors as half-walls, and it
+       * priced a scatter maze as a corridor.
+       *
+       * `relocates` is a wall rather than a prune, and the reason is the
+       * character standing inside one: pruning every scattering exit makes the
+       * gloomy maze unroutable and strands whoever is in it, where a wall
+       * leaves a way out that the walker re-plans from after each unexpected
+       * arrival — which is how anybody gets out of a scatter maze. It is not a
+       * refusal, so nothing writes the corridor off.
+       *
+       * `script` keeps the old discouragement, and that is the honest answer
+       * rather than an unchanged one: the spell hands the character a
+       * `TextBlock` this client does not convert, 40 of the 56 are called
+       * `pyramid 4 arch fail`, and a script named *fail* is a gate under
+       * another name.
+       */
+      if (requirement.spellEffect === 'relocates') return tuning().world.wallCost;
+      if (requirement.spellEffect === 'script') return UNEVALUATED;
+      return 0;
+
     case 'spell':
-    case 'item':
+      /*
+       * A spell trap, which `SpellTrapExit.CanMoveThroughExit` also lets
+       * everybody through: it is a trap and not a gate, so it is priced as one
+       * — the same line the `trap` case above uses, against a damage figure
+       * `resolveSpells` read off the realm's own spell table rather than out of
+       * the instruction string.
+       *
+       * A trap that *moves* the character is the cast exit's problem again and
+       * gets the cast exit's answer, and so is one whose spell this client
+       * could not read — the cast case and this one had priced that the same
+       * fact two ways, 60 there and the trap floor here, on the reasoning that
+       * a trap is a trap whatever it fires. It is not: an unread script can
+       * move the character, which is the one thing the trap floor promises it
+       * will not.
+       *
+       * What is left is a trap with a hurt the realm's table states, priced as
+       * the `trap` case above prices one — or with no hurt in it at all, which
+       * costs the floor and says *there is a trap here* without inventing a
+       * number.
+       */
+      if (requirement.spellEffect === 'relocates') return tuning().world.wallCost;
+      if (requirement.spellEffect === 'script') return UNEVALUATED;
+      return 20 + (requirement.damage ?? 0);
+
+    case 'item': {
+      /*
+       * `Item: 191` — `rope and grapple`, on 157 of the shipped realm's exits.
+       * The server walks `Inventory.ItemStacks` for it, so the pack answers,
+       * and the pack is a maintained listing: `i` establishes it and every
+       * pick-up and drop keeps it true (`CharacterTracker.replayPack`).
+       *
+       * The three answers are the three states the pack can be in, and the
+       * middle one is the whole reason `packKnown` exists. Carried is free.
+       * **Listed and not in it is a wall** — the server refuses outright, and
+       * pricing that as merely discouraged is what walks a character into a
+       * refusal and has `SessionManager.refusedEdges` write a real corridor off
+       * for the session, which was todo 03's second and worse cost. Never
+       * listed is *nobody has looked*, which is discouraged and never pruned.
+       *
+       * An absent id is `Item: 0`, the realm's empty slot, which the server
+       * builds as a plain exit.
+       */
+      const wanted = requirement.keyId;
+      if (wanted === undefined) return 0;
+      if (traveller.keys?.includes(wanted)) return 0;
+      return traveller.packKnown === true ? null : UNEVALUATED;
+    }
+
     case 'timed':
-      // Conditions we cannot evaluate from the realm data alone. Passable in
-      // principle, heavily discouraged in practice — a route through one is
-      // better than no route, and the UI shows the requirement so the player
-      // can judge.
-      return 60;
+      /*
+       * `Timed: 0*5 minutes` — one exit in the shipped realm and none at all
+       * in the other, which is the whole survey.
+       *
+       * An exit that is open on a schedule, and this client holds no clock the
+       * server shares: the shape has one sample, the units are unread, and
+       * GreaterMUD does not implement the case at all (`RoomManager.LoadRooms`
+       * case 16 builds a plain exit and says `//fix this`). Pricing it free on
+       * the strength of a server that skips it would be encoding one build's
+       * omission as a fact about the realm, so it stays discouraged — a route
+       * through it is offered and not preferred, and the chip carries the
+       * realm's own words.
+       */
+      return UNEVALUATED;
 
     case 'unknown':
     default:
@@ -374,6 +758,16 @@ export class WorldGraph {
    * session is the safe direction.
    */
   private readonly portals = new Map<RoomId, PortalExit[]>();
+  /**
+   * Every lever the realm says opens an exit, keyed by the exit it opens —
+   * `map/room|direction`. Built by `linkLevers` once the rooms are loaded.
+   *
+   * Indexed by the exit and not by the room holding the lever, because that is
+   * the direction the question is asked from: a walk refused at a gate asks
+   * *is there anything anywhere that opens this*, and the room it is standing
+   * in is the one place the answer is not.
+   */
+  private readonly levers = new Map<string, RemoteLever[]>();
   /** Lowercased name -> every room that bears it. Names are far from unique. */
   private readonly byName = new Map<string, WorldRoom[]>();
   private meta: WorldMeta = {
@@ -398,6 +792,16 @@ export class WorldGraph {
    */
   private readonly itemsByName = new Map<string, WorldItem>();
   /**
+   * Every row a name belongs to, where `itemsByName` keeps only the first.
+   *
+   * Two indexes on one column because they answer two questions: *what is this
+   * thing called `moonstone`* wants one row to describe and takes the first,
+   * while *is the thing this exit demands in the pack* has to know that
+   * `moonstone` is two rows and therefore says nothing about either. Collapsing
+   * the second onto the first would have opened a gate on a name.
+   */
+  private readonly itemRowsByName = new Map<string, number[]>();
+  /**
    * Every monster the realm names, keyed by lowercased name.
    *
    * By name because that is all the wire gives — the combat lines carry `the
@@ -415,6 +819,15 @@ export class WorldGraph {
    * to pay for on load.
    */
   private shopRoomsByName: Map<string, WorldRoom[]> | null = null;
+  /**
+   * Monster number → the rooms the realm spawns it in, built on the first ask.
+   *
+   * Null until then, for `shopRoomsByName`'s reason exactly: most sessions
+   * never open a Reference card, and this is the same 55,806-room scan. One
+   * scan answers every monster, so the alternative — a filter per clicked name
+   * — is the N+1 this layer exists to refuse.
+   */
+  private mobRoomsById: Map<number, MobSpawnRoom[]> | null = null;
   /**
    * The realm's class table as `{ id: name }`, for an ability whose value is a
    * class id rather than a magnitude. See `WorldLookup.classNames`.
@@ -521,6 +934,20 @@ export class WorldGraph {
   /** The realm's races and classes, in table order. Empty before v10. */
   private races: WorldRace[] = [];
   private classes: WorldClass[] = [];
+  /** The realm's quests, out of the header. See `indexQuests.ts`. */
+  private questBook: Quest[] = [];
+  /**
+   * The book with the item and room joins applied, computed on first ask.
+   *
+   * Null rather than empty for *not yet computed*: a realm that scripts no
+   * quests joins to an empty array, and the two must not be the same state or
+   * the join would run again on every mount of the card.
+   */
+  private questsJoined: Quest[] | null = null;
+  /** Item name -> the monsters that drop it, built with the first join. */
+  private droppers: Map<string, string[]> | null = null;
+  /** Item id -> the shops that stock it, built with the first join. */
+  private stockists: Map<number, string[]> | null = null;
   /**
    * Every item name the realm has, for recognising one in a line of text.
    * Empty before v11, where the console recognised only the ~100 items some
@@ -553,6 +980,75 @@ export class WorldGraph {
    * does not cover everything a monster drops. Saying nothing about a name it
    * cannot place is the same rule the rest of the world layer follows.
    */
+  /**
+   * The `Items` row ids a pack holds, for the two exits that ask *is this
+   * thing carried* — a `Key:` lock and an `Item:` gate.
+   *
+   * Takes the names rather than the pack, because the server prints a
+   * character's belongings as two listings — `You are carrying …` and `You
+   * have the following keys: bone key.` — which land in two fields, and the
+   * question is asked of both at once.
+   *
+   * The join runs name-to-id and refuses where the name is shared. Twenty of
+   * the shipped realm's 1,915 item names belong to two or more rows and four
+   * of those are keys (`iron key` is three), so a listing naming one says
+   * which *kind* of thing is in the pack and not which row — and a door opened
+   * on a coin toss is the confidently wrong answer the router refuses
+   * everywhere else. Every one of the 26 items the shipped realm gates an exit
+   * on has a name of its own, so the refusal costs nothing that is asked for.
+   *
+   * `bareName` first, because the listing marks what it prints —
+   * `katana (Weapon Hand)`, `torch (Readied/79)` — and the realm's row is
+   * called `katana`. It lower-cases as it goes, which is the spelling both
+   * indexes are keyed on.
+   */
+  itemIdsCarried(items: readonly { name: string }[]): number[] {
+    const ids: number[] = [];
+    for (const item of items) {
+      const id = this.itemIdNamed(item.name);
+      if (id === null) continue;
+      if (!ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
+
+  /**
+   * The one `Items` row a name can only mean, or null.
+   *
+   * The whole of the ambiguity rule above, in one place, because two things
+   * now ask it: what the pack holds, and what is lying on the floor of the
+   * room a keyed door leads out of. Asked twice with two spellings of the rule
+   * is the "two halves of one gate" failure, and here the halves would have
+   * been *is this the key* and *may I pick this key up*.
+   *
+   * **A plural is undone only where the index confirms it.** A counted key
+   * entry is pluralised on some realms and not on others — `2 black star keys`
+   * and `2 golden idols` in captures/002 and /038 against the row names
+   * `black star key` and `golden idol`, and a plain `2 bone key` on the wire
+   * that reported this (2026-09-06). The count comes off in the parse
+   * (`countedName`); the `s` cannot, because nothing there can tell this
+   * realm's plural from an item whose name simply ends in one — `padded
+   * gloves`, `rigid leather pants`, `spiked leather boots` are all real rows.
+   * Here the realm can be asked, so the trailing `s` is dropped **only** when
+   * the shorter name is itself a row the index holds unambiguously. That is a
+   * confirmation, not the guess `lost()` makes for want of an index.
+   */
+  itemIdNamed(name: string): number | null {
+    const key = bareName(name);
+    if (key.length === 0) return null;
+    const exact = this.oneRowNamed(key);
+    if (exact !== null) return exact;
+    return key.endsWith('s') ? this.oneRowNamed(key.slice(0, -1)) : null;
+  }
+
+  /** One row for this exact spelling, or null for absent and for shared. */
+  private oneRowNamed(key: string): number | null {
+    const rows = this.itemRowsByName.get(key);
+    // Absent is a name the realm cannot place; more than one is a name that
+    // does not say which row. Both are *nobody has said*, not *not carried*.
+    return rows === undefined || rows.length !== 1 ? null : rows[0]!;
+  }
+
   itemsNamed(names: readonly string[]): Record<string, WorldItem> {
     const found: Record<string, WorldItem> = {};
     for (const name of names) {
@@ -874,15 +1370,15 @@ export class WorldGraph {
    */
   lair(room: WorldRoom): WorldLair | null {
     if (!room.lair) return null;
-    const ids = [...room.lair.matchAll(/\d+/g)].map((match) => Number(match[0]));
-    // The first number is the "Max" count, not a monster.
-    const max = /\(Max\s+(\d+)\)/i.exec(room.lair);
+    // `parseLair` reads the descriptor, and reads *only* the monster numbers in
+    // it — see its own note for the four that were being invented per lair.
+    const { max, ids } = parseLair(room.lair);
     const mobs: WorldMob[] = [];
-    for (const id of ids.slice(1)) {
+    for (const id of ids) {
       const mob = this.mobsById.get(id);
       if (mob && !mobs.includes(mob)) mobs.push(mob);
     }
-    return { max: max ? Number(max[1]) : null, mobs };
+    return { max, mobs };
   }
 
   shopRooms(): WorldRoom[] {
@@ -925,6 +1421,129 @@ export class WorldGraph {
             .map((room) => ({ map: room.map, room: room.room, roomName: room.name }))
         }
       : { at: 'one', map: only.map, room: only.room, roomName: only.name };
+  }
+
+  /**
+   * Where the realm spawns a monster, grouped by the name of the room.
+   *
+   * The reverse of the two columns the world file has always carried and only
+   * ever read forwards — `Rooms.NPC` and `Rooms.Lair`. The Room card could say
+   * *this lair holds a snow cat*; nothing could answer *where is a snow cat*,
+   * which is the question somebody asking about a monster actually has, and
+   * MMUD Explorer's own monster page has answered it for twenty years.
+   *
+   * **Grouped by room name, and the addresses kept underneath.** `snow cat` is
+   * in 236 rooms bearing 25 names: a list of addresses is not somewhere a
+   * person can decide to go, and a button that walked to one of the 236 would
+   * be the guess `shopPlace` refuses. So a group of one is a place, a group of
+   * several is a choice, and the count is stated either way.
+   *
+   * Undefined for a monster the realm places in no room — 153 of the shipped
+   * realm's 1,514 names — rather than an empty list, which reads as a claim
+   * that it is nowhere when what the data says is that it is summoned or
+   * scripted in.
+   */
+  mobPlaces(mob: WorldMob, groups = 12, perGroup = 12): MobPlaces | undefined {
+    const found: MobSpawnRoom[] = [];
+    /*
+     * A name can hold several of the realm's rows — five `cocoon`s — and each
+     * row is placed separately, so every id behind the name contributes. The
+     * mob index is keyed by name and `mobsById` maps the ids onto it, so this
+     * asks the id index which of its entries *is* this mob rather than keeping
+     * a third index of name → ids.
+     */
+    for (const [id, rooms] of this.mobRooms()) {
+      if (this.mobsById.get(id) !== mob) continue;
+      found.push(...rooms);
+    }
+    if (found.length === 0) return undefined;
+
+    /*
+     * One room may be reached both ways — a lair in a room that also has a
+     * resident — and `npc` wins, because it is the more specific claim: the
+     * realm saying this creature lives here, not that it is one candidate for
+     * a regeneration slot.
+     */
+    const byRoom = new Map<RoomId, MobSpawnRoom>();
+    for (const entry of found) {
+      const key = roomId(entry.room.map, entry.room.room);
+      const already = byRoom.get(key);
+      if (already === undefined || (already.via === 'lair' && entry.via === 'npc')) {
+        byRoom.set(key, entry);
+      }
+    }
+
+    /*
+     * In the realm's own room order, not in the order the index happened to
+     * reach them. A name resolving to several of the realm's rows — `snow cat`
+     * is ids 70 and 71 — is walked one row at a time, so the addresses under a
+     * group came out interleaved by whichever row placed each: `2/1, 2/3, 2/2`.
+     * The list is read and clicked, and the cap decides which of them survive
+     * it, so the order has to be the map's rather than the table's.
+     */
+    const ordered = [...byRoom.values()].sort(
+      (a, b) => a.room.map - b.room.map || a.room.room - b.room.room
+    );
+
+    const grouped = new Map<string, MobSpawn>();
+    for (const entry of ordered) {
+      const name = entry.room.name.trim();
+      // `via` is part of the key: *lives here* and *may spawn here* are two
+      // different answers, and folding them would state the weaker as the
+      // stronger for any room that is both.
+      const key = `${entry.via}:${name.toLowerCase()}`;
+      const group = grouped.get(key);
+      if (group === undefined) {
+        grouped.set(key, {
+          via: entry.via,
+          roomName: name,
+          count: 1,
+          rooms: [{ map: entry.room.map, room: entry.room.room }],
+          max: entry.max
+        });
+        continue;
+      }
+      group.count += 1;
+      if (group.rooms.length < perGroup) {
+        group.rooms.push({ map: entry.room.map, room: entry.room.room });
+      }
+      // A figure the rows disagree about is no figure. Folding to either end
+      // would publish a maximum the realm never stated for any of them.
+      if (group.max !== entry.max) group.max = null;
+    }
+
+    const all = [...grouped.values()].sort(
+      (a, b) =>
+        // The resident first — it is the specific answer — then the widest
+        // spread, which is where the thing is most likely to be found.
+        (a.via === b.via ? 0 : a.via === 'npc' ? -1 : 1) ||
+        b.count - a.count ||
+        a.roomName.localeCompare(b.roomName)
+    );
+    return {
+      spawns: all.slice(0, groups),
+      rooms: byRoom.size,
+      more: Math.max(0, all.length - groups)
+    };
+  }
+
+  /** The reverse index, built on the first ask. See `mobPlaces`. */
+  private mobRooms(): Map<number, MobSpawnRoom[]> {
+    if (this.mobRoomsById !== null) return this.mobRoomsById;
+    const index = new Map<number, MobSpawnRoom[]>();
+    const put = (id: number, entry: MobSpawnRoom): void => {
+      const bucket = index.get(id);
+      if (bucket === undefined) index.set(id, [entry]);
+      else bucket.push(entry);
+    };
+    for (const room of this.rooms.values()) {
+      if (room.npcId !== undefined) put(room.npcId, { room, via: 'npc', max: null });
+      if (room.lair === undefined) continue;
+      const { max, ids } = parseLair(room.lair);
+      for (const id of ids) put(id, { room, via: 'lair', max });
+    }
+    this.mobRoomsById = index;
+    return index;
   }
 
   private shopsByName(): Map<string, WorldRoom[]> {
@@ -1340,7 +1959,12 @@ export class WorldGraph {
           readItemKind(record, item);
           graph.items.set(id, item);
           const key = item.name.trim().toLowerCase();
-          if (key.length > 0 && !graph.itemsByName.has(key)) graph.itemsByName.set(key, item);
+          if (key.length > 0) {
+            if (!graph.itemsByName.has(key)) graph.itemsByName.set(key, item);
+            const rows = graph.itemRowsByName.get(key);
+            if (rows) rows.push(id);
+            else graph.itemRowsByName.set(key, [id]);
+          }
         }
         // Both only from v4 on; an older realm names no shops and no spells,
         // and every consumer already has to answer "the realm does not say".
@@ -1350,6 +1974,10 @@ export class WorldGraph {
         // and every consumer already answers "the realm does not say".
         graph.loadRaces(parsed['races']);
         graph.loadClasses(parsed['classes']);
+        // v24. A realm converted before quests were indexed states none, which
+        // reads as "this realm scripts no quests" — the same honest absence
+        // every index above already answers with.
+        graph.loadQuests(parsed['quests']);
         graph.itemNames = (Array.isArray(parsed['itemNames']) ? parsed['itemNames'] : [])
           .map((name) => String(name).trim().toLowerCase())
           .filter((name) => name.length > 0);
@@ -1361,6 +1989,7 @@ export class WorldGraph {
     }
 
     graph.linkPortals();
+    graph.linkLevers();
     return graph;
   }
 
@@ -1424,6 +2053,57 @@ export class WorldGraph {
         else this.portals.set(id, [edge]);
       }
     }
+  }
+
+  /**
+   * Joins every lever to the exit it opens.
+   *
+   * The realm keeps a lever in the room it is *pulled in* (`RoomCommand.opens`
+   * names the exit) and the exit itself is under no obligation to mention it:
+   * `1/1331` north out of Inner Gate reads `Door [301 picklocks/strength]`,
+   * and the lever that raises that gate is in the Guardroom next door. So the
+   * only way to answer *what opens this step* is to have walked every room's
+   * commands once, which is what this does — after the rooms are loaded, for
+   * `linkPortals`' reason: the lever's own room and the exit's are two
+   * different rows and neither is finished while the file is being read.
+   *
+   * Measured over the shipped realm: 225 exits have at least one lever, 171
+   * with every lever in the exit's own room, 35 with every lever in one other
+   * room, 14 spread over several rooms and 5 naming an exit the room does not
+   * have. `Walker` serves the first two shapes and refuses the rest out loud;
+   * this index states all of them, because refusing needs the same answer as
+   * acting.
+   */
+  private linkLevers(): void {
+    for (const [id, room] of this.rooms) {
+      for (const command of room.commands ?? []) {
+        const opens = command.opens;
+        if (opens === undefined) continue;
+        // The realm's own spelling, as `Requirement.commands` and
+        // `Requirement.actions` are both read: the rest are synonyms for one
+        // lever, and the client sends one command.
+        const phrase = command.say[0]?.trim();
+        if (!phrase) continue;
+        const key = leverKey(opens.room, opens.direction);
+        const lever: RemoteLever = { at: id, roomName: room.name, say: phrase };
+        const held = this.levers.get(key);
+        if (held) held.push(lever);
+        else this.levers.set(key, [lever]);
+      }
+    }
+  }
+
+  /**
+   * Every lever the realm says opens this exit, in the order the rooms were
+   * read.
+   *
+   * Empty for the ordinary exit, which is 225 of the shipped realm's exits
+   * away from all of them. The caller decides what to do with several: all in
+   * one room is an errand, spread over rooms is a journey this client does not
+   * plan.
+   */
+  leversFor(room: RoomId, direction: string): readonly RemoteLever[] {
+    return this.levers.get(leverKey(room, direction)) ?? NO_LEVERS;
   }
 
   /**
@@ -1656,6 +2336,188 @@ export class WorldGraph {
     this.races = races;
   }
 
+  /**
+   * The realm's quests, out of the header. Present from v24 on.
+   *
+   * Read back defensively rather than trusted: this file is on the player's
+   * own disk and may have been converted by any build, so a shape that is not
+   * a quest is dropped rather than handed to a card that would then render
+   * `undefined`. The same reading every index above does.
+   */
+  private loadQuests(raw: unknown): void {
+    const quests: Quest[] = [];
+    for (const entry of Array.isArray(raw) ? raw : []) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const record = entry as Record<string, unknown>;
+      const id = Number(record['id']);
+      const name = String(record['name'] ?? '').trim();
+      const steps = Array.isArray(record['steps']) ? (record['steps'] as Quest['steps']) : [];
+      // A quest with no steps is a counter nothing advances, which is not a
+      // quest anybody can do.
+      if (!Number.isInteger(id) || name.length === 0 || steps.length === 0) continue;
+      quests.push({ id, name, steps });
+    }
+    this.questBook = quests;
+  }
+
+  /**
+   * Every quest this realm scripts, with what the realm knows about its items
+   * and its rooms joined on.
+   *
+   * Empty for a realm converted before v24 and for one that scripts none —
+   * which the card says out loud rather than drawing an empty book.
+   *
+   * ## Why the join is here and not in the world file
+   *
+   * `indexQuests` names every item a step demands, and stops there: a quest
+   * item is not in `neededItems`, so `indexItems` never gives most of them
+   * `shops` or `mobs`. Both halves of the answer are nonetheless already on
+   * disk — the shop index stocks ids, and 538 monsters name what they drop —
+   * so this is a **join between two indexes the file already holds**, not a
+   * third copy of either. Writing it into the header would bump the realm
+   * format, invalidate every converted realm on every player's disk, and leave
+   * two records of one fact to keep in step.
+   *
+   * It answers 29 of the shipped realm's 79 item requirements — 24 on a
+   * monster and 7 in a shop. The rest name the item and say nothing, which is
+   * the refusal `localMap` already makes about a key with no known source.
+   *
+   * Computed once and held: the book does not change while a realm is loaded,
+   * and the card asks for it on every mount.
+   */
+  quests(): readonly Quest[] {
+    this.questsJoined ??= this.questBook.map((quest) => ({
+      ...quest,
+      steps: quest.steps.map((step) => this.joinStep(step))
+    }));
+    return this.questsJoined;
+  }
+
+  /**
+   * One step, with its room named and its items' sources looked up.
+   *
+   * The step is copied rather than written through: `questBook` is what the
+   * file said, and a join that mutated it would make a second call see its own
+   * previous answer as the realm's.
+   */
+  private joinStep(step: QuestStep): QuestStep {
+    const joined: QuestStep = { ...step };
+    if (step.room !== undefined) {
+      const at = asRoomReference(step.room);
+      const name = at === null ? undefined : this.get(at.map, at.room)?.name;
+      // A room the realm no longer has keeps its address and gains no name,
+      // rather than being dropped: the address is still what the realm said.
+      if (name !== undefined && name.length > 0) joined.place = name;
+    }
+    const sources: QuestSource[] = [];
+    for (const [id, name] of this.itemsDemanded(step)) {
+      const known = this.items.get(id);
+      /*
+       * Both directions here too, and for the same reason as the monsters:
+       * `WorldItem.shops` is filled only for an item `indexItems` was asked
+       * for and is capped at six, while the shop index stocks ids outright.
+       * A shop named by either is a shop that sells it.
+       */
+      const shops = new Set(known?.shops ?? []);
+      for (const shop of this.stockedBy(id)) shops.add(shop);
+      /*
+       * Both directions, because they cover different items. `WorldItem.mobs`
+       * exists only for an item `indexItems` was asked for; the drop lists on
+       * the monsters name items by name and cover the rest — which is most of
+       * a quest's items. A name the realm gave the step and a name a monster
+       * drops are the same string in the same table, so the match is exact
+       * rather than fuzzy.
+       */
+      const mobs = new Set(known?.mobs ?? []);
+      if (name !== undefined) for (const mob of this.dropsOf(name)) mobs.add(mob);
+      if (shops.size === 0 && mobs.size === 0) continue;
+      const source: QuestSource = { id };
+      if (shops.size > 0) source.shops = [...shops];
+      if (mobs.size > 0) source.mobs = [...mobs];
+      sources.push(source);
+    }
+    if (sources.length > 0) joined.sources = sources;
+    return joined;
+  }
+
+  /**
+   * Every item a step demands, by id, with the name the step gave it.
+   *
+   * The gates and `takes` overlap almost entirely — a step that consumes an
+   * item states `checkitem` beside its `takeitem` — so they are merged here
+   * rather than looked up twice. `item-absent` is deliberately included: *not
+   * carrying this* is still a sentence about an item, and knowing where the
+   * thing comes from is how somebody avoids picking it up.
+   */
+  private itemsDemanded(step: QuestStep): Map<number, string | undefined> {
+    const wanted = new Map<number, string | undefined>();
+    // The step's own, and every route's: a class's route routinely asks for a
+    // different thing, and an item placed on one route and not the others is
+    // still an item somebody has to go and find.
+    for (const way of [step, ...(step.ways ?? [])]) {
+      for (const gate of way.needs) {
+        if (gate.kind !== 'item' && gate.kind !== 'item-absent') continue;
+        if (!wanted.has(gate.id) || wanted.get(gate.id) === undefined) {
+          wanted.set(gate.id, gate.name);
+        }
+      }
+      for (const item of way.takes) {
+        if (!wanted.has(item.id) || wanted.get(item.id) === undefined) {
+          wanted.set(item.id, item.name);
+        }
+      }
+    }
+    return wanted;
+  }
+
+  /**
+   * Which shops are known to stock an item of this id.
+   *
+   * Built once beside `droppers`, out of the stock lists the shop index already
+   * carries. By **id**, not by name: a shop stocks rows, and the realm's own
+   * data repeats item names across rows.
+   */
+  private stockedBy(item: number): readonly string[] {
+    if (this.stockists === null) {
+      const index = new Map<number, string[]>();
+      for (const shop of this.shops.values()) {
+        const name = shop.name.trim();
+        if (name.length === 0) continue;
+        for (const line of shop.items) {
+          const held = index.get(line.id);
+          if (held === undefined) index.set(line.id, [name]);
+          else if (!held.includes(name)) held.push(name);
+        }
+      }
+      this.stockists = index;
+    }
+    return this.stockists.get(item) ?? [];
+  }
+
+  /**
+   * Which monsters are known to drop an item of this name.
+   *
+   * Built once, on the first quest asked for, out of the drop lists the monster
+   * index already carries — 538 of the realm's monsters name something. Keyed
+   * the way every other name lookup here is keyed, so `Goru-Nezar` and
+   * `goru-nezar` are one monster.
+   */
+  private dropsOf(item: string): readonly string[] {
+    if (this.droppers === null) {
+      const index = new Map<string, string[]>();
+      for (const mob of new Set(this.mobs.values())) {
+        for (const drop of mob.drops ?? []) {
+          const key = mobKey(drop);
+          const held = index.get(key);
+          if (held === undefined) index.set(key, [mob.name]);
+          else if (!held.includes(mob.name)) held.push(mob.name);
+        }
+      }
+      this.droppers = index;
+    }
+    return this.droppers.get(mobKey(item)) ?? [];
+  }
+
   /** The class index out of the header. Present from v10 on. */
   private loadClasses(raw: unknown): void {
     const classes: WorldClass[] = [];
@@ -1681,22 +2543,149 @@ export class WorldGraph {
     this.classes = classes;
   }
 
+  /**
+   * Reads what the spells on a `cast` or `spell` exit do to whoever walks it,
+   * and writes the answer onto the requirement.
+   *
+   * Both exit kinds let everybody through — `CastExit.CanMoveThroughExit` and
+   * `SpellTrapExit.CanMoveThroughExit` each return `true` unconditionally — so
+   * the instruction string says nothing about whether the character arrives.
+   * The realm's own spell table does, in two ways worth telling apart:
+   *
+   * - A spell carrying `TeleportRoom`/`TeleportMap` puts the character in a
+   *   room the exit table does not name, and it is not even a fixed one: the
+   *   server rolls `Rand(min, max)` over the spell's own `MinBase`–`MaxBase`
+   *   and teleports there (`Spell.RollAndApplySpellAbilities`, then case
+   *   `TeleportRoom`). Measured on the shipped realm: 217 of the 293 cast
+   *   exits fire one, and of the 157 whose spell is `gloomy teleport`,
+   *   `hallway teleport` or `thievry teleport`, **not one** states a
+   *   destination inside its own spell's range. The exit's destination is not
+   *   where the character ends up.
+   * - A spell carrying `TextBlock` hands the character a realm script this
+   *   client does not convert, so what it does is genuinely unread — and so is
+   *   a spell the realm's table does not hold at all, which used to fall
+   *   through to *harmless*.
+   * - `EndCast` names another spell to fire when this one ends, so the chain is
+   *   followed rather than ignored: `holding breath` says nothing itself and
+   *   ends in `drowning`, and `timer` ends in a script.
+   *
+   * Everything else is an effect on the character rather than on where it is
+   * standing, and for a spell trap the size of that effect is the price: the
+   * hurt is taken from the spell's own power the way `menace.ts` takes it — the
+   * ability's figure where it states one, the mean of the power range where it
+   * states zero — without menace's duration and resistance arithmetic, which
+   * needs the character and belongs at the decision rather than in the graph.
+   */
+  private resolveSpells(requirement: Requirement): void {
+    if (requirement.kind !== 'cast' && requirement.kind !== 'spell') return;
+    const named = [requirement.castPre, requirement.castPost, requirement.spellId].filter(
+      (id): id is number => id !== undefined
+    );
+    if (named.length === 0) {
+      // `Cast: pre-0, post-0` names no spell at all, and the server builds a
+      // plain exit for it. Left unmarked, which the price reads as plain.
+      return;
+    }
+
+    /*
+     * The chain, not the spell. `EndCast` hands the character *another* spell
+     * when this one ends, and `holding breath` (512) is `EndCast 513` —
+     * `drowning`. Following it is a reading of the realm's own table, the same
+     * reading as looking the exit's own spell up; not following it left three
+     * exits priced as plain corridors because the row in front of them said
+     * nothing on its own.
+     */
+    const pending = [...named];
+    const seen = new Set<number>();
+    let effect: 'relocates' | 'script' | 'plain' = 'plain';
+    let harm = 0;
+    while (pending.length > 0) {
+      const id = pending.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const spell = this.spellById(id);
+      /*
+       * **A spell the realm's table does not hold is unread, not harmless.**
+       * This defaulted to `plain` — cost nothing — so a realm converted before
+       * the spell index existed would have dropped all 293 cast exits from
+       * discouraged to free in silence. Unknown is never the reassuring
+       * answer, and here the reassuring answer is *walk through it*.
+       */
+      if (!spell) {
+        if (effect === 'plain') effect = 'script';
+        continue;
+      }
+      const [low, high] = spell.power ?? [0, 0];
+      const mean = Math.abs(low + high) / 2;
+      for (const [ability, value] of spell.abilities ?? []) {
+        if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap) {
+          effect = 'relocates';
+          continue;
+        }
+        if (ability === HAZARD_ABILITY.textBlock) {
+          if (effect === 'plain') effect = 'script';
+          continue;
+        }
+        if (ability === HAZARD_ABILITY.endCast) {
+          if (value > 0) pending.push(value);
+          continue;
+        }
+        /*
+         * Every other ability that names a *row* rather than a magnitude:
+         * `KillSpell`, `Summon`, `%Spell`, `RemovesSpell` and their kin. The
+         * teleport pair and `EndCast` are the two this reader looks up, and
+         * they are handled above; the rest are numbers it holds and has not
+         * looked up, which is the honest definition of unread.
+         *
+         * It costs one exit on the shipped realm — `pyramid 1 exit temp` ends
+         * in `pyramid 1 exit`, whose whole content is `KillSpell 685`, and
+         * whether killing a timer fires the teleport that timer was going to
+         * fire is not something this client can read. Sixty rooms of
+         * discouragement is the cheap side of that question.
+         */
+        if (abilityShape(ability, 'spell') === 'reference') {
+          if (effect === 'plain') effect = 'script';
+          continue;
+        }
+        // A negative heal is a wound by another name — `menace.hazardOf` reads
+        // it the same way, and `damnation` is the spell that taught it.
+        const hurts = HURTS.has(ability) || (ability === HAZARD_ABILITY.heal && value < 0);
+        if (!hurts) continue;
+        // `abil.Sum == 0 ? rolledPower : abil.Sum`, the server's own choice of
+        // which figure to use.
+        const magnitude = value !== 0 ? Math.abs(value) : mean;
+        if (magnitude > harm) harm = magnitude;
+      }
+    }
+    requirement.spellEffect = effect;
+    if (harm > 0) requirement.damage = Math.round(harm);
+  }
+
   private toRoom(raw: Record<string, unknown>): WorldRoom | null {
     const map = raw['m'];
     const room = raw['r'];
     if (typeof map !== 'number' || typeof room !== 'number') return null;
 
     const exits: WorldExit[] = [];
-    const rawExits = (raw['x'] ?? {}) as Record<string, { m: number; r: number; i?: string }>;
+    const rawExits = (raw['x'] ?? {}) as Record<string, BuiltExit>;
     for (const direction of DIRECTIONS) {
       const exit = rawExits[direction];
       if (!exit) continue;
-      exits.push({
-        direction,
-        map: exit.m,
-        room: exit.r,
-        requirement: parseInstruction(exit.i)
-      });
+      const requirement = parseInstruction(exit.i);
+      /*
+       * The levers the build joined onto this exit — format 23. On the
+       * requirement rather than beside it, because everything that acts on an
+       * exit's condition already reads the requirement: `edgePenalty` prices
+       * it, `describeObstacle` names it and `Walker` sends it, and none of the
+       * three is handed the room.
+       */
+      const levers = readActions(exit.a);
+      if (requirement !== null && levers.length > 0) requirement.actions = levers;
+      // What the realm's spell table says a cast or trap exit does, joined here
+      // for the reason the levers are joined in the build: once, where the
+      // table is, and never in the A*.
+      if (requirement !== null) this.resolveSpells(requirement);
+      exits.push({ direction, map: exit.m, room: exit.r, requirement });
     }
 
     const result: WorldRoom = {
@@ -1708,7 +2697,22 @@ export class WorldGraph {
     if (typeof raw['s'] === 'number') result.shop = raw['s'];
     // Written since the file began and read by nothing until format 18.
     if (typeof raw['npc'] === 'number' && raw['npc'] > 0) result.npcId = raw['npc'];
-    if (typeof raw['lair'] === 'string') result.lair = raw['lair'];
+    /*
+     * A descriptor that names no monster at all is not a lair. GreaterMUD
+     * writes a single space into `Rooms.Lair` for every ordinary room — all
+     * 55,806 of them — and the converter's emptiness test is `!== ''`, which a
+     * space passes. The map's glyph is `room.lair !== undefined`, so on that
+     * realm every room in the world was drawn as a lair and `lair()` answered
+     * *a lair of nothing* for each. Refused here rather than in the converter
+     * so a realm a player has already converted is fixed too: `REALM_FORMAT` is
+     * in the cache key and this changes no column.
+     *
+     * A descriptor naming ids this table lacks is a different answer and is
+     * kept — that is a derivative adding monsters, which the lair face reports.
+     */
+    if (typeof raw['lair'] === 'string' && parseLair(raw['lair']).ids.length > 0) {
+      result.lair = raw['lair'];
+    }
     if (typeof raw['li'] === 'number') result.light = raw['li'];
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
     /*
@@ -1751,8 +2755,35 @@ export class WorldGraph {
     return this.rooms.get(roomId(map, room));
   }
 
+  /**
+   * The scripted teleports a room offers, as the router walks them.
+   *
+   * For the map's off-plane marks: a portal is not in `WorldRoom.exits` —
+   * it comes from the room's script, not the exit table — so a picture that
+   * wants to offer *go vortex* as a way out has to ask for it here. Empty
+   * for the ordinary room.
+   */
+  portalsFrom(id: RoomId): readonly PortalExit[] {
+    return this.portals.get(id) ?? [];
+  }
+
   byId(id: RoomId): WorldRoom | undefined {
     return this.rooms.get(id);
+  }
+
+  /**
+   * Every room, in the order the file listed them.
+   *
+   * A read-only sweep, beside `byId` and `findByName` because it answers the
+   * one question neither can: *does anything in this realm still look like
+   * that*. What reads it is the shipped-realm survey in the tests — the
+   * assertions that say 293 exits carry a cast and 217 of them scatter you —
+   * and those exist because every price in `edgePenalty` is a claim about a
+   * file, and a file that changes underneath a claim should fail loudly rather
+   * than quietly reroute somebody.
+   */
+  everyRoom(): IterableIterator<WorldRoom> {
+    return this.rooms.values();
   }
 
   /** Every room with this exact name. Names repeat constantly — 14 "Newhaven…". */
@@ -1852,7 +2883,16 @@ export class WorldGraph {
     cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
     cost: number;
   } | null {
-    const heuristic = (room: WorldRoom): number => (room.map === goal.map ? 0 : 1);
+    /*
+     * A step along a preferred route costs a fraction of an ordinary one. The
+     * cross-map heuristic is that same fraction while any route is preferred,
+     * because the one edge it stands for may be a preferred one: a heuristic
+     * above the cheapest possible step is no longer admissible, and A* would
+     * pop the goal before the cheaper way had been relaxed.
+     */
+    const preferring = traveller.preferred !== undefined && traveller.preferred.size > 0;
+    const discount = preferring ? tuning().world.preferredStepCost : 1;
+    const heuristic = (room: WorldRoom): number => (room.map === goal.map ? 0 : discount);
 
     const cameFrom = new Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>();
     const best = new Map<RoomId, number>([[from, 0]]);
@@ -1891,7 +2931,12 @@ export class WorldGraph {
         // ordinary corridors unless the teleport genuinely shortens the way.
         const surcharge = exit.direction === 'portal' ? tuning().world.portalPenalty : 0;
         const wall = traveller.refused?.has(`${currentId}|${exit.direction}`) ? 100_000 : 0;
-        const tentative = currentCost + 1 + penalty + surcharge + wall;
+        // The whole step — the door's price and the portal's with it — is
+        // discounted along a saved route: the player chose that door. A
+        // refusal is not, because the server said no this session.
+        const along =
+          preferring && traveller.preferred!.has(`${currentId}|${nextId}`) ? discount : 1;
+        const tentative = currentCost + (1 + penalty + surcharge) * along + wall;
         if (tentative >= (best.get(nextId) ?? Infinity)) continue;
 
         best.set(nextId, tentative);
@@ -1916,13 +2961,26 @@ export class WorldGraph {
       if (blocked) {
         const name = this.rooms.get(cursor)?.name ?? cursor;
         const requirement = blocked.requirement;
-        if (blocked.kind === 'key') {
+        if (blocked.kind === 'key' || blocked.kind === 'item') {
+          /*
+           * Both name a thing the pack does not hold, so both look it up here
+           * — this is where the realm's item table is, and `describeBlock` is
+           * in `src/shared` where it is not. `Key: 1124` on a route panel is
+           * the exact half-read `describeObstacle`'s own header refuses for the
+           * chip beside it.
+           */
+          const item = requirement.keyId === undefined ? undefined : this.item(requirement.keyId);
           blocks.unshift({
-            kind: 'key',
+            kind: blocked.kind === 'key' ? 'key' : 'carry',
             at: prev,
             to: cursor,
             name,
-            ...(requirement.keyId === undefined ? {} : { keyId: requirement.keyId })
+            ...(requirement.keyId === undefined
+              ? {}
+              : blocked.kind === 'key'
+                ? { keyId: requirement.keyId }
+                : { itemId: requirement.keyId }),
+            ...(item === undefined ? {} : { itemName: item.name })
           });
         } else if (blocked.kind === 'level') {
           blocks.unshift({
@@ -1934,7 +2992,7 @@ export class WorldGraph {
             ...(requirement.minLevel === undefined ? {} : { minLevel: requirement.minLevel }),
             ...(requirement.maxLevel === undefined ? {} : { maxLevel: requirement.maxLevel })
           });
-        } else {
+        } else if (blocked.kind === 'toll') {
           /*
            * The price and the purse, so the sentence can state the shortfall
            * rather than assert the character has nothing. Both omitted when
@@ -1951,6 +3009,54 @@ export class WorldGraph {
             ...(traveller.wealth === null || traveller.wealth === undefined
               ? {}
               : { purseCopper: traveller.wealth })
+          });
+        } else {
+          /*
+           * The three the character *is*, in one block shape: which condition,
+           * what it carries, and whichever half of the gate the realm stated.
+           * An alignment window arrives written — `Saint to Seedy` — because
+           * it is one fact with two ends, and the sentence should not have to
+           * put them back together.
+           */
+          /*
+           * **Named, not numbered.** `admits only class 6` is the `Key: 1124`
+           * half-read again, and the table that fixes it is right here —
+           * `namedClasses` and `namedRaces` exist for exactly this, and their
+           * own doc says so: *a bare list of numbers is the half-read
+           * `WorldLookup` already carries `classNames` to avoid*. A row id the
+           * realm's table does not hold falls back to the number, which is
+           * still more than nothing and is honest about being a number.
+           */
+          const table =
+            blocked.kind === 'class'
+              ? this.namedClasses()
+              : blocked.kind === 'race'
+                ? this.namedRaces()
+                : {};
+          const named = (id: number | null | undefined): string | number | null =>
+            id === null || id === undefined ? null : (table[id] ?? id);
+          const mine =
+            blocked.kind === 'alignment'
+              ? (traveller.alignment ?? null)
+              : named(blocked.kind === 'class' ? traveller.classId : traveller.raceId);
+          const admits =
+            blocked.kind === 'alignment'
+              ? requirement.minAlignment === undefined
+                ? undefined
+                : `${requirement.minAlignment} to ${requirement.maxAlignment ?? requirement.minAlignment}`
+              : (named(blocked.kind === 'class' ? requirement.classOk : requirement.raceOk) ??
+                undefined);
+          const refuses =
+            named(blocked.kind === 'class' ? requirement.classNo : requirement.raceNo) ?? undefined;
+          blocks.unshift({
+            kind: 'born',
+            at: prev,
+            to: cursor,
+            name,
+            condition: blocked.kind,
+            mine,
+            ...(admits === undefined ? {} : { admits }),
+            ...(refuses === undefined ? {} : { refuses })
           });
         }
       }
@@ -2021,6 +3127,58 @@ export class WorldGraph {
  * Room card's faces have no healer: do not invent a kind the realm cannot
  * distinguish.
  */
+/**
+ * The levers on one exit, parsed rather than cast — format 23.
+ *
+ * Every other field in `parseRoom` is type-checked and this one was taken
+ * wholesale, while `describeObstacle` and `Walker.pullLevers` both reach
+ * `act.say[0]!` behind a non-null assertion. A realm whose `Action …` cell has
+ * a shape this build does not expect would put `undefined` into the obstacle
+ * chip and give the walker a rung that sends nothing, returns true and spends
+ * a lever budget. Parse, do not validate — the reviewer's find, 2026-09-06.
+ *
+ * A member that will not parse drops the **whole** list rather than shortening
+ * it: `openableHere` counts what is left against nothing, so half a lever set
+ * would read as a passage this room can open when it cannot.
+ */
+function readActions(raw: unknown): RequirementAction[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const actions: RequirementAction[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const record = entry as Record<string, unknown>;
+    const say = record['say'];
+    if (!Array.isArray(say) || say.length === 0) return [];
+    if (!say.every((phrase): phrase is string => typeof phrase === 'string' && phrase.length > 0)) {
+      return [];
+    }
+    const action: RequirementAction = { say: [...say] };
+    const at = record['at'];
+    if (at !== undefined) {
+      if (typeof at !== 'object' || at === null) return [];
+      const place = at as Record<string, unknown>;
+      if (typeof place['map'] !== 'number' || typeof place['room'] !== 'number') return [];
+      action.at = { map: place['map'], room: place['room'] };
+    }
+    actions.push(action);
+  }
+  return actions;
+}
+
+/**
+ * One room the realm spawns a monster in, before the grouping.
+ *
+ * The room itself rather than its address, because the group is keyed on the
+ * room's *name* and re-reading it out of the index per entry would be a lookup
+ * per room in a scan built to avoid exactly that.
+ */
+interface MobSpawnRoom {
+  room: WorldRoom;
+  via: MobSpawn['via'];
+  /** The lair's slot count; null for a resident, which has no such figure. */
+  max: number | null;
+}
+
 const NPC_ROLE_OF: Readonly<Record<ShopKind, NonNullable<NpcEntity['npcType']> | undefined>> = {
   shop: 'shopkeeper',
   bank: 'banker',
@@ -2205,8 +3363,14 @@ function readItemKind(record: Record<string, unknown>, item: WorldItem): void {
   const slot = Number.isInteger(worn) ? WORN_SLOT[worn] : undefined;
   if (slot !== undefined) item.slot = slot;
 
+  /*
+   * Any non-zero count, so the realm's `-1` — unlimited — comes back as the
+   * fact it is rather than as an absence indistinguishable from silence. A
+   * realm converted before format 25 states none, which reads as *unstated*
+   * and is correct for it: it is not claiming the item is limited either.
+   */
   const uses = Number(record['uses']);
-  if (Number.isFinite(uses) && uses > 0) item.uses = uses;
+  if (Number.isFinite(uses) && uses !== 0) item.uses = uses;
 
   const wpn = record['wpn'];
   if (kind === 'weapon' && typeof wpn === 'object' && wpn !== null) {

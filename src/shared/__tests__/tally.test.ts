@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BLOW_KINDS,
   blowKind,
   damageDealt,
   engagedFor,
@@ -9,7 +10,6 @@ import {
   NO_TALLY,
   perRound,
   ratePerHour,
-  readTally,
   share,
   sinceBaseline,
   swings,
@@ -134,24 +134,62 @@ describe('a figure nothing has been measured for', () => {
 });
 
 /**
+ * The two halves of the kind union, held to each other.
+ *
+ * `Record<BlowKind, BlowTally>` compile-enforces `NO_TALLY.dealt`,
+ * `sinceBaseline` and the card's `KIND_LABEL`, so those three cannot drift.
+ * `BLOW_KINDS` is a plain array and **can**: a kind added to the type and
+ * forgotten here type-checks, and then vanishes from `damageDealt`,
+ * `hitsDealt` and the Combat Stats card's rows without a word. That is the
+ * `GUARD_FIELDS`/`readField` failure exactly — a field in one half and not
+ * the other, loading fine and silently never firing — and this is the same
+ * regression test `guard-fields.test.ts` is.
+ */
+describe('the kinds a blow can be', () => {
+  it('lists every kind the tally keeps a total for, and no others', () => {
+    expect([...BLOW_KINDS].sort()).toEqual(Object.keys(NO_TALLY.dealt).sort());
+  });
+
+  /*
+   * And every one of them reaches the totals. `damageDealt` reduces over the
+   * list, so a kind absent from it contributes nothing however much of it
+   * landed.
+   */
+  it('counts every kind toward the damage dealt', () => {
+    for (const kind of BLOW_KINDS) {
+      const one: CombatTally = {
+        ...NO_TALLY,
+        dealt: { ...NO_TALLY.dealt, [kind]: { hits: 1, damage: 7, least: 7, most: 7 } }
+      };
+      expect(damageDealt(one), `${kind} should reach damageDealt`).toBe(7);
+    }
+  });
+});
+
+/**
  * Every swing, landed or not — the denominator MegaMUD's own window used, with
  * Miss, Hit and Crit as three shares of it. A spell is deliberately outside it:
- * a spell that fails is refused in its own sentence and is never a miss.
+ * a spell that fails is refused in its own sentence and is never a miss. And a
+ * weapon's proc is outside it from the other side — it lands *off* a swing
+ * already in the denominator, so counting it would put one round in twice.
  */
 describe('the denominator', () => {
-  it('counts melee, criticals, backstabs and misses, and not spells', () => {
+  it('counts melee, criticals, backstabs and misses, and not spells or procs', () => {
     const tally: CombatTally = {
       ...NO_TALLY,
       dealt: {
         melee: { hits: 10, damage: 100, least: 5, most: 20 },
         critical: { hits: 2, damage: 80, least: 35, most: 45 },
         backstab: { hits: 1, damage: 37, least: 37, most: 37 },
-        spell: { hits: 7, damage: 210, least: 20, most: 40 }
+        spell: { hits: 7, damage: 210, least: 20, most: 40 },
+        proc: { hits: 5, damage: 15, least: 1, most: 3 }
       },
       missed: 8
     };
     expect(swings(tally)).toBe(21);
-    expect(damageDealt(tally)).toBe(427);
+    // Damage, though, is damage: a proc's points came off the monster like
+    // every other point this character dealt.
+    expect(damageDealt(tally)).toBe(442);
   });
 
   /*
@@ -216,7 +254,8 @@ describe('reading from a baseline', () => {
       melee: { hits: 10, damage: 100, least: 5, most: 20 },
       critical: NO_TALLY.dealt.critical,
       backstab: NO_TALLY.dealt.backstab,
-      spell: NO_TALLY.dealt.spell
+      spell: NO_TALLY.dealt.spell,
+      proc: NO_TALLY.dealt.proc
     },
     missed: 4,
     taken: { hits: 6, damage: 48, least: 4, most: 12 },
@@ -282,59 +321,3 @@ describe('reading from a baseline', () => {
 });
 
 /* The baseline lives in `localStorage`, which is a boundary like any other. */
-describe('reading a stored baseline back', () => {
-  it('refuses anything that is not one', () => {
-    expect(readTally(null)).toBeNull();
-    expect(readTally('7')).toBeNull();
-    expect(readTally(42)).toBeNull();
-  });
-
-  it('reads a whole one back', () => {
-    const stored = JSON.parse(JSON.stringify({ ...NO_TALLY, at: 9, kills: 3, experience: 400 }));
-    const found = readTally(stored);
-    expect(found?.kills).toBe(3);
-    expect(found?.experience).toBe(400);
-    expect(found?.at).toBe(9);
-  });
-
-  /* A value written by an older build is missing fields rather than malformed,
-     and the answer is the field's own absence — never a crash and never a
-     number invented for it. */
-  it('fills what a partial one does not say, without inventing an extreme', () => {
-    const found = readTally({ kills: 2 });
-    expect(found?.kills).toBe(2);
-    expect(found?.experience).toBe(0);
-    expect(found?.since).toBeNull();
-    expect(found?.taken.least).toBeNull();
-    expect(found?.dealt.melee.most).toBeNull();
-  });
-
-  /*
-   * The fields added on 2026-09-02. A baseline written by the build before
-   * them says nothing about any of them, and the answer is zero — which is
-   * what makes the Reset button safe across an upgrade: the first reading
-   * after it credits the whole session's dodges rather than crashing on an
-   * absent field.
-   */
-  it('reads the backstab, dodge, sneak and coin figures, and defaults them to nothing', () => {
-    const found = readTally({ dodged: 4, sneakTried: 9, sneakFailed: 2, coins: 317 });
-    expect(found?.dodged).toBe(4);
-    expect(found?.sneakTried).toBe(9);
-    expect(found?.sneakFailed).toBe(2);
-    expect(found?.coins).toBe(317);
-    expect(found?.dealt.backstab).toEqual(NO_TALLY.dealt.backstab);
-
-    const older = readTally({ kills: 1 });
-    expect(older?.dodged).toBe(0);
-    expect(older?.coins).toBe(0);
-    expect(older?.dealt.backstab.hits).toBe(0);
-  });
-
-  /* A key from an older build is ignored rather than carried: the shape is
-     read field by field, so nothing outside it can arrive. */
-  it('ignores a key this build no longer keeps', () => {
-    const read = readTally({ experience: 12, marks: [{ at: 1, experience: 2 }] });
-    expect(read?.experience).toBe(12);
-    expect(read).not.toHaveProperty('marks');
-  });
-});

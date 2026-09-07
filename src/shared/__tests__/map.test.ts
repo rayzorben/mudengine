@@ -4,7 +4,6 @@ import {
   DEFAULT_MAP_DENSITY,
   layoutMap,
   MAP_CELL,
-  radiusForBox,
   roomPixelsFor,
   trailOf,
   type LocalMap,
@@ -207,61 +206,6 @@ describe('a bank on the map', () => {
 });
 
 /**
- * How far out to walk, from how big the card actually is.
- *
- * The complaint this answers: a map dragged out of the rail and made bigger
- * drew *the same rooms larger* rather than more of them, because the radius
- * was a constant and the viewBox scaled whatever came back.
- */
-describe('the radius a card of this size can show', () => {
-  // The shipped numbers, so the cases below read as the real thing.
-  const PER_ROOM = 34;
-  const MIN = 3;
-  const MAX = 12;
-  const radius = (w: number, h: number) => radiusForBox(w, h, PER_ROOM, MIN, MAX);
-
-  it('asks for more rooms as the card grows', () => {
-    const railed = radius(300, 240);
-    const floated = radius(900, 700);
-    expect(floated).toBeGreaterThan(railed);
-  });
-
-  /* The constraining side is the one that decides what is legible: the viewBox
-     fits the whole extent, so rooms fetched for a wide box are scaled away by
-     a short one. */
-  it('measures the smaller side, not the larger', () => {
-    expect(radius(2000, 240)).toBe(radius(240, 240));
-  });
-
-  it('never goes below the floor a rail card needs', () => {
-    expect(radius(40, 40)).toBe(MIN);
-    expect(radius(1, 1)).toBe(MIN);
-  });
-
-  /* The search is breadth-first and exponential in the radius, so a
-     full-screen float must not be allowed to walk the whole realm. */
-  it('never goes above the ceiling, however large the card', () => {
-    expect(radius(6000, 6000)).toBe(MAX);
-  });
-
-  /*
-   * A box with no size yet: the first paint, or a card in a pane that is
-   * collapsed. Asking for the floor rather than nothing is what keeps a map
-   * from flashing empty on every mount.
-   */
-  it('asks for the floor while it has no size at all', () => {
-    expect(radius(0, 0)).toBe(MIN);
-    expect(radiusForBox(Number.NaN, 300, PER_ROOM, MIN, MAX)).toBe(MIN);
-    expect(radiusForBox(300, 300, 0, MIN, MAX)).toBe(MIN);
-  });
-
-  it('counts rooms out from the centre, not across the whole box', () => {
-    // Ten rooms across at 34px each is five in each direction.
-    expect(radius(PER_ROOM * 10, PER_ROOM * 10)).toBe(5);
-  });
-});
-
-/**
  * How much of the realm fits, which the player now chooses.
  *
  * There was one figure and it decided for everybody. The slider chooses the
@@ -289,15 +233,9 @@ describe('the density slider', () => {
    * are chosen so that box spans 5x5 rooms and 20x20.
    */
   it('spans 5x5 to 20x20 on a rail-sized card', () => {
-    const across = (density: number) => radiusForBox(220, 200, budget(density), 2, 12) * 2 + 1;
+    const across = (density: number) => Math.floor(200 / budget(density));
     expect(across(0)).toBe(5);
-    expect(across(1)).toBe(21);
-  });
-
-  it('shows more of the realm at every setting once the card is bigger', () => {
-    const railed = radiusForBox(220, 200, budget(0.5), 2, 12);
-    const floated = radiusForBox(900, 700, budget(0.5), 2, 12);
-    expect(floated).toBeGreaterThan(railed);
+    expect(across(1)).toBe(20);
   });
 
   /*
@@ -379,11 +317,78 @@ describe('drawing a route over a map', () => {
   });
 
   it('joins a corridor whichever end of it the route names first', () => {
-    // Walked east and walked west are the same passage; `layoutMap` draws one
-    // line per pair and does not record which way round it went.
+    // Walked east and walked west are the same passage: `layoutMap` stores one
+    // link per pair, from whichever end it reached first, and the lookup has to
+    // find it either way round.
     const east = trailOf(layoutMap(row()), ['1/1', '1/2'], []).legs;
     const west = trailOf(layoutMap(row()), ['1/2', '1/1'], []).legs;
-    expect(east).toEqual(west);
+    expect(east).toHaveLength(1);
+    expect(west).toHaveLength(1);
+    expect({ x: east[0]!.x1, y: east[0]!.y1 }).toEqual({ x: west[0]!.x2, y: west[0]!.y2 });
+    expect({ x: east[0]!.x2, y: east[0]!.y2 }).toEqual({ x: west[0]!.x1, y: west[0]!.y1 });
+  });
+
+  /*
+   * And the leg is oriented by *travel*, not by the link's own ends.
+   *
+   * A corridor is stored once, from whichever end the layout reached first, so
+   * half of any lap walks its links backwards. The line does not care; the
+   * arrow drawn on it does, and reading the link's own coordinates would point
+   * half the arrows on a lap the wrong way.
+   */
+  it('orients a leg the way it is walked', () => {
+    const [east] = trailOf(layoutMap(row()), ['1/1', '1/2'], []).legs;
+    expect(east!.x1).toBeLessThan(east!.x2);
+    const [west] = trailOf(layoutMap(row()), ['1/2', '1/1'], []).legs;
+    expect(west!.x1).toBeGreaterThan(west!.x2);
+  });
+
+  /*
+   * The way changes colour when it starts covering ground it has covered
+   * before, and keeps the new colour going forward — which is what tells a
+   * lap that comes back the way it went from one that does not.
+   */
+  it('bands the way when it doubles back', () => {
+    // Out to the third room and back again: the two return legs are the same
+    // corridors walked a second time.
+    const legs = trailOf(layoutMap(row()), ['1/1', '1/2', '1/3', '1/2', '1/1'], [], 3).legs;
+    expect(legs.map((leg) => leg.band)).toEqual([0, 0, 1, 1]);
+  });
+
+  /*
+   * On the rising edge, not per repeated corridor: walking back down a long
+   * corridor is one doubling-back, and bumping at every leg of it would spend
+   * every band before the lap had crossed itself once.
+   */
+  it('bumps once for a stretch walked back, not once per corridor', () => {
+    const legs = trailOf(
+      layoutMap(row()),
+      ['1/1', '1/2', '1/3', '1/4', '1/3', '1/2', '1/1'],
+      [],
+      3
+    ).legs;
+    expect(legs.map((leg) => leg.band)).toEqual([0, 0, 0, 1, 1, 1]);
+  });
+
+  /* Past the cap every pass draws in the last colour, which still says
+   *covered before* without adding a fourth thing to learn. */
+  it('stops changing colour at the cap', () => {
+    const there = ['1/1', '1/2', '1/3'];
+    const back = ['1/2', '1/1'];
+    const legs = trailOf(
+      layoutMap(row()),
+      [...there, ...back, ...there.slice(1), ...back, ...there.slice(1), ...back],
+      [],
+      2
+    ).legs;
+    expect(Math.max(...legs.map((leg) => leg.band))).toBe(1);
+  });
+
+  /* One band is the whole way in one colour, which is what every map that
+     cannot double back asks for. */
+  it('draws one colour when only one band is allowed', () => {
+    const legs = trailOf(layoutMap(row()), ['1/1', '1/2', '1/3', '1/2', '1/1'], [], 1).legs;
+    expect(legs.every((leg) => leg.band === 0)).toBe(true);
   });
 
   it('marks the lap stops the map is showing and drops the ones it is not', () => {

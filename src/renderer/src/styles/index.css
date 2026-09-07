@@ -124,12 +124,24 @@ option {
      floating card is stored in are fractions of it. */
   position: relative;
   /*
-   * The gap between two panes is a *track*, not a `gap`, because it is the
-   * handle that resizes them (`.splitter`). A zero track with the seam element
-   * absent is how a closed rail costs no width at all.
+   * Always the same five tracks — the two rails, their two handles and the
+   * console — with each side track at zero while the pane it belongs to is
+   * absent. The gap between two panes is a *track*, not a `gap`, because it is
+   * the handle that resizes them (`.splitter`); a zero track with the seam
+   * element absent is how a closed rail costs no width at all.
+   *
+   * Five named tracks rather than a template per combination: the shape used to
+   * be re-declared per state, three columns in one and five in another, which
+   * is also why the width transition could not interpolate between them.
    */
-  grid-template-areas: 'main rsplit rail';
-  grid-template-columns: minmax(0, 1fr) 0 0;
+  --track-tabs: 0;
+  --track-tsplit: 0;
+  --track-rail: 0;
+  --track-rsplit: 0;
+  grid-template-areas: 'tabs tsplit main rsplit rail';
+  grid-template-columns:
+    var(--track-tabs) var(--track-tsplit) minmax(0, 1fr)
+    var(--track-rsplit) var(--track-rail);
   gap: 0;
   min-height: 0;
   padding: var(--gap);
@@ -145,34 +157,62 @@ option {
 }
 
 .workspace[data-rail='open'] {
-  grid-template-columns: minmax(0, 1fr) var(--gap) var(--rail-w);
+  --track-rail: var(--rail-w);
+  --track-rsplit: var(--gap);
 }
 
 /*
  * The tab rail takes an edge, and which edge changes the shape of the grid
  * rather than only its rotation.
  *
- * `top` spends rows, which are cheap. `left` spends columns, which are not: the
- * console needs 80 of them and no server in this family will format to fewer,
- * so a rail on the left is a deliberate trade of terminal width for being able
- * to read every character's health at once. See docs/ui-design.md §3.8.
+ * `top` spends rows, which are cheap. `left` and `right` spend columns, which
+ * are not: the console needs 80 of them and no server in this family will
+ * format to fewer, so a rail down a side is a deliberate trade of terminal
+ * width for being able to read every character's health at once. See
+ * docs/ui-design.md §3.8.
  */
+.workspace[data-tabs='left'],
+.workspace[data-tabs='right'] {
+  --track-tabs: var(--tab-rail-w);
+  --track-tsplit: var(--gap);
+}
+
 .workspace[data-tabs='top'] {
   grid-template-areas:
-    'tabs tabs tabs'
-    'main rsplit rail';
+    'tabs tabs tabs tabs tabs'
+    'main main main rsplit rail';
   grid-template-rows: auto minmax(0, 1fr);
   row-gap: var(--gap);
 }
 
-.workspace[data-tabs='left'] {
-  grid-template-areas: 'tabs tsplit main rsplit rail';
-  grid-template-columns: var(--tab-rail-w) var(--gap) minmax(0, 1fr) 0 0;
+/*
+ * Mirrored: the card rail takes the left edge and the tab rail the right.
+ *
+ * Keyed on which side the *cards* are on rather than on `data-tabs`, because
+ * the mirror has to hold in the one state where there are no tabs at all — a
+ * client with no characters yet. Keyed on `data-tabs='right'` it would put the
+ * card rail back on the right until the first character loaded, and the whole
+ * layout would jump sideways the moment one did.
+ *
+ * The five tracks are the same five; only their order changes, so each rail
+ * keeps its own width and its own handle. The handles are placed by which pane
+ * they belong to (`data-pane`) rather than by which way they grow it, which is
+ * what lets the tab rail's handle be a right edge here and still sit in the tab
+ * rail's own gap.
+ */
+.workspace[data-rail-side='left'] {
+  grid-template-areas: 'rail rsplit main tsplit tabs';
+  grid-template-columns:
+    var(--track-rail) var(--track-rsplit) minmax(0, 1fr)
+    var(--track-tsplit) var(--track-tabs);
 }
 
-.workspace[data-tabs='left'][data-rail='open'] {
-  grid-template-columns: var(--tab-rail-w) var(--gap) minmax(0, 1fr) var(--gap) var(--rail-w);
-}
+/*
+ * There is deliberately no mirrored `top` variant. The cards take the left only
+ * when the tabs have asked for the right, so `data-tabs` here is `right` or —
+ * with no characters loaded at all — `none`, and never `top`. A rule for it
+ * would be a claim about a state the client cannot be in.
+ */
 
 /*
  * The handle between two panes. See `components/Splitter.tsx`.
@@ -190,12 +230,21 @@ option {
   outline: none;
 }
 
-.splitter[data-edge='right'] {
-  grid-area: rsplit;
+/*
+ * Placed by which pane it belongs to, never by which way it grows that pane.
+ *
+ * They were the same fact for as long as the tab rail could only be on the
+ * left. Mirror the workspace and they part company: the tab rail's handle
+ * becomes a right edge while still belonging in the tab rail's own gap, and
+ * keyed on `data-edge` the two rails swapped handles. The docked strips'
+ * handles carry no `data-pane` — they are positioned against the strip.
+ */
+.splitter[data-pane='tabs'] {
+  grid-area: tsplit;
 }
 
-.splitter[data-edge='left'] {
-  grid-area: tsplit;
+.splitter[data-pane='rail'] {
+  grid-area: rsplit;
 }
 
 .splitter::before {
@@ -288,6 +337,20 @@ option {
   /* The fallback is the point: a card added without a declared height still
      gets a box rather than growing with its contents. */
   height: var(--card-h, 200px);
+}
+
+/*
+ * Rolled up, a card is its heading and the declared height stands down --
+ * including one dragged from the corner grip, which is *kept* and comes back
+ * with the card rather than being thrown away by a gesture that only asked to
+ * see less of it.
+ *
+ * This is the one exemption from the rule above, and it does not weaken it:
+ * the height still never follows the contents. It follows the one person who
+ * is allowed to change a card's box, who has just said they want the heading.
+ */
+.rail > .card[data-rolled='true'] {
+  height: auto;
 }
 
 .rail > .vitals-card {
@@ -412,6 +475,11 @@ option {
   gap: 8px;
   min-height: 0;
   min-width: 0;
+  /* The debug view is positioned against this rather than against the stack,
+     so it covers the console and *not* the toolbar docked above it: the
+     toolbar is a card, and a player looking at a trace has not stopped wanting
+     the switch that turns automation off. */
+  position: relative;
 }
 
 /*
@@ -487,6 +555,72 @@ option {
   min-height: 0;
   overflow: hidden;
   animation: card-enter var(--dur-surface) var(--ease-out) backwards;
+  /*
+   * The action column's own box, named here rather than in `.card-side` so the
+   * rolled card's floor below can be derived from it instead of repeating the
+   * figures. `BentoCard` measures how many glyphs fit from the laid-out
+   * elements, so these are what it reads back — two spellings of the button's
+   * height would put the count and the drawing out of step with nothing on
+   * screen to say so.
+   */
+  --card-action: 18px;
+  --card-side-gap: 2px;
+  --card-side-inset: 6px;
+}
+
+/*
+ * A card rolled up to its heading: the name, the badge, and whatever fits
+ * beside them. Asked for in todo 00 -- "only show its header with its name and
+ * relevant information".
+ *
+ * The body is hidden rather than unmounted, which is the load-bearing half. A
+ * card rolled up is still doing its job: the Talk card is still pinned to the
+ * tail of a conversation that is still arriving, a table's find field still
+ * holds the question somebody was asking, and the copy glyph still has
+ * something to put on the clipboard -- `readable` reads `innerText`, which
+ * falls back to the text content of a box that is not being rendered.
+ * Unmounting the body would have made all three quietly false.
+ *
+ * **`!important`, because equal specificity loses to source order** (todo 00,
+ * 2026-09-06, reported as *"rolled up cards are showing more than just their
+ * header"* with the Reference card in the screenshot). This selector is
+ * `(0,3,0)` -- two classes and an attribute -- and so is `.card > .body.paned`
+ * below it, which sets `display: flex`. Later wins, so **every paned card**
+ * went on laying its body out while rolled: Reference, Alerts, Players, Realm,
+ * Combat, and the loop builder through its own `.body.paned` further down. The
+ * body was then clipped rather than hidden -- the card's `overflow: hidden`
+ * against the two-glyph floor below, with the heading and the body both
+ * `flex-grow: 1` and splitting it -- so what showed was a sliver of the find
+ * field under the heading. Exactly the shape of the screenshot.
+ *
+ * Out-specifying is an arms race with the next card-specific body rule
+ * somebody adds; this is a *state* that suppresses layout rather than a
+ * competing opinion about it, which is the one thing `!important` is for and
+ * why every reset in the world spells `[hidden]` this way.
+ *
+ * `npm run smoke` rolls a **paned** card as well as the Room card, whose
+ * shown face is a readout -- which is why the check that has guarded this
+ * since it was written never saw it.
+ */
+.card[data-rolled='true'] > .body {
+  display: none !important;
+}
+
+/*
+ * Two glyphs' worth of floor, because the column is measured against the card
+ * and a rolled card *is* one heading: Close is always drawn and the kebab
+ * holds the rest, and a kebab clipped in half by the card's own `overflow` is
+ * a control that is not there. Derived from the column's own box above, so the
+ * two cannot drift.
+ */
+.card[data-rolled='true'] {
+  min-height: calc(var(--card-action) * 2 + var(--card-side-gap) + var(--card-side-inset) * 2);
+}
+
+/* And the heading takes the floor's whole height, so its one row sits in the
+   middle of it rather than against the top with a gap underneath. */
+.card[data-rolled='true'] > header {
+  flex: 1 1 auto;
 }
 
 /* Stagger down the rail so the eye reads top to bottom on open. */
@@ -550,7 +684,19 @@ option {
 .card > .body {
   flex: 1 1 0;
   min-height: 0;
-  padding: 0 var(--pad-card) var(--pad-card);
+  /*
+   * A little air at the top, which the body had none of.
+   *
+   * Not only for the look. This box *clips* — a scrolling body computes
+   * `overflow-x: auto` alongside its `overflow-y`, and a paned one is
+   * `overflow: hidden` outright — so anything the first row paints outside
+   * itself was sheared off at the heading: a focus ring (2px at 1px offset,
+   * and the one deliberately loud element on the surface) on a table's find
+   * field, or the tonal fill of a chip on the first row of a readout. Four
+   * pixels is what those need and is what the todo asked for as "a small
+   * amount".
+   */
+  padding: 4px var(--pad-card) var(--pad-card);
   transition: padding var(--dur-control) var(--ease-out);
 }
 
@@ -1006,10 +1152,21 @@ kbd {
  * A meter is data: a flat tonal fill against a track, no gradient and no glow.
  * See docs/ui-design.md §3.3.
  */
+/*
+ * The bar's height has a floor, not a value.
+ *
+ * `18px` alone was a constant measured against the *default* interface type,
+ * and `--font-ui-base` is overwritten at runtime from `ui.font.size` — so a
+ * player who asked for larger chrome got `334/334` with its ascenders and
+ * descenders sheared off flat by this box's own `overflow: hidden`, which is
+ * the readout they run on. `max()` keeps the shipped look exactly (11px micro
+ * type needs 16.5 and takes the 18) and grows the box with the type past it.
+ * 1.5 is the upper end of a normal line box, which is what has to fit.
+ */
 .meter {
   background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
   border-radius: var(--r-chip);
-  height: 18px;
+  height: max(18px, calc(var(--font-micro) * 1.5));
   margin-bottom: 6px;
   overflow: hidden;
   position: relative;
@@ -1438,6 +1595,70 @@ kbd {
 }
 
 /*
+ * The step somebody has picked out to stop short at.
+ *
+ * Tonal, like everything that reports a condition (§9), and drawn on the
+ * *row* rather than on the name: the name is already carrying a fact — it is
+ * the room — and a picked row is a statement about the whole step, the
+ * direction and the obstacle chip included.
+ *
+ * `box-shadow` rather than padding or a border, because the row must not
+ * change size when it is picked: this list scrolls, the pick is made with the
+ * pointer, and a row that grew would move every row under it out from under
+ * the hand that is about to reach for the button appearing in it.
+ */
+.route-steps li[data-picked='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.route-steps li[data-picked='true'] .step-name {
+  color: var(--text-hi);
+}
+
+/*
+ * `Walk here`, in the row it belongs to.
+ *
+ * Deliberately not `.primary`: this panel spends its one filled control on
+ * `Walk it` (§3.3), and a second filled button in a scrolling list would make
+ * the emphasis mean nothing. Tonal accent, at the row's own height — the
+ * `.row-action` rule, which exists because a button that keeps `--control-h`
+ * turns a 12px row into a 32px one and makes the list look double-spaced.
+ *
+ * **No vertical padding and no border, and that is measured rather than
+ * tasteful.** The first cut had `1px 6px` and a 1px seam, which is what a chip
+ * in this same row wears — and it made the picked row two pixels taller than
+ * it had been, so every row under it stepped down at the moment somebody was
+ * reaching for the button that had just appeared. `npm run smoke` measures the
+ * row before and after the click and fails on any change at all, which is how
+ * the two pixels were found. The tonal fill and the radius carry the control
+ * on their own; the seam was the half that cost the height.
+ */
+.step-walk {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--accent);
+  cursor: pointer;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  height: auto;
+  letter-spacing: 0.04em;
+  line-height: inherit;
+  padding: 0 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.step-walk:hover,
+.step-walk:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+/*
  * The condition holds its width and the name yields.
  *
  * The step's chip carries a number now — `Toll: 5 gold`, `Key: angular key,
@@ -1510,14 +1731,13 @@ kbd {
 }
 
 /*
- * The picture's own area, and the box the radius is measured from.
+ * The picture's own area.
  *
  * Its own element rather than the card's body because the legend takes a fixed
- * strip underneath: measuring the body would count rows the map is never drawn
- * in, and a card would ask for a neighbourhood a little larger than it can
- * show. It takes whatever the legend leaves, which is what makes a floating
- * map fetch *more rooms* when it is dragged bigger rather than the same rooms
- * drawn larger.
+ * strip underneath: the view inside measures itself, and measuring the body
+ * would count rows the map is never drawn in. It takes whatever the legend
+ * leaves, which is what makes a floating map show *more rooms* when it is
+ * dragged bigger rather than the same rooms drawn larger.
  */
 .map-box {
   display: flex;
@@ -1526,13 +1746,51 @@ kbd {
   min-height: 0;
 }
 
+/*
+ * The window on the map (`MapView`): the box the fetch is measured from, and
+ * the surface the wheel and a drag are read off. Flexed from zero so it is
+ * sized by what is around it and never by the picture, which has no size of
+ * its own; clipped, because a window shows what it shows. `touch-action:
+ * none` hands a touch drag to the pan rather than to the page. The hand's
+ * cursor says the background drags; a room underneath keeps its own.
+ */
+.map-view {
+  cursor: grab;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.map-view[data-panning] {
+  cursor: grabbing;
+}
+
+.map-view > .map-plan {
+  flex: 1 1 0;
+}
+
+/*
+ * The picture clips at its own edge, and there is nothing to clip.
+ *
+ * It carried `overflow: visible` because the viewBox was padded by less than
+ * the `you` ring reaches, so the ring on any room at the edge of the
+ * neighbourhood was drawn outside the box. That only ever worked while nothing
+ * above the SVG clipped — and a card's body does, because `overflow-y: auto`
+ * computes `overflow-x: auto` with it. The ring on the top row came out
+ * sheared flat by the heading. The pad covers the marks now (`MARKS` in
+ * `MapPlan.tsx`), so nothing needs to paint outside; leaving the escape hatch
+ * open would only hide the next drawing that does.
+ */
 .map-plan {
   display: block;
   flex: 1 1 auto;
   width: 100%;
   min-height: 0;
   margin: 0 auto;
-  overflow: visible;
 }
 
 .map-legend {
@@ -1573,9 +1831,52 @@ kbd {
  */
 .map-trail line {
   pointer-events: none;
-  stroke: var(--accent);
+  stroke: var(--trail-0);
   stroke-linecap: round;
   stroke-width: 1.4;
+}
+
+/*
+ * Which pass of the way this leg belongs to.
+ *
+ * Declared on the group so the line and its arrow cannot disagree: the arrow
+ * fills with the same token the line strokes with, and a band added here
+ * reaches both without a second rule. Bands past the last one keep the last
+ * colour — `trailOf` clamps, so nothing here has to.
+ */
+/* Both shapes, because the legend's key carries the band on the `.map-trail`
+   group itself while the picture carries it on a group inside one. */
+.map-trail[data-band='1'] line,
+.map-trail g[data-band='1'] line {
+  stroke: var(--trail-1);
+}
+
+.map-trail[data-band='2'] line,
+.map-trail g[data-band='2'] line {
+  stroke: var(--trail-2);
+}
+
+/*
+ * Which way the way goes.
+ *
+ * Filled rather than stroked, because at a third of a room a stroked outline
+ * is two lines close enough to read as one thick one. `pointer-events: none`
+ * for the corridor's reason: the whole link is the hover target and a mark
+ * sitting on it must not take the pointer off it.
+ */
+.map-trail-arrow {
+  fill: var(--trail-0);
+  pointer-events: none;
+}
+
+.map-trail[data-band='1'] .map-trail-arrow,
+.map-trail g[data-band='1'] .map-trail-arrow {
+  fill: var(--trail-1);
+}
+
+.map-trail[data-band='2'] .map-trail-arrow,
+.map-trail g[data-band='2'] .map-trail-arrow {
+  fill: var(--trail-2);
 }
 
 /*
@@ -1590,6 +1891,11 @@ kbd {
   fill: color-mix(in srgb, var(--accent) var(--tone), transparent);
   pointer-events: none;
   stroke: none;
+  /* No `stroke-width` on this or the two rings below: how far each reaches is
+     what the viewBox is padded by, so both halves are stated once in
+     `MapPlan`'s own `MARKS` table and arrive as presentation attributes. A
+     rule here would outrank the attribute and the pad would be wrong again —
+     which is exactly how the `you` ring came to be drawn outside the box. */
 }
 
 /*
@@ -1605,7 +1911,6 @@ kbd {
   pointer-events: none;
   stroke: var(--ok);
   stroke-dasharray: 1.8 1.6;
-  stroke-width: 0.8;
 }
 
 /*
@@ -1629,9 +1934,20 @@ kbd {
   stroke-width: 1.1;
 }
 
-/* A trap is not an obstacle you open; it is one you regret. */
-.map-blocks line[data-kind='trap'] {
+/*
+ * A trap is not an obstacle you open; it is one you regret. A bar says *shut*
+ * and a trap is not shut — the route walks straight through it and takes the
+ * hit — so it is its own shape, the hazard triangle, upright whichever way the
+ * corridor runs (`MapPlan`). The lair's red at the lair's tone, because both
+ * are where the damage is, and the shape says which (§6): it was a bar in a
+ * second hue for as long as the map existed, with no entry in the legend.
+ */
+.map-trap {
+  fill: color-mix(in srgb, var(--danger) 55%, transparent);
+  pointer-events: none;
   stroke: var(--danger);
+  stroke-linejoin: round;
+  stroke-width: 0.5;
 }
 
 .map-blocks line[data-kind='hidden'],
@@ -1704,7 +2020,6 @@ kbd {
 .map-you {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 0.8;
 }
 
 /* Leads up or down, which the plane cannot show. */
@@ -1797,6 +2112,643 @@ kbd {
  */
 .map-legend [data-kind='route'] .key .map-trail line {
   stroke-width: 1.6;
+}
+
+/* ========================================================== the quest book */
+
+/*
+ * A card with a table above and, when a quest is opened, its track below.
+ *
+ * The rail's fixed-height rule applies as it does to every card: the table
+ * scrolls under its own tools, and the opened track scrolls with it rather than
+ * growing the card. A book that grew as quests were opened would move every
+ * card under it — and the control that opens one is in the table it would be
+ * moving.
+ */
+.rail > .quest-card {
+  --card-h: 420px;
+}
+
+/*
+ * The track of the opened quest, under the table it was opened from.
+ *
+ * Under rather than beside: a quest is read *while* deciding whether to do it,
+ * so the list it was chosen from stays on screen. A seam above it, because two
+ * scrolling regions in one body otherwise read as one list that changed shape
+ * half way down.
+ */
+.quest-track {
+  border-top: var(--rule) solid var(--ink-line);
+  display: flex;
+  /*
+   * Sized to the quest, up to a little over half the card.
+   *
+   * `flex: 0 1 auto` against the table's `flex: 1 1 0`, so a three-step quest
+   * shows whole and leaves the table its height, and a fifty-seven-step one
+   * takes the cap and scrolls. It was `flex: 1 1 0` on the steps inside an
+   * auto-height track for one build, which is a zero basis in a box with no
+   * height of its own: the track collapsed to its own heading and the whole
+   * chain was off the bottom of a card that looked like it had drawn nothing.
+   */
+  flex: 0 1 auto;
+  flex-direction: column;
+  margin-top: 6px;
+  max-height: 55%;
+  min-height: 0;
+  padding-top: 6px;
+}
+
+/*
+ * Which quest the track belongs to, and how far through it the player says
+ * they are.
+ *
+ * The name is here and not only in the table because the table can be sorted,
+ * filtered and scrolled: the row the track came from is routinely off screen,
+ * and a track that did not name itself would be a list of steps belonging to
+ * nothing visible.
+ */
+.quest-track-head {
+  align-items: baseline;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.quest-track-head h4 {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* The progress figure yields first, so the quest's own name is never the part
+   that is cut — the same ranking the table's `wide` column makes. */
+.quest-track-head .quiet-note {
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-steps {
+  flex: 0 1 auto;
+  list-style: none;
+  margin: 0;
+  /* Allowed to shrink under its content, which is what makes the cap scroll. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+/*
+ * One step: a node in a gutter, and what the step is beside it.
+ *
+ * The gutter is a track and not a decoration — a quest is a **counter**, and
+ * the steps advance it in order, so the line between the nodes is the fact the
+ * whole card is about. The rows carry their own padding rather than a `gap`,
+ * so the connector below one node reaches the next without a break in it.
+ */
+.quest-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 0 8px;
+  padding-bottom: 10px;
+  position: relative;
+}
+
+/*
+ * The connector, from under this node to the bottom of the row.
+ *
+ * Not drawn on the last step, where there is nothing below to reach: a line
+ * running off the end of the track would say there is more.
+ */
+.quest-step::before {
+  background: var(--ink-line);
+  bottom: 0;
+  content: '';
+  left: 8px;
+  position: absolute;
+  top: 18px;
+  width: var(--rule);
+}
+
+.quest-step:last-child::before {
+  display: none;
+}
+
+/*
+ * The node is the one control on a step, and it carries the rank.
+ *
+ * A tick would say *done* without saying done *to what*; the realm counts this
+ * quest in ranks, so the number on the node is both the fact the step states
+ * and the statement the click makes. It restores a control's box, because
+ * `button.lookup` next to it does not: a 32px `--control-h` here would space
+ * the whole track out (the failure `.row-action` already records).
+ */
+.quest-node {
+  align-items: center;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: 50%;
+  color: var(--text-lo);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  height: 17px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 17px;
+}
+
+.quest-node:disabled {
+  cursor: default;
+}
+
+/*
+ * The step the player is on: the one deliberately loud mark on the track.
+ *
+ * Spent once, as §9 asks — everything else here is tonal — because *where am I
+ * up to* is the question somebody opens a quest to answer.
+ */
+.quest-step[data-state='next'] .quest-node {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/*
+ * A step the player says is behind them.
+ *
+ * Greyed, not struck through and not removed: it is still part of the chain,
+ * and somebody re-reading a quest wants to see what they already handed over.
+ * The node keeps its number at full strength so the track can still be counted
+ * down at a glance.
+ */
+.quest-step[data-state='done'] .quest-what {
+  opacity: 0.45;
+}
+
+.quest-step[data-state='done'] .quest-node {
+  background: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+}
+
+.quest-what {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/*
+ * What to type, as the command the player types.
+ *
+ * `ask <who> <word>` is the realm's own verb and argument order
+ * (docs/greatermud: `Monsters.GreetTXT` is the block `ask <monster> <topic>`
+ * runs), so it is drawn as the line that goes in the console rather than as a
+ * sentence about it — monospace for the same reason the console is.
+ */
+.quest-ask {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* A step's facts: what it moves the counter to, where it is, what it demands. */
+.quest-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+
+/*
+ * The counter move, drawn rather than said.
+ *
+ * `3 → 4` behind a flag is the whole of what a step does to the quest's own
+ * ability, and it replaces two sentences that were on almost every step — the
+ * `checkability` gate and the `giveability` reward, which said the same pair of
+ * numbers in words.
+ */
+.chip.quest-flag {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.chip.quest-flag svg {
+  height: 10px;
+  width: 10px;
+}
+
+/* Where the step happens, as a control that plans the walk to it. */
+button.lookup.quest-where {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+  font-size: var(--font-micro);
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.lookup.quest-where svg {
+  flex: 0 0 auto;
+  height: 11px;
+  width: 11px;
+}
+
+/*
+ * What to bring, and where the realm says it comes from.
+ *
+ * One line per item rather than a run of names, because the answer to *where do
+ * I get this* belongs beside the thing it answers about — and roughly half of
+ * them have no answer, which shows as the name and nothing after it.
+ */
+.quest-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.quest-items li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--font-micro);
+}
+
+/*
+ * The routes through a step, one row each: what that route asks, and what it
+ * pays for taking it.
+ *
+ * One grid per step and deliberately not one per card — the `.readout` rule is
+ * about a card's label column, and a route list belongs to the step it is on,
+ * which the track already separates with a node and a connector. Within a step
+ * the two columns line up, which is the whole reason a fifteen-route chain is
+ * readable at all.
+ */
+.quest-ways {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quest-ways dl {
+  display: grid;
+  gap: 1px 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 0;
+}
+
+.quest-ways dt,
+.quest-ways dd {
+  align-self: baseline;
+  font-size: var(--font-micro);
+  margin: 0;
+  min-width: 0;
+}
+
+.quest-ways dt {
+  color: var(--text-lo);
+  grid-column: 1;
+}
+
+.quest-ways dd {
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * The reader's own route.
+ *
+ * Tonal on both cells, so the pair reads as one row rather than a highlighted
+ * condition beside an unhighlighted reward — and it is the *row* that is
+ * marked, never the words in it, which is the rule the roster's selection
+ * already follows. Nothing is marked at all until the sheet has named a class.
+ */
+.quest-ways [data-mine='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+  color: var(--text-hi);
+}
+
+.quest-gives {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+/*
+ * The word that says what the row is — `Hand over`, `Carry`, `Gives`.
+ *
+ * Micro and quiet: it is the label, and a label at the same weight as the fact
+ * beside it reads as a second fact — the rule `.quiet-note` already records.
+ */
+.quest-verb {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/*
+ * A separator between rewards and never after the label.
+ *
+ * Keyed on the reward's own class rather than on `span + span`, which would
+ * have put a `·` between `GIVES` and the first thing it gives — the label is a
+ * span too, and a rule that counts elements cannot tell them apart.
+ */
+.quest-give + .quest-give::before {
+  color: var(--text-lo-quiet);
+  content: '·';
+  margin-right: 4px;
+}
+
+/*
+ * A hidden quest, while the hidden ones are being shown.
+ *
+ * Quiet rather than struck through: it is not *wrong*, it is one the player
+ * said they were not interested in, and the only reason it is on screen at all
+ * is that they asked to see what they had put away.
+ */
+.quest-table tr[data-hidden='true'] {
+  opacity: 0.55;
+}
+
+/*
+ * The row whose track is open, marked tonally on the row and never on the name.
+ *
+ * The same rule the roster's selection follows: the name is already carrying a
+ * fact, and recolouring it for a selection would take that statement away from
+ * exactly the rows most likely to be clicked.
+ */
+.quest-table tr[data-open='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+}
+
+/* ======================================================= loop builder card */
+
+/*
+ * Taller than the other rail cards, because it is a map with a list under it
+ * and controls under that; it ships as a float sized to most of the workspace
+ * (`openBuilder`), and this is the box it gets when somebody docks it.
+ */
+.rail > .loop-builder-card {
+  --card-h: 520px;
+}
+
+.loop-builder-card > .body.paned {
+  gap: 6px;
+}
+
+.builder-tools {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.builder-tools input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The undo, redo and centre glyphs: square, quiet, one row of tools. */
+.builder-key {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  height: var(--control-h);
+  justify-content: center;
+  padding: 0;
+  width: var(--control-h);
+}
+
+.builder-matches {
+  flex: 0 0 auto;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/*
+ * The picture takes the larger share and the list the rest; both flex from
+ * zero so neither is sized from its contents — the rule `.card > .body`
+ * already follows, for the layout cost it found. The window inside fills it.
+ */
+.builder-map {
+  display: flex;
+  flex: 3 1 0;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+.loop-builder-card .builder-list {
+  flex: 2 1 0;
+  min-height: 60px;
+}
+
+.builder-waypoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.builder-waypoint {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+/* The place in the list, ringed the way the room is on the map. */
+.builder-index {
+  align-items: center;
+  border: 0.8px solid var(--ok);
+  border-radius: 50%;
+  color: var(--ok);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+
+.builder-waypoint[data-kind='start'] .builder-index {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.builder-waypoint .step-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What a leg needs, indented under the waypoint it leads to. */
+.builder-leg {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-micro);
+  gap: 2px;
+  padding: 2px 0 2px 26px;
+}
+
+.builder-note {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.builder-note .step-command {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.builder-hint {
+  font-size: var(--font-micro);
+  padding: 4px 0;
+}
+
+.builder-foot {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.builder-foot input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.builder-destination {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.builder-status {
+  color: var(--text-lo);
+  flex-basis: 100%;
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+/*
+ * The builder's rings on the map: the start in the danger red the request
+ * asked for, a pick in `--ok` and a room merely walked through in the same
+ * green at a lighter stroke, so the two greens say which rooms were chosen
+ * and which the planner filled in. All three sit behind the room's shape and
+ * take no pointer, like the route halo they are modelled on.
+ */
+.map-start {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--danger);
+}
+
+.map-pick {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--ok);
+}
+
+.map-through {
+  fill: none;
+  opacity: 0.7;
+  pointer-events: none;
+  stroke: var(--ok);
+  /* Dashed where a clicked room's ring is solid: the two greens are told
+     apart by shape as well as weight, which at the densest zoom is all that
+     tells them apart at all (§6). */
+  stroke-dasharray: 1.2 1;
+}
+
+/*
+ * A way out that leaves the plane, as a control: the chevron the room wears
+ * on every other map, or the teleport's ring, on a hit target big enough to
+ * point at. The marker's hue at rest — it is a way, like the corridor's
+ * marker bar — and the accent under the pointer, which is what every other
+ * map control does.
+ */
+.map-away {
+  cursor: pointer;
+}
+
+.map-away:focus {
+  outline: none;
+}
+
+.map-away-hit {
+  fill: transparent;
+}
+
+.map-away-glyph {
+  fill: none;
+  stroke: var(--marker);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-away-dot {
+  fill: var(--marker);
+}
+
+.map-away:hover .map-away-glyph,
+.map-away:focus-visible .map-away-glyph {
+  stroke: var(--accent);
+}
+
+/* A way out with something in it — a door on the stairs, a level a portal
+   wants — wears a bar across its glyph, the corridor's own mark for a shut
+   passage, in the obstacle bar's hue; the title says what with. The hue
+   alone was the first cut, and the legend then had nothing to key. */
+.map-away[data-gated] .map-away-glyph {
+  stroke: var(--pending);
+}
+
+.map-away[data-gated] .map-away-dot {
+  fill: var(--pending);
+}
+
+.map-away-bar {
+  stroke: var(--pending);
+  stroke-linecap: round;
+}
+
+.map-away:hover .map-away-dot,
+.map-away:focus-visible .map-away-dot {
+  fill: var(--accent);
+}
+
+.map-legend [data-kind='teleport'] .key .map-away-glyph {
+  stroke-width: 1;
 }
 
 /* ========================================================= automation card */
@@ -1904,6 +2856,31 @@ kbd {
   font-size: var(--font-micro);
   gap: 14px;
   padding: 6px var(--gap);
+}
+
+/*
+ * The client's own mark, at the head of the status rail.
+ *
+ * Sized from the type rather than in pixels, for the reason every fixed height
+ * in a card has just stopped being one: `--font-ui-base` is written at runtime
+ * from `ui.font.size`, so a mark measured against the default chrome would be
+ * the wrong size for anybody who changed it — and here it would also stop
+ * matching the line of text it sits beside. `1.6em` of `--font-micro` is the
+ * line box that line already has, so the mark takes no height of its own and
+ * turning it off gives back no space.
+ *
+ * The rail's `gap` is 14px, which is a lot beside a round mark, so the mark
+ * pulls the next segment back to the spacing a heading uses.
+ */
+.app-mark {
+  background-image: url('../assets/logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  flex: 0 0 auto;
+  height: 1.6em;
+  margin-right: -6px;
+  width: 1.6em;
 }
 
 /*
@@ -2324,7 +3301,8 @@ kbd {
 .loops-modal .loops-find input {
   border-radius: var(--r-control);
   border-width: var(--rule);
-  height: 38px;
+  /* A floor, not a height: the type this holds is a setting. See `.meter`. */
+  min-height: 38px;
   padding: 0 10px;
   width: 100%;
 }
@@ -2500,11 +3478,17 @@ kbd {
   scrollbar-width: none;
 }
 
-.tab-rail[data-side='left'] {
+/*
+ * Down a side, either side. `right` is `left` mirrored and nothing inside the
+ * rail changes with it — the tabs still stack and there is still room for the
+ * health in figures and the room name. Only the marker on the active tab knows
+ * which side it is on, because that one sits on the edge nearest the console.
+ */
+.tab-rail:is([data-side='left'], [data-side='right']) {
   flex-direction: column;
 }
 
-.tab-rail[data-side='left'] .tabs {
+.tab-rail:is([data-side='left'], [data-side='right']) .tabs {
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
@@ -2540,7 +3524,13 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 10px;
+  /*
+   * The band, not the button's own content: the head, the toolbar strip and
+   * the put-away chips are the three things across the top of the window and
+   * they share one edge top and bottom. See `--topbar-h`.
+   */
+  height: var(--topbar-h);
+  padding: 0 10px;
   border: 0;
   border-radius: var(--r-control);
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
@@ -2739,6 +3729,15 @@ kbd {
   top: 8px;
   bottom: 8px;
   left: 0;
+  width: 2px;
+}
+
+/* Mirrored, and on the console's side of the tab for the same reason the left
+   rail's is: the seam points at the terminal it is naming. */
+.tab-rail[data-side='right'] .tab[data-active='true']::after {
+  top: 8px;
+  bottom: 8px;
+  right: 0;
   width: 2px;
 }
 
@@ -3026,7 +4025,64 @@ kbd {
   padding: 4px;
 }
 
-.popup-menu .entry {
+.picker-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  min-width: 200px;
+  max-height: 60vh;
+  flex-direction: column;
+  padding: 4px;
+  /* The rail ships with six cards put away and every close adds one, so this
+     is a list that genuinely runs long. It is the one popup that scrolls. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * One row, two controls: the label docks the card on the rail and the glyph at
+ * its end brings it out over the console. Two places a card can go, so two
+ * ways out of the row -- and floating one had no affordance at all before,
+ * being reachable only by knowing it could be dragged there.
+ */
+.picker-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.picker-row .entry {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.picker-row .entry > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-float {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.picker-float:hover,
+.picker-float:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+  outline: none;
+}
+
+.popup-menu .entry,
+.picker-menu .entry {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -3043,7 +4099,9 @@ kbd {
 }
 
 .popup-menu .entry:hover,
-.popup-menu .entry:focus-visible {
+.popup-menu .entry:focus-visible,
+.picker-menu .entry:hover,
+.picker-menu .entry:focus-visible {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--text-hi);
   outline: none;
@@ -3545,11 +4603,11 @@ kbd {
 .card-side {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--card-side-gap);
   opacity: 0;
   position: absolute;
   right: 4px;
-  top: 6px;
+  top: var(--card-side-inset);
   transition: opacity var(--dur-tint) var(--ease-out);
   z-index: 2;
 }
@@ -3576,13 +4634,13 @@ kbd {
   color: var(--text-lo-quiet);
   cursor: pointer;
   display: flex;
-  height: 18px;
+  height: var(--card-action);
   justify-content: center;
   padding: 0;
   transition:
     background var(--dur-tint) var(--ease-out),
     color var(--dur-tint) var(--ease-out);
-  width: 18px;
+  width: var(--card-action);
 }
 
 .card-action .icon {
@@ -4605,7 +5663,12 @@ kbd {
 /* The Reference card: a field, then the answer, then the matches under it. */
 .reference-card input {
   flex: none;
-  height: 28px;
+  /*
+   * A floor rather than a height. A field with a declared height clips its own
+   * text the moment the type is larger than the height was written against,
+   * and `--font-ui-base` is a setting — see `.meter`.
+   */
+  min-height: 28px;
   font-size: var(--font-micro);
 }
 
@@ -4687,6 +5750,25 @@ kbd {
 }
 
 /*
+ * The rooms behind a spawn group, disclosed under the name that was clicked.
+ *
+ * A block so it takes its own line rather than continuing the run of names —
+ * the row is a sentence of places and these are that place's addresses, which
+ * is a different thing and must not read as more names in the list. The
+ * addresses are the realm's own `map/room`, so they are monospace for the
+ * reason every other figure the realm states is; and they wrap, because a
+ * group runs to twelve of them on a panel whose width is measured from the
+ * room beside the anchor.
+ */
+.reference-detail .spawn-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 2px 0 4px;
+  font-family: var(--font-mono);
+}
+
+/*
  * The words a room answers.
  *
  * A phrase is the label and what it does is the value, which is the readout's
@@ -4716,11 +5798,132 @@ kbd {
   background: var(--glass-fill-strong);
   max-height: min(60vh, 420px);
   max-width: calc(100vw - 16px);
-  overflow: auto;
+  /*
+   * The panel clips and its body scrolls, rather than the panel scrolling.
+   *
+   * The heading used deliberately not to stay put — a sticky heading over a
+   * translucent fill lets the rows scroll through it, and the panel's own
+   * scroll was rare. Both halves of that changed on 2026-09-05: the heading now
+   * carries the **pin, the close glyph and the drag grip**, and a pinned panel
+   * whose close glyph has scrolled out of view is one that cannot be put away
+   * — while the Access face's fifty-seven rows guarantee the scroll. Clipping
+   * at the panel rather than sticking inside it is also what stops the rows
+   * showing through, which was the objection.
+   *
+   * It is what puts the corner sizer in the corner, too: an absolutely
+   * positioned child of a *scrolling* box sits at the bottom of the content,
+   * not of the visible box, so the grip that resizes the panel would have been
+   * reachable only by scrolling to the end of it.
+   */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 8px 10px 10px;
   position: fixed;
-  width: 300px;
   z-index: 55;
+  /*
+   * The width is written on the element by `usePopoverFrame`, from the room
+   * actually beside the name that was clicked (`popoverWidth`). It was a flat
+   * `width: 300px` here, and a panel that narrow turns a monster's sentence
+   * into a column one word wide and twenty lines tall — which the cap above
+   * then puts below the fold, on a screen with room for it three times over.
+   * The fallback is the floor from `internal.yaml`, for the frame that has not
+   * measured yet.
+   */
+  width: 300px;
+}
+
+/*
+ * A panel somebody has dragged a size onto keeps it, in both directions.
+ *
+ * The cap exists to stop an unasked-for panel filling the screen; a size
+ * asked for by hand is not unasked-for, and leaving the cap on would let the
+ * panel be dragged taller and simply not grow.
+ */
+.popover[data-sized='true'] {
+  max-height: none;
+  max-width: none;
+}
+
+/*
+ * While it is being dragged or sized, the pointer is the animation.
+ *
+ * The slide-in is `backwards`-filled off the mount, so it does not re-run —
+ * but a panel whose contents change mid-gesture would otherwise re-enter, and
+ * the transition on anything inside it would lag a pointer that is already
+ * somewhere else.
+ */
+.popover[data-moving='true'] {
+  animation: none;
+  user-select: none;
+}
+
+/*
+ * Pinned: it stays until Escape or its own close glyph, and says so.
+ *
+ * A seam rather than a fill — §9 spends emphasis rather than spraying it, and
+ * a panel that reads as *selected* when all it is is *kept* would be the
+ * loudest thing on a screen with a game on it. The pin glyph in the heading is
+ * the primary statement; this is the edge that makes it legible at a glance
+ * when several are open.
+ */
+.popover[data-pinned='true'] {
+  box-shadow: inset 0 0 0 var(--rule) color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/*
+ * The grip and the pin, in a panel's heading.
+ *
+ * The grip is the handle — never the whole heading, which carries the face
+ * pills — so it takes the pointer itself and says so with the cursor. The
+ * corner sizer is the float's own mark, in the float's own corner, so it is
+ * learned once.
+ */
+.popover-grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.popover[data-moving='true'] .popover-grip {
+  cursor: grabbing;
+}
+
+/* The pin is the one control here that reports a state as well as acting. */
+.popover-pin.on {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/*
+ * Always visible, unlike a card's, which is quiet until the card is pointed at.
+ * A panel over the game has no card edge for the pointer to find a mark on.
+ */
+.popover .popover-sizer::after {
+  opacity: 0.5;
+}
+
+.popover:hover .popover-sizer::after {
+  opacity: 1;
+}
+
+/*
+ * The Reference panel's heading is a *name*, not a label.
+ *
+ * Every other panel's heading is a face pill or the word `GANG`, which the
+ * shared rule draws as micro uppercase with letter-spacing. This one holds
+ * `Sandals of Speed`, which is the realm's own word for a thing and is read
+ * rather than scanned — so it wears what the name row it replaced wore.
+ */
+.reference-popover .popover-head h2 {
+  color: var(--text-hi);
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .reference-popover .reference-detail {
@@ -4744,8 +5947,17 @@ kbd {
 .popover-head {
   align-items: center;
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   margin: 0 0 6px;
+}
+
+/* Everything the heading is not, and the only part that scrolls. */
+.popover-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 /* Stated here as well as through the heading's own auto margin, so the badge
@@ -4880,25 +6092,264 @@ button.lookup:focus-visible {
  */
 .card-picker {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
 }
 
 .card-picker .chip {
+  /*
+   * One control, and the third of the three bands across the top of the
+   * window. It fills the band so the row lines up with the rail head and the
+   * toolbar strip -- `npm run smoke` measures the three against each other.
+   *
+   * It was a chip *per card*, wrapping. A rail ships with six cards put away
+   * and every close adds one, so the band grew into three rows of buttons
+   * above the instrument and pushed every card on the rail down with it. The
+   * cards live in a list behind this now.
+   */
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  height: var(--topbar-h);
+  padding: 0 10px;
   border: 0;
   cursor: pointer;
   font: inherit;
   font-size: var(--font-micro);
-  /* A chip is a handle as well as a button, so a press must not select its
-     text or start the browser's own drag. */
-  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.card-picker .chip:hover {
+.card-picker .chip .icon {
+  height: 12px;
+  stroke-width: 1.9;
+  width: 12px;
+}
+
+.card-picker .chip:hover,
+.card-picker .chip:focus-visible {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--accent);
+}
+
+/* ------------------------------------------------------------------------ */
+/* The debug window                                                         */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * What the client is doing, over the console rather than instead of it.
+ *
+ * Absolutely positioned against `.terminal-layers`, which keeps the terminals
+ * mounted and *laid out* underneath: unmounting one would rebuild its
+ * scrollback and parser state, and resizing the console would go out over NAWS
+ * and re-wrap a scrollback nobody asked to re-wrap. The docked strips overlay
+ * for the same reason.
+ *
+ * Against the layers and **not** the whole stack: the toolbar is docked above
+ * the console, and somebody reading a trace has not stopped wanting the switch
+ * that turns automation off.
+ *
+ * Opaque rather than glass. Every other surface in this client is translucent,
+ * and this one is read *instead of* the console rather than beside it — a trace
+ * with the game showing through it is two streams of monospace text in the same
+ * pixels, which is the one place translucency stops being a look and starts
+ * being illegibility.
+ */
+.debug-view {
+  background: var(--ink-card);
+  border-radius: var(--r-card);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  min-height: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 4;
+}
+
+.debug-head {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: var(--pad-card) calc(var(--pad-card) + 16px) 6px var(--pad-card);
+}
+
+.debug-head h2 {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* The pipeline, left to right. Every kind is always present — the map
+   legend's rule: a row that grew a chip the first time a rule fired would
+   change width while somebody was reading it. */
+.debug-kinds {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.debug-kind {
+  cursor: pointer;
+}
+
+/*
+ * One hue per kind, and the kind's own chip wears it too — so the colour in
+ * the filter row is the colour in the log, which is what makes a row findable
+ * by the chip somebody just pressed.
+ *
+ * The hues are the client's existing vocabulary rather than a new palette:
+ * `--accent` is this character and what it does, `--ok` is the realm's own
+ * confirmation, `--pending` is something in flight, `--danger` is trouble,
+ * `--marker` is the link. Nothing here invents a colour, and nothing here
+ * states a condition by hue alone: every row carries its kind in words in its
+ * own column.
+ */
+.debug-row[data-kind='in'],
+.debug-kind[data-kind='in'] {
+  --debug-hue: var(--text-lo);
+}
+.debug-row[data-kind='line'],
+.debug-kind[data-kind='line'] {
+  --debug-hue: var(--marker);
+}
+.debug-row[data-kind='block'],
+.debug-kind[data-kind='block'] {
+  --debug-hue: var(--ok);
+}
+.debug-row[data-kind='state'],
+.debug-kind[data-kind='state'] {
+  --debug-hue: var(--pending);
+}
+.debug-row[data-kind='event'],
+.debug-kind[data-kind='event'] {
+  --debug-hue: var(--accent);
+}
+.debug-row[data-kind='out'],
+.debug-kind[data-kind='out'] {
+  --debug-hue: var(--accent);
+}
+.debug-row[data-kind='link'],
+.debug-kind[data-kind='link'] {
+  --debug-hue: var(--text-lo-quiet);
+}
+.debug-row[data-kind='notice'],
+.debug-kind[data-kind='notice'] {
+  --debug-hue: var(--danger);
+}
+
+.debug-kind[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--debug-hue) var(--tone), transparent);
+  color: var(--debug-hue);
+}
+
+.debug-find {
+  flex: 0 1 200px;
+  font-size: var(--font-micro);
+  min-width: 0;
+}
+
+/* What is not on screen, and how to get it back — the narrowed-table rule,
+   and it matters more here: somebody reading this is trying to find out what
+   happened, and a filtered trace that does not say so is one that lies. */
+.debug-status {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 10px;
+  padding: 0 var(--pad-card) 6px;
+}
+
+.debug-saved {
+  color: var(--ok);
+}
+
+.debug-failed {
+  color: var(--danger);
+}
+
+/*
+ * The trace. Fixed-pitch and never proportional, for the console's own reason:
+ * these rows hold the server's bytes with their escape sequences made visible,
+ * and a proportional face makes two records that differ by one control byte
+ * look identical.
+ */
+.debug-log {
+  flex: 1 1 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  line-height: 1.45;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--pad-card) var(--pad-card);
+  /* The gutter is reserved for the reason the rail's is: a trace that starts
+     and stops overflowing re-lays out every row at two widths. */
+  scrollbar-gutter: stable;
+}
+
+/*
+ * `auto` on the time, the kind and the tag, then the rest — one grid for the
+ * whole log, so the columns line up down it. That is the `.readout` rule
+ * applied to a listing: alignment by accident stops being true the first time
+ * a row is different, and here every row is different.
+ */
+.debug-row {
+  border-left: 2px solid color-mix(in srgb, var(--debug-hue) 55%, transparent);
+  display: grid;
+  gap: 0 10px;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  padding: 1px 0 1px 8px;
+}
+
+.debug-row:hover {
+  background: color-mix(in srgb, var(--debug-hue) var(--tone-weak), transparent);
+}
+
+.debug-row .at {
+  color: var(--text-lo-quiet);
+  white-space: nowrap;
+}
+
+.debug-row .kind {
+  color: var(--debug-hue);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.debug-row .tag {
+  color: var(--text-lo);
+  white-space: nowrap;
+}
+
+/*
+ * The one column that may wrap, and it must: a record is a line of the game
+ * with its escapes shown, and a trace that scrolled sideways would put the
+ * evidence off the right-hand edge. `anywhere`, because an escape sequence has
+ * no spaces in it to break at.
+ */
+.debug-row .what {
+  color: var(--text-hi);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The second half of a record — the plain text under a raw line, the groups a
+   pattern pulled out — quiet, on its own line, under the thing it explains. */
+.debug-row .detail {
+  color: var(--text-lo-quiet);
+  display: block;
 }
 
 /* ==================================================== rearranging the HUD */
@@ -5039,7 +6490,6 @@ button.lookup:focus-visible {
    */
   background: color-mix(in srgb, var(--ink-card) var(--card-alpha, 60%), transparent);
   flex: 1 1 auto;
-  min-height: 0;
   /*
    * No blur behind a floating card.
    *
@@ -5050,6 +6500,18 @@ button.lookup:focus-visible {
    */
   backdrop-filter: saturate(1.2);
   -webkit-backdrop-filter: saturate(1.2);
+}
+
+/*
+ * A float declares a height, so its card is allowed to shrink below its own
+ * content to fit it. A **rolled** float declares none -- the wrapper takes the
+ * card's heading -- so there is nothing for the card to shrink into, and this
+ * would otherwise undercut the two-glyph floor a rolled card keeps for its own
+ * close and kebab. Stated on the wrapper that knows, rather than by
+ * out-specifying the floor from the other side.
+ */
+.float:not([data-rolled]) > .card {
+  min-height: 0;
 }
 
 /*
@@ -5117,6 +6579,53 @@ button.lookup:focus-visible {
   opacity: 0.35;
   transition: opacity var(--dur-control) var(--ease-out);
   width: 56px;
+}
+
+/*
+ * The roll toggle, last in the heading.
+ *
+ * Always drawn and quiet until the card is pointed at -- the card grip's rule,
+ * and the slider above shares it: an affordance you have to find by hovering
+ * is one most people never find. It keeps its full strength while the card is
+ * rolled, because then it is the only way back and there is nothing else on
+ * the card for the eye to land on.
+ */
+.card-roll {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  height: var(--card-action);
+  justify-content: center;
+  opacity: 0.35;
+  padding: 0;
+  transition:
+    background var(--dur-tint) var(--ease-out),
+    color var(--dur-tint) var(--ease-out),
+    opacity var(--dur-control) var(--ease-out);
+  width: var(--card-action);
+}
+
+.card-roll .icon {
+  height: 12px;
+  stroke-width: 1.9;
+  width: 12px;
+}
+
+.card:hover .card-roll,
+.card-roll:focus-visible,
+.card[data-rolled='true'] .card-roll {
+  opacity: 1;
+}
+
+.card-roll:hover,
+.card-roll:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
 }
 
 .card:hover .card-alpha,
@@ -6262,11 +7771,209 @@ tr:hover .row-action.worn,
 }
 
 .settings-menus legend {
-  color: var(--text-lo);
+  color: var(--group-hue);
   font-size: var(--font-micro);
   letter-spacing: 0.06em;
   padding: 0 5px;
   text-transform: uppercase;
+}
+
+/*
+ * ================================ the settings screen is not one grey =======
+ *
+ * Reported as *"the configuration pages are monochromatic and difficult to
+ * peruse"*, and it was literally so: every legend on the screen was
+ * `--text-lo`, every fieldset seam was `--ink-line`, and the only coloured
+ * thing on the page was the active crumb. Finding "Auto-Retreat" meant
+ * *reading* every legend in the Health section rather than recognising the
+ * block it lives in.
+ *
+ * **One variable does all of it: `--group-hue`.** It is declared on the form
+ * as the section's own hue and re-declared by each fieldset, so a control
+ * loose in the section reads the section's colour and a control inside a
+ * fieldset reads its group's -- one recipe, and no rule has to ask which of
+ * the two it is in.
+ *
+ * What the hue is allowed to paint is deliberately short, and it is the
+ * tonal register §9 asks for rather than a filled block: the legend's text,
+ * the seam, a wash far weaker than a chip's fill because a fieldset is a
+ * hundred times a chip's area, and the focus border of the controls inside
+ * it. It does **not** paint a field's label, its value or its background --
+ * those are what somebody is reading, and colouring them would be spraying
+ * the emphasis this app spends on purpose.
+ *
+ * `.settings-warn` keeps `--danger` and is untouched by any of this. That is
+ * the whole reason `--danger` is not one of the four hues: the two warnings
+ * on this screen are in the open because they can cost a character, and a
+ * Movement fieldset drawn in the same red would stop them reading as
+ * warnings.
+ */
+.settings-form {
+  /*
+   * The defaults, and they are complete on their own.
+   *
+   * Every form on this screen resolves a hue whether or not it names a
+   * section -- the realm form has fieldsets and no sections at all, and the
+   * empty form has neither. A `var()` with nothing behind it is invalid at
+   * computed-value time, which for `border-color` means the seam falls back
+   * to `currentcolor`: a fieldset outlined in body text, on the one form
+   * nobody would think to check. So the rotation is stated here in full and
+   * the per-section rules below only *re*-state it.
+   */
+  --section-hue: var(--section-a);
+  --group-1: var(--section-a);
+  --group-2: var(--section-b);
+  --group-3: var(--section-c);
+  --group-4: var(--section-d);
+
+  /* For the controls a section states outside any fieldset. Each fieldset
+     overrides it; nothing else does. */
+  --group-hue: var(--section-hue);
+}
+
+/*
+ * Which hue a section starts on, and the order the fieldsets in it then walk.
+ *
+ * Four rotations rather than a hue per section, because **only one section is
+ * ever on screen**: what the colour has to do is tell one block from the next
+ * within a page, and give the page an identity that matches the crumb that
+ * opened it. Two sections five apart sharing a hue is invisible.
+ *
+ * The rotations are arranged so that **no two adjacent crumbs share a hue**,
+ * in each of the three orders these screens are drawn in -- the character
+ * form's ten, the Global page's eight and the MudEngine page's two. That is
+ * the one property worth checking when a section is added: put the new name
+ * in the rotation that differs from both of its neighbours.
+ *
+ * A crumb carries the attribute as well as the form, so a crumb that is not
+ * the active one still knows its own hue and can wear it on hover. Without
+ * that it would inherit the form's, and every crumb would highlight in the
+ * colour of whichever section happened to be open.
+ */
+.settings-form[data-section='profile'],
+.settings-form[data-section='realm'],
+.settings-form[data-section='spells'],
+.settings-form[data-section='talk'],
+.settings-form[data-section='appearance'],
+.settings-sections .crumb[data-section='profile'],
+.settings-sections .crumb[data-section='realm'],
+.settings-sections .crumb[data-section='spells'],
+.settings-sections .crumb[data-section='talk'],
+.settings-sections .crumb[data-section='appearance'] {
+  --section-hue: var(--section-a);
+  --group-1: var(--section-a);
+  --group-2: var(--section-b);
+  --group-3: var(--section-c);
+  --group-4: var(--section-d);
+}
+
+.settings-form[data-section='login'],
+.settings-form[data-section='party'],
+.settings-form[data-section='alerts'],
+.settings-form[data-section='records'],
+.settings-sections .crumb[data-section='login'],
+.settings-sections .crumb[data-section='party'],
+.settings-sections .crumb[data-section='alerts'],
+.settings-sections .crumb[data-section='records'] {
+  --section-hue: var(--section-b);
+  --group-1: var(--section-b);
+  --group-2: var(--section-c);
+  --group-3: var(--section-d);
+  --group-4: var(--section-a);
+}
+
+.settings-form[data-section='combat'],
+.settings-form[data-section='movement'],
+.settings-sections .crumb[data-section='combat'],
+.settings-sections .crumb[data-section='movement'] {
+  --section-hue: var(--section-c);
+  --group-1: var(--section-c);
+  --group-2: var(--section-d);
+  --group-3: var(--section-a);
+  --group-4: var(--section-b);
+}
+
+.settings-form[data-section='health'],
+.settings-form[data-section='remotes'],
+.settings-sections .crumb[data-section='health'],
+.settings-sections .crumb[data-section='remotes'] {
+  --section-hue: var(--section-d);
+  --group-1: var(--section-d);
+  --group-2: var(--section-a);
+  --group-3: var(--section-b);
+  --group-4: var(--section-c);
+}
+
+/*
+ * A fieldset takes the next hue along, and `nth-of-type` is what counts them.
+ *
+ * It counts `fieldset` elements among siblings, and on these screens every
+ * `<fieldset>` is a `.settings-menus` and every one of them is a direct child
+ * of the form -- a section is a fragment, and a fragment flattens. So the
+ * count restarts at 1 for each section for free, because only one section is
+ * rendered at a time. A `<fieldset>` added to this screen *without* the class
+ * would take a number and give the fieldset after it somebody else's colour,
+ * which is the one way to break this: the two go together.
+ */
+.settings-menus:nth-of-type(4n + 1) {
+  --group-hue: var(--group-1);
+}
+
+.settings-menus:nth-of-type(4n + 2) {
+  --group-hue: var(--group-2);
+}
+
+.settings-menus:nth-of-type(4n + 3) {
+  --group-hue: var(--group-3);
+}
+
+.settings-menus:nth-of-type(4n + 4) {
+  --group-hue: var(--group-4);
+}
+
+/*
+ * The seam and the wash.
+ *
+ * `--tone-wash` rather than `--tone-weak`: a chip's 12% over forty square
+ * pixels and over a fieldset four hundred pixels wide are not the same
+ * amount of colour, and at 12% a page of eight fieldsets reads as eight
+ * saturated blocks -- the flat-block language §9 retracted. The seam carries
+ * most of the signal and the wash only says where the block ends.
+ */
+.settings-menus {
+  background: color-mix(in srgb, var(--group-hue) var(--tone-wash), transparent);
+  border-color: color-mix(in srgb, var(--group-hue) var(--tone-strong), transparent);
+}
+
+/*
+ * A focused control answers in the colour of the block it is in, rather than
+ * in one accent everywhere. The ring is still the loud element §9 spends on
+ * purpose -- it is the same ring, told where it is.
+ */
+.settings-form input:focus,
+.settings-form select:focus {
+  border-color: color-mix(in srgb, var(--group-hue) var(--tone-strong), transparent);
+}
+
+/*
+ * A crumb answers in its own section's hue, and only once it is pointed at or
+ * taken. Ten permanently coloured pills would be a legend nobody asked for at
+ * the top of every page; the association is learned by using the row, which is
+ * the same bargain the card grip makes.
+ */
+.settings-sections .crumb:hover {
+  background: color-mix(in srgb, var(--section-hue) var(--tone-weak), transparent);
+}
+
+.settings-sections .crumb[data-active='true'] {
+  background: color-mix(in srgb, var(--section-hue) var(--tone), transparent);
+  color: var(--section-hue);
+}
+
+/* The heading a loose group of fields takes when it is not a fieldset: same
+   hue as the section, because that is exactly what it is part of. */
+.settings-form .settings-subhead {
+  color: var(--group-hue);
 }
 
 .settings-accents {
@@ -6543,7 +8250,8 @@ tr:hover .row-action.worn,
  * rather than one: what is left, and who took the rest off.
  */
 .target-meter {
-  height: 22px;
+  /* A floor, for the reason `.meter` records: this one carries a label too. */
+  height: max(22px, calc(var(--font-micro) * 1.5));
 }
 
 /*
@@ -7266,7 +8974,10 @@ tr:hover .row-action.worn,
  */
 .tab-rail .rail-settings {
   flex: 0 0 auto;
-  padding: 6px;
+  /* Square in the band, so the head reads as one control group rather than a
+     tall pill beside a short one. */
+  padding: 0;
+  width: var(--topbar-h);
   background: transparent;
   color: var(--text-lo-quiet);
 }
@@ -7373,8 +9084,13 @@ tr:hover .row-action.worn,
 
 .toolbar-card > header {
   flex: 0 0 auto;
-  /* The bottom padding a stacked card leaves for its body is a gap here. */
-  padding: var(--pad-card);
+  /*
+   * Horizontal only. The card is exactly the band tall now, and the row of
+   * keys inside it is `--control-h`; vertical padding on top of that would
+   * either push the keys out of the box or make the band taller than the two
+   * controls it lines up with.
+   */
+  padding: 0 var(--pad-card);
 }
 
 /* The name is the grip's label; on the rail it is the only word on the card. */
@@ -7387,21 +9103,27 @@ tr:hover .row-action.worn,
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--pad-card) calc(var(--pad-card) + 16px) var(--pad-card) 0;
+  /* The right inset is the action column's, which still overlays this edge. */
+  padding: 0 calc(var(--pad-card) + 16px) 0 0;
 }
 
 /*
- * One icon high, whatever the strip has been dragged to.
+ * One band high, whatever the strip has been dragged to.
  *
  * The strip's own height is per client and drives every *other* card docked in
  * it; this one declares its own, because a toolbar with empty space under it
  * is not a taller toolbar. It is a declared height rather than a content-derived
  * one, so the rule that a card never resizes with its contents still holds — the
  * row scrolls sideways when there are more buttons on it than fit.
+ *
+ * And the height it declares is `--topbar-h`, shared with the rail head and
+ * the put-away chips, because those three are the row across the top of the
+ * window. It used to be `--control-h` plus a full card's padding either side,
+ * which made it half again as tall as either of the other two.
  */
 .dock > .card.toolbar-card,
 .rail > .card.toolbar-card {
-  height: calc(var(--control-h) + var(--pad-card) * 2);
+  height: var(--topbar-h);
 }
 
 /*

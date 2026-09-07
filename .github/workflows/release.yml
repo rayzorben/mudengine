@@ -140,6 +140,80 @@ jobs:
             dist/*.dmg
             dist/*.zip
 
+  # The container image, which is a fourth artefact of the same release.
+  #
+  # Not part of the `build` matrix, because it is not a per-platform build of
+  # the same thing: the desktop matrix produces one installer per host OS from
+  # three runners, and this produces one linux/amd64 image from one. Folding it
+  # in would give it a `matrix.platform` it does not have and make
+  # `fail-fast: false` mean something different for it.
+  #
+  # It needs `verify` and nothing else. Waiting on `build` would hold a
+  # perfectly good image behind a Windows toolchain problem it shares no code
+  # with.
+  #
+  # **Pushes only from a tag, or a dispatch that asked to publish.** Everything
+  # else builds the image and throws it away, which is the check worth having
+  # on a pull request: the Dockerfile still builds.
+  docker:
+    name: Container image
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: rayzorben/mudengine
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag comes out of package.json, never out of the git ref. `verify`
+      # has already refused a tag that disagrees with it, so by here the two
+      # are the same number — and reading the file is what keeps that true for
+      # a `workflow_dispatch` run, which has no tag at all.
+      - name: The version to tag the image with
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # No credentials, no login, and the build below still runs. A fork's pull
+      # request has no access to the secrets and must not fail for it.
+      #
+      # The condition reads `secrets` directly and deliberately not a
+      # step-level `env`: a step's own `env:` block is applied *after* its `if`
+      # is evaluated, so a condition naming one is always comparing against an
+      # empty string and the step never runs. It type-checks as YAML and fails
+      # silently, which is the worst shape a guard can have.
+      - name: Sign in to Docker Hub
+        if: secrets.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # linux/amd64 only, which is what package.json's linux targets already
+      # say: the image carries an Electron built for x64, and an arm64 image
+      # would need an arm64 Electron and a reason to want one.
+      - name: Build, and push only when this is a release
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && secrets.DOCKERHUB_USERNAME != '' }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          # The layer cache lives in the Actions cache, so an unchanged
+          # dependency layer is not a thousand-package install every run.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: What was published
+        run: |
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}" = "true" ]; then
+            echo "Pushed ${IMAGE}:${{ steps.v.outputs.version }} and ${IMAGE}:latest"
+          else
+            echo "Built ${IMAGE}:${{ steps.v.outputs.version }} without pushing (not a release)."
+          fi
+
   release:
     name: Publish the release
     needs: build

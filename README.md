@@ -58,6 +58,64 @@ mudengine is built on the opposite idea: it never pretends to know something
 it doesn't, it never quietly does something you can't inspect, and when it
 declines to act, it tells you that too.
 
+## Running it in a container
+
+There is an image, and it is the whole client rather than a cut-down web
+version of it:
+
+```
+docker run --rm -p 8080:8080 -v mudengine:/config rayzorben/mudengine:latest
+```
+
+Then open the address it prints — `http://localhost:8080/vnc.html` — and sign
+in with the username and password it printed on first start.
+
+**What is actually running.** mudengine is an Electron application: a desktop
+window, not a web server. The container runs the real client on a virtual
+display and serves a remote-framebuffer client over HTTP, so every feature
+works because it *is* the application. The alternative — serving the renderer
+and replacing the main process with a server — is a rewrite of the whole
+client rather than a packaging job, since main owns the game sockets, the
+files on disk, the world database and the automation arbiter.
+
+| | |
+|---|---|
+| `-p 8080:8080` | the port the browser connects to. |
+| `-v mudengine:/config` | **keep this.** It is `MUDENGINE_HOME`: your options file, realms, characters and logs. Without it they are deleted with the container. |
+| `-e MUDENGINE_PASSWORD=…` | choose the password instead of having one generated. |
+| `-e MUDENGINE_USERNAME=…` | the sign-in name. Defaults to `mudengine`. |
+| `-e MUDENGINE_SCREEN=1920x1080x24` | the size of the virtual display, and so of the window. |
+
+**The password.** On the first start the container generates one, prints it
+once, and saves it to `/config/.access-password` on the volume. Later starts do
+not reprint it. Delete that file to have a new one made, or set
+`MUDENGINE_PASSWORD` to choose your own.
+
+**Read this before exposing the port.** The framebuffer is behind that
+password — a browser with no credentials is served the noVNC page and refused
+the socket, so it sees a login prompt and nothing of the game — but **the
+connection is not encrypted**. The password travels in an HTTP header. On
+anything other than a machine you are sitting at, put a TLS-terminating proxy
+in front of it.
+
+**The log says `ERROR` a few times on start, and that is expected.** Chromium
+looks for a D-Bus system bus and a GPU, and a container has neither:
+
+```
+ERROR:bus.cc(407)] Failed to connect to the bus: ... /run/dbus/system_bus_socket
+ERROR:viz_main_impl.cc(181)] Exiting GPU process due to errors during initialization
+```
+
+Both are harmless — the client falls back to software rendering and does not
+use the bus. They are left in rather than silenced because the alternative is
+turning down Chromium's log level, which would hide real errors along with
+these. If the container says `healthy` and the page draws, it is working.
+
+Building it yourself is `npm run docker:build`, which reads the tag out of
+`package.json` so it cannot drift from the release it belongs to.
+`npm run docker:run` runs what that built. Pushing is a separate command on
+purpose.
+
 ## Where it stands
 
 Everything described above works today. The project is not yet at version 1.0 —

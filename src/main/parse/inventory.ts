@@ -33,7 +33,7 @@ import type {
 } from '../../shared/character';
 import { bankKey, DENOMINATIONS } from '../../shared/character';
 import { wireItem, type ItemEntity } from '../../shared/entities';
-import { bareName, sameItem } from '../../shared/items';
+import { bareName, countedName, sameItem } from '../../shared/items';
 
 /**
  * A purchase or a sale moving the purse, in the copper the server quoted.
@@ -186,12 +186,39 @@ export function parseCarriedEntries(entry: string): CarriedItem[] {
   // among the items would land in the encumbrance count and in the paste of
   // what somebody is carrying, where it is not an item anybody means.
   if (parseCoinEntry(entry) !== null) return [];
-  const counted = /^(?<count>\d+) (?<rest>\S.*)$/.exec(entry.trim());
-  if (!counted?.groups) return [parseCarried(entry)];
-  const count = Number(counted.groups['count']);
-  const item = parseCarried(counted.groups['rest']!);
-  if (!Number.isFinite(count) || count < 1 || item.slot !== null) return [parseCarried(entry)];
+  const { count, name } = countedName(entry);
+  // No figure to take off, so there is nothing to expand and the entry is the
+  // item exactly as the listing spelled it.
+  if (name === entry.trim()) return [parseCarried(entry)];
+  const item = parseCarried(name);
+  // A count never carries a slot — the worn one is listed on its own — so a
+  // figure in front of an annotated entry is part of the name after all.
+  if (item.slot !== null) return [parseCarried(entry)];
   return Array.from({ length: count }, () => ({ ...item }));
+}
+
+/**
+ * One entry of the key listing, as the keys it stands for.
+ *
+ * The second half of the `i` block counts exactly as the first does, and until
+ * 2026-09-06 nothing here took the figure off. Across the 218 captures the
+ * corpus holds six distinct key lines and **four of them are counted**:
+ * `2 black star keys`, `2 golden idols` (captures/002 and /038), against the
+ * plain `bone key` and a realm that lists two the long way,
+ * `golden idol, golden idol`. Expanding the counted form into instances is
+ * what makes those last two spellings the same fact — and taking the figure
+ * off the front is what lets the realm's row for the key be found at all,
+ * which is the whole of the reported bug: `2 bone key` in the pack, `Key: 177`
+ * on the door, and the router saying the key was missing.
+ *
+ * A plural the count brought with it is **left on the name**. Only an index
+ * can say whether `keys` is this realm's plural of `key` or the last word of
+ * the item, and this file has no index; `WorldGraph.itemIdNamed` settles it
+ * where the realm can be asked.
+ */
+export function parseKeyEntries(entry: string): string[] {
+  const { count, name } = countedName(entry);
+  return Array.from({ length: count }, () => name);
 }
 
 /**
@@ -440,25 +467,63 @@ export function withOwnEquipment(
 }
 
 /**
- * Something dropped here, as an entity.
+ * Something dropped here, as an entity — **or one more of what is already
+ * lying here.**
  *
  * `hydrate` is a parameter because resolving a name against the realm asks the
  * world graph, which is the tracker's — this module is `state in → state out`
  * and holds nothing. Without one the floor still gains a whole wire entity,
  * which is the dual-source rule.
+ *
+ * A name already on the floor used to be a **no-op**, and that was right for
+ * exactly as long as the floor could not count: the room prints one entry per
+ * name, so a second of a thing had nowhere to go. It counts now
+ * (`You notice … 66 bone key, 2 amethyst ring here.`), so the second one goes
+ * on the count — which is what the maintained-listing rule asks of a
+ * broadcast, keeping the listing true until the next `You notice` states it
+ * again.
  */
 export function withRoomItem(
   state: CharacterState,
   item: string,
-  hydrate?: (name: string) => ItemEntity
+  hydrate?: (name: string) => ItemEntity,
+  count = 1
 ): CharacterState {
-  if (state.room.items.some((there) => sameItem(there.name, item))) return state;
-  const entity: ItemEntity = hydrate?.(item) ?? wireItem(item);
-  return { ...state, room: { ...state.room, items: [...state.room.items, entity] } };
+  const added = Math.max(1, count);
+  const index = state.room.items.findIndex((there) => sameItem(there.name, item));
+  const items = [...state.room.items];
+  if (index >= 0) {
+    const there = items[index]!;
+    items[index] = { ...there, count: (there.count ?? 1) + added };
+  } else {
+    const entity: ItemEntity = hydrate?.(item) ?? wireItem(item);
+    items.push(added > 1 ? { ...entity, count: added } : entity);
+  }
+  return { ...state, room: { ...state.room, items } };
 }
 
-export function withoutRoomItem(state: CharacterState, item: string): CharacterState {
-  const items = state.room.items.filter((there) => !sameItem(there.name, item));
-  if (items.length === state.room.items.length) return state;
+/**
+ * One off the floor — **one**, not the pile it was part of.
+ *
+ * This filtered the whole entry out, and that was right for exactly as long as
+ * the count was glued to the front of the name: `sameItem('66 bone key',
+ * 'bone key')` was false, so `You took bone key.` matched nothing and the
+ * floor was left for the next `You notice` to restate. With the count split
+ * off (2026-09-06) the name matches, and filtering would have one `get` erase
+ * sixty-five keys the server would still print — a broadcast making the
+ * listing *false*, which is the opposite of what the broadcasts are for.
+ *
+ * An entry with no count is one, so it goes as it always did. The name is
+ * still all the floor can be searched by, which is why the count is the only
+ * thing this can be more careful about.
+ */
+export function withoutRoomItem(state: CharacterState, item: string, count = 1): CharacterState {
+  const index = state.room.items.findIndex((there) => sameItem(there.name, item));
+  if (index < 0) return state;
+  const there = state.room.items[index]!;
+  const left = (there.count ?? 1) - Math.max(1, count);
+  const items = [...state.room.items];
+  if (left <= 0) items.splice(index, 1);
+  else items[index] = { ...there, count: left };
   return { ...state, room: { ...state.room, items } };
 }

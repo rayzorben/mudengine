@@ -22,11 +22,12 @@ name: Thorn the Unready
 # a defaulted character is a tab that silently dials somewhere you never chose.
 # (The key is still spelled `server:`; the word on screen is Realm.)
 #
-# Either the name of a realm in `servers/<id>/server.yaml` -- seven ship: the
-# six Paradigm realms and GMUD (5X), which is the default a new character made
-# from the settings screen starts on (`DEFAULT_REALM_NAME` in
-# `src/shared/config.ts` is the other half of that pair):
-server: GMUD (5X)
+# Either the name of a realm in `servers/<id>/server.yaml` -- six ship, one per
+# Paradigm realm, and Game 1 PVE is the default a new character made from the
+# settings screen starts on (`DEFAULT_REALM_NAME` in `src/shared/config.ts` is
+# the other half of that pair). It is also the realm the map built into the
+# client was built from, so a new character's realm and its map are one game:
+server: Paradigm Game 1 PVE
 #
 # ...or spelled out here, if it is only used by this character:
 # server:

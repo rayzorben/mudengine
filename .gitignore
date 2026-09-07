@@ -84,6 +84,17 @@ docs/
 # like everything else and were taken out of the index in the same change.
 !/README.md
 
+# And `build/README.md`, which stopped being working notes on 2026-09-05.
+#
+# It was taken out of the index with the rest of the prose, and correctly: it
+# said only that the icon slots were empty on purpose. The icons are now there
+# and tracked, and that file is the only record of how they were cut from the
+# artwork, why there are four sizes and why nothing automates the recut.
+# `git add build/` would otherwise take three binaries and leave their
+# explanation behind, in a repository whose stated position is that the
+# comments are the documentation.
+!/build/README.md
+
 # Reference source cloned for comparison, never ours to track. `MMUD-Explorer`
 # is a 138 MB VB6 tree with a realm database in it; it is read here and lives
 # nowhere in this repository's history.

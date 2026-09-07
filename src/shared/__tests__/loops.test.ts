@@ -19,6 +19,15 @@ describe('reading a loop out of the options file', () => {
     expect(loop?.stops).toEqual([{ room: 'Newhaven, Arena' }, { room: 'Newhaven, Narrow Road' }]);
   });
 
+  it('reads a route this character prefers, and nothing else as one', () => {
+    const loops = asLoops([
+      { name: 'To the bank', stops: ['A', 'B'], bounce: true, prefer: true },
+      { name: 'Sewers', stops: ['A', 'B'], prefer: 'yes' }
+    ]);
+    expect(loops[0]).toMatchObject({ bounce: true, prefer: true });
+    expect(loops[1]).not.toHaveProperty('prefer');
+  });
+
   it('takes a stop with a linger, and clamps it', () => {
     const [loop] = asLoops([
       {
@@ -132,6 +141,7 @@ describe('whether two lists of loops say the same thing', () => {
     expect(sameLoops([one], [{ ...one, stops: [{ room: 'B' }, { room: 'A' }] }])).toBe(false);
     expect(sameLoops([one], [{ ...one, stops: [{ room: 'A' }, { room: 'C' }] }])).toBe(false);
     expect(sameLoops([one], [{ ...one, bounce: true }])).toBe(false);
+    expect(sameLoops([one], [{ ...one, prefer: true }])).toBe(false);
     expect(sameLoops([one], [{ ...one, stops: [{ room: 'A' }, { room: 'B', linger: 20 }] }])).toBe(
       false
     );

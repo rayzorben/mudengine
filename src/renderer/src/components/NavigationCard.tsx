@@ -514,6 +514,14 @@ function walkChip(walk: WalkProgress) {
   if (walk.status === 'walking' && walk.hold === 'barrier') {
     return <span className="chip warn">{t('cards.navigation.route.badgeBlocked')}</span>;
   }
+  /*
+   * Looking for a hidden exit the realm says is there. `info` rather than
+   * `warn` — the client *is* working on this one, and it has no ceiling, so a
+   * warning that could stand for an hour would stop meaning anything.
+   */
+  if (walk.status === 'walking' && walk.hold === 'searching') {
+    return <span className="chip info">{t('cards.navigation.route.badgeSearching')}</span>;
+  }
   if (walk.status === 'walking') {
     return (
       <span className="chip">

@@ -54,6 +54,19 @@ export interface Loop {
    */
   bounce?: boolean;
   /**
+   * The way between these stops is the way this character prefers, and the
+   * router follows it wherever it can.
+   *
+   * What *Save Route* on the loop builder writes (2026-09-05): a route
+   * somebody drew by hand is a statement about how to get somewhere, not only
+   * a list of places to visit, so every leg between its stops is planned once
+   * and the corridors it runs along are priced at a fraction of an ordinary
+   * step (`tuning.world.preferredStepCost`) for every route this character
+   * plans afterwards — the palette's, a loop's leg, the way home from a
+   * fight. A loop without it is only somewhere to walk round.
+   */
+  prefer?: boolean;
+  /**
    * Which area of the realm this loop is in, for a list too long to read.
    *
    * Four hundred and twenty shipped loops in one column is a wall nobody
@@ -225,6 +238,7 @@ export function asLoops(value: unknown, limits?: LoopLimits): Loop[] {
       name,
       stops,
       ...(record['bounce'] === true ? { bounce: true } : {}),
+      ...(record['prefer'] === true ? { prefer: true } : {}),
       category: stated.length > 0 ? stated : loopCategory(name)
     });
   }
@@ -251,6 +265,9 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
     if (!other) return false;
     if (loop.name !== other.name) return false;
     if ((loop.bounce ?? false) !== (other.bounce ?? false)) return false;
+    // Preferring is a routing fact about the whole realm, so a file that
+    // gains or loses it has to republish for the reason `category` does.
+    if ((loop.prefer ?? false) !== (other.prefer ?? false)) return false;
     /*
      * `category` **is** compared, even though `loopNode` deliberately never
      * writes it.
@@ -410,6 +427,23 @@ export interface LoopProgress {
   /** When this run started, epoch ms; null while nothing has. */
   startedAt: number | null;
   /**
+   * When this run first stood on the loop, epoch ms; null until it has.
+   *
+   * `startedAt` is the button; this is the lap. They differ by the walk out —
+   * twenty-eight steps from town, on the run this was asked for — and that
+   * stretch is not part of what the loop is earning. Set once per run, at the
+   * first stop the run reaches *or* immediately when the character was already
+   * standing on one when Start was pressed; a `resume` leaves it alone,
+   * because a pause is in the middle of a lap that has long since begun.
+   *
+   * Read by the Combat Stats card, which re-bases its figures on it (todo 01,
+   * *"starting a loop should reset combat statistics; restarting a loop should
+   * not"*). Published rather than inferred from `stop` moving, because a stop
+   * moves for a skip too, and a skipped opening stop is not a character that
+   * got to the start of its loop.
+   */
+  lapBegunAt: number | null;
+  /**
    * The character's experience when the run started, or null when it was not
    * known then — in which case nothing about experience made is claimed.
    */
@@ -430,6 +464,7 @@ export const NO_LOOP: LoopProgress = {
   reason: null,
   hold: null,
   startedAt: null,
+  lapBegunAt: null,
   expAtStart: null,
   forward: true,
   bounce: false

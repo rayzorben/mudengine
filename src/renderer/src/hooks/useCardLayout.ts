@@ -53,6 +53,14 @@ export const CARDS = [
   { id: 'room', label: t('cards.room.title') },
   { id: 'map', label: t('cards.map.title') },
   /*
+   * Where a loop is drawn: the map again, as a chooser rather than a
+   * picture. Put away by default and brought out as a float by the palette,
+   * the toolbar or the Map card's own action, because a map you click rooms
+   * on wants more of the screen than a rail slot and it is a tool reached
+   * for, not a readout watched.
+   */
+  { id: 'builder', label: t('cards.builder.title') },
+  /*
    * One card, two faces: `ROUTE` and `LOOP`.
    *
    * They were `walk` and `loop`, two cards side by side on every rail, and
@@ -121,6 +129,18 @@ export const CARDS = [
    */
   { id: 'banks', label: t('cards.banks.title') },
   /*
+   * The realm's quests, derived from its own text blocks — the realm has no
+   * Quests table and never had one (`indexQuests.ts`).
+   *
+   * Beside the vaults for the same reason those are a card: it is *accumulated*
+   * knowledge about the realm rather than about the room being stood in, so it
+   * is wanted in one town and still wanted in another. Put away by default,
+   * like the Gang and the vaults — most evenings are a loop, and a book of
+   * thirty-nine quests on every rail is a slot spent on something read
+   * occasionally and deliberately.
+   */
+  { id: 'quests', label: t('cards.quests.title') },
+  /*
    * There is no Shop card. A shop is a property of a *room*, so it is a face of
    * the Room card — `ROOM · SHOP`, and `TEMPLE`, `BANK` or `TRAINER` where the
    * realm says so. As a card of its own it appeared and disappeared from the
@@ -171,7 +191,15 @@ export function cardLabel(id: CardId): string {
  * to say. Combat Stats is the other shape — a card somebody opens to ask a
  * question rather than one they watch while playing.
  */
-const DEFAULT_AWAY: readonly CardId[] = ['inventory', 'conversation', 'gang', 'banks', 'stats'];
+const DEFAULT_AWAY: readonly CardId[] = [
+  'inventory',
+  'conversation',
+  'gang',
+  'banks',
+  'stats',
+  'builder',
+  'quests'
+];
 
 /**
  * Cards whose shipped home is a strip docked to the console rather than the
@@ -375,6 +403,21 @@ export interface CardLayout {
    * grip in its corner.
    */
   heights: Partial<Record<CardId, number>>;
+  /**
+   * The cards drawn as their heading alone — name, badge and the controls that
+   * fit beside them — with the body put away.
+   *
+   * **Placement, not preference**, which is why it sits here beside `heights`
+   * rather than in `CardSettings`: it is the same act as dragging a card
+   * shorter, taken to the end. So it survives every move (`without` carries
+   * it, as it carries the heights) and it goes back with the arrangement when
+   * `reset` is reached for — somebody untangling a rail they have rolled flat
+   * expects the cards to come back open.
+   *
+   * A membership list rather than a record of booleans, because that is the
+   * whole question: the ids in it are rolled and every other card is not.
+   */
+  rolled: CardId[];
 }
 
 /** The lanes a card can be docked in, as the drag machine addresses them. */
@@ -404,8 +447,16 @@ export interface CardLayoutApi extends CardLayout {
   dock(id: CardId, lane: Lane, index: number): void;
   /** Which lane holds this card, if a lane does. */
   laneOf(id: CardId): Lane | undefined;
-  /** Lift a card off the rail and leave it over the console. */
-  lift(id: CardId, at: { x: number; y: number }): void;
+  /**
+   * Lift a card off the rail and leave it over the console.
+   *
+   * `size` is for a card brought out by a command rather than by a drag —
+   * the loop builder, which wants more of the screen than a float ships
+   * with. One call rather than a lift and a resize, because two stores in
+   * one tick read the same stale layout and the second would find no float
+   * to size.
+   */
+  lift(id: CardId, at: { x: number; y: number }, size?: { w: number; h: number }): void;
   moveFloat(id: CardId, at: { x: number; y: number }): void;
   sizeFloat(id: CardId, size: { w: number; h: number }): void;
   /** How solid the card is, 0–1. Drives both the fill and the text. */
@@ -444,6 +495,16 @@ export interface CardLayoutApi extends CardLayout {
   sizeRail(id: CardId, fraction: number): void;
   /** Back to the height the card declares for itself. */
   resetHeight(id: CardId): void;
+  /** Whether this card is drawn as its heading alone. */
+  isRolled(id: CardId): boolean;
+  /**
+   * Roll a card up to its heading, or back down to the whole card.
+   *
+   * Stated as the state wanted rather than as a toggle, so the control can say
+   * which way it goes and two of them cannot disagree — the same reason `pin`
+   * takes a boolean.
+   */
+  roll(id: CardId, rolled: boolean): void;
   /** Back to the shipped arrangement, for a rail that has been dragged into a corner. */
   reset(): void;
 }
@@ -503,8 +564,27 @@ function without(current: CardLayout, id: CardId): CardLayout {
     settings: current.settings,
     // Nor the height it was dragged to: a card floated and docked again is
     // back at the size somebody chose for it, not the size it shipped at.
-    heights: current.heights
+    heights: current.heights,
+    // Nor whether it was rolled up. A card rolled up on the rail and then
+    // dragged over the console is the same card, and unrolling it to move it
+    // would be the client undoing a choice in order to honour another.
+    rolled: current.rolled
   };
+}
+
+/**
+ * Which cards a stored layout says are rolled up.
+ *
+ * Parsed like every other stored list: anything that is not a card this build
+ * has is dropped, and a card named twice is held once — a duplicate would make
+ * `roll(id, false)` leave one copy behind and read as a toggle that did
+ * nothing.
+ */
+function readRolled(value: unknown): CardId[] {
+  if (!Array.isArray(value)) return [];
+  const out: CardId[] = [];
+  for (const id of value) if (isCardId(id) && !out.includes(id)) out.push(id);
+  return out;
 }
 
 /**
@@ -678,7 +758,8 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
     floats,
     away,
     settings: readSettings(partial.settings),
-    heights: readHeights(partial.heights)
+    heights: readHeights(partial.heights),
+    rolled: readRolled(partial.rolled)
   };
 }
 
@@ -696,7 +777,16 @@ function parse(stored: string | null): CardLayout | null {
       away: Array.isArray(raw['away']) ? (raw['away'] as CardId[]) : undefined,
       // Cast like the lists above it: `normalizeLayout` is what actually reads
       // this, field by field, and drops whatever is not what it should be.
-      settings: raw['settings'] as CardLayout['settings']
+      settings: raw['settings'] as CardLayout['settings'],
+      /*
+       * `heights` was written by `store` and never read back here, so a card
+       * dragged taller on the rail came back at its shipped height on the next
+       * launch — a gesture that appeared to work and was thrown away at the
+       * window's edge. Found while adding `rolled` beside it, which is stored
+       * exactly the same way and would have inherited the same silence.
+       */
+      heights: raw['heights'] as CardLayout['heights'],
+      rolled: Array.isArray(raw['rolled']) ? (raw['rolled'] as CardId[]) : undefined
     });
   } catch {
     return null;
@@ -791,7 +881,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
             : layout.below.includes(id)
               ? 'below'
               : undefined,
-      lift: (id, at) => {
+      lift: (id, at, size) => {
         const existing = layout.floats.find((entry) => entry.id === id);
         const base = without(layout, id);
         store({
@@ -802,8 +892,8 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
               id,
               x: clamp(at.x, 0, 0.98),
               y: clamp(at.y, 0, 0.98),
-              w: existing?.w ?? DEFAULT_FLOAT.w,
-              h: existing?.h ?? DEFAULT_FLOAT.h,
+              w: clamp(size?.w ?? existing?.w ?? DEFAULT_FLOAT.w, MIN_FLOAT.w, 1),
+              h: clamp(size?.h ?? existing?.h ?? DEFAULT_FLOAT.h, MIN_FLOAT.h, 1),
               solidity: existing?.solidity ?? DEFAULT_FLOAT.solidity
             }
           ]
@@ -847,6 +937,17 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         const heights = { ...layout.heights };
         delete heights[id];
         store({ ...layout, heights });
+      },
+      isRolled: (id) => layout.rolled.includes(id),
+      roll: (id, rolled) => {
+        // Asking for the state it is already in writes nothing: every write is
+        // a `localStorage` round trip and a new layout object, which rebuilds
+        // every card's chrome.
+        if (layout.rolled.includes(id) === rolled) return;
+        store({
+          ...layout,
+          rolled: rolled ? [...layout.rolled, id] : layout.rolled.filter((entry) => entry !== id)
+        });
       },
       /*
        * The *arrangement* goes back to how it ships; what is set on each card

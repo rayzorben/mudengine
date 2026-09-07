@@ -724,6 +724,51 @@ describe('refusing to start one', () => {
   });
 
   /*
+   * And a lap fights **through the switch** — todo 03, 2026-09-06.
+   *
+   * `whileWalking` was already overridden for a loop on the argument that the
+   * loop is chosen for what lives on it; the block's own switch is the same
+   * argument one setting further out. A lap walked with auto-combat off
+   * completes having gained nothing, and the character comes back after eight
+   * hours at the level it left.
+   */
+  it('fights on a loop even with the block switched off', () => {
+    const auto = make(combat({ enabled: false }));
+    auto.noteWalking(true);
+    auto.noteLooping(true);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
+  /* And off a loop it stays off, which is what the switch is for. */
+  it('fights nothing off a loop with the block switched off', () => {
+    const auto = make(combat({ enabled: false }));
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * The master switch is not overridden by anything: with automation off, only
+   * what the player types is ever sent.
+   */
+  it('fights nothing on a loop when automation itself is off', () => {
+    const auto = make(combat({ enabled: true }), false);
+    auto.noteLooping(true);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /* What the loop reads to know whether it has something to say out loud. */
+  it('says when the loop is the only reason it is fighting', () => {
+    expect(make(combat({ enabled: false })).fightingBecauseLooping).toBe(true);
+    expect(make(combat({ enabled: true })).fightingBecauseLooping).toBe(false);
+    expect(make(combat({ enabled: false }), false).fightingBecauseLooping).toBe(false);
+  });
+
+  /*
    * Running away outranks fighting, and this is where that is enforced: a
    * client that ran from a room and swung on the way out would have spent the
    * escape and stayed in the fight.
@@ -1269,6 +1314,7 @@ describe('casting in a fight', () => {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0.15,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -1296,6 +1342,7 @@ describe('casting in a fight', () => {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -1325,6 +1372,7 @@ describe('casting in a fight', () => {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0.9,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -1353,6 +1401,7 @@ describe('casting in a fight', () => {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0.9,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -1389,6 +1438,7 @@ describe('casting in a fight', () => {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
@@ -1431,6 +1481,7 @@ describe('casting in a fight', () => {
       healBelowInCombat: 0,
       healTo: 0,
       healParty: false,
+      invokeItems: false,
       minMana: 0.15,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],

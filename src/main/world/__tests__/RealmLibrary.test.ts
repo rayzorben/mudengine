@@ -38,15 +38,20 @@ afterEach(() => {
 
 describe('a realm database that ships beside the client', () => {
   /*
-   * `GMUD (5X)` names `mdb/2023-09-02-gmud.zip` — relative, because an absolute
-   * path in a shipped file exists on the one computer that wrote it and every
-   * install would fall back with a notice. It has to resolve against the
-   * client's own resources, which is `resources/` in a checkout and somewhere
-   * else entirely inside a package.
+   * A realm carried beside the client names its database **relatively**,
+   * because an absolute path in a shipped file exists on the one computer that
+   * wrote it and every install would fall back with a notice. It has to resolve
+   * against the client's own resources, which is `resources/` in a checkout and
+   * somewhere else entirely inside a package.
+   *
+   * `GMUD (5X)` was the realm that settled this, naming
+   * `mdb/2023-09-02-gmud.zip`; it left the distribution on 2026-09-05 and the
+   * rule stayed, because the option is what any realm shipped beside the client
+   * would need.
    *
    * Asserted on the path the library *reached for*, which a refusal names, so
    * these cost nothing: converting a real 57,511-room database belongs in
-   * `RealmLibrary.realm.test.ts`, and does it with the file that ships.
+   * `RealmLibrary.realm.test.ts`.
    */
   const shippingLibrary = (resourcesDir: string): RealmLibrary =>
     new RealmLibrary({

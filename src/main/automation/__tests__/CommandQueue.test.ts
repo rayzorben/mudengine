@@ -344,3 +344,156 @@ describe('the gap and what it is for', () => {
     expect(sent).toEqual(['a', 'b']);
   });
 });
+
+/*
+ * A command the server threw away — todo 02, reported 2026-09-06.
+ *
+ * `You fumble in confusion!` is `ActionFigure.CheckConfusion` discarding
+ * whatever was sent at the top of `Player.HandleCommand`. Nothing acted on it,
+ * so the decision that produced it still holds; the reported transcript shows
+ * a loop's `e` fumbled, nothing re-sent, and the walk waiting out its
+ * eight-second deadline and giving up.
+ */
+describe('putting back a command the realm threw away', () => {
+  it('sends it again, after the delay the server imposes', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    expect(sent).toEqual(['e']);
+
+    expect(queue.resendLast('e')).toBe(true);
+    // Not on the status line that follows the fumble: the character is inside
+    // the server's own 1,000ms wait.
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['e']);
+
+    vi.advanceTimersByTime(600);
+    expect(sent).toEqual(['e', 'e']);
+  });
+
+  /*
+   * The echo is the server's own statement of which command it is answering.
+   * A mismatch means the fumbled one was not what this queue sent — the player
+   * typed it — and replaying automation's last command instead would send a
+   * move nobody asked for.
+   */
+  it('refuses when the fumbled command is not the one it sent', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    expect(queue.resendLast('bank')).toBe(false);
+    expect(queue.resendLast(null)).toBe(false);
+    vi.advanceTimersByTime(2000);
+    expect(sent).toEqual(['e']);
+  });
+
+  it('has nothing to put back before anything has been sent', () => {
+    expect(queue.resendLast('e')).toBe(false);
+  });
+
+  /* Once per send: a second fumble re-arms it from the resend, so confusion
+     eating four in a row is four resends and never a loop over one intent. */
+  it('puts one command back once', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    expect(queue.resendLast('e')).toBe(true);
+    expect(queue.resendLast('e')).toBe(false);
+    vi.advanceTimersByTime(2000);
+    expect(sent).toEqual(['e', 'e']);
+    // And the resend is itself resendable, which is what makes a run of
+    // fumbles recoverable rather than one.
+    expect(queue.resendLast('e')).toBe(true);
+    vi.advanceTimersByTime(2000);
+    expect(sent).toEqual(['e', 'e', 'e']);
+  });
+
+  /*
+   * An escape must never queue behind a walk step serving out a confusion
+   * delay: `drain` skips what is not due rather than waiting on it.
+   */
+  it('does not hold up anything else while it waits', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    queue.notePrompt();
+    expect(queue.resendLast('e')).toBe(true);
+
+    queue.enqueue({ command: 'w', priority: 'emergency' });
+    expect(sent).toEqual(['e', 'w']);
+  });
+
+  /*
+   * It goes back at the head of its own band — it was decided before
+   * everything now queued and keeps its `seq`, which is what says so — but
+   * **only among what is due**. An intent that can go now is not held for a
+   * second because this one is serving out the server's delay: that is the
+   * same refusal that keeps an escape from queueing behind it, and holding the
+   * whole queue on an intent nobody is waiting for is worse than reordering
+   * two steps of one walk.
+   */
+  it('lets what is due go while it waits, rather than stalling the queue', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    queue.notePrompt();
+    expect(queue.resendLast('e')).toBe(true);
+    queue.enqueue({ command: 'n', priority: 'movement' });
+    queue.enqueue({ command: 's', priority: 'movement' });
+
+    // Both of those are due and the resend is not, so both go first and the
+    // resend follows when the server is listening again.
+    vi.advanceTimersByTime(2000);
+    expect(sent).toEqual(['e', 'n', 's', 'e']);
+  });
+
+  /*
+   * And **among what is due it keeps its place**, which is the half "at the
+   * head" is about: it was decided before everything now queued, so its
+   * original `seq` sorts it first. Shown with the queue held by the player's
+   * typing, which is what lets the delay run out while nothing drains.
+   */
+  it('keeps its place among intents that are equally due', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    queue.notePrompt();
+    expect(queue.resendLast('e')).toBe(true);
+    queue.noteTyping(true);
+    vi.advanceTimersByTime(2000);
+    queue.enqueue({ command: 'n', priority: 'movement' });
+    expect(sent).toEqual(['e']);
+
+    queue.noteTyping(false);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'e', 'n']);
+  });
+
+  /*
+   * Its deadline moves with it. An expiry measured against a send that never
+   * ran would drop a command that was never given its chance.
+   */
+  it('carries its expiry past the delay rather than dying inside it', () => {
+    queue.enqueue({ command: 'e', priority: 'movement', expiresAt: Date.now() + 200 });
+    expect(queue.resendLast('e')).toBe(true);
+    vi.advanceTimersByTime(2000);
+    expect(sent).toEqual(['e', 'e']);
+  });
+
+  /*
+   * What it remembers is bounded by the acknowledgement timeout **on the way
+   * in**, not by the fumble that reads it back.
+   *
+   * The first cut trimmed only inside `resendLast`, which fires while a
+   * character is confused and approximately never otherwise — so the list grew
+   * one entry per automated command for the life of the session, each holding
+   * the `onSent` closure a walk step captures. Roughly 29,000 of them over an
+   * unattended night, with every leg walked reachable through them.
+   */
+  it('forgets a command old enough to have been answered', () => {
+    queue.enqueue({ command: 'a', priority: 'probe' });
+    vi.advanceTimersByTime(base.pacing.ackTimeoutMs + 200);
+    queue.notePrompt();
+    queue.enqueue({ command: 'b', priority: 'probe' });
+
+    // `a` is older than the window the server answers in, so a fumble naming
+    // it is answering something else entirely.
+    expect(queue.resendLast('a')).toBe(false);
+    expect(queue.resendLast('b')).toBe(true);
+  });
+
+  /* A socket that closed took the fight, the room and the reason with it. */
+  it('forgets what it sent when the queue is cleared', () => {
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    queue.clear();
+    expect(queue.resendLast('e')).toBe(false);
+  });
+});

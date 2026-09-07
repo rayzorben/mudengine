@@ -17,7 +17,7 @@
  * used as a confidence signal instead.
  */
 import type { BlockType } from '../../shared/blocks';
-import { ROOM_LIGHTS } from '../../shared/character';
+import { ROOM_LIGHTS, type Afflictions } from '../../shared/character';
 
 export interface Rule {
   type: BlockType;
@@ -81,6 +81,59 @@ export interface Rule {
  */
 export const STATUS_LINE =
   /^\[(?:HP|H)=(?<hp>-?\d{1,6})(?:\/(?<hpMax>\d{1,6}))?(?:[/,| ]\s*(?<manaType>MA|KAI|M|K)=(?<mana>\d{1,6})(?:\/(?<manaMax>\d{1,6}))?)?(?<fields>[^\]]*?)(?:\s?\((?<stateA>Resting|Meditating)\)\s?)?\]:?(?:\s?\((?<stateB>Resting|Meditating)\))?/;
+
+/**
+ * The sentence each condition begins with, and which condition it is.
+ *
+ * One statement of each pattern, read twice: by the rules below that type the
+ * line, and by `afflictionOnset`, which answers *what does this sentence turn
+ * on* for a caller holding a sentence rather than a line. Two copies of a
+ * regex agree until one is edited, which is the lesson `GUARD_FIELDS` records.
+ *
+ * `afflictionOnset` exists because the **ending** of a condition is not always
+ * one of the four sentences below it: the spell message table pairs `You are
+ * blind!` with `The effects of the mummy's breath wears off!`, which is a buff
+ * frame and reaches the tracker as one. Asking the table what a wear-off ends,
+ * and then asking this what that spell's *start* turned on, is how a condition
+ * the realm ends in its own words gets switched off. See
+ * `CharacterTracker`'s `user-buff-expired` case.
+ */
+export const AFFLICTION_ONSETS: ReadonlyArray<{
+  type: BlockType;
+  condition: keyof Afflictions;
+  pattern: RegExp;
+}> = [
+  { type: 'user-blinded', condition: 'blind', pattern: /^You are blind!$/ },
+  {
+    type: 'user-poisoned',
+    condition: 'poisoned',
+    pattern: /^(?:You are dizzy and disoriented from poison|Poison burns through your veins)!$/
+  },
+  {
+    type: 'user-diseased',
+    condition: 'diseased',
+    pattern: /^You are inflicted with a hideous rotting disease!$/
+  },
+  {
+    type: 'user-held',
+    condition: 'held',
+    pattern: /^(?:Your legs are paralyzed|You are held by .+)!$/
+  }
+];
+
+/** Which condition a sentence announces the onset of, or null for any other. */
+export function afflictionOnset(sentence: string): keyof Afflictions | null {
+  const text = sentence.trim();
+  return AFFLICTION_ONSETS.find((onset) => onset.pattern.test(text))?.condition ?? null;
+}
+
+/** The rule for one condition's onset, so the table below states it once. */
+function onsetRule(condition: keyof Afflictions): Rule {
+  const found = AFFLICTION_ONSETS.find((onset) => onset.condition === condition);
+  /* istanbul ignore next -- the list above is exhaustive over the four keys. */
+  if (!found) throw new Error(`No onset sentence for ${condition}.`);
+  return { type: found.type, pattern: found.pattern };
+}
 
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
@@ -287,7 +340,7 @@ export const RULES: Rule[] = [
    * nothing, so the client raised a warning once per *look* for as long as the
    * condition lasted and never once when it began.
    */
-  { type: 'user-blinded', pattern: /^You are blind!$/ },
+  onsetRule('blind'),
   /*
    * And the same sentence with a full stop, which is a room block wearing a
    * condition's words.
@@ -331,14 +384,11 @@ export const RULES: Rule[] = [
    * wire disagrees, the wire wins.
    */
   { type: 'user-blind-ends', pattern: /^You can see again!$/ },
-  {
-    type: 'user-poisoned',
-    pattern: /^(?:You are dizzy and disoriented from poison|Poison burns through your veins)!$/
-  },
+  onsetRule('poisoned'),
   { type: 'user-poison-ends', pattern: /^The dizzying poison runs its course\.$/ },
-  { type: 'user-diseased', pattern: /^You are inflicted with a hideous rotting disease!$/ },
+  onsetRule('diseased'),
   { type: 'user-disease-ends', pattern: /^The disease dies down\.$/ },
-  { type: 'user-held', pattern: /^(?:Your legs are paralyzed|You are held by .+)!$/ },
+  onsetRule('held'),
   { type: 'user-held-ends', pattern: /^You can move again!$/ },
   /* `You are now resting.` — the flag the next status line will carry, said first. */
   { type: 'user-rests', pattern: /^You are now (?<state>resting|meditating)\.$/ },
@@ -1241,6 +1291,25 @@ export const RULES: Rule[] = [
   /* ---------------------------------------------------------- failure */
   { type: 'command-no-effect', pattern: /^Your command had no effect\./ },
   /*
+   * The command was thrown away before the server even looked at it.
+   *
+   * `ActionFigure.CheckConfusion` runs at the top of `Player.HandleCommand` —
+   * before the comm check, before the room's own actions, before movement —
+   * and a hit `return`s. So this is not a move that failed, a swing that
+   * missed or a cast that fizzled: **whatever was sent did not run**, which
+   * makes it the same fact as `You say "go manhole"` (`command-refused`) in a
+   * different sentence, and it has to consume its expectation the same way or
+   * the next room answers a move nobody made.
+   *
+   * **The sentence is realm data and only this spelling is claimed.** The
+   * server takes the line from the spell's own `ConfuseMsg` ability, so a
+   * realm may print anything at all; `You fumble in confusion!` is what the
+   * corpus holds — 23 lines across five captures — and what the reported
+   * transcript shows. A frame cannot be generalised from a message table, so
+   * nothing here tries.
+   */
+  { type: 'command-fumbled', pattern: /^You fumble in confusion!$/ },
+  /*
    * The refusal that names its target, in all three spellings the server ships.
    *
    * `You don't see <x> here.` was written from a live capture; the source has
@@ -1274,7 +1343,17 @@ export const RULES: Rule[] = [
   { type: 'user-search-failed', pattern: /^You notice nothing different to the (?<direction>\w+)/ },
   // MajorMUD's phrasing of the same answer, 59 lines in 11 captures.
   { type: 'user-search-failed', pattern: /^Your search revealed nothing\.$/ },
-  { type: 'user-search-succeeded', pattern: /^You found an exit to the (?<direction>\w+)!/ },
+  /*
+   * Two shapes, and the second is the reason this is not `to the (\w+)`:
+   * `You found an exit downwards!` (`captures/005:187`) is the only successful
+   * search in the whole corpus, and it names its direction as a single adverb
+   * with no `to the` in front of it. Read through `asSpokenDirection`, which
+   * knows the server's several words for one way.
+   */
+  {
+    type: 'user-search-succeeded',
+    pattern: /^You found an exit (?:to the )?(?<direction>\w+)!/
+  },
 
   /* ---------------------------------------------------------- stealth */
   {

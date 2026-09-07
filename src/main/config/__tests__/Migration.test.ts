@@ -10,7 +10,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { ServerStore } from '../ServerStore';
 import { homeAt, type Home } from '../../app/home';
 import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
-import { DEFAULT_CONFIG, DEFAULT_REALM_NAME } from '../../../shared/config';
+import { DEFAULT_CONFIG } from '../../../shared/config';
 
 let dir = '';
 let old = '';
@@ -50,7 +50,6 @@ function migrate(withTemplate = false): void {
     // the two that are about the template ask for it by name.
     template: withTemplate ? path.resolve('resources/config/default.yaml') : undefined,
     internalTemplate: withTemplate ? path.resolve('resources/config/internal.yaml') : undefined,
-    shippedRealms: withTemplate ? path.resolve('resources/servers') : undefined,
     note: (m) => said.push(m)
   });
 }
@@ -364,6 +363,74 @@ describe('the round combat macro', () => {
  * file would be a value no screen can edit and no code can read, which is a
  * setting somebody changes and then waits to see work.
  */
+/*
+ * The client's own mark, stated in an options file that predates it.
+ *
+ * `reconcileWithTemplate` brings a whole absent top-level block across and
+ * deliberately never reaches inside one, so a key added to `ui:` afterwards
+ * reaches nobody who has already run the client. `normalizeConfig` still
+ * defaults it — the mark is drawn either way — but a setting absent from the
+ * file is one nobody reading the file can find.
+ */
+describe('the mark in the status rail', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated beside the other piece of chrome it is a question about', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n  density: auto\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['showLogo']).toBe(true);
+    // Beside `showHud`, not appended after the density: the two are the same
+    // question asked about two pieces of chrome.
+    expect(text.indexOf('showLogo')).toBeGreaterThan(text.indexOf('showHud'));
+    expect(text.indexOf('showLogo')).toBeLessThan(text.indexOf('density'));
+  });
+
+  it('brings the paragraph that explains it, because the file is the documentation', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/status rail/i);
+  });
+
+  it('leaves a file that already states it alone, however it was answered', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n  showLogo: false\n', 'utf8');
+    migrate();
+    migrate();
+    expect(
+      (parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>)['showLogo']
+    ).toBe(false);
+  });
+
+  /*
+   * The options file only. It is a fact about the client rather than about a
+   * character, and writing it into every profile would put a per-character
+   * override in front of somebody who never asked for one.
+   */
+  it('does not write itself into a character', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
+    const scope = home.profile('main');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(scope.file, 'ui:\n  theme: dark\n', 'utf8');
+    migrate();
+    expect(
+      (parse(fs.readFileSync(scope.file, 'utf8')).ui as Record<string, unknown>)['showLogo']
+    ).toBeUndefined();
+  });
+
+  /*
+   * A file with no `ui:` block at all is `reconcileWithTemplate`'s job, not
+   * this one's: it copies the whole block across with its comments, and a key
+   * written here first would be a second, comment-less `ui:` for it to find.
+   */
+  it('leaves a file with no ui block for the template to fill in', () => {
+    fs.writeFileSync(home.options, 'terminal:\n  scrollback: 100\n', 'utf8');
+    migrate();
+    expect(parse(fs.readFileSync(home.options, 'utf8')).ui).toBeUndefined();
+  });
+});
+
 describe('the diagnostics preference', () => {
   const OPTIONS_WITH = `ui:
   # Show the HUD rail beside the console.
@@ -378,7 +445,16 @@ describe('the diagnostics preference', () => {
 
   it('goes from the options file, leaving the rest of the block', () => {
     migrate();
-    expect(parse(fs.readFileSync(home.options, 'utf8')).ui).toEqual({ showHud: true });
+    /*
+     * By key rather than by whole-block equality. The claim is that the one
+     * key goes and its neighbours do not — and `ui:` is a block other
+     * migrations legitimately add to (`statedTheMark` writes `showLogo` into
+     * it), so an exact match here is a tripwire that fires on every future key
+     * and says nothing about the diagnostics preference.
+     */
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    expect(ui['showDiagnostics']).toBeUndefined();
+    expect(ui['showHud']).toBe(true);
   });
 
   it('goes from a character that had been given one by hand', () => {
@@ -577,61 +653,97 @@ toolbar:
   });
 });
 
-describe('the realm a new character starts on', () => {
+/*
+ * `GMUD (5X)` shipped as the default realm for two days and was seeded onto
+ * disks; it left the distribution on 2026-09-05, and this takes it back off
+ * the disks it was put on -- but only where there is provably nothing of the
+ * player's in the directory.
+ */
+describe('the realm that left the distribution', () => {
   const gmud = (): string => path.join(home.serversDir, 'gmud-5x', 'server.yaml');
-  const named = (id: string, name: string, host: string): void => {
-    fs.mkdirSync(path.join(home.serversDir, id), { recursive: true });
-    fs.writeFileSync(
-      path.join(home.serversDir, id, 'server.yaml'),
-      `name: ${name}\nhost: ${host}\nport: 2427\n`,
-      'utf8'
-    );
+
+  const seeded = (body = 'name: GMUD (5X)\nhost: 70.176.151.219\nport: 2427\n'): void => {
+    fs.mkdirSync(path.join(home.serversDir, 'gmud-5x'), { recursive: true });
+    fs.writeFileSync(gmud(), body, 'utf8');
   };
 
-  it('adds it to a home that already has realms of its own', () => {
-    /*
-     * `seedServers` copies the shipped realms only into a home with none, which
-     * is right — a deleted realm must not come back every launch — and which
-     * means a realm added to the client later reaches nobody who has run it
-     * before. The default would then name a realm the player does not have.
-     */
-    named('greatermud-local', 'GreaterMUD (local)', 'orohost');
-    migrate(true);
+  const character = (id: string, realm: string): void => {
+    fs.mkdirSync(home.profile(id).dir, { recursive: true });
+    fs.writeFileSync(home.profile(id).file, `server: ${realm}\n`, 'utf8');
+  };
+
+  it('removes the copy the client seeded, and says so', () => {
+    seeded();
+    migrate();
+
+    expect(fs.existsSync(path.dirname(gmud()))).toBe(false);
+    // Said out loud, like everything else that touches somebody's files.
+    expect(said.join(' ')).toContain('GMUD (5X)');
+  });
+
+  it('runs twice, and the second time has nothing to say', () => {
+    seeded();
+    migrate();
+    migrate();
+    expect(said).toEqual([]);
+  });
+
+  it('leaves a realm somebody has made their own under that id alone', () => {
+    // The id is this client's; the realm in the file is theirs. A directory
+    // name is the weaker half of the pair.
+    seeded('name: My GreaterMUD\nhost: orohost\nport: 2427\n');
+    migrate();
+    expect(fs.existsSync(gmud())).toBe(true);
+  });
+
+  it('leaves it alone once it has been edited or has loops beside it', () => {
+    seeded();
+    fs.mkdirSync(path.join(home.serversDir, 'gmud-5x', 'loops'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home.serversDir, 'gmud-5x', 'loops', 'sewers.yaml'),
+      'name: Sewers\nstops: []\n',
+      'utf8'
+    );
+    migrate();
+
+    // A loop is a fact about the realm and may be the only copy of an
+    // evening's work: a removed realm keeps its loops.
+    expect(fs.existsSync(gmud())).toBe(true);
+    expect(fs.existsSync(path.join(home.serversDir, 'gmud-5x', 'loops', 'sewers.yaml'))).toBe(true);
+  });
+
+  it('leaves it alone while a character still plays there', () => {
+    seeded();
+    character('thorn', 'GMUD (5X)');
+    migrate();
 
     expect(fs.existsSync(gmud())).toBe(true);
-    expect(parse(fs.readFileSync(gmud(), 'utf8'))).toMatchObject({
-      name: DEFAULT_REALM_NAME,
-      port: 2427
-    });
-    // Said out loud, like everything else that writes into somebody's files.
-    expect(said.join(' ')).toContain(DEFAULT_REALM_NAME);
-    // And nothing that was already there is touched.
-    expect(fs.existsSync(path.join(home.serversDir, 'greatermud-local', 'server.yaml'))).toBe(true);
+    /*
+     * And says nothing about it, on this launch or any other. A migration that
+     * cannot finish and announces so every launch is a complaint that repeats
+     * for as long as the file does -- the `findMissingSettings` failure. The
+     * realm still works; its `database:` no longer ships, and the connection's
+     * own fallback notice is what reports that, every time.
+     *
+     * By name rather than by silence: writing a character file is enough to
+     * set other migrations off, and this is a claim about this one.
+     */
+    expect(said.join(' ')).not.toContain('GMUD (5X)');
   });
 
-  it('runs twice without adding it twice', () => {
-    named('greatermud-local', 'GreaterMUD (local)', 'orohost');
-    migrate(true);
-    const first = fs.readFileSync(gmud(), 'utf8');
-    migrate(true);
-    expect(fs.readFileSync(gmud(), 'utf8')).toBe(first);
-    expect(said.join(' ')).not.toContain(DEFAULT_REALM_NAME);
+  it('leaves it alone rather than reading past a character file it cannot parse', () => {
+    seeded();
+    fs.mkdirSync(home.profile('broken').dir, { recursive: true });
+    fs.writeFileSync(home.profile('broken').file, 'server: [unclosed\n', 'utf8');
+    migrate();
+    // An unreadable character file may be the character that plays here.
+    expect(fs.existsSync(gmud())).toBe(true);
   });
 
-  it('leaves a realm the player added under their own id alone', () => {
-    // Matched by name, not by directory: a second entry dialling the same
-    // address is a Realms row nobody can tell from the first, and a repeated
-    // name is dropped after the first, so the copy would never win.
-    named('mine', DEFAULT_REALM_NAME, '70.176.151.219');
-    migrate(true);
-    expect(fs.existsSync(gmud())).toBe(false);
-  });
-
-  it('leaves a home with no realms at all to the first-run seeding', () => {
-    // That path copies every shipped realm rather than this one; doing it here
-    // as well would race it and produce half a set.
-    migrate(true);
-    expect(fs.existsSync(home.serversDir)).toBe(false);
+  it('leaves a home that never had it alone', () => {
+    character('thorn', 'Paradigm Game 1 PVE');
+    migrate();
+    expect(said.join(' ')).not.toContain('GMUD (5X)');
   });
 });
 
@@ -795,7 +907,14 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       'maxHolds',
       'nudgeAfterMs',
       'nudgeSamples',
-      'recentSteps'
+      'recentSteps',
+      // What replaced `searchTries`, added by the same pass.
+      'searchRetryMs',
+      'searchSayEveryMs',
+      // How often a searching walk asks the server to reprint the room, which
+      // is what stops it searching one whose exit it has already found.
+      'searchRecheckEvery',
+      'leverTries'
     ]);
     expect(walk()['nudgeAfterMs']).toBe(1000);
     expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');
@@ -836,7 +955,15 @@ describe("the walk's nudge interval in an existing tuning file", () => {
     );
     migrate();
     const text = fs.readFileSync(home.internal, 'utf8');
-    expect(walk()).toEqual({ holdMs: 1500, nudgeAfterMs: 1000, nudgeSamples: 5 });
+    expect(walk()).toEqual({
+      holdMs: 1500,
+      nudgeAfterMs: 1000,
+      nudgeSamples: 5,
+      searchRetryMs: DEFAULT_INTERNAL.tuning.walk.searchRetryMs,
+      searchSayEveryMs: DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs,
+      searchRecheckEvery: DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery,
+      leverTries: DEFAULT_INTERNAL.tuning.walk.leverTries
+    });
     expect(text).toContain("longer than this realm's own slowest answer");
     expect(text).not.toContain('so this is already the');
   });
@@ -964,14 +1091,21 @@ describe('the map density pair in an existing tuning file', () => {
 
   it('takes the retired key out and states the pair where it stood', () => {
     migrate();
-    /* And `rateFloorMs`, the key `tuning.view` gained in the same pass. */
-    expect(Object.keys(view())).toEqual([
+    /*
+     * By key and by *position*, not by whole-block equality.
+     *
+     * The claim is that `mapRoomPixels` is gone and the pair stands where it
+     * did — and `tuning.view` is a block other migrations legitimately add to,
+     * so an exact key list is a tripwire that fires on every future key and
+     * says nothing about the map density. It fired twice already.
+     */
+    const keys = Object.keys(view());
+    expect(keys).not.toContain('mapRoomPixels');
+    expect(keys.slice(0, 4)).toEqual([
       'mapRadiusMin',
       'mapRadiusMax',
       'mapRoomPixelsSparse',
-      'mapRoomPixelsDense',
-      'clockTickMs',
-      'rateFloorMs'
+      'mapRoomPixelsDense'
     ]);
     expect(view()['mapRoomPixelsSparse']).toBe(40);
     expect(view()['mapRoomPixelsDense']).toBe(10);
@@ -2631,6 +2765,122 @@ describe('light before the dark, and the supplies list', () => {
 });
 
 /*
+ * The pair added on 2026-09-05 with no migration behind it, which is how the
+ * reporter's own options file came to end its `movement` block at
+ * `extinguishInLight`: the switch that says whether a blind character walks on
+ * existed everywhere except the file they were reading.
+ */
+describe('waiting a condition out', () => {
+  const profile = (): string => home.profile('vaelor').file;
+
+  beforeEach(() => {
+    fs.writeFileSync(path.join(old, 'user.yaml'), OPTIONS, 'utf8');
+    migrate();
+    fs.mkdirSync(path.dirname(profile()), { recursive: true });
+    fs.writeFileSync(
+      profile(),
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    openDoors: true\n',
+      'utf8'
+    );
+  });
+
+  it('writes the pair into a movement block that lacks it, with the paragraph', () => {
+    migrate();
+    const movement = (
+      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
+    )['movement'] as Record<string, unknown>;
+    // `toMatchObject`: door forcing and the light fill their own keys into the
+    // same block on the same run.
+    expect(movement).toMatchObject({
+      openDoors: true,
+      walkWhileBlind: false,
+      walkWhilePoisoned: false
+    });
+    const text = fs.readFileSync(profile(), 'utf8');
+    expect(text).toContain('# doors');
+    expect(text).toContain('IgnoreBlind');
+    // The half the defaults refuse to make configurable, which is the reason
+    // the paragraph travels with the keys.
+    expect(text).toContain('Paralysis always holds');
+    expect(said.some((m) => m.includes('blind or poisoned'))).toBe(true);
+  });
+
+  it('leaves a stated key alone and does not run twice', () => {
+    fs.writeFileSync(
+      profile(),
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhileBlind: true\n    walkWhilePoisoned: true\n',
+      'utf8'
+    );
+    migrate();
+    migrate();
+    const movement = (
+      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
+    )['movement'] as Record<string, unknown>;
+    expect(movement['walkWhileBlind']).toBe(true);
+    expect(said.filter((m) => m.includes('blind or poisoned'))).toHaveLength(0);
+  });
+
+  it('leaves a file with no movement block alone', () => {
+    fs.writeFileSync(profile(), 'server: GreaterMUD (local)\n', 'utf8');
+    migrate();
+    expect(parse(fs.readFileSync(profile(), 'utf8'))['automation']).toBeUndefined();
+  });
+});
+
+/*
+ * The switch added on 2026-09-06 for the reported wall: a character standing on
+ * sixty-six bone keys, told the door beside it needed a bone key. It ships on,
+ * so a file that predates it behaves correctly and says nothing about it —
+ * which is exactly the invisible-setting failure the two migrations above were
+ * each written for.
+ */
+describe('bending down for the key to the way out', () => {
+  const profile = (): string => home.profile('vaelor').file;
+
+  beforeEach(() => {
+    fs.writeFileSync(path.join(old, 'user.yaml'), OPTIONS, 'utf8');
+    migrate();
+    fs.mkdirSync(path.dirname(profile()), { recursive: true });
+    fs.writeFileSync(
+      profile(),
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # doors\n    openDoors: true\n',
+      'utf8'
+    );
+  });
+
+  it('writes the key into a movement block that lacks it, with the paragraph', () => {
+    migrate();
+    const movement = (
+      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
+    )['movement'] as Record<string, unknown>;
+    // `toMatchObject`: the light and the condition waits fill their own keys
+    // into the same block on the same run.
+    expect(movement).toMatchObject({ openDoors: true, collectKeys: true });
+    const text = fs.readFileSync(profile(), 'utf8');
+    expect(text).toContain('# doors');
+    // The half somebody deciding whether to leave it on needs: what it will
+    // *not* do, which is why the paragraph travels with the key.
+    expect(text).toContain('Narrow on purpose');
+    expect(said.some((m) => m.includes('key an exit of the room needs'))).toBe(true);
+  });
+
+  it('leaves a stated key alone and does not run twice', () => {
+    fs.writeFileSync(
+      profile(),
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    collectKeys: false\n',
+      'utf8'
+    );
+    migrate();
+    migrate();
+    const movement = (
+      parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
+    )['movement'] as Record<string, unknown>;
+    expect(movement['collectKeys']).toBe(false);
+    expect(said.filter((m) => m.includes('key an exit of the room needs'))).toHaveLength(0);
+  });
+});
+
+/*
  * The realm databases became zips on 2026-09-04 and the loose copies went, so a
  * realm file naming one by its old name names a file that is not there. Left
  * alone, that is the announced fallback to the shipped world on every single
@@ -2703,5 +2953,92 @@ describe('the realm databases were zipped', () => {
     migrate();
     migrate();
     expect(said.filter((m) => m.includes('zipped'))).toHaveLength(0);
+  });
+});
+
+/*
+ * The search count retires — todo 04, 2026-09-06.
+ *
+ * A `Hidden/Searchable` exit is one the realm's own data says a search reveals,
+ * and giving up after two rolls of a skill check struck a real corridor out of
+ * every route for the session. The searching is unbounded now and the pace is
+ * what is left, so `tuning.walk.searchTries` reads nothing and has to go —
+ * `internal.test.ts` asserts the shipped template normalises to the constant
+ * exactly, and a key nothing reads is a number somebody sets and waits on.
+ */
+describe('the walker’s search count', () => {
+  const withTries = `tuning:
+  walk:
+    # My own note about this one.
+    searchTries: 5
+    maxHolds: 4
+`;
+
+  const walkBlock = (): Record<string, unknown> =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { walk: Record<string, unknown> } })
+      .tuning.walk;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, withTries, 'utf8');
+  });
+
+  it('takes the retired key out and leaves the rest of the block alone', () => {
+    migrate();
+    expect(walkBlock()['searchTries']).toBeUndefined();
+    expect(walkBlock()['maxHolds']).toBe(4);
+  });
+
+  /*
+   * The number is deliberately **not** carried into `searchRetryMs`: a count
+   * of searches and a delay between them are not the same quantity, and
+   * writing 5 into a milliseconds field would be the migration inventing a
+   * figure.
+   */
+  /*
+   * The number is deliberately not *carried* — a count of searches and a delay
+   * between them are not the same quantity — but the two keys that replace it
+   * are written in, with their paragraphs. A retired key removed and its
+   * replacements absent is the invisible-setting failure in a new place, in
+   * the one file this user hand-edits as a scratchpad.
+   */
+  it('writes in the keys that replace it, at their own defaults', () => {
+    migrate();
+    expect(walkBlock()['searchRetryMs']).toBe(DEFAULT_INTERNAL.tuning.walk.searchRetryMs);
+    expect(walkBlock()['leverTries']).toBe(DEFAULT_INTERNAL.tuning.walk.leverTries);
+  });
+
+  it('says so, because a figure that vanished silently is one nobody trusts', () => {
+    migrate();
+    expect(said.join(' ')).toContain('searchTries');
+  });
+
+  it('does nothing on a second run', () => {
+    migrate();
+    const after = fs.readFileSync(home.internal, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.internal, 'utf8')).toBe(after);
+  });
+
+  /* A file that never had it is untouched by *this* migration — another one
+     fills the nudge figures in, which is not this one's business. */
+  it('leaves a file that never had it alone', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  walk:\n    maxHolds: 4\n', 'utf8');
+    migrate();
+    expect(walkBlock()['searchTries']).toBeUndefined();
+    expect(walkBlock()['maxHolds']).toBe(4);
+    expect(said.join(' ')).not.toContain('searchTries');
+  });
+
+  /* And the fumble delay, the other key this build added. */
+  it('writes in the queue’s fumble delay too', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  queue:\n    midRoundMs: 100\n', 'utf8');
+    migrate();
+    const queue = (
+      parse(fs.readFileSync(home.internal, 'utf8')) as {
+        tuning: { queue: Record<string, unknown> };
+      }
+    ).tuning.queue;
+    expect(queue['fumbleRetryMs']).toBe(DEFAULT_INTERNAL.tuning.queue.fumbleRetryMs);
   });
 });

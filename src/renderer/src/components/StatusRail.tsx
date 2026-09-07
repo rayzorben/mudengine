@@ -28,6 +28,15 @@ export interface StatusRailProps {
   /** True while a connection is being made or unmade; the action is refused. */
   busy: boolean;
   onOpenPalette(): void;
+  /**
+   * Draw the client's own mark at the head of the rail (`ui.showLogo`).
+   *
+   * Read straight off the configuration rather than through
+   * `useOverridablePreference`: nothing in the client can turn it on or off but
+   * this setting, so there is no remembered choice for the file to have to
+   * outrank. See `mudengine-ui` on which shape a toggle wants.
+   */
+  showLogo: boolean;
 }
 
 const PHASE_LABEL: Record<ConnectionState['phase'], string> = {
@@ -57,6 +66,7 @@ function StatusRail({
   onToggleConnection,
   busy,
   onOpenPalette,
+  showLogo,
   meter,
   pressure,
   density,
@@ -86,6 +96,21 @@ function StatusRail({
 
   return (
     <footer className="surface status-rail">
+      {/*
+       * The client's own mark, and the only place it says what it is.
+       *
+       * At the head of the status rail rather than in the tab rail's own head:
+       * that row is the three-band edge across the top of the window and its
+       * two controls are what somebody reaches for, while this is furniture. It
+       * takes the height the line already has, so turning it off gives back no
+       * space — which is why the setting exists for taste rather than for room.
+       *
+       * Decorative, and hidden from assistive technology: the window's title
+       * already says the same word, so a second announcement of it on every
+       * status line is noise. The tooltip is the same string for the same
+       * reason — one name, stated once, in `locales/ui.en.yaml`.
+       */}
+      {showLogo && <span aria-hidden="true" className="app-mark" title={t('app.windowTitle')} />}
       {/*
        * The connection lives where its state already is.
        *

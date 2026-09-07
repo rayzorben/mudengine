@@ -166,8 +166,8 @@ ui:
   # `auto` follows the viewport. Never the terminal grid, which NAWS depends on.
   density: auto
 
-  # Where the character tabs sit when more than one character is loaded: top or
-  # left. They are not one control at two angles.
+  # Where the character tabs sit when more than one character is loaded:
+  # top | left | right. They are not one control at three angles.
   #
   # `left` costs horizontal space, which is the expensive axis -- the console
   # needs 80 columns and no MajorMUD-family server will format to less -- but it
@@ -177,6 +177,12 @@ ui:
   #
   # `top` costs rows, which are cheap, and collapses each tab to a name, a state
   # dot and a health bar.
+  #
+  # `right` is `left` mirrored, and the mirror takes the card rail with it: the
+  # tabs move to the right edge and the cards to the left. It costs exactly what
+  # `left` costs. Which side each rail is on is your hand and your monitor, not
+  # a trade -- so it is one setting and not two, because the two rails cannot
+  # both have the same edge.
   #
   # `left` is the default: this is a client for playing several characters, and
   # the roomier rail is the one that earns its space the moment there is more
@@ -250,6 +256,14 @@ ui:
   # arranged by dragging, and remembered per character. "Reset this character's
   # cards" in the command palette puts it back.
   showHud: true
+
+  # The client's own mark, at the left of the status rail.
+  #
+  # On by default: it is the one place the client says what it is, and a brand
+  # nobody ever sees is the same as none. Turn it off if you would rather the
+  # status rail held nothing but facts about the session -- it is not in the way
+  # of anything either way, since it takes the height that line already has.
+  showLogo: true
 
   # The diagnostics cards -- Session, Link, Traffic and Stream -- are not
   # configured here on purpose. They are a tool you reach for when something
@@ -459,6 +473,23 @@ automation:
     # ends the wait sooner.
     walkWhileBlind: false
     walkWhilePoisoned: false
+
+    # The key to the door in front of you.
+    #
+    # A keyed exit with no key and nothing a picklock can do about it is a wall
+    # the router plans around -- so there is no step to be refused at and no
+    # route to press Walk on, and the only moment the client can do anything
+    # about it is while the character is standing in the room. ON BY DEFAULT,
+    # for the reason `provideLight` is: the whole of the wrong action is one
+    # `get` and the weight of a key, and the whole of refusing is the corridor.
+    #
+    # Narrow on purpose. It fires only where the realm names the item an exit
+    # of this room demands, no listing has shown that item in the pack, and the
+    # floor holds a name that can only be that row -- the realm has three
+    # `iron key`s, and a door opened on a coin toss is the confidently wrong
+    # answer the router refuses everywhere else. One `get` per key per room,
+    # said out loud.
+    collectKeys: true
 
   # Keeping the pack stocked -- MegaMUD's Must Have Minimum.
   #
@@ -898,6 +929,22 @@ automation:
     healBelow: 0
     healTo: 0
     healParty: false
+
+    # Ask a carried item for the blessing it casts, when that blessing is not
+    # up -- the half of MegaMUD's AutoBless this client had no answer to: a
+    # *weapon* that blesses.
+    #
+    # The realm states all of it. An item's CastsSp names a spell, and where
+    # UseCount is -1 the server lets it be used for ever -- nine weapons in the
+    # shipped realm cast a sixty-tick bless that way, for no mana and no
+    # charge. Nothing needs configuring: the pack says what is carried and the
+    # realm says what it casts.
+    #
+    # Only unlimited items. One with three charges spent on a buff is three
+    # charges you were saving, so the realm has to *say* -1 and silence is not
+    # unlimited. Never in a fight, and never for a spell with no duration --
+    # that is not a blessing.
+    invokeItems: false
 
     # A different floor while in combat, when one is wanted -- MegaMUD's
     # `HpHealAtt%`, whose own documentation says why: "this percentage should

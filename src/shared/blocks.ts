@@ -517,6 +517,24 @@ export type BlockType =
   // failure
   | 'command-no-effect'
   /**
+   * `You fumble in confusion!` — the command was discarded before the server
+   * looked at it.
+   *
+   * `ActionFigure.CheckConfusion` runs at the top of `Player.HandleCommand`
+   * and `return`s on a hit, so nothing that was sent ran: not a failed move,
+   * not a missed swing, not a fizzled cast. That makes it `command-refused`'s
+   * twin — a room that is not coming — and the expectation the command queued
+   * has to go with it, or every room after it answers one claim early.
+   *
+   * The server also puts the character in a 1,000ms `DelayCommand`, which is
+   * why a resend does not go out on the very next status line.
+   *
+   * The sentence itself is a `Messages` row named by the spell's `ConfuseMsg`
+   * ability, so a realm may print anything; this spelling is the one the
+   * corpus holds (23 lines, five captures) and the one the report showed.
+   */
+  | 'command-fumbled'
+  /**
    * `You don't see soul here.` — the twin of `command-no-effect` that *names*
    * the thing that is not there, in the spelling the player typed. Captured
    * live (`npm run probe:party`, an `invite` a room too early).
@@ -806,6 +824,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-cant-hide': 'stealth',
 
   'command-no-effect': 'failure',
+  'command-fumbled': 'failure',
   'command-refused': 'failure',
   'target-missing': 'failure',
   'target-ambiguous': 'failure',

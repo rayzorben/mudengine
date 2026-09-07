@@ -108,7 +108,8 @@ export interface WalkProgress {
  * — and a route that ends at a door has to be noticed and asked for again by
  * hand. See `Walker.holdAtBarrier`.
  */
-export type WalkHold = 'health' | 'fight' | 'blind' | 'held' | 'poisoned' | 'barrier' | null;
+export type WalkHold =
+  'health' | 'fight' | 'blind' | 'held' | 'poisoned' | 'barrier' | 'searching' | null;
 
 /**
  * Which stated affliction stands a walk still, or null.

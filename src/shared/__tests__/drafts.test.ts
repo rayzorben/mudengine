@@ -266,7 +266,11 @@ describe('a character', () => {
         lightDimRooms: false,
         extinguishInLight: false,
         walkWhileBlind: false,
-        walkWhilePoisoned: false
+        walkWhilePoisoned: false,
+        // Except the one that is on by default and whose absence would switch
+        // it off, which is the health block's rule two assertions down: a
+        // payload that failed to send the field must not mean `false`.
+        collectKeys: true
       });
       // The whole spell name: the realm matches a spell on a prefix, so `ice`
       // would cast whatever begins with it.
@@ -287,7 +291,8 @@ describe('a character', () => {
         minMana: 0.2,
         cures: { blindness: '', poison: '', disease: '' },
         blessings: [],
-        notifyPartyOnWearOff: false
+        notifyPartyOnWearOff: false,
+        invokeItems: false
       });
     });
 
@@ -322,7 +327,11 @@ describe('a character', () => {
         lightDimRooms: false,
         extinguishInLight: false,
         walkWhileBlind: false,
-        walkWhilePoisoned: false
+        walkWhilePoisoned: false,
+        // The shipped default, for the same reason `restBelow` keeps 0.35
+        // here: a nonsense block must not silently switch off something that
+        // ships on.
+        collectKeys: true
       });
       expect(draft?.spells).toEqual({
         attack: '',
@@ -341,7 +350,8 @@ describe('a character', () => {
         areaCasts: 0,
         cures: { blindness: '', poison: '', disease: '' },
         blessings: [],
-        notifyPartyOnWearOff: false
+        notifyPartyOnWearOff: false,
+        invokeItems: false
       });
     });
 

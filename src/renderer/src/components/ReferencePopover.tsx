@@ -1,17 +1,12 @@
 import type { SupplyList } from './SupplyControls';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import ReferenceDetail, { flattenLookup, type ReferenceEntry } from './ReferenceDetail';
+import ReferenceDetail, { entryWord, flattenLookup, type ReferenceEntry } from './ReferenceDetail';
+import PopoverHead, { PopoverSizer } from './PopoverHead';
 import type { RealmFamily } from '@shared/character';
-import {
-  anchorNode,
-  anchorRect,
-  placePopover,
-  scrollMovesAnchor,
-  type PopoverAnchor,
-  type PopoverSide
-} from '../lib/popover';
+import { type PopoverAnchor } from '../lib/popover';
+import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { t } from '../lib/i18n';
 import type { ShopPlace, WorldLookup } from '@shared/world';
 
@@ -89,7 +84,6 @@ export default function ReferencePopover({
   onDismiss,
   supplies = null
 }: ReferencePopoverProps) {
-  const ref = useRef<HTMLDivElement>(null);
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
   /*
    * Kept beside the entry, from the same answer: `ClassOk` names a class by row
@@ -98,7 +92,35 @@ export default function ReferencePopover({
    */
   const [classNames, setClassNames] = useState<Record<number, string>>({});
   const [shopPlaces, setShopPlaces] = useState<Record<string, ShopPlace>>({});
-  const [place, setPlace] = useState<{ top: number; left: number; side: PopoverSide } | null>(null);
+  /*
+   * That the detail has changed size on its own account — a spawn group opened
+   * into the rooms behind it.
+   *
+   * A counter rather than the state itself, because what the placement needs to
+   * know is *that* the panel is a different size and the disclosure belongs to
+   * the component drawing it. Same job as `face` in the Player flyout's own
+   * `measure` list: a panel placed against a short body and then grown is one
+   * left hanging off the bottom of the window.
+   */
+  const [resized, setResized] = useState(0);
+  const onResize = useCallback(() => setResized((count) => count + 1), []);
+  /*
+   * Where it sits, how wide it is, and everything it does to itself — moving,
+   * pinning, resizing and the four dismissal listeners. One hook, shared with
+   * the two flyouts, because these are one panel drawing three things.
+   *
+   * `hold` rather than `dismiss` when the anchor leaves the document: this
+   * panel often hangs off a *rectangle* in the console, which has no element
+   * to disconnect, and where it does hang off a card's name that card redraws
+   * on every status line — and a card redrawing is not a reason for a panel to
+   * go.
+   */
+  const frame = usePopoverFrame({
+    anchor: asked.anchor,
+    measure: [entry, resized],
+    onDismiss,
+    whenAnchorGone: 'hold'
+  });
 
   /*
    * The exact name when the realm has it; otherwise the first match, because
@@ -131,104 +153,59 @@ export default function ReferencePopover({
     };
   }, [asked, lookup]);
 
-  /*
-   * Measured before paint from the panel's own size, then placed. The first
-   * pass renders it hidden so this is a measurement rather than a guess, the
-   * same way `PopupMenu` does — and re-measured when the answer arrives,
-   * because an answer is taller than "looking…".
-   */
-  useLayoutEffect(() => {
-    const panel = ref.current?.getBoundingClientRect();
-    if (!panel) return;
-    if (asked.anchor instanceof HTMLElement && !asked.anchor.isConnected) return;
-    setPlace(
-      placePopover(
-        anchorRect(asked.anchor),
-        { width: panel.width, height: panel.height },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
-  }, [asked, entry]);
-
-  useEffect(() => {
-    const away = (event: PointerEvent): void => {
-      const target = event.target as Node | null;
-      if (target && ref.current?.contains(target)) return;
-      // The name it hangs off is what opened it; a second click there is
-      // handled by the opener, which replaces rather than toggles.
-      if (target && asked.anchor instanceof HTMLElement && asked.anchor.contains(target)) return;
-      onDismiss();
-    };
-    /*
-     * Capture, and the panel owns its own Escape: `useHotkeys` listens in
-     * capture too and would otherwise hand a bare Escape to whatever else is
-     * open — the diagnostics rail, say — leaving this panel over the game.
-     * The terminal keeps focus throughout, so this cannot go through focus.
-     */
-    const key = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      onDismiss();
-    };
-    /*
-     * A scroll closes the panel only when it moved the name the panel hangs
-     * off — `scrollMovesAnchor` has the whole reason. Captured at the window,
-     * every scroller in the client reports here, and the loudest of them is
-     * the console: a pinned terminal scrolls to the bottom on each write, so
-     * dismissing on any scroll took the realm's answer away the moment the
-     * game printed anything. The terminal is a different surface and its
-     * output is not news here.
-     */
-    const scrolled = (event: Event): void => {
-      if (!scrollMovesAnchor(event.target, anchorNode(asked.anchor))) return;
-      onDismiss();
-    };
-    document.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', key, true);
-    // Anything that moves the anchor closes the panel rather than chasing it.
-    window.addEventListener('resize', onDismiss);
-    window.addEventListener('scroll', scrolled, true);
-    return () => {
-      document.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', key, true);
-      window.removeEventListener('resize', onDismiss);
-      window.removeEventListener('scroll', scrolled, true);
-    };
-  }, [asked, onDismiss]);
-
   return createPortal(
     <div
       className="surface popover reference-popover"
-      data-side={place?.side ?? 'right'}
-      ref={ref}
       role="dialog"
       aria-label={t('cards.reference.popover.ariaLabel', { name: asked.name })}
-      style={{
-        top: place?.top ?? 0,
-        left: place?.left ?? 0,
-        visibility: place === null ? 'hidden' : 'visible'
-      }}
+      {...frame.props}
     >
-      {entry === 'pending' ? (
-        <div className="empty">{t('cards.reference.popover.pending', { name: asked.name })}</div>
-      ) : entry === null ? (
-        <div className="reference-detail">
-          <div className="reference-name">{asked.name}</div>
+      {/*
+        The name is the heading, so `ReferenceDetail` does not draw its own —
+        two name rows, one of them scrolling away under the other, would say
+        the same word twice and only sometimes. The realm's word for what kind
+        of thing it is takes the badge slot, where a card's badge goes.
+
+        The *asked* name until the answer arrives, and the realm's spelling
+        after: a panel that said `sandals` and then `Sandals of Speed` is
+        reporting what the realm actually matched, which is the one thing worth
+        knowing when a query is not exact.
+      */}
+      <PopoverHead
+        badge={
+          entry !== 'pending' && entry !== null ? (
+            <span className="chip quiet">{entryWord(entry)}</span>
+          ) : null
+        }
+        onClose={onDismiss}
+        onGrab={frame.onGrab}
+        onPin={frame.togglePin}
+        pinned={frame.pinned}
+      >
+        {entry !== 'pending' && entry !== null ? entry.name : asked.name}
+      </PopoverHead>
+
+      <div className="popover-body">
+        {entry === 'pending' ? (
+          <div className="empty">{t('cards.reference.popover.pending', { name: asked.name })}</div>
+        ) : entry === null ? (
           <div className="empty">{t('cards.reference.notFound')}</div>
-        </div>
-      ) : (
-        <ReferenceDetail
-          classNames={classNames}
-          entry={entry}
-          level={level}
-          onName={onName}
-          onRoom={onRoom}
-          realm={realm}
-          shopPlaces={shopPlaces}
-          supplies={supplies}
-        />
-      )}
+        ) : (
+          <ReferenceDetail
+            classNames={classNames}
+            entry={entry}
+            heading={false}
+            level={level}
+            onName={onName}
+            onResize={onResize}
+            onRoom={onRoom}
+            realm={realm}
+            shopPlaces={shopPlaces}
+            supplies={supplies}
+          />
+        )}
+      </div>
+      <PopoverSizer onReset={frame.onSizeReset} onSize={frame.onSize} />
     </div>,
     document.body
   );

@@ -22,6 +22,7 @@ import type { SessionId } from '@shared/ipc';
 import type { Alignment, CharacterState, RoomExit, RoomOccupant } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import { attacksOnSight, DISPOSITION_WORD } from '@shared/mobs';
+import { countedLabel } from '@shared/items';
 
 export interface RoomCardProps extends CardChrome {
   character: CharacterState;
@@ -202,7 +203,7 @@ function RoomCard({
     if (room.items.length > 0 || coinText(room.cash).length > 0) {
       lines.push(
         t('cards.room.copy.itemsLine', {
-          itemList: [coinText(room.cash), ...room.items.map((item) => item.name)]
+          itemList: [coinText(room.cash), ...room.items.map(countedLabel)]
             .filter((part) => part.length > 0)
             .join(', ')
         })
@@ -213,7 +214,7 @@ function RoomCard({
     if (room.hidden.length > 0 || coinText(room.hiddenCash).length > 0) {
       lines.push(
         t('cards.room.copy.hiddenLine', {
-          itemList: [coinText(room.hiddenCash), ...room.hidden.map((item) => item.name)]
+          itemList: [coinText(room.hiddenCash), ...room.hidden.map(countedLabel)]
             .filter((part) => part.length > 0)
             .join(', ')
         })
@@ -350,6 +351,7 @@ function RoomCard({
                         <AnswersFace
                           answers={answers}
                           ask={ask}
+                          here={located ? roomId(room.map!, room.number!) : null}
                           inRealm={character.phase === 'in-game'}
                         />
                       ),
@@ -715,10 +717,10 @@ function RoomBody({
                             title={t('cards.room.itemLookupTooltip')}
                             type="button"
                           >
-                            {item.name}
+                            {countedLabel(item)}
                           </button>
                         ) : (
-                          item.name
+                          countedLabel(item)
                         )}
                         {item.price !== undefined && <span className="price"> {item.price}</span>}
                         {index < room.hidden.length - 1 && ', '}
@@ -756,10 +758,10 @@ function RoomBody({
                             title={t('cards.room.itemLookupTooltip')}
                             type="button"
                           >
-                            {item.name}
+                            {countedLabel(item)}
                           </button>
                         ) : (
-                          item.name
+                          countedLabel(item)
                         )}
                         {/*
                       What the realm says it is worth, which is the question
@@ -943,12 +945,15 @@ function healthOf(mob: WorldMob): string {
 function AnswersFace({
   answers,
   ask,
-  inRealm
+  inRealm,
+  here
 }: {
   answers: RoomCommand[];
   ask: RoomCardProps['ask'];
   /** A phrase is a control only while there is a socket to send it down. */
   inRealm: boolean;
+  /** Where the character is standing, so a lever's own exit needs no address. */
+  here: string | null;
 }) {
   return (
     <dl className="readout answers">
@@ -977,12 +982,31 @@ function AnswersFace({
                   {t('cards.room.answers.leadsTo', { roomRef: answer.to })}
                 </span>
               )}
+              {/*
+                A lever, and what it opens — todo 01. The exit is usually this
+                room's, so the direction alone says it; where it is another
+                room's the address goes with it, because *pull lever* with no
+                consequence beside it is the client repeating the realm at
+                somebody. `opens` is what tells a lever from a scripted answer.
+              */}
+              {answer.opens !== undefined && (
+                <span className="chip quiet">
+                  {answer.opens.room === here
+                    ? t('cards.room.answers.opensExit', { direction: answer.opens.direction })
+                    : t('cards.room.answers.opensExitElsewhere', {
+                        direction: answer.opens.direction,
+                        roomRef: answer.opens.room
+                      })}
+                </span>
+              )}
               {answer.need !== undefined && (
                 <span className="quiet"> {answer.need.join(', ')}</span>
               )}
-              {answer.to === undefined && answer.need === undefined && (
-                <span className="quiet">{t('cards.room.answers.noEffectKnown')}</span>
-              )}
+              {answer.to === undefined &&
+                answer.need === undefined &&
+                answer.opens === undefined && (
+                  <span className="quiet">{t('cards.room.answers.noEffectKnown')}</span>
+                )}
             </dd>
           </Fragment>
         );
@@ -997,6 +1021,9 @@ function answersCopyText(answers: RoomCommand[]): string {
     .map((answer) => {
       const parts = [answer.say[0] ?? ''];
       if (answer.to !== undefined) parts.push(`→ ${answer.to}`);
+      if (answer.opens !== undefined) {
+        parts.push(`(opens ${answer.opens.direction} of ${answer.opens.room})`);
+      }
       if (answer.need !== undefined) parts.push(`(${answer.need.join(', ')})`);
       return parts.join(' ');
     })

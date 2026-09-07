@@ -1,30 +1,16 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import Icon from './Icon';
 import RemoteList from './RemoteList';
 import PopupMenu from './PopupMenu';
+import PopoverHead, { PopoverSizer } from './PopoverHead';
 import { useCopyMenu } from '../hooks/useCopyMenu';
+import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { GangName } from '../lib/gangs';
 import { ago, place } from '../lib/players';
-import {
-  anchorNode,
-  anchorRect,
-  placePopover,
-  scrollMovesAnchor,
-  type PopoverAnchor,
-  type PopoverPlacement
-} from '../lib/popover';
+import { type PopoverAnchor } from '../lib/popover';
 import { gangOnRoster, joinedTheParty, ownGang, type CharacterState } from '@shared/character';
 import type { RemotesConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
@@ -160,9 +146,7 @@ export default function PlayerFlyout({
   returnFocus,
   inspect
 }: PlayerFlyoutProps) {
-  const ref = useRef<HTMLDivElement>(null);
   const [face, setFace] = useState<Face>('player');
-  const [placed, setPlaced] = useState<PopoverPlacement | null>(null);
   const copy = useCopyMenu();
 
   // A direct lookup: `playerKey` is what the registry files a name under.
@@ -195,91 +179,20 @@ export default function PlayerFlyout({
   useEffect(() => setFace('player'), [asked]);
 
   /*
-   * Measured before paint from the panel's own size, then placed — the first
-   * pass renders it hidden so this is a measurement rather than a guess, the
-   * way `ReferencePopover` and `PopupMenu` do. Re-measured when the face or
-   * the record changes, because a face with a warning under it is taller than
-   * one without, and a health answer arriving adds a row.
+   * Where it sits, how wide it is, and everything it does to itself. One hook,
+   * shared with the Gang flyout and the Reference popover, because the three
+   * are one panel drawing three things — and had already grown three copies of
+   * this that differed in two places.
    *
-   * A row that has left the document — the listing was replaced and this
-   * person is no longer in it — leaves the panel beside nothing, so it goes.
+   * `measure` is the face and the record: a face with a warning under it is
+   * taller than one without, and a health answer arriving adds a row.
    */
-  useLayoutEffect(() => {
-    const panel = ref.current?.getBoundingClientRect();
-    if (!panel) return;
-    const within = anchorNode(asked.anchor);
-    if (within !== null && 'isConnected' in within && !(within as Node).isConnected) {
-      onDismiss();
-      return;
-    }
-    setPlaced(
-      placePopover(
-        anchorRect(asked.anchor),
-        { width: panel.width, height: panel.height },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
-  }, [asked, face, record, onDismiss]);
-
-  const menuOpen = copy.menu !== null;
-  useEffect(() => {
-    const away = (event: PointerEvent): void => {
-      const target = event.target as Node | null;
-      if (target && ref.current?.contains(target)) return;
-      if (!(target instanceof Element)) {
-        onDismiss();
-        return;
-      }
-      /*
-       * The copy menu is a portal outside the panel, and choosing an entry in
-       * it must not put the panel away. A *containment* test, not "is the
-       * menu open": with the flag alone, a click on the console made to put
-       * the menu away closed the menu and left the panel stranded, so the
-       * player clicked twice for one dismissal.
-       */
-      if (target.closest('.popup-menu') !== null) return;
-      /*
-       * A press on any name that opens this panel is left to its click, which
-       * replaces the panel rather than toggling it. Without this the press
-       * dismissed and the click re-opened, so choosing somebody on the other
-       * listing unmounted the panel, flashed it at the origin for a frame and
-       * slid it in again. Marked by attribute rather than by class so the
-       * listings and this panel agree on one word (`PlayerName`).
-       */
-      if (target.closest('[data-opens="player"]') !== null) return;
-      onDismiss();
-    };
-    /*
-     * Capture, and the panel owns its own Escape: `useHotkeys` listens in
-     * capture too and would otherwise hand a bare Escape to whatever else is
-     * open — the diagnostics rail, say — leaving this panel over the game.
-     * The terminal keeps focus throughout, so this cannot go through focus.
-     * While the copy menu is open Escape belongs to it.
-     */
-    const key = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || menuOpen) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onDismiss();
-    };
-    // A scroll closes the panel only when it moved the row the panel hangs off
-    // — `scrollMovesAnchor` has the whole reason.
-    const scrolled = (event: Event): void => {
-      if (!scrollMovesAnchor(event.target, anchorNode(asked.anchor))) return;
-      onDismiss();
-    };
-    document.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', key, true);
-    // Anything that moves the anchor closes the panel rather than chasing it.
-    window.addEventListener('resize', onDismiss);
-    window.addEventListener('scroll', scrolled, true);
-    return () => {
-      document.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', key, true);
-      window.removeEventListener('resize', onDismiss);
-      window.removeEventListener('scroll', scrolled, true);
-    };
-  }, [asked, menuOpen, onDismiss]);
+  const frame = usePopoverFrame({
+    anchor: asked.anchor,
+    measure: [face, record],
+    menuOpen: copy.menu !== null,
+    onDismiss
+  });
 
   // Every entry hands the caret back — see `BentoCard` for why the hook does
   // not do this itself.
@@ -303,79 +216,73 @@ export default function PlayerFlyout({
     <div
       aria-label={t('cards.player.ariaLabel', { name: asked.name })}
       className="surface popover player-flyout"
-      data-side={placed?.side ?? 'right'}
       onContextMenu={copy.onContextMenu}
-      ref={ref}
       role="dialog"
-      style={{
-        top: placed?.top ?? 0,
-        left: placed?.left ?? 0,
-        visibility: placed === null ? 'hidden' : 'visible'
-      }}
+      {...frame.props}
     >
-      <header className="popover-head">
-        {/*
-          The faces live in the heading, and the first wears the title — the
-          same shape as a card's crumbs, drawn with the same pill, because it
-          is the same control.
-        */}
-        <h2>
-          <span className="crumbs" role="tablist">
-            {faces.map((entry) => (
-              <button
-                aria-selected={face === entry.id}
-                className="crumb"
-                data-active={face === entry.id ? 'true' : 'false'}
-                key={entry.id}
-                onClick={() => setFace(entry.id)}
-                onMouseDown={keepFocus}
-                role="tab"
-                type="button"
-              >
-                {entry.label}
-              </button>
-            ))}
-          </span>
-        </h2>
-        {/*
-          No badge. It used to carry the Access face's verdict — `nothing
-          allowed`, `5 allowed` — on the reasoning that somebody reading the
-          detail would want it without switching faces. That is per-face
-          information in the shared header, which is the thing a header must
-          not hold: the count belongs to one of the two faces and read as a
-          property of whichever was open, so the Player face appeared to be
-          reporting a permission it says nothing about. The Access face states
-          it in full, on the face that owns it.
-        */}
-        <button
-          aria-label={t('cards.chrome.close')}
-          className="card-action card-close"
-          onClick={onDismiss}
-          onMouseDown={keepFocus}
-          title={t('cards.chrome.close')}
-          type="button"
-        >
-          <Icon name="close" />
-        </button>
-      </header>
+      {/*
+        The faces live in the heading, and the first wears the title — the same
+        shape as a card's crumbs, drawn with the same pill, because it is the
+        same control.
 
-      {record === null ? (
-        <p className="empty">{t('cards.player.unknownName', { name: asked.name })}</p>
-      ) : face === 'player' ? (
-        <PlayerDetail now={now} onSelectGang={onSelectGang} record={record} />
-      ) : face === 'equipment' ? (
-        <PlayerEquipment inspect={inspect} now={now} record={record} />
-      ) : (
-        <PlayerAccess
-          gang={ownGang(character) ?? null}
-          inGang={inGang}
-          inParty={joinedTheParty(character, asked.name)}
-          onGrant={onGrant}
-          record={record}
-          remotes={remotes}
-          returnFocus={returnFocus}
-        />
-      )}
+        No badge. It used to carry the Access face's verdict — `nothing
+        allowed`, `5 allowed` — on the reasoning that somebody reading the
+        detail would want it without switching faces. That is per-face
+        information in the shared header, which is the thing a header must not
+        hold: the count belongs to one of the two faces and read as a property
+        of whichever was open, so the Player face appeared to be reporting a
+        permission it says nothing about. The Access face states it in full, on
+        the face that owns it.
+      */}
+      <PopoverHead
+        onClose={onDismiss}
+        onGrab={frame.onGrab}
+        onPin={frame.togglePin}
+        pinned={frame.pinned}
+      >
+        <span className="crumbs" role="tablist">
+          {faces.map((entry) => (
+            <button
+              aria-selected={face === entry.id}
+              className="crumb"
+              data-active={face === entry.id ? 'true' : 'false'}
+              key={entry.id}
+              onClick={() => setFace(entry.id)}
+              onMouseDown={keepFocus}
+              role="tab"
+              type="button"
+            >
+              {entry.label}
+            </button>
+          ))}
+        </span>
+      </PopoverHead>
+
+      {/*
+        The faces stay put; the face on screen is what scrolls. The Access
+        face is fifty-seven rows of controls, so this panel does scroll — and
+        a pinned panel whose close glyph had scrolled away with the heading
+        would be one that cannot be put away.
+      */}
+      <div className="popover-body">
+        {record === null ? (
+          <p className="empty">{t('cards.player.unknownName', { name: asked.name })}</p>
+        ) : face === 'player' ? (
+          <PlayerDetail now={now} onSelectGang={onSelectGang} record={record} />
+        ) : face === 'equipment' ? (
+          <PlayerEquipment inspect={inspect} now={now} record={record} />
+        ) : (
+          <PlayerAccess
+            gang={ownGang(character) ?? null}
+            inGang={inGang}
+            inParty={joinedTheParty(character, asked.name)}
+            onGrant={onGrant}
+            record={record}
+            remotes={remotes}
+            returnFocus={returnFocus}
+          />
+        )}
+      </div>
 
       {copy.menu !== null && copyItems.length > 0 && (
         <PopupMenu
@@ -387,6 +294,7 @@ export default function PlayerFlyout({
           }}
         />
       )}
+      <PopoverSizer onReset={frame.onSizeReset} onSize={frame.onSize} />
     </div>,
     document.body
   );

@@ -44,7 +44,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { EncumbranceGate, LootConfig } from '../../shared/config';
 import { DENOMINATIONS } from '../../shared/character';
-import { bareName } from '../../shared/items';
+import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { tuning } from '../app/tuning';
@@ -190,10 +190,21 @@ export class AutoLoot {
           }
           continue;
         }
+        /*
+         * **The figure in front of a thing is a count, not part of its name.**
+         * `66 bone key` and `2 amethyst ring` are what a mummy's crypt lists
+         * (reported 2026-09-06), and `2 rope and grapple, 2 mine pass` is in
+         * captures/119 — so a configured `bone key` matched nothing here,
+         * `worthTaking` asked the realm about an item called "66 bone key" and
+         * was told nothing, and `get 66 bone key` is not a command. One `get`
+         * per name takes one of the pile, which is the same bend as taking the
+         * only one there.
+         */
+        const { name: bare } = countedName(item);
         const named = this.config.items.find((name) =>
-          item.toLowerCase().startsWith(name.toLowerCase())
+          bare.toLowerCase().startsWith(name.toLowerCase())
         );
-        const worth = this.worthTaking(item);
+        const worth = this.worthTaking(bare);
         if (named !== undefined) {
           // A name on the list is an instruction, and the only thing that
           // overrides it is the weight ceiling — which exists precisely to
@@ -202,7 +213,7 @@ export class AutoLoot {
           continue;
         }
         if (worth === 'worth it') {
-          this.take(item, t('automation.loot.reasonWorth', { item }));
+          this.take(bare, t('automation.loot.reasonWorth', { item }));
         }
       }
     }

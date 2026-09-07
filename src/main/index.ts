@@ -22,7 +22,7 @@ import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEdi
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
 import { homeAt, homeRoot, type Home } from './app/home';
-import { WorldGraph } from './world/WorldGraph';
+import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
@@ -91,8 +91,28 @@ import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
 import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
 import { EMPTY_MAP } from '../shared/map';
-import { asRoomReference, asRoute, roomId, type ShopPlace } from '../shared/world';
+import {
+  asRoomIds,
+  asRoomReference,
+  asRoute,
+  EMPTY_LOOP_DRAFT,
+  roomId,
+  type MobPlaces,
+  type ShopPlace
+} from '../shared/world';
+import { LoopDraftCache } from './world/loopDraft';
 import { errorMessage } from '../shared/values';
+import { formatDebugReport } from '../shared/debug';
+import { fileSlug } from '../shared/files';
+/*
+ * The one field, by name. A default import would inline the whole manifest into
+ * the main chunk — the maintainer's email address and every dependency's name
+ * along with it — for one string. Vite turns a JSON module into named exports,
+ * so this tree-shakes to the version and nothing else. Same instinct as the
+ * comment stripping in `electron.vite.config.ts`: what ships is what somebody
+ * is handed.
+ */
+import { version as APP_VERSION } from '../../package.json';
 import {
   asConnectionTarget,
   TERMINAL_ACTIONS,
@@ -105,7 +125,8 @@ import {
   asLoop,
   asProfileDraft,
   asProfileId,
-  asServerDraft
+  asServerDraft,
+  LOOP_LIMITS
 } from '../shared/drafts';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -233,11 +254,14 @@ function createRealms(): RealmLibrary {
   return new RealmLibrary({
     shippedFile: path.join(resourcesDir(), 'world', 'rooms.jsonl.gz'),
     /*
-     * So a realm that ships can name a database that ships beside it, relatively
-     * -- `GMUD (5X)` does, because the built-in world is Paradigm's map and a
-     * GreaterMUD character walking it is a client that cannot say where anybody
-     * is standing. An absolute path in a shipped file would exist on one
-     * computer.
+     * So a realm can name a database **beside the client's own files**,
+     * relatively. No shipped realm does today -- the six that ship are Paradigm
+     * and the built-in world is Paradigm's own database -- but `GMUD (5X)` did
+     * until 2026-09-05, and the rule it established stands: an absolute path in
+     * a shipped file exists on the one computer that wrote it, so the answer
+     * for a database carried alongside the client is a relative path and
+     * `RealmLibrary.resolve` is the one place that knows what it resolves
+     * against.
      */
     resourcesDir: resourcesDir(),
     // Beside the options file, so `MUDENGINE_CONFIG` relocates it too and the
@@ -545,6 +569,44 @@ function wearerIn(session: SessionId): Wearer {
 }
 
 /** Where session logs go: the configured directory, or the per-user data dir. */
+/**
+ * How a character should be named on screen and in a file it produces.
+ *
+ * A top-level function rather than a closure inside the host's options because
+ * a bug report has to name the character it is about, and that is asked from an
+ * IPC handler rather than from the rail.
+ *
+ * The name the *realm* gave them wins, because that is who the player thinks
+ * they are: a profile's display name is a filename until the stat sheet
+ * arrives, and "Main" identifies nobody. The server comes along so that two
+ * characters on two realms are told apart at a glance.
+ */
+function labelOf(id: SessionId): { name: string; server: string; accent: string } {
+  const profile = profileFor(id);
+  const learned = host?.get(id)?.manager.character.name ?? null;
+  const target = host?.get(id)?.manager.state.target;
+  return {
+    name: learned ?? profile?.name ?? id,
+    server: profile?.serverName ?? target?.host ?? '',
+    accent: profile?.accent ?? 'cyan'
+  };
+}
+
+/**
+ * Which mudengine this is.
+ *
+ * **Not `app.getVersion()` alone.** In a package that reads the version
+ * electron-builder wrote into the app's `package.json`; in development the app
+ * path is not this project's, so it answers with *Electron's* version — the
+ * first report this wrote said `version 33.4.11` next to `Electron 33.4.11`,
+ * which tells whoever is diagnosing it nothing at all. The repository's own
+ * `package.json` is bundled at build time and is the same file electron-builder
+ * takes the packaged version from, so the two cannot disagree.
+ */
+function appVersion(): string {
+  return APP_VERSION;
+}
+
 function logDirectory(): string {
   const configured = config?.config.logging.directory ?? '';
   return configured.length > 0 ? configured : home.state('logs');
@@ -577,6 +639,18 @@ function resourcesDir(): string {
   const found = candidates.find((dir) => existsSync(path.join(dir, 'config', 'default.yaml')));
   if (!found) console.warn(`resources: none of ${candidates.join(', ')} look right`);
   return found ?? candidates[0]!;
+}
+
+/**
+ * The client's own icon, as a file on disk.
+ *
+ * Beside the realm data in `resources/`, which electron-builder flattens into
+ * the package's resources root — so one path answers for a package and for a
+ * development run alike. `build/icon.png` is the *packaging* copy and is never
+ * shipped inside the app; this is the one the running window uses.
+ */
+function appIcon(): string {
+  return path.join(resourcesDir(), 'icon.png');
 }
 
 /**
@@ -733,6 +807,23 @@ function createWindow(options: { owns?: SessionId[] } = {}): BrowserWindow | nul
     backgroundColor: '#0b0d12',
     autoHideMenuBar: true,
     title: t('app.windowTitle'),
+    /*
+     * The window's own icon, which is a different thing from the installer's.
+     *
+     * `build/icon.*` is what electron-builder stamps into a package, and that
+     * covers the Windows executable and the macOS bundle — but on Linux the
+     * running window and its taskbar entry take the icon from *here*, and in
+     * development every platform does. Without it the client somebody is
+     * actually looking at wears the default Electron logo however carefully
+     * the installer was built.
+     *
+     * `resourcesDir()` rather than a path relative to the built chunk: it is
+     * the one function that answers correctly for a package, for
+     * `electron-vite dev` and for a directly launched build, and it warns when
+     * it cannot. Omitted rather than passed as a missing path, because
+     * Electron's own complaint about one is less useful than the default icon.
+     */
+    ...(existsSync(appIcon()) ? { icon: appIcon() } : {}),
     webPreferences: {
       preload: path.join(dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -1225,20 +1316,11 @@ function createHost(): SessionHost {
      * sheet arrives, and "Main" identifies nobody. The server comes along so
      * that two characters on two realms are told apart at a glance.
      */
-    label: (id) => {
-      const profile = profileFor(id);
-      const learned = host?.get(id)?.manager.character.name ?? null;
-      const target = host?.get(id)?.manager.state.target;
-      const server = profile?.serverName ?? target?.host ?? '';
-      return {
-        name: learned ?? profile?.name ?? id,
-        server,
-        accent: profile?.accent ?? 'cyan'
-      };
-    },
+    label: labelOf,
     logDirectory,
     toAttached: (channel, message) => windows.toAttached(channel, message),
     toDiagnostics: (channel, message) => windows.toDiagnostics(channel, message),
+    toDebugging: (channel, message) => windows.toDebugging(channel, message),
     toAll: (channel, payload) => windows.toAll(channel, payload),
     notice: (payload) => push(Push.notice, payload)
   });
@@ -1351,6 +1433,12 @@ function registerIpc(): void {
     windows.setDiagnostics(windowIdOf(event), on === true);
   });
 
+  // The debug view's own feed. See `Send.debugFeed` for why it is not this
+  // window's diagnostics flag.
+  ipcMain.on(Send.debugFeed, (event, on: boolean) => {
+    windows.setDebugging(windowIdOf(event), on === true);
+  });
+
   // ------------------------------------------------------------- per session
 
   /*
@@ -1406,6 +1494,58 @@ function registerIpc(): void {
     Invoke.getLines,
     (_event, session: SessionId) => host?.get(session)?.manager.lines ?? []
   );
+  ipcMain.handle(Invoke.getDebug, (_event, session: SessionId) => {
+    const slot = host?.get(session);
+    if (!slot) return { records: [], dropped: 0 };
+    return { records: [...slot.debug.all], dropped: slot.debug.lost };
+  });
+
+  /*
+   * The bug report, written by main.
+   *
+   * Main writes it for the reason main owns the clipboard: the window has no
+   * filesystem. It goes into the same `logs/` directory the session logs and
+   * captures do, which is the directory `npm run check:secrets` already walks —
+   * a report saved anywhere else would be one nobody can promise carries no
+   * password, and this is a file whose whole purpose is being sent to somebody
+   * else.
+   *
+   * Named after the character and the moment, because a player reporting two
+   * problems in an evening has to be able to say which file is which.
+   */
+  ipcMain.handle(Invoke.saveDebug, async (_event, session: SessionId) => {
+    const slot = host?.get(session);
+    if (!slot) return { error: t('app.debug.noSession') };
+    const who = labelOf(session);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const directory = logDirectory();
+    const file = path.join(directory, `debug-${fileSlug(who.name)}-${stamp}.txt`);
+    try {
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(
+        file,
+        formatDebugReport(
+          {
+            title: t('app.debug.reportTitle'),
+            version: appVersion(),
+            platform: `${process.platform} ${process.arch}, Electron ${process.versions.electron}`,
+            character: who.name,
+            realm: who.server.length > 0 ? who.server : t('app.debug.realmUnknown'),
+            at: Date.now(),
+            dropped: slot.debug.lost
+          },
+          slot.debug.all
+        ),
+        'utf8'
+      );
+      return { path: file };
+    } catch (error) {
+      // Said out loud rather than swallowed: a save button that quietly did
+      // nothing is worse than one that reports why it could not.
+      return { error: errorMessage(error) };
+    }
+  });
+
   ipcMain.handle(
     Invoke.getCharacter,
     (_event, session: SessionId) => host?.get(session)?.manager.character ?? EMPTY_CHARACTER
@@ -1418,6 +1558,33 @@ function registerIpc(): void {
     Invoke.getAutomation,
     (_event, session: SessionId) => host?.get(session)?.manager.automation ?? EMPTY_AUTOMATION
   );
+
+  /**
+   * Who is walking, for pricing a route against them.
+   *
+   * One reading for every route a window asks for — the route panel's and the
+   * loop builder's — so a door graded one way on the panel and another way in
+   * the builder cannot happen. A character nobody has read the sheet of is
+   * priced as one that can force nothing, which is `edgePenalty`'s own rule.
+   */
+  const travellerOf = (session: SessionId, preferring: boolean): Traveller => {
+    const manager = host?.get(session)?.manager;
+    // The session's own statement of what its character costs to move — the
+    // stats off the sheet, the purse, what the server refused and, for every
+    // caller but the builder, the corridors it prefers — so a door graded one
+    // way on the panel and another way in a loop's leg cannot happen. The
+    // builder plans plainly on purpose: see the header of `loopDraft.ts`. A
+    // character with no session yet is priced as one that can force nothing,
+    // which is `edgePenalty`'s own rule.
+    if (manager) return manager.travellerNow(manager.character, preferring);
+    return { level: null, strength: null, pickSkill: undefined, wealth: null };
+  };
+
+  /*
+   * One remembered set of drafts per session, so a pick costs its own leg
+   * rather than a plan of the whole way from scratch on main's thread.
+   */
+  const drafts = new Map<SessionId, LoopDraftCache>();
 
   ipcMain.handle(Invoke.routeTo, (_event, session: SessionId, map: number, room: number) => {
     const manager = host?.get(session)?.manager;
@@ -1432,15 +1599,34 @@ function registerIpc(): void {
       // Routing from an unknown position would be a guess dressed as a plan.
       return { steps: [], cost: 0, blocked: true, reason: t('app.route.unknownRoom') };
     }
-    return world.route(roomId(here.map, here.number), roomId(map, room), {
-      level: manager?.character.progress.level ?? null,
-      // Off the stat sheet; a door's cost is graded against them.
-      strength: manager?.character.progress.strength ?? null,
-      pickSkill: manager?.character.progress.picklocks ?? undefined,
-      // And the purse, so a route the player asks for on the map is priced
-      // against what they can actually pay at a toll gate.
-      wealth: manager?.character.inventory.wealth ?? null
-    });
+    return world.route(
+      roomId(here.map, here.number),
+      roomId(map, room),
+      travellerOf(session, true)
+    );
+  });
+
+  /*
+   * A loop being built by hand, planned. Parsed rather than trusted: every
+   * room on the way is one A* pass on this thread, so the list is bounded by
+   * the same ceiling a loop payload has (the card refuses the click before
+   * it gets here), and an entry that is not a room is refused outright —
+   * skipping it would plan a different loop from the one on the screen.
+   * Priced against the character's stats as the route panel prices, and
+   * plainly — without the corridors it prefers — so the way drawn is the way
+   * the reduction reproduces; see the header of `loopDraft.ts`.
+   */
+  ipcMain.handle(Invoke.draftLoop, (_event, session: SessionId, rooms: unknown) => {
+    const world = worldFor(session);
+    if (!world || world.size === 0) return EMPTY_LOOP_DRAFT;
+    const picks = asRoomIds(rooms, LOOP_LIMITS.stops);
+    if (picks === null) throw new Error(t('app.loop.invalidPicks', { max: LOOP_LIMITS.stops }));
+    let cache = drafts.get(session);
+    if (cache === undefined) {
+      cache = new LoopDraftCache();
+      drafts.set(session, cache);
+    }
+    return cache.draft(world, picks, travellerOf(session, false));
   });
 
   /*
@@ -1788,6 +1974,11 @@ function registerIpc(): void {
     const world = worldFor(session);
     return { rooms: world?.size ?? 0, source: world?.info.source ?? 'none' };
   });
+  ipcMain.handle(Invoke.questBook, (_event, session: SessionId) => {
+    // A realm with no world loaded, and one converted before quests were
+    // indexed, both answer with none — which the card says out loud.
+    return worldFor(session)?.quests() ?? [];
+  });
   ipcMain.handle(
     Invoke.localMap,
     (_event, session: SessionId, map: number, room: number, radius?: unknown) => {
@@ -1881,6 +2072,20 @@ function registerIpc(): void {
       }
     }
     /*
+     * And where the realm puts each monster named.
+     *
+     * Same join, made in the same place and for the same reason as the shops
+     * above: *what is this thing* and *where do I find one* are one question
+     * asked twice, and the answer to the second was in the room table with no
+     * door to it. Keyed by the monster's own name, as `learned` and `verdicts`
+     * are, so the card reads all four off one answer.
+     */
+    const mobPlaces: Record<string, MobPlaces> = {};
+    for (const mob of found.mobs) {
+      const places = world.mobPlaces(mob);
+      if (places !== undefined) mobPlaces[mob.name] = places;
+    }
+    /*
      * And *can I fight this?* — each monster named, weighed against the
      * character as it stands at this moment, by the session's own arithmetic
      * so the card reads exactly what auto-combat ranks on. A session with no
@@ -1892,6 +2097,7 @@ function registerIpc(): void {
       ...(Object.keys(learned).length > 0 ? { learned } : {}),
       ...(Object.keys(fights).length > 0 ? { fights } : {}),
       ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
+      ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
       ...(Object.keys(verdicts).length > 0 ? { verdicts } : {})
     };
   });
@@ -2432,13 +2638,6 @@ app.whenReady().then(() => {
     // And the tuning template, for the file the player hand-edits to
     // experiment: its paragraphs are documentation too.
     internalTemplate: internalTemplate(),
-    /*
-     * And the shipped realms, for the one migration that has to add a
-     * *directory* rather than edit a file: `seedServers` below copies these
-     * only into a home that has none, so a realm added to the client after
-     * somebody's home was created reaches them from here or not at all.
-     */
-    shippedRealms: path.join(resourcesDir(), 'servers'),
     note: (message) => announce('home', message, 'log')
   });
   config = createConfig();

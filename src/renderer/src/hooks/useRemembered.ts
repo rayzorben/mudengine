@@ -142,52 +142,68 @@ export function useRememberedChoice(
 }
 
 /**
- * One value a card remembers per character, parsed on the way back in.
+ * A number remembered against each of a set of things, per character.
  *
- * The third shape beside the set and the single choice, for a card whose
- * remembered thing is neither — the Combat Stats card's Reset baseline, which
- * is a whole reading of the totals. Same store, same key shape, same rule: a
- * preference somebody sets by clicking must not make the client rewrite a file
- * full of their own comments.
+ * The third shape beside {@link useRemembered} (which of these are muted) and
+ * {@link useRememberedChoice} (which one of these is showing): **how far
+ * through each of these**. The quest book is what needed it — a quest is a
+ * counter the server keeps and no command prints, so how far a character has
+ * got is something only the player can state, and it is one number per quest
+ * rather than a mark per step.
  *
- * `parse` is handed whatever `JSON.parse` produced and answers null for
- * anything it cannot read, which is what a value written by an older build
- * arrives as. Setting null forgets it.
+ * Same storage and same rule as its siblings: an entry whose key this build no
+ * longer recognises is dropped rather than honoured, so a book that shrinks
+ * when a realm is swapped does not carry ranks for quests it no longer has.
+ * A value that is not a non-negative integer is dropped for the same reason —
+ * this file is on the player's own disk.
+ *
+ * `localStorage`, like every other preference set by clicking: saying *I have
+ * done this much* must not make the client rewrite a file full of the user's
+ * own comments.
  */
-export function useRememberedValue<T>(
+export function useRememberedRanks(
   session: SessionId,
   name: string,
-  parse: (value: unknown) => T | null
-): [T | null, (value: T | null) => void] {
-  const key = `mudengine.${name}.${session}`;
+  allowed: readonly string[]
+): { get(key: string): number | null; set(key: string, rank: number | null): void } {
+  const storageKey = `mudengine.${name}.${session}`;
 
   const read = useCallback(
-    (): T | null =>
+    (): Record<string, number> =>
       readStored(
-        key,
-        (stored) => parse(JSON.parse(stored) as unknown),
-        () => null
+        storageKey,
+        (stored) => {
+          const parsed: unknown = JSON.parse(stored);
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+          const kept: Record<string, number> = {};
+          for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+            if (!allowed.includes(key)) continue;
+            if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) continue;
+            kept[key] = value;
+          }
+          return kept;
+        },
+        () => ({})
       ),
-    [key, parse]
+    [storageKey, allowed]
   );
 
-  const [value, setValue] = useStored(read);
+  const [ranks, setRanks] = useStored(read);
 
-  const remember = useCallback(
-    (next: T | null): void => {
-      setValue(next);
-      if (next === null) {
-        try {
-          window.localStorage.removeItem(key);
-        } catch {
-          // The choice still applies for as long as the window is open.
-        }
-        return;
-      }
-      writeStored(key, JSON.stringify(next));
+  const set = useCallback(
+    (key: string, rank: number | null) => {
+      setRanks((current) => {
+        const next = { ...current };
+        // Null is not zero here either: *not started* is the absence of a
+        // rank, and rank zero would be a claim the realm's counters can make.
+        if (rank === null) delete next[key];
+        else next[key] = rank;
+        writeStored(storageKey, JSON.stringify(next));
+        return next;
+      });
     },
-    [key, setValue]
+    [storageKey, setRanks]
   );
 
-  return [value, remember];
+  return { get: (key) => ranks[key] ?? null, set };
 }

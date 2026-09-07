@@ -40,6 +40,7 @@ import StandbyCard from './components/StandbyCard';
 import StatsCard from './components/StatsCard';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
+import QuestCard from './components/QuestCard';
 import InventoryCard from './components/InventoryCard';
 import SessionCard from './components/SessionCard';
 import SessionTerminal from './components/SessionTerminal';
@@ -50,12 +51,15 @@ import TabRail, { type RailSide } from './components/TabRail';
 /** How the panes divide the slate. */
 type PaneFlow = 'rows' | 'columns';
 
+import DebugView from './components/DebugView';
+import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
 import StreamCard from './components/StreamCard';
 import VitalsCard from './components/VitalsCard';
 import SelfCard from './components/SelfCard';
 import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
+import LoopBuilderCard, { type BuilderDestination } from './components/LoopBuilderCard';
 import ToolbarCard from './components/ToolbarCard';
 import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
@@ -66,6 +70,7 @@ import {
   cardLabel,
   hidesWhenEmpty,
   useCardLayout,
+  DEFAULT_FLOAT,
   HIDES_WHEN_EMPTY,
   NO_CARD_SETTINGS,
   type CardId,
@@ -119,6 +124,7 @@ import { EMPTY_CHARACTER, ownGang, type CharacterState } from '@shared/character
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
+import type { CombatTally } from '@shared/tally';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import type { Block } from '@shared/blocks';
@@ -134,7 +140,16 @@ import {
   wanted,
   type Notice
 } from '@shared/notifications';
-import { roomId, type Route, type WorldNames, type WorldRoom } from '@shared/world';
+import {
+  asRoomReference,
+  roomId,
+  type LoopDraft,
+  type RoomId,
+  type Route,
+  type WorldNames,
+  type WorldRoom
+} from '@shared/world';
+import type { LocalMap } from '@shared/map';
 import {
   NO_SESSION,
   type AttachSnapshot,
@@ -183,6 +198,16 @@ interface SessionView {
   automation: AutomationSnapshot;
   /** The room appraised — *can I fight this?* — beside the character it is about. */
   verdict: RoomVerdict;
+  /**
+   * The Combat Stats card's baseline: the totals every figure on it is a
+   * difference from, or null for the whole session.
+   *
+   * Held here rather than in the card because the card ships **put away**, and
+   * what re-bases it has to be running whether or not anything is drawn — a lap
+   * beginning is a moment, not a render. One value, written by the card's Reset
+   * button and by the lap alike, so neither has to outrank the other.
+   */
+  statsBase: CombatTally | null;
   lines: StreamLine[];
   telnet: TelnetEvent[];
   /**
@@ -276,6 +301,7 @@ const EMPTY_VIEW: SessionView = {
   loop: NO_LOOP,
   automation: EMPTY_AUTOMATION,
   verdict: EMPTY_ROOM_VERDICT,
+  statsBase: null,
   lines: [],
   telnet: [],
   talk: [],
@@ -353,8 +379,39 @@ interface CardContext {
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
+  /** The same panel from a `map/room` string, which is how the realm writes it. */
+  goToRoom(room: string): void;
+  /**
+   * The realm's quest book, **addressed** and asked for by the card itself.
+   *
+   * Data rather than a call was the first shape, and it was the one thing in
+   * this object that was not addressed: a pinned float belonging to a
+   * character on another `world.database` listed the *shown* character's
+   * quests, and the card then wrote that realm's quest ids into this
+   * character's hidden-and-ranked store. Every other world query here is a
+   * bound call for exactly that reason.
+   */
+  loadQuests(): ReturnType<IpcApi['questBook']>;
+  /**
+   * When the configuration last reloaded, so the book is asked for again.
+   *
+   * A character can be pointed at a different realm by an edit to the options
+   * file, and `loadedAt` is what moves when it is. The same number for every
+   * session, because the file is one file.
+   */
+  realmAt: number;
+  /**
+   * The loop builder's calls, addressed at the shown character — it plans
+   * on that realm and files into that scope — and null on a pinned float,
+   * where the card is not drawn at all rather than drawn for the wrong one.
+   */
+  builder: BuilderApi | null;
+  /** Bring the builder out, from the Map card's own action. Null with `builder`. */
+  openBuilder: (() => void) | null;
   stopWalk(): void;
   stopLoop(): void;
+  /** Re-base the Combat Stats card to this character's totals as they stand. */
+  resetStats(): void;
   /**
    * The loop face's controls. `loops` is the character's own list to pick
    * from — null on a pinned float, whose list belongs to the shown character.
@@ -391,6 +448,16 @@ interface CardContext {
   onSend?(line: string): void;
 }
 
+/** What the loop builder needs of the client, built once per character and kept. */
+interface BuilderApi {
+  characterName: string;
+  realmName: string;
+  search(query: string): Promise<WorldRoom[]>;
+  loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  draft(rooms: RoomId[]): Promise<LoopDraft>;
+  save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+}
+
 /**
  * The addressed callbacks a card receives — the always-addressed ones (`gear`,
  * `selectPlayer`, the gang writes) and every one a pinned float gets in place
@@ -405,8 +472,11 @@ interface AddressedActions {
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
+  loadQuests(): ReturnType<IpcApi['questBook']>;
   stopWalk(): void;
   stopLoop(): void;
+  /** Re-base the Combat Stats card to this character's totals as they stand. */
+  resetStats(): void;
   startLoop(name: string): void;
   pauseLoop(): void;
   resumeLoop(): void;
@@ -499,10 +569,30 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // This character's own route and lap, drawn over its own
           // neighbourhood — a pinned float belongs to somebody else.
           loop={view.loop}
+          onBuild={ctx.openBuilder}
           // The map's rooms stay drawn as they are on a float; with no panel to
           // open for that character, the click is answered by nothing.
           onChoose={ctx.chooseOnMap ?? NO_CHOICE}
           walk={view.walk}
+        />
+      );
+    case 'builder':
+      /*
+       * The shown character's only: it plans on that realm and files into
+       * that scope, and a pinned float of it for somebody else would be a
+       * map whose every click asked the wrong realm. Nothing is drawn there
+       * rather than a card that refuses on every click.
+       */
+      return ctx.builder === null ? null : (
+        <LoopBuilderCard
+          {...chrome}
+          character={character}
+          characterName={ctx.builder.characterName}
+          draft={ctx.builder.draft}
+          loadMap={ctx.builder.loadMap}
+          realmName={ctx.builder.realmName}
+          save={ctx.builder.save}
+          search={ctx.builder.search}
         />
       );
     case 'navigation':
@@ -649,13 +739,51 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
        */
       if (emptyCardHidden(chrome, id, character.banks.length > 0)) return null;
       return <BanksCard {...chrome} character={character} />;
+    case 'quests':
+      /*
+       * Unconditional, like the vaults: a realm that scripts no quests is a
+       * fact the card states, and an empty book is the honest answer for a
+       * derivative whose text blocks chain nothing. Put away by default
+       * instead, so the rail is not spent on it until somebody asks.
+       */
+      return (
+        <QuestCard
+          {...chrome}
+          /*
+            So the reader's own route through a step is the marked one. The
+            long chains state fifteen — a class each, with a different reward —
+            and exactly one of them belongs to whoever is reading.
+          */
+          characterClass={character.className}
+          onGoTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          /*
+            Addressed like the Reference card's: the panel it opens is the
+            *shown* character's, and a step's item and NPC are realm data. On a
+            pinned float belonging to a character on another `world.database`
+            the name would be resolved against the wrong realm, so it stays
+            text there — a control bound to nowhere is worse than none.
+          */
+          loadQuests={ctx.loadQuests}
+          onName={ctx.chooseOnMap === null ? null : ctx.inspect}
+          realmAt={ctx.realmAt}
+          session={ctx.session}
+        />
+      );
     case 'stats':
       /*
        * Unconditional: it has something true to say from the first blow, and
        * *nothing yet* is itself the answer for a character that has not swung.
        * It is put away by default instead, so the rail is not spent on it.
        */
-      return <StatsCard {...chrome} character={character} session={ctx.session} />;
+      return (
+        <StatsCard
+          {...chrome}
+          baseline={view.statsBase}
+          character={character}
+          onReset={ctx.resetStats}
+          session={ctx.session}
+        />
+      );
     case 'reference':
       return (
         <ReferenceCard
@@ -1158,6 +1286,17 @@ export default function App() {
    * nothing: a setting that cannot take effect is worse than one not offered.
    */
   const [railOpen, setRailOpen] = useState(false);
+  /**
+   * Whether the debug view is over the console.
+   *
+   * A plain `useState`, and hidden on every launch, for exactly the reason the
+   * diagnostics rail is: this is a tool reached for when something looks wrong
+   * and put down again, not part of how a player has arranged their
+   * instrument. Made configurable it would become somebody's permanent client
+   * because of one evening's debugging — which is the complaint
+   * `ui.showDiagnostics` was deleted over.
+   */
+  const [debugOpen, setDebugOpen] = useState(false);
 
   /**
    * Characters other than the shown one whose *pinned* floats include the
@@ -1181,8 +1320,23 @@ export default function App() {
   const [tabSide, setTabSide] = useOverridablePreference<RailSide>(
     'mudengine.tabs',
     config.ui.tabs,
-    (value): value is RailSide => value === 'top' || value === 'left'
+    (value): value is RailSide => value === 'top' || value === 'left' || value === 'right'
   );
+  /*
+   * Which edge the *cards* take, which is the other one.
+   *
+   * One setting decides both, because the two side rails cannot share an edge:
+   * a client that let each be asked for independently would have to pick a
+   * winner when both said left, and the pick would be arbitrary. So the tab
+   * rail's side is the setting and the card rail takes what is left.
+   *
+   * Stated as its own attribute rather than read off `data-tabs` in the
+   * stylesheet, because it has to hold in the one state where there is no tab
+   * rail at all — a client with no characters yet. Keyed on the tabs, the card
+   * rail would sit on the right until the first character loaded and then jump
+   * across the window.
+   */
+  const railSide: 'left' | 'right' = tabSide === 'right' ? 'left' : 'right';
 
   /**
    * Stacked or side by side.
@@ -1260,13 +1414,30 @@ export default function App() {
   const resize = useCardResize(cards);
   const resizeRef = useRef(resize);
   resizeRef.current = resize;
-  // A put-away card's chip is a handle too (see `CardPicker`); through the
+  // A put-away card's row is a handle too (see `CardPicker`); through the
   // ref so the picker's props hold still between drags.
   const grabCard = useCallback(
     (id: CardId, event: React.PointerEvent<HTMLElement>) =>
       dragRef.current.begin(id, event, { fromControl: true }),
     []
   );
+  /**
+   * A put-away card brought out over the console rather than onto the rail —
+   * the second control on every row of the picker's list.
+   *
+   * Centred on the workspace, from the float's own shipped size, so no pixel
+   * or fraction constant is invented for the position. Two cards floated in a
+   * row land on each other; the second is `raise`d above the first, which is
+   * both visible and what a person who just asked for it expects to see.
+   * Cascading them would need a step nothing measures.
+   */
+  const floatCard = useCallback((id: CardId) => {
+    cardsRef.current.lift(id, {
+      x: (1 - DEFAULT_FLOAT.w) / 2,
+      y: (1 - DEFAULT_FLOAT.h) / 2
+    });
+    cardsRef.current.raise(id);
+  }, []);
 
   /*
    * What each splitter reads when a gesture or a key needs the pane's width,
@@ -1492,13 +1663,21 @@ export default function App() {
 
   const applySnapshot = useCallback(
     (id: SessionId, snapshot: AttachSnapshot) => {
-      patchView(id, () => ({
+      patchView(id, (was) => ({
         state: snapshot.state,
         character: snapshot.character,
         walk: snapshot.walk,
         loop: snapshot.loop,
         automation: snapshot.automation,
         verdict: snapshot.verdict,
+        /*
+         * Carried, not reset. A snapshot is this window attaching to a session
+         * that was already running, and main's totals are the same monotonic
+         * ones the baseline was taken from — so a reading this window had
+         * survives the attach. A baseline older than the *session* is a
+         * different matter and is discarded by the card's own `stale` test.
+         */
+        statsBase: was.statsBase,
         lines: snapshot.lines.slice(-tuning().lineLogLimit),
         telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
         // The conversation log's tail: main keeps what was said on disk, so a
@@ -1553,6 +1732,20 @@ export default function App() {
    * closed.
    */
   const wantsLineFeed = railOpen || cards.floatOf('stream') !== undefined || pinnedStreams.size > 0;
+  /*
+   * And the debug feed, which is a *second* flag.
+   *
+   * It produces several records per framed line where `Push.line` produces
+   * one, and only `DebugView` subscribes to it — so a window with the
+   * diagnostics rail open, or a pinned Stream float, must not be sent records
+   * nothing in it reads. Told to main on its own edge, and told immediately:
+   * unlike the line feed there is no flap to wait out, because nothing else in
+   * the window can ask for this one.
+   */
+  useEffect(() => {
+    api.debugFeed(debugOpen);
+    return () => api.debugFeed(false);
+  }, [api, debugOpen]);
   /**
    * Whether main currently has this window's feed on. A tab switch away from
    * a character with a pinned stream float reads as *off* for one commit —
@@ -1668,7 +1861,32 @@ export default function App() {
         })
       ),
       api.onWalk(({ session: id, payload }) => patchView(id, (v) => ({ ...v, walk: payload }))),
-      api.onLoop(({ session: id, payload }) => patchView(id, (v) => ({ ...v, loop: payload }))),
+      api.onLoop(({ session: id, payload }) =>
+        patchView(id, (v) => ({
+          ...v,
+          loop: payload,
+          /*
+           * A lap that has just begun re-bases the Combat Stats card — todo
+           * 01, *"starting a loop should reset combat statistics; restarting a
+           * loop should not"*.
+           *
+           * `lapBegunAt` is the moment the run first stood on the loop, which
+           * is what makes both halves of that sentence one test: `start` clears
+           * it and the first stop reached sets it, while `resume` leaves it
+           * exactly as it was, so a restart moves nothing here. And it is the
+           * *lap* rather than the button, so the twenty-eight steps out from
+           * town are not counted as a stretch the loop earned nothing over.
+           *
+           * The totals as they stand at that instant, which is the same value
+           * the Reset button writes — main's own totals are untouched either
+           * way, so this is a reading being re-based and never data being lost.
+           */
+          statsBase:
+            payload.lapBegunAt !== null && payload.lapBegunAt !== v.loop.lapBegunAt
+              ? v.character.tally
+              : v.statsBase
+        }))
+      ),
       api.onLearned(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, learned: payload }))
       ),
@@ -2155,6 +2373,29 @@ export default function App() {
    * Search is a dialog that takes typed input, so closing it hands focus back
    * to the terminal — the same contract the palette honours.
    */
+  /**
+   * The debug view's three doors into main, bundled once.
+   *
+   * A bundle rather than three props threaded through, and memoised on `api`
+   * alone, because a fresh object per render would defeat the view's own memo
+   * — and this view subscribes to the densest feed in the client, so it is the
+   * last one that should be rebuilt for nothing.
+   */
+  const debugApi = useMemo(
+    () => ({
+      load: (sid: SessionId) => api.getDebug(sid),
+      save: (sid: SessionId) => api.saveDebug(sid),
+      reveal: () => void api.revealLogs(),
+      subscribe: (handler: (sid: SessionId, record: DebugRecord) => void) =>
+        api.onDebug(({ session: sid, payload }) => handler(sid, payload))
+    }),
+    [api]
+  );
+  const closeDebug = useCallback(() => {
+    setDebugOpen(false);
+    returnFocus();
+  }, [returnFocus]);
+
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchResult(undefined);
@@ -2582,6 +2823,25 @@ export default function App() {
     },
     [api, session]
   );
+  /**
+   * The same panel, opened from a `map/room` string.
+   *
+   * The quest book states where a step's NPC stands as the realm writes it, so
+   * it holds the pair as text rather than as two numbers. Parsed through
+   * `asRoomReference`, which is the **one** parser a `map/room` string has —
+   * a second spelling of it is what `WalkProgress` already refuses — and a
+   * string that is not one opens nothing rather than guessing at a room.
+   *
+   * `useCallback` rather than an arrow at the call site: `QuestCard` is
+   * memoised, and a prop built in a render is a memo defeated.
+   */
+  const goToRoom = useCallback(
+    (room: string) => {
+      const at = asRoomReference(room);
+      if (at !== null) chooseOnMap(at.map, at.room);
+    },
+    [chooseOnMap]
+  );
   const stopWalk = useCallback(() => {
     void api.stopWalk(session);
     // The rail takes no typed input, so a click in it must not keep the caret:
@@ -2680,6 +2940,69 @@ export default function App() {
       returnFocus();
     },
     [api, returnFocus, sayRefusal, session]
+  );
+
+  /**
+   * Bring the loop builder out.
+   *
+   * As a **float**, sized to most of the workspace, the first time: a map
+   * somebody clicks rooms on wants more of the screen than a rail slot, and
+   * the float is the one placement whose height is the player's. Already on
+   * screen, it is raised if floating and otherwise left where the player put
+   * it — the arrangement is theirs. Refused with no character, for the
+   * reason the Loops modal is: everything it does is addressed at one.
+   */
+  const openBuilder = useCallback(() => {
+    if (session === NO_SESSION) return;
+    if (!cards.isShown('builder')) cards.lift('builder', { x: 0.03, y: 0.04 }, { w: 0.6, h: 0.9 });
+    else if (cards.floatOf('builder') !== undefined) cards.raise('builder');
+    returnFocus();
+  }, [cards, returnFocus, session]);
+
+  /**
+   * The picks of a loop being built, planned on this character's realm.
+   * Addressed like every world query.
+   */
+  const draftLoop = useCallback((rooms: RoomId[]) => api.draftLoop(session, rooms), [api, session]);
+
+  /**
+   * File a built loop where the builder's chip says, and say so in the
+   * character's own console — the rule `runChosenLoop` keeps for a loop the
+   * shelf files. The owner is the character for its own scope and its realm
+   * for the realm's, exactly as the modal resolves them; the two must agree
+   * or a loop filed from one surface is invisible to the other.
+   */
+  const saveDraftLoop = useCallback(
+    async (loop: Loop, destination: BuilderDestination): Promise<string | null> => {
+      const owner =
+        destination === 'server'
+          ? (profiles.find((profile) => profile.id === session)?.serverName ?? null)
+          : destination === 'global'
+            ? null
+            : session;
+      const refused = await api.addLoop(destination, owner, loop);
+      if (refused === null) {
+        terminals.current
+          .get(session)
+          ?.notice(t('cards.builder.savedNotice', { loopName: loop.name }));
+      }
+      return refused;
+    },
+    [api, profiles, session]
+  );
+
+  const builderRealmName = profiles.find((profile) => profile.id === session)?.serverName ?? '';
+  const builderCharacterName = character.name ?? session;
+  const builderApi = useMemo<BuilderApi>(
+    () => ({
+      characterName: builderCharacterName,
+      realmName: builderRealmName,
+      search: searchRooms,
+      loadMap,
+      draft: draftLoop,
+      save: saveDraftLoop
+    }),
+    [builderCharacterName, builderRealmName, searchRooms, loadMap, draftLoop, saveDraftLoop]
   );
   const pauseLoop = useCallback(() => {
     void api.pauseLoop(session);
@@ -3100,6 +3423,23 @@ export default function App() {
           setRouteOpen(true);
         }
       },
+      /*
+       * Where a loop is drawn. Beside the route, because it is the same
+       * gesture on the same map with a file at the end of it. Its id is
+       * deliberately not `loop:…` — the shipped shelf pins `loop:*`, and
+       * pinned it sorted above the Route command, so typing `route` opened
+       * the builder on Enter (the smoke run caught it) — and its keywords
+       * are the words nothing else has earned: `route` is the panel's and
+       * `loop` is the shelf's.
+       */
+      {
+        id: 'builder:open',
+        icon: 'flag' as const,
+        label: t('palette.navigate.buildLabel'),
+        group: 'navigate' as const,
+        keywords: ['build', 'create', 'draw', 'make', 'new', 'waypoint', 'path', 'editor'],
+        run: openBuilder
+      },
       {
         id: 'search',
         icon: 'search' as const,
@@ -3156,6 +3496,20 @@ export default function App() {
         hint: chord('D', true),
         group: 'view',
         run: toggleRail
+      },
+      {
+        id: 'debug',
+        icon: 'terminal' as const,
+        label: debugOpen ? t('palette.view.hideDebugLabel') : t('palette.view.showDebugLabel'),
+        hint: t('palette.view.debugHint'),
+        group: 'view',
+        /*
+         * `bug` is the word somebody types and `debug` is what the client
+         * calls it; `raw`, `ansi`, `parse` and `trace` are what they are
+         * actually looking for when they do not know either.
+         */
+        keywords: ['debug', 'bug', 'report', 'raw', 'ansi', 'parse', 'trace', 'diagnose'],
+        run: () => setDebugOpen((open) => !open)
       },
       {
         id: 'jump',
@@ -3290,14 +3644,38 @@ export default function App() {
             {
               id: 'tabside',
               icon: 'columns' as const,
+              /*
+               * One row that cycles left → top → right, labelled with where
+               * the next press puts the rail and hinted with what that costs.
+               *
+               * A row per placement was the alternative and is what the theme
+               * commands do — but a theme has sixteen values and no order,
+               * while this has three that are literally one control moved
+               * around a window. Three rows would put two dead ones in the
+               * `view` group at all times, and the group is already the
+               * longest in the palette.
+               *
+               * The keywords carry what the label cannot: a cycle's label only
+               * ever names the *next* stop, so without them somebody typing
+               * `right` would find this row only one press in three — and a
+               * command nobody can find does not exist.
+               */
               label:
                 tabSide === 'top'
-                  ? t('palette.view.tabsOnLeftLabel')
-                  : t('palette.view.tabsOnTopLabel'),
+                  ? t('palette.view.tabsOnRightLabel')
+                  : tabSide === 'left'
+                    ? t('palette.view.tabsOnTopLabel')
+                    : t('palette.view.tabsOnLeftLabel'),
               hint:
-                tabSide === 'left' ? t('palette.view.tabsLeftHint') : t('palette.view.tabsTopHint'),
+                tabSide === 'top'
+                  ? t('palette.view.tabsTopHint')
+                  : tabSide === 'left'
+                    ? t('palette.view.tabsLeftHint')
+                    : t('palette.view.tabsRightHint'),
+              keywords: ['tabs', 'left', 'right', 'top', 'side', 'edge', 'rail', 'mirror', 'swap'],
               group: 'view' as const,
-              run: () => setTabSide(tabSide === 'top' ? 'left' : 'top')
+              run: () =>
+                setTabSide(tabSide === 'left' ? 'top' : tabSide === 'top' ? 'right' : 'left')
             }
           ]
         : []),
@@ -3429,8 +3807,10 @@ export default function App() {
         }),
       // The way out of a rail that has been dragged into a corner. Kept in the
       // palette rather than on the rail: it is reached once, by someone who
-      // already knows they want it.
-      ...(cards.floats.length > 0 || cards.away.length > 0
+      // already knows they want it. A rail rolled flat is that corner too, so
+      // it counts — `reset` puts the rolled cards back open with the rest of
+      // the arrangement.
+      ...(cards.floats.length > 0 || cards.away.length > 0 || cards.rolled.length > 0
         ? [
             {
               id: 'cards:reset',
@@ -3508,6 +3888,7 @@ export default function App() {
       handleConnect,
       railOpen,
       toggleRail,
+      debugOpen,
       preference,
       density,
       cycle,
@@ -3632,6 +4013,24 @@ export default function App() {
     !routeOpen &&
     !settingsOpen
       ? [{ key: 'Escape', run: toggleRail }]
+      : []),
+    /*
+     * And the debug window, which is the one surface here that *covers* the
+     * console. Every control in it uses `keepFocus`, so the caret is still in
+     * the terminal — without this, Escape pressed to dismiss a full-console
+     * overlay goes to the realm instead, with the console covered so nobody
+     * can see what it did. Last in the chain, like the rail it is modelled on.
+     */
+    ...(asked === null &&
+    flyout === null &&
+    debugOpen &&
+    !paletteOpen &&
+    !loopsOpen &&
+    !searchOpen &&
+    !routeOpen &&
+    !railOpen &&
+    !settingsOpen
+      ? [{ key: 'Escape', run: closeDebug }]
       : [])
   ]);
 
@@ -3643,6 +4042,20 @@ export default function App() {
   selectPlayerRef.current = selectPlayer;
   const sayRefusalRef = useRef(sayRefusal);
   sayRefusalRef.current = sayRefusal;
+
+  /**
+   * Re-base one character's Combat Stats card to its totals as they stand.
+   *
+   * The same write the lap makes on `onLoop`, so the button and the loop
+   * cannot disagree about what a baseline is; main's totals are untouched by
+   * either, which is what makes both safe.
+   */
+  const resetStats = useCallback(
+    (sid: SessionId) => patchView(sid, (v) => ({ ...v, statsBase: v.character.tally })),
+    [patchView]
+  );
+  const resetStatsRef = useRef(resetStats);
+  resetStatsRef.current = resetStats;
 
   /**
    * The addressed callbacks for one character, built once and kept.
@@ -3664,8 +4077,13 @@ export default function App() {
         loadWearer: () => api.wearer(sid),
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
         lookupName: (query) => api.lookup(sid, query),
+        loadQuests: () => api.questBook(sid),
         stopWalk: () => void api.stopWalk(sid),
         stopLoop: () => void api.stopLoop(sid),
+        // Through a ref like `selectPlayer` beside it: this one changes state
+        // in `App` rather than sending anything, and the bound object has to
+        // stay the same object across renders or every card's memo is defeated.
+        resetStats: () => resetStatsRef.current(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
         pauseLoop: () => void api.pauseLoop(sid),
@@ -3771,8 +4189,16 @@ export default function App() {
         loadMap: shown ? loadMap : bound.loadMap,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
+        goToRoom,
+        loadQuests: bound.loadQuests,
+        realmAt: loadedAt,
+        builder: shown ? builderApi : null,
+        openBuilder: shown ? openBuilder : null,
         stopWalk: shown ? stopWalk : bound.stopWalk,
         stopLoop: shown ? stopLoop : bound.stopLoop,
+        // Addressed always: a pinned float's Reset re-bases that character's
+        // card, never the one being watched.
+        resetStats: bound.resetStats,
         // The shown character's list is the only one the renderer holds; a
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
@@ -3836,7 +4262,8 @@ export default function App() {
            * `null` there and the button is not drawn, which is the rule a
            * control bound to nowhere already follows in this client.
            */
-          openLoops: shown ? toggleLoops : null
+          openLoops: shown ? toggleLoops : null,
+          openBuilder: shown ? openBuilder : null
         },
         // Per client, not per character: which buttons somebody keeps to hand
         // is a fact about the person at the keyboard, so every character's
@@ -3851,8 +4278,11 @@ export default function App() {
       api,
       ask,
       boundFor,
+      builderApi,
       meter,
       chooseOnMap,
+      goToRoom,
+      openBuilder,
       profileNameFor,
       suppliesBundle,
       config.ui.vitals,
@@ -3927,9 +4357,13 @@ export default function App() {
       // resized one is drawn at its new height on the next commit, not later.
       const lane = cardsRef.current.laneOf(id);
       const height = cardsRef.current.heightOf(id);
+      // Part of the key for the reason the height is: the glyph in the heading
+      // states which way the press goes, and a chrome cached across a roll
+      // would go on offering the way the card has just come.
+      const rolled = cardsRef.current.isRolled(id);
       const key = floating
-        ? `float:${floating.solidity}:${floating.pinned === true}:${dragging}:${theme.id}`
-        : `rail:${dragging}:${theme.id}:${lane ?? ''}:${height ?? ''}`;
+        ? `float:${floating.solidity}:${floating.pinned === true}:${dragging}:${theme.id}:${rolled}`
+        : `rail:${dragging}:${theme.id}:${lane ?? ''}:${height ?? ''}:${rolled}`;
       /*
        * Compared by identity rather than folded into the string key. The store
        * hands back the very object it holds — the shared empty one for a card
@@ -3955,6 +4389,13 @@ export default function App() {
         dragging,
         // Every card's copy menu takes the caret and gives it back here.
         returnFocus,
+        /*
+         * Rolled up to its heading, and the way back down. On every card and
+         * in every placement: a card is rolled where it stands, so nothing
+         * here depends on which lane it is in or on whether it floats.
+         */
+        rolled,
+        onRoll: (next: boolean) => cardsRef.current.roll(id, next),
         settings: {
           id,
           value: settings,
@@ -4078,7 +4519,11 @@ export default function App() {
           onChange: (solidity: number) => layout.setSolidity(id, solidity)
         },
         pinned: true,
-        onPin: (next: boolean) => layout.pin(id, next)
+        onPin: (next: boolean) => layout.pin(id, next),
+        // Read and written through that character's own layout, like the
+        // settings above: a pinned float belongs to somebody else.
+        rolled: layout.isRolled(id),
+        onRoll: (next: boolean) => layout.roll(id, next)
       };
       return cardElement(id, contextFor(sid, v, chrome));
     },
@@ -4162,6 +4607,7 @@ export default function App() {
         // animation, and no transition may lag behind it.
         data-resizing={resizing || resize.active !== null ? 'true' : undefined}
         ref={workspaceRef}
+        data-rail-side={railSide}
         data-tabs={showTabs ? tabSide : 'none'}
         style={widths.style as React.CSSProperties}
       >
@@ -4190,14 +4636,17 @@ export default function App() {
           views={views}
         />
 
-        {showTabs && tabSide === 'left' && (
+        {showTabs && tabSide !== 'top' && (
           <Splitter
-            edge="left"
+            // Which way a drag grows the rail; `pane` is where the handle
+            // goes. The two part company the moment the workspace mirrors.
+            edge={tabSide === 'right' ? 'right' : 'left'}
             label={t('splitter.aria.tabRailWidth')}
             measure={measureTabs}
             onChange={widths.setTabs}
             onDragging={setResizing}
             onReset={resetTabs}
+            pane="tabs"
             rangeFor={rangeForTabs}
           />
         )}
@@ -4282,6 +4731,33 @@ export default function App() {
                 />
               );
             })}
+            {/*
+              What the client is doing, over the console rather than instead of
+              it.
+
+              **Inside the layers, and absolutely positioned.** The terminals
+              stay mounted and laid out underneath: unmounting them would
+              rebuild every xterm's scrollback and parser state, and *resizing*
+              the console would go out over NAWS and re-wrap a scrollback
+              nobody asked to re-wrap — the same answer the docked strips give.
+              An absolutely positioned grid child creates no track, so the
+              panes are not disturbed either. Against the layers rather than
+              the whole stack, so it covers the console and not the toolbar
+              docked above it: somebody reading a trace has not stopped wanting
+              the switch that turns automation off.
+
+              Addressed at the shown character, like every other diagnostic.
+            */}
+            {debugOpen && (
+              <DebugView
+                load={debugApi.load}
+                onClose={closeDebug}
+                reveal={debugApi.reveal}
+                save={debugApi.save}
+                session={session}
+                subscribe={debugApi.subscribe}
+              />
+            )}
           </div>
           <SearchBar
             onClose={closeSearch}
@@ -4312,12 +4788,13 @@ export default function App() {
 
         {railVisible && (
           <Splitter
-            edge="right"
+            edge={railSide}
             label={t('splitter.aria.cardRailWidth')}
             measure={measureRail}
             onChange={widths.setRail}
             onDragging={setResizing}
             onReset={widths.reset}
+            pane="rail"
             rangeFor={rangeForRail}
           />
         )}
@@ -4331,8 +4808,10 @@ export default function App() {
             {cards.away.length > 0 && (
               <CardPicker
                 cards={cards.away}
+                dragging={drag.state?.live === true}
                 onAdd={cards.show}
-                // A chip is a handle as well as a button: dragged onto the
+                onFloat={floatCard}
+                // A row is a handle as well as a button: dragged onto the
                 // console it floats there, into the rail it lands there.
                 onGrab={grabCard}
               />
@@ -4470,6 +4949,7 @@ export default function App() {
         onOpenPalette={openPalette}
         onToggleConnection={toggleConnection}
         pressure={pressure}
+        showLogo={config.ui.showLogo}
         size={size}
         state={state}
       />

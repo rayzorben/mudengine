@@ -14,7 +14,6 @@ import {
   perRound,
   ratePerHour,
   share,
-  readTally,
   sinceBaseline,
   swings,
   turnedAside,
@@ -23,14 +22,20 @@ import {
   type CombatTally
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
-import { useRememberedValue } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 
 export interface StatsCardProps extends CardChrome {
   character: CharacterState;
-  /** Which character's card this is, for the baseline to be remembered against. */
+  /** Which character's card this is, for its table to remember its own sort. */
   session: SessionId;
+  /**
+   * The reading every figure is a difference from, or null for the whole
+   * session. Owned by `App` rather than by this card — see `onReset`.
+   */
+  baseline: CombatTally | null;
+  /** Re-base to the totals as they stand now. */
+  onReset(): void;
 }
 
 /** A figure the realm has not made yet reads as a dash, never as zero. */
@@ -120,7 +125,8 @@ const KIND_LABEL: Record<BlowKind, string> = {
   melee: t('cards.stats.kind.melee'),
   critical: t('cards.stats.kind.crit'),
   backstab: t('cards.stats.kind.backstab'),
-  spell: t('cards.stats.kind.cast')
+  spell: t('cards.stats.kind.cast'),
+  proc: t('cards.stats.kind.proc')
 };
 
 /**
@@ -174,20 +180,29 @@ const KIND_LABEL: Record<BlowKind, string> = {
  * Nothing here sends, and nothing here decides. Same rule as the Reference
  * card: this is a readout of what already happened.
  */
-function StatsCard({ character, session, ...chrome }: StatsCardProps) {
+function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCardProps) {
   const { tally, progress } = character;
 
   /**
    * The Reset control, as a *baseline* rather than a message to main.
    *
-   * Main keeps one monotonic total; pressing Reset stores a copy of it here and
+   * Main keeps one monotonic total; pressing Reset stores a copy of it and
    * every figure is read as the difference. That makes the press instant, keeps
    * main free of a second accumulator, and means the untouched totals are still
-   * there — which is what makes Reset safe to press. Remembered per character
-   * like every other card preference; a baseline from a session that has since
-   * restarted is discarded below rather than producing negative counts.
+   * there — which is what makes Reset safe to press. A baseline from a session
+   * that has since restarted is discarded below rather than producing negative
+   * counts.
+   *
+   * **The baseline is `App`'s, not this card's** (todo 01, 2026-09-06). It was
+   * remembered here, per character, and that could not answer *starting a loop
+   * resets the statistics*: this card ships **put away**, so on most rails it
+   * is not mounted when a lap begins, and a card that re-based on mount would
+   * wipe however much of the lap had already happened. Whatever re-bases has to
+   * be running whether or not anything is drawn, and that is `App`, which holds
+   * every session's view and hears the loop push for all of them. There is
+   * still exactly **one** baseline, written by the button and by the lap alike,
+   * so neither has to be compared against the other.
    */
-  const [baseline, setBaseline] = useRememberedValue<CombatTally>(session, 'stats-base', readTally);
   const stale =
     baseline !== null &&
     (tally.since === null || baseline.at === null || baseline.at < tally.since);
@@ -243,9 +258,11 @@ function StatsCard({ character, session, ...chrome }: StatsCardProps) {
        * and it is only meaningful for the kinds a *swing* can become. A
        * spell that fails is refused in its own sentence, never counted as a
        * miss, so a spell's share of the swings would be a number over the
-       * wrong denominator.
+       * wrong denominator. A weapon's proc is the same objection from the
+       * other side: it rides on a swing that is already in the denominator,
+       * so its share of them would count one round twice.
        */
-      accuracy: kind === 'spell' ? null : share(shown.dealt[kind].hits, total),
+      accuracy: kind === 'spell' || kind === 'proc' ? null : share(shown.dealt[kind].hits, total),
       blows: shown.dealt[kind]
     })),
     ...(everHappened(tally.missed)
@@ -291,8 +308,6 @@ function StatsCard({ character, session, ...chrome }: StatsCardProps) {
       cell: (row) => figure(mean(row.blows.damage, row.blows.hits), 1)
     }
   ];
-
-  const reset = useCallback(() => setBaseline(tally), [setBaseline, tally]);
 
   /*
    * The readout, as data.
@@ -428,7 +443,7 @@ function StatsCard({ character, session, ...chrome }: StatsCardProps) {
           // Nothing is lost by it — main's totals are untouched — so it is not
           // toned as danger. What it costs is the reading, and that comes back
           // by resetting again on a fresh baseline.
-          run: reset
+          run: onReset
         }
       ]}
       badge={

@@ -90,7 +90,8 @@ export type IconName =
   | 'at'
   | 'broadcast'
   | 'flame'
-  | 'bag';
+  | 'bag'
+  | 'flag';
 
 const ICONS: Record<IconName, ReactNode> = {
   /*
@@ -510,6 +511,14 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M5 8.5h14l-1 12H6l-1-12Z" />
       <path d="M9 8.5V7a3 3 0 0 1 6 0v1.5" />
+    </>
+  ),
+  /* A flag on a pole: the mark a place is given when somebody chooses it,
+     which is what building a loop is — one flag per waypoint. */
+  flag: (
+    <>
+      <path d="M6 21V4" />
+      <path d="M6 4h11l-2.5 4 2.5 4H6" />
     </>
   ),
   at: (

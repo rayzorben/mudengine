@@ -193,6 +193,11 @@ export class LoopRunner {
   private startedAt: number | null = null;
   private expAtStart: number | null = null;
   /**
+   * When this run first stood on the loop. See `LoopProgress.lapBegunAt`, and
+   * `beginLap` for the two ways a run gets there.
+   */
+  private lapBegunAt: number | null = null;
+  /**
    * Where a loop holds still for health, and where it walks on again.
    *
    * Auto-combat's `minHealth` stops fights being *opened* low; nothing stopped
@@ -254,6 +259,7 @@ export class LoopRunner {
                     : null
         : null,
       startedAt: this.startedAt,
+      lapBegunAt: this.lapBegunAt,
       expAtStart: this.expAtStart,
       forward: this.forward,
       bounce: this.loop?.bounce ?? false
@@ -289,6 +295,9 @@ export class LoopRunner {
      */
     this.fighting = fightIsRunning(state);
     this.startedAt = this.now();
+    // The lap has not begun until the character is standing on the loop, which
+    // may be a walk away. `beginLap` is the one place that decides it has.
+    this.lapBegunAt = null;
     // Null stays null: experience made is only ever a difference between two
     // numbers the client had, never a difference from zero.
     this.expAtStart = state.progress.exp;
@@ -452,6 +461,7 @@ export class LoopRunner {
     this.errand = false;
     this.offline = false;
     this.startedAt = null;
+    this.lapBegunAt = null;
     this.expAtStart = null;
     this.rateSince = null;
     this.publish();
@@ -890,6 +900,10 @@ export class LoopRunner {
 
     const target = splitStop(stop);
     if (this.planner.here(target)) {
+      // Standing on the loop already, whichever branch is taken: `first` moves
+      // to the next stop rather than dwelling on the one under its feet, and
+      // that is still a lap that has begun.
+      this.beginLap();
       if (!first) this.arrive();
       else this.step();
       return null;
@@ -988,10 +1002,28 @@ export class LoopRunner {
     this.timer.unref?.();
   }
 
+  /**
+   * This run has reached the loop. Once per run, and never on a `resume`.
+   *
+   * Two callers, because there are two ways to be standing on a stop and they
+   * are the same fact: the run walked to one (`arrive`), or the character was
+   * already on one when Start was pressed (`advance`'s `here` branch, which
+   * steps past it rather than dwelling on it). Deciding it in one of them only
+   * would be two halves of one gate — and the half that was missed is the
+   * common one for somebody who walks out by hand and then presses Start.
+   *
+   * Deliberately not published from here: both callers publish on their own
+   * next line, and a second push would be the same fact twice.
+   */
+  private beginLap(): void {
+    if (this.lapBegunAt === null) this.lapBegunAt = this.now();
+  }
+
   /** Arrived at a stop: dwell — the configured linger, or long enough to fight. */
   private arrive(): void {
     const loop = this.loop;
     if (!loop) return;
+    this.beginLap();
     const stop = loop.stops[this.index];
     const dwell = stop?.linger ? stop.linger * 1000 : tuning().loop.dwellMs;
     this.lingerUntil = this.now() + dwell;

@@ -64,6 +64,67 @@
   --tone: 18%;
   --tone-strong: 26%;
 
+  /*
+   * A fourth step, below all three, for a tonal fill over a *large* area — a
+   * settings fieldset rather than a chip. The three above were chosen against
+   * a chip forty pixels wide, and the same 12% over a four-hundred-pixel block
+   * is not the same amount of colour: a page of eight of them reads as eight
+   * saturated blocks, which is the flat-block language §9 retracted.
+   */
+  --tone-wash: 6%;
+
+  /*
+   * ---------------------------------------------- the settings screen's hues
+   *
+   * The configuration pages were one grey: forty fieldsets whose legends all
+   * read `--text-lo` and whose seams were all `--ink-line`, so finding
+   * "Auto-Retreat" meant reading every legend on the page rather than
+   * recognising the block it lives in.
+   *
+   * Four aliases over the accents already declared above, never literals of
+   * their own, so a theme repaints the settings screen for free — which is
+   * what "use the selected theme" means: nord, gruvbox and one each supply
+   * their own four and the screen comes out in that theme's register rather
+   * than in a palette this file invented beside it.
+   *
+   * **`--danger` is deliberately not among them.** It means *danger*
+   * everywhere else in this client, and the settings screen has two real
+   * warnings of its own that stay in the open because they can cost a
+   * character — opening fights unasked, and hanging up. A Movement fieldset
+   * drawn in the same red would make those two stop reading as warnings,
+   * which is the one thing colour here must not do.
+   *
+   * Four rather than one per section, because **only one section is on screen
+   * at a time**: the hue's job is to tell one block from the next and to give
+   * the page you are on an identity, not to be unique across a list nobody
+   * ever sees together. Ten sections over four hues repeat five apart, which
+   * is five more than anybody can see at once.
+   */
+  --section-a: var(--accent);
+  --section-b: var(--ok);
+  --section-c: var(--pending);
+  --section-d: var(--marker);
+
+  /*
+   * ------------------------------------------------- the way, pass by pass
+   *
+   * A lap that comes back the way it went draws one line over another, so the
+   * way changes colour each time it starts doubling back over ground it has
+   * already covered. Three of them, capped by `tuning.mapTrailBands`.
+   *
+   * Aliases over the accents again, never literals, so a theme repaints them —
+   * and in the order the request asked for: the way starts in the accent the
+   * route has always been drawn in, and doubles back through amber and green.
+   *
+   * `--danger` is not among them, here for the map's own reason rather than
+   * the settings screen's: red on this surface is the lair and the trap, and a
+   * third pass of a lap drawn in the same red would be a way that looks like a
+   * hazard.
+   */
+  --trail-0: var(--accent);
+  --trail-1: var(--pending);
+  --trail-2: var(--ok);
+
   /* ------------------------------------------------------------- glass */
   --glass-blur: blur(18px) saturate(1.3);
   --glass-rim: inset 0 1px 0 rgb(255 255 255 / 6%);
@@ -176,6 +237,16 @@
   --gap: 12px;
   --pad-card: 14px;
   --control-h: 32px;
+  /*
+   * The band the three controls at the top of the window share: the rail head
+   * on one side, the toolbar strip across the console, and the put-away chips
+   * on the other. They were three different heights that happened to start at
+   * the same y, so the row read as three unrelated pieces of chrome rather
+   * than one edge. Derived from `--control-h` — the toolbar's keys are that
+   * tall, and this is them with air above and below — so a density that moves
+   * the control height moves the band with it.
+   */
+  --topbar-h: calc(var(--control-h) + 8px);
   --font-ui: var(--font-ui-base);
   --font-micro: calc(var(--font-ui-base) - 2px);
   --rail-w: 340px;
@@ -187,6 +258,10 @@
   --gap: 8px;
   --pad-card: 9px;
   --control-h: 26px;
+  /* `--topbar-h` is not restated: it is declared once above as a `calc` over
+     `--control-h`, and both blocks target `:root`, so the one declaration
+     already resolves against whichever control height is in force. A copy here
+     would do nothing except be able to drift from the original. */
   --font-ui: calc(var(--font-ui-base) - 1px);
   --font-micro: calc(var(--font-ui-base) - 3px);
   --rail-w: 300px;

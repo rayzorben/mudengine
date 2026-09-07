@@ -50,7 +50,7 @@ import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 
 /** See `ProfileDraft.loops`: a ceiling on a payload, not a limit on a loop. */
-const LOOP_LIMITS = { loops: 200, stops: 500 } as const;
+export const LOOP_LIMITS = { loops: 200, stops: 500 } as const;
 
 /**
  * One loop, from a payload that crossed the IPC boundary.
@@ -149,6 +149,7 @@ export interface GlobalDraft {
     density: DensityPreference;
     tabs: TabsPreference;
     showHud: boolean;
+    showLogo: boolean;
     vitals: { hp: VitalDraft; mana: VitalDraft };
     alerts: ProfileDraft['alerts'];
   };
@@ -193,6 +194,7 @@ export interface GlobalDraft {
       cures: CuresDraft;
       blessings: BlessingDraft[];
       notifyPartyOnWearOff: boolean;
+      invokeItems: boolean;
     };
     loot: {
       coins: boolean;
@@ -399,6 +401,8 @@ export interface ProfileDraft {
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
+    /** Bend down for a key an exit here needs. See `MovementConfig`. */
+    collectKeys: boolean;
   };
   /**
    * The loops this character walks — `automation.loops`.
@@ -444,6 +448,7 @@ export interface ProfileDraft {
     cures: CuresDraft;
     blessings: BlessingDraft[];
     notifyPartyOnWearOff: boolean;
+    invokeItems: boolean;
   };
   /**
    * Which alerts this character raises — `ui.alerts`, not `automation.*`.
@@ -748,7 +753,14 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       walkWhileBlind: movement['walkWhileBlind'] === true,
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
       lightDimRooms: movement['lightDimRooms'] === true,
-      extinguishInLight: movement['extinguishInLight'] === true
+      extinguishInLight: movement['extinguishInLight'] === true,
+      // The shipped default when the payload omits it, on the health block's
+      // rule above: this one is on by default, and a form that failed to send
+      // the field would silently switch it off.
+      collectKeys:
+        movement['collectKeys'] === undefined
+          ? DEFAULT_CONFIG.automation.movement.collectKeys
+          : movement['collectKeys'] === true
     },
     /*
      * Parsed by the same function the options file goes through, so a loop
@@ -785,7 +797,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       minMana: unit(spells['minMana']),
       cures: asCures(spells['cures']),
       blessings: asBlessings(spells['blessings']),
-      notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true
+      notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
+      invokeItems: spells['invokeItems'] === true
     },
     alerts: {
       // Anything else is `info`, which keeps everything: starting somebody off
@@ -878,8 +891,9 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       fontFamily: text(ui['fontFamily']).slice(0, 200),
       theme: isThemePreference(ui['theme']) ? ui['theme'] : 'system',
       density: oneOf(ui['density'], ['auto', 'comfortable', 'compact'] as const, 'auto'),
-      tabs: oneOf(ui['tabs'], ['top', 'left'] as const, 'left'),
+      tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       showHud: ui['showHud'] !== false,
+      showLogo: ui['showLogo'] !== false,
       vitals: { hp: asVital(vitals['hp']), mana: asVital(vitals['mana']) },
       alerts: asIf.alerts
     },
@@ -939,7 +953,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         minMana: unit(spells['minMana']),
         cures: asCures(spells['cures']),
         blessings: asBlessings(spells['blessings']),
-        notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true
+        notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
+        invokeItems: spells['invokeItems'] === true
       },
       loot: {
         coins: loot['coins'] === true,

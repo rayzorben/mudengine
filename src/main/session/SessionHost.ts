@@ -44,6 +44,7 @@ import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
 import type { BelongingsSink } from '../../shared/belongings';
 import type { TalkSink } from './TalkLog';
+import { SessionDebug } from './SessionDebug';
 
 export interface SessionSlot {
   readonly id: SessionId;
@@ -60,6 +61,28 @@ export interface SessionSlot {
   readonly reconnect: Reconnect;
   log: SessionLog | null;
   capture: SessionCapture | null;
+  /**
+   * The debug ring, for the debug window and for a bug report.
+   *
+   * Not `| null` and never opened or closed: unlike the log and the capture it
+   * is not a file and costs nothing to keep, and a trace that only exists once
+   * somebody has turned it on is one that never holds the surprise they turned
+   * it on for. See `SessionDebug`.
+   *
+   * **The exposure that comes with being unconditional, stated rather than
+   * inherited.** Outbound commands are masked by `SessionManager.reportable`,
+   * which arms on a prompt the *classifier typed* — `prompt-password` or
+   * `prompt-new-password` — with an exact match against the configured
+   * password as its only fallback. So on a realm whose password prompt this
+   * client does not recognise, a password that is not the configured one (a
+   * second account, or one being created) is written down verbatim. That has
+   * always been true of the capture, and the capture is opt-in and stays on
+   * the player's disk; this ring is always on and exists to be *sent to
+   * somebody else*, which makes the same gap a different size. The answer when
+   * it bites is a pattern, in `patterns.ts`, from a capture — not a second
+   * redactor here.
+   */
+  readonly debug: SessionDebug;
   /** The last character name published, so the roster is republished on change. */
   named: string | null;
 }
@@ -207,6 +230,14 @@ export interface SessionHostOptions {
    * framed line. A window opening the card catches up with `Invoke.getLines`.
    */
   toDiagnostics: <T>(channel: string, message: Addressed<T>) => void;
+  /**
+   * The debug view's feed: attached windows showing the view.
+   *
+   * A route of its own rather than `toDiagnostics`, because this produces
+   * several records per framed line where that produces one, and only the
+   * debug view reads it — see `Send.debugFeed`.
+   */
+  toDebugging: <T>(channel: string, message: Addressed<T>) => void;
   /** Coalesced facts: routed to every window, which may render a tab for it. */
   toAll: (channel: string, payload: unknown) => void;
   notice: (notice: Notice) => void;
@@ -278,6 +309,18 @@ export class SessionHost {
      * the slot is then built complete, rather than mutating a hole in it
      * through a cast.
      */
+    /*
+     * Built before the sink that feeds it, like `reconnect` above. The push
+     * goes only to windows showing the view — the recording is unconditional
+     * and the *serialisation* is what is paid for, which is `Push.line`'s rule
+     * applied to a feed that produces several records per line rather than one.
+     * Its own route for exactly that reason: sharing the diagnostics flag, a
+     * window with the Stream card open paid for records nothing in it read.
+     */
+    const debug = new SessionDebug((record) =>
+      this.options.toDebugging(Push.debug, { session: id, payload: record })
+    );
+
     const manager = new SessionManager(
       {
         /*
@@ -293,6 +336,9 @@ export class SessionHost {
         decoded: (text) => {
           slot.log?.write(text);
           slot.capture?.text(text);
+          // The debug window's `in` records: what the server actually sent,
+          // before the feed decided what the console is shown.
+          debug.text(text);
         },
         /*
          * What the console shows, for the console — and for the backscroll,
@@ -307,15 +353,18 @@ export class SessionHost {
           // The capture is a record and gets every line; the push is a paint
           // concern and goes only where something is showing it.
           slot.capture?.line(line);
+          debug.line(line);
           this.options.toDiagnostics(Push.line, { session: id, payload: line });
         },
         block: (block) => {
+          debug.block(block);
           this.options.toAll(Push.block, { session: id, payload: block });
           // What was said outlives the socket: the Talk card's history is
           // written down and seeded back into the next attach's snapshot.
           if (block.domain === 'conversation') this.options.talkFor(id).append(block);
         },
         character: (state) => {
+          debug.characterState(state);
           this.options.toAll(Push.character, { session: id, payload: state });
           /*
            * A tab is named after the character, and the realm does not say who
@@ -335,11 +384,14 @@ export class SessionHost {
         // open.
         destination: (room, name) => this.options.destinationsFor(id).remember({ id: room, name }),
         loop: (progress) => this.options.toAll(Push.loop, { session: id, payload: progress }),
-        automation: (snapshot) =>
-          this.options.toAll(Push.automation, { session: id, payload: snapshot }),
+        automation: (snapshot) => {
+          debug.automation(snapshot);
+          this.options.toAll(Push.automation, { session: id, payload: snapshot });
+        },
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         state: (state) => {
+          debug.connection(state);
           this.options.toAll(Push.state, { session: id, payload: state });
           // The tab rail renders connection phase, so the roster changes too.
           this.options.publishRoster();
@@ -353,11 +405,22 @@ export class SessionHost {
         // A socket that went without this client asking. Only these are ever
         // dialled again — see `Reconnect` for what the other closes are.
         dropped: (why) => reconnect.lost(why),
-        telnet: (event) => this.options.toAll(Push.telnet, { session: id, payload: event }),
-        notice: (message) => this.options.notice({ session: id, message }),
+        telnet: (event) => {
+          debug.telnet(event);
+          this.options.toAll(Push.telnet, { session: id, payload: event });
+        },
+        notice: (message) => {
+          debug.notice(message);
+          this.options.notice({ session: id, message });
+        },
         learned: (discoveries) =>
           this.options.toAll(Push.learned, { session: id, payload: discoveries }),
-        command: (command, source) => slot.capture?.out(command, source)
+        command: (command, source) => {
+          // Already through `SessionManager.reportable`, which is the one place
+          // this client redacts a password. Both records take the same value.
+          slot.capture?.out(command, source);
+          debug.out(command, source);
+        }
       },
       this.options.worldFor(id),
       config.automation,
@@ -377,6 +440,7 @@ export class SessionHost {
       reconnect,
       log: null,
       capture: null,
+      debug,
       named: null
     };
     this.slots.set(id, slot);

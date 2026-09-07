@@ -22,6 +22,10 @@ app:
     internalTemplateAdded: 'Added to internal.yaml, from the template: {added}.'
     templateAdded: 'Added to your options file, from the template: {added}.'
     templateReconcileFailed: Options file left alone — {error}
+  debug:
+    noSession: There is no session to write a report for.
+    realmUnknown: (not dialled)
+    reportTitle: mudengine debug report
   gpu:
     softwareCompositing: 'The window is not drawn by the GPU (compositing {compositing}, rasterization {rasterization}, WebGL {webgl}): every frame is composed in software, which is why typing and scrolling crawl. Check the graphics driver, or how the client was launched.'
   connect:
@@ -42,6 +46,7 @@ app:
   loop:
     invalidName: Invalid path/loop name.
     invalidLoop: Invalid loop definition.
+    invalidPicks: The loop builder sent something that is not a list of at most {max} rooms.
     notFound: No loop named {name} in this character's options.
     unknownScope: Invalid loop scope.
   onboarding:
@@ -104,6 +109,22 @@ notices:
     suppliesStated:
       'A supplies block was written into {file} — the things a character keeps in stock and where
       it buys them. Empty, so nothing changes until an item is added.'
+    conditionWaitsStated:
+      one:
+        'Walking on while blind or poisoned is a setting, off by default, and was written into
+        {count} file with the paragraph that explains it: {fileList}'
+      many:
+        'Walking on while blind or poisoned is a setting, off by default, and was written into
+        {count} files with the paragraph that explains it: {fileList}'
+    keyPickupStated:
+      one:
+        'Picking up a key an exit of the room needs, when it is lying on that floor, is a setting --
+        on by default -- and was written into {count} file with the paragraph that explains it:
+        {fileList}'
+      many:
+        'Picking up a key an exit of the room needs, when it is lying on that floor, is a setting --
+        on by default -- and was written into {count} files with the paragraph that explains it:
+        {fileList}'
     anonymousConnectionDropped:
       'The account and "connect on launch" under connection: were removed from {file}. The client no
       longer connects without a character; each character''s own file carries its account.'
@@ -145,10 +166,11 @@ notices:
         pick up anything over a weight, and drop what the realm itself prices at nothing. Each asks
         the realm a question about a thing, which the client could not do until items carried the
         realm's own row. {fileList}"
-    gmudRealmAdded:
-      '{realm} was added to your realms ({file}). It is the realm a new character starts on; the
-      six Paradigm realms beside it are unchanged.'
-    gmudRealmFailed: 'The {realm} realm could not be added to your realms: {reason}'
+    gmudRealmFailed: 'The {realm} realm could not be removed from your realms: {reason}'
+    gmudRealmRemoved:
+      '{realm} no longer ships with the client and was removed from your realms ({dir}); nothing
+      was playing on it. The six Paradigm realms are unchanged, and a new character now starts on
+      the one the built-in map was built from.'
     healSplit:
       many: 'Healing is two spells now — one cast on this character and one cast on a party member,
         because the realm marks which spells may be cast on whom. `healPartyWith` and a `healTo`
@@ -192,6 +214,9 @@ notices:
         'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
         the reaction to a player attacking — were written into {count} file with the paragraphs
         that explain them. All off, which is what the client was already doing. {fileList}'
+    markStated:
+      '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
+      status rail. Turn it off there or on the MudEngine page in settings.'
     diagnosticsPreferenceDropped:
       many:
         '"ui.showDiagnostics" was removed from {count} files: the diagnostics cards are now hidden on
@@ -490,6 +515,7 @@ palette:
     loopStopsHint:
       many: '{stopCount} stops'
       one: '{stopCount} stop'
+    buildLabel: Build a loop on the map
     routeLabel: Route to room
     searchLabel: Search the console
   noMatches: No matching command, and no room by that name.
@@ -512,9 +538,14 @@ palette:
     profilesNoneHint: none yet
     showCardsLabel: Show the cards
     showDiagnosticsLabel: Show diagnostics
-    tabsLeftHint: roomier, costs columns
+    debugHint: raw, framed, classified
+    hideDebugLabel: Hide the debug window
+    showDebugLabel: Show the debug window
+    tabsLeftHint: roomier, cards on the right
     tabsOnLeftLabel: Tabs on the left
+    tabsOnRightLabel: Tabs on the right
     tabsOnTopLabel: Tabs on top
+    tabsRightHint: roomier, cards on the left
     tabsTopHint: compact, costs rows
     themeCycleLabel: Cycle theme
     themeCycleSystemHint: system · {themeLabel}
@@ -551,6 +582,7 @@ terminal:
 # the tooltip, the accessible name and the row in the button picker — the
 # words follow the settings screen's, because the two edit the same key.
 toolbar:
+  invokeItems: Bless from an item
   provideLight: Auto-Light (Light Dark Rooms)
   supplies: Auto-Buy Supplies
   assistLeader: Auto-Assist Leader
@@ -580,6 +612,7 @@ toolbar:
   retaliate: Retaliate When Attacked
   sneak: Auto-Sneak on Move
   openLoops: Path Library / Select Loop
+  buildLoop: Build a Loop / Path Editor
   stopLoop: Stop Loop
   stopWalk: Stop Movement
 tabs:
@@ -610,6 +643,7 @@ tabs:
     markOffline: offline
     markPvp: attacked! (PvP)
     markRecovering: recovering
+    markSearching: searching
     markBlocked: blocked
     markBlind: blind
     markHeld: held
@@ -671,6 +705,33 @@ table:
   noMatches: Nothing here matches.
   showAll: Show all
   sortByColumn: Sort by {columnLabel}
+# The debug window: what the client is doing with the stream, in place of the
+# console. `debug.kind.*` is one word per stage of the pipeline.
+debug:
+  ariaLabel: What the client is doing with the stream
+  counts: '{shown} of {total} records'
+  dropped: '{count} older dropped'
+  emptyAllFiltered: Nothing matches. Turn a kind back on, or clear the search.
+  emptyNothingYet: Nothing yet. This fills as the client reads the stream.
+  findPlaceholder: Find in the trace
+  follow: Follow the newest
+  kind:
+    block: Classified
+    event: Decided
+    in: Received
+    line: Framed
+    link: Link
+    notice: Client
+    out: Sent
+    state: State
+  kindsAria: Which kinds of record to show
+  revealReport: Show the folder
+  saveFailed: 'Could not write the report — {error}'
+  saveTooltip: Save this trace as a bug report
+  savedTo: 'Written to {path}'
+  showAll: Show everything
+  title: Debug
+
 # The bento cards, by card; cards.titles is the vocabulary the rail and picker share.
 cards:
   alerts:
@@ -705,6 +766,90 @@ cards:
     vitals:
       crossing: '{label} {level}: {current} of {max}'
       manaLabel: Mana
+  quests:
+    anyOf: Any one of
+    badge:
+      many: '{count} quests'
+      one: '{count} quest'
+    bring:
+      carry: Carry
+      hand: Hand over
+    caption: The realm’s quests
+    columns:
+      exp: Exp
+      hide: Hide
+      level: Level
+      quest: Quest
+    copyRow:
+      many: '{name} — {stepCount} steps, {exp} exp'
+      one: '{name} — {stepCount} step, {exp} exp'
+    find: Find a quest, a person, a word to say
+    flag:
+      needs: at {rank}
+      sets: to {rank}
+      step: '{from} → {to}'
+      title: The quest counter this step moves, as the realm counts it
+    gate:
+      abilityAbsent: never started {name}
+      abilityAny: has {name}
+      abilityAtLeast: '{name} at {rank} or more'
+      abilityAtMost: '{name} at {rank} or less'
+      abilityExact: '{name} at exactly {rank}'
+      alignmentBetween: alignment {low} to {high}
+      alignmentEvil: alignment {value} or higher
+      alignmentGood: alignment {value} or lower
+      item: carrying {name}
+      itemAbsent: not carrying {name}
+      klass: '{name} only'
+      levelAtLeast: level {level}+
+      levelAtMost: level {level} or under
+      levelBetween: level {min}–{max}
+      lives:
+        many: '{count} lives or more'
+        one: '{count} life or more'
+      price: costs {amount}
+      race: '{name} only'
+      spell: under {name}
+    gives: Gives
+    hideHidden: Hide them again
+    hideOne: Hide {name}
+    none:
+      This realm scripts no quests the client can read. A realm converted before quests were
+      indexed states none until it is converted again.
+    progress:
+      clear: Not started
+      done:
+        many: '{done} of {total} steps done'
+        one: '{done} of {total} step done'
+      mark: Say this quest is done through rank {rank}
+      unmark: Say this step is not done yet
+    reward:
+      ability: '{name} to rank {rank}'
+      abilityAdd: '{name} {amount}'
+      alignment: alignment {amount}
+      coins: '{amount} {coin}'
+      exp: '{amount} exp'
+      lives:
+        many: '{count} lives'
+        one: '{count} life'
+      spell: teaches {name}
+    showHidden: Show {count} hidden
+    showOne: Show {name} again
+    side:
+      any: Anybody
+      evil: Evil
+      good: Good
+      neutral: Neutral
+    source:
+      mobs: dropped by {names}
+      shops: sold at {names}
+      step: from step {rank}
+    step:
+      ask: ask {who} {word}
+      orSay: or {words}
+      verb: ask
+      walkTo: Walk to {place} — {room}
+    title: Quest Book
   banks:
     badge: '{count} banked'
     copper: '{copper} copper coins (cc)'
@@ -736,6 +881,8 @@ cards:
     more: More
     settings: Settings for this card
     pin: 'Pin: keep in view for every character'
+    rollDown: 'Roll down: show the whole card'
+    rollUp: 'Roll up: show the heading only'
     toolbarLabel: '{cardTitle} actions'
     unpin: 'Unpin: follow the shown character'
   combat:
@@ -890,12 +1037,26 @@ cards:
     badgeTooltipDropped: Rooms the grid could not place
     emptyNoLocation: Location not known yet.
     emptyNoWorldData: The world data has nothing for here.
+    away:
+      down: 'Look down, at {roomName}'
+      teleport: '{command} — add the teleport to {roomName}'
+      up: 'Look up, at {roomName}'
+    buildAction: Build a loop or route
+    centreFallback: the centre
     legendBank: bank
+    legendGated: gated
     legendLair: lair
+    legendLook: look up/down
+    legendPick: clicked
     legendRoute: route
     legendShop: shop
     legendShut: shut
+    legendStart: start
     legendStop: stop
+    legendTeleport: teleport
+    legendAgain: covered again
+    legendThrough: on the way
+    legendTrap: trap
     legendVertical: up/down
     legendYou: you
     roomTooltip: Route to {roomName}
@@ -904,6 +1065,49 @@ cards:
     title: Map
     destinationFallback: the destination
     hereFallback: here
+  # The loop builder: a loop or route drawn by clicking rooms on the map,
+  # planned by the same router a walk uses and saved as the fewest waypoints
+  # whose routes reproduce it.
+  builder:
+    blocked: 'No way through: {reason}'
+    centreHereAria: Centre the map on {name}
+    destinationGlobal: Every character
+    emptyHint:
+      Click a room to start. Click it again to unpick it, or click it later to close the loop.
+      Click another room to route there. The chevrons beside a room look up or down a level; the
+      teleport ring adds that teleport to the way. Drag to pan, wheel to zoom.
+    findAria: Centre the map on a room
+    findPlaceholder: Centre on a room, or 1/2150
+    legSteps:
+      many: '{count} steps'
+      one: '{count} step'
+    loopName: Round {place}
+    nameAria: Name
+    namePlaceholder: Name
+    redo: Redo (Ctrl/⌘ Shift Z)
+    routeHint: Saved as a route, walked there and back.
+    loopHint: Saved as a loop of waypoints, each leg planned when it is walked.
+    preferHint: Routes planned later will follow this way wherever they can.
+    plainHint: Routes planned later will not be steered along it.
+    preferToggle: Routes follow this way
+    preferTitle:
+      'On: after saving, any route this character plans — to a room clicked on the map, a loop’s
+      leg, the way home — follows this way wherever it can instead of the shortest path, because
+      every step along it is priced at a tenth of an ordinary step. Off: it is saved as a loop or
+      route to run, and routing is unchanged.'
+    tooManyPicks: No more than {max} picks in one way.
+    routeName: '{from} to {to}'
+    saveLoop: Save Loop
+    saveRoute: Save Route
+    saved: 'Saved {name} — {where}.'
+    savedNotice: 'Saved the loop {loopName}.'
+    startHint: Click the next room, or the start again to unpick it.
+    startOver: 'Start over — back to the start room, nothing else picked'
+    lookingUp: 'Looking up, at {roomName}. Click a room here to route to it.'
+    lookingDown: 'Looking down, at {roomName}. Click a room here to route to it.'
+    stepAt: step {at}
+    title: Loop Builder
+    undo: Undo (Ctrl/⌘ Z)
   # Where the character is going, in the two ways it can be going anywhere: a
   # route somebody chose and walks once, or a loop walked round and round. One
   # card, two faces, and the face follows whichever is actually happening —
@@ -940,6 +1144,7 @@ cards:
       title: Loop
     route:
       badgeArrived: arrived
+      badgeSearching: searching
       badgeBlocked: blocked
       badgeStopped: stopped
       endedReason: 'Ended: {reason}'
@@ -974,9 +1179,17 @@ cards:
     ofMax: '{percent}% of {max}'
     title: Party
   picker:
-    addChip: + {cardLabel}
-    tooltip: Put {cardLabel} back on the rail
-    tooltipDraggable: Put {cardLabel} back on the rail — or drag it where you want it
+    away: '{cardCount} put away'
+    floatTooltip: Open {cardLabel} over the console
+    menuLabel: Cards put away
+    railTooltip: Put {cardLabel} back on the rail
+    railTooltipDraggable: Put {cardLabel} back on the rail — or drag it where you want it
+    tooltip: The cards put away for this character
+  popover:
+    moveHint: Drag to move this panel
+    pinHint: 'Pin: keep this panel open when you click elsewhere'
+    resizeHint: Drag to resize — double-click to fit it to the name again
+    unpinHint: 'Unpin: close on the next click elsewhere'
   player:
     access:
       allowedValue: '{granted} of {total}'
@@ -1092,6 +1305,7 @@ cards:
       soldByLabel: Sold by
       usesLabel: Uses
       usesMany: '{count} charges'
+      usesUnlimited: Unlimited
       usesOnce: Single use / 1 charge
       weapon:
         accuracyNote: ' · +{accuracy} accuracy'
@@ -1143,6 +1357,15 @@ cards:
       learnedLabel: Learned
       learnedLeastKill: ' — the least that killed it: {hp} hp'
       learnedSurvived: ' — seen to survive {hp} hp'
+      livesLabel: Lives in
+      spawnChooseTitle: Show the {room} rooms it can spawn in
+      spawnCount: '×{count}'
+      spawnMax:
+        many: (up to {max} to a room)
+        one: (one to a room)
+      spawnMore: ' — and {count} more places'
+      spawnRoomsMore: ' — and {count} more'
+      spawnsLabel: Spawns in
       temperLabel: Disposition / Aggression
       temperUncertainNote: ' — the world data disagrees with itself'
       temperUnknown: not stated in the world data
@@ -1189,6 +1412,8 @@ cards:
     answers:
       leadsTo: '→ {roomRef}'
       noEffectKnown: the realm does not say what it does
+      opensExit: opens the {direction} exit
+      opensExitElsewhere: opens the {direction} exit of {roomRef}
       sendTooltip: Send “{phrase}” — the realm’s own word for it
     bank:
       copper: '{copper} copper coins (cc)'
@@ -1296,9 +1521,15 @@ cards:
       unknownStartRoom: Unknown start room {roomId}
     routeSummary: '{stepCount} steps · cost {cost}'
     searchAria: Find a room
+    trapDamage: up to {damage} damage
+    traps:
+      many: '{trapCount} traps'
+      one: 1 trap
     searchPlaceholder: Room name, or 1/2150
     typeMoreChars: Type at least two characters.
     walkButton: Walk it
+    walkHereButton: Walk here
+    walkHereTooltip: Walk only as far as {roomName}
     walkTooltip: Walk this route (Enter)
   session:
     encoding: Encoding
@@ -1423,6 +1654,10 @@ cards:
       crit: Crit
       melee: Melee
       miss: Miss
+      # A weapon's chance-on-hit. The realm's own word for the pair is
+      # `PercentSpell`; `Weapon` is what a player calls it, and the row sits
+      # apart from Melee because it lands off a swing rather than being one.
+      proc: Weapon
     noSwings: Nothing has swung yet.
     percent: '{value}%'
     perRoundLabel: Damage a round
@@ -1541,6 +1776,8 @@ map:
     droppedBySuffix: ' — dropped by {mobs}'
     gold: '{amount} gold'
     hidden: Hidden
+    hiddenLever: Hidden — “{phrase}” here
+    hiddenLeverElsewhere: Hidden — “{phrase}”, in {room}
     hiddenSearchable: Hidden — search for it
     itemNumberFallback: '#{itemId}'
     itemUnknown: unknown
@@ -1639,8 +1876,10 @@ settings:
       fontSizeLabel: Size, px
       scrollbackLabel: Scrollback, Lines
       showHud: Show Cards Beside Console
+      showLogo: Show The MudEngine Mark
       tabPlacementLabel: Character Tabs
-      tabsLeft: Down the side
+      tabsLeft: Down the left, cards right
+      tabsRight: Down the right, cards left
       tabsTop: Across the top
       uiFontHint: Everything except the console, which is always fixed-pitch. Blank uses the console face.
       uiFontLabel: Interface Font
@@ -1943,6 +2182,11 @@ settings:
     extinguishInLightHint:
       Removes the lit torch in a room that does not need it, while nothing is walking the character,
       so a torch lasts the sewer rather than the walk there.
+    collectKeys: Pick Up a Key the Way Out Needs
+    collectKeysHint:
+      Only when the realm says an exit of the room needs it, no listing has shown it in the pack,
+      and it is lying on this floor. A keyed door with no key is a wall the router plans around, so
+      this is the one moment bending down is worth anything. On by default.
     legend: Walking a Route
     loopsNote: These belong to this character alone. Loops for everyone who plays a realm go on that
       realm’s page; loops for every character go on the Global page. How long to wait in a room, and
@@ -2165,6 +2409,11 @@ settings:
       come before ones on the party. A blessing on a party member recasts on its own timer,
       because its wear-off shows on their screen, not yours.
     notifyWearOffLabel: Notify Caster on Buff Wear-Off
+    invokeItemsLabel: Bless from an item
+    invokeItemsHint:
+      Ask a carried item for the blessing it casts, when that blessing is not up. Only items the
+      realm says can be used without limit — nine weapons in the shipped realm bless this way,
+      for no mana and no charge. An item with a fixed number of charges is left alone.
     notifyWearOffHint:
       When a party member's blessing on this character wears off, telepath them @bless-expired so
       their client recasts at once instead of on its clock. Both ends must run mudengine.
@@ -2286,6 +2535,7 @@ session:
     socketError: 'Connection error: {message}'
   loop:
     ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'
+    preferUnresolved: 'The route {loopName} names a stop the realm cannot settle, so it is not preferred.'
     locateReason: the loop lost its place
     locateUnavailable:
       This realm has no “{command}” command, so it was said out loud rather than answered. The
@@ -2366,7 +2616,9 @@ session:
       Nothing answered the last move in {seconds}s, so the client has given up waiting for it and is
       taking the room on screen as where you are. Running away, walking a route and running a loop
       all wait for a step, so they were held until now.
+    exitBackOpen: The room lists {direction} again, so routes will use it once more.
     exitRefused: The realm data promised an exit {direction} that the realm refuses; routes will avoid it.
+    exitShut: The way {direction} is shut rather than absent; routes will avoid it until the room lists it.
     readLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has stopped waiting for it. It was a
       re-read rather than a step, so nothing was held up by it.
@@ -2435,6 +2687,8 @@ automation:
       summon: calls for help
       teleported: teleports you
       wide: room-wide
+  invoke:
+    reason: asking {item} for {spell}
   blessing:
     reason: 'blessing: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
@@ -2466,6 +2720,9 @@ automation:
     reasonReply: away reply
     replied: 'Told {player} you are away.'
   loops:
+    fightingForTheLap:
+      Auto-combat is off, but this lap will fight anyway — a loop is chosen for what lives on it.
+      Stop the loop to stop the fighting.
     heldForErrand: Loop held — going shopping; it walks on from the shop.
     walkingOnAfterErrand: Walking on from the shop.
     giveUpReason: 'could not reach {stopName}: {why}'
@@ -2538,6 +2795,13 @@ automation:
     bought: 'Bought {count} {item} at {shop}; {have} carried.'
     boughtSome: 'Bought {count} of {wanted} {item}, then stopped: {why}'
     refused: 'Not buying {item}: {why}'
+  keys:
+    reasonNeeded: 'key: the way {direction} needs {item}, and it is on this floor'
+    picking:
+      Picking up {item} — the realm says the way {direction} needs it and the pack has none.
+    ambiguous:
+      Not picking up {item} — the way {direction} needs one, but the realm has several things of
+      that name and this one may not be it.
   loot:
     reasonCoinsDropped: 'loot: {count} {coin} on the floor'
     reasonConvert: 'loot: using {item} to convert cash'
@@ -2548,6 +2812,8 @@ automation:
     reasonDefend: 'defend: {target} is attacking {member}'
     reasonRestWithLeader: 'resting with {leader}'
     reasonMeditateWithLeader: 'meditating with {leader}'
+  queue:
+    fumbledResend: The realm threw away “{command}” — sending it again.
   search:
     reason: 'search: looking for what this room did not print'
   potion:
@@ -2632,6 +2898,22 @@ automation:
     holdingHeld: Paralysed; waiting here until you can move again.
     holdingPoisoned: Poisoned; waiting here until it runs its course.
     afflictionResumed: The condition has passed; walking on.
+    leverFetching:
+      The way to {stepName} is opened by “{phrase}” in {roomName}. Going there to pull it, then
+      carrying on.
+    leverNext: Lever pulled; {roomCount} more to go.
+    leverPulled: Lever pulled; walking on to {destination}.
+    leverRun:
+      The way to {stepName} needs levers in {roomCount} rooms. Walking them in the realm's own
+      order, then carrying on.
+    leverRunRefused:
+      The way to {stepName} needs levers in {roomCount} rooms and the round of them cannot be
+      walked — {reason}
+    leverUnreachable:
+      The way is opened by “{phrase}” in {roomName}, and there is no route to it — {reason}
+    leversScattered:
+      The way to {stepName} needs levers in {roomCount} different rooms and the realm does not say
+      in which order. Pull them by hand and the way opens.
     reasonAmbiguous: I can no longer tell which room you are in
     reasonBarrier: '{barrier} blocked {command}. {detail}'
     reasonBashing: bashing the {barrier} to {stepName}
@@ -2648,7 +2930,16 @@ automation:
     reasonPicking: picking the {barrier} to {stepName}
     reasonPlayerTookOver: you moved the character yourself
     reasonRefused: the game refused {command}
+    reasonUnlocking: unlocking the {barrier} to {stepName} with the key you are carrying
+    reasonLever: “{phrase}” to open the hidden way to {stepName}
+    reasonWalkingThroughFight:
+      Nothing is set to fight or run, so this route walks on through the fight rather than waiting
+      for it to end — which is also how it ends.
+    reasonRereading: reading the room again for the hidden way to {stepName}
     reasonSearching: searching for the hidden way to {stepName}
+    searchHolding:
+      The realm says the way to {stepName} is hidden here. Searching for it, and staying put until
+      it turns up.
     reasonSneak: sneaking before the route
     reasonStepping: walking to {stepName}
     reasonTimeout: nothing came back after {command}

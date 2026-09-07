@@ -19,7 +19,9 @@ import type { Block } from './blocks';
 import type { LocalMap } from './map';
 import type { Discovery } from './memory';
 import type { CharacterState } from './character';
+import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
+import type { Quest } from './quests';
 import type {
   AlertsUiConfig,
   AutomationSwitch,
@@ -48,7 +50,7 @@ import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
 import type { RoomVerdict } from './verdict';
-import type { Route, WorldLookup, WorldNames, WorldRoom } from './world';
+import type { LoopDraft, RoomId, Route, WorldLookup, WorldNames, WorldRoom } from './world';
 import type { Visited } from './destinations';
 import type {
   ConnectionState,
@@ -431,7 +433,18 @@ export const Send = {
    * pays no serialisation per line; a window catching up re-asks with
    * `Invoke.getLines`, which is authoritative.
    */
-  diagnostics: 'client:diagnostics'
+  diagnostics: 'client:diagnostics',
+  /**
+   * Whether this window is showing the debug view.
+   *
+   * Its **own** flag rather than `diagnostics`, and that is not tidiness:
+   * `Push.debug` produces several records per framed line where `Push.line`
+   * produces one, and only `DebugView` subscribes to it. Sharing the flag,
+   * opening the diagnostics rail — or leaving a Stream float pinned — paid
+   * three or four extra serialisations per line of output for a window that
+   * discarded every one of them on arrival.
+   */
+  debugFeed: 'client:debug-feed'
 } as const;
 
 /** Renderer -> main, request/response. */
@@ -443,6 +456,18 @@ export const Invoke = {
   getTelnetLog: 'session:get-telnet-log',
   /** Framed lines retained for a renderer that mounted mid-session. */
   getLines: 'session:get-lines',
+  /** The debug ring, for a window that has just opened the debug view. */
+  getDebug: 'session:get-debug',
+  /**
+   * Write the debug ring out as a bug report and answer with the path.
+   *
+   * Main writes it rather than the window, for the reason main owns the
+   * clipboard and the logs: the renderer has no filesystem, and the path has to
+   * be the same `logs/` directory `check:secrets` already walks — a report
+   * saved somewhere that check does not look is a report nobody can promise
+   * carries no password.
+   */
+  saveDebug: 'session:save-debug',
   /** Current character and room state, for a renderer that mounted mid-session. */
   getCharacter: 'session:get-character',
   /** A* route from where the character is to a chosen room. */
@@ -472,6 +497,12 @@ export const Invoke = {
   reverseLoop: 'loop:reverse',
   /** The loops the client ships, for the settings screen to offer. */
   loopCatalogue: 'loop:catalogue',
+  /**
+   * Plan a loop being built by hand: the picks in order, each pair routed by
+   * the realm this character is on, reduced to the fewest waypoints. The
+   * builder card asks on every pick, so what it draws is what would be walked.
+   */
+  draftLoop: 'loop:draft',
   /** Walk progress, for a renderer that mounted mid-walk. */
   getWalk: 'walk:get',
   /** The decision trace, for a renderer that mounted mid-session. */
@@ -640,6 +671,7 @@ export const Invoke = {
   searchRooms: 'world:search',
   /** How much realm data is loaded. */
   worldInfo: 'world:info',
+  questBook: 'world:quests',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
   wearer: 'world:wearer',
@@ -721,6 +753,17 @@ export const Push = {
   internal: 'internal:changed',
   /** One framed line of server output. Framing is not CRLF; see LineTokenizer. */
   line: 'session:line',
+  /**
+   * One record for the debug window: a chunk in, a command out, a framed line,
+   * a classification, a state change, a decision.
+   *
+   * Rides the same diagnostics route as `Push.line` and for the same reason —
+   * it arrives at stream rate and *several* records per line, so a window that
+   * is not showing the view must not pay a serialisation for any of them. Main
+   * records regardless; a window opening the view catches up with
+   * `Invoke.getDebug`.
+   */
+  debug: 'session:debug',
   /** One classified line. */
   block: 'session:block',
   /** Character and room state, on change. */
@@ -757,6 +800,8 @@ export interface IpcApi {
   resize(session: SessionId, size: TerminalSize): void;
   /** This window started or stopped showing the diagnostics line feed. */
   diagnostics(on: boolean): void;
+  /** This window started or stopped showing the debug view. */
+  debugFeed(on: boolean): void;
 
   /**
    * Dial a character.
@@ -770,6 +815,10 @@ export interface IpcApi {
   getState(session: SessionId): Promise<ConnectionState>;
   getTelnetLog(session: SessionId): Promise<TelnetEvent[]>;
   getLines(session: SessionId): Promise<StreamLine[]>;
+  /** Everything the debug ring holds, and how much it has already dropped. */
+  getDebug(session: SessionId): Promise<{ records: DebugRecord[]; dropped: number }>;
+  /** Writes the bug report and answers with where it went, or the failure. */
+  saveDebug(session: SessionId): Promise<{ path: string } | { error: string }>;
   getCharacter(session: SessionId): Promise<CharacterState>;
   routeTo(session: SessionId, map: number, room: number): Promise<Route>;
   /** Resolves to the reason the walk could not start, or null if it did. */
@@ -807,6 +856,11 @@ export interface IpcApi {
    * visits to that screen are about a password.
    */
   loopCatalogue(): Promise<Loop[]>;
+  /**
+   * The picks of a loop being built, planned. Addressed, like every world
+   * query: the picks name rooms on this character's realm.
+   */
+  draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
 
@@ -901,6 +955,15 @@ export interface IpcApi {
    */
   searchRooms(session: SessionId, query: string): Promise<Array<WorldRoom & Visited>>;
   worldInfo(session: SessionId): Promise<{ rooms: number; source: string }>;
+  /**
+   * Every quest this realm scripts, assembled from its own text blocks.
+   *
+   * Asked for when the card is opened rather than pushed with the character:
+   * it is 39 quests of 251 steps on the shipped realm, it changes only when
+   * the realm file does, and most of what a session pushes is about the
+   * fight. The same reasoning the loop catalogue's own query records.
+   */
+  questBook(session: SessionId): Promise<Quest[]>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
@@ -943,6 +1006,7 @@ export interface IpcApi {
   onState(handler: (message: Addressed<ConnectionState>) => void): () => void;
   onTelnet(handler: (message: Addressed<TelnetEvent>) => void): () => void;
   onLine(handler: (message: Addressed<StreamLine>) => void): () => void;
+  onDebug(handler: (message: Addressed<DebugRecord>) => void): () => void;
   onBlock(handler: (message: Addressed<Block>) => void): () => void;
   onCharacter(handler: (message: Addressed<CharacterState>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;

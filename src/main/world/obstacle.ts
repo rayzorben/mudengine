@@ -11,7 +11,7 @@
  *
  * Three lengths per obstacle; see `MapObstacle` for what each is for.
  */
-import type { MapObstacle, Requirement } from '../../shared/world';
+import { openableHere, type MapObstacle, type Requirement } from '../../shared/world';
 import { t } from '../app/i18n';
 import type { WorldGraph } from './WorldGraph';
 
@@ -106,9 +106,16 @@ export function describeObstacle(requirement: Requirement, graph: WorldGraph): M
           : t('map.obstacle.sayCommand', { command });
       }
       case 'hidden':
-        return requirement.searchable
-          ? t('map.obstacle.hiddenSearchable')
-          : t('map.obstacle.hidden');
+        if (requirement.searchable) return t('map.obstacle.hiddenSearchable');
+        /*
+         * A lever the character can reach is the number the chip exists to
+         * carry — `hidden` alone says there is a way and not what opens it,
+         * which is the complaint `toll` on its own already answered.
+         */
+        if (openableHere(requirement)) {
+          return t('map.obstacle.hiddenLever', { phrase: requirement.actions![0]!.say[0]! });
+        }
+        return t('map.obstacle.hidden');
       case 'item': {
         const item = requirement.keyId === undefined ? undefined : graph.item(requirement.keyId);
         return t('map.obstacle.needsItem', {
@@ -161,6 +168,22 @@ export function describeObstacle(requirement: Requirement, graph: WorldGraph): M
         return window === null
           ? t('map.obstacle.levelRestricted')
           : t('map.obstacle.levelDetail', { window });
+      /*
+       * A lever somewhere else is the one case with a real second half, and it
+       * is the half somebody acts on: *the lever for this is in 1/1339* is a
+       * place to walk to, where *hidden* is a shrug. The router still does not
+       * plan that detour — `Walker.fetchLever` walks it when the server refuses
+       * the step — so this is what a person reads before deciding to, and it is
+       * why the exit is not written off on a refusal.
+       */
+      case 'hidden': {
+        const away = requirement.actions?.filter((act) => act.at !== undefined) ?? [];
+        if (away.length === 0) return label;
+        return t('map.obstacle.hiddenLeverElsewhere', {
+          phrase: away[0]!.say[0]!,
+          room: `${away[0]!.at!.map}/${away[0]!.at!.room}`
+        });
+      }
       default:
         // Everything else says the same thing at both lengths — there is no
         // second half to add, and a longer sentence padding the same fact is

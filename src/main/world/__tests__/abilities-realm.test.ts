@@ -632,3 +632,60 @@ describe.runIf(available)('a spell states its own magnitude', () => {
     });
   });
 });
+
+/*
+ * The reported case, against the realm that actually ships.
+ *
+ * `wounded messenger` is `Rooms.NPC` on 1/527, Temple Healer — the row MMUD
+ * Explorer prints under *Spawns via*. The client held both halves of that join
+ * from the day the world file was written and could only read it forwards.
+ */
+describe('the shipped realm places its monsters', () => {
+  const test = available ? it : it.skip;
+
+  test('names the room the wounded messenger lives in', () => {
+    const mob = graph!.mob('wounded messenger');
+    expect(mob).toBeDefined();
+    const places = graph!.mobPlaces(mob!);
+    expect(places?.spawns).toEqual([
+      {
+        via: 'npc',
+        roomName: 'Temple Healer',
+        count: 1,
+        rooms: [{ map: 1, room: 527 }],
+        max: null
+      }
+    ]);
+  });
+
+  /*
+   * And the parse the placements are read through. Every lair in this realm
+   * carries the exporter's bracketed parameters, and read as monster numbers
+   * they put four creatures the realm never placed on the Temple Healer's own
+   * lair face.
+   */
+  test('reads a lair as the monsters in it and nothing else', () => {
+    const lair = graph!.lair(graph!.byId('1/527')!);
+    expect(lair?.max).toBe(1);
+    expect(lair?.mobs.map((mob) => mob.name)).toEqual(['healer']);
+  });
+
+  /*
+   * A spread the grouping exists for: a list of 236 addresses is not somewhere
+   * a person can decide to go, and the names are.
+   */
+  test('groups a monster the realm scatters, by the name of the room', () => {
+    const places = graph!.mobPlaces(graph!.mob('snow cat')!);
+    expect(places).toBeDefined();
+    expect(places!.rooms).toBeGreaterThan(100);
+    // Every group is a real room name, and the addresses under it are capped.
+    for (const spawn of places!.spawns) {
+      expect(spawn.roomName.length).toBeGreaterThan(0);
+      expect(spawn.rooms.length).toBeLessThanOrEqual(spawn.count);
+      expect(spawn.rooms.length).toBeLessThanOrEqual(12);
+      for (const room of spawn.rooms) {
+        expect(graph!.get(room.map, room.room)?.name.trim()).toBe(spawn.roomName);
+      }
+    }
+  });
+});

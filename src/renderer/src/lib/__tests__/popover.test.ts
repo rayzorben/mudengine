@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { placePopover, scrollMovesAnchor, type Enclosing } from '../popover';
+import {
+  clampPanel,
+  placePopover,
+  popoverWidth,
+  scrollMovesAnchor,
+  type Enclosing
+} from '../popover';
 
 const viewport = { width: 1000, height: 600 };
 const panel = { width: 300, height: 200 };
@@ -146,5 +152,78 @@ describe('a fixed point is not moved by scrolling', () => {
   it('survives every scroll', () => {
     expect(scrollMovesAnchor(node(), null)).toBe(false);
     expect(scrollMovesAnchor(null, null)).toBe(false);
+  });
+});
+
+/*
+ * The width the panel is drawn at, from the room beside the name that was
+ * clicked. Every case here is one the arithmetic gets wrong in a way nobody
+ * clicks through by hand: an anchor hard against either edge, a window
+ * narrower than the floor, and — the one that matters — a width that the side
+ * `placePopover` then picks must still have room for.
+ */
+const range = { min: 300, max: 560 };
+
+describe('how wide a slide-out is drawn', () => {
+  it('takes the room to the right of the anchor, up to the ceiling', () => {
+    // 1000 - 160 - 8 - 8 = 824 to the right, which is past the ceiling.
+    expect(popoverWidth(box(100, 100), viewport, range)).toBe(560);
+  });
+
+  it('takes the whole window when neither side has room for the floor', () => {
+    /*
+     * An anchor filling the window. Neither side can hold the floor, so the
+     * panel is going below, above or over it — and the room *there* is the
+     * window less its margins, not the sliver beside the anchor.
+     */
+    expect(popoverWidth(box(0, 100, 1000), viewport, range)).toBe(560);
+  });
+
+  it('is never narrower than the floor, even in a window that cannot hold it', () => {
+    // `max-width: calc(100vw - 16px)` in the stylesheet keeps it on screen;
+    // the floor is what the two columns need to read as columns at all.
+    expect(popoverWidth(box(20, 100), { width: 200, height: 600 }, range)).toBe(300);
+  });
+
+  it('takes the wider side when one of them is cramped', () => {
+    // An anchor at 500: 424 to the right of it, 484 to the left. Neither
+    // reaches the ceiling, so the answer is the roomier side exactly.
+    expect(popoverWidth(box(500, 100), viewport, range)).toBe(484);
+  });
+
+  /*
+   * The load-bearing one. `popoverWidth` and `placePopover` are two pieces of
+   * arithmetic over the same numbers, and a width chosen from room the placer
+   * then decides is not enough would put the panel below or over the anchor
+   * instead of beside it — which is the placement of last resort.
+   */
+  it('always leaves the placer a side to use', () => {
+    for (let left = 0; left <= 940; left += 20) {
+      const anchor = box(left, 100);
+      const width = popoverWidth(anchor, viewport, range);
+      const at = placePopover(anchor, { width, height: 200 }, viewport);
+      if (width < viewport.width - 16) expect(at.side === 'right' || at.side === 'left').toBe(true);
+    }
+  });
+});
+
+describe('a panel kept inside the window', () => {
+  it('leaves an untroubled position alone', () => {
+    expect(clampPanel({ top: 100, left: 200 }, panel, viewport)).toEqual({ top: 100, left: 200 });
+  });
+
+  it('pulls one dragged past an edge back inside it', () => {
+    expect(clampPanel({ top: 590, left: 990 }, panel, viewport)).toEqual({ top: 392, left: 692 });
+    expect(clampPanel({ top: -80, left: -80 }, panel, viewport)).toEqual({ top: 8, left: 8 });
+  });
+
+  /*
+   * A panel larger than the window goes to the top-left rather than being
+   * centred: the pin and the close glyph are in its heading, and the corner
+   * that has to stay reachable is the one they are in.
+   */
+  it('pins one larger than the window to the corner its controls are in', () => {
+    const huge = { width: 2000, height: 2000 };
+    expect(clampPanel({ top: 300, left: 300 }, huge, viewport)).toEqual({ top: 8, left: 8 });
   });
 });

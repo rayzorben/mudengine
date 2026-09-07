@@ -24,7 +24,12 @@ function world(): WorldGraph {
     // The item index rides in the header, which is where the composer reads a
     // key's name from — `build:world` puts only the ~130 items some exit
     // actually references in it.
-    items: [{ id: 1124, n: 'angular key', mobs: ['gate guard'] }]
+    items: [
+      { id: 1124, n: 'angular key', mobs: ['gate guard'] },
+      // The other instruction that names an item — `Item: 191` — which the
+      // chip has always tried to read and had nothing to read from.
+      { id: 191, n: 'rope and grapple', shops: ['General Store'] }
+    ]
   };
   fs.writeFileSync(
     rooms,
@@ -110,5 +115,35 @@ describe('what an obstacle says, at three lengths', () => {
     const said = describeObstacle({ kind: 'class', raw }, graph);
     expect(said.label).toBe(raw);
     expect(said.detail).toBe(raw);
+  });
+});
+
+/*
+ * `describeObstacle`'s item case has read `Requirement.keyId` since it was
+ * written, and until todo 00 (2026-09-06) nothing set it for an `Item:`
+ * instruction — so 268 of the shipped realm's exits carried a chip reading
+ * *needs an item it does not name*, which is the shrug `toll` on its own
+ * already got rid of once.
+ */
+describe('an exit that wants something in the pack', () => {
+  const graph = world();
+
+  it('names the item the realm demands', () => {
+    const chip = describeObstacle(
+      parseInstruction('Item: 191') ?? { kind: 'item', raw: 'Item: 191' },
+      graph
+    );
+    expect(chip.kind).toBe('item');
+    expect(chip.label).toContain('rope and grapple');
+  });
+
+  /* And an id the realm's index does not hold still says the number, which is
+     more than "an item" and is all there is to say. */
+  it('falls back to the number for an item the index does not hold', () => {
+    const chip = describeObstacle(
+      parseInstruction('Item: 3503') ?? { kind: 'item', raw: 'Item: 3503' },
+      graph
+    );
+    expect(chip.label).toContain('3503');
   });
 });
