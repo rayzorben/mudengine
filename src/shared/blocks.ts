@@ -176,6 +176,21 @@ export type BlockType =
    * the one the server says to ask for — what makes the ask self-correcting.
    */
   | 'spellbook-refused'
+  /**
+   * `abil` — every ability this character has, summed per source.
+   *
+   * GreaterMUD's own command (`Commands.cs` registers `abil` and `abilities`;
+   * neither MajorMUD nor Paradigm has it), and the *only* thing on the wire
+   * that states a quest counter. `AbilitiesCommand` prints each of the five
+   * containers in a fixed order — `Race`, `Class`, `Worn Items`, `Spell
+   * effects`, `GrantedAbilities` — with one `Name(id)  sum` row per distinct
+   * id in it, and the status line terminates the block. Captured from this
+   * client's own recorded session, 2026-09-07.
+   *
+   * The rows carry `name`, `id` and `value`; a section heading carries
+   * `source`, so a reader can tell that the listing ran to its end.
+   */
+  | 'user-abilities'
   | 'user-inventory'
   /**
    * `You have 22 platinum pieces, 50 gold crowns, 3 silver nobles, 4 copper
@@ -731,6 +746,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'player-status': 'status',
   spellbook: 'status',
   'spellbook-refused': 'status',
+  'user-abilities': 'status',
   'user-inventory': 'status',
   'user-wealth': 'status',
   'who-list': 'status',

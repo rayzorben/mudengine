@@ -8253,6 +8253,117 @@ describe('the spellbook', () => {
 });
 
 /*
+ * `abil`: the ability sums, and the only statement of a quest counter that
+ * exists on any of the three realms. Wire from this client's own recorded
+ * session (2026-09-07, orohost, `2026-09-07_14-46-24_festus.log`).
+ */
+describe('the ability listing', () => {
+  const abil = [
+    '[HP=156/MA=4]:',
+    'Race',
+    'ImmuPoison(21)             100',
+    'AC(2)                      50',
+    '',
+    'Class',
+    'Bash(31)                   0',
+    '',
+    'Worn Items',
+    'AC(2)                      510',
+    'Stealth(27)                -17',
+    '',
+    'Spell effects',
+    'NotEvil(111)               10',
+    '',
+    'GrantedAbilities',
+    'GoodQuest(126)             4',
+    '',
+    '[HP=156/MA=4]:'
+  ];
+
+  it('starts unread, and unread is not a character with no abilities', () => {
+    expect(play(['[HP=34]:']).current.abilities).toBeNull();
+  });
+
+  it('states the quest counter the realm gates on', () => {
+    const tracker = play(abil);
+    expect(tracker.current.abilities?.sums[126]).toBe(4);
+  });
+
+  it('sums an id across the sources, as the realm does', () => {
+    /*
+     * `checkability`, `checkabilityexact` and `testability` each read
+     * `Player.GetAbility(id).Sum`, which adds all five containers together —
+     * so 50 from the race and 510 from the kit is the 560 the server answers,
+     * and reading one section alone would be a different number.
+     */
+    expect(play(abil).current.abilities?.sums[2]).toBe(560);
+  });
+
+  it('keeps a row printed at zero, which is not the same as an absent id', () => {
+    // `failability` turns on whether a modifier exists at all, not on its sum.
+    const sums = play(abil).current.abilities?.sums;
+    expect(sums?.[31]).toBe(0);
+    expect(sums && 31 in sums).toBe(true);
+    expect(sums && 999 in sums).toBe(false);
+  });
+
+  it('keeps a negative magnitude as the figure it is', () => {
+    expect(play(abil).current.abilities?.sums[27]).toBe(-17);
+  });
+
+  it('says the whole listing arrived, so an absent id can be read as zero', () => {
+    expect(play(abil).current.abilities?.complete).toBe(true);
+  });
+
+  it('keeps a listing the server did not finish, and gives up the enumeration', () => {
+    /*
+     * A regeneration tick repaints the prompt on its own clock, and a repaint
+     * terminates a batch — so a listing can close before its last section
+     * through nothing being wrong. The rows that arrived are rows the server
+     * printed and are kept; what a short listing cannot support is *absence*
+     * read as zero, and `complete` is the one judgement carried to the reader.
+     * Throwing the block away was the first cut: it lost counters the server
+     * had just stated, and said nothing while doing it.
+     */
+    const cut = play([
+      '[HP=156/MA=4]:',
+      'Race',
+      'ImmuPoison(21)             100',
+      '',
+      'Worn Items',
+      'AC(2)                      510',
+      '[HP=156/MA=4]:'
+    ]);
+    expect(cut.current.abilities?.complete).toBe(false);
+    expect(cut.current.abilities?.sums[21]).toBe(100);
+  });
+
+  it('is replaced whole by the next listing, and goes when the realm does', () => {
+    const tracker = play([
+      ...abil,
+      'Race',
+      'AC(2)                      50',
+      '',
+      'GrantedAbilities',
+      'GoodQuest(126)             6',
+      '[HP=156/MA=4]:'
+    ]);
+    expect(tracker.current.abilities?.sums[126]).toBe(6);
+    // The kit's 510 was in the previous listing and not in this one.
+    expect(tracker.current.abilities?.sums[2]).toBe(50);
+    tracker.leaveRealm();
+    expect(tracker.current.abilities).toBeNull();
+  });
+
+  it('leaves the room alone: the listing is not somewhere the character went', () => {
+    // `Race` is a room name to every test the loosest rule makes, and the
+    // client used to walk into one and read the listing as its description.
+    const tracker = play(['Newhaven', 'Obvious exits: north', ...abil]);
+    expect(tracker.current.room.name).toBe('Newhaven');
+  });
+});
+
+/*
  * Reading a scroll: two facts in one sentence, and the second one is not in it.
  *
  * Captured live 2026-09-03 — `bu harm`, `bu minor`, then `read harm` and

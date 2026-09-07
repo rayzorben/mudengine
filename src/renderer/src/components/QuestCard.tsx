@@ -16,6 +16,7 @@ import {
   type QuestStep,
   type QuestWay
 } from '@shared/quests';
+import type { AbilitySums } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
 
 /**
@@ -47,20 +48,28 @@ import type { SessionId } from '@shared/ipc';
  * on 237 of the 251 steps and its own reward on **all** of them, saying in a
  * sentence what the track already says by being a track.
  *
- * ## Hiding, and progress the player states
+ * ## Hiding, and progress — the realm's where it prints it, the player's where
+ * it does not
  *
- * The counters are server-side abilities. No command prints one and no sentence
- * reports one, so **the client cannot know which step a character is on** — and
- * a book that guessed would be wrong in the reassuring direction, which is the
- * one this project refuses. So nothing here is inferred: `Hide` is the player
- * saying *not this one*, and the rank on the track is the player saying *I have
- * got this far*. Both are statements, neither is a claim about the wire, and
- * the track says which it is showing rather than implying it knows.
+ * The counters are server-side abilities and nothing the server volunteers
+ * reports one, so for three months this card could not know which step a
+ * character was on and refused to guess. **GreaterMUD's `abil` prints them**
+ * (2026-09-07), so where a listing has been read the track draws the realm's
+ * own count and the nodes stop being controls — a control writing a preference
+ * the next listing overrules is bound to nowhere.
+ *
+ * Where no listing has been read the rank on the track is still the player
+ * saying *I have got this far*, and `Hide` is still the player saying *not this
+ * one*. Those are statements about a preference and never claims about the
+ * wire, and the two kinds are never merged: the head says which of them the
+ * number is, because a note somebody left themselves being mistaken for the
+ * server's own count is the reassuring direction this project refuses.
  *
  * Remembered per character in `localStorage`, like the rail's arrangement and
  * every other card's filters: a paladin and a necromancer want different books,
  * and a preference changed by clicking must not make the client rewrite a file
- * full of the user's own comments.
+ * full of the user's own comments. Kept underneath a listing rather than
+ * overwritten by one, because a character re-pointed at Paradigm still has it.
  */
 export interface QuestCardProps extends CardChrome {
   session: SessionId;
@@ -89,6 +98,21 @@ export interface QuestCardProps extends CardChrome {
    * none, so the name stays text.
    */
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
+  /**
+   * What the server's own ability listing says each counter stands at.
+   *
+   * A quest is a counter and until 2026-09-07 nothing on the wire ever printed
+   * one, so how far a character had got was the *player's* statement and the
+   * client refused to guess. GreaterMUD's `abil` states every counter outright
+   * (`mudengine-wire`), and a statement from the server outranks a statement
+   * from the player about the same fact — so where this has a listing in it,
+   * the track draws the realm's own number and stops offering the nodes as
+   * controls. Null on a realm that has no such command, and before the first
+   * listing on one that does; the remembered marks are what answer then, and
+   * they are kept underneath rather than overwritten, because a character
+   * re-pointed at Paradigm still has them.
+   */
+  counters?: AbilitySums | null;
   /**
    * What class this character is, so its own route through a step is marked.
    *
@@ -120,6 +144,52 @@ interface Row {
   /** The classes and races the realm restricts it to, by name. Empty is anybody. */
   limits: string[];
   hidden: boolean;
+  /** How far through it this character is, and who says so. */
+  progress: Progress;
+}
+
+/**
+ * How far through a quest a character is, and which of the two things said so.
+ *
+ * The source is carried rather than the number alone because the two are
+ * different kinds of claim and the card says which it is showing: the realm's
+ * count is a fact the server stated and the player's mark is a note they left
+ * themselves. Conflating them is how a book comes to imply it knows something
+ * it was told.
+ */
+interface Progress {
+  /** The counter's rank — the realm's own arithmetic, not a step's position. */
+  rank: number | null;
+  /** Steps this rank leaves behind, and how many there are. */
+  done: number;
+  total: number;
+  /** True where `abil` stated it, false where it is the player's own mark. */
+  observed: boolean;
+  /** When the realm said so. Null where the number is the player's own. */
+  at: number | null;
+}
+
+/**
+ * Whether a rank leaves this step behind.
+ *
+ * `to <= rank`, never *before this one in the list*: the realm writes
+ * alternatives as separate steps with the same `to` — two NPCs who each
+ * advance the counter from 1 to 2 — and doing either does both. Ranking by
+ * position would grey one and leave its twin looking outstanding.
+ */
+function stepDone(step: QuestStep, rank: number | null): boolean {
+  return rank !== null && step.to !== undefined && step.to <= rank;
+}
+
+/**
+ * How many steps a rank leaves behind.
+ *
+ * One arithmetic, read by the row's chip and by the track's own count, so the
+ * figure in the table and the greying on the chain cannot disagree about the
+ * same quest.
+ */
+function stepsDone(quest: Quest, rank: number | null): number {
+  return quest.steps.filter((step) => stepDone(step, rank)).length;
 }
 
 export function questCopyText(quests: readonly Quest[]): string {
@@ -475,6 +545,7 @@ function QuestCard({
   onGoTo,
   onName,
   characterClass,
+  counters,
   ...chrome
 }: QuestCardProps): React.JSX.Element {
   /*
@@ -519,6 +590,38 @@ function QuestCard({
    */
   const closeTrack = useCallback(() => setOpen(null), []);
 
+  /*
+   * How far through each quest this character is.
+   *
+   * **The realm's own count wins where there is one.** `abil` states every
+   * counter and the listing enumerates, so a quest the listing does not name
+   * is a quest at zero — not an unknown. The remembered mark answers only
+   * where no listing has been read: a character on Paradigm, or one on
+   * GreaterMUD before the first `abil`. Neither is written over the other; the
+   * mark is a preference on this machine and the count is a fact about the
+   * realm, and the card says which it is drawing.
+   */
+  const progressOf = (quest: Quest): Progress => {
+    /*
+     * An id a **complete** listing does not name is a counter at zero — the
+     * containers are printed whole, so absence is the server holding no
+     * modifier. An id an **incomplete** one does not name is merely unknown,
+     * and falls through to the mark, which is why this is decided per quest
+     * rather than per card: half a listing still settles every counter it
+     * printed, and settles nothing about the rest.
+     */
+    const listed = counters ? counters.sums[quest.id] : undefined;
+    const observed = listed ?? (counters?.complete === true ? 0 : null);
+    const rank = observed ?? ranks.get(String(quest.id));
+    return {
+      rank,
+      done: stepsDone(quest, rank),
+      total: quest.steps.length,
+      observed: observed !== null,
+      at: observed !== null ? (counters?.at ?? null) : null
+    };
+  };
+
   const rows = useMemo<Row[]>(
     () =>
       quests.map((quest) => ({
@@ -527,9 +630,13 @@ function QuestCard({
         level: questLevel(quest),
         exp: questExperience(quest),
         limits: limitWords(quest),
-        hidden: hidden.has(String(quest.id))
+        hidden: hidden.has(String(quest.id)),
+        progress: progressOf(quest)
       })),
-    [quests, hidden]
+    // `progressOf` is a plain closure over exactly these two, so the pair is
+    // the whole of what it reads: the listing, and the marks kept on this
+    // machine.
+    [quests, hidden, counters, ranks]
   );
 
   /*
@@ -559,15 +666,40 @@ function QuestCard({
           ...row.limits
         ].join(' '),
       cell: (row) => (
-        <button
-          aria-expanded={open === row.quest.id}
-          className="lookup"
-          onClick={() => setOpen(open === row.quest.id ? null : row.quest.id)}
-          onMouseDown={keepFocus}
-          type="button"
-        >
-          {row.quest.name}
-        </button>
+        <span className="quest-name-cell">
+          <button
+            aria-expanded={open === row.quest.id}
+            className="lookup"
+            onClick={() => setOpen(open === row.quest.id ? null : row.quest.id)}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {row.quest.name}
+          </button>
+          {/*
+            How far through it this character is, on the row, so *which chains
+            am I part-way through* is answered without opening thirty-nine
+            tracks. Drawn **only where there is progress** — the shipped realm
+            has 39 quests and a character is under way on a handful — which is
+            why it can sit in the one column already being ellipsised on a
+            280px rail: for every other row it takes no width at all. The
+            figure is the track's own `done of total`, written compactly here
+            and in words in the title, so the row and the track cannot
+            disagree about the same quest.
+          */}
+          {row.progress.done > 0 && (
+            <span
+              className="chip quest-progress"
+              title={
+                row.progress.observed
+                  ? t('cards.quests.progress.fromRealm')
+                  : t('cards.quests.progress.fromYou')
+              }
+            >
+              {row.progress.done}/{row.progress.total}
+            </span>
+          )}
+        </span>
       )
     },
     /*
@@ -711,8 +843,8 @@ function QuestCard({
           onGoTo={onGoTo}
           onName={onName}
           onRank={(rank) => ranks.set(String(opened.id), rank)}
+          progress={progressOf(opened)}
           quest={opened}
-          rank={ranks.get(String(opened.id))}
         />
       )}
     </BentoCard>
@@ -728,30 +860,35 @@ function QuestCard({
  */
 function Track({
   quest,
-  rank,
+  progress,
   onRank,
   onGoTo,
   onName,
   characterClass
 }: {
   quest: Quest;
-  rank: number | null;
+  /**
+   * How far through this quest the character is, and which of the two things
+   * said so.
+   *
+   * `observed` decides two things and they go together: the head says where
+   * the number came from *and when*, and the nodes stop being controls. A
+   * control that writes a preference the next `abil` overrules is bound to
+   * nowhere, which this project holds to be worse than none — and the mark
+   * itself is kept, so a character re-pointed at a realm without the command
+   * still has it.
+   */
+  progress: Progress;
   onRank(rank: number | null): void;
   onGoTo?: ((room: string) => void) | null;
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
 }): React.JSX.Element {
-  /*
-   * Done is `to <= rank`, never *before this one in the list*: the realm writes
-   * alternatives as separate steps with the same `to` — two NPCs who each
-   * advance the counter from 1 to 2 — and doing either does both. Ranking by
-   * the counter greys both, which is what actually happened; ranking by
-   * position would grey one and leave its twin looking outstanding.
-   */
-  const done = (step: QuestStep): boolean =>
-    rank !== null && step.to !== undefined && step.to <= rank;
+  const { rank, observed, at } = progress;
+  // `stepDone` is the whole of the rule and it is stated once, above.
+  const done = (step: QuestStep): boolean => stepDone(step, rank);
   const next = quest.steps.findIndex((step) => !done(step));
-  const doneCount = quest.steps.filter(done).length;
+  const doneCount = progress.done;
 
   /**
    * What clicking a node means: this step is done, or it is not.
@@ -783,15 +920,37 @@ function Track({
             ? t('cards.quests.progress.done.one', { done: doneCount, total: quest.steps.length })
             : t('cards.quests.progress.done.many', { done: doneCount, total: quest.steps.length })}
         </span>
-        {rank !== null && (
-          <button
-            className="quiet"
-            onClick={() => onRank(null)}
-            onMouseDown={keepFocus}
-            type="button"
-          >
-            {t('cards.quests.progress.clear')}
-          </button>
+        {/*
+          Where the number came from, said rather than implied. The realm's own
+          count and a note the player left themselves are different kinds of
+          claim about the same quest, and a track that drew them identically
+          would let the second be mistaken for the first.
+        */}
+        {observed ? (
+          /*
+             With the clock on it. Nothing on the wire ever reports a counter
+             moving, so this figure is exactly as fresh as the last `abil` and
+             no fresher — a player who has quested for an hour since is looking
+             at an hour-old number, and the card must not let that read as now.
+          */
+          <span className="chip">
+            {at === null
+              ? t('cards.quests.progress.realm')
+              : t('cards.quests.progress.realmAt', {
+                  time: new Date(at).toLocaleTimeString()
+                })}
+          </span>
+        ) : (
+          rank !== null && (
+            <button
+              className="quiet"
+              onClick={() => onRank(null)}
+              onMouseDown={keepFocus}
+              type="button"
+            >
+              {t('cards.quests.progress.clear')}
+            </button>
+          )
         )}
       </div>
       <ol className="quest-steps">
@@ -802,7 +961,7 @@ function Track({
             key={`${step.block}:${step.from ?? ''}:${step.to ?? ''}`}
             onGoTo={onGoTo}
             onName={onName}
-            onRank={() => onRank(toggle(step))}
+            onRank={observed ? null : () => onRank(toggle(step))}
             quest={quest}
             state={done(step) ? 'done' : at === next ? 'next' : 'later'}
             step={step}
@@ -830,8 +989,14 @@ function Step({
   quest: Quest;
   at: number;
   state: StepState;
-  /** Says this step is done, or that it is not. The track works out the rank. */
-  onRank(): void;
+  /**
+   * Says this step is done, or that it is not. The track works out the rank.
+   *
+   * Null where the realm has stated the counter itself: the node then reports
+   * the server's number and is not a control, because clicking one would write
+   * a preference the reading already outranks.
+   */
+  onRank: (() => void) | null;
   onGoTo?: ((room: string) => void) | null;
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
@@ -858,6 +1023,14 @@ function Step({
          * not a number — the same lie as an unknown maximum drawn as zero.
          */
         <span aria-hidden="true" className="quest-node" />
+      ) : onRank === null ? (
+        /*
+         * The realm has counted this one, so the node states the rank and does
+         * nothing. A *disabled button* was the other option and is worse: it
+         * is a control saying it will not work, where the truth is that there
+         * is nothing here to decide.
+         */
+        <span className="quest-node">{step.to}</span>
       ) : (
         <button
           aria-label={

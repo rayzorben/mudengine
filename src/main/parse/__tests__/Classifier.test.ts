@@ -2055,6 +2055,129 @@ describe('the experience table', () => {
 });
 
 /*
+ * `abil`, captured from this client's own recorded session (2026-09-07,
+ * orohost, `2026-09-07_14-46-24_festus.log`) and reproduced verbatim below.
+ * The listing is GreaterMUD's alone and it is the only place on the wire a
+ * quest counter is ever stated.
+ */
+const ABIL = [
+  'Race',
+  'ImmuPoison(21)             100',
+  'DR(7)                      10',
+  'AC(2)                      50',
+  '',
+  'Class',
+  'Bash(31)                   0',
+  '',
+  'Worn Items',
+  'AC(2)                      510',
+  'DR(7)                      73',
+  'Stealth(27)                -17',
+  'PercentSpell(114)          40',
+  '',
+  'Spell effects',
+  'NotEvil(111)               10',
+  'DescMsg(115)               21207',
+  '',
+  'GrantedAbilities',
+  'GoodQuest(126)             4',
+  ''
+];
+
+describe('the ability listing', () => {
+  const feed = (lines: string[]) => {
+    const c = new Classifier(NAMES);
+    const seen: string[] = [];
+    let batch;
+    for (const text of lines) {
+      const out = c.classify(line(text));
+      seen.push(out.block.type);
+      if (out.batch) batch = out.batch;
+    }
+    return { batch, seen };
+  };
+
+  it('reads every row, with the section headings kept', () => {
+    const { batch } = feed([...ABIL, '[HP=156/MA=4]:']);
+    expect(batch?.type).toBe('user-abilities');
+    expect(batch?.rows).toContainEqual({ name: 'GoodQuest', id: '126', value: '4' });
+    // Both sides of the same id, so a reader can add them the way the server does.
+    expect(batch?.rows).toContainEqual({ name: 'AC', id: '2', value: '50' });
+    expect(batch?.rows).toContainEqual({ name: 'AC', id: '2', value: '510' });
+    // A negative magnitude is a figure, not a failed match.
+    expect(batch?.rows).toContainEqual({ name: 'Stealth', id: '27', value: '-17' });
+    expect(batch?.rows).toContainEqual({ source: 'GrantedAbilities' });
+  });
+
+  it('reads every name the command can actually print', () => {
+    /*
+     * The names are **C# field names**: `AbilityInitializer` builds each
+     * `AbilityType` from `field.Name` by reflection over `GMUDAbilities`, so
+     * what arrives is `DamageWithMR` and never the `Damage(-MR)` the shipped
+     * `abilities.ts` calls id 17 — that table decodes the database's columns,
+     * not this command's output. `%Spell` and `Del@Maint` are the awkward
+     * shapes an identifier *can* have.
+     */
+    const { batch } = feed([
+      'Race',
+      'DamageWithMR(17)           5',
+      'Resist-Cold(3)             20',
+      'GrantedAbilities',
+      '[HP=156/MA=4]:'
+    ]);
+    expect(batch?.rows).toContainEqual({ name: 'DamageWithMR', id: '17', value: '5' });
+    expect(batch?.rows).toContainEqual({ name: 'Resist-Cold', id: '3', value: '20' });
+  });
+
+  it('takes the last bracketed number as the id, defensively', () => {
+    /*
+     * Not a captured shape — no name this command prints contains a bracket —
+     * but the greedy read costs nothing and is what would hold if a derivative
+     * ever named one differently. Anchored on the *last* group, so a bracket
+     * inside the name would take the name and not the id.
+     */
+    const { batch } = feed([
+      'Race',
+      'Damage(-MR)(17)            5',
+      'GrantedAbilities',
+      '[HP=156/MA=4]:'
+    ]);
+    expect(batch?.rows).toContainEqual({ name: 'Damage(-MR)', id: '17', value: '5' });
+  });
+
+  it('emits no room block anywhere in the listing, header included', () => {
+    /*
+     * `Race` is title case, one word and three letters — a room name to every
+     * test the loosest rule in the table makes. `tailsLookLikeRooms` cannot
+     * cover it, because a batch's header is classified before it is fed to the
+     * collector: on that line there is no open batch to ask. Without the
+     * second half of the guard the client walked into a room called `Race` and
+     * read the whole listing as its description.
+     */
+    const { seen } = feed([...ABIL, '[HP=156/MA=4]:']);
+    expect(seen).not.toContain('room-name');
+    expect(seen).not.toContain('room-description');
+  });
+
+  it('refuses only the listing headings, not one-word room names at large', () => {
+    /*
+     * The positive control the guard needs: a check that no room block appears
+     * passes just as well for a classifier that stopped naming rooms at all.
+     *
+     * The guard's cost is exact and measured — a room whose name *is* one of
+     * the five headings could not be read — and on the shipped realm it is
+     * nothing: none of `Race`, `Class`, `Worn Items`, `Spell effects` or
+     * `GrantedAbilities` is among the 3,990 room names in
+     * `resources/world/rooms.jsonl.gz`.
+     */
+    const c = new Classifier(NAMES);
+    expect(c.classify(line('Newhaven')).block.type).toBe('room-name');
+    expect(c.classify(line('The Silver River')).block.type).toBe('room-name');
+    expect(c.classify(line('Race')).block.type).not.toBe('room-name');
+  });
+});
+
+/*
  * The `sp` / `pow` listings, captured live from both sides (`npm run
  * probe:spellbook`, 2026-09-01, orohost) — one grammar under two headers,
  * with the column header consumed and the status line terminating. Before

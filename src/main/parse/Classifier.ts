@@ -158,6 +158,19 @@ export function looksLikeRoomName(text: string): boolean {
 }
 
 /**
+ * Whether this line opens a listing whose lines can look like room names.
+ *
+ * The companion to `BatchRule.tailsLookLikeRooms`, for the one line that rule
+ * cannot cover: a batch's header is classified before it is fed to the
+ * collector, so while the header is being read there is no open batch to ask.
+ * `abil` is the case — `Race` on a line of its own — and the columnar `who`
+ * and the spellbook are covered for free.
+ */
+function opensRoomLikeListing(text: string): boolean {
+  return BATCH_RULES.some((rule) => rule.tailsLookLikeRooms === true && rule.header.test(text));
+}
+
+/**
  * What the server printed after the prompt, on the same framed line.
  *
  * `LineTokenizer` frames on the status line's own `ESC[79D ESC[K` repaint, so
@@ -485,7 +498,21 @@ export class Classifier {
        * would lose its name for as long as it stayed open — measured in the
        * corpus (captures/111, `Obsidian Tomb` inside an inventory).
        */
-      if (rule.type === 'room-name' && this.batch?.rule.tailsLookLikeRooms === true) continue;
+      /*
+       * And not a room on the line that *opens* one either. `abil`'s listing
+       * begins with the bare word `Race` — title case, one word, three
+       * letters — so the guard above could never fire for it: the batch is
+       * fed after the line has already been classified, and on the header
+       * line there is no batch open yet. The client walked into a room called
+       * `Race` and read the character's whole ability listing as its
+       * description.
+       */
+      if (
+        rule.type === 'room-name' &&
+        (this.batch === null ? opensRoomLikeListing(text) : this.batch.rule.tailsLookLikeRooms)
+      ) {
+        continue;
+      }
       // Only a `You say` of exactly what we just sent is a refused command.
       // Anything else is someone talking, and falls through to the rule below.
       if (

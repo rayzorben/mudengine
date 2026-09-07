@@ -2194,6 +2194,87 @@ export const BATCH_RULES: BatchRule[] = [
     qualifiers: [/^Level\s+Experience$/, /^\s*(?<level>\d{1,3})\s+(?<experience>\d+)\s*$/]
   },
   {
+    /*
+     * `abil` — every ability this character has, summed per source. Captured
+     * from this client's own recorded session (2026-09-07, orohost), framed:
+     *
+     *     abil
+     *     Race
+     *     ImmuPoison(21)             100
+     *     DR(7)                      10
+     *
+     *     Class
+     *     Bash(31)                   0
+     *
+     *     Worn Items
+     *     AC(2)                      510
+     *     Stealth(27)                -17
+     *
+     *     Spell effects
+     *     NotEvil(111)               10
+     *
+     *     GrantedAbilities
+     *     GoodQuest(126)             4
+     *
+     * `AbilitiesCommand.cs` prints the five containers in that fixed order and
+     * prints each heading unconditionally, so the block's shape does not
+     * depend on what the character happens to have — which is what lets a
+     * reader tell a complete listing from a truncated one, and it is the only
+     * command on any of the three realms that states a **quest counter**.
+     *
+     * **The header is one bare title-cased word**, which is exactly what a
+     * room name looks like — so this rule is `tailsLookLikeRooms` like the
+     * spellbook and the experience table, and `Classifier` additionally
+     * refuses a room on the line that *opens* one of those listings. Without
+     * the second half, `abil` walked the client into a room called `Race` and
+     * read the whole listing as its description.
+     *
+     * `maxLines` is a **backstop and not a modelled quantity**, and the only
+     * measurement behind it is the live one: a level-10 character's listing is
+     * 39 lines — 28 rows, 5 headings, 5 blanks and the prompt. The structural
+     * ceiling is far above any cap worth having (the server defines 422
+     * ability types and there are five containers), so a number that could not
+     * be reached would be one a missed terminator could spend on swallowing
+     * the session — and this rule refuses room names while it is open, so a
+     * runaway batch costs the client its position. 512 is chosen to sit an
+     * order of magnitude above the measured listing and far below the
+     * ceiling. A listing cut short is still read for the rows it carries and
+     * marked incomplete (`readAbilityListing`); what a short listing loses is
+     * only the right to read an *absent* id as zero.
+     */
+    type: 'user-abilities',
+    header: /^Race$/,
+    shape: 'array',
+    tailsLookLikeRooms: true,
+    maxLines: 512,
+    qualifiers: [
+      /^(?<source>Class|Worn Items|Spell effects|GrantedAbilities)$/,
+      /*
+       * The id is the **last** parenthesised number on the line, so the name is
+       * read greedily. That is a defensive read rather than a captured shape,
+       * and the distinction is worth stating because it is easy to justify
+       * from the wrong table: `src/shared/abilities.ts` calls id 17
+       * `Damage(-MR)`, which looks exactly like a name with a bracket in it —
+       * but that table decodes the *database's* `Abil-n` columns and its own
+       * header calls its provenance the weakest in this codebase. What `abil`
+       * prints is a **C# field name**: `AbilityInitializer` builds every
+       * `AbilityType` from `field.Name` by reflection over `GMUDAbilities`, so
+       * id 17 comes out as `DamageWithMR`, and no name the command can print
+       * contains a bracket at all. All 25 names in the 2026-09-07 capture are
+       * field names exactly. The greedy read costs nothing and holds if a
+       * derivative ever names one differently; the claim that one does is what
+       * would have been the guess.
+       *
+       * The name itself is captured and **not read** by the tracker, which
+       * takes the id and the sum: it is the server's own word for the id, and
+       * keeping it is what makes a row legible in the Stream card and in a
+       * failing test — and what would let a disagreement with the shipped
+       * table be seen rather than inferred.
+       */
+      /^(?<name>.+)\((?<id>\d+)\)\s+(?<value>-?\d+)\s*$/
+    ]
+  },
+  {
     type: 'player-status',
     header: /^Name:\s+[\w\s]+\s+Lives\/CP:\s+\d+\/\d+/,
     shape: 'object',

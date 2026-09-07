@@ -2159,6 +2159,41 @@ kbd {
 }
 
 /*
+ * How far through a quest a character is, on the row itself.
+ *
+ * Inside the name column, which is the one already being ellipsised on a 280px
+ * rail — affordable only because it is drawn for the handful of quests that
+ * are actually under way and takes no width at all on the rest.
+ *
+ * **A flex row, and that is the load-bearing half.** `td.wide` is
+ * `max-width: 0` with an ellipsis, and an ellipsis cuts the *end* of the line
+ * — so with the two children left as inline boxes the chip is the first thing
+ * to disappear, on exactly the rows that have one. The name is what must
+ * shorten: `4/8` cut to `4/` is a different figure, while a shortened name is
+ * still the same quest and its full text is a tooltip and a click away. So the
+ * cell lays out as a row, the name gets the `min-width: 0` that lets a flex
+ * item shrink below its content, and the chip is `flex: 0 0 auto`.
+ */
+.quest-name-cell {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.quest-name-cell > button.lookup {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip.quest-progress {
+  flex: 0 0 auto;
+  text-transform: none;
+}
+
+/*
  * Which quest the track belongs to, and how far through it the player says
  * they are.
  *
@@ -2267,7 +2302,14 @@ kbd {
   width: 17px;
 }
 
-.quest-node:disabled {
+/*
+ * The node where there is nothing to decide.
+ *
+ * A `<span>` rather than a disabled button (see `QuestCard`), so it needs the
+ * pointer taken back off it by hand: a cursor that says *click me* over a
+ * readout is the same lie in miniature as a control bound to nowhere.
+ */
+span.quest-node {
   cursor: default;
 }
 

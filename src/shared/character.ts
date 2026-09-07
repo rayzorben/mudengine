@@ -149,6 +149,67 @@ export interface KnownSpell {
 }
 
 /**
+ * What `abil` said this character's abilities sum to, keyed by the realm's own
+ * ability id.
+ *
+ * The listing is GreaterMUD's alone — `AbilitiesCommand.cs`, registered as
+ * `abil` and `abilities`, and absent from MajorMUD and Paradigm — and it is
+ * the only place on the wire a **quest counter** is ever stated. The quest
+ * book said in as many words that a character's progress through a chain
+ * could not be known; on this realm it can, and this is how.
+ *
+ * **Summed across every source the listing printed**, which is what the realm
+ * itself tests: `checkability`, `checkabilityexact` and `testability` all read
+ * `Player.GetAbility(id).Sum`, and that sums the granted, worn, spell, race
+ * and class containers together. Reading the granted section alone would be a
+ * different number from the one the server gates on.
+ *
+ * **A complete listing enumerates, so an id it does not name is zero** — the
+ * coin rule, and for the same reason: the containers are printed whole, so an
+ * absent id is a modifier the server does not hold rather than one nobody has
+ * mentioned. That reading is only true of a listing that ran to its end, and
+ * `complete` is what says whether this one did. In an **incomplete** listing an
+ * absent id is *unknown* and falls back to whatever else the reader has — the
+ * guess being refused is the zero, not the rows that did arrive. Before any
+ * listing this is null — nobody has said — and null is not a character with no
+ * abilities.
+ *
+ * **A row printed at zero is not the same as an absent one.** `Bash(31) 0` is
+ * a modifier whose sum happens to be nothing, and the realm's `failability`
+ * gate turns on exactly that difference, so a listed id is kept at its stated
+ * value rather than dropped for being zero.
+ */
+export interface AbilitySums {
+  /** Every id the listing named, and what it summed to. */
+  sums: Readonly<Record<number, number>>;
+  /**
+   * Whether the listing ran to its last section, and so whether an id it does
+   * not name reads as **zero** or as *unknown*.
+   *
+   * False is rare and not hypothetical: the server writes the listing in a
+   * tight loop and appends the prompt at the end, but a regeneration tick
+   * repaints that prompt on its own clock — and a repaint is what terminates a
+   * batch. What arrived is still what the server printed and is kept; only the
+   * enumeration is given up.
+   *
+   * A sum from an incomplete listing can also be **short** where an id appears
+   * in a section that never arrived. For a quest counter that is the safe
+   * direction — it under-claims what has been done — and it would additionally
+   * need an item, a spell, a race or a class to grant a quest counter, which
+   * nothing on the shipped realm does.
+   */
+  complete: boolean;
+  /**
+   * Epoch ms of the listing this was read from.
+   *
+   * Read, and drawn: nothing on the wire ever reports a counter moving, so
+   * this figure is only ever as fresh as the last `abil` and a card that drew
+   * it without saying when would be claiming to know something current.
+   */
+  at: number;
+}
+
+/**
  * Which member of the family the server on the other end belongs to.
  *
  * Read off the wire rather than configured: the menu prompt says
@@ -1290,6 +1351,15 @@ export interface CharacterState {
    * `Belongings` seeds it from the last session on the same realm.
    */
   spellbook: KnownSpell[] | null;
+  /**
+   * What the last `abil` said, or null until one has been read.
+   *
+   * Not seeded from the last session, unlike the spellbook: a quest counter
+   * moves while somebody plays, and a stale one would tell the quest book a
+   * chain is further along than it is — the reassuring direction, which is the
+   * one this project refuses.
+   */
+  abilities: AbilitySums | null;
   /** Epoch ms of the last status line, i.e. the last confirmed heartbeat. */
   lastStatusAt: number | null;
   /** Epoch ms of the last change to any of the above. */
@@ -1365,6 +1435,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   afflictions: NO_AFFLICTIONS,
   buffs: [],
   spellbook: null,
+  abilities: null,
   lastStatusAt: null,
   updatedAt: null
 };

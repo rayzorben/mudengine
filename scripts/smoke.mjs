@@ -551,6 +551,40 @@ const server = net.createServer((socket) => {
         )
       );
     }
+    /*
+     * The second command this host answers: `abil`, GreaterMUD's ability
+     * listing and the only thing on the wire that ever states a quest counter.
+     * Shaped exactly as `AbilitiesCommand.cs` writes it -- five headings in a
+     * fixed order, `Name(id)` padded to 26 columns, the sum after it -- so the
+     * quest book downstream is being fed the real thing rather than the shape
+     * the client hopes for. `GoodQuest(126)` is a quest of the shipped realm,
+     * which is what makes the count land on a row the card actually lists.
+     */
+    if (/(^|\n)abil\r?\n/.test(chunk.toString('latin1'))) {
+      socket.write(
+        Buffer.from(
+          [
+            'abil',
+            'Race',
+            'AC(2)                      50',
+            '',
+            'Class',
+            'Bash(31)                   0',
+            '',
+            'Worn Items',
+            'AC(2)                      510',
+            '',
+            'Spell effects',
+            '',
+            'GrantedAbilities',
+            'GoodQuest(126)             4',
+            '',
+            '\x1b[1;32m[HP=98/MA=50]:\x1b[0m\x1b[79D\x1b[K'
+          ].join('\r\n'),
+          'latin1'
+        )
+      );
+    }
   });
   socket.on('error', () => {});
 });
@@ -2959,6 +2993,147 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'and clearing the filter brings the book back',
     'restored'
   );
+
+  /*
+   * ------------------------------------- the realm counts the quest itself
+   *
+   * Until 2026-09-07 this card said in as many words that a quest counter
+   * could not be known: it is a server-side ability, no command printed one,
+   * and a book that guessed would guess in the reassuring direction. `abil`
+   * prints every one of them on GreaterMUD, so the progress on this card is
+   * now a *fact* wherever a listing has been read, and this is the only place
+   * the whole chain -- wire, tracker, IPC, card -- is driven end to end.
+   *
+   * The find field narrows to the quest the listing names, so the check does
+   * not depend on which row happens to sort first.
+   */
+  const findQuest = async (query) => {
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.quest-card .table-find input');
+        if (!el) return false;
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+        set.call(el, ${JSON.stringify(query)});
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await sleep(300);
+    /*
+     * Opened, and only if it is not open already -- the same click closes it,
+     * and this is called twice against the same quest so that the reading
+     * before the listing and the reading after it are of one row.
+     */
+    await evaluate(`
+      (() => {
+        const row = document.querySelector('.quest-table tbody tr');
+        if (!row) return false;
+        if (row.getAttribute('data-open') !== 'true') row.querySelector('.lookup')?.click();
+        return true;
+      })()
+    `);
+    await sleep(300);
+    return JSON.parse(
+      await evaluate(`
+        (() => {
+          const track = document.querySelector('.quest-card .quest-track');
+          return JSON.stringify({
+            open: !!track,
+            name: track?.querySelector('h4')?.innerText.trim() ?? null,
+            steps: track ? track.querySelectorAll('.quest-step').length : 0,
+            nodes: track ? track.querySelectorAll('.quest-node').length : 0,
+            buttons: track ? track.querySelectorAll('button.quest-node').length : 0,
+            done: track ? track.querySelectorAll('.quest-step[data-state="done"]').length : 0,
+            head: track?.querySelector('.quest-track-head')?.innerText.trim() ?? '',
+            /*
+             * Measured, not counted. The name column clips with an ellipsis
+             * and the chip is the last thing on the line, so a chip that is in
+             * the DOM can still be entirely outside the cell it belongs to --
+             * which a node count cannot see. The check is that it has a box,
+             * and that the box is inside its own cell's.
+             */
+            chips: (() => {
+              const chip = document.querySelector('.quest-table .quest-progress');
+              if (!chip) return null;
+              const cell = chip.closest('td');
+              const c = chip.getBoundingClientRect();
+              const t = cell.getBoundingClientRect();
+              return {
+                width: Math.round(c.width),
+                text: chip.innerText.trim(),
+                inside: c.left >= t.left - 1 && c.right <= t.right + 1
+              };
+            })()
+          });
+        })()
+      `)
+    );
+  };
+
+  /*
+   * The positive control, and it is the one that matters: with nothing read
+   * off the wire the same quest is drawn as untouched and every node is a
+   * control. Without it, "the realm's count is showing" would pass just as
+   * well for a card that had stopped drawing nodes at all.
+   */
+  const beforeAbil = await findQuest('GoodQuest');
+  check(
+    beforeAbil.open && beforeAbil.done === 0 && beforeAbil.buttons === beforeAbil.nodes,
+    'before any listing the quest is unstarted and every node is a control',
+    JSON.stringify(beforeAbil)
+  );
+
+  await evaluate(`(window.mudengine.input('${SESSION}', 'abil\\r'), true)`);
+  await sleep(700);
+  const afterAbil = await findQuest('GoodQuest');
+  check(
+    afterAbil.done > 0,
+    'an `abil` listing moves the quest book to where the realm says the character is',
+    JSON.stringify(afterAbil)
+  );
+  /*
+   * And the nodes stop being controls. A click would write a preference the
+   * next listing overrules, which is a control bound to nowhere -- worse than
+   * none. The head says where the number came from instead, because the
+   * realm's count and a note the player left themselves are different kinds
+   * of claim about the same quest.
+   */
+  check(
+    afterAbil.buttons === 0 && afterAbil.nodes === afterAbil.steps,
+    'and the nodes become the realm’s own figures rather than controls',
+    JSON.stringify(afterAbil)
+  );
+  check(
+    /From abil/i.test(afterAbil.head),
+    'and the track says the count is the realm’s, not the player’s',
+    JSON.stringify(afterAbil.head)
+  );
+  /*
+   * On the row too, so *which chains am I part-way through* is answered
+   * without opening thirty-nine tracks -- and **drawn**, not merely present.
+   * The name column clips with an ellipsis and the chip sits at the end of the
+   * line, so this asserts it has a width and that it is inside its own cell.
+   */
+  check(
+    afterAbil.chips !== null &&
+      afterAbil.chips.width > 0 &&
+      afterAbil.chips.inside &&
+      /^\d+\/\d+$/.test(afterAbil.chips.text),
+    'and the row carries the figure, drawn inside its own column',
+    JSON.stringify(afterAbil.chips)
+  );
+
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.quest-card .table-find input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await sleep(300);
 
   // Opened again, so the picture below shows the track and not just the table.
   await evaluate(`document.querySelector('.quest-table tbody tr .lookup')?.click() ?? null`);

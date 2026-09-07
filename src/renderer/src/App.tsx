@@ -758,6 +758,14 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             and exactly one of them belongs to whoever is reading.
           */
           characterClass={character.className}
+          /*
+            The realm's own count of each quest counter, where the realm has a
+            command that prints one. It outranks the marks the player has left
+            on the track, which is why it is handed to the card rather than
+            merged into them: a mark is a preference on this machine and this
+            is a fact about the character.
+          */
+          counters={character.abilities}
           onGoTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           /*
             Addressed like the Reference card's: the panel it opens is the

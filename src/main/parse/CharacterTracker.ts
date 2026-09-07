@@ -325,6 +325,56 @@ function isProcHousekeeping(block: Block): boolean {
   return block.type === 'unknown' && block.text.trim().length === 0;
 }
 
+/**
+ * The last section `abil` prints, and therefore the proof it was all read.
+ *
+ * `Player.GetAllAbilitiesFormattedString` appends the five containers in a
+ * fixed order and appends each heading whether or not the container holds
+ * anything, so this word arriving is the listing saying it finished. It
+ * matters because the quest counters live in that very section, and because
+ * *absence* is only readable as zero in a listing that ran to its end.
+ */
+const LAST_ABILITY_SECTION = 'GrantedAbilities';
+
+/**
+ * The `abil` listing, read into one sum per ability id.
+ *
+ * Summed across the sections rather than kept per source, because the sum is
+ * what the realm's own gates test — `checkability`, `checkabilityexact` and
+ * `testability` each read `Player.GetAbility(id).Sum`, which adds the granted,
+ * worn, spell, race and class containers together. `AC(2)` is printed twice by
+ * a character wearing armour (50 from the race, 510 from the kit) and the
+ * server's answer is 560.
+ *
+ * **A listing that stopped early is kept, not thrown away.** The rows that
+ * arrived are rows the server printed and nothing about them is in doubt; what
+ * a short listing cannot support is the *enumeration* — reading an id it never
+ * named as zero — so `complete` carries that one judgement to the reader and
+ * the reader falls back to what it had for the ids the listing is silent
+ * about. Refusing the whole block was the first cut and it was wrong twice
+ * over: it threw away counters the server had just stated, and it did so
+ * without saying anything at all, which is a decision nobody can read.
+ */
+function readAbilityListing(rows: ReadonlyArray<Record<string, string>>): {
+  sums: Record<number, number>;
+  complete: boolean;
+} {
+  const sums: Record<number, number> = {};
+  let complete = false;
+  for (const row of rows) {
+    const source = row['source'];
+    if (source !== undefined) {
+      if (source === LAST_ABILITY_SECTION) complete = true;
+      continue;
+    }
+    const id = int(row['id']);
+    const value = int(row['value']);
+    if (id === null || value === null) continue;
+    sums[id] = (sums[id] ?? 0) + value;
+  }
+  return { sums, complete };
+}
+
 function splitSpells(group: string | undefined): string[] {
   if (group === undefined) return [];
   return group
@@ -912,6 +962,14 @@ export class CharacterTracker {
       buffs: [],
       online: [],
       shopListing: null,
+      /*
+       * And the ability listing, for the reason the shop's stock goes: it is
+       * what one command said about a character standing in a realm, and the
+       * character is no longer standing in it. Nothing on the wire ever
+       * reports a quest counter moving, so a kept listing could only get
+       * further from the truth the longer it was kept; one `abil` restates it.
+       */
+      abilities: null,
       /*
        * Everyone is marked offline and **nobody is forgotten**. `online` above
        * is a listing about a realm this character has left, so it goes; the
@@ -4332,6 +4390,28 @@ export class CharacterTracker {
             manaType: book === 'powers' ? 'KAI' : book === 'spells' ? 'MA' : s.vitals.manaType
           }
         };
+      }
+
+      /*
+       * `abil` — GreaterMUD's ability listing, and the only thing on any of
+       * the three realms that states a quest counter.
+       *
+       * The listing is authoritative and replaces what is there, like every
+       * other listing here; nothing volunteers a counter between two of them,
+       * so unlike the roster and the pack there is nothing to maintain it with
+       * and the figure is only ever as fresh as the last `abil`. `at` is kept
+       * and **drawn**, because a figure with no clock on it reads as current.
+       *
+       * A listing with not one readable row is nothing said, and says nothing:
+       * that is the classifier having matched a block whose every row failed
+       * its own qualifier, which is a bug rather than a fact about the
+       * character, and overwriting a good listing with it would lose real
+       * counters.
+       */
+      case 'user-abilities': {
+        const { sums, complete } = readAbilityListing(rows ?? []);
+        if (Object.keys(sums).length === 0) return null;
+        return { ...s, abilities: { sums, complete, at: block.at } };
       }
 
       /*
