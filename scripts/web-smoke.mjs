@@ -578,8 +578,10 @@ check(
   shownPath
 );
 check(
-  (await first.evaluate(
-    `document.querySelector('.home-browser li[data-selected="true"] .home-browser-name')?.innerText ?? ''`
+  (await waitFor(() =>
+    first.evaluate(
+      `document.querySelector('.home-browser li[data-selected="true"] .home-browser-name')?.innerText ?? ''`
+    )
   )) === 'default.yaml',
   'with the file marked'
 );
@@ -608,7 +610,16 @@ check(
   (await waitFor(() => first.evaluate(`!!document.querySelector('.settings')`))) === true,
   'the settings screen opens'
 );
-await first.evaluate(`(window.__pick = window.mudengine.chooseRealm(), true)`);
+// The state a person is in when they click Browse: the screen has loaded and
+// put the caret in its first field. Asking for the picker before that races
+// the field's own focus, which a hand on a mouse never does.
+check(
+  (await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.settings')`))) === true,
+  'and takes the keyboard'
+);
+await first.evaluate(
+  `(window.__picked = undefined, window.mudengine.chooseRealm().then((file) => { window.__picked = { file }; }), true)`
+);
 check(
   (await waitFor(() => first.evaluate(`!!document.querySelector('.home-browser')`))) === true,
   'and asking it for a realm database opens the picker'
@@ -621,21 +632,40 @@ const frontmost = await first.evaluate(`
   })()
 `);
 check(frontmost === 'picker', 'in front of the settings screen', String(frontmost));
-await first.press('Escape', 'Escape', 27);
-await sleep(200);
+/*
+ * The dialog takes the keyboard in an effect after it mounts, so a key sent
+ * the instant it is in the DOM lands on the screen behind it and the answer
+ * never comes (2026-09-07: this passed, hung or failed by the clock). Wait
+ * for the focus, then for the effect of the key, never for a timer.
+ */
 check(
-  (await first.evaluate(`window.__pick.then((file) => file === null)`)) === true &&
-    (await first.evaluate(`!document.querySelector('.home-browser')`)) === true,
-  'Escape dismisses the picker and answers nothing'
+  (await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.home-browser')`))) ===
+    true,
+  'and holds the keyboard'
+);
+await first.press('Escape', 'Escape', 27);
+const answer = await waitFor(() =>
+  first.evaluate(`window.__picked ? JSON.stringify(window.__picked) : null`)
+);
+check(
+  answer === '{"file":null}' &&
+    (await waitFor(() => first.evaluate(`!document.querySelector('.home-browser')`))) === true,
+  'Escape dismisses the picker and answers nothing',
+  String(answer)
 );
 check(
   (await first.evaluate(`!!document.querySelector('.settings')`)) === true,
   'and leaves the settings screen it was opened from'
 );
-await first.press('Escape', 'Escape', 27);
-await sleep(200);
+// The hand-back lands a frame after the picker is gone; a key sent before it
+// lands on the body and does nothing, which is a race a hand never wins.
 check(
-  (await first.evaluate(`!document.querySelector('.settings')`)) === true,
+  (await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.settings')`))) === true,
+  'with the caret handed back to it'
+);
+await first.press('Escape', 'Escape', 27);
+check(
+  (await waitFor(() => first.evaluate(`!document.querySelector('.settings')`))) === true,
   'which its own Escape then closes'
 );
 

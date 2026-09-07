@@ -1,7 +1,7 @@
 /**
  * Replays the whole `captures/` corpus through the real classifier.
  *
- *   npm run capture:corpus -- [--unknown 60] [--shapes out.tsv]
+ *   npm run capture:corpus -- [--unknown 60] [--shapes out.tsv] [--accept]
  *
  * `analyse-capture.mjs` answers "what did the parser miss in *my* session?"
  * from a `.mudcap.jsonl` this client wrote. This answers the same question
@@ -62,7 +62,9 @@ if (files.length === 0) {
 }
 
 const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
-console.log(`\nrealm: ${world.size.toLocaleString()} rooms, ${world.mobCount.toLocaleString()} monsters`);
+console.log(
+  `\nrealm: ${world.size.toLocaleString()} rooms, ${world.mobCount.toLocaleString()} monsters`
+);
 console.log(`corpus: ${files.length} captures\n`);
 
 /** Collapses a line to its shape, so variants group together. */
@@ -96,7 +98,9 @@ for (const file of files) {
   let sawCommand = false;
 
   for (const raw of text.split('\n')) {
-    const plain = trimIndent ? raw.replace(/\r$/, '').replace(/^[ \t]+/, '') : raw.replace(/\r$/, '');
+    const plain = trimIndent
+      ? raw.replace(/\r$/, '').replace(/^[ \t]+/, '')
+      : raw.replace(/\r$/, '');
     lines += 1;
     fileLines += 1;
     if (plain.trim().length === 0) {
@@ -137,7 +141,12 @@ for (const file of files) {
 
     if (block.type === 'unknown') {
       const shape = shapeOf(plain);
-      const seen = unknown.get(shape) ?? { count: 0, sample: plain, after: new Set(), files: new Set() };
+      const seen = unknown.get(shape) ?? {
+        count: 0,
+        sample: plain,
+        after: new Set(),
+        files: new Set()
+      };
       seen.count += 1;
       seen.after.add(lastCommand);
       seen.files.add(file);
@@ -154,10 +163,18 @@ for (const file of files) {
     if (alsoHere) {
       present = alsoHere[1]
         .split(',')
-        .map((who) => who.trim().replace(/\s*\((?:Hidden|Charmed)\)$/i, '').replace(/\*$/, ''))
+        .map((who) =>
+          who
+            .trim()
+            .replace(/\s*\((?:Hidden|Charmed)\)$/i, '')
+            .replace(/\*$/, '')
+        )
         .filter(Boolean);
     }
-    const arrived = /^(?:The )?(.+?) (?:just )?(?:walks|crawls|slithers|flies|strides|steps|wanders|shambles|lumbers)? ?into the room/i.exec(plain);
+    const arrived =
+      /^(?:The )?(.+?) (?:just )?(?:walks|crawls|slithers|flies|strides|steps|wanders|shambles|lumbers)? ?into the room/i.exec(
+        plain
+      );
     if (arrived && arrived[1] && !present.includes(arrived[1])) present.push(arrived[1]);
 
     // The only record of what was typed: the server's echo on its own prompt.
@@ -177,9 +194,13 @@ for (const file of files) {
 
 const meaningful = lines - blank;
 const pct = ((classified / meaningful) * 100).toFixed(1);
-console.log(`coverage: ${classified.toLocaleString()}/${meaningful.toLocaleString()} meaningful lines classified (${pct}%)`);
+console.log(
+  `coverage: ${classified.toLocaleString()}/${meaningful.toLocaleString()} meaningful lines classified (${pct}%)`
+);
 console.log(`          ${blank.toLocaleString()} blank lines ignored`);
-console.log(`          ${perFile.filter((f) => !f.sawCommand).length} captures carry no command echo at all\n`);
+console.log(
+  `          ${perFile.filter((f) => !f.sawCommand).length} captures carry no command echo at all\n`
+);
 
 console.log('block types');
 for (const [type, count] of [...byType.entries()].sort((a, b) => b[1] - a[1])) {
@@ -189,16 +210,23 @@ for (const [type, count] of [...byType.entries()].sort((a, b) => b[1] - a[1])) {
 
 const ranked = [...unknown.entries()].sort((a, b) => b[1].count - a[1].count);
 const unknownTotal = ranked.reduce((n, [, i]) => n + i.count, 0);
-console.log(`\nunclassified: ${unknownTotal.toLocaleString()} lines in ${ranked.length.toLocaleString()} distinct shapes\n`);
+console.log(
+  `\nunclassified: ${unknownTotal.toLocaleString()} lines in ${ranked.length.toLocaleString()} distinct shapes\n`
+);
 for (const [, info] of ranked.slice(0, unknownLimit)) {
-  console.log(`  ${String(info.count).padStart(5)} ×${String(info.files.size).padStart(3)}f  ${JSON.stringify(info.sample.slice(0, 84))}`);
+  console.log(
+    `  ${String(info.count).padStart(5)} ×${String(info.files.size).padStart(3)}f  ${JSON.stringify(info.sample.slice(0, 84))}`
+  );
 }
-if (ranked.length > unknownLimit) console.log(`  … ${ranked.length - unknownLimit} more shapes not shown`);
+if (ranked.length > unknownLimit)
+  console.log(`  … ${ranked.length - unknownLimit} more shapes not shown`);
 
 const tailRanked = [...unreadTails.entries()].sort((a, b) => b[1] - a[1]);
 if (tailRanked.length > 0) {
   const total = tailRanked.reduce((n, [, c]) => n + c, 0);
-  console.log(`\nunread prompt tails: ${total.toLocaleString()} in ${tailRanked.length.toLocaleString()} distinct lines\n`);
+  console.log(
+    `\nunread prompt tails: ${total.toLocaleString()} in ${tailRanked.length.toLocaleString()} distinct lines\n`
+  );
   for (const [sample, count] of tailRanked.slice(0, 20)) {
     console.log(`  ${String(count).padStart(5)}  ${JSON.stringify(sample.slice(0, 84))}`);
   }
@@ -208,9 +236,87 @@ if (tailRanked.length > 0) {
 if (shapesOut) {
   const rows = ['count\tfiles\tafter\tsample'];
   for (const [, info] of ranked) {
-    rows.push([info.count, info.files.size, [...info.after].slice(0, 2).join(' | '), info.sample].join('\t'));
+    rows.push(
+      [info.count, info.files.size, [...info.after].slice(0, 2).join(' | '), info.sample].join('\t')
+    );
   }
   fs.writeFileSync(shapesOut, rows.join('\n') + '\n');
   console.log(`\nunclassified shapes written to ${shapesOut}`);
+}
+
+/*
+ * The baseline is the last accepted reading of this corpus, kept beside it
+ * (`captures/` is not in git, so neither is a reading of it). A replay that
+ * differs fails and names the difference, so a parser change proves itself
+ * in one replay rather than one with and one without; `--accept` records
+ * the reading once the difference is the intended one.
+ */
+const baselineFile = path.join(dir, 'baseline.json');
+const reading = {
+  trimmed: trimIndent,
+  captures: files.length,
+  classified,
+  meaningful,
+  unknownLines: unknownTotal,
+  unknownShapes: ranked.length,
+  unreadTails: tailRanked.reduce((n, [, count]) => n + count, 0),
+  byType: Object.fromEntries(
+    [...byType.entries()]
+      .filter(([type]) => type !== 'unknown')
+      .sort(([a], [b]) => a.localeCompare(b))
+  ),
+  files: Object.fromEntries(perFile.map((f) => [f.file, f.classified]))
+};
+if (args.includes('--accept')) {
+  fs.writeFileSync(baselineFile, JSON.stringify(reading, null, 2) + '\n');
+  console.log(`\nbaseline recorded at ${path.relative(process.cwd(), baselineFile)}`);
+} else if (!fs.existsSync(baselineFile)) {
+  console.log('\nno baseline to compare with; run with --accept to record this reading');
+} else {
+  const base = JSON.parse(fs.readFileSync(baselineFile, 'utf8'));
+  if (base.trimmed !== reading.trimmed) {
+    console.log(
+      `\nthe baseline was recorded ${base.trimmed ? 'with' : 'without'} --trim; not compared`
+    );
+  } else {
+    const drift = [];
+    for (const key of [
+      'captures',
+      'classified',
+      'meaningful',
+      'unknownLines',
+      'unknownShapes',
+      'unreadTails'
+    ]) {
+      if (base[key] !== reading[key]) drift.push(`${key}: was ${base[key]}, now ${reading[key]}`);
+    }
+    for (const type of new Set([
+      ...Object.keys(base.byType),
+      ...Object.keys(reading.byType)
+    ]).values()) {
+      const was = base.byType[type] ?? 0;
+      const now = reading.byType[type] ?? 0;
+      if (was !== now) drift.push(`${type}: was ${was}, now ${now}`);
+    }
+    for (const file of new Set([
+      ...Object.keys(base.files),
+      ...Object.keys(reading.files)
+    ]).values()) {
+      const was = base.files[file];
+      const now = reading.files[file];
+      if (was !== now)
+        drift.push(`${file}: was ${was ?? 'absent'}, now ${now ?? 'absent'} classified`);
+    }
+    if (drift.length === 0) console.log('\nthe corpus reads as the baseline does');
+    else {
+      console.log(
+        `\nthe corpus differs from the baseline in ${drift.length} place${drift.length === 1 ? '' : 's'}:`
+      );
+      for (const line of drift.slice(0, 40)) console.log(`  ${line}`);
+      if (drift.length > 40) console.log(`  … ${drift.length - 40} more`);
+      console.log('if that is the change intended, record it: npm run capture:corpus -- --accept');
+      process.exitCode = 1;
+    }
+  }
 }
 console.log('');
