@@ -147,9 +147,14 @@ export function useRememberedChoice(
  * The third shape beside {@link useRemembered} (which of these are muted) and
  * {@link useRememberedChoice} (which one of these is showing): **how far
  * through each of these**. The quest book is what needed it — a quest is a
- * counter the server keeps and no command prints, so how far a character has
- * got is something only the player can state, and it is one number per quest
- * rather than a mark per step.
+ * counter the server keeps and nothing it volunteers ever prints, so how far a
+ * character has got is one number per quest rather than a mark per step.
+ *
+ * It is the *fallback* since 2026-09-07 rather than the only answer: GreaterMUD
+ * has a command that states every counter (`CharacterState.abilities`), and the
+ * card prefers the realm's own figure wherever one has been read. What is kept
+ * here is still kept — a character re-pointed at a realm without that command
+ * has nothing else — which is why a listing never writes through this store.
  *
  * Same storage and same rule as its siblings: an entry whose key this build no
  * longer recognises is dropped rather than honoured, so a book that shrinks

@@ -33,11 +33,21 @@
  * data supports, and inventing the rest would be the confidently-wrong answer
  * this project refuses everywhere else.
  *
- * **Nor is progress read.** The counters are server-side abilities, no command
- * prints them, and no sentence reports one — so the client cannot know which
- * step a character is on and never guesses. Hiding a quest, and saying which
- * rank it has been done through, are the player's own answers to that: both are
- * *preferences* kept beside the card's filters, never claims about the wire.
+ * ## Progress is read where the realm prints it, and stated where it does not
+ *
+ * The counters are server-side abilities and **no sentence ever reports one**,
+ * so nothing the server volunteers says which step a character is on. One
+ * command does: GreaterMUD's `abil` prints every ability the character has,
+ * summed exactly as `checkability` sums it, quest counters included
+ * (`CharacterState.abilities`, 2026-09-07). Where a listing has been read the
+ * book draws the realm's own number; where none has — a realm with no such
+ * command, or one before the first `abil` — the rank on the track is the
+ * player saying *I have got this far*, which is a preference kept beside the
+ * card's filters and never a claim about the wire. Hiding a quest is the same
+ * kind of statement and has no wire answer at all.
+ *
+ * The two are never merged. A statement from the server outranks a statement
+ * from the player about the same fact, and the card says which it is drawing.
  */
 // Type-only, so no value cycle: see `module-cycle.test.ts`.
 import type { Denomination } from './character';

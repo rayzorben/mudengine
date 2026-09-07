@@ -834,7 +834,11 @@ cards:
       done:
         many: '{done} of {total} steps done'
         one: '{done} of {total} step done'
+      fromRealm: Steps done, counted by the realm itself
+      fromYou: Steps you have said are done
       mark: Say this quest is done through rank {rank}
+      realm: From abil
+      realmAt: From abil at {time}
       unmark: Say this step is not done yet
     reward:
       ability: '{name} to rank {rank}'
@@ -2044,7 +2048,9 @@ settings:
         page, and a character’s on its own.
       onEnterHint:
         What the client asks the realm once, on the way in. Every one of these is a command
-        spent, so the list is short on purpose.
+        spent, so the list is short on purpose. On GreaterMUD, `abil` is what fills the quest
+        book in with the realm's own count of each quest — no other realm has that command,
+        and one that does not will say the word out loud in the room.
       onEnterLabel: Post-Login / Entry Commands
       onEnterPlaceholder: rm, st, i, exp, sc, l
       onPartyChangeLabel: Party Change Commands
