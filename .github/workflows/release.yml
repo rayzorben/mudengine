@@ -213,6 +213,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: What was published
+        run: |
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}" = "true" ]; then
+            echo "Pushed ${IMAGE}:${{ steps.v.outputs.version }} and ${IMAGE}:latest"
+          else
+            echo "Built ${IMAGE}:${{ steps.v.outputs.version }} without pushing (not a release)."
+          fi
+
       # The Hub page is not the image: `docker push` sets nothing on it. So
       # the description is uploaded beside the push, from `docker/README.md`,
       # under exactly the condition the push has and with the same
@@ -223,9 +231,12 @@ jobs:
       # characters, so it is stated here rather than read from package.json,
       # whose line is longer than that.
       #
-      # A personal access token needs read-and-write scope for this endpoint.
-      # If Hub refuses the step with a token that pushes images fine, the
-      # scope is the first thing to check.
+      # **The token needs read/write/delete scope**, which is more than a
+      # push needs, and this comment said read-and-write until 2026-09-07:
+      # v0.6.1's run pushed both tags with such a token and then took
+      # `Error: Forbidden` on the PATCH below. The action's README states
+      # the requirement; a token that pushes images is not evidence that
+      # this step will be allowed.
       - name: Publish the Docker Hub description
         if: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && env.DOCKERHUB_USERNAME != '' }}
         uses: peter-evans/dockerhub-description@v4
@@ -235,14 +246,6 @@ jobs:
           repository: ${{ env.IMAGE }}
           short-description: Client, terminal and automation engine for MajorMUD, GreaterMUD and Paradigm, in a browser.
           readme-filepath: ./docker/README.md
-
-      - name: What was published
-        run: |
-          if [ "${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}" = "true" ]; then
-            echo "Pushed ${IMAGE}:${{ steps.v.outputs.version }} and ${IMAGE}:latest"
-          else
-            echo "Built ${IMAGE}:${{ steps.v.outputs.version }} without pushing (not a release)."
-          fi
 
   release:
     name: Publish the release
@@ -256,8 +259,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `pattern:` names the three platform artifacts, and it has to.
+      #
+      # With no `name` and no `pattern` this downloads *every* artifact in
+      # the run, and `needs:` does not narrow that — the docker job runs in
+      # the same run and `build-push-action@v6` uploads a build record
+      # (`<owner>~<repo>~XXXXXX.dockerbuild`, ~90KB, importable into Docker
+      # Desktop) beside the image. v0.6.1 failed here: the three installers
+      # downloaded and the build record did not, five retries and out. The
+      # action's own README says to ignore them or it will fail.
+      #
+      # And the failure was the lesser half. Downloaded, the record's files
+      # merge into `artifacts/` alongside the installers, and `artifacts/*`
+      # below is what becomes the release — so a green run would have hung
+      # build telemetry off the release page as though it were something to
+      # install. Naming what we publish fixes both.
       - uses: actions/download-artifact@v4
         with:
+          pattern: mudengine-*
           path: artifacts
           merge-multiple: true
 
