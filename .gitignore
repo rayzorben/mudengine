@@ -84,6 +84,11 @@ docs/
 # like everything else and were taken out of the index in the same change.
 !/README.md
 
+# And the Docker Hub page. `docker push` sets nothing on the repository's
+# page; `release.yml` uploads this file as its description beside the push,
+# so it has to be in the repository for the workflow to read.
+!/docker/README.md
+
 # And `build/README.md`, which stopped being working notes on 2026-09-05.
 #
 # It was taken out of the index with the rest of the prose, and correctly: it

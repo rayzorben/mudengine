@@ -213,6 +213,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The Hub page is not the image: `docker push` sets nothing on it. So
+      # the description is uploaded beside the push, from `docker/README.md`,
+      # under exactly the condition the push has and with the same
+      # credentials — a page that describes an image nobody pushed would be
+      # a page ahead of its image.
+      #
+      # The short description is Hub's one-line summary, capped at 100
+      # characters, so it is stated here rather than read from package.json,
+      # whose line is longer than that.
+      #
+      # A personal access token needs read-and-write scope for this endpoint.
+      # If Hub refuses the step with a token that pushes images fine, the
+      # scope is the first thing to check.
+      - name: Publish the Docker Hub description
+        if: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && env.DOCKERHUB_USERNAME != '' }}
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE }}
+          short-description: Client, terminal and automation engine for MajorMUD, GreaterMUD and Paradigm, in a browser.
+          readme-filepath: ./docker/README.md
+
       - name: What was published
         run: |
           if [ "${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}" = "true" ]; then
