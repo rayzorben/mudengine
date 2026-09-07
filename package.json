@@ -4,13 +4,13 @@
   "description": "Modern cross-platform client, terminal and reactive automation engine for MajorMUD / GreaterMUD / Paradigm",
   "author": "Raymond Bennett <raymond.bennett@gmail.com>",
   "license": "MIT",
-  "homepage": "https://github.com/rayben/mudengine",
+  "homepage": "https://github.com/rayzorben/mudengine",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rayben/mudengine.git"
+    "url": "git+https://github.com/rayzorben/mudengine.git"
   },
   "bugs": {
-    "url": "https://github.com/rayben/mudengine/issues"
+    "url": "https://github.com/rayzorben/mudengine/issues"
   },
   "type": "module",
   "main": "./out/main/index.js",
