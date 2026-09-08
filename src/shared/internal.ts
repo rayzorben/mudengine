@@ -1060,23 +1060,33 @@ const TUNING_DEFAULTS = {
      */
     preferredStepCost: 0.1,
     /**
-     * What a whole health bar's worth of expected damage costs to route
-     * through.
+     * What a lair expected to take half of the character's current health in
+     * one pass costs to route through, in plain steps.
      *
-     * A room's lair is weighed against the character (`lairShare`): the worst
-     * of its monsters, as many as the lair holds at once, as a share of
-     * maximum health; the step costs that share of this figure. Forty makes a
-     * lair expected to take a quarter of the bar cost about a forced door, and
-     * one expected to take the whole bar cost a forty-room detour — up to
-     * `deadlyShare`, where it becomes a wall.
+     * A lair is priced by one pass through it (`lairPassage`): its worst
+     * monster that attacks on sight, as many as the lair holds at once, for
+     * the rounds spent inside (`passRounds`), as a share of the health the
+     * character has *now*. The step costs `dangerCost × share / (1 − share)`:
+     * a tenth of the bar costs about two doors, a quarter about five, a half
+     * this figure, and the price climbs without bound as a pass approaches
+     * the whole bar — up to `deadlyShare`, where it is a wall. Two hundred is
+     * about what resting half a bar back takes, in commands: `HPRegen`, three
+     * times over, every fifteen seconds (docs/greatermud/player-and-world.md).
      */
-    dangerCost: 40,
+    dangerCost: 200,
     /**
-     * The share of maximum health at which a lair is priced as a wall
-     * (`wallCost`): walked only when there is no other way at all, never
-     * preferred while there is. One is *expected to die there*.
+     * The share of current health one pass is expected to take at which a
+     * lair is priced as a wall (`wallCost`): walked only when there is no
+     * other way at all, never preferred while there is. One is *expected to
+     * die there*.
      */
-    deadlyShare: 1
+    deadlyShare: 1,
+    /**
+     * How many rounds of a lair's blows one pass through the room is priced
+     * at. In and out is one round from whatever attacks on sight; two prices
+     * every lair as if the character stood a round longer in each.
+     */
+    passRounds: 1
   },
   /** The process itself. */
   app: {

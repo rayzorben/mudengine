@@ -48,7 +48,8 @@ import type { RoomCommand } from '../../shared/world';
  *   do not.
  * - **`to` is the `teleport` step**, and the realm writes it `teleport <room>
  *   <map>` — room first, which is the opposite of the `map/room` every id in
- *   this client is written as.
+ *   this client is written as. Or, where the phrase has no such step, the
+ *   landing of a `cast` step whose spell carries one (`spellLanding`).
  * - **`need` is the conditions, verbatim**, minus the steps that are only the
  *   server talking to itself (`message`, `text`, `random`, `delay`, `adddelay`,
  *   `cast`) and minus the trailing message id every guard carries. Verbatim on
@@ -101,7 +102,11 @@ export function itemsInScripts(actions: Iterable<string>): Set<number> {
  * portal have byte-identical tails, and two genuinely different things in one
  * room do not.
  */
-export function parseRoomScript(action: string, itemName: (id: number) => string | undefined) {
+export function parseRoomScript(
+  action: string,
+  itemName: (id: number) => string | undefined,
+  spellLanding: (id: number) => string | undefined = () => undefined
+) {
   const bySteps = new Map<string, RoomCommand>();
 
   for (const phrase of action.split('\n')) {
@@ -129,6 +134,20 @@ export function parseRoomScript(action: string, itemName: (id: number) => string
         const room = number(words[1]);
         const map = number(words[2]);
         if (room !== null && map !== null) command.to = `${map}/${room}`;
+        continue;
+      }
+      if (verb === 'cast') {
+        /*
+         * `cast <spell>` moves the character as surely as `teleport` does when
+         * the spell carries `TeleportRoom`/`TeleportMap` — the three holes down
+         * from Dragon's Teeth Hills into the Stone Tunnel are `cast 336`
+         * ("fall") and nothing else, so the way down was a room command with
+         * no landing while the way back up was a `teleport` (format 29). A
+         * `teleport` step in the same phrase is the realm's own word and wins.
+         */
+        const id = number(words[1]);
+        const landing = id === null ? undefined : spellLanding(id);
+        if (landing !== undefined && command.to === undefined) command.to = landing;
         continue;
       }
       if (NARRATION.has(verb)) continue;

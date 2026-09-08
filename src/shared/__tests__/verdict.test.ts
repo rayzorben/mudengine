@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  lairShare,
+  lairPassage,
   appraiseRoom,
   prowessSheetOf,
   rankByVerdict,
@@ -340,35 +340,55 @@ describe('the room, appraised', () => {
 });
 
 /*
- * What a lair costs to route through, before anybody has seen what spawned:
- * the worst of its monsters, as many as it holds at once, against the health
- * bar. Unknown is unknown — an unread maximum or an unpriceable monster gives
- * null, never a reassuring zero — and the router prices null as nothing.
+ * What one pass through a lair takes, before anybody has seen what spawned:
+ * a round of the worst monster that attacks on sight, as many as the lair
+ * holds at once — never the cost of clearing it, which is the card's figure
+ * and not the road's. Unknown is unknown — an unpriceable monster gives null,
+ * never a reassuring zero — and the router prices null as nothing.
  */
-describe('lairShare', () => {
-  const costing = (cost: number | null): Verdict => ({
-    menace: null,
+describe('lairPassage', () => {
+  const hitting = (perRound: number | null): Verdict => ({
+    menace:
+      perRound === null
+        ? null
+        : {
+            perRound,
+            blows: perRound,
+            onDeath: 0,
+            hp: 100,
+            weight: perRound / 100,
+            hazards: [],
+            wide: false
+          },
     rounds: null,
-    cost: cost === null ? null : { value: cost, from: 'bound' }
+    // Clearing the room is priced elsewhere and must not leak into a pass.
+    cost: perRound === null ? null : { value: perRound * 50, from: 'bound' }
   });
+  const everybody = () => true;
 
-  it('prices a full lair of its worst monster against the bar', () => {
-    // 30 lost to the worse of the two, twice over, on a bar of 200.
-    expect(lairShare([costing(12), costing(30)], 2, 200)).toBeCloseTo(0.3);
+  it('prices one round of the worst monster, as many as the lair holds', () => {
+    // 30 a round from the worse of the two, twice over.
+    expect(lairPassage([hitting(12), hitting(30)], 2, 1, everybody)).toBe(60);
     // One at a time when the lair states no count, or a count below one.
-    expect(lairShare([costing(30)], null, 200)).toBeCloseTo(0.15);
-    expect(lairShare([costing(30)], 0, 200)).toBeCloseTo(0.15);
+    expect(lairPassage([hitting(30)], null, 1, everybody)).toBe(30);
+    expect(lairPassage([hitting(30)], 0, 1, everybody)).toBe(30);
+    // A round longer inside is a round more of blows.
+    expect(lairPassage([hitting(30)], 1, 2, everybody)).toBe(60);
   });
 
-  it('is null when the bar is unread or nothing can be priced', () => {
-    expect(lairShare([costing(30)], 1, null)).toBeNull();
-    expect(lairShare([costing(30)], 1, 0)).toBeNull();
-    expect(lairShare([costing(null)], 1, 200)).toBeNull();
-    expect(lairShare([], 1, 200)).toBeNull();
+  it('walks past what does not attack on sight, and counts what nobody has read', () => {
+    const only = (attacks: Array<boolean | null>) => (index: number) => attacks[index] ?? null;
+    // The passive brute is not the worst monster of a pass; the hostile one is.
+    expect(lairPassage([hitting(90), hitting(30)], 1, 1, only([false, true]))).toBe(30);
+    // Unknown is not passive.
+    expect(lairPassage([hitting(90), hitting(30)], 1, 1, only([null, true]))).toBe(90);
+    expect(lairPassage([hitting(90)], 1, 1, only([false]))).toBeNull();
   });
 
-  it('prices what it can when one monster is unknown', () => {
+  it('is null when nothing can be priced, and prices what it can', () => {
+    expect(lairPassage([hitting(null)], 1, 1, everybody)).toBeNull();
+    expect(lairPassage([], 1, 1, everybody)).toBeNull();
     // A lair is not made safe by one monster the arithmetic cannot see.
-    expect(lairShare([costing(null), costing(40)], 1, 200)).toBeCloseTo(0.2);
+    expect(lairPassage([hitting(null), hitting(40)], 1, 1, everybody)).toBe(40);
   });
 });

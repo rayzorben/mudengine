@@ -8,7 +8,7 @@ import type { ArchiveIdentity, ShippedWorld } from '../../shared/worlds';
 import { itemsInScripts, parseRoomScript } from './roomScript';
 import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
-import { MIN_LEVEL_ABILITY } from '../../shared/abilities';
+import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
 import type { Quest } from '../../shared/quests';
 import { indexQuests } from './indexQuests';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
@@ -72,11 +72,12 @@ import {
  * | 21 | The database's own account of itself — the `Info` table, whole (`build`), and the formula family read off it (`family`). A table `buildRealm.ts` had never opened, so the client could not say which of the two lineages' arithmetic a realm runs, nor which build of which data set any derived number came from |
  * | 24 | **The quests.** No realm database has a Quests table, and both on this machine hold the same ten without one — but `TBInfo` holds 4,355 scripts, and between their gates and their rewards they state every quest completely. `indexQuests.ts` finds the counters by which abilities are both granted and demanded, walks the blocks forward from every monster's greeting and every room's script, and comes out with who to ask, where they stand, the word to say, what it costs and what it pays. The client had 1,914 monsters and no way to tell which of them wanted anything |
  * | 25 | `Items.UseCount` keeps the realm's **`-1`** instead of dropping it. Absent had meant both *the realm says nothing* and *the realm says for ever*, which are opposite answers to the one question that decides whether invoking an item costs anything — and 39 items in the shipped realm, nine of them weapons casting a bless, read as unstated. See `AutoInvoke` |
+ * | 29 | **Where a scripted spell lands.** A room command's `cast <spell>` step was narration to the parser, so a phrase whose only movement is a spell carrying `TeleportRoom`/`TeleportMap` had no `to`: the three holes down from Dragon's Teeth Hills into the Stone Tunnel are `cast 336` (*fall*), and the router had the climb back up (`teleport 487 2`) and not the drop — ten rooms in Paradigm, eight in stock — which is why a route from Silvermere to the Black Mountains went round through the Black House and map 7. `parseRoomScript` takes the spell table's landings and `linkPortals` walks them like any other |
  * | 28 | **The item a lever needs.** `lift up talisman (Item: 815)` ended 172 of Paradigm's lever cells and 170 of stock's, and `parseAction` split it into the phrases like any other — so the router priced a passage the server refuses without the talisman at the cost of a free lever, and the walker said the words to a wall. `RequirementAction.item` carries the number; the router walls the exit for a pack that lacks it and names the item in the refusal; the item is indexed like a key so the name is there to say — todo 13 |
  * | 27 | **Which bundled world this is, and the archive it came from.** `world` names one of the two the client ships and `archive` is that file's name, size and SHA-1, so a database a player names can be recognised as the very bytes a bundled world was built from and loaded as that world rather than converted into a second copy keyed under a second name. And `Custom: Default` — the stock v1.11p data set's own name for itself, read off `mdb/majormud-v1.11p.zip` — reads as the MajorMUD family; it read as no family at all, so every calculator declined on the one world that ships for MajorMUD realms. Bumped for the cache, like 19 and 26 |
  * | 26 | **A quest step's alternatives, kept apart.** A text block holds one line per class — fifteen on the alignment chains — and each line is a complete route with its own gate, its own price and its own reward. `stepsInBlock` merged lines advancing the same counter to the same rank by *unioning* them, so a step said **be a Warrior and a Witchunter**, be level 22 and level 20 at once, and take all fifteen classes' perks: a wrong answer rather than a long one, on 23 of the 251 steps and every one of the three great chains. What every route shares stays on the step; the rest is `QuestStep.ways` (`shareRoutes`). Bumped for the **cache**, like format 19: a player who had already converted their own database would otherwise keep the union for ever, since none of the path, size or mtime `RealmLibrary.identity` also keys on moves when the converter changes |
  */
-export const REALM_FORMAT = 28;
+export const REALM_FORMAT = 29;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -907,6 +908,34 @@ export function abilityPairs(row: Record<string, unknown>): Array<[number, numbe
   return pairs;
 }
 
+/**
+ * Every spell that moves whoever it lands on to one fixed room, as
+ * `map/room` by spell number — format 29.
+ *
+ * `TeleportRoom` and `TeleportMap` are two ability slots on the spell row,
+ * and a room script's `cast <spell>` step is how three of Paradigm's holes
+ * are walked: `go hole:message 774:cast 336:message 766:text 306`, where
+ * spell 336 (*fall*) carries `140 → 1306`, `141 → 2`. Eighteen spells on the
+ * Paradigm database and twelve on stock state both halves; a spell stating
+ * one half, or a zero, moves nobody anywhere this reader can name and is
+ * left out. The same pair `resolveSpells` reads for a `Cast:` exit.
+ */
+export function spellLandings(source: RealmSource): Map<number, string> {
+  const landings = new Map<number, string>();
+  for (const row of source.table('Spells')?.rows ?? []) {
+    const id = number(row['Number']);
+    if (id === null) continue;
+    let room: number | null = null;
+    let map: number | null = null;
+    for (const [which, value] of abilityPairs(row)) {
+      if (which === HAZARD_ABILITY.teleportRoom) room = value;
+      else if (which === HAZARD_ABILITY.teleportMap) map = value;
+    }
+    if (room !== null && map !== null && room > 0 && map > 0) landings.set(id, `${map}/${room}`);
+  }
+  return landings;
+}
+
 export class RealmBuildError extends Error {}
 
 /**
@@ -951,6 +980,10 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     const action = text(row['Action']).replaceAll('\u0000', '').trim();
     if (id !== null && action.length > 0) scripts.set(id, action);
   }
+  // Where a script's `cast` lands, for the phrases whose only movement is a
+  // spell (format 29). Read here, once, because the spell index is built
+  // after the rooms and a room's commands are converted inside the room loop.
+  const landings = spellLandings(source);
   const scriptedRooms = new Set<number>();
   for (const row of rooms.rows) {
     const cmd = number(row['CMD']);
@@ -1113,7 +1146,14 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   let openableHere = 0;
   for (const { room, cmd } of drafts) {
     const action = cmd === null ? undefined : scripts.get(cmd);
-    const answers = action === undefined ? [] : parseRoomScript(action, (id) => named.get(id));
+    const answers =
+      action === undefined
+        ? []
+        : parseRoomScript(
+            action,
+            (id) => named.get(id),
+            (id) => landings.get(id)
+          );
     if (answers.length > 0) scripted += 1;
 
     const here = `${room['m'] as number}/${room['r'] as number}`;

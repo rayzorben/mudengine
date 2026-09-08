@@ -210,15 +210,24 @@ export interface Traveller {
    */
   alignment?: Alignment | null;
   /**
-   * What a room's lair is expected to cost this character, as a share of
-   * maximum health — the worst of its monsters, as many as it holds at once
-   * (`lairShare`). Null where nothing can be weighed: no lair, the sheet
-   * unread, a monster the arithmetic cannot price.
+   * What one pass through a room's lair is expected to take from this
+   * character, as a share of the health it has *now* — the worst monster
+   * that attacks on sight, as many as the lair holds at once, for the rounds
+   * spent inside (`lairPassage`). Null where nothing can be weighed: no lair,
+   * the sheet unread, a monster the arithmetic cannot price.
+   *
+   * A pass, not a fight: the room appraisal's cost is what *clearing* the
+   * room takes (`menace.perRound × rounds` per monster), and priced by that
+   * every lair a level-11 character walks past on the way to the Black
+   * Mountains is a wall — the route goes round through three maps and a
+   * keyed door to save five of them. Walking through costs one round of
+   * whatever is awake and hostile; that is what the router asks.
    *
    * A function rather than a table, because the answer depends on the
    * character as they stand and the router only ever asks about the rooms it
-   * expands; the session memoises it until the character's own figures move
-   * (`LairCosts`). `dangerPenalty` turns the share into route cost.
+   * expands; the session memoises the damage until the character's own
+   * figures move (`LairCosts`) and divides by current health at the call.
+   * `dangerPenalty` turns the share into route cost.
    */
   danger?: (room: WorldRoom) => number | null;
 }
@@ -287,7 +296,15 @@ function gradedCost(skill: number | null | undefined, difficulty: number, base: 
   if (difficulty <= 0) return base;
   const ratio = (skill ?? 0) / difficulty;
   const wall = tuning().world.wallCost;
-  if (ratio < 1) return wall + Math.round(wall * (1 - ratio));
+  /*
+   * Below the minimum the door is a wall, and how far below is a tiebreak on
+   * the door's own scale — continuous with the price at the minimum, never a
+   * second wall's worth of plain steps. Graded as `wall × (1 − ratio)`, a
+   * strength-90 character was walked sixty thousand rooms' worth of corridor
+   * to avoid a 251 door in favour of a 100 one, neither of which it could
+   * force: the grade, not the wall, had become the objective.
+   */
+  if (ratio < 1) return wall + base * 5 + Math.round(base * 5 * (1 - ratio));
   // Neutral-ish at the minimum (a door's price several times over), easing to
   // `base` once the skill is five times what the door asks.
   const eased = Math.max(0, Math.min(1, (5 - ratio) / 4));
@@ -462,20 +479,35 @@ function actionItemMissing(requirement: Requirement, traveller: Traveller): numb
 }
 
 /**
- * What a lair costs to route through, from what it is expected to take.
+ * What a lair costs to route through, from what one pass is expected to take.
  *
- * A share of maximum health (`Traveller.danger`) priced at
- * `tuning.world.dangerCost` per whole bar, so a lair that would take a
- * quarter of it costs about a forced door; at `deadlyShare` and above it is
- * a wall — `wallCost`, never null, because a room the character is expected
- * to die in is still the only way there sometimes, and refusing outright
- * would hide that route rather than price it. Unknown costs nothing: an
- * unread sheet must not turn every lair in the realm into a wall.
+ * A share of the health the character has now (`Traveller.danger`), priced
+ * `dangerCost × share / (1 − share)`: `tuning.world.dangerCost` for a pass
+ * that takes half the bar, a tenth of that for a tenth, and a price that
+ * climbs without bound as a pass approaches the whole bar — so the step from
+ * *dangerous* to *deadly* is a slope and not a cliff, and a room just short
+ * of `deadlyShare` is never nearly free. At `deadlyShare` and above it is a
+ * wall — `wallCost`, never null, because a room the character is expected to
+ * die in is still the only way there sometimes, and refusing outright would
+ * hide that route rather than price it. Unknown costs nothing: an unread
+ * sheet must not turn every lair in the realm into a wall.
+ *
+ * The old price was `dangerCost` per whole bar, forty, linear, with the wall
+ * at one: a pass expected to take 99% of the bar cost thirty-nine steps and
+ * one expected to take all of it cost a hundred thousand, and with the
+ * lair's figure being the cost of *clearing* it rather than crossing it,
+ * every lair on a level-11 character's way to the Black Mountains was the
+ * second kind. The router then minimised the count of walls and nothing
+ * else, and chose a keyed door and 472 steps to save five of them.
  */
 export function dangerPenalty(share: number | null): number {
   if (share === null || !Number.isFinite(share) || share <= 0) return 0;
-  if (share >= tuning().world.deadlyShare) return tuning().world.wallCost;
-  return Math.round(share * tuning().world.dangerCost);
+  const { wallCost, deadlyShare, dangerCost } = tuning().world;
+  if (share >= deadlyShare) return wallCost;
+  // Capped at the wall, so a share just under `deadlyShare` never prices
+  // above the room that reached it.
+  const remaining = Math.max(1 - share, 1e-6);
+  return Math.min(wallCost, Math.round((dangerCost * share) / remaining));
 }
 
 export function edgePenalty(requirement: Requirement | null, traveller: Traveller): number | null {

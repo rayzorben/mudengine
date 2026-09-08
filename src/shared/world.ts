@@ -1630,12 +1630,13 @@ export interface RouteStep {
    */
   light?: number;
   /**
-   * What the room's lair is expected to cost this character, as a share of
-   * maximum health — the figure the router priced the step by
-   * (`Traveller.danger`). Absent where the room has no lair, or where nothing
-   * could be weighed: the sheet unread, or a monster the arithmetic cannot
-   * price. One and above is *expected to die there*, and the router walks
-   * such a room only when there is no other way at all.
+   * What one pass through the room's lair is expected to take from this
+   * character, as a share of the health it had when the route was planned —
+   * the figure the router priced the step by (`Traveller.danger`). Absent
+   * where the room has no lair, or where nothing could be weighed: the sheet
+   * unread, or a monster the arithmetic cannot price. One and above is
+   * *expected to die there*, and the router walks such a room only when there
+   * is no other way at all.
    */
   danger?: number;
   /**
