@@ -2168,7 +2168,7 @@ describe('the ability listing', () => {
      * the five headings could not be read — and on the shipped realm it is
      * nothing: none of `Race`, `Class`, `Worn Items`, `Spell effects` or
      * `GrantedAbilities` is among the 3,990 room names in
-     * `resources/world/rooms.jsonl.gz`.
+     * `resources/world/paradigm.jsonl.gz`.
      */
     const c = new Classifier(NAMES);
     expect(c.classify(line('Newhaven')).block.type).toBe('room-name');

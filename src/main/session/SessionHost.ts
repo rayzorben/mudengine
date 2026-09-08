@@ -40,6 +40,7 @@ import {
 } from '../../shared/ipc';
 import type { AppConfig } from '../../shared/config';
 import type { ConnectionState, ConnectionTarget } from '../../shared/types';
+import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
 import type { BelongingsSink } from '../../shared/belongings';
@@ -171,6 +172,14 @@ export interface SessionHostOptions {
    * second one is known.
    */
   belongingsAt(id: SessionId, target: ConnectionTarget): BelongingsSink;
+  /**
+   * The realm at `target` named its own data (`SessionSink.realmTold`).
+   *
+   * Handed the address actually dialled, like `playersAt`, because the word is
+   * the server's and a character dialled ad hoc at another saved realm heard
+   * that realm's. Optional: a test and the anonymous case remember nothing.
+   */
+  realmTold?(id: SessionId, target: ConnectionTarget, realm: RealmWord): void;
   /**
    * A session has just established a socket.
    *
@@ -390,6 +399,12 @@ export class SessionHost {
         },
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
+        realmTold: (realm) => {
+          // The address this connection actually went to, which the manager
+          // holds from `connect`; a word with no address is a word about nowhere.
+          const target = slot.manager.state.target;
+          if (target !== null) this.options.realmTold?.(id, target, realm);
+        },
         state: (state) => {
           debug.connection(state);
           this.options.toAll(Push.state, { session: id, payload: state });

@@ -143,26 +143,26 @@ export interface Server {
    */
   login: LoginStep[];
   /**
-   * Path to a realm database — `.mdb`, `.accdb`, `.sqlite` or `.db`, or a
-   * `.zip` holding exactly one of those, which is how a realm is distributed
-   * and how this repository keeps its own.
+   * The world every character on this realm walks: empty, a bundled world's
+   * name, or a path to a realm database — `.mdb`, `.accdb`, `.sqlite` or
+   * `.db`, or a `.zip` holding exactly one of those, which is how a realm is
+   * distributed and how this repository keeps its own.
    *
-   * **On the realm, because that is what it is a property of.** The client
-   * ships one realm — the GreaterMUD database it was built from — and that is
-   * right for the common case and wrong for anybody on a derivative. Paradigm,
-   * and every private realm, have their own `.mdb`, and a route planned against
-   * the wrong one sends a character somewhere that does not exist.
+   * **On the realm, because that is what it is a property of.** Two characters
+   * on one realm cannot be playing two different maps. It used to be stated
+   * per character (`world.database`), which was the same answer written out
+   * once per character and as many places for it to drift.
    *
-   * It used to be stated per character (`world.database`), which was the same
-   * answer written out once per character on that realm and as many places for
-   * it to drift: two characters on one realm cannot be playing two different
-   * maps, and a third one added later silently got the shipped world.
-   *
-   * Empty means the realm the client ships. A file named here is **converted
-   * once** into the same normalised form the shipped one has, and cached; it is
-   * never queried while anything is being played. That is the rule the whole
-   * world knowledge base exists to enforce (docs/legacy-assessment.md §5
-   * consequence 4).
+   * **Empty follows the realm's own word.** The client ships two worlds —
+   * stock MajorMUD v1.11p and Paradigm's — and a realm says which it runs at
+   * its menu (`[MAJORMUD]:`, `[PARADIGM]:`); what it said is remembered by
+   * address and used from the next session, and until it has said, the
+   * default world is walked, announced (`shared/worlds.ts`, `RealmLibrary`).
+   * `majormud` or `paradigm` pins one. A file is for a realm whose rooms
+   * differ from both: **converted once** into the same normalised form the
+   * bundled worlds have, and cached; never queried while anything is being
+   * played (docs/legacy-assessment.md §5 consequence 4). A file that is the
+   * very archive a bundled world was built from is that world.
    */
   database: string;
 }
@@ -1898,14 +1898,15 @@ const GENERIC_MONOSPACE = 'monospace';
  * all three together, because a template and its constant are a closed pair and
  * this repository has watched one drift already (`internal.yaml`, 2026-08-28).
  *
- * **Paradigm, and it is the same realm the built-in world is built from.** It
- * was `GMUD (5X)` for two days (2026-09-03 to 2026-09-05), which meant a new
- * character's realm and the map shipped beside it were two different games:
- * that realm had to carry a 2.4 MB database of its own into every installer,
- * and every claim about a room, a route or a monster was answered from the
- * wrong realm the moment either half was got wrong. `resources/world/` is
- * built from Paradigm's own database (`mdb/2026-07-26-pmud.zip`, see
- * `scripts/build-world.mjs`), so this default and that file are one realm.
+ * **Paradigm, and it is the realm the default bundled world is built from.**
+ * It was `GMUD (5X)` for two days (2026-09-03 to 2026-09-05), which meant a
+ * new character's realm and the map shipped beside it were two different
+ * games: that realm had to carry a 2.4 MB database of its own into every
+ * installer, and every claim about a room, a route or a monster was answered
+ * from the wrong realm the moment either half was got wrong.
+ * `resources/world/paradigm.jsonl.gz` is built from Paradigm's own database
+ * (`mdb/pmud.zip`, see `scripts/build-world.mjs`), so this default and
+ * `DEFAULT_SHIPPED_WORLD` are one realm.
  *
  * Changing the default is therefore editing this line and the template beside
  * it, not renaming a directory to sort earlier — which is what the settings
@@ -1920,8 +1921,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   connection: {
     /*
      * Paradigm's own address, because Paradigm is what this client ships for:
-     * `resources/servers/` seeds its six realms on first run and
-     * `resources/world/` is built from the database Paradigm distributes.
+     * `resources/servers/` seeds its six realms on first run and the default
+     * bundled world is built from the database Paradigm distributes.
      *
      * This is what a NEW realm starts with, not an identity — the client has
      * no pre-character mode and never dials anything without a character

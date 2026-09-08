@@ -32,7 +32,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = localProfile();
 if (!profile) skip(`no character on ${HOST}:${PORT} with credentials.`);
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(`\ntour-probe -> ${HOST}:${PORT}\n`);
 
 /** Every framed line, with what provoked it and what the classifier made of it. */

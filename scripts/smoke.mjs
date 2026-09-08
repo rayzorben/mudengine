@@ -2732,6 +2732,87 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'with pause, stop and skip to hand',
     loopCard
   );
+  check(
+    // `received` holds what the socket got, which is not always a string.
+    received.slice(beforeLoop).some((line) => /^(n|s)$/.test(String(line).trim())),
+    'and the first step of the loop reached the wire',
+    JSON.stringify(received.slice(beforeLoop))
+  );
+
+  /*
+   * The map draws where the character is going, over the map of where it is.
+   *
+   * The leg being walked is a line along the corridors it walks, and the
+   * stops the lap still owes are rings -- a loop is a list of places, so its
+   * legs are drawn only as they are planned. Asserted here because this is the
+   * one moment in the run when a route and a lap are both live: the loop is
+   * running, its first leg is on the wire, and the fixture has not answered
+   * the room, so nothing has been walked off the route yet.
+   */
+  /*
+   * Read the moment it is drawn, not a moment later: the fixture never answers
+   * the move, so the walker gives up on it after its own deadline
+   * (`tuning.walk.stepTimeoutMs`) and the leg goes with it. The quest-book
+   * tour that once stood between the loop starting and this read (2026-09-07)
+   * put the read at that deadline, and the checks passed or failed by which
+   * push the renderer had applied last. So this polls for the effect from the
+   * step going out, bounded well inside the deadline, and keeps the last
+   * reading for the refusal to name.
+   */
+  let trail = null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    trail = await evaluate(`
+    (() => {
+      const plan = document.querySelector('.map-card .map-plan');
+      if (plan === null) return null;
+      const ring = plan.querySelector('.map-stop');
+      const halo = plan.querySelector('.map-onroute');
+      return {
+        legs: plan.querySelectorAll('.map-trail line').length,
+        onRoute: plan.querySelectorAll('.map-onroute').length,
+        stops: plan.querySelectorAll('.map-stop').length,
+        // What actually won, not merely what was drawn. Both marks sit inside
+        // a room's group beside its shape, and the shape's own fill and edge
+        // used to outrank them -- a lap stop on a shop came out amber, which
+        // is the hue that already means "shop".
+        ringFill: ring && getComputedStyle(ring).fill,
+        ringStroke: ring && getComputedStyle(ring).stroke,
+        ringDashes: ring && getComputedStyle(ring).strokeDasharray,
+        haloStroke: halo && getComputedStyle(halo).stroke,
+        shapeStroke: getComputedStyle(
+          plan.querySelector('.map-room:not([data-kind="here"]) > .map-shape')
+        ).stroke
+      };
+    })()
+  `);
+    if (trail !== null && trail.legs > 0 && trail.onRoute > 0) break;
+    await sleep(100);
+  }
+  check(
+    trail !== null && trail.legs > 0 && trail.onRoute > 0,
+    'the map draws the leg the loop is walking',
+    JSON.stringify(trail)
+  );
+  check(
+    trail !== null && trail.stops > 0,
+    'and rings the stops the lap still owes',
+    JSON.stringify(trail)
+  );
+  /*
+   * Shape carries the difference and hue reinforces it (§6), so both have to
+   * survive the cascade: the lap's ring is hollow and dashed where the `you`
+   * ring is solid, and neither it nor the route's halo wears the edge an
+   * ordinary room wears.
+   */
+  check(
+    trail !== null &&
+      trail.ringFill === 'none' &&
+      trail.ringStroke !== trail.shapeStroke &&
+      /\d/.test(String(trail.ringDashes)) &&
+      trail.haloStroke === 'none',
+    'and draws both marks in their own colours rather than the room’s',
+    JSON.stringify(trail)
+  );
   /*
    * And the Route face is one click away, still describing the leg the loop
    * is walking. It is the half the loop no longer talks about, so this is
@@ -3219,72 +3300,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   check(
     !(await evaluate(`!!document.querySelector('.route-panel')`)),
     'and Escape puts the panel away for the checks that follow'
-  );
-  check(
-    // `received` holds what the socket got, which is not always a string.
-    received.slice(beforeLoop).some((line) => /^(n|s)$/.test(String(line).trim())),
-    'and the first step of the loop reached the wire',
-    JSON.stringify(received.slice(beforeLoop))
-  );
-
-  /*
-   * The map draws where the character is going, over the map of where it is.
-   *
-   * The leg being walked is a line along the corridors it walks, and the
-   * stops the lap still owes are rings -- a loop is a list of places, so its
-   * legs are drawn only as they are planned. Asserted here because this is the
-   * one moment in the run when a route and a lap are both live: the loop is
-   * running, its first leg is on the wire, and the fixture has not answered
-   * the room, so nothing has been walked off the route yet.
-   */
-  const trail = await evaluate(`
-    (() => {
-      const plan = document.querySelector('.map-card .map-plan');
-      if (plan === null) return null;
-      const ring = plan.querySelector('.map-stop');
-      const halo = plan.querySelector('.map-onroute');
-      return {
-        legs: plan.querySelectorAll('.map-trail line').length,
-        onRoute: plan.querySelectorAll('.map-onroute').length,
-        stops: plan.querySelectorAll('.map-stop').length,
-        // What actually won, not merely what was drawn. Both marks sit inside
-        // a room's group beside its shape, and the shape's own fill and edge
-        // used to outrank them -- a lap stop on a shop came out amber, which
-        // is the hue that already means "shop".
-        ringFill: ring && getComputedStyle(ring).fill,
-        ringStroke: ring && getComputedStyle(ring).stroke,
-        ringDashes: ring && getComputedStyle(ring).strokeDasharray,
-        haloStroke: halo && getComputedStyle(halo).stroke,
-        shapeStroke: getComputedStyle(
-          plan.querySelector('.map-room:not([data-kind="here"]) > .map-shape')
-        ).stroke
-      };
-    })()
-  `);
-  check(
-    trail !== null && trail.legs > 0 && trail.onRoute > 0,
-    'the map draws the leg the loop is walking',
-    JSON.stringify(trail)
-  );
-  check(
-    trail !== null && trail.stops > 0,
-    'and rings the stops the lap still owes',
-    JSON.stringify(trail)
-  );
-  /*
-   * Shape carries the difference and hue reinforces it (§6), so both have to
-   * survive the cascade: the lap's ring is hollow and dashed where the `you`
-   * ring is solid, and neither it nor the route's halo wears the edge an
-   * ordinary room wears.
-   */
-  check(
-    trail !== null &&
-      trail.ringFill === 'none' &&
-      trail.ringStroke !== trail.shapeStroke &&
-      /\d/.test(String(trail.ringDashes)) &&
-      trail.haloStroke === 'none',
-    'and draws both marks in their own colours rather than the room’s',
-    JSON.stringify(trail)
   );
   await evaluate(`(window.mudengine.stopLoop('${SESSION}'), true)`);
   await sleep(400);
@@ -9035,7 +9050,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    *
    * The server never states a monster's health — not in a status line, not on a
    * hit, not on a death — so this number can only have come from the monster
-   * index in `resources/world/rooms.jsonl.gz`. An orc rogue has 30 there and the
+   * index in `resources/world/paradigm.jsonl.gz`. An orc rogue has 30 there and the
    * fixture hits it for 12, so `18/30` is the whole path in one assertion:
    * world file read, index loaded, name matched through the article, damage
    * subtracted, and the result rendered in a built app. A packaged build that

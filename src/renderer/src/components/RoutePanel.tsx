@@ -9,6 +9,7 @@ import {
   asRoomReference,
   describeBlock,
   DIRECTION_NAME,
+  lairsAlong,
   roomId,
   trapsAlong,
   type Direction,
@@ -480,6 +481,33 @@ export default function RoutePanel({
                         </span>
                       );
                     })()}
+                    {/* And the lairs, by the same rule: what the router priced
+                    the walk by, said where the button is. The worst share of
+                    the health bar is the number that decides; a deadly one
+                    says so, because the router walks it only when there is no
+                    other way, and that is the one fact the reader needs. */}
+                    {(() => {
+                      const lairs = lairsAlong(route.steps);
+                      if (lairs.count === 0) return null;
+                      const count =
+                        lairs.count === 1
+                          ? t('cards.route.lairs.one')
+                          : t('cards.route.lairs.many', { lairCount: lairs.count });
+                      const worst =
+                        lairs.worst === null
+                          ? null
+                          : t('cards.route.lairWorst', { percent: Math.round(lairs.worst * 100) });
+                      return (
+                        <span
+                          className={lairs.deadly ? 'chip bad' : 'chip warn'}
+                          data-lairs={lairs.count}
+                        >
+                          {[count, lairs.deadly ? t('cards.route.lairDeadly') : worst]
+                            .filter((part) => part !== null)
+                            .join(' · ')}
+                        </span>
+                      );
+                    })()}
                     {/* The one filled control in this panel, per §3.3: walking is
                     the action, everything else here is reading. */}
                     {/* Also the form's default action, so Enter walks it. */}
@@ -487,6 +515,21 @@ export default function RoutePanel({
                       {t('cards.route.walkButton')}
                     </button>
                   </div>
+                  {/* A walkable route that crosses a wall carries what the
+                  shorter way needed. Said before the steps, one condition per
+                  line as the refusal says them, because the reader deciding
+                  between four hundred steps through doors that will not open
+                  and fetching a talisman needs the second half of that choice. */}
+                  {(route.blocks ?? []).length > 0 && (
+                    <div className="route-needs">
+                      <span>{t('cards.route.shorterNeeds')}</span>
+                      <ul className="route-blocked">
+                        {route.blocks!.map((block, index) => (
+                          <li key={`${block.kind}-${index}`}>{describeBlock(block)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <ol className="route-steps">
                     {route.steps.map((step, index) => (
                       <li

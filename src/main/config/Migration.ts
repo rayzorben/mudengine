@@ -48,6 +48,7 @@ import { SERVER_FILE, type Home } from '../app/home';
 import { directoryNames } from './dirs';
 import { discoveryKey, type Discovery } from '../../shared/memory';
 import { realmKey } from '../world/RealmLore';
+import type { ShippedWorld } from '../../shared/worlds';
 
 export interface MigrationOptions {
   home: Home;
@@ -160,6 +161,7 @@ export function migrateHome(options: MigrationOptions): void {
   theTuningBlockGainedKeys(home, note, options.internalTemplate);
   theGmudRealmLeft(home, note);
   theDatabasesWereZipped(home, note);
+  theWorldsAreBundled(home, note);
   statedTheMark(home, note);
 }
 
@@ -321,6 +323,230 @@ function theDatabasesWereZipped(home: Home, note: (message: string) => void): vo
       ? t('notices.migration.databaseZipped.one', { file: rewritten[0] as string })
       : t('notices.migration.databaseZipped.many', { count: rewritten.length })
   );
+}
+
+/**
+ * The archives this repository keeps became the two worlds the client bundles
+ * (2026-09-07), and everything keyed on an archive's name is keyed on the
+ * world's.
+ *
+ * Every archive that ever held one of the two data sets, by the name the
+ * repository kept it under: `RealmLore`, `DestinationBook` and `WorldMemory`
+ * all key on `WorldMeta.source`, which was the file's own name, and a bundled
+ * world is named after itself now — so what was learned against
+ * `2026-07-26-pmud.zip` would otherwise sit unread beside a `paradigm` that
+ * knows nothing. Names are matched whole, like `ZIPPED_DATABASES`: a rule of
+ * the shape *"anything with pmud in it"* would re-file a private realm.
+ */
+const BUNDLED_ARCHIVES = new Map<string, ShippedWorld>([
+  ['default-pmud.mdb', 'paradigm'],
+  ['2026-07-26-pmud.zip', 'paradigm'],
+  ['pmud.zip', 'paradigm'],
+  ['pmud-20260931.mdb', 'paradigm'],
+  ['data-paradigm-1.9-test.mdb', 'paradigm'],
+  ['data-v1.11p-MME2.0.zip', 'majormud'],
+  ['majormud-v1.11p.zip', 'majormud'],
+  ['data-v1.11p.mdb', 'majormud']
+]);
+
+/** The world an archive's name — raw or already through `realmKey` — stands for. */
+function bundledWorldOf(name: string): ShippedWorld | null {
+  const key = realmKey(path.basename(name));
+  for (const [archive, world] of BUNDLED_ARCHIVES) {
+    if (realmKey(archive) === key) return world;
+  }
+  return null;
+}
+
+/**
+ * Two things, each on its own evidence:
+ *
+ * - A realm file naming a bundled archive **relatively** names the world by
+ *   its word instead. Relative can only have come from this repository, and
+ *   `mdb/` does not ship. An absolute path is the player's own and is left
+ *   alone: `RealmLibrary.bundledFor` recognises the archive by its bytes at
+ *   every load and says so, which a name cannot.
+ * - What was learned against a bundled archive is re-filed under the world:
+ *   the monster lore, the slot words and the spell sentences (`mob-lore.json`),
+ *   the destinations, and the memory files — a character's, whose `realm`
+ *   field is rewritten, and a realm's, whose file is renamed. Where the world
+ *   already has a record, the two are merged and the world's own entry wins;
+ *   nothing is overwritten and nothing is dropped.
+ *
+ * Idempotent: run twice, no archive name is left to match.
+ */
+function theWorldsAreBundled(home: Home, note: (message: string) => void): void {
+  const renamed: Array<{ file: string; world: ShippedWorld }> = [];
+  for (const id of directories(home.serversDir)) {
+    edit(home.server(id).file, (document) => {
+      const stated = document.getIn(['database']);
+      if (typeof stated !== 'string') return false;
+      const named = stated.trim();
+      if (named.length === 0 || path.isAbsolute(named)) return false;
+      const world = bundledWorldOf(named);
+      if (world === null) return false;
+      document.setIn(['database'], world);
+      renamed.push({ file: path.basename(named), world });
+      return true;
+    });
+  }
+  if (renamed.length === 1) {
+    const [only] = renamed as [{ file: string; world: ShippedWorld }];
+    note(t('notices.migration.worldsNamed.one', { file: only.file, world: only.world }));
+  } else if (renamed.length > 1) {
+    note(t('notices.migration.worldsNamed.many', { count: renamed.length }));
+  }
+
+  const worlds = new Set<ShippedWorld>();
+  let moved = 0;
+  moved += rekeyLoreFile(home.state('mob-lore.json'), ['realms', 'slots', 'spells'], worlds);
+  moved += rekeyLoreFile(home.state('destinations.json'), ['realms'], worlds);
+  moved += rekeyMemory(home.state('memory'), worlds);
+  if (moved === 0) return;
+  const params = { count: moved, worlds: [...worlds].sort().join(', ') };
+  note(
+    moved === 1
+      ? t('notices.migration.loreRekeyed.one', params)
+      : t('notices.migration.loreRekeyed.many', params)
+  );
+}
+
+/**
+ * Re-keys the per-realm sections of one JSON file from archive names to world
+ * names. A section maps realm key to either a record of entries or a list of
+ * rows; a record merges with the world's own entries winning, a list appends
+ * what the world's own list does not hold. Returns how many entries moved.
+ */
+function rekeyLoreFile(file: string, sections: string[], worlds: Set<ShippedWorld>): number {
+  if (!fs.existsSync(file)) return 0;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    // A file that will not parse is left alone: the store suspends itself on
+    // it and says so, and this must not be the thing that overwrites it.
+    return 0;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return 0;
+  const record = parsed as Record<string, unknown>;
+
+  let moved = 0;
+  for (const section of sections) {
+    const held = record[section];
+    if (typeof held !== 'object' || held === null || Array.isArray(held)) continue;
+    const table = held as Record<string, unknown>;
+    for (const key of Object.keys(table)) {
+      const world = bundledWorldOf(key);
+      if (world === null || key === world) continue;
+      const from = table[key];
+      const into = table[world];
+      if (Array.isArray(from)) {
+        const kept = Array.isArray(into) ? into : [];
+        const seen = new Set(kept.map((row) => JSON.stringify(row)));
+        const added = from.filter((row) => !seen.has(JSON.stringify(row)));
+        table[world] = [...kept, ...added];
+        moved += added.length;
+      } else if (typeof from === 'object' && from !== null) {
+        const kept =
+          typeof into === 'object' && into !== null && !Array.isArray(into)
+            ? (into as Record<string, unknown>)
+            : {};
+        const merged: Record<string, unknown> = { ...kept };
+        for (const [name, entry] of Object.entries(from as Record<string, unknown>)) {
+          if (name in merged) continue;
+          merged[name] = entry;
+          moved += 1;
+        }
+        table[world] = merged;
+      } else {
+        continue;
+      }
+      delete table[key];
+      worlds.add(world);
+    }
+  }
+  if (moved === 0) return 0;
+  try {
+    writeJsonAtomically(file, record);
+  } catch {
+    return 0;
+  }
+  return moved;
+}
+
+/**
+ * Re-keys the memory files: a character's carries the realm it was learned
+ * against in a field, a realm's carries it in its name as well.
+ */
+function rekeyMemory(dir: string, worlds: Set<ShippedWorld>): number {
+  if (!fs.existsSync(dir)) return 0;
+  let moved = 0;
+  for (const name of listing(dir)) {
+    if (!name.endsWith('.json')) continue;
+    const file = path.join(dir, name);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== 'object' || parsed === null) continue;
+    const record = parsed as { realm?: unknown; discoveries?: unknown };
+    if (typeof record.realm !== 'string' || !Array.isArray(record.discoveries)) continue;
+    const world = bundledWorldOf(record.realm);
+    if (world === null || record.realm === world) continue;
+
+    const target = name.startsWith('realm-') ? path.join(dir, `realm-${world}.json`) : file;
+    let existing: unknown[] = [];
+    if (target !== file && fs.existsSync(target)) {
+      try {
+        const held = JSON.parse(fs.readFileSync(target, 'utf8')) as { discoveries?: unknown };
+        if (Array.isArray(held.discoveries)) existing = held.discoveries;
+      } catch {
+        // The world's own file will not parse: leave both where they are.
+        continue;
+      }
+    }
+    const seen = new Set(existing.map(rowKey));
+    const added = record.discoveries.filter((entry: unknown) => {
+      const key = rowKey(entry);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    try {
+      writeJsonAtomically(target, {
+        ...record,
+        realm: world,
+        discoveries: [...existing, ...added]
+      });
+      if (target !== file) fs.rmSync(file, { force: true });
+    } catch {
+      continue;
+    }
+    moved += target === file ? record.discoveries.length : added.length;
+    worlds.add(world);
+  }
+  return moved;
+}
+
+/**
+ * What makes one memory row the same as another: `discoveryKey` for a row of
+ * the store's own shape, the row whole for anything else. A memory file is on
+ * the player's disk and a row missing its command must not stop the move.
+ */
+function rowKey(entry: unknown): string {
+  const record = entry as Partial<Discovery> | null;
+  return typeof record?.from === 'string' && typeof record.command === 'string'
+    ? discoveryKey(record as Discovery)
+    : JSON.stringify(entry);
+}
+
+/** Temp file and rename, so a crash mid-write cannot leave a half-written record. */
+function writeJsonAtomically(file: string, value: unknown): void {
+  const temporary = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  fs.renameSync(temporary, file);
 }
 
 /**

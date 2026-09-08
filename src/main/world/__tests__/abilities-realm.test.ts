@@ -23,7 +23,7 @@ const TABLE_OF = {
   classes: 'class'
 } as const satisfies Record<string, AbilityTable>;
 
-const file = path.resolve('resources/world/rooms.jsonl.gz');
+const file = path.resolve('resources/world/paradigm.jsonl.gz');
 const available = fs.existsSync(file);
 const graph = available ? WorldGraph.load(file) : null;
 

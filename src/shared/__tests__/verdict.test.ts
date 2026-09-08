@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  lairShare,
   appraiseRoom,
   prowessSheetOf,
   rankByVerdict,
@@ -335,5 +336,39 @@ describe('the room, appraised', () => {
     );
     expect(roomVerdictKey(one())).toBe(roomVerdictKey(one()));
     expect(roomVerdictKey(one())).not.toBe(roomVerdictKey(tougher));
+  });
+});
+
+/*
+ * What a lair costs to route through, before anybody has seen what spawned:
+ * the worst of its monsters, as many as it holds at once, against the health
+ * bar. Unknown is unknown — an unread maximum or an unpriceable monster gives
+ * null, never a reassuring zero — and the router prices null as nothing.
+ */
+describe('lairShare', () => {
+  const costing = (cost: number | null): Verdict => ({
+    menace: null,
+    rounds: null,
+    cost: cost === null ? null : { value: cost, from: 'bound' }
+  });
+
+  it('prices a full lair of its worst monster against the bar', () => {
+    // 30 lost to the worse of the two, twice over, on a bar of 200.
+    expect(lairShare([costing(12), costing(30)], 2, 200)).toBeCloseTo(0.3);
+    // One at a time when the lair states no count, or a count below one.
+    expect(lairShare([costing(30)], null, 200)).toBeCloseTo(0.15);
+    expect(lairShare([costing(30)], 0, 200)).toBeCloseTo(0.15);
+  });
+
+  it('is null when the bar is unread or nothing can be priced', () => {
+    expect(lairShare([costing(30)], 1, null)).toBeNull();
+    expect(lairShare([costing(30)], 1, 0)).toBeNull();
+    expect(lairShare([costing(null)], 1, 200)).toBeNull();
+    expect(lairShare([], 1, 200)).toBeNull();
+  });
+
+  it('prices what it can when one monster is unknown', () => {
+    // A lair is not made safe by one monster the arithmetic cannot see.
+    expect(lairShare([costing(null), costing(40)], 1, 200)).toBeCloseTo(0.2);
   });
 });

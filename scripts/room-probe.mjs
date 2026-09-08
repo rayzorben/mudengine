@@ -30,7 +30,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = localProfile();
 if (!profile) skip(`no character on ${HOST}:${PORT} with credentials.`);
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(`\nroom-probe -> ${HOST}:${PORT}, ${world.size} rooms of realm data\n`);
 
 const rows = [];

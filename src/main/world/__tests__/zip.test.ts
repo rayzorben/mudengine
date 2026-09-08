@@ -11,7 +11,7 @@ import { archiveOf, written } from './zipWriter';
  * by `zipWriter.ts`**, because there is no other way to produce an encrypted
  * entry or a compression method nobody uses — and a refusal that has never been
  * seen to happen is a refusal nobody knows the wording of. **Interoperability
- * is checked against `mdb/2023-09-02-gmud.zip`**, which was written by somebody
+ * is checked against `mdb/majormud-v1.11p.zip`**, which was written by somebody
  * else's zip program: a reader tested only against its own writer proves the
  * pair agree, not that either is right.
  */
@@ -123,23 +123,22 @@ describe('what it refuses, and how loudly', () => {
 
 /*
  * An archive written by a real zip program rather than by the builder above.
- * Only the directory is read here — inflating 20 MB belongs in the realm suite,
+ * Only the directory is read here — inflating 11 MB belongs in the realm suite,
  * where `RealmLibrary.realm.test.ts` converts what comes out.
  *
- * It sits in `mdb/` rather than in `resources/`: no realm database ships any
- * more (`shipped.test.ts`), because every shipped realm is Paradigm's and the
- * built-in world is Paradigm's own database converted. `mdb/` is where this
- * repository keeps the databases it builds and tests from, and this is the one
- * of them a stranger's zip program produced.
+ * It sits in `mdb/` rather than in `resources/`: no realm database ships
+ * (`shipped.test.ts`), because the two worlds the client bundles are the two
+ * archives in `mdb/` converted. This is the stock MajorMUD one, as MajorMUD
+ * Explorer distributes it — a stranger's zip program, which is the point.
  */
 describe('an archive somebody else’s zip program wrote', () => {
-  const shipped = path.resolve('mdb/2023-09-02-gmud.zip');
+  const shipped = path.resolve('mdb/majormud-v1.11p.zip');
 
   it('holds exactly one realm database', () => {
     const entries = zipEntries(shipped);
     expect(entries).toHaveLength(1);
     expect(entries[0]?.name).toMatch(/\.mdb$/i);
-    // Compressed to a fifth of its size, which is the whole reason it is here.
+    // Compressed to a ninth of its size, which is the whole reason it is here.
     expect(entries[0]?.size).toBeGreaterThan(entries[0]!.compressedSize * 4);
   });
 });

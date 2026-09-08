@@ -37,11 +37,11 @@ const realm = process.argv[4] ?? '';
 
 const world = realm
   ? new RealmLibrary({
-      shippedFile: path.resolve('resources/world/rooms.jsonl.gz'),
+      shippedDir: path.resolve('resources/world'),
       cacheDir: path.join(path.dirname(path.resolve('resources/config/user.yaml')), 'realms'),
       notify: (message) => console.log(`  ${message}`)
     }).load(realm).graph
-  : WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+  : WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 const DIRECTIONS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd']);
 /** MegaMUD records long forms too; the realm data is canonical short. */
 const LONG = {

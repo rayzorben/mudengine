@@ -28,7 +28,10 @@ function world(): WorldGraph {
       { id: 1124, n: 'angular key', mobs: ['gate guard'] },
       // The other instruction that names an item — `Item: 191` — which the
       // chip has always tried to read and had nothing to read from.
-      { id: 191, n: 'rope and grapple', shops: ['General Store'] }
+      { id: 191, n: 'rope and grapple', shops: ['General Store'] },
+      // And the item a lever wants — `lift up talisman (Item: 815)` — which
+      // the chip names beside the phrase since todo 13.
+      { id: 815, n: 'amber talisman', mobs: ['dying slaver leader'] }
     ]
   };
   fs.writeFileSync(
@@ -57,6 +60,29 @@ const of = (raw: string): Requirement => {
 describe('what an obstacle says, at three lengths', () => {
   const graph = world();
   const describe_ = (raw: string) => describeObstacle(of(raw), graph);
+
+  /*
+   * A lever that wants an item is named with the item: the phrase alone reads
+   * as a free lever, and the item is the half of the chip that decides whether
+   * to walk. Paradigm's `hold up talisman` (2/687 north) wants the amber
+   * talisman, which the server refuses the phrase without.
+   */
+  it('names the item a lever needs beside its phrase', () => {
+    const bare = { ...of('Hidden/Needs 1 Actions, any order'), actions: [{ say: ['pull lever'] }] };
+    expect(describeObstacle(bare, graph).label).toBe('Hidden — “pull lever” here');
+
+    const keyed = {
+      ...of('Hidden/Needs 1 Actions, any order'),
+      actions: [{ say: ['hold up talisman', 'hold up amber talisman'], item: 815 }]
+    };
+    const chip = describeObstacle(keyed, graph);
+    expect(chip.kind).toBe('hidden');
+    expect(chip.label).toBe('Hidden — “hold up talisman” here, needs amber talisman');
+
+    // An item the realm's index does not name is still said to be wanted.
+    const unnamed = { ...keyed, actions: [{ say: ['raise idol'], item: 9999 }] };
+    expect(describeObstacle(unnamed, graph).label).toMatch(/needs .+/);
+  });
 
   it('quotes a toll in the coin the server charges it in', () => {
     // `Toll: 5` is a bare number in the realm data and the unit is gold — the

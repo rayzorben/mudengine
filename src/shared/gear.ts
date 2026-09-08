@@ -143,7 +143,7 @@ export function restorePlan(
  * Put on everything in the pack the realm says can be worn.
  *
  * `wearable` is the realm's own answer — an item with a `Worn` slot in
- * `rooms.jsonl.gz` — and not a guess from the name or from the kind. Without
+ * `paradigm.jsonl.gz` — and not a guess from the name or from the kind. Without
  * it this would send `wear healing potion` once per potion, each answered with
  * a refusal, out of the budget a fight is fought with.
  *

@@ -1774,7 +1774,7 @@ export const BATCH_RULES: BatchRule[] = [
      * **The realm prints the bank three ways and only one of them is a key.**
      * The wire above says `Bank of Godfrey`; MajorMUD says `The Bank of
      * Godfrey (#8)` (captures/007:114); the realm data says `Bank of Godfrey`.
-     * `(#8)` is the realm's own shop id — shop 8 in `rooms.jsonl.gz` is Bank
+     * `(#8)` is the realm's own shop id — shop 8 in `paradigm.jsonl.gz` is Bank
      * of Godfrey — so the optional group lifts it out as `shop` rather than
      * letting it become part of the name, and the leading `The` is stripped
      * for the same reason. Keying anything by the printed name would list one

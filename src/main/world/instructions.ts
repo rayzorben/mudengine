@@ -364,12 +364,31 @@ export function parseAction(raw: unknown): ParsedAction | null {
       text
     );
   if (!match) return null;
-  const say = match[5]!
+  /*
+   * `(Item: 815)` on the end of the list is the item the action needs carried
+   * — 172 cells in Paradigm's data and 170 in stock v1.11p end this way
+   * (surveyed 2026-09-07), always after the last phrase, never inside one.
+   * The realm's editor writes it there from the exit's own item field, and
+   * the server reads that field before the action fires (`ExitAction.Perform`:
+   * `You don't have <item> to use!`). Read off and kept apart, so the phrase
+   * the walker says is the phrase and the item is a number the pack can be
+   * asked about. `Item: 0` is the realm's empty slot, as it is on an exit.
+   */
+  let phrases = match[5]!;
+  let item: number | undefined;
+  const clause = /\s*\((?:Ticket\/)?Item:\s*(\d+)\)\s*$/i.exec(phrases);
+  if (clause) {
+    const id = Number(clause[1]);
+    if (id > 0) item = id;
+    phrases = phrases.slice(0, clause.index);
+  }
+  const say = phrases
     .split(',')
     .map((phrase) => phrase.trim())
     .filter((phrase) => phrase.length > 0);
   if (say.length === 0) return null;
   const action: ParsedAction = { direction: match[2]!.toLowerCase(), say };
+  if (item !== undefined) action.item = item;
   // `Action#n` numbers the levers for a `specific order` exit. A bare `Action`
   // is the only one, so its order is not a fact the data states.
   if (match[1] !== undefined) action.index = Number(match[1]);
@@ -386,6 +405,8 @@ export interface ParsedAction {
   direction: string;
   /** Every phrase the realm accepts, its own first. */
   say: string[];
+  /** The `Items` row that must be carried to say any of them. See `RequirementAction.item`. */
+  item?: number;
   /** `Action#n` — its place when the exit wants them in order. */
   index?: number;
   /** The room the exit is in, when it is not this one. */

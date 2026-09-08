@@ -39,7 +39,9 @@ import { homePaths } from './lib/home.mjs';
 
 const IAC = 255,
   WILL = 251,
+  WONT = 252,
   DO = 253,
+  DONT = 254,
   SB = 250,
   SE = 240,
   GA = 249;
@@ -66,6 +68,43 @@ const fail = (message, detail) => {
   console.log(`   FAIL  ${message}${detail ? ` -- ${detail}` : ''}`);
 };
 const check = (ok, message, detail) => (ok ? pass(message) : fail(message, detail));
+
+/**
+ * A socket's bytes with the Telnet negotiation taken out.
+ *
+ * The fake host asks for NAWS, so the client reports its size whenever the
+ * console is re-measured — and the cards drawing beside it re-measure it. A
+ * report landing between two keystrokes is ordinary traffic, and a check
+ * that read the raw bytes saw `l`, then IAC SB NAWS … IAC SE, then `ook` and
+ * called the keystrokes lost (2026-09-07). The effect under test is the
+ * command reaching the host, which is what the host would read once its own
+ * negotiation is parsed off.
+ */
+function withoutTelnet(buffer) {
+  const out = [];
+  for (let i = 0; i < buffer.length; i += 1) {
+    const byte = buffer[i];
+    if (byte !== IAC) {
+      out.push(byte);
+      continue;
+    }
+    const next = buffer[i + 1];
+    if (next === IAC) {
+      out.push(IAC);
+      i += 1;
+    } else if (next === SB) {
+      // To IAC SE, whole; an unterminated one runs to the end.
+      let j = i + 2;
+      while (j < buffer.length && !(buffer[j] === IAC && buffer[j + 1] === SE)) j += 1;
+      i = j + 1;
+    } else if (next === WILL || next === WONT || next === DO || next === DONT) {
+      i += 2;
+    } else {
+      i += 1;
+    }
+  }
+  return Buffer.from(out);
+}
 
 /** Poll until `probe` answers truthily, or give up. */
 async function waitFor(probe, tries = 60, every = 250) {
@@ -517,7 +556,9 @@ check(
   popOut
 );
 await first.press('k', 'KeyK', 75, 2);
-await sleep(350);
+// The palette takes the keyboard when it mounts; type once it has, never a
+// timer later, and read the rows once the search has drawn one.
+await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.palette')`));
 await first.evaluate(`
   (() => {
     const el = document.querySelector('.palette input');
@@ -527,15 +568,18 @@ await first.evaluate(`
     return true;
   })()
 `);
-await sleep(250);
 /*
  * By command id, never by the words on the row — a reworded label must not
  * turn this into a vacuous pass. And with a positive control: the rows the
  * search *should* find are asserted present first, so a palette that failed
  * to render at all cannot satisfy "nothing offered".
  */
-const offered = await first.evaluate(
-  `[...document.querySelectorAll('.palette li[data-command]')].map((li) => li.dataset.command)`
+const offered = await waitFor(() =>
+  first
+    .evaluate(
+      `[...document.querySelectorAll('.palette li[data-command]')].map((li) => li.dataset.command)`
+    )
+    .then((ids) => (Array.isArray(ids) && ids.includes('settings') ? ids : null))
 );
 check(
   Array.isArray(offered) && offered.includes('close') && offered.includes('settings'),
@@ -548,12 +592,12 @@ check(
   JSON.stringify(offered)
 );
 await first.press('Escape', 'Escape', 27);
-await sleep(200);
+await waitFor(() => first.evaluate(`!document.querySelector('.palette')`));
 
 // ----------------------------------------------------- assert: the reveal
 
 await first.press('k', 'KeyK', 75, 2);
-await sleep(350);
+await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.palette')`));
 await first.evaluate(`
   (() => {
     const el = document.querySelector('.palette input');
@@ -563,7 +607,10 @@ await first.evaluate(`
     return true;
   })()
 `);
-await sleep(250);
+// Enter takes the highlighted row, so the search has to have drawn it first.
+await waitFor(() =>
+  first.evaluate(`!!document.querySelector('.palette li[data-command][data-active="true"]')`)
+);
 await first.press('Enter', 'Enter', 13);
 check(
   (await waitFor(() => first.evaluate(`!!document.querySelector('.home-browser')`))) === true,
@@ -585,10 +632,21 @@ check(
   )) === 'default.yaml',
   'with the file marked'
 );
-await first.press('Escape', 'Escape', 27);
-await sleep(200);
+/*
+ * The dialog takes the keyboard in an effect after it mounts — the picker's
+ * race below, in the same dialog opened another way. An Escape sent before
+ * that lands on the body, the browser stays, and every check about the
+ * picker after it finds *this* dialog instead (2026-09-07: two runs in three).
+ * Wait for the keyboard, then for the effect, never for a timer.
+ */
 check(
-  (await first.evaluate(`!document.querySelector('.home-browser')`)) === true,
+  (await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.home-browser')`))) ===
+    true,
+  'which holds the keyboard'
+);
+await first.press('Escape', 'Escape', 27);
+check(
+  (await waitFor(() => first.evaluate(`!document.querySelector('.home-browser')`))) === true,
   'and Escape puts it away'
 );
 const outside = await first.evaluate(`window.mudengine.browseHome('/')`);
@@ -735,7 +793,24 @@ if (!live) {
    * A command typed at the console, key by key, and read off the fake host's
    * socket: the effect, not the token. `web-look` is not a realm word, which
    * is fine for a fixture that answers nothing but `rm`.
+   *
+   * **The console must hold the keyboard first**, waited for and not
+   * assumed: the caret was put there before the dial, and the client's rule
+   * is that it settles back there — but the chord, the connect notice and the
+   * cards drawing all land between that press and this one, and a key sent a
+   * frame before the hand-back lands on the body and does nothing. That is the
+   * picker Escape's race (2026-09-07) in another place, and it read as this
+   * check failing one run in two.
    */
+  check(
+    (await waitFor(() =>
+      first.evaluate(`document.activeElement?.classList.contains('xterm-helper-textarea')`)
+    )) === true,
+    'the console holds the keyboard',
+    await first.evaluate(
+      `document.activeElement ? document.activeElement.tagName + '.' + document.activeElement.className : 'nothing'`
+    )
+  );
   const before = Buffer.concat(received).length;
   for (const letter of 'look') {
     await first.key(
@@ -756,11 +831,14 @@ if (!live) {
   }
   await first.key('keyDown', 'Enter', 'Enter', 13, { text: '\r' });
   await first.key('keyUp', 'Enter', 'Enter', 13);
-  const arrived = await waitFor(() => {
-    const all = Buffer.concat(received).toString('latin1');
-    return all.slice(before).includes('look\r\n') ? true : null;
-  });
-  check(arrived === true, 'a command typed in the tab reaches the host');
+  const typed = () => withoutTelnet(Buffer.concat(received).subarray(before)).toString('latin1');
+  const arrived = await waitFor(() => (typed().includes('look\r\n') ? true : null));
+  check(
+    arrived === true,
+    'a command typed in the tab reaches the host',
+    // What did arrive, so a lost keystroke is told from a lost caret.
+    JSON.stringify(typed())
+  );
 }
 
 await first.evaluate(`window.mudengine.disconnect(${JSON.stringify(SESSION)})`);

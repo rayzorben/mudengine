@@ -18,7 +18,8 @@ import zlib from 'node:zlib';
 
 import { RealmLibrary } from '../RealmLibrary';
 import { WorldGraph } from '../WorldGraph';
-import { REALM_FORMAT } from '../buildRealm';
+import { identityOfArchive, REALM_FORMAT } from '../buildRealm';
+import { SHIPPED_WORLDS, shippedWorldFile, type ShippedWorld } from '../../../shared/worlds';
 
 /**
  * The realm the repository ships, so this runs on any checkout.
@@ -43,10 +44,10 @@ import { REALM_FORMAT } from '../buildRealm';
  * proves `RealmSource` reads one — the loose `.mdb` it used to name is not in
  * the repository any more, and a fixture would prove the fixture.
  */
-const REAL_MDB = process.env['MUDENGINE_TEST_MDB'] ?? path.resolve('mdb/2026-07-26-pmud.zip');
+const REAL_MDB = process.env['MUDENGINE_TEST_MDB'] ?? path.resolve('mdb/pmud.zip');
 
 let dir = '';
-let shippedFile = '';
+let shippedDir = '';
 let cacheDir = '';
 let notices: string[] = [];
 
@@ -61,14 +62,16 @@ function writeWorld(file: string, source: string, rooms: number): void {
 }
 
 const library = (): RealmLibrary =>
-  new RealmLibrary({ shippedFile, cacheDir, notify: (message) => notices.push(message) });
+  new RealmLibrary({ shippedDir, cacheDir, notify: (message) => notices.push(message) });
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-realms-'));
-  shippedFile = path.join(dir, 'shipped.jsonl.gz');
+  shippedDir = path.join(dir, 'world');
   cacheDir = path.join(dir, 'realms');
   notices = [];
-  writeWorld(shippedFile, 'shipped.mdb', 3);
+  // A three-room stand-in for the default bundled world, so a fallback is
+  // told from a conversion by size alone.
+  writeWorld(path.join(shippedDir, 'paradigm.jsonl.gz'), 'paradigm', 3);
 });
 
 afterEach(() => {
@@ -189,22 +192,23 @@ withRealm('keeping the cache from growing forever', () => {
 /*
  * A realm a player names for themselves, converted end to end.
  *
- * **The database is `mdb/2023-09-02-gmud.zip`, and it does not ship.** It did
- * for two days, because `GMUD (5X)` shipped as the default realm and a
- * GreaterMUD character walking Paradigm's map is a client that cannot say where
- * anybody is standing — so the realm carried 2.4 MB of database into every
- * installer. Both left on 2026-09-05: the default is Paradigm again, which is
- * the realm `resources/world/` is built from.
+ * **The database is the stock MajorMUD archive, and it is also a bundled
+ * world.** `mdb/2023-09-02-gmud.zip` took this path until 2026-09-07 — it
+ * shipped for two days as `GMUD (5X)`'s own map, then only tested here — and
+ * left the repository when the two data sets the client bundles were settled
+ * (todo 12). What is left is the path every player who names their own realm
+ * takes: a `database:` key, an archive read without unpacking, and the realm's
+ * own rooms out the other end rather than a fallback notice and somebody
+ * else's map. The relative-versus-absolute spelling it settled is asserted
+ * where it still applies (`RealmLibrary.test.ts`).
  *
- * What is left is the path every player who names their own realm takes, which
- * is now the *only* way a database is ever converted: a `database:` key, an
- * archive read without unpacking, and 57,511 rooms out the other end rather
- * than a fallback notice and somebody else's map. Nothing else checks it end to
- * end, and the relative-versus-absolute spelling it settled is asserted where
- * it still applies (`RealmLibrary.test.ts`).
+ * Through a *copy*, deliberately: the archive itself is recognised by its
+ * bytes as the bundled MajorMUD world (`bundledFor`), which is the second
+ * `describe` below, and the conversion path has to be proved on a file the
+ * library cannot short-cut.
  */
 describe('a realm database a character names', () => {
-  const REALM_DB = '2023-09-02-gmud.zip';
+  const REALM_DB = 'majormud-v1.11p.zip';
   const resources = path.resolve('mdb');
 
   it('is where this repository keeps it', () => {
@@ -214,71 +218,119 @@ describe('a realm database a character names', () => {
   });
 
   it('converts through the relative path the realm names', () => {
+    // Same bytes under a different name: `bundledFor` matches by SHA-1, so a
+    // copy is still the bundled world. One byte of padding makes it a
+    // stranger's file — the archive reader ignores what follows the central
+    // directory, and the conversion is what is under test.
+    const mine = path.join(dir, 'mdb');
+    fs.mkdirSync(mine, { recursive: true });
+    fs.writeFileSync(
+      path.join(mine, REALM_DB),
+      Buffer.concat([fs.readFileSync(path.join(resources, REALM_DB)), Buffer.from([0])])
+    );
     const loaded = new RealmLibrary({
-      shippedFile,
+      shippedDir,
       cacheDir,
-      resourcesDir: resources,
+      resourcesDir: mine,
       notify: (message) => notices.push(message)
     }).load(REALM_DB);
 
     expect(loaded.problem).toBeUndefined();
-    // Its own rooms, not the built-in world's three.
-    expect(loaded.graph.size).toBeGreaterThan(50_000);
-    expect(loaded.graph.info.source).toContain('gmud');
+    // Its own rooms, not the built-in stand-in's three.
+    expect(loaded.graph.size).toBe(26_694);
+    expect(loaded.graph.info.source).toBe(REALM_DB);
+    expect(loaded.graph.info.world).toBeNull();
     /*
      * And the races and classes the experience table is derived from came with
-     * it, which is half of why a GreaterMUD character wants this map rather
-     * than Paradigm's. **This file's own number**, not the one the wire quotes:
-     * `orohost` charges a Kang Mystic 285 and this database says 330, because
-     * they are different servers running different data. That disagreement is
-     * exactly the case `src/shared/experience.ts` marks its derived rows for —
-     * the client shows what the realm data implies, says it worked it out, and
-     * drops the lot the first time the wire contradicts a row of it.
+     * it. **This file's own number**: stock v1.11p prices a Kang Mystic at 285,
+     * which is also what `orohost` quotes on the wire, while Paradigm's data
+     * says 670 — two data sets, two answers, and `src/shared/experience.ts`
+     * marks its derived rows so the wire's own figure wins the moment it
+     * contradicts one.
      */
-    expect(loaded.graph.experiencePercent('Kang', 'Mystic')).toBe(330);
+    expect(loaded.graph.experiencePercent('Kang', 'Mystic')).toBe(285);
 
     /*
      * And the database's own account of itself, which format 21 added and
      * which is the whole reason anything downstream may branch on a family.
      *
-     * **`Custom`, and never `Legit`.** Both databases on this machine were read
-     * on 2026-09-04 and they settle the claim MudPlay's `RealmType` rests on:
+     * **`Custom`, and never `Legit`.** The databases on this machine settle the
+     * claim MudPlay's `RealmType` rests on:
      *
      * | file | Custom | Legit |
      * |---|---|---|
-     * | `2023-09-02-gmud.zip` (GreaterMUD) | `Gmud 1.6 Final` | 0 |
-     * | `gmud.mdb` (GreaterMUD, an older build no longer kept) | `Gmud 1.3 Final` | 0 |
-     * | `2026-07-26-pmud.zip` (Paradigm) | `Paradigm` | 2 |
+     * | `majormud-v1.11p.zip` (stock MajorMUD) | `Default` | 1 |
+     * | `2023-09-02-gmud.zip` (GreaterMUD, no longer kept) | `Gmud 1.6 Final` | 0 |
+     * | `pmud.zip` (Paradigm) | `Paradigm` | 2 |
      *
-     * MudPlay reads `Legit == 2` as GreaterMUD. On these three files it is the
-     * *Paradigm* database that says 2 and both GreaterMUD ones that say 0, so
+     * MudPlay reads `Legit == 2` as GreaterMUD. On these files it is the
+     * *Paradigm* database that says 2 and the GreaterMUD one that said 0, so
      * that rule would name every one of them the wrong lineage. Recorded in
      * docs/game-behaviour.md; asserted here so a conversion that starts reading
      * the wrong column fails rather than quietly answering backwards.
      */
     const build = loaded.graph.info.build;
-    expect(build?.custom).toBe('Gmud 1.6 Final');
+    expect(build?.custom).toBe('Default');
     expect(build?.data).toBe('v1.11p');
-    expect(build?.legit).toBe(0);
-    expect(loaded.graph.info.family).toBe('greatermud');
+    expect(build?.legit).toBe(1);
+    expect(loaded.graph.info.family).toBe('majormud');
   }, 120_000);
+});
 
-  it('reads the shipped Paradigm world as the other lineage', () => {
+/*
+ * The two worlds the client ships, and the archives they were built from.
+ *
+ * Both lineages of this game's data, each named after itself, each carrying
+ * the SHA-1 of the archive in `mdb/` it came from — which is what lets a realm
+ * naming that archive walk the bundled world instead of converting it. The
+ * identity is asserted against the archives on disk, so a world rebuilt from
+ * a newer archive without committing it, or the reverse, fails here rather
+ * than silently disagreeing with the file a player names.
+ */
+describe('the worlds the client ships', () => {
+  const ARCHIVES: Record<ShippedWorld, string> = {
+    majormud: path.resolve('mdb/majormud-v1.11p.zip'),
+    paradigm: path.resolve('mdb/pmud.zip')
+  };
+
+  it.each(SHIPPED_WORLDS)('%s is built from the archive this repository keeps', (world) => {
+    const meta = WorldGraph.meta(path.resolve('resources/world', shippedWorldFile(world)));
+    expect(meta?.version).toBe(REALM_FORMAT);
+    expect(meta?.world).toBe(world);
+    expect(meta?.source).toBe(world);
+    expect(meta?.archive).toEqual(identityOfArchive(ARCHIVES[world]));
+  });
+
+  it('reads both as the MajorMUD lineage, each by its own name for itself', () => {
     /*
-     * The shipped `resources/world/` is built from Paradigm's own database, and
-     * `DEFAULT_REALM_NAME` names a Paradigm realm, so a client out of the box
-     * agrees with itself about the family. The database above is the other
-     * lineage, and naming it is one `database:` key away — which is why the two
-     * are read as different families here rather than assumed to match. A
-     * disagreement is not a defect to reconcile: the data says what exists and
-     * the server says how the arithmetic runs, and `SessionManager` says it out
-     * loud rather than picking one.
+     * Stock v1.11p calls itself `Default` and Paradigm calls itself
+     * `Paradigm`; both descend from MajorMUD and run its arithmetic. The
+     * GreaterMUD family is a *server* — `orohost` runs Paradigm's data behind
+     * GreaterMUD's formulas — and `SessionManager` says so out loud when the
+     * wire's family and the data's disagree, rather than picking one.
      */
-    const shipped = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+    const majormud = WorldGraph.meta(path.resolve('resources/world/majormud.jsonl.gz'));
+    expect(majormud?.build?.custom).toBe('Default');
+    expect(majormud?.build?.data).toBe('v1.11p');
+    expect(majormud?.family).toBe('majormud');
 
-    expect(shipped.info.version).toBe(REALM_FORMAT);
-    expect(shipped.info.build?.custom).toBe('Paradigm');
-    expect(shipped.info.build?.legit).toBe(2);
-    expect(shipped.info.family).toBe('majormud');
+    const paradigm = WorldGraph.meta(path.resolve('resources/world/paradigm.jsonl.gz'));
+    expect(paradigm?.build?.custom).toBe('Paradigm');
+    expect(paradigm?.build?.legit).toBe(2);
+    expect(paradigm?.family).toBe('majormud');
+  });
+
+  it('recognises the archive itself as the bundled world, by its bytes', () => {
+    const loaded = new RealmLibrary({
+      shippedDir: path.resolve('resources/world'),
+      cacheDir,
+      notify: (message) => notices.push(message)
+    }).load(ARCHIVES.majormud);
+    expect(loaded.problem).toBeUndefined();
+    expect(loaded.graph.info.world).toBe('majormud');
+    expect(loaded.graph.size).toBe(26_694);
+    expect(notices.join(' ')).toMatch(/majormud-v1\.11p\.zip is the archive the bundled MajorMUD/);
+    // Nothing was converted: the cache stays empty.
+    expect(fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : []).toEqual([]);
   });
 });

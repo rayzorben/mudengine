@@ -884,6 +884,20 @@ tuning:
     # makes saving a route mean nothing.
     preferredStepCost: 0.1
 
+    # What a whole health bar's worth of expected damage costs to route through.
+    # A room's lair is weighed against your character — the worst of its
+    # monsters, as many as the lair holds at once, as a share of your maximum
+    # health — and the step costs that share of this figure. Forty makes a lair
+    # expected to take a quarter of the bar cost about a forced door, and one
+    # expected to take the whole bar cost a forty-room detour — up to
+    # `deadlyShare`, where it becomes a wall.
+    dangerCost: 40
+
+    # The share of maximum health at which a lair is priced as a wall: walked
+    # only when there is no other way at all, never preferred while there is.
+    # One is *expected to die there*.
+    deadlyShare: 1
+
   # The process itself.
   app:
     # How long a quitting client waits for its last message to reach a pipe

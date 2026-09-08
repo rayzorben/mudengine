@@ -264,6 +264,13 @@ notices:
         archive beside it.'
       one: 'The realm databases are kept zipped now -- a fifth of the size, and read without being
         unpacked. A realm file named a loose copy that is no longer there, and now names {file}.'
+    loreRekeyed:
+      many:
+        '{count} records learned against an archive the client now bundles were re-filed under the
+        bundled world they belong to ({worlds}).'
+      one:
+        'One record learned against an archive the client now bundles was re-filed under the
+        bundled world it belongs to ({worlds}).'
     mapDensityStated:
       'The Map card has a density slider now, so "view.mapRoomPixels" became the two ends it
       chooses between and was removed from your tuning file. Any figure you had set there was
@@ -289,6 +296,13 @@ notices:
       'The world database belongs to the realm now rather than to each character. Nothing named
       one, so nothing moved and every realm keeps the world that ships; the unread `world:` key
       was removed from {characterCount} files.'
+    worldsNamed:
+      many:
+        '{count} realm files named a bundled world by the archive it is built from and now name it
+        by its word, majormud or paradigm.'
+      one:
+        'A realm file named a bundled world by the archive it is built from ({file}) and now names
+        it by its word: {world}.'
     rosterCapStated:
       '"tuning.parse.rosterLines" was added to your tuning file. The `who` listing''s cap was 60
       lines beside the pattern, so a realm with more adventurers than that lost everybody past
@@ -394,7 +408,18 @@ notices:
     destinations:
       readError: 'could not read {file}: {message}'
       writeError: 'could not write {file}: {message}'
-    fallback: '{problem} Falling back to the realm this client ships with.'
+    fallback: '{problem} Falling back to the bundled {world} world.'
+    automaticWorld:
+      No world database is named and this realm has not yet said which it runs; walking the
+      bundled {world} world until it does.
+    archiveIsBundled:
+      '{file} is the archive the bundled {world} world was built from; walking that world rather
+      than converting it again.'
+    worlds:
+      readError:
+        'could not read {file} ({message}). Which world each realm runs is not kept on disk until
+        it can be read; what a realm says this run is still followed.'
+      writeError: 'could not write {file}: {message}'
     lore:
       parseSuspended:
         '{fileName} will not parse ({message}). Monster health learned from fighting is
@@ -1542,6 +1567,12 @@ cards:
     traps:
       many: '{trapCount} traps'
       one: 1 trap
+    lairs:
+      many: '{lairCount} lairs on the way'
+      one: one lair on the way
+    lairWorst: 'the worst about {percent}% of your health'
+    shorterNeeds: 'This way crosses what you cannot pass. The shorter way needs:'
+    lairDeadly: one is expected to kill you, and there is no other way
     searchPlaceholder: Room name, or 1/2150
     typeMoreChars: Type at least two characters.
     walkButton: Walk it
@@ -1794,6 +1825,7 @@ map:
     gold: '{amount} gold'
     hidden: Hidden
     hiddenLever: Hidden — “{phrase}” here
+    hiddenLeverItem: Hidden — “{phrase}” here, needs {itemName}
     hiddenLeverElsewhere: Hidden — “{phrase}”, in {room}
     hiddenSearchable: Hidden — search for it
     itemNumberFallback: '#{itemId}'
@@ -2519,10 +2551,12 @@ settings:
     lookLabel: Auto-Inspect Players
     lookWarning: A look is a command from the same budget walking and fighting spend from, and
       the server tells the person they were looked at.
-  worldDatabaseHint: Blank for the bundled world; point at your own .mdb, SQLite copy, or a .zip
-    holding one, for a realm whose rooms differ.
+  worldDatabaseHint:
+    Blank follows what the realm calls itself at its menu, MajorMUD or Paradigm; type majormud
+    or paradigm to pin one, or point at your own .mdb, SQLite copy or .zip for a realm whose
+    rooms differ.
   worldDatabaseLabel: World Database
-  worldDatabasePlaceholder: the world that ships with the client
+  worldDatabasePlaceholder: 'the bundled world the realm names: MajorMUD or Paradigm'
 # What the settings editor says when a save is refused.
 errors:
   settings:
@@ -2624,6 +2658,9 @@ session:
     familyDisagrees:
       This server is {server} and the realm data in {source} is {data}. Both are kept, and nothing
       that depends on one family's arithmetic will be computed from the other's.
+    worldDisagrees:
+      This realm says it is {realm}, but the world loaded for this session is {world}. Reopen this
+      character’s tab to walk the {realm} world, or name one on the realm’s settings page.
     left: Left the realm. Everything known about this character is forgotten; entering again asks
       for it afresh.
   walk:

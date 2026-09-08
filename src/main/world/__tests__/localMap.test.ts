@@ -149,7 +149,7 @@ describe('laying out a local map', () => {
 });
 
 describe('against the shipped realm data', () => {
-  const REALM = path.resolve('resources/world/rooms.jsonl.gz');
+  const REALM = path.resolve('resources/world/paradigm.jsonl.gz');
   const realm = fs.existsSync(REALM) ? WorldGraph.load(REALM) : null;
 
   it.runIf(realm !== null && realm.size > 0)('draws only the agreed vocabulary', () => {

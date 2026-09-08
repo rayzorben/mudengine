@@ -68,7 +68,7 @@ const mobName = valueOf('--mob') ?? 'giant rat';
  * number of the monster to ask about.
  */
 const library = new RealmLibrary({
-  shippedFile: path.resolve('resources/world/rooms.jsonl.gz'),
+  shippedDir: path.resolve('resources/world'),
   cacheDir: path.join(path.dirname(configPath()), 'realms'),
   notify: (message) => console.log(`   [realm] ${message}`)
 });

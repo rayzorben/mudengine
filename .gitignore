@@ -112,7 +112,7 @@ docs/
 # the size for nothing, in every clone and in every installer. The unpacked
 # file is what you get from double-clicking the archive, and `git add -A` after
 # that would put both in the commit. The archives themselves ARE tracked:
-# `resources/mdb/` ships one, and the rest are what `npm run build:world` and
-# `npm run test:realm` read.
+# `mdb/` holds the two `npm run build:world` converts into the worlds that ship
+# and `npm run test:realm` reads.
 *.mdb
 *.accdb

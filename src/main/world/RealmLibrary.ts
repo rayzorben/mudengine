@@ -5,18 +5,28 @@ import crypto from 'node:crypto';
 
 import { t } from '../app/i18n';
 import { WorldGraph } from './WorldGraph';
-import { buildRealm, REALM_FORMAT } from './buildRealm';
+import { buildRealm, identityOfArchive, REALM_FORMAT } from './buildRealm';
 import { openRealm } from './RealmSource';
 import { tuning } from '../app/tuning';
 import { REALM_FAMILY_LABEL } from '../../shared/realm';
+import {
+  asShippedWorld,
+  DEFAULT_SHIPPED_WORLD,
+  SHIPPED_WORLD_LABEL,
+  SHIPPED_WORLDS,
+  shippedWorldFile,
+  type ArchiveIdentity,
+  type ShippedWorld
+} from '../../shared/worlds';
 
 /**
  * Every realm the client has been asked for, converted once and kept.
  *
- * The client ships one realm and that is right for the common case and wrong
- * for anybody on a derivative: Paradigm and every private realm have their own
- * `.mdb`, and a route planned against the wrong one sends a character somewhere
- * that does not exist. So a character can name a realm file.
+ * The client ships two worlds — stock MajorMUD v1.11p and Paradigm's — and a
+ * realm says which it runs at its own menu (`shared/worlds.ts`). That is right
+ * for every realm this client has met and wrong for a private one with its own
+ * `.mdb`, where a route planned against the wrong world sends a character
+ * somewhere that does not exist. So a realm can name a database file instead.
  *
  * The rule that governs this is the one the world knowledge base exists for
  * (docs/legacy-assessment.md §5 consequence 4): **normalise once, never query
@@ -42,13 +52,17 @@ export interface RealmLoad {
   graph: WorldGraph;
   /** What was actually loaded, for the Session card and for a notice. */
   source: string;
-  /** Set when the requested file could not be used and the shipped one was. */
+  /** Set when the requested file could not be used and a bundled world was. */
   problem?: string;
 }
 
 export interface RealmLibraryOptions {
-  /** The realm the client ships, used when a character names none. */
-  shippedFile: string;
+  /**
+   * Where the bundled worlds are, one `<world>.jsonl.gz` per `SHIPPED_WORLDS`
+   * (`resources/world/` in a checkout, wherever `resourcesDir()` finds it in a
+   * package). A missing file loads as an empty world and says so.
+   */
+  shippedDir: string;
   /** Where converted realms are kept. Created on demand. */
   cacheDir: string;
   /**
@@ -56,11 +70,10 @@ export interface RealmLibraryOptions {
    * **beside them** rather than a path on the machine that wrote it.
    *
    * No realm ships with a `database:` today: the six that ship are Paradigm's
-   * and `resources/world/` is built from Paradigm's own database, so they walk
-   * the built-in world. `GMUD (5X)` did until 2026-09-05, naming
-   * `mdb/2023-09-02-gmud.zip` — and the rule that made it *relative* is why
-   * this option exists and why it stays. An absolute path in a shipped file
-   * would exist on exactly one computer, which is what `shipped.test.ts`
+   * and walk the bundled Paradigm world. `GMUD (5X)` did until 2026-09-05,
+   * naming `mdb/2023-09-02-gmud.zip` — and the rule that made it *relative* is
+   * why this option exists and why it stays. An absolute path in a shipped
+   * file would exist on exactly one computer, which is what `shipped.test.ts`
    * refuses; a relative one resolves against wherever the client was actually
    * installed.
    *
@@ -76,36 +89,94 @@ export interface RealmLibraryOptions {
 export class RealmLibrary {
   /** By cache key, so two characters on one realm share one index. */
   private readonly graphs = new Map<string, WorldGraph>();
-  private shipped: WorldGraph | null = null;
+  /** The bundled worlds, each loaded once and kept for the process's life. */
+  private readonly shipped = new Map<ShippedWorld, WorldGraph>();
+  /**
+   * The bundled worlds' headers, read without indexing them, so a database a
+   * player names can be matched against the archives they were built from
+   * before either is loaded whole. Read once; a missing world reads as null.
+   */
+  private archives: Map<ShippedWorld, ArchiveIdentity> | null = null;
+  /**
+   * Which bundled world a named database turned out to **be**, by the same
+   * identity key the conversions use, so the verdict is reached — and said —
+   * once. `load` runs on every world query, so every repeat path here is
+   * obliged to be quiet and cheap; see "The world knowledge base" in the
+   * skill. A negative verdict is kept too, so a private realm that merely
+   * matches an archive's size pays for the hash once.
+   */
+  private readonly bundledWorlds = new Map<string, ShippedWorld | null>();
+  /**
+   * The bundled worlds already announced as the automatic choice. Walking a
+   * map the realm has not confirmed is a standing condition, not an event.
+   */
+  private readonly announcedAutomatic = new Set<ShippedWorld>();
 
   constructor(private readonly options: RealmLibraryOptions) {}
 
+  /** Where one bundled world is kept. */
+  private shippedFile(world: ShippedWorld): string {
+    return path.join(this.options.shippedDir, shippedWorldFile(world));
+  }
+
   /**
-   * The realm the client ships. Loaded once, kept for the process's life.
+   * One of the worlds the client ships. Loaded once, kept for the process's life.
    *
-   * Says what it found, once. In a packaged build the resources directory is
-   * somewhere else entirely and `resourcesDir()` probes candidates to find it —
-   * so "55,806 rooms" at startup is the difference between a working package
-   * and one that silently cannot say where anybody is standing.
+   * Says what it found, once per world. In a packaged build the resources
+   * directory is somewhere else entirely and `resourcesDir()` probes candidates
+   * to find it — so "57,511 rooms" at startup is the difference between a
+   * working package and one that silently cannot say where anybody is standing.
    */
-  shippedGraph(): WorldGraph {
-    if (this.shipped) return this.shipped;
+  shippedGraph(world: ShippedWorld = DEFAULT_SHIPPED_WORLD): WorldGraph {
+    const held = this.shipped.get(world);
+    if (held) return held;
     const started = Date.now();
-    const graph = WorldGraph.load(this.options.shippedFile);
-    this.shipped = graph;
+    const file = this.shippedFile(world);
+    const graph = WorldGraph.load(file);
+    this.shipped.set(world, graph);
     if (graph.size > 0) {
       this.options.notify?.(
         t('notices.world.shippedLoaded', {
           rooms: graph.size.toLocaleString(),
-          source: graph.info.source,
+          source: SHIPPED_WORLD_LABEL[world],
           ms: Date.now() - started
         })
       );
       this.announceBuild(graph);
     } else {
-      this.options.notify?.(t('notices.world.shippedMissing', { path: this.options.shippedFile }));
+      this.options.notify?.(t('notices.world.shippedMissing', { path: file }));
     }
     return graph;
+  }
+
+  /**
+   * The bundled world a database file *is*, if it is one.
+   *
+   * By content, never by name: `pmud.zip` is anybody's name for anything, and
+   * the four realm files on the machine this was written on named the very
+   * archives the bundled worlds are built from by absolute path. Converting
+   * those again would only file what is learned against them under a second
+   * name. The size is compared first — a `stat` — and the hash only when a
+   * size agrees, so a private realm costs no read at all.
+   */
+  private bundledFor(file: string): ShippedWorld | null {
+    if (this.archives === null) {
+      this.archives = new Map();
+      for (const world of SHIPPED_WORLDS) {
+        const archive = WorldGraph.meta(this.shippedFile(world))?.archive ?? null;
+        if (archive !== null) this.archives.set(world, archive);
+      }
+    }
+    let size: number;
+    try {
+      size = fs.statSync(file).size;
+    } catch {
+      return null;
+    }
+    const candidates = [...this.archives].filter(([, archive]) => archive.size === size);
+    if (candidates.length === 0) return null;
+    const sha1 = identityOfArchive(file).sha1;
+    return candidates.find(([, archive]) => archive.sha1 === sha1)?.[0] ?? null;
   }
 
   /**
@@ -168,23 +239,45 @@ export class RealmLibrary {
   /**
    * The realm for a character, converting it if this is the first time.
    *
+   * `database` is the realm's own statement: empty, a bundled world's name, or
+   * a file. Empty means *whatever this realm has said it runs* — `learned`,
+   * from its menu prompt on an earlier connection — and until it has said,
+   * the default world, announced, so that walking a map the realm has not
+   * confirmed is never silent. A file that turns out to be the very archive a
+   * bundled world was built from loads that world instead (`bundledFor`).
+   *
    * Synchronous, deliberately, and only ever called when a session is being
-   * built rather than while one is running: converting 55,806 rooms takes a
+   * built rather than while one is running: converting 57,511 rooms takes a
    * couple of seconds, and doing it on a background tick would mean a character
    * connecting into a realm that is not there yet and resolving every room
    * against nothing.
    */
-  load(database: string): RealmLoad {
-    const wanted = this.resolve(database.trim());
-    if (wanted.length === 0) {
-      const graph = this.shippedGraph();
+  load(database: string, learned: ShippedWorld | null = null): RealmLoad {
+    const stated = database.trim();
+    const automatic = learned ?? DEFAULT_SHIPPED_WORLD;
+    const bundled = (world: ShippedWorld): RealmLoad => {
+      const graph = this.shippedGraph(world);
       return { graph, source: graph.info.source || t('notices.world.shippedRealmLabel') };
-    }
+    };
 
+    if (stated.length === 0) {
+      if (learned === null && !this.announcedAutomatic.has(automatic)) {
+        this.announcedAutomatic.add(automatic);
+        this.options.notify?.(
+          t('notices.world.automaticWorld', { world: SHIPPED_WORLD_LABEL[automatic] })
+        );
+      }
+      return bundled(automatic);
+    }
+    const named = asShippedWorld(stated);
+    if (named !== null) return bundled(named);
+
+    const wanted = this.resolve(stated);
     const fallback = (problem: string): RealmLoad => {
-      this.options.notify?.(t('notices.world.fallback', { problem }));
-      const graph = this.shippedGraph();
-      return { graph, source: graph.info.source || t('notices.world.shippedRealmLabel'), problem };
+      this.options.notify?.(
+        t('notices.world.fallback', { problem, world: SHIPPED_WORLD_LABEL[automatic] })
+      );
+      return { ...bundled(automatic), problem };
     };
 
     let key: string;
@@ -198,6 +291,20 @@ export class RealmLibrary {
 
     const cached = this.graphs.get(key);
     if (cached) return { graph: cached, source: cached.info.source };
+
+    let same = this.bundledWorlds.get(key);
+    if (same === undefined) {
+      same = this.bundledFor(wanted);
+      this.bundledWorlds.set(key, same);
+      if (same !== null)
+        this.options.notify?.(
+          t('notices.world.archiveIsBundled', {
+            file: path.basename(wanted),
+            world: SHIPPED_WORLD_LABEL[same]
+          })
+        );
+    }
+    if (same !== null) return bundled(same);
 
     const cacheFile = path.join(this.options.cacheDir, `${key}.jsonl.gz`);
     if (!fs.existsSync(cacheFile)) {

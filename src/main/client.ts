@@ -31,6 +31,7 @@ import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
+import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from './session/SessionManager';
 import { RealmLore, realmKey } from './world/RealmLore';
@@ -194,6 +195,7 @@ let loops: LoopStore | null = null;
  * realm is the ordinary case.
  */
 let realms: RealmLibrary | null = null;
+let worldBook: WorldBook | null = null;
 /**
  * Monster health learned by fighting, for every realm played.
  *
@@ -271,9 +273,17 @@ function createPlayerBook(): PlayerBook {
   });
 }
 
+/** Which world each address has said it runs. Beside the lore, like the rest. */
+function createWorldBook(): WorldBook {
+  return new WorldBook({
+    file: home.state('worlds.json'),
+    notify: (message) => announce('world', message)
+  });
+}
+
 function createRealms(): RealmLibrary {
   return new RealmLibrary({
-    shippedFile: path.join(resourcesDir(), 'world', 'rooms.jsonl.gz'),
+    shippedDir: path.join(resourcesDir(), 'world'),
     /*
      * So a realm can name a database **beside the client's own files**,
      * relatively. No shipped realm does today -- the six that ship are Paradigm
@@ -299,16 +309,19 @@ function createRealms(): RealmLibrary {
  *
  * The **server's** database, not the character's: two characters on one realm
  * walk one map, so it is stated once beside the host and the menu script. See
- * `Server.database`.
+ * `Server.database`. A realm stating none walks whichever bundled world it
+ * named at its menu on an earlier connection (`WorldBook`), and the default
+ * one, announced, until it has.
  *
  * Read through `profileFor` rather than captured, so an edited realm takes
  * effect on the next session rather than on the next restart. A session with no
- * profile — one whose file went while it was connected — gets the shipped
- * realm, which is the honest answer when there is nothing left to ask.
+ * profile — one whose file went while it was connected — gets the default
+ * world, which is the honest answer when there is nothing left to ask.
  */
 function worldFor(id: SessionId): WorldGraph | undefined {
-  const database = profileFor(id)?.database ?? '';
-  return realms?.load(database).graph;
+  const profile = profileFor(id);
+  const learned = profile ? (worldBook?.at(realmAddress(profile.target)) ?? null) : null;
+  return realms?.load(profile?.database ?? '', learned).graph;
 }
 
 /**
@@ -1196,6 +1209,9 @@ function createHost(): SessionHost {
     playersFor,
     destinationsFor,
     playersAt,
+    // What the realm called itself, by the address it was dialled at, so the
+    // next session built for it starts on the right world.
+    realmTold: (_id, target, realm) => worldBook?.learn(realmAddress(target), realm),
     // Not a domain concern: see `keepSignalsWorking`.
     onConnected: keepSignalsWorking,
     // Per window: which characters have tabs where is the one roster question
@@ -2638,6 +2654,7 @@ function build(): void {
   lore = createLore();
   playerBook = createPlayerBook();
   destinations = createDestinations();
+  worldBook = createWorldBook();
   realms = createRealms();
   /*
    * Loaded before the window, and said out loud.

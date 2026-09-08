@@ -256,6 +256,33 @@ export function appraiseRoom(
 }
 
 /**
+ * What a lair is expected to cost, as a share of the character's maximum health.
+ *
+ * The worst of its monsters, as many times as the lair holds at once
+ * (`WorldLair.max`): a lair of four rats costs four rats, a lair of one boss
+ * costs the boss, and a lair that mixes them is priced as if it were full of
+ * the worst — the direction that is safe to be wrong in, since a route is
+ * chosen before anybody has seen what actually spawned. Null when the
+ * maximum is unread or no monster's cost is knowable; a lair with nothing to
+ * weigh is not free, it is unknown, and the router prices unknown as nothing
+ * rather than as a wall (`dangerPenalty`).
+ */
+export function lairShare(
+  verdicts: ReadonlyArray<Verdict>,
+  held: number | null,
+  hpMax: number | null
+): number | null {
+  if (hpMax === null || !(hpMax > 0)) return null;
+  let worst: number | null = null;
+  for (const verdict of verdicts) {
+    if (verdict.cost === null) continue;
+    if (worst === null || verdict.cost.value > worst) worst = verdict.cost.value;
+  }
+  if (worst === null) return null;
+  return (worst * Math.max(1, held ?? 1)) / hpMax;
+}
+
+/**
  * What of an appraisal a reader can see, so a publisher pushes on change and
  * not on every status line: the names, and each figure to the unit it is drawn
  * at. Two appraisals with the same key draw the same row.

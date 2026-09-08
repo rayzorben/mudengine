@@ -5,6 +5,7 @@ import {
   asRoute,
   openableHere,
   parseLair,
+  lairsAlong,
   trapsAlong,
   type RouteStep
 } from '../world';
@@ -148,6 +149,40 @@ describe('asRoomReference', () => {
 
   it('accepts room 0, which is a room and not an absence', () => {
     expect(asRoomReference('0/0')).toEqual({ map: 0, room: 0 });
+  });
+});
+
+describe('lairsAlong', () => {
+  const step = (danger?: number, deadly?: boolean): RouteStep => ({
+    from: '1/1',
+    to: '1/2',
+    direction: 'n',
+    command: 'n',
+    name: 'Somewhere',
+    requirement: null,
+    dark: false,
+    ...(danger === undefined ? {} : { danger }),
+    ...(deadly === undefined ? {} : { deadly })
+  });
+
+  it('counts nothing on a route through no lair', () => {
+    expect(lairsAlong([step(), step()])).toEqual({ count: 0, worst: null, deadly: false });
+  });
+
+  it('counts every lair and keeps the heaviest share', () => {
+    expect(lairsAlong([step(0.1), step(), step(0.45), step(0.2)])).toEqual({
+      count: 3,
+      worst: 0.45,
+      deadly: false
+    });
+  });
+
+  it('says so when the router walked a lair it walls, because there was no other way', () => {
+    expect(lairsAlong([step(0.1), step(1.4, true)])).toEqual({
+      count: 2,
+      worst: 1.4,
+      deadly: true
+    });
   });
 });
 

@@ -88,6 +88,12 @@ import {
   type RealmBuild,
   type RealmFamily
 } from '../../shared/realm';
+import {
+  asShippedWorld,
+  readArchiveIdentity,
+  type ArchiveIdentity,
+  type ShippedWorld
+} from '../../shared/worlds';
 
 /**
  * A room-script teleport the router may walk — `dive pool`, `go vortex`.
@@ -203,6 +209,18 @@ export interface Traveller {
    * state and must never close a route.
    */
   alignment?: Alignment | null;
+  /**
+   * What a room's lair is expected to cost this character, as a share of
+   * maximum health — the worst of its monsters, as many as it holds at once
+   * (`lairShare`). Null where nothing can be weighed: no lair, the sheet
+   * unread, a monster the arithmetic cannot price.
+   *
+   * A function rather than a table, because the answer depends on the
+   * character as they stand and the router only ever asks about the rooms it
+   * expands; the session memoises it until the character's own figures move
+   * (`LairCosts`). `dangerPenalty` turns the share into route cost.
+   */
+  danger?: (room: WorldRoom) => number | null;
 }
 
 /**
@@ -306,9 +324,17 @@ export function edgeBlock(
 ): {
   kind: 'key' | 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'item';
   requirement: Requirement;
+  /** The item a lever wants, when the block is a hidden exit's; `keyId` otherwise. */
+  itemId?: number;
 } | null {
   if (!requirement) return null;
   switch (requirement.kind) {
+    case 'hidden': {
+      // The mirror of `edgePenalty`'s wall: a listed pack lacking the lever's
+      // item. Everything else about a hidden exit is a price, never a block.
+      const itemId = actionItemMissing(requirement, traveller);
+      return itemId === null ? null : { kind: 'item', requirement, itemId };
+    }
     case 'key': {
       const has = requirement.keyId !== undefined && traveller.keys?.includes(requirement.keyId);
       if (has || requirement.pickDifficulty !== undefined) return null;
@@ -406,6 +432,52 @@ export function edgeBlock(
  */
 const UNEVALUATED = 60;
 
+/**
+ * Whether a hidden exit's levers want an item the pack does not hold.
+ *
+ * `missing` once the pack has been listed and lacks one; `unlisted` while
+ * nobody has listed it and a lever wants something; null for a lever that
+ * wants nothing or an item that is carried. Every lever is asked, wherever it
+ * is pulled: a lever two rooms away that needs the talisman needs it there.
+ */
+function actionItemLacking(
+  requirement: Requirement,
+  traveller: Traveller
+): 'missing' | 'unlisted' | null {
+  const wanted = (requirement.actions ?? [])
+    .map((act) => act.item)
+    .filter((item): item is number => item !== undefined);
+  if (wanted.length === 0) return null;
+  if (traveller.packKnown !== true) return 'unlisted';
+  return wanted.every((item) => traveller.keys?.includes(item)) ? null : 'missing';
+}
+
+/** The first item a hidden exit's levers want that the listed pack lacks, for the refusal. */
+function actionItemMissing(requirement: Requirement, traveller: Traveller): number | null {
+  if (traveller.packKnown !== true) return null;
+  for (const act of requirement.actions ?? []) {
+    if (act.item !== undefined && !traveller.keys?.includes(act.item)) return act.item;
+  }
+  return null;
+}
+
+/**
+ * What a lair costs to route through, from what it is expected to take.
+ *
+ * A share of maximum health (`Traveller.danger`) priced at
+ * `tuning.world.dangerCost` per whole bar, so a lair that would take a
+ * quarter of it costs about a forced door; at `deadlyShare` and above it is
+ * a wall — `wallCost`, never null, because a room the character is expected
+ * to die in is still the only way there sometimes, and refusing outright
+ * would hide that route rather than price it. Unknown costs nothing: an
+ * unread sheet must not turn every lair in the realm into a wall.
+ */
+export function dangerPenalty(share: number | null): number {
+  if (share === null || !Number.isFinite(share) || share <= 0) return 0;
+  if (share >= tuning().world.deadlyShare) return tuning().world.wallCost;
+  return Math.round(share * tuning().world.dangerCost);
+}
+
 export function edgePenalty(requirement: Requirement | null, traveller: Traveller): number | null {
   if (!requirement) return 0;
 
@@ -465,7 +537,19 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
       return purse < price ? null : 8;
     }
 
-    case 'hidden':
+    case 'hidden': {
+      /*
+       * A lever that needs an item is a keyed door in another shape: the
+       * server refuses the phrase without the item in the pack
+       * (`RequirementAction.item`), so a pack that has been listed and lacks
+       * it makes the exit a wall, and a pack nobody has listed leaves it the
+       * unevaluated price — the same two answers `key` gives, for the same
+       * reason. Todo 13: a route was planned through *hold up talisman* at
+       * the cost of a free lever, and the character had no talisman.
+       */
+      const lacking = actionItemLacking(requirement, traveller);
+      if (lacking === 'missing') return null;
+      if (lacking === 'unlisted') return UNEVALUATED;
       /*
        * Searchable costs the search — `Walker.searchFor` sends it.
        *
@@ -486,6 +570,7 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
       if (requirement.searchable) return 25;
       if (openableHere(requirement)) return 25 + 5 * requirement.actions!.length;
       return 200;
+    }
 
     case 'trap':
       // Proportional to the hurt, floored so any trap is worth avoiding.
@@ -737,6 +822,35 @@ export interface WorldMeta {
   family: RealmFamily | null;
   /** The database's own `Info` row, whole. `null` before format 21. */
   build: RealmBuild | null;
+  /**
+   * Which bundled world this is — format 27, written only by `build-world.mjs`.
+   * `null` for a realm a player converted, which is theirs and named after its
+   * file. See `shared/worlds.ts`.
+   */
+  world: ShippedWorld | null;
+  /** The archive a bundled world was built from; `null` for a player's realm. */
+  archive: ArchiveIdentity | null;
+}
+
+/**
+ * The header's own fields, every one parsed rather than trusted: the header is
+ * a file on the player's disk, and one converted by an older build carries
+ * fewer of them. `asRealmFamily` is what stops a hand-edited header naming a
+ * third family that every calculator would then fall through; `asShippedWorld`
+ * and `readArchiveIdentity` do the same for format 27's two.
+ */
+function metaOf(parsed: Record<string, unknown>): WorldMeta {
+  const build = readRealmBuild(parsed['build']);
+  return {
+    version: parsed['v'] as number,
+    source: String(parsed['source'] ?? 'unknown'),
+    rooms: Number(parsed['rooms'] ?? 0),
+    generatedAt: String(parsed['generatedAt'] ?? ''),
+    family: asRealmFamily(parsed['family']) ?? familyOfBuild(build),
+    build,
+    world: asShippedWorld(parsed['world']),
+    archive: readArchiveIdentity(parsed['archive'])
+  };
 }
 
 export class WorldGraph {
@@ -776,7 +890,9 @@ export class WorldGraph {
     rooms: 0,
     generatedAt: '',
     family: null,
-    build: null
+    build: null,
+    world: null,
+    archive: null
   };
   /** Items some exit requires, by number. Only those; see `build-world.mjs`. */
   private readonly items = new Map<number, WorldItem>();
@@ -1584,7 +1700,8 @@ export class WorldGraph {
       const room = this.rooms.get(id);
       if (!room) continue;
       const here = depth.get(id) ?? 0;
-      if (id !== from && want(room)) return this.buildRoute(cameFrom, id, here);
+      // Nobody in particular is walking it, so nothing is priced against anybody.
+      if (id !== from && want(room)) return this.buildRoute(cameFrom, id, here, {});
       if (here >= limit) continue;
       for (const exit of room.exits) {
         if (exit.requirement !== null && !through(exit.requirement)) continue;
@@ -1873,6 +1990,35 @@ export class WorldGraph {
     return this.meta;
   }
 
+  /**
+   * The header of a realm file, without indexing the realm behind it.
+   *
+   * For a question about *which* world a file is — its name, the archive it
+   * came from — asked before deciding whether to load it at all. The whole
+   * file is still inflated (gzip cannot skip), which is tens of milliseconds
+   * against the seconds a full index costs. `null` when the file is missing,
+   * unreadable or carries no header.
+   */
+  static meta(file: string): WorldMeta | null {
+    let text: string;
+    try {
+      text = zlib.gunzipSync(fs.readFileSync(file)).toString('utf8');
+    } catch {
+      return null;
+    }
+    const end = text.indexOf('\n');
+    const first = end === -1 ? text : text.slice(0, end);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(first);
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const record = parsed as Record<string, unknown>;
+    return typeof record['v'] === 'number' ? metaOf(record) : null;
+  }
+
   /** Loads the gzipped JSON-lines file produced by `scripts/build-world.mjs`. */
   static load(file: string): WorldGraph {
     const graph = new WorldGraph();
@@ -1892,21 +2038,7 @@ export class WorldGraph {
       }
 
       if (index === 0 && typeof parsed['v'] === 'number') {
-        /*
-         * Format 21's two fields, both parsed rather than trusted: the header
-         * is a file on the player's disk, and one converted by an older build
-         * carries neither. `asRealmFamily` is what stops a hand-edited header
-         * naming a third family that every calculator would then fall through.
-         */
-        const build = readRealmBuild(parsed['build']);
-        graph.meta = {
-          version: parsed['v'] as number,
-          source: String(parsed['source'] ?? 'unknown'),
-          rooms: Number(parsed['rooms'] ?? 0),
-          generatedAt: String(parsed['generatedAt'] ?? ''),
-          family: asRealmFamily(parsed['family']) ?? familyOfBuild(build),
-          build
-        };
+        graph.meta = metaOf(parsed);
         graph.loadMobs(parsed['mobs']);
         // Only present from v2 on; an older realm file simply names no items.
         for (const entry of Array.isArray(parsed['items']) ? parsed['items'] : []) {
@@ -2839,7 +2971,27 @@ export class WorldGraph {
     if (from === to) return { steps: [], cost: 0, blocked: false };
 
     const found = this.search(from, to, goal, traveller, false);
-    if (found) return this.buildRoute(found.cameFrom, to, found.cost);
+    if (found) {
+      const route = this.buildRoute(found.cameFrom, to, found.cost, traveller);
+      /*
+       * A route that crosses a wall — a door the character cannot force, a
+       * deadly lair — is offered because refusing outright would hide the only
+       * way there is, but it is not the way anybody would choose. So the gates
+       * are opened as they are for a refusal, and what the way through them
+       * needed is carried on the route: *the shorter way needs amber talisman*
+       * is the sentence somebody stopped at a wall can act on, and it is the
+       * one the refusal already knows how to say (todo 13). Nothing when the
+       * opened way is no shorter, or needs nothing the route lacks.
+       */
+      if (found.cost >= tuning().world.wallCost) {
+        const opened = this.search(from, to, goal, traveller, true);
+        if (opened !== null && opened.cost < found.cost) {
+          const blocks = this.blocksAlong(opened.cameFrom, to, traveller);
+          if (blocks.length > 0) return { ...route, blocks };
+        }
+      }
+      return route;
+    }
 
     /*
      * Nothing walkable, so ask again with the gates open — and report the gates
@@ -2936,7 +3088,10 @@ export class WorldGraph {
         // refusal is not, because the server said no this session.
         const along =
           preferring && traveller.preferred!.has(`${currentId}|${nextId}`) ? discount : 1;
-        const tentative = currentCost + (1 + penalty + surcharge) * along + wall;
+        // And what is waiting in the room being stepped into: a lair priced
+        // against this character, or nothing where nothing can be weighed.
+        const risk = traveller.danger === undefined ? 0 : dangerPenalty(traveller.danger(next));
+        const tentative = currentCost + (1 + penalty + surcharge + risk) * along + wall;
         if (tentative >= (best.get(nextId) ?? Infinity)) continue;
 
         best.set(nextId, tentative);
@@ -2969,17 +3124,18 @@ export class WorldGraph {
            * the exact half-read `describeObstacle`'s own header refuses for the
            * chip beside it.
            */
-          const item = requirement.keyId === undefined ? undefined : this.item(requirement.keyId);
+          const wanted = blocked.itemId ?? requirement.keyId;
+          const item = wanted === undefined ? undefined : this.item(wanted);
           blocks.unshift({
             kind: blocked.kind === 'key' ? 'key' : 'carry',
             at: prev,
             to: cursor,
             name,
-            ...(requirement.keyId === undefined
+            ...(wanted === undefined
               ? {}
               : blocked.kind === 'key'
-                ? { keyId: requirement.keyId }
-                : { itemId: requirement.keyId }),
+                ? { keyId: wanted }
+                : { itemId: wanted }),
             ...(item === undefined ? {} : { itemName: item.name })
           });
         } else if (blocked.kind === 'level') {
@@ -3068,7 +3224,8 @@ export class WorldGraph {
   private buildRoute(
     cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>,
     to: RoomId,
-    cost: number
+    cost: number,
+    traveller: Traveller
   ): Route {
     const steps: RouteStep[] = [];
     let cursor = to;
@@ -3076,6 +3233,12 @@ export class WorldGraph {
     while (cameFrom.has(cursor)) {
       const { prev, exit } = cameFrom.get(cursor)!;
       const destination = this.rooms.get(cursor);
+      // The figure the step was priced by, so the panel can say what waits
+      // there rather than only what the walk costs in total.
+      const danger =
+        destination === undefined || traveller.danger === undefined
+          ? null
+          : traveller.danger(destination);
       steps.unshift({
         from: prev,
         to: cursor,
@@ -3099,6 +3262,9 @@ export class WorldGraph {
         // whether a torch is worth lighting, and `dark` alone cannot say.
         ...(destination?.light !== undefined && destination.light < 0
           ? { light: destination.light }
+          : {}),
+        ...(danger !== null && danger > 0
+          ? { danger, ...(danger >= tuning().world.deadlyShare ? { deadly: true } : {}) }
           : {})
       });
       cursor = prev;
@@ -3153,6 +3319,11 @@ function readActions(raw: unknown): RequirementAction[] {
       return [];
     }
     const action: RequirementAction = { say: [...say] };
+    const item = record['item'];
+    if (item !== undefined) {
+      if (typeof item !== 'number' || !Number.isInteger(item) || item <= 0) return [];
+      action.item = item;
+    }
     const at = record['at'];
     if (at !== undefined) {
       if (typeof at !== 'object' || at === null) return [];

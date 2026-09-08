@@ -95,8 +95,9 @@ export interface ServerDraft {
    */
   loops: Loop[];
   /**
-   * The realm database every character here plays against. Empty is the shipped
-   * one.
+   * The world every character here walks: empty follows what the realm calls
+   * itself at its menu, `majormud` or `paradigm` pins a bundled world, and a
+   * path names the realm's own database.
    *
    * On the realm for the same reason the menus and the loops are: a map is a
    * fact about the place. It used to sit on the character, which made it the

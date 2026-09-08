@@ -6,7 +6,7 @@ import { WorldGraph } from '../WorldGraph';
 import { resolveFromCoordinates, resolveRoom } from '../resolve';
 import { roomId, type WorldRoom } from '../../../shared/world';
 
-const file = path.resolve('resources/world/rooms.jsonl.gz');
+const file = path.resolve('resources/world/paradigm.jsonl.gz');
 const available = fs.existsSync(file);
 const graph = available ? WorldGraph.load(file) : null;
 

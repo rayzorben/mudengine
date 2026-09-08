@@ -1583,9 +1583,21 @@ export default function App() {
    * Deferred a frame so it lands after React has committed whatever closed. A
    * command that deliberately parks focus elsewhere opts out with `movesFocus`
    * rather than racing this.
+   *
+   * **And it stands down for a dialog that has taken the caret meanwhile.** A
+   * palette command that reveals a path answers from main a moment later, and
+   * the home browser that answer opens focuses itself on mount — in the same
+   * frame this deferred return was waiting for. Unconditional, the return took
+   * the caret back off the dialog, its own Escape then went to the game, and
+   * the web smoke's Escape on the options-file listing failed two runs in
+   * three (2026-09-07). A dialog hands the caret back on its own exit, which is
+   * the rule that makes standing down here correct rather than lenient.
    */
   const returnFocus = useCallback(() => {
-    window.requestAnimationFrame(() => activeTerminal()?.focus());
+    window.requestAnimationFrame(() => {
+      if (document.activeElement?.closest('[role="dialog"]')) return;
+      activeTerminal()?.focus();
+    });
   }, [activeTerminal]);
 
   /**

@@ -5702,6 +5702,20 @@ button.lookup.quest-where svg {
   padding: 8px 0;
 }
 
+/*
+ * What the shorter way needed, on a walkable route that crosses a wall. The
+ * same list the refusal draws, under one sentence saying which way it is
+ * about; tonal, not loud — the route below it is still offered.
+ */
+.route-needs {
+  color: var(--text-lo);
+  padding: 4px 0 0;
+}
+
+.route-needs > .route-blocked {
+  padding-top: 4px;
+}
+
 /* The Reference card: a field, then the answer, then the matches under it. */
 .reference-card input {
   flex: none;
