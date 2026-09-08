@@ -431,6 +431,200 @@ describe('the mark in the status rail', () => {
   });
 });
 
+/*
+ * `ui.console`, 2026-09-07 (todo 03).
+ *
+ * A whole block inside `ui:`, which `reconcileWithTemplate` will not reach —
+ * it fills in an absent top-level block and never goes inside one. Without
+ * this the console under a light theme goes light with the chrome and nothing
+ * in the file names the setting that decided so.
+ */
+/*
+ * Opening and bashing doors, turned on where the client had written them off
+ * (2026-09-07, todo 06).
+ *
+ * The one migration here that moves an answer rather than adding a missing one,
+ * and only because `statedDoorForcing` is where the answer came from: it wrote
+ * both keys into every file at the shipped default, so a flipped default alone
+ * would reach nobody.
+ */
+describe('doors opening by default', () => {
+  const movement = (body: string): string => `automation:\n  movement:\n${body}`;
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('moves the two the client wrote, and not the lock-pick', () => {
+    fs.writeFileSync(
+      home.options,
+      movement('    openDoors: false\n    bashDoors: false\n    pickLocks: false\n'),
+      'utf8'
+    );
+    migrate();
+    const parsed = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
+    const after = (parsed['automation'] as Record<string, unknown>)['movement'] as Record<
+      string,
+      unknown
+    >;
+    expect(after['openDoors']).toBe(true);
+    expect(after['bashDoors']).toBe(true);
+    // The same decision made with a skill the client cannot check for.
+    expect(after['pickLocks']).toBe(false);
+  });
+
+  it("reaches a character's own file, not only the options", () => {
+    const file = path.join(home.profilesDir, 'vaelor', 'profile.yaml');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, movement('    bashDoors: false\n'), 'utf8');
+    migrate();
+    const parsed = parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+    expect(
+      ((parsed['automation'] as Record<string, unknown>)['movement'] as Record<string, unknown>)[
+        'bashDoors'
+      ]
+    ).toBe(true);
+  });
+
+  it('states nothing a file was silent about', () => {
+    /*
+     * Absence already inherits the new default; writing the key in would be
+     * this migration *stating* a setting rather than moving one. Asserted on
+     * `openDoors`, which no other migration writes — `statedDoorForcing` above
+     * legitimately states `bashDoors` and `pickLocks` where they are missing,
+     * and this one then finds the `false` it wrote and moves it, which is the
+     * same sequence a real file went through.
+     */
+    fs.writeFileSync(
+      home.options,
+      movement('    openTries: 1\n    pickLocks: false\n    pickTries: 3\n'),
+      'utf8'
+    );
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('openDoors');
+  });
+
+  it('cannot undo a later switch-off, and has nothing to say twice', () => {
+    /*
+     * Every door key stated, so `statedDoorForcing` — which runs before this
+     * and legitimately writes the two it is missing at the value it shipped —
+     * has nothing to add and cannot hand this one a `false` to move.
+     */
+    const stated = (open: boolean): string =>
+      movement(
+        `    openDoors: ${open}\n    openTries: 1\n` +
+          '    pickLocks: false\n    pickTries: 3\n    bashDoors: true\n    bashTries: 3\n'
+      );
+    fs.writeFileSync(home.options, stated(false), 'utf8');
+    migrate();
+    // What somebody does afterwards is theirs: only `false` moves, so a file
+    // switched back off by hand is left exactly as it was found.
+    fs.writeFileSync(home.options, stated(true), 'utf8');
+    migrate();
+    const parsed = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
+    expect(
+      ((parsed['automation'] as Record<string, unknown>)['movement'] as Record<string, unknown>)[
+        'openDoors'
+      ]
+    ).toBe(true);
+    expect(said.join(' ')).not.toMatch(/were turned on in/);
+  });
+
+  it('says so, and names the file', () => {
+    fs.writeFileSync(home.options, movement('    openDoors: false\n'), 'utf8');
+    migrate();
+    expect(said.join(' ')).toMatch(/on by default/i);
+    expect(said.join(' ')).toContain(home.options);
+  });
+});
+
+/*
+ * `ui.alerts.finds`, 2026-09-07 (todo 04).
+ *
+ * Two levels inside `ui:`, so `reconcileWithTemplate` reaches neither it nor
+ * the block above it. Written off, which is what the client does without it.
+ */
+describe('what a find is worth interrupting for', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  const alertsIn = (text: string): Record<string, unknown> =>
+    ((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>) ?? {};
+
+  it('is stated off, beside the floor and the mute list', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n    mute: []\n', 'utf8');
+    migrate();
+    expect(alertsIn(fs.readFileSync(home.options, 'utf8'))['finds']).toEqual({
+      items: [],
+      cashOverCopper: 0
+    });
+  });
+
+  it("brings the template's own paragraph", () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n', 'utf8');
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/worth interrupting for/);
+  });
+
+  it('leaves an answered file alone, twice over', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    minimum: info\n    finds:\n      items: [key]\n      cashOverCopper: 500\n',
+      'utf8'
+    );
+    migrate();
+    migrate();
+    expect(alertsIn(fs.readFileSync(home.options, 'utf8'))['finds']).toEqual({
+      items: ['key'],
+      cashOverCopper: 500
+    });
+  });
+
+  it('does nothing to a file with no alerts block to reach into', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('finds');
+  });
+});
+
+describe('the console keeping its own ground', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated with both of its keys, and on', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n  showLogo: true\n', 'utf8');
+    migrate();
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    expect(ui['console']).toEqual({ keepDark: true, darkTheme: 'dark' });
+  });
+
+  it("brings the template's own paragraph rather than a copy of it", () => {
+    fs.writeFileSync(home.options, 'ui:\n  showLogo: true\n', 'utf8');
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/ANSI art drawn against black/);
+  });
+
+  it('leaves a file that already answered it alone, twice over', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  showLogo: true\n  console:\n    keepDark: false\n    darkTheme: nord\n',
+      'utf8'
+    );
+    migrate();
+    migrate();
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    expect(ui['console']).toEqual({ keepDark: false, darkTheme: 'nord' });
+  });
+
+  it('does nothing to a file with no ui block to reach into', () => {
+    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('console');
+  });
+});
+
 describe('the diagnostics preference', () => {
   const OPTIONS_WITH = `ui:
   # Show the HUD rail beside the console.

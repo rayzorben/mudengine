@@ -45,6 +45,7 @@ export type IconName =
   | 'fileText'
   | 'split'
   | 'close'
+  | 'clearCircle'
   | 'copy'
   | 'more'
   | 'trash'
@@ -294,6 +295,20 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   close: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
+  /*
+   * The clear inside a find field: the same cross as `close`, ringed.
+   *
+   * A separate glyph rather than `close` reused, because the two say different
+   * things in the same corner of the screen — a bare cross on a card closes the
+   * card, and one on a find field empties it. The ring is what marks it as
+   * belonging to the field it sits in rather than to the surface behind it.
+   */
+  clearCircle: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9.5 9.5l5 5M14.5 9.5l-5 5" />
+    </>
+  ),
   /* Three dots down, the kebab: where a card's actions fold past four. */
   more: (
     <>

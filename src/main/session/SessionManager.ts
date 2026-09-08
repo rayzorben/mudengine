@@ -53,6 +53,7 @@ import { CharacterTracker } from '../parse/CharacterTracker';
 import { Classifier } from '../parse/Classifier';
 import { LineTokenizer, plainText } from '../net/LineTokenizer';
 import { TelnetClient } from '../net/TelnetClient';
+import { LinkWatch } from './LinkWatch';
 import type { Block } from '../../shared/blocks';
 import {
   bankKey,
@@ -73,6 +74,14 @@ import { NO_REALM_PLAYERS, type RealmPlayers } from '../../shared/players';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { describeDiscovery, discoveryKey, type Discovery } from '../../shared/memory';
+import { findKey, type Find } from '../../shared/finds';
+import { stepSaid } from '../../shared/quests';
+import {
+  identityOf,
+  resetSignals,
+  type CharacterIdentity,
+  type ResetSignal
+} from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
 import {
   familiesDisagree,
@@ -262,6 +271,33 @@ export interface RealmMemory {
   readonly all: readonly Discovery[];
 }
 
+/**
+ * Where what a `search` turns up in this realm is written down.
+ *
+ * The same seam `RealmMemory` is, for the same reason: this is the session
+ * layer, it says what was found, and the file handling belongs to whoever
+ * decided where the file goes. The implementation is `FindBook`.
+ *
+ * Realm-keyed rather than character-keyed — a room hiding a rusty key is a fact
+ * about the world, like a shop's stock — so one store answers for every
+ * character on a realm. It is handed over at construction beside `memory`,
+ * which is the record it most resembles and which keys the same way.
+ */
+export interface RealmFinds {
+  /** Writes one down. Returns it only when this room had not held it before. */
+  record(find: Omit<Find, 'seen'>): Find | null;
+  /** Strikes one out by its `findKey`. Whether there was one to strike. */
+  forget(key: string): boolean;
+  readonly all: readonly Find[];
+}
+
+/** A realm nothing is written down for, which is what every test wants. */
+const NO_FINDS: RealmFinds = {
+  record: () => null,
+  forget: () => false,
+  all: []
+};
+
 export interface SessionSink {
   data(chunk: StreamChunk): void;
   /**
@@ -319,6 +355,25 @@ export interface SessionSink {
    * hold a record with a hole in it and no way to notice.
    */
   learned?(discoveries: Discovery[]): void;
+  /**
+   * Everything a `search` has turned up in this realm, after one turned up
+   * something. The whole list, for the reason `learned` sends the whole list.
+   */
+  finds?(finds: Find[]): void;
+  /**
+   * The character in the realm may not be the character these records are
+   * about. Reported, never acted on: see `SessionManager.watchForReset`.
+   */
+  reset?(notice: {
+    signals: ResetSignal[];
+    before: CharacterIdentity;
+    after: CharacterIdentity;
+  }): void;
+  /**
+   * The rank each quest has been seen to reach from what the player typed.
+   * The whole map, for the reason `learned` sends the whole record.
+   */
+  questSaid?(progress: Record<number, number>): void;
   /**
    * A command the client committed to the wire, reassembled from keystrokes.
    * One place does this, so a capture and the tracker cannot disagree.
@@ -716,6 +771,28 @@ export class SessionManager {
   private forgetPlayers: () => void = () => {};
   private readonly events: Events;
   private readonly routines: Routines;
+  /**
+   * Whether this session has already asked about a suspected reset.
+   *
+   * Once, and the remembered identity moves on either way: a prompt that came
+   * back on the next status line is a dialog somebody dismisses without
+   * reading, which is the same as no dialog at all.
+   */
+  private askedAboutReset = false;
+  /**
+   * The rank each quest's counter has been *seen* to reach, from what the
+   * player typed. Per session: it is a record of this sitting's actions, and
+   * the realm's own count replaces it whenever one arrives.
+   */
+  private questSaid: Record<number, number> = {};
+  /**
+   * Whether the far end is still answering. See `LinkWatch`.
+   *
+   * Owned here rather than by `Reconnect`, which never hears about a socket
+   * that stays open: this is the piece that turns a link that died quietly into
+   * the `close` event everything downstream already knows what to do with.
+   */
+  private readonly link: LinkWatch;
 
   constructor(
     private readonly sink: SessionSink,
@@ -757,7 +834,17 @@ export class SessionManager {
      * learned. Per realm like the lore beside it, and defaulting to none for
      * the same reason.
      */
-    spellLore: SpellLore = NO_SPELL_LORE
+    spellLore: SpellLore = NO_SPELL_LORE,
+    /**
+     * Where what a `search` turns up in this realm is written down.
+     *
+     * Keyed like `memory`'s shared half: what a room hides is the realm's, not
+     * this character's. Last in the list on purpose — every argument above it
+     * is passed positionally by the host and by two dozen tests — and
+     * defaulting to a realm nothing is written down for, which is what those
+     * tests want.
+     */
+    private readonly finds: RealmFinds = NO_FINDS
   ) {
     this.tracker = new CharacterTracker(
       world,
@@ -865,6 +952,11 @@ export class SessionManager {
           ...(intent.reason === undefined ? {} : { reason: intent.reason })
         });
         this.client.send(`${command}\r\n`);
+        // A command is on the wire, so an answer is owed and the dead-link
+        // clock starts. Beside the idle clock rather than inside it: that one
+        // counts what this client has sent, this one counts what the far end
+        // has failed to say back.
+        this.link.noteSent();
         // A character the client is already driving is not an idle one. Wired
         // here rather than at each proposer because this is the one funnel
         // every automated command goes through.
@@ -884,6 +976,21 @@ export class SessionManager {
 
     this.routines = new Routines(automation, this.queue, {
       notice: (message) => this.sink.notice(message)
+    });
+
+    this.link = new LinkWatch({
+      dead: (seconds) => {
+        // Said before the socket goes, so the console reads in the order it
+        // happened: this is why the connection dropped, then that it dropped.
+        // A safety feature that acts without saying so is one nobody can tell
+        // from a bug.
+        this.sink.notice(t('session.connection.deadLink', { seconds }));
+        // Hung up as a *loss*, not a disconnect: `close` reports `graceful`
+        // false, so the loop is held rather than stopped and `Reconnect` dials
+        // back if this character asked it to. Whether it does is not decided
+        // here.
+        this.client.abandon();
+      }
     });
 
     /*
@@ -1456,6 +1563,11 @@ export class SessionManager {
 
     this.client.on('data', (text) => {
       const at = Date.now();
+      // Whatever was owed has been answered. Every byte counts here, unlike
+      // the keep-alive's clock below: this asks whether anything is on the
+      // other end of the socket, and an unprompted status-line repaint is as
+      // good an answer to that as a reply to a command.
+      this.link.noteReceived();
       this.sink.decoded?.(text);
       /*
        * Framed first, painted second — and both in this call. The terminal is
@@ -1489,6 +1601,9 @@ export class SessionManager {
 
     this.client.on('close', (graceful) => {
       this.flushPending();
+      // Nothing is owed across a closed socket, and a deadline left armed
+      // would hang up the *next* connection this session opens.
+      this.link.reset();
       /*
        * Whether this close is a *loss*: nobody on this side asked for it.
        * `graceful` is the whole test of who asked, and `login.standDown` is
@@ -1647,6 +1762,126 @@ export class SessionManager {
     return true;
   }
 
+  /**
+   * Writes down what the last search turned up here, and says so once a find.
+   *
+   * Silent about a repeat, which is what `FindBook.record` returning null buys:
+   * a lair searched every lap should not announce the same key every lap. The
+   * row still moves — its `at` and its count — because the record changed even
+   * though the news did not.
+   *
+   * A room the client cannot place is **not** written down. A find whose room
+   * is a guess is a row nobody can walk back to, and the map cannot mark it;
+   * refusing rather than guessing is the standing rule, and the search is still
+   * on screen where the player can see it.
+   */
+  private recordFinds(): void {
+    const state = this.tracker.current;
+    const { room } = state;
+    if (room.map === null || room.number === null) return;
+    const where = roomId(room.map, room.number);
+    /*
+     * The realm's name for the room where the wire has not printed one, and the
+     * id where neither has. A row has to read without the database open beside
+     * it, and `1/2150` is a worse answer than `Bank of Godfrey` but a far
+     * better one than an empty cell.
+     */
+    const roomName = room.name ?? this.world?.byId(where)?.name ?? where;
+    const at = Date.now();
+    const fresh: Find[] = [];
+
+    for (const item of room.hidden) {
+      const found = this.finds.record({
+        room: where,
+        roomName,
+        name: item.name,
+        // Absent is *not one*: the server counts stacks and says nothing about
+        // a single thing. See `Find.quantity`.
+        quantity: item.count ?? null,
+        copper: null,
+        at
+      });
+      if (found) fresh.push(found);
+    }
+
+    const cash = room.hiddenCash;
+    if (cash !== null) {
+      const found = this.finds.record({
+        room: where,
+        roomName,
+        // The server's own phrase where it printed one, so a row reads as the
+        // line did: `4 copper farthings`, not a reconstruction of it.
+        name: cash.rawText ?? t('session.finds.coins'),
+        quantity: null,
+        copper: cash.totalCopper,
+        at
+      });
+      if (found) fresh.push(found);
+    }
+
+    if (fresh.length === 0) return;
+    for (const find of fresh) {
+      this.sink.notice(
+        t('session.finds.found', { what: find.name, room: find.roomName, id: find.room })
+      );
+    }
+    this.sink.finds?.([...this.finds.all]);
+  }
+
+  /**
+   * Strikes a find out because the player says it is wrong.
+   *
+   * The player's call for the reason `forget` above is theirs: the client
+   * cannot tell a room it mis-resolved from one that really hides a thing, and
+   * a record that cannot be corrected is one that stops being read.
+   */
+  forgetFind(find: Pick<Find, 'room' | 'name'>): boolean {
+    if (!this.finds.forget(findKey(find))) return false;
+    this.sink.notice(t('session.finds.forgot', { what: find.name, room: find.room }));
+    this.sink.finds?.([...this.finds.all]);
+    return true;
+  }
+
+  /**
+   * A typed line that reaches a quest step, so the book moves as the character
+   * plays rather than only when somebody spends an `abil`.
+   *
+   * Reported 2026-09-07: `ask markus letter` advanced the quest and the card
+   * said nothing until an `abil` was typed. Nothing on the wire announces a
+   * counter moving — that is the whole reason `abil` exists — so the only fact
+   * available at the moment it happens is the **player's own action**, and this
+   * is that fact and no more. It never touches `CharacterState.abilities`,
+   * which is the realm's own count and stays the realm's: what crosses is a
+   * separate reading the card ranks *under* it.
+   *
+   * The step must name its asker and the line must carry both the asker and one
+   * of the words that reach the step — see `stepSaid` for why the pair, and why
+   * this does not claim the ask succeeded.
+   */
+  private noteQuestSaid(command: string): void {
+    const quests = this.world?.quests();
+    if (quests === undefined || quests.length === 0) return;
+    const said = stepSaid(quests, command);
+    if (said === null || said.step.to === undefined) return;
+
+    // Only ever forward. A keyword answered again at a later rank must not walk
+    // the book backwards, and `giveability` is upward-only on the server too.
+    const known = this.questSaid[said.quest.id];
+    if (known !== undefined && known >= said.step.to) return;
+    this.questSaid = { ...this.questSaid, [said.quest.id]: said.step.to };
+    this.sink.questSaid?.(this.questSaid);
+  }
+
+  /** What the player has been seen to do about each quest. See `noteQuestSaid`. */
+  get questProgress(): Readonly<Record<number, number>> {
+    return this.questSaid;
+  }
+
+  /** Everything a search has turned up in this realm. See `RealmFinds`. */
+  get foundHere(): Find[] {
+    return [...this.finds.all];
+  }
+
   async connect(target: ConnectionTarget): Promise<ConnectionState> {
     this.telnetLog.length = 0;
     this.lineLog.length = 0;
@@ -1657,6 +1892,10 @@ export class SessionManager {
     this.tracker.reset();
     this.queue.clear();
     this.sentLog.length = 0;
+    this.link.reset();
+    this.askedAboutReset = false;
+    // A new session's own actions, not the last one's.
+    this.questSaid = {};
     this.routines.reset();
     this.rules.reset();
     this.walker.reset();
@@ -1779,6 +2018,15 @@ export class SessionManager {
       else this.outbound += ch;
     }
 
+    /*
+     * Whether a whole line went out, rather than a keystroke on the way to
+     * one. Only a line arms the dead-link clock: a half-typed one produces no
+     * answer at all while the server is doing its own echo, so arming on a
+     * keystroke would hang up on somebody who started typing and went to make
+     * tea. A bare Enter counts — it is what the keep-alive sends.
+     */
+    let committed = false;
+
     // A chunk can carry a whole command and its terminator at once — a paste,
     // or a caller sending `who\r` in one go — so this loops rather than
     // assuming one keystroke per call.
@@ -1787,6 +2035,7 @@ export class SessionManager {
       if (newline === -1) break;
       const command = this.outbound.slice(0, newline).trim();
       this.outbound = this.outbound.slice(newline + 1).replace(/^\n/, '');
+      committed = true;
       if (command.length > 0) {
         /*
          * The tracker is the one thing here that knows the command table, the
@@ -1800,6 +2049,7 @@ export class SessionManager {
         this.login.observeCommand(command);
         this.classifier.observeCommand(command);
         this.noteSent(command, 'user');
+        this.noteQuestSaid(command);
         // A person is at the keyboard: the away clock starts over.
         this.afk.noteAttended();
       } else {
@@ -1832,6 +2082,7 @@ export class SessionManager {
      */
     this.client.send(data);
 
+    if (committed) this.link.noteSent();
     // The player typing is this client sending, so the idle clock restarts.
     this.routines.noteSent();
     /*
@@ -2389,6 +2640,7 @@ export class SessionManager {
     this.automationTimer = null;
     this.queue.dispose();
     this.routines.dispose();
+    this.link.dispose();
     this.rules.dispose();
     this.walker.dispose();
     this.blessings.dispose();
@@ -2663,8 +2915,13 @@ export class SessionManager {
     }
 
     /*
-     * Anybody standing in this room, offered to the look routine — which does
+     * Everybody standing in this room, handed to the look routine — which does
      * nothing at all unless `automation.talk.lookAtPlayers` is on.
+     *
+     * The **whole list**, not one name at a time, and that is the fix for a
+     * look going out at somebody who had left minutes earlier: the routine
+     * reconciles its queue against it, so a name that is no longer here is
+     * dropped rather than owed for ever. A listing is authoritative.
      *
      * Read from the room **after** the block was applied, unlike the roster
      * catch-up above: this wants who is in the room *now*, and the occupant
@@ -2672,11 +2929,13 @@ export class SessionManager {
      * character — looking at yourself is a different command with a different
      * answer, and it is not what the setting asks for.
      */
-    for (const occupant of this.tracker.current.room.occupants) {
-      if (occupant.kind !== 'player') continue;
-      if (occupant.name === this.tracker.current.name) continue;
-      this.routines.onPlayerSeen(occupant.name);
-    }
+    this.routines.onPlayersHere(
+      this.tracker.current.room.occupants
+        .filter(
+          (occupant) => occupant.kind === 'player' && occupant.name !== this.tracker.current.name
+        )
+        .map((occupant) => occupant.name)
+    );
     // Evidence about whether hanging up would be penalised: who hit whom, and
     // whether they are a player. Fed the roster as it stands *before* this
     // block is applied, which is right — a name arrives in the roster from a
@@ -2701,6 +2960,18 @@ export class SessionManager {
      * client believed a moment ago — the whole of the bug this shape replaced.
      */
     if (batch?.type === 'user-inventory') this.deposit.onListing(this.tracker.current);
+
+    /*
+     * What the search turned up, written down against the room it was in.
+     *
+     * **After `apply`**, and that is the whole of why this is here rather than
+     * beside `AutoLoot` in the `onBlock` fan-out above: `room.hidden` is set by
+     * this very block, so the pre-apply state a module is handed still holds
+     * the last room's answer. `CharacterTracker` has already done the parsing
+     * — the item's name, its count, the coins normalised into copper — so this
+     * reads the fact rather than splitting the line a second time.
+     */
+    if (block.type === 'room-hidden-items') this.recordFinds();
 
     /*
      * Any prompt is an acknowledgement: the server has finished with the last
@@ -4271,6 +4542,67 @@ export class SessionManager {
   private publishCharacter(): void {
     this.sink.character(this.tracker.current);
     this.publishVerdict();
+    this.watchForReset();
+  }
+
+  /**
+   * Whether the character in the realm is still the character this client's
+   * records are about.
+   *
+   * A player who deletes a character and makes a new one keeps the **name**,
+   * because the name is the login — so nothing about the connection changes,
+   * and every record kept against that name is quietly about somebody who no
+   * longer exists: a vault balance, a loadout of kit that is gone, a spellbook,
+   * a map, a quest counter.
+   *
+   * **It reports and nothing more.** The client cannot tell a reset from a
+   * realm that renumbered its classes, and deleting the only copy of what
+   * somebody learned is not a decision to take from a heuristic. What crosses
+   * is both characters and what was noticed; the answer is the player's
+   * (`Invoke.forgetCharacter`).
+   *
+   * Asked **once per session**, and the remembered identity is moved on
+   * immediately either way: a prompt that came back on the next status line
+   * would be a dialog somebody dismisses without reading, which is the same as
+   * no dialog at all.
+   */
+  private watchForReset(): void {
+    if (this.tracker.current.phase !== 'in-game') return;
+    const now = identityOf(this.tracker.current, Date.now());
+    if (now === null) return;
+
+    const remembered = this.belongings.recallIdentity();
+    // Moved on whatever happens next, so this asks once and the record stays
+    // current for the session after it.
+    this.belongings.rememberIdentity(now);
+    if (remembered === null || this.askedAboutReset) return;
+
+    const signals = resetSignals(remembered, now, tuning().session.resetExpDropShare);
+    if (signals.length === 0) return;
+
+    this.askedAboutReset = true;
+    this.sink.notice(t('session.reset.noticed', { signals: signals.join(', ') }));
+    this.sink.reset?.({ signals, before: remembered, after: now });
+  }
+
+  /**
+   * Throws away what this client kept about the character that was here before.
+   *
+   * The player's call and only ever the player's — see `watchForReset`. What
+   * goes is what is *about a character*: the vault, the loadout, the spellbook,
+   * the measured spell durations, the quest counters and the identity itself.
+   * What stays is what is about the **realm** — the map this character walked,
+   * the shops, the other players — because none of that stopped being true.
+   */
+  forgetCharacter(): boolean {
+    if (!this.belongings.forget()) return false;
+    // The four persisted fields are re-seeded from the record that is now
+    // empty; the room, the roster and the phase are this session's own and are
+    // left exactly as they are.
+    this.tracker.forgetBelongings();
+    this.publishCharacter();
+    this.sink.notice(t('session.reset.forgotten'));
+    return true;
   }
 
   /**

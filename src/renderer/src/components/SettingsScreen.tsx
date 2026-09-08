@@ -21,7 +21,7 @@ import RemoteList from './RemoteList';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
+import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
 import {
   begin,
   canRedo,
@@ -246,6 +246,21 @@ export interface SettingsScreenProps {
    * unknown maximum has never been a number in this client.
    */
   maximaFor(session: SessionId): { hpMax: number | null; manaMax: number | null };
+  /**
+   * There is nowhere to go back to, so there is no way out of this screen.
+   *
+   * A client with no characters exists only to make one: there is no console,
+   * no rail and no tab behind this dialog, and the version that could be
+   * dismissed left somebody looking at an empty window with no way of guessing
+   * what to do next. So while this is set the close glyph is not drawn, Escape
+   * and the scrim do nothing, and the screen says why in one line.
+   *
+   * A prop rather than `characters.length === 0` read here: the screen loads
+   * its own snapshot asynchronously, and the moment before that lands it would
+   * be indistinguishable from a client with no characters — which is precisely
+   * the state that must not be got wrong in the direction of *un*closeable.
+   */
+  required?: boolean;
   onClose(): void;
   load(): Promise<SettingsSnapshot>;
   saveProfile(id: string, draft: ProfileDraft): Promise<string | null>;
@@ -502,6 +517,10 @@ interface CharacterForm {
   /** Alerts — what this character is worth interrupting you for. */
   alertMinimum: Severity;
   alertMuted: string[];
+  /** Words that make a find worth interrupting for. See `FindAlertsConfig`. */
+  alertFindItems: string[];
+  /** Found cash worth interrupting for, in copper. `0` never alerts. */
+  alertFindCash: number;
   /** `automation.afk` — answering for an absent player. */
   afkEnabled: boolean;
   afkAfterMinutes: string;
@@ -627,6 +646,8 @@ function formOf(entry: ProfileEditable): CharacterForm {
     loops: entry.loops,
     alertMinimum: entry.alerts.minimum,
     alertMuted: entry.alerts.mute,
+    alertFindItems: entry.alerts.finds.items,
+    alertFindCash: entry.alerts.finds.cashOverCopper,
     afkEnabled: entry.afk.enabled,
     afkAfterMinutes: String(entry.afk.afterMinutes),
     afkReply: entry.afk.reply,
@@ -809,7 +830,11 @@ function draftOf(form: CharacterForm): ProfileDraft {
       collectKeys: form.collectKeys
     },
     loops: form.loops,
-    alerts: { minimum: form.alertMinimum, mute: form.alertMuted },
+    alerts: {
+      minimum: form.alertMinimum,
+      mute: form.alertMuted,
+      finds: { items: form.alertFindItems, cashOverCopper: form.alertFindCash }
+    },
     afk: {
       enabled: form.afkEnabled,
       afterMinutes: Math.max(1, Number.parseInt(form.afkAfterMinutes, 10) || 5),
@@ -1057,6 +1082,8 @@ function emptyForm(
     // parsed at the boundary; the form holds the closed union.
     alertMinimum: (alerts.minimum as Severity) ?? DEFAULT_ALERTS.minimum,
     alertMuted: [...alerts.mute],
+    alertFindItems: [...alerts.finds.items],
+    alertFindCash: alerts.finds.cashOverCopper,
     afkEnabled: afk.enabled,
     afkAfterMinutes: String(afk.afterMinutes),
     afkReply: afk.reply,
@@ -1127,6 +1154,7 @@ export default function SettingsScreen({
   open,
   openAt = null,
   maximaFor,
+  required = false,
   onClose,
   load,
   saveProfile,
@@ -1649,6 +1677,9 @@ export default function SettingsScreen({
    * the moment this unmounts.
    */
   const close = (): void => {
+    // The one way out is making a character. Refused here rather than only at
+    // each of the three doors, so a fourth added later cannot forget.
+    if (required) return;
     active.save.flush();
     onClose();
   };
@@ -1676,6 +1707,20 @@ export default function SettingsScreen({
     figureOf(Number.parseInt(typed, 10) || 0, maxima.hpMax);
   const ofMana = (typed: string): string | null =>
     figureOf(Number.parseInt(typed, 10) || 0, maxima.manaMax);
+  /*
+   * And the bar under it, on the **inherited** vitals bands.
+   *
+   * From the Global draft rather than from `DEFAULT_CONFIG`: the character page
+   * has no vitals section, so what a character runs on is what the options file
+   * says, and a player who moved caution to 70% must not be shown 60% in green
+   * here and amber on their own HUD. Falls back to the shipped bands only while
+   * the snapshot has not landed.
+   */
+  const bands = snapshot?.global.ui.vitals ?? DEFAULT_CONFIG.ui.vitals;
+  const barOfHealth = (typed: string): ReturnType<typeof barOf> =>
+    barOf(Number.parseInt(typed, 10) || 0, bands.hp);
+  const barOfMana = (typed: string): ReturnType<typeof barOf> =>
+    barOf(Number.parseInt(typed, 10) || 0, bands.mana);
 
   const patch = (change: Partial<CharacterForm>): void => {
     setHistory((current) =>
@@ -1861,15 +1906,30 @@ export default function SettingsScreen({
               {t('settings.crumbs.characters')}
             </button>
           </h2>
-          <button
-            aria-label={t('settings.dialog.closeAria')}
-            className="quiet"
-            onClick={close}
-            type="button"
-          >
-            ✕
-          </button>
+          {/*
+            Absent rather than disabled while there is no character: a greyed
+            close is a control that says *later*, and there is no later here —
+            the way out is the form beside it.
+          */}
+          {!required && (
+            <button
+              aria-label={t('settings.dialog.closeAria')}
+              className="quiet"
+              onClick={close}
+              type="button"
+            >
+              ✕
+            </button>
+          )}
         </header>
+
+        {/*
+          Said out loud, and standing rather than as a refusal that only appears
+          when somebody presses Escape: the whole failure here was a screen that
+          could be dismissed onto an empty window, so the sentence has to be
+          readable *before* anybody tries the way out that is gone.
+        */}
+        {required && <p className="settings-warn">{t('settings.dialog.characterRequired')}</p>}
 
         <div className="settings-body" data-tab={tab}>
           {showsGlobal(tab) ? (
@@ -2348,7 +2408,11 @@ export default function SettingsScreen({
                                 ]}
                                 value={form.combatEngage}
                               />
+                              {/* The fifteenth percentage field, and the one
+                                  that had neither figure nor bar. */}
                               <NumberField
+                                bar={barOfHealth(form.combatMinHealth)}
+                                figure={ofHealth(form.combatMinHealth)}
                                 hint={t('settings.combat.minHealthHint')}
                                 label={t('settings.combat.minHealthLabel')}
                                 name="min-health"
@@ -2366,6 +2430,7 @@ export default function SettingsScreen({
                                 hint={t('settings.combat.maxFightCostHint')}
                                 label={t('settings.combat.maxFightCostLabel')}
                                 name="max-fight-cost"
+                                bar={barOfHealth(form.combatMaxFightCost)}
                                 figure={ofHealth(form.combatMaxFightCost)}
                                 onChange={(value) => patch({ combatMaxFightCost: value })}
                                 value={form.combatMaxFightCost}
@@ -2488,6 +2553,7 @@ export default function SettingsScreen({
                             hint={t('settings.health.restBelowHint')}
                             label={t('settings.health.restBelowLabel')}
                             name="rest-below"
+                            bar={barOfHealth(form.restBelow)}
                             figure={ofHealth(form.restBelow)}
                             onChange={(value) => patch({ restBelow: value })}
                             value={form.restBelow}
@@ -2496,6 +2562,7 @@ export default function SettingsScreen({
                             hint={t('settings.health.restToHint')}
                             label={t('settings.health.restToLabel')}
                             name="rest-to"
+                            bar={barOfHealth(form.restTo)}
                             figure={ofHealth(form.restTo)}
                             onChange={(value) => patch({ restTo: value })}
                             value={form.restTo}
@@ -2504,6 +2571,7 @@ export default function SettingsScreen({
                             hint={t('settings.health.meditateBelowHint')}
                             label={t('settings.health.meditateBelowLabel')}
                             name="med-below"
+                            bar={barOfMana(form.meditateBelow)}
                             figure={ofMana(form.meditateBelow)}
                             onChange={(value) => patch({ meditateBelow: value })}
                             value={form.meditateBelow}
@@ -2526,6 +2594,7 @@ export default function SettingsScreen({
                             hint={t('settings.health.potionBelowHint')}
                             label={t('settings.health.drinkHealingBelowLabel')}
                             name="healing-potion-below"
+                            bar={barOfHealth(form.drinkHealingPotionBelow)}
                             figure={ofHealth(form.drinkHealingPotionBelow)}
                             onChange={(value) => patch({ drinkHealingPotionBelow: value })}
                             value={form.drinkHealingPotionBelow}
@@ -2543,6 +2612,7 @@ export default function SettingsScreen({
                             hint={t('settings.health.potionBelowHint')}
                             label={t('settings.health.drinkManaBelowLabel')}
                             name="mana-potion-below"
+                            bar={barOfMana(form.drinkManaPotionBelow)}
                             figure={ofMana(form.drinkManaPotionBelow)}
                             onChange={(value) => patch({ drinkManaPotionBelow: value })}
                             value={form.drinkManaPotionBelow}
@@ -2580,6 +2650,7 @@ export default function SettingsScreen({
                               <NumberField
                                 label={t('settings.health.belowHealthLabel')}
                                 name="retreat-health"
+                                bar={barOfHealth(form.retreatBelow)}
                                 figure={ofHealth(form.retreatBelow)}
                                 onChange={(value) => patch({ retreatBelow: value })}
                                 value={form.retreatBelow}
@@ -2588,6 +2659,7 @@ export default function SettingsScreen({
                                 hint={t('settings.health.belowManaHint')}
                                 label={t('settings.health.belowManaLabel')}
                                 name="retreat-mana"
+                                bar={barOfMana(form.retreatBelowMana)}
                                 figure={ofMana(form.retreatBelowMana)}
                                 onChange={(value) => patch({ retreatBelowMana: value })}
                                 value={form.retreatBelowMana}
@@ -2647,6 +2719,7 @@ export default function SettingsScreen({
                             <NumberField
                               label={t('settings.health.belowHealthLabel')}
                               name="hangup-health"
+                              bar={barOfHealth(form.hangUpBelow)}
                               figure={ofHealth(form.hangUpBelow)}
                               onChange={(value) => patch({ hangUpBelow: value })}
                               value={form.hangUpBelow}
@@ -2733,6 +2806,7 @@ export default function SettingsScreen({
                           label={t('settings.spells.minManaLabel')}
                           name="min-mana"
                           onChange={(value) => patch({ spellMinMana: value })}
+                          bar={barOfMana(form.spellMinMana)}
                           figure={ofMana(form.spellMinMana)}
                           value={form.spellMinMana}
                         />
@@ -2756,6 +2830,7 @@ export default function SettingsScreen({
                           label={t('settings.spells.areaMinManaLabel')}
                           name="area-min-mana"
                           onChange={(value) => patch({ spellAreaMinMana: value })}
+                          bar={barOfMana(form.spellAreaMinMana)}
                           figure={ofMana(form.spellAreaMinMana)}
                           value={form.spellAreaMinMana}
                         />
@@ -2789,6 +2864,7 @@ export default function SettingsScreen({
                             label={t('settings.spells.healBelowLabel')}
                             name="heal-below"
                             onChange={(value) => patch({ spellHealBelow: value })}
+                            bar={barOfHealth(form.spellHealBelow)}
                             figure={ofHealth(form.spellHealBelow)}
                             value={form.spellHealBelow}
                           />
@@ -2797,6 +2873,7 @@ export default function SettingsScreen({
                             label={t('settings.spells.healBelowInCombatLabel')}
                             name="heal-below-combat"
                             onChange={(value) => patch({ spellHealBelowInCombat: value })}
+                            bar={barOfHealth(form.spellHealBelowInCombat)}
                             figure={ofHealth(form.spellHealBelowInCombat)}
                             value={form.spellHealBelowInCombat}
                           />
@@ -2805,6 +2882,7 @@ export default function SettingsScreen({
                             label={t('settings.spells.healToLabel')}
                             name="heal-to"
                             onChange={(value) => patch({ spellHealTo: value })}
+                            bar={barOfHealth(form.spellHealTo)}
                             figure={ofHealth(form.spellHealTo)}
                             value={form.spellHealTo}
                           />
@@ -3067,6 +3145,34 @@ export default function SettingsScreen({
                         ]}
                         value={form.alertMinimum}
                       />
+                      {/*
+                        A comma list here, unlike the channels below: the
+                        channels are a closed set of eleven and these are the
+                        realm's own words for things, which could be anything.
+                        The character form's wording is the one that wins on
+                        both pages.
+                      */}
+                      <div className="settings-inline">
+                        <TextField
+                          hint={t('settings.alerts.findItemsHint')}
+                          label={t('settings.alerts.findItemsLabel')}
+                          name="alert-finds"
+                          onChange={(value) => patch({ alertFindItems: splitNames(value) })}
+                          placeholder={t('settings.alerts.findItemsPlaceholder')}
+                          spellCheck={false}
+                          value={joinNames(form.alertFindItems)}
+                          wide
+                        />
+                        <NumberField
+                          hint={t('settings.alerts.findCashHint')}
+                          label={t('settings.alerts.findCashLabel')}
+                          name="alert-find-cash"
+                          onChange={(value) =>
+                            patch({ alertFindCash: Math.max(0, Number.parseInt(value, 10) || 0) })
+                          }
+                          value={form.alertFindCash || ''}
+                        />
+                      </div>
                       {/*
                         Checkboxes rather than a comma list, unlike the monster
                         names in Combat: those are the realm's words and could be

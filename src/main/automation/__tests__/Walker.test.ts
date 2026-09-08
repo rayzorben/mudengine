@@ -21,7 +21,22 @@ const TUNING = DEFAULT_INTERNAL.tuning;
 const config: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
   pacing: { window: 4, minGapMs: 0, ackTimeoutMs: 1000 },
-  walk: { stepTimeoutMs: 5000, clearAfterSeconds: 15, minExpPerHour: 0 }
+  walk: { stepTimeoutMs: 5000, clearAfterSeconds: 15, minExpPerHour: 0 },
+  /*
+   * Every door switch **off** here, whatever ships (`openDoors` and `bashDoors`
+   * became on by default 2026-09-07). These tests are about the barrier ladder
+   * under stated switches — which rung answers, in what order, and what it says
+   * when it declines — so each one turns on exactly what it is about and a test
+   * that turns nothing on is asserting the refusal. Inheriting the shipped
+   * defaults would make half of them assert the other branch by accident. What
+   * the client *ships* with is asserted in `src/shared/__tests__/config.test.ts`.
+   */
+  movement: {
+    ...DEFAULT_CONFIG.automation.movement,
+    openDoors: false,
+    bashDoors: false,
+    pickLocks: false
+  }
 };
 
 /** Three rooms in a line: 1/1 -e-> 1/2 -e-> 1/3. */

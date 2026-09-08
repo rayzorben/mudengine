@@ -24,7 +24,7 @@ import {
 import type { GlobalDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
-import { THEME_IDS, THEMES } from '@shared/themes';
+import { THEME_IDS, THEMES, themesOfAppearance } from '@shared/themes';
 import { NOTICE_CHANNELS, type Severity } from '@shared/notifications';
 import type { StreamEncoding } from '@shared/types';
 
@@ -132,7 +132,13 @@ const SECTION_LABEL: Record<Section, string> = {
   alerts: t('settings.tabs.alerts')
 };
 
-import { fractionOf as fraction, joinNames, percentOf as percent, splitNames } from '../lib/form';
+import {
+  barOf,
+  fractionOf as fraction,
+  joinNames,
+  percentOf as percent,
+  splitNames
+} from '../lib/form';
 
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 
@@ -211,6 +217,32 @@ export default function GlobalSettings({
   );
 
   const themes = useMemo(() => THEME_IDS.map((id) => ({ id, label: THEMES[id].label })), []);
+  /*
+   * The bar under a percentage field, on the bands this very page sets.
+   *
+   * No `figure` beside it here and that is right rather than missing: Global is
+   * edited with no character in the realm, so there is no maximum to state and
+   * `0/0` would be the lie `figureOf` refuses. A bar needs no maximum — a
+   * percentage is already the whole of it.
+   *
+   * The two fields that define the bands are deliberately left plain: a control
+   * that sets where amber starts, drawn in amber by its own answer, is a mirror
+   * rather than a reading.
+   */
+  const barOfHealth = (fraction: number): ReturnType<typeof barOf> =>
+    barOf(percent(fraction), draft.ui.vitals.hp);
+  const barOfMana = (fraction: number): ReturnType<typeof barOf> =>
+    barOf(percent(fraction), draft.ui.vitals.mana);
+  /*
+   * Only the dark ones, because that is the whole of what this setting means.
+   * A select that offered a light theme here would be offering to keep the
+   * console dark and then hand it a light palette — `normalizeConsoleUi` coerces
+   * that away, and a form must not offer what the file refuses.
+   */
+  const darkThemes = useMemo(
+    () => themesOfAppearance('dark').map((id) => ({ id, label: THEMES[id].label })),
+    []
+  );
 
   return (
     <form
@@ -315,6 +347,33 @@ export default function GlobalSettings({
             name="global-show-logo"
             onChange={(value) => patch('ui', { showLogo: value })}
           />
+
+          {/*
+            The switch and the choice it discloses, on one row — the pattern
+            Auto-Retreat and Anti-Idle already use. Both are drawn under every
+            theme, not only a light one: a setting that vanished when you
+            switched to a dark theme would be one nobody could find again.
+          */}
+          <div className="settings-inline">
+            <CheckField
+              checked={draft.ui.consoleKeepDark}
+              hint={t('settings.client.appearance.consoleKeepDarkHint')}
+              label={t('settings.client.appearance.consoleKeepDarkLabel')}
+              name="global-console-keep-dark"
+              onChange={(value) => patch('ui', { consoleKeepDark: value })}
+            />
+            {draft.ui.consoleKeepDark && (
+              <SelectField
+                label={t('settings.client.appearance.consoleDarkThemeLabel')}
+                name="global-console-dark-theme"
+                onChange={(value) =>
+                  patch('ui', { consoleDarkTheme: value as GlobalDraft['ui']['consoleDarkTheme'] })
+                }
+                options={darkThemes.map((theme) => ({ value: theme.id, label: theme.label }))}
+                value={draft.ui.consoleDarkTheme}
+              />
+            )}
+          </div>
 
           <Advanced label={t('settings.client.appearance.advancedConsole')}>
             <div className="settings-inline">
@@ -625,6 +684,7 @@ export default function GlobalSettings({
                   combat: { ...draft.automation.combat, maxFightCost: fraction(value) }
                 })
               }
+              bar={barOfHealth(draft.automation.combat.maxFightCost)}
               value={percent(draft.automation.combat.maxFightCost)}
             />
             <NumberField
@@ -650,6 +710,7 @@ export default function GlobalSettings({
                   combat: { ...draft.automation.combat, minHealth: fraction(value) }
                 })
               }
+              bar={barOfHealth(draft.automation.combat.minHealth)}
               value={percent(draft.automation.combat.minHealth)}
             />
           </div>
@@ -814,6 +875,7 @@ export default function GlobalSettings({
                     health: { ...draft.automation.health, restBelow: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.health.restBelow)}
                 value={percent(draft.automation.health.restBelow)}
               />
               <NumberField
@@ -825,6 +887,7 @@ export default function GlobalSettings({
                     health: { ...draft.automation.health, restTo: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.health.restTo)}
                 value={percent(draft.automation.health.restTo)}
               />
               <NumberField
@@ -836,6 +899,7 @@ export default function GlobalSettings({
                     health: { ...draft.automation.health, meditateBelow: fraction(value) }
                   })
                 }
+                bar={barOfMana(draft.automation.health.meditateBelow)}
                 value={percent(draft.automation.health.meditateBelow)}
               />
             </div>
@@ -863,6 +927,7 @@ export default function GlobalSettings({
                     health: { ...draft.automation.health, drinkHealingPotionBelow: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.health.drinkHealingPotionBelow)}
                 value={percent(draft.automation.health.drinkHealingPotionBelow)}
               />
             </div>
@@ -885,6 +950,7 @@ export default function GlobalSettings({
                     health: { ...draft.automation.health, drinkManaPotionBelow: fraction(value) }
                   })
                 }
+                bar={barOfMana(draft.automation.health.drinkManaPotionBelow)}
                 value={percent(draft.automation.health.drinkManaPotionBelow)}
               />
             </div>
@@ -927,6 +993,7 @@ export default function GlobalSettings({
                     retreat: { ...draft.automation.retreat, belowHealth: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.retreat.belowHealth)}
                 value={percent(draft.automation.retreat.belowHealth)}
               />
               <NumberField
@@ -938,6 +1005,7 @@ export default function GlobalSettings({
                     retreat: { ...draft.automation.retreat, belowMana: fraction(value) }
                   })
                 }
+                bar={barOfMana(draft.automation.retreat.belowMana)}
                 value={percent(draft.automation.retreat.belowMana)}
               />
               <NumberField
@@ -1008,6 +1076,7 @@ export default function GlobalSettings({
                     hangUp: { ...draft.automation.hangUp, belowHealth: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.hangUp.belowHealth)}
                 value={percent(draft.automation.hangUp.belowHealth)}
               />
             </div>
@@ -1104,6 +1173,7 @@ export default function GlobalSettings({
               onChange={(value) =>
                 automation({ spells: { ...draft.automation.spells, minMana: fraction(value) } })
               }
+              bar={barOfMana(draft.automation.spells.minMana)}
               value={percent(draft.automation.spells.minMana)}
             />
           </div>
@@ -1141,6 +1211,7 @@ export default function GlobalSettings({
                   spells: { ...draft.automation.spells, areaMinMana: fraction(value) }
                 })
               }
+              bar={barOfMana(draft.automation.spells.areaMinMana)}
               value={percent(draft.automation.spells.areaMinMana)}
             />
             <NumberField
@@ -1184,6 +1255,7 @@ export default function GlobalSettings({
                     spells: { ...draft.automation.spells, healBelow: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.spells.healBelow)}
                 value={percent(draft.automation.spells.healBelow)}
               />
               <NumberField
@@ -1195,6 +1267,7 @@ export default function GlobalSettings({
                     spells: { ...draft.automation.spells, healBelowInCombat: fraction(value) }
                   })
                 }
+                bar={barOfHealth(draft.automation.spells.healBelowInCombat)}
                 value={percent(draft.automation.spells.healBelowInCombat)}
               />
               <NumberField
@@ -1204,6 +1277,7 @@ export default function GlobalSettings({
                 onChange={(value) =>
                   automation({ spells: { ...draft.automation.spells, healTo: fraction(value) } })
                 }
+                bar={barOfHealth(draft.automation.spells.healTo)}
                 value={percent(draft.automation.spells.healTo)}
               />
             </div>
@@ -1998,6 +2072,50 @@ export default function GlobalSettings({
             ]}
             value={draft.ui.alerts.minimum}
           />
+          {/*
+            What a search turning something up is worth interrupting for.
+            Here rather than on the Room card's gear, where a player would
+            first look: a card's settings are a view preference in
+            localStorage, and "tell me when a gold ring is found" is the same
+            class of decision as the floor above it. The card keeps the one
+            setting that *is* a view — how far back its face shows the log.
+          */}
+          <div className="settings-inline">
+            <TextField
+              hint={t('settings.alerts.findItemsHint')}
+              label={t('settings.alerts.findItemsLabel')}
+              name="global-alert-finds"
+              onChange={(value) =>
+                patch('ui', {
+                  alerts: {
+                    ...draft.ui.alerts,
+                    finds: { ...draft.ui.alerts.finds, items: splitNames(value) }
+                  }
+                })
+              }
+              placeholder={t('settings.alerts.findItemsPlaceholder')}
+              spellCheck={false}
+              value={joinNames(draft.ui.alerts.finds.items)}
+              wide
+            />
+            <NumberField
+              hint={t('settings.alerts.findCashHint')}
+              label={t('settings.alerts.findCashLabel')}
+              name="global-alert-find-cash"
+              onChange={(value) =>
+                patch('ui', {
+                  alerts: {
+                    ...draft.ui.alerts,
+                    finds: {
+                      ...draft.ui.alerts.finds,
+                      cashOverCopper: Math.max(0, Number.parseInt(value, 10) || 0)
+                    }
+                  }
+                })
+              }
+              value={draft.ui.alerts.finds.cashOverCopper || ''}
+            />
+          </div>
           {/*
             Beside the alerts, because both are about a player who is not
             looking: alerts are what they hear about the character, and this

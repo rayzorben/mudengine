@@ -31,6 +31,7 @@ import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
+import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from './session/SessionManager';
@@ -431,6 +432,34 @@ function realmMemoryFor(realm: string): WorldMemory {
     (message) => announce('memory', message)
   );
   realmMemories.set(realmKey(realm), store);
+  return store;
+}
+
+/**
+ * One find log per realm, created on first use.
+ *
+ * Keyed exactly as `realmMemories` is and for the same reason: a room number
+ * only means a place within one map, so a find written against the shipped
+ * realm says nothing about a private one.
+ */
+const realmFinds = new Map<string, FindBook>();
+
+function findsFor(id: SessionId): FindBook | undefined {
+  const realm = worldFor(id)?.info.source;
+  // Nothing to be wrong about and nothing to write against: see `memoryFor`.
+  if (realm === undefined) return undefined;
+  return findsForRealm(realm);
+}
+
+function findsForRealm(realm: string): FindBook {
+  const existing = realmFinds.get(realmKey(realm));
+  if (existing) return existing;
+  const store = new FindBook(
+    home.state('memory', `finds-${realmKey(realm)}.json`),
+    realm,
+    (message) => announce('memory', message)
+  );
+  realmFinds.set(realmKey(realm), store);
   return store;
 }
 
@@ -1209,6 +1238,7 @@ function createHost(): SessionHost {
     playersFor,
     destinationsFor,
     playersAt,
+    findsFor,
     // What the realm called itself, by the address it was dialled at, so the
     // next session built for it starts on the right world.
     realmTold: (_id, target, realm) => worldBook?.learn(realmAddress(target), realm),
@@ -1791,6 +1821,8 @@ function registerIpc(): void {
       verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
+      finds: manager?.foundHere ?? [],
+      questSaid: { ...(manager?.questProgress ?? {}) },
       // The Talk card's history. Only for a session that exists: attach never
       // creates one, so it must not conjure a log for a stale id either.
       talk: slot ? talkFor(session).backlog() : []
@@ -2219,6 +2251,18 @@ function registerIpc(): void {
     const { from, command } = discovery as Record<string, unknown>;
     if (typeof from !== 'string' || typeof command !== 'string') return false;
     return host?.get(session)?.manager.forget({ from, command }) ?? false;
+  });
+
+  handle(Invoke.forgetCharacter, (_caller, session: SessionId) => {
+    return host?.get(session)?.manager.forgetCharacter() ?? false;
+  });
+
+  // Parsed, not checked, like every payload that reaches a file on disk.
+  handle(Invoke.forgetFind, (_caller, session: SessionId, find: unknown) => {
+    if (typeof find !== 'object' || find === null) return false;
+    const { room, name } = find as Record<string, unknown>;
+    if (typeof room !== 'string' || typeof name !== 'string') return false;
+    return host?.get(session)?.manager.forgetFind({ room, name }) ?? false;
   });
 
   /*

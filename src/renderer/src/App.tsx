@@ -131,8 +131,12 @@ import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import type { Block } from '@shared/blocks';
 import type { Discovery } from '@shared/memory';
+import type { Find } from '@shared/finds';
+import type { Addressed, ResetNotice } from '@shared/ipc';
+import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import {
+  findNotices,
   mayNotice,
   noticeFor,
   partyNotices,
@@ -254,6 +258,23 @@ interface SessionView {
    * record of where *this* one has been.
    */
   learned: Discovery[];
+  /**
+   * What a `search` has turned up in this realm.
+   *
+   * Per **realm** rather than per character, unlike `learned` above it: that a
+   * room hides a rusty key is a fact about the world, so every character
+   * dialling the realm reads the same log. See `src/shared/finds.ts`.
+   */
+  finds: Find[];
+  /**
+   * The rank each quest has been *seen* to reach, from what this character
+   * typed this session.
+   *
+   * Nothing on the wire announces a counter moving, so this is the player's own
+   * action and nothing more — the quest book ranks it under the realm's own
+   * count and above the mark somebody set by hand. See `stepSaid`.
+   */
+  questSaid: Record<number, number>;
 }
 
 /**
@@ -310,7 +331,9 @@ const EMPTY_VIEW: SessionView = {
   talk: [],
   notices: [],
   unseen: { critical: 0, warning: 0, latest: null },
-  learned: []
+  learned: [],
+  finds: [],
+  questSaid: {}
 };
 
 /**
@@ -376,6 +399,8 @@ interface CardContext {
    */
   gear(action: GearAction, item?: string): void;
   forget(discovery: Discovery): void;
+  /** Strikes a find out of the realm's log. See `RoomCard`'s Finds face. */
+  forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   inspect(name: string, anchor: HTMLElement): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
@@ -471,6 +496,7 @@ interface BuilderApi {
 interface AddressedActions {
   ask(command: string): void;
   forget(discovery: Discovery): void;
+  forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   gear(action: GearAction, item?: string): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
@@ -559,6 +585,11 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           forget={ctx.forget}
           inspect={ctx.inspect}
           learned={view.learned}
+          finds={view.finds}
+          // Null on a character not shown: the route panel belongs to the one
+          // on screen, which is the rule `chooseOnMap` beside it already states.
+          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          forgetFind={ctx.forgetFind}
           verdict={view.verdict}
         />
       );
@@ -568,6 +599,9 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
         <MapCard
           {...chrome}
           character={character}
+          // The realm's find log, not this character's: a room a second
+          // character searched is marked here too.
+          finds={view.finds}
           load={ctx.loadMap}
           // This character's own route and lap, drawn over its own
           // neighbourhood — a pinned float belongs to somebody else.
@@ -766,6 +800,13 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             is a fact about the character.
           */
           counters={character.abilities}
+          /*
+            And what this character has been *seen* to do this session, which is
+            the third reading and sits between the two above: better evidence
+            than a mark somebody left by hand, and no evidence at all beside the
+            realm's own count. See `stepSaid`.
+          */
+          said={view.questSaid}
           onGoTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           /*
             Addressed like the Reference card's: the panel it opens is the
@@ -992,6 +1033,16 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /**
+   * The client thinks the character in the realm is not the one its records are
+   * about, and is asking.
+   *
+   * Addressed, and held in `App` rather than remembered anywhere: main asks
+   * once per session (`SessionManager.watchForReset`), so a dialog that
+   * survived a reload would be one nobody could answer. Null is *nothing
+   * noticed*.
+   */
+  const [resetAsked, setResetAsked] = useState<Addressed<ResetNotice> | null>(null);
   /*
    * Which character the settings screen opens on.
    *
@@ -1266,10 +1317,15 @@ export default function App() {
   );
   const {
     theme,
+    consoleTheme,
     preference: themePreference,
     cycle: cycleTheme,
     choose: chooseTheme
-  } = useTheme(characterTheme ?? config.ui.theme);
+  } = useTheme(
+    characterTheme ?? config.ui.theme,
+    config.ui.console.keepDark,
+    config.ui.console.darkTheme
+  );
 
   /**
    * Same precedence as density and theme: the palette toggle is remembered, and
@@ -1766,7 +1822,9 @@ export default function App() {
         // backscroll it replays is the record, and a count of alerts raised
         // before it existed is a number nobody can act on.
         unseen: { critical: 0, warning: 0, latest: null },
-        learned: snapshot.learned
+        learned: snapshot.learned,
+        finds: snapshot.finds,
+        questSaid: snapshot.questSaid
       }));
     },
     [patchView]
@@ -1921,6 +1979,13 @@ export default function App() {
             // somebody walked in does not say what they are.
             ...roomNotices(v.character, payload, t),
             /*
+             * And what a search just turned up, when this character asked to be
+             * told about it. From the state for the reason the room's are: the
+             * sentence a find prints is the sentence a look prints, and which
+             * command it answered is a fact only the tracker has.
+             */
+            ...findNotices(v.character, payload, alertsRef.current.finds, t),
+            /*
              * And somebody in the party in trouble, which is the reason the
              * roster matters: three of four characters are unattended, and the
              * one being watched is not usually the one that is dying.
@@ -1968,6 +2033,13 @@ export default function App() {
       api.onLearned(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, learned: payload }))
       ),
+      api.onFinds(({ session: id, payload }) => patchView(id, (v) => ({ ...v, finds: payload }))),
+      api.onQuestSaid(({ session: id, payload }) =>
+        patchView(id, (v) => ({ ...v, questSaid: payload }))
+      ),
+      // Not folded into a view: it is a question about a character rather than
+      // a fact about one, and it is answered once.
+      api.onCharacterReset((message) => setResetAsked(message)),
       api.onAutomation(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, automation: payload }))
       ),
@@ -2040,19 +2112,22 @@ export default function App() {
    *
    * With no characters there is no session and no console, so the client's only
    * job is to help make one — and the way in is the new-character form, opened
-   * here rather than described in a notice somebody has to find. Once per
-   * launch: closing the form is a choice, and reopening it on every profile
-   * push would take that choice away. The anonymous session this replaced was
-   * retired 2026-08-29 (see `NO_SESSION`).
+   * here rather than described in a notice somebody has to find. The anonymous
+   * session this replaced was retired 2026-08-29 (see `NO_SESSION`).
+   *
+   * It used to be offered **once per launch** and was closeable, on the
+   * reasoning that closing it is a choice. It is not one: behind it is an empty
+   * window with no rail, no tab and nothing that says what to do, which is
+   * where a fresh installation put somebody who clicked outside the form. So
+   * while there is no character the screen is open and `required`, and the
+   * latch that made the offer once is gone with the choice it was protecting.
    */
-  const offeredFirstCharacter = useRef(false);
+  const mustMakeCharacter = profilesKnown && profiles.length === 0 && sessions.length === 0;
   useEffect(() => {
-    if (!profilesKnown || profiles.length > 0 || sessions.length > 0) return;
-    if (offeredFirstCharacter.current) return;
-    offeredFirstCharacter.current = true;
+    if (!mustMakeCharacter) return;
     setSettingsAt(SETTINGS_NEW_CHARACTER);
     setSettingsOpen(true);
-  }, [profilesKnown, profiles, sessions]);
+  }, [mustMakeCharacter]);
 
   /**
    * The HUD appears on its own, without the diagnostics rail.
@@ -2526,9 +2601,14 @@ export default function App() {
    * that has to be reliable about giving it back.
    */
   const closeSettings = useCallback(() => {
+    // Nothing to hand the keyboard back *to*: there is no console behind this
+    // screen until there is a character. The screen draws no close and answers
+    // no Escape while that holds; this is the same refusal at the palette's
+    // and the shortcut's door.
+    if (mustMakeCharacter) return;
     setSettingsOpen(false);
     returnFocus();
-  }, [returnFocus]);
+  }, [mustMakeCharacter, returnFocus]);
 
   /** Open settings wherever it was — the palette and the shortcut. */
   const openSettings = useCallback(() => {
@@ -4165,6 +4245,7 @@ export default function App() {
       const bound: AddressedActions = {
         ask: (command) => void api.ask(sid, command),
         forget: (discovery) => void api.forget(sid, discovery),
+        forgetFind: (find) => void api.forgetFind(sid, find),
         gear: (action, item) => void api.gear(sid, action, item),
         loadWearer: () => api.wearer(sid),
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
@@ -4275,6 +4356,7 @@ export default function App() {
         quiet: pressure === 'high',
         ask: shown ? ask : bound.ask,
         forget: shown ? forget : bound.forget,
+        forgetFind: bound.forgetFind,
         inspect,
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
@@ -4816,7 +4898,7 @@ export default function App() {
                   // A character with no pane parks in the focused one, hidden:
                   // laid out, so it stays measurable, and out of the tab order.
                   pane={at >= 0 ? at : paneAt}
-                  palette={theme.terminal}
+                  palette={consoleTheme.terminal}
                   session={entry.id}
                   settings={config.terminal}
                   shown={at >= 0}
@@ -5102,6 +5184,24 @@ export default function App() {
         not cover — automation rules, per-character UI — stays in the YAML,
         which is what YAML is good at, and the screen says where the files are.
       */}
+      <ResetPrompt
+        characterName={
+          profiles.find((profile) => profile.id === resetAsked?.session)?.name ??
+          resetAsked?.session ??
+          ''
+        }
+        notice={resetAsked?.payload ?? null}
+        onForget={() => {
+          const asked = resetAsked;
+          setResetAsked(null);
+          if (asked) void api.forgetCharacter(asked.session);
+          returnFocus();
+        }}
+        onKeep={() => {
+          setResetAsked(null);
+          returnFocus();
+        }}
+      />
       <SettingsScreen
         deleteProfile={settingsApi.deleteProfile}
         deleteServer={settingsApi.deleteServer}
@@ -5110,6 +5210,7 @@ export default function App() {
         onClose={closeSettings}
         open={settingsOpen}
         openAt={settingsAt}
+        required={mustMakeCharacter}
         revealConfig={settingsApi.revealConfig}
         chooseRealm={settingsApi.chooseRealm}
         loadLoops={settingsApi.loadLoops}

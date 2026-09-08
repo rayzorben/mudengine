@@ -238,6 +238,9 @@ export class LoopRunner {
       stops: this.loop?.stops.length ?? 0,
       stopName: stop ? splitStop(stop).name : null,
       remainingStops: this.remainingStops(),
+      // Every stop, named, in order — including the ones no room could be found
+      // for, because the lap the player wrote is the lap they want to read.
+      stopNames: this.loop?.stops.map((entry) => splitStop(entry).name) ?? [],
       laps: this.laps,
       reason: this.reason,
       // Only a running loop is *held*; a paused or stopped one is not waiting

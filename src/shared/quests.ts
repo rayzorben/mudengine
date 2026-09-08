@@ -188,6 +188,72 @@ export interface QuestStep {
   sources?: QuestSource[];
 }
 
+/**
+ * The quest step a typed command reaches, if any — so the book can move as the
+ * player plays rather than only when they spend an `abil`.
+ *
+ * **Both halves must be in the line**: the asker's name and one of the words
+ * that reach the step. A keyword alone is far too loose — `quest`, `box` and
+ * `return` are all real `say` entries and all things somebody says in
+ * conversation — and the asker alone says nothing about *which* step. Requiring
+ * the pair is what makes this safe enough to act on without a capture of what
+ * a successful ask looks like on the wire.
+ *
+ * A step the realm could not trace to an asker is therefore never matched, and
+ * that is the honest answer rather than a gap: without a name there is nothing
+ * to anchor the keyword to.
+ *
+ * It says nothing about whether the ask **worked** — no capture establishes
+ * what a refusal looks like, and inventing one is the thing this project
+ * refuses. What it produces is the player's own action, which is why the card
+ * ranks it under the realm's own count and beside the mark a player sets by
+ * hand.
+ */
+/**
+ * The words a realm's NPC title is built out of, which name nobody.
+ *
+ * Short and closed on purpose: this is not a stopword list for prose, it is the
+ * handful of connectives that appear in `Annora the Healer` and its like. A
+ * genuine three-letter name is still a name.
+ */
+const TITLE_WORDS = new Set(['the', 'and', 'for']);
+
+export function stepSaid(
+  quests: readonly Quest[],
+  command: string
+): { quest: Quest; step: QuestStep } | null {
+  const words = new Set(
+    command
+      .toLowerCase()
+      .split(/[^a-z0-9']+/)
+      .filter((word) => word.length > 0)
+  );
+  if (words.size < 2) return null;
+
+  for (const quest of quests) {
+    for (const step of quest.steps) {
+      const who = step.who?.trim().toLowerCase();
+      if (who === undefined || who.length === 0) continue;
+      /*
+       * The asker's name may be several words (`Annora the Healer`), and any
+       * one of them standing in the line is the realm's own way of addressing
+       * them — except the connectives, which anchor nothing: `say the return`
+       * would otherwise reach a step it has nothing to do with.
+       */
+      const named = who
+        .split(/\s+/)
+        .some((part) => part.length > 2 && !TITLE_WORDS.has(part) && words.has(part));
+      if (!named) continue;
+      const said = step.say.some((word) => {
+        const key = word.trim().toLowerCase();
+        return key.length > 0 && words.has(key);
+      });
+      if (said) return { quest, step };
+    }
+  }
+  return null;
+}
+
 /** A quest: one counter, and the steps that advance it, in order. */
 export interface Quest {
   /** The ability id the realm counts this quest with. */

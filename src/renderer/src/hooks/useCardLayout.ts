@@ -332,6 +332,15 @@ export interface CardSettings {
    * `roomPixelsFor` is where the two ends live.
    */
   mapDensity?: number;
+  /**
+   * Room card, Finds face: how many days back the log is shown, `0` for all.
+   *
+   * A **window**, not a purge. The store is the record and keeps what it kept
+   * (`FindBook`), so turning this number up brings rows back rather than
+   * finding them deleted — which is the difference between a card setting and
+   * a destructive one, and the reason a view preference is allowed to own it.
+   */
+  findDays?: number;
 }
 
 /** What a card is set to when nothing has been set on it. */
@@ -664,6 +673,11 @@ function readCardTheme(value: unknown): Partial<Record<Appearance, ThemeId>> | n
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/** A whole number of things, from `localStorage` where anything may have been. */
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
   if (typeof value !== 'object' || value === null) return {};
   const out: Partial<Record<CardId, CardSettings>> = {};
@@ -686,7 +700,8 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
       ...(isTalkLayout(found['talkLayout']) ? { talkLayout: found['talkLayout'] } : {}),
       ...(typeof found['mapDensity'] === 'number' && Number.isFinite(found['mapDensity'])
         ? { mapDensity: Math.max(0, Math.min(1, found['mapDensity'])) }
-        : {})
+        : {}),
+      ...(isCount(found['findDays']) ? { findDays: found['findDays'] } : {})
     };
     // A card whose whole block parsed to nothing is a card with nothing set.
     if (Object.keys(settings).length > 0) out[id] = settings;

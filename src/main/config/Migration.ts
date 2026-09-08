@@ -163,6 +163,9 @@ export function migrateHome(options: MigrationOptions): void {
   theDatabasesWereZipped(home, note);
   theWorldsAreBundled(home, note);
   statedTheMark(home, note);
+  statedTheDarkConsole(home, note, options.template);
+  theDoorsOpenByDefault(home, note);
+  statedTheFindAlerts(home, note, options.template);
 }
 
 /**
@@ -1048,6 +1051,97 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
  * third unrelated setting. Falls back to appending when the file states
  * `showHud` nowhere.
  */
+/**
+ * `ui.console`, the console's own ground when the chrome's is light.
+ *
+ * A whole new block *inside* `ui:`, which is precisely what
+ * `reconcileWithTemplate` does not reach — it fills in an absent top-level
+ * block and deliberately never goes inside one, and `ui:` has been there since
+ * before this existed. So a file written before today would have kept a
+ * console that turns light with the chrome, with nothing in it naming the
+ * setting that decides so.
+ *
+ * The paragraph comes from the shipped template rather than being restated
+ * here, following `theLoopSettlesAfterAnEscape`: the template is the
+ * documentation, and a copy by hand is a second copy to keep in step.
+ *
+ * Idempotent for the reason `statedTheMark` is: a key in a map stays added
+ * whatever its value, so somebody who sets `keepDark: false` keeps it.
+ */
+/**
+ * `ui.alerts.finds`, what a search turning something up is worth interrupting
+ * for (2026-09-07, todo 04).
+ *
+ * A block inside `ui.alerts:`, two levels below where `reconcileWithTemplate`
+ * reaches, so a file written before today would keep an alerts block that names
+ * only the floor and the mute list — and a setting absent from the file is one
+ * nobody reading the file can find.
+ *
+ * Both halves are written **off**, which is what the client does without them,
+ * so nothing changes except that the file says so.
+ */
+function statedTheFindAlerts(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  let stated = false;
+
+  edit(home.options, (document) => {
+    const alerts = document.getIn(['ui', 'alerts'], true);
+    if (!isMap(alerts) || alerts.has('finds')) return false;
+
+    const block = document.createNode({
+      items: [...DEFAULT_CONFIG.ui.alerts.finds.items],
+      cashOverCopper: DEFAULT_CONFIG.ui.alerts.finds.cashOverCopper
+    });
+    const pair = document.createPair('finds', block) as Pair;
+    const lead = comments.get('ui.alerts.finds');
+    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+    alerts.items.push(pair);
+    stated = true;
+    return true;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.findAlertsStated', { file: home.options }));
+}
+
+function statedTheDarkConsole(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  let stated = false;
+
+  edit(home.options, (document) => {
+    const ui = document.getIn(['ui'], true);
+    if (!isMap(ui) || ui.has('console')) return false;
+
+    const block = document.createNode({
+      keepDark: DEFAULT_CONFIG.ui.console.keepDark,
+      darkTheme: DEFAULT_CONFIG.ui.console.darkTheme
+    });
+    const pair = document.createPair('console', block) as Pair;
+    const lead = comments.get('ui.console');
+    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+
+    // Where the template puts it: after the mark, before the paragraph about
+    // the diagnostics cards. A file that gains it should read like the shipped
+    // template rather than like a patch appended to the end of a block.
+    const at = ui.items.findIndex((item) => keyText(item) === 'showLogo');
+    if (at === -1) ui.items.push(pair);
+    else ui.items.splice(at + 1, 0, pair);
+    stated = true;
+    return true;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.darkConsoleStated', { file: home.options }));
+}
+
 function statedTheMark(home: Home, note: (message: string) => void): void {
   let stated = false;
   edit(home.options, (document) => {
@@ -1356,6 +1450,61 @@ function keptTheConversationLog(home: Home, note: (message: string) => void): vo
   });
 
   if (stated) note(t('notices.migration.conversationLogKept'));
+}
+
+/**
+ * `openDoors` and `bashDoors` turned **on**, in the files this client wrote them
+ * `false` into (2026-09-07, todo 06).
+ *
+ * This is the one migration here that changes an answer rather than adding a
+ * missing one, and it is only defensible because of where the answer came from:
+ * `statedDoorForcing` above wrote these two keys into every options file and
+ * every profile *at the shipped default*, which was `false`. Nobody chose it.
+ * Flipping the default alone would therefore reach nobody — every existing file
+ * says `false` in writing — which is the invisible-setting failure with a
+ * migration having caused it.
+ *
+ * So the value is moved, and **only from `false`**: a file already saying `true`
+ * is left alone, so this cannot run twice and cannot undo somebody switching it
+ * back on. What it cannot tell is a `false` somebody typed on purpose from the
+ * one the client wrote, and that trade is stated rather than solved — it is
+ * said out loud, it names every file, and the rolling backup beside each is
+ * where the old answer still is.
+ *
+ * `pickLocks` is deliberately **not** moved: it is the same decision made with
+ * a skill this client cannot check the character has.
+ */
+function theDoorsOpenByDefault(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const moved: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const movement = document.getIn(['automation', 'movement'], true);
+      if (!isMap(movement)) return false;
+
+      let changed = false;
+      for (const key of ['openDoors', 'bashDoors']) {
+        // `=== false` and not falsy: an absent key inherits the new default
+        // already, and writing one in would be this migration stating a
+        // setting rather than moving one.
+        if (movement.get(key) !== false) continue;
+        movement.set(key, true);
+        changed = true;
+      }
+      if (!changed) return false;
+      moved.push(file);
+      return true;
+    });
+  }
+
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.doorsOpened.one', params)
+      : t('notices.migration.doorsOpened.many', params)
+  );
 }
 
 function statedDoorForcing(home: Home, note: (message: string) => void): void {
@@ -3537,6 +3686,20 @@ function theTuningBlockGainedKeys(
      */
     addKey('walk', 'searchRecheckEvery', DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery);
     addKey('walk', 'leverTries', DEFAULT_INTERNAL.tuning.walk.leverTries);
+    /*
+     * How long a command may go unanswered before the link is called dead
+     * (2026-09-07, todo 00). It is the only number that decides whether a
+     * connection that died quietly is ever noticed, so a file that cannot
+     * state it is a file in which the feature cannot be turned off.
+     */
+    addKey('reconnect', 'silentForMs', DEFAULT_INTERNAL.tuning.reconnect.silentForMs);
+    /* How much of a realm's find log is kept (2026-09-07, todo 04). */
+    addKey('records', 'findLimit', DEFAULT_INTERNAL.tuning.records.findLimit);
+    /* When a character stops looking like the same character (todo 11). */
+    addKey('session', 'resetExpDropShare', DEFAULT_INTERNAL.tuning.session.resetExpDropShare);
+    /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
+    addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
+    addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

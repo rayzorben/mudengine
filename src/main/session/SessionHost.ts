@@ -25,7 +25,7 @@ import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
-import { BUSY_PHASES, SessionManager, type RealmMemory } from './SessionManager';
+import { BUSY_PHASES, SessionManager, type RealmFinds, type RealmMemory } from './SessionManager';
 import type { InternalConfig } from '../../shared/internal';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { MobLore } from '../../shared/lore';
@@ -172,6 +172,16 @@ export interface SessionHostOptions {
    * second one is known.
    */
   belongingsAt(id: SessionId, target: ConnectionTarget): BelongingsSink;
+  /**
+   * Where what a `search` turns up is written down.
+   *
+   * Keyed on the **realm** and handed over beside `memoryFor`, whose shared
+   * half keys the same way: that a room hides a rusty key is a fact about the
+   * world, and a second character re-learning it spends a search to be told
+   * what the first already knew. Optional: a test and the anonymous case write
+   * nothing down.
+   */
+  findsFor?(id: SessionId): RealmFinds | undefined;
   /**
    * The realm at `target` named its own data (`SessionSink.realmTold`).
    *
@@ -430,6 +440,11 @@ export class SessionHost {
         },
         learned: (discoveries) =>
           this.options.toAll(Push.learned, { session: id, payload: discoveries }),
+        finds: (finds) => this.options.toAll(Push.finds, { session: id, payload: finds }),
+        reset: (notice) =>
+          this.options.toAll(Push.characterReset, { session: id, payload: notice }),
+        questSaid: (progress) =>
+          this.options.toAll(Push.questSaid, { session: id, payload: progress }),
         command: (command, source) => {
           // Already through `SessionManager.reportable`, which is the one place
           // this client redacts a password. Both records take the same value.
@@ -444,7 +459,8 @@ export class SessionHost {
       this.options.memoryFor(id),
       this.options.fightsFor(id),
       this.options.playersFor(id),
-      this.options.spellLoreFor?.(id) ?? NO_SPELL_LORE
+      this.options.spellLoreFor?.(id) ?? NO_SPELL_LORE,
+      this.options.findsFor?.(id)
     );
 
     manager.configureInternal(this.options.internal());

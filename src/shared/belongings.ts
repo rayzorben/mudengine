@@ -28,8 +28,9 @@
  *
  * Dependency-free like everything in `shared/`.
  */
-import type { BankBalance, KnownSpell } from './character';
+import type { AbilitySums, BankBalance, KnownSpell } from './character';
 import type { Loadout } from './gear';
+import type { CharacterIdentity } from './reset';
 
 export interface BelongingsSink {
   /**
@@ -88,6 +89,49 @@ export interface BelongingsSink {
   recallSpellDurations(): Readonly<Record<string, number>>;
   /** A cast→wear-off pair has been observed; the newest measurement wins. */
   rememberSpellDuration(spell: string, seconds: number): void;
+  /**
+   * What `abil` last summed for this character, with the clock it was read on.
+   *
+   * Null is *never read*, like the spellbook and unlike the loadout: the quest
+   * book turns a step on the difference between "the realm counts none" and
+   * "nobody has asked", and a restart must not turn the second into the first.
+   *
+   * This listing was deliberately **dropped** at `leaveRealm` until 2026-09-07,
+   * on the reasoning that nothing on the wire reports a counter moving so a
+   * kept figure only gets further from the truth. That is true and is not a
+   * reason to forget it: the same is true of a bank balance, which is kept with
+   * `at` beside it precisely so the card can draw a stale number *as stale*.
+   * The quest book already draws the clock and names its source, so the honest
+   * reading was available all along; what the drop actually cost was a quest
+   * book that opened empty on every launch until somebody typed `abil`.
+   */
+  recallAbilities(): AbilitySums | null;
+  /** A listing has stated the sums; keep the whole of it, clock included. */
+  rememberAbilities(abilities: AbilitySums): void;
+  /**
+   * Which character this was, last time the wire said: race, class, level and
+   * experience.
+   *
+   * Kept for one purpose — noticing that it is not this character any more.
+   * A player who deletes a character and makes a new one keeps the name,
+   * because the name is the login, so every record in this file is then about
+   * somebody who no longer exists. Null is *never read*: an empty record has
+   * nothing to disagree with.
+   */
+  recallIdentity(): CharacterIdentity | null;
+  /** The wire has said who this is. See `src/shared/reset.ts`. */
+  rememberIdentity(identity: CharacterIdentity): void;
+  /**
+   * Throws the whole record away, because the player says this is not the same
+   * character.
+   *
+   * The one destructive call on this seam, and the only caller is a player
+   * answering a prompt (`SessionManager.forgetCharacter`). Returns whether
+   * there was anything to throw away — a record suspended over an unreadable
+   * file answers false rather than pretending, because overwriting one is the
+   * thing that record's whole failure handling exists to prevent.
+   */
+  forget(): boolean;
 }
 
 /**
@@ -102,5 +146,10 @@ export const NO_BELONGINGS: BelongingsSink = {
   recallSpellbook: () => null,
   rememberSpellbook: () => {},
   recallSpellDurations: () => ({}),
-  rememberSpellDuration: () => {}
+  rememberSpellDuration: () => {},
+  recallAbilities: () => null,
+  rememberAbilities: () => {},
+  recallIdentity: () => null,
+  rememberIdentity: () => {},
+  forget: () => false
 };

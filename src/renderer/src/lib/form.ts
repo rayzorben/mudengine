@@ -6,6 +6,7 @@
  * and only one `fraction` survived a cleared field without `NaN`. One home,
  * the forgiving variants.
  */
+import { vitalLevel, type VitalLevel, type VitalThresholds } from '@shared/character';
 
 /** A stored fraction as the whole percent a person types. */
 export function percentOf(fraction: number): number {
@@ -46,6 +47,34 @@ export function figureOf(percent: number, max: number | null): string | null {
   if (max === null || max <= 0) return null;
   if (percent <= 0) return null;
   return `${Math.round((percent / 100) * max)}/${max}`;
+}
+
+/**
+ * The bar under a percentage field: how full it is, and how the client would
+ * read that figure if it were a vital.
+ *
+ * The question a threshold field asks is *where have I put the line*, and a
+ * number answers it in the abstract while a bar answers it at a glance. Tinted
+ * on the same three bands the Vitals card uses (`vitalLevel`), so `20%` looks
+ * the same colour in the form that sets it as it will on the meter that crosses
+ * it — which is the whole of "themed like the player health card".
+ *
+ * Read from the **inherited** thresholds (`ui.vitals`), not the shipped
+ * constants: a player who moved caution to 70% is a player for whom 60% is
+ * amber, and a form that painted it green would be disagreeing with their own
+ * HUD.
+ *
+ * `0` is *never*, in every field this is offered on, so it draws no bar at all
+ * — the same refusal `figureOf` makes, for the same reason: an empty bar and a
+ * disabled setting should not look like a setting at its floor.
+ */
+export function barOf(
+  percent: number,
+  thresholds: VitalThresholds
+): { fill: number; level: VitalLevel } | null {
+  if (!Number.isFinite(percent) || percent <= 0) return null;
+  const fill = Math.min(100, Math.max(0, Math.round(percent)));
+  return { fill, level: vitalLevel(fill, 100, thresholds) };
 }
 
 /** `giant rat, kobold thief` <-> the list the config keeps. */

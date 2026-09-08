@@ -769,6 +769,255 @@ option {
   color: var(--text-lo);
 }
 
+/*
+ * The client asking whether this is still the same character.
+ *
+ * A dialog rather than a card or an alert, and unapologetically modal: it opens
+ * unasked, at most once a session, about records that are the only copy of what
+ * a character learned. The one thing it must not be is dismissible by accident,
+ * which is why the safe button takes the caret and Escape means *keep*.
+ */
+.reset-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  max-width: min(560px, 92vw);
+  padding: var(--pad-card);
+}
+
+.reset-prompt h2 {
+  font-size: 1.05em;
+  margin: 0;
+}
+
+/*
+ * Old on the left, new on the right, as asked for: three columns rather than
+ * the readout's two, the same shape `.readout.paired` takes for its own second
+ * figure.
+ */
+.reset-diff {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.reset-diff dt {
+  grid-column: 1;
+}
+
+.reset-head {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  text-transform: uppercase;
+}
+
+/*
+ * A row is marked only where the two disagree. The unchanged rows are context
+ * and must not compete with the ones that are the reason this opened — the
+ * same rule the map's marks follow.
+ */
+.reset-was {
+  color: var(--text-lo);
+  text-decoration: line-through;
+}
+
+.reset-now {
+  color: var(--danger);
+}
+
+.reset-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ============================================ what is left, said everywhere
+ *
+ * A progression: what is behind, what is happening now, and what is still owed.
+ *
+ * The reader does not care what they have done. They care most about what they
+ * have to do next, and after that about what else is coming — so the emphasis
+ * runs the *other* way from the reading order: `done` is the quietest thing in
+ * the list, `now` is the loudest, and `left` sits between them at ordinary ink.
+ *
+ * Stated once here because it is a grammar rather than a component: the quest
+ * track already drew it with its own rings, and a route's steps and a lap's
+ * stops are the same fact in a different card. Anything with a beginning, a
+ * middle and an end can wear these three words and will read the same way.
+ *
+ * Nothing is hidden. `done` is dimmed, never removed: a list that drops what
+ * has happened cannot be checked against, and the whole point of the middle
+ * mark is that it has something on either side of it.
+ */
+.progression {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.progression > li {
+  align-items: baseline;
+  color: var(--text-hi);
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 1px 0;
+}
+
+/* The marker column: one glyph wide at every state, so nothing shifts as the
+   walk moves down the list. */
+.progression > li::before {
+  color: var(--text-lo-quiet);
+  content: '·';
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  width: 1ch;
+}
+
+.progression [data-progress='done'] {
+  color: var(--text-lo-quiet);
+}
+
+.progression [data-progress='done']::before {
+  content: '✓';
+}
+
+/*
+ * The one loud row. The accent, the only bearing mark on the list, and the
+ * weight — this is the answer to "what do I do next", which is the question
+ * the whole arrangement exists for.
+ */
+.progression [data-progress='now'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.progression [data-progress='now']::before {
+  color: var(--accent);
+  content: '▸';
+}
+
+/* Ordinary ink: still to come, and readable without competing with `now`. */
+.progression [data-progress='left'] {
+  color: var(--text-hi);
+}
+
+.progression .step-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A list that would outgrow its card scrolls inside itself rather than
+ * stretching it: a card never resizes with its contents, and a forty-seven step
+ * route is exactly the case that would.
+ */
+.progression-scroller {
+  max-height: 9.5em;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/*
+ * The box a two-up readout measures itself against.
+ *
+ * Its own wrapper rather than the card's body, and that is not tidiness:
+ * `container-type` implies `contain: layout`, which makes the element a
+ * containing block for every absolutely positioned descendant. Put on
+ * `.card > .body` it would move anything a card positions against the window —
+ * and the popovers that are not portalled would be the ones to find out. A
+ * wrapper holding one `<dl>` contains nothing that could care.
+ *
+ * `inline-size` only: a card's height is the player's (`useCardResize`), and a
+ * size container would re-lay-out the sheet on every drag of the corner grip.
+ */
+.readout-box {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+/*
+ * Two label/value pairs on one line, where the card is wide enough for them.
+ *
+ * A sheet of attributes and skills is twenty-four rows of a short word and a
+ * small number, in a column that has room for three of each — so the card is
+ * twice as tall as it needs to be and the reader scrolls past what they came
+ * to compare. Pairing them halves the height and puts the numbers people
+ * actually read against each other (`strength` beside `intellect`) on one line.
+ *
+ * **A container query, not a media query**: what decides is how wide *this
+ * card* is, and a rail card is dragged between 260 and 560px while the window
+ * never moves. `.card > .body` is the container, declared with the rule below.
+ *
+ * The threshold is the narrowest width at which the longest label in this
+ * client's sheet (`Spellcasting`) and a four-figure number fit twice over with
+ * the 12px gutter. **Measured**: the Self card's readout box is 244px at the
+ * width the card ships at (`npm run smoke`, 2026-09-07), so a 300px threshold
+ * never engaged at all — the check that says so is in the smoke, and it reads
+ * the laid-out card rather than trusting the number here.
+ *
+ * A row whose value is prose or a compound (`Battlemage · Human`, `510 / 12`,
+ * a light phrase) opts out with `.span` and keeps the whole width: pairing
+ * those would put an ellipsis where the answer is.
+ */
+.readout.columns > dt.span {
+  grid-column: 1;
+}
+
+@container (min-width: 290px) {
+  /*
+   * `auto` label tracks, and the threshold set so they never have to give way.
+   *
+   * Measured, and the measurement is the reason for the number: the Self card's
+   * readout box is **244px** at the width the card ships at, and at 244 two
+   * pairs of this sheet's longest labels (`Armour class / DR`,
+   * `Magic resistance`) do not fit — the first attempt let the tracks shrink
+   * and the labels ellipsised, and the sheet scrolled sideways anyway, which is
+   * the one thing a card must never do.
+   *
+   * So the rule is *where the card is wide enough*, honestly: at the default
+   * rail width the sheet stays one-up, and a rail dragged wider or the card
+   * floated pairs it. `npm run smoke` measures the laid-out card and asserts
+   * whichever case it is in, so the threshold cannot rot silently.
+   *
+   * A tighter gutter than the base: four columns pay for three gaps.
+   */
+  .readout.columns {
+    column-gap: 8px;
+    grid-template-columns: repeat(2, auto minmax(0, 1fr));
+  }
+
+  .readout.columns > dd {
+    min-width: 0;
+  }
+
+  /*
+   * A heading and a full-width row each break the line, which is what makes
+   * the next pair start in the first column again — auto-placement does the
+   * rest, so nothing here has to know how many rows a group has.
+   */
+  .readout.columns > dd.span {
+    grid-column: 2 / -1;
+  }
+
+  .readout.columns > dt.group {
+    grid-column: 1 / -1;
+  }
+
+  /*
+   * A group heading is a `dt`/empty-`dd` pair, so that the two-column base
+   * keeps its shape. Once the heading spans the row the `dd` has nothing left
+   * to do and would take the next line on its own — a blank row between every
+   * heading and its first pair.
+   */
+  .readout.columns > dd.group {
+    display: none;
+  }
+}
+
 .readout dd {
   color: var(--text-hi);
   margin: 0;
@@ -1404,6 +1653,25 @@ kbd {
   min-width: 0;
 }
 
+/* The hold takes the field's track; see `.field-hold`. */
+.route-panel .route-search .field-hold {
+  flex: 1;
+}
+
+/*
+ * The palette is a column, so the hold must not be allowed to grow down it the
+ * way it grows across every row it sits in.
+ */
+.palette > .field-hold {
+  flex: 0 0 auto;
+}
+
+/* Full-bleed fields inset their own text by 16px; the glyph keeps that edge. */
+.palette .field-clear,
+.route-panel .field-clear {
+  margin-inline-end: 12px;
+}
+
 /*
  * Everything under the field, scrolling as one.
  *
@@ -1911,6 +2179,24 @@ kbd {
   pointer-events: none;
   stroke: var(--ok);
   stroke-dasharray: 1.8 1.6;
+}
+
+/*
+ * A room searching has turned something up in: a filled dot on the corner.
+ *
+ * Filled and edgeless, so it cannot be mistaken for one of the rings, which are
+ * all hollow and all about *now* — the route, a lap's stops, the room the
+ * character is in. This is a note about what the realm has been hiding, and it
+ * sits over whatever the room already is rather than replacing it, which is why
+ * it is a mark and not a `RoomKind`.
+ *
+ * `--warn` rather than the accent: the accent is what the client uses for its
+ * own state, and this is the realm's. Nothing here animates.
+ */
+.map-find {
+  fill: var(--warn);
+  pointer-events: none;
+  stroke: none;
 }
 
 /*
@@ -2572,6 +2858,10 @@ button.lookup.quest-where svg {
 .builder-tools input {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.builder-tools > .field-hold {
+  flex: 1 1 auto;
 }
 
 /* The undo, redo and centre glyphs: square, quiet, one row of tools. */
@@ -3347,6 +3637,11 @@ button.lookup.quest-where svg {
   min-height: 38px;
   padding: 0 10px;
   width: 100%;
+}
+
+/* The field keeps its own 10px inset, so the glyph keeps it too. */
+.loops-modal .loops-find .field-clear {
+  margin-inline-end: 8px;
 }
 
 /*
@@ -4965,6 +5260,66 @@ button.lookup.quest-where svg {
  * The find field: a pill rather than a boxed input, because it sits inside a
  * card rather than in a form. The ring is on the pill, so focus is stated once.
  */
+/*
+ * A find field and its clear, which is one box however the field around it is
+ * laid out.
+ *
+ * The button is positioned over the field's own trailing padding rather than
+ * laid out beside the input, for one reason: it appears only while something is
+ * typed, and a control that takes a track would make every one of these fields
+ * change width the first time somebody used it. The hold takes whatever the
+ * input's `flex` was in each of the seven places one of these lives, and the
+ * input inside it fills the hold.
+ */
+.field-hold {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-hold > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Laid out beside the input, never over it.
+ *
+ * It was an overlay with `padding-inline-end` on the input keeping the caret
+ * clear of the glyph — and every one of the seven fields sets its own padding
+ * at equal or greater specificity, so `.table-find input { padding: 0 }` simply
+ * won and the caret ran under it. `npm run smoke` measured that. A laid-out
+ * button needs no padding from anybody; it keeps its box while the field is
+ * empty (`visibility`, not `display`) so the field still never changes width.
+ */
+.field-clear {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex: 0 0 auto;
+  height: 18px;
+  justify-content: center;
+  padding: 0;
+  width: 18px;
+}
+
+.field-clear[data-empty='true'] {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.field-clear:hover,
+.field-clear:focus-visible {
+  color: var(--text-hi);
+}
+
+.field-clear svg {
+  height: 14px;
+  width: 14px;
+}
+
 .table-find {
   align-items: center;
   background: color-mix(in srgb, var(--ink-line) 45%, transparent);
@@ -6312,6 +6667,15 @@ button.lookup:focus-visible {
   min-width: 0;
 }
 
+/* The hold takes the field's track; the input fills it. See `.field-hold`. */
+.debug-head > .field-hold {
+  flex: 0 1 200px;
+}
+
+.debug-head .field-hold > .debug-find {
+  flex: 1 1 auto;
+}
+
 /* What is not on screen, and how to get it back — the narrowed-table rule,
    and it matters more here: somebody reading this is trying to find out what
    happened, and a filtered trace that does not say so is one that lies. */
@@ -7565,6 +7929,50 @@ tr:hover .row-action.worn,
  * nested somewhere the subgrid rule does not reach -- there it keeps its own
  * line under the input, which is the shape this had before and still correct.
  */
+/*
+ * The bar under a percentage field: how full it is, in the colour the meter
+ * that crosses it will wear.
+ *
+ * A **background** on the input, not an element, and that is forced rather than
+ * preferred: the field is exactly two subgrid rows (see `.field-figure` above),
+ * so the figure is already a third child auto-placed back into the input's own
+ * cell and a fourth would have nowhere of its own to go. A background needs no
+ * cell, cannot take the pointer, and sits under the text by construction.
+ *
+ * Three pixels along the bottom edge, inset by the 9px the input insets its own
+ * text so the strip starts where the number does. The tints are the meter's own
+ * (`.meter[data-level]`), at the same 55% mix, so a threshold in the amber band
+ * is the amber the HUD will paint when it is crossed.
+ */
+.settings-form input.has-bar {
+  background-image: linear-gradient(
+    to right,
+    var(--bar-tint) var(--bar-fill),
+    transparent var(--bar-fill)
+  );
+  background-position: 9px calc(100% - 4px);
+  background-repeat: no-repeat;
+  background-size: calc(100% - 18px) 3px;
+  --bar-tint: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.settings-form input.has-bar[data-level='caution'] {
+  --bar-tint: color-mix(in srgb, var(--pending) 55%, transparent);
+}
+
+.settings-form input.has-bar[data-level='critical'] {
+  --bar-tint: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+/*
+ * A figure and a bar share the field, so the figure lifts clear of the strip
+ * rather than sitting on it. Two pixels: the strip is three tall with a four
+ * pixel inset, and the figure's own line box already has room above it.
+ */
+.settings-field:has(input.has-bar) > .field-figure {
+  padding-bottom: 5px;
+}
+
 .field-figure {
   align-self: center;
   color: var(--text-lo);
@@ -8076,7 +8484,13 @@ tr:hover .row-action.worn,
  * Everything else here is tonal; this is the one action that cannot be undone
  * from inside the client, and it is only reachable after a question.
  */
-.settings-actions .danger {
+/*
+ * Shared with the reset prompt, which is the only other place in the client
+ * that offers to remove a record: one recipe for "this cannot be undone from
+ * inside the client", not two that drift.
+ */
+.settings-actions .danger,
+.reset-actions .danger {
   background: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
   border: 0;
   border-radius: calc(var(--r-card) - 6px);

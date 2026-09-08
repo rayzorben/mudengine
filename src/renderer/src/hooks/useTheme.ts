@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useOverridablePreference } from './usePreference';
 import {
+  consoleThemeFor,
   DEFAULT_THEME,
   isThemePreference,
   resolveTheme,
   THEME_PREFERENCES,
   type Theme,
+  type ThemeId,
   type ThemePreference
 } from '@shared/themes';
 
@@ -22,7 +24,7 @@ const STORAGE_KEY = 'mudengine.theme';
  * `--text-lo-normal` and `--text-lo-quiet`, and `tokens.css` chooses between
  * them so the stream-pressure rule keeps working.
  */
-function apply(theme: Theme): void {
+function apply(theme: Theme, consoleTheme: Theme): void {
   const root = document.documentElement;
 
   for (const [token, value] of Object.entries(theme.chrome)) {
@@ -30,8 +32,11 @@ function apply(theme: Theme): void {
   }
 
   // The terminal frame is the terminal's own ground, so it is derived from the
-  // palette rather than duplicated as a chrome token that could drift from it.
-  root.style.setProperty('--ink-slate', theme.terminal.background);
+  // palette rather than duplicated as a chrome token that could drift from it —
+  // and from the *console's* palette, which under a light theme need not be the
+  // chrome's (`ConsoleUiConfig`). A light slate around a dark console would be
+  // exactly the drift this line exists to prevent.
+  root.style.setProperty('--ink-slate', consoleTheme.terminal.background);
 
   // Tells the engine which way native widgets, scrollbars and form controls
   // should render. Without it a light theme keeps dark scrollbars.
@@ -44,6 +49,11 @@ function apply(theme: Theme): void {
 export interface UseTheme {
   /** The resolved theme: chrome tokens plus the terminal palette. */
   theme: Theme;
+  /**
+   * The theme the **console** wears, which is `theme` unless a light chrome was
+   * asked to leave the console dark. Read for its `terminal` palette only.
+   */
+  consoleTheme: Theme;
   /** What was asked for, which may be `system`. */
   preference: ThemePreference;
   /** Advances through system -> each registered theme, and persists. */
@@ -59,7 +69,11 @@ export interface UseTheme {
  *   the palette overrides it and is remembered; editing the file overrides the
  *   override. See `useOverridablePreference`.
  */
-export function useTheme(configured: ThemePreference = DEFAULT_THEME): UseTheme {
+export function useTheme(
+  configured: ThemePreference = DEFAULT_THEME,
+  keepConsoleDark = false,
+  consoleDarkTheme: ThemeId = DEFAULT_THEME
+): UseTheme {
   const [preference, setPreference] = useOverridablePreference(
     STORAGE_KEY,
     configured,
@@ -82,8 +96,9 @@ export function useTheme(configured: ThemePreference = DEFAULT_THEME): UseTheme 
   }, []);
 
   const theme = resolveTheme(preference, prefersDark);
+  const consoleTheme = consoleThemeFor(theme, keepConsoleDark, consoleDarkTheme);
 
-  useEffect(() => apply(theme), [theme]);
+  useEffect(() => apply(theme, consoleTheme), [theme, consoleTheme]);
 
   const cycle = useCallback(() => {
     const index = THEME_PREFERENCES.indexOf(preference);
@@ -92,5 +107,5 @@ export function useTheme(configured: ThemePreference = DEFAULT_THEME): UseTheme 
 
   const choose = useCallback((next: ThemePreference) => setPreference(next), [setPreference]);
 
-  return { theme, preference, cycle, choose };
+  return { theme, consoleTheme, preference, cycle, choose };
 }

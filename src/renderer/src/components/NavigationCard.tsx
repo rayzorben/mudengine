@@ -199,6 +199,27 @@ function NavigationCard({
         </span>
       </div>
 
+      {/*
+        And what is left, which is the half this face never showed.
+        
+        A bar says how far along and the row below says what is happening now;
+        between them they answer *what have I done* and *what am I doing*,
+        leaving *what is left* — the one a player actually acts on. Drawn as the
+        shared progression grammar (`.progression`), so a lap's stops and a
+        quest's steps read the same way as this.
+      */}
+      {walking && walk.ahead.length > 0 && (
+        <div className="progression-scroller">
+          <ol className="progression">
+            {walk.ahead.map((name, index) => (
+              <li data-progress={index === 0 ? 'now' : 'left'} key={`${name}-${index}`}>
+                <span className="step-name">{name}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {walking && walk.step && (
         <dl className="readout">
           <dt>{t('cards.navigation.route.sendingLabel')}</dt>
@@ -370,6 +391,36 @@ function NavigationCard({
               stopName: loop.stopName ?? '—'
             })}
           </span>
+        </div>
+      )}
+
+      {/*
+        The lap, all of it: the stops behind, the one being walked to, and the
+        ones still owed. `stop` is one-based and names the stop it is *at or
+        heading for*, so it is the `now` row and everything before it is done.
+        Every stop the player wrote, including the ones no room could be found
+        for — the lap they wrote is the lap they want to read.
+      */}
+      {loop.stopNames.length > 0 && (
+        <div className="progression-scroller">
+          <ol className="progression">
+            {loop.stopNames.map((name, index) => (
+              <li
+                data-progress={
+                  !live || loop.stop === 0
+                    ? 'left'
+                    : index < loop.stop - 1
+                      ? 'done'
+                      : index === loop.stop - 1
+                        ? 'now'
+                        : 'left'
+                }
+                key={`${name}-${index}`}
+              >
+                <span className="step-name">{name}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 

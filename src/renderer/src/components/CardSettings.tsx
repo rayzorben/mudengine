@@ -276,6 +276,37 @@ export default function CardSettingsPopup({
         </label>
       )}
 
+      {cardId === 'room' && (
+        <>
+          {/*
+            How far back the Finds face shows the log. A *view* setting and the
+            only one of this feature's three that is: the log keeps what it
+            kept, so turning the window back up brings rows back instead of
+            finding them gone. What is worth interrupting for is a different
+            question and lives in `ui.alerts.finds`, beside everything else that
+            decides what reaches the Alerts card.
+          */}
+          <label className="card-settings-field">
+            <span>{t('cards.settings.room.findDays')}</span>
+            <input
+              inputMode="numeric"
+              onChange={(event) => {
+                const days = Number.parseInt(event.target.value, 10);
+                // Zero is *show everything*, and it is also the shipped answer,
+                // so it clears the key rather than storing it — the auto-hide
+                // rule, for the same reason.
+                onChange({
+                  findDays: Number.isFinite(days) && days > 0 ? days : undefined
+                });
+              }}
+              placeholder={t('cards.settings.room.findDaysAll')}
+              type="text"
+              value={value.findDays ?? ''}
+            />
+          </label>
+        </>
+      )}
+
       {emptiable && (
         <label className="card-settings-check">
           <input

@@ -34,9 +34,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { BankBalance, KnownSpell } from '../../shared/character';
+import type { AbilitySums, BankBalance, KnownSpell } from '../../shared/character';
 import { bankKey } from '../../shared/character';
 import type { BelongingsSink } from '../../shared/belongings';
+import type { CharacterIdentity } from '../../shared/reset';
 import type { Loadout, WornSlot } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
 import { errorMessage } from '../../shared/values';
@@ -68,6 +69,17 @@ interface BelongingsFile {
   spellbook?: KnownSpell[];
   /** Observed cast→wear-off seconds per spell (lowercased). See the sink. */
   spellDurations?: Record<string, number>;
+  /**
+   * What `abil` last summed, under the same absence allowance as the
+   * spellbook: **absent means never read, not "the realm counts none"**. The
+   * quest book turns a step on that difference.
+   */
+  abilities?: AbilitySums;
+  /**
+   * Who this character was, so a reset can be noticed. Absent means never read.
+   * See `src/shared/reset.ts`.
+   */
+  identity?: CharacterIdentity;
 }
 
 export interface BelongingsOptions {
@@ -88,6 +100,10 @@ export class Belongings implements BelongingsSink {
   private loadout: WornSlot[] = [];
   private spellbook: KnownSpell[] | null = null;
   private durations: Record<string, number> = {};
+  /** Null is *never read*, never "the realm counts none". See the sink. */
+  private abilities: AbilitySums | null = null;
+  /** Null is *never read*. See `recallIdentity`. */
+  private identity: CharacterIdentity | null = null;
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   /** True once the file was found unreadable; nothing is written over it. */
@@ -154,6 +170,54 @@ export class Belongings implements BelongingsSink {
     return this.durations;
   }
 
+  recallAbilities(): AbilitySums | null {
+    return this.abilities;
+  }
+
+  recallIdentity(): CharacterIdentity | null {
+    return this.identity;
+  }
+
+  /**
+   * Throws the whole record away, at the player's word.
+   *
+   * Everything in this file is *about a character* — a vault, a loadout, a
+   * spellbook, measured durations, quest counters — so when the player says
+   * this is not that character, all of it goes together. Nothing about the
+   * *realm* is here to be lost: the map, the shops and the other players live
+   * in their own files, and none of them stopped being true.
+   *
+   * Refused while suspended, which is the same refusal every write here makes:
+   * the file would not parse, so it is the only copy of something this build
+   * cannot read, and overwriting it with an empty record is exactly what the
+   * suspension exists to prevent.
+   */
+  forget(): boolean {
+    if (this.suspended) return false;
+    this.banks = [];
+    this.loadout = [];
+    this.spellbook = null;
+    this.durations = {};
+    this.abilities = null;
+    this.identity = null;
+    this.schedule();
+    return true;
+  }
+
+  rememberIdentity(identity: CharacterIdentity): void {
+    if (this.suspended) return;
+    this.identity = { ...identity };
+    this.schedule();
+  }
+
+  rememberAbilities(abilities: AbilitySums): void {
+    if (this.suspended) return;
+    // Copied for the reason the balances are: the caller hands over what is on
+    // live state, and a held reference would write whatever it became.
+    this.abilities = { ...abilities, sums: { ...abilities.sums } };
+    this.schedule();
+  }
+
   rememberSpellDuration(spell: string, seconds: number): void {
     if (this.suspended) return;
     const key = spell.trim().toLowerCase();
@@ -199,6 +263,9 @@ export class Belongings implements BelongingsSink {
       // Absent is *never read*, and stays null — not normalised to [].
       this.spellbook = parsed.spellbook ?? null;
       this.durations = parsed.spellDurations ?? {};
+      // Absent is *never read*, and stays null — the spellbook's rule.
+      this.abilities = parsed.abilities ?? null;
+      this.identity = parsed.identity ?? null;
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -235,7 +302,10 @@ export class Belongings implements BelongingsSink {
       loadout: this.loadout,
       // Omitted while never read, so the absence survives the round trip.
       ...(this.spellbook !== null ? { spellbook: this.spellbook } : {}),
-      ...(Object.keys(this.durations).length > 0 ? { spellDurations: this.durations } : {})
+      ...(Object.keys(this.durations).length > 0 ? { spellDurations: this.durations } : {}),
+      // Omitted while never read, so the absence survives the round trip.
+      ...(this.abilities !== null ? { abilities: this.abilities } : {}),
+      ...(this.identity !== null ? { identity: this.identity } : {})
     };
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -351,7 +421,39 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.spellbook !== undefined && !Array.isArray(file.spellbook)) return false;
   if (file.spellbook !== undefined && !file.spellbook.every(isKnownSpell)) return false;
   if (file.spellDurations !== undefined && !isDurationRecord(file.spellDurations)) return false;
+  if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
+  if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   return file.banks.every(isBankBalance);
+}
+
+/**
+ * `complete` is what says whether an absent id is zero or unknown, so a row
+ * missing it is not a listing this client can read back safely — the whole
+ * point of the flag. Refused rather than defaulted.
+ */
+function isAbilitySums(value: unknown): value is AbilitySums {
+  if (typeof value !== 'object' || value === null) return false;
+  const sums = value as Partial<AbilitySums>;
+  if (typeof sums.complete !== 'boolean' || typeof sums.at !== 'number') return false;
+  if (typeof sums.sums !== 'object' || sums.sums === null) return false;
+  return Object.values(sums.sums as Record<string, unknown>).every(
+    (entry) => typeof entry === 'number' && Number.isFinite(entry)
+  );
+}
+
+/** Every field nullable, `at` not: a record with no clock cannot be aged. */
+function isIdentity(value: unknown): value is CharacterIdentity {
+  if (typeof value !== 'object' || value === null) return false;
+  const identity = value as Partial<CharacterIdentity>;
+  const word = (entry: unknown): boolean => entry === null || typeof entry === 'string';
+  const number = (entry: unknown): boolean => entry === null || typeof entry === 'number';
+  return (
+    word(identity.race) &&
+    word(identity.className) &&
+    number(identity.level) &&
+    number(identity.exp) &&
+    typeof identity.at === 'number'
+  );
 }
 
 function isKnownSpell(value: unknown): value is KnownSpell {

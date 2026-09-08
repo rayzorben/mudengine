@@ -260,6 +260,8 @@ export function createWebBridge(): IpcApi {
     wearer: (session) => invoke(Invoke.wearer, session),
     lookup: (session, query) => invoke(Invoke.lookup, session, query),
     forget: (session, discovery) => invoke(Invoke.forget, session, discovery),
+    forgetFind: (session, find) => invoke(Invoke.forgetFind, session, find),
+    forgetCharacter: (session) => invoke(Invoke.forgetCharacter, session),
     names: (session) => invoke(Invoke.names, session),
     ask: (session, command) => invoke(Invoke.ask, session, command),
     gear: (session, action, item) => invoke(Invoke.gear, session, action, item),
@@ -281,6 +283,9 @@ export function createWebBridge(): IpcApi {
     onSessions: (handler) => subscribe(Push.sessions, handler),
     onProfiles: (handler) => subscribe(Push.profiles, handler),
     onLearned: (handler) => subscribe(Push.learned, handler),
+    onFinds: (handler) => subscribe(Push.finds, handler),
+    onCharacterReset: (handler) => subscribe(Push.characterReset, handler),
+    onQuestSaid: (handler) => subscribe(Push.questSaid, handler),
     onConfig: (handler) => subscribe(Push.config, handler),
     onInternal: (handler) => subscribe(Push.internal, handler)
   };

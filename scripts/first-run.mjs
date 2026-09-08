@@ -244,6 +244,56 @@ const phase = await evaluate(`document.querySelector('.status-rail')?.innerText 
 check(/idle|closed|not connected/i.test(phase), 'nothing dialled on its own', phase.slice(0, 80));
 
 /*
+ * And there is no way out of it, because there is nowhere to go.
+ *
+ * The failure this replaces: the screen opened by itself and could be
+ * dismissed, onto a window with no rail, no tab and nothing that says what to
+ * do next. Three doors, all of them shut while there is no character — the
+ * close glyph, Escape, and a press on the scrim — and the reason stated on
+ * screen rather than only when somebody tries one of them.
+ */
+check(
+  (await evaluate(
+    `[...document.querySelectorAll('.settings-head button')].every((b) => b.innerText.trim() !== '\u2715')`
+  )) === true,
+  'the screen offers no way to close itself'
+);
+check(
+  (await evaluate(`document.querySelector('.settings-warn')?.innerText ?? ''`)).length > 0,
+  'and says why in the open'
+);
+
+await cdp('Input.dispatchKeyEvent', {
+  type: 'keyDown',
+  key: 'Escape',
+  code: 'Escape',
+  windowsVirtualKeyCode: 27
+});
+await cdp('Input.dispatchKeyEvent', {
+  type: 'keyUp',
+  key: 'Escape',
+  code: 'Escape',
+  windowsVirtualKeyCode: 27
+});
+await sleep(400);
+check(await evaluate(`!!document.querySelector('.settings')`), 'Escape does not dismiss it');
+
+// A press on the scrim, which is the click "outside the form" the report named.
+await evaluate(`
+  (() => {
+    const scrim = document.querySelector('.settings-scrim');
+    if (!scrim) return false;
+    scrim.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    return true;
+  })()
+`);
+await sleep(400);
+check(
+  await evaluate(`!!document.querySelector('.settings')`),
+  'and neither does clicking outside the form'
+);
+
+/*
  * And it is said as well as shown. With no console the words go to stdout, and
  * they name the shortcut that brings the screen back once it has been closed.
  */
