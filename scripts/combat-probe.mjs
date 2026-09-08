@@ -86,7 +86,7 @@ if (!profile) skip(`no character on ${HOST}:${PORT} with credentials.`);
  * client that cannot name anything — and be wrong about why.
  */
 const library = new RealmLibrary({
-  shippedFile: path.resolve('resources/world/rooms.jsonl.gz'),
+  shippedDir: path.resolve('resources/world'),
   cacheDir: path.join(path.dirname(configPath()), 'realms'),
   notify: (message) => console.log(`   [realm] ${message}`)
 });

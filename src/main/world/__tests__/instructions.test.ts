@@ -202,6 +202,26 @@ describe('a lever in a direction column', () => {
    * Three cells in each database name an exit and no phrase. A lever with no
    * word to say is not a lever anybody can pull.
    */
+  /*
+   * `(Item: 815)` closes the phrase list on 172 of Paradigm's lever cells and
+   * 170 of stock's (2026-09-07): the item the action needs carried, written by
+   * the realm's editor after the last phrase. The server checks the pack
+   * before the action fires — `You don't have <item> to use!` — so it is read
+   * off as a number and never left inside a phrase the walker would say.
+   */
+  it('reads the item a lever needs off the end of its phrases', () => {
+    const lever = parseAction(
+      'Action [on the N exit of this room]: hold up talisman, hold up amber talisman, lift up talisman (Item: 815)'
+    );
+    expect(lever?.item).toBe(815);
+    expect(lever?.say).toEqual(['hold up talisman', 'hold up amber talisman', 'lift up talisman']);
+    // The realm's empty slot is no item, as it is on an `Item: 0` exit.
+    expect(
+      parseAction('Action [on the N exit of this room]: pull lever (Item: 0)')?.item
+    ).toBeUndefined();
+    expect(parseAction('Action [on the N exit of this room]: pull lever')?.item).toBeUndefined();
+  });
+
   it('refuses a lever with no phrase behind it', () => {
     expect(parseAction('Action [on the N exit of this room]:')).toBeNull();
     expect(parseAction('Action [on the N exit of this room]:   ')).toBeNull();

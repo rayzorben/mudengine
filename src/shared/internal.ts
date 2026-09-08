@@ -1058,7 +1058,25 @@ const TUNING_DEFAULTS = {
      * eleven. Zero would make it free, which the router survives; one would
      * make saving a route mean nothing.
      */
-    preferredStepCost: 0.1
+    preferredStepCost: 0.1,
+    /**
+     * What a whole health bar's worth of expected damage costs to route
+     * through.
+     *
+     * A room's lair is weighed against the character (`lairShare`): the worst
+     * of its monsters, as many as the lair holds at once, as a share of
+     * maximum health; the step costs that share of this figure. Forty makes a
+     * lair expected to take a quarter of the bar cost about a forced door, and
+     * one expected to take the whole bar cost a forty-room detour — up to
+     * `deadlyShare`, where it becomes a wall.
+     */
+    dangerCost: 40,
+    /**
+     * The share of maximum health at which a lair is priced as a wall
+     * (`wallCost`): walked only when there is no other way at all, never
+     * preferred while there is. One is *expected to die there*.
+     */
+    deadlyShare: 1
   },
   /** The process itself. */
   app: {

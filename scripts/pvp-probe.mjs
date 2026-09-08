@@ -30,7 +30,7 @@ if (local.length < 2) skip(`need two characters on ${HOST}:${PORT} with credenti
 const ordered = wanted ? wanted.map((id) => local.find((p) => p.id === id)).filter(Boolean) : local;
 const [attackerProfile, victimProfile] = ordered;
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(`\npvp-probe -> ${HOST}:${PORT}: ${attackerProfile.id} attacks ${victimProfile.id}\n`);
 
 function open(profile) {

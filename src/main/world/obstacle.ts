@@ -113,7 +113,16 @@ export function describeObstacle(requirement: Requirement, graph: WorldGraph): M
          * which is the complaint `toll` on its own already answered.
          */
         if (openableHere(requirement)) {
-          return t('map.obstacle.hiddenLever', { phrase: requirement.actions![0]!.say[0]! });
+          const act = requirement.actions![0]!;
+          // The item the lever wants is the half of the chip that decides
+          // whether to walk it: the phrase alone reads as a free lever.
+          if (act.item !== undefined) {
+            return t('map.obstacle.hiddenLeverItem', {
+              phrase: act.say[0]!,
+              itemName: graph.item(act.item)?.name ?? t('map.obstacle.itemUnknown')
+            });
+          }
+          return t('map.obstacle.hiddenLever', { phrase: act.say[0]! });
         }
         return t('map.obstacle.hidden');
       case 'item': {

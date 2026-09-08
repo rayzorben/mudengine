@@ -432,7 +432,7 @@ describe('routing', () => {
 });
 
 describe('the real realm data', () => {
-  const file = path.resolve('resources/world/rooms.jsonl.gz');
+  const file = path.resolve('resources/world/paradigm.jsonl.gz');
   const available = fs.existsSync(file);
   const graph = available ? WorldGraph.load(file) : null;
 
@@ -803,7 +803,7 @@ describe('the shipped realm data', () => {
    * the committed file, so a change to `build-world.mjs` that quietly alters
    * the shape of an exit fails here rather than in a route someone is walking.
    */
-  const REALM = path.resolve('resources/world/rooms.jsonl.gz');
+  const REALM = path.resolve('resources/world/paradigm.jsonl.gz');
   const realm = fs.existsSync(REALM) ? WorldGraph.load(REALM) : null;
   const has = realm !== null && realm.size > 0;
 
@@ -2356,6 +2356,24 @@ describe('naming what blocked a route', () => {
       { kind: 'spell', raw: 'Spell Trap: 1', spellId: 1, spellEffect: 'relocates' },
       { kind: 'item', raw: 'Item: 191', keyId: 191 },
       { kind: 'item', raw: 'Item: 0' },
+      // A lever that wants an item is the one hidden shape that can be a
+      // wall — todo 13 — so both halves are asked about it, with the item
+      // among the keys one traveller carries and absent from the other's.
+      {
+        kind: 'hidden',
+        raw: 'Hidden/Needs 1 Actions, any order',
+        actionsNeeded: 1,
+        actions: [{ say: ['hold up talisman'], item: 191 }]
+      },
+      {
+        kind: 'hidden',
+        raw: 'Hidden/Needs 2 Actions, any order',
+        actionsNeeded: 2,
+        actions: [
+          { say: ['pull lever'] },
+          { say: ['raise idol'], item: 3544, at: { map: 1, room: 9 } }
+        ]
+      },
       { kind: 'timed', raw: 'Timed: 0*5 minutes' },
       { kind: 'unknown', raw: '?' }
     ];
@@ -2832,7 +2850,7 @@ describe('the quest book’s item and room joins', () => {
   });
 
   describe('on the realm that ships', () => {
-    const REALM = path.resolve('resources/world/rooms.jsonl.gz');
+    const REALM = path.resolve('resources/world/paradigm.jsonl.gz');
     const realm = fs.existsSync(REALM) ? WorldGraph.load(REALM) : null;
     /*
      * On the realm being *present*, never on it having quests. Gating on the
@@ -2930,5 +2948,184 @@ describe('the quest book’s item and room joins', () => {
       expect(sited.length).toBeGreaterThan(100);
       expect(sited.every((step) => step.place !== undefined)).toBe(true);
     });
+  });
+});
+
+/*
+ * A lever that wants an item — Paradigm's `hold up talisman` north out of
+ * 2/687, `lift up talisman (Item: 815)` in the realm's own cell. The server
+ * refuses the phrase without the item in the pack, so for a listed pack
+ * lacking it the passage is a wall, and the refusal names the item; with it,
+ * the passage costs what a lever costs; unlisted, it is an unevaluated gate
+ * like a keyed door nobody has looked in the pack for (todo 13).
+ */
+describe('a lever that needs an item', () => {
+  const passage = (): Array<Record<string, unknown>> => [
+    {
+      m: 1,
+      r: 1,
+      n: 'Dragon’s Teeth Hills',
+      x: {
+        n: {
+          m: 1,
+          r: 2,
+          i: 'Hidden/Needs 1 Actions, any order',
+          a: [{ say: ['hold up talisman', 'hold up amber talisman'], item: 815 }]
+        }
+      }
+    },
+    { m: 1, r: 2, n: 'Secret Passage', x: { s: { m: 1, r: 1 } } }
+  ];
+
+  it('is a wall for a listed pack without the item, and says which item', () => {
+    const graph = makeWorld(passage());
+    const route = graph.route(roomId(1, 1), roomId(1, 2), { packKnown: true, keys: [] });
+    expect(route.blocked).toBe(true);
+    expect(route.blocks).toEqual([
+      { kind: 'carry', at: '1/1', to: '1/2', name: 'Secret Passage', itemId: 815 }
+    ]);
+    expect(route.reason).toContain('815');
+    expect(route.reason).toContain('Secret Passage');
+  });
+
+  it('costs a lever with the item carried, and an unevaluated gate while the pack is unlisted', () => {
+    const graph = makeWorld(passage());
+    const carrying = graph.route(roomId(1, 1), roomId(1, 2), { packKnown: true, keys: [815] });
+    expect(carrying.blocked).toBe(false);
+    expect(carrying.cost).toBe(1 + 25 + 5);
+    expect(carrying.steps[0]?.requirement?.actions?.[0]?.item).toBe(815);
+
+    const unlisted = graph.route(roomId(1, 1), roomId(1, 2), { keys: [] });
+    expect(unlisted.blocked).toBe(false);
+    expect(unlisted.cost).toBe(1 + 60);
+  });
+
+  it('drops a lever list naming an item that is not one, keeping the exit expensive', () => {
+    const graph = makeWorld([
+      {
+        m: 1,
+        r: 1,
+        n: 'Here',
+        x: {
+          n: {
+            m: 1,
+            r: 2,
+            i: 'Hidden/Needs 1 Actions, any order',
+            a: [{ say: ['pull lever'], item: -5 }]
+          }
+        }
+      },
+      { m: 1, r: 2, n: 'There', x: {} }
+    ]);
+    const route = graph.route(roomId(1, 1), roomId(1, 2), { packKnown: true, keys: [] });
+    // No levers read, so the exit is priced as one whose levers are elsewhere.
+    expect(route.blocked).toBe(false);
+    expect(route.cost).toBe(1 + 200);
+    expect(route.steps[0]?.requirement?.actions).toBeUndefined();
+  });
+});
+
+/*
+ * What waits in a room is part of the way through it. `Traveller.danger`
+ * says what a room's lair is expected to cost as a share of the health bar,
+ * the router prices it (`dangerPenalty`), and past `deadlyShare` the room is
+ * a wall — walked only when there is no other way, and said to be.
+ */
+describe('what waits in a room prices the way through it', () => {
+  /* Gate → Lair → Keep is two steps; Gate → Long Way → Longer Way → Keep is three. */
+  const twoWays = (): Array<Record<string, unknown>> => [
+    { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 3 } } },
+    { m: 1, r: 2, n: 'Lair', lair: '(Max 1): 7,', x: { s: { m: 1, r: 1 }, n: { m: 1, r: 4 } } },
+    { m: 1, r: 3, n: 'Long Way', x: { w: { m: 1, r: 1 }, n: { m: 1, r: 5 } } },
+    { m: 1, r: 5, n: 'Longer Way', x: { s: { m: 1, r: 3 }, w: { m: 1, r: 4 } } },
+    { m: 1, r: 4, n: 'Keep', x: { s: { m: 1, r: 2 }, e: { m: 1, r: 5 } } }
+  ];
+  const lairs = (share: number) => (room: { name: string }) =>
+    room.name === 'Lair' ? share : null;
+
+  it('walks straight through when nothing is weighed', () => {
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), {});
+    expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
+    expect(route.steps.every((step) => step.danger === undefined)).toBe(true);
+  });
+
+  it('goes round a lair that would cost more than the detour', () => {
+    // Half the bar is 20 on the step; the detour is one more room.
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: lairs(0.5) });
+    expect(route.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
+    expect(route.cost).toBe(3);
+  });
+
+  it('walks through a lair cheaper than the detour, and says what it costs', () => {
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: lairs(0.02) });
+    expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
+    expect(route.steps[0]?.danger).toBe(0.02);
+    expect(route.steps[0]?.deadly).toBeUndefined();
+    expect(route.cost).toBe(2 + Math.round(0.02 * 40));
+  });
+
+  it('walls a deadly lair, walks it when there is no other way, and marks the step', () => {
+    const graph = makeWorld(twoWays());
+    const round = graph.route(roomId(1, 1), roomId(1, 4), { danger: lairs(1.2) });
+    expect(round.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
+
+    // Only the lair leads on: still offered, priced as a wall, and said.
+    const onlyWay = makeWorld(twoWays().filter((room) => room['r'] !== 3 && room['r'] !== 5));
+    const through = onlyWay.route(roomId(1, 1), roomId(1, 4), { danger: lairs(1.2) });
+    expect(through.blocked).toBe(false);
+    expect(through.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
+    expect(through.cost).toBeGreaterThanOrEqual(100_000);
+    expect(through.steps[0]).toMatchObject({ danger: 1.2, deadly: true });
+    // Nothing gated stood on a shorter way, so nothing is claimed to be needed.
+    expect(through.blocks).toBeUndefined();
+  });
+
+  it('prices an unknown lair as nothing, never as a wall', () => {
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: () => null });
+    expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
+    expect(route.cost).toBe(2);
+  });
+});
+
+/*
+ * A route offered through a wall is not the way anybody would choose, so it
+ * carries what the shorter way needed: the reader is told *needs the key*
+ * rather than handed a walk through a door that will not open (todo 13).
+ */
+describe('a walkable route that crosses a wall names what the shorter way needs', () => {
+  const world = (): Array<Record<string, unknown>> => [
+    { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2, i: 'Key: 1124' }, e: { m: 1, r: 3 } } },
+    {
+      m: 1,
+      r: 3,
+      n: 'Yard',
+      x: { w: { m: 1, r: 1 }, n: { m: 1, r: 4, i: 'Door [999 picklocks/strength]' } }
+    },
+    { m: 1, r: 4, n: 'Hall', x: { s: { m: 1, r: 3 }, w: { m: 1, r: 2 } } },
+    { m: 1, r: 2, n: 'Vault', x: { s: { m: 1, r: 1 }, e: { m: 1, r: 4 } } }
+  ];
+
+  it('carries the key the direct way wanted, beside the walk through the wall', () => {
+    const route = makeWorld(world()).route(roomId(1, 1), roomId(1, 2), {
+      packKnown: true,
+      keys: [],
+      strength: 10,
+      pickSkill: 0
+    });
+    expect(route.blocked).toBe(false);
+    expect(route.steps.map((step) => step.name)).toEqual(['Yard', 'Hall', 'Vault']);
+    expect(route.cost).toBeGreaterThanOrEqual(100_000);
+    expect(route.blocks).toEqual([
+      { kind: 'key', at: '1/1', to: '1/2', name: 'Vault', keyId: 1124 }
+    ]);
+  });
+
+  it('says nothing about a way that crosses no wall', () => {
+    const route = makeWorld(world()).route(roomId(1, 1), roomId(1, 2), {
+      packKnown: true,
+      keys: [1124]
+    });
+    expect(route.steps.map((step) => step.name)).toEqual(['Vault']);
+    expect(route.blocks).toBeUndefined();
   });
 });

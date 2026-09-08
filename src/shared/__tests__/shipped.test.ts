@@ -4,6 +4,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 
 import { DEFAULT_CONFIG, DEFAULT_REALM_NAME, asServer, normalizeConfig } from '../config';
+import { SHIPPED_WORLDS, shippedWorldFile } from '../worlds';
 
 /**
  * What a fresh install dials, and what it does not.
@@ -139,12 +140,13 @@ describe('the realms the client ships', () => {
     expect(server?.port).toBe(2323);
   });
 
-  it('ships no realm database at all, because the built-in world is the realm', () => {
+  it('ships no realm database at all, because the bundled worlds are the realms', () => {
     /*
-     * Every shipped realm is Paradigm's and `resources/world/` is built from
-     * Paradigm's own database (`mdb/2026-07-26-pmud.zip`,
-     * `scripts/build-world.mjs`), so there is nothing left for a shipped realm
-     * to name and nothing for the installer to carry.
+     * Both of this game's data sets ship converted (`resources/world/`, one
+     * file per `SHIPPED_WORLDS`, from the archives in `mdb/` by
+     * `scripts/build-world.mjs`), and a realm says which it runs at its own
+     * menu — so there is nothing left for a shipped realm to name and nothing
+     * for the installer to carry.
      *
      * `GMUD (5X)` was the exception for two days and it is the reason this is
      * asserted rather than assumed: a GreaterMUD realm on Paradigm's map is a
@@ -155,6 +157,9 @@ describe('the realms the client ships', () => {
      */
     for (const id of shipped) expect(realmOf(id)?.database).toBe('');
     expect(fs.existsSync(path.resolve('resources/mdb'))).toBe(false);
+    for (const world of SHIPPED_WORLDS) {
+      expect(fs.existsSync(path.resolve('resources/world', shippedWorldFile(world)))).toBe(true);
+    }
   });
 
   it.each(shipped.filter((id) => id.startsWith('paradigm-')))('%s answers Paradigm', (id) => {

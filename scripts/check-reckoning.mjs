@@ -51,7 +51,7 @@ const args = process.argv.slice(2);
 const anchor = args.includes('--anchor');
 const dir = args.find((value) => !value.startsWith('--')) ?? homePaths().logs;
 
-const realmFile = path.resolve('resources/world/rooms.jsonl.gz');
+const realmFile = path.resolve('resources/world/paradigm.jsonl.gz');
 const world = WorldGraph.load(realmFile);
 if (world.size === 0) {
   console.error(`no realm data at ${realmFile} — run \`npm run build:world\``);

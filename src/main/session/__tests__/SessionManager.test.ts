@@ -464,6 +464,85 @@ describe('answering the login', () => {
   });
 });
 
+/*
+ * The realm names its own data at its menu — `[MAJORMUD]:`, `[PARADIGM]:` —
+ * and that word chooses which of the two bundled worlds the next session
+ * walks (`shared/worlds.ts`). This session's world was bound before anything
+ * was dialled, so the word is told to the sink to be remembered and, when it
+ * disagrees with what is loaded, said once.
+ */
+describe("the realm's own word for its data", () => {
+  /** A one-room stand-in for a bundled world, named as `build-world.mjs` names it. */
+  function bundled(world: 'majormud' | 'paradigm'): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-world-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 27, source: world, world, rooms: 1, generatedAt: 'x' }),
+          JSON.stringify({ m: 1, r: 1, n: 'Town Square', x: {} })
+        ].join('\n') + '\n'
+      )
+    );
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+
+  it('tells the sink once, and says when this session is walking the other world', async () => {
+    const { sink, notices } = collect();
+    const told: string[] = [];
+    manager = new SessionManager(
+      { ...sink, realmTold: (realm) => told.push(realm) },
+      bundled('paradigm')
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+
+    // Unterminated, as the real prompt is; the idle flush releases it.
+    socket.write('[MAJORMUD]: ');
+    await until(() => told.length > 0);
+    expect(told).toEqual(['majormud']);
+    await until(() => notices.some((notice) => /says it is MajorMUD/.test(notice)));
+    expect(notices.filter((notice) => /says it is MajorMUD/.test(notice))).toHaveLength(1);
+    expect(notices.join(' ')).toMatch(/loaded for this session is Paradigm/);
+
+    // The prompt arrives on every line at the menu; the word is told once.
+    socket.write('[MAJORMUD]: ');
+    await new Promise((resolve) => setTimeout(resolve, ABANDON_MS + 50));
+    expect(told).toEqual(['majormud']);
+  });
+
+  it('says nothing when the realm and the loaded world agree', async () => {
+    const { sink, notices } = collect();
+    const told: string[] = [];
+    manager = new SessionManager(
+      { ...sink, realmTold: (realm) => told.push(realm) },
+      bundled('paradigm')
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+
+    socket.write('[PARADIGM]: ');
+    await until(() => told.length > 0);
+    expect(told).toEqual(['paradigm']);
+    expect(notices.some((notice) => /says it is/.test(notice))).toBe(false);
+  });
+
+  it("says nothing about a player's own database, which names no bundled world", async () => {
+    const { sink, notices } = collect();
+    const told: string[] = [];
+    manager = new SessionManager({ ...sink, realmTold: (realm) => told.push(realm) }, haven());
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+
+    socket.write('[MAJORMUD]: ');
+    await until(() => told.length > 0);
+    expect(notices.some((notice) => /says it is/.test(notice))).toBe(false);
+  });
+});
+
 describe("the shadow of the server's input line", () => {
   /*
    * The buffer that decides whether automation may send has to hold what the

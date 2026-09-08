@@ -33,9 +33,9 @@
 # with; it does not reach back into the ones you already have.
 connection:
   # Paradigm, which is what this client ships for: `servers/` is seeded with
-  # its six realms on first run and the world file the client walks is built
-  # from Paradigm's own database. A realm you add on the Realms page starts
-  # from these and then owns its own copy.
+  # its six realms on first run and Paradigm's world is one of the two the
+  # client bundles. A realm you add on the Realms page starts from these and
+  # then owns its own copy.
   host: paramud.mudinfo.net
   port: 2323
 
@@ -109,11 +109,11 @@ connection:
 # filename -- and the name a player reads is inside the file, so renaming a
 # realm does not strand its loops.
 #
-# The realm's `database:` key is there too -- the world file every character
-# playing there walks. Empty is the world that ships with the client, and the
-# world that ships with the client is Paradigm's own (57,511 rooms), so none of
-# the six shipped realms names one. A realm whose data has moved on, or a
-# private realm of your own, names its own .mdb, .accdb, .sqlite or .db -- or a
+# The realm's `database:` key is there too -- the world every character
+# playing there walks. Empty follows what the realm calls itself at its menu,
+# MajorMUD or Paradigm, both of which ship with the client, so none of the six
+# shipped realms names one; `majormud` or `paradigm` pins one. A realm whose
+# data differs from both names its own .mdb, .accdb, .sqlite or .db -- or a
 # .zip holding one -- which is converted ONCE into the same normalised
 # form and cached in `realms/`, never queried while you are playing. It used to
 # be stated per character, which was the same answer written out once per

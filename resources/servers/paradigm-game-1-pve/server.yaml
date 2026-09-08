@@ -67,26 +67,29 @@ login:
   - when: '(N)onstop, (Q)uit, or (C)ontinue?'
     send: ''
 
-# The world file every character playing here walks: every room, exit, door,
-# shop, item, monster and spell the client knows about. It draws the map, plans
+# The world every character playing here walks: every room, exit, door, shop,
+# item, monster and spell the client knows about. It draws the map, plans
 # routes and answers a lookup, so nothing it can answer costs a command.
 #
-# A path to a MegaMUD database -- .mdb or .accdb (needs nothing installed), or
-# .sqlite / .db (needs the sqlite3 command). A .zip holding exactly one of
-# those is read without being unpacked, which is how they are distributed.
+# Two worlds ship with the client, because there are two versions of this
+# game's data: stock MajorMUD v1.11p and Paradigm's own. Empty, or absent as
+# here, follows what the realm calls itself at its menu -- `[MAJORMUD]:` or
+# `[PARADIGM]:` -- remembered from the first connection and used from the next;
+# until a realm has said, the Paradigm world is walked and the client says so.
+# So these six realms need no `database:` key at all.
 #
-# Empty, or absent as here, means the world that ships with the client -- and
-# the world that ships with the client IS Paradigm's: `resources/world/` is
-# built from the database Paradigm distributes with
-# MegaMUD (`npm run build:world`). So these six realms need no `database:` key
-# at all. Name one only if you are playing a realm whose data has moved on
-# from that file, or a private realm of your own.
+#   database: majormud        pins the stock MajorMUD world
+#   database: paradigm        pins Paradigm's
 #
-# A file named here is converted ONCE into the same normalised form and cached
-# in `realms/`; it is never queried while you are playing. Edit the database
-# and the next launch reconverts it.
+# A path is for a realm whose rooms differ from both: a MegaMUD database, .mdb
+# or .accdb (needs nothing installed), .sqlite / .db (needs the sqlite3
+# command), or a .zip holding exactly one of those, read without unpacking.
+# It is converted ONCE into the same normalised form the bundled worlds have
+# and cached in `realms/`; it is never queried while you are playing. Edit the
+# database and the next launch reconverts it. A file that turns out to be the
+# very archive a bundled world was built from is that world.
 #
-# A file that cannot be read is reported and the shipped world is used instead
+# A file that cannot be read is reported and a bundled world is walked instead
 # -- said every time, not once, because playing against the wrong map is only
 # survivable if you know you are.
 #

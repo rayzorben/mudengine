@@ -359,7 +359,7 @@ describe('change reporting', () => {
 });
 
 describe('locating the character in the world', () => {
-  const file = path.resolve('resources/world/rooms.jsonl.gz');
+  const file = path.resolve('resources/world/paradigm.jsonl.gz');
   const available = fs.existsSync(file);
   const world = available ? WorldGraph.load(file) : null;
 
@@ -768,7 +768,7 @@ describe('a second look at the same room', () => {
  * of how ambiguous real names are, and a hand-made world of three rooms cannot
  * express a city with four streets called "Guild Street".
  */
-const realmFile = path.resolve('resources/world/rooms.jsonl.gz');
+const realmFile = path.resolve('resources/world/paradigm.jsonl.gz');
 const realm = fs.existsSync(realmFile) ? WorldGraph.load(realmFile) : null;
 
 describe.runIf(realm !== null && realm.size > 0)('keeping track while walking', () => {

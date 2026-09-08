@@ -32,5 +32,5 @@ login:
   - when: '(N)onstop, (Q)uit, or (C)ontinue?'
     send: ''
 
-# No `database:`: the world that ships with the client is Paradigm's own,
-# built from the database Paradigm distributes (`mdb/2026-07-26-pmud.zip`).
+# No `database:`: blank follows what the realm calls itself at its menu, and
+# this one says `[PARADIGM]:`, so it walks the bundled Paradigm world.

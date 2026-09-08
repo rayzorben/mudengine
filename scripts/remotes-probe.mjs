@@ -36,7 +36,7 @@ if (local.length < 2) {
   skip(`need two characters on ${HOST}:${PORT} with credentials; found ${local.length}.`);
 }
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(`\nremotes-probe -> ${HOST}:${PORT}\n`);
 
 const results = [];

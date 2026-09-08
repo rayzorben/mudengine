@@ -6,7 +6,7 @@ import { Classifier } from '../Classifier';
 import { CharacterTracker } from '../CharacterTracker';
 import { WorldGraph } from '../../world/WorldGraph';
 
-const REALM = path.resolve('resources/world/rooms.jsonl.gz');
+const REALM = path.resolve('resources/world/paradigm.jsonl.gz');
 const realm = fs.existsSync(REALM) ? WorldGraph.load(REALM) : null;
 
 /** The stat sheet as the live realm prints it (festus, 2026-09-03). */

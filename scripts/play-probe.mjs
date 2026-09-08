@@ -47,7 +47,7 @@ function log(kind, text, extra = {}) {
 }
 
 const library = new RealmLibrary({
-  shippedFile: path.resolve('resources/world/rooms.jsonl.gz'),
+  shippedDir: path.resolve('resources/world'),
   cacheDir: path.join(path.dirname(configPath()), 'realms'),
   notify: (message) => log('realm', message)
 });

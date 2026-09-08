@@ -22,9 +22,9 @@ import { commandOf, GREATERMUD_ONLY } from './commands';
  *
  * The data says what exists; the server says how the arithmetic runs, and they
  * are **not required to agree**. The shipped configuration was the proof for
- * two days: `resources/world/` is built from a Paradigm database
- * (`mdb/2026-07-26-pmud.zip`) and `DEFAULT_REALM_NAME` pointed a new character
- * at a GreaterMUD server, so a client straight out of the box disagreed with
+ * two days: the shipped world was built from a Paradigm database
+ * (`mdb/pmud.zip`) and `DEFAULT_REALM_NAME` pointed a new character at a
+ * GreaterMUD server, so a client straight out of the box disagreed with
  * itself. That default went back to Paradigm on 2026-09-05 and the two halves
  * now agree out of the box — which changes nothing here, because a player who
  * names their own realm's database is one `database:` key away from the same
@@ -173,12 +173,20 @@ export function readRealmBuild(value: unknown): RealmBuild | null {
  * have a *my realm is GreaterMUD* checkbox and it does not have a guess
  * either, and a wrong family is worse than no family because everything
  * downstream of it would still answer.
+ *
+ * **`Default` is the stock data set naming itself.** MajorMUD Explorer's export
+ * of the unmodified v1.11p data — `mdb/majormud-v1.11p.zip`, the world the
+ * client ships for MajorMUD realms — states `Custom: Default`, `Dat File
+ * Version: v1.11p`, `Legit: 1` (read 2026-09-07). Matched whole: it is the one
+ * word the stock distribution uses, and a derivative that edits the file
+ * renames it.
  */
 export function familyOfBuild(build: RealmBuild | null): RealmFamily | null {
-  const custom = build?.custom?.toLowerCase() ?? '';
+  const custom = build?.custom?.trim().toLowerCase() ?? '';
   if (custom.length === 0) return null;
   if (/\bg-?mud\b|greater\s*mud/.test(custom)) return 'greatermud';
   if (/\bp-?mud\b|paradigm|paramud|major\s*mud/.test(custom)) return 'majormud';
+  if (custom === 'default') return 'majormud';
   return null;
 }
 

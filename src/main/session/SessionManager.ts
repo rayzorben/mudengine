@@ -42,6 +42,7 @@ import {
   OPPOSITE,
   asDirection,
   roomId,
+  type WorldRoom,
   type Direction,
   type RoomId,
   type Route,
@@ -57,6 +58,7 @@ import {
   bankKey,
   ownAlignment,
   type CharacterState,
+  type RealmFamily as RealmWord,
   type SessionPhase
 } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
@@ -79,6 +81,7 @@ import {
   type RealmFamilies,
   type RealmFamily
 } from '../../shared/realm';
+import { SHIPPED_WORLD_LABEL, worldOfRealm } from '../../shared/worlds';
 import { commandOf, GREATERMUD_ONLY, type CommandName } from '../../shared/commands';
 import { STATUS_LINE } from '../parse/patterns';
 import { TerminalFeed } from './TerminalFeed';
@@ -105,6 +108,7 @@ import { tuning } from '../app/tuning';
 import {
   appraiseRoom,
   EMPTY_ROOM_VERDICT,
+  lairShare,
   prowessSheetOf,
   roomVerdictKey,
   weighVerdicts,
@@ -112,6 +116,7 @@ import {
   type RoomVerdict,
   type Verdict
 } from '../../shared/verdict';
+import { LairCosts } from '../world/LairCosts';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -344,6 +349,13 @@ export interface SessionSink {
    * is expected to cost — on change. The same `Verdict` auto-combat ranks on.
    */
   verdict?(appraisal: RoomVerdict): void;
+  /**
+   * The realm named its own data — `[MAJORMUD]:`, `[PARADIGM]:` at its menu —
+   * once per connection. A hook rather than a store, like `destination`: which
+   * bundled world that word chooses for this address next time is written
+   * down by whoever decided where the files go (`WorldBook`).
+   */
+  realmTold?(realm: RealmWord): void;
 }
 
 export class SessionManager {
@@ -383,6 +395,10 @@ export class SessionManager {
   private lastVerdictKey = '';
   /** So the disagreement is stated once a session and not once a block. */
   private familyStated = false;
+  /** The realm's own word for its data, once the menu has said it. See `noteRealmWord`. */
+  private realmTold: RealmWord | null = null;
+  /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
+  private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
   private internal: InternalConfig = DEFAULT_INTERNAL;
   private readonly lineLog: StreamLine[] = [];
   private seq = 0;
@@ -1708,6 +1724,7 @@ export class SessionManager {
     this.outbound = '';
     this.playerMove = null;
     this.phaseWas = 'unknown';
+    this.realmTold = null;
     this.saidWaitingToBePlaced = false;
     this.awaitingPassword = false;
     this.cancelIdleFlush();
@@ -1899,6 +1916,35 @@ export class SessionManager {
     // Entering the realm starts the away clock: a character autoconnected and
     // never touched is away after the timeout like any other.
     if (was !== 'in-game' && state.phase === 'in-game') this.afk.noteAttended();
+    this.noteRealmWord(state);
+  }
+
+  /**
+   * The realm has said which data it runs, and whether this session is
+   * walking it.
+   *
+   * `CharacterState.realm` is the menu prompt's own word, and it is the one
+   * place the wire says which of the two bundled worlds this is
+   * (`shared/worlds.ts`). Told to the sink once per connection so the address
+   * is remembered; and compared with the world this session was built on,
+   * because that was chosen before anything was dialled. A disagreement is
+   * said once and not resolved here — the world is bound for the session's
+   * life — so the sentence says what to do about it. A player's own database
+   * names no bundled world and is theirs: nothing is said about it.
+   */
+  private noteRealmWord(state: CharacterState): void {
+    if (state.realm === null || state.realm === this.realmTold) return;
+    this.realmTold = state.realm;
+    this.sink.realmTold?.(state.realm);
+    const wanted = worldOfRealm(state.realm);
+    const loaded = this.world?.info.world ?? null;
+    if (wanted === null || loaded === null || wanted === loaded) return;
+    this.sink.notice(
+      t('session.realm.worldDisagrees', {
+        realm: SHIPPED_WORLD_LABEL[wanted],
+        world: SHIPPED_WORLD_LABEL[loaded]
+      })
+    );
   }
 
   /**
@@ -3138,8 +3184,73 @@ export class SessionManager {
       alignment: ownAlignment(state),
       ...this.packContents(state),
       refused: this.refusedEdges,
-      ...(preferring ? { preferred: this.preferredEdges() } : {})
+      ...(preferring ? { preferred: this.preferredEdges() } : {}),
+      // What waits in each room, against this character as they stand now.
+      danger: (room) => this.lairDanger(room, state)
     };
+  }
+
+  /**
+   * What a room's lair is expected to cost this character, as a share of
+   * maximum health, for the router (`Traveller.danger`, `dangerPenalty`).
+   *
+   * Todo 13: a route was planned through whatever the shortest corridor held,
+   * a boss included, because nothing priced the monsters. The arithmetic is
+   * the room appraisal's (`appraiseRoom`), run on the lair's monsters instead
+   * of the room's occupants, so the Room card and the router cannot disagree
+   * about how hard a monster is. Remembered per room until the character's
+   * own figures move — a level gained, a helm put on — which `fitness` says
+   * (`LairCosts`). Null where nothing can be weighed, and the router prices
+   * null as nothing: an unread sheet must not turn every lair into a wall.
+   */
+  private lairDanger(room: WorldRoom, state: CharacterState): number | null {
+    if (!this.world || !room.lair) return null;
+    return this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
+  }
+
+  /**
+   * The figures a lair's cost depends on, as one string, so a change to any
+   * of them drops every remembered room. The sheet, the health maximum, the
+   * weapon in hand, the class row and the server's family; not the pack nor
+   * the purse, which move every room and change no fight.
+   */
+  private fitness(state: CharacterState): string {
+    const { progress, vitals } = state;
+    return [
+      progress.level,
+      vitals.hpMax,
+      progress.armourClass,
+      progress.damageResist,
+      progress.magicRes,
+      progress.agility,
+      progress.intellect,
+      progress.charm,
+      progress.strength,
+      state.className,
+      JSON.stringify(wieldedWeapon(state.inventory.items)),
+      this.serverFamily
+    ].join('|');
+  }
+
+  /** One room's lair, weighed. See `lairDanger` for what is remembered and why. */
+  private weighLair(id: RoomId): number | null {
+    const world = this.world;
+    if (!world) return null;
+    const room = world.byId(id);
+    if (!room) return null;
+    const lair = world.lair(room);
+    if (lair === null || lair.mobs.length === 0) return null;
+    const state = this.tracker.current;
+    const { combat, magery, family } = this.realmClass();
+    const verdicts = weighVerdicts(
+      lair.mobs.map((mob) => world.buildMobEntity(mob.name)),
+      this.menacePlayer(state),
+      tuning().menace,
+      prowessSheetOf(state, { combat, magery }),
+      wieldedWeapon(state.inventory.items),
+      family
+    );
+    return lairShare(verdicts, lair.max, state.vitals.hpMax);
   }
 
   /**

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { asShippedWorld } from '@shared/worlds';
 import Icon from './Icon';
 import FormField, {
   CheckField,
@@ -60,6 +61,16 @@ import {
 import { ACTIONABLE_REMOTES, type RemoteGrant, type RemoteName } from '@shared/remotes';
 import { NOTICE_CHANNELS, type NoticeChannel, type Severity } from '@shared/notifications';
 import { errorMessage } from '@shared/values';
+
+/**
+ * Whether a realm's `database` walks something other than the world the
+ * shipped loops were recorded in. Blank follows the realm's own word, which the
+ * settings screen cannot know, and is read as Paradigm's — the default.
+ */
+function walksAnotherWorld(database: string): boolean {
+  const stated = database.trim();
+  return stated.length > 0 && asShippedWorld(stated) !== 'paradigm';
+}
 
 /** The shipped combat defaults, so a new character and the file agree. */
 const DEFAULT_COMBAT = DEFAULT_CONFIG.automation.combat;
@@ -3270,14 +3281,16 @@ export default function SettingsScreen({
                         /*
                           The one thing about this that can be wrong without
                           looking wrong. The shipped loops name rooms by
-                          `map/room` in the realm the client ships; a character
-                          playing against its own database has different rooms
-                          behind the same numbers, and a route planned from one
-                          goes somewhere nobody chose.
+                          `map/room` in Paradigm's world, the one they were
+                          recorded in; a realm pinned to the other bundled
+                          world or to its own database has different rooms
+                          behind the same numbers, and a route planned from
+                          one goes somewhere nobody chose.
                         */
                         warning={
-                          (servers.find((entry) => entry.name === form.serverName)?.database ?? '')
-                            .length > 0 && form.loops.length > 0
+                          walksAnotherWorld(
+                            servers.find((entry) => entry.name === form.serverName)?.database ?? ''
+                          ) && form.loops.length > 0
                             ? t('settings.movement.loopsWarning')
                             : undefined
                         }

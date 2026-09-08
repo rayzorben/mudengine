@@ -34,7 +34,7 @@ const SEWER = '1/607';
 const profile = localProfile();
 if (!profile) skip(`no character on ${HOST}:${PORT} with credentials.`);
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(`\ndark-probe -> ${HOST}:${PORT}\n`);
 
 const notices = [];

@@ -167,7 +167,7 @@ if (supportProfile && supportProfile.id !== leaderProfile.id) {
 }
 
 const library = new RealmLibrary({
-  shippedFile: path.resolve('resources/world/rooms.jsonl.gz'),
+  shippedDir: path.resolve('resources/world'),
   cacheDir: path.join(path.dirname(configPath()), 'realms'),
   notify: (message) => log('run', 'realm', message)
 });

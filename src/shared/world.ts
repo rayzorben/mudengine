@@ -402,6 +402,15 @@ export interface Requirement {
 export interface RequirementAction {
   say: string[];
   /**
+   * The item the realm says must be carried to say it — `lift up talisman
+   * (Item: 815)` in the realm's own cell, read off the phrase list by
+   * `parseAction`. The server checks the pack before the action fires and
+   * answers `You don't have <item> to use!` without it (`ExitAction.Perform`),
+   * spending one of the item's uses when it does. Absent is an action that
+   * needs nothing carried.
+   */
+  item?: number;
+  /**
    * Where it is pulled, when that is not the room the exit leaves from.
    *
    * Absent is *here*, which is what makes the exit openable in place. Present
@@ -1620,6 +1629,21 @@ export interface RouteStep {
    * is worth a torch. Absent exactly when `dark` is false.
    */
   light?: number;
+  /**
+   * What the room's lair is expected to cost this character, as a share of
+   * maximum health — the figure the router priced the step by
+   * (`Traveller.danger`). Absent where the room has no lair, or where nothing
+   * could be weighed: the sheet unread, or a monster the arithmetic cannot
+   * price. One and above is *expected to die there*, and the router walks
+   * such a room only when there is no other way at all.
+   */
+  danger?: number;
+  /**
+   * Whether `danger` reached the share the router walls at
+   * (`tuning.world.deadlyShare`), decided in main where the number lives. A
+   * step wearing it is on a route with no other way.
+   */
+  deadly?: boolean;
 }
 
 /**
@@ -1657,6 +1681,35 @@ export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst:
     if (damage !== undefined && (worst === null || damage > worst)) worst = damage;
   }
   return { count, worst };
+}
+
+/**
+ * The lairs a route walks through, counted, with the worst of them and
+ * whether any is one the character is expected to die in.
+ *
+ * The same head-of-list rule `trapsAlong` keeps: a step's own chip sits under
+ * the fold, and the figure that decides whether to walk is the heaviest.
+ * `worst` is the largest share of maximum health any lair on the way is
+ * expected to take (`RouteStep.danger`); `deadly` is whether one reached the
+ * share the router walls at (`RouteStep.deadly`), which it walks only when
+ * there is no other way — so a route that says so is a route with no
+ * alternative, and the reader should know that before pressing the button.
+ */
+export function lairsAlong(steps: readonly RouteStep[]): {
+  count: number;
+  worst: number | null;
+  deadly: boolean;
+} {
+  let count = 0;
+  let worst: number | null = null;
+  let deadly = false;
+  for (const step of steps) {
+    if (step.danger === undefined) continue;
+    count += 1;
+    if (worst === null || step.danger > worst) worst = step.danger;
+    if (step.deadly === true) deadly = true;
+  }
+  return { count, worst, deadly };
 }
 
 /**
@@ -1929,11 +1982,15 @@ export interface Route {
   /** Why, when blocked. */
   reason?: string;
   /**
-   * What stood in the way, when blocked — every condition, not the first.
+   * What stood in the way — every condition, not the first.
    *
    * `reason` stays a sentence so nothing that already reads it has to change;
    * this is the same answer as facts, for a surface that wants to say more than
-   * one line or to look a key's name up.
+   * one line or to look a key's name up. On a refused route it is why. On a
+   * walkable route that crosses a wall — a door the character cannot force, a
+   * lair expected to kill — it is what the shorter way needed, so the reader
+   * is told *needs amber talisman* rather than handed four hundred steps
+   * through doors that will not open.
    */
   blocks?: RouteBlock[];
 }

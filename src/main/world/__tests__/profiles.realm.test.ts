@@ -6,8 +6,8 @@ import { attackChances, rowProfile } from '../buildRealm';
 import { openRealm } from '../RealmSource';
 import { WorldGraph } from '../WorldGraph';
 
-const mdb = path.resolve('mdb/2023-09-02-gmud.zip');
-const shipped = path.resolve('resources/world/rooms.jsonl.gz');
+const mdb = path.resolve('mdb/majormud-v1.11p.zip');
+const shipped = path.resolve('resources/world/paradigm.jsonl.gz');
 
 /** The five attack slots the server loads off a row, in slot order. */
 function loadedSlots(row: Record<string, unknown>): number[] {
@@ -18,12 +18,16 @@ function loadedSlots(row: Record<string, unknown>): number[] {
 }
 
 /*
- * Claims about the GMUD database (`mdb/2023-09-02-gmud.zip`), read straight out
- * of the archive this repository keeps it in — format 20's
+ * Claims about the stock MajorMUD database (`mdb/majormud-v1.11p.zip`), read
+ * straight out of the archive this repository keeps it in — format 20's
  * reading of the attack and between-round columns, checked against the
  * realm rather than against a fixture that would prove only the fixture.
+ *
+ * It was the GreaterMUD database until 2026-09-07, which left the repository
+ * when the two bundled worlds were settled; the figures were re-measured on
+ * the stock archive that day.
  */
-describe.skipIf(!fs.existsSync(mdb))('how the GMUD realm’s monsters fight', () => {
+describe.skipIf(!fs.existsSync(mdb))('how the stock realm’s monsters fight', () => {
   it('reads a profile off nearly every monster row, and the server’s attack types only', () => {
     const source = openRealm(mdb);
     try {
@@ -31,20 +35,18 @@ describe.skipIf(!fs.existsSync(mdb))('how the GMUD realm’s monsters fight', ()
         .table('Monsters')!
         .rows.filter((row) => row['In Game'] !== 0 && Number(row['HP']) > 0);
       const profiled = rows.filter((row) => rowProfile(row) !== null);
-      // 1,786 rows in game; the ones without are the shopkeepers, trainers
+      // 1,033 rows in game; the ones without are the shopkeepers, trainers
       // and the like that state no slot the server loads.
-      expect(rows.length).toBeGreaterThan(1700);
-      expect(profiled.length).toBeGreaterThan(1600);
+      expect(rows.length).toBeGreaterThan(1000);
+      expect(profiled.length).toBeGreaterThan(900);
 
-      // The one slot of type 3 in the whole realm sits on the first `giant
-      // rat` row, and `MobType.GetAttackTypes` loads only 1 and 2 — so the
-      // first monster anybody meets has, on this server, a row that never
-      // swings. The other giant rat rows do.
+      // `MobType.GetAttackTypes` loads only 1 and 2. The GreaterMUD database
+      // carried one slot of type 3, on its first `giant rat` row; the stock
+      // data carries none, so every loaded slot here is one the server swings.
       const odd = rows.filter((row) =>
         [0, 1, 2, 3, 4].some((slot) => row[`AttType-${slot}`] === 3)
       );
-      expect(odd.map((row) => String(row['Name']).toLowerCase())).toEqual(['giant rat']);
-      expect(rowProfile(odd[0]!)).toBeNull();
+      expect(odd).toEqual([]);
     } finally {
       source.close();
     }
@@ -56,7 +58,8 @@ describe.skipIf(!fs.existsSync(mdb))('how the GMUD realm’s monsters fight', ()
    * asserting agreement: two slots in five agree within a point, which is what
    * says the *columns* are being read right (a wrong threshold column would
    * agree on nothing), and the long tail is the editor's, not ours. Numbers
-   * from 2026-09-04; a realm file that moves them should move this.
+   * from 2026-09-07 on the stock archive (2,075 slots, 48% within a point,
+   * 29% more than five out); a realm file that moves them should move this.
    */
   it('walks the thresholds as the server does, which the editor’s cached column only half agrees with', () => {
     const source = openRealm(mdb);
@@ -78,7 +81,7 @@ describe.skipIf(!fs.existsSync(mdb))('how the GMUD realm’s monsters fight', ()
           if (gap > 5) far += 1;
         });
       }
-      expect(slots).toBeGreaterThan(3500);
+      expect(slots).toBeGreaterThan(2000);
       expect(close / slots).toBeGreaterThan(0.4);
       expect(far / slots).toBeGreaterThan(0.2);
     } finally {

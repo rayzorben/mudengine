@@ -1,19 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { RealmLibrary } from '../RealmLibrary';
+import { shippedWorldFile, type ArchiveIdentity, type ShippedWorld } from '../../../shared/worlds';
 
 let dir = '';
-let shippedFile = '';
+let shippedDir = '';
 let cacheDir = '';
 let notices: string[] = [];
 
 /** A realm file in the shape `build-world.mjs` emits. */
-function writeWorld(file: string, source: string, rooms: number): void {
-  const header = JSON.stringify({ v: 2, source, rooms, generatedAt: 'x', items: [] });
+function writeWorld(
+  file: string,
+  source: string,
+  rooms: number,
+  extra: { world?: ShippedWorld; archive?: ArchiveIdentity } = {}
+): void {
+  const header = JSON.stringify({ v: 2, source, rooms, generatedAt: 'x', items: [], ...extra });
   const lines = Array.from({ length: rooms }, (_, i) =>
     JSON.stringify({ m: 1, r: i + 1, n: `Room ${i + 1}`, x: {} })
   );
@@ -21,15 +28,24 @@ function writeWorld(file: string, source: string, rooms: number): void {
   fs.writeFileSync(file, zlib.gzipSync([header, ...lines].join('\n') + '\n'));
 }
 
+/** One bundled world, named after itself as the build script names them. */
+function writeShipped(world: ShippedWorld, rooms: number, archive?: ArchiveIdentity): void {
+  writeWorld(path.join(shippedDir, shippedWorldFile(world)), world, rooms, {
+    world,
+    ...(archive === undefined ? {} : { archive })
+  });
+}
+
 const library = (): RealmLibrary =>
-  new RealmLibrary({ shippedFile, cacheDir, notify: (message) => notices.push(message) });
+  new RealmLibrary({ shippedDir, cacheDir, notify: (message) => notices.push(message) });
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-realms-'));
-  shippedFile = path.join(dir, 'shipped.jsonl.gz');
+  shippedDir = path.join(dir, 'world');
   cacheDir = path.join(dir, 'realms');
   notices = [];
-  writeWorld(shippedFile, 'shipped.mdb', 3);
+  writeShipped('paradigm', 3);
+  writeShipped('majormud', 2);
 });
 
 afterEach(() => {
@@ -55,7 +71,7 @@ describe('a realm database that ships beside the client', () => {
    */
   const shippingLibrary = (resourcesDir: string): RealmLibrary =>
     new RealmLibrary({
-      shippedFile,
+      shippedDir,
       cacheDir,
       resourcesDir,
       notify: (message) => notices.push(message)
@@ -66,8 +82,8 @@ describe('a realm database that ships beside the client', () => {
     const loaded = shippingLibrary(resources).load('mdb/absent.mdb');
 
     expect(loaded.problem).toContain(path.join(resources, 'mdb', 'absent.mdb'));
-    // And falls back to the built-in world rather than to nothing, saying so.
-    expect(loaded.graph.info.source).toBe('shipped.mdb');
+    // And falls back to the default bundled world rather than to nothing, saying so.
+    expect(loaded.graph.info.source).toBe('paradigm');
   });
 
   it('leaves an absolute path exactly as the player typed it', () => {
@@ -90,22 +106,136 @@ describe('a realm database that ships beside the client', () => {
   });
 });
 
-describe('a character that names no realm', () => {
-  it('gets the one the client ships', () => {
+/*
+ * Two worlds ship, and a realm stating none walks whichever it has said it
+ * runs. Until it has said, the default — announced, because a map the realm
+ * has not confirmed is only survivable if you know you are on it.
+ */
+describe('a realm that names no database', () => {
+  it('walks the default bundled world, and says that nothing has been learned yet', () => {
     const loaded = library().load('');
     expect(loaded.graph.size).toBe(3);
+    expect(loaded.graph.info.world).toBe('paradigm');
     expect(loaded.problem).toBeUndefined();
+    expect(notices.join(' ')).toMatch(/has not yet said which it runs.*Paradigm/);
+  });
+
+  it("walks the world the realm's own word chose, silently", () => {
+    const loaded = library().load('', 'majormud');
+    expect(loaded.graph.size).toBe(2);
+    expect(loaded.graph.info.world).toBe('majormud');
+    expect(notices.some((notice) => /has not yet said/.test(notice))).toBe(false);
+  });
+
+  /* Walking a map the realm has not confirmed is a standing condition, not an
+     event, so it is worth one line and not one per query. The realm that
+     will not *convert* is the one that says so every time. */
+  it('says nothing has been learned once, not once per query', () => {
+    const realms = library();
+    realms.load('');
+    realms.load('');
+    realms.load('');
+    expect(notices.filter((notice) => /has not yet said/.test(notice))).toHaveLength(1);
   });
 
   it('treats whitespace as naming none', () => {
     expect(library().load('   ').graph.size).toBe(3);
   });
 
-  /* One graph, however many characters ask for it: 55,806 rooms indexed twice
+  /* One graph, however many characters ask for it: 57,511 rooms indexed twice
      is a cost nobody asked for. */
   it('shares one graph between characters', () => {
     const realms = library();
     expect(realms.load('').graph).toBe(realms.load('').graph);
+    expect(realms.load('', 'majormud').graph).toBe(realms.load('majormud').graph);
+  });
+
+  it('announces each bundled world once, by its name', () => {
+    const realms = library();
+    realms.load('');
+    realms.load('', 'majormud');
+    realms.load('majormud');
+    expect(notices.filter((notice) => /rooms from Paradigm/.test(notice))).toHaveLength(1);
+    expect(notices.filter((notice) => /rooms from MajorMUD/.test(notice))).toHaveLength(1);
+  });
+
+  it('says so when a bundled world is missing from the resources', () => {
+    fs.rmSync(path.join(shippedDir, shippedWorldFile('majormud')));
+    const loaded = library().load('majormud');
+    expect(loaded.graph.size).toBe(0);
+    expect(notices.join(' ')).toMatch(/no realm data at .*majormud\.jsonl\.gz/);
+  });
+});
+
+describe('a realm that names a bundled world by its word', () => {
+  it('pins that world, however the word is written', () => {
+    const realms = library();
+    expect(realms.load('majormud').graph.info.world).toBe('majormud');
+    expect(realms.load(' Paradigm ').graph.info.world).toBe('paradigm');
+    // A learned word never overrides a pinned one.
+    expect(realms.load('paradigm', 'majormud').graph.info.world).toBe('paradigm');
+  });
+});
+
+/*
+ * A database a player names that is byte-for-byte the archive a bundled world
+ * was built from *is* that world. Converting it again would only file what is
+ * learned against it under a second name — and the four realm files on the
+ * machine this was written on named exactly those archives, by absolute path.
+ */
+describe('a database that is the archive a bundled world was built from', () => {
+  const identityOf = (file: string): ArchiveIdentity => {
+    const bytes = fs.readFileSync(file);
+    return {
+      name: path.basename(file),
+      size: bytes.length,
+      sha1: crypto.createHash('sha1').update(bytes).digest('hex')
+    };
+  };
+
+  it('loads the bundled world instead of converting, and says so', () => {
+    const archive = path.join(dir, 'pmud.zip');
+    fs.writeFileSync(archive, 'the very bytes');
+    writeShipped('paradigm', 3, identityOf(archive));
+
+    const loaded = library().load(archive);
+    expect(loaded.problem).toBeUndefined();
+    expect(loaded.graph.info.world).toBe('paradigm');
+    expect(notices.join(' ')).toMatch(/pmud\.zip is the archive the bundled Paradigm world/);
+    expect(fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : []).toEqual([]);
+  });
+
+  /*
+   * `load` runs on every world query, not once per session, so that an edited
+   * realm takes effect on the next session rather than the next restart. The
+   * verdict therefore has to be reached once: it re-read and re-hashed the
+   * archive on main's thread for every room lookup, and said so each time.
+   */
+  it('weighs the archive once, however many times the world is asked for', () => {
+    const archive = path.join(dir, 'pmud.zip');
+    fs.writeFileSync(archive, 'the very bytes');
+    writeShipped('paradigm', 3, identityOf(archive));
+
+    const realms = library();
+    for (let query = 0; query < 5; query += 1) {
+      expect(realms.load(archive).graph.info.world).toBe('paradigm');
+    }
+
+    const said = notices.filter((notice) => /is the archive the bundled/.test(notice));
+    expect(said).toHaveLength(1);
+  });
+
+  it('is recognised by content, never by name', () => {
+    const archive = path.join(dir, 'pmud.zip');
+    fs.writeFileSync(archive, 'the very bytes');
+    writeShipped('paradigm', 3, identityOf(archive));
+    // Same name, same size, different bytes: somebody else's realm.
+    fs.writeFileSync(archive, 'not those bytes');
+
+    const loaded = library().load(archive);
+    // Not recognised, so converted — and this is no archive, so the fallback.
+    expect(loaded.problem).toBeDefined();
+    expect(notices.some((notice) => /is the archive the bundled/.test(notice))).toBe(false);
   });
 });
 
@@ -114,11 +244,11 @@ describe('a character that names no realm', () => {
  * realm data cannot say where it is at all.
  */
 describe('a realm that cannot be used', () => {
-  it('falls back to the shipped one, and says so', () => {
-    const loaded = library().load(path.join(dir, 'missing.mdb'));
-    expect(loaded.graph.size).toBe(3);
+  it('falls back to the bundled world the realm would otherwise walk, and says so', () => {
+    const loaded = library().load(path.join(dir, 'missing.mdb'), 'majormud');
+    expect(loaded.graph.size).toBe(2);
     expect(loaded.problem).toBeDefined();
-    expect(notices.join(' ')).toMatch(/Falling back/);
+    expect(notices.join(' ')).toMatch(/Falling back to the bundled MajorMUD world/);
   });
 
   it('says so every time, not once', () => {
@@ -164,7 +294,7 @@ describe('what a failed conversion leaves behind', () => {
      not a reason a character cannot play. */
   it('keeps the cache beside the options file, not beside the realm', () => {
     library().load('');
-    expect(fs.existsSync(path.join(dir, 'shipped.jsonl.gz'))).toBe(true);
+    expect(fs.existsSync(path.join(shippedDir, 'paradigm.jsonl.gz'))).toBe(true);
   });
 });
 

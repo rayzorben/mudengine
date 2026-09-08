@@ -2881,6 +2881,175 @@ describe('bending down for the key to the way out', () => {
 });
 
 /*
+ * The archives this repository keeps became the two worlds the client bundles
+ * on 2026-09-07, named after themselves — so a realm file naming one of them
+ * relatively names the world by its word, and what was learned against an
+ * archive's name is re-filed under the world's. Absolute paths are left to
+ * `RealmLibrary.bundledFor`, which recognises the bytes.
+ */
+describe('the worlds are bundled', () => {
+  const realm = (): string => home.server('paradigm').file;
+
+  function stating(database: string): void {
+    fs.mkdirSync(path.dirname(realm()), { recursive: true });
+    fs.writeFileSync(
+      realm(),
+      `name: Paradigm\nhost: paramud.mudinfo.net\nport: 2323\n# my map\ndatabase: ${database}\n`,
+      'utf8'
+    );
+  }
+
+  const stated = (): unknown => parse(fs.readFileSync(realm(), 'utf8'))['database'];
+
+  it('names a bundled world by its word where a relative path named its archive', () => {
+    stating('mdb/2026-07-26-pmud.zip');
+    migrate();
+    expect(stated()).toBe('paradigm');
+    expect(said.some((m) => m.includes('2026-07-26-pmud.zip') && m.includes('paradigm'))).toBe(
+      true
+    );
+    expect(fs.readFileSync(realm(), 'utf8')).toContain('# my map');
+    // Once: the word is not an archive name.
+    migrate();
+    expect(said.some((m) => m.includes('now names'))).toBe(false);
+  });
+
+  it('follows the earlier rename, so a loose name still lands on the word', () => {
+    stating('mdb/default-pmud.mdb');
+    migrate();
+    expect(stated()).toBe('paradigm');
+  });
+
+  it('leaves an absolute path alone: the library recognises the bytes, a name cannot', () => {
+    const mine = path.join(dir, 'realms');
+    fs.mkdirSync(mine, { recursive: true });
+    fs.writeFileSync(path.join(mine, 'pmud.zip'), 'x');
+    stating(path.join(mine, 'pmud.zip'));
+    migrate();
+    expect(stated()).toBe(path.join(mine, 'pmud.zip'));
+  });
+
+  it('leaves a private realm alone, whatever it is called', () => {
+    stating('mdb/my-own-pmud-edit.zip');
+    migrate();
+    expect(stated()).toBe('mdb/my-own-pmud-edit.zip');
+  });
+
+  it('re-files the lore, the destinations and the memory under the world', () => {
+    const state = (name: string): string => home.state(name);
+    fs.mkdirSync(home.state('memory'), { recursive: true });
+    fs.writeFileSync(
+      state('mob-lore.json'),
+      JSON.stringify({
+        v: 1,
+        realms: {
+          '2026-07-26-pmud.zip': { 'giant rat': { kills: 3, least: 12, most: 14 } },
+          paradigm: { 'giant rat': { kills: 9, least: 11, most: 15 }, kobold: { kills: 1 } },
+          'gmud20230902.mdb': { 'giant rat': { kills: 1 } }
+        },
+        slots: { 'data-v1.11p-mme2.0.zip': { '11': { words: ['torso'], at: 1 } } },
+        spells: { 'pmud.zip': { bless: { start: { text: 'x', at: 1 } } } }
+      })
+    );
+    fs.writeFileSync(
+      state('destinations.json'),
+      JSON.stringify({
+        v: 1,
+        realms: {
+          '2026-07-26-pmud.zip': [
+            { id: '1/1', name: 'Town Square', at: 5 },
+            { id: '1/2', name: 'Bank', at: 4 }
+          ],
+          paradigm: [{ id: '1/1', name: 'Town Square', at: 5 }]
+        }
+      })
+    );
+    fs.writeFileSync(
+      path.join(home.state('memory'), 'festus.json'),
+      JSON.stringify({
+        version: 1,
+        realm: '2026-07-26-pmud.zip',
+        discoveries: [
+          {
+            reason: 'unknown-exit',
+            from: '1/1',
+            fromName: 'Town Square',
+            command: 'n',
+            to: null,
+            name: '',
+            exits: [],
+            at: 1
+          }
+        ]
+      })
+    );
+    fs.writeFileSync(
+      path.join(home.state('memory'), 'realm-2026-07-26-pmud.zip.json'),
+      JSON.stringify({
+        version: 1,
+        realm: '2026-07-26-pmud.zip',
+        discoveries: [
+          {
+            reason: 'unknown-stock',
+            from: '1/2',
+            fromName: 'Bank',
+            command: 'list',
+            to: null,
+            name: '',
+            exits: [],
+            at: 1
+          }
+        ]
+      })
+    );
+    migrate();
+
+    const lore = JSON.parse(fs.readFileSync(state('mob-lore.json'), 'utf8'));
+    // The world's own entry wins; the archive's adds what it lacked.
+    expect(lore.realms.paradigm['giant rat']).toEqual({ kills: 9, least: 11, most: 15 });
+    expect(lore.realms.paradigm.kobold).toEqual({ kills: 1 });
+    expect(lore.realms['2026-07-26-pmud.zip']).toBeUndefined();
+    // A database that is no bundled world is not touched.
+    expect(lore.realms['gmud20230902.mdb']).toEqual({ 'giant rat': { kills: 1 } });
+    expect(lore.slots.majormud['11']).toEqual({ words: ['torso'], at: 1 });
+    expect(lore.spells.paradigm.bless).toBeDefined();
+
+    const destinations = JSON.parse(fs.readFileSync(state('destinations.json'), 'utf8'));
+    expect(destinations.realms.paradigm).toEqual([
+      { id: '1/1', name: 'Town Square', at: 5 },
+      { id: '1/2', name: 'Bank', at: 4 }
+    ]);
+    expect(destinations.realms['2026-07-26-pmud.zip']).toBeUndefined();
+
+    const festus = JSON.parse(
+      fs.readFileSync(path.join(home.state('memory'), 'festus.json'), 'utf8')
+    );
+    expect(festus.realm).toBe('paradigm');
+    expect(festus.discoveries).toHaveLength(1);
+    expect(fs.existsSync(path.join(home.state('memory'), 'realm-2026-07-26-pmud.zip.json'))).toBe(
+      false
+    );
+    const shared = JSON.parse(
+      fs.readFileSync(path.join(home.state('memory'), 'realm-paradigm.json'), 'utf8')
+    );
+    expect(shared.realm).toBe('paradigm');
+    expect(shared.discoveries).toHaveLength(1);
+
+    expect(said.some((m) => /re-filed under the bundled world/.test(m))).toBe(true);
+    // Nothing left to re-file: silent the second time.
+    migrate();
+    expect(said.some((m) => /re-filed/.test(m))).toBe(false);
+  });
+
+  it('leaves a lore file that will not parse exactly as it is', () => {
+    fs.mkdirSync(path.dirname(home.state('mob-lore.json')), { recursive: true });
+    fs.writeFileSync(home.state('mob-lore.json'), '{broken');
+    migrate();
+    expect(fs.readFileSync(home.state('mob-lore.json'), 'utf8')).toBe('{broken');
+  });
+});
+
+/*
  * The realm databases became zips on 2026-09-04 and the loose copies went, so a
  * realm file naming one by its old name names a file that is not there. Left
  * alone, that is the announced fallback to the shipped world on every single

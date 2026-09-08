@@ -1,5 +1,10 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+
 import type { RealmSource } from './RealmSource';
 import { number, text } from './values';
+import type { ArchiveIdentity, ShippedWorld } from '../../shared/worlds';
 import { itemsInScripts, parseRoomScript } from './roomScript';
 import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
@@ -67,9 +72,37 @@ import {
  * | 21 | The database's own account of itself — the `Info` table, whole (`build`), and the formula family read off it (`family`). A table `buildRealm.ts` had never opened, so the client could not say which of the two lineages' arithmetic a realm runs, nor which build of which data set any derived number came from |
  * | 24 | **The quests.** No realm database has a Quests table, and both on this machine hold the same ten without one — but `TBInfo` holds 4,355 scripts, and between their gates and their rewards they state every quest completely. `indexQuests.ts` finds the counters by which abilities are both granted and demanded, walks the blocks forward from every monster's greeting and every room's script, and comes out with who to ask, where they stand, the word to say, what it costs and what it pays. The client had 1,914 monsters and no way to tell which of them wanted anything |
  * | 25 | `Items.UseCount` keeps the realm's **`-1`** instead of dropping it. Absent had meant both *the realm says nothing* and *the realm says for ever*, which are opposite answers to the one question that decides whether invoking an item costs anything — and 39 items in the shipped realm, nine of them weapons casting a bless, read as unstated. See `AutoInvoke` |
+ * | 28 | **The item a lever needs.** `lift up talisman (Item: 815)` ended 172 of Paradigm's lever cells and 170 of stock's, and `parseAction` split it into the phrases like any other — so the router priced a passage the server refuses without the talisman at the cost of a free lever, and the walker said the words to a wall. `RequirementAction.item` carries the number; the router walls the exit for a pack that lacks it and names the item in the refusal; the item is indexed like a key so the name is there to say — todo 13 |
+ * | 27 | **Which bundled world this is, and the archive it came from.** `world` names one of the two the client ships and `archive` is that file's name, size and SHA-1, so a database a player names can be recognised as the very bytes a bundled world was built from and loaded as that world rather than converted into a second copy keyed under a second name. And `Custom: Default` — the stock v1.11p data set's own name for itself, read off `mdb/majormud-v1.11p.zip` — reads as the MajorMUD family; it read as no family at all, so every calculator declined on the one world that ships for MajorMUD realms. Bumped for the cache, like 19 and 26 |
  * | 26 | **A quest step's alternatives, kept apart.** A text block holds one line per class — fifteen on the alignment chains — and each line is a complete route with its own gate, its own price and its own reward. `stepsInBlock` merged lines advancing the same counter to the same rank by *unioning* them, so a step said **be a Warrior and a Witchunter**, be level 22 and level 20 at once, and take all fifteen classes' perks: a wrong answer rather than a long one, on 23 of the 251 steps and every one of the three great chains. What every route shares stays on the step; the rest is `QuestStep.ways` (`shareRoutes`). Bumped for the **cache**, like format 19: a player who had already converted their own database would otherwise keep the union for ever, since none of the path, size or mtime `RealmLibrary.identity` also keys on moves when the converter changes |
  */
-export const REALM_FORMAT = 26;
+export const REALM_FORMAT = 28;
+
+/**
+ * What `build-world.mjs` says about a world it is bundling: which of the two
+ * it is, and the archive it read. The runtime conversion path passes nothing —
+ * a player's realm is named after its file and recognised by nothing else.
+ */
+export interface ShippedBuild {
+  world: ShippedWorld;
+  archive: ArchiveIdentity;
+}
+
+/**
+ * A file's identity by content: its name, its size and the SHA-1 of its bytes.
+ *
+ * Read by the build script for the archive it bundles, and by `RealmLibrary`
+ * for a database a player names, so the two can be compared. The size is
+ * cheap and is checked first; the hash is what settles it.
+ */
+export function identityOfArchive(file: string): ArchiveIdentity {
+  const bytes = fs.readFileSync(file);
+  return {
+    name: path.basename(file),
+    size: bytes.length,
+    sha1: crypto.createHash('sha1').update(bytes).digest('hex')
+  };
+}
 
 /** The ten directions, in the column order every export of this table uses. */
 export const DIRECTIONS = ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW', 'U', 'D'] as const;
@@ -106,6 +139,13 @@ export interface BuiltRealm {
      * the database does not say, which is never a fallback to the other family.
      */
     family?: RealmFamily;
+    /**
+     * Which of the two bundled worlds this is, and the archive it was built
+     * from — format 27, written only by `build-world.mjs`. A realm a player
+     * converts carries neither: it is theirs, named after its file.
+     */
+    world?: ShippedWorld;
+    archive?: ArchiveIdentity;
     /**
      * Every item name the realm has, for recognising one in a line of text.
      *
@@ -609,6 +649,8 @@ interface Lever {
   at: { map: number; room: number };
   direction: string;
   say: string[];
+  /** The item the realm says must be carried to pull it. See `parseAction`. */
+  item?: number;
   index?: number;
 }
 
@@ -875,7 +917,7 @@ export class RealmBuildError extends Error {}
  * pointed at by mistake — and a client that accepts it stops knowing where it
  * is with nothing on screen saying why.
  */
-export function buildRealm(source: RealmSource, today: string): BuiltRealm {
+export function buildRealm(source: RealmSource, today: string, shipped?: ShippedBuild): BuiltRealm {
   const rooms = source.table('Rooms');
   if (rooms === null) {
     throw new RealmBuildError(
@@ -962,8 +1004,12 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
             at: { map: lever.map ?? map, room: lever.room ?? roomNumber },
             direction: lever.direction,
             say: lever.say,
+            ...(lever.item === undefined ? {} : { item: lever.item }),
             ...(lever.index === undefined ? {} : { index: lever.index })
           });
+          // Named like a keyed door's key, so the refusal can say *amber
+          // talisman* rather than *item 815*.
+          if (lever.item !== undefined) neededItems.add(lever.item);
         }
         continue;
       }
@@ -1103,11 +1149,13 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
       if (found === undefined || found.length === 0) continue;
       const needs = /Needs\s+(\d+)\s+Actions?/i.exec(exit.i);
       if (needs === null || Number(needs[1]) !== found.length) continue;
-      const acts = found.map((lever) =>
-        lever.in.map === lever.at.map && lever.in.room === lever.at.room
-          ? { say: lever.say }
-          : { say: lever.say, at: { map: lever.in.map, room: lever.in.room } }
-      );
+      const acts = found.map((lever) => ({
+        say: lever.say,
+        ...(lever.item === undefined ? {} : { item: lever.item }),
+        ...(lever.in.map === lever.at.map && lever.in.room === lever.at.room
+          ? {}
+          : { at: { map: lever.in.map, room: lever.in.room } })
+      }));
       exit.a = acts;
       if (acts.every((act) => act.at === undefined)) openableHere += 1;
     }
@@ -1136,7 +1184,8 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
     lines,
     header: {
       v: REALM_FORMAT,
-      source: source.path.split(/[\\/]/).pop() ?? source.path,
+      // A bundled world is named after itself; a player's is named after its file.
+      source: shipped?.world ?? source.path.split(/[\\/]/).pop() ?? source.path,
       rooms: placed,
       generatedAt: today,
       items,
@@ -1147,6 +1196,7 @@ export function buildRealm(source: RealmSource, today: string): BuiltRealm {
       classes,
       ...(build === null ? {} : { build }),
       ...(family === null ? {} : { family }),
+      ...(shipped === undefined ? {} : { world: shipped.world, archive: shipped.archive }),
       itemNames,
       quests
     },

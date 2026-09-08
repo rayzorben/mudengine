@@ -21,7 +21,7 @@ import { WorldGraph } from '../WorldGraph';
  * asks. It skips where the file is absent, like every other realm-backed test
  * here.
  */
-const file = path.resolve('resources/world/rooms.jsonl.gz');
+const file = path.resolve('resources/world/paradigm.jsonl.gz');
 const available = fs.existsSync(file);
 const graph = available ? WorldGraph.load(file) : null;
 

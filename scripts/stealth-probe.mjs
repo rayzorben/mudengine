@@ -33,7 +33,7 @@ if (local.length === 0) skip(`no character on ${HOST}:${PORT} with credentials.`
 const profile = local[local.length - 1];
 const other = local.find((p) => p !== profile) ?? null;
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(`\nstealth-probe -> ${HOST}:${PORT} as ${profile.id}\n`);
 
 const seen = [];

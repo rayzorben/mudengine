@@ -116,6 +116,8 @@ const byName = (list, name) =>
   list.find((e) => String(e?.name ?? '').toLowerCase() === String(name).trim().toLowerCase());
 
 let who = null;
+/** Characters passed over because they play somewhere this check may not log in to. */
+const elsewhere = [];
 for (const id of profileIds) {
   let raw;
   try {
@@ -126,6 +128,16 @@ for (const id of profileIds) {
   if (!raw || typeof raw !== 'object') continue;
   const server = typeof raw.server === 'string' ? byName(servers, raw.server) : raw.server;
   if (!server?.host) continue;
+  /*
+   * Selected by target, as every probe is (`local-realm.mjs`): the first
+   * character alphabetically used to be taken whatever realm it played, and
+   * a Paradigm character sorting first refused the whole check on a machine
+   * that had three on the test realm (2026-09-07).
+   */
+  if (!isLocalRealm(server.host)) {
+    elsewhere.push(id);
+    continue;
+  }
   // No named account store any more: every character's account is inline.
   const account = raw.account && typeof raw.account === 'object' ? raw.account : null;
   who = {
@@ -140,8 +152,11 @@ for (const id of profileIds) {
 
 if (!who) {
   console.log(
-    `\nno character in ${profilesDir} names a server, so the client has nothing to connect. ` +
-      `Copy resources/config/profile.default.yaml into one. Skipping.\n`
+    elsewhere.length > 0
+      ? `\nno character in ${profilesDir} plays on ${HOST}; ${elsewhere.join(', ')} ` +
+          `play elsewhere, and ${HOST} is the only server this project logs in to. Skipping.\n`
+      : `\nno character in ${profilesDir} names a server, so the client has nothing to connect. ` +
+          `Copy resources/config/profile.default.yaml into one. Skipping.\n`
   );
   process.exit(0);
 }

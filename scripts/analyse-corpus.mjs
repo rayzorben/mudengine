@@ -61,7 +61,7 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const world = WorldGraph.load(path.resolve('resources/world/rooms.jsonl.gz'));
+const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
 console.log(
   `\nrealm: ${world.size.toLocaleString()} rooms, ${world.mobCount.toLocaleString()} monsters`
 );

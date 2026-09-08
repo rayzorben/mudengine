@@ -4,7 +4,7 @@
  * for the settings screen's cure gates.
  *
  * The vocabulary is `abilities.ts`'s, and the rules are from the shipped
- * realm's own cure spells (read 2026-09-01, `resources/world/rooms.jsonl.gz`):
+ * realm's own cure spells (read 2026-09-01, `resources/world/paradigm.jsonl.gz`):
  *
  * - `cure poison` (19) and `antidote` (31) both carry `CurePoison` (20), and
  *   both also carry `DispellMagic` (73) valued `Poison` (19) — either mark is

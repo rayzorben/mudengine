@@ -94,6 +94,16 @@ describe('the family a database states', () => {
       expect(familyOfBuild({ ...GMUD, custom })).toBe('majormud');
     }
   });
+
+  it('reads the stock data set, which calls itself Default, as MajorMUD', () => {
+    // `mdb/majormud-v1.11p.zip`, read 2026-09-07: the unmodified v1.11p data
+    // names no lineage in words, and it is the lineage everything else forked.
+    expect(familyOfBuild({ ...GMUD, data: 'v1.11p', custom: 'Default', legit: 1 })).toBe(
+      'majormud'
+    );
+    // Whole, not a prefix: a derivative that edits the file renames it.
+    expect(familyOfBuild({ ...GMUD, custom: 'Default plus my edits' })).toBeNull();
+  });
 });
 
 describe('the Info record read back off a header', () => {
