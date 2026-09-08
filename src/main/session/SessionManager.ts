@@ -108,7 +108,7 @@ import { tuning } from '../app/tuning';
 import {
   appraiseRoom,
   EMPTY_ROOM_VERDICT,
-  lairShare,
+  lairPassage,
   prowessSheetOf,
   roomVerdictKey,
   weighVerdicts,
@@ -117,6 +117,7 @@ import {
   type Verdict
 } from '../../shared/verdict';
 import { LairCosts } from '../world/LairCosts';
+import { attacksOnSight } from '../../shared/mobs';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -3205,20 +3206,31 @@ export class SessionManager {
    */
   private lairDanger(room: WorldRoom, state: CharacterState): number | null {
     if (!this.world || !room.lair) return null;
-    return this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
+    /*
+     * The damage is remembered per room; the share is taken against the
+     * health the character has *now*, at every call, because that is the
+     * number a pass is measured against — a route planned at a third of the
+     * bar has to be three times as careful as one planned at the top of it,
+     * and the loop plans every leg afresh. Unread health prices nothing.
+     */
+    const health = state.vitals.hp ?? state.vitals.hpMax;
+    if (health === null || !(health > 0)) return null;
+    const damage = this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
+    return damage === null ? null : damage / health;
   }
 
   /**
    * The figures a lair's cost depends on, as one string, so a change to any
-   * of them drops every remembered room. The sheet, the health maximum, the
-   * weapon in hand, the class row and the server's family; not the pack nor
-   * the purse, which move every room and change no fight.
+   * of them drops every remembered room. The sheet, the weapon in hand, the
+   * class row, the standing (which decides who attacks on sight) and the
+   * server's family; not the pack, the purse nor the health itself, which
+   * move every room and change no blow.
    */
   private fitness(state: CharacterState): string {
-    const { progress, vitals } = state;
+    const { progress } = state;
     return [
       progress.level,
-      vitals.hpMax,
+      ownAlignment(state),
       progress.armourClass,
       progress.damageResist,
       progress.magicRes,
@@ -3232,7 +3244,15 @@ export class SessionManager {
     ].join('|');
   }
 
-  /** One room's lair, weighed. See `lairDanger` for what is remembered and why. */
+  /**
+   * One room's lair, weighed: what one pass through it is expected to take,
+   * in hit points. See `lairDanger` for what is remembered and why.
+   *
+   * Only what attacks on sight counts (`attacksOnSight`, against the
+   * character's own standing): a passive monster is walked past, a hostile
+   * one gets its round, and one whose disposition nobody has read is priced
+   * as hostile — an unknown is never the reassuring answer.
+   */
   private weighLair(id: RoomId): number | null {
     const world = this.world;
     if (!world) return null;
@@ -3242,15 +3262,19 @@ export class SessionManager {
     if (lair === null || lair.mobs.length === 0) return null;
     const state = this.tracker.current;
     const { combat, magery, family } = this.realmClass();
+    const entities = lair.mobs.map((mob) => world.buildMobEntity(mob.name));
     const verdicts = weighVerdicts(
-      lair.mobs.map((mob) => world.buildMobEntity(mob.name)),
+      entities,
       this.menacePlayer(state),
       tuning().menace,
       prowessSheetOf(state, { combat, magery }),
       wieldedWeapon(state.inventory.items),
       family
     );
-    return lairShare(verdicts, lair.max, state.vitals.hpMax);
+    const standing = ownAlignment(state);
+    return lairPassage(verdicts, lair.max, tuning().world.passRounds, (index) =>
+      attacksOnSight(entities[index]?.disposition ?? null, standing)
+    );
   }
 
   /**

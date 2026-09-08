@@ -256,30 +256,41 @@ export function appraiseRoom(
 }
 
 /**
- * What a lair is expected to cost, as a share of the character's maximum health.
+ * What one pass through a lair is expected to take, in hit points.
  *
- * The worst of its monsters, as many times as the lair holds at once
- * (`WorldLair.max`): a lair of four rats costs four rats, a lair of one boss
- * costs the boss, and a lair that mixes them is priced as if it were full of
- * the worst — the direction that is safe to be wrong in, since a route is
- * chosen before anybody has seen what actually spawned. Null when the
- * maximum is unread or no monster's cost is knowable; a lair with nothing to
- * weigh is not free, it is unknown, and the router prices unknown as nothing
- * rather than as a wall (`dangerPenalty`).
+ * The router's question, and not the card's. A verdict's `cost` is what
+ * *clearing* a monster takes — its blows for the rounds needed to kill it —
+ * and a route is not a fight: walking in and out costs one round (`rounds`,
+ * `tuning.world.passRounds`) of the blows of whatever is awake and attacks on
+ * sight. So this is the worst such monster's `menace.perRound`, as many
+ * times as the lair holds at once (`WorldLair.max`): a lair of four rats
+ * costs a round of four rats, a lair of one boss a round of the boss, and a
+ * lair that mixes them is priced as if it were full of the worst — the
+ * direction that is safe to be wrong in, since a route is chosen before
+ * anybody has seen what actually spawned.
+ *
+ * `attacks` says, per monster, whether it attacks on sight; `false` is walked
+ * past for nothing, and `null` — a disposition nobody has read — counts,
+ * because an unknown is never the reassuring answer. Null when no monster's
+ * menace is knowable; a lair with nothing to weigh is not free, it is
+ * unknown, and the router prices unknown as nothing rather than as a wall
+ * (`dangerPenalty`). Priced by clearing, every lair on a level-11
+ * character's way to the Black Mountains was a wall and the route went round
+ * three maps to save five of them.
  */
-export function lairShare(
+export function lairPassage(
   verdicts: ReadonlyArray<Verdict>,
   held: number | null,
-  hpMax: number | null
+  rounds: number,
+  attacks: (index: number) => boolean | null
 ): number | null {
-  if (hpMax === null || !(hpMax > 0)) return null;
   let worst: number | null = null;
-  for (const verdict of verdicts) {
-    if (verdict.cost === null) continue;
-    if (worst === null || verdict.cost.value > worst) worst = verdict.cost.value;
+  for (const [index, verdict] of verdicts.entries()) {
+    if (verdict.menace === null || attacks(index) === false) continue;
+    if (worst === null || verdict.menace.perRound > worst) worst = verdict.menace.perRound;
   }
   if (worst === null) return null;
-  return (worst * Math.max(1, held ?? 1)) / hpMax;
+  return worst * Math.max(1, held ?? 1) * Math.max(1, rounds);
 }
 
 /**

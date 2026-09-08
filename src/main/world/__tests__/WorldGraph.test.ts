@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { WorldGraph, edgeBlock, edgePenalty } from '../WorldGraph';
+import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty } from '../WorldGraph';
 import type { Traveller } from '../WorldGraph';
 import type { Requirement, RouteBlock } from '../../../shared/world';
 import { REQUIREMENT_KINDS, ROUTE_BLOCK_KINDS, describeBlock } from '../../../shared/world';
@@ -2127,6 +2127,15 @@ describe('what a door costs to force', () => {
     expect(weak).toBeGreaterThan(nearly);
     // And still a number: when there is no other way, it is the way.
     expect(edgePenalty(door(3000), { strength: 30 })).not.toBeNull();
+    /*
+     * The grade stays on the door's own scale. It was `wall × (1 − ratio)` on
+     * top of the wall, so the gap between two doors the character could not
+     * force was worth tens of thousands of plain steps, and the router walked
+     * them: a strength-90 character went three maps round to prefer a 100
+     * door over a 251 one.
+     */
+    expect(weak - nearly).toBeLessThanOrEqual(12 * 5);
+    expect(weak).toBeLessThanOrEqual(100_000 + 12 * 10);
   });
 
   it('is close to a plain door at the minimum and cheaper well above it', () => {
@@ -3050,18 +3059,41 @@ describe('what waits in a room prices the way through it', () => {
   });
 
   it('goes round a lair that would cost more than the detour', () => {
-    // Half the bar is 20 on the step; the detour is one more room.
+    // Half the bar is 200 on the step; the detour is one more room.
     const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: lairs(0.5) });
     expect(route.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
     expect(route.cost).toBe(3);
   });
 
   it('walks through a lair cheaper than the detour, and says what it costs', () => {
-    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: lairs(0.02) });
+    // A fifth of a percent of the bar rounds to nothing on the step, and the
+    // step still says what waits there.
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: lairs(0.002) });
     expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
-    expect(route.steps[0]?.danger).toBe(0.02);
+    expect(route.steps[0]?.danger).toBe(0.002);
     expect(route.steps[0]?.deadly).toBeUndefined();
-    expect(route.cost).toBe(2 + Math.round(0.02 * 40));
+    expect(route.cost).toBe(2 + Math.round((0.002 * 200) / 0.998));
+    // Two percent is already dearer than the one-room detour.
+    const round = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: lairs(0.02) });
+    expect(round.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
+  });
+
+  /*
+   * A slope and not a cliff. The old price was forty a bar, linear, with the
+   * wall at one: a pass expected to take 99% of the bar cost thirty-nine
+   * steps and one expected to take all of it a hundred thousand.
+   */
+  it('prices a pass ever more steeply as it approaches the whole bar', () => {
+    expect(dangerPenalty(0.1)).toBe(22);
+    expect(dangerPenalty(0.5)).toBe(200);
+    expect(dangerPenalty(0.9)).toBe(1800);
+    expect(dangerPenalty(0.99)).toBe(19_800);
+    // Just short of deadly is dear and still not a wall; deadly is the wall.
+    expect(dangerPenalty(0.999_999_9)).toBe(100_000);
+    expect(dangerPenalty(1)).toBe(100_000);
+    expect(dangerPenalty(31)).toBe(100_000);
+    expect(dangerPenalty(0)).toBe(0);
+    expect(dangerPenalty(null)).toBe(0);
   });
 
   it('walls a deadly lair, walks it when there is no other way, and marks the step', () => {

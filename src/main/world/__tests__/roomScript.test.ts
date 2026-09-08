@@ -81,6 +81,35 @@ describe('what a room answers to', () => {
     expect(answer?.need).toBeUndefined();
   });
 
+  /*
+   * `Rooms.CMD` 308 on both databases: the drop from Dragon's Teeth Hills
+   * 2/487 into the Stone Tunnel, whose only movement is spell 336 (*fall*,
+   * `TeleportRoom 1306`, `TeleportMap 2`). Read as narration it was a room
+   * command with no landing, and the router had the climb back up and not the
+   * way down — format 29.
+   */
+  it('lands a cast whose spell teleports, and lets a teleport step win', () => {
+    const HOLE =
+      'go hole:message 774:cast 336:message 766:text 306\n' +
+      'enter hole:message 774:cast 336:message 766:text 306\n' +
+      'crawl hole:message 774:cast 336:message 766:text 306';
+    const landing = (id: number): string | undefined => (id === 336 ? '2/1306' : undefined);
+    const [answer, ...rest] = parseRoomScript(HOLE, named, landing);
+    expect(rest).toEqual([]);
+    expect(answer?.say).toEqual(['go hole', 'enter hole', 'crawl hole']);
+    expect(answer?.to).toBe('2/1306');
+    expect(answer?.need).toBeUndefined();
+    // Nothing to land: the same phrase stays a command that moves nobody.
+    expect(parseRoomScript(HOLE, named)[0]?.to).toBeUndefined();
+    // The realm's own `teleport` is the word, whichever side of the cast it sits.
+    expect(parseRoomScript('dive pool:cast 336:teleport 121 12', named, landing)[0]?.to).toBe(
+      '12/121'
+    );
+    expect(parseRoomScript('dive pool:teleport 121 12:cast 336', named, landing)[0]?.to).toBe(
+      '12/121'
+    );
+  });
+
   it('reads a command that costs money and moves nobody', () => {
     const [answer] = parseRoomScript(CASINO, named);
     expect(answer?.say).toEqual(['roll dice', 'play dice']);
