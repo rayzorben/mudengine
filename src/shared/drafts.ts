@@ -42,7 +42,13 @@ const asGate = (value: unknown): EncumbranceGate =>
         .toLowerCase()
   ) ?? 'never';
 import { PROFILE_ACCENTS, type ProfileAccent } from './profiles';
-import { isThemePreference, type ThemePreference } from './themes';
+import {
+  DEFAULT_THEME,
+  isDarkTheme,
+  isThemePreference,
+  type ThemeId,
+  type ThemePreference
+} from './themes';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
@@ -151,6 +157,10 @@ export interface GlobalDraft {
     tabs: TabsPreference;
     showHud: boolean;
     showLogo: boolean;
+    /** Keep the console dark while the chrome is light. See `ConsoleUiConfig`. */
+    consoleKeepDark: boolean;
+    /** Which dark palette it wears when it does. Always a dark theme. */
+    consoleDarkTheme: ThemeId;
     vitals: { hp: VitalDraft; mana: VitalDraft };
     alerts: ProfileDraft['alerts'];
   };
@@ -458,7 +468,12 @@ export interface ProfileDraft {
    * character*: a healer wants the party channel and a soloing thief does not,
    * and the rail already remembers which cards each of them keeps.
    */
-  alerts: { minimum: string; mute: string[] };
+  alerts: {
+    minimum: string;
+    mute: string[];
+    /** What a `search` turning something up is worth interrupting for. */
+    finds: { items: string[]; cashOverCopper: number };
+  };
   /**
    * Whether this character answers another player's `@` commands —
    * `automation.remotes`.
@@ -807,7 +822,14 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       minimum: ['critical', 'warning', 'info'].includes(String(alerts['minimum']))
         ? String(alerts['minimum'])
         : 'info',
-      mute: words(alerts['mute'], 24)
+      mute: words(alerts['mute'], 24),
+      finds: {
+        items: words(isRecord(alerts['finds']) ? alerts['finds']['items'] : [], 24),
+        cashOverCopper: Math.max(
+          0,
+          Math.round(Number(isRecord(alerts['finds']) ? alerts['finds']['cashOverCopper'] : 0) || 0)
+        )
+      }
     },
     afk: {
       enabled: afk['enabled'] === true,
@@ -846,6 +868,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
   const ui = isRecord(value['ui']) ? value['ui'] : {};
   const vitals = isRecord(ui['vitals']) ? ui['vitals'] : {};
   const alerts = isRecord(ui['alerts']) ? ui['alerts'] : {};
+  const consoleUi = isRecord(ui['console']) ? ui['console'] : {};
   const logging = isRecord(value['logging']) ? value['logging'] : {};
   const automation = isRecord(value['automation']) ? value['automation'] : {};
   const idle = isRecord(automation['idle']) ? automation['idle'] : {};
@@ -895,6 +918,12 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
+      consoleKeepDark: consoleUi['keepDark'] !== false,
+      // Coerced to a dark theme rather than refused: naming a light one is a
+      // contradiction, not a preference. See `normalizeConsoleUi`.
+      consoleDarkTheme: isDarkTheme(consoleUi['darkTheme'])
+        ? consoleUi['darkTheme']
+        : DEFAULT_THEME,
       vitals: { hp: asVital(vitals['hp']), mana: asVital(vitals['mana']) },
       alerts: asIf.alerts
     },

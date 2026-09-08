@@ -84,6 +84,30 @@ export function currencyOf(
   return entity;
 }
 
+/**
+ * A copper total broken back down the ladder, largest denomination first.
+ *
+ * The inverse of what `currencyOf` computes, and the one place this module
+ * converts *for display* — which the header above says nothing else does, and
+ * still does not: this exists because a record can hold a total where no
+ * listing survives to be quoted. A find's cash is written down as copper, so
+ * one number compares against every denomination the realm prints; showing it
+ * as `1250 copper` would be arithmetic the reader has to undo.
+ *
+ * Greedy from the top, which is exact rather than approximate: the rungs are
+ * whole multiples of each other, so every total has one spelling.
+ */
+export function copperSpread(copper: number): CurrencyEntity {
+  let left = Math.max(0, Math.trunc(copper));
+  const counts: Partial<Record<Denomination, number>> = {};
+  for (const which of [...DENOMINATIONS].sort((a, b) => COPPER_PER[b] - COPPER_PER[a])) {
+    const each = COPPER_PER[which];
+    counts[which] = Math.floor(left / each);
+    left -= counts[which] * each;
+  }
+  return currencyOf(counts);
+}
+
 /** The same, with one denomination added to what is already counted. */
 export function addCoins(
   cash: CurrencyEntity | null,

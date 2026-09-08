@@ -1,6 +1,6 @@
 {
   "name": "mudengine",
-  "version": "0.6.1",
+  "version": "0.6.5",
   "description": "Modern cross-platform client, terminal and reactive automation engine for MajorMUD / GreaterMUD / Paradigm",
   "author": "Raymond Bennett <raymond.bennett@gmail.com>",
   "license": "MIT",

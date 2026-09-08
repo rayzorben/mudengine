@@ -40,6 +40,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import ClearField from './ClearField';
 import Icon from './Icon';
 import { MapLegend, type BuilderMarks } from './MapPlan';
 import MapView from './MapView';
@@ -401,15 +402,17 @@ function LoopBuilderCard({
       title={t('cards.builder.title')}
     >
       <div className="builder-tools">
-        <input
-          aria-label={t('cards.builder.findAria')}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={list.onKeyDown}
-          placeholder={t('cards.builder.findPlaceholder')}
-          ref={finder}
-          spellCheck={false}
-          value={query}
-        />
+        <ClearField label={t('cards.builder.findAria')} onClear={() => setQuery('')} query={query}>
+          <input
+            aria-label={t('cards.builder.findAria')}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={list.onKeyDown}
+            placeholder={t('cards.builder.findPlaceholder')}
+            ref={finder}
+            spellCheck={false}
+            value={query}
+          />
+        </ClearField>
         <button
           aria-label={t('cards.builder.centreHereAria', { name: characterName })}
           className="quiet builder-key"

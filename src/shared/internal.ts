@@ -201,7 +201,31 @@ const TUNING_DEFAULTS = {
      * shape of this feature that would be worse than not having it, and it is
      * aimed at somebody else's host.
      */
-    settledMs: 30_000
+    settledMs: 30_000,
+    /**
+     * How long a command may go unanswered before the link is called dead.
+     *
+     * The socket staying open is not evidence that anything is on the other
+     * end of it: a NAT table that forgot the flow, a host that went away
+     * without a FIN, a link that dropped mid-round all leave a writable socket
+     * that will never answer again, and the client sat at one reporting
+     * `connected` until somebody noticed. Nothing else here can see that —
+     * `Reconnect` only ever hears about a socket that *closed*.
+     *
+     * Counted only while an answer is **owed**: the clock starts when a
+     * command goes on the wire and stops at the next byte in. Wire silence on
+     * its own would be the wrong reading twice over — this realm repaints its
+     * status line unprompted every thirty seconds (`Routines.noteSent`), so
+     * fifteen seconds of it is ordinary, and a client that has asked for
+     * nothing is owed nothing. Every command this family answers is answered
+     * with at least a status line, and promptly.
+     *
+     * `0` switches it off. The keep-alive (`automation.idle`) is what supplies
+     * the traffic on a character nobody is playing; with both off, a link that
+     * dies while nothing is being sent stays undetected, which is the honest
+     * answer rather than a guess about silence.
+     */
+    silentForMs: 15_000
   },
   /** Reading the stream — `src/main/parse/`. */
   parse: {
@@ -388,6 +412,25 @@ const TUNING_DEFAULTS = {
      * and the arrivals inside the window are answered by the same listing.
      */
     rosterAskMs: 60_000,
+    /**
+     * The floor between two looks at other players.
+     *
+     * A room that fills up should not spend six commands at once on something
+     * nobody asked for urgently, and the budget it spends from is the one a
+     * fight is fought with. Short enough that a room of three is read within
+     * the time somebody stands in it.
+     */
+    lookAskMs: 4_000,
+    /**
+     * How long a queued look is worth sending.
+     *
+     * The answer is about somebody standing in *this room*, so a look held
+     * behind a fight for a minute arrives at a person who has walked out —
+     * which is the failure reported 2026-09-07, from the other side. Longer
+     * than `lookAskMs` by enough that a look queued behind one round still
+     * goes; shorter than anybody stays put.
+     */
+    lookExpiresMs: 20_000,
     /** Decision-trace entries kept; it answers "why did it do that?". */
     traceLimit: 200
   },
@@ -877,6 +920,17 @@ const TUNING_DEFAULTS = {
   },
   /** What one session keeps in memory for the diagnostics cards. */
   session: {
+    /**
+     * How far experience must fall before it counts as a sign of a reset.
+     *
+     * The weakest of the four signals and the only one with an innocent
+     * explanation: a death costs experience. So it is a *share* of what was
+     * there rather than any drop at all, and at 0.3 a death would have to cost
+     * a third of everything the character had earned to raise it — which on
+     * this server family it does not. `0` switches the signal off; the other
+     * three are facts a character cannot do to itself and have no threshold.
+     */
+    resetExpDropShare: 0.3,
     /** Negotiation records the diagnostics pane can look back over. */
     telnetLogLimit: 500,
     /** Framed lines retained; the terminal keeps the real backscroll. */
@@ -987,6 +1041,16 @@ const TUNING_DEFAULTS = {
     memoryWriteDelayMs: 2000,
     /** Observations one character keeps. */
     memoryLimit: 2000,
+    /**
+     * Rows in one realm's find log before the oldest is dropped.
+     *
+     * A find is one thing in one room, so this is a count of *places worth
+     * searching* rather than of searches: a room searched every lap is one
+     * row. Larger than `memoryLimit` would buy nothing — the shipped realm has
+     * 2,150 rooms — and smaller would start dropping a realm somebody has
+     * actually explored.
+     */
+    findLimit: 2000,
     /** How long learned monster health waits before it is written. */
     loreSaveDelayMs: 5_000,
     /**

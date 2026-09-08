@@ -61,6 +61,21 @@ export interface WalkProgress {
    */
   path: RoomId[];
   /**
+   * The rooms still to be entered, **named**, in the order they come.
+   *
+   * `path` beside it is the same journey as ids, which is what a map draws
+   * with; this is the same journey as words, which is what a reader needs.
+   * Both, because neither answers the other's question: an id cannot be read
+   * and a name cannot be placed.
+   *
+   * What it is for is the half of a walk the card never showed. A bar says how
+   * far along, and the step being sent says what is happening now, and between
+   * them they answer *what have I done* and *what am I doing* — leaving *what
+   * is left*, which is the one a player actually acts on. Empty while nothing
+   * is being walked.
+   */
+  ahead: string[];
+  /**
    * Why it is no longer walking. Null while it still is.
    *
    * Always set when a walk stops, because "the bot stopped and I do not know
@@ -142,6 +157,7 @@ export const IDLE_WALK: WalkProgress = {
   destinationRoom: null,
   step: null,
   path: [],
+  ahead: [],
   reason: null,
   hold: null
 };

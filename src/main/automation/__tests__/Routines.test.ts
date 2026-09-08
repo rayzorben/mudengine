@@ -584,3 +584,94 @@ describe('asking for the stat sheet to settle a buff ending', () => {
     expect(commandsIn(queue)).toEqual([]);
   });
 });
+
+/*
+ * Looking at the people in the room, and the bug that made it worth a todo.
+ *
+ * Reported 2026-09-07: Durnan walked in, nothing looked, a long time passed
+ * while the character cast and fought, Durnan left — and *then* the look went
+ * out, to `You do not see durnan here!`. Two faults in one line: the queue was
+ * a list of arrivals nothing ever took a name out of, and it drained only on
+ * the idle tick, which a character that fights and walks all evening never
+ * reaches.
+ */
+describe('looking at the people in the room', () => {
+  const looking = (): ReturnType<typeof make> =>
+    make({ talk: { ...DEFAULT_CONFIG.automation.talk, lookAtPlayers: true } });
+
+  const looks = (queue: CommandQueue): string[] =>
+    queue.snapshot.pending
+      .map((intent) => intent.command)
+      .filter((command) => command.startsWith('look '));
+
+  it('looks as soon as somebody is there, not at the next quiet moment', () => {
+    const { routines, queue } = looking();
+    routines.onPlayersHere(['Durnan']);
+    expect(looks(queue)).toEqual(['look durnan']);
+  });
+
+  it('forgets a look owed to somebody who has left', () => {
+    const { routines, queue } = looking();
+    routines.onPlayersHere(['Durnan', 'Roadkill']);
+    // One goes now; the second is owed and waiting on the floor between looks.
+    expect(looks(queue)).toHaveLength(1);
+
+    routines.onPlayersHere(['Durnan']);
+    vi.advanceTimersByTime(60_000);
+    routines.onPlayersHere(['Durnan']);
+    // Roadkill left before the floor passed, so the look owed to them is gone
+    // rather than spent on somebody who is not here.
+    expect(looks(queue).join(' ')).not.toContain('roadkill');
+  });
+
+  it('keeps a floor between two looks, and spends them one at a time', () => {
+    const { routines, queue } = looking();
+    routines.onPlayersHere(['Durnan', 'Roadkill', 'Air']);
+    expect(looks(queue)).toHaveLength(1);
+
+    vi.advanceTimersByTime(4_000);
+    routines.onPlayersHere(['Durnan', 'Roadkill', 'Air']);
+    expect(looks(queue)).toHaveLength(2);
+  });
+
+  it('does not look at the same person twice, even after they come back', () => {
+    const { routines, queue } = looking();
+    routines.onPlayersHere(['Durnan']);
+    // Past the floor, inside the shelf life, so the first look is still queued.
+    vi.advanceTimersByTime(5_000);
+    routines.onPlayersHere([]);
+    routines.onPlayersHere(['Durnan']);
+    // What somebody is wearing changes rarely, and the look announces this
+    // character to everybody standing there.
+    expect(looks(queue)).toHaveLength(1);
+  });
+
+  it('gives a queued look a shelf life, so a held one is dropped rather than sent', () => {
+    const { routines, queue } = looking();
+    routines.onPlayersHere(['Durnan']);
+    expect(looks(queue)).toHaveLength(1);
+    /*
+     * The other half of the reported failure, from the queue's side: a look
+     * held behind a fight until after the person walked out must not go. The
+     * queue drops an expired intent, so this is the same assertion as "it was
+     * never sent" — and the positive control is the line above.
+     */
+    vi.advanceTimersByTime(21_000);
+    expect(looks(queue)).toEqual([]);
+  });
+
+  it('looks at nobody while the setting is off', () => {
+    const { routines, queue } = make();
+    routines.onPlayersHere(['Durnan']);
+    expect(looks(queue)).toEqual([]);
+  });
+
+  it('and at nobody while automation is off', () => {
+    const { routines, queue } = make({
+      enabled: false,
+      talk: { ...DEFAULT_CONFIG.automation.talk, lookAtPlayers: true }
+    });
+    routines.onPlayersHere(['Durnan']);
+    expect(looks(queue)).toEqual([]);
+  });
+});

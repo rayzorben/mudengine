@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react';
 
 import Icon from './Icon';
+import ClearField from './ClearField';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { useRemembered, useRememberedChoice } from '../hooks/useRemembered';
@@ -198,21 +199,23 @@ export function FindField({
   return (
     <div className="table-find">
       <Icon name="search" />
-      <input
-        aria-label={label}
-        autoFocus={autoFocus}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape') return;
-          event.preventDefault();
-          onChange('');
-          onDismiss?.();
-          returnFocus?.();
-        }}
-        placeholder={label}
-        type="text"
-        value={query}
-      />
+      <ClearField label={label} onClear={() => onChange('')} query={query}>
+        <input
+          aria-label={label}
+          autoFocus={autoFocus}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            onChange('');
+            onDismiss?.();
+            returnFocus?.();
+          }}
+          placeholder={label}
+          type="text"
+          value={query}
+        />
+      </ClearField>
     </div>
   );
 }

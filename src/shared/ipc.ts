@@ -18,6 +18,8 @@ import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
 import type { LocalMap } from './map';
 import type { Discovery } from './memory';
+import type { Find } from './finds';
+import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
@@ -192,6 +194,17 @@ export interface AttachSnapshot {
    * from the next has a torn view and no way to tell.
    */
   learned: Discovery[];
+  /**
+   * What a `search` has turned up in this realm, oldest first. Here for the
+   * reason `learned` is: a window that fetched it separately would show a log
+   * from one moment beside a room from another.
+   */
+  finds: Find[];
+  /**
+   * The rank each quest has been seen to reach from what this character typed
+   * this session. See `Push.questSaid`.
+   */
+  questSaid: Record<number, number>;
   /**
    * The Talk card's history — the conversation log's tail, oldest first, so a
    * restart restores the conversation instead of starting the card empty.
@@ -750,6 +763,8 @@ export const Invoke = {
    * a mistyped direction the server accepted looks exactly like a discovery.
    */
   forget: 'world:forget',
+  forgetFind: 'world:forget-find',
+  forgetCharacter: 'session:forget-character',
   /**
    * Every name the realm knows, for the console to recognise. Once per
    * session: the list is a few thousand words, and a hover must not cost a
@@ -854,8 +869,41 @@ export const Push = {
    * The whole record, not the addition — a window that missed one push would
    * otherwise hold a record with a hole in it and no way to notice.
    */
-  learned: 'world:learned'
+  learned: 'world:learned',
+  /**
+   * What a `search` has turned up in this realm, after one turned up something.
+   *
+   * The whole log, for the reason `learned` sends the whole record — and
+   * realm-wide rather than room-wide, because the face that reads it is a log
+   * with a `Where` column and the map marks every room in it at once.
+   */
+  finds: 'world:finds',
+  /**
+   * The character in the realm may not be the one this client's records are
+   * about — a different race or class, level 1 after higher, experience a
+   * fraction of what it was.
+   *
+   * A **report**, never an instruction: what crosses is both characters and
+   * what was noticed, and the answer is the player's (`Invoke.forgetCharacter`).
+   * Once per session.
+   */
+  characterReset: 'session:character-reset',
+  /**
+   * The rank each quest has been *seen* to reach, from what the player typed.
+   *
+   * Nothing on the wire announces a quest counter moving — that is what `abil`
+   * is for — so this is the player's own action and nothing more, and the card
+   * ranks it **under** the realm's own count. See `stepSaid`.
+   */
+  questSaid: 'world:quest-said'
 } as const;
+
+/** Both characters, and why the client thinks they are two. See `Push.characterReset`. */
+export interface ResetNotice {
+  signals: ResetSignal[];
+  before: CharacterIdentity;
+  after: CharacterIdentity;
+}
 
 export interface IpcApi {
   /**
@@ -1064,6 +1112,16 @@ export interface IpcApi {
   lookup(session: SessionId, query: string): Promise<WorldLookup>;
   /** Whether there was such an observation to strike. The push that follows carries the rest. */
   forget(session: SessionId, discovery: Pick<Discovery, 'from' | 'command'>): Promise<boolean>;
+  /** Whether there was such a find to strike. The push that follows carries the rest. */
+  forgetFind(session: SessionId, find: Pick<Find, 'room' | 'name'>): Promise<boolean>;
+  /**
+   * Throws away what this client kept about the character that was here before.
+   *
+   * Only ever from a player answering the reset prompt. What goes is what is
+   * about a *character*; what is about the realm stays, because none of it
+   * stopped being true. Whether there was anything to throw away.
+   */
+  forgetCharacter(session: SessionId): Promise<boolean>;
   names(session: SessionId): Promise<WorldNames>;
   /** Whether the arbiter took it. */
   ask(session: SessionId, command: string): Promise<boolean>;
@@ -1093,6 +1151,9 @@ export interface IpcApi {
   onSessions(handler: (sessions: SessionSummary[]) => void): () => void;
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;
   onLearned(handler: (message: Addressed<Discovery[]>) => void): () => void;
+  onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
+  onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;
+  onQuestSaid(handler: (message: Addressed<Record<number, number>>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
 }

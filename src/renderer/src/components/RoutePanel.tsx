@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import MapPlan from './MapPlan';
+import ClearField from './ClearField';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { t } from '../lib/i18n';
 import { EMPTY_MAP, type LocalMap } from '@shared/map';
@@ -311,43 +312,49 @@ export default function RoutePanel({
         }}
       >
         <div className="route-search">
-          <input
-            aria-label={t('cards.route.searchAria')}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              /*
-               * Enter means "the obvious next thing", and what that is depends on
-               * what is on screen: a list of rooms, and it is the highlighted
-               * one; a plan, and it is walking it. Ctrl-K, route, Enter, a name,
-               * Enter, Enter — and the character is moving without a hand leaving
-               * the keyboard.
-               *
-               * Handled here rather than left to the form's implicit submission,
-               * which is a browser default that is easy to lose: the list hook
-               * already claims Enter when it has something to choose, so the two
-               * meanings belong in one place where the order between them is
-               * visible.
-               *
-               * It does not skip the review this panel exists for. The plan is
-               * already drawn when this fires — walking stays a separate,
-               * deliberate keystroke on a route the player can see, never a side
-               * effect of choosing a destination.
-               */
-              if (event.key === 'Enter' && walkable) {
-                event.preventDefault();
-                walk(route);
-                return;
-              }
-              list.onKeyDown(event);
-            }}
-            /* Says the second thing the field accepts, because nothing else
-             does: the Room card's badge shows `1/2150` and somebody who
-             typed it here used to get a name search that found nothing.
-             A feature nobody can find is one that was never built. */
-            placeholder={t('cards.route.searchPlaceholder')}
-            ref={inputRef}
-            value={query}
-          />
+          <ClearField
+            label={t('cards.route.searchAria')}
+            onClear={() => setQuery('')}
+            query={query}
+          >
+            <input
+              aria-label={t('cards.route.searchAria')}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                /*
+                 * Enter means "the obvious next thing", and what that is depends on
+                 * what is on screen: a list of rooms, and it is the highlighted
+                 * one; a plan, and it is walking it. Ctrl-K, route, Enter, a name,
+                 * Enter, Enter — and the character is moving without a hand leaving
+                 * the keyboard.
+                 *
+                 * Handled here rather than left to the form's implicit submission,
+                 * which is a browser default that is easy to lose: the list hook
+                 * already claims Enter when it has something to choose, so the two
+                 * meanings belong in one place where the order between them is
+                 * visible.
+                 *
+                 * It does not skip the review this panel exists for. The plan is
+                 * already drawn when this fires — walking stays a separate,
+                 * deliberate keystroke on a route the player can see, never a side
+                 * effect of choosing a destination.
+                 */
+                if (event.key === 'Enter' && walkable) {
+                  event.preventDefault();
+                  walk(route);
+                  return;
+                }
+                list.onKeyDown(event);
+              }}
+              /* Says the second thing the field accepts, because nothing else
+               does: the Room card's badge shows `1/2150` and somebody who
+               typed it here used to get a name search that found nothing.
+               A feature nobody can find is one that was never built. */
+              placeholder={t('cards.route.searchPlaceholder')}
+              ref={inputRef}
+              value={query}
+            />
+          </ClearField>
           <button
             aria-label={t('cards.route.closeAria')}
             className="quiet"

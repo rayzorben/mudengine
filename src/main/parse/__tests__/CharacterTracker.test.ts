@@ -9,6 +9,7 @@ import type { FightRecord, FightSink } from '../../../shared/fights';
 import { CharacterTracker, parseExit } from '../CharacterTracker';
 import { Classifier } from '../Classifier';
 import type { StreamLine } from '../../../shared/types';
+import type { AbilitySums } from '../../../shared/character';
 import {
   learn,
   learnSlot,
@@ -8338,7 +8339,7 @@ describe('the ability listing', () => {
     expect(cut.current.abilities?.sums[21]).toBe(100);
   });
 
-  it('is replaced whole by the next listing, and goes when the realm does', () => {
+  it('is replaced whole by the next listing, and survives leaving the realm', () => {
     const tracker = play([
       ...abil,
       'Race',
@@ -8351,8 +8352,16 @@ describe('the ability listing', () => {
     expect(tracker.current.abilities?.sums[126]).toBe(6);
     // The kit's 510 was in the previous listing and not in this one.
     expect(tracker.current.abilities?.sums[2]).toBe(50);
+    /*
+     * And it stays through the socket going (2026-09-07, todo 07). It used to
+     * be dropped here, on the argument that nothing on the wire reports a quest
+     * counter moving — which is equally true of a bank balance, kept anyway
+     * with `at` beside it so the card can draw a stale figure as stale. What
+     * the drop cost was a quest book that opened empty after every disconnect
+     * until somebody spent an `abil`.
+     */
     tracker.leaveRealm();
-    expect(tracker.current.abilities).toBeNull();
+    expect(tracker.current.abilities?.sums[126]).toBe(6);
   });
 
   it('leaves the room alone: the listing is not somewhere the character went', () => {
@@ -8482,7 +8491,8 @@ describe('the spellbook and the belongings record', () => {
         level: number | null;
         cost: number | null;
       }> | null,
-      durations: {} as Record<string, number>
+      durations: {} as Record<string, number>,
+      abilities: null as AbilitySums | null
     };
     return {
       state,
@@ -8498,7 +8508,14 @@ describe('the spellbook and the belongings record', () => {
         recallSpellDurations: () => state.durations,
         rememberSpellDuration: (spell: string, seconds: number) => {
           state.durations[spell.toLowerCase()] = Math.round(seconds);
-        }
+        },
+        recallAbilities: () => state.abilities,
+        rememberAbilities: (abilities: AbilitySums) => {
+          state.abilities = { ...abilities, sums: { ...abilities.sums } };
+        },
+        recallIdentity: () => null,
+        rememberIdentity: () => {},
+        forget: () => false
       }
     };
   }
@@ -8522,6 +8539,40 @@ describe('the spellbook and the belongings record', () => {
       if (batch) tracker.apply(batch, batch.rows);
     }
   };
+
+  it('writes the ability listing down, and seeds it back at reset', () => {
+    const { state, sink } = fakeBelongings();
+    const tracker = new CharacterTracker();
+    tracker.useBelongings(sink);
+    feedThrough(tracker, [
+      '[HP=156/MA=4]:',
+      'Race',
+      'ImmuPoison(21)             100',
+      '',
+      'GrantedAbilities',
+      'GoodQuest(126)             6',
+      '',
+      '[HP=156/MA=4]:'
+    ]);
+    expect(state.abilities?.sums[126]).toBe(6);
+
+    // The whole point of the todo: a restart is a new tracker, and the quest
+    // book must not open empty on it.
+    const next = new CharacterTracker();
+    next.useBelongings(sink);
+    next.reset();
+    expect(next.current.abilities?.sums[126]).toBe(6);
+    // With the clock the listing was read on, so a stale figure draws as stale.
+    expect(next.current.abilities?.at).toBe(state.abilities?.at);
+  });
+
+  it('seeds null back as null: never read is not "the realm counts none"', () => {
+    const { sink } = fakeBelongings();
+    const tracker = new CharacterTracker();
+    tracker.useBelongings(sink);
+    tracker.reset();
+    expect(tracker.current.abilities).toBeNull();
+  });
 
   it('writes the book down when a listing commits, and seeds it back at reset', () => {
     const { state, sink } = fakeBelongings();

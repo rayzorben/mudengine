@@ -845,11 +845,20 @@ export class SettingsEditor {
         tabs: config.ui.tabs,
         showHud: config.ui.showHud,
         showLogo: config.ui.showLogo,
+        consoleKeepDark: config.ui.console.keepDark,
+        consoleDarkTheme: config.ui.console.darkTheme,
         vitals: {
           hp: { ...config.ui.vitals.hp },
           mana: { ...config.ui.vitals.mana }
         },
-        alerts: { minimum: config.ui.alerts.minimum, mute: [...config.ui.alerts.mute] }
+        alerts: {
+          minimum: config.ui.alerts.minimum,
+          mute: [...config.ui.alerts.mute],
+          finds: {
+            items: [...config.ui.alerts.finds.items],
+            cashOverCopper: config.ui.alerts.finds.cashOverCopper
+          }
+        }
       },
       logging: {
         enabled: config.logging.enabled,
@@ -938,12 +947,16 @@ export class SettingsEditor {
         set(['ui', 'tabs'], draft.ui.tabs);
         set(['ui', 'showHud'], draft.ui.showHud);
         set(['ui', 'showLogo'], draft.ui.showLogo);
+        set(['ui', 'console', 'keepDark'], draft.ui.consoleKeepDark);
+        set(['ui', 'console', 'darkTheme'], draft.ui.consoleDarkTheme);
         for (const vital of ['hp', 'mana'] as const) {
           set(['ui', 'vitals', vital, 'caution'], draft.ui.vitals[vital].caution);
           set(['ui', 'vitals', vital, 'critical'], draft.ui.vitals[vital].critical);
         }
         set(['ui', 'alerts', 'minimum'], draft.ui.alerts.minimum);
         set(['ui', 'alerts', 'mute'], [...draft.ui.alerts.mute]);
+        set(['ui', 'alerts', 'finds', 'items'], [...draft.ui.alerts.finds.items]);
+        set(['ui', 'alerts', 'finds', 'cashOverCopper'], draft.ui.alerts.finds.cashOverCopper);
 
         set(['logging', 'enabled'], draft.logging.enabled);
         set(['logging', 'directory'], draft.logging.directory);

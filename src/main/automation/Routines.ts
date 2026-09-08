@@ -97,6 +97,15 @@ export class Routines {
   private toLookAt: string[] = [];
   private lookedAt = new Set<string>();
   /**
+   * When the last look went out, so two arrivals in one second are two looks a
+   * floor apart rather than two commands at once.
+   *
+   * `0` rather than `Date.now()`, for `rosterAskedAt`'s reason: the first
+   * person this character meets should be looked at, and starting the clock at
+   * construction would silence exactly the moment there is most to learn.
+   */
+  private lookedAtAt = 0;
+  /**
    * Which listing the spellbook ask sent this session, or null while it has
    * not — a second one-shot latch beside `probed`, and separate from it
    * because the two fire at different moments: the entry probe fires on the
@@ -126,6 +135,7 @@ export class Routines {
     this.probed = false;
     this.toLookAt = [];
     this.lookedAt.clear();
+    this.lookedAtAt = 0;
     this.rosterUnknown = false;
     this.rosterAskedAt = 0;
     this.askedBook = null;
@@ -474,11 +484,77 @@ export class Routines {
    * look is a *spent command* and a *visible* one — the server tells the person
    * they were looked at — so it goes out only while nothing else is happening.
    */
-  onPlayerSeen(name: string): void {
+  onPlayersHere(names: readonly string[]): void {
     if (!this.config.talk.lookAtPlayers) return;
-    const key = name.trim().toLowerCase();
-    if (key.length === 0 || this.lookedAt.has(key) || this.toLookAt.includes(key)) return;
-    this.toLookAt.push(key);
+    const here = new Set(
+      names.map((name) => name.trim().toLowerCase()).filter((key) => key.length > 0)
+    );
+
+    /*
+     * **Dropped first, and this is the bug.** The queue was a list of
+     * *arrivals* and nothing ever took a name out of it, so a look queued when
+     * Durnan walked in was still owed when he left — and went out minutes
+     * later, at the first quiet moment, to `You do not see durnan here!`
+     * (reported 2026-09-07). The room's occupant list is authoritative about
+     * who is here, the same rule a `who` listing follows for the realm, so
+     * reconciling against it is the whole fix.
+     *
+     * `lookedAt` is deliberately *not* reconciled: it is a record of what this
+     * session has already spent a command on, and somebody who leaves and comes
+     * back has not changed what they are wearing.
+     */
+    this.toLookAt = this.toLookAt.filter((key) => here.has(key));
+
+    for (const key of here) {
+      if (this.lookedAt.has(key) || this.toLookAt.includes(key)) continue;
+      this.toLookAt.push(key);
+    }
+
+    /*
+     * And offered now rather than only at the next quiet moment.
+     *
+     * The idle tick was the wrong clock here for the reason it was wrong for
+     * the roster catch-up (see the header): a character that fights and walks
+     * all evening never goes quiet, so the answer arrived after the person had
+     * gone. `lookAt` owns the floor between two looks, so this is the *first*
+     * of its two drains and the idle tick is still the second — quiet is a good
+     * moment to spend a command, it is just not the only one.
+     */
+    this.lookAt();
+  }
+
+  /**
+   * Sends one look, if one is owed and the floor between them has passed.
+   *
+   * One at a time, not the whole queue: each is a command from the same budget
+   * a fight is fought with, and a room of six people would otherwise spend six
+   * at once on something nobody asked for urgently. The `idle` band is
+   * unchanged — a look is visible to everybody standing there, so it still
+   * yields to anything else the character is doing.
+   */
+  private lookAt(): void {
+    if (!this.config.enabled || !this.config.talk.lookAtPlayers) return;
+    if (Date.now() - this.lookedAtAt < tuning().queue.lookAskMs) return;
+
+    // Marked spent before the send, like the roster flag, so a look still held
+    // behind a fight is not asked for twice.
+    const next = this.toLookAt.shift();
+    if (next === undefined) return;
+    this.lookedAt.add(next);
+    this.lookedAtAt = Date.now();
+    this.queue.enqueue({
+      command: `look ${next}`,
+      priority: 'idle',
+      coalesceKey: `idle:look:${next}`,
+      /*
+       * Worthless if it arrives late, for exactly the reason this todo was
+       * written: the answer is about somebody standing in this room, and by
+       * the time a held look reaches the wire they may have walked out. The
+       * queue drops an expired intent rather than sending it.
+       */
+      expiresAt: Date.now() + tuning().queue.lookExpiresMs,
+      reason: t('automation.routines.reasonLookAtPlayer')
+    });
   }
 
   /**
@@ -558,21 +634,10 @@ export class Routines {
     this.askRoster();
 
     /*
-     * One look per idle tick, not the whole queue: each is a command from the
-     * same budget, and a room of six people would otherwise spend six at once
-     * on something nobody asked for urgently. Marked looked-at before the send
-     * for the same reason the roster flag is cleared eagerly — a look still
-     * queued behind combat must not be asked for twice.
+     * And the second of the look queue's two drains — quiet is still the best
+     * moment to spend a command on one, it is simply no longer the only one.
+     * See `onPlayersHere`.
      */
-    const next = this.toLookAt.shift();
-    if (next !== undefined && this.config.talk.lookAtPlayers) {
-      this.lookedAt.add(next);
-      this.queue.enqueue({
-        command: `look ${next}`,
-        priority: 'idle',
-        coalesceKey: `idle:look:${next}`,
-        reason: t('automation.routines.reasonLookAtPlayer')
-      });
-    }
+    this.lookAt();
   }
 }

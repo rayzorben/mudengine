@@ -27,7 +27,13 @@ import { asLoops, mergeNamed, type Loop } from './loops';
  * `src/shared/__tests__/module-cycle.test.ts`.
  */
 import { DENOMINATIONS, type Denomination, type VitalThresholds } from './character';
-import { DEFAULT_THEME, isThemePreference, type ThemePreference } from './themes';
+import {
+  DEFAULT_THEME,
+  isDarkTheme,
+  isThemePreference,
+  type ThemeId,
+  type ThemePreference
+} from './themes';
 import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
 import { SEVERITIES, type Severity } from './notifications';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
@@ -184,6 +190,47 @@ export interface TerminalConfig {
   cursorStyle: 'block' | 'underline' | 'bar';
 }
 
+/**
+ * The console's own ground, when the chrome's is not the one it wants.
+ *
+ * A light theme is a legitimate thing to want for the *chrome* — a rail of
+ * cards, a settings form and a table read well on paper. The console is not
+ * that. What it shows is forty years of ANSI art drawn against black: a light
+ * palette has to make colour 0 *be* the paper (see `TerminalPalette`), which
+ * means every `ESC[30m` the realm sends comes back as the page, and a room
+ * description written in dark grey on black arrives as dark grey on white.
+ * "The terminal is not a design surface" is the rule this serves; this is the
+ * setting that lets somebody keep it that way while everything around it is
+ * light.
+ *
+ * Two keys rather than one, because they answer two questions. `keepDark` is
+ * *whether* the console parts company with the chrome, and it only ever applies
+ * under a light theme — under a dark one there is nothing to part from and the
+ * console wears the theme's own palette, which is the whole reason the editor
+ * themes ship a palette each. `darkTheme` is *which* dark palette it wears when
+ * it does, and it always has an answer, so switching `keepDark` on can never
+ * land on nothing.
+ */
+export interface ConsoleUiConfig {
+  /**
+   * Keep the console dark while the rest of the client is light.
+   *
+   * On by default, which is the one direction this can be wrong cheaply: the
+   * console under a light theme is the complaint, and somebody who genuinely
+   * wants a light console turns this off and gets exactly the behaviour that
+   * was here before. A dark theme never consults it.
+   */
+  keepDark: boolean;
+  /**
+   * Which dark theme's palette the console wears when it parts company.
+   *
+   * Coerced to a *dark* theme: naming a light one here would be asking to keep
+   * the console dark and then handing it a light palette, which is not a
+   * preference but a contradiction, and `DEFAULT_THEME` answers it.
+   */
+  darkTheme: ThemeId;
+}
+
 export interface UiConfig {
   /**
    * Font for the chrome around the terminal. Defaults to the same monospace
@@ -230,6 +277,8 @@ export interface UiConfig {
    * it takes the height the line already has.
    */
   showLogo: boolean;
+  /** How the console is painted when the chrome is light. See `ConsoleUiConfig`. */
+  console: ConsoleUiConfig;
   /** Where the HUD meters turn yellow and red. */
   vitals: VitalsUiConfig;
   /** What reaches the Alerts card. */
@@ -266,6 +315,42 @@ export interface AlertsUiConfig {
    * same is true of an alert.
    */
   mute: string[];
+  /** What a `search` turning something up is worth interrupting for. */
+  finds: FindAlertsConfig;
+}
+
+/**
+ * When what searching turns up is worth an alert.
+ *
+ * Here rather than on the Room card's gear, which is where it was first put and
+ * where somebody would first look for it: a card's settings are a *view*
+ * preference kept in `localStorage`, and "tell me when a gold ring is found" is
+ * not a view preference — it is the same class of decision as `minimum` and
+ * `mute` above it, it belongs to the character rather than to the window, and
+ * it has to be readable where notices are actually raised. The card keeps the
+ * one setting that *is* a view: how far back its face shows the log.
+ *
+ * Both halves are off by default. An alert on every find would be an alert on
+ * every lap of a loop that searches, which is the fastest way to teach somebody
+ * to stop reading them.
+ */
+export interface FindAlertsConfig {
+  /**
+   * Words that make a found thing worth interrupting for.
+   *
+   * Matched as *contains*, case-insensitively, so `key` catches `a rusty key`
+   * and `bone keys` — somebody watching for a thing types the word, not the
+   * server's spelling of it. Empty never alerts.
+   */
+  items: string[];
+  /**
+   * Found cash worth interrupting for, in **copper**.
+   *
+   * Copper because that is what this client normalises every purse and every
+   * quoted price into (`shared/coins.ts`), so one number compares against every
+   * denomination the realm prints. `0` never alerts.
+   */
+  cashOverCopper: number;
 }
 
 /**
@@ -1327,9 +1412,15 @@ export interface MovementConfig {
    *
    * `Walker`'s own comment is the argument for this being a setting at all:
    * *"a shut door is shut until something opens it"* — and `open` is the thing
-   * that opens it. Off by default, because a door somebody shut deliberately is
-   * a door somebody shut deliberately, and a locked one costs a command per
-   * attempt to be told so.
+   * that opens it.
+   *
+   * **On by default** (2026-09-07). It was off, on the reasoning that a door
+   * somebody shut deliberately is a door somebody shut deliberately — which is
+   * true of a player's door and false of the realm's, and the realm's is what a
+   * route runs into. A shut door on a planned way is the ordinary state of a
+   * corridor here, and a walk that stops at one is a walk that stops for no
+   * reason a player would recognise. `openTries` is 1, so a locked door costs
+   * exactly one command to find out, and forcing is a separate decision below.
    *
    * Only for a door or a gate. `There is no exit in that direction!` is a
    * different fact — the realm data was wrong — and no amount of opening helps.
@@ -1349,9 +1440,16 @@ export interface MovementConfig {
    *
    * Gated on the realm's own number: a barrier records what strength has to
    * reach (`Door [41 picklocks/strength]`), and this is attempted only when
-   * the character's strength is within `BASH_MARGIN` of it. Off by default,
-   * like everything automated — bashing costs health (`You take 3 damage for
-   * bashing the door!`) and a door somebody locked is a door somebody locked.
+   * the character's strength is within `BASH_MARGIN` of it.
+   *
+   * **On by default** (2026-09-07), which is the one automated thing here that
+   * costs health — `You take 3 damage for bashing the door!` — and is on
+   * anyway for the same reason `openDoors` is: the gate is the realm's own
+   * number, so this is never attempted against a barrier the character cannot
+   * beat, `bashTries` caps it at three, and the alternative is a route that
+   * stops dead at a lock the character was strong enough to walk through.
+   * `pickLocks` stays **off**: it is the same decision made with a skill this
+   * client cannot check the character has.
    */
   bashDoors: boolean;
   /** How many bashes, before the route gives up on the barrier. */
@@ -1980,6 +2078,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     tabs: 'left',
     showHud: true,
     showLogo: true,
+    console: { keepDark: true, darkTheme: DEFAULT_THEME },
     // Half and a quarter: the same numbers `megamind-client` shipped for
     // `restIfBelow` / `runIfBelow`, and the ones a MajorMUD player already has
     // in their head. Fractions, so they hold at every level.
@@ -1987,7 +2086,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       hp: { caution: 0.5, critical: 0.25 },
       mana: { caution: 0.5, critical: 0.25 }
     },
-    alerts: { minimum: 'info', mute: [] }
+    alerts: { minimum: 'info', mute: [], finds: { items: [], cashOverCopper: 0 } }
   },
   logging: {
     enabled: true,
@@ -2159,9 +2258,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     events: [],
     afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
     movement: {
-      openDoors: false,
+      openDoors: true,
       openTries: 1,
-      bashDoors: false,
+      bashDoors: true,
       bashTries: 3,
       pickLocks: false,
       pickTries: 3,
@@ -2479,6 +2578,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       theme: isThemePreference(ui['theme']) ? ui['theme'] : DEFAULT_CONFIG.ui.theme,
       showHud: bool(ui['showHud'], DEFAULT_CONFIG.ui.showHud),
       showLogo: bool(ui['showLogo'], DEFAULT_CONFIG.ui.showLogo),
+      console: normalizeConsoleUi(ui['console']),
       vitals: normalizeVitals(ui['vitals']),
       alerts: normalizeAlerts(ui['alerts'])
     },
@@ -2515,10 +2615,27 @@ function normalizeThresholds(value: unknown, fallback: VitalThresholds): VitalTh
   return { caution, critical: Math.min(caution, fraction(raw['critical'], fallback.critical)) };
 }
 
+/**
+ * The console's own ground.
+ *
+ * `darkTheme` is coerced against `isDarkTheme` rather than `isThemeId`: a light
+ * theme named here would be a file asking to keep the console dark and handing
+ * it a light palette. There is no reading of that which is a preference.
+ */
+function normalizeConsoleUi(value: unknown): ConsoleUiConfig {
+  const raw = isRecord(value) ? value : {};
+  const wanted = raw['darkTheme'];
+  return {
+    keepDark: bool(raw['keepDark'], DEFAULT_CONFIG.ui.console.keepDark),
+    darkTheme: isDarkTheme(wanted) ? wanted : DEFAULT_CONFIG.ui.console.darkTheme
+  };
+}
+
 function normalizeAlerts(raw: unknown): AlertsUiConfig {
   const d = DEFAULT_CONFIG.ui.alerts;
-  if (!isRecord(raw)) return { ...d, mute: [...d.mute] };
+  if (!isRecord(raw)) return { ...d, mute: [...d.mute], finds: normalizeFindAlerts(undefined) };
   return {
+    finds: normalizeFindAlerts(raw['finds']),
     minimum: oneOf(raw['minimum'], SEVERITIES, d.minimum),
     // Lowercased and de-duplicated: a channel name is what the notice carries,
     // and `Combat` in the file matching nothing would be a setting that reads
@@ -2530,6 +2647,31 @@ function normalizeAlerts(raw: unknown): AlertsUiConfig {
           .filter((entry) => entry.length > 0)
       )
     )
+  };
+}
+
+/**
+ * The find watch list, read forgivingly.
+ *
+ * Every entry checked rather than the array: one hand-edited number in a list
+ * of words must cost that entry, not the whole watch list — the row-level rule
+ * `WorldMemory` records, one file over.
+ */
+function normalizeFindAlerts(value: unknown): FindAlertsConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.ui.alerts.finds;
+  return {
+    items: Array.from(
+      new Set(
+        (Array.isArray(raw['items']) ? raw['items'] : [])
+          .filter((entry): entry is string => typeof entry === 'string')
+          .map((entry) => entry.trim().toLowerCase())
+          .filter((entry) => entry.length > 0)
+      )
+    ),
+    // No ceiling: a realm's runic coin is a million copper, and a figure
+    // somebody chose is not this client's to cap.
+    cashOverCopper: int(raw['cashOverCopper'], d.cashOverCopper, 0, Number.MAX_SAFE_INTEGER)
   };
 }
 

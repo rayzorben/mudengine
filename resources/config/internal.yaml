@@ -199,6 +199,22 @@ tuning:
     # as fast as TCP allows, for ever.
     settledMs: 30000
 
+    # How long a command may go unanswered before the link is called dead and
+    # hung up, so the ladder above can dial back. A socket staying open is not
+    # evidence that anything is on the other end of it -- a NAT table that
+    # forgot the flow, or a host that went away without a FIN, leaves a
+    # writable socket that will never answer again.
+    #
+    # Counted only while an answer is OWED: the clock starts when a command
+    # goes on the wire and stops at the next byte in. Silence on its own would
+    # be wrong twice over -- this realm repaints its status line unprompted
+    # every thirty seconds, and a client that has asked for nothing is owed
+    # nothing.
+    #
+    # 0 switches it off. Whether the client then dials back is the character's
+    # own `autoReconnect`.
+    silentForMs: 15000
+
   # Reading the stream — `src/main/parse/`.
   parse:
     # A text match on its own. Most blocks never get a colour opinion.
@@ -338,6 +354,14 @@ tuning:
     # So it is a debounce: the first arrival asks, and the arrivals inside the
     # window are answered by the same listing.
     rosterAskMs: 60000
+
+    # The floor between two looks at other players, and how long one is worth
+    # sending. A room that fills up should not spend six commands at once on
+    # something nobody asked for urgently -- and the answer is about somebody
+    # standing in THIS room, so a look held behind a fight for a minute arrives
+    # at a person who has walked out.
+    lookAskMs: 4000
+    lookExpiresMs: 20000
 
     # Decision-trace entries kept; it answers "why did it do that?".
     traceLimit: 200
@@ -724,6 +748,17 @@ tuning:
 
   # What one session keeps in memory for the diagnostics cards.
   session:
+    # How far experience must fall before the client suspects a character was
+    # deleted and made again on the same login.
+    #
+    # The weakest of the four signals it looks at, and the only one with an
+    # innocent explanation -- a death costs experience -- which is why it is a
+    # SHARE of what was there rather than any drop at all. The other three (the
+    # race changed, the class changed, the level went back to 1) are facts a
+    # character cannot do to itself and have no threshold. 0 switches this one
+    # off. Nothing is ever deleted without being asked.
+    resetExpDropShare: 0.3
+
     # Negotiation records the diagnostics pane can look back over.
     telnetLogLimit: 500
 
@@ -818,6 +853,12 @@ tuning:
 
     # Observations one character keeps.
     memoryLimit: 2000
+
+    # Rows in one realm's find log -- what searching has turned up, and where --
+    # before the oldest is dropped. A find is one thing in one room, so this is
+    # a count of places worth searching rather than of searches: a room searched
+    # every lap is one row whose count climbs.
+    findLimit: 2000
 
     # How long learned monster health waits before it is written.
     loreSaveDelayMs: 5000

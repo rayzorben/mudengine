@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  consoleThemeFor,
   DEFAULT_THEME,
+  isDarkTheme,
   isThemeId,
   isThemePreference,
   resolveTheme,
@@ -254,5 +256,59 @@ describe('guards', () => {
     expect(isThemePreference('system')).toBe(true);
     expect(isThemePreference('dark')).toBe(true);
     expect(isThemePreference('nope')).toBe(false);
+  });
+});
+
+/**
+ * The console's own ground when the chrome's is light.
+ *
+ * Pure and here rather than in the renderer because the terminal frame
+ * (`--ink-slate`) is derived from whichever palette this answers with, and the
+ * two must not be able to disagree about which one that is.
+ */
+describe('the console keeping its own ground', () => {
+  it('leaves a dark chrome alone: there is nothing to part from', () => {
+    expect(consoleThemeFor(THEMES.dracula, true, 'nord').id).toBe('dracula');
+    expect(consoleThemeFor(THEMES.dark, true, 'nord').id).toBe('dark');
+  });
+
+  it('leaves a light chrome alone when nobody asked', () => {
+    expect(consoleThemeFor(THEMES.light, false, 'nord').id).toBe('light');
+  });
+
+  it('hands a light chrome the dark palette that was asked for', () => {
+    const answer = consoleThemeFor(THEMES['github-light'], true, 'nord');
+    expect(answer.id).toBe('nord');
+    expect(answer.appearance).toBe('dark');
+  });
+
+  it('refuses a light palette for a console asked to stay dark', () => {
+    // Not a preference but a contradiction, so it is answered rather than obeyed.
+    expect(consoleThemeFor(THEMES.light, true, 'ayu-light' as never).id).toBe(DEFAULT_THEME);
+    expect(consoleThemeFor(THEMES.light, true, 'nope' as never).id).toBe(DEFAULT_THEME);
+  });
+
+  it('is dark whatever it answers with, for every light theme in the registry', () => {
+    for (const id of themesOfAppearance('light')) {
+      expect(consoleThemeFor(THEMES[id], true, DEFAULT_THEME).appearance).toBe('dark');
+    }
+  });
+});
+
+describe('isDarkTheme', () => {
+  it('accepts only registered dark ids', () => {
+    expect(isDarkTheme('dark')).toBe(true);
+    expect(isDarkTheme('nord')).toBe(true);
+    expect(isDarkTheme('light')).toBe(false);
+    expect(isDarkTheme('ayu-light')).toBe(false);
+    expect(isDarkTheme('system')).toBe(false);
+    expect(isDarkTheme(null)).toBe(false);
+  });
+
+  it('agrees with the registry it is offered from', () => {
+    // The settings screen offers `themesOfAppearance('dark')` and the file
+    // coerces with this; a form must not offer what the file refuses.
+    for (const id of themesOfAppearance('dark')) expect(isDarkTheme(id)).toBe(true);
+    for (const id of themesOfAppearance('light')) expect(isDarkTheme(id)).toBe(false);
   });
 });

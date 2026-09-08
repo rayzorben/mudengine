@@ -201,6 +201,23 @@ export interface NumberFieldProps extends FaceProps {
    * `0/0`, which is the same lie a meter painted red for want of a figure tells.
    */
   figure?: string | null;
+  /**
+   * A strip along the bottom of the field, filled to the percentage and tinted
+   * on the client's own vitals bands.
+   *
+   * The number says where the line is; this says it at a glance, in the colour
+   * the meter that crosses it will wear (`barOf`). Drawn as a background on the
+   * input rather than as an element, and that is not a preference: a settings
+   * field is `grid-row: span 2` over `grid-template-rows: subgrid` — exactly
+   * two rows — so `figure` above is already a third child auto-placed back into
+   * the input's own cell, and a fourth would land somewhere neither of them
+   * chose. A background needs no cell.
+   *
+   * Null wherever there is nothing to draw: a threshold of `0` means *never* in
+   * every field this is offered on, and a bar at its floor would read as a
+   * setting at its floor rather than as one switched off.
+   */
+  bar?: { fill: number; level: string } | null;
 }
 
 /**
@@ -218,7 +235,8 @@ export function NumberField({
   value,
   onChange,
   placeholder,
-  figure
+  figure,
+  bar
 }: NumberFieldProps): React.JSX.Element {
   return (
     <FormField hint={hint} label={label} name={name} wide={wide}>
@@ -226,9 +244,15 @@ export function NumberField({
         <>
           <input
             aria-describedby={describedBy}
+            className={bar ? 'has-bar' : undefined}
+            {...(bar ? { 'data-level': bar.level } : {})}
             inputMode="numeric"
             onChange={(event) => onChange(event.target.value)}
             placeholder={placeholder}
+            // The fill as a custom property rather than a class per five
+            // percent: it is a continuous value, and the stylesheet reads it
+            // straight into the gradient stop.
+            style={bar ? ({ '--bar-fill': `${bar.fill}%` } as React.CSSProperties) : undefined}
             value={value}
           />
           {/*

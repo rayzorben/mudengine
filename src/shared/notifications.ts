@@ -25,6 +25,7 @@ import {
 import { attacksOnSight, DISPOSITION_WORD } from './mobs';
 import type { Block, BlockType } from './blocks';
 import type { UiLookup } from './i18n';
+import type { FindAlertsConfig } from './config';
 
 /**
  * Three levels, not five.
@@ -482,6 +483,71 @@ export function partyNotices(
  * rather than from a line, because the line that says somebody walked in does
  * not say what they are — the roster does, and the two arrive separately.
  */
+/**
+ * What a `search` just turned up, when somebody asked to be told about it.
+ *
+ * From the **state**, like `roomNotices` and for the same kind of reason: the
+ * line that says `You notice a rusty key here.` is the same sentence a look
+ * prints, and what tells them apart is which command it answers — a fact
+ * `CharacterTracker` has already settled by the time this state arrives.
+ * `room.hidden` and `room.hiddenCash` are set only by a search's answer and
+ * cleared by walking out and by `Your search revealed nothing.`, so a change
+ * *into* something is the find, once.
+ *
+ * `critical`, and deliberately louder than the `user-search-succeeded` line
+ * already in `NOTABLE`: that one is *a search worked*, which is common and
+ * quiet. This one only fires for a word somebody typed into the watch list or
+ * for money over a figure they chose, and an alert nobody asked for at a level
+ * nobody chose is the one this project spends its silence budget avoiding.
+ */
+export function findNotices(
+  before: CharacterState,
+  after: CharacterState,
+  alerts: FindAlertsConfig,
+  t: UiLookup
+): Notice[] {
+  if (alerts.items.length === 0 && alerts.cashOverCopper <= 0) return [];
+
+  const at = noticedAt(after);
+  const notices: Notice[] = [];
+  const had = new Set(before.room.hidden.map((item) => item.name.toLowerCase()));
+
+  for (const item of after.room.hidden) {
+    // Already on the previous state's list, so this is the same search's answer
+    // arriving again rather than a second find.
+    if (had.has(item.name.toLowerCase())) continue;
+    const name = item.name.toLowerCase();
+    if (!alerts.items.some((word) => name.includes(word))) continue;
+    notices.push({
+      id: `find-${at}-${name}`,
+      at,
+      severity: 'critical',
+      channel: 'items',
+      text: t('cards.alerts.finds.item', { what: item.name })
+    });
+  }
+
+  const cash = after.room.hiddenCash;
+  const before_ = before.room.hiddenCash;
+  if (
+    cash !== null &&
+    alerts.cashOverCopper > 0 &&
+    cash.totalCopper >= alerts.cashOverCopper &&
+    // Not the same pile the last state already reported.
+    before_?.totalCopper !== cash.totalCopper
+  ) {
+    notices.push({
+      id: `find-cash-${at}-${cash.totalCopper}`,
+      at,
+      severity: 'critical',
+      channel: 'items',
+      text: t('cards.alerts.finds.cash', { what: cash.rawText ?? String(cash.totalCopper) })
+    });
+  }
+
+  return notices;
+}
+
 export function roomNotices(before: CharacterState, after: CharacterState, t: UiLookup): Notice[] {
   const at = noticedAt(after);
   const standing = new Map(after.online.map((entry) => [entry.name.toLowerCase(), entry]));

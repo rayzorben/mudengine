@@ -11,6 +11,7 @@ import type { CharacterState } from '@shared/character';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
 import { roomId } from '@shared/world';
+import { roomsWithFinds, type Find } from '@shared/finds';
 
 export interface MapCardProps extends CardChrome {
   character: CharacterState;
@@ -41,6 +42,14 @@ export interface MapCardProps extends CardChrome {
   walk: WalkProgress;
   loop: LoopProgress;
   /**
+   * The rooms this realm's find log names, marked with a dot.
+   *
+   * The realm's, not this character's, so a room a second character searched
+   * is marked here too — which is the whole reason the log is kept per realm.
+   * See `src/shared/finds.ts`.
+   */
+  finds: readonly Find[];
+  /**
    * Open the loop builder. Null on a pinned float, where the builder is the
    * shown character's and a control that opened it for somebody else would
    * plan on the wrong realm — so the action is not drawn at all.
@@ -63,8 +72,23 @@ export interface MapCardProps extends CardChrome {
  * always where the character is, so every step recentres the picture — and
  * the zoom, which it keeps as its density setting.
  */
-function MapCard({ character, load, loop, onBuild, onChoose, walk, ...chrome }: MapCardProps) {
+function MapCard({
+  character,
+  finds,
+  load,
+  loop,
+  onBuild,
+  onChoose,
+  walk,
+  ...chrome
+}: MapCardProps) {
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
+  /*
+   * The rooms alone, memoised on the log: the picture asks per drawn room, and
+   * a fresh array every render would reconcile two hundred rooms for a value
+   * that did not change.
+   */
+  const foundRooms = useMemo(() => [...roomsWithFinds(finds)], [finds]);
   const { map: area, number } = character.room;
   const here = area === null || number === null ? null : roomId(area, number);
   const { mapRoomPixelsSparse: sparse, mapRoomPixelsDense: dense } = tuning();
@@ -191,6 +215,7 @@ function MapCard({ character, load, loop, onBuild, onChoose, walk, ...chrome }: 
           onChoose={onChoose}
           onLoaded={setMap}
           onZoom={onZoom}
+          finds={foundRooms}
           path={walk.path}
           stops={loop.remainingStops}
           zoom={zoom}

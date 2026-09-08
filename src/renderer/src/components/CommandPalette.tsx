@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import Icon, { type IconName } from './Icon';
+import ClearField from './ClearField';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { chord } from '../lib/platform';
@@ -342,14 +343,16 @@ export default function CommandPalette({
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >
-        <input
-          aria-label={t('palette.filterLabel')}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={t('palette.filterPlaceholder')}
-          ref={inputRef}
-          value={query}
-        />
+        <ClearField label={t('palette.filterLabel')} onClear={() => setQuery('')} query={query}>
+          <input
+            aria-label={t('palette.filterLabel')}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={t('palette.filterPlaceholder')}
+            ref={inputRef}
+            value={query}
+          />
+        </ClearField>
         {matches.length === 0 && !browsing ? (
           <div className="empty">{t('palette.noMatches')}</div>
         ) : (

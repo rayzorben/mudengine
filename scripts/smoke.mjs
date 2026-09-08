@@ -846,6 +846,108 @@ async function evaluate(expression) {
   return r.result?.result?.value;
 }
 
+/**
+ * Waits for an **effect**, not for the clock.
+ *
+ * The whole of this harness used to be `await sleep(250)` between an action and
+ * the check that read its result — 372 of them, 155 of the run's 197 seconds,
+ * and every one of them both too long (the effect had landed in 20ms) and too
+ * short (on a loaded machine it had not landed at all, and the check reported a
+ * feature as broken). A wait on the thing being asserted is faster *and*
+ * steadier, which is the rare change that is not a trade.
+ *
+ * Returns what the probe last answered, truthy or not, so the `check` that
+ * follows still reports **what was actually there** rather than a timeout. A
+ * probe that throws counts as *not yet*: reading a node that has not been drawn
+ * is exactly the state being waited out.
+ *
+ * The default ceiling is generous on purpose — nothing waits it out in the
+ * ordinary case, and it exists so a genuinely broken assertion fails as a
+ * failed check with its own words rather than as a hung run.
+ */
+async function waitFor(probe, tries = 60, every = 50) {
+  let last = null;
+  for (let i = 0; i < tries; i += 1) {
+    try {
+      last = await probe();
+    } catch {
+      last = null;
+    }
+    if (last) return last;
+    await sleep(every);
+  }
+  return last;
+}
+
+/**
+ * Waits until reading the page answers `want`, and hands back the last answer.
+ *
+ * The shape most of this file wanted: do a thing, wait for the page to say what
+ * it should, assert on it. `await settled(...)` in place of `await sleep(250)`
+ * makes the wait the same statement as the fact.
+ */
+async function settled(expression, want) {
+  return waitFor(async () => {
+    const value = await evaluate(expression);
+    return value === want ? { value } : null;
+  }).then((answer) => answer?.value ?? evaluate(expression));
+}
+
+/**
+ * Reads until the reading is the one being asserted, and hands back the last
+ * reading either way.
+ *
+ * The other half of `waitFor`, for the shape this file is mostly made of: read
+ * a value out of the page, then check something about it. The wait belongs
+ * *inside* the read, and handing back the last reading rather than a boolean is
+ * what keeps the `check` below able to say what was actually there.
+ */
+async function readUntil(read, holds, tries = 60, every = 50) {
+  let last;
+  for (let i = 0; i < tries; i += 1) {
+    try {
+      last = await read();
+    } catch {
+      last = undefined;
+    }
+    if (last !== undefined && holds(last)) return last;
+    await sleep(every);
+  }
+  return last;
+}
+
+/**
+ * Reads a file until it says what is being asserted, and hands back the last
+ * reading.
+ *
+ * The settings screen writes itself to disk after a debounce, so a check on
+ * what landed used to wait 1.6 seconds and hope. The effect is the file's own
+ * contents; polling them is both faster and the only reading that cannot be too
+ * short on a loaded machine. A file that is not there yet reads as empty, which
+ * is exactly the state being waited out.
+ */
+async function fileBecomes(file, holds, tries = 80, every = 50) {
+  let last = '';
+  for (let i = 0; i < tries; i += 1) {
+    last = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    if (holds(last)) return last;
+    await sleep(every);
+  }
+  return last;
+}
+
+/** Waits for a selector to be in the document. The commonest effect of all. */
+async function shown(selector) {
+  return waitFor(async () => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`));
+}
+
+/** And the other half: waits for it to be gone. A negative with its own probe. */
+async function gone(selector) {
+  return waitFor(
+    async () => !(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`))
+  );
+}
+
 await cdp('Runtime.enable');
 await cdp('Page.enable');
 
@@ -1034,12 +1136,23 @@ check(colorScheme === 'light', 'color-scheme is set so native widgets follow', c
 // data-theme=light, so assert the tokens actually moved.
 check(luminanceOf(inkCard) > 0.5, 'card fill is actually light', inkCard);
 
-// The frame around the slate is derived from the theme's terminal palette
-// rather than restated, so the two can never drift apart. Asserted as a
-// property of the value -- it would still be the static `#000000` default if
-// the derivation had not run -- rather than as a literal that rots whenever
-// the palette is retuned.
-check(luminanceOf(inkSlate) > 0.5, 'terminal ground is derived from the theme palette', inkSlate);
+/*
+ * The frame around the slate is derived from the **console's** terminal
+ * palette rather than restated, so the two can never drift apart.
+ *
+ * Dark under a light theme, and that is the assertion (2026-09-07, todo 03):
+ * `ui.console.keepDark` ships on, because a light terminal palette has to make
+ * the realm's black its paper and every `ESC[30m` then comes back as the page.
+ * The chrome above is light and this is not, which is the whole feature — and
+ * it is still a *derivation*, since a light console would report the light
+ * ground and the check would move with it rather than rot.
+ */
+check(luminanceOf(inkSlate) < 0.5, 'the console keeps a dark ground under a light theme', inkSlate);
+check(
+  luminanceOf(inkCard) > 0.5 && luminanceOf(inkSlate) < luminanceOf(inkCard),
+  'and the chrome around it is the light one the options file asked for',
+  `${inkCard} / ${inkSlate}`
+);
 
 // `--text-lo` must resolve *through* the theme's -normal value rather than
 // being set directly: the stream-pressure rule overrides it, and an inline
@@ -1285,13 +1398,16 @@ await evaluate(`
     return true;
   })()
 `);
-await sleep(250);
-const profileRows = await evaluate(`
+const profileRows = await readUntil(
+  () =>
+    evaluate(`
   [...document.querySelectorAll('.palette li')]
     .map((li) => li.querySelector('span')?.innerText ?? '')
     .filter((t) => /^Connect:/.test(t))
     .join(' | ')
-`);
+`),
+  (profileRows) => /Connect: Smoke Realm/.test(profileRows)
+);
 check(
   /Connect: Smoke Realm/.test(profileRows),
   'a saved realm is offered in the palette',
@@ -1307,7 +1423,9 @@ await evaluate(`
     return true;
   })()
 `);
-await sleep(250);
+await waitFor(async () =>
+  /Search the console/.test(await evaluate(`document.querySelector('.palette').innerText`))
+);
 check(
   /Search the console/.test(await evaluate(`document.querySelector('.palette').innerText`)),
   'search is offered in the palette'
@@ -1331,7 +1449,7 @@ await sleep(300);
 await evaluate(
   `(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true })), true)`
 );
-await sleep(350);
+await waitFor(async () => await evaluate(`!!document.querySelector('.search-bar')`));
 check(await evaluate(`!!document.querySelector('.search-bar')`), 'search opens on its shortcut');
 check(
   (await focusPath()) === 'terminal' ? false : true,
@@ -1348,8 +1466,10 @@ await evaluate(`
     return true;
   })()
 `);
-await sleep(600);
-const count = await evaluate(`document.querySelector('.search-count')?.innerText ?? ''`);
+const count = await readUntil(
+  () => evaluate(`document.querySelector('.search-count')?.innerText ?? ''`),
+  (count) => /^\d+\/\d+$/.test(count)
+);
 check(/^\d+\/\d+$/.test(count), 'search finds the banner text in the backscroll', count);
 
 await cdp('Input.dispatchKeyEvent', {
@@ -1364,8 +1484,9 @@ await cdp('Input.dispatchKeyEvent', {
   code: 'Escape',
   windowsVirtualKeyCode: 27
 });
-await sleep(350);
+await waitFor(async () => !(await evaluate(`!!document.querySelector('.search-bar')`)));
 check(!(await evaluate(`!!document.querySelector('.search-bar')`)), 'Escape closes search');
+await waitFor(async () => (await focusPath()) === 'terminal');
 check(
   (await focusPath()) === 'terminal',
   'focus returns to the terminal when search closes',
@@ -1653,13 +1774,19 @@ check(
 );
 
 await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
-await sleep(200);
+await waitFor(async () => await evaluate(`!!document.querySelector('.palette')`));
 check(
   await evaluate(`!!document.querySelector('.palette')`),
   'command palette opens from the strip'
 );
 
-// The palette is the one dialog that takes typing focus.
+/*
+ * The palette is the one dialog that takes typing focus — a frame after it
+ * mounts, which is what the fixed sleep here used to cover. The surface being
+ * in the document and the surface holding the caret are two effects, and this
+ * check is about the second.
+ */
+await waitFor(async () => (await focusPath()) === 'palette');
 check((await focusPath()) === 'palette', 'the palette takes focus while open', await focusPath());
 
 /*
@@ -1725,7 +1852,13 @@ const pinClicked = await evaluate(`
   })()
 `);
 check(pinClicked, 'every row carries a pin');
-await sleep(200);
+/*
+ * The positive control, and this assertion is worthless without it: what is
+ * being claimed is that the palette *stayed* open, which is true before the
+ * click as well as after. So the wait is on the unpinning — the shelf losing
+ * the row — and the palette is asserted once that has actually happened.
+ */
+await waitFor(async () => !/Route to room/.test((await readShelf()).text));
 check(
   await evaluate(`!!document.querySelector('.palette')`),
   'unpinning a row does not run the command underneath it'
@@ -1750,10 +1883,18 @@ await cdp('Input.dispatchKeyEvent', {
   code: 'Escape',
   windowsVirtualKeyCode: 27
 });
-await sleep(200);
+await gone('.palette');
 await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
-await sleep(300);
-const reopened = await readShelf();
+/*
+ * The palette being back is the positive control. "The row is not on the shelf"
+ * is equally true of a palette that has not reopened, which is exactly the
+ * state this used to sleep through.
+ */
+await shown('.palette');
+const reopened = await readUntil(
+  () => readShelf(),
+  (reopened) => !/Route to room/.test(reopened.text)
+);
 check(
   !/Route to room/.test(reopened.text),
   'and the client remembers it was unpinned',
@@ -1771,7 +1912,12 @@ await evaluate(`
     return true;
   })()
 `);
-await sleep(250);
+await waitFor(
+  async () =>
+    await evaluate(
+      `[...document.querySelectorAll('.palette li')].some((li) => /Route to room/.test(li.innerText))`
+    )
+);
 check(
   await evaluate(
     `[...document.querySelectorAll('.palette li')].some((li) => /Route to room/.test(li.innerText))`
@@ -1796,8 +1942,10 @@ await evaluate(`
     return true;
   })()
 `);
-await sleep(250);
-const repinned = await readShelf();
+const repinned = await readUntil(
+  () => readShelf(),
+  (repinned) => repinned.shelf.some((row) => /Route to room/.test(row))
+);
 check(
   repinned.shelf.some((row) => /Route to room/.test(row)),
   'and pinning it again puts it back at the top',
@@ -1814,7 +1962,12 @@ await evaluate(`
     return true;
   })()
 `);
-await sleep(250);
+await waitFor(
+  async () =>
+    await evaluate(
+      `[...document.querySelectorAll('.palette li')].some((li) => /Show the options file/.test(li.innerText))`
+    )
+);
 check(
   await evaluate(
     `[...document.querySelectorAll('.palette li')].some((li) => /Show the options file/.test(li.innerText))`
@@ -1847,7 +2000,9 @@ const opened = await evaluate(`
   })()
 `);
 check(opened, 'palette offers the diagnostics toggle');
-await sleep(250);
+await waitFor(
+  async () => (await evaluate(`!!document.querySelector('.link-card')`)) !== railBefore
+);
 check(
   (await evaluate(`!!document.querySelector('.link-card')`)) !== railBefore,
   'the palette toggle actually flips the diagnostics cards'
@@ -1862,6 +2017,7 @@ for (let i = 0; i < 20; i += 1) {
 check(focus === 'terminal', 'focus returns to the terminal when the palette closes', focus);
 
 // The rail takes no typed input, so opening it must not move focus at all.
+await waitFor(async () => (await focusPath()) === 'terminal');
 check(
   (await focusPath()) === 'terminal',
   'toggling the rail leaves focus in the terminal',
@@ -2140,8 +2296,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify({ stillness, before: before?.v, after: after?.v })
   );
   check((await wheelOver(0.25, 0.25, 100)) !== null, 'and a notch rolled towards zooms back out');
-  await sleep(250);
-  const back = await mapWindow();
+  const back = await readUntil(
+    () => mapWindow(),
+    (back) => before !== null && back !== null && Math.abs(back.v[2] - before.v[2]) < 0.05
+  );
   check(
     before !== null && back !== null && Math.abs(back.v[2] - before.v[2]) < 0.05,
     'to exactly the width it started at',
@@ -2290,7 +2448,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await press('k', 'KeyK', 75, 2);
   await sleep(350);
   await type('.palette input', 'route');
-  await sleep(250);
+  await waitFor(async () =>
+    (
+      await evaluate(
+        `document.querySelector('.palette li[data-active="true"] span')?.innerText ?? ''`
+      )
+    ).includes('Route')
+  );
   check(
     (
       await evaluate(
@@ -2301,7 +2465,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   );
 
   await press('Enter', 'Enter', 13);
-  await sleep(450);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.route-panel')`));
   check(
     await evaluate(`!!document.querySelector('.route-panel')`),
     'and Enter opens the route panel'
@@ -2383,9 +2547,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await type('.route-panel input', 'Newhaven, D');
   await sleep(900);
   await press('Enter', 'Enter', 13);
-  await sleep(900);
-  const plan = await evaluate(
-    `document.querySelector('.route-panel .route-summary')?.innerText.replace(/\\s+/g, ' ') ?? null`
+  const plan = await readUntil(
+    () =>
+      evaluate(
+        `document.querySelector('.route-panel .route-summary')?.innerText.replace(/\\s+/g, ' ') ?? null`
+      ),
+    (plan) => plan !== null
   );
   check(plan !== null, 'a name and Enter plans a route to the highlighted room', plan);
   check(
@@ -2429,7 +2596,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     thereMap.label
   );
   await capture('smoke-route-map.png', 'the destination’s neighbourhood in the route panel');
-
 
   /*
    * Stopping short at a room on the way.
@@ -2491,9 +2657,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
 
   // Toggling off, because a selection nothing can clear is a mode.
   await evaluate(`document.querySelector('.route-steps li button.step-name').click()`);
-  await sleep(300);
-  const unpick = await evaluate(
-    `document.querySelectorAll('.route-steps li[data-picked="true"]').length`
+  const unpick = await readUntil(
+    () => evaluate(`document.querySelectorAll('.route-steps li[data-picked="true"]').length`),
+    (unpick) => Number(unpick) === 0
   );
   check(Number(unpick) === 0, 'and clicking it again puts it back', unpick);
 
@@ -2665,15 +2831,18 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await press('k', 'KeyK', 75, 2);
   await sleep(350);
   await type('.palette input', 'loop');
-  await sleep(250);
-  const row = await evaluate(`
+  const row = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const li = [...document.querySelectorAll('.palette li')]
         .find((entry) => entry.innerText.includes('Loop: Smoke loop'));
       if (li) li.click();
       return !!li;
     })()
-  `);
+  `),
+    (row) => row
+  );
   check(row, 'the palette offers the loop the character configured');
   if (!row) {
     // Leave nothing half-open for the checks that follow: a palette left up
@@ -2708,6 +2877,67 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `document.querySelector('.navigation-card')?.innerText.replace(/\\s+/g, ' ') ?? ''`
   );
   check(/Smoke loop/.test(loopCard), 'and the card names the running loop', loopCard);
+
+  /*
+   * And the lap as a progression: what is behind, what it is walking to, and
+   * what is still owed.
+   *
+   * The emphasis runs the other way from the reading order — `done` quietest,
+   * `now` loudest, `left` in between — because the reader does not care what
+   * they have done and cares most about what is next. Asserted as *marks and
+   * their colours*, since the grammar is stated once in the stylesheet and any
+   * card that adopts it has to read the same way.
+   */
+  const lap = JSON.parse(
+    await evaluate(`
+      (() => {
+        const list = document.querySelector('.navigation-card .progression');
+        if (!list) return JSON.stringify({ found: false });
+        const rows = [...list.children].map((li) => ({
+          state: li.dataset.progress,
+          colour: getComputedStyle(li).color,
+          marker: getComputedStyle(li, '::before').content
+        }));
+        const accent = getComputedStyle(document.documentElement)
+          .getPropertyValue('--accent')
+          .trim();
+        return JSON.stringify({ found: true, rows, accent, count: rows.length });
+      })()
+    `)
+  );
+  check(
+    lap.found && lap.count > 0,
+    'the Loop face lists the lap it is walking',
+    JSON.stringify(lap)
+  );
+  check(
+    lap.rows?.every((row) => ['done', 'now', 'left'].includes(row.state)),
+    'and every stop says which of the three it is',
+    JSON.stringify(lap.rows)
+  );
+  check(
+    lap.rows?.filter((row) => row.state === 'now').length <= 1,
+    'with exactly one of them the one being walked to',
+    JSON.stringify(lap.rows?.map((row) => row.state))
+  );
+  /*
+   * The one loud row, and the quiet one, proved by their own paint rather than
+   * by their class: a stylesheet that stopped applying would still leave the
+   * attributes in place.
+   */
+  const nowRow = lap.rows?.find((row) => row.state === 'now');
+  const leftRow = lap.rows?.find((row) => row.state === 'left');
+  check(
+    nowRow === undefined || nowRow.colour !== leftRow?.colour,
+    'and it is painted differently from what is still to come',
+    JSON.stringify({ now: nowRow, left: leftRow })
+  );
+  check(
+    nowRow === undefined || /▸/.test(String(nowRow.marker)),
+    'and carries the bearing mark, which nothing else on the list does',
+    JSON.stringify(nowRow)
+  );
+
   /*
    * And a picture of it, for the reason the pack's own screenshot exists:
    * geometry is the one thing no assertion here catches, and this card is all
@@ -2855,8 +3085,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(300);
-  const openedQuests = await evaluate(`
+  const openedQuests = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const row = [...document.querySelectorAll('.palette li')]
         .find((li) => /Quest Book/.test(li.innerText));
@@ -2869,7 +3100,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       row.click();
       return 'clicked';
     })()
-  `);
+  `),
+    (openedQuests) => openedQuests === 'clicked'
+  );
   check(openedQuests === 'clicked', 'the Quest Book is reachable from the palette', openedQuests);
   await sleep(500);
 
@@ -2908,8 +3141,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return JSON.stringify({ before });
     })()
   `);
-  await sleep(300);
-  const afterHide = await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`);
+  const afterHide = await readUntil(
+    () => evaluate(`document.querySelectorAll('.quest-table tbody tr').length`),
+    (afterHide) => Number(afterHide) === JSON.parse(hidQuest).before - 1
+  );
   check(
     Number(afterHide) === JSON.parse(hidQuest).before - 1,
     'hiding a quest takes it out of the book',
@@ -2925,8 +3160,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await evaluate(
     `document.querySelector('.quest-card [data-action="show-hidden"]')?.click() ?? null`
   );
-  await sleep(300);
-  const restored = await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`);
+  const restored = await readUntil(
+    () => evaluate(`document.querySelectorAll('.quest-table tbody tr').length`),
+    (restored) => Number(restored) === JSON.parse(hidQuest).before
+  );
   check(
     Number(restored) === JSON.parse(hidQuest).before,
     'and the hidden ones can be brought back',
@@ -3011,7 +3248,14 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(marked)
   );
   await evaluate(`document.querySelector('.quest-card .quest-track-head button')?.click() ?? null`);
-  await sleep(250);
+  await waitFor(
+    async () =>
+      Number(
+        await evaluate(
+          `document.querySelectorAll('.quest-card .quest-step[data-state="done"]').length`
+        )
+      ) === 0
+  );
   check(
     Number(
       await evaluate(
@@ -3067,7 +3311,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(300);
+  await waitFor(
+    async () =>
+      Number(await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`)) ===
+      JSON.parse(hidQuest).before
+  );
   check(
     Number(await evaluate(`document.querySelectorAll('.quest-table tbody tr').length`)) ===
       JSON.parse(hidQuest).before,
@@ -3165,8 +3413,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   );
 
   await evaluate(`(window.mudengine.input('${SESSION}', 'abil\\r'), true)`);
-  await sleep(700);
-  const afterAbil = await findQuest('GoodQuest');
+  const afterAbil = await readUntil(
+    () => findQuest('GoodQuest'),
+    (afterAbil) => afterAbil.done > 0
+  );
   check(
     afterAbil.done > 0,
     'an `abil` listing moves the quest book to where the realm says the character is',
@@ -3244,7 +3494,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * drag below it both failed, for a card neither of them had heard of.
    */
   await evaluate(`document.querySelector('.quest-card [data-action="close"]')?.click() ?? null`);
-  await sleep(300);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.quest-card')`)));
   check(
     !(await evaluate(`!!document.querySelector('.quest-card')`)),
     'and the book goes back where it was found'
@@ -3296,7 +3546,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(panelText)
   );
   await press('Escape', 'Escape', 27);
-  await sleep(250);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
   check(
     !(await evaluate(`!!document.querySelector('.route-panel')`)),
     'and Escape puts the panel away for the checks that follow'
@@ -3328,9 +3578,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'the Loop face is still there once the loop has stopped',
     String(stopped)
   );
-  await sleep(200);
-  const controls = await evaluate(
-    `[...document.querySelectorAll('.navigation-card .loop-control')].map((b) => b.dataset.action).join(',')`
+  const controls = await readUntil(
+    () =>
+      evaluate(
+        `[...document.querySelectorAll('.navigation-card .loop-control')].map((b) => b.dataset.action).join(',')`
+      ),
+    (controls) => !/pause|skip|stop/.test(String(controls)) && /play/.test(String(controls))
   );
   check(
     !/pause|skip|stop/.test(String(controls)) && /play/.test(String(controls)),
@@ -3413,11 +3666,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     );
     // The stores poll rather than subscribe to inotify, and ProfileStore
     // debounces on top of that, so this waits for two hops rather than one.
-    await sleep(2500);
+    await waitFor(async () => await offered('Added loop'));
     check(await offered('Added loop'), 'a loop added while the client runs reaches the palette');
 
     fs.rmSync(added, { force: true });
-    await sleep(2500);
+    await waitFor(async () => !(await offered('Added loop')));
     check(
       !(await offered('Added loop')),
       'and a loop removed while it runs leaves it, rather than lingering stale'
@@ -3461,7 +3714,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // Ctrl+L, which is what a player presses. Free in the client's own table
     // and claimed by nothing on this realm.
     await press('l', 'KeyL', 76, 2);
-    await sleep(500);
+    await waitFor(async () => await modal());
     check(await modal(), 'Ctrl+L opens the Loops modal from the game');
 
     /*
@@ -3521,11 +3774,14 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     /* Typing opens exactly what it finds: a collapsed group hiding a match
        would be a search that lies. */
     await type('.loops-modal input', 'smoke');
-    await sleep(350);
-    const found = await evaluate(`
+    const found = await readUntil(
+      () =>
+        evaluate(`
       [...document.querySelectorAll('.loops-modal li[role="option"]')]
         .map((row) => row.innerText.replace(/\\s+/g, ' '))
-    `);
+    `),
+      (found) => Array.isArray(found) && found.some((row) => /Smoke loop/.test(row))
+    );
     check(
       Array.isArray(found) && found.some((row) => /Smoke loop/.test(row)),
       'and a search opens the group holding what it matched',
@@ -3635,7 +3891,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     /* Escape belongs to whatever holds the caret, and it hands it back to the
        game in one press rather than two. */
     await press('Escape', 'Escape', 27);
-    await sleep(350);
+    await waitFor(async () => !(await modal()));
     check(!(await modal()), 'Escape puts the modal away');
     check(
       await evaluate(
@@ -3767,14 +4023,18 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     })()
   `;
   check(await evaluate(clickFace('gos')), 'the gossip channel earned a face in the heading');
-  await sleep(300);
-  const gossipFace = await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`);
+  const gossipFace = await readUntil(
+    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
+    (gossipFace) => !/telepath/.test(gossipFace) && /rope/.test(gossipFace)
+  );
   check(
     !/telepath/.test(gossipFace) && /rope/.test(gossipFace),
     'a channel face shows that channel alone'
   );
   check(await evaluate(clickFace('talk')), 'and TALK is always offered');
-  await sleep(300);
+  await waitFor(async () =>
+    /telepath/.test(await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`))
+  );
   check(
     /telepath/.test(await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`)),
     'returning to TALK brings the whole stream back'
@@ -3787,7 +4047,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'the find row is put away until asked for'
   );
   await evaluate(`document.querySelector('.conversation-card [data-action="find"]')?.click()`);
-  await sleep(200);
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.conversation-card .table-find')`)
+  );
   check(
     await evaluate(`!!document.querySelector('.conversation-card .table-find')`),
     'and the search glyph brings it out'
@@ -4118,7 +4380,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(120);
+  await waitFor(async () => (await focusPath()) === 'say');
   check((await focusPath()) === 'say', 'typing in it takes the caret, as a typed surface must');
 
   await cdp('Input.dispatchKeyEvent', {
@@ -4168,7 +4430,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     code: 'Escape',
     windowsVirtualKeyCode: 27
   });
-  await sleep(250);
+  await waitFor(async () => (await focusPath()) !== 'say');
   check((await focusPath()) !== 'say', 'Escape gives the keyboard back to the game');
 
   await capture('smoke-talk.png', 'the Talk card, with somewhere to reply from');
@@ -4342,8 +4604,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           return !!copy;
         })()
       `);
-      await sleep(300);
-      const clip = await evaluate(`window.mudengine.pasteText()`);
+      const clip = await readUntil(
+        () => evaluate(`window.mudengine.pasteText()`),
+        (clip) =>
+          typeof clip === 'string' &&
+          roomShop?.firstItem != null &&
+          clip.includes(roomShop.firstItem)
+      );
       check(
         typeof clip === 'string' &&
           roomShop?.firstItem != null &&
@@ -4419,9 +4686,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           })()
         `);
         check(answerFace === true, 'and standing in it grows an Answers face on the Room card');
-        await sleep(250);
-        const said = await evaluate(
-          `document.querySelector('.room-card .answers')?.innerText?.replace(/\\s+/g, ' ') ?? ''`
+        const said = await readUntil(
+          () =>
+            evaluate(
+              `document.querySelector('.room-card .answers')?.innerText?.replace(/\\s+/g, ' ') ?? ''`
+            ),
+          (said) => said.includes(scripted.say) && said.includes(scripted.to)
         );
         check(
           said.includes(scripted.say) && said.includes(scripted.to),
@@ -4481,7 +4751,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(500);
+  await waitFor(
+    async () =>
+      await evaluate(`document.querySelectorAll('.reference-card .reference li').length > 0`)
+  );
   check(
     await evaluate(`document.querySelectorAll('.reference-card .reference li').length > 0`),
     'and narrows to what was typed',
@@ -4495,7 +4768,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(200);
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.reference-card .reference-detail')`)
+  );
   check(
     await evaluate(`!!document.querySelector('.reference-card .reference-detail')`),
     'and choosing a match shows the detail',
@@ -4577,7 +4852,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     check(opened, 'and it can be pressed');
-    await sleep(600);
+    await waitFor(async () => await evaluate(`!!document.querySelector('.route-panel')`));
     check(
       await evaluate(`!!document.querySelector('.route-panel')`),
       'and pressing one opens the routing dialog on that room, where the walk is chosen'
@@ -4605,7 +4880,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       code: 'Escape',
       windowsVirtualKeyCode: 27
     });
-    await sleep(300);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
     check(
       !(await evaluate(`!!document.querySelector('.route-panel')`)),
       'and Escape puts the routing dialog away again'
@@ -4668,8 +4943,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     check(opened, 'and the room is a control, not a word');
-    await sleep(600);
-    const panel = await evaluate(`document.querySelector('.route-panel')?.innerText ?? ''`);
+    const panel = await readUntil(
+      () => evaluate(`document.querySelector('.route-panel')?.innerText ?? ''`),
+      (panel) => /Temple Healer/.test(panel)
+    );
     check(
       /Temple Healer/.test(panel),
       'and pressing it opens the routing dialog on that room, where the walk is chosen',
@@ -4719,9 +4996,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     check(opened, 'and a group of several rooms opens rather than walking to one of them');
-    await sleep(250);
-    const after = await evaluate(
-      `document.querySelectorAll('.reference-card .spawn-rooms button.lookup').length`
+    const after = await readUntil(
+      () =>
+        evaluate(`document.querySelectorAll('.reference-card .spawn-rooms button.lookup').length`),
+      (after) => after > 0
     );
     check(after > 0, 'and each room under it is its own control', String(after));
   }
@@ -4737,7 +5015,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(250);
+  // The reference card going is the effect to wait on. `openCard` is an
+  // *action* and must never be a probe: called twice, the second call finds the
+  // card already open and answers no.
+  await gone('.reference-card');
 
   check(await openCard('Show card: Inventory'), 'Inventory is offered too');
   check(
@@ -4893,7 +5174,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       code: 'Escape',
       windowsVirtualKeyCode: 27
     });
-    await sleep(250);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.reference-popover')`)));
     check(
       !(await evaluate(`!!document.querySelector('.reference-popover')`)),
       'and Escape puts it away'
@@ -4961,8 +5242,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         'latin1'
       )
     );
-    await sleep(500);
-    const scrolls = await evaluate(`window.__scrolls`);
+    const scrolls = await readUntil(
+      () => evaluate(`window.__scrolls`),
+      (scrolls) => scrolls > 0
+    );
     check(
       scrolls > 0,
       'output from the game scrolls the console, which is what used to close it',
@@ -4995,7 +5278,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     check(moved, 'the pack has a scroller of its own to move the row with');
-    await sleep(250);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.reference-popover')`)));
     check(
       !(await evaluate(`!!document.querySelector('.reference-popover')`)),
       'and scrolling that does put the answer away, because the name moved'
@@ -5171,7 +5454,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-    await sleep(250);
+    await waitFor(async () => await evaluate(`!!document.querySelector('.reference-popover')`));
     check(
       await evaluate(`!!document.querySelector('.reference-popover')`),
       'a pinned panel stays open when you click elsewhere'
@@ -5223,7 +5506,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       code: 'Escape',
       windowsVirtualKeyCode: 27
     });
-    await sleep(250);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.reference-popover')`)));
     check(
       !(await evaluate(`!!document.querySelector('.reference-popover')`)),
       'and Escape still puts a pinned panel away'
@@ -5247,7 +5530,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-    await sleep(250);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.reference-popover')`)));
     check(
       !(await evaluate(`!!document.querySelector('.reference-popover')`)),
       'and a click elsewhere still closes one that is not pinned'
@@ -5421,7 +5704,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await evaluate(
       `(document.querySelector('.combat-card .card-action[data-action="settings"]')?.click(), true)`
     );
-    await sleep(150);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.card-settings')`)));
     check(
       !(await evaluate(`!!document.querySelector('.card-settings')`)),
       'and the gear closes the panel it opened'
@@ -5538,8 +5821,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     check(typed, 'the pack has a find field');
-    await sleep(250);
-    const found = await rows();
+    const found = await readUntil(
+      () => rows(),
+      (found) => found === 'padded boots'
+    );
     check(
       found === 'padded boots',
       'and typing into it leaves only what was asked for',
@@ -5557,6 +5842,88 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     check(/1 of \d+/.test(count), 'a narrowed table states both figures', count);
 
     /*
+     * And the way out that can be *seen*: the clear inside the field.
+     *
+     * Escape below is the keyboard's answer and stays the faster one; this is
+     * the one somebody arriving with the mouse already in their hand can find.
+     * Three claims, and the geometry is the one a stylesheet can break silently:
+     * the glyph has to sit inside the field, at its trailing edge, over the
+     * its own box beside the input rather than over it, and it keeps that box
+     * while the field is empty so nothing changes width the first time somebody
+     * types.
+     */
+    const clearBox = await evaluate(
+      `
+      (() => {
+        const hold = document.querySelector('.inventory-card .table-find .field-hold');
+        const input = hold?.querySelector('input');
+        const clear = hold?.querySelector('.field-clear');
+        if (!hold || !input || !clear) return null;
+        const f = input.getBoundingClientRect();
+        const c = clear.getBoundingClientRect();
+        return {
+          // Beside the field, not over it: the glyph starts where the input
+          // ends. An overlay is what this replaced, and what let the caret run
+          // under it.
+          beside: c.left >= f.right - 1,
+          inside: c.left >= hold.getBoundingClientRect().left,
+          trailing: c.right <= hold.getBoundingClientRect().right + 1
+        };
+      })()
+    `
+    );
+    check(clearBox !== null, 'a find field with something in it offers a clear');
+    check(
+      clearBox?.inside === true && clearBox?.trailing === true,
+      'and the clear sits inside the field, at its trailing edge',
+      JSON.stringify(clearBox)
+    );
+    check(
+      clearBox?.beside === true,
+      'beside the text rather than over it, so the caret never runs under it',
+      JSON.stringify(clearBox)
+    );
+
+    const clicked = await evaluate(`
+      (() => {
+        const clear = document.querySelector('.inventory-card .table-find .field-clear');
+        if (!clear) return false;
+        clear.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        clear.click();
+        return true;
+      })()
+    `);
+    check(clicked, 'the clear can be pressed');
+    await waitFor(async () => (await rows()) === before);
+    check((await rows()) === before, 'and pressing it gives the whole pack back');
+    /*
+     * It empties the field; it does not *move* the keyboard. `keepFocus` on
+     * mousedown is why: the caret was put in this field to type into it, and a
+     * clear that took it away — or, from the game, one that grabbed it — would
+     * break the focus policy from the direction nobody expects.
+     */
+    const afterClear = await focusPath();
+    check(/INPUT/.test(afterClear), 'leaving the caret where it was', afterClear);
+    const hiddenWhenEmpty = await evaluate(
+      `document.querySelector('.inventory-card .table-find .field-clear')?.dataset.empty === 'true'`
+    );
+    // Hidden, not removed: it keeps its box, so the field does not change width
+    // the first time somebody types in it.
+    check(hiddenWhenEmpty, 'and an empty field offers no clear');
+
+    // Typed again, so Escape below still has something to clear.
+    await evaluate(`
+      (() => {
+        const input = document.querySelector('.inventory-card .table-find input');
+        input.focus();
+        const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        set.call(input, 'boots');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      })()
+    `);
+    await sleep(250);
+
+    /*
      * Escape means done, once: what was typed is cleared and the caret is back
      * in the game. Two meanings on two presses would be a mode.
      */
@@ -5572,8 +5939,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       code: 'Escape',
       windowsVirtualKeyCode: 27
     });
-    await sleep(250);
+    await waitFor(async () => (await rows()) === before);
     check((await rows()) === before, 'Escape gives the whole pack back');
+    await waitFor(async () => (await focusPath()) === 'terminal');
+    await waitFor(async () => (await focusPath()) === 'terminal');
     check((await focusPath()) === 'terminal', 'and hands the caret back to the game');
 
     /*
@@ -5596,13 +5965,16 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     check(hid, 'and a kind can be put away');
-    await sleep(250);
-    const without = await rows();
+    const without = await readUntil(
+      () => rows(),
+      (without) => !without.includes('padded boots') && without.includes('quarterstaff')
+    );
     check(
       !without.includes('padded boots') && without.includes('quarterstaff'),
       'which hides that kind and leaves the rest',
       without.slice(0, 160)
     );
+    await waitFor(async () => (await focusPath()) === 'terminal');
     check(
       (await focusPath()) === 'terminal',
       'and the caret never left the game to do it',
@@ -5614,7 +5986,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await evaluate(
       `(document.querySelector('.inventory-card .table-count button')?.click(), true)`
     );
-    await sleep(250);
+    await waitFor(async () => (await rows()) === before);
     check((await rows()) === before, 'and Show all puts every row back');
     check(
       (await evaluate(`!!document.querySelector('.inventory-card .table-count')`)) === false,
@@ -5641,8 +6013,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await sleep(250);
     const up = await rows();
     await sortBy('weight');
-    await sleep(250);
-    const down = await rows();
+    const down = await readUntil(
+      () => rows(),
+      (down) => up !== down && down.split('|')[0] !== up.split('|')[0]
+    );
     check(
       up !== down && down.split('|')[0] !== up.split('|')[0],
       'twice, the other way',
@@ -5659,7 +6033,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       `${up.split('|').at(-1)} / ${down.split('|').at(-1)}`
     );
     await sortBy('weight');
-    await sleep(250);
+    await waitFor(async () => (await rows()) === before);
     check((await rows()) === before, 'and a third click gives the listing its own order back');
 
     /*
@@ -5820,6 +6194,80 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
 
   /*
+   * The sheet pairs its rows, and the pairing is measured rather than assumed.
+   *
+   * Two-up is a container query on the card's own width, so the only honest
+   * check is against the laid-out card: at the width this card ships at, the
+   * attribute rows share lines, the labels are not clipped, and the rows whose
+   * value is a sentence still have the width to say it. A number in the
+   * stylesheet that turns out to be wrong on this machine's font shows up here
+   * as rows that did not pair, or as a label with an ellipsis in it.
+   */
+  {
+    const sheet = JSON.parse(
+      await evaluate(`
+        (() => {
+          const list = document.querySelector('.rail .self-card .readout.columns');
+          if (!list) return JSON.stringify({ found: false });
+          const terms = [...list.querySelectorAll('dt:not(.group)')];
+          const tops = terms.map((dt) => Math.round(dt.getBoundingClientRect().top));
+          const clipped = terms.filter((dt) => dt.scrollWidth > dt.clientWidth + 1);
+          const spans = [...list.querySelectorAll('dd.span')];
+          const box = list.getBoundingClientRect();
+          return JSON.stringify({
+            found: true,
+            width: Math.round(box.width),
+            terms: terms.length,
+            lines: new Set(tops).size,
+            clipped: clipped.map((dt) => dt.innerText.trim()),
+            // A spanning value reaches the far edge; a paired one cannot.
+            spansWide: spans.every(
+              (dd) => dd.getBoundingClientRect().right > box.right - box.width / 3
+            ),
+            overflows: list.scrollWidth > list.clientWidth + 1,
+            // Which child is the wide one, so a failure names the row rather
+            // than only the fact.
+            widest: [...list.children]
+              .map((el) => ({ t: el.innerText.trim().slice(0, 18), w: Math.round(el.getBoundingClientRect().right - box.left) }))
+              .sort((a, b) => b.w - a.w)
+              .slice(0, 3)
+          });
+        })()
+      `)
+    );
+    check(sheet.found, 'the Self card draws its sheet as a two-up readout');
+    /*
+     * Whichever case the laid-out card is in, and it says which.
+     *
+     * Pairing is a container query on the card's own width, and the card is
+     * dragged: at the width it ships at the sheet is one-up, and a rail dragged
+     * wider pairs it. Asserting *pairing* unconditionally would be asserting a
+     * card width nobody promised; asserting nothing would let the threshold rot.
+     * So: it either pairs, or it is too narrow to — and both must fit.
+     */
+    const paired = sheet.lines < sheet.terms;
+    check(
+      paired || sheet.width < 290,
+      paired
+        ? 'and the rows share lines rather than each taking one'
+        : 'and at this width it stays one row per fact, which is the honest fit',
+      JSON.stringify(sheet)
+    );
+    check(
+      sheet.clipped.length === 0,
+      'with no label cut off, whichever way it laid out',
+      JSON.stringify(sheet.clipped)
+    );
+    check(
+      sheet.spansWide,
+      'and a row whose value is a sentence keeps the width',
+      JSON.stringify(sheet)
+    );
+    check(!sheet.overflows, 'and the sheet does not scroll sideways', JSON.stringify(sheet));
+    await capture('smoke-self-sheet.png', 'the Self card’s sheet, two pairs to a line');
+  }
+
+  /*
    * Taking something off and putting it back on, which moves an item without
    * moving it anywhere — it was carried before and it is carried after.
    * Captured whole from the live realm:
@@ -5936,7 +6384,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       'latin1'
     )
   );
-  await sleep(400);
+  await waitFor(async () =>
+    (await evaluate(`document.querySelector('.inventory-card')?.innerText ?? ''`)).includes(
+      'iron ration'
+    )
+  );
   check(
     (await evaluate(`document.querySelector('.inventory-card')?.innerText ?? ''`)).includes(
       'iron ration'
@@ -5966,7 +6418,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return !!card;
     })()
   `);
-  await sleep(300);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.inventory-card')`)));
   check(
     !(await evaluate(`!!document.querySelector('.inventory-card')`)),
     'and closing it puts it away'
@@ -6000,7 +6452,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
   check(await openPicker(), 'the put-away cards are behind one control at the head of the rail');
-  await sleep(250);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.picker-menu')`));
   check(
     await evaluate(`!!document.querySelector('.picker-menu')`),
     'and pressing it opens the list of them'
@@ -6013,7 +6465,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return !!row;
     })()
   `);
-  await sleep(350);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.inventory-card')`));
   check(await evaluate(`!!document.querySelector('.inventory-card')`), 'clicking one puts it back');
   check(
     !(await evaluate(`!!document.querySelector('.picker-menu')`)),
@@ -6027,17 +6479,25 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   {
     check(await openPicker(), 'the list opens again');
-    await sleep(250);
-    const floated = await evaluate(`
+    const floated = await readUntil(
+      () =>
+        evaluate(`
       (() => {
         const glyph = document.querySelector('.picker-menu [data-card-float-chip="stats"]');
         if (!glyph) return false;
         glyph.click();
         return true;
       })()
-    `);
+    `),
+      (floated) => floated
+    );
     check(floated, 'every row offers a way to open the card over the console');
-    await sleep(350);
+    await waitFor(
+      async () =>
+        await evaluate(
+          `!!document.querySelector('.float-layer [data-card-float="stats"] .stats-card')`
+        )
+    );
     check(
       await evaluate(
         `!!document.querySelector('.float-layer [data-card-float="stats"] .stats-card')`
@@ -6174,11 +6634,16 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await sleep(150);
+  // The card being rolled is the state this presses out of, and `pressRoll` is
+  // an **action**: a probe that pressed it would toggle it twice and leave it
+  // exactly where it started.
+  await waitFor(async () => (await roomShape())?.rolled === true);
 
   check(await pressRoll(), 'the toggle presses back the other way');
-  await sleep(300);
-  const again = await roomShape();
+  const again = await readUntil(
+    () => roomShape(),
+    (again) => again !== null && again.rolled === false && again.body > 0
+  );
   if (again !== null && whole !== null) {
     check(
       again.rolled === false && again.body > 0 && again.height === whole.height,
@@ -6248,8 +6713,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     );
 
     check(await press(), 'its heading toggle can be pressed');
-    await sleep(300);
-    const shut = await shape();
+    const shut = await readUntil(
+      () => shape(),
+      (shut) => shut !== null && shut.rolled === true && shut.body <= 0
+    );
     check(
       shut !== null && shut.rolled === true && shut.body <= 0,
       'and a paned body is not drawn either -- no sliver under the heading',
@@ -6259,8 +6726,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // Left as it was found: every drag below here measures the cards in the
     // rail, and a card left rolled changes what those drags are aimed at.
     check(await press(), 'and it rolls back down');
-    await sleep(300);
-    const back = await shape();
+    const back = await readUntil(
+      () => shape(),
+      (back) => back !== null && back.rolled === false && back.body > 0
+    );
     check(
       back !== null && back.rolled === false && back.body > 0,
       'with its body back',
@@ -6306,7 +6775,11 @@ const boxOf = async (selector) =>
  */
 const drag = async (from, to) => {
   if (from === null || from === undefined || to === null || to === undefined) {
-    check(false, 'a drag needs both ends, and one of them was not on screen', JSON.stringify({ from, to }));
+    check(
+      false,
+      'a drag needs both ends, and one of them was not on screen',
+      JSON.stringify({ from, to })
+    );
     return;
   }
   await cdp('Input.dispatchMouseEvent', {
@@ -6405,13 +6878,16 @@ const drag = async (from, to) => {
    * of truth for whether this character fights on its own, and it is the
    * character's own YAML.
    */
-  await sleep(2500);
-  const litAfter = await evaluate(`
+  const litAfter = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const key = document.querySelector(${JSON.stringify(KEY)});
       return key ? String(key.getAttribute('aria-pressed')) : 'gone';
     })()
-  `);
+  `),
+    (litAfter) => litAfter === 'false'
+  );
   check(litAfter === 'false', 'and pressing it turns it off and it stays off', litAfter);
   // Put it back, so nothing below this point inherits a character that has
   // stopped hitting back.
@@ -6660,8 +7136,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * does this.
    */
   await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
-  await sleep(150);
-  const before = await railOrder();
+  const before = await readUntil(
+    () => railOrder(),
+    (before) => before.length >= 2
+  );
   check(before.length >= 2, 'the rail has cards to rearrange', JSON.stringify(before));
 
   // Drag the second card's heading above the first. The drop indicator is drawn
@@ -6761,7 +7239,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       clickCount: 1,
       pointerType: 'mouse'
     });
-    await sleep(350);
+    await waitFor(
+      async () => !(await evaluate(`!!document.querySelector('.rail > .rail-slot, .drag-ghost')`))
+    );
     check(
       !(await evaluate(`!!document.querySelector('.rail > .rail-slot, .drag-ghost')`)),
       'and both go with the drop'
@@ -6829,8 +7309,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         });
       }
     }
-    await sleep(250);
-    const reset = await boxOf(`.rail [data-card="${id}"]`);
+    const reset = await readUntil(
+      () => boxOf(`.rail [data-card="${id}"]`),
+      (reset) => Math.abs(reset.height - before.height) <= 2
+    );
     check(
       Math.abs(reset.height - before.height) <= 2,
       'and a double-click on the grip puts the card back at its own height',
@@ -6905,7 +7387,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     await evaluate(
       `document.querySelector('.splitter[data-edge="right"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`
     );
-    await sleep(400);
+    await waitFor(async () => Math.abs((await railWidth()) - before) < 2);
     check(
       Math.abs((await railWidth()) - before) < 2,
       'a double-click on the handle puts the rail back',
@@ -7017,6 +7499,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    */
   {
     const consoleBox = await boxOf('.terminal-layers');
+    /*
+     * The float's own grip, waited for rather than assumed: floating a card is
+     * a layout change and the grip is measured, so reading its box in the same
+     * turn as the float that produced it measures nothing. This is what the
+     * fixed sleep above it used to cover, badly — it was too short on a loaded
+     * machine and the drag then had no source (`{"from":null}`).
+     */
+    await waitFor(async () => evaluate(`!!document.querySelector('.float > .card .card-grip')`));
     const grip = await boxOf('.float > .card .card-grip');
     // The bottom edge of the console: the strip appears there mid-drag, which
     // is what gives the drop somewhere to land.
@@ -7188,9 +7678,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         return true;
       })()
     `);
-    await sleep(250);
-    const first = await evaluate(
-      `document.querySelector('.palette li[role="option"]')?.innerText?.split('\\n')[0] ?? ''`
+    const first = await readUntil(
+      () =>
+        evaluate(
+          `document.querySelector('.palette li[role="option"]')?.innerText?.split('\\n')[0] ?? ''`
+        ),
+      (first) => /settings/i.test(first)
     );
     check(/settings/i.test(first), 'settings is the first match for its own name', first);
 
@@ -7206,10 +7699,13 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
           return true;
         })()
       `);
-      await sleep(150);
-      const found = await evaluate(`
+      const found = await readUntil(
+        () =>
+          evaluate(`
         [...document.querySelectorAll('.palette li')].some((li) => /settings:/i.test(li.innerText))
-      `);
+      `),
+        (found) => found === true
+      );
       check(found === true, `searching "${word}" finds it`);
     }
 
@@ -7304,9 +7800,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(picked === 'Smoke Realm', 'the realm can be chosen on the character form', picked);
   await sleep(150);
   await evaluate(`document.querySelector('.settings-actions .primary').click(), true`);
-  await sleep(700);
-
-  const problem = await evaluate(`document.querySelector('.settings-problem')?.innerText ?? ''`);
+  const problem = await readUntil(
+    () => evaluate(`document.querySelector('.settings-problem')?.innerText ?? ''`),
+    (problem) => problem === ''
+  );
   check(problem === '', 'saving a new character is accepted', problem);
 
   // The point of the whole thing: a real file, that the client can load.
@@ -7416,7 +7913,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   `);
   await sleep(200);
   await evaluate(`document.querySelector('.settings-actions .primary').click(), true`);
-  await sleep(600);
+  await waitFor(
+    async () =>
+      (await evaluate(`document.querySelector('.settings-problem')?.innerText ?? ''`)).length > 0
+  );
   check(
     (await evaluate(`document.querySelector('.settings-problem')?.innerText ?? ''`)).length > 0,
     'a character with nowhere to play is refused, with a reason',
@@ -7459,7 +7959,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * not what it is trying to catch.
    */
   check(await clickText('.settings-sections .crumb', 'spells'), 'its Spells section is reachable');
-  await sleep(200);
+  await waitFor(
+    async () =>
+      (await evaluate(
+        // `data-field` is the identity `FormField` puts in the DOM for exactly
+        // this: a row that can be addressed by something other than its words.
+        `!!document.querySelector('.settings-form [data-field="invoke-items"] input')`
+      )) === true
+  );
   check(
     (await evaluate(
       // `data-field` is the identity `FormField` puts in the DOM for exactly
@@ -7612,6 +8119,62 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(misaligned)
   );
 
+  /*
+   * Every percentage on this page says what it is worth and where the line is.
+   *
+   * Two claims, and the second is the one a stylesheet can break silently. The
+   * figure is an overlay in the input's own grid cell (`.field-figure`), so
+   * "right-aligned, inside the field, clear of the text" is geometry rather than
+   * markup; the bar is a background on the input, so what can be asserted is
+   * that it is *there* and that its fill and its band are the ones the value
+   * implies. A field at 0 draws neither: 0 means never.
+   */
+  const percents = JSON.parse(
+    await evaluate(`
+      JSON.stringify([...document.querySelectorAll('.settings-form .settings-field')]
+        .map((field) => {
+          const input = field.querySelector('input');
+          const figure = field.querySelector('.field-figure');
+          if (!input || !/^[0-9]*$/.test(input.value)) return null;
+          const box = input.getBoundingClientRect();
+          const mark = figure ? figure.getBoundingClientRect() : null;
+          return {
+            label: field.querySelector('span')?.innerText.trim() ?? '',
+            value: input.value,
+            bar: input.classList.contains('has-bar'),
+            fill: input.style.getPropertyValue('--bar-fill'),
+            level: input.getAttribute('data-level'),
+            figure: figure ? figure.innerText.trim() : null,
+            inside: mark ? mark.right <= box.right + 1 && mark.left > box.left : null,
+            trailing: mark ? box.right - mark.right < box.width / 2 : null
+          };
+        })
+        .filter((entry) => entry !== null && entry.bar))
+    `)
+  );
+  check(percents.length > 0, 'the health page has percentage fields with a bar');
+  check(
+    percents.every((entry) => entry.fill === `${entry.value}%`),
+    'and each bar is filled to the figure in its own field',
+    JSON.stringify(percents.slice(0, 4))
+  );
+  check(
+    percents.every((entry) => ['ok', 'caution', 'critical'].includes(entry.level)),
+    'in one of the three bands the vitals card uses',
+    JSON.stringify(percents.map((entry) => entry.level))
+  );
+  const withFigure = percents.filter((entry) => entry.figure);
+  check(
+    withFigure.length > 0 && withFigure.every((entry) => /^\d+\/\d+$/.test(entry.figure)),
+    'and says what the percentage is worth, as x/y',
+    JSON.stringify(withFigure.map((entry) => entry.figure))
+  );
+  check(
+    withFigure.every((entry) => entry.inside && entry.trailing),
+    'right-aligned inside the field it belongs to',
+    JSON.stringify(withFigure.slice(0, 3))
+  );
+
   /* The page the misalignment was reported from, so the geometry above has a
      picture beside it. */
   await capture('smoke-settings-health.png', 'the Health page, whose fields share a column');
@@ -7739,20 +8302,58 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * Locks" is a number attached to the wrong setting, which is the thing that
    * makes this a grouping change and not only a shorter one.
    */
+  /*
+   * The switch answers, whichever way it starts.
+   *
+   * It used to have to start **off** — the check clicked it on and failed if it
+   * was already checked — which stopped being true on 2026-09-07 when opening
+   * a door on a planned way became the default (todo 06). What is being
+   * asserted here is the *control*, not the shipped answer, so it presses and
+   * reads back the other value; what ships is asserted in `config.test.ts`.
+   */
+  const doorSwitch = `
+    (() => {
+      const box = [...document.querySelectorAll('.settings-check')]
+        .find((l) => /auto-open doors/i.test(l.innerText));
+      const input = box?.querySelector('input');
+      if (!input) return 'missing';
+      return String(input.checked);
+    })()
+  `;
+  const doorsWere = await evaluate(doorSwitch);
+  check(doorsWere !== 'missing', 'opening doors on the way is a switch on this page', doorsWere);
+  await evaluate(`
+    (() => {
+      const box = [...document.querySelectorAll('.settings-check')]
+        .find((l) => /auto-open doors/i.test(l.innerText));
+      box?.querySelector('input')?.click();
+      return true;
+    })()
+  `);
+  const doorsNow = await readUntil(
+    () => evaluate(doorSwitch),
+    (doorsNow) => doorsNow !== doorsWere
+  );
   check(
+    doorsNow !== doorsWere,
+    'and it can be pressed the other way',
+    `${doorsWere} -> ${doorsNow}`
+  );
+  /*
+   * And left **on**, because the count below is disclosed by this switch: the
+   * geometry check that follows is about a row that exists only while it is.
+   */
+  if (doorsNow !== 'true') {
     await evaluate(`
       (() => {
         const box = [...document.querySelectorAll('.settings-check')]
           .find((l) => /auto-open doors/i.test(l.innerText));
-        const input = box?.querySelector('input');
-        if (!input || input.checked) return false;
-        input.click();
+        box?.querySelector('input')?.click();
         return true;
       })()
-    `),
-    'opening doors on the way can be switched on'
-  );
-  await sleep(200);
+    `);
+  }
+  await waitFor(async () => evaluate(`!!document.querySelector('[data-field="open-tries"]')`));
   const paired = JSON.parse(
     await evaluate(`
       (() => {
@@ -7839,12 +8440,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'answering can be switched on'
   );
   // The form saves itself, so the assertion is on the file rather than a click.
-  await sleep(900);
-  const answersInFile = await (async () => {
-    const file = path.join(PROFILES_DIR, 'smoke', 'profile.yaml');
-    if (!fs.existsSync(file)) return '(no profile file)';
-    return fs.readFileSync(file, 'utf8');
-  })();
+  const answersInFile = await readUntil(
+    () =>
+      (async () => {
+        const file = path.join(PROFILES_DIR, 'smoke', 'profile.yaml');
+        if (!fs.existsSync(file)) return '(no profile file)';
+        return fs.readFileSync(file, 'utf8');
+      })(),
+    (answersInFile) => /remotes:\s*\n\s*enabled: true/.test(answersInFile)
+  );
   check(
     /remotes:\s*\n\s*enabled: true/.test(answersInFile),
     'and it reaches this character’s own file, not only the options file',
@@ -7859,7 +8463,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * action that silently wrote nothing would be indistinguishable from one that
    * worked.
    */
-  await sleep(400);
+  await waitFor(
+    async () =>
+      await evaluate(`
+      (() => {
+        const list = document.querySelector('.remote-list[data-mode="gang"]');
+        if (!list) return false;
+        const rows = list.querySelectorAll('.remote-rows > li').length;
+        return rows > 40;
+      })()
+    `)
+  );
   check(
     await evaluate(`
       (() => {
@@ -7884,10 +8498,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `),
     'and “Allow all” is one click'
   );
-  await sleep(900);
-  const grantedInFile = fs.existsSync(path.join(PROFILES_DIR, 'smoke', 'profile.yaml'))
-    ? fs.readFileSync(path.join(PROFILES_DIR, 'smoke', 'profile.yaml'), 'utf8')
-    : '(no profile file)';
+  const grantedInFile = await fileBecomes(
+    path.join(PROFILES_DIR, 'smoke', 'profile.yaml'),
+    (text) => /gang:[\s\S]{0,400}- health/.test(text)
+  );
   check(
     /gang:[\s\S]{0,400}- health/.test(grantedInFile),
     'which reaches the file as a written-out list rather than a wildcard',
@@ -7906,12 +8520,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * nobody would guess: never a player, at any setting.
    */
   check(await clickText('.settings-sections .crumb', 'combat'), 'its Combat section is reachable');
-  await sleep(200);
-  const fighting = await evaluate(`
+  const fighting = await readUntil(
+    () =>
+      evaluate(`
     ([...document.querySelectorAll('.settings-menus')]
       .find((f) => /^attack$/i.test((f.querySelector('legend')?.innerText ?? '').trim()))
       ?.innerText ?? '')
-  `);
+  `),
+    (fighting) => /never on a player/i.test(fighting)
+  );
   check(
     /never on a player/i.test(fighting),
     'the combat setting says it will never attack a player',
@@ -8013,25 +8630,29 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     check(await clickText('.settings-menus button', 'add a loop'), 'the shelf can be opened');
     // The catalogue crosses IPC on the first open; four hundred loops out of
     // a file, so it is not instant.
-    await sleep(600);
-
-    const shelved = await evaluate(`document.querySelectorAll('.loop-options li').length`);
+    const shelved = await readUntil(
+      () => evaluate(`document.querySelectorAll('.loop-options li').length`),
+      (shelved) => shelved > 400
+    );
     check(shelved > 400, 'and it is full of the loops the client ships', `${shelved} on the shelf`);
 
     // Narrowing it: the names are `Area: Room-map room`, so a word from either
     // half finds a run of them.
     await type('.loop-search input', 'sewer');
-    await sleep(150);
-    const narrowed = await evaluate(`document.querySelectorAll('.loop-options li').length`);
+    const narrowed = await readUntil(
+      () => evaluate(`document.querySelectorAll('.loop-options li').length`),
+      (narrowed) => narrowed > 0 && narrowed < shelved
+    );
     check(narrowed > 0 && narrowed < shelved, 'and typing narrows it', `${narrowed} match "sewer"`);
 
     const firstMatch = await evaluate(
       `document.querySelector('.loop-options .loop-name')?.innerText.trim() ?? ''`
     );
     await evaluate(`document.querySelector('.loop-options button').click(), true`);
-    await sleep(200);
-
-    const chosen = await listed();
+    const chosen = await readUntil(
+      () => listed(),
+      (chosen) => chosen.includes(firstMatch) && chosen.length === already.length + 1
+    );
     check(
       chosen.includes(firstMatch) && chosen.length === already.length + 1,
       'clicking one puts it on this character, beside what it already walks',
@@ -8048,7 +8669,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // The same gesture takes it off, which is why a row toggles rather than
     // adds: choosing one already on cannot quietly add a second under one name.
     await evaluate(`document.querySelector('.loop-options button').click(), true`);
-    await sleep(200);
+    await waitFor(async () => JSON.stringify(await listed()) === JSON.stringify(already));
     check(
       JSON.stringify(await listed()) === JSON.stringify(already),
       'and clicking it again takes it back off, leaving the rest alone'
@@ -8057,12 +8678,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // Put it on again and take it off from the character's own list this time
     // -- the two removals are different controls and both have to work.
     await evaluate(`document.querySelector('.loop-options button').click(), true`);
-    await sleep(150);
+    await waitFor(async () => (await listed()).length === already.length + 1);
     check((await listed()).length === already.length + 1, 'a loop goes back on');
     await evaluate(
       `[...document.querySelectorAll('.settings-loops li button')].at(-1).click(), true`
     );
-    await sleep(150);
+    await waitFor(async () => JSON.stringify(await listed()) === JSON.stringify(already));
     check(
       JSON.stringify(await listed()) === JSON.stringify(already),
       'and the × on its own row takes it off too, and only it',
@@ -8070,7 +8691,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     );
 
     check(await clickText('.loop-picker button', 'done'), 'the shelf puts itself away');
-    await sleep(150);
+    await waitFor(async () => await evaluate(`!document.querySelector('.loop-picker')`));
     check(await evaluate(`!document.querySelector('.loop-picker')`), 'and it is gone');
   }
 
@@ -8120,8 +8741,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       `),
       'and offers a + to add another'
     );
-    await sleep(250);
-    const after = await rowsNow();
+    const after = await readUntil(
+      () => rowsNow(),
+      (after) => after === before + 1
+    );
     check(after === before + 1, 'which adds a row', `${before} -> ${after}`);
 
     // Two fields per row -- when this arrives, send that -- and nothing else.
@@ -8150,7 +8773,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       `),
       'and a row can be removed'
     );
-    await sleep(250);
+    await waitFor(async () => (await rowsNow()) === before);
     check((await rowsNow()) === before, 'leaving the script as it was');
 
     /*
@@ -8188,10 +8811,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     );
 
     check(await clickText('.settings-head .crumb', 'characters'), 'back to the characters');
-    await sleep(250);
   }
 
-  await sleep(200);
+  // The page arriving is the positive control: without it, "no world database
+  // field" is equally true of a page that has not been drawn yet.
+  await waitFor(async () => evaluate(`!!document.querySelector('.settings-list')`));
   check(
     !(await evaluate(`!!document.querySelector('.settings-file input')`)),
     'and a character no longer states one of its own'
@@ -8224,8 +8848,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       return !!mark;
     })()
   `);
-  await sleep(200);
-  const hinted = await evaluate(`
+  const hinted = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const bubble = document.querySelector('.settings-form .hint-bubble:not([hidden])');
       if (!bubble) return 'nothing opened';
@@ -8233,7 +8858,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         document.querySelector('.settings-form [aria-describedby="' + bubble.id + '"]');
       return JSON.stringify({ text: bubble.innerText.trim().slice(0, 40), tied: !!described });
     })()
-  `);
+  `),
+    (hinted) => /"tied":true/.test(hinted) && /"text":"[^"]{10,}/.test(hinted)
+  );
   check(
     /"tied":true/.test(hinted) && /"text":"[^"]{10,}/.test(hinted),
     'a hint opens one sentence, tied to the field it explains',
@@ -8245,8 +8872,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   check(await clickText('.settings-sections .crumb', 'alerts'), 'its Alerts section is reachable');
-  await sleep(200);
-  const alerting = await evaluate(`
+  const alerting = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const box = [...document.querySelectorAll('.settings-menus')]
         .find((f) => /^alerts$/i.test((f.querySelector('legend')?.innerText ?? '').trim()));
@@ -8256,7 +8884,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         channels: [...box.querySelectorAll('.settings-checks .settings-check')].length
       });
     })()
-  `);
+  `),
+    (alerting) => /"keep":"info"/.test(alerting) && /"channels":1[01]/.test(alerting)
+  );
   check(
     /"keep":"info"/.test(alerting) && /"channels":1[01]/.test(alerting),
     'and offers a floor and the channels to mute, rather than a box to spell one into',
@@ -8340,17 +8970,21 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * A change is written on its own after the debounce -- the one thing on
      * this screen that could be forgotten, and forgetting it was silent.
      */
-    await sleep(1600);
-
-    const written = fs.existsSync(CONFIG) ? fs.readFileSync(CONFIG, 'utf8') : '';
+    const written = await fileBecomes(CONFIG, (text) => /size: 17/.test(text));
     check(
       /size: 17/.test(written),
       'a change made here saves itself into the options file, with no Save button'
     );
-    check(
-      /saved/i.test(await evaluate(`document.querySelector('.settings-saving')?.innerText ?? ''`)),
-      'and the form says so, since there is no click to tie it to'
+    /*
+     * Read until it has stopped saying `Saving…`: the file is written before
+     * the form is told the write finished, so the assertion on the words has
+     * to wait for the words rather than for the file.
+     */
+    const says = await readUntil(
+      () => evaluate(`document.querySelector('.settings-saving')?.innerText ?? ''`),
+      (text) => /saved/i.test(text)
     );
+    check(/saved/i.test(says), 'and the form says so, since there is no click to tie it to');
     // The user's own file, patched rather than replaced: the comments in it are
     // the documentation, and there is only one of these.
     // Patched, never replaced: this file is the annotated template somebody
@@ -8385,9 +9019,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       })()
     `;
     check(await evaluate(markSwitch), 'and the Appearance section offers a switch for it');
-    await sleep(1800);
-    const hidden = fs.existsSync(CONFIG) ? fs.readFileSync(CONFIG, 'utf8') : '';
+    const hidden = await fileBecomes(CONFIG, (text) => /showLogo: false/.test(text));
     check(/showLogo: false/.test(hidden), 'turning it off reaches the options file');
+    /*
+     * Two effects, and the file is the faster of them: the write lands on the
+     * debounce and the rail redraws on the config being read back, so waiting
+     * on the file alone reads the rail one push early. The mark going is its
+     * own wait — which is the whole point of this half of the check, since a
+     * setting written into a file that nothing reads is the failure it exists
+     * to catch.
+     */
+    await gone('.status-rail .app-mark');
     check(
       !(await evaluate(`!!document.querySelector('.status-rail .app-mark')`)),
       'and the mark actually goes'
@@ -8395,7 +9037,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // Back on, so the screenshots below and the rest of the run see the client
     // as it ships.
     check(await evaluate(markSwitch), 'and the switch turns it back on');
-    await sleep(1800);
+    await waitFor(async () => await evaluate(`!!document.querySelector('.status-rail .app-mark')`));
     check(
       await evaluate(`!!document.querySelector('.status-rail .app-mark')`),
       'and the mark comes back'
@@ -8476,9 +9118,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       })()
     `);
     // Again with no click: editing an existing character saves itself.
-    await sleep(1600);
-
-    const after = fs.existsSync(freshly) ? fs.readFileSync(freshly, 'utf8') : '';
+    const after = await fileBecomes(freshly, (text) => /accent: violet/.test(text));
     check(/accent: violet/.test(after), 'the change saved itself', after.slice(0, 160));
     check(
       /smoke-password/.test(after),
@@ -8504,8 +9144,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'there is a way back from a change that has already saved itself'
     );
     await evaluate(`(${button('undo')}.click(), true)`);
-    await sleep(1600);
-    const undone = fs.existsSync(freshly) ? fs.readFileSync(freshly, 'utf8') : '';
+    const undone = await fileBecomes(freshly, (text) => /accent: cyan/.test(text));
     check(
       /accent: cyan/.test(undone),
       'undo puts the form back, and the file with it',
@@ -8514,8 +9153,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
     check(await evaluate(`!${button('redo')}.disabled`), 'and redo is offered afterwards');
     await evaluate(`(${button('redo')}.click(), true)`);
-    await sleep(1600);
-    check(/accent: violet/.test(fs.readFileSync(freshly, 'utf8')), 'which puts it forward again');
+    check(
+      /accent: violet/.test(await fileBecomes(freshly, (text) => /accent: violet/.test(text))),
+      'which puts it forward again'
+    );
 
     // And the chord, which is what anybody actually presses. It stands down
     // inside a text field, where it is the field's own undo -- so this is
@@ -8535,9 +9176,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       windowsVirtualKeyCode: 90,
       modifiers: 2
     });
-    await sleep(1600);
     check(
-      /accent: cyan/.test(fs.readFileSync(freshly, 'utf8')),
+      /accent: cyan/.test(await fileBecomes(freshly, (text) => /accent: cyan/.test(text))),
       'and Ctrl/Cmd Z does the same, which is what anybody actually presses'
     );
   }
@@ -8556,8 +9196,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     code: 'Escape',
     windowsVirtualKeyCode: 27
   });
-  await sleep(350);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.settings')`)));
   check(!(await evaluate(`!!document.querySelector('.settings')`)), 'Escape closes settings');
+  await waitFor(async () => (await focusPath()) === 'terminal');
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check((await focusPath()) === 'terminal', 'and the keyboard goes back to the game');
 }
 
@@ -8770,7 +9412,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `),
     'the pencil is clicked on its own tab'
   );
-  await sleep(500);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.settings')`));
   check(await evaluate(`!!document.querySelector('.settings')`), 'and opens the settings screen');
   check(
     (await evaluate(
@@ -8800,7 +9442,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await evaluate(
     `(document.querySelector('.tab-rail .new-character:not(.rail-settings)').click(), true)`
   );
-  await sleep(500);
+  await waitFor(
+    async () =>
+      await evaluate(`!!document.querySelector('.settings-list .settings-add[data-active="true"]')`)
+  );
   check(
     await evaluate(`!!document.querySelector('.settings-list .settings-add[data-active="true"]')`),
     'the + opens settings on a blank character'
@@ -8822,7 +9467,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     code: 'Escape',
     windowsVirtualKeyCode: 27
   });
-  await sleep(350);
+  await waitFor(async () => (await focusPath()) === 'terminal');
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check((await focusPath()) === 'terminal', 'and closing it returns to the game');
 }
 
@@ -8952,8 +9598,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     await evaluate(
       `document.querySelector('.splitter[data-edge="right"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`
     );
-    await sleep(400);
-    const after = await railWidth();
+    const after = await readUntil(
+      () => railWidth(),
+      (after) => Math.abs(after - before) < 2
+    );
     check(
       Math.abs(after - before) < 2,
       'and the rail is put back for the checks that follow',
@@ -9323,7 +9971,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `),
     'the put-away cards open from the head of the rail'
   );
-  await sleep(250);
+  /*
+   * The chip appearing is the effect; pressing it is the action. Waiting on an
+   * expression that presses it would press it twice — the card docks, the chip
+   * goes, and the check then reports a card the client does not offer.
+   */
+  await waitFor(async () =>
+    evaluate(`!!document.querySelector('.picker-menu [data-card-chip="stats"]')`)
+  );
   check(
     await evaluate(`
       (() => {
@@ -9334,7 +9989,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `),
     'the Combat Stats card is offered among them'
   );
-  await sleep(300);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.stats-card')`));
   check(
     await evaluate(`!!document.querySelector('.stats-card')`),
     'and docks onto the rail when its chip is pressed'
@@ -9704,7 +10359,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await evaluate(
     `(document.querySelector('.loop-builder-card [data-action="close"]')?.click(), true)`
   );
-  await sleep(300);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.loop-builder-card')`)));
   check(
     !(await evaluate(`!!document.querySelector('.loop-builder-card')`)),
     'the builder closes from its own action column'
@@ -9909,7 +10564,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     })()
   `);
   check(chose, 'clicking a name on the Players card is one gesture');
-  await sleep(400);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.player-flyout')`));
 
   check(
     await evaluate(`!!document.querySelector('.player-flyout')`),
@@ -9991,7 +10646,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       clickCount: 1
     });
   }
-  await sleep(400);
+  await waitFor(async () => !(await evaluate(`window.__flyoutGone`)));
   check(
     !(await evaluate(`window.__flyoutGone`)),
     'and pressing it replaces the open flyout without ever taking it down'
@@ -10154,7 +10809,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     code: 'Escape',
     windowsVirtualKeyCode: 27
   });
-  await sleep(250);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.player-flyout')`)));
   check(
     !(await evaluate(`!!document.querySelector('.player-flyout')`)),
     'and Escape puts the flyout away'
@@ -10303,7 +10958,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       return !!chip;
     })()
   `);
-  await sleep(250);
+  await waitFor(
+    async () =>
+      !(await evaluate(
+        `[...document.querySelectorAll('.alert-list tbody tr')].some((li) => li.dataset.level === 'info')`
+      ))
+  );
   check(
     !(await evaluate(
       `[...document.querySelectorAll('.alert-list tbody tr')].some((li) => li.dataset.level === 'info')`
@@ -10354,8 +11014,7 @@ check(
 // mouse action after which the next thing typed still has to reach the game.
 {
   await evaluate(`(document.querySelector('.terminal-cell textarea')?.focus(), true)`);
-  await sleep(150);
-  const before = await focusPath();
+  const before = await waitFor(async () => (await focusPath()) === 'terminal' && 'terminal');
   await evaluate(`
     (() => {
       const tab = [...document.querySelectorAll('.room-card .crumb')].find((t) => /how/i.test(t.innerText));
@@ -10368,7 +11027,17 @@ check(
       return true;
     })()
   `);
-  await sleep(250);
+  /*
+   * The positive control, without which this proves nothing: the claim is that
+   * the caret *stayed* in the terminal, which is true before the click too. So
+   * the wait is on the face having actually changed — the click landing — and
+   * focus is read once it has.
+   */
+  await waitFor(async () =>
+    evaluate(
+      `[...document.querySelectorAll('.room-card .crumb')].some((t) => /how/i.test(t.innerText) && t.dataset.active === 'true')`
+    )
+  );
   check(
     before === 'terminal' && (await focusPath()) === 'terminal',
     'switching a card face leaves the caret in the terminal',
@@ -10419,7 +11088,7 @@ check(
     windowsVirtualKeyCode: 71,
     modifiers: 2
   });
-  await sleep(400);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.route-panel')`));
   check(await evaluate(`!!document.querySelector('.route-panel')`), 'the route panel opens');
 
   // Type into it the way React listens for.
@@ -10433,10 +11102,9 @@ check(
       return true;
     })()
   `);
-  await sleep(900);
-
-  const matched = await evaluate(
-    `document.querySelectorAll('.route-matches li[data-active]').length`
+  const matched = await readUntil(
+    () => evaluate(`document.querySelectorAll('.route-matches li[data-active]').length`),
+    (matched) => matched > 1
   );
   check(matched > 1, 'the room search finds rooms to choose between', `${matched} matches`);
 
@@ -10444,9 +11112,12 @@ check(
     `[...document.querySelectorAll('.route-matches li[data-active]')].findIndex((li) => li.dataset.active === 'true')`
   );
   await press('ArrowDown', 'ArrowDown', 40);
-  await sleep(250);
-  const afterDown = await evaluate(
-    `[...document.querySelectorAll('.route-matches li[data-active]')].findIndex((li) => li.dataset.active === 'true')`
+  const afterDown = await readUntil(
+    () =>
+      evaluate(
+        `[...document.querySelectorAll('.route-matches li[data-active]')].findIndex((li) => li.dataset.active === 'true')`
+      ),
+    (afterDown) => firstActive === 0 && afterDown === 1
   );
   check(
     firstActive === 0 && afterDown === 1,
@@ -10455,7 +11126,12 @@ check(
   );
 
   await press('ArrowUp', 'ArrowUp', 38);
-  await sleep(250);
+  await waitFor(
+    async () =>
+      (await evaluate(
+        `[...document.querySelectorAll('.route-matches li[data-active]')].findIndex((li) => li.dataset.active === 'true')`
+      )) === 0
+  );
   check(
     (await evaluate(
       `[...document.querySelectorAll('.route-matches li[data-active]')].findIndex((li) => li.dataset.active === 'true')`
@@ -10473,22 +11149,28 @@ check(
       return true;
     })()
   `);
-  await sleep(800);
+  await waitFor(
+    async () =>
+      (await evaluate(`document.querySelector('.route-panel input').value`)) === 'Newhaven, D'
+  );
   check(
     (await evaluate(`document.querySelector('.route-panel input').value`)) === 'Newhaven, D',
     'and the field keeps taking typed input'
   );
 
   await press('Enter', 'Enter', 13);
-  await sleep(900);
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.route-panel .route-result')`)
+  );
   check(
     await evaluate(`!!document.querySelector('.route-panel .route-result')`),
     'Enter takes the highlighted room, not merely the first'
   );
 
   await press('Escape', 'Escape', 27);
-  await sleep(400);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
   check(!(await evaluate(`!!document.querySelector('.route-panel')`)), 'and Escape closes it');
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check(
     (await focusPath()) === 'terminal',
     'handing the caret back to the terminal',
@@ -10533,12 +11215,15 @@ check(
       return true;
     })()
   `);
-  await sleep(900);
-  const gotoRow = await evaluate(`
+  const gotoRow = await readUntil(
+    () =>
+      evaluate(`
     [...document.querySelectorAll('.palette li')]
       .map((li) => li.innerText.replace(/\\s+/g, ' ').trim())
       .find((text) => /^Goto:/.test(text)) ?? ''
-  `);
+  `),
+    (gotoRow) => /^Goto: .+1\/2141$/.test(gotoRow)
+  );
   check(
     /^Goto: .+1\/2141$/.test(gotoRow),
     'a room reference typed into the palette offers a row that walks there',
@@ -10562,7 +11247,7 @@ check(
     'and a partial room name does too'
   );
   await press('Escape', 'Escape', 27);
-  await sleep(300);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.palette')`)));
   check(
     !(await evaluate(`!!document.querySelector('.palette')`)),
     'and Escape puts the palette away for the checks that follow'
@@ -10726,13 +11411,17 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
       return !!entry;
     })()
   `);
-  await sleep(400);
-  const after = await evaluate(`window.mudengine.pasteText()`);
+  const after = await readUntil(
+    () => evaluate(`window.mudengine.pasteText()`),
+    (after) =>
+      typeof after === 'string' && /Newhaven, Village Entrance/.test(after) && after !== before
+  );
   check(
     typeof after === 'string' && /Newhaven, Village Entrance/.test(after) && after !== before,
     'and Copy card puts what the card says on the clipboard',
     JSON.stringify(String(after).slice(0, 80))
   );
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check(
     (await focusPath()) === 'terminal',
     'leaving the caret in the game, like every other menu',
@@ -10863,7 +11552,7 @@ await ensureDiagnostics();
 await evaluate(
   `(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, shiftKey: true, bubbles: true })), true)`
 );
-await sleep(300);
+await waitFor(async () => !(await evaluate(`!!document.querySelector('.link-card')`)));
 check(
   !(await evaluate(`!!document.querySelector('.link-card')`)),
   'the diagnostics cards close with the rail toggle'
@@ -10906,7 +11595,11 @@ check(
  * and routing `Push.line` to it.
  */
 clientSocket.write(Buffer.from('\x1b[0;37mstream-live-marker\x1b[0m\r\n', 'latin1'));
-await sleep(500);
+await waitFor(async () =>
+  /stream-live-marker/.test(
+    await evaluate(`document.querySelector('.stream-card')?.innerText ?? ''`)
+  )
+);
 check(
   /stream-live-marker/.test(
     await evaluate(`document.querySelector('.stream-card')?.innerText ?? ''`)
@@ -10945,7 +11638,9 @@ const tabbed = await evaluate(`
   })()
 `);
 check(tabbed, 'the Link card carries its negotiation log on a tab');
-await sleep(250);
+// The log arriving is the control: "no Traffic card" is true of a window that
+// has not finished switching faces, too.
+await waitFor(async () => evaluate(`!!document.querySelector('.telnet-log')`));
 check(
   !(await evaluate(`!!document.querySelector('.traffic-card')`)),
   'and Traffic no longer costs a card of its own'
@@ -11043,15 +11738,17 @@ check(
   // Start from the live edge, so the pin this section is about is proven to
   // have been taken rather than found already off.
   await evaluate(`(document.querySelector('.jump-latest')?.click(), true)`);
-  await sleep(300);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.jump-latest')`)));
   check(
     !(await evaluate(`!!document.querySelector('.jump-latest')`)),
     'the console is following the game before anything is selected'
   );
 
   check(await rightClick(), 'right-clicking the console opens a menu');
-  await sleep(250);
-  const cold = await menuEntries();
+  const cold = await readUntil(
+    () => menuEntries(),
+    (cold) => cold.length === 2 && /copy/i.test(cold[0]?.label) && /paste/i.test(cold[1]?.label)
+  );
   check(
     cold.length === 2 && /copy/i.test(cold[0]?.label) && /paste/i.test(cold[1]?.label),
     'offering Copy and Paste',
@@ -11063,8 +11760,10 @@ check(
   check(cold[1]?.disabled === false, 'and Paste offered regardless');
 
   await dismissMenu();
-  await sleep(200);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.popup-menu')`)));
   check(!(await evaluate(`!!document.querySelector('.popup-menu')`)), 'Escape closes it');
+  await waitFor(async () => (await focusPath()) === 'terminal');
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check((await focusPath()) === 'terminal', 'and hands the keyboard back to the game');
 
   /*
@@ -11125,7 +11824,7 @@ check(
   liveSockets[0]?.write(
     Buffer.from('\r\nthe realm keeps talking while you read\r\n'.repeat(6), 'latin1')
   );
-  await sleep(500);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.jump-latest')`));
   check(
     await evaluate(`!!document.querySelector('.jump-latest')`),
     'a selection holds the console still, exactly as backscrolling does'
@@ -11138,10 +11837,15 @@ check(
    * quietly stopped following the game.
    */
   await rightClick();
-  await sleep(250);
+  // The menu being up is the effect; `clickEntry` is an action and must not be
+  // a probe, or the row is pressed twice. Spelled out rather than through
+  // `shown()`, which a `const shown` in this block shadows.
+  await waitFor(async () => evaluate(`!!document.querySelector('.popup-menu')`));
   check(await clickEntry('/copy/i'), 'Copy is clickable');
-  await sleep(400);
-  const copied = await evaluate(`window.mudengine.pasteText()`);
+  const copied = await readUntil(
+    () => evaluate(`window.mudengine.pasteText()`),
+    (copied) => typeof copied === 'string' && copied.trim().length > 0
+  );
   check(
     typeof copied === 'string' && copied.trim().length > 0,
     'and what was selected reached the system clipboard',
@@ -11152,8 +11856,10 @@ check(
     'copying releases the hold and returns to the live edge'
   );
   await rightClick();
-  await sleep(250);
-  const released = await menuEntries();
+  const released = await readUntil(
+    () => menuEntries(),
+    (released) => released[0]?.disabled === true
+  );
   check(
     released[0]?.disabled === true,
     'and drops the selection that was holding it -- otherwise it would freeze again on the next line',
@@ -11171,7 +11877,7 @@ check(
   await evaluate(`window.mudengine.copyText(${JSON.stringify(pasted)})`);
   const beforePaste = Buffer.concat(received).length;
   await rightClick();
-  await sleep(250);
+  await waitFor(async () => evaluate(`!!document.querySelector('.popup-menu')`));
   check(await clickEntry('/paste/i'), 'Paste is clickable');
   await sleep(400);
   check(
@@ -11179,6 +11885,7 @@ check(
     'and the clipboard reaches the server as input',
     JSON.stringify(Buffer.concat(received).subarray(beforePaste).toString('latin1').slice(0, 60))
   );
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check((await focusPath()) === 'terminal', 'leaving the caret in the game afterwards');
 }
 
@@ -11223,8 +11930,10 @@ await cdp('Input.dispatchKeyEvent', {
   code: 'KeyK',
   windowsVirtualKeyCode: 75
 });
-await sleep(400);
-const paletteOpen = await evaluate(`!!document.querySelector('.palette')`);
+const paletteOpen = await readUntil(
+  () => evaluate(`!!document.querySelector('.palette')`),
+  (paletteOpen) => paletteOpen
+);
 check(paletteOpen, 'command palette opens on Ctrl+K');
 if (paletteOpen) {
   const items = await evaluate(`document.querySelectorAll('.palette li').length`);
@@ -11358,8 +12067,9 @@ if (logFiles[0]) {
       return true;
     })()
   `);
-  await sleep(250);
-  const opened = await evaluate(`
+  const opened = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const row = [...document.querySelectorAll('.palette li')]
         .find((li) => /debug window/i.test(li.innerText));
@@ -11367,9 +12077,11 @@ if (logFiles[0]) {
       row.click();
       return true;
     })()
-  `);
+  `),
+    (opened) => String(opened) === 'true'
+  );
   check(String(opened) === 'true', 'the palette offers the debug window');
-  await sleep(900);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.debug-view')`));
   check(await evaluate(`!!document.querySelector('.debug-view')`), 'and it opens');
 
   /*
@@ -11428,7 +12140,9 @@ if (logFiles[0]) {
     })()
   `);
   check(String(muted) === 'true', 'a stage can be muted');
-  await sleep(200);
+  await waitFor(
+    async () => await evaluate(`!document.querySelector('.debug-row[data-kind="in"]')`)
+  );
   check(
     await evaluate(`!document.querySelector('.debug-row[data-kind="in"]')`),
     'and the rows it hid are gone'
@@ -11438,7 +12152,9 @@ if (logFiles[0]) {
     'and the view says it is narrowed, and how to undo it'
   );
   await evaluate(`(document.querySelector('.debug-status .quiet').click(), true)`);
-  await sleep(200);
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.debug-row[data-kind="in"]')`)
+  );
   check(
     await evaluate(`!!document.querySelector('.debug-row[data-kind="in"]')`),
     'and showing everything brings them back'
@@ -11473,10 +12189,12 @@ if (logFiles[0]) {
     })()
   `);
   check(String(wrote) === 'true', 'the view offers to save the trace as a bug report');
-  await sleep(1200);
-  const reports = fs.existsSync(LOG_DIR)
-    ? fs.readdirSync(LOG_DIR).filter((name) => name.startsWith('debug-') && name.endsWith('.txt'))
-    : [];
+  const reports = await waitFor(async () => {
+    const found = fs.existsSync(LOG_DIR)
+      ? fs.readdirSync(LOG_DIR).filter((name) => name.startsWith('debug-') && name.endsWith('.txt'))
+      : [];
+    return found.length === 1 ? found : null;
+  }).then((found) => found ?? []);
   check(
     reports.length === 1,
     'and one report appears beside the session log',
@@ -11554,7 +12272,7 @@ if (logFiles[0]) {
 
   // Put it away: everything below this point is about the console.
   await evaluate(`(document.querySelector('.debug-view .card-close').click(), true)`);
-  await sleep(400);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.debug-view')`)));
   check(
     !(await evaluate(`!!document.querySelector('.debug-view')`)),
     'closing it brings the console back'
@@ -11580,8 +12298,9 @@ await cdp('Input.dispatchKeyEvent', {
   code: 'Escape',
   windowsVirtualKeyCode: 27
 });
-await sleep(300);
+await waitFor(async () => !(await evaluate(`!!document.querySelector('.palette')`)));
 check(!(await evaluate(`!!document.querySelector('.palette')`)), 'palette dismisses on Escape');
+await waitFor(async () => (await focusPath()) === 'terminal');
 check(
   (await focusPath()) === 'terminal',
   'focus returns to the terminal after Escape',
@@ -11612,6 +12331,7 @@ check(
   await evaluate(`!!document.querySelector('.link-card')`),
   'diagnostics open from the rail shortcut'
 );
+await waitFor(async () => (await focusPath()) === 'terminal');
 check(
   (await focusPath()) === 'terminal',
   'opening the rail leaves focus in the terminal',
@@ -11630,11 +12350,12 @@ await cdp('Input.dispatchKeyEvent', {
   code: 'Escape',
   windowsVirtualKeyCode: 27
 });
-await sleep(300);
+await waitFor(async () => !(await evaluate(`!!document.querySelector('.link-card')`)));
 check(
   !(await evaluate(`!!document.querySelector('.link-card')`)),
   'Escape dismisses the diagnostics'
 );
+await waitFor(async () => (await focusPath()) === 'terminal');
 check((await focusPath()) === 'terminal', 'the terminal still holds focus', await focusPath());
 
 // Scrolling away from the live edge offers the jump affordance; using it has to
@@ -11658,12 +12379,15 @@ for (let i = 0; i < 12; i += 1) {
     deltaY: -240
   });
 }
-await sleep(400);
-const jumpShown = await evaluate(`!!document.querySelector('.jump-latest')`);
+const jumpShown = await readUntil(
+  () => evaluate(`!!document.querySelector('.jump-latest')`),
+  (jumpShown) => jumpShown
+);
 check(jumpShown, 'scrolling up offers the jump-to-latest affordance');
 if (jumpShown) {
   await evaluate(`(document.querySelector('.jump-latest').click(), true)`);
-  await sleep(300);
+  await waitFor(async () => (await focusPath()) === 'terminal');
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check(
     (await focusPath()) === 'terminal',
     'jump to latest returns focus to the terminal',
@@ -11684,7 +12408,12 @@ if (jumpShown) {
   const beforeSwitch = Buffer.concat(received).length;
 
   await evaluate(`(document.querySelectorAll('.tab-rail .tab')[1].click(), true)`);
-  await sleep(400);
+  await waitFor(
+    async () =>
+      (await evaluate(
+        `document.querySelector('.tab-rail .tab[data-active="true"] .name')?.innerText`
+      )) === 'Second Character'
+  );
 
   check(
     (await evaluate(
@@ -11692,6 +12421,7 @@ if (jumpShown) {
     )) === 'Second Character',
     'clicking a tab shows that character'
   );
+  await waitFor(async () => (await focusPath()) === 'terminal');
   check(
     (await focusPath()) === 'terminal',
     'switching characters puts the caret in the terminal it switched to',
@@ -11836,7 +12566,11 @@ if (jumpShown) {
     for (const socket of liveSockets) {
       socket.write(Buffer.from('\x1b[0;36m*Combat Off*\r\nSneaking...\r\n', 'latin1'));
     }
-    await sleep(900);
+    await waitFor(async () =>
+      /sneaking/i.test(
+        await evaluate(`document.querySelector('.vitals-card .badge')?.innerText ?? ''`)
+      )
+    );
     check(
       /sneaking/i.test(
         await evaluate(`document.querySelector('.vitals-card .badge')?.innerText ?? ''`)
@@ -11853,7 +12587,14 @@ if (jumpShown) {
         return !!tab;
       })()
     `);
-    await sleep(700);
+    await waitFor(
+      async () =>
+        !/alert/i.test(
+          await evaluate(
+            `document.querySelector('.tab[data-active="true"] .mark')?.innerText ?? ''`
+          )
+        )
+    );
     check(
       !/alert/i.test(
         await evaluate(`document.querySelector('.tab[data-active="true"] .mark')?.innerText ?? ''`)
@@ -12076,8 +12817,9 @@ if (jumpShown) {
   };
 
   await split('Split: also show');
-  await sleep(700);
-  const panes = await evaluate(`
+  const panes = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const box = document.querySelector('.terminal-layers');
       const shown = [...document.querySelectorAll('.terminal-layer[data-shown="true"]')];
@@ -12089,7 +12831,9 @@ if (jumpShown) {
         tops: shown.map((el) => Math.round(el.getBoundingClientRect().top))
       };
     })()
-  `);
+  `),
+    (panes) => panes.shown === 2
+  );
   check(
     panes.shown === 2,
     'splitting puts two characters on screen at once',
@@ -12170,7 +12914,11 @@ if (jumpShown) {
   await split('Panes stacked');
   await sleep(600);
   await split('Close this pane');
-  await sleep(600);
+  await waitFor(
+    async () =>
+      (await evaluate(`document.querySelectorAll('.terminal-layer[data-shown="true"]').length`)) ===
+      1
+  );
   check(
     (await evaluate(`document.querySelectorAll('.terminal-layer[data-shown="true"]').length`)) ===
       1,
@@ -12179,8 +12927,11 @@ if (jumpShown) {
 
   // Back to the first, and its own stream is still its own.
   await evaluate(`(document.querySelectorAll('.tab-rail .tab')[0].click(), true)`);
-  await sleep(500);
-  const first = await streamText();
+  const first = await readUntil(
+    () => streamText(),
+    (first) =>
+      first.includes('marker-for-connection-0') && !first.includes('marker-for-connection-1')
+  );
   check(
     first.includes('marker-for-connection-0') && !first.includes('marker-for-connection-1'),
     'switching back shows the first character, and only it',
@@ -12272,20 +13023,23 @@ if (jumpShown) {
       return true;
     })()
   `);
-  await sleep(250);
-
-  const popped = await evaluate(`
+  const popped = await readUntil(
+    () =>
+      evaluate(`
     (() => {
       const row = [...document.querySelectorAll('.palette li')]
         .find((li) => /Move to a new window/.test(li.innerText));
       if (row) row.click();
       return row ? row.innerText : '';
     })()
-  `);
+  `),
+    (popped) => popped !== ''
+  );
   check(popped !== '', 'the palette offers a window of its own', popped);
-  await sleep(1500);
-
-  const after = await pages();
+  const after = await readUntil(
+    () => pages(),
+    (after) => after.length === 2
+  );
   check(after.length === 2, 'a second window opens', `${after.length} windows`);
 
   /*
@@ -12373,7 +13127,7 @@ if (jumpShown) {
       return !!row;
     })()
   `);
-  await sleep(1500);
+  await waitFor(async () => (await pages()).length === 1);
 
   check((await pages()).length === 1, 'moving them back closes the empty window');
   const home = JSON.parse(
@@ -12416,7 +13170,9 @@ if (jumpShown) {
     if (await evaluate(`!!document.querySelector('.status-rail')`)) break;
     await sleep(250);
   }
-  await sleep(800);
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.status-rail .dot.connected')`)
+  );
 
   check(
     await evaluate(`!!document.querySelector('.status-rail .dot.connected')`),
@@ -12488,7 +13244,9 @@ if (jumpShown) {
     back = liveSockets.length >= before;
   }
   check(back, 'a dropped character is dialled back without being asked', `${liveSockets.length}`);
-  await sleep(600);
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.status-rail .dot.connected')`)
+  );
   check(
     await evaluate(`!!document.querySelector('.status-rail .dot.connected')`),
     'and is connected again',
@@ -12497,11 +13255,14 @@ if (jumpShown) {
 }
 
 await evaluate(`(window.mudengine.disconnect('${SESSION}'), true)`);
-await sleep(700);
-const closed = await evaluate(`
+const closed = await readUntil(
+  () =>
+    evaluate(`
   !!document.querySelector('.status-rail .dot.closed') ||
   !!document.querySelector('.status-rail .dot.closing')
-`);
+`),
+  (closed) => closed
+);
 check(closed, 'disconnect returns the session to a closed state');
 
 /*
@@ -12515,6 +13276,13 @@ check(
   await evaluate(`!!document.querySelector('.rail')`),
   'the rail keeps its space when the character leaves the realm'
 );
+/*
+ * The socket closing and the character *leaving the realm* are two pushes, and
+ * the dot above is the first of them. Waiting on the dot and then asserting the
+ * standby card reads the rail one push early — which is what the fixed sleep
+ * here used to paper over.
+ */
+await shown('.standby-card');
 check(
   await evaluate(`!!document.querySelector('.standby-card')`),
   'and says it is offline rather than emptying out',

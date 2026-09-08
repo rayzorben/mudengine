@@ -8,6 +8,7 @@ import { ago } from '../lib/players';
 import { exitsUnseen, lightNote } from '../lib/room';
 import Icon from './Icon';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
+import FindsFace, { findsCopyText } from './FindsFace';
 import {
   DIRECTION_NAME,
   roomId,
@@ -18,6 +19,7 @@ import {
   type WorldShop
 } from '@shared/world';
 import { type Discovery } from '@shared/memory';
+import type { Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
 import type { Alignment, CharacterState, RoomExit, RoomOccupant } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
@@ -59,6 +61,19 @@ export interface RoomCardProps extends CardChrome {
    */
   learned: Discovery[];
   /**
+   * What a `search` has turned up in this **realm** — every room, not this one.
+   *
+   * The one thing on this card that is not about where the character is
+   * standing, and deliberately: a find is worth writing down precisely because
+   * the room will not mention it again, so a face scoped to *here* would be
+   * empty in the moment anybody wanted it. See `FindsFace`.
+   */
+  finds: readonly Find[];
+  /** Opens the route panel at a room. Null on a pinned float, which cannot. */
+  goToRoom: ((room: string) => void) | null;
+  /** Strikes a find out, because the person reading it says it is wrong. */
+  forgetFind?(find: Pick<Find, 'room' | 'name'>): void;
+  /**
    * The room appraised — *can I fight this?* Pushed beside the character it is
    * about and for the same reason `learned` is passed in: the row and the
    * occupants it prices are one moment.
@@ -92,6 +107,9 @@ function RoomCard({
   forget,
   ask,
   learned,
+  finds,
+  goToRoom,
+  forgetFind,
   verdict,
   ...chrome
 }: RoomCardProps) {
@@ -108,6 +126,14 @@ function RoomCard({
   const here = located
     ? learned.filter((discovery) => discovery.from === roomId(room.map!, room.number!))
     : [];
+
+  /*
+   * The Finds face's window, and whether the face is offered at all.
+   *
+   * `0` means show everything, which is also the shipped answer, so an absent
+   * setting and a stated zero are the same thing here rather than two.
+   */
+  const findDays = chrome.settings?.value.findDays ?? 0;
 
   /*
    * What the realm knows about this room — read straight off it.
@@ -282,7 +308,7 @@ function RoomCard({
          * smoke check for it failed and the data path was fine, which is
          * exactly the shape of a click-path bug.
          */
-        hasShop || lair !== null || answers.length > 0 || here.length > 0
+        hasShop || lair !== null || answers.length > 0 || here.length > 0 || finds.length > 0
           ? [
               { id: 'room', label: t('cards.room.title'), content: face, copyText },
               ...(hasShop
@@ -371,6 +397,34 @@ function RoomCard({
                           elsewhere={learned.length - here.length}
                         />
                       )
+                    }
+                  ]
+                : []),
+              /*
+               * What searching has turned up, last of the fixed order — it is
+               * the one face about the realm rather than about this room, so it
+               * reads last for the same reason the row is general to particular
+               * everywhere else on this screen.
+               */
+              ...(finds.length > 0
+                ? [
+                    {
+                      id: 'finds',
+                      label: t('cards.room.tabs.finds'),
+                      // A table's tools stay put and the table scrolls under
+                      // them, which on a face is declared per face.
+                      paned: true,
+                      content: (
+                        <FindsFace
+                          days={findDays}
+                          finds={finds}
+                          forget={forgetFind}
+                          goToRoom={goToRoom}
+                          returnFocus={chrome.returnFocus}
+                          session={session}
+                        />
+                      ),
+                      copyText: () => findsCopyText(finds, findDays, Date.now())
                     }
                   ]
                 : [])

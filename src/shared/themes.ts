@@ -737,6 +737,31 @@ export function isThemeId(value: unknown): value is ThemeId {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(THEMES, value);
 }
 
+/**
+ * A theme id that names a **dark** theme.
+ *
+ * Its own predicate because two settings mean "a dark one" and neither can
+ * express it in the type: `ui.console.darkTheme` is coerced with it, and the
+ * settings screen offers exactly what it accepts.
+ */
+export function isDarkTheme(value: unknown): value is ThemeId {
+  return isThemeId(value) && THEMES[value].appearance === 'dark';
+}
+
+/**
+ * The theme the **console** wears, given the one the chrome wears.
+ *
+ * The chrome's own theme unless it is light and the player asked for the
+ * console to stay dark — see `ConsoleUiConfig` for why that is a thing anybody
+ * wants. Pure, and here rather than in the renderer because the terminal frame
+ * (`--ink-slate`) is derived from the console's ground and the two must not be
+ * able to disagree about which palette that is.
+ */
+export function consoleThemeFor(chrome: Theme, keepDark: boolean, dark: ThemeId): Theme {
+  if (!keepDark || chrome.appearance !== 'light') return chrome;
+  return THEMES[isDarkTheme(dark) ? dark : DEFAULT_THEME];
+}
+
 export function isThemePreference(value: unknown): value is ThemePreference {
   return value === 'system' || isThemeId(value);
 }

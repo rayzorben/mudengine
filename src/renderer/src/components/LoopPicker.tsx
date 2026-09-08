@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import Icon from './Icon';
+import ClearField from './ClearField';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -99,23 +100,29 @@ export default function LoopPicker({
   return (
     <div className="loop-picker">
       <div className="loop-picker-head">
-        <label className="loop-search">
+        <div className="loop-search">
           <Icon name="search" />
-          <input
-            aria-label={t('settings.loopPicker.searchAriaLabel')}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={
-              // A count is asserted only once it has actually been read.
-              loading
-                ? t('settings.loopPicker.searchPlaceholderLoading')
-                : t('settings.loopPicker.searchPlaceholder', { count: catalogue.length })
-            }
-            ref={fieldRef}
-            spellCheck={false}
-            value={query}
-          />
-        </label>
+          <ClearField
+            label={t('settings.loopPicker.searchAriaLabel')}
+            onClear={() => setQuery('')}
+            query={query}
+          >
+            <input
+              aria-label={t('settings.loopPicker.searchAriaLabel')}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={
+                // A count is asserted only once it has actually been read.
+                loading
+                  ? t('settings.loopPicker.searchPlaceholderLoading')
+                  : t('settings.loopPicker.searchPlaceholder', { count: catalogue.length })
+              }
+              ref={fieldRef}
+              spellCheck={false}
+              value={query}
+            />
+          </ClearField>
+        </div>
         <button className="quiet" onClick={onDone} onMouseDown={keepFocus} type="button">
           {t('settings.loopPicker.done')}
         </button>

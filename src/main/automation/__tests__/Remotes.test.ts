@@ -276,6 +276,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
         destinationRoom: { map: 1, room: 297 },
         step: null,
         path: [],
+        ahead: [],
         reason: null,
         hold: null
       },

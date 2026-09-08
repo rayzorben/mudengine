@@ -662,9 +662,14 @@ describe('the automation switches the toolbar flips', () => {
     };
     expect(readAutomationSwitch(on.automation, 'automation')).toBe(true);
     expect(readAutomationSwitch(on.automation, 'combat')).toBe(true);
-    // Off by default, like everything automated.
+    // Off by default, like most of what is automated.
     expect(readAutomationSwitch(on.automation, 'retreat')).toBe(false);
-    expect(automationSwitches(on.automation).bashDoors).toBe(false);
+    // The two exceptions, on since 2026-09-07: a route that stops at a shut
+    // door stops for no reason a player would recognise, and bashing is gated
+    // on the realm's own strength number. Picking is not one of them.
+    expect(automationSwitches(on.automation).bashDoors).toBe(true);
+    expect(automationSwitches(on.automation).openDoors).toBe(true);
+    expect(automationSwitches(on.automation).pickLocks).toBe(false);
   });
 
   it('refuses a name that is not one', () => {

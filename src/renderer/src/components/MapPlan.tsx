@@ -101,6 +101,16 @@ const MARKS = {
 const MARK_REACH = Math.max(...Object.values(MARKS).map((mark) => mark.over + mark.stroke / 2));
 
 /**
+ * The find dot's radius, in the same units the room's own radius is in.
+ *
+ * Not in `MARKS`: everything there is measured *over the room's radius* and
+ * feeds `MARK_REACH`, and this one sits on the corner rather than around the
+ * room — adding it there would widen every map's padding for a mark that
+ * reaches no further than the room already does.
+ */
+const FIND_DOT = 1.1;
+
+/**
  * How far out the off-plane controls sit, past the room's radius, the size of
  * their glyph, the stroke they wear and the hit target round each — `MARKS`'
  * shape, kept apart because they are drawn only for a builder and every other
@@ -320,6 +330,22 @@ export interface MapPlanProps {
    * the one being walked now, which arrives here as `path`.
    */
   stops?: readonly RoomId[];
+  /**
+   * The rooms this realm's find log names — where searching has turned
+   * something up.
+   *
+   * A **mark**, not a kind: `RoomKind` is a closed, priority-ordered union and
+   * one shape per room, so folding this into it would fight lairs and shops for
+   * the shape and only ever show on a plain room — while "there is something
+   * hidden here" is exactly the fact you want beside a lair. Drawn as a dot on
+   * the corner instead, over whatever the room already is.
+   *
+   * A dot rather than a bolder room or a flashing one: a bold room says
+   * something about the *room*, and this is a note attached to it; and nothing
+   * on this surface animates, which is a rule the console holds and the chrome
+   * around it keeps.
+   */
+  finds?: readonly RoomId[];
 }
 
 export interface BuilderMarks {
@@ -340,7 +366,8 @@ function MapPlan({
   marks,
   onAway,
   path = NO_ROOMS,
-  stops = NO_ROOMS
+  stops = NO_ROOMS,
+  finds = NO_ROOMS
 }: MapPlanProps) {
   /*
    * Laid out once per neighbourhood, not once per render: a pan re-renders
@@ -364,6 +391,13 @@ function MapPlan({
         : trailOf(drawing, path, stops, tuning().mapTrailBands),
     [drawing, path, stops]
   );
+
+  /*
+   * A `Set`, built once per change of the log rather than per drawn room: the
+   * question is asked for every cell on the map and the log grows all session,
+   * which is the `O(N²)` the standards name.
+   */
+  const found = useMemo(() => new Set(finds), [finds]);
 
   /*
    * The viewBox: a window on the drawing where there is one, else the fit.
@@ -413,6 +447,7 @@ function MapPlan({
         focus={focus}
         marks={marks}
         onAway={onAway}
+        found={found}
         onChoose={onChoose}
         trail={trail}
         you={you}
@@ -429,6 +464,7 @@ function MapPlan({
 const Picture = memo(function Picture({
   drawing,
   focus,
+  found,
   marks,
   onAway,
   onChoose,
@@ -437,6 +473,8 @@ const Picture = memo(function Picture({
 }: {
   drawing: MapDrawing;
   focus: 'here' | 'destination' | 'centre';
+  /** Rooms the realm's find log names. A `Set`, asked once per drawn room. */
+  found: ReadonlySet<RoomId>;
   marks: BuilderMarks | undefined;
   onAway: ((away: MapAway, from: RoomId) => void) | undefined;
   onChoose: ((map: number, room: number) => void) | undefined;
@@ -623,6 +661,21 @@ const Picture = memo(function Picture({
              * says it is there, and two rings on one room is one ring too
              * many for a map read at a glance.
              */}
+            {/*
+             * Something has been found here by searching. On the corner rather
+             * than around the room, so it never has to compete with the route
+             * halo, a lap's stop ring or the loud ring on the room the
+             * character is standing in — all of which are about *now*, where
+             * this is about what the realm has been hiding.
+             */}
+            {found.has(node.id) && (
+              <circle
+                className="map-find"
+                cx={node.x + tuning().mapRoomRadius}
+                cy={node.y - tuning().mapRoomRadius}
+                r={FIND_DOT}
+              />
+            )}
             {trail.stops.has(node.id) && !node.here && (
               <circle
                 className="map-stop"
@@ -890,6 +943,18 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
           </span>
         </>
       )}
+      {/*
+        Listed whether or not one is in view, like every key here: the absence
+        of a symbol is itself a fact, and a legend that changed as the character
+        walked would change the card's height while it was being read.
+      */}
+      <span data-kind="find">
+        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+          <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
+          <circle className="map-find" cx="3" cy="-3" r="1.6" />
+        </svg>
+        {t('cards.map.legendFind')}
+      </span>
       <span data-kind="shop">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <circle className="map-shape" cx="0" cy="0" r="3" />

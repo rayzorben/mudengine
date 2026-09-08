@@ -240,6 +240,21 @@ ui:
     # vitals, session.
     mute: []
 
+    # What a `search` turning something up is worth interrupting for.
+    #
+    # `items` are words matched anywhere in the name, case-insensitively, so
+    # "key" catches "a rusty key" and "bone keys" -- you type the word, not the
+    # realm's spelling of it. `cashOverCopper` is a figure in COPPER, which is
+    # what this client normalises every purse and every quoted price into, so
+    # one number covers every coin the realm prints.
+    #
+    # Both off. An alert on every find is an alert on every lap of a loop that
+    # searches, which is the fastest way to stop reading them. The Room card's
+    # Finds face lists everything either way; this is only about interrupting.
+    finds:
+      items: []
+      cashOverCopper: 0
+
   # Show the HUD rail beside the console.
   #
   # The HUD is what you read while playing, and it appears on its own without
@@ -256,6 +271,23 @@ ui:
   # arranged by dragging, and remembered per character. "Reset this character's
   # cards" in the command palette puts it back.
   showHud: true
+
+  # The console's own ground, when the client's is not the one it wants.
+  #
+  # A light theme is a fine thing to want for the chrome -- a rail of cards, a
+  # settings form and a table all read well on paper. The console is not that:
+  # what it shows is forty years of ANSI art drawn against black, and a light
+  # palette has to make colour 0 BE the paper, so every `ESC[30m` the realm
+  # sends comes back as the page.
+  #
+  # keepDark is whether the console parts company with the chrome, and it only
+  # applies under a LIGHT theme -- under a dark one there is nothing to part
+  # from. darkTheme is which dark palette it wears when it does, and naming a
+  # light theme here is coerced back to `dark`: it is a contradiction rather
+  # than a preference. Any dark theme id from the palette's list will do.
+  console:
+    keepDark: true
+    darkTheme: dark
 
   # The client's own mark, at the left of the status rail.
   #
@@ -408,13 +440,15 @@ automation:
     # Open a closed door a step ran into, instead of stopping the route.
     #
     # A shut door is shut until something opens it, and `open` is the thing that
-    # opens it. Off by default: a door somebody shut deliberately is a door
-    # somebody shut deliberately, and a *locked* one answers the same way every
-    # time, so every further attempt is a command spent to be told so again.
+    # opens it. ON by default: a shut door on a planned way is the ordinary
+    # state of a corridor here, and a walk that stops at one stops for no reason
+    # a player would recognise. openTries is 1, so a *locked* door -- which
+    # answers the same way every time -- costs exactly one command to find out,
+    # and forcing it is the separate decision below.
     #
     # `There is no exit in that direction!` is a different fact -- the realm
     # data was wrong -- and is never retried whatever this says.
-    openDoors: false
+    openDoors: true
     openTries: 1
 
     # Forcing a barrier `open` cannot get past.
@@ -430,11 +464,15 @@ automation:
     # game prints the damage in the room. A picked door is unlocked and still
     # shut, so the client opens it afterwards; a bashed one is open already.
     #
-    # Both off by default. A door somebody locked is a door somebody locked,
-    # and a route that forces its way through one is a decision, not a detail.
+    # Bashing is ON by default and picking is off, which is not an accident.
+    # Bashing is gated on the realm's own strength number, so it is never even
+    # attempted against a barrier this character cannot beat, and bashTries caps
+    # it at three; the alternative is a route that stops dead at a lock the
+    # character was strong enough to walk through. Picking is the same decision
+    # made with a skill the client cannot check the character has.
     pickLocks: false
     pickTries: 3
-    bashDoors: false
+    bashDoors: true
     bashTries: 3
 
     # Sneak before starting a route.

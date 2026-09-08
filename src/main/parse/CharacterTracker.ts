@@ -886,7 +886,20 @@ export class CharacterTracker {
        * next `sp`/`pow` replaces it whole; null stays null, because *never
        * read* must survive a restart as itself.
        */
-      spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null
+      spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
+      /*
+       * And what `abil` last summed, with the clock it was read on.
+       *
+       * Nothing on the wire reports a quest counter moving, which was the
+       * argument for dropping this and is not one for forgetting it: the same
+       * is true of a bank balance three lines up, and the answer there is the
+       * one taken here — keep the figure, keep `at` beside it, and let the card
+       * draw a stale number as stale. The quest book already draws the clock
+       * and names `abil` as its source. Null stays null: *never read* has to
+       * survive a restart as itself, or an unasked book reads as a character
+       * the realm counts nothing for.
+       */
+      abilities: this.belongings.recallAbilities()
     };
     this.room.discard();
     this.expect.forget();
@@ -963,13 +976,18 @@ export class CharacterTracker {
       online: [],
       shopListing: null,
       /*
-       * And the ability listing, for the reason the shop's stock goes: it is
-       * what one command said about a character standing in a realm, and the
-       * character is no longer standing in it. Nothing on the wire ever
-       * reports a quest counter moving, so a kept listing could only get
-       * further from the truth the longer it was kept; one `abil` restates it.
+       * The ability listing **stays** (2026-09-07). It used to go here, on the
+       * argument that nothing on the wire reports a quest counter moving so a
+       * kept listing could only get further from the truth — which is true, and
+       * is the same thing that is true of a bank balance, which is kept anyway
+       * with `at` beside it so a stale figure can be drawn as stale. What the
+       * drop actually cost was a quest book that opened empty after every
+       * disconnect and every launch until somebody spent an `abil`.
+       *
+       * Not restated here at all: the field is simply not in this patch, so
+       * whatever the last listing said survives leaving the realm, exactly as
+       * the name, race, class and level below it do.
        */
-      abilities: null,
       /*
        * Everyone is marked offline and **nobody is forgotten**. `online` above
        * is a listing about a realm this character has left, so it goes; the
@@ -2227,6 +2245,25 @@ export class CharacterTracker {
    * not be shown the savings or the slots it has somewhere else. Takes effect
    * at `reset()`, which every connection runs.
    */
+  /**
+   * Re-seeds only the four fields the belongings record supplies, because the
+   * record has just been thrown away.
+   *
+   * `reset()` beside it does this and everything else — the room, the roster,
+   * the phase, the trail — which is right for a new connection and wrong here:
+   * the character is standing somewhere, and what changed is a *file*. So this
+   * is the same four lines as `reset()`'s seeding, applied in place.
+   */
+  forgetBelongings(): void {
+    this.state = {
+      ...this.state,
+      banks: this.belongings.recallBanks().map((bank) => ({ ...bank })),
+      loadout: this.belongings.recallLoadout().map((worn) => ({ ...worn })),
+      spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
+      abilities: this.belongings.recallAbilities()
+    };
+  }
+
   useBelongings(belongings: BelongingsSink): void {
     this.belongings = belongings;
   }
@@ -4411,7 +4448,12 @@ export class CharacterTracker {
       case 'user-abilities': {
         const { sums, complete } = readAbilityListing(rows ?? []);
         if (Object.keys(sums).length === 0) return null;
-        return { ...s, abilities: { sums, complete, at: block.at } };
+        const abilities = { sums, complete, at: block.at };
+        // Written down as well as published: a listing costs a command, and a
+        // client that asked for one and then forgot it on the way out is a
+        // client that asks again every launch.
+        this.belongings.rememberAbilities(abilities);
+        return { ...s, abilities };
       }
 
       /*

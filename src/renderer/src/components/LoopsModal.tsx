@@ -8,6 +8,7 @@ import {
   type KeyboardEvent
 } from 'react';
 
+import ClearField from './ClearField';
 import Icon from './Icon';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { keepFocus } from '../lib/focus';
@@ -273,18 +274,20 @@ export default function LoopsModal({
           field, the headings and the names all start on one left edge.
         */}
         <div className="loops-find">
-          <input
-            aria-label={t('loops.filterLabel')}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={
-              // A count is asserted only once it has actually been read.
-              loading ? t('loops.filterPlaceholderLoading') : t('loops.filterPlaceholder')
-            }
-            ref={fieldRef}
-            spellCheck={false}
-            value={query}
-          />
+          <ClearField label={t('loops.filterLabel')} onClear={() => setQuery('')} query={query}>
+            <input
+              aria-label={t('loops.filterLabel')}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={
+                // A count is asserted only once it has actually been read.
+                loading ? t('loops.filterPlaceholderLoading') : t('loops.filterPlaceholder')
+              }
+              ref={fieldRef}
+              spellCheck={false}
+              value={query}
+            />
+          </ClearField>
         </div>
 
         {loading ? (

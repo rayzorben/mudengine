@@ -615,6 +615,13 @@ export class Walker {
       status: this.status,
       done: this.index,
       total: this.route?.steps.length ?? 0,
+      /*
+       * The same journey the map draws, in words. The step at `index` is the
+       * one being attempted, so its room is the *next* one entered and every
+       * `to` after it is further ahead — which is exactly the list a reader
+       * wants and exactly what `ahead` above is already sliced to.
+       */
+      ahead: ahead.map((entry) => entry.name),
       destination: last?.name ?? null,
       // No route is stated as null, not laundered through a parser's refusal.
       destinationRoom: last === null ? null : asRoomReference(last.to),

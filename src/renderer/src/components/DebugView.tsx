@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import ClearField from './ClearField';
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -241,22 +242,24 @@ function DebugView({ session, load, subscribe, save, reveal, onClose }: DebugVie
             </button>
           ))}
         </div>
-        <input
-          className="debug-find"
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            // Escape means done *once*: it clears the query and hands the caret
-            // back in one press, exactly as a card's find field does.
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            event.stopPropagation();
-            setQuery('');
-            event.currentTarget.blur();
-          }}
-          placeholder={t('debug.findPlaceholder')}
-          type="search"
-          value={query}
-        />
+        <ClearField label={t('debug.findPlaceholder')} onClear={() => setQuery('')} query={query}>
+          <input
+            className="debug-find"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Escape means done *once*: it clears the query and hands the caret
+              // back in one press, exactly as a card's find field does.
+              if (event.key !== 'Escape') return;
+              event.preventDefault();
+              event.stopPropagation();
+              setQuery('');
+              event.currentTarget.blur();
+            }}
+            placeholder={t('debug.findPlaceholder')}
+            type="text"
+            value={query}
+          />
+        </ClearField>
         <button
           className="card-action"
           onClick={write}

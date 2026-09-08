@@ -25,6 +25,8 @@ import {
 } from '../shared/ipc';
 import type { Block } from '../shared/blocks';
 import type { Discovery } from '../shared/memory';
+import type { Find } from '../shared/finds';
+import type { ResetNotice } from '../shared/ipc';
 import type { CharacterState } from '../shared/character';
 import type { DebugRecord } from '../shared/debug';
 import type { ConfigSnapshot } from '../shared/config';
@@ -126,6 +128,8 @@ const api: IpcApi = {
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),
   lookup: (session, query) => ipcRenderer.invoke(Invoke.lookup, session, query),
   forget: (session, discovery) => ipcRenderer.invoke(Invoke.forget, session, discovery),
+  forgetFind: (session, find) => ipcRenderer.invoke(Invoke.forgetFind, session, find),
+  forgetCharacter: (session) => ipcRenderer.invoke(Invoke.forgetCharacter, session),
   names: (session) => ipcRenderer.invoke(Invoke.names, session),
   ask: (session, command) => ipcRenderer.invoke(Invoke.ask, session, command),
   gear: (session, action, item) => ipcRenderer.invoke(Invoke.gear, session, action, item),
@@ -147,6 +151,9 @@ const api: IpcApi = {
   onSessions: (handler) => subscribe<SessionSummary[]>(Push.sessions, handler),
   onProfiles: (handler) => subscribe<ProfileSummary[]>(Push.profiles, handler),
   onLearned: (handler) => subscribe<Addressed<Discovery[]>>(Push.learned, handler),
+  onFinds: (handler) => subscribe<Addressed<Find[]>>(Push.finds, handler),
+  onCharacterReset: (handler) => subscribe<Addressed<ResetNotice>>(Push.characterReset, handler),
+  onQuestSaid: (handler) => subscribe<Addressed<Record<number, number>>>(Push.questSaid, handler),
   onConfig: (handler) => subscribe<ConfigSnapshot>(Push.config, handler),
   onInternal: (handler) => subscribe<InternalConfig>(Push.internal, handler)
 };

@@ -10,6 +10,7 @@ import {
   editorInput,
   IDLE_FLUSH_MS,
   SessionManager,
+  type RealmFinds,
   type SessionSink
 } from '../SessionManager';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
@@ -23,6 +24,7 @@ import type { AutomationSnapshot } from '../../../shared/automation';
 import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
 import { NO_REALM_PLAYERS } from '../../../shared/players';
+import type { Find } from '../../../shared/finds';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 
@@ -57,6 +59,7 @@ afterEach(async () => {
   manager = null;
   for (const socket of accepted) socket.destroy();
   accepted = [];
+  setTuning(DEFAULT_INTERNAL.tuning);
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
@@ -3807,5 +3810,187 @@ describe('what this character costs to move', () => {
      * 157 exits gated on a rope shut against everybody who has never typed `i`.
      */
     expect(traveller.packKnown).toBe(false);
+  });
+});
+
+/**
+ * A socket that is open is not a connection that is alive.
+ *
+ * The rule and its arithmetic are `LinkWatch.test.ts`'s; what is asserted here
+ * is the wiring nothing else can prove: that the deadline reaches the real
+ * socket, and that the close it produces arrives as a **loss** — which is the
+ * only kind `Reconnect` dials back. The fake host here never answers anything,
+ * which is precisely the failure being reproduced.
+ */
+describe('SessionManager dead link', () => {
+  /** Short enough for a test; the shipped fifteen seconds is pinned elsewhere. */
+  function silentFor(ms: number): void {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      reconnect: { ...DEFAULT_INTERNAL.tuning.reconnect, silentForMs: ms }
+    });
+  }
+
+  it('hangs up a command that goes unanswered, as a loss', async () => {
+    const { sink, notices, drops } = collect();
+    silentFor(60);
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    await client();
+
+    manager.send('who\r\n');
+
+    await until(() => drops.length > 0);
+    // `null`, not a stand-down: nobody typed their way out, the link died.
+    expect(drops).toEqual([null]);
+    expect(notices.some((notice) => /treating the connection as lost/.test(notice))).toBe(true);
+    expect(manager.state.phase).toBe('closed');
+  });
+
+  it('is answered by the server saying anything at all', async () => {
+    const { sink, drops, lines } = collect();
+    silentFor(120);
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+
+    manager.send('who\r\n');
+    socket.write('nobody is here\r\n');
+
+    // The positive control: the line landed, so the clock was reset by a byte
+    // that arrived rather than by the deadline never having been armed.
+    await until(() => lines.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    expect(drops).toEqual([]);
+    expect(manager.state.phase).toBe('connected');
+  });
+
+  it('does not arm on a half-typed line', async () => {
+    const { sink, drops, raw } = collect();
+    silentFor(60);
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const typed: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => typed.push(chunk));
+
+    // A server doing its own echo answers nothing until Enter, so somebody who
+    // started typing and walked away must not be hung up on.
+    manager.send('wh');
+
+    await until(() => Buffer.concat(typed).toString('latin1') === 'wh');
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    expect(drops).toEqual([]);
+    expect(raw).toEqual([]);
+    expect(manager.state.phase).toBe('connected');
+  });
+});
+
+/**
+ * What a `search` turns up, written down against the room it was in.
+ *
+ * Driven through the real socket like everything else here, because the fact
+ * being asserted is a *sequence*: the room has to resolve before the search
+ * answers, or the find has no room to be written against — and that ordering is
+ * exactly what a mocked tracker would paper over.
+ */
+describe('SessionManager finds', () => {
+  /** A find log with nothing in it, and a record of what reached it. */
+  function log(): { finds: RealmFinds; rows: Array<Omit<Find, 'seen'>> } {
+    const rows: Array<Omit<Find, 'seen'>> = [];
+    return {
+      rows,
+      finds: {
+        record: (find) => {
+          rows.push(find);
+          return { ...find, seen: 1 };
+        },
+        forget: () => false,
+        get all() {
+          return rows.map((row) => ({ ...row, seen: 1 }));
+        }
+      }
+    };
+  }
+
+  /** Puts the character in a room the realm can place, with the world loaded. */
+  async function standing(sink: SessionSink, finds: RealmFinds): Promise<net.Socket> {
+    manager = new SessionManager(
+      sink,
+      undefined,
+      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      finds
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write(
+      'Newhaven, Village Entrance\r\n' +
+        'Obvious exits: north\r\n' +
+        '[HP=100/MA=50]:rm\r\n' +
+        'Location: 1,2140\r\n' +
+        '[HP=100/MA=50]:'
+    );
+    await until(() => manager!.character.room.map !== null);
+    return socket;
+  }
+
+  it('writes down what a search turned up, in the room it was in', async () => {
+    const { sink, notices } = collect();
+    const { finds, rows } = log();
+    const socket = await standing(sink, finds);
+
+    manager!.send('search\r');
+    socket.write('You notice 4 copper farthings, scroll of minor healing here.\r\n[HP=100/MA=50]:');
+
+    await until(() => rows.length >= 2);
+    expect(rows.map((row) => row.name)).toContain('scroll of minor healing');
+    // Cash carries its worth in copper and a thing does not: that is the field
+    // the alert asks about and the one the card draws money with.
+    const cash = rows.find((row) => row.copper !== null);
+    expect(cash?.copper).toBe(4);
+    expect(rows.every((row) => row.room === '1/2140')).toBe(true);
+    // Said out loud, once per find.
+    expect(notices.some((notice) => /Found by searching/.test(notice))).toBe(true);
+  });
+
+  it('writes nothing down for a room it cannot place', async () => {
+    const { sink } = collect();
+    const { finds, rows } = log();
+    manager = new SessionManager(
+      sink,
+      undefined,
+      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      finds
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    // A room, but no `Location:` — so the client is standing somewhere it is
+    // guessing at, and a row nobody can walk back to is worse than none.
+    socket.write('Somewhere\r\nObvious exits: north\r\n[HP=100/MA=50]:');
+    await until(() => manager!.character.phase === 'in-game');
+
+    manager.send('search\r');
+    socket.write('You notice a rusty key here.\r\n[HP=100/MA=50]:');
+
+    /*
+     * The positive control: the find *was* read, and the room *was* refused.
+     * Asserting the absence alone would pass equally well on a search the
+     * client never classified.
+     */
+    await until(() => manager!.character.room.hidden.length > 0);
+    expect(manager.character.room.map).toBeNull();
+    expect(rows).toEqual([]);
   });
 });

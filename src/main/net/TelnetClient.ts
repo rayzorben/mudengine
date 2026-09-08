@@ -218,6 +218,24 @@ export class TelnetClient extends EventEmitter {
   }
 
   /**
+   * Closes a socket this client has decided is **dead**, as a loss.
+   *
+   * The one difference from `disconnect()` is what `close` then reports:
+   * `closingIntentionally` stays false, so `SessionManager` reads it as a
+   * socket that went without anybody on this side asking — which is the only
+   * thing `Reconnect` dials back. A dead link that were hung up gracefully
+   * would leave the character standing in the realm and the client sitting at
+   * a closed socket it had promised to redial.
+   *
+   * Destroyed rather than `end()`ed: a FIN needs the far end to be there, and
+   * the whole premise of calling this is that it is not.
+   */
+  abandon(): void {
+    if (!this.socket) return;
+    this.socket.destroy();
+  }
+
+  /**
    * Sends user input. Accepts either whole lines or single keystrokes.
    *
    * Two NVT normalisations happen here rather than in the UI, because they are

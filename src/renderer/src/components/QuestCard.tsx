@@ -114,6 +114,17 @@ export interface QuestCardProps extends CardChrome {
    */
   counters?: AbilitySums | null;
   /**
+   * The rank each quest has been *seen* to reach, from what this character
+   * typed this session.
+   *
+   * The third reading, and it sits between the other two. The realm's own count
+   * is evidence and outranks it; a mark somebody left by hand is an assertion
+   * made in the absence of evidence, and this is an observation, so it outranks
+   * that. Nothing on the wire announces a counter moving — see `stepSaid` for
+   * why this is the player's action rather than a claim the ask succeeded.
+   */
+  said?: Readonly<Record<number, number>>;
+  /**
    * What class this character is, so its own route through a step is marked.
    *
    * The long chains state one route per class — fifteen of them — and exactly
@@ -165,6 +176,12 @@ interface Progress {
   total: number;
   /** True where `abil` stated it, false where it is the player's own mark. */
   observed: boolean;
+  /**
+   * True where the number came from watching what this character typed rather
+   * than from `abil` or from a mark — the middle of the three readings. See
+   * `QuestCardProps.said`.
+   */
+  watched: boolean;
   /** When the realm said so. Null where the number is the player's own. */
   at: number | null;
 }
@@ -546,6 +563,7 @@ function QuestCard({
   onName,
   characterClass,
   counters,
+  said,
   ...chrome
 }: QuestCardProps): React.JSX.Element {
   /*
@@ -612,12 +630,15 @@ function QuestCard({
      */
     const listed = counters ? counters.sums[quest.id] : undefined;
     const observed = listed ?? (counters?.complete === true ? 0 : null);
-    const rank = observed ?? ranks.get(String(quest.id));
+    // Watched, then marked: an observation beats an assertion made without one.
+    const watched = said?.[quest.id] ?? null;
+    const rank = observed ?? watched ?? ranks.get(String(quest.id));
     return {
       rank,
       done: stepsDone(quest, rank),
       total: quest.steps.length,
       observed: observed !== null,
+      watched: observed === null && watched !== null,
       at: observed !== null ? (counters?.at ?? null) : null
     };
   };
@@ -636,7 +657,7 @@ function QuestCard({
     // `progressOf` is a plain closure over exactly these two, so the pair is
     // the whole of what it reads: the listing, and the marks kept on this
     // machine.
-    [quests, hidden, counters, ranks]
+    [quests, hidden, counters, said, ranks]
   );
 
   /*
@@ -693,7 +714,9 @@ function QuestCard({
               title={
                 row.progress.observed
                   ? t('cards.quests.progress.fromRealm')
-                  : t('cards.quests.progress.fromYou')
+                  : row.progress.watched
+                    ? t('cards.quests.progress.fromWatching')
+                    : t('cards.quests.progress.fromYou')
               }
             >
               {row.progress.done}/{row.progress.total}
@@ -884,7 +907,7 @@ function Track({
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
 }): React.JSX.Element {
-  const { rank, observed, at } = progress;
+  const { rank, observed, watched, at } = progress;
   // `stepDone` is the whole of the rule and it is stated once, above.
   const done = (step: QuestStep): boolean => stepDone(step, rank);
   const next = quest.steps.findIndex((step) => !done(step));
@@ -940,6 +963,14 @@ function Track({
                   time: new Date(at).toLocaleTimeString()
                 })}
           </span>
+        ) : watched ? (
+          /*
+             Watched, not counted. The client saw this character say the words
+             that reach a step; nothing on the wire says whether the realm
+             agreed, so the chip says where the number came from rather than
+             letting it read as the realm's. One `abil` replaces it outright.
+          */
+          <span className="chip">{t('cards.quests.progress.watched')}</span>
         ) : (
           rank !== null && (
             <button

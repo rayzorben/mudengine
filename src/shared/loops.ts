@@ -420,6 +420,17 @@ export interface LoopProgress {
    * when the lap gets there.
    */
   remainingStops: RoomId[];
+  /**
+   * Every stop of the lap, **named**, in order, as the loop writes them.
+   *
+   * `remainingStops` beside it is what a map marks with, and it drops the stops
+   * the client could not place; this is what a reader reads, and it drops
+   * nothing — the lap the player wrote is the lap they want to see. With `stop`
+   * it says all three things at once: what is behind, what is being walked to,
+   * and what is still owed. The last of those is the one a player acts on and
+   * the only one the card never showed.
+   */
+  stopNames: string[];
   /** Laps completed since it started. */
   laps: number;
   reason: string | null;
@@ -460,6 +471,7 @@ export const NO_LOOP: LoopProgress = {
   stops: 0,
   stopName: null,
   remainingStops: [],
+  stopNames: [],
   laps: 0,
   reason: null,
   hold: null,

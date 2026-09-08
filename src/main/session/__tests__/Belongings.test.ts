@@ -340,3 +340,149 @@ describe('what this character knows how to cast', () => {
     expect(peekSpellbook(file, REALM)).toBeNull();
   });
 });
+
+/*
+ * The ability listing, kept beside the balances (2026-09-07, todo 07).
+ *
+ * The argument for keeping it is the one the balances already won: nothing on
+ * the wire reports a quest counter moving, so the figure is only ever as fresh
+ * as the last `abil` — and `at` is what makes drawing it honest rather than
+ * what makes keeping it wrong.
+ */
+describe('what abil last summed', () => {
+  const sums = { sums: { 126: 6, 2: 560 }, complete: true, at: 1_757_000_000_000 };
+
+  it('starts null, because never read is not "the realm counts none"', () => {
+    expect(new Belongings({ file, realm: REALM }).recallAbilities()).toBeNull();
+  });
+
+  it('survives a restart with the clock it was read on', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberAbilities(sums);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallAbilities()).toEqual(sums);
+  });
+
+  it('is not written while it has never been read, so the absence round-trips', () => {
+    const store = new Belongings({ file, realm: REALM });
+    // Something else has to move, or nothing is written at all.
+    store.rememberLoadout([{ slot: 'Head', item: 'a leather cap', at: 1 }]);
+    store.close();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).abilities).toBeUndefined();
+    expect(new Belongings({ file, realm: REALM }).recallAbilities()).toBeNull();
+  });
+
+  it('holds its own copy, so live state moving does not rewrite the record', () => {
+    const store = new Belongings({ file, realm: REALM });
+    const live = { sums: { 126: 6 }, complete: true, at: 1 };
+    store.rememberAbilities(live);
+    live.sums[126] = 99;
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallAbilities()?.sums[126]).toBe(6);
+  });
+
+  it('is ignored with the rest of the file when the realm changed', () => {
+    const home = new Belongings({ file, realm: REALM });
+    home.rememberAbilities(sums);
+    home.close();
+    expect(new Belongings({ file, realm: 'elsewhere:23' }).recallAbilities()).toBeNull();
+  });
+
+  it('refuses a row with no `complete` flag, which is what decides an absent id', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: REALM,
+        banks: [],
+        abilities: { sums: { 126: 6 }, at: 1 }
+      }),
+      'utf8'
+    );
+    const store = new Belongings({ file, realm: REALM });
+    // The whole file is refused, not the one key: a record missing the flag
+    // that says whether zero means zero is half a fact presented as a whole.
+    expect(store.recallAbilities()).toBeNull();
+    expect(store.recallBanks()).toEqual([]);
+  });
+});
+
+/*
+ * Who this character was, and throwing the record away when it is not them.
+ *
+ * The identity is kept for one purpose — noticing that a player deleted a
+ * character and made a new one on the same login — and `forget` is the one
+ * destructive call on this seam, reached only from a player answering.
+ */
+describe('who the record is about', () => {
+  const identity = {
+    race: 'Human',
+    className: 'Battlemage',
+    level: 34,
+    exp: 1_000_000,
+    at: 1_757_000_000_000
+  };
+
+  it('starts null: an empty record has nothing to disagree with', () => {
+    expect(new Belongings({ file, realm: REALM }).recallIdentity()).toBeNull();
+  });
+
+  it('survives a restart', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberIdentity(identity);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallIdentity()).toEqual(identity);
+  });
+
+  it('keeps an unknown as unknown rather than as a value', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberIdentity({ ...identity, race: null, exp: null });
+    store.close();
+    const back = new Belongings({ file, realm: REALM }).recallIdentity();
+    expect(back?.race).toBeNull();
+    expect(back?.exp).toBeNull();
+  });
+
+  it('refuses a record with no clock, which could not be aged', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: REALM,
+        banks: [],
+        identity: { race: 'Human', className: null, level: null, exp: null }
+      }),
+      'utf8'
+    );
+    expect(new Belongings({ file, realm: REALM }).recallIdentity()).toBeNull();
+  });
+
+  it('throws the whole record away at the word, and only what is about a character', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberIdentity(identity);
+    store.rememberLoadout([{ slot: 'Head', item: 'a leather cap', at: 1 }]);
+    store.rememberAbilities({ sums: { 126: 6 }, complete: true, at: 1 });
+    expect(store.forget()).toBe(true);
+    store.close();
+
+    const back = new Belongings({ file, realm: REALM });
+    expect(back.recallIdentity()).toBeNull();
+    expect(back.recallLoadout()).toEqual([]);
+    expect(back.recallAbilities()).toBeNull();
+    expect(back.recallSpellbook()).toBeNull();
+    expect(back.recallBanks()).toEqual([]);
+  });
+
+  it('refuses to forget a record it could not read', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'not json', 'utf8');
+    const store = new Belongings({ file, realm: REALM });
+    // Suspended: the file is the only copy of something this build cannot read,
+    // and overwriting it with an empty record is what the suspension prevents.
+    expect(store.forget()).toBe(false);
+    store.close();
+    expect(fs.readFileSync(file, 'utf8')).toBe('not json');
+  });
+});
