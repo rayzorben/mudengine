@@ -24,7 +24,13 @@ import {
 import type { GlobalDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
-import { THEME_IDS, THEMES, themesOfAppearance } from '@shared/themes';
+import {
+  TERMINAL_THEME_IDS,
+  TERMINAL_THEMES,
+  THEME_IDS,
+  THEMES,
+  themesOfAppearance
+} from '@shared/themes';
 import { NOTICE_CHANNELS, type Severity } from '@shared/notifications';
 import type { StreamEncoding } from '@shared/types';
 
@@ -243,6 +249,34 @@ export default function GlobalSettings({
     () => themesOfAppearance('dark').map((id) => ({ id, label: THEMES[id].label })),
     []
   );
+  /*
+   * `theme` first because it is the default and the only entry that is not a
+   * palette, then the seven in registration order, each labelled with the way
+   * it reads. Built here rather than inline so the memoised form is not handed
+   * a new array every keystroke.
+   */
+  const consolePalettes = useMemo(
+    () => [
+      {
+        value: 'theme',
+        label: t('settings.client.appearance.consolePaletteFollow')
+      },
+      ...TERMINAL_THEME_IDS.map((id) => ({
+        value: id,
+        // Two literal calls rather than one on a conditional key: the coverage
+        // test reads only the literal after `t(`.
+        label:
+          TERMINAL_THEMES[id].appearance === 'dark'
+            ? t('settings.client.appearance.consolePaletteDark', {
+                paletteLabel: TERMINAL_THEMES[id].label
+              })
+            : t('settings.client.appearance.consolePaletteLight', {
+                paletteLabel: TERMINAL_THEMES[id].label
+              })
+      }))
+    ],
+    []
+  );
 
   return (
     <form
@@ -349,15 +383,41 @@ export default function GlobalSettings({
           />
 
           {/*
+            The console's own colours, above the pair below because it outranks
+            them: naming a palette settles what the console looks like, and the
+            two keys under it only answer the case where nothing was named. The
+            offer is grouped by which way round each palette reads, since a
+            light palette on a dark theme is a decision, not an accident.
+          */}
+          <SelectField
+            hint={t('settings.client.appearance.consolePaletteHint')}
+            label={t('settings.client.appearance.consolePaletteLabel')}
+            name="global-console-palette"
+            onChange={(value) =>
+              patch('ui', { consolePalette: value as GlobalDraft['ui']['consolePalette'] })
+            }
+            options={consolePalettes}
+            value={draft.ui.consolePalette}
+          />
+
+          {/*
             The switch and the choice it discloses, on one row — the pattern
             Auto-Retreat and Anti-Idle already use. Both are drawn under every
             theme, not only a light one: a setting that vanished when you
             switched to a dark theme would be one nobody could find again.
+
+            The hint says outright when the palette above outranks them, rather
+            than the pair quietly ceasing to do anything: a control that stops
+            working without saying so is the worse of the two failures.
           */}
           <div className="settings-inline">
             <CheckField
               checked={draft.ui.consoleKeepDark}
-              hint={t('settings.client.appearance.consoleKeepDarkHint')}
+              hint={
+                draft.ui.consolePalette === 'theme'
+                  ? t('settings.client.appearance.consoleKeepDarkHint')
+                  : t('settings.client.appearance.consoleKeepDarkOutranked')
+              }
               label={t('settings.client.appearance.consoleKeepDarkLabel')}
               name="global-console-keep-dark"
               onChange={(value) => patch('ui', { consoleKeepDark: value })}

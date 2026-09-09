@@ -234,6 +234,10 @@ notices:
       '"ui.console" was written into {file}, on: under a light theme the console keeps a dark
       palette, because a light one has to make the realm''s black its paper. Choose which dark
       palette, or turn it off, there or on the MudEngine page in settings.'
+    consolePaletteStated:
+      '"ui.console.palette" was written into {file} as "theme", which is the console you already
+      have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
+      there or on the MudEngine page in settings outranks the two keys beside it.'
     diagnosticsPreferenceDropped:
       many:
         '"ui.showDiagnostics" was removed from {count} files: the diagnostics cards are now hidden on
@@ -597,6 +601,9 @@ palette:
     debugHint: raw, framed, classified
     hideDebugLabel: Hide the debug window
     showDebugLabel: Show the debug window
+    consolePaletteFollowHint: whatever palette the theme brings
+    consolePaletteFollowLabel: 'Console: follow the theme'
+    consolePaletteLabel: 'Console: {paletteLabel}'
     tabsLeftHint: roomier, cards on the right
     tabsOnLeftLabel: Tabs on the left
     tabsOnRightLabel: Tabs on the right
@@ -1967,9 +1974,15 @@ settings:
       consoleFontHint: A monospace fallback and the bundled CP437 face are always appended.
       consoleFontLabel: Console Font
       consoleFontPlaceholder: LucidaProgrammer Nerd Font Mono
-      consoleDarkThemeLabel: Console Palette
+      consoleDarkThemeLabel: Dark Theme For The Console
+      consolePaletteDark: '{paletteLabel} (dark)'
+      consolePaletteFollow: Follow the theme
+      consolePaletteHint: The sixteen colours the realm's own codes are painted with. Follow the theme and the console wears whatever palette the theme brings, which is how the client has always looked. Name one instead and it settles the console outright, whichever way the chrome reads.
+      consolePaletteLabel: Console Colours
+      consolePaletteLight: '{paletteLabel} (light)'
       consoleKeepDarkHint: A light theme has to make the realm's black its paper, so colour-coded output arrives inverted. This keeps the console on a dark palette while everything around it stays light; a dark theme ignores it.
       consoleKeepDarkLabel: Keep The Console Dark
+      consoleKeepDarkOutranked: Not consulted while Console Colours names a palette — that choice settles the console on its own. Set it back to "Follow the theme" for this to decide again.
       cursorBar: Bar
       cursorBlink: Blink Cursor
       cursorBlock: Block

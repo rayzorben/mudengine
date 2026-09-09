@@ -585,6 +585,29 @@ const server = net.createServer((socket) => {
         )
       );
     }
+    /*
+     * The third: a burst of somebody else's gossip, so the Talk card has a
+     * backlog longer than the box it is drawn in. Nothing else on this host
+     * talks after the opening script, and the follow rule is about what
+     * arrives *while somebody is reading back* -- which needs a feed that is
+     * still going. The realm's own sentence shape, so the classifier is being
+     * fed the real thing; only the trigger is the fixture's.
+     */
+    if (/(^|\n)gos burst\r?\n/.test(chunk.toString('latin1'))) {
+      socket.write(
+        Buffer.from(
+          Array.from(
+            { length: 40 },
+            (_, i) => `\x1b[0;36mBrackle gossips: burst ${i}\x1b[0m\r\n`
+          ).join(''),
+          'latin1'
+        )
+      );
+    }
+    /* And one more line, for the question of what a held feed does with it. */
+    if (/(^|\n)gos onemore\r?\n/.test(chunk.toString('latin1'))) {
+      socket.write(Buffer.from('\x1b[0;36mBrackle gossips: one more line\x1b[0m\r\n', 'latin1'));
+    }
   });
   socket.on('error', () => {});
 });
@@ -4086,6 +4109,100 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `)) === 'log',
     'and it is the backlog that scrolls, not the card'
   );
+
+  /*
+   * Following the newest line, and letting go of it while somebody reads back.
+   *
+   * The two halves of one rule. A feed that yanks itself back down mid-sentence
+   * answers the question somebody asked of the backlog by taking it away; a
+   * feed that stops following for good leaves the card frozen on a conversation
+   * from five minutes ago, which is the failure it exists to prevent. So the
+   * hold is a hold and it expires, `view.talkFollowResumeMs` after the last
+   * scroll.
+   *
+   * Only the real window can answer either: both are the box's own scroll
+   * geometry against content the browser laid out, and neither figure exists
+   * anywhere a unit test can reach.
+   */
+  {
+    const geometry = `
+      (() => {
+        const log = document.querySelector('.conversation-log');
+        if (!log) return null;
+        return {
+          top: Math.round(log.scrollTop),
+          // One pixel of slack, as the card itself allows: these are
+          // fractional on a display whose device pixel ratio is not whole.
+          edge: log.scrollHeight - log.scrollTop - log.clientHeight <= 1,
+          over: log.scrollHeight > log.clientHeight + 1,
+          height: log.scrollHeight
+        };
+      })()
+    `;
+
+    // A backlog longer than the box, or there is no scrolling to hold and
+    // every assertion below would pass by saying nothing.
+    await evaluate(`(window.mudengine.input('${SESSION}', 'gos burst\\r'), true)`);
+    await waitFor(async () => (await evaluate(geometry))?.over === true, 200);
+    const filled = await evaluate(geometry);
+    check(filled?.over === true, 'the conversation feed outgrows its box', JSON.stringify(filled));
+    check(filled?.edge === true, 'and follows the newest line as it arrives');
+
+    /*
+     * Scrolled up, then somebody says something. The trigger is *observed* --
+     * the feed grew -- before the absence is asserted, so this is never a sleep
+     * hoping nothing happened.
+     *
+     * A real wheel rather than assigning `scrollTop`, for the reason the
+     * console's own jump-to-latest check gives one wheel further down: a
+     * scripted write moves the box on the main thread and queues its event
+     * behind nothing, which is the one ordering the card is *not* at risk
+     * from. A wheel is scrolled on the compositor and its event is delivered
+     * at the next rendering update, so this drives the gesture a reader makes
+     * rather than the one a harness finds convenient.
+     */
+    const at = await evaluate(`
+      (() => {
+        const r = document.querySelector('.conversation-log').getBoundingClientRect();
+        return Math.round(r.left + r.width / 2) + ',' + Math.round(r.top + r.height / 2);
+      })()
+    `);
+    const [logX, logY] = at.split(',').map(Number);
+    for (let i = 0; i < 12; i += 1) {
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseWheel',
+        x: logX,
+        y: logY,
+        deltaX: 0,
+        deltaY: -240
+      });
+    }
+    await waitFor(async () => (await evaluate(geometry))?.edge === false);
+    const held = await evaluate(geometry);
+    await evaluate(`(window.mudengine.input('${SESSION}', 'gos onemore\\r'), true)`);
+    await waitFor(async () => (await evaluate(geometry))?.height > (held?.height ?? 0), 200);
+    const after = await evaluate(geometry);
+    check(
+      after?.height > (held?.height ?? 0) && after?.top === held?.top,
+      'a line arriving while somebody reads back does not move the feed under them',
+      JSON.stringify({ held, after })
+    );
+
+    /*
+     * And the hold expires, `view.talkFollowResumeMs` after that scroll.
+     *
+     * The shipped fifteen seconds, waited out rather than shortened in the
+     * home's `internal.yaml` for the run: a delay small enough to be quick is
+     * a delay the two probes above have to beat, and this check would then
+     * fail on a loaded machine rather than on the behaviour. Waited for, not
+     * slept through, with the window past the delay it is watching.
+     */
+    await waitFor(async () => (await evaluate(geometry))?.edge === true, 440, 50);
+    check(
+      (await evaluate(geometry))?.edge === true,
+      'and the feed goes back to following once the reader has stopped scrolling'
+    );
+  }
 
   /*
    * The channel, and the two things it has to do.
@@ -13130,11 +13247,25 @@ if (jumpShown) {
   await waitFor(async () => (await pages()).length === 1);
 
   check((await pages()).length === 1, 'moving them back closes the empty window');
-  const home = JSON.parse(
-    await evaluate(
-      `JSON.stringify([...document.querySelectorAll('.tab')].map((t) => t.dataset.session))`
-    )
-  );
+  /*
+   * The tabs, waited for rather than read the moment the window goes.
+   *
+   * Two different answers: the window closing is main's, and the tab rail is a
+   * push to this window behind it. The wait above is on the first and the
+   * check below is on the second, so a machine with a build and the realm
+   * tests behind it lands them in that order and this read the rail one push
+   * old -- green on its own, red under the gate, which is the shape a flake
+   * always has here. Waited on the figure actually being asserted, which is
+   * the rule the rest of this harness runs on.
+   */
+  const homeTabs = async () =>
+    JSON.parse(
+      await evaluate(
+        `JSON.stringify([...document.querySelectorAll('.tab')].map((t) => t.dataset.session))`
+      )
+    );
+  await waitFor(async () => (await homeTabs()).length === tabsBefore.length);
+  const home = await homeTabs();
   check(
     home.length === tabsBefore.length,
     'and every character has a tab again',

@@ -286,6 +286,21 @@ ui:
   # light theme here is coerced back to `dark`: it is a contradiction rather
   # than a preference. Any dark theme id from the palette's list will do.
   console:
+    # Which sixteen the console paints the realm's colour codes with.
+    #
+    # `theme` is the default and means the console wears the palette of
+    # whatever theme it is on, keepDark below included -- that is the client as
+    # it has always looked. Name one of the seven instead and it wins over both
+    # keys below, because a palette you picked outranks a rule about what to do
+    # when you picked nothing.
+    #
+    # Dark:  vivid-vga, neon-night, aurora-ice, ember-forge
+    # Light: paper-ink, parchment, daylight-neon
+    #
+    # vivid-vga is the IBM set the client ships with, with the dim ramp lifted
+    # off the ground -- same hues, but `blue` is a colour you can read instead
+    # of one that hides in the black.
+    palette: theme
     keepDark: true
     darkTheme: dark
 

@@ -593,11 +593,11 @@ describe('the console keeping its own ground', () => {
     fs.mkdirSync(home.globalDir, { recursive: true });
   });
 
-  it('is stated with both of its keys, and on', () => {
+  it('is stated with all three of its keys, and on', () => {
     fs.writeFileSync(home.options, 'ui:\n  showHud: true\n  showLogo: true\n', 'utf8');
     migrate();
     const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
-    expect(ui['console']).toEqual({ keepDark: true, darkTheme: 'dark' });
+    expect(ui['console']).toEqual({ palette: 'theme', keepDark: true, darkTheme: 'dark' });
   });
 
   it("brings the template's own paragraph rather than a copy of it", () => {
@@ -615,7 +615,36 @@ describe('the console keeping its own ground', () => {
     migrate();
     migrate();
     const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
-    expect(ui['console']).toEqual({ keepDark: false, darkTheme: 'nord' });
+    // The palette is added — the block predates it — and the two keys the file
+    // did answer are left exactly as they were.
+    expect(ui['console']).toEqual({ palette: 'theme', keepDark: false, darkTheme: 'nord' });
+  });
+
+  // The console block written before 2026-09-08 has two keys, not three, and a
+  // setting absent from the file is one nobody reading the file can find.
+  it('adds the palette to a console block that predates it, at its head', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  showLogo: true\n  console:\n    keepDark: false\n    darkTheme: nord\n',
+      'utf8'
+    );
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text).toMatch(/console:\n(?:\s*#[^\n]*\n)*\s*palette: theme\n/);
+    const before = text;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(before);
+  });
+
+  it('leaves a palette the file already named alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  showLogo: true\n  console:\n    palette: neon-night\n    keepDark: true\n',
+      'utf8'
+    );
+    migrate();
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    expect((ui['console'] as Record<string, unknown>)['palette']).toBe('neon-night');
   });
 
   it('does nothing to a file with no ui block to reach into', () => {
