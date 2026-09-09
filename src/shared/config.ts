@@ -28,9 +28,12 @@ import { asLoops, mergeNamed, type Loop } from './loops';
  */
 import { DENOMINATIONS, type Denomination, type VitalThresholds } from './character';
 import {
+  DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
+  isConsolePalette,
   isDarkTheme,
   isThemePreference,
+  type ConsolePalette,
   type ThemeId,
   type ThemePreference
 } from './themes';
@@ -203,7 +206,12 @@ export interface TerminalConfig {
  * setting that lets somebody keep it that way while everything around it is
  * light.
  *
- * Two keys rather than one, because they answer two questions. `keepDark` is
+ * `palette` is the third question and the one that outranks both: which of the
+ * seven console palettes the player named outright (`TERMINAL_THEMES`).
+ * `theme`, the default, means they named none and the two keys below decide.
+ *
+ * Two keys rather than one for the rest, because they answer two questions.
+ * `keepDark` is
  * *whether* the console parts company with the chrome, and it only ever applies
  * under a light theme — under a dark one there is nothing to part from and the
  * console wears the theme's own palette, which is the whole reason the editor
@@ -212,6 +220,16 @@ export interface TerminalConfig {
  * land on nothing.
  */
 export interface ConsoleUiConfig {
+  /**
+   * Which sixteen the console paints the realm's colour codes with.
+   *
+   * `theme` is the shipped answer and changes nothing: the console wears the
+   * palette of the theme it resolved to, `keepDark` included. Naming one of
+   * `TERMINAL_THEMES` states the console's colours outright and wins over both
+   * keys below — a player who picked a palette is not in the situation
+   * `keepDark` exists to answer.
+   */
+  palette: ConsolePalette;
   /**
    * Keep the console dark while the rest of the client is light.
    *
@@ -2078,7 +2096,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     tabs: 'left',
     showHud: true,
     showLogo: true,
-    console: { keepDark: true, darkTheme: DEFAULT_THEME },
+    console: { palette: DEFAULT_CONSOLE_PALETTE, keepDark: true, darkTheme: DEFAULT_THEME },
     // Half and a quarter: the same numbers `megamind-client` shipped for
     // `restIfBelow` / `runIfBelow`, and the ones a MajorMUD player already has
     // in their head. Fractions, so they hold at every level.
@@ -2625,7 +2643,12 @@ function normalizeThresholds(value: unknown, fallback: VitalThresholds): VitalTh
 function normalizeConsoleUi(value: unknown): ConsoleUiConfig {
   const raw = isRecord(value) ? value : {};
   const wanted = raw['darkTheme'];
+  const palette = raw['palette'];
   return {
+    // An unknown palette name falls back to `theme` rather than to one of the
+    // seven: a typo should leave the console as the client would have drawn it,
+    // not pick a look nobody asked for.
+    palette: isConsolePalette(palette) ? palette : DEFAULT_CONFIG.ui.console.palette,
     keepDark: bool(raw['keepDark'], DEFAULT_CONFIG.ui.console.keepDark),
     darkTheme: isDarkTheme(wanted) ? wanted : DEFAULT_CONFIG.ui.console.darkTheme
   };

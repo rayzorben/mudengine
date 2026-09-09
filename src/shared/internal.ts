@@ -1222,6 +1222,23 @@ const TUNING_DEFAULTS = {
      * that somebody can come back to what they missed.
      */
     talkLimit: 500,
+    /**
+     * How long the Talk card waits, after the reader's last scroll, before it
+     * goes back to following the newest line.
+     *
+     * Scrolling up is a question being asked of the backlog, and a log that
+     * yanks itself back down mid-sentence answers it by taking it away. But a
+     * log that stops following *for good* is worse: the reader has gone back
+     * to playing and the card is quietly frozen on a conversation from five
+     * minutes ago, which is the failure this card exists to prevent. So the
+     * hold is a hold, not a mode, and it expires.
+     *
+     * Fifteen seconds is long enough to read a few lines and short enough
+     * that nobody has moved on to something else in the meantime. Measured
+     * from the *last* scroll, so reading up through a backlog keeps extending
+     * it; landing back at the live edge resumes at once and does not wait.
+     */
+    talkFollowResumeMs: 15_000,
     /** Remembered notices. Same reasoning, same generosity. */
     noticeLimit: 400,
     /** The most panes worth having; see docs/profiles.md §7.3. */

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import { FindField } from './CardTable';
@@ -8,6 +8,7 @@ import type { NameIndex } from '../lib/names';
 import { isKnownPlayer, isOwnName, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { matches } from '../lib/table';
+import { tuning } from '../lib/tuning';
 import { linkify } from '../lib/linkify';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import {
@@ -604,6 +605,17 @@ function ConversationCard({
    */
   const [finding, setFinding] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  /*
+   * The log's own height at the last commit, and the timer that puts the log
+   * back to following after the reader has stopped scrolling.
+   *
+   * Refs rather than state, for the reason `tuning()` is not state either:
+   * nothing on screen is drawn from either of them. Where the box is scrolled
+   * to is a fact the box already holds, and making a copy of it state would
+   * redraw every line in the backlog on a wheel turn.
+   */
+  const heightRef = useRef(0);
+  const resumeRef = useRef<number | undefined>(undefined);
 
   /*
    * The faces with anything behind them, in their fixed order. The whole
@@ -657,17 +669,95 @@ function ConversationCard({
     [peopleKey]
   );
 
-  /*
-   * Pinned to the newest, like the terminal it mirrors.
-   *
-   * The *log* scrolls, not the card: the filters belong at the top and the
-   * composer at the bottom, and both scrolling away is how a chat window
-   * becomes one you have to scroll back to in order to reply.
+  /**
+   * One pixel of slack, because all three figures are fractional: a box at the
+   * live edge on a display whose device pixel ratio is not a whole number
+   * lands a rounding error short of it, and an exact comparison would read
+   * that as the reader having scrolled up.
    */
-  useEffect(() => {
+  const atEdge = (node: HTMLDivElement, height: number): boolean =>
+    height - node.scrollTop - node.clientHeight <= 1;
+
+  /** Puts the log on the newest line, and lets go of any hold on it. */
+  const follow = (): void => {
+    window.clearTimeout(resumeRef.current);
+    resumeRef.current = undefined;
     const node = logRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [shown.length]);
+    if (node === null) return;
+    node.scrollTop = node.scrollHeight;
+    heightRef.current = node.scrollHeight;
+  };
+
+  /*
+   * The hold, and when it expires.
+   *
+   * This decides *when the reader last scrolled* and nothing else. Whether the
+   * feed follows is decided from the box's own geometry below, deliberately
+   * not from a flag set here: a wheel is scrolled on the compositor and its
+   * event is delivered at the next rendering update, so a line arriving in
+   * between would find a flag that still said "following" and pull the box out
+   * from under somebody who had already scrolled away from it. `scrollTop`
+   * itself has moved by then, which is why the geometry can be trusted where a
+   * flag cannot.
+   *
+   * The wait runs from the *last* scroll — reading further up extends it — and
+   * arriving back at the live edge lets go at once rather than after it.
+   */
+  const noteScroll = (): void => {
+    const node = logRef.current;
+    if (node === null) return;
+    window.clearTimeout(resumeRef.current);
+    resumeRef.current = atEdge(node, node.scrollHeight)
+      ? undefined
+      : window.setTimeout(follow, tuning().talkFollowResumeMs);
+  };
+
+  /*
+   * Pinned to the newest, like the terminal it mirrors — unless the reader has
+   * scrolled up, which is the one thing that outranks new output. Nothing the
+   * server prints may undo what the player did.
+   *
+   * "Was the reader at the live edge?" is asked of the height the box had at
+   * the *last* commit, against where they have it now: the lines just added
+   * have already made `scrollHeight` bigger, so measuring against that would
+   * say no every time. It is the same figure the console reads before a write
+   * (`TerminalView`'s `wasPinned`), taken the same way and for the same
+   * reason — the state to act on is the one from before the output.
+   *
+   * A layout effect, so the box is never painted holding new lines at the old
+   * offset. The *log* scrolls, not the card: the filters belong at the top and
+   * the composer at the bottom, and both scrolling away is how a chat window
+   * becomes one you have to scroll back to in order to reply.
+   *
+   * Keyed on `shown` itself and not on its length, which stopped changing at
+   * `talkLimit`: once the backlog is full every new line drops an old one, so
+   * the count sits at 500 and a card left open through a long conversation
+   * quietly stopped following.
+   */
+  useLayoutEffect(() => {
+    const node = logRef.current;
+    if (node === null) return;
+    if (atEdge(node, heightRef.current)) node.scrollTop = node.scrollHeight;
+    heightRef.current = node.scrollHeight;
+  }, [shown]);
+
+  /*
+   * A different view of the backlog starts at the newest line, hold or no
+   * hold: the place somebody was holding was a place in the conversation they
+   * were reading, and another face, a search or another character is not it.
+   * The find row counts because it is a row — opening it makes the box shorter,
+   * and a reader at the live edge would otherwise be left a line above it with
+   * nothing to tell them so.
+   *
+   * Declared after the effect above and a layout effect like it, so on a face
+   * or search change it is this one that lands, in the same frame.
+   */
+  useLayoutEffect(() => {
+    follow();
+  }, [face.id, query, finding, session]);
+
+  /* The hold is a timer this card owns, so it goes when the card does. */
+  useEffect(() => () => window.clearTimeout(resumeRef.current), []);
 
   const feed = (
     <>
@@ -695,6 +785,7 @@ function ConversationCard({
         className="conversation-log scroller"
         data-layout={layout}
         data-stamped={stamped ? 'true' : undefined}
+        onScroll={noteScroll}
         ref={logRef}
       >
         {shown.length === 0 ? (

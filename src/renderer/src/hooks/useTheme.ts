@@ -2,17 +2,23 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useOverridablePreference } from './usePreference';
 import {
+  consolePaletteFor,
   consoleThemeFor,
+  DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
+  isConsolePalette,
   isThemePreference,
   resolveTheme,
   THEME_PREFERENCES,
+  type ConsolePalette,
+  type TerminalPalette,
   type Theme,
   type ThemeId,
   type ThemePreference
 } from '@shared/themes';
 
 const STORAGE_KEY = 'mudengine.theme';
+const CONSOLE_KEY = 'mudengine.console-palette';
 
 /**
  * Applies a theme to the document.
@@ -24,7 +30,7 @@ const STORAGE_KEY = 'mudengine.theme';
  * `--text-lo-normal` and `--text-lo-quiet`, and `tokens.css` chooses between
  * them so the stream-pressure rule keeps working.
  */
-function apply(theme: Theme, consoleTheme: Theme): void {
+function apply(theme: Theme, console: TerminalPalette): void {
   const root = document.documentElement;
 
   for (const [token, value] of Object.entries(theme.chrome)) {
@@ -33,10 +39,11 @@ function apply(theme: Theme, consoleTheme: Theme): void {
 
   // The terminal frame is the terminal's own ground, so it is derived from the
   // palette rather than duplicated as a chrome token that could drift from it —
-  // and from the *console's* palette, which under a light theme need not be the
-  // chrome's (`ConsoleUiConfig`). A light slate around a dark console would be
-  // exactly the drift this line exists to prevent.
-  root.style.setProperty('--ink-slate', consoleTheme.terminal.background);
+  // and from the *console's* palette, which need not be the chrome's, whether
+  // because a light theme kept the console dark or because the player named a
+  // palette outright (`ConsoleUiConfig`). A slate that disagreed with the
+  // ground behind it would be exactly the drift this line exists to prevent.
+  root.style.setProperty('--ink-slate', console.background);
 
   // Tells the engine which way native widgets, scrollbars and form controls
   // should render. Without it a light theme keeps dark scrollbars.
@@ -50,16 +57,21 @@ export interface UseTheme {
   /** The resolved theme: chrome tokens plus the terminal palette. */
   theme: Theme;
   /**
-   * The theme the **console** wears, which is `theme` unless a light chrome was
-   * asked to leave the console dark. Read for its `terminal` palette only.
+   * The sixteen the **console** paints with: the theme's own palette unless a
+   * light chrome was asked to leave the console dark, or the player named one
+   * of `TERMINAL_THEMES` outright, which outranks both.
    */
-  consoleTheme: Theme;
+  consolePalette: TerminalPalette;
+  /** What was asked for, which may be `theme`. */
+  consolePreference: ConsolePalette;
   /** What was asked for, which may be `system`. */
   preference: ThemePreference;
   /** Advances through system -> each registered theme, and persists. */
   cycle: () => void;
   /** Pick one by name — the palette's per-theme commands. */
   choose: (preference: ThemePreference) => void;
+  /** Pick a console palette by name — the palette's per-palette commands. */
+  chooseConsole: (preference: ConsolePalette) => void;
 }
 
 /**
@@ -72,12 +84,21 @@ export interface UseTheme {
 export function useTheme(
   configured: ThemePreference = DEFAULT_THEME,
   keepConsoleDark = false,
-  consoleDarkTheme: ThemeId = DEFAULT_THEME
+  consoleDarkTheme: ThemeId = DEFAULT_THEME,
+  configuredConsole: ConsolePalette = DEFAULT_CONSOLE_PALETTE
 ): UseTheme {
   const [preference, setPreference] = useOverridablePreference(
     STORAGE_KEY,
     configured,
     isThemePreference
+  );
+
+  // Remembered the way the theme is, and for the same reason: a palette command
+  // may outrank the options file until the options file changes.
+  const [consolePreference, setConsolePreference] = useOverridablePreference(
+    CONSOLE_KEY,
+    configuredConsole,
+    isConsolePalette
   );
 
   /**
@@ -97,8 +118,9 @@ export function useTheme(
 
   const theme = resolveTheme(preference, prefersDark);
   const consoleTheme = consoleThemeFor(theme, keepConsoleDark, consoleDarkTheme);
+  const consolePalette = consolePaletteFor(consoleTheme, consolePreference);
 
-  useEffect(() => apply(theme, consoleTheme), [theme, consoleTheme]);
+  useEffect(() => apply(theme, consolePalette), [theme, consolePalette]);
 
   const cycle = useCallback(() => {
     const index = THEME_PREFERENCES.indexOf(preference);
@@ -106,6 +128,10 @@ export function useTheme(
   }, [preference, setPreference]);
 
   const choose = useCallback((next: ThemePreference) => setPreference(next), [setPreference]);
+  const chooseConsole = useCallback(
+    (next: ConsolePalette) => setConsolePreference(next),
+    [setConsolePreference]
+  );
 
-  return { theme, consoleTheme, preference, cycle, choose };
+  return { theme, consolePalette, preference, consolePreference, cycle, choose, chooseConsole };
 }

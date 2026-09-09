@@ -1,8 +1,10 @@
 /**
  * The theme registry.
  *
- * A theme is data, not CSS: one object supplying every colour-bearing token the
- * chrome needs plus the terminal's 16-colour palette. Adding a theme means
+ * Two registries, because the chrome and the console are two surfaces. `THEMES`
+ * is data, not CSS: one object supplying every colour-bearing token the chrome
+ * needs plus the terminal's 16-colour palette. `TERMINAL_THEMES` is the console
+ * palettes the player may name instead of the theme's own. Adding a theme means
  * adding one entry to `THEMES` — the `Theme` type forces it to be complete, so
  * a new theme cannot silently inherit half of another one's palette and it
  * cannot ship missing a token that some component happens to read.
@@ -285,9 +287,9 @@ const LIGHT: Theme = {
  * registry test enforces. Surfaces step from the scheme's ground exactly as
  * the two house themes do (§3.3), so a theme is a palette, never a layout.
  *
- * Chrome only, for now. Every one shares the house terminal palette of its
- * appearance: the console is not a design surface, and its own theming is a
- * separate conversation (TODO.md, "themes").
+ * Chrome only. Every one shares the house terminal palette of its appearance,
+ * because the console is a separate axis: `TERMINAL_THEMES` below is what
+ * paints it, chosen by `ui.console.palette`.
  */
 const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
   'one-dark': {
@@ -779,4 +781,323 @@ export function resolveTheme(preference: ThemePreference, prefersDark: boolean):
   const wanted: Appearance = prefersDark ? 'dark' : 'light';
   const match = THEME_IDS.find((id) => THEMES[id].appearance === wanted);
   return THEMES[match ?? DEFAULT_THEME];
+}
+
+/* -------------------------------------------------------------------------
+ * Console palettes
+ * ---------------------------------------------------------------------- */
+
+/**
+ * A console palette the player may name, chosen apart from the chrome's theme.
+ *
+ * The two are separate axes because they answer to different things. A chrome
+ * theme is a taste in furniture; a console palette is a re-reading of what the
+ * realm *sent* — every `ESC[32m` in forty years of room descriptions, combat
+ * lines and status bars comes back through it. Somebody who wants Nord cards
+ * around a console that still looks like a 1993 BBS is not confused, and
+ * before this they had no way to say so.
+ *
+ * Each one is a whole sixteen, not a tint: the dim ramp is lifted off the
+ * ground until it is readable (`#0000aa` on black is the reason `blue` was a
+ * colour nobody used), the bright ramp is pushed until bold means something,
+ * and `themes.test.ts` holds every entry to 4.5:1 on its own ground and to a
+ * measured hue separation, so no two of the six chromatics can arrive as the
+ * same colour.
+ */
+export type TerminalThemeId =
+  | 'vivid-vga'
+  | 'neon-night'
+  | 'aurora-ice'
+  | 'ember-forge'
+  | 'paper-ink'
+  | 'parchment'
+  | 'daylight-neon';
+
+/**
+ * What `ui.console.palette` may say.
+ *
+ * `theme` is the shipped answer and means exactly what the client did before
+ * these existed: the console wears the palette of whatever theme it resolved
+ * to, `ui.console.keepDark` included. Naming one of the seven is the player
+ * stating the console's colours outright, and it outranks `keepDark` — that
+ * setting answers "the chrome went light and I said nothing about the
+ * console", which is not the situation somebody who picked a palette is in.
+ */
+export type ConsolePalette = 'theme' | TerminalThemeId;
+
+export interface TerminalTheme {
+  id: TerminalThemeId;
+  /** Shown in the palette and the settings form. */
+  label: string;
+  /**
+   * Which way round it reads. Not a lie the form can tell: the settings screen
+   * groups the offer by it, and a light palette makes colour 0 the paper.
+   */
+  appearance: Appearance;
+  palette: TerminalPalette;
+}
+
+/**
+ * The seven, four dark and three light.
+ *
+ * On a light ground the greyscale axis inverts, as `TerminalPalette` sets out —
+ * and so does the bright ramp's job. Against black, "bright" is lighter and
+ * therefore louder; against paper, lighter is quieter, so the three light
+ * palettes make bright *deeper and more saturated* than its dim. Bold is
+ * emphasis either way round, which is the only thing the realm means by it.
+ */
+export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalTheme> = {
+  /**
+   * The IBM set the client defaults to, with the two colours nobody could read
+   * repaired. Same hue in every slot, so a room the player knows by its colours
+   * still looks like itself — but `blue` clears the ground instead of hiding in
+   * it, and the dim ramp is bright enough to be a colour rather than a stain.
+   */
+  'vivid-vga': {
+    id: 'vivid-vga',
+    label: 'Vivid VGA',
+    appearance: 'dark',
+    palette: {
+      background: '#000000',
+      foreground: '#c6ccd4',
+      cursor: '#ffd447',
+      cursorAccent: '#000000',
+      selectionBackground: '#2c4f7c',
+      black: '#000000',
+      red: '#e02b2b',
+      green: '#22c33f',
+      yellow: '#d08a12',
+      blue: '#3f79f5',
+      magenta: '#d33bd3',
+      cyan: '#12c4c9',
+      white: '#b9c0c8',
+      brightBlack: '#6f7883',
+      brightRed: '#ff6b6b',
+      brightGreen: '#5cf078',
+      brightYellow: '#ffd447',
+      brightBlue: '#87b0ff',
+      brightMagenta: '#ff7bff',
+      brightCyan: '#5df5f5',
+      brightWhite: '#ffffff'
+    }
+  },
+  /** Violet-black ground, hot pink and electric cyan. The loudest of the four. */
+  'neon-night': {
+    id: 'neon-night',
+    label: 'Neon Night',
+    appearance: 'dark',
+    palette: {
+      background: '#0d0a17',
+      foreground: '#cfc6e6',
+      cursor: '#2ce8f5',
+      cursorAccent: '#0d0a17',
+      selectionBackground: '#3c2c66',
+      black: '#0d0a17',
+      red: '#ff3d7f',
+      green: '#3ddc84',
+      yellow: '#ffb703',
+      blue: '#5b83ff',
+      magenta: '#c264ff',
+      cyan: '#2ce8f5',
+      white: '#cfc6e6',
+      brightBlack: '#7b76a0',
+      brightRed: '#ff8fb8',
+      brightGreen: '#7dffbb',
+      brightYellow: '#ffd875',
+      brightBlue: '#9db4ff',
+      brightMagenta: '#e2acff',
+      brightCyan: '#8ffaff',
+      brightWhite: '#fdf8ff'
+    }
+  },
+  /** Deep sea-navy, mint and ice. Cool the whole way through; the calm loud one. */
+  'aurora-ice': {
+    id: 'aurora-ice',
+    label: 'Aurora Ice',
+    appearance: 'dark',
+    palette: {
+      background: '#061019',
+      foreground: '#bccddd',
+      cursor: '#35d6e8',
+      cursorAccent: '#061019',
+      selectionBackground: '#17415c',
+      black: '#061019',
+      red: '#ff5f7a',
+      green: '#2fe0a8',
+      yellow: '#ffc857',
+      blue: '#4aa8ff',
+      magenta: '#9d7bff',
+      cyan: '#2fd3e8',
+      white: '#bccddd',
+      brightBlack: '#6d8296',
+      brightRed: '#ff97ab',
+      brightGreen: '#84f7d3',
+      brightYellow: '#ffe09b',
+      brightBlue: '#8fcaff',
+      brightMagenta: '#c5b0ff',
+      brightCyan: '#8cecf8',
+      brightWhite: '#eef6ff'
+    }
+  },
+  /**
+   * Warm charcoal, amber and rust. `blue` and `cyan` are pulled toward the
+   * warm end rather than left as the cold holes they would otherwise be in it.
+   */
+  'ember-forge': {
+    id: 'ember-forge',
+    label: 'Ember Forge',
+    appearance: 'dark',
+    palette: {
+      background: '#14100c',
+      foreground: '#dbcab2',
+      cursor: '#ffa62b',
+      cursorAccent: '#14100c',
+      selectionBackground: '#4d3117',
+      black: '#14100c',
+      red: '#ff5230',
+      green: '#a8c23a',
+      yellow: '#ffa62b',
+      blue: '#4fa8d8',
+      magenta: '#e2569a',
+      cyan: '#3fc6b2',
+      white: '#dbcab2',
+      brightBlack: '#8b7a66',
+      brightRed: '#ff8a63',
+      brightGreen: '#d0e360',
+      brightYellow: '#ffcb5c',
+      brightBlue: '#8ccdee',
+      brightMagenta: '#ff93c4',
+      brightCyan: '#7ee4d4',
+      brightWhite: '#fff3e2'
+    }
+  },
+  /** White paper, saturated printer's inks. The plainest of the light three. */
+  'paper-ink': {
+    id: 'paper-ink',
+    label: 'Paper Ink',
+    appearance: 'light',
+    palette: {
+      background: '#ffffff',
+      foreground: '#2f353d',
+      cursor: '#101318',
+      cursorAccent: '#ffffff',
+      selectionBackground: '#cfe2ff',
+      black: '#ffffff',
+      red: '#c8102e',
+      green: '#0f7a35',
+      yellow: '#96590a',
+      blue: '#1c4fd8',
+      magenta: '#a01ba8',
+      cyan: '#00727d',
+      white: '#4a5058',
+      brightBlack: '#6e747d',
+      brightRed: '#8f0018',
+      brightGreen: '#065424',
+      brightYellow: '#6b3c00',
+      brightBlue: '#0f2f9e',
+      brightMagenta: '#6f0c78',
+      brightCyan: '#004f58',
+      brightWhite: '#101318'
+    }
+  },
+  /** Cream stock and earth pigments. A light ground that is not a hospital wall. */
+  parchment: {
+    id: 'parchment',
+    label: 'Parchment',
+    appearance: 'light',
+    palette: {
+      background: '#faf3e3',
+      foreground: '#3b352a',
+      cursor: '#1c1811',
+      cursorAccent: '#faf3e3',
+      selectionBackground: '#e6d6ad',
+      black: '#faf3e3',
+      red: '#b32218',
+      green: '#3f6b16',
+      yellow: '#8a5a00',
+      blue: '#1f4f9c',
+      magenta: '#8f2b73',
+      cyan: '#0b6b6b',
+      white: '#544c3d',
+      brightBlack: '#6d6353',
+      brightRed: '#801008',
+      brightGreen: '#2b4b0c',
+      brightYellow: '#5f3c00',
+      brightBlue: '#123468',
+      brightMagenta: '#631a4f',
+      brightCyan: '#064a4a',
+      brightWhite: '#1c1811'
+    }
+  },
+  /** Cool near-white and jewel inks: the neon idea, carried onto paper. */
+  'daylight-neon': {
+    id: 'daylight-neon',
+    label: 'Daylight Neon',
+    appearance: 'light',
+    palette: {
+      background: '#f3f7fc',
+      foreground: '#2b3440',
+      cursor: '#0b1220',
+      cursorAccent: '#f3f7fc',
+      selectionBackground: '#c3ddff',
+      black: '#f3f7fc',
+      red: '#d10f4f',
+      green: '#00794a',
+      yellow: '#8f5b00',
+      blue: '#0a4fe0',
+      magenta: '#9412c9',
+      cyan: '#00707f',
+      white: '#455060',
+      brightBlack: '#63707f',
+      brightRed: '#95003a',
+      brightGreen: '#005433',
+      brightYellow: '#653e00',
+      brightBlue: '#0733a0',
+      brightMagenta: '#690a8f',
+      brightCyan: '#004e59',
+      brightWhite: '#0b1220'
+    }
+  }
+};
+
+/** Registration order, which is the order every offer of them is made in. */
+export const TERMINAL_THEME_IDS: readonly TerminalThemeId[] = [
+  'vivid-vga',
+  'neon-night',
+  'aurora-ice',
+  'ember-forge',
+  'paper-ink',
+  'parchment',
+  'daylight-neon'
+];
+
+/** Everything `ui.console.palette` accepts, `theme` first because it is the default. */
+export const CONSOLE_PALETTES: readonly ConsolePalette[] = ['theme', ...TERMINAL_THEME_IDS];
+
+export const DEFAULT_CONSOLE_PALETTE: ConsolePalette = 'theme';
+
+export function isTerminalThemeId(value: unknown): value is TerminalThemeId {
+  // Own-property, for the reason `isThemeId` is: this runs against config input.
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(TERMINAL_THEMES, value);
+}
+
+export function isConsolePalette(value: unknown): value is ConsolePalette {
+  return value === 'theme' || isTerminalThemeId(value);
+}
+
+/** The palettes that read the same way round as a given appearance. */
+export function terminalThemesOfAppearance(appearance: Appearance): readonly TerminalThemeId[] {
+  return TERMINAL_THEME_IDS.filter((id) => TERMINAL_THEMES[id].appearance === appearance);
+}
+
+/**
+ * The sixteen the console actually paints with.
+ *
+ * `theme` defers to whatever `consoleThemeFor` already decided, so the default
+ * path is byte-for-byte what it was. A named palette is the player's own
+ * statement and wins outright — including over `keepDark`, which is the answer
+ * to a question they have now answered themselves.
+ */
+export function consolePaletteFor(consoleTheme: Theme, choice: ConsolePalette): TerminalPalette {
+  return isTerminalThemeId(choice) ? TERMINAL_THEMES[choice].palette : consoleTheme.terminal;
 }

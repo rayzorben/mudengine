@@ -164,6 +164,7 @@ export function migrateHome(options: MigrationOptions): void {
   theWorldsAreBundled(home, note);
   statedTheMark(home, note);
   statedTheDarkConsole(home, note, options.template);
+  statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
   statedTheFindAlerts(home, note, options.template);
 }
@@ -1121,6 +1122,7 @@ function statedTheDarkConsole(
     if (!isMap(ui) || ui.has('console')) return false;
 
     const block = document.createNode({
+      palette: DEFAULT_CONFIG.ui.console.palette,
       keepDark: DEFAULT_CONFIG.ui.console.keepDark,
       darkTheme: DEFAULT_CONFIG.ui.console.darkTheme
     });
@@ -1140,6 +1142,46 @@ function statedTheDarkConsole(
 
   if (!stated) return;
   note(t('notices.migration.darkConsoleStated', { file: home.options }));
+}
+
+/**
+ * `ui.console.palette`, which of the seven console palettes the realm's colour
+ * codes are painted with (2026-09-08).
+ *
+ * A key inside `ui.console:`, so `statedTheDarkConsole` has to run first: a
+ * file with no console block at all gains one carrying all three keys there,
+ * and this then finds `palette` present and does nothing. The two together
+ * cover both shapes a file can be in.
+ *
+ * Written as `theme`, which is what the client does without it, so nothing
+ * changes except that the file says the option exists — which is the whole
+ * point, a setting absent from the file being one nobody reading it can find.
+ */
+function statedTheConsolePalette(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  let stated = false;
+
+  edit(home.options, (document) => {
+    const console_ = document.getIn(['ui', 'console'], true);
+    if (!isMap(console_) || console_.has('palette')) return false;
+
+    const pair = document.createPair('palette', DEFAULT_CONFIG.ui.console.palette) as Pair;
+    const lead = comments.get('ui.console.palette');
+    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+
+    // First, as the template has it: it is the key that outranks the other two,
+    // and a file should read in the order the settings are decided in.
+    console_.items.unshift(pair);
+    stated = true;
+    return true;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.consolePaletteStated', { file: home.options }));
 }
 
 function statedTheMark(home: Home, note: (message: string) => void): void {
@@ -3700,6 +3742,13 @@ function theTuningBlockGainedKeys(
     /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
     addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
     addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
+    /*
+     * How long the Talk card holds its place after a scroll (2026-09-08). The
+     * hold is the whole point of the feature and the expiry is the whole point
+     * of the hold, so a file that cannot state the number is a file in which
+     * neither can be tuned to how fast somebody reads.
+     */
+    addKey('view', 'talkFollowResumeMs', DEFAULT_INTERNAL.tuning.view.talkFollowResumeMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

@@ -43,9 +43,12 @@ const asGate = (value: unknown): EncumbranceGate =>
   ) ?? 'never';
 import { PROFILE_ACCENTS, type ProfileAccent } from './profiles';
 import {
+  DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
+  isConsolePalette,
   isDarkTheme,
   isThemePreference,
+  type ConsolePalette,
   type ThemeId,
   type ThemePreference
 } from './themes';
@@ -157,6 +160,8 @@ export interface GlobalDraft {
     tabs: TabsPreference;
     showHud: boolean;
     showLogo: boolean;
+    /** Which sixteen the console paints with, or `theme` to follow the chrome. */
+    consolePalette: ConsolePalette;
     /** Keep the console dark while the chrome is light. See `ConsoleUiConfig`. */
     consoleKeepDark: boolean;
     /** Which dark palette it wears when it does. Always a dark theme. */
@@ -918,6 +923,9 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
+      consolePalette: isConsolePalette(consoleUi['palette'])
+        ? consoleUi['palette']
+        : DEFAULT_CONSOLE_PALETTE,
       consoleKeepDark: consoleUi['keepDark'] !== false,
       // Coerced to a dark theme rather than refused: naming a light one is a
       // contradiction, not a preference. See `normalizeConsoleUi`.

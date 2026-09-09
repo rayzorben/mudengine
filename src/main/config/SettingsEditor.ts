@@ -845,6 +845,7 @@ export class SettingsEditor {
         tabs: config.ui.tabs,
         showHud: config.ui.showHud,
         showLogo: config.ui.showLogo,
+        consolePalette: config.ui.console.palette,
         consoleKeepDark: config.ui.console.keepDark,
         consoleDarkTheme: config.ui.console.darkTheme,
         vitals: {
@@ -947,6 +948,7 @@ export class SettingsEditor {
         set(['ui', 'tabs'], draft.ui.tabs);
         set(['ui', 'showHud'], draft.ui.showHud);
         set(['ui', 'showLogo'], draft.ui.showLogo);
+        set(['ui', 'console', 'palette'], draft.ui.consolePalette);
         set(['ui', 'console', 'keepDark'], draft.ui.consoleKeepDark);
         set(['ui', 'console', 'darkTheme'], draft.ui.consoleDarkTheme);
         for (const vital of ['hp', 'mana'] as const) {

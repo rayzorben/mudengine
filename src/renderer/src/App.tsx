@@ -83,7 +83,7 @@ import {
 import type { CardChrome } from './components/BentoCard';
 import type { AppConfig } from '@shared/config';
 import type { IpcApi } from '@shared/ipc';
-import { THEME_PREFERENCES, THEMES } from '@shared/themes';
+import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import { usePaneWidths } from './hooks/usePaneWidths';
 import { usePinnedCommands } from './hooks/usePins';
 import { Splitter } from './components/Splitter';
@@ -1317,14 +1317,17 @@ export default function App() {
   );
   const {
     theme,
-    consoleTheme,
+    consolePalette,
     preference: themePreference,
+    consolePreference,
     cycle: cycleTheme,
-    choose: chooseTheme
+    choose: chooseTheme,
+    chooseConsole
   } = useTheme(
     characterTheme ?? config.ui.theme,
     config.ui.console.keepDark,
-    config.ui.console.darkTheme
+    config.ui.console.darkTheme,
+    config.ui.console.palette
   );
 
   /**
@@ -3806,6 +3809,27 @@ export default function App() {
         group: 'view' as const,
         run: () => chooseTheme(entry)
       })),
+      // One per console palette, alongside the theme commands rather than
+      // buried under them: the console is the surface the player spends the
+      // evening reading, and "make the game's colours pop" is not a request
+      // anybody should have to find a settings page to make.
+      ...CONSOLE_PALETTES.filter((entry) => entry !== consolePreference).map((entry) => ({
+        id: `console:${entry}`,
+        icon: 'terminal' as const,
+        label:
+          entry === 'theme'
+            ? t('palette.view.consolePaletteFollowLabel')
+            : t('palette.view.consolePaletteLabel', {
+                paletteLabel: TERMINAL_THEMES[entry].label
+              }),
+        hint:
+          entry === 'theme'
+            ? t('palette.view.consolePaletteFollowHint')
+            : TERMINAL_THEMES[entry].appearance,
+        keywords: ['console', 'terminal', 'palette', 'ansi', 'colour', 'color'],
+        group: 'view' as const,
+        run: () => chooseConsole(entry)
+      })),
       ...(showTabs
         ? [
             {
@@ -4898,7 +4922,7 @@ export default function App() {
                   // A character with no pane parks in the focused one, hidden:
                   // laid out, so it stays measurable, and out of the tab order.
                   pane={at >= 0 ? at : paneAt}
-                  palette={consoleTheme.terminal}
+                  palette={consolePalette}
                   session={entry.id}
                   settings={config.terminal}
                   shown={at >= 0}

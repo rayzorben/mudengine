@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CONSOLE_PALETTES,
+  consolePaletteFor,
   consoleThemeFor,
+  DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
+  isConsolePalette,
+  isTerminalThemeId,
+  TERMINAL_THEME_IDS,
+  TERMINAL_THEMES,
+  terminalThemesOfAppearance,
   isDarkTheme,
   isThemeId,
   isThemePreference,
@@ -11,7 +19,8 @@ import {
   THEME_PREFERENCES,
   themesOfAppearance,
   THEMES,
-  type Theme
+  type Theme,
+  type TerminalPalette
 } from '../themes';
 
 const ALL: Theme[] = THEME_IDS.map((id) => THEMES[id]);
@@ -310,5 +319,192 @@ describe('isDarkTheme', () => {
     // coerces with this; a form must not offer what the file refuses.
     for (const id of themesOfAppearance('dark')) expect(isDarkTheme(id)).toBe(true);
     for (const id of themesOfAppearance('light')) expect(isDarkTheme(id)).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Console palettes
+ * ---------------------------------------------------------------------- */
+
+const PALETTES = TERMINAL_THEME_IDS.map((id) => TERMINAL_THEMES[id]);
+
+/** The seven chromatics plus grey, in the order a palette declares them. */
+const RAMP = ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const;
+const BRIGHT = [
+  'brightRed',
+  'brightGreen',
+  'brightYellow',
+  'brightBlue',
+  'brightMagenta',
+  'brightCyan',
+  'brightWhite'
+] as const;
+
+/** CIE76 in Lab. Enough to say two colours are not the same colour. */
+function lab(hex: string): [number, number, number] {
+  const [r, g, b] = [1, 3, 5]
+    .map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)) as [
+    number,
+    number,
+    number
+  ];
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t: number): number => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+function deltaE(a: string, b: string): number {
+  const [x, y] = [lab(a), lab(b)];
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+}
+
+describe('console palette registry', () => {
+  it('registers every id it lists, and lists every id it registers', () => {
+    expect([...TERMINAL_THEME_IDS].sort()).toEqual(Object.keys(TERMINAL_THEMES).sort());
+  });
+
+  it('gives every palette an id matching its key', () => {
+    for (const id of TERMINAL_THEME_IDS) expect(TERMINAL_THEMES[id].id).toBe(id);
+  });
+
+  it('offers `theme` plus every palette, in registration order', () => {
+    expect(CONSOLE_PALETTES).toEqual(['theme', ...TERMINAL_THEME_IDS]);
+    expect(CONSOLE_PALETTES[0]).toBe(DEFAULT_CONSOLE_PALETTE);
+  });
+
+  it('ships four dark and three light', () => {
+    expect(terminalThemesOfAppearance('dark')).toHaveLength(4);
+    expect(terminalThemesOfAppearance('light')).toHaveLength(3);
+  });
+
+  it('gives every palette a distinct human label', () => {
+    const labels = PALETTES.map((entry) => entry.label);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('gives every palette the same complete set of colours, all six-digit hex', () => {
+    const reference = Object.keys(THEMES[DEFAULT_THEME].terminal).sort();
+    for (const entry of PALETTES) {
+      expect(Object.keys(entry.palette).sort(), `${entry.id}`).toEqual(reference);
+      for (const [key, value] of Object.entries(entry.palette)) {
+        expect(value, `${entry.id}.${key}`).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+    }
+  });
+
+  // `ESC[40m` fills with colour 0. If it is not the ground, a realm that sets
+  // its own background paints a band across a page that already was that
+  // colour — which is the whole reason the greyscale axis inverts on light.
+  it('makes colour 0 the ground, exactly', () => {
+    for (const entry of PALETTES) {
+      expect(entry.palette.black, `${entry.id}`).toBe(entry.palette.background);
+    }
+  });
+});
+
+describe('console palette legibility', () => {
+  // The point of these seven: `#0000aa` on black is why `blue` was a colour
+  // nobody used. Every colour the realm can select has to be readable as text
+  // on the ground it will be drawn against — the dim ramp included, which is
+  // where the shipped IBM set falls down.
+  it('keeps all sixteen legible on their own ground', () => {
+    for (const entry of PALETTES) {
+      const p: TerminalPalette = entry.palette;
+      const keys = ['foreground', ...RAMP, 'brightBlack', ...BRIGHT] as const;
+      for (const key of keys) {
+        const ratio = contrast(p[key], p.background);
+        expect(ratio, `${entry.id}.${key} on its ground = ${ratio.toFixed(2)}:1`).toBeGreaterThan(
+          4.5
+        );
+      }
+    }
+  });
+
+  it('keeps the six chromatics tellable apart, in both ramps', () => {
+    for (const entry of PALETTES) {
+      for (const set of [RAMP.slice(0, 6), BRIGHT.slice(0, 6)]) {
+        for (let i = 0; i < set.length; i++) {
+          for (let j = i + 1; j < set.length; j++) {
+            const [a, b] = [set[i] as keyof TerminalPalette, set[j] as keyof TerminalPalette];
+            const d = deltaE(entry.palette[a], entry.palette[b]);
+            expect(d, `${entry.id} ${a}/${b} dE=${d.toFixed(1)}`).toBeGreaterThan(22);
+          }
+        }
+      }
+    }
+  });
+
+  // Bold is emphasis whichever way the ground reads. On a light palette that
+  // means the bright ramp goes *deeper* than its dim, not lighter — but either
+  // way the two have to be different enough that bold says something.
+  it('keeps every bright tellable from its own dim', () => {
+    for (const entry of PALETTES) {
+      for (let i = 0; i < RAMP.length; i++) {
+        const [dim, bright] = [
+          RAMP[i] as keyof TerminalPalette,
+          BRIGHT[i] as keyof TerminalPalette
+        ];
+        const d = deltaE(entry.palette[dim], entry.palette[bright]);
+        expect(d, `${entry.id} ${dim}/${bright} dE=${d.toFixed(1)}`).toBeGreaterThan(12);
+      }
+    }
+  });
+
+  it('keeps a selection readable, and the cursor visible', () => {
+    for (const entry of PALETTES) {
+      const p = entry.palette;
+      expect(
+        contrast(p.foreground, p.selectionBackground),
+        `${entry.id} selection`
+      ).toBeGreaterThan(3);
+      expect(contrast(p.cursor, p.background), `${entry.id} cursor`).toBeGreaterThan(3);
+    }
+  });
+});
+
+describe('consolePaletteFor', () => {
+  it('defers to the theme the console resolved to when nothing was named', () => {
+    for (const id of THEME_IDS) {
+      expect(consolePaletteFor(THEMES[id], 'theme')).toBe(THEMES[id].terminal);
+    }
+  });
+
+  // The default has to be the client exactly as it was, or every existing
+  // options file changes what it looks like on the day this shipped.
+  it('leaves the shipped default alone', () => {
+    const console = consoleThemeFor(THEMES.dark, true, DEFAULT_THEME);
+    expect(consolePaletteFor(console, DEFAULT_CONSOLE_PALETTE)).toEqual(THEMES.dark.terminal);
+  });
+
+  it('lets a named palette outrank the theme, and `keepDark` with it', () => {
+    // A palette the player named is an answer to the question `keepDark` asks,
+    // so it wins — including a light palette under a light chrome kept dark.
+    const console = consoleThemeFor(THEMES.light, true, 'nord');
+    expect(consolePaletteFor(console, 'neon-night')).toBe(TERMINAL_THEMES['neon-night'].palette);
+    expect(consolePaletteFor(console, 'parchment')).toBe(TERMINAL_THEMES.parchment.palette);
+  });
+});
+
+describe('isTerminalThemeId / isConsolePalette', () => {
+  it('accepts only registered ids, and `theme` only as a palette choice', () => {
+    expect(isTerminalThemeId('neon-night')).toBe(true);
+    expect(isTerminalThemeId('theme')).toBe(false);
+    expect(isTerminalThemeId('dark')).toBe(false);
+    expect(isConsolePalette('theme')).toBe(true);
+    expect(isConsolePalette('neon-night')).toBe(true);
+    expect(isConsolePalette('dark')).toBe(false);
+    expect(isConsolePalette(null)).toBe(false);
+  });
+
+  it('refuses what the prototype chain would otherwise answer for', () => {
+    expect(isTerminalThemeId('toString')).toBe(false);
+    expect(isConsolePalette('constructor')).toBe(false);
+  });
+
+  it('agrees with everything the form and the palette offer', () => {
+    for (const entry of CONSOLE_PALETTES) expect(isConsolePalette(entry)).toBe(true);
   });
 });
