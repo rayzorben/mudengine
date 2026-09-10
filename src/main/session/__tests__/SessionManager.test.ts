@@ -27,6 +27,7 @@ import { NO_REALM_PLAYERS } from '../../../shared/players';
 import type { Find } from '../../../shared/finds';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
+import type { StatlineDesign } from '../../../shared/statline';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -1618,6 +1619,50 @@ describe('the roster catch-up', () => {
     const seen = await settle(/(^|\n)l\r\n[\s\S]*\nl\r\n/);
     expect(seen).toMatch(/l\r\n/);
     expect(seen.match(/\bwho\b/g) ?? []).toHaveLength(1);
+  });
+});
+
+/*
+ * The client's own status line in the prompt's place (`ui.statline`): read
+ * off the prompt as it arrives, drawn over exactly the prompt's bytes, and
+ * refused out loud when it would not fit the row.
+ */
+describe('the status line the player designed', () => {
+  const design: StatlineDesign = {
+    enabled: true,
+    layout: 'HP {hp}/{hpMax}{state}',
+    bands: { hp: [], mana: [] }
+  };
+  const PROMPT = '\x1b[1;32m[HP=100/150,MA=50/50 (Resting) ]:\x1b[0m';
+
+  it('draws it over the prompt the moment the prompt arrives', async () => {
+    const painted: string[] = [];
+    const { sink } = collect();
+    manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
+    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, design);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write(PROMPT);
+    await until(() => manager!.character.vitals.hp === 100);
+    const shown = painted.join('');
+    expect(shown).toContain('HP 100/150 (Resting)');
+    expect(shown).not.toContain('[HP=100/150');
+  });
+
+  it("refuses one wider than the row, once, and draws the realm's own", async () => {
+    const painted: string[] = [];
+    const { sink, notices } = collect();
+    manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
+    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, {
+      ...design,
+      layout: `${'x'.repeat(80)}{hp}`
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write(PROMPT);
+    await until(() => manager!.character.vitals.hp === 100);
+    expect(painted.join('')).toContain('[HP=100/150');
+    expect(notices.filter((notice) => notice.includes('83'))).toHaveLength(1);
   });
 });
 

@@ -1508,7 +1508,7 @@ export interface InternalConfig {
 
 export const DEFAULT_INTERNAL: InternalConfig = {
   terminal: {
-    quiet: { enabled: true, commands: ['rm', 'look'] },
+    quiet: { enabled: true, commands: ['rm', 'look', 'pro', 'set'] },
     enrich: true
   },
   palette: {

@@ -208,6 +208,16 @@ export const RULES: Rule[] = [
     type: 'user-profile',
     pattern: /^(?:Recent Deaths:|Location:\s+(?<map>\d{1,3}),(?<room>\d{1,6}))/
   },
+  /*
+   * `pro`'s own statement of the prompt — `Statusline:          full`, read
+   * live on GreaterMUD (2026-09-09). The value is the class-default word or
+   * the template somebody set, verbatim (`ProfileCommand.cs:54` prints the
+   * field as held); `src/shared/statline.ts` builds the matcher from it.
+   */
+  {
+    type: 'user-statline',
+    pattern: /^Statusline:\s+(?<statline>\S.*?)\s*$/
+  },
   {
     type: 'user-encumbrance',
     pattern:

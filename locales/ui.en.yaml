@@ -238,6 +238,14 @@ notices:
       '"ui.console.palette" was written into {file} as "theme", which is the console you already
       have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
       there or on the MudEngine page in settings outranks the two keys beside it.'
+    statusLineStated:
+      '"automation.statline" and "ui.statline" were written into {file}, both off: whether the
+      client sets the prompt''s shape on the way in, so every prompt carries the maxima, the
+      experience and the purse, and the status line you can design to draw in its place. Turn
+      either on there or on the Status Line section in settings.'
+    statusLineAsksQuieted:
+      'pro and set were added to the quiet list in {file}: the status-line routine''s own asks stay
+      out of the console. Remove them there to see them.'
     diagnosticsPreferenceDropped:
       many:
         '"ui.showDiagnostics" was removed from {count} files: the diagnostics cards are now hidden on
@@ -2605,6 +2613,45 @@ settings:
     rulesPointerNote:
       One cast, chosen by a number, on the mid-round tick — which is the one thing about
       a spell a rule cannot express. Everything else a caster wants is automation.rules.
+  statline:
+    legend: The Prompt
+    controlLabel: Own the Status Line
+    controlHint:
+      Sends the client's own template on the way in, so every prompt carries maximum health and
+      mana, experience, what the next level still costs and the purse; then asks pro once for
+      what the realm holds, which is what the prompt is read by.
+    templateNote:
+      'The template sent is set statline full custom [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:
+      — the realm keeps it on the character, so it stays set after the client is closed. Off or
+      on, the client reads whatever the line turns out to be and says which pattern it reads it by.'
+    designLegend: Your Own Line
+    enabledLabel: Draw My Own Line
+    enabledHint:
+      The client reads the figures off every prompt and draws this line in its place, at the
+      moment the prompt arrives; what was drawn stays drawn in the scrollback.
+    layoutLabel: Layout
+    layoutHint:
+      'Text with tags in braces: a figure, a colour, bold, dim or reset. Anything else, emoji
+      included, is drawn as typed. What you type here is what the prompt row shows.'
+    previewLabel: As it will be drawn
+    previewEmpty: Nothing to draw.
+    cells: '{cells} of {max} cells; what you type shares the row, so leave it room.'
+    tooWide:
+      '{cells} cells — wider than the {max} the prompt row holds, so the realm''s own line will be
+      drawn instead until this is shorter.'
+    tagsNote:
+      'Figures: {figures}. Colours: {colours}, a hex such as {hex}, or {background} for the ground.
+      Also {attributes}.'
+    bandsHp: Health Colours
+    bandsMana: Mana Colours
+    bandsHint:
+      From this share of maximum up, the figure wears this colour; the first band whose floor it
+      reaches wins. No bands is the layout's own colour. Unknown maximum, no colour.
+    bandFromLabel: From, %
+    bandColourLabel: Colour
+    bandRemove: Remove
+    bandRemoveAria: Remove band {number}
+    addBand: Add a band
   tabs:
     alerts: Alerts
     combat: Combat
@@ -2613,6 +2660,7 @@ settings:
     party: Party
     remotes: Remotes
     spells: Spells
+    statline: Status Line
     talk: Talk
   talk:
     legend: Other Players
@@ -2744,6 +2792,19 @@ session:
       character’s tab to walk the {realm} world, or name one on the realm’s settings page.
     left: Left the realm. Everything known about this character is forgotten; entering again asks
       for it afresh.
+  statline:
+    exact: 'The realm reports the status line as {statline}; every prompt is read by it exactly.'
+    full: The realm reports the status line as full; the prompt is read by the usual pattern.
+    loose:
+      'The realm reports the status line as {statline}, which this client cannot build a matcher
+      from; the prompt is read by the usual pattern.'
+    verified: The prompt matches the status line the realm reported.
+    mismatch:
+      The prompt no longer matches the status line the realm reported; reading it by the usual
+      pattern and asking pro again.
+    tooWide:
+      'The status line you designed comes to {cells} cells and the prompt row holds {max}, so
+      the realm''s own line is drawn instead. Shorten it on the Status Line section in settings.'
   walk:
     claimLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has given up waiting for it and is
@@ -3017,6 +3078,8 @@ automation:
       have all changed
     reasonStatsTrained: the stats were retrained, so the sheet has changed
     reasonBuffEnding: a sentence nothing recognised may have ended a buff; the stat sheet says which
+    reasonStatline: setting the status line, so every prompt carries the maxima, the experience and the purse
+    reasonProfile: reading which status line the realm holds
     spellbookCorrected: Asked for the wrong book — the realm says to list {book}, so asking that instead.
   walk:
     alreadyThere: Already there.

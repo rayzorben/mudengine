@@ -4,8 +4,10 @@ import {
   ABANDON_MS,
   BARE_ENTER,
   PARTIAL_DELAY_MS,
+  rawIndexOf,
   TerminalFeed,
-  type Emitted
+  type Emitted,
+  type FeedSource
 } from '../TerminalFeed';
 import { LineTokenizer, plainText } from '../../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
@@ -28,14 +30,16 @@ function typeOf(plain: string): BlockType | null {
 }
 
 /** Drives a feed the way `SessionManager` does: frame, classify, emit, tail. */
-function harness(quiet: string[] = ['rm', 'l']) {
+function harness(quiet: string[] = ['rm', 'l'], design?: FeedSource['design']) {
   const released: Emitted[] = [];
   const tokenizer = new LineTokenizer();
   const feed = new TerminalFeed(
     {
       isQuiet: (word) => quiet.includes(word),
       isStatus: (plain) => STATUS_LINE.test(plain),
-      now: () => Date.now()
+      now: () => Date.now(),
+      // A design given is a design on: the two are one setting in the client.
+      ...(design ? { design, designing: () => true } : {})
     },
     (emitted) => released.push(emitted)
   );
@@ -239,6 +243,87 @@ describe('the room, re-read without telling the room', () => {
     h.flush();
     h.feed.sent('', 'user');
     expect(h.chunk('A hall.\r\n')).toBe('A hall.\r\n');
+  });
+});
+
+/*
+ * The client's own status line in the prompt's place (`ui.statline`): drawn
+ * at the moment the prompt arrives, over exactly the prompt's bytes, with the
+ * lead, the echo and the terminator painted as sent — and never twice, which
+ * is what the hold on a half-arrived prompt is for.
+ */
+describe('a status line the client draws itself', () => {
+  const DRAWN = '\x1b[0;1mHP 34/?\x1b[0m';
+  const designer: FeedSource['design'] = (plain) => {
+    const from = plain.length - plain.trimStart().length;
+    const match = STATUS_LINE.exec(plain.slice(from));
+    return match ? { rendered: DRAWN, from, to: from + match[0].length } : null;
+  };
+
+  it("paints its own line in the prompt's place, and the echo after it as sent", () => {
+    const h = harness(['rm'], designer);
+    // The newline before is kept, the prompt's own colour and text replaced,
+    // the reset the server prints after it kept.
+    expect(h.chunk('\r\n' + PROMPT)).toBe('\r\n' + DRAWN + '\x1b[0m');
+    expect(h.chunk('n')).toBe('n');
+    expect(h.flush()).toBe('');
+  });
+
+  it('draws a prompt that arrives whole with its terminator', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk(PROMPT + PROMPT_REPAINT)).toBe(DRAWN + '\x1b[0m' + PROMPT_REPAINT);
+  });
+
+  it('holds a prompt split across two chunks and draws it once', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk('\x1b[1;32m[HP=3')).toBe('');
+    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN + '\x1b[0m');
+    expect(h.released).toEqual([]);
+  });
+
+  it('paints a half-prompt as sent once the hold runs out, and finishes it raw', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk('[HP=3')).toBe('');
+    vi.advanceTimersByTime(PARTIAL_DELAY_MS + 1);
+    expect(h.released.map((e) => e.text)).toEqual(['[HP=3']);
+    expect(h.chunk('4/MA=12]:')).toBe('4/MA=12]:');
+  });
+
+  it('holds a prompt cut between its bracket and its colon, and draws it once the colon lands', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk('[HP=34/MA=12]')).toBe('');
+    expect(h.chunk(':')).toBe(DRAWN);
+    expect(h.released).toEqual([]);
+  });
+
+  it('draws a prompt the server leaves without a colon once the hold runs out', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk('[HP=34/MA=12]')).toBe('');
+    vi.advanceTimersByTime(PARTIAL_DELAY_MS + 1);
+    expect(h.released.map((e) => e.text)).toEqual([DRAWN]);
+    expect(h.chunk('n')).toBe('n');
+  });
+
+  it("paints the realm's line where the design declines", () => {
+    const h = harness(['rm'], () => null);
+    expect(h.chunk(PROMPT)).toBe(PROMPT);
+  });
+
+  it('still closes a quiet window on a drawn prompt', () => {
+    const h = harness(['rm'], designer);
+    h.chunk(PROMPT);
+    h.flush();
+    h.feed.sent('rm', 'automation');
+    expect(h.chunk('rm\r\nLocation: 1,2147\r\n')).toBe('');
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + DRAWN + '\x1b[0m');
+    expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
+  });
+
+  it('finds a plain character past the escapes the plain text lost', () => {
+    const text = '\x1b[1;32m[HP=34]:\x1b[0m';
+    expect(rawIndexOf(text, 0)).toBe(0);
+    expect(rawIndexOf(text, 8)).toBe('\x1b[1;32m[HP=34]:'.length);
+    expect(rawIndexOf(text, 99)).toBe(text.length);
   });
 });
 

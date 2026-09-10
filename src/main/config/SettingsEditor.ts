@@ -92,16 +92,27 @@ export interface SettingsEditorOptions {
 function statesSomething(draft: unknown, defaults: Record<string, unknown>): boolean {
   const block = (draft ?? {}) as Record<string, unknown>;
   for (const [key, value] of Object.entries(defaults)) {
-    const mine = block[key];
-    if (Array.isArray(value)) {
-      if (!Array.isArray(mine)) return true;
-      if (mine.length !== value.length) return true;
-      if (mine.some((entry, index) => entry !== value[index])) return true;
-      continue;
-    }
-    if (mine !== value) return true;
+    if (differs(block[key], value)) return true;
   }
   return false;
+}
+
+/**
+ * Whether a draft value says anything its default does not, however deep.
+ * Recursive because the designed status line nests its bands: a comparison
+ * that stopped at the first level read every design as stated and wrote the
+ * shipped one into a file that had said nothing.
+ */
+function differs(mine: unknown, value: unknown): boolean {
+  if (Array.isArray(value)) {
+    if (!Array.isArray(mine) || mine.length !== value.length) return true;
+    return mine.some((entry, index) => differs(entry, value[index]));
+  }
+  if (value !== null && typeof value === 'object') {
+    if (mine === null || typeof mine !== 'object' || Array.isArray(mine)) return true;
+    return statesSomething(mine, value as Record<string, unknown>);
+  }
+  return mine !== value;
 }
 
 export class SettingsEditor {
@@ -353,9 +364,11 @@ export class SettingsEditor {
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
           [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
+          [['automation', 'statline'], draft.statline, DEFAULT_CONFIG.automation.statline],
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
-          [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts]
+          [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
+          [['ui', 'statline'], draft.statlineDesign, DEFAULT_CONFIG.ui.statline]
         ] as const) {
           if (
             creating ||
@@ -859,7 +872,8 @@ export class SettingsEditor {
             items: [...config.ui.alerts.finds.items],
             cashOverCopper: config.ui.alerts.finds.cashOverCopper
           }
-        }
+        },
+        statline: structuredClone(config.ui.statline)
       },
       logging: {
         enabled: config.logging.enabled,
@@ -896,7 +910,8 @@ export class SettingsEditor {
         banking: { ...config.automation.banking },
         remotes: { ...config.automation.remotes },
         afk: { ...config.automation.afk },
-        talk: { ...config.automation.talk }
+        talk: { ...config.automation.talk },
+        statline: { ...config.automation.statline }
       },
       loops
     };
@@ -959,6 +974,7 @@ export class SettingsEditor {
         set(['ui', 'alerts', 'mute'], [...draft.ui.alerts.mute]);
         set(['ui', 'alerts', 'finds', 'items'], [...draft.ui.alerts.finds.items]);
         set(['ui', 'alerts', 'finds', 'cashOverCopper'], draft.ui.alerts.finds.cashOverCopper);
+        set(['ui', 'statline'], structuredClone(draft.ui.statline));
 
         set(['logging', 'enabled'], draft.logging.enabled);
         set(['logging', 'directory'], draft.logging.directory);
@@ -987,6 +1003,7 @@ export class SettingsEditor {
         set(['automation', 'banking'], { ...draft.automation.banking });
         set(['automation', 'remotes'], { ...draft.automation.remotes });
         set(['automation', 'afk'], { ...draft.automation.afk });
+        set(['automation', 'statline'], { ...draft.automation.statline });
       },
       verify: (value) => {
         /*
@@ -1112,6 +1129,8 @@ export class SettingsEditor {
         remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
         talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
+        statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
+        statlineDesign: effective?.ui.statline ?? DEFAULT_CONFIG.ui.statline,
         /*
          * This character's *own* loops, from its own directory — not the
          * resolved list, which folds in the server's and the global ones. The
@@ -1261,6 +1280,8 @@ function blank(id: string): ProfileEditable {
     remotes: DEFAULT_CONFIG.automation.remotes,
     afk: DEFAULT_CONFIG.automation.afk,
     talk: DEFAULT_CONFIG.automation.talk,
+    statline: DEFAULT_CONFIG.automation.statline,
+    statlineDesign: DEFAULT_CONFIG.ui.statline,
     loops: [],
     inherited: [],
     spells: DEFAULT_CONFIG.automation.spells,
