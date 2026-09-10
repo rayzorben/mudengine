@@ -167,6 +167,87 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
   statedTheFindAlerts(home, note, options.template);
+  statedTheStatusLine(home, note, options.template);
+  quietedTheStatusLineAsks(home, note);
+}
+
+/**
+ * `automation.statline` into every options file that predates it, off.
+ *
+ * Same gap as `statedTheDarkConsole`: a key inside a block the file already
+ * states is one `reconcileWithTemplate` never reaches, and a switch nobody's
+ * file names is a switch nobody finds. Written where the template puts it,
+ * after `onPartyChange`, with the template's own paragraph.
+ */
+function statedTheStatusLine(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'automation');
+  const uiComments = templateComments(template, 'ui');
+  let stated = false;
+
+  edit(home.options, (document) => {
+    let changed = false;
+    const automation = document.getIn(['automation'], true);
+    if (isMap(automation) && !automation.has('statline')) {
+      const block = document.createNode({ control: DEFAULT_CONFIG.automation.statline.control });
+      const pair = document.createPair('statline', block) as Pair;
+      const lead = comments.get('automation.statline');
+      if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+
+      const at = automation.items.findIndex((item) => keyText(item) === 'onPartyChange');
+      if (at === -1) automation.items.push(pair);
+      else automation.items.splice(at + 1, 0, pair);
+      changed = true;
+    }
+
+    // And the line the player may design, beside the alerts it keeps company
+    // with in the template: the presentation half of the same feature.
+    const ui = document.getIn(['ui'], true);
+    if (isMap(ui) && !ui.has('statline')) {
+      const block = document.createNode(structuredClone(DEFAULT_CONFIG.ui.statline));
+      const pair = document.createPair('statline', block) as Pair;
+      const lead = uiComments.get('ui.statline');
+      if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+      ui.items.push(pair);
+      changed = true;
+    }
+
+    stated = changed;
+    return changed;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.statusLineStated', { file: home.options }));
+}
+
+/**
+ * `pro` and `set` onto `internal.yaml`'s quiet list, where the list is still
+ * the one the client shipped before them.
+ *
+ * The status-line routine sends both, and thirty lines of profile on every
+ * connection is what the quiet list exists to hide. A list cannot say "I
+ * removed that" (`pinTheLoopShelf`'s caveat), so this touches only a list
+ * that reads exactly `rm, look` — a list somebody has edited, in either
+ * direction, is theirs and is left alone.
+ */
+function quietedTheStatusLineAsks(home: Home, note: (message: string) => void): void {
+  let added = false;
+
+  edit(home.internal, (document) => {
+    const commands = document.getIn(['terminal', 'quiet', 'commands'], true);
+    if (!isSeq(commands)) return false;
+    const words = commands.items.map((item) => (isScalar(item) ? String(item.value) : ''));
+    if (words.join(' ') !== 'rm look') return false;
+    commands.items.push(document.createNode('pro'), document.createNode('set'));
+    added = true;
+    return true;
+  });
+
+  if (!added) return;
+  note(t('notices.migration.statusLineAsksQuieted', { file: home.internal }));
 }
 
 /**

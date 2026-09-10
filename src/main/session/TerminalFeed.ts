@@ -36,7 +36,11 @@
  * - **Anything already painted.** The unterminated tail is forwarded as it
  *   arrives outside a window and held for `PARTIAL_DELAY_MS` inside one; a
  *   line whose head was already forwarded is finished rather than cut off,
- *   because xterm has no "unprint".
+ *   because xterm has no "unprint". One more hold, and only with a status
+ *   line the player designed (`ui.statline`): a tail that has opened like a
+ *   prompt but not closed one waits the same `PARTIAL_DELAY_MS` outside a
+ *   window too, so the prompt is drawn once, designed, rather than half raw.
+ *   Past the delay it is drawn as it stands.
  *
  * Only what automation sends is ever quiet. The player's own `l` is a thing
  * they asked to see.
@@ -135,6 +139,47 @@ export interface FeedSource {
   /** Recognises the status line in an unterminated tail, so the window can close early. */
   isStatus(plain: string): boolean;
   now(): number;
+  /**
+   * The line the client draws in the prompt's place, or null to paint the
+   * realm's own. `rendered` replaces the plain characters `[from, to)` of the
+   * line, escape sequences among them included; what lies before and after
+   * — a leading newline, the echo, the terminator — is painted as sent.
+   * Optional: the feed is also driven by tests that design nothing.
+   */
+  design?(plain: string): { rendered: string; from: number; to: number } | null;
+  /** Whether a design is on, so a prompt still arriving is held for it. */
+  designing?(): boolean;
+}
+
+/** A prompt that has begun but not finished: the tolerant pattern's own opening. */
+const PROMPT_OPENING = /^\s*\[(?:HP|H)=/i;
+/** A prompt that has closed its bracket and not yet its colon. */
+const PROMPT_UNCLOSED = /\]\s*$/;
+
+/** The sequences `stripAnsi` removes, matched in place. */
+const ESCAPE = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/y;
+
+/**
+ * Where the `count`th plain character of `text` begins, stepping over the
+ * escape sequences the plain text has lost — before any escape that follows
+ * the character just counted, so a design replaces exactly the prompt's own
+ * bytes and the reset the server prints after it is kept.
+ */
+export function rawIndexOf(text: string, count: number): number {
+  let seen = 0;
+  let at = 0;
+  while (at < text.length) {
+    if (seen === count) return at;
+    ESCAPE.lastIndex = at;
+    const escape = ESCAPE.exec(text);
+    if (escape) {
+      at += escape[0].length;
+      continue;
+    }
+    at += 1;
+    seen += 1;
+  }
+  return text.length;
 }
 
 interface Sent {
@@ -216,11 +261,14 @@ export class TerminalFeed {
       if (index > 0) this.queue.splice(0, index);
     }
 
-    // The acknowledgement: pops the command it answers, and is always shown.
+    // The acknowledgement: pops the command it answers, and is always shown —
+    // as the client's own line where one is designed and none of it has been
+    // painted yet, which is the prompt arriving whole with its terminator.
     if (type === 'status-line') {
       if (!this.acknowledged) this.queue.shift();
       this.acknowledged = false;
-      this.emit(text.slice(already), terminator, mark);
+      const drawn = already === 0 ? this.designed(text, plain) : null;
+      this.emit(drawn ?? text.slice(already), terminator, mark);
       return;
     }
     this.acknowledged = false;
@@ -280,10 +328,42 @@ export class TerminalFeed {
     // is queued behind it: it is the prompt row.
     if (!this.quiet || status) {
       this.cancelHold();
+      /*
+       * The client's own line in the prompt's place — only while nothing of
+       * this tail has been painted, since xterm has no unprint. A tail that
+       * has opened like a prompt without finishing one is held for the same
+       * short while a quiet window holds, so a prompt split across two chunks
+       * is drawn once, designed, rather than half raw and then not at all.
+       * Held past the delay, it is painted as sent: a design is presentation,
+       * and presentation never delays the prompt for long.
+       */
+      if (this.forwarded === 0 && this.source.designing?.() === true) {
+        /*
+         * A prompt whose colon has not arrived is still arriving: the tolerant
+         * pattern accepts `]` without one, and a chunk cut between the two
+         * would draw the line and then paint a stray `:` after it. Held like
+         * an opening; drawn at the hold's end if nothing more comes.
+         */
+        if (status && !PROMPT_UNCLOSED.test(plain)) {
+          if (this.drawDesigned(pending, plain)) return;
+        } else if (PROMPT_OPENING.test(plain)) {
+          this.armHold();
+          return;
+        }
+      }
       this.forwardTail();
       return;
     }
     if (this.hold) return;
+    this.armHold();
+  }
+
+  /**
+   * Paint the tail as it stands once `PARTIAL_DELAY_MS` has passed with
+   * nothing ending it — designed, where it is a whole prompt the client draws
+   * and none of it has been painted, else as sent.
+   */
+  private armHold(): void {
     this.hold = setTimeout(() => {
       this.hold = null;
       if (this.tail.length <= this.forwarded) return;
@@ -291,12 +371,37 @@ export class TerminalFeed {
       // line that ends by the server going quiet.
       const before = this.out;
       this.out = { text: '', marks: [] };
-      this.forwardTail();
+      const plain = stripAnsi(this.tail);
+      const drawn =
+        this.forwarded === 0 &&
+        this.source.designing?.() === true &&
+        this.source.isStatus(plain.trimStart()) &&
+        this.drawDesigned(this.tail, plain);
+      if (!drawn) this.forwardTail();
       const released = this.out;
       this.out = before;
       if (released.text.length > 0) this.release(released);
     }, PARTIAL_DELAY_MS);
     this.hold.unref?.();
+  }
+
+  /** The whole tail, drawn as the client's line; false where the design declined. */
+  private drawDesigned(pending: string, plain: string): boolean {
+    const drawn = this.designed(pending, plain);
+    if (drawn === null) return false;
+    this.out.text += drawn;
+    this.forwarded = pending.length;
+    this.atLineStart = false;
+    return true;
+  }
+
+  /** The prompt at the head of `text`, drawn by the client, or null to paint the realm's own. */
+  private designed(text: string, plain: string): string | null {
+    const design = this.source.design?.(plain);
+    if (!design) return null;
+    const from = rawIndexOf(text, design.from);
+    const to = rawIndexOf(text, design.to);
+    return text.slice(0, from) + design.rendered + text.slice(to);
   }
 
   /** Everything emitted since the last take, for one push to the terminal. */

@@ -42,8 +42,10 @@ import {
   derivedExperienceTable,
   withDerivedExperience,
   withRealmExperience,
-  type ExperienceLevel
+  type ExperienceLevel,
+  type ExperienceTable
 } from '../../shared/experience';
+import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/statline';
 import { attacksOnSight, classifyOccupant } from '../../shared/mobs';
 import {
   gained,
@@ -68,7 +70,7 @@ import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, spellKey, wordsOf, type SpellLore } from '../../shared/spell-messages';
-import { afflictionOnset } from './patterns';
+import { afflictionOnset, STATUS_LINE } from './patterns';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
@@ -509,6 +511,20 @@ export class CharacterTracker {
    * acted on by `Routines` — the tracker records and never sends.
    */
   private sheetWanted = false;
+  /**
+   * The matcher built from what `pro` last said the prompt is, or null while
+   * the tolerant pattern is the reader (`src/shared/statline.ts` builds it).
+   * Kept across leaving the realm: it is a fact about the character, held
+   * server-side, and the next `pro` replaces it.
+   */
+  private statlineMatcher: RegExp | null = null;
+  /**
+   * A prompt failed that matcher and `pro` has not been asked about it since.
+   * Set here, taken by `takeStatlineRequest`, acted on by `Routines` — and
+   * armed once per report, so a line that stays different costs one ask.
+   */
+  private statlineWanted = false;
+  private statlineAsked = false;
 
   /**
    * Where this character's own record is kept between sessions — the balances
@@ -921,6 +937,9 @@ export class CharacterTracker {
     this.pendingStops = [];
     this.recentlyStopped.clear();
     this.sheetWanted = false;
+    this.statlineMatcher = null;
+    this.statlineWanted = false;
+    this.statlineAsked = false;
   }
 
   /**
@@ -1961,6 +1980,76 @@ export class CharacterTracker {
     return wanted;
   }
 
+  /** A prompt stopped matching what `pro` reported, so `pro` is worth asking again. Cleared by the taking. */
+  takeStatlineRequest(): boolean {
+    const wanted = this.statlineWanted;
+    this.statlineWanted = false;
+    return wanted;
+  }
+
+  /**
+   * The figures off a prompt: by the matcher `pro`'s report built where there
+   * is one and the line fits it, else by the tolerant pattern. `exact` is
+   * null with no matcher; `length` is how much of `text` the prompt is, so a
+   * caller drawing over it knows where the echo begins. Pure — the feed reads
+   * a prompt through this the moment it arrives, ahead of the block; the
+   * `status-line` case is what arms the re-ask on a lapse.
+   */
+  readPrompt(
+    text: string
+  ): { read: StatlineReading; exact: boolean | null; length: number } | null {
+    if (this.statlineMatcher) {
+      const match = this.statlineMatcher.exec(text);
+      if (match)
+        return { read: readingOf(match.groups ?? {}), exact: true, length: match[0].length };
+    }
+    const match = STATUS_LINE.exec(text);
+    if (!match) return null;
+    const g = match.groups ?? {};
+    const state = g['stateA'] ?? g['stateB'];
+    const extra = statusFields(g['fields']);
+    return {
+      read: {
+        hp: int(g['hp']),
+        hpMax: int(g['hpMax']),
+        mana: int(g['mana']),
+        manaMax: int(g['manaMax']),
+        exp: extra.exp ?? null,
+        need: extra.need ?? null,
+        wealth: extra.wealth ?? null,
+        state: state === 'Resting' ? 'resting' : state === 'Meditating' ? 'meditating' : null
+      },
+      exact: this.statlineMatcher ? false : null,
+      length: match[0].length
+    };
+  }
+
+  /**
+   * The next level's price, off a prompt carrying both `Exp=` and `Need=`.
+   *
+   * `%X` is `GetTotalExpNeededForLevel(Level + 1) - Experience`, so the sum
+   * is the realm's own row for the level above — restated on every prompt,
+   * which is what turns `EXPERIENCE_CONFIRMED_TO` from a ceiling into a
+   * record as a character climbs. Only while something is still owed:
+   * `Need=0` is the realm saying the next level is affordable, and `exp + 0`
+   * would price it at whatever the character happens to hold. Nothing is
+   * rebuilt while the table already holds the row.
+   */
+  private tableWithPrompt(s: CharacterState, read: StatlineReading): ExperienceTable | null {
+    const level = s.progress.level;
+    if (level === null || read.exp === null || read.need === null || read.need <= 0) {
+      return s.progress.expTable;
+    }
+    const row: ExperienceLevel = {
+      level: level + 1,
+      experience: read.exp + read.need,
+      source: 'realm'
+    };
+    const held = s.progress.expTable?.rows.find((entry) => entry.level === row.level);
+    if (held?.source === 'realm' && held.experience === row.experience) return s.progress.expTable;
+    return withRealmExperience(s.progress.expTable, [row]);
+  }
+
   /**
    * The `st` sheet is the authoritative listing of what is up.
    *
@@ -2560,13 +2649,27 @@ export class CharacterTracker {
       case 'status-line': {
         // The in-game discriminator. Everything else about phase is a guess;
         // this is the server telling us directly.
-        const hp = int(g['hp']);
-        const mana = int(g['mana']);
-        const state = g['stateA'] ?? g['stateB'];
+        /*
+         * Read by the matcher built from what `pro` reported wherever there
+         * is one and the line fits it, else by the tolerant pattern the rule
+         * typed it with (`readPrompt`). A prompt the exact matcher refuses is
+         * the line having changed under the client — another client's `set`,
+         * or a suffix the template never stated — and is worth one `pro` per
+         * report to find out which; `Routines` sends it. The rule that typed
+         * this block is the tolerant pattern, so a null here would be the rule
+         * and the reader disagreeing about one line: nothing is claimed.
+         */
+        const prompt = this.readPrompt(block.text);
+        if (!prompt) return null;
+        if (prompt.exact === false && !this.statlineAsked) {
+          this.statlineWanted = true;
+          this.statlineAsked = true;
+        }
+        const read = prompt.read;
         // A realm that puts the maximum in the prompt says it on every line;
         // one that does not leaves what the stat sheet said alone.
-        const hpMax = int(g['hpMax']) ?? s.vitals.hpMax;
-        const manaMax = int(g['manaMax']) ?? s.vitals.manaMax;
+        const hpMax = read.hpMax ?? s.vitals.hpMax;
+        const manaMax = read.manaMax ?? s.vitals.manaMax;
         const key = g['manaType'];
         const manaType: 'MA' | 'KAI' | null =
           key === 'MA' || key === 'M'
@@ -2574,10 +2677,14 @@ export class CharacterTracker {
             : key === 'KAI' || key === 'K'
               ? 'KAI'
               : s.vitals.manaType;
-        const extra = statusFields(g['fields']);
+        const agreed = prompt.exact === true;
         return {
           ...s,
           phase: 'in-game',
+          statline:
+            this.statlineMatcher === null || s.statline.exact === agreed
+              ? s.statline
+              : { ...s.statline, exact: agreed },
           /*
            * Nobody arrives in the realm sneaking.
            *
@@ -2592,25 +2699,42 @@ export class CharacterTracker {
           lastStatusAt: block.at,
           vitals: {
             ...s.vitals,
-            hp,
-            mana,
+            hp: read.hp,
+            mana: read.mana,
             hpMax,
             manaMax,
             manaType,
-            resting: state === 'Resting',
-            meditating: state === 'Meditating'
+            resting: read.state === 'resting',
+            meditating: read.state === 'meditating'
           },
           progress: {
             ...s.progress,
-            exp: extra.exp ?? s.progress.exp,
-            expNeeded: extra.need ?? s.progress.expNeeded,
+            exp: read.exp ?? s.progress.exp,
+            // `%X` is an unclamped subtraction and goes negative once the next
+            // level is affordable; what is *owed* is then nothing, as `exp`
+            // reports it. The raw figure still gates the table row.
+            expNeeded: read.need === null ? s.progress.expNeeded : Math.max(0, read.need),
+            expTable: this.tableWithPrompt(s, read),
             // The first status line is when the session's clock starts: it is
             // the moment the realm is provably on the other end.
             realmEnteredAt: s.progress.realmEnteredAt ?? block.at
           },
-          inventory:
-            extra.wealth !== undefined ? { ...s.inventory, wealth: extra.wealth } : s.inventory
+          inventory: read.wealth !== null ? { ...s.inventory, wealth: read.wealth } : s.inventory
         };
+      }
+
+      /*
+       * `pro`'s `Statusline:` row: what the prompt is, and so what reads it.
+       * `full` and a template no matcher can be built from leave the tolerant
+       * pattern as the reader, with `exact` null to say so; `SessionManager`
+       * says which out loud. The same report twice changes nothing.
+       */
+      case 'user-statline': {
+        const reported = g['statline']?.trim() ?? '';
+        if (reported.length === 0 || s.statline.reported === reported) return null;
+        this.statlineMatcher = statlineMatcher(reported);
+        this.statlineAsked = false;
+        return { ...s, statline: { reported, exact: null } };
       }
 
       /* `You are now resting.` arrives before the status line that carries the flag. */

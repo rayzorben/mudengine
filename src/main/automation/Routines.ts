@@ -53,6 +53,7 @@ import type { AutomationConfig } from '../../shared/config';
 import type { CharacterState } from '../../shared/character';
 import type { Block, BlockType } from '../../shared/blocks';
 import { REFRESH, staleAfter, type StaleFact } from '../../shared/staleness';
+import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
 
 export interface RoutineEvents {
@@ -186,6 +187,7 @@ export class Routines {
           t('automation.routines.enteringRealm', { commands: commands.join(', ') })
         );
       }
+      this.askForTheStatline();
     }
     /*
      * After the entry batch, never before it: both land in the probe band in
@@ -202,6 +204,45 @@ export class Routines {
      * busiest path in the client.
      */
     this.askRoster();
+  }
+
+  /**
+   * The prompt's shape, set on the way in and then read back.
+   *
+   * `set statline full custom <template>` puts the maximum health and mana,
+   * the experience, what the next level still costs and the purse on every
+   * prompt (`src/shared/statline.ts`), which retires the reason to re-ask `st`
+   * and `exp` for those. Then `pro`, whose `Statusline:` row is what the
+   * tracker builds its matcher from — from what the realm *holds*, never
+   * from what was sent, because the send can be refused and another client
+   * may have set something else. Behind the entry batch: `rm` keeps the head
+   * of the probe band, and `pro` is thirty lines nobody wants ahead of the
+   * room.
+   */
+  private askForTheStatline(): void {
+    if (!this.config.enabled || !this.config.statline.control) return;
+    this.queue.enqueue({
+      command: SET_STATLINE,
+      priority: 'probe',
+      coalesceKey: 'probe:statline',
+      reason: t('automation.routines.reasonStatline')
+    });
+    this.askProfile();
+  }
+
+  /**
+   * `pro`, for its `Statusline:` row. Once on the way in when the client
+   * sets the line, and again when a prompt stops matching what the last
+   * report said — the tracker raises that (`takeStatlineRequest`), this asks.
+   */
+  askProfile(): void {
+    if (!this.config.enabled) return;
+    this.queue.enqueue({
+      command: 'pro',
+      priority: 'probe',
+      coalesceKey: 'probe:pro',
+      reason: t('automation.routines.reasonProfile')
+    });
   }
 
   /**

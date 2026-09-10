@@ -312,6 +312,38 @@ ui:
   # of anything either way, since it takes the height that line already has.
   showLogo: true
 
+  # Your own status line, drawn in the prompt row in place of the realm's.
+  #
+  # The client reads the figures off every prompt and draws this instead, at
+  # the moment the prompt arrives -- so what was drawn stays drawn in the
+  # scrollback, and turning this off mid-session leaves old lines designed and
+  # new ones as the realm sends them. Presentation only: the figures come from
+  # the template `automation.statline` sends, and a figure the prompt lacks is
+  # drawn as `?`, never as 0.
+  #
+  # layout is text with tags in braces. Figures: {hp} {hpMax} {mana} {manaMax}
+  # {exp} {need} {wealth} {state} {level} {room} {lives} {expSession}. Colours:
+  # {red}, {brightBlue} and the other fourteen the console's palette names,
+  # {#ff8800}, and {bg:blue} for the ground. Also {bold}, {dim}, {reset}.
+  # Anything else, emoji included, is drawn as typed. The row holds 79 cells;
+  # a wider line is refused, out loud, and the realm's own is drawn.
+  #
+  # bands colour {hp} and {mana} by their share of maximum: from `atLeast` up
+  # the figure wears `colour`, highest floor first. An unknown maximum wears
+  # no band. The Status Line section in settings previews all of this.
+  statline:
+    enabled: false
+    layout: '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} Exp {exp} Need {need} ${wealth}{state}> '
+    bands:
+      hp:
+        - { atLeast: 0.75, colour: brightGreen }
+        - { atLeast: 0.45, colour: yellow }
+        - { atLeast: 0, colour: brightRed }
+      mana:
+        - { atLeast: 0.5, colour: brightCyan }
+        - { atLeast: 0.25, colour: yellow }
+        - { atLeast: 0, colour: brightRed }
+
   # The diagnostics cards -- Session, Link, Traffic and Stream -- are not
   # configured here on purpose. They are a tool you reach for when something
   # looks wrong on the wire, not part of how the client is arranged: "Show
@@ -365,6 +397,27 @@ automation:
   # is a judgement about how you are playing, and a rule with `partySize` is
   # where that belongs -- there is a worked example below. Empty never asks.
   onPartyChange: party
+
+  # The prompt is the one line the realm prints on every turn, and what it
+  # carries is yours to choose: `set statline full custom <template>` renders
+  # a template of wildcards there from then on, on GreaterMUD and MajorMUD
+  # alike. With this on, the client sends its own template on the way in --
+  #
+  #   [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:
+  #
+  # -- so every prompt states the maximum health and mana, the experience,
+  # what the next level still costs and the purse, and none of those go stale
+  # between stat sheets. It then asks `pro` once, whose `Statusline:` row is
+  # what the prompt is read by: what the realm holds, not what was sent. Off
+  # or on, the client reads whatever the line turns out to be, and says which
+  # pattern it is reading it by.
+  #
+  # Off by default: the line is a setting on your character, kept server-side,
+  # and the client does not change one unasked. `pro` is thirty lines; it and
+  # `set` are on internal.yaml's quiet list, so neither reaches the console
+  # when the client sends them.
+  statline:
+    control: false
 
   idle:
     # After a quiet spell, send something. Empty is a bare Enter, which re-reads
