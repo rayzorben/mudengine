@@ -68,7 +68,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   remotes: { ...DEFAULT_CONFIG.automation.remotes },
   talk: { ...DEFAULT_CONFIG.automation.talk },
   statline: { ...DEFAULT_CONFIG.automation.statline },
-  statlineDesign: structuredClone(DEFAULT_CONFIG.ui.statline),
+  rewrites: structuredClone(DEFAULT_CONFIG.ui.rewrites),
   ...over
 });
 

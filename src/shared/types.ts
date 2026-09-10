@@ -102,8 +102,62 @@ export interface NegotiatedOptions {
  * over the cell row, so nothing the server lays out in rows and columns moves
  * and no escape sequence that counts either ever sees it.
  */
+/**
+ * The pictures the console can lay over a line: a place's kind beside a
+ * room's name, and — on a line the client drew itself (`ui.rewrites`) — a
+ * body slot, or what putting a thing on would come to. A closed list, so the
+ * renderer's glyph table (`marks.ts`) is complete by type.
+ */
+export const MARK_ICONS = [
+  'shop',
+  'bank',
+  'temple',
+  'inn',
+  'trainer',
+  /* the equip gate, in the pack's own three words */
+  'wear',
+  'worn',
+  'blocked',
+  /* where a thing is worn, by the listing's word for the slot */
+  'weapon',
+  'offhand',
+  'head',
+  'hands',
+  'finger',
+  'feet',
+  'arms',
+  'back',
+  'neck',
+  'legs',
+  'waist',
+  'torso',
+  'wrist',
+  'ears',
+  'face',
+  'readied',
+  'kit'
+] as const;
+export type MarkIcon = (typeof MARK_ICONS)[number];
+
+/**
+ * A glyph laid over cells *inside* a line the client drew, at the column it
+ * starts in. Two cells of the row are left blank for it. With `commands` it
+ * is a button, sent down the path a keystroke takes; without, a statement,
+ * and `label` is the tooltip that says which.
+ */
+export interface InlineGlyph {
+  x: number;
+  icon: MarkIcon;
+  label: string;
+  commands?: string[];
+}
+
 export interface TerminalMark {
-  icon: 'shop' | 'bank' | 'temple' | 'inn' | 'trainer';
+  /**
+   * The glyph in the margin before the line, which indents it two cells.
+   * Absent on a line the client drew, whose glyphs sit inside it (`inline`).
+   */
+  icon?: MarkIcon;
   /** The tooltip, and what a screen reader gets. */
   label: string;
   /**
@@ -120,6 +174,8 @@ export interface TerminalMark {
    * take is worse than no button — it broadcasts the text to the room.
    */
   actions?: TerminalAction[];
+  /** Glyphs inside the line, on a line the client drew (`ui.rewrites`). */
+  inline?: InlineGlyph[];
 }
 
 /**

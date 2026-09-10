@@ -47,7 +47,9 @@
  */
 import { stripAnsi } from '../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../net/stream-quirks';
-import type { BlockType } from '../../shared/blocks';
+import { tuning } from '../app/tuning';
+import type { Block, BlockType } from '../../shared/blocks';
+import type { BatchBlock } from '../parse/Classifier';
 import type { LineTerminator, TerminalMark } from '../../shared/types';
 
 /**
@@ -149,10 +151,57 @@ export interface FeedSource {
   design?(plain: string): { rendered: string; from: number; to: number } | null;
   /** Whether a design is on, so a prompt still arriving is held for it. */
   designing?(): boolean;
+  /**
+   * Whether the client draws a block of this type itself (`ui.rewrites`), so
+   * a listing's lines are withheld until it completes. Optional, like the
+   * design: the feed is also driven by tests that rewrite nothing.
+   */
+  rewrites?(type: BlockType): boolean;
+  /**
+   * The client's own lines in a completed block's place — a whole listing or
+   * one line — or null to paint the realm's own. What comes back ends every
+   * line it draws, so whatever follows starts on a row of its own.
+   */
+  rewrite?(block: Block | BatchBlock): Emitted | null;
+}
+
+/**
+ * What the classifier said about a framed line, as far as the feed needs it:
+ * the line's own block, and which listing was being collected before and
+ * after it. A listing opens on its header, and the feed withholds from there
+ * while a rewrite wants it; it closes on the line that completes it, which
+ * is when the rewrite is drawn — or ends without a block, in which case what
+ * was withheld is painted as sent.
+ */
+export interface LineFacts {
+  block: Block;
+  batchWas: BlockType | null;
+  batchNow: BlockType | null;
+  closed?: BatchBlock;
+}
+
+/** One line withheld for a listing the client will draw itself. */
+interface HeldLine {
+  text: string;
+  terminator: LineTerminator;
+  mark?: TerminalMark;
+  /** Volunteered by the server mid-listing: painted after the drawn listing, never lost. */
+  volunteered: boolean;
 }
 
 /** A prompt that has begun but not finished: the tolerant pattern's own opening. */
 const PROMPT_OPENING = /^\s*\[(?:HP|H)=/i;
+
+/**
+ * Whether a tail has opened like a prompt: the shape the tolerant pattern
+ * begins with, whether or not the rest has arrived. Shared with the idle
+ * flush, which must not frame half a prompt as a line any more than the feed
+ * may paint half of one — the bearfather BBS writes `[HP=…,S= (Resting)` and
+ * ` ]:` a tenth of a second apart (`tuning.session.promptHoldMs`).
+ */
+export function promptOpened(plain: string): boolean {
+  return PROMPT_OPENING.test(plain);
+}
 /** A prompt that has closed its bracket and not yet its colon. */
 const PROMPT_UNCLOSED = /\]\s*$/;
 
@@ -203,11 +252,15 @@ export class TerminalFeed {
   /** The tail as last seen, so a delayed forward emits what is still pending. */
   private tail = '';
   private hold: NodeJS.Timeout | null = null;
+  /** How long the armed hold was given, so a longer wait can replace a shorter one. */
+  private holdFor = 0;
   private out: Emitted = { text: '', marks: [] };
   /** The tail already closed the window, so the framed status line must not close it twice. */
   private acknowledged = false;
   /** Something was withheld since the last emit, so the next shown line needs its own row. */
   private swallowed = false;
+  /** The listing being withheld for a rewrite, its lines so far, and the clock that gives up on it. */
+  private held: { type: BlockType; lines: HeldLine[]; timer: NodeJS.Timeout | null } | null = null;
 
   constructor(
     private readonly source: FeedSource,
@@ -241,12 +294,46 @@ export class TerminalFeed {
     terminator: LineTerminator,
     plain: string,
     type: BlockType | null,
-    mark?: TerminalMark
+    mark?: TerminalMark,
+    facts?: LineFacts
   ): void {
     this.cancelHold();
     const already = this.forwarded;
     this.forwarded = 0;
     this.tail = '';
+
+    /*
+     * A listing the client draws itself. Its lines are withheld from the
+     * header on and drawn at once when it completes — a table cannot be
+     * drawn a row at a time, and xterm has no unprint — so the line that
+     * completes it releases the drawing first and is then painted as itself,
+     * which for a listing ended by the prompt is the designed prompt row.
+     * A listing that ends without a block, or one the design declines, is
+     * painted as it was sent, in order.
+     */
+    if (this.held !== null) {
+      // A line the classifier faulted on has no facts; it is still inside
+      // the listing, and painting it ahead of the drawing would reorder it.
+      const done =
+        facts !== undefined &&
+        (facts.closed !== undefined ||
+          facts.batchNow === null ||
+          facts.batchNow !== this.held.type);
+      if (!done) {
+        this.held.lines.push({
+          text,
+          terminator,
+          ...(mark ? { mark } : {}),
+          volunteered: type !== null && VOLUNTEERED.has(type)
+        });
+        return;
+      }
+      const drawn =
+        facts?.closed !== undefined && facts.closed.type === this.held.type
+          ? (this.source.rewrite?.(facts.closed) ?? null)
+          : null;
+      this.releaseHeld(drawn);
+    }
 
     /*
      * The echo is the server saying which command it is on. A command in
@@ -274,6 +361,37 @@ export class TerminalFeed {
     this.acknowledged = false;
 
     const withhold = this.quiet && already === 0 && (type === null || !VOLUNTEERED.has(type));
+    if (!withhold && already === 0 && facts !== undefined && this.source.rewrites !== undefined) {
+      /*
+       * The header of a listing the client will draw: withheld from here,
+       * with the clock that gives up on a listing the server never ends.
+       * Only while none of it has been painted — a header whose head went
+       * out as a tail before it was framed is a listing painted as sent.
+       */
+      const opens =
+        facts.batchWas === null && facts.batchNow !== null && this.source.rewrites(facts.batchNow);
+      if (opens && facts.batchNow !== null) {
+        this.held = {
+          type: facts.batchNow,
+          lines: [{ text, terminator, ...(mark ? { mark } : {}), volunteered: false }],
+          timer: null
+        };
+        this.armHeldTimer();
+        return;
+      }
+      // One line the client draws in the realm's place: the experience line.
+      if (facts.batchNow === null && type !== null && this.source.rewrites(type)) {
+        const drawn = this.source.rewrite?.(facts.block) ?? null;
+        if (drawn !== null) {
+          this.emitDrawn(drawn);
+          // The repaint marker still erases the prompt row it ended.
+          if (terminator === 'repaint' && text.endsWith(PROMPT_REPAINT)) {
+            this.out.text += PROMPT_REPAINT;
+          }
+          return;
+        }
+      }
+    }
     if (!withhold) {
       /*
        * A volunteered line landing after withheld ones would otherwise be
@@ -324,6 +442,25 @@ export class TerminalFeed {
       this.acknowledged = true;
     }
 
+    // A listing being withheld holds its tail too: the prompt that ends it
+    // is drawn after the listing, once the idle flush frames it as a line.
+    if (this.held !== null) return;
+
+    /*
+     * A prompt that has opened and not closed is still being written. Only
+     * while a design is on does that matter to the feed: painted raw, the
+     * half-prompt cannot be taken back and the design is lost for that
+     * prompt. The wait is the measured one (`promptHoldMs`, the bearfather
+     * BBS's second write lands a tenth of a second after its first), not the
+     * quiet window's forty milliseconds, which was written for a chunk cut by
+     * the network rather than a prompt the server writes in two pieces.
+     */
+    const opening =
+      this.forwarded === 0 &&
+      this.source.designing?.() === true &&
+      !status &&
+      PROMPT_OPENING.test(plain);
+
     // A status line is always shown, whatever it acknowledged and whatever
     // is queued behind it: it is the prompt row.
     if (!this.quiet || status) {
@@ -331,39 +468,49 @@ export class TerminalFeed {
       /*
        * The client's own line in the prompt's place — only while nothing of
        * this tail has been painted, since xterm has no unprint. A tail that
-       * has opened like a prompt without finishing one is held for the same
-       * short while a quiet window holds, so a prompt split across two chunks
-       * is drawn once, designed, rather than half raw and then not at all.
-       * Held past the delay, it is painted as sent: a design is presentation,
-       * and presentation never delays the prompt for long.
+       * has opened like a prompt without finishing one is held for it, so a
+       * prompt split across two chunks is drawn once, designed, rather than
+       * half raw and then not at all. Held past the delay, it is painted as
+       * sent: a design is presentation, and presentation never delays the
+       * prompt for long.
        */
       if (this.forwarded === 0 && this.source.designing?.() === true) {
         /*
          * A prompt whose colon has not arrived is still arriving: the tolerant
          * pattern accepts `]` without one, and a chunk cut between the two
-         * would draw the line and then paint a stray `:` after it. Held like
-         * an opening; drawn at the hold's end if nothing more comes.
+         * would draw the line and then paint a stray `:` after it. Held for
+         * the short while a network cut needs; drawn at the hold's end if
+         * nothing more comes.
          */
         if (status && !PROMPT_UNCLOSED.test(plain)) {
           if (this.drawDesigned(pending, plain)) return;
-        } else if (PROMPT_OPENING.test(plain)) {
-          this.armHold();
+        } else if (status) {
+          this.armHold(PARTIAL_DELAY_MS);
+          return;
+        } else if (opening) {
+          this.armHold(tuning().session.promptHoldMs);
           return;
         }
       }
       this.forwardTail();
       return;
     }
-    if (this.hold) return;
-    this.armHold();
+    // Inside a window the hold runs from the tail's first sight and is not
+    // restarted — unless what has arrived since is a prompt still opening,
+    // which needs the longer wait whatever the window gave it.
+    const wanted = opening ? tuning().session.promptHoldMs : PARTIAL_DELAY_MS;
+    if (this.hold && this.holdFor >= wanted) return;
+    this.cancelHold();
+    this.armHold(wanted);
   }
 
   /**
-   * Paint the tail as it stands once `PARTIAL_DELAY_MS` has passed with
-   * nothing ending it — designed, where it is a whole prompt the client draws
-   * and none of it has been painted, else as sent.
+   * Paint the tail as it stands once `delay` has passed with nothing ending
+   * it — designed, where it is a whole prompt the client draws and none of
+   * it has been painted, else as sent.
    */
-  private armHold(): void {
+  private armHold(delay: number): void {
+    this.holdFor = delay;
     this.hold = setTimeout(() => {
       this.hold = null;
       if (this.tail.length <= this.forwarded) return;
@@ -381,7 +528,7 @@ export class TerminalFeed {
       const released = this.out;
       this.out = before;
       if (released.text.length > 0) this.release(released);
-    }, PARTIAL_DELAY_MS);
+    }, delay);
     this.hold.unref?.();
   }
 
@@ -414,6 +561,7 @@ export class TerminalFeed {
   /** A new connection: nothing sent, nothing pending. */
   reset(): void {
     this.cancelHold();
+    this.dropHeld();
     this.queue = [];
     this.forwarded = 0;
     this.atLineStart = true;
@@ -425,6 +573,63 @@ export class TerminalFeed {
 
   dispose(): void {
     this.cancelHold();
+    this.dropHeld();
+  }
+
+  /**
+   * What was withheld for a listing, painted: the client's drawing where the
+   * design produced one and the realm's lines otherwise, then any line the
+   * server volunteered in the middle of it, which happened during the
+   * listing and is never lost to the drawing.
+   */
+  private releaseHeld(drawn: Emitted | null): void {
+    const held = this.held;
+    if (held === null) return;
+    this.dropHeld();
+    if (drawn === null) {
+      for (const line of held.lines) this.emit(line.text, line.terminator, line.mark);
+      return;
+    }
+    this.emitDrawn(drawn);
+    for (const line of held.lines) {
+      if (line.volunteered) this.emit(line.text, line.terminator, line.mark);
+    }
+  }
+
+  /** The client's own lines, with their marks re-keyed to where they land in the chunk. */
+  private emitDrawn(drawn: Emitted): void {
+    if (drawn.text.length === 0) return;
+    this.swallowed = false;
+    for (const { offset, mark } of drawn.marks) {
+      this.out.marks.push({ offset: this.out.text.length + offset, mark });
+    }
+    this.out.text += drawn.text;
+    this.atLineStart = drawn.text.endsWith('\n');
+  }
+
+  /**
+   * A listing the server never ended is painted as sent once `rewriteHoldMs`
+   * has passed — outside any chunk, like a held tail — and the tail with it.
+   */
+  private armHeldTimer(): void {
+    if (this.held === null) return;
+    this.held.timer = setTimeout(() => {
+      if (this.held === null) return;
+      this.held.timer = null;
+      const before = this.out;
+      this.out = { text: '', marks: [] };
+      this.releaseHeld(null);
+      this.forwardTail();
+      const released = this.out;
+      this.out = before;
+      if (released.text.length > 0) this.release(released);
+    }, tuning().session.rewriteHoldMs);
+    this.held.timer.unref?.();
+  }
+
+  private dropHeld(): void {
+    if (this.held?.timer) clearTimeout(this.held.timer);
+    this.held = null;
   }
 
   private forwardTail(): void {
@@ -452,5 +657,6 @@ export class TerminalFeed {
     if (!this.hold) return;
     clearTimeout(this.hold);
     this.hold = null;
+    this.holdFor = 0;
   }
 }

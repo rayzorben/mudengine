@@ -312,37 +312,109 @@ ui:
   # of anything either way, since it takes the height that line already has.
   showLogo: true
 
-  # Your own status line, drawn in the prompt row in place of the realm's.
+  # What the console draws in place of what the realm printed: the status
+  # line you design for the prompt row, and a listing per kind of block the
+  # client can redraw with what it knows laid beside the realm's words -- an
+  # item's weight and figures, whether you may wear it, what a price comes to
+  # against your purse. Presentation only, and every one is off until you
+  # turn it on. The Rewrites section in settings edits and previews all of it.
   #
-  # The client reads the figures off every prompt and draws this instead, at
-  # the moment the prompt arrives -- so what was drawn stays drawn in the
-  # scrollback, and turning this off mid-session leaves old lines designed and
-  # new ones as the realm sends them. Presentation only: the figures come from
-  # the template `automation.statline` sends, and a figure the prompt lacks is
-  # drawn as `?`, never as 0.
-  #
-  # layout is text with tags in braces. Figures: {hp} {hpMax} {mana} {manaMax}
-  # {exp} {need} {wealth} {state} {level} {room} {lives} {expSession}. Colours:
-  # {red}, {brightBlue} and the other fourteen the console's palette names,
-  # {#ff8800}, and {bg:blue} for the ground. Also {bold}, {dim}, {reset}.
-  # Anything else, emoji included, is drawn as typed. The row holds 79 cells;
-  # a wider line is refused, out loud, and the realm's own is drawn.
-  #
-  # bands colour {hp} and {mana} by their share of maximum: from `atLeast` up
-  # the figure wears `colour`, highest floor first. An unknown maximum wears
-  # no band. The Status Line section in settings previews all of this.
-  statline:
-    enabled: false
-    layout: '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} Exp {exp} Need {need} ${wealth}{state}> '
-    bands:
-      hp:
-        - { atLeast: 0.75, colour: brightGreen }
-        - { atLeast: 0.45, colour: yellow }
-        - { atLeast: 0, colour: brightRed }
-      mana:
-        - { atLeast: 0.5, colour: brightCyan }
-        - { atLeast: 0.25, colour: yellow }
-        - { atLeast: 0, colour: brightRed }
+  # Every design is text with tags in braces. Colours: {red}, {brightBlue} and
+  # the other fourteen the console's palette names, {#ff8800}, and {bg:blue}
+  # for the ground. Also {bold}, {dim}, {reset}. Anything else, emoji
+  # included, is drawn as typed.
+  rewrites:
+    # The prompt row. The client reads the figures off every prompt and draws
+    # this instead, at the moment the prompt arrives -- so what was drawn
+    # stays drawn in the scrollback, and turning this off mid-session leaves
+    # old lines designed and new ones as the realm sends them. The figures come
+    # from the template `automation.statline` sends, and a figure the prompt
+    # lacks is drawn as `?`, never as 0.
+    #
+    # Figures: {hp} {hpMax} {mana} {manaMax} {exp} {need} {wealth} {state}
+    # {level} {room} {lives} {expSession}. The row holds 79 cells; a wider line
+    # is refused, out loud, and the realm's own is drawn.
+    #
+    # bands colour {hp} and {mana} by their share of maximum: from `atLeast` up
+    # the figure wears `colour`, highest floor first. An unknown maximum wears
+    # no band.
+    statline:
+      enabled: false
+      layout: '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} Exp {exp} Need {need} ${wealth}{state}> '
+      bands:
+        hp:
+          - { atLeast: 0.75, colour: brightGreen }
+          - { atLeast: 0.45, colour: yellow }
+          - { atLeast: 0, colour: brightRed }
+        mana:
+          - { atLeast: 0.5, colour: brightCyan }
+          - { atLeast: 0.25, colour: yellow }
+          - { atLeast: 0, colour: brightRed }
+
+    # The pack, in place of `You are carrying ...`, `You have ... keys`,
+    # `Wealth:` and `Encumbrance:`. `style: table` lines every figure up in
+    # columns as wide as its widest value, with a first row naming them when
+    # `header` is on; `lines` draws each row as its template reads. `row` is
+    # drawn once per carried thing: {item} {name} {count} {slot} {equipped}
+    # {weight} {ac} {dr} {min} {max} {damage} {stats} {kind} {price} {charges}
+    # {uses} {n}, and two pictures over two cells each -- {icon} for the slot a
+    # thing is worn on, {action} for the pack card's own control, which equips
+    # or removes with a click and says on hover why a thing cannot be worn. A
+    # figure the realm data lacks is drawn blank, never as 0. Then one line
+    # each for {keys} {keyCount}; {wealth} {wealthLong} {runic} {platinum}
+    # {gold} {silver} {copper}; {encumbrance} {encumbranceMax} {encumbranceWord}
+    # {encumbrancePercent}. A blank template turns its line off.
+    inventory:
+      enabled: false
+      style: table
+      header: true
+      lines:
+        row: '{action} {bold}{item}{reset}  {dim}{weight}{reset}  {stats}  {brightGreen}{equipped}{reset} {icon}'
+        keys: '{dim}Keys:{reset} {keys}'
+        wealth: '{dim}Wealth:{reset} {brightYellow}{wealthLong}{reset}  ({wealth} copper)'
+        load: '{dim}Load:{reset} {encumbrance}/{encumbranceMax} {encumbranceWord}'
+
+    # The roster `who` prints. `head` is drawn once with {count}; `row` once
+    # per adventurer: {name} {title} {alignment} {gang} {flags} {n}.
+    who:
+      enabled: false
+      style: table
+      header: true
+      lines:
+        head: '{bold}{count} adventurers{reset}'
+        row: '{alignment}  {bold}{name}{reset}  {title}  {dim}{gang}{reset}  {flags}'
+
+    # A shop's shelf, in place of `list`. Once per row: {item} {quantity}
+    # {price} as the counter said it, {cost} in copper, {afford} -- `short`
+    # when it is more than the purse holds -- {usable}, the reason this
+    # character may not wear it, {note} the counter's own, and the realm's
+    # {weight} {stats} {kind} {icon} for the kind.
+    shop:
+      enabled: false
+      style: table
+      header: true
+      lines:
+        row: '{bold}{item}{reset}  {dim}x{quantity}{reset}  {price}  {afford}  {usable}  {icon}'
+
+    # The party listing. Once per member: {name} {class} {health} {mana} (the
+    # listing's percentages, coloured by the status line's bands) {rank}
+    # {flag} {state} {n}.
+    party:
+      enabled: false
+      style: table
+      header: true
+      lines:
+        row: '{rank}  {bold}{name}{reset}  {dim}{class}{reset}  {health}%  {mana}%  {state}'
+
+    # `You gain N experience.`, one line: {gained}, and beside it what the
+    # client tracks -- {exp} after the gain, {need} still to {nextLevel},
+    # {level}, {expSession} -- each `?` until a prompt or sheet has stated it.
+    experience:
+      enabled: false
+      style: lines
+      header: false
+      lines:
+        line: '{brightYellow}+{gained} exp{reset}  {exp} total, {need} to level {nextLevel}, {expSession} this session'
 
   # The diagnostics cards -- Session, Link, Traffic and Stream -- are not
   # configured here on purpose. They are a tool you reach for when something

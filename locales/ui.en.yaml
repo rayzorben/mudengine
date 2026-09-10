@@ -239,10 +239,14 @@ notices:
       have. Seven palettes repaint what the realm sends — four dark, three light — and naming one
       there or on the MudEngine page in settings outranks the two keys beside it.'
     statusLineStated:
-      '"automation.statline" and "ui.statline" were written into {file}, both off: whether the
+      '"automation.statline" and "ui.rewrites" were written into {file}, all off: whether the
       client sets the prompt''s shape on the way in, so every prompt carries the maxima, the
-      experience and the purse, and the status line you can design to draw in its place. Turn
-      either on there or on the Status Line section in settings.'
+      experience and the purse, and the status line and listings you can design to draw in the
+      realm''s place. Turn any on there or on the Rewrites section in settings.'
+    rewritesGathered:
+      '"ui.statline" in {file} moved to "ui.rewrites.statline", beside the listings the console
+      can draw in the realm''s place — the pack, the roster, a shop''s shelf, the party and the
+      experience line, all written in, off. The Rewrites section in settings edits them.'
     statusLineAsksQuieted:
       "pro and set were added to the quiet list in {file}: the status-line routine's own asks stay
       out of the console. Remove them there to see them."
@@ -823,6 +827,58 @@ debug:
   title: Debug
 
 # The bento cards, by card; cards.titles is the vocabulary the rail and picker share.
+# The words a listing the console draws itself uses: column names for a
+# table's first row, the coins' names, and the few states a row can be in.
+# The realm's own words -- an item's name, a slot, a title -- are never here.
+rewrites:
+  labels:
+    n: '#'
+    item: Item
+    name: Name
+    count: Qty
+    slot: Slot
+    equipped: In use
+    weight: Wt
+    ac: AC
+    dr: DR
+    min: Min
+    max: Max
+    damage: Dmg
+    stats: AC/DR · Dmg
+    kind: Kind
+    price: Price
+    charges: Charge
+    uses: Uses
+    title: Title
+    alignment: Alignment
+    gang: Gang
+    flags: Flags
+    quantity: Qty
+    cost: Copper
+    afford: Purse
+    usable: Usable
+    note: Note
+    class: Class
+    health: HP%
+    mana: MA%
+    rank: Rank
+    flag: Flag
+    state: State
+  coins:
+    runic: runic
+    platinum: platinum
+    gold: gold
+    silver: silver
+    copper: copper
+  inventory:
+    noKeys: none
+  shop:
+    short: short
+  party:
+    invited: invited
+    resting: resting
+    meditating: meditating
+
 cards:
   alerts:
     badge:
@@ -2734,6 +2790,46 @@ settings:
     bandRemove: Remove
     bandRemoveAria: Remove band {number}
     addBand: Add a band
+  rewrites:
+    note:
+      Each listing below is drawn in place of what the realm printed, with what the client knows
+      laid beside it, the moment the listing completes. Off, the realm's own lines are painted.
+    inventory:
+      legend: The Pack
+    who:
+      legend: The Roster
+    shop:
+      legend: A Shop's Shelf
+    party:
+      legend: The Party
+    experience:
+      legend: The Experience Line
+    enabledLabel: Draw It Myself
+    enabledHint:
+      The lines the realm prints for this listing are withheld until it completes, and the
+      client's own drawing goes in their place; what was drawn stays drawn in the scrollback.
+    styleLabel: Layout
+    styleHint:
+      Columns lines every figure up under a name, as wide as its widest value; Lines draws each
+      row exactly as its template reads.
+    styleTable: Columns
+    styleLines: Lines
+    headerLabel: Column Names
+    headerHint: A first row naming each column, in the console's dim ink.
+    lines:
+      row: Each Row
+      keys: Keys
+      wealth: Wealth
+      load: Load
+      head: Heading
+      line: The Line
+    lineHint:
+      'Tags this line may draw: {tags}. Colours, bold, dim and reset as on the status line;
+      anything else is drawn as typed. Blank turns the line off. An icon or action is a picture
+      over two cells: the slot a thing is worn on, or the same control the pack card has, which
+      equips or removes with a click and says on hover why a thing cannot be worn.'
+    previewLabel: As it will be drawn
+    previewEmpty: Nothing to draw.
   tabs:
     alerts: Alerts
     combat: Combat
@@ -2742,7 +2838,7 @@ settings:
     party: Party
     remotes: Remotes
     spells: Spells
-    statline: Status Line
+    rewrites: Rewrites
     talk: Talk
   talk:
     legend: Other Players

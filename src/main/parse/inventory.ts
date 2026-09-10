@@ -104,6 +104,36 @@ export function withBankBalance(s: CharacterState, said: BankBalance): Character
 }
 
 /**
+ * The entries of a listing of **things**, which this server separates with
+ * commas and never with `and`, each with its trailing full stop taken off.
+ * Shared by the tracker and the console's rewrite of the same listing.
+ *
+ * The tracker's `list` (for prose) splits on ` and ` too, and that is wrong wherever an item's own name
+ * contains the word: the shipped realm has two — `rope and grapple` and `black
+ * and white serpent ring` — and the first is the item 157 of its exits are
+ * gated on, so the router could never see one in a pack that held it. Both
+ * appear in the corpus inside real listings, comma-separated
+ * (`captures/044`: `… lyrist's companion (Back), black and white serpent ring
+ * (Finger), jeweled main-gauche (Off-Hand) …`; `captures/119`: `You notice …
+ * 2 rope and grapple, 2 mine pass, …`), and across all 218 captures **not one**
+ * of the four listings this splits — 600 `You notice`, 25 `You are carrying`,
+ * 17 key lines, and the coins inside them — uses ` and ` as a separator.
+ *
+ * `list` keeps the ` and ` for the listings measured the same way and left
+ * alone: `Also here:` (1,240 lines), `Obvious exits:` (2,628) and the bare
+ * purse sentence, which has one sample in the corpus and is prose, where a
+ * final `and` is exactly what prose does. Widening a rule past its evidence in
+ * either direction is the thing this file refuses.
+ */
+export function itemList(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((entry) => entry.trim().replace(/\.$/, ''))
+    .filter((entry) => entry.length > 0);
+}
+
+/**
  * One entry of an `i` listing, split into the name and the slot.
  *
  * The listing is the only source that states a slot, and it states it as a

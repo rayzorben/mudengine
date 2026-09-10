@@ -368,7 +368,27 @@ export class SettingsEditor {
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
           [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
-          [['ui', 'statline'], draft.statlineDesign, DEFAULT_CONFIG.ui.statline]
+          // One row per listing, so ticking one on a character pins that one
+          // and not a copy of the whole block: *once stated, kept* would
+          // otherwise freeze the character's status line at Global's then.
+          [
+            ['ui', 'rewrites', 'statline'],
+            draft.rewrites.statline,
+            DEFAULT_CONFIG.ui.rewrites.statline
+          ],
+          [
+            ['ui', 'rewrites', 'inventory'],
+            draft.rewrites.inventory,
+            DEFAULT_CONFIG.ui.rewrites.inventory
+          ],
+          [['ui', 'rewrites', 'who'], draft.rewrites.who, DEFAULT_CONFIG.ui.rewrites.who],
+          [['ui', 'rewrites', 'shop'], draft.rewrites.shop, DEFAULT_CONFIG.ui.rewrites.shop],
+          [['ui', 'rewrites', 'party'], draft.rewrites.party, DEFAULT_CONFIG.ui.rewrites.party],
+          [
+            ['ui', 'rewrites', 'experience'],
+            draft.rewrites.experience,
+            DEFAULT_CONFIG.ui.rewrites.experience
+          ]
         ] as const) {
           if (
             creating ||
@@ -873,7 +893,7 @@ export class SettingsEditor {
             cashOverCopper: config.ui.alerts.finds.cashOverCopper
           }
         },
-        statline: structuredClone(config.ui.statline)
+        rewrites: structuredClone(config.ui.rewrites)
       },
       logging: {
         enabled: config.logging.enabled,
@@ -974,7 +994,7 @@ export class SettingsEditor {
         set(['ui', 'alerts', 'mute'], [...draft.ui.alerts.mute]);
         set(['ui', 'alerts', 'finds', 'items'], [...draft.ui.alerts.finds.items]);
         set(['ui', 'alerts', 'finds', 'cashOverCopper'], draft.ui.alerts.finds.cashOverCopper);
-        set(['ui', 'statline'], structuredClone(draft.ui.statline));
+        set(['ui', 'rewrites'], structuredClone(draft.ui.rewrites));
 
         set(['logging', 'enabled'], draft.logging.enabled);
         set(['logging', 'directory'], draft.logging.directory);
@@ -1130,7 +1150,7 @@ export class SettingsEditor {
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
         talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
         statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
-        statlineDesign: effective?.ui.statline ?? DEFAULT_CONFIG.ui.statline,
+        rewrites: effective?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites,
         /*
          * This character's *own* loops, from its own directory — not the
          * resolved list, which folds in the server's and the global ones. The
@@ -1281,7 +1301,7 @@ function blank(id: string): ProfileEditable {
     afk: DEFAULT_CONFIG.automation.afk,
     talk: DEFAULT_CONFIG.automation.talk,
     statline: DEFAULT_CONFIG.automation.statline,
-    statlineDesign: DEFAULT_CONFIG.ui.statline,
+    rewrites: DEFAULT_CONFIG.ui.rewrites,
     loops: [],
     inherited: [],
     spells: DEFAULT_CONFIG.automation.spells,

@@ -15,7 +15,8 @@ import {
   DEFAULT_CONFIG,
   ENGAGE_POLICIES,
   RETREAT_STRATEGIES,
-  normalizeStatlineDesign,
+  normalizeRewrites,
+  type RewritesUiConfig,
   type BlessingTarget,
   type DensityPreference,
   type EngagePolicy,
@@ -27,7 +28,6 @@ import {
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
 import { asLoops, type Loop } from './loops';
-import type { StatlineDesign } from './statline';
 
 /**
  * A load gate as the draft carries it: a closed union, so an unrecognised word
@@ -170,8 +170,8 @@ export interface GlobalDraft {
     consoleDarkTheme: ThemeId;
     vitals: { hp: VitalDraft; mana: VitalDraft };
     alerts: ProfileDraft['alerts'];
-    /** The status line everybody starts from. See `StatlineDesign`. */
-    statline: StatlineDesign;
+    /** The status line and the listings everybody starts from. See `RewritesUiConfig`. */
+    rewrites: RewritesUiConfig;
   };
   logging: {
     enabled: boolean;
@@ -501,8 +501,8 @@ export interface ProfileDraft {
   talk: TalkDraft;
   /** `automation.statline` — whether the client sets the prompt's shape. */
   statline: StatlineDraft;
-  /** `ui.statline` — the status line this player designed for this character. */
-  statlineDesign: StatlineDesign;
+  /** `ui.rewrites` — the status line and listings this player designed for this character. */
+  rewrites: RewritesUiConfig;
 }
 
 /** The `automation.talk` block as a form edits it. */
@@ -869,7 +869,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     },
     talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
     statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
-    statlineDesign: normalizeStatlineDesign(value['statlineDesign'])
+    rewrites: normalizeRewrites(value['rewrites'])
   };
 }
 
@@ -955,7 +955,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         : DEFAULT_THEME,
       vitals: { hp: asVital(vitals['hp']), mana: asVital(vitals['mana']) },
       alerts: asIf.alerts,
-      statline: normalizeStatlineDesign(ui['statline'])
+      rewrites: normalizeRewrites(ui['rewrites'])
     },
     logging: {
       enabled: logging['enabled'] === true,
