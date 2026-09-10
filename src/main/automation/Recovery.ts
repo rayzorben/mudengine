@@ -212,6 +212,17 @@ export class Recovery {
    * Cleared the moment health reaches the ceiling, and on `reset`.
    */
   private sitting = false;
+  /**
+   * A figure a walk is waiting on, in hit points, or null.
+   *
+   * The walker stands still before a trap until health covers it
+   * (`Walker.holdForTrap`, `automation.health.restBeforeTraps`), and that
+   * figure is above `restBelow` by construction — so nothing here would sit
+   * the character down to it. Handed in by the session on every state rather
+   * than remembered across one: a guard on a state is not a memory of having
+   * asked, and a walk that ended takes its floor with it.
+   */
+  private needed: number | null = null;
 
   /**
    * The verbs the realm has answered with `Your command had no effect.`
@@ -256,6 +267,7 @@ export class Recovery {
     this.state = null;
     this.askedUntil = 0;
     this.sitting = false;
+    this.needed = null;
     this.refused.clear();
     this.proposed = null;
   }
@@ -369,6 +381,14 @@ export class Recovery {
     }
   }
 
+  /**
+   * A walk is waiting for this many hit points before its next step, or null.
+   * See `needed`; `Walker.restingFor` is the one source.
+   */
+  needAtLeast(hp: number | null): void {
+    this.needed = hp;
+  }
+
   /** The last state seen, for tests. */
   get current(): CharacterState | null {
     return this.state;
@@ -393,6 +413,9 @@ export class Recovery {
    * open on a figure nothing has restated.
    */
   private wantsRest(hp: number | null, hpMax: number | null): boolean {
+    // A walk standing still for a trap: rest to the figure it names, which
+    // is a floor in hit points rather than a share, and above `restBelow`.
+    if (this.needed !== null && hp !== null && hp < this.needed) return true;
     if (this.below(hp, hpMax, this.config.restBelow)) return true;
     const { restTo } = this.config;
     if (restTo <= 0 || !this.sitting) return false;

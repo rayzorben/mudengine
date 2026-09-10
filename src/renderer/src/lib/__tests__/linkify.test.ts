@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { linkify } from '../linkify';
+import { linkAt, linkify } from '../linkify';
 
 const hrefs = (text: string): string[] =>
   linkify(text)
@@ -75,5 +75,29 @@ describe('finding a web address in what somebody said', () => {
           .join('')
       ).toBe(said);
     }
+  });
+});
+
+describe('linkAt', () => {
+  const line = 'see https://example.com/x for the map';
+
+  it('answers the address a column lands inside', () => {
+    expect(linkAt(line, 4)).toBe('https://example.com/x');
+    expect(linkAt(line, 24)).toBe('https://example.com/x');
+  });
+
+  it('answers null either side of it, and past the end of the line', () => {
+    expect(linkAt(line, 3)).toBeNull();
+    expect(linkAt(line, 25)).toBeNull();
+    expect(linkAt(line, 500)).toBeNull();
+    expect(linkAt('nothing to click here', 3)).toBeNull();
+  });
+
+  /* Two on one line, which is what a console line of gossip looks like. */
+  it('answers the one under the pointer when a line carries two', () => {
+    const two = 'a http://one.example/p b http://two.example/q c';
+    expect(linkAt(two, 2)).toBe('http://one.example/p');
+    expect(linkAt(two, 25)).toBe('http://two.example/q');
+    expect(linkAt(two, 23)).toBeNull();
   });
 });

@@ -1120,6 +1120,36 @@ export const RULES: Rule[] = [
     type: 'player-look',
     pattern: /^\[ (?<name>[A-Z][\w'-]*)(?: (?<last>[^\]]+?))? \](?: ?\((?<gang>.+)\))?\s*$/
   },
+  {
+    /*
+     * The sentence `look <player>` prints under the name — the only place on
+     * the wire that states somebody's race and class outside a gang listing.
+     *
+     *     Trickster is a massive, muscular Nekojin Ranger with no hair and
+     *     Youngblood is a massive, well built Goblin Ninja with short silver
+     *
+     * `Player.ObjDesc` composes it as `<name> is a <health word>, <strength
+     * word(s)> <race> <class> with <hair> hair and <eye> eyes.` — the health
+     * word is always one (`massive`, `stout`), the strength word one or two
+     * (`muscular`, `heroically proportioned`), and race and class sit
+     * immediately before ` with `. That is the whole frame this matches: the
+     * adjectives are realm-flavoured prose and are not listed, exactly as a
+     * combat verb is not.
+     *
+     * **It ends at ` with `, not at the full stop**, because the server folds
+     * the sentence at its own width and the fold routinely lands inside it
+     * (four corpus files, one of them mid-phrase). Everything worth reading is
+     * before the fold; demanding `eyes.` on the same line would read none of
+     * them. A line whose fold lands *before* ` with ` matches nothing and
+     * teaches nothing, which is the right answer for a line that does not
+     * carry the pair.
+     *
+     * A character under `ShadowForm` prints no description at all
+     * (`Player.ObjDesc`), so an absent sentence is never an absent race.
+     */
+    type: 'player-described',
+    pattern: /^(?<player>[A-Z][\w'-]*) is an? [A-Za-z]+, (?<who>[A-Za-z][A-Za-z' -]*?) with(?:\s|$)/
+  },
   { type: 'player-enters', pattern: /^(?<player>\w+) just entered the Realm\./ },
   { type: 'player-exits', pattern: /^(?<player>\w+) just left the Realm\./ },
   { type: 'player-disconnects', pattern: /^(?<player>\w+) just disconnected!!!/ },

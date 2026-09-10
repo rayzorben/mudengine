@@ -609,6 +609,15 @@ export type BlockType =
   /** `look <player>`'s first line: `[ Name Last ] (Gang)`, the gang optional. */
   | 'player-look'
   /**
+   * The sentence under it: `<Name> is a <build>, <build> <Race> <Class> with
+   * <hair> hair and <eye> eyes.`
+   *
+   * The only per-person statement of race and class outside a gang listing,
+   * and the only one available for somebody in no gang of this character's.
+   * See `raceAndClassAtEnd`.
+   */
+  | 'player-described'
+  /**
    * `bg` with no argument: the gang's whole membership, one row each.
    *
    * The only listing that names a gang's members, and the only one that
@@ -856,6 +865,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
 
   'player-enters': 'presence',
   'player-look': 'presence',
+  'player-described': 'presence',
   'gang-roster': 'presence',
   'gang-joined': 'presence',
   'gang-left': 'presence',

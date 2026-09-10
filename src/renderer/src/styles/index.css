@@ -6071,6 +6071,82 @@ button.lookup.quest-where svg {
   padding-top: 4px;
 }
 
+/*
+ * The alternatives, offered rather than substituted: which of the routes to
+ * walk is a judgement about the character's own state that the panel cannot
+ * make. A disclosure on its own row above the steps — closed, one line
+ * saying how many; open, one row per route with its own `Show` — so the plan
+ * on screen stays the one the button at the top walks until somebody says
+ * otherwise.
+ */
+.route-alternatives {
+  color: var(--text-lo);
+  padding: 4px 0 0;
+}
+
+.route-alternatives > button {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.route-alternatives > ul {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 0 4px;
+}
+
+.route-alternatives > ul > li {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.route-alternatives > ul > li > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * A folded run of rooms that read the same: one row wearing the count, and
+ * the chevron that opens it. The commands of the run share the command
+ * column and yield with an ellipsis rather than pushing the name out, since
+ * the name is what the row is for; the full list is the tooltip.
+ */
+.route-steps li.group .step-command {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-steps .step-fold {
+  align-items: center;
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-steps .step-fold > .fold-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-steps .step-fold > svg {
+  flex: none;
+  height: 1em;
+  width: 1em;
+}
+
+/* A step under an opened row is indented, so where the run ends is visible. */
+.route-steps li.step[data-folded='true'] {
+  padding-left: 12px;
+}
+
 /* The Reference card: a field, then the answer, then the matches under it. */
 .reference-card input {
   flex: none;
@@ -6387,8 +6463,104 @@ button.lookup.quest-where svg {
 }
 
 .player-flyout .readout,
-.gang-flyout .readout {
+.gang-flyout .readout,
+.room-peek .readout {
   margin: 0;
+}
+
+/*
+ * The room quick view: what the realm knows about a room nobody is standing
+ * in, opened by a pointer resting on one.
+ *
+ * It has no faces, so its rows run straight down the body: the realm's facts
+ * first, then what the lair spawns under its own heading, then the one thing
+ * to do about the room. The headings are the card's own group headings, so a
+ * panel and a card say *Lair* the same way.
+ */
+/*
+ * Above a dialog's scrim when it hangs off something inside one.
+ *
+ * The popover layer sits at 55, under the palette's scrim at 100 — which is
+ * right for a panel the palette was opened *over*, and wrong for one opened
+ * from a row inside the route panel: a scrim dims what is behind the dialog,
+ * and this is in front of it. Below the settings screen's 110 and everything
+ * above it, which are modal over the whole client.
+ */
+.room-peek[data-over-dialog='true'] {
+  z-index: 105;
+}
+
+/*
+ * One label column for the panel, across the two `<dl>`s in it.
+ *
+ * An `auto` track is sized per container, so the room's facts and the lair's
+ * monsters would each measure their own and the two columns would not line up
+ * — the rule a card keeps by having exactly one `.readout`. They cannot be one
+ * `<dl>`: the lair's rows are `LairList`'s and are drawn identically on the
+ * Room card's own face, where they are the whole readout. So the parent
+ * declares the grid and both take `subgrid`, which is what the rule names as
+ * the remedy for rows that cannot be siblings.
+ */
+.room-peek .peek-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.room-peek .peek-facts > .readout,
+.room-peek .peek-facts > .peek-heading,
+.room-peek .peek-facts > .chip-row,
+.room-peek .peek-facts > .aside,
+.room-peek .peek-facts > .peek-answers {
+  grid-column: 1 / -1;
+}
+
+.room-peek .peek-facts > .readout {
+  display: grid;
+  grid-template-columns: subgrid;
+}
+
+.room-peek .peek-heading {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+}
+
+/*
+ * The ways out, each a direction and where it leads, wrapping as a paragraph
+ * rather than stacking one per line: a junction with four exits is four short
+ * facts and a column of them is a panel twice as tall as the lair it is above.
+ */
+.room-peek .peek-exit {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+
+.room-peek .peek-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * The one action, separated from the reading above it by a seam rather than by
+ * space alone — everything above is what the room *is*, and this is what to do
+ * about it.
+ */
+.room-peek .peek-actions {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 10px;
 }
 
 /*

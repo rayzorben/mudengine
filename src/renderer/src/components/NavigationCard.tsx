@@ -529,7 +529,7 @@ function walkChip(walk: WalkProgress) {
    * — this is the client waiting for the character to be fit to travel, not
    * something the player asked for or anything having gone wrong.
    */
-  if (walk.status === 'walking' && walk.hold === 'health') {
+  if (walk.status === 'walking' && (walk.hold === 'health' || walk.hold === 'trap')) {
     return <span className="chip info">{t('cards.navigation.loop.statusResting')}</span>;
   }
   /*

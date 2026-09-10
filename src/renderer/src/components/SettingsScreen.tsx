@@ -464,6 +464,7 @@ interface CharacterForm {
   /** Health — resting and meditating. Percentages on screen, fractions on disk. */
   restBelow: string;
   restTo: string;
+  restBeforeTraps: string;
   meditateBelow: string;
   /** And where a running loop holds still and walks on again. */
   /** Potions: what to drink, and below what. */
@@ -620,6 +621,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     combatPrefer: joinNames(entry.combat.prefer),
     restBelow: percent(entry.health.restBelow),
     restTo: percent(entry.health.restTo),
+    restBeforeTraps: percent(entry.health.restBeforeTraps),
     meditateBelow: percent(entry.health.meditateBelow),
     potionVerb: entry.health.potionVerb,
     healingPotionName: entry.health.healingPotionName,
@@ -798,6 +800,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     health: {
       restBelow: fractionOf(form.restBelow),
       restTo: fractionOf(form.restTo),
+      restBeforeTraps: fractionOf(form.restBeforeTraps),
       meditateBelow: fractionOf(form.meditateBelow),
       drinkHealingPotionBelow: fractionOf(form.drinkHealingPotionBelow),
       drinkManaPotionBelow: fractionOf(form.drinkManaPotionBelow),
@@ -1062,6 +1065,7 @@ function emptyForm(
     combatPrefer: joinNames(combat.prefer),
     restBelow: percent(health.restBelow),
     restTo: percent(health.restTo),
+    restBeforeTraps: percent(health.restBeforeTraps),
     meditateBelow: percent(health.meditateBelow),
     potionVerb: health.potionVerb,
     healingPotionName: health.healingPotionName,
@@ -2596,6 +2600,15 @@ export default function SettingsScreen({
                             figure={ofHealth(form.restTo)}
                             onChange={(value) => patch({ restTo: value })}
                             value={form.restTo}
+                          />
+                          <NumberField
+                            hint={t('settings.health.restBeforeTrapsHint')}
+                            label={t('settings.health.restBeforeTrapsLabel')}
+                            name="rest-before-traps"
+                            bar={barOfHealth(form.restBeforeTraps)}
+                            figure={ofHealth(form.restBeforeTraps)}
+                            onChange={(value) => patch({ restBeforeTraps: value })}
+                            value={form.restBeforeTraps}
                           />
                           <NumberField
                             hint={t('settings.health.meditateBelowHint')}

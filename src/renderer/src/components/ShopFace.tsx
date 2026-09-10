@@ -93,7 +93,16 @@ const KIND_LABEL: Record<ShopKind, string> = {
  * every one of them, not a guess at which.
  */
 export function shopFaceLabel(shop: WorldShop | null): string {
-  return KIND_LABEL[shop?.kind ?? 'shop'];
+  return shopKindLabel(shop?.kind);
+}
+
+/**
+ * The same word from the kind alone, for a surface holding a room's place
+ * rather than its stock — the room quick view, which says *what kind of place*
+ * and never prices anything.
+ */
+export function shopKindLabel(kind: ShopKind | undefined): string {
+  return KIND_LABEL[kind ?? 'shop'];
 }
 
 /**

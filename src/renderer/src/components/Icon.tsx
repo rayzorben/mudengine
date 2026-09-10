@@ -63,6 +63,7 @@ export type IconName =
   | 'chevronUp'
   | 'undo'
   | 'redo'
+  | 'link'
   /*
    * The toolbar's vocabulary. One glyph per automation switch, because the
    * toolbar is a row of glyphs with no labels on it — the label is the
@@ -329,6 +330,17 @@ const ICONS: Record<IconName, ReactNode> = {
       <rect x="9" y="9" width="11" height="11" rx="2" />
       {/* The sheet behind, as the two edges of it that show. */}
       <path d="M15 4.5H6.5a2 2 0 0 0-2 2v9" />
+    </>
+  ),
+  /*
+   * A web address, drawn as the two halves of a chain — the glyph that has
+   * meant *link* since it meant a hyperlink. Two identical strokes rotated
+   * about the centre, so the two halves cannot drift apart at 14px.
+   */
+  link: (
+    <>
+      <path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" />
+      <path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" />
     </>
   ),
   paste: (

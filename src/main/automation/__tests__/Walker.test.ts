@@ -12,7 +12,7 @@ import {
 } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { AutomationConfig, MovementConfig } from '../../../shared/config';
-import type { RemoteLever, Route } from '../../../shared/world';
+import type { RemoteLever, Route, RouteStep } from '../../../shared/world';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { wireExit } from '../../../shared/entities';
 
@@ -4009,5 +4009,138 @@ describe('a way something else opens', () => {
       expect(moves(sent)).toEqual(['e', 'n', 'pull red', 'pull blue', 'e']);
       walk.dispose();
     });
+  });
+});
+
+/*
+ * Resting before a trap (todo 01, 2026-09-10). A trap is the one gate on a
+ * route that is walked into and taken, and the walk was taking it at whatever
+ * health it happened to have: `restBelow` stops a walk at a share of the bar,
+ * and a 36-damage trap does not care what the bar is. The floor slides with
+ * the trap — its damage plus the share of maximum `restBeforeTraps` keeps after
+ * it, or the share the router priced the lair beyond at, whichever is more —
+ * and `Recovery` reads the figure off `restingFor` and sits the character down
+ * to it.
+ */
+describe('resting before a trap', () => {
+  const trapped = (over: Partial<RouteStep> = {}): Route => ({
+    cost: 2,
+    blocked: false,
+    steps: [
+      {
+        ...ROUTE.steps[0]!,
+        requirement: { kind: 'trap', raw: 'Trap, 36 damage', damage: 36 },
+        ...over
+      },
+      ROUTE.steps[1]!
+    ]
+  });
+
+  /** A 165-point character standing in 1/1 at `hp`. */
+  const withHp = (hp: number | null, hpMax: number | null = 165): CharacterState => {
+    const state = at(1, 1);
+    state.vitals = { ...state.vitals, hp, hpMax };
+    return state;
+  };
+
+  const walkerKeeping = (share: number): { walk: Walker; heal: (hp: number) => void } => {
+    let current = withHp(165);
+    const walk = new Walker(
+      { ...config, health: { ...config.health, restBelow: 0, restBeforeTraps: share } },
+      queue,
+      { notice: (m) => notices.push(m), stateNow: () => current }
+    );
+    return {
+      walk,
+      heal: (hp) => {
+        current = withHp(hp);
+      }
+    };
+  };
+
+  it('holds the step at 100 of 165 before a 36-damage trap, wanting 110', async () => {
+    const { walk } = walkerKeeping(0.45);
+    expect(walk.start(trapped(), withHp(100))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('trap');
+    // 36 + 0.45 × 165 = 110.25, rounded up: the figure `Recovery` rests to.
+    expect(walk.restingFor).toBe(111);
+    expect(notices.some((notice) => /trap of up to 36 damage/i.test(notice))).toBe(true);
+    walk.dispose();
+  });
+
+  it('walks on once health reaches the figure, and says so', async () => {
+    const { walk, heal } = walkerKeeping(0.45);
+    walk.start(trapped(), withHp(100));
+    heal(111);
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERNAL.tuning.walk.holdMs + 50);
+    expect(sent).toEqual(['e']);
+    expect(walk.progress.hold).toBeNull();
+    expect(walk.restingFor).toBeNull();
+    expect(notices.some((notice) => /enough health for the trap/i.test(notice))).toBe(true);
+    walk.dispose();
+  });
+
+  it('walks straight through at the figure', async () => {
+    const { walk } = walkerKeeping(0.45);
+    walk.start(trapped(), withHp(111));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /* A trap into a lair is a fight fought on what the trap left: the lair's
+     own share is kept where it is the larger. */
+  it('keeps the lair’s share beyond the trap where that is more', async () => {
+    const { walk } = walkerKeeping(0.45);
+    walk.start(trapped({ danger: 0.6, lairDamage: 99 }), withHp(120));
+    await vi.advanceTimersByTimeAsync(50);
+    // 36 + 99: the lair's figure in points, never its share of a bar read at
+    // planning time.
+    expect(walk.restingFor).toBe(135);
+    walk.dispose();
+  });
+
+  it('caps the figure at the maximum for a trap the bar cannot cover', async () => {
+    const { walk } = walkerKeeping(0.45);
+    walk.start(
+      trapped({ requirement: { kind: 'trap', raw: 'Trap, 400 damage', damage: 400 } }),
+      withHp(160)
+    );
+    await vi.advanceTimersByTimeAsync(50);
+    expect(walk.restingFor).toBe(165);
+    walk.dispose();
+  });
+
+  it('does not hold at all when the share is 0', async () => {
+    const { walk } = walkerKeeping(0);
+    walk.start(trapped(), withHp(10));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /* Unknown is not low: a trap the realm gives no figure for, and a bar nobody
+     has read, both hold nothing rather than holding for ever. */
+  it('does not hold on a trap with no stated damage, nor without a maximum', async () => {
+    const { walk } = walkerKeeping(0.45);
+    walk.start(trapped({ requirement: { kind: 'trap', raw: 'Trap' } }), withHp(10));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.stop('done', true);
+    sent = [];
+    walk.start(trapped(), withHp(10, null));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  it('does not hold a step with no trap on it', async () => {
+    const { walk } = walkerKeeping(0.45);
+    walk.start(ROUTE, withHp(10));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
   });
 });

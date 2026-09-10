@@ -20,12 +20,12 @@
  * First on the rail, before Vitals: the shipped arrangement is what a rail
  * that has never been arranged looks like, and the character is step one.
  */
-import { memo } from 'react';
+import { memo, useState } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
-import { InventoryBody, type InventoryBodyProps } from './InventoryCard';
+import { InventoryBody, findAction, type InventoryBodyProps } from './InventoryCard';
 import type { CharacterState } from '@shared/character';
 import type { SupplyItem } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
@@ -76,6 +76,8 @@ function SelfCard({
   ...chrome
 }: SelfCardProps) {
   const [face, chooseFace] = useRememberedChoice(session, 'self-tab', FACE_IDS, FACE_IDS[0]!);
+  /* The PACK face's find row. Held, never remembered: a search is asked now. */
+  const [finding, setFinding] = useState(false);
   const { progress, sight, room } = character;
   /*
    * Whether the pack has been read at all. `Supplies.consider` refuses to act
@@ -205,9 +207,11 @@ function SelfCard({
   const packFace = (
     <InventoryBody
       character={character}
+      finding={finding}
       gear={gear}
       inspect={inspect}
       loadWearer={loadWearer}
+      onFindDismiss={() => setFinding(false)}
       returnFocus={chrome.returnFocus}
       session={session}
     />
@@ -358,6 +362,12 @@ function SelfCard({
       label: t('cards.self.tabs.pack'),
       content: packFace,
       paned: true,
+      /*
+       * The pack's own, not the card's: this card's other two faces are a stat
+       * sheet and a supply list, and a find glyph over either would be a
+       * control that can only ever do nothing. See `CardTab.actions`.
+       */
+      actions: [findAction(finding, setFinding, chrome.returnFocus)],
       copyText: () => character.inventory.items.map((item) => item.name).join('\n')
     },
     {

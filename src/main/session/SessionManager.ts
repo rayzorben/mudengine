@@ -41,6 +41,7 @@ import { splitStop } from '../../shared/loops';
 import {
   OPPOSITE,
   asDirection,
+  hazardAvoided,
   roomId,
   type WorldRoom,
   type Direction,
@@ -564,6 +565,21 @@ export class SessionManager {
    * this is the one journey with nobody else holding its destination.
    */
   private journey: { to: RoomId; name: string } | null = null;
+  /**
+   * A route the player asked for that a supply errand went shopping instead of.
+   *
+   * The errand's own reason for existing is that the character is about to go
+   * somewhere, so it takes the character first and hands it back — the same
+   * bargain `LoopRunner.noteErrand` strikes with a lap. Kept as the destination
+   * rather than the route, because the character is somewhere else by the time
+   * it is owed and the way back is planned from where it stands.
+   *
+   * Dropped by anything that supersedes it: another route asked for, a death
+   * (`stopGoingAnywhere`), leaving the realm. Deliberately **not** dropped by
+   * `WalkerEvents.destination` as `journey` is — the errand's own legs each
+   * fire it, and clearing there would forget the route the moment it was owed.
+   */
+  private errandOwes: { to: RoomId; name: string } | null = null;
   /**
    * Whether `pickUpAfterLoss` has said, this connection, that it is waiting
    * for the room. Once, because the entry probe is what asks, and this is only
@@ -1253,8 +1269,12 @@ export class SessionManager {
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
         busy: () => this.isRetreating() || this.retreat !== null,
+        looping: () => this.loops.progress.status === 'running',
         hold: () => this.loops.noteErrand(),
-        release: () => this.loops.noteErrandOver()
+        release: () => {
+          this.loops.noteErrandOver();
+          this.walkOnAfterErrand();
+        }
       },
       {
         notice: (message) => this.sink.notice(message),
@@ -2298,8 +2318,10 @@ export class SessionManager {
     this.queue.clear();
     this.playerMove = null;
     // A journey owed across a loss is owed to a character standing in the
-    // realm; one who walked out to the menu has ended it.
+    // realm; one who walked out to the menu has ended it. So is a route a
+    // supply errand is shopping on behalf of.
     this.journey = null;
+    this.errandOwes = null;
 
     // The loop before the walker: stopping a walk calls `ended`, and a loop
     // still running would book that as a failed leg on its way out.
@@ -3217,7 +3239,7 @@ export class SessionManager {
        * somewhere is not one to sit down; when the walk ends, resting is
        * considered again on the very next tick.
        */
-      if (this.mayRest()) this.recovery.onCharacter(state);
+      if (this.mayRest()) this.restNow(state);
     }
   }
 
@@ -3257,7 +3279,13 @@ export class SessionManager {
      * refusing there would recreate the reported bug from the other side, with
      * the walk waiting for a rest that was waiting for the walk.
      */
-    if (this.walker.walking && this.walker.holding === null) return false;
+    /*
+     * And a held walk answers for the loop too: a leg standing still before a
+     * trap (`Walker.holdForTrap`, 2026-09-10) is a lap that is not marching,
+     * and the loop's own holds cannot see inside a leg — read the loop's
+     * clause alone, the leg waited for a rest that this refused, for ever.
+     */
+    if (this.walker.walking) return this.walker.holding !== null;
     const loop = this.loops.progress;
     return loop.status !== 'running' || loop.hold !== null;
   }
@@ -3299,7 +3327,18 @@ export class SessionManager {
     this.heal.onCharacter(state);
     this.potions.onCharacter(state);
     this.cures.onCharacter(state);
-    if (this.mayRest()) this.recovery.onCharacter(state);
+    if (this.mayRest()) this.restNow(state);
+  }
+
+  /**
+   * `Recovery`, told first what the walk is waiting for: a route standing
+   * still before a trap names the health it wants (`Walker.restingFor`), and
+   * that figure is above the resting floor, so the rest that ends the hold
+   * has to be asked for by the module that owns resting.
+   */
+  private restNow(state: CharacterState): void {
+    this.recovery.needAtLeast(this.walker.restingFor);
+    this.recovery.onCharacter(state);
   }
 
   /**
@@ -3525,6 +3564,7 @@ export class SessionManager {
    * reduction reproduces.
    */
   travellerNow(state: CharacterState, preferring = true): Traveller {
+    const pack = this.packContents(state);
     return {
       level: state.progress.level ?? null,
       strength: state.progress.strength ?? null,
@@ -3549,12 +3589,78 @@ export class SessionManager {
        * router treats as *nobody has said* and never as neutral.
        */
       alignment: ownAlignment(state),
-      ...this.packContents(state),
+      ...pack,
       refused: this.refusedEdges,
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
       // What waits in each room, against this character as they stand now.
-      danger: (room) => this.lairDanger(room, state)
+      danger: (room) => this.lairDanger(room, state),
+      // And the same figure before the division, for the walker's rest
+      // before a trap: a reserve in hit points, not a share of a bar that
+      // was read at planning time.
+      lairDamage: (room) => this.lairCost(room, state),
+      /*
+       * And what the room itself does to whoever stands in it — with the pack
+       * resolved **once**, here, rather than per call: this runs for every room
+       * the A* expands that casts anything, and `packContents` walks the whole
+       * listing and normalises every name. `danger` is spared it because
+       * `LairCosts` remembers per room; this has nothing to remember, so the
+       * one thing it depends on is hoisted instead.
+       */
+      hazard: (room) => this.roomHazard(room, state, pack.keys)
     };
+  }
+
+  /**
+   * What a room's own spell is expected to cost this character, as a share of
+   * the health it has now (`Traveller.hazard`, todo 01).
+   *
+   * `lairDanger`'s shape, one column across, and simpler for one reason: the
+   * damage is a figure the realm states rather than one this client computes,
+   * so there is nothing to remember and no fitness string to invalidate. What
+   * varies is the pack — a log raft turns eight hundred and forty-five rooms
+   * of the Silver River from a wall into a corridor — and the bar, and both
+   * are read at the call.
+   */
+  private roomHazard(room: WorldRoom, state: CharacterState, carrying?: number[]): number | null {
+    if (!this.world) return null;
+    const hazard = this.world.hazardOf(room);
+    if (hazard === null) return null;
+    // Carrying what stops it is not *unknown*, it is *free*: the room costs a
+    // plain step, which is what it is for that character.
+    if (hazardAvoided(hazard, carrying ?? this.packContents(state).keys)) return null;
+    /*
+     * **A room that moves you is a wall, exactly as an exit that casts one
+     * is** (`edgePenalty`'s `spellEffect === 'relocates'`). The walker's next
+     * command goes out from wherever the plan says it is standing, and a room
+     * that puts it somewhere the exit table does not name breaks every step
+     * after it. 1,557 rooms of the shipped realm cast one. `deadlyShare` and
+     * not `wallCost` because this is a *share*, and `dangerPenalty` turns a
+     * share at the wall into the wall — one place decides that number.
+     */
+    if (hazard.relocates === true) return tuning().world.deadlyShare;
+    const health = state.vitals.hp ?? state.vitals.hpMax;
+    if (health === null || !(health > 0)) return null;
+    /*
+     * A chain the reader could not follow prices as a *discouragement* rather
+     * than as nothing: `graveyard summon` and `fire trigger` end in verbs this
+     * client cannot evaluate, and walking such a room for free is exactly what
+     * put a route down the Silver River. `unreadHazardShare` is what a step
+     * through one is worth as a share of the bar — small, and never zero.
+     */
+    /*
+     * The worse of the two, not one or the other: `unread` means the chain
+     * carried on past what this reader could follow, so a spell that does a
+     * readable ten and then something unreadable is *at least* the ten. Taking
+     * the damage alone would let the unread half read as nothing.
+     */
+    const read = hazard.damage === undefined ? null : hazard.damage / health;
+    // A chain that can put a monster in the room is priced on the same
+    // discouragement: what it does is what a lair does, and how much is a
+    // number this cannot weigh without knowing what turns up.
+    const unread =
+      hazard.unread === true || hazard.summons === true ? tuning().world.unreadHazardShare : null;
+    if (read === null) return unread;
+    return unread === null ? read : Math.max(read, unread);
   }
 
   /**
@@ -3581,8 +3687,14 @@ export class SessionManager {
      */
     const health = state.vitals.hp ?? state.vitals.hpMax;
     if (health === null || !(health > 0)) return null;
-    const damage = this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
+    const damage = this.lairCost(room, state);
     return damage === null ? null : damage / health;
+  }
+
+  /** What one pass through a room's lair is expected to take, in hit points, remembered. */
+  private lairCost(room: WorldRoom, state: CharacterState): number | null {
+    if (!this.world || !room.lair) return null;
+    return this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
   }
 
   /**
@@ -3628,7 +3740,15 @@ export class SessionManager {
     if (lair === null || lair.mobs.length === 0) return null;
     const state = this.tracker.current;
     const { combat, magery, family } = this.realmClass();
-    const entities = lair.mobs.map((mob) => world.buildMobEntity(mob.name));
+    /*
+     * By the rows the lair names, never by name (todo 01, 2026-09-10): a name
+     * folds every row sharing it and takes the worst, and the guard post on
+     * the Hillside Path was priced as an 830-HP gnoll scout that swings four
+     * times a round when the row it names is the 100-HP one that lands a blow
+     * in twenty-five. See `WorldGraph.lairEntities`.
+     */
+    const entities = world.lairEntities(room);
+    if (entities.length === 0) return null;
     const verdicts = weighVerdicts(
       entities,
       this.menacePlayer(state),
@@ -4398,6 +4518,59 @@ export class SessionManager {
    * it. What has already reached the wire cannot be recalled; the queue is
    * where the decision is still revisable.
    */
+  /**
+   * A route the player asked for, with the supply list consulted first.
+   *
+   * The one path a person's own route takes (`Invoke.walkRoute`), and the
+   * second of the two moments a supply errand may start — the first being a
+   * running lap. Being about to travel is the whole reason the pack matters,
+   * so the check happens here rather than on every status line: a character
+   * standing still, freshly killed and stripped in the temple, is not about to
+   * travel and has no business being walked to a shop.
+   *
+   * The errand takes precedence and the route is owed back, so the order is
+   * shop, then go. Nothing is queued twice: the errand's walk is already out
+   * by the time this returns, and the route is planned afresh from the shop
+   * when the errand lets go (`walkOnAfterErrand`).
+   */
+  walkRoute(route: Route): string | null {
+    this.errandOwes = null;
+    const errand = this.supplies.considerBeforeRoute(this.tracker.current);
+    if (errand === null) return this.walker.start(route, this.tracker.current);
+    const last = route.steps.at(-1);
+    if (last !== undefined) this.errandOwes = { to: last.to, name: last.name };
+    this.sink.notice(
+      t('session.supplies.beforeRoute', {
+        item: errand.item.name,
+        shop: errand.shopName,
+        destination: last?.name ?? t('session.supplies.beforeRouteNowhere')
+      })
+    );
+    return null;
+  }
+
+  /**
+   * The errand let go: walk on to where the player was going.
+   *
+   * Planned from where the character is standing rather than replayed, for
+   * `pickUpAfterLoss`' reason — the shop is not on the route that was drawn,
+   * and the way from it is a different set of steps. A refusal is said out
+   * loud with the destination in it; the route is not owed twice either way.
+   */
+  private walkOnAfterErrand(): void {
+    const owed = this.errandOwes;
+    if (owed === null) return;
+    this.errandOwes = null;
+    const route = this.planFromHere(owed.to);
+    const refused =
+      typeof route === 'string' ? route : this.walker.start(route, this.tracker.current);
+    this.sink.notice(
+      refused === null || refused === undefined
+        ? t('session.walk.resumed', { destination: owed.name })
+        : t('session.walk.notResumed', { destination: owed.name, reason: refused })
+    );
+  }
+
   private stopGoingAnywhere(): void {
     const retreat = this.retreat;
     if (retreat !== null) {
@@ -4409,6 +4582,9 @@ export class SessionManager {
       this.loops.stop(t('session.loop.stoppedDied'));
     }
     // And an errand: the shop it was walking to is several maps away now.
+    // With it goes the route it was shopping on behalf of — a death is the
+    // player's cue to decide what happens next, not the client's.
+    this.errandOwes = null;
     this.supplies.abandon(t('session.supplies.abandonedDied'));
     /*
      * And a route still owed from a lost connection — the third holder of a

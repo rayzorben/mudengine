@@ -22,6 +22,7 @@ import {
   type RemoteName
 } from '@shared/remotes';
 import { playerKey, type PlayerRecord } from '@shared/players';
+import { titleReading } from '@shared/titles';
 
 /**
  * A name somebody clicked on a listing, whose character's listing it was, and
@@ -301,6 +302,76 @@ export default function PlayerFlyout({
 }
 
 /**
+ * Race, class and level: what is known, and what the rank title gives away.
+ *
+ * `bg` states all three and is the only listing that does, so for anybody
+ * outside this character's gang they were `null` forever — three rows the card
+ * could never draw. Two things now fill them in. A look at somebody prints
+ * their race and class in prose (`player-described`), and the rank title every
+ * `who` row already carries names the class and pins the level to a band
+ * (`titleReading`).
+ *
+ * **A read title is never as good as a stated fact, and it says so.** The
+ * stated level and class win outright where they exist; a derived one is drawn
+ * with *from their title* beside it and the level wears a `~`, because a band
+ * is a range and a card that printed `Level 27` from `Kai Warrior` would be
+ * stating a number the client was never told. A title several classes share —
+ * `Apprentice` is level 1 of all fifteen — names no class at all and still
+ * gives the level away.
+ *
+ * Nothing is drawn for a person nothing is known about: three rows of *unknown*
+ * is the reassuring answer to a question nobody asked.
+ */
+function PlayerStanding({ record }: { record: PlayerRecord }) {
+  const reading = titleReading(record.title);
+  const readClass = reading !== null && reading.classes.length === 1 ? reading.classes[0]! : null;
+  const className = record.className ?? readClass;
+  const classIsRead = record.className === null && readClass !== null;
+  const level =
+    record.level !== null
+      ? String(record.level)
+      : reading === null
+        ? null
+        : t('cards.player.levelBand', { from: reading.from, to: reading.to });
+  const levelIsRead = record.level === null && level !== null;
+
+  return (
+    <>
+      {record.race === null ? null : (
+        <>
+          <dt>{t('cards.player.detail.race')}</dt>
+          <dd>{record.race}</dd>
+        </>
+      )}
+
+      {className === null ? null : (
+        <>
+          <dt>{t('cards.player.detail.class')}</dt>
+          <dd>
+            {className}
+            {classIsRead ? (
+              <span className="quiet-note"> ({t('cards.player.fromTitle')})</span>
+            ) : null}
+          </dd>
+        </>
+      )}
+
+      {level === null ? null : (
+        <>
+          <dt>{t('cards.player.detail.level')}</dt>
+          <dd>
+            {level}
+            {levelIsRead ? (
+              <span className="quiet-note"> ({t('cards.player.fromTitle')})</span>
+            ) : null}
+          </dd>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
  * Everything known about one person, and an honest blank where nothing is.
  *
  * **Standing is deliberately not a row here.** It is the Realm card's column —
@@ -340,6 +411,8 @@ function PlayerDetail({
           <dd>{record.title}</dd>
         </>
       )}
+
+      <PlayerStanding record={record} />
 
       {/* From their who row or a look at them: the one fact the `gang` ground
           is decided on, so it is shown where that decision is made — and a

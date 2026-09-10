@@ -100,6 +100,7 @@ import {
   withGangJoined,
   withGangLeft,
   withGangListing,
+  withDescription,
   withLookedAt,
   withoutPlayer,
   withPartyListing,
@@ -3569,6 +3570,22 @@ export class CharacterTracker {
          */
         this.lookedAt = g['name'] ?? null;
         return withLookedAt(s, g['name'], g['gang']);
+
+      case 'player-described':
+        /*
+         * The sentence under that line, which is where the race and the class
+         * are. Filed against the name the *sentence* carries, not `lookedAt`:
+         * they are the same name and the sentence is the one that came from
+         * the server.
+         *
+         * Skipped for this character's own look, for `player-equipment`'s
+         * reason — `trackPlayers` keeps everybody but self out of the registry
+         * precisely so a name in the console does not open a panel about the
+         * person reading it, and this character's own race and class are on
+         * the stat sheet.
+         */
+        if (this.isSelf(g['player'] ?? null)) return null;
+        return withDescription(s, g['player'], g['who'], block.at);
 
       case 'player-equipment': {
         /*

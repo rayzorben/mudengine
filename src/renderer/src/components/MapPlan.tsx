@@ -24,7 +24,15 @@
  * that governs the console does not reach it. It is chrome, and chrome follows
  * the design language.
  */
-import { memo, useMemo, type KeyboardEvent } from 'react';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent
+} from 'react';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -331,6 +339,17 @@ export interface MapPlanProps {
    */
   stops?: readonly RoomId[];
   /**
+   * A pointer came to rest on a room, or left it: open the room's quick view
+   * beside it, and let the caller's linger start.
+   *
+   * The dwell itself is here, on the room, because that is where the pointer
+   * is; what the panel *is* and how long it lingers afterwards belong to the
+   * caller, which owns the one-panel-at-a-time rule. Absent where there is
+   * nothing to open — a pinned float has no realm of its own to ask.
+   */
+  onPeek?: (room: RoomId, at: SVGGElement, settled: boolean) => void;
+  onPeekEnd?: () => void;
+  /**
    * The rooms this realm's find log names — where searching has turned
    * something up.
    *
@@ -365,6 +384,8 @@ function MapPlan({
   onChoose,
   marks,
   onAway,
+  onPeek,
+  onPeekEnd,
   path = NO_ROOMS,
   stops = NO_ROOMS,
   finds = NO_ROOMS
@@ -449,6 +470,8 @@ function MapPlan({
         onAway={onAway}
         found={found}
         onChoose={onChoose}
+        onPeek={onPeek}
+        onPeekEnd={onPeekEnd}
         trail={trail}
         you={you}
       />
@@ -468,6 +491,8 @@ const Picture = memo(function Picture({
   marks,
   onAway,
   onChoose,
+  onPeek,
+  onPeekEnd,
   trail,
   you
 }: {
@@ -478,9 +503,18 @@ const Picture = memo(function Picture({
   marks: BuilderMarks | undefined;
   onAway: ((away: MapAway, from: RoomId) => void) | undefined;
   onChoose: ((map: number, room: number) => void) | undefined;
+  onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | undefined;
+  onPeekEnd: (() => void) | undefined;
   trail: MapTrail;
   you: RoomId | null;
 }) {
+  /*
+   * The one dwell timer, owned here rather than per room: only one pointer is
+   * ever on the picture, so a second room entered has to cancel the first
+   * room's countdown rather than run a second one beside it.
+   */
+  const dwell = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(dwell.current), []);
   return (
     <>
       {/* Corridors first, so a room always sits on top of its own links. */}
@@ -601,13 +635,28 @@ const Picture = memo(function Picture({
 
       {drawing.nodes.map((node) => {
         const pick = onChoose;
+        /*
+         * What a click on a room does.
+         *
+         * **Where a room has a quick view, the click opens it and the panel
+         * carries the walk** — the room's facts are read before the way there
+         * is planned, and the plan is one button further on rather than one
+         * mis-click away. Where it has none — the loop builder, whose clicks
+         * are picks — the click is the caller's, unchanged.
+         *
+         * Settled, not hovered: a click nails the panel down, so it survives
+         * the pointer leaving on its way to the button.
+         */
+        const peekHere = onPeek;
         const choose =
-          pick === undefined
-            ? undefined
-            : (): void => {
-                const [mapId, roomId] = node.id.split('/');
-                pick(Number(mapId), Number(roomId));
-              };
+          peekHere !== undefined
+            ? (at: SVGGElement): void => peekHere(node.id, at, true)
+            : pick !== undefined
+              ? (): void => {
+                  const [mapId, roomId] = node.id.split('/');
+                  pick(Number(mapId), Number(roomId));
+                }
+              : undefined;
         /*
          * A room is a control only where there is somewhere to send the click.
          * Absent a handler it is drawn as a picture, per the standing rule that
@@ -616,17 +665,46 @@ const Picture = memo(function Picture({
          */
         const control = choose
           ? {
-              onClick: choose,
+              onClick: (event: ReactMouseEvent<SVGGElement>): void => choose(event.currentTarget),
               onMouseDown: keepFocus,
               onKeyDown: (event: KeyboardEvent<SVGGElement>): void => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();
-                choose();
+                choose(event.currentTarget);
               },
               role: 'button',
               tabIndex: 0
             }
           : {};
+        /*
+         * A pointer resting on a room opens its quick view; leaving it starts
+         * the caller's linger. The dwell is here rather than in the caller
+         * because it is a property of *this* pointer on *this* room — sweeping
+         * across a map is a dozen rooms a second, and one panel per room
+         * crossed is two hundred queries for one question.
+         *
+         * `onPointerEnter`, not `onPointerOver`: a room is a group of shapes
+         * and `over` fires again for every child crossed inside it, which
+         * would restart the dwell at each and mean a slow hand never opened
+         * anything. Cleared on the way out and when the element goes.
+         */
+        const peek =
+          onPeek === undefined
+            ? {}
+            : {
+                onPointerEnter: (event: ReactPointerEvent<SVGGElement>): void => {
+                  const at = event.currentTarget;
+                  window.clearTimeout(dwell.current);
+                  dwell.current = window.setTimeout(
+                    () => onPeek(node.id, at, false),
+                    tuning().roomPeekDelayMs
+                  );
+                },
+                onPointerLeave: (): void => {
+                  window.clearTimeout(dwell.current);
+                  onPeekEnd?.();
+                }
+              };
         return (
           <g
             className="map-room"
@@ -634,6 +712,7 @@ const Picture = memo(function Picture({
             data-room={node.id}
             key={node.id}
             {...control}
+            {...peek}
           >
             <title>{t('cards.map.roomTooltip', { roomName: node.name })}</title>
             {/*

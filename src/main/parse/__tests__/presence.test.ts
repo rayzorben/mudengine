@@ -12,7 +12,9 @@ import {
   withPartyListing,
   withRemoteVitals,
   withoutPlayer,
-  raceAndClass
+  raceAndClass,
+  raceAndClassAtEnd,
+  withDescription
 } from '../presence';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 
@@ -233,5 +235,52 @@ describe('the gang listing', () => {
     expect(raceAndClass('Mystic')).toEqual({ race: null, className: null });
     expect(raceAndClass(undefined)).toEqual({ race: null, className: null });
     expect(raceAndClass('Gaunt One')).toEqual({ race: null, className: null });
+  });
+});
+
+describe('withDescription', () => {
+  /* The four look descriptions in the corpus, each read from its far end. */
+  it('reads the pair off the end of the clause, past the adjectives', () => {
+    expect(raceAndClassAtEnd('muscular Nekojin Ranger')).toEqual({
+      race: 'Nekojin',
+      className: 'Ranger'
+    });
+    expect(raceAndClassAtEnd('well built Goblin Ninja')).toEqual({
+      race: 'Goblin',
+      className: 'Ninja'
+    });
+    expect(raceAndClassAtEnd('heroically proportioned Dark-Elf Ninja')).toEqual({
+      race: 'Dark-Elf',
+      className: 'Ninja'
+    });
+  });
+
+  /* The same exception `raceAndClass` carries, read from the other end. */
+  it("reads the realm's one two-word race", () => {
+    expect(raceAndClassAtEnd('well built Gaunt One Druid')).toEqual({
+      race: 'Gaunt One',
+      className: 'Druid'
+    });
+  });
+
+  it('refuses a clause too short to hold an adjective, a race and a class', () => {
+    expect(raceAndClassAtEnd('Nekojin Ranger')).toEqual({ race: null, className: null });
+    expect(raceAndClassAtEnd(undefined)).toEqual({ race: null, className: null });
+  });
+
+  it('files the pair in the registry under the name the sentence carries', () => {
+    const after = withDescription(state(), 'Trickster', 'muscular Nekojin Ranger', 100)!;
+    expect(after.players['trickster']).toMatchObject({
+      name: 'Trickster',
+      race: 'Nekojin',
+      className: 'Ranger'
+    });
+    // Nothing changed is nothing published, as everywhere else in the cluster.
+    expect(withDescription(after, 'Trickster', 'muscular Nekojin Ranger', 200)).toBeNull();
+  });
+
+  it('writes nothing when the clause did not come out as the frame says', () => {
+    expect(withDescription(state(), 'Trickster', 'Ranger', 100)).toBeNull();
+    expect(withDescription(state(), undefined, 'muscular Nekojin Ranger', 100)).toBeNull();
   });
 });

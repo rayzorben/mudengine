@@ -67,7 +67,8 @@ import {
   type RoomId,
   type Route,
   type RouteStep,
-  asRoomReference
+  asRoomReference,
+  trapOn
 } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { REREAD_ROOM } from '../../shared/commands';
@@ -462,6 +463,14 @@ export class Walker {
    */
   private hold: WalkHold = null;
   /**
+   * The health the step ahead wants before its trap is walked into, while
+   * the walk stands still for it — `holdForTrap`. Null otherwise. Read by
+   * `Recovery` through the session, which is what makes the hold end: a
+   * trap floor is above `restBelow` by construction, so nothing else would
+   * sit the character down to it.
+   */
+  private trapFloor: number | null = null;
+  /**
    * Whether this walk is one the walker itself decides fitness for.
    *
    * False for a retreat (the escape must not wait to be better) and for a
@@ -665,6 +674,16 @@ export class Walker {
    */
   get holding(): WalkHold {
     return this.status === 'walking' ? this.hold : null;
+  }
+
+  /**
+   * The hit points the walk is resting towards before the trap ahead, or
+   * null when it is not standing still for one. `Recovery.needAtLeast` reads
+   * it, so the rest that ends this hold is proposed by the module that owns
+   * resting rather than by a second `rest` sender.
+   */
+  get restingFor(): number | null {
+    return this.holding === 'trap' ? this.trapFloor : null;
   }
 
   /**
@@ -1036,6 +1055,7 @@ export class Walker {
     this.status = 'idle';
     this.reason = null;
     this.hold = null;
+    this.trapFloor = null;
     this.fightClearedAt = null;
     this.fightHeldSince = null;
     this.escaped = false;
@@ -2818,6 +2838,8 @@ export class Walker {
     if (this.holdForHealth(state)) return true;
     // Then a condition the server has stated, on the same terms.
     if (this.holdForAffliction(state)) return true;
+    // Then the trap the step ahead fires, on the same terms again.
+    if (this.holdForTrap(state)) return true;
     /*
      * A fight running here is not "no quarry", and it is outside the budget
      * too. `holdAt` asks whether engagement *would open* on something in this
@@ -3385,6 +3407,88 @@ export class Walker {
     }, tuning().walk.holdMs);
     this.holdTimer.unref?.();
     return true;
+  }
+
+  /**
+   * Stand still before a trap the character is not yet fit to take.
+   *
+   * *"Rest for traps if health is too low"* (todo 01, 2026-09-10). A trap is
+   * the one gate on a route that is walked into and taken, and the walk was
+   * taking it at whatever health it happened to have: `restBelow` stops a
+   * walk at 35% of the bar, and a 36-damage trap does not care what the bar
+   * is. The floor here slides with the trap — its damage, plus the share of
+   * maximum `automation.health.restBeforeTraps` says should be left after
+   * it, or what the router expects the lair beyond to take, whichever is more
+   * (a trap into a lair is a fight fought on what the trap left) — and is
+   * capped at the maximum, which is the most a rest can do about a trap that
+   * takes more than the bar holds.
+   *
+   * On the health hold's terms: a hold, not an ending; not bounded by
+   * `walk.maxHolds`; re-asked on the beat's timer against `stateNow`. Only
+   * its own hold is released here. Unknown never holds. And it is **every**
+   * walk's, a loop's leg and the way home included — the loop holds between
+   * legs and cannot see a trap inside one, and a trap does not care why the
+   * character is walking. `Recovery` reads the figure through `restingFor`
+   * and sits the character down to it.
+   */
+  private holdForTrap(state: CharacterState): boolean {
+    const step = this.route?.steps[this.index];
+    const floor = step === undefined ? null : this.trapFloorFor(step, state);
+    const { hp } = state.vitals;
+    if (floor === null || hp === null || hp >= floor) {
+      if (this.hold === 'trap') {
+        this.hold = null;
+        this.trapFloor = null;
+        if (!this.quiet && step !== undefined) {
+          this.events.notice?.(t('automation.walk.trapResumed', { stepName: step.name }));
+        }
+        this.publish();
+      }
+      return false;
+    }
+    if (this.hold !== 'trap' || this.trapFloor !== floor) {
+      const fresh = this.hold !== 'trap';
+      this.hold = 'trap';
+      this.trapFloor = floor;
+      if (fresh && !this.quiet && step !== undefined) {
+        this.events.notice?.(
+          t('automation.walk.trapHolding', {
+            stepName: step.name,
+            damage: trapOn(step)?.damage ?? 0,
+            needed: floor,
+            hp
+          })
+        );
+      }
+      this.publish();
+    }
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (this.status !== 'walking') return;
+      if (this.holdBeforeSending(this.events.stateNow?.() ?? state)) return;
+      this.sendCurrent();
+    }, tuning().walk.holdMs);
+    this.holdTimer.unref?.();
+    return true;
+  }
+
+  /**
+   * The health a step's trap wants first, in hit points, or null: no trap, a
+   * trap whose damage the realm does not state (a hold on a figure nobody
+   * gave would stand for ever), the setting off, or a maximum nobody has read.
+   */
+  private trapFloorFor(step: RouteStep, state: CharacterState): number | null {
+    const share = this.config.health.restBeforeTraps;
+    if (share <= 0) return null;
+    const trap = trapOn(step);
+    if (trap === null || trap.damage === null) return null;
+    const { hpMax } = state.vitals;
+    if (hpMax === null || hpMax <= 0) return null;
+    // In points, both halves: the lair's figure is the pass in hit points
+    // (`RouteStep.lairDamage`), never `danger`, which is a share of the bar
+    // as it stood when the route was planned.
+    const reserve = Math.max(share * hpMax, step.lairDamage ?? 0);
+    return Math.min(hpMax, Math.ceil(trap.damage + reserve));
   }
 
   private sendCurrent(fresh = true): void {

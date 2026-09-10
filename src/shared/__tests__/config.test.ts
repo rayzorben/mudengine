@@ -462,6 +462,25 @@ describe('the resting pair', () => {
   });
 });
 
+/*
+ * Resting before a trap (todo 01, 2026-09-10): the share of maximum a walk
+ * keeps *after* the trap ahead has fired, on which the floor slides with the
+ * trap's damage. 45% is the figure both of the player's own examples land on.
+ */
+describe('resting before a trap', () => {
+  const health = (raw: Record<string, unknown>) =>
+    normalizeConfig({ automation: { health: raw } }).automation.health;
+
+  it('ships at 45%', () => {
+    expect(health({}).restBeforeTraps).toBe(0.45);
+  });
+
+  it('reads a figure above one as a percentage, and 0 as never', () => {
+    expect(health({ restBeforeTraps: 60 }).restBeforeTraps).toBe(0.6);
+    expect(health({ restBeforeTraps: 0 }).restBeforeTraps).toBe(0);
+  });
+});
+
 describe('the potion settings', () => {
   const health = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { health: raw } }).automation.health;

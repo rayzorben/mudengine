@@ -54,7 +54,15 @@ import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
 import type { RoomVerdict } from './verdict';
-import type { LoopDraft, RoomId, Route, WorldLookup, WorldNames, WorldRoom } from './world';
+import type {
+  LoopDraft,
+  RoomBrief,
+  RoomId,
+  Route,
+  WorldLookup,
+  WorldNames,
+  WorldRoom
+} from './world';
 import type { Visited } from './destinations';
 import type {
   ConnectionState,
@@ -756,6 +764,8 @@ export const Invoke = {
   questBook: 'world:quests',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
+  /** Everything the realm knows about one room, for a room nobody is in. */
+  roomBrief: 'world:room',
   wearer: 'world:wearer',
   /**
    * Everything the realm knows about a name — monster, item or spell — for
@@ -1095,6 +1105,16 @@ export interface IpcApi {
    */
   questBook(session: SessionId): Promise<Quest[]>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
+  /**
+   * The realm's whole answer about one room — its ways out, the place it
+   * holds, what its lair spawns, the spell it casts on whoever stands in it.
+   *
+   * Asked on demand rather than pushed, unlike the same facts about the room
+   * the character is standing in: this is about a room on the *map* or on a
+   * route list, so which room it is changes with the pointer, and there are
+   * fifty-seven thousand of them. Null for a room the realm does not hold.
+   */
+  roomBrief(session: SessionId, map: number, room: number): Promise<RoomBrief | null>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
    * go on.

@@ -652,3 +652,39 @@ describe('a verb the realm refuses', () => {
     expect(sent).toEqual(['med', 'med']);
   });
 });
+
+/*
+ * A walk standing still before a trap names the health it wants
+ * (`Walker.restingFor`), and that figure is above `restBelow` by construction
+ * — so the module that owns resting is told it, and rests to it.
+ */
+describe('a figure a walk is waiting for', () => {
+  it('rests to it above the floor', () => {
+    const recovery = make(health({ restBelow: 0.35 }));
+    recovery.needAtLeast(111);
+    recovery.onCharacter(state({ hp: 100, hpMax: 165 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('and not once it is reached, nor once the walk lets go', () => {
+    const recovery = make(health({ restBelow: 0.35 }));
+    recovery.needAtLeast(111);
+    recovery.onCharacter(state({ hp: 111, hpMax: 165 }));
+    drain();
+    expect(sent).toEqual([]);
+    recovery.needAtLeast(null);
+    recovery.onCharacter(state({ hp: 100, hpMax: 165 }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('is forgotten on reset', () => {
+    const recovery = make(health({ restBelow: 0.35 }));
+    recovery.needAtLeast(111);
+    recovery.reset();
+    recovery.onCharacter(state({ hp: 100, hpMax: 165 }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+});

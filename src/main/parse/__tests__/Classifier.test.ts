@@ -1903,6 +1903,34 @@ describe('a player looked at', () => {
       '................'
     );
   });
+
+  /* captures/011 and captures/023, the sentence under that line. */
+  it('reads the race and class out of the description sentence', () => {
+    const g = expectType(
+      'Trickster is a massive, muscular Nekojin Ranger with no hair and black eyes.',
+      'player-described'
+    );
+    expect(g).toMatchObject({ player: 'Trickster', who: 'muscular Nekojin Ranger' });
+  });
+
+  /*
+   * captures/022: the server folds the sentence at its own width, and the fold
+   * lands after ` with ` — which is why the rule ends there and not at `eyes.`.
+   */
+  it('reads a sentence the server folded after the pair', () => {
+    const g = expectType(
+      'FourQueTwo is a massive, well built Nekojin Bard with',
+      'player-described'
+    );
+    expect(g['who']).toBe('well built Nekojin Bard');
+  });
+
+  /* A fold landing before the pair carries neither, and is left alone. */
+  it('reads nothing from a sentence folded before the pair', () => {
+    expect(classify('Youngblood is a massive, well built Goblin')?.type).not.toBe(
+      'player-described'
+    );
+  });
 });
 
 /*

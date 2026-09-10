@@ -66,6 +66,7 @@ import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
 import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
+import { roomBrief } from './world/roomBrief';
 import { SessionHost } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
@@ -1541,10 +1542,13 @@ function registerIpc(): void {
       // Routing from an unknown position would be a guess dressed as a plan.
       return { steps: [], cost: 0, blocked: true, reason: t('app.route.unknownRoom') };
     }
+    // With the alternatives a reader chooses between: this is the one route
+    // planned to be read rather than walked.
     return world.route(
       roomId(here.map, here.number),
       roomId(map, room),
-      travellerOf(session, true)
+      travellerOf(session, true),
+      { alternatives: true }
     );
   });
 
@@ -1589,7 +1593,12 @@ function registerIpc(): void {
      */
     const route = asRoute(payload);
     if (!route) return t('app.route.invalidPayload');
-    return slot.manager.walker.start(route, slot.manager.character);
+    /*
+     * Through the manager rather than straight at the walker: a route the
+     * player asked for is one of the two moments the supply list is consulted,
+     * and the shop is visited before the route is walked. See `walkRoute`.
+     */
+    return slot.manager.walkRoute(route);
   });
   handle(Invoke.stopWalk, (_caller, session: SessionId) => {
     host?.get(session)?.manager.walker.stop(t('session.walk.stoppedByPlayer'));
@@ -1983,6 +1992,13 @@ function registerIpc(): void {
       return localMap(world, roomId(map, room), asked);
     }
   );
+  handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
+    const world = worldFor(session);
+    // A realm with no world loaded knows nothing about any room, which is the
+    // same answer as a room it does not hold: the panel says so either way.
+    if (!world || world.size === 0) return null;
+    return roomBrief(world, roomId(map, room));
+  });
 
   /*
    * The four world queries that used to live here — `shopHere`, `lairHere`,
@@ -2687,6 +2703,12 @@ function build(): void {
     // And the tuning template, for the file the player hand-edits to
     // experiment: its paragraphs are documentation too.
     internalTemplate: internalTemplate(),
+    /*
+     * The shelf, for the one migration that has to recognise a loop copied off
+     * it. A function, so the lazy read above stays lazy for a client with no
+     * copied loop on disk -- and is warm for the picker where there is one.
+     */
+    loopShelf: () => loopCatalogue().all(),
     note: (message) => announce('home', message, 'log')
   });
   config = createConfig();

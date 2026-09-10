@@ -254,7 +254,10 @@ function attention(
     // character is doing, not a condition somebody has to come and look at.
     return { level: 'info', label: t('tabs.tab.markFighting') };
   }
-  if (view.walk.status === 'walking' && view.walk.hold === 'health') {
+  if (
+    view.walk.status === 'walking' &&
+    (view.walk.hold === 'health' || view.walk.hold === 'trap')
+  ) {
     return { level: 'info', label: t('tabs.tab.markRecovering') };
   }
   /*

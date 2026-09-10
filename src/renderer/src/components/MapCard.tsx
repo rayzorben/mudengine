@@ -10,7 +10,7 @@ import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@s
 import type { CharacterState } from '@shared/character';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
-import { roomId } from '@shared/world';
+import { roomId, type RoomId } from '@shared/world';
 import { roomsWithFinds, type Find } from '@shared/finds';
 
 export interface MapCardProps extends CardChrome {
@@ -55,6 +55,13 @@ export interface MapCardProps extends CardChrome {
    * plan on the wrong realm — so the action is not drawn at all.
    */
   onBuild: (() => void) | null;
+  /**
+   * A pointer came to rest on a room, or left it. Passed straight through to
+   * the picture, which owns the dwell; what opens and how long it lingers is
+   * the window's. Null on a pinned float, for `onBuild`'s reason.
+   */
+  onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
+  onPeekEnd: (() => void) | null;
 }
 
 /**
@@ -79,6 +86,8 @@ function MapCard({
   loop,
   onBuild,
   onChoose,
+  onPeek,
+  onPeekEnd,
   walk,
   ...chrome
 }: MapCardProps) {
@@ -214,6 +223,8 @@ function MapCard({
           name="map"
           onChoose={onChoose}
           onLoaded={setMap}
+          onPeek={onPeek ?? undefined}
+          onPeekEnd={onPeekEnd ?? undefined}
           onZoom={onZoom}
           finds={foundRooms}
           path={walk.path}

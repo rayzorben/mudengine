@@ -6,24 +6,35 @@ import zlib from 'node:zlib';
 
 import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty } from '../WorldGraph';
 import type { Traveller } from '../WorldGraph';
-import type { Requirement, RouteBlock } from '../../../shared/world';
-import { REQUIREMENT_KINDS, ROUTE_BLOCK_KINDS, describeBlock } from '../../../shared/world';
+import type { Requirement, RouteBlock, WorldRoom } from '../../../shared/world';
+import {
+  REQUIREMENT_KINDS,
+  ROUTE_BLOCK_KINDS,
+  describeBlock,
+  hazardAvoided,
+  lairsAlong
+} from '../../../shared/world';
 import { roomId } from '../../../shared/world';
 import { questLevel } from '../../../shared/quests';
 
 /** Writes a throwaway world file in the format `build-world.mjs` emits. */
 function makeWorld(
   rooms: Array<Record<string, unknown>>,
-  mobs?: Array<Record<string, unknown>>
+  mobs?: Array<Record<string, unknown>> | Record<string, unknown>,
+  version?: number
 ): WorldGraph {
+  // Either the mob table on its own -- which is what nearly every case here
+  // wants -- or a whole header, for the ones that need the item and spell
+  // indexes beside it.
+  const tables = Array.isArray(mobs) ? { mobs } : (mobs ?? {});
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-world-'));
   const file = path.join(dir, 'rooms.jsonl.gz');
   const header = JSON.stringify({
-    v: mobs ? 3 : 1,
+    v: version ?? (mobs ? 3 : 1),
     source: 'test',
     rooms: rooms.length,
     generatedAt: 'x',
-    ...(mobs ? { mobs } : {})
+    ...tables
   });
   const body = [header, ...rooms.map((r) => JSON.stringify(r))].join('\n') + '\n';
   fs.writeFileSync(file, zlib.gzipSync(body));
@@ -1920,6 +1931,93 @@ describe('lairs', () => {
     });
   });
 
+  /*
+   * Weighed by the rows the lair names, not by the name (todo 01, 2026-09-10).
+   * The guard post on the Hillside Path names row 224, a 100-HP gnoll scout
+   * that lands a blow in twenty-five; folded by name it was weighed as row
+   * 2204, the 830-HP one that swings four times a round, and a level-12
+   * Paladin was told the room was expected to kill it.
+   */
+  describe('weighed by the row it names', () => {
+    const weak = { a: [[1, 1, 70, 4, 15, 500, 0]], c: [] };
+    const strong = { a: [[1, 1, 150, 15, 40, 250, 0]], c: [] };
+    const rooms = [
+      { m: 1, r: 1, n: 'Guard Post', x: {}, lair: '(Max 3): 224,' },
+      { m: 1, r: 2, n: 'Barracks', x: {}, lair: '(Max 1): 2204,' },
+      { m: 1, r: 3, n: 'Gate', x: {}, lair: '(Max 2): 14,' },
+      { m: 1, r: 4, n: 'Stall', x: {}, lair: '(Max 1): 5,' }
+    ];
+    const byRow = () =>
+      makeWorld(
+        rooms,
+        {
+          mobs: [
+            {
+              n: 'gnoll scout',
+              hp: 100,
+              hi: 830,
+              i: [224, 2204],
+              d: 'h',
+              pf: [weak, strong],
+              pr: [0, 1],
+              pd: 'hh'
+            },
+            {
+              n: 'guardsman',
+              hp: 200,
+              i: [13, 14],
+              d: 'h',
+              x: 1,
+              pf: [weak],
+              pr: [0, 0],
+              pd: 'he'
+            },
+            { n: 'old man', hp: 10, i: [5], d: 'p', pf: [weak], pr: [-1], pd: 'p' }
+          ]
+        },
+        31
+      );
+
+    it('hands a lair the row’s own profile, not the fold’s worst', () => {
+      const graph = byRow();
+      expect(graph.buildMobEntity('gnoll scout').profiles).toHaveLength(2);
+      const [scout] = graph.lairEntities(graph.byId('1/1')!);
+      expect(scout?.profiles).toHaveLength(1);
+      expect(scout?.profiles?.[0]?.attacks[0]).toMatchObject({ accuracy: 70 });
+      const [veteran] = graph.lairEntities(graph.byId('1/2')!);
+      expect(veteran?.profiles?.[0]?.attacks[0]).toMatchObject({ accuracy: 150 });
+    });
+
+    it('and the row’s own disposition, certain about itself', () => {
+      const graph = byRow();
+      expect(graph.mob('guardsman')).toMatchObject({ disposition: 'hostile', uncertain: true });
+      expect(graph.lairEntities(graph.byId('1/3')!)[0]).toMatchObject({
+        disposition: 'hates-evil',
+        uncertain: false
+      });
+    });
+
+    it('reads a row that states no attack as fighting with nothing', () => {
+      expect(byRow().lairEntities(byRow().byId('1/4')!)[0]?.profiles).toEqual([]);
+    });
+
+    it('degrades to the fold on a file written before the rows were kept', () => {
+      const graph = makeWorld(
+        rooms,
+        {
+          mobs: [{ n: 'gnoll scout', hp: 100, hi: 830, i: [224, 2204], d: 'h', pf: [weak, strong] }]
+        },
+        30
+      );
+      expect(graph.lairEntities(graph.byId('1/1')!)[0]?.profiles).toHaveLength(2);
+    });
+
+    it('is empty for a room that is not a lair', () => {
+      const graph = byRow();
+      expect(graph.lairEntities({ ...graph.byId('1/1')!, lair: undefined })).toEqual([]);
+    });
+  });
+
   it('reads the Max count as a count, never as a monster', () => {
     const world = withLairs();
     // `(Max 1): 80,` — the 1 is not monster #1.
@@ -3124,6 +3222,287 @@ describe('what waits in a room prices the way through it', () => {
  * carries what the shorter way needed: the reader is told *needs the key*
  * rather than handed a walk through a door that will not open (todo 13).
  */
+describe('what a room does to whoever stands in it prices the way through it', () => {
+  /*
+   * The Silver River in miniature. Pier → River → River → Landing is the short
+   * way and every river room casts something; Pier → Street → Road → Gate →
+   * Landing is the long way and casts nothing.
+   */
+  /**
+   * `dry` rooms of dry land against two of river, so which way is cheaper
+   * turns on what the river costs rather than on the shape of the fixture.
+   */
+  const bothWays = (dry: number): Array<Record<string, unknown>> => [
+    { m: 1, r: 1, n: 'Pier', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 10 } } },
+    { m: 1, r: 2, n: 'River', sp: 753, x: { s: { m: 1, r: 1 }, n: { m: 1, r: 3 } } },
+    { m: 1, r: 3, n: 'River', sp: 753, x: { s: { m: 1, r: 2 }, n: { m: 1, r: 4 } } },
+    ...Array.from({ length: dry }, (_, index) => ({
+      m: 1,
+      r: 10 + index,
+      n: 'Street',
+      x: {
+        [index === 0 ? 'w' : 's']: { m: 1, r: index === 0 ? 1 : 9 + index },
+        [index + 1 === dry ? 'w' : 'n']: { m: 1, r: index + 1 === dry ? 4 : 11 + index }
+      }
+    })),
+    { m: 1, r: 4, n: 'Landing', x: { s: { m: 1, r: 3 }, e: { m: 1, r: 10 + dry - 1 } } }
+  ];
+  const header = {
+    items: [{ id: 690, n: 'log raft' }],
+    spells: [{ id: 753, n: 'river damage', hz: { d: 15, av: [690] } }]
+  };
+  const world = (dry = 3) => makeWorld(bothWays(dry), header, 30);
+  /** The session's own arithmetic, in miniature: damage over the bar, unless carried. */
+  const hazardFor = (graph: WorldGraph, hp: number, keys: number[]) => (room: WorldRoom) => {
+    const hazard = graph.hazardOf(room);
+    if (hazard === null || hazardAvoided(hazard, keys)) return null;
+    return (hazard.damage ?? 0) / hp;
+  };
+
+  /*
+   * The bug this is all for. `Rooms.Spell` had been in the realm file since
+   * format 13 and nothing read it, so the whole Silver River was priced at one
+   * step a room and a route from the Pier to the Gnoll Encampment went eighty-
+   * eight rooms down it rather than a hundred and four through the slums.
+   */
+  it('walked the short way for free while nothing read the room’s spell', () => {
+    const route = world().route(roomId(1, 1), roomId(1, 4), {});
+    expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
+  });
+
+  it('goes the long way round rooms that hurt', () => {
+    const graph = world();
+    const route = graph.route(roomId(1, 1), roomId(1, 4), { hazard: hazardFor(graph, 100, []) });
+    expect(route.steps.map((step) => step.name)).toEqual(['Street', 'Street', 'Street', 'Landing']);
+  });
+
+  /* And the item the realm names turns it back into a corridor. */
+  it('takes the short way again for a pack holding what stops it', () => {
+    const graph = world();
+    const route = graph.route(roomId(1, 1), roomId(1, 4), {
+      keys: [690],
+      packKnown: true,
+      hazard: hazardFor(graph, 100, [690])
+    });
+    expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
+    expect(route.hazards).toBeUndefined();
+  });
+
+  it('says on the step what the room took, and names what would stop it', () => {
+    const graph = world();
+    const route = graph.route(roomId(1, 1), roomId(1, 4), {
+      // A bar so large that the river is still the cheap way, so the route is
+      // walked and the panel has something to explain.
+      hazard: hazardFor(graph, 100_000, [])
+    });
+    expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
+    expect(route.steps[0]?.hazard).toBeCloseTo(15 / 100_000);
+    expect(route.hazards).toEqual([
+      {
+        spell: 'river damage',
+        rooms: 2,
+        share: 15 / 100_000,
+        unread: false,
+        summons: false,
+        needs: [{ id: 690, name: 'log raft' }],
+        needsSpell: []
+      }
+    ]);
+  });
+
+  /*
+   * *There is no other way* used to be asserted off the price of a single
+   * search: the router walls a deadly room rather than pruning it, so such a
+   * room is an expensive option the cheapest route happened to include. This
+   * is the search that makes the sentence checkable.
+   */
+  it('offers the way round the rooms that hurt, where there is one', () => {
+    // A bar of 300 puts the river at a twentieth each -- `otherWayShare`, so
+    // worth asking about -- and thirty rooms of dry land is dearer than that,
+    // so the router walks the river. Which is exactly the case the reader has
+    // to be told about: it chose to hurt them and used to say nothing.
+    const graph = world(30);
+    const cheap = graph.route(
+      roomId(1, 1),
+      roomId(1, 4),
+      { hazard: hazardFor(graph, 300, []) },
+      { alternatives: true }
+    );
+    expect(cheap.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
+    expect(cheap.otherWay?.steps).toHaveLength(31);
+    expect(cheap.otherWay?.steps.every((step) => step.hazard === undefined)).toBe(true);
+    // Read and chosen, never used to plan a third.
+    expect(cheap.otherWay?.otherWay).toBeUndefined();
+  });
+
+  it('offers nothing where the plan already is the way round', () => {
+    const graph = world();
+    const route = graph.route(
+      roomId(1, 1),
+      roomId(1, 4),
+      { hazard: hazardFor(graph, 100, []) },
+      { alternatives: true }
+    );
+    expect(route.steps.every((step) => step.hazard === undefined)).toBe(true);
+    expect(route.otherWay).toBeUndefined();
+  });
+
+  /*
+   * The second alternative, the one asked for by name (todo 01, 2026-09-10):
+   * *I know there is another way, through the Silvermere River, but it needs
+   * a log raft.* The way round avoids the rooms the plan priced badly and so
+   * can never find the river; this asks where the search would go with every
+   * item-stopped hazard switched off, and offers it where that is materially
+   * shorter, priced as the premise says and naming what the pack lacks.
+   */
+  describe('the way with the right items', () => {
+    const asked = (graph: WorldGraph, hp: number, keys: number[]) =>
+      graph.route(
+        roomId(1, 1),
+        roomId(1, 4),
+        { hazard: hazardFor(graph, hp, keys), keys, packKnown: true },
+        { alternatives: true }
+      );
+
+    it('offers it where it is materially shorter, priced as carried, naming the item', () => {
+      // Thirty rooms of dry land against two of river at 15 of a 100-point bar:
+      // the plan goes round, and the river is the way for a character with a raft.
+      const graph = world(30);
+      const route = asked(graph, 100, []);
+      expect(route.steps).toHaveLength(31);
+      expect(route.carrying?.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
+      expect(route.carrying?.steps.every((step) => step.hazard === undefined)).toBe(true);
+      expect(route.carrying?.hazards?.[0]?.needs).toEqual([{ id: 690, name: 'log raft' }]);
+      // Read and chosen, never used to plan a third.
+      expect(route.carrying?.carrying).toBeUndefined();
+    });
+
+    it('withholds a way that is shorter by a corner cut', () => {
+      // Eight rooms of dry land: the river saves six steps, under the floor.
+      expect(asked(world(8), 100, []).carrying).toBeUndefined();
+    });
+
+    it('offers nothing where the plan already carries what it needs', () => {
+      const route = asked(world(30), 100, [690]);
+      expect(route.steps).toHaveLength(3);
+      expect(route.carrying).toBeUndefined();
+    });
+
+    it('is not planned for a walk that is not read, and nor is the way round', () => {
+      const graph = world(30);
+      const route = graph.route(roomId(1, 1), roomId(1, 4), { hazard: hazardFor(graph, 100, []) });
+      expect(route.carrying).toBeUndefined();
+      const river = graph.route(roomId(1, 1), roomId(1, 4), { hazard: hazardFor(graph, 300, []) });
+      expect(river.steps).toHaveLength(3);
+      expect(river.otherWay).toBeUndefined();
+    });
+  });
+
+  /*
+   * A room whose own spell takes the whole bar is walled exactly as a lair
+   * expected to kill is, and has to *say so* by the same word: the head of the
+   * plan reads `deadly` off the step, and it was set from the lair alone. Down
+   * a corridor with no dry way at all, so the router has to walk it.
+   */
+  it('calls a step deadly when the room’s own spell takes the whole bar', () => {
+    const oneWay = [
+      { m: 1, r: 1, n: 'Pier', x: { n: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'River', sp: 753, x: { s: { m: 1, r: 1 }, n: { m: 1, r: 4 } } },
+      { m: 1, r: 4, n: 'Landing', x: { s: { m: 1, r: 2 } } }
+    ];
+    const graph = makeWorld(oneWay, header, 30);
+    // 15 damage against a 10-point bar: expected to die there.
+    const route = graph.route(roomId(1, 1), roomId(1, 4), { hazard: hazardFor(graph, 10, []) });
+    const river = route.steps.find((step) => step.name === 'River');
+    expect(river?.hazard).toBeCloseTo(1.5);
+    expect(river?.deadly).toBe(true);
+  });
+
+  /*
+   * **A way round is expected to be dearer, and cost was briefly the test.**
+   * Pruning can only remove options, so a way round always costs at least what
+   * the plan costs — and a plan holding a deadly room costs `wallCost`, so
+   * every alternative was refused on the one route whose panel says *and there
+   * is no other way*. What is offered instead is a way that is not deadly,
+   * whatever it costs, carrying what it needs: trading a certain death for a
+   * door somebody can go and find the key to is the choice worth putting in
+   * front of them, and it is only a choice if the door is named.
+   */
+  it('offers a walled way round a deadly one, and names what it needs', () => {
+    const graph = makeWorld(
+      [
+        { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 3 } } },
+        { m: 1, r: 2, n: 'Lair', lair: '(Max 1): 7,', x: { n: { m: 1, r: 4 } } },
+        // The dry way, behind a door this character has no key for and no
+        // skill the realm accepts instead.
+        { m: 1, r: 3, n: 'Locked Way', x: { n: { m: 1, r: 5, i: 'Key: 12' } } },
+        { m: 1, r: 5, n: 'Beyond', x: { w: { m: 1, r: 4 } } },
+        { m: 1, r: 4, n: 'Keep', x: {} }
+      ],
+      { items: [{ id: 12, n: 'brass key' }], mobs: [{ i: [7], n: 'ogre', hp: 90 }] },
+      30
+    );
+    const route = graph.route(
+      roomId(1, 1),
+      roomId(1, 4),
+      {
+        danger: (room) => (room.name === 'Lair' ? 1.4 : null),
+        packKnown: true,
+        keys: []
+      },
+      { alternatives: true }
+    );
+    expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
+    expect(lairsAlong(route.steps).deadly).toEqual({ room: '1/2', name: 'Lair' });
+    // And the client actually looked, rather than asserting the absolute.
+    expect(route.otherWay?.steps.map((step) => step.name)).toEqual([
+      'Locked Way',
+      'Beyond',
+      'Keep'
+    ]);
+    expect(route.otherWay?.blocks?.map((block) => block.kind)).toEqual(['key']);
+    expect(route.otherWay?.steps.some((step) => step.deadly === true)).toBe(false);
+  });
+
+  it('refuses a way round that is expected to kill you as well', () => {
+    const graph = makeWorld(
+      [
+        { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 3 } } },
+        { m: 1, r: 2, n: 'Lair', lair: '(Max 1): 7,', x: { n: { m: 1, r: 4 } } },
+        { m: 1, r: 3, n: 'Den', lair: '(Max 1): 7,', x: { n: { m: 1, r: 4 } } },
+        { m: 1, r: 4, n: 'Keep', x: {} }
+      ],
+      { mobs: [{ i: [7], n: 'ogre', hp: 90 }] },
+      30
+    );
+    const route = graph.route(
+      roomId(1, 1),
+      roomId(1, 4),
+      { danger: () => 1.4 },
+      { alternatives: true }
+    );
+    expect(lairsAlong(route.steps).deadly).not.toBeNull();
+    expect(route.otherWay).toBeUndefined();
+  });
+
+  it('offers nothing where the only way is the one that hurts', () => {
+    const oneWay = [
+      { m: 1, r: 1, n: 'Pier', x: { n: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'River', sp: 753, x: { s: { m: 1, r: 1 }, n: { m: 1, r: 4 } } },
+      { m: 1, r: 4, n: 'Landing', x: { s: { m: 1, r: 2 } } }
+    ];
+    const graph = makeWorld(oneWay, header, 30);
+    const route = graph.route(
+      roomId(1, 1),
+      roomId(1, 4),
+      { hazard: hazardFor(graph, 150, []) },
+      { alternatives: true }
+    );
+    expect(route.steps.map((step) => step.name)).toEqual(['River', 'Landing']);
+    expect(route.otherWay).toBeUndefined();
+  });
+});
+
 describe('a walkable route that crosses a wall names what the shorter way needs', () => {
   const world = (): Array<Record<string, unknown>> => [
     { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2, i: 'Key: 1124' }, e: { m: 1, r: 3 } } },

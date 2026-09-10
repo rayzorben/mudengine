@@ -8,6 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import PopupMenu from './PopupMenu';
 import { clipboardIntent, readClipboard, writeClipboard } from '../lib/clipboard';
+import { linkAt } from '../lib/linkify';
 import { t } from '../lib/i18n';
 import { measurePitch } from '../lib/fonts';
 import type { TerminalConfig } from '@shared/config';
@@ -152,7 +153,13 @@ export default function TerminalView({
    * menu was asked for, and the greyed-out state and the action cannot
    * disagree about it.
    */
-  const [menu, setMenu] = useState<{ x: number; y: number; selection: string } | null>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    selection: string;
+    /** The address the right-click landed on; see `linkUnderPointer`. */
+    link: string | null;
+  } | null>(null);
 
   /**
    * True while a selection is holding the viewport still.
@@ -948,10 +955,13 @@ export default function TerminalView({
        */
       onContextMenu={(event) => {
         event.preventDefault();
+        const term = termRef.current;
+        const mount = mountRef.current;
         setMenu({
           x: event.clientX,
           y: event.clientY,
-          selection: termRef.current?.getSelection() ?? ''
+          selection: term?.getSelection() ?? '',
+          link: term && mount ? linkUnderPointer(term, mount, event) : null
         });
       }}
     >
@@ -965,6 +975,23 @@ export default function TerminalView({
         <PopupMenu
           at={menu}
           items={[
+            /*
+             * First, and only when the click landed on one: a right-click on
+             * an address has one obvious answer, and Copy below it would copy
+             * the selection somewhere else on screen instead.
+             */
+            ...(menu.link === null
+              ? []
+              : [
+                  {
+                    label: t('terminal.contextMenu.copyLink'),
+                    icon: 'link' as const,
+                    run: () => {
+                      dismissMenu();
+                      void writeClipboard(menu.link ?? '');
+                    }
+                  }
+                ]),
             {
               label: t('terminal.contextMenu.copy'),
               icon: 'copy',
@@ -1145,6 +1172,48 @@ function underline(
       marker.dispose();
     }
   };
+}
+
+/**
+ * The web address under a right-click, or null where the pointer is not on one.
+ *
+ * `cellAnchor`'s inverse, and measured the same way: `.xterm-screen`'s box over
+ * the terminal's own column and row counts, never a pixel constant. The console
+ * draws into a grid, so there is no anchor element to ask — the answer comes
+ * from the line's own text through `linkAt`, which is the same rule the Talk
+ * card's links are cut by.
+ *
+ * **The logical line, not the row.** An address long enough to reach the right
+ * edge is one link across two rows in xterm's buffer, so the rows are joined
+ * back into the line the server sent (`isWrapped` walks both ways) and the
+ * clicked column is offset into the join. Trailing spaces are kept
+ * (`translateToString(false)`) because they are what makes a column an index.
+ */
+function linkUnderPointer(
+  term: Terminal,
+  mount: HTMLElement,
+  event: React.MouseEvent
+): string | null {
+  const screen = mount.querySelector<HTMLElement>('.xterm-screen');
+  if (!screen || term.cols === 0 || term.rows === 0) return null;
+  const rect = screen.getBoundingClientRect();
+  const column = Math.floor(((event.clientX - rect.left) / rect.width) * term.cols);
+  const row = Math.floor(((event.clientY - rect.top) / rect.height) * term.rows);
+  if (column < 0 || column >= term.cols || row < 0 || row >= term.rows) return null;
+
+  const buffer = term.buffer.active;
+  const clicked = buffer.viewportY + row;
+  let first = clicked;
+  while (buffer.getLine(first)?.isWrapped) first -= 1;
+  let text = '';
+  let offset = 0;
+  for (let at = first; ; at += 1) {
+    const line = buffer.getLine(at);
+    if (line === undefined || (at > first && !line.isWrapped)) break;
+    if (at === clicked) offset = text.length;
+    text += line.translateToString(false);
+  }
+  return linkAt(text, offset + column);
 }
 
 /**

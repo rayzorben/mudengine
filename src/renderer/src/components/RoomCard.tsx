@@ -9,13 +9,12 @@ import { exitsUnseen, lightNote } from '../lib/room';
 import Icon from './Icon';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
+import LairList, { lairCopyText, ownAlignment } from './LairList';
 import {
   DIRECTION_NAME,
   roomId,
   type Direction,
   type RoomCommand,
-  type WorldLair,
-  type WorldMob,
   type WorldShop
 } from '@shared/world';
 import { type Discovery } from '@shared/memory';
@@ -358,7 +357,9 @@ function RoomCard({
                     {
                       id: 'lair',
                       label: t('cards.room.tabs.lair'),
-                      content: <LairFace character={character} inspect={inspect} lair={lair} />,
+                      content: (
+                        <LairList inspect={inspect} lair={lair} mine={ownAlignment(character)} />
+                      ),
                       copyText: () => lairCopyText(lair)
                     }
                   ]
@@ -934,38 +935,6 @@ function Learned({
 }
 
 /**
- * How the realm ranks this character, which two of the seven monster
- * alignments decide by. Null until a `who` listing has arrived, and null
- * makes those monsters read as *unknown* rather than harmless. Stated once
- * for the occupant line and the lair, which decide the same chip from it.
- */
-function ownAlignment(character: CharacterState): Alignment | null {
-  if (character.name === null) return null;
-  const self = character.name.toLowerCase();
-  return character.online.find((entry) => entry.name.toLowerCase() === self)?.alignment ?? null;
-}
-
-/** One line per thing that can spawn, with its health, for pasting. */
-function lairCopyText(lair: WorldLair): string {
-  const head =
-    lair.max === null
-      ? t('cards.room.tabs.lair')
-      : `${t('cards.room.tabs.lair')} — ${
-          lair.max === 1
-            ? t('cards.room.lair.upTo.one')
-            : t('cards.room.lair.upTo.many', { max: lair.max })
-        }`;
-  return [head, ...lair.mobs.map((mob) => `${mob.name} — ${healthOf(mob)}`)].join('\n');
-}
-
-/** The realm's figure, or its range where rows sharing the name disagree. */
-function healthOf(mob: WorldMob): string {
-  return mob.span === undefined
-    ? t('cards.room.lair.health', { hp: mob.hp })
-    : t('cards.room.lair.healthSpan', { low: mob.span[0], high: mob.span[1] });
-}
-
-/**
  * What lives here, per the realm data.
  *
  * The room's own `Also here:` line says what is up *now*; this says what the
@@ -1082,83 +1051,6 @@ function answersCopyText(answers: RoomCommand[]): string {
       return parts.join(' ');
     })
     .join('\n');
-}
-
-function LairFace({
-  character,
-  inspect,
-  lair
-}: Pick<RoomCardProps, 'character' | 'inspect'> & { lair: WorldLair }) {
-  const mine = ownAlignment(character);
-  if (lair.mobs.length === 0) {
-    /*
-     * The realm marks this a lair and this client's data names none of what
-     * spawns here — a derivative that added monsters after the data was
-     * built. Said, because the map has already drawn the glyph and a face
-     * that quietly did not appear would read as the face being broken.
-     */
-    return <div className="empty">{t('cards.room.lair.unnamed')}</div>;
-  }
-  return (
-    <>
-      {lair.max !== null && (
-        <div className="chip-row">
-          <span className="chip quiet">
-            {lair.max === 1
-              ? t('cards.room.lair.upTo.one')
-              : t('cards.room.lair.upTo.many', { max: lair.max })}
-          </span>
-        </div>
-      )}
-      <dl className="readout">
-        {lair.mobs.map((mob) => {
-          const sure = attacksOnSight(mob.disposition, mine);
-          return (
-            <Fragment key={mob.name}>
-              <dt>
-                {inspect ? (
-                  <button
-                    className="occupant mob lookup"
-                    onClick={(event) => inspect(mob.name, event.currentTarget)}
-                    onMouseDown={keepFocus}
-                    title={t('cards.room.itemLookupTooltip')}
-                    type="button"
-                  >
-                    {mob.name}
-                  </button>
-                ) : (
-                  <span className="occupant mob">{mob.name}</span>
-                )}
-              </dt>
-              <dd>
-                {healthOf(mob)}
-                {/* The same words the occupant line uses, so a lair reads as
-                    the room it is: hostile in words, uncertain with a mark. */}
-                {sure === true && (
-                  <span className={`chip warn${mob.uncertain ? ' quiet' : ''}`}>
-                    {mob.uncertain
-                      ? t('cards.room.occupant.hostileUncertainChip')
-                      : t('cards.realm.facet.hostile')}
-                  </span>
-                )}
-                {mob.disposition !== null && sure !== true && (
-                  <span className="chip quiet">{DISPOSITION_WORD[mob.disposition]}</span>
-                )}
-                {mob.costly !== 'never' && (
-                  <span className="chip quiet">
-                    {mob.costly === 'always'
-                      ? t('cards.room.occupant.alignCostChip')
-                      : t('cards.room.occupant.alignCostUncertainChip')}
-                  </span>
-                )}
-              </dd>
-            </Fragment>
-          );
-        })}
-      </dl>
-      <div className="aside">{t('cards.room.lair.aside')}</div>
-    </>
-  );
 }
 
 export default memo(RoomCard);

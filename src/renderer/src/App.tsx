@@ -46,6 +46,8 @@ import SessionCard from './components/SessionCard';
 import SessionTerminal from './components/SessionTerminal';
 import ReferenceCard from './components/ReferenceCard';
 import ReferencePopover, { type Asked } from './components/ReferencePopover';
+import RoomQuickView, { type RoomAsked } from './components/RoomQuickView';
+import { ownAlignment } from './components/LairList';
 import TabRail, { type RailSide } from './components/TabRail';
 
 /** How the panes divide the slate. */
@@ -131,6 +133,7 @@ import type { CombatTally } from '@shared/tally';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import type { Block } from '@shared/blocks';
+import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
 import type { Find } from '@shared/finds';
 import type { Addressed, ResetNotice } from '@shared/ipc';
@@ -364,6 +367,27 @@ function missed(
 const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
 
 /** Keeps a log bounded without reallocating it on every append. */
+/**
+ * Where a room's quick view hangs, from whatever named the room.
+ *
+ * A row of the route list is an `HTMLElement` and anchors as itself. A room on
+ * a map is an SVG group, and `PopoverAnchor`'s element half is an
+ * `HTMLElement` for the placement arithmetic it does — so it anchors as a box
+ * and the element it was measured in, the same shape a word in the console
+ * takes and for the same reason: xterm paints cells, and neither has an
+ * `HTMLElement` of its own. `within` is the picture's box, whichever picture —
+ * the Map card's window or the route panel's plan — so a scroll of what is
+ * underneath it dismisses and a scroll of anything else does not.
+ */
+function roomAnchor(at: Element): PopoverAnchor {
+  if (at instanceof HTMLElement) return at;
+  const within = at.closest('.map-view, .route-map');
+  return {
+    box: at.getBoundingClientRect(),
+    within: within instanceof HTMLElement ? within : document.body
+  };
+}
+
 function capped<T>(log: T[], entry: T, limit: number): T[] {
   const next = [...log, entry];
   return next.length > limit ? next.slice(-limit) : next;
@@ -408,6 +432,13 @@ interface CardContext {
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
+  /**
+   * A room pointed at on the map, and the pointer leaving it. Null for a
+   * character not shown, for `chooseOnMap`'s reason: the panel asks that
+   * character's realm and a float belongs to somebody else.
+   */
+  peekRoom: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
+  endPeek: (() => void) | null;
   /** The same panel from a `map/room` string, which is how the realm writes it. */
   goToRoom(room: string): void;
   /**
@@ -611,6 +642,12 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // The map's rooms stay drawn as they are on a float; with no panel to
           // open for that character, the click is answered by nothing.
           onChoose={ctx.chooseOnMap ?? NO_CHOICE}
+          /* A pointer resting on a room opens the realm's answer about it —
+             including what its lair spawns, which is the question the glyph has
+             raised since the map was drawn. Null on a float, which has no realm
+             of its own to ask. */
+          onPeek={ctx.peekRoom}
+          onPeekEnd={ctx.endPeek}
           walk={view.walk}
         />
       );
@@ -1078,6 +1115,19 @@ export default function App() {
    * Escape means.
    */
   const [gangFlyout, setGangFlyout] = useState<GangAsked | null>(null);
+  /**
+   * The room quick view: which room, where its panel hangs, and whether a
+   * click nailed it down.
+   *
+   * The fourth panel, on the same one-at-a-time terms as the other three. What
+   * is different is how it opens: a pointer resting on a room rather than a
+   * click on a name, so it also carries `settled` — a hovered panel goes when
+   * the pointer leaves it and the room, and a clicked one stays until it is
+   * dismissed like any other.
+   */
+  const [peek, setPeek] = useState<RoomAsked | null>(null);
+  /** The linger: the pointer has left, and the panel goes unless it comes back. */
+  const linger = useRef<number | undefined>(undefined);
 
   const { config, path: configPath, loadedAt } = useConfig();
   const [internalConfig, setInternalConfig] = useState<InternalConfig>(DEFAULT_INTERNAL);
@@ -2068,7 +2118,7 @@ export default function App() {
       // Facts, read two more ways. Nothing is asked of the server for either:
       // both are second views of the block feed the terminal already carries.
       api.onBlock(({ session: id, payload }) => {
-        const conversation = payload.domain === 'conversation';
+        const conversation = isTalkBlock(payload);
         // Cheap first: most lines are neither, and reaching into the character's
         // state for every one of them would put work on the block feed's hot
         // path for nothing.
@@ -2763,9 +2813,41 @@ export default function App() {
     (map: number, room: number, radius?: number) => api.localMap(session, map, room, radius),
     [api, session]
   );
+  /**
+   * The realm's whole answer about one room, for the quick view.
+   *
+   * Addressed like every other world query: two characters may be on two
+   * realms, and a room id means different rooms on each.
+   */
+  const loadRoomBrief = useCallback(
+    (room: RoomId) => {
+      const at = asRoomReference(room);
+      // A room id that is not a `map/room` pair names no room at all, which is
+      // the same answer as a realm that does not hold it.
+      return at === null ? Promise.resolve(null) : api.roomBrief(session, at.map, at.room);
+    },
+    [api, session]
+  );
   /** Who this character is, for deciding what the pack may put on. */
   const loadWearer = useCallback(() => api.wearer(session), [api, session]);
   const lookupName = useCallback((query: string) => api.lookup(session, query), [api, session]);
+  /** The pointer reached the panel: it is being read, so it stays. */
+  const holdPeek = useCallback(() => window.clearTimeout(linger.current), []);
+  const dismissPeek = useCallback(() => {
+    window.clearTimeout(linger.current);
+    setPeek(null);
+  }, []);
+  useEffect(() => () => window.clearTimeout(linger.current), []);
+  /*
+   * And it goes when the character does. The panel hangs off the map, which
+   * stays on screen through a tab switch — so a room read on one character's
+   * realm would have been redrawn from the *next* character's, under the same
+   * `map/room` badge and possibly a different world entirely. Every other
+   * panel is addressed at the session it was opened from; this one is opened
+   * from the shown character's map, so switching is the dismissal.
+   */
+  useEffect(() => dismissPeek(), [session, dismissPeek]);
+
   /**
    * A name clicked on a card, asking what the realm knows about it.
    *
@@ -2774,11 +2856,15 @@ export default function App() {
    * screen is the wrong shape for that. Stamped so the same name clicked
    * twice still lands; the second click replaces the first panel.
    */
-  const inspect = useCallback((name: string, anchor: HTMLElement) => {
-    setFlyout(null);
-    setGangFlyout(null);
-    setAsked({ name, anchor });
-  }, []);
+  const inspect = useCallback(
+    (name: string, anchor: HTMLElement) => {
+      setFlyout(null);
+      setGangFlyout(null);
+      dismissPeek();
+      setAsked({ name, anchor });
+    },
+    [dismissPeek]
+  );
   const dismissAsked = useCallback(() => setAsked(null), []);
   /** A probe asked for from a card, through the arbiter. */
   const ask = useCallback(
@@ -2791,11 +2877,15 @@ export default function App() {
    * A name clicked in the console. The console has no element to anchor to
    * — xterm paints cells — so it hands up the box of the cells instead.
    */
-  const inspectAt = useCallback((name: string, anchor: PopoverAnchor) => {
-    setFlyout(null);
-    setGangFlyout(null);
-    setAsked({ name, anchor });
-  }, []);
+  const inspectAt = useCallback(
+    (name: string, anchor: PopoverAnchor) => {
+      setFlyout(null);
+      setGangFlyout(null);
+      dismissPeek();
+      setAsked({ name, anchor });
+    },
+    [dismissPeek]
+  );
 
   /**
    * A name clicked on a listing: open the Player flyout on that person, beside
@@ -2808,11 +2898,15 @@ export default function App() {
    * an item, and vice versa, because two panels hanging off two names is two
    * things to put away and no way to tell which Escape means.
    */
-  const selectPlayer = useCallback((sid: SessionId, name: string, anchor: PopoverAnchor) => {
-    setAsked(null);
-    setGangFlyout(null);
-    setFlyout({ session: sid, name, anchor });
-  }, []);
+  const selectPlayer = useCallback(
+    (sid: SessionId, name: string, anchor: PopoverAnchor) => {
+      setAsked(null);
+      setGangFlyout(null);
+      dismissPeek();
+      setFlyout({ session: sid, name, anchor });
+    },
+    [dismissPeek]
+  );
   const dismissFlyout = useCallback(() => setFlyout(null), []);
 
   /**
@@ -2824,11 +2918,15 @@ export default function App() {
    * because the membership is read out of *that* character's roster and
    * registry, and a pinned float belongs to somebody else.
    */
-  const selectGang = useCallback((sid: SessionId, name: string, anchor: PopoverAnchor) => {
-    setAsked(null);
-    setFlyout(null);
-    setGangFlyout({ session: sid, name, anchor });
-  }, []);
+  const selectGang = useCallback(
+    (sid: SessionId, name: string, anchor: PopoverAnchor) => {
+      setAsked(null);
+      setFlyout(null);
+      dismissPeek();
+      setGangFlyout({ session: sid, name, anchor });
+    },
+    [dismissPeek]
+  );
   const dismissGangFlyout = useCallback(() => setGangFlyout(null), []);
 
   /**
@@ -2994,6 +3092,107 @@ export default function App() {
     },
     [api, session]
   );
+
+  /**
+   * The map's one action on a room: plan the way there, which is what a
+   * room's bare click used to do on its own. One definition, because the Map
+   * card and the route panel's map are the same picture and a reader who has
+   * learnt the button on one has learnt it on the other.
+   */
+  const walkTo = useCallback(
+    (room: RoomId): RoomAsked['act'] => ({
+      label: t('cards.roomPeek.walkToButton'),
+      hint: t('cards.roomPeek.walkToTooltip'),
+      run: () => {
+        const to = asRoomReference(room);
+        setPeek(null);
+        if (to !== null) chooseOnMap(to.map, to.room);
+      }
+    }),
+    [chooseOnMap]
+  );
+  /**
+   * A pointer came to rest on a room, or clicked one: open the realm's answer
+   * about it beside the room.
+   *
+   * The map has drawn a lair glyph since the realm data was indexed and
+   * nothing could say what was in it — the Room card's face is about the room
+   * the character is *standing in*. This is that face for a room on the map,
+   * and the way there is a button on it rather than the room's bare click,
+   * which used to send a character somewhere on one mis-click.
+   *
+   * One panel at a time, like the other three: opening this puts away the
+   * realm's answer about an item, a person or a gang.
+   */
+  const peekRoom = useCallback(
+    (room: RoomId, at: SVGGElement, settled: boolean) => {
+      window.clearTimeout(linger.current);
+      setAsked(null);
+      setFlyout(null);
+      setGangFlyout(null);
+      setPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room) });
+    },
+    [walkTo]
+  );
+  /**
+   * The pointer left the room, or the panel. A hovered panel goes after the
+   * linger; a settled one — one somebody clicked — stays, because they said so.
+   *
+   * The linger exists because the panel is a thing to *read*: one that vanished
+   * while the hand was travelling the twenty pixels towards it would be
+   * unreachable by pointer.
+   */
+  const endPeek = useCallback(() => {
+    window.clearTimeout(linger.current);
+    linger.current = window.setTimeout(
+      () => setPeek((open) => (open === null || open.settled ? open : null)),
+      tuning().roomPeekLingerMs
+    );
+  }, []);
+  /**
+   * A room on a plan pointed at or clicked — a row of the route list, or a
+   * room on the panel's own map, which is the Map card's picture drawn under
+   * the head. The same panel, with the route list's own action where the room
+   * is a step of the plan: *walk here* — the plan is already on screen, and
+   * stopping short at a room is what picking one of its steps already means.
+   * A neighbour the plan does not pass through gets the map's *walk to*,
+   * which re-plans by name, in the open, rather than nothing: the picture is
+   * there to be read, and a room on it that answers for itself but cannot be
+   * gone to would be the one room on the screen that is.
+   *
+   * A row is hovered rather than clicked, so it does not take the click the
+   * row uses to pick a step; the panel therefore goes on the linger like the
+   * map's does. A room on the map settles on a click, as it does on the card.
+   */
+  const peekPlanned = useCallback(
+    (room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null) => {
+      window.clearTimeout(linger.current);
+      setAsked(null);
+      setFlyout(null);
+      setGangFlyout(null);
+      setPeek({
+        room,
+        anchor: roomAnchor(at),
+        settled,
+        // It hangs off something inside the route panel, so it is in front of
+        // that panel's scrim rather than behind it. See `RoomAsked.overDialog`.
+        overDialog: true,
+        act:
+          walkHere === null
+            ? walkTo(room)
+            : {
+                label: t('cards.roomPeek.walkHereButton'),
+                hint: t('cards.roomPeek.walkHereTooltip'),
+                run: () => {
+                  setPeek(null);
+                  walkHere();
+                }
+              }
+      });
+    },
+    [walkTo]
+  );
+
   /**
    * The same panel, opened from a `map/room` string.
    *
@@ -4397,6 +4596,8 @@ export default function App() {
         loadMap: shown ? loadMap : bound.loadMap,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
+        peekRoom: shown ? peekRoom : null,
+        endPeek: shown ? endPeek : null,
         goToRoom,
         loadQuests: bound.loadQuests,
         realmAt: loadedAt,
@@ -5115,6 +5316,23 @@ export default function App() {
       )}
 
       {/*
+        What the realm knows about a room nobody is standing in, beside the
+        room. Opened by a pointer resting on a room on the map; the way there
+        is a button on it, which is the affordance the room's bare click used
+        to be.
+      */}
+      {peek !== null && (
+        <RoomQuickView
+          asked={peek}
+          load={loadRoomBrief}
+          mine={ownAlignment(character)}
+          onDismiss={dismissPeek}
+          onPointerEnter={holdPeek}
+          onPointerLeave={endPeek}
+        />
+      )}
+
+      {/*
         One other person, beside the listing they were clicked on. Drawn from the
         clicked character's own registry and permissions, which is why it takes a
         session rather than reading the shown character's.
@@ -5181,6 +5399,11 @@ export default function App() {
         destination={routeTarget}
         onClose={closeRoute}
         onLoadMap={loadMap}
+        /* A room on the plan pointed at opens the same panel the map opens,
+           from the same query — so *four lairs on the way* can be read one
+           room at a time rather than walked into. */
+        onPeek={peekPlanned}
+        onPeekEnd={endPeek}
         onRoute={routeTo}
         onSearch={searchRooms}
         onWalk={walkRoute}

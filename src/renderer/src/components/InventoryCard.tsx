@@ -195,6 +195,7 @@ function InventoryCard({
 }: InventoryCardProps) {
   const { items } = character.inventory;
   void load;
+  const [finding, setFinding] = useState(false);
 
   /*
    * The two bulk gear controls, in the action column where every card puts
@@ -207,7 +208,7 @@ function InventoryCard({
    * somebody reaches for them; an empty pack is a card that is saying so in
    * words above them.
    */
-  const actions: CardAction[] = [];
+  const actions: CardAction[] = [findAction(finding, setFinding, chrome.returnFocus)];
   if (gear && items.length > 0) {
     actions.push({
       id: 'equip-all',
@@ -242,9 +243,11 @@ function InventoryCard({
     >
       <InventoryBody
         character={character}
+        finding={finding}
         gear={gear}
         inspect={inspect}
         loadWearer={loadWearer}
+        onFindDismiss={() => setFinding(false)}
         returnFocus={chrome.returnFocus}
         session={session}
       />
@@ -287,6 +290,38 @@ function packCopyText(character: CharacterState): string {
   ].join('\n');
 }
 
+/**
+ * The search glyph for a pack, and what it does.
+ *
+ * The Talk card's arrangement, and now the pack's: a find field standing open
+ * above a listing spends a whole row on a question nobody is asking, and this
+ * listing is the one whose rows are worth the most — a pack is read to find one
+ * thing in it. Behind the glyph the row appears when it is asked for, takes the
+ * caret, and clears itself on the way out.
+ *
+ * Written once because two cards draw the same pack: the Inventory card in its
+ * own action column, the Self card on its PACK face's. Two copies would drift.
+ */
+export function findAction(
+  finding: boolean,
+  setFinding: (open: boolean) => void,
+  returnFocus?: () => void
+): CardAction {
+  return {
+    id: 'find',
+    label: t('cards.inventory.findPlaceholder'),
+    icon: 'search',
+    run: () => {
+      if (!finding) {
+        setFinding(true);
+        return;
+      }
+      setFinding(false);
+      returnFocus?.();
+    }
+  };
+}
+
 export interface InventoryBodyProps {
   character: CharacterState;
   session: SessionId;
@@ -294,6 +329,14 @@ export interface InventoryBodyProps {
   gear?: InventoryCardProps['gear'];
   loadWearer?: InventoryCardProps['loadWearer'];
   returnFocus?: () => void;
+  /**
+   * Whether the find row is out. Driven from the search glyph in the action
+   * column — the card's, or the Self card's PACK face's — because a whole row
+   * spent on a question nobody is asking is a row this listing needs for its
+   * own contents. See `CardTableProps.findOpen`.
+   */
+  finding?: boolean;
+  onFindDismiss?(): void;
 }
 
 /**
@@ -307,7 +350,9 @@ export function InventoryBody({
   inspect,
   gear,
   loadWearer,
-  returnFocus
+  returnFocus,
+  finding,
+  onFindDismiss
 }: InventoryBodyProps) {
   const { items, keys, wealth, coins, encumbrance, encumbranceMax } = character.inventory;
   /**
@@ -627,7 +672,9 @@ export function InventoryBody({
             facetOf={(item) => item.kind ?? 'unknown'}
             facets={KIND_FACETS}
             find={t('cards.inventory.findPlaceholder')}
+            findOpen={finding}
             keyOf={(item, at) => `${item.name}-${at}`}
+            onFindDismiss={onFindDismiss}
             name="inventory"
             returnFocus={returnFocus}
             rowAttrs={(item) => ({ 'data-equipped': item.equipped ? 'true' : 'false' })}
