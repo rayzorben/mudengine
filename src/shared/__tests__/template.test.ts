@@ -1,149 +1,276 @@
 import { describe, expect, it } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import YAML from 'yaml';
 
-import { normalizeConfig, parseGuard } from '../config';
-import type { GuardField } from '../rules';
+import {
+  bandFor,
+  cellsOf,
+  evaluate,
+  GLYPH_BLANK,
+  parseExpr,
+  parseTemplate,
+  pathsIn,
+  renderTemplate,
+  toAnsi,
+  type ColourBand,
+  type Drawn,
+  type Scope
+} from '../template';
 
-const TEMPLATE = path.resolve('resources/config/default.yaml');
-const text = fs.readFileSync(TEMPLATE, 'utf8');
+const plainOf = (line: Drawn | undefined): string =>
+  (line?.segments ?? []).map((segment) => segment.text).join('');
+const draw = (template: string, scope: Scope): string[] =>
+  renderTemplate(template, scope).map((line) => plainOf(line));
 
-/*
- * The template is the documentation. Every claim in it is a claim somebody will
- * copy, and a commented example that does not load is worse than none — it
- * teaches a vocabulary the client does not have and fails silently.
- */
-describe('the options template', () => {
-  it('parses', () => {
-    expect(() => YAML.parse(text)).not.toThrow();
+const SCOPE: Scope = {
+  hp: 120,
+  hpMax: 156,
+  gang: '',
+  room: null,
+  worn: true,
+  items: [
+    { name: 'visored greathelm', weight: 120, slot: 'Head' },
+    { name: 'torch', weight: '', slot: '' }
+  ],
+  me: { level: 12, class: 'Mystic' }
+};
+
+describe('the tags', () => {
+  it('draws a figure, a nested one, and a tag it does not know as typed', () => {
+    expect(draw('{hp}/{hpMax} {me.level} {nope}', SCOPE)).toEqual(['120/156 12 {nope}']);
   });
 
-  it('loads into a configuration without falling back to defaults', () => {
-    const config = normalizeConfig(YAML.parse(text));
-    expect(config.connection.port).toBeGreaterThan(0);
-    expect(config.automation.safety.hangUp.onlyWhenClean).toBe(true);
+  it('draws an unknown figure as ? and a fact the realm lacks blank', () => {
+    expect(draw('[{room}][{gang}]', SCOPE)).toEqual(['[?][]']);
   });
 
-  /**
-   * The commented rule examples, uncommented.
-   *
-   * This is the check that would have caught `target`, `attackers`, `players`,
-   * `hostiles` and `hangUpClean` being added to the guard *type* and to the
-   * reader but not to the parser: the examples using them loaded as nothing at
-   * all, and the only symptom was a rule that never fired.
-   */
-  const examples = (): unknown => {
-    const block = text.split('# rules:')[1]?.split('rules: []')[0] ?? '';
-    const yaml =
-      'rules:\n' +
-      block
-        .split('\n')
-        .filter((line) => line.trim().startsWith('#'))
-        .map((line) => line.replace(/^\s*#\s?/, '  '))
-        .join('\n');
-    return YAML.parse(yaml);
-  };
-
-  it('has rule examples, and every one of them loads', () => {
-    const parsed = examples() as { rules?: unknown[] };
-    const written = parsed.rules?.length ?? 0;
-    expect(written).toBeGreaterThan(0);
-
-    const config = normalizeConfig({ automation: parsed });
-    // Every example survives coercion. One that does not is a rule the client
-    // silently drops, which reads exactly like a rule that never matches.
-    expect(config.automation.rules).toHaveLength(written);
+  it('draws a list as its names, a flag as a word, and a figure with a colour for its own characters', () => {
+    expect(draw('{items} {worn}', SCOPE)).toEqual(['visored greathelm, torch true']);
+    const [line] = renderTemplate('{red}a{x}b', {
+      x: { text: 'X', colour: 'green' }
+    });
+    expect(line?.segments.map((s) => [s.text, s.fg])).toEqual([
+      ['a', 'red'],
+      ['X', 'green'],
+      ['b', 'red']
+    ]);
   });
 
-  it('names only guard fields the parser accepts', () => {
-    const config = normalizeConfig({ automation: examples() });
-    for (const rule of config.automation.rules) {
-      for (const guard of rule.if) {
-        expect(parseGuard(`${guard.field} ${guard.op} ${String(guard.value)}`)).not.toBeNull();
-      }
-    }
+  it('leaves two blank cells for a glyph and places it where they start', () => {
+    const [line] = renderTemplate('ab{g}cd', {
+      g: { text: '', glyph: { icon: 'head', label: 'Head' } }
+    });
+    expect(plainOf(line)).toBe(`ab${GLYPH_BLANK}cd`);
+    expect(line?.glyphs).toEqual([{ x: 2, icon: 'head', label: 'Head' }]);
+    expect(line?.cells).toBe(6);
   });
 
-  /*
-   * Both halves of a closed union have to move together: the list the parser
-   * checks against, and the reader that answers for a field. One without the
-   * other is a field the type system accepts and the parser refuses.
-   */
-  it('documents every guard field the parser accepts, and no others', () => {
-    const documented = new Set(
-      [...text.matchAll(/^\s*#\s{16}(\w[\w.]*)\s{2,}/gm)].map((match) => match[1])
-    );
-    // The block that lists them is indented under `if`; anything it names must
-    // be a field, and every field a rule can use ought to be named there.
-    const fields: GuardField[] = [
-      'hp.percent',
-      'hp',
-      'mana.percent',
-      'mana',
-      'level',
-      'inCombat',
-      'resting',
-      'meditating',
-      'occupants',
-      'mobs',
-      'players',
-      'hostiles',
-      'hangUpClean',
-      'target',
-      'attackers',
-      'wealth',
-      'phase'
-    ];
-    for (const field of fields) {
-      expect(
-        parseGuard(`${field} == 1`),
-        `parser rejects documented field ${field}`
-      ).not.toBeNull();
-    }
-    for (const named of documented) {
-      expect(
-        parseGuard(`${named} == 1`),
-        `template documents unknown field ${named}`
-      ).not.toBeNull();
-    }
+  it('applies the filters: case, a fallback for a blank, and a width', () => {
+    expect(draw('{me.class|upper} {gang|or:-} {room|or:?} {me.class|width:3}|', SCOPE)).toEqual([
+      'MYSTIC - ? Mys|'
+    ]);
+    expect(draw('{me.class|width:8}|', SCOPE)).toEqual(['Mystic  |']);
+    // A filter the grammar lacks is a typo, drawn as typed.
+    expect(draw('{hp|shout}', SCOPE)).toEqual(['{hp|shout}']);
   });
 });
 
-/*
- * The other half of the same trap.
- *
- * The template is copied once, on first run, and never rewritten wholesale, so
- * a block added to the configuration and not to the template is one no
- * existing file will ever grow. `reconcileWithTemplate` closes that gap by
- * copying the template's own block — comments and all — into a file that lacks
- * it, which means a block the template does not state is a block it cannot
- * bring. That is exactly how automatic login shipped, was verified, and still
- * looked completely broken.
- */
-describe('the shipped options template', () => {
-  /**
-   * Assembled from the tree beside the file rather than stated in it.
-   *
-   * A realm is a directory under `realms/` with its own menus and its own
-   * loops. `AppConfig` still carries the assembled list, because everything
-   * that reads a configuration wants one complete thing — but the options file
-   * never states it, so the template must not either.
-   */
-  const ELSEWHERE = new Set(['servers']);
+describe('the styles', () => {
+  const plain = { bg: null, bold: false, dim: false };
 
-  it('states every top-level block of the configuration', () => {
-    const stated = new Set(Object.keys((YAML.parse(text) ?? {}) as Record<string, unknown>));
-    for (const key of Object.keys(normalizeConfig({}))) {
-      if (ELSEWHERE.has(key)) continue;
-      expect(stated.has(key), `the template says nothing about \`${key}\``).toBe(true);
-    }
+  it('takes a hex, a background and the attributes, and reset clears them all', () => {
+    const [line] = renderTemplate('{#ff8800}{bg:blue}{bold}{dim}x{reset}y', {});
+    expect(line?.segments).toEqual([
+      { text: 'x', fg: '#ff8800', bg: 'blue', bold: true, dim: true },
+      { text: 'y', fg: null, ...plain }
+    ]);
   });
 
-  it('does not state what lives in a directory of its own', () => {
-    const stated = new Set(Object.keys((YAML.parse(text) ?? {}) as Record<string, unknown>));
-    for (const key of ELSEWHERE) {
-      expect(stated.has(key), `the template still states \`${key}\``).toBe(false);
-    }
+  it('puts back what was in effect before when a colour or attribute is closed', () => {
+    const [line] = renderTemplate('{red}a{green}b{/green}c{/colour}d{bold}e{/bold}f', {});
+    expect(line?.segments.map((s) => [s.text, s.fg, s.bold])).toEqual([
+      ['a', 'red', false],
+      ['b', 'green', false],
+      ['c', 'red', false],
+      ['d', null, false],
+      ['e', null, true],
+      ['f', null, false]
+    ]);
+    const [ground] = renderTemplate('{bg:blue}a{/bg}b', {});
+    expect(ground?.segments.map((s) => [s.text, s.bg])).toEqual([
+      ['a', 'blue'],
+      ['b', null]
+    ]);
+  });
+
+  it('draws a colour the palette does not name as typed', () => {
+    expect(draw('{plaid}x{bg:plaid}', {})).toEqual(['{plaid}x{bg:plaid}']);
+  });
+
+  it('writes bytes the console reads: one SGR per run and a reset at the end', () => {
+    expect(
+      toAnsi([
+        { text: 'HP ', fg: 'brightWhite', bg: null, bold: true, dim: false },
+        { text: '120', fg: '#ff8800', bg: 'blue', bold: false, dim: false }
+      ])
+    ).toBe('\x1b[0;1;97mHP \x1b[0;38;2;255;136;0;44m120\x1b[0m');
+  });
+});
+
+describe('the controls', () => {
+  it('takes the first branch whose test holds, else the else', () => {
+    const template = '{if hp/hpMax >= .9}full{else if hp/hpMax >= .5}half{else}low{/if}';
+    expect(draw(template, SCOPE)).toEqual(['half']);
+    expect(draw(template, { ...SCOPE, hp: 150 })).toEqual(['full']);
+    expect(draw(template, { ...SCOPE, hp: 10 })).toEqual(['low']);
+    // An unknown maximum takes no numbered branch: the comparison is false both ways.
+    expect(draw(template, { ...SCOPE, hpMax: null })).toEqual(['low']);
+    expect(draw('{if worn}on{/if}{if gang}named{/if}{if not gang}unnamed{/if}', SCOPE)).toEqual([
+      'onunnamed'
+    ]);
+  });
+
+  it('draws a row per entry, with the row in scope and its place beside it', () => {
+    expect(draw('{for items}{n}/{rows} {name}{if last}.{else},{/if}\n{/for}', SCOPE)).toEqual([
+      '1/2 visored greathelm,',
+      '2/2 torch.'
+    ]);
+    // The outer scope stays reachable inside a row.
+    expect(draw('{for items}{name} {me.level}\n{/for}', SCOPE)).toEqual([
+      'visored greathelm 12',
+      'torch 12'
+    ]);
+    expect(draw('{for hp}x{/for}', SCOPE)).toEqual(['{for hp}x{/for}']);
+  });
+
+  it('takes no row for a line holding only controls, and keeps a blank line typed inside', () => {
+    const template = ['{for items}', '{name}', '{/for}', '', 'done'].join('\n');
+    expect(draw(template, SCOPE)).toEqual(['visored greathelm', 'torch', '', 'done']);
+    expect(draw('a\n', SCOPE)).toEqual(['a']);
+    expect(renderTemplate('   ', SCOPE)).toEqual([]);
+  });
+
+  it('lines every figure in a table up under its name, numbers flush right, the header dim', () => {
+    const template = [
+      '{table header}',
+      '{for items}',
+      '{n} {name} {weight}|',
+      '{/for}',
+      '{/table}'
+    ].join('\n');
+    const lines = renderTemplate(template, SCOPE, {
+      label: (path) => ({ n: '#', name: 'Name', weight: 'Wt' })[path] ?? path
+    });
+    // The numbers' column takes its name flush right too.
+    expect(lines.map((line) => plainOf(line))).toEqual([
+      '# Name               Wt|',
+      '1 visored greathelm 120|',
+      '2 torch                |'
+    ]);
+    expect(lines[0]?.segments[0]?.fg).toBe('brightBlack');
+    expect(lines[1]?.segments[0]?.fg).toBeNull();
+  });
+
+  it('lets a filter choose a column’s side, and pads a glyph’s column too', () => {
+    const scope: Scope = {
+      items: [
+        { name: 'ab', g: { text: '', glyph: { icon: 'head', label: 'Head' } } },
+        { name: 'abcd', g: { text: '' } }
+      ]
+    };
+    const lines = renderTemplate('{table}{for items}{name|right}|{g}|\n{/for}{/table}', scope);
+    expect(lines.map((line) => plainOf(line))).toEqual(['  ab|  |', 'abcd|  |']);
+    expect(lines[0]?.glyphs).toEqual([{ x: 5, icon: 'head', label: 'Head' }]);
+  });
+
+  it('keeps two tables apart', () => {
+    const scope: Scope = { a: [{ name: 'x' }], b: [{ name: 'longer' }] };
+    expect(
+      draw('{table}{for a}{name}|\n{/for}{/table}{table}{for b}{name}|\n{/for}{/table}', scope)
+    ).toEqual(['x|', 'longer|']);
+  });
+
+  it('says what could not be parsed, and still draws', () => {
+    const open = parseTemplate('{if hp}a{for items}b');
+    expect(open.problems).toEqual([
+      { kind: 'unclosed', tag: '{for items}' },
+      { kind: 'unclosed', tag: '{if hp}' }
+    ]);
+    expect(draw('{if hp}a{for items}b', SCOPE)).toEqual(['abb']);
+    expect(parseTemplate('a{/if}{else}').problems).toEqual([
+      { kind: 'stray', tag: '{/if}' },
+      { kind: 'stray', tag: '{else}' }
+    ]);
+    expect(draw('a{/if}', SCOPE)).toEqual(['a{/if}']);
+    expect(parseTemplate('{if hp >}x{/if}').problems).toEqual([
+      { kind: 'badTest', tag: '{if hp >}' }
+    ]);
+    expect(draw('{if hp >}x{else}y{/if}', SCOPE)).toEqual(['y']);
+  });
+
+  it('names the figure paths a template draws, controls’ bodies included', () => {
+    expect(pathsIn('{hp} {for items}{name}{if worn and hp > 1}{me.level}{/if}{/for}')).toEqual([
+      'hp',
+      'items',
+      'name',
+      'worn',
+      'hp',
+      'me.level'
+    ]);
+  });
+});
+
+describe('an expression', () => {
+  const lookup = (path: string) => {
+    const [head, ...rest] = path.split('.');
+    let value = SCOPE[head!];
+    for (const key of rest) value = (value as Scope | undefined)?.[key];
+    return value;
+  };
+
+  it('adds, compares, and reads and, or and not', () => {
+    const value = (source: string) => evaluate(parseExpr(source)!, lookup);
+    expect(value('hp / hpMax >= .5 and hp < hpMax')).toBe(true);
+    expect(value('hp + 1 * 2')).toBe(122);
+    expect(value('(hp + 1) * 2')).toBe(242);
+    expect(value('hp % 100')).toBe(20);
+    expect(value('-hp')).toBe(-120);
+    expect(value('not worn or gang == ""')).toBe(true);
+    expect(value("me.class == 'Mystic'")).toBe(true);
+    expect(value('room == null')).toBe(true);
+    expect(value('items')).toBe(2);
+  });
+
+  it('is null, never a number, for arithmetic on an unknown or a division by zero', () => {
+    const value = (source: string) => evaluate(parseExpr(source)!, lookup);
+    expect(value('room + 1')).toBeNull();
+    expect(value('hp / 0')).toBeNull();
+    expect(value('room < 1')).toBe(false);
+    expect(value('room > 1')).toBe(false);
+  });
+
+  it('refuses what it cannot read', () => {
+    expect(parseExpr('')).toBeUndefined();
+    expect(parseExpr('hp >')).toBeUndefined();
+    expect(parseExpr('(hp')).toBeUndefined();
+    expect(parseExpr('hp and')).toBeUndefined();
+    expect(parseExpr('hp $ 1')).toBeUndefined();
+  });
+});
+
+describe('the measurements', () => {
+  it('counts an emoji as two cells and a variation selector as none', () => {
+    expect(cellsOf('{nope} ❤️ 120')).toBe(13);
+  });
+
+  it('picks the highest floor a share reaches, whatever order the bands were stated in', () => {
+    const bands: ColourBand[] = [
+      { atLeast: 0, colour: 'red' },
+      { atLeast: 0.5, colour: 'yellow' },
+      { atLeast: 0.75, colour: 'green' }
+    ];
+    expect(bandFor(bands, 120, 156)).toBe('green');
+    expect(bandFor(bands, 100, 156)).toBe('yellow');
+    expect(bandFor(bands, 10, 156)).toBe('red');
+    expect(bandFor(bands, 10, null)).toBeNull();
+    expect(bandFor([], 10, 156)).toBeNull();
   });
 });
