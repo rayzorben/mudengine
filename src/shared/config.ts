@@ -42,6 +42,7 @@ import { mobKey } from './world';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
+import { isAnsiColour, type ColourBand, type StatlineDesign } from './statline';
 
 /** Chrome density, mirroring the `useDensity` preference. */
 export type DensityPreference = 'auto' | 'comfortable' | 'compact';
@@ -283,6 +284,13 @@ export interface UiConfig {
   vitals: VitalsUiConfig;
   /** What reaches the Alerts card. */
   alerts: AlertsUiConfig;
+  /**
+   * The status line this player designed, drawn in the prompt row in place of
+   * the realm's. Presentation only: the figures come from the template the
+   * client sends (`automation.statline`), which is a fact. See
+   * `src/shared/statline.ts`.
+   */
+  statline: StatlineDesign;
 }
 
 /**
@@ -1869,6 +1877,21 @@ export interface PartyConfig {
   restWithLeader: boolean;
 }
 
+/**
+ * Whether the client owns the prompt's shape.
+ *
+ * `set statline full custom <template>` puts the maximum health and mana, the
+ * experience, what the next level still costs and the purse on every prompt,
+ * on both families (`src/shared/statline.ts` composes it; measured live,
+ * 2026-09-09). Off by default: the line is a setting on the character, kept
+ * server-side, and the client does not change one unasked. Whatever the line
+ * is, the client reads it — `pro` says which, and the matcher is built from
+ * that rather than from what was sent.
+ */
+export interface StatlineConfig {
+  control: boolean;
+}
+
 export interface AutomationConfig {
   /**
    * Rules, evaluated over character state. Written against this project's own
@@ -1929,6 +1952,8 @@ export interface AutomationConfig {
   remotes: RemotesConfig;
   /** What this character does about other people, short of talking to them. */
   talk: TalkConfig;
+  /** Whether the client sets the prompt's shape on the way in. See `StatlineConfig`. */
+  statline: StatlineConfig;
   /**
    * The loops a character walks to gain levels — MegaMUD's loops.
    *
@@ -2086,7 +2111,27 @@ export const DEFAULT_CONFIG: AppConfig = {
       hp: { caution: 0.5, critical: 0.25 },
       mana: { caution: 0.5, critical: 0.25 }
     },
-    alerts: { minimum: 'info', mute: [], finds: { items: [], cashOverCopper: 0 } }
+    alerts: { minimum: 'info', mute: [], finds: { items: [], cashOverCopper: 0 } },
+    // Off; the layout is what a player starts designing from. The bands are
+    // the HUD's own shape -- a colour from a share of maximum up.
+    statline: {
+      enabled: false,
+      layout:
+        '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} ' +
+        'Exp {exp} Need {need} ${wealth}{state}> ',
+      bands: {
+        hp: [
+          { atLeast: 0.75, colour: 'brightGreen' },
+          { atLeast: 0.45, colour: 'yellow' },
+          { atLeast: 0, colour: 'brightRed' }
+        ],
+        mana: [
+          { atLeast: 0.5, colour: 'brightCyan' },
+          { atLeast: 0.25, colour: 'yellow' },
+          { atLeast: 0, colour: 'brightRed' }
+        ]
+      }
+    }
   },
   logging: {
     enabled: true,
@@ -2140,6 +2185,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Off: a look is a spent command and the server tells the person they were
     // looked at. See `TalkConfig.lookAtPlayers`.
     talk: { lookAtPlayers: false },
+    // Off: the status line is a setting kept on the character server-side,
+    // and the client does not change one unasked. See `StatlineConfig`.
+    statline: { control: false },
     // Empty is a bare Enter: the room, re-read without telling the room. See
     // `IdleConfig.command` and `REREAD_ROOM`.
     idle: { enabled: true, afterSeconds: 45, command: REREAD_ROOM },
@@ -2580,7 +2628,8 @@ export function normalizeConfig(input: unknown): AppConfig {
       showLogo: bool(ui['showLogo'], DEFAULT_CONFIG.ui.showLogo),
       console: normalizeConsoleUi(ui['console']),
       vitals: normalizeVitals(ui['vitals']),
-      alerts: normalizeAlerts(ui['alerts'])
+      alerts: normalizeAlerts(ui['alerts']),
+      statline: normalizeStatlineDesign(ui['statline'])
     },
     logging: normalizeLogging(raw['logging']),
     automation: normalizeAutomation(raw['automation'])
@@ -2681,6 +2730,34 @@ function normalizeVitals(value: unknown): VitalsUiConfig {
   return {
     hp: normalizeThresholds(raw['hp'], d.hp),
     mana: normalizeThresholds(raw['mana'], d.mana)
+  };
+}
+
+/**
+ * The designed status line, read forgivingly: a band naming a colour the
+ * palette lacks, or a floor that is not a number, is dropped rather than
+ * failing the block; the floors are fractions, spelled as the vitals bands
+ * are. A stated empty list is empty — no colour is a legitimate design.
+ * Exported because the settings draft parses the same payload.
+ */
+export function normalizeStatlineDesign(value: unknown): StatlineDesign {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.ui.statline;
+  const rawBands = isRecord(raw['bands']) ? raw['bands'] : {};
+  const bands = (list: unknown, fallback: readonly ColourBand[]): ColourBand[] => {
+    if (!Array.isArray(list)) return fallback.map((band) => ({ ...band }));
+    const out: ColourBand[] = [];
+    for (const entry of list.slice(0, 8)) {
+      if (!isRecord(entry) || !isAnsiColour(entry['colour'])) continue;
+      out.push({ atLeast: fraction(entry['atLeast'], 0), colour: entry['colour'] });
+    }
+    return out.sort((a, b) => b.atLeast - a.atLeast);
+  };
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    // Not trimmed: a space before the caret is part of a design.
+    layout: typeof raw['layout'] === 'string' ? raw['layout'].slice(0, 200) : d.layout,
+    bands: { hp: bands(rawBands['hp'], d.bands.hp), mana: bands(rawBands['mana'], d.bands.mana) }
   };
 }
 
@@ -3065,6 +3142,12 @@ function normalizeAutomation(value: unknown): AutomationConfig {
       lookAtPlayers: bool(
         isRecord(raw['talk']) ? raw['talk']['lookAtPlayers'] : undefined,
         d.talk.lookAtPlayers
+      )
+    },
+    statline: {
+      control: bool(
+        isRecord(raw['statline']) ? raw['statline']['control'] : undefined,
+        d.statline.control
       )
     },
     loops: asLoops(raw['loops']),

@@ -9167,6 +9167,31 @@ tr:hover .row-action.worn,
 }
 
 /*
+ * The designed status line, as the console will draw it: the console's own
+ * face and ground (the colours are inline, from the palette the console
+ * wears), one row that never wraps, scrolled rather than folded so the cell
+ * count beside it stays true. Chrome, so a radius is allowed.
+ */
+/* A band is a floor, a colour and a remove beside them: a control row, in
+   which the two fields still stack label over control and share the width. */
+.statline-band > .settings-field {
+  display: grid;
+  flex: 1 1 0;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-form .statline-preview {
+  border-radius: 4px;
+  display: block;
+  font-family: var(--font-terminal, var(--font-dos));
+  line-height: 1.4;
+  overflow-x: auto;
+  padding: 6px 8px;
+  white-space: pre;
+}
+
+/*
  * Prose stops at a measure, and the fields do not.
  *
  * The two want opposite things from a wide dialog. A field grid *wants* the

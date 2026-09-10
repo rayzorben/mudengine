@@ -574,7 +574,7 @@ export class SessionHost {
   reconfigure(): void {
     for (const slot of this.slots.values()) {
       const config = this.options.configFor(slot.id);
-      slot.manager.configure(config.automation, config.connection.login);
+      slot.manager.configure(config.automation, config.connection.login, config.ui.statline);
       slot.manager.configureInternal(this.options.internal());
     }
   }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { asShippedWorld } from '@shared/worlds';
+import type { StatlineDesign, StatlineFigures } from '@shared/statline';
+import type { TerminalPalette } from '@shared/themes';
 import Icon from './Icon';
 import FormField, {
   CheckField,
@@ -18,6 +20,7 @@ import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoopSection from './LoopSection';
 import RemoteList from './RemoteList';
+import StatlineDesigner from './StatlineDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -247,6 +250,13 @@ export interface SettingsScreenProps {
    */
   maximaFor(session: SessionId): { hpMax: number | null; manaMax: number | null };
   /**
+   * The figures the designed status line is previewed with — the character's
+   * own while it is in the realm, else null and the designer draws a sample.
+   */
+  figuresFor(session: SessionId): StatlineFigures | null;
+  /** The console's palette, which that preview is drawn against. */
+  palette: TerminalPalette;
+  /**
    * There is nowhere to go back to, so there is no way out of this screen.
    *
    * A client with no characters exists only to make one: there is no console,
@@ -365,7 +375,8 @@ const SECTIONS = [
   'movement',
   'remotes',
   'talk',
-  'alerts'
+  'alerts',
+  'statline'
 ] as const;
 type Section = (typeof SECTIONS)[number];
 const SECTION_LABEL: Record<Section, string> = {
@@ -378,7 +389,8 @@ const SECTION_LABEL: Record<Section, string> = {
   movement: t('settings.tabs.movement'),
   remotes: t('settings.tabs.remotes'),
   talk: t('settings.tabs.talk'),
-  alerts: t('settings.tabs.alerts')
+  alerts: t('settings.tabs.alerts'),
+  statline: t('settings.tabs.statline')
 };
 
 interface CharacterForm {
@@ -528,6 +540,10 @@ interface CharacterForm {
   /** Whether this character answers another player's `@` commands. */
   answerRemotes: boolean;
   lookAtPlayers: boolean;
+  /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
+  statlineControl: boolean;
+  /** The status line this player designed — `ui.statline`. */
+  statlineDesign: StatlineDesign;
   /** Whether the gang's own channel is one of the channels it answers on. */
   remoteGangpath: boolean;
   /** What anybody in this character's gang may ask for. */
@@ -656,7 +672,9 @@ function formOf(entry: ProfileEditable): CharacterForm {
     remoteGang: [...entry.remotes.gang],
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
-    lookAtPlayers: entry.talk.lookAtPlayers
+    lookAtPlayers: entry.talk.lookAtPlayers,
+    statlineControl: entry.statline.control,
+    statlineDesign: entry.statlineDesign
   };
 }
 
@@ -847,7 +865,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       party: form.remoteParty,
       players: form.remotePlayers
     },
-    talk: { lookAtPlayers: form.lookAtPlayers }
+    talk: { lookAtPlayers: form.lookAtPlayers },
+    statline: { control: form.statlineControl },
+    statlineDesign: form.statlineDesign
   };
 }
 
@@ -960,6 +980,8 @@ function emptyForm(
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
   const afk = defaults?.automation.afk ?? DEFAULT_CONFIG.automation.afk;
   const talk = defaults?.automation.talk ?? DEFAULT_CONFIG.automation.talk;
+  const statline = defaults?.automation.statline ?? DEFAULT_CONFIG.automation.statline;
+  const statlineDesign = defaults?.ui.statline ?? DEFAULT_CONFIG.ui.statline;
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
   const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
@@ -1092,7 +1114,9 @@ function emptyForm(
     remoteGang: [...remotes.gang],
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
-    lookAtPlayers: talk.lookAtPlayers
+    lookAtPlayers: talk.lookAtPlayers,
+    statlineControl: statline.control,
+    statlineDesign
   };
 }
 
@@ -1154,6 +1178,8 @@ export default function SettingsScreen({
   open,
   openAt = null,
   maximaFor,
+  figuresFor,
+  palette,
   required = false,
   onClose,
   load,
@@ -1697,6 +1723,9 @@ export default function SettingsScreen({
     selected !== null && selected !== NEW_CHARACTER
       ? maximaFor(selected)
       : { hpMax: null, manaMax: null };
+  // And the whole of them, for the status line's preview; the designer draws a
+  // sample for a character that is not in the realm.
+  const figures = selected !== null && selected !== NEW_CHARACTER ? figuresFor(selected) : null;
   /*
    * A threshold field holds the percent as typed, so the figure is composed
    * from the string rather than from the stored fraction: what somebody wants
@@ -1939,6 +1968,7 @@ export default function SettingsScreen({
               <GlobalSettings
                 catalogue={catalogue}
                 draft={globalForm}
+                palette={palette}
                 scope={tab}
                 firstFieldRef={firstFieldRef}
                 realmSpells={snapshot?.realmSpells ?? []}
@@ -3128,6 +3158,29 @@ export default function SettingsScreen({
                         onChange={(value) => patch({ lookAtPlayers: value })}
                       />
                     </fieldset>
+                  )}
+
+                  {section === 'statline' && (
+                    <>
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.statline.legend')}</legend>
+                        <CheckField
+                          checked={form.statlineControl}
+                          hint={t('settings.statline.controlHint')}
+                          label={t('settings.statline.controlLabel')}
+                          name="statline-control"
+                          onChange={(value) => patch({ statlineControl: value })}
+                        />
+                        <p className="settings-note">{t('settings.statline.templateNote')}</p>
+                      </fieldset>
+                      <StatlineDesigner
+                        figures={figures}
+                        idPrefix="statline"
+                        onChange={(next) => patch({ statlineDesign: next })}
+                        palette={palette}
+                        value={form.statlineDesign}
+                      />
+                    </>
                   )}
 
                   {section === 'alerts' && (

@@ -123,6 +123,7 @@ import {
 } from '@shared/config';
 import type { RemoteName } from '@shared/remotes';
 import { EMPTY_CHARACTER, ownGang, type CharacterState } from '@shared/character';
+import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
@@ -1312,6 +1313,15 @@ export default function App() {
     (id: SessionId): { hpMax: number | null; manaMax: number | null } => {
       const vitals = views[id]?.character.vitals;
       return { hpMax: vitals?.hpMax ?? null, manaMax: vitals?.manaMax ?? null };
+    },
+    [views]
+  );
+  // The designed status line's preview draws the character's own figures only
+  // while it is in the realm; anything else is a sample, not a set of dashes.
+  const figuresFor = useCallback(
+    (id: SessionId): StatlineFigures | null => {
+      const character = views[id]?.character;
+      return character && character.phase === 'in-game' ? figuresOf(character) : null;
     },
     [views]
   );
@@ -5207,6 +5217,8 @@ export default function App() {
         deleteServer={settingsApi.deleteServer}
         load={settingsApi.load}
         maximaFor={maximaFor}
+        figuresFor={figuresFor}
+        palette={consoleTheme.terminal}
         onClose={closeSettings}
         open={settingsOpen}
         openAt={settingsAt}

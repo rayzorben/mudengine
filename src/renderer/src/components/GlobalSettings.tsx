@@ -11,6 +11,7 @@ import FormField, { CheckField, NumberField, SelectField, TextField } from './Fo
 import RemoteList from './RemoteList';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
+import StatlineDesigner from './StatlineDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -24,7 +25,7 @@ import {
 import type { GlobalDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
-import { THEME_IDS, THEMES, themesOfAppearance } from '@shared/themes';
+import { THEME_IDS, THEMES, themesOfAppearance, type TerminalPalette } from '@shared/themes';
 import { NOTICE_CHANNELS, type Severity } from '@shared/notifications';
 import type { StreamEncoding } from '@shared/types';
 
@@ -83,6 +84,8 @@ export interface GlobalSettingsProps {
    * passes that character's book instead.
    */
   realmSpells: readonly SpellOption[];
+  /** The console's palette, which the status line's preview is drawn against. */
+  palette: TerminalPalette;
   /**
    * The way back and how the saving is going, drawn by the screen that owns
    * both. There is no Save button: this file exists, so every change to it is
@@ -104,7 +107,17 @@ export type GlobalScope = 'client' | 'defaults';
  */
 const SECTIONS: Record<GlobalScope, readonly Section[]> = {
   client: ['appearance', 'records'],
-  defaults: ['realm', 'combat', 'health', 'spells', 'party', 'movement', 'remotes', 'alerts']
+  defaults: [
+    'realm',
+    'combat',
+    'health',
+    'spells',
+    'party',
+    'movement',
+    'remotes',
+    'alerts',
+    'statline'
+  ]
 };
 
 type Section =
@@ -117,7 +130,8 @@ type Section =
   | 'party'
   | 'movement'
   | 'remotes'
-  | 'alerts';
+  | 'alerts'
+  | 'statline';
 
 const SECTION_LABEL: Record<Section, string> = {
   appearance: t('settings.client.tabs.appearance'),
@@ -129,7 +143,8 @@ const SECTION_LABEL: Record<Section, string> = {
   party: t('settings.tabs.party'),
   movement: t('settings.tabs.movement'),
   remotes: t('settings.tabs.remotes'),
-  alerts: t('settings.tabs.alerts')
+  alerts: t('settings.tabs.alerts'),
+  statline: t('settings.tabs.statline')
 };
 
 import {
@@ -174,6 +189,7 @@ export default function GlobalSettings({
   onToggleLoop,
   firstFieldRef,
   realmSpells,
+  palette,
   actions
 }: GlobalSettingsProps): React.JSX.Element {
   /*
@@ -2049,6 +2065,29 @@ export default function GlobalSettings({
           <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
           <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
         </fieldset>
+      )}
+
+      {shown === 'statline' && (
+        <>
+          <fieldset className="settings-menus">
+            <legend>{t('settings.statline.legend')}</legend>
+            <CheckField
+              checked={draft.automation.statline.control}
+              hint={t('settings.statline.controlHint')}
+              label={t('settings.statline.controlLabel')}
+              name="global-statline-control"
+              onChange={(value) => automation({ statline: { control: value } })}
+            />
+            <p className="settings-note">{t('settings.statline.templateNote')}</p>
+          </fieldset>
+          <StatlineDesigner
+            figures={null}
+            idPrefix="global-statline"
+            onChange={(next) => patch('ui', { statline: next })}
+            palette={palette}
+            value={draft.ui.statline}
+          />
+        </>
       )}
 
       {shown === 'alerts' && (

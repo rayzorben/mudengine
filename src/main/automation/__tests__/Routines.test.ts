@@ -4,6 +4,7 @@ import { CommandQueue } from '../CommandQueue';
 import { Routines } from '../Routines';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { SET_STATLINE } from '../../../shared/statline';
 
 /** Nothing sends: what matters here is what was *queued* and in which band. */
 function make(overrides: Partial<AutomationConfig> = {}): {
@@ -673,5 +674,44 @@ describe('looking at the people in the room', () => {
     });
     routines.onPlayersHere(['Durnan']);
     expect(looks(queue)).toEqual([]);
+  });
+});
+
+/*
+ * The prompt's shape is the client's to set and the setting is the player's:
+ * off, nothing about the status line goes out; on, the template and one `pro`
+ * go behind the entry batch, once.
+ */
+describe('owning the status line', () => {
+  const sent = (queue: CommandQueue): string[] =>
+    queue.snapshot.pending.map((intent) => intent.command);
+
+  it('sends the template and then pro, behind the entry batch, once', () => {
+    const { routines, queue } = make({ statline: { control: true } });
+    routines.onCharacter(inRealm);
+    const commands = sent(queue);
+    expect(commands.indexOf(SET_STATLINE)).toBeGreaterThan(commands.indexOf('rm'));
+    expect(commands.indexOf('pro')).toBe(commands.indexOf(SET_STATLINE) + 1);
+    routines.onCharacter(inRealm);
+    expect(sent(queue)).toEqual(commands);
+  });
+
+  it('sends neither while the setting is off, though the entry batch still goes', () => {
+    const { routines, queue } = make();
+    routines.onCharacter(inRealm);
+    const commands = sent(queue);
+    // The positive control: the transition was seen and asked its questions.
+    expect(commands).toContain('rm');
+    expect(commands).not.toContain(SET_STATLINE);
+    expect(commands).not.toContain('pro');
+  });
+
+  it("asks pro again on the tracker's word, and not with automation off", () => {
+    const { routines, queue } = make();
+    routines.askProfile();
+    expect(sent(queue)).toEqual(['pro']);
+    const off = make({ enabled: false });
+    off.routines.askProfile();
+    expect(sent(off.queue)).toEqual([]);
   });
 });

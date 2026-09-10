@@ -625,6 +625,79 @@ describe('the console keeping its own ground', () => {
   });
 });
 
+describe('owning the status line', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated after onPartyChange, off, and the designed line beside the ui block', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  showLogo: true\n' +
+        'automation:\n  enabled: true\n  onPartyChange: party\n  idle:\n    enabled: true\n',
+      'utf8'
+    );
+    migrate();
+    const file = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
+    const automation = file['automation'] as Record<string, unknown>;
+    const ui = file['ui'] as Record<string, unknown>;
+    expect(automation['statline']).toEqual({ control: false });
+    expect(ui['statline']).toEqual(DEFAULT_CONFIG.ui.statline);
+    // Where the template puts it; the other blocks the migrations add come after.
+    const keys = Object.keys(automation);
+    expect(keys.indexOf('statline')).toBe(keys.indexOf('onPartyChange') + 1);
+    expect(keys.indexOf('idle')).toBe(keys.indexOf('statline') + 1);
+    expect(said.some((m) => m.includes('automation.statline'))).toBe(true);
+  });
+
+  it("brings the template's own paragraph rather than a copy of it", () => {
+    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/set statline full custom/);
+  });
+
+  it('leaves a file that already answered it alone, twice over', () => {
+    fs.writeFileSync(home.options, 'automation:\n  statline:\n    control: true\n', 'utf8');
+    migrate();
+    migrate();
+    const automation = parse(fs.readFileSync(home.options, 'utf8')).automation as Record<
+      string,
+      unknown
+    >;
+    expect(automation['statline']).toEqual({ control: true });
+  });
+
+  const quietList = (): string[] =>
+    (
+      parse(fs.readFileSync(home.internal, 'utf8')) as {
+        terminal: { quiet: { commands: string[] } };
+      }
+    ).terminal.quiet.commands;
+
+  it('quiets pro and set on the list the client shipped, and on no other', () => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(
+      home.internal,
+      'terminal:\n  quiet:\n    enabled: true\n    commands:\n      - rm\n      - look\n',
+      'utf8'
+    );
+    migrate();
+    expect(quietList()).toEqual(['rm', 'look', 'pro', 'set']);
+    expect(said.some((m) => m.includes('pro and set'))).toBe(true);
+    // Once: the list is no longer the shipped one, so it is theirs now.
+    migrate();
+    expect(quietList()).toEqual(['rm', 'look', 'pro', 'set']);
+
+    fs.writeFileSync(
+      home.internal,
+      'terminal:\n  quiet:\n    enabled: true\n    commands:\n      - rm\n',
+      'utf8'
+    );
+    migrate();
+    expect(quietList()).toEqual(['rm']);
+  });
+});
+
 describe('the diagnostics preference', () => {
   const OPTIONS_WITH = `ui:
   # Show the HUD rail beside the console.
