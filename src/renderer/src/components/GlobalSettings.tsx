@@ -11,7 +11,7 @@ import FormField, { CheckField, NumberField, SelectField, TextField } from './Fo
 import RemoteList from './RemoteList';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
-import StatlineDesigner from './StatlineDesigner';
+import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -123,7 +123,7 @@ const SECTIONS: Record<GlobalScope, readonly Section[]> = {
     'movement',
     'remotes',
     'alerts',
-    'statline'
+    'rewrites'
   ]
 };
 
@@ -138,7 +138,7 @@ type Section =
   | 'movement'
   | 'remotes'
   | 'alerts'
-  | 'statline';
+  | 'rewrites';
 
 const SECTION_LABEL: Record<Section, string> = {
   appearance: t('settings.client.tabs.appearance'),
@@ -151,7 +151,7 @@ const SECTION_LABEL: Record<Section, string> = {
   movement: t('settings.tabs.movement'),
   remotes: t('settings.tabs.remotes'),
   alerts: t('settings.tabs.alerts'),
-  statline: t('settings.tabs.statline')
+  rewrites: t('settings.tabs.rewrites')
 };
 
 import {
@@ -2140,7 +2140,7 @@ export default function GlobalSettings({
         </fieldset>
       )}
 
-      {shown === 'statline' && (
+      {shown === 'rewrites' && (
         <>
           <fieldset className="settings-menus">
             <legend>{t('settings.statline.legend')}</legend>
@@ -2153,12 +2153,12 @@ export default function GlobalSettings({
             />
             <p className="settings-note">{t('settings.statline.templateNote')}</p>
           </fieldset>
-          <StatlineDesigner
+          <RewritesDesigner
             figures={null}
-            idPrefix="global-statline"
-            onChange={(next) => patch('ui', { statline: next })}
+            idPrefix="global-rewrites"
+            onChange={(next) => patch('ui', { rewrites: next })}
             palette={palette}
-            value={draft.ui.statline}
+            value={draft.ui.rewrites}
           />
         </>
       )}

@@ -19,7 +19,7 @@ import { t } from '../../app/i18n';
 import { PlayerBook } from '../../world/PlayerBook';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
 import { ABANDON_MS } from '../TerminalFeed';
-import type { StreamLine } from '../../../shared/types';
+import type { StreamLine, StreamChunk } from '../../../shared/types';
 import type { AutomationSnapshot } from '../../../shared/automation';
 import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
@@ -208,6 +208,47 @@ describe('SessionManager line framing', () => {
 
     await until(() => lines.some((line) => line.terminator === 'newline'));
     expect(lines.at(-1)?.plain).toBe('Obvious exits: north, south');
+  });
+
+  it('waits for the second half of a prompt the server writes in two pieces', async () => {
+    /*
+     * The bearfather BBS writes `[HP=40/40,…,S= (Resting)` and then ` ]:` a
+     * tenth of a second later — longer than the quiet period a quarter of
+     * the time (2026-09-09: 130 of 504 prompts). Flushed between the two, the
+     * halves were two lines neither of which was a status line, and every such
+     * prompt's vitals and resting state were lost. A prompt that has opened
+     * and not closed has not ended, however quiet the socket is.
+     */
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    socket.write('\x1b[0;36m[HP=40/40,MA=7/8,Exp=0,Need=2500,$=0,S= (Resting)');
+    await new Promise((resolve) => setTimeout(resolve, IDLE_FLUSH_MS * 1.5));
+    expect(lines).toHaveLength(0);
+    socket.write(' ]:');
+
+    await until(() => manager!.character.vitals.hp === 40);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.plain).toBe('[HP=40/40,MA=7/8,Exp=0,Need=2500,$=0,S= (Resting) ]:');
+    expect(manager.character.vitals.resting).toBe(true);
+  });
+
+  it('gives up on a prompt the server never finishes', async () => {
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      session: { ...DEFAULT_INTERNAL.tuning.session, promptHoldMs: IDLE_FLUSH_MS * 2 }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    socket.write('[HP=4');
+    await until(() => lines.length >= 1, IDLE_FLUSH_MS * 4);
+    expect(lines[0]?.plain).toBe('[HP=4');
+    expect(lines[0]?.terminator).toBe('flush');
   });
 
   it('releases a trailing prompt once the server goes quiet', async () => {
@@ -1639,7 +1680,10 @@ describe('the status line the player designed', () => {
     const painted: string[] = [];
     const { sink } = collect();
     manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
-    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, design);
+    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, {
+      ...DEFAULT_CONFIG.ui.rewrites,
+      statline: design
+    });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write(PROMPT);
@@ -1654,8 +1698,8 @@ describe('the status line the player designed', () => {
     const { sink, notices } = collect();
     manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
     manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, {
-      ...design,
-      layout: `${'x'.repeat(80)}{hp}`
+      ...DEFAULT_CONFIG.ui.rewrites,
+      statline: { ...design, layout: `${'x'.repeat(80)}{hp}` }
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
@@ -1663,6 +1707,57 @@ describe('the status line the player designed', () => {
     await until(() => manager!.character.vitals.hp === 100);
     expect(painted.join('')).toContain('[HP=100/150');
     expect(notices.filter((notice) => notice.includes('83'))).toHaveLength(1);
+  });
+});
+
+/*
+ * A listing the client draws itself (`ui.rewrites`): the pack's lines are
+ * withheld and the table drawn at the prompt that ends them, with the equip
+ * gate's glyph beside each row.
+ */
+describe('a listing the player has the client draw', () => {
+  it('draws the pack as a table in place of the listing, at the prompt', async () => {
+    const painted: StreamChunk[] = [];
+    const { sink } = collect();
+    manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk) });
+    // Automation off: its own `rm` on arrival opens a quiet window this host
+    // never answers, and a listing inside one is withheld as that answer.
+    manager.configure(
+      { ...DEFAULT_CONFIG.automation, enabled: false },
+      DEFAULT_CONFIG.connection.login,
+      {
+        ...DEFAULT_CONFIG.ui.rewrites,
+        inventory: { ...DEFAULT_CONFIG.ui.rewrites.inventory, enabled: true }
+      }
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.vitals.hp === 148);
+    socket.write(
+      'i\r\n' +
+        'You are carrying rope and grapple, 6 torch.\r\n' +
+        'You have the following keys: bone key.\r\n' +
+        'Wealth: 47000 copper farthings\r\n' +
+        'Encumbrance: 1744/4128 - Medium [42%]\r\n' +
+        '[HP=148/MA=5]:'
+    );
+    await until(() => manager!.character.inventory.keys.length === 1);
+    await until(() => painted.some((chunk) => chunk.text.includes('Keys:')));
+    const shown = painted.map((chunk) => chunk.text).join('');
+    const plain = shown.replace(/\x1b\[[0-9;]*m/g, '');
+    expect(plain).not.toContain('You are carrying');
+    expect(plain).toContain('Keys: bone key');
+    expect(plain).toContain('4 platinum, 70 gold');
+    expect(plain).toContain('6 torch');
+    // The header names the columns; the rows line up under them.
+    expect(plain).toMatch(/Item\s+Wt/);
+    expect(plain.indexOf('Keys:')).toBeGreaterThan(plain.indexOf('6 torch'));
+    expect(plain.lastIndexOf('[HP=148/MA=5]:')).toBeGreaterThan(plain.indexOf('Keys:'));
+    // Every carried thing carries the pack card's control, sent as the realm's verb.
+    const marks = painted.flatMap((chunk) => chunk.marks ?? []);
+    const actions = marks.flatMap((entry) => entry.mark.inline ?? []).filter((g) => g.commands);
+    expect(actions.map((g) => g.commands?.[0])).toEqual(['wear rope and grapple', 'wear torch']);
   });
 });
 

@@ -936,6 +936,32 @@ const TUNING_DEFAULTS = {
     /** Framed lines retained; the terminal keeps the real backscroll. */
     lineLogLimit: 500,
     /**
+     * How long a prompt that has opened its bracket and not closed it may
+     * keep arriving before the client stops waiting for the rest.
+     *
+     * The bearfather BBS writes its prompt in two pieces about a tenth of a
+     * second apart — `[HP=40/40,…,S= (Resting)` and then ` ]:` — and both the
+     * idle flush that frames a prompt and the hold that draws a designed one
+     * used to give up between them, so the prompt was neither read nor
+     * redrawn. Measured on 2026-09-09 over 504 split prompts: median 123ms,
+     * p99 258ms, longest 686ms. A prompt still arriving costs nothing to wait
+     * for, since nothing else can follow it on the wire until it ends, so the
+     * bound is generous; it is only what paints a prompt a server never
+     * finishes. `mudengine-wire` § Line framing is not CRLF.
+     */
+    promptHoldMs: 1000,
+    /**
+     * How long the lines of a listing the client redraws (`ui.rewrites`) are
+     * withheld while the rest of it arrives, before they are painted as sent.
+     *
+     * A listing is redrawn whole, at the status line that ends it, so its
+     * lines wait for that prompt: the idle flush frames it 150ms after the
+     * last byte, and the whole exchange is one round trip. This is the bound
+     * behind that, for a server that stalls mid-listing or never ends it —
+     * the same span a sent command waits for its acknowledgement.
+     */
+    rewriteHoldMs: 2000,
+    /**
      * Records the debug window keeps, and therefore how far back a bug report
      * reaches.
      *

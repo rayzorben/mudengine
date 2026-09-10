@@ -45,7 +45,16 @@ import { mobKey } from './world';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
-import { isAnsiColour, type ColourBand, type StatlineDesign } from './statline';
+import type { StatlineDesign } from './statline';
+import { isAnsiColour, type ColourBand } from './template';
+import {
+  DEFAULT_REWRITES,
+  REWRITE_KINDS,
+  REWRITE_SPECS,
+  REWRITE_STYLES,
+  type RewriteDesign,
+  type RewriteKind
+} from './rewrites';
 
 /** Chrome density, mirroring the `useDensity` preference. */
 export type DensityPreference = 'auto' | 'comfortable' | 'compact';
@@ -303,11 +312,17 @@ export interface UiConfig {
   /** What reaches the Alerts card. */
   alerts: AlertsUiConfig;
   /**
-   * The status line this player designed, drawn in the prompt row in place of
-   * the realm's. Presentation only: the figures come from the template the
-   * client sends (`automation.statline`), which is a fact. See
-   * `src/shared/statline.ts`.
+   * What the console draws in place of what the realm printed: the status
+   * line this player designed for the prompt row, and a listing per kind of
+   * block the client redraws with what it knows laid beside the realm's
+   * words. Presentation only, off by default. See `src/shared/rewrites.ts`.
    */
+  rewrites: RewritesUiConfig;
+}
+
+/** The status line and every listing the console may redraw, by kind. */
+export interface RewritesUiConfig extends Record<RewriteKind, RewriteDesign> {
+  /** The prompt row. See `src/shared/statline.ts`. */
   statline: StatlineDesign;
 }
 
@@ -2151,22 +2166,25 @@ export const DEFAULT_CONFIG: AppConfig = {
     alerts: { minimum: 'info', mute: [], finds: { items: [], cashOverCopper: 0 } },
     // Off; the layout is what a player starts designing from. The bands are
     // the HUD's own shape -- a colour from a share of maximum up.
-    statline: {
-      enabled: false,
-      layout:
-        '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} ' +
-        'Exp {exp} Need {need} ${wealth}{state}> ',
-      bands: {
-        hp: [
-          { atLeast: 0.75, colour: 'brightGreen' },
-          { atLeast: 0.45, colour: 'yellow' },
-          { atLeast: 0, colour: 'brightRed' }
-        ],
-        mana: [
-          { atLeast: 0.5, colour: 'brightCyan' },
-          { atLeast: 0.25, colour: 'yellow' },
-          { atLeast: 0, colour: 'brightRed' }
-        ]
+    rewrites: {
+      ...structuredClone(DEFAULT_REWRITES),
+      statline: {
+        enabled: false,
+        layout:
+          '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} ' +
+          'Exp {exp} Need {need} ${wealth}{state}> ',
+        bands: {
+          hp: [
+            { atLeast: 0.75, colour: 'brightGreen' },
+            { atLeast: 0.45, colour: 'yellow' },
+            { atLeast: 0, colour: 'brightRed' }
+          ],
+          mana: [
+            { atLeast: 0.5, colour: 'brightCyan' },
+            { atLeast: 0.25, colour: 'yellow' },
+            { atLeast: 0, colour: 'brightRed' }
+          ]
+        }
       }
     }
   },
@@ -2667,7 +2685,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       console: normalizeConsoleUi(ui['console']),
       vitals: normalizeVitals(ui['vitals']),
       alerts: normalizeAlerts(ui['alerts']),
-      statline: normalizeStatlineDesign(ui['statline'])
+      rewrites: normalizeRewrites(ui['rewrites'])
     },
     logging: normalizeLogging(raw['logging']),
     automation: normalizeAutomation(raw['automation'])
@@ -2785,7 +2803,7 @@ function normalizeVitals(value: unknown): VitalsUiConfig {
  */
 export function normalizeStatlineDesign(value: unknown): StatlineDesign {
   const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.ui.statline;
+  const d = DEFAULT_CONFIG.ui.rewrites.statline;
   const rawBands = isRecord(raw['bands']) ? raw['bands'] : {};
   const bands = (list: unknown, fallback: readonly ColourBand[]): ColourBand[] => {
     if (!Array.isArray(list)) return fallback.map((band) => ({ ...band }));
@@ -2802,6 +2820,39 @@ export function normalizeStatlineDesign(value: unknown): StatlineDesign {
     layout: typeof raw['layout'] === 'string' ? raw['layout'].slice(0, 200) : d.layout,
     bands: { hp: bands(rawBands['hp'], d.bands.hp), mana: bands(rawBands['mana'], d.bands.mana) }
   };
+}
+
+/**
+ * One listing's design, read forgivingly against its spec: only the lines
+ * the spec names are kept, a style the client lacks falls back, and a line
+ * left out takes the shipped template — a blank one stated is blank, which
+ * is how a line is turned off. Exported because the settings draft parses
+ * the same payload.
+ */
+export function normalizeRewriteDesign(kind: RewriteKind, value: unknown): RewriteDesign {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_REWRITES[kind];
+  const rawLines = isRecord(raw['lines']) ? raw['lines'] : {};
+  const lines: Record<string, string> = {};
+  for (const line of REWRITE_SPECS[kind].lines) {
+    const stated = rawLines[line.key];
+    lines[line.key] = typeof stated === 'string' ? stated.slice(0, 400) : (d.lines[line.key] ?? '');
+  }
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    style: oneOf(raw['style'], REWRITE_STYLES, d.style),
+    header: bool(raw['header'], d.header),
+    lines
+  };
+}
+
+/** The whole `ui.rewrites` block: the prompt row's design and one per listing. */
+export function normalizeRewrites(value: unknown): RewritesUiConfig {
+  const raw = isRecord(value) ? value : {};
+  const listings = Object.fromEntries(
+    REWRITE_KINDS.map((kind) => [kind, normalizeRewriteDesign(kind, raw[kind])])
+  ) as Record<RewriteKind, RewriteDesign>;
+  return { ...listings, statline: normalizeStatlineDesign(raw['statline']) };
 }
 
 /** A `{ when, send }` list, or null when the key was absent altogether. */

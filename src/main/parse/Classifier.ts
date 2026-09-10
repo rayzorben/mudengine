@@ -335,6 +335,11 @@ export class Classifier {
     private readonly spells?: (text: string) => SpellMessageHit | null
   ) {}
 
+  /** The type of the listing being collected, or null between listings. */
+  get batchType(): BlockType | null {
+    return this.batch?.rule.type ?? null;
+  }
+
   /** Records an outbound command. Not cleared on use: two lines may need it. */
   observeCommand(command: string): void {
     this.lastCommand = command.trim();

@@ -4,15 +4,7 @@ import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
 import CardTable, { type Column, type Facet } from './CardTable';
 import { keepFocus } from '../lib/focus';
-import {
-  equipBlock,
-  isWearable,
-  UNKNOWN_WEARER,
-  type EquipBlock,
-  type EquipRestrictions,
-  type GearAction,
-  type Wearer
-} from '@shared/gear';
+import { equipVerdict, UNKNOWN_WEARER, type GearAction, type Wearer } from '@shared/gear';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
@@ -130,46 +122,6 @@ export interface InventoryCardProps extends CardChrome {
    * what this client does with every control bound to nowhere.
    */
   gear?(action: GearAction, item?: string): void;
-}
-
-/**
- * Why the realm refuses this item, in words the reader can act on.
- *
- * Every branch names the *number* or the *list* rather than saying "you may
- * not": the server already says that much for free, and the whole reason to
- * draw a refusal here is to answer the question the server's answer leaves —
- * whether to wait, to train, or to sell the thing.
- *
- * A restriction whose classes the realm cannot name falls back to the bare
- * statement rather than to `#4`. That is the same call `abilityName` makes by
- * returning null: a row id shown under a heading reads as the realm's own
- * vocabulary, and it is not.
- */
-function blockReason(
-  blocked: EquipBlock,
-  classNames: Record<number, string>,
-  raceNames: Record<number, string>
-): string {
-  switch (blocked.kind) {
-    case 'class': {
-      const named = blocked.allowed
-        .map((id) => classNames[id])
-        .filter((name) => name !== undefined);
-      return named.length === blocked.allowed.length && named.length > 0
-        ? t('cards.inventory.blocked.byClass', { classList: named.join(', ') })
-        : t('cards.inventory.blocked.byClassUnnamed');
-    }
-    case 'race': {
-      const named = blocked.allowed.map((id) => raceNames[id]).filter((name) => name !== undefined);
-      return named.length === blocked.allowed.length && named.length > 0
-        ? t('cards.inventory.blocked.byRace', { raceList: named.join(', ') })
-        : t('cards.inventory.blocked.byRaceUnnamed');
-    }
-    case 'level':
-      return t('cards.inventory.blocked.byLevel', { needed: blocked.needs, have: blocked.has });
-    case 'strength':
-      return t('cards.inventory.blocked.byStrength', { needed: blocked.needs, have: blocked.has });
-  }
 }
 
 /**
@@ -459,92 +411,56 @@ export function InventoryBody({
       cell: (item) => {
         if (!gear) return null;
         /*
-         * Already on: a green plate, and pressing it takes the thing off.
-         *
-         * **Before every other test in this cell, and deliberately.** An item
-         * the character is demonstrably wearing is one that can come off
-         * whatever the realm file says about it — a lit torch is `equipped`
-         * with no `Worn` slot at all, and a private realm's own kit is exactly
-         * where the client knows nothing. Asking `isWearable` or `equipBlock`
-         * first would take the control away from the rows that most need it,
-         * over data that has already been contradicted by the pack itself.
-         *
-         * Green because it is the one row-level statement in the pack that is
-         * *in force* rather than available or refused, and the same `--ok` the
-         * rest of the client spends on a good condition rather than a third
-         * green of its own. It states as well as acts, which is why it is
-         * drawn on every worn row and not only under the pointer: the `Where`
-         * column says which slot, and this says at a glance which rows are in
-         * use at all.
+         * Decided once, in `equipVerdict`, for this cell and for the console's
+         * rewritten listing alike — a second reading of the same rules had
+         * the two disagreeing about a private realm's kit. Worn is tested
+         * first there, before anything the realm file says: a lit torch has
+         * no `Worn` slot and still comes off. Green is the one row-level
+         * statement in the pack that is *in force*, drawn on every worn row;
+         * a refusal is a `span`, not a disabled `button`, so the reason on it
+         * stays reachable from the keyboard; a thing that is not kit gets no
+         * control at all, because one could only ever earn a refusal.
          */
-        if (item.equipped) {
-          return (
-            <button
-              className="row-action worn"
-              onClick={() => gear('remove', item.name)}
-              onMouseDown={keepFocus}
-              title={t('cards.inventory.removeTooltip', { item: item.name })}
-              type="button"
-            >
-              <Icon name="shirtWorn" />
-            </button>
-          );
+        const verdict = equipVerdict(item, wearer, t);
+        switch (verdict.state) {
+          case 'worn':
+            return (
+              <button
+                className="row-action worn"
+                onClick={() => gear('remove', item.name)}
+                onMouseDown={keepFocus}
+                title={verdict.label}
+                type="button"
+              >
+                <Icon name="shirtWorn" />
+              </button>
+            );
+          case 'blocked':
+            return (
+              <span
+                aria-label={verdict.label}
+                className="row-action blocked"
+                role="img"
+                title={verdict.label}
+              >
+                <Icon name="shirtOff" />
+              </span>
+            );
+          case 'wearable':
+            return (
+              <button
+                className="row-action"
+                onClick={() => gear('equip', item.name)}
+                onMouseDown={keepFocus}
+                title={verdict.label}
+                type="button"
+              >
+                <Icon name="shirt" />
+              </button>
+            );
+          case 'none':
+            return null;
         }
-        /*
-         * The realm's half of the item, as the equip gate wants it: `slot`
-         * here is the realm's word for where the *kind* is worn, never the
-         * listing's word for where this one is — the two are different claims
-         * and `ItemEntity` keeps them apart.
-         */
-        const realm: EquipRestrictions = {
-          ...(item.realmSlot === undefined ? {} : { slot: item.realmSlot }),
-          ...(item.classes === undefined ? {} : { classes: item.classes }),
-          ...(item.races === undefined ? {} : { races: item.races }),
-          ...(item.minLevel === undefined ? {} : { minLevel: item.minLevel }),
-          ...(item.weapon === undefined ? {} : { weapon: item.weapon })
-        };
-        /*
-         * Nothing the realm gives a slot to is not kit, and a glass jug gets
-         * no control at all — there is nothing to put it on, and a button
-         * that can only ever earn a refusal is worse than none.
-         *
-         * An item the realm does not carry at all keeps its button: that is
-         * the refuse-rather-than-guess rule pointing the other way. A private
-         * realm's own item is exactly where the client knows nothing, and
-         * hiding the control would take the action away over ignorance.
-         */
-        if (realm !== undefined && !isWearable(realm)) return null;
-        const blocked = realm === undefined ? null : equipBlock(realm, wearer);
-        if (blocked !== null) {
-          /*
-           * Kit this character may not have. Drawn rather than hidden, and
-           * not clickable: *you own this and cannot use it* is a fact worth
-           * seeing — it is what decides whether to sell the thing — and the
-           * reason is on the glyph, because the alternative is spending a
-           * command to be told by the server.
-           *
-           * A `span`, not a disabled `button`: a disabled control is skipped
-           * by the keyboard, so the reason would be unreachable to anybody
-           * not using a mouse. This is a statement, so it is marked as one.
-           */
-          const why = blockReason(blocked, wearer.classNames, wearer.raceNames);
-          return (
-            <span aria-label={why} className="row-action blocked" role="img" title={why}>
-              <Icon name="shirtOff" />
-            </span>
-          );
-        }
-        return (
-          <button
-            className="row-action"
-            onClick={() => gear('equip', item.name)}
-            onMouseDown={keepFocus}
-            title={t('cards.inventory.equipTooltip', { item: item.name })}
-            type="button"
-          >
-            <Icon name="shirt" />
-          </button>
-        );
       }
     },
     {

@@ -171,40 +171,11 @@ export function readingOf(g: Record<string, string | undefined>): StatlineReadin
  * draws its own status line in their place — rendered at write time, never as
  * a transform over the buffer, so scrollback keeps whatever was drawn then.
  * The player designs the presentation; the content is the template above,
- * which is a fact. `mudengine-ui` § The status line the player designs is
- * drawn at write time, in the prompt row.
+ * which is a fact. The grammar is `template.ts`, shared with every other
+ * rewrite. `mudengine-ui` § The status line the player designs is drawn at
+ * write time, in the prompt row.
  */
-
-/** The sixteen colours a design may name, in the console's own palette. */
-export const ANSI_COLOURS = [
-  'black',
-  'red',
-  'green',
-  'yellow',
-  'blue',
-  'magenta',
-  'cyan',
-  'white',
-  'brightBlack',
-  'brightRed',
-  'brightGreen',
-  'brightYellow',
-  'brightBlue',
-  'brightMagenta',
-  'brightCyan',
-  'brightWhite'
-] as const;
-export type AnsiColour = (typeof ANSI_COLOURS)[number];
-
-export function isAnsiColour(value: unknown): value is AnsiColour {
-  return typeof value === 'string' && (ANSI_COLOURS as readonly string[]).includes(value);
-}
-
-/** A colour a figure wears from this fraction of its maximum up. */
-export interface ColourBand {
-  atLeast: number;
-  colour: AnsiColour;
-}
+import { bandFor, renderTemplate, type Cell, type ColourBand, type Segment } from './template';
 
 /**
  * What the player authored. `layout` is text with `{tags}`: a figure
@@ -228,16 +199,6 @@ export interface StatlineFigures extends StatlineReading {
   expSession: number | null;
 }
 
-/** One run of the drawn line, with the attributes it wears. */
-export interface StatlineSegment {
-  text: string;
-  /** A palette name, a `#rrggbb`, or null for the console's own ink. */
-  fg: string | null;
-  bg: string | null;
-  bold: boolean;
-  dim: boolean;
-}
-
 /**
  * The widest a drawn line may be, in cells.
  *
@@ -249,7 +210,7 @@ export interface StatlineSegment {
 export const STATLINE_MAX_CELLS = 79;
 
 /** What an unknown figure is drawn as: never a zero, which would lie. */
-const UNKNOWN = '?';
+export const UNKNOWN = '?';
 
 /** The tags a layout may draw a figure with, in the order the designer lists them. */
 export const FIGURE_TAGS = [
@@ -267,21 +228,6 @@ export const FIGURE_TAGS = [
   'expSession'
 ] as const;
 const FIGURE_TAG_SET: ReadonlySet<string> = new Set(FIGURE_TAGS);
-
-const HEX = /^#[0-9a-f]{6}$/i;
-const TAG = /\{([^{}]{1,40})\}/g;
-
-/** The band a figure sits in, highest floor first, or null while its maximum is unknown. */
-export function bandFor(
-  bands: readonly ColourBand[],
-  value: number | null,
-  max: number | null
-): AnsiColour | null {
-  if (value === null || max === null || max <= 0 || bands.length === 0) return null;
-  const share = value / max;
-  const sorted = [...bands].sort((a, b) => b.atLeast - a.atLeast);
-  return sorted.find((band) => share >= band.atLeast)?.colour ?? null;
-}
 
 function figureText(tag: string, figures: StatlineFigures): string {
   switch (tag) {
@@ -301,33 +247,6 @@ function figureText(tag: string, figures: StatlineFigures): string {
 }
 
 /**
- * Cells a string paints in a fixed grid: emoji and East Asian wide characters
- * take two, marks, joiners and variation selectors none. An approximation of
- * the terminal's own measurement, used only to hold the line under the
- * repaint's seventy-nine columns.
- */
-export function cellsOf(text: string): number {
-  let cells = 0;
-  for (const ch of text) {
-    const code = ch.codePointAt(0) ?? 0;
-    if (code === 0x200d || code === 0xfe0f || /\p{M}/u.test(ch)) continue;
-    if (/\p{Extended_Pictographic}/u.test(ch) && code > 0x2000) cells += 2;
-    else if (
-      (code >= 0x1100 && code <= 0x115f) ||
-      (code >= 0x2e80 && code <= 0xa4cf) ||
-      (code >= 0xac00 && code <= 0xd7a3) ||
-      (code >= 0xf900 && code <= 0xfaff) ||
-      (code >= 0xfe30 && code <= 0xfe4f) ||
-      (code >= 0xff00 && code <= 0xff60) ||
-      (code >= 0xffe0 && code <= 0xffe6)
-    ) {
-      cells += 2;
-    } else cells += 1;
-  }
-  return cells;
-}
-
-/**
  * The line a design draws for these figures, as runs with their attributes
  * and the cells they take, or null for an empty layout. A line wider than
  * `STATLINE_MAX_CELLS` is the caller's to refuse, with the figure in hand.
@@ -339,53 +258,18 @@ export function cellsOf(text: string): number {
 export function renderStatline(
   design: StatlineDesign,
   figures: StatlineFigures
-): { segments: StatlineSegment[]; cells: number } | null {
-  const layout = design.layout;
-  if (layout.trim().length === 0) return null;
-
-  const segments: StatlineSegment[] = [];
-  let fg: string | null = null;
-  let bg: string | null = null;
-  let bold = false;
-  let dim = false;
-  const push = (text: string, colour: string | null = fg): void => {
-    if (text.length === 0) return;
-    const last = segments[segments.length - 1];
-    if (last && last.fg === colour && last.bg === bg && last.bold === bold && last.dim === dim) {
-      last.text += text;
-    } else segments.push({ text, fg: colour, bg, bold, dim });
-  };
-
-  let at = 0;
-  for (const match of layout.matchAll(TAG)) {
-    push(layout.slice(at, match.index));
-    at = match.index + match[0].length;
-    const tag = match[1]!;
-    if (FIGURE_TAG_SET.has(tag)) {
-      const band =
-        tag === 'hp'
-          ? bandFor(design.bands.hp, figures.hp, figures.hpMax)
-          : tag === 'mana'
-            ? bandFor(design.bands.mana, figures.mana, figures.manaMax)
-            : null;
-      push(figureText(tag, figures), band ?? fg);
-    } else if (tag === 'reset') {
-      fg = null;
-      bg = null;
-      bold = false;
-      dim = false;
-    } else if (tag === 'bold') bold = true;
-    else if (tag === 'dim') dim = true;
-    else if (tag.startsWith('bg:')) {
-      const colour = tag.slice(3);
-      if (isAnsiColour(colour) || HEX.test(colour)) bg = colour;
-      else push(match[0]);
-    } else if (isAnsiColour(tag) || HEX.test(tag)) fg = tag;
-    else push(match[0]);
-  }
-  push(layout.slice(at));
-
-  return { segments, cells: cellsOf(segments.map((segment) => segment.text).join('')) };
+): { segments: Segment[]; cells: number } | null {
+  const drawn = renderTemplate(design.layout, (tag): Cell | null => {
+    if (!FIGURE_TAG_SET.has(tag)) return null;
+    const band =
+      tag === 'hp'
+        ? bandFor(design.bands.hp, figures.hp, figures.hpMax)
+        : tag === 'mana'
+          ? bandFor(design.bands.mana, figures.mana, figures.manaMax)
+          : null;
+    return { text: figureText(tag, figures), colour: band };
+  });
+  return drawn === null ? null : { segments: drawn.segments, cells: drawn.cells };
 }
 
 /**
@@ -427,33 +311,4 @@ export function withReading(known: StatlineFigures, read: StatlineReading): Stat
     wealth: read.wealth ?? known.wealth,
     state: read.state
   };
-}
-
-function sgrColour(colour: string, background: boolean): string {
-  if (isAnsiColour(colour)) {
-    const index = ANSI_COLOURS.indexOf(colour);
-    const base = index < 8 ? (background ? 40 : 30) + index : (background ? 100 : 90) + index - 8;
-    return String(base);
-  }
-  const r = Number.parseInt(colour.slice(1, 3), 16);
-  const g = Number.parseInt(colour.slice(3, 5), 16);
-  const b = Number.parseInt(colour.slice(5, 7), 16);
-  return `${background ? 48 : 38};2;${r};${g};${b}`;
-}
-
-/**
- * The runs as bytes for the console: one SGR per run, a reset at the end so
- * whatever the server prints after the prompt starts clean.
- */
-export function toAnsi(segments: readonly StatlineSegment[]): string {
-  let out = '';
-  for (const segment of segments) {
-    const codes = ['0'];
-    if (segment.bold) codes.push('1');
-    if (segment.dim) codes.push('2');
-    if (segment.fg !== null) codes.push(sgrColour(segment.fg, false));
-    if (segment.bg !== null) codes.push(sgrColour(segment.bg, true));
-    out += `\x1b[${codes.join(';')}m${segment.text}`;
-  }
-  return `${out}\x1b[0m`;
 }
