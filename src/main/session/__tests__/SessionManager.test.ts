@@ -27,7 +27,8 @@ import { NO_REALM_PLAYERS } from '../../../shared/players';
 import type { Find } from '../../../shared/finds';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
-import type { StatlineDesign } from '../../../shared/statline';
+import type { RewriteDesign } from '../../../shared/rewrites';
+import type { RewritesUiConfig } from '../../../shared/config';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -1669,21 +1670,23 @@ describe('the roster catch-up', () => {
  * refused out loud when it would not fit the row.
  */
 describe('the status line the player designed', () => {
-  const design: StatlineDesign = {
+  const design: RewriteDesign = {
+    name: 'Mine',
+    entity: 'statline',
     enabled: true,
-    layout: 'HP {hp}/{hpMax}{state}',
-    bands: { hp: [], mana: [] }
+    template: 'HP {hp}/{hpMax}{state}'
   };
+  const rewrites = (statline: RewriteDesign): RewritesUiConfig => ({
+    bands: { hp: [], mana: [] },
+    designs: [statline]
+  });
   const PROMPT = '\x1b[1;32m[HP=100/150,MA=50/50 (Resting) ]:\x1b[0m';
 
   it('draws it over the prompt the moment the prompt arrives', async () => {
     const painted: string[] = [];
     const { sink } = collect();
     manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
-    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, {
-      ...DEFAULT_CONFIG.ui.rewrites,
-      statline: design
-    });
+    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, rewrites(design));
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write(PROMPT);
@@ -1697,10 +1700,11 @@ describe('the status line the player designed', () => {
     const painted: string[] = [];
     const { sink, notices } = collect();
     manager = new SessionManager({ ...sink, data: (chunk) => painted.push(chunk.text) });
-    manager.configure(DEFAULT_CONFIG.automation, DEFAULT_CONFIG.connection.login, {
-      ...DEFAULT_CONFIG.ui.rewrites,
-      statline: { ...design, layout: `${'x'.repeat(80)}{hp}` }
-    });
+    manager.configure(
+      DEFAULT_CONFIG.automation,
+      DEFAULT_CONFIG.connection.login,
+      rewrites({ ...design, template: `${'x'.repeat(80)}{hp}` })
+    );
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write(PROMPT);
@@ -1727,7 +1731,9 @@ describe('a listing the player has the client draw', () => {
       DEFAULT_CONFIG.connection.login,
       {
         ...DEFAULT_CONFIG.ui.rewrites,
-        inventory: { ...DEFAULT_CONFIG.ui.rewrites.inventory, enabled: true }
+        designs: DEFAULT_CONFIG.ui.rewrites.designs.map((design) =>
+          design.entity === 'inventory' ? { ...design, enabled: true } : design
+        )
       }
     );
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });

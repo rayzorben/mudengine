@@ -45,16 +45,8 @@ import { mobKey } from './world';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
-import type { StatlineDesign } from './statline';
 import { isAnsiColour, type ColourBand } from './template';
-import {
-  DEFAULT_REWRITES,
-  REWRITE_KINDS,
-  REWRITE_SPECS,
-  REWRITE_STYLES,
-  type RewriteDesign,
-  type RewriteKind
-} from './rewrites';
+import { DEFAULT_REWRITES, isRewriteEntity, type RewriteDesign, type VitalBands } from './rewrites';
 
 /** Chrome density, mirroring the `useDensity` preference. */
 export type DensityPreference = 'auto' | 'comfortable' | 'compact';
@@ -312,18 +304,20 @@ export interface UiConfig {
   /** What reaches the Alerts card. */
   alerts: AlertsUiConfig;
   /**
-   * What the console draws in place of what the realm printed: the status
-   * line this player designed for the prompt row, and a listing per kind of
-   * block the client redraws with what it knows laid beside the realm's
-   * words. Presentation only, off by default. See `src/shared/rewrites.ts`.
+   * What the console draws in place of what the realm printed: the designs
+   * this player keeps, each naming the prompt row or a listing and the
+   * template it is drawn by. Presentation only, every shipped one off. See
+   * `src/shared/rewrites.ts`.
    */
   rewrites: RewritesUiConfig;
 }
 
-/** The status line and every listing the console may redraw, by kind. */
-export interface RewritesUiConfig extends Record<RewriteKind, RewriteDesign> {
-  /** The prompt row. See `src/shared/statline.ts`. */
-  statline: StatlineDesign;
+/** The designs the console may draw, and the colours a vital wears on every one. */
+export interface RewritesUiConfig {
+  /** `{hp}` and `{mana}` by their share of maximum, wherever they are drawn. */
+  bands: VitalBands;
+  /** In order; the first enabled design for an entity is the one that draws it. */
+  designs: RewriteDesign[];
 }
 
 /**
@@ -2164,28 +2158,22 @@ export const DEFAULT_CONFIG: AppConfig = {
       mana: { caution: 0.5, critical: 0.25 }
     },
     alerts: { minimum: 'info', mute: [], finds: { items: [], cashOverCopper: 0 } },
-    // Off; the layout is what a player starts designing from. The bands are
-    // the HUD's own shape -- a colour from a share of maximum up.
+    // Every design off; each is what a player starts designing from. The
+    // bands are the HUD's own shape -- a colour from a share of maximum up.
     rewrites: {
-      ...structuredClone(DEFAULT_REWRITES),
-      statline: {
-        enabled: false,
-        layout:
-          '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} ' +
-          'Exp {exp} Need {need} ${wealth}{state}> ',
-        bands: {
-          hp: [
-            { atLeast: 0.75, colour: 'brightGreen' },
-            { atLeast: 0.45, colour: 'yellow' },
-            { atLeast: 0, colour: 'brightRed' }
-          ],
-          mana: [
-            { atLeast: 0.5, colour: 'brightCyan' },
-            { atLeast: 0.25, colour: 'yellow' },
-            { atLeast: 0, colour: 'brightRed' }
-          ]
-        }
-      }
+      bands: {
+        hp: [
+          { atLeast: 0.75, colour: 'brightGreen' },
+          { atLeast: 0.45, colour: 'yellow' },
+          { atLeast: 0, colour: 'brightRed' }
+        ],
+        mana: [
+          { atLeast: 0.5, colour: 'brightCyan' },
+          { atLeast: 0.25, colour: 'yellow' },
+          { atLeast: 0, colour: 'brightRed' }
+        ]
+      },
+      designs: structuredClone(DEFAULT_REWRITES) as RewriteDesign[]
     }
   },
   logging: {
@@ -2794,17 +2782,18 @@ function normalizeVitals(value: unknown): VitalsUiConfig {
   };
 }
 
+/** The most a template may run to; a listing is a screen, not a file. */
+export const TEMPLATE_MAX_CHARS = 4000;
+
 /**
- * The designed status line, read forgivingly: a band naming a colour the
- * palette lacks, or a floor that is not a number, is dropped rather than
- * failing the block; the floors are fractions, spelled as the vitals bands
- * are. A stated empty list is empty — no colour is a legitimate design.
- * Exported because the settings draft parses the same payload.
+ * The vitals' bands, read forgivingly: a band naming a colour the palette
+ * lacks, or a floor that is not a number, is dropped rather than failing the
+ * block; the floors are fractions, spelled as the vitals thresholds are. A
+ * stated empty list is empty — no colour is a legitimate design.
  */
-export function normalizeStatlineDesign(value: unknown): StatlineDesign {
+export function normalizeBands(value: unknown): VitalBands {
   const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.ui.rewrites.statline;
-  const rawBands = isRecord(raw['bands']) ? raw['bands'] : {};
+  const d = DEFAULT_CONFIG.ui.rewrites.bands;
   const bands = (list: unknown, fallback: readonly ColourBand[]): ColourBand[] => {
     if (!Array.isArray(list)) return fallback.map((band) => ({ ...band }));
     const out: ColourBand[] = [];
@@ -2814,45 +2803,41 @@ export function normalizeStatlineDesign(value: unknown): StatlineDesign {
     }
     return out.sort((a, b) => b.atLeast - a.atLeast);
   };
+  return { hp: bands(raw['hp'], d.hp), mana: bands(raw['mana'], d.mana) };
+}
+
+/**
+ * One design, or null for an entry that names no entity the console can
+ * draw — dropped rather than guessed at, since a design drawing the wrong
+ * listing would be worse than one missing. A blank name is kept blank; the
+ * list draws the entity's word for it. The template is not trimmed: a space
+ * before the caret is part of a prompt row's design.
+ */
+export function normalizeRewriteDesign(value: unknown): RewriteDesign | null {
+  if (!isRecord(value) || !isRewriteEntity(value['entity'])) return null;
+  const template = value['template'];
   return {
-    enabled: bool(raw['enabled'], d.enabled),
-    // Not trimmed: a space before the caret is part of a design.
-    layout: typeof raw['layout'] === 'string' ? raw['layout'].slice(0, 200) : d.layout,
-    bands: { hp: bands(rawBands['hp'], d.bands.hp), mana: bands(rawBands['mana'], d.bands.mana) }
+    name: typeof value['name'] === 'string' ? value['name'].trim().slice(0, 60) : '',
+    entity: value['entity'],
+    enabled: bool(value['enabled'], false),
+    template: typeof template === 'string' ? template.slice(0, TEMPLATE_MAX_CHARS) : ''
   };
 }
 
 /**
- * One listing's design, read forgivingly against its spec: only the lines
- * the spec names are kept, a style the client lacks falls back, and a line
- * left out takes the shipped template — a blank one stated is blank, which
- * is how a line is turned off. Exported because the settings draft parses
- * the same payload.
+ * The whole `ui.rewrites` block. A stated `designs` list is the list, empty
+ * included — a player who deleted every design has none, and the shipped
+ * six return only where the key is absent altogether.
  */
-export function normalizeRewriteDesign(kind: RewriteKind, value: unknown): RewriteDesign {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_REWRITES[kind];
-  const rawLines = isRecord(raw['lines']) ? raw['lines'] : {};
-  const lines: Record<string, string> = {};
-  for (const line of REWRITE_SPECS[kind].lines) {
-    const stated = rawLines[line.key];
-    lines[line.key] = typeof stated === 'string' ? stated.slice(0, 400) : (d.lines[line.key] ?? '');
-  }
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    style: oneOf(raw['style'], REWRITE_STYLES, d.style),
-    header: bool(raw['header'], d.header),
-    lines
-  };
-}
-
-/** The whole `ui.rewrites` block: the prompt row's design and one per listing. */
 export function normalizeRewrites(value: unknown): RewritesUiConfig {
   const raw = isRecord(value) ? value : {};
-  const listings = Object.fromEntries(
-    REWRITE_KINDS.map((kind) => [kind, normalizeRewriteDesign(kind, raw[kind])])
-  ) as Record<RewriteKind, RewriteDesign>;
-  return { ...listings, statline: normalizeStatlineDesign(raw['statline']) };
+  const designs = Array.isArray(raw['designs'])
+    ? raw['designs']
+        .slice(0, 64)
+        .map(normalizeRewriteDesign)
+        .filter((design): design is RewriteDesign => design !== null)
+    : structuredClone(DEFAULT_CONFIG.ui.rewrites.designs);
+  return { bands: normalizeBands(raw['bands']), designs };
 }
 
 /** A `{ when, send }` list, or null when the key was absent altogether. */

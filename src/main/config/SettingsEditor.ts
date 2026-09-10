@@ -368,27 +368,7 @@ export class SettingsEditor {
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
           [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
-          // One row per listing, so ticking one on a character pins that one
-          // and not a copy of the whole block: *once stated, kept* would
-          // otherwise freeze the character's status line at Global's then.
-          [
-            ['ui', 'rewrites', 'statline'],
-            draft.rewrites.statline,
-            DEFAULT_CONFIG.ui.rewrites.statline
-          ],
-          [
-            ['ui', 'rewrites', 'inventory'],
-            draft.rewrites.inventory,
-            DEFAULT_CONFIG.ui.rewrites.inventory
-          ],
-          [['ui', 'rewrites', 'who'], draft.rewrites.who, DEFAULT_CONFIG.ui.rewrites.who],
-          [['ui', 'rewrites', 'shop'], draft.rewrites.shop, DEFAULT_CONFIG.ui.rewrites.shop],
-          [['ui', 'rewrites', 'party'], draft.rewrites.party, DEFAULT_CONFIG.ui.rewrites.party],
-          [
-            ['ui', 'rewrites', 'experience'],
-            draft.rewrites.experience,
-            DEFAULT_CONFIG.ui.rewrites.experience
-          ]
+          [['ui', 'rewrites', 'bands'], draft.rewrites.bands, DEFAULT_CONFIG.ui.rewrites.bands]
         ] as const) {
           if (
             creating ||
@@ -397,6 +377,23 @@ export class SettingsEditor {
           ) {
             document.setIn(at, { ...block });
           }
+        }
+
+        /*
+         * The designs are a list, and a list is replaced by an overlay, never
+         * merged — the rule the loops settled. So it is judged against what
+         * the character would *inherit*, not the shipped six: the form shows
+         * the resolved list, and writing that back unchanged would pin
+         * Global's list into the character the first time any other field
+         * was edited. Equal to the inherited list, the key goes, and the
+         * character keeps inheriting; different, the whole list is written.
+         */
+        const inherited = normalizeConfig(base).ui.rewrites.designs;
+        const designs = ['ui', 'rewrites', 'designs'];
+        if (creating || differs(draft.rewrites.designs, inherited)) {
+          document.setIn(designs, structuredClone(draft.rewrites.designs));
+        } else if (document.hasIn(designs)) {
+          document.deleteIn(designs);
         }
       },
       verify: (value) => {

@@ -1,15 +1,13 @@
 /**
  * The listings the client draws in place of the realm's.
  *
- * A rewrite takes a block the parser already reads — the pack, the roster,
- * a shop's shelf, the party, an experience line — and draws it again with
- * what the client knows laid beside it: an item's weight and figures from
- * the realm data, whether this character may put it on, what a price comes
- * to against the purse. Authored in the one template grammar (`template.ts`),
- * off by default, rendered in main at write time like the status line, so
- * what was drawn stays drawn. Every renderer here is pure: main gathers the
- * facts, this lays them out. `mudengine-ui` § The console is rewritten in one
- * grammar, and a listing is rewritten only whole.
+ * A rewrite is a design the player named: an entity — the prompt row, the
+ * pack, the roster, a shop's shelf, the party, the experience line — and one
+ * template in the grammar of `template.ts`. Main gathers the facts, this lays
+ * them out; every renderer here is pure. `ENTITY_SPECS` is the catalogue the
+ * designer's sidebar is built from, so what a template may name and what
+ * the console will resolve cannot drift apart. `mudengine-ui` § The console
+ * is rewritten in one grammar, and a listing is rewritten only whole.
  */
 import type { Denomination } from './character';
 import { DENOMINATIONS } from './character';
@@ -18,210 +16,402 @@ import type { ItemEntity } from './entities';
 import type { EquipVerdict } from './gear';
 import type { UiLookup } from './i18n';
 import { countedLabel, ITEM_KIND_WORD } from './items';
-import type { StatlineDesign } from './statline';
+import type { StatlineFigures } from './statline';
 import {
   bandFor,
-  cellsOf,
-  GLYPH_CELLS,
   renderTemplate,
   toAnsi,
-  type Cell,
+  UNKNOWN,
+  type ColourBand,
   type Drawn,
-  type Glyph
+  type Figure,
+  type Glyph,
+  type Row,
+  type Scope,
+  type Value
 } from './template';
 import type { BlockType } from './blocks';
 import type { MarkIcon, TerminalMark } from './types';
 
-export const REWRITE_KINDS = ['inventory', 'who', 'shop', 'party', 'experience'] as const;
-export type RewriteKind = (typeof REWRITE_KINDS)[number];
-
-/** Columns lined up under a header, or each line as its template reads. */
-export type RewriteStyle = 'table' | 'lines';
-export const REWRITE_STYLES: readonly RewriteStyle[] = ['table', 'lines'];
-
-/** What the player authored for one listing: a template per line the listing has. */
-export interface RewriteDesign {
-  enabled: boolean;
-  style: RewriteStyle;
-  /** Whether a table names its columns on a first row. */
-  header: boolean;
-  lines: Record<string, string>;
-}
-
-export interface RewriteLineSpec {
-  key: string;
-  /** Drawn once per row of the listing, rather than once. */
-  repeated: boolean;
-  /** The figure tags this line may draw. */
-  tags: readonly string[];
-}
-
-/** What a kind of rewrite is: the block it replaces, the lines it draws, and their figures. */
-export interface RewriteSpec {
-  kind: RewriteKind;
-  /** The block types this rewrite draws in place of; a batch, or one line. */
-  blocks: readonly BlockType[];
-  lines: readonly RewriteLineSpec[];
-  /** Figures a table aligns to the right. */
-  numeric: readonly string[];
-}
-
-const ITEM_TAGS = [
-  'n',
-  'item',
-  'name',
-  'count',
-  'slot',
-  'equipped',
-  'weight',
-  'ac',
-  'dr',
-  'min',
-  'max',
-  'damage',
-  'stats',
-  'kind',
-  'price',
-  'charges',
-  'uses',
-  'icon',
-  'action'
+export const REWRITE_ENTITIES = [
+  'statline',
+  'inventory',
+  'who',
+  'shop',
+  'party',
+  'experience'
 ] as const;
+export type RewriteEntity = (typeof REWRITE_ENTITIES)[number];
 
-export const REWRITE_SPECS: Readonly<Record<RewriteKind, RewriteSpec>> = {
+export function isRewriteEntity(value: unknown): value is RewriteEntity {
+  return typeof value === 'string' && (REWRITE_ENTITIES as readonly string[]).includes(value);
+}
+
+/** One design the player keeps: what it redraws, and the template it draws. */
+export interface RewriteDesign {
+  /** The player's own name for it; blank draws the entity's word. */
+  name: string;
+  entity: RewriteEntity;
+  enabled: boolean;
+  template: string;
+}
+
+/** The colours a health or mana figure wears by its share of maximum, on every line. */
+export interface VitalBands {
+  hp: ColourBand[];
+  mana: ColourBand[];
+}
+
+/* ─────────────────────────────────────────────────────── the catalogue */
+
+export type FieldKind = 'text' | 'number' | 'flag' | 'glyph' | 'list' | 'record';
+
+/** One figure a template may name, and for a list or record, what it holds. */
+export interface FieldSpec {
+  key: string;
+  kind: FieldKind;
+  fields?: readonly FieldSpec[];
+}
+
+/** What an entity is: the blocks it replaces and the figures it offers. */
+export interface EntitySpec {
+  entity: RewriteEntity;
+  /** The block types this rewrite draws in place of; none for the prompt row. */
+  blocks: readonly BlockType[];
+  /** The prompt row: one line, under the repaint's ceiling. */
+  oneLine: boolean;
+  /** The listing's own figures. */
+  fields: readonly FieldSpec[];
+  /** Where the character's own figures sit: at the top, or under `me`. */
+  self: 'top' | 'me';
+}
+
+const text = (key: string): FieldSpec => ({ key, kind: 'text' });
+const number = (key: string): FieldSpec => ({ key, kind: 'number' });
+const flag = (key: string): FieldSpec => ({ key, kind: 'flag' });
+const glyph = (key: string): FieldSpec => ({ key, kind: 'glyph' });
+const list = (key: string, fields: readonly FieldSpec[]): FieldSpec => ({
+  key,
+  kind: 'list',
+  fields
+});
+
+/** The character's own figures, offered on every entity. */
+export const CHARACTER_FIELDS: readonly FieldSpec[] = [
+  text('name'),
+  text('fullName'),
+  text('race'),
+  text('class'),
+  number('level'),
+  number('hp'),
+  number('hpMax'),
+  number('mana'),
+  number('manaMax'),
+  text('manaType'),
+  number('exp'),
+  number('need'),
+  number('expSession'),
+  number('lives'),
+  number('wealth'),
+  text('wealthLong'),
+  text('room'),
+  text('state'),
+  flag('resting'),
+  flag('meditating'),
+  number('encumbrance'),
+  number('encumbranceMax'),
+  text('encumbranceWord')
+];
+
+/** What the realm data says about a kind of thing, beside what the listing said. */
+const REALM_ITEM_FIELDS: readonly FieldSpec[] = [
+  number('weight'),
+  number('ac'),
+  number('dr'),
+  number('min'),
+  number('max'),
+  text('damage'),
+  text('stats'),
+  text('kind'),
+  text('realmSlot'),
+  number('speed'),
+  number('strength'),
+  number('accuracy'),
+  text('weaponType'),
+  number('hands'),
+  text('material'),
+  number('uses'),
+  number('minLevel'),
+  number('limit'),
+  flag('gettable'),
+  number('id'),
+  list('shops', [text('name')]),
+  list('droppedBy', [text('name')]),
+  glyph('icon')
+];
+
+const CARRIED_FIELDS: readonly FieldSpec[] = [
+  text('item'),
+  text('name'),
+  number('count'),
+  text('slot'),
+  text('equipped'),
+  flag('worn'),
+  flag('wearable'),
+  text('reason'),
+  number('price'),
+  number('charges'),
+  glyph('action'),
+  ...REALM_ITEM_FIELDS
+];
+
+const SOLD_FIELDS: readonly FieldSpec[] = [
+  text('item'),
+  text('name'),
+  number('quantity'),
+  text('price'),
+  number('cost'),
+  text('afford'),
+  flag('short'),
+  text('usable'),
+  flag('wearable'),
+  text('note'),
+  number('basePrice'),
+  ...REALM_ITEM_FIELDS
+];
+
+export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
+  statline: { entity: 'statline', blocks: [], oneLine: true, fields: [], self: 'top' },
   inventory: {
-    kind: 'inventory',
+    entity: 'inventory',
     blocks: ['user-inventory'],
-    lines: [
-      { key: 'row', repeated: true, tags: ITEM_TAGS },
-      { key: 'keys', repeated: false, tags: ['keys', 'keyCount'] },
-      {
-        key: 'wealth',
-        repeated: false,
-        tags: ['wealth', 'wealthLong', 'runic', 'platinum', 'gold', 'silver', 'copper']
-      },
-      {
-        key: 'load',
-        repeated: false,
-        tags: ['encumbrance', 'encumbranceMax', 'encumbranceWord', 'encumbrancePercent']
-      }
-    ],
-    numeric: ['n', 'count', 'weight', 'ac', 'dr', 'min', 'max', 'price', 'charges', 'uses']
+    oneLine: false,
+    self: 'me',
+    fields: [
+      list('items', CARRIED_FIELDS),
+      number('itemCount'),
+      list('keys', [text('name')]),
+      number('keyCount'),
+      number('wealth'),
+      text('wealthLong'),
+      number('runic'),
+      number('platinum'),
+      number('gold'),
+      number('silver'),
+      number('copper'),
+      number('encumbrance'),
+      number('encumbranceMax'),
+      text('encumbranceWord'),
+      number('encumbrancePercent')
+    ]
   },
   who: {
-    kind: 'who',
+    entity: 'who',
     blocks: ['who-list'],
-    lines: [
-      { key: 'head', repeated: false, tags: ['count'] },
-      { key: 'row', repeated: true, tags: ['n', 'name', 'title', 'alignment', 'gang', 'flags'] }
-    ],
-    numeric: ['n']
+    oneLine: false,
+    self: 'me',
+    fields: [
+      list('players', [
+        text('name'),
+        text('title'),
+        text('alignment'),
+        text('gang'),
+        text('flags')
+      ]),
+      number('count')
+    ]
   },
   shop: {
-    kind: 'shop',
+    entity: 'shop',
     blocks: ['shop-list'],
-    lines: [
-      {
-        key: 'row',
-        repeated: true,
-        tags: [
-          'n',
-          'item',
-          'quantity',
-          'price',
-          'cost',
-          'afford',
-          'usable',
-          'note',
-          'weight',
-          'stats',
-          'kind',
-          'icon'
-        ]
-      }
-    ],
-    numeric: ['n', 'quantity', 'cost', 'weight']
+    oneLine: false,
+    self: 'me',
+    fields: [list('items', SOLD_FIELDS), number('count')]
   },
   party: {
-    kind: 'party',
+    entity: 'party',
     blocks: ['party-roster', 'party-alone'],
-    lines: [
-      {
-        key: 'row',
-        repeated: true,
-        tags: ['n', 'name', 'class', 'health', 'mana', 'rank', 'flag', 'state']
-      }
-    ],
-    numeric: ['n', 'health', 'mana']
+    oneLine: false,
+    self: 'me',
+    fields: [
+      list('members', [
+        text('name'),
+        text('class'),
+        number('health'),
+        number('mana'),
+        text('rank'),
+        text('flag'),
+        text('state'),
+        flag('invited'),
+        flag('resting'),
+        flag('meditating')
+      ]),
+      number('count')
+    ]
   },
   experience: {
-    kind: 'experience',
+    entity: 'experience',
     blocks: ['user-gain-experience'],
-    lines: [
-      {
-        key: 'line',
-        repeated: false,
-        tags: ['gained', 'exp', 'need', 'level', 'nextLevel', 'expSession']
-      }
-    ],
-    numeric: []
+    oneLine: false,
+    self: 'me',
+    fields: [
+      number('gained'),
+      number('exp'),
+      number('need'),
+      number('level'),
+      number('nextLevel'),
+      number('expSession')
+    ]
   }
 };
+
+/** The figures inside a repeated row, from `for`: its place, the list's length, and the ends. */
+export const ROW_FIELDS: readonly FieldSpec[] = [
+  number('n'),
+  number('rows'),
+  flag('first'),
+  flag('last')
+];
+
+/** Every key a column may be named by, so the dictionary can be asked for exactly those. */
+export function columnKeys(): Set<string> {
+  const keys = new Set<string>();
+  const walk = (fields: readonly FieldSpec[]): void => {
+    for (const field of fields) {
+      if (field.fields === undefined) continue;
+      for (const inner of field.fields) {
+        if (inner.kind !== 'glyph') keys.add(inner.key);
+        if (inner.fields !== undefined) walk([inner]);
+      }
+    }
+  };
+  for (const spec of Object.values(ENTITY_SPECS)) walk(spec.fields);
+  walk([{ key: 'me', kind: 'record', fields: CHARACTER_FIELDS }]);
+  for (const field of ROW_FIELDS) keys.add(field.key);
+  return keys;
+}
+
+/**
+ * The column's name over a table, for the figure that fills it. A figure the
+ * dictionary has no word for is headed by its own name, so a template is
+ * never refused for a column.
+ */
+export function columnLabel(t: UiLookup): (path: string) => string {
+  const known = columnKeys();
+  return (path) => {
+    const key = path.split('.').pop() ?? path;
+    return known.has(key) ? t(`rewrites.labels.${key}`) : key;
+  };
+}
+
+/* ────────────────────────────────────────────────────── the shipped six */
 
 /**
  * The shipped designs, every one off. The pack as a table is the one that
  * shows what the grammar can do: the equip control first, the realm's figures
  * beside the name, and the slot's picture at the end of the row.
  */
-export const DEFAULT_REWRITES: Readonly<Record<RewriteKind, RewriteDesign>> = {
-  inventory: {
+export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
+  {
+    name: 'Status line',
+    entity: 'statline',
     enabled: false,
-    style: 'table',
-    header: true,
-    lines: {
-      row: '{action} {bold}{item}{reset}  {dim}{weight}{reset}  {stats}  {brightGreen}{equipped}{reset} {icon}',
-      keys: '{dim}Keys:{reset} {keys}',
-      wealth: '{dim}Wealth:{reset} {brightYellow}{wealthLong}{reset}  ({wealth} copper)',
-      load: '{dim}Load:{reset} {encumbrance}/{encumbranceMax} {encumbranceWord}'
-    }
+    template:
+      '{bold}{brightWhite}HP {hp}/{hpMax}{reset} {brightWhite}MA {mana}/{manaMax}{reset} ' +
+      'Exp {exp} Need {need} ${wealth}{state}> '
   },
-  who: {
+  {
+    name: 'Pack',
+    entity: 'inventory',
     enabled: false,
-    style: 'table',
-    header: true,
-    lines: {
-      head: '{bold}{count} adventurers{reset}',
-      row: '{alignment}  {bold}{name}{reset}  {title}  {dim}{gang}{reset}  {flags}'
-    }
+    template: [
+      '{table header}',
+      '{for items}',
+      '{action} {bold}{item}{/bold}  {dim}{weight}{/dim}  {stats}  {brightGreen}{equipped}{/brightGreen} {icon}',
+      '{/for}',
+      '{/table}',
+      '{dim}Keys:{/dim} {keys|or:none}',
+      '{dim}Wealth:{/dim} {brightYellow}{wealthLong}{/brightYellow}  ({wealth} copper)',
+      '{dim}Load:{/dim} {encumbrance}/{encumbranceMax} {encumbranceWord}'
+    ].join('\n')
   },
-  shop: {
+  {
+    name: 'Roster',
+    entity: 'who',
     enabled: false,
-    style: 'table',
-    header: true,
-    lines: {
-      row: '{bold}{item}{reset}  {dim}x{quantity}{reset}  {price}  {afford}  {usable}  {icon}'
-    }
+    template: [
+      '{bold}{count} adventurers{/bold}',
+      '{table header}',
+      '{for players}',
+      '{alignment}  {bold}{name}{/bold}  {title}  {dim}{gang}{/dim}  {flags}',
+      '{/for}',
+      '{/table}'
+    ].join('\n')
   },
-  party: {
+  {
+    name: 'Shop shelf',
+    entity: 'shop',
     enabled: false,
-    style: 'table',
-    header: true,
-    lines: {
-      row: '{rank}  {bold}{name}{reset}  {dim}{class}{reset}  {health}%  {mana}%  {state}'
-    }
+    template: [
+      '{table header}',
+      '{for items}',
+      '{bold}{item}{/bold}  {dim}x{quantity}{/dim}  {price}  {afford}  {usable}  {icon}',
+      '{/for}',
+      '{/table}'
+    ].join('\n')
   },
-  experience: {
+  {
+    name: 'Party',
+    entity: 'party',
     enabled: false,
-    style: 'lines',
-    header: false,
-    lines: {
-      line: '{brightYellow}+{gained} exp{reset}  {exp} total, {need} to level {nextLevel}, {expSession} this session'
-    }
+    template: [
+      '{table header}',
+      '{for members}',
+      '{rank}  {bold}{name}{/bold}  {dim}{class}{/dim}  {health}%  {mana}%  {state}',
+      '{/for}',
+      '{/table}'
+    ].join('\n')
+  },
+  {
+    name: 'Experience',
+    entity: 'experience',
+    enabled: false,
+    template:
+      '{brightYellow}+{gained} exp{/brightYellow}  {exp} total, {need} to level {nextLevel}, ' +
+      '{expSession} this session'
   }
-};
+];
 
-/** What an unknown figure is drawn as: never a zero, which would lie. */
-const UNKNOWN = '?';
+/** The design that draws this entity: the first enabled one, or null. */
+export function activeDesign(
+  designs: readonly RewriteDesign[],
+  entity: RewriteEntity
+): RewriteDesign | null {
+  return designs.find((design) => design.enabled && design.entity === entity) ?? null;
+}
+
+/**
+ * The list with one design turned on or off. Turning one on turns off the
+ * others for its entity: only one design draws a listing, and a list where
+ * two are on would draw the first and leave the second looking chosen.
+ */
+export function withEnabled(
+  designs: readonly RewriteDesign[],
+  index: number,
+  enabled: boolean
+): RewriteDesign[] {
+  const chosen = designs[index];
+  if (chosen === undefined) return [...designs];
+  return designs.map((design, at) => {
+    if (at === index) return { ...design, enabled };
+    if (enabled && design.entity === chosen.entity && design.enabled) {
+      return { ...design, enabled: false };
+    }
+    return design;
+  });
+}
+
+/* ────────────────────────────────────────────────────────── the facts */
 
 /** The realm's word for a slot, as the listing prints it, to the picture the console has. */
 const SLOT_ICON: Readonly<Record<string, MarkIcon>> = {
@@ -250,112 +440,6 @@ export function slotIcon(slot: string | null | undefined): MarkIcon | null {
   return SLOT_ICON[slot.trim().toLowerCase()] ?? null;
 }
 
-/** A listing drawn: one `Drawn` per line, in order. */
-export interface Rewritten {
-  lines: Drawn[];
-}
-
-/**
- * A row's cells, keyed by tag. A tag the row leaves out is drawn blank in a
- * table and as typed in lines — the same rule the template has for a tag it
- * does not know, so a typo shows itself.
- */
-export type Cells = Readonly<Record<string, Cell>>;
-
-/**
- * The rows of one repeated line, laid out.
- *
- * In `table` style every figure tag is a column as wide as its widest cell,
- * text flush left and numbers flush right, and the header — the columns'
- * names — is the same template drawn once with the labels for cells, in the
- * console's dim ink so it reads as a heading whatever the row's own colours.
- * In `lines` style each row is its template as written.
- */
-export function renderRows(
-  design: RewriteDesign,
-  spec: RewriteSpec,
-  line: RewriteLineSpec,
-  rows: readonly Cells[],
-  t: UiLookup
-): Drawn[] {
-  const template = design.lines[line.key] ?? '';
-  if (template.trim().length === 0) return [];
-  const table = design.style === 'table';
-  const numeric = new Set(spec.numeric);
-  const tagSet = new Set(line.tags);
-  const width = (cell: Cell): number =>
-    cellsOf(cell.text) + (cell.glyph === undefined ? 0 : GLYPH_CELLS);
-
-  const header: Cells | null =
-    table && design.header
-      ? Object.fromEntries(
-          line.tags.map((tag) => [
-            tag,
-            {
-              text: tag === 'icon' || tag === 'action' ? '' : t(`rewrites.labels.${tag}`),
-              colour: 'brightBlack'
-            }
-          ])
-        )
-      : null;
-
-  const widths = new Map<string, number>();
-  if (table) {
-    for (const row of [...(header ? [header] : []), ...rows]) {
-      for (const tag of line.tags) {
-        const cell = row[tag];
-        if (cell === undefined) continue;
-        widths.set(tag, Math.max(widths.get(tag) ?? 0, width(cell)));
-      }
-    }
-  }
-
-  const resolveIn =
-    (row: Cells) =>
-    (tag: string): Cell | null => {
-      if (!tagSet.has(tag)) return null;
-      const cell = row[tag] ?? { text: '' };
-      if (!table) return cell;
-      const pad = ' '.repeat(Math.max(0, (widths.get(tag) ?? 0) - width(cell)));
-      return numeric.has(tag)
-        ? { ...cell, text: pad + cell.text }
-        : { ...cell, text: cell.text + pad };
-    };
-
-  const drawn: Drawn[] = [];
-  if (header) {
-    const head = renderTemplate(template, resolveIn(header));
-    if (head) drawn.push(head);
-  }
-  for (const row of rows) {
-    const one = renderTemplate(template, resolveIn(row));
-    if (one) drawn.push(one);
-  }
-  return drawn;
-}
-
-/** One line that is not repeated: its template against its cells, or nothing for a blank template. */
-export function renderOne(
-  design: RewriteDesign,
-  line: RewriteLineSpec,
-  cells: Cells
-): Drawn | null {
-  const template = design.lines[line.key] ?? '';
-  const tagSet = new Set(line.tags);
-  return renderTemplate(template, (tag) => (tagSet.has(tag) ? (cells[tag] ?? { text: '' }) : null));
-}
-
-function figure(value: number | null | undefined): string {
-  return typeof value === 'number' ? String(value) : UNKNOWN;
-}
-
-/** A realm fact drawn blank where the realm has none: an absent weight is not a zero. */
-function fact(value: number | string | null | undefined): string {
-  return value === null || value === undefined ? '' : String(value);
-}
-
-/* ─────────────────────────────────────────────────────────── the pack */
-
 /** One carried thing with the verdict main reached about wearing it. */
 export interface InventoryRow {
   item: ItemEntity;
@@ -372,6 +456,129 @@ export interface InventoryFacts {
   encumbrance: number | null;
   encumbranceMax: number | null;
   encumbranceWord: string | null;
+}
+
+export interface WhoRow {
+  name: string;
+  title: string | null;
+  alignment: string | null;
+  gang: string | null;
+  flags: string | null;
+}
+
+export interface ShopRow {
+  name: string;
+  quantity: number | null;
+  /** Verbatim, as the counter said it. */
+  price: string;
+  /** The same in copper, or null where the words are not a price this client reads. */
+  cost: number | null;
+  note: string | null;
+  /** The realm's row for the kind, joined by main; the wire half is the shelf's. */
+  item: ItemEntity;
+  verdict: EquipVerdict;
+}
+
+export interface PartyRow {
+  name: string;
+  class: string | null;
+  /** Percentages, as the listing prints them. */
+  health: number | null;
+  mana: number | null;
+  rank: string | null;
+  flag: string | null;
+  invited: boolean;
+}
+
+export interface ExperienceFacts {
+  gained: number;
+  /** The total after this gain, where the total was known. */
+  exp: number | null;
+  /** What the next level still costs after it, where that was known. */
+  need: number | null;
+  level: number | null;
+  expSession: number | null;
+}
+
+/** What main gathered for one drawing, by entity; the character's figures come with every one. */
+export type RewriteFacts =
+  | { entity: 'statline'; figures: StatlineFigures }
+  | { entity: 'inventory'; figures: StatlineFigures; pack: InventoryFacts }
+  | { entity: 'who'; figures: StatlineFigures; rows: readonly WhoRow[] }
+  | { entity: 'shop'; figures: StatlineFigures; rows: readonly ShopRow[] }
+  | { entity: 'party'; figures: StatlineFigures; rows: readonly PartyRow[] }
+  | { entity: 'experience'; figures: StatlineFigures; gain: ExperienceFacts };
+
+/* ───────────────────────────────────────────────────────── the scopes */
+
+/** A realm fact drawn blank where the realm has none: an absent weight is not a zero. */
+function fact(value: number | string | null | undefined): number | string {
+  return value === null || value === undefined ? '' : value;
+}
+
+/** A figure the wire should have stated: null draws `?`, never a zero. */
+function figure(value: number | string | null | undefined): number | string | null {
+  return value === undefined ? null : value;
+}
+
+function names(entries: readonly string[] | undefined): Row[] {
+  return (entries ?? []).map((name) => ({ name }));
+}
+
+/** `2 gold, 3 silver, 50 copper` — the total on the ladder, named in the dictionary's words. */
+export function wealthLong(copper: number | null, t: UiLookup): string {
+  if (copper === null) return UNKNOWN;
+  const spread = copperSpread(copper);
+  const parts = DENOMINATIONS.filter((which) => spread[which] > 0).map(
+    (which) => `${spread[which]} ${t(`rewrites.coins.${which}`)}`
+  );
+  return parts.length === 0 ? `0 ${t('rewrites.coins.copper')}` : parts.join(', ');
+}
+
+/** The character's own figures, health and mana wearing their bands. */
+export function characterScope(figures: StatlineFigures, bands: VitalBands, t: UiLookup): Row {
+  const banded = (
+    value: number | null,
+    max: number | null,
+    list: readonly ColourBand[]
+  ): Figure => ({
+    text: value === null ? UNKNOWN : String(value),
+    value,
+    colour: bandFor(list, value, max)
+  });
+  return {
+    name: figure(figures.name),
+    fullName: figure(figures.fullName),
+    race: figure(figures.race),
+    class: figure(figures.className),
+    level: figures.level,
+    hp: banded(figures.hp, figures.hpMax, bands.hp),
+    hpMax: figures.hpMax,
+    mana: banded(figures.mana, figures.manaMax, bands.mana),
+    manaMax: figures.manaMax,
+    manaType: fact(figures.manaType),
+    exp: figures.exp,
+    need: figures.need,
+    expSession: figures.expSession,
+    lives: figures.lives,
+    wealth: figures.wealth,
+    wealthLong: wealthLong(figures.wealth, t),
+    room: figures.room,
+    state: {
+      text:
+        figures.state === 'resting'
+          ? ' (Resting)'
+          : figures.state === 'meditating'
+            ? ' (Meditating)'
+            : '',
+      value: figures.state
+    },
+    resting: figures.state === 'resting',
+    meditating: figures.state === 'meditating',
+    encumbrance: figures.encumbrance,
+    encumbranceMax: figures.encumbranceMax,
+    encumbranceWord: fact(figures.encumbranceWord)
+  };
 }
 
 /** The glyph for the equip gate, as the pack card draws it; null where there is nothing to draw. */
@@ -402,212 +609,124 @@ function statsOf(item: ItemEntity): string {
   return '';
 }
 
+/** What the realm data says about a kind of thing; blank where it says nothing. */
+function realmFields(item: ItemEntity, slot: string | null): Row {
+  const icon = slotIcon(slot);
+  return {
+    weight: fact(item.encumbrance),
+    ac: fact(item.armour?.ac),
+    dr: fact(item.armour?.dr),
+    min: fact(item.weapon?.min),
+    max: fact(item.weapon?.max),
+    damage: item.weapon === undefined ? '' : `${item.weapon.min}-${item.weapon.max}`,
+    stats: statsOf(item),
+    kind: item.kind === undefined ? '' : ITEM_KIND_WORD[item.kind],
+    realmSlot: fact(item.realmSlot),
+    speed: fact(item.weapon?.speed),
+    strength: fact(item.weapon?.strength),
+    accuracy: fact(item.weapon?.accuracy),
+    weaponType: fact(item.weapon?.type),
+    hands: fact(item.weapon?.hands),
+    material: fact(item.armour?.material),
+    uses: fact(item.uses),
+    minLevel: fact(item.minLevel),
+    limit: fact(item.limit),
+    gettable: item.gettable ?? null,
+    id: fact(item.id),
+    shops: names(item.shops),
+    droppedBy: names(item.droppedBy),
+    icon: icon === null ? { text: '' } : { text: '', glyph: { icon, label: slot ?? '' } }
+  };
+}
+
 /** The listing's own annotation for a thing in use — `(Head)`, `(Readied/79)` — or nothing. */
 function equippedText(item: ItemEntity): string {
   if (!item.equipped || item.slot === null) return '';
   return item.charges === null ? `(${item.slot})` : `(${item.slot}/${item.charges})`;
 }
 
-export function itemCells(row: InventoryRow, n: number): Cells {
+export function carriedRow(row: InventoryRow): Row {
   const { item, verdict } = row;
   const slot = item.slot ?? item.realmSlot ?? null;
-  const icon = slotIcon(slot);
   const action = actionGlyph(verdict);
-  const cells: Record<string, Cell> = {
-    n: { text: String(n) },
-    item: { text: countedLabel(item) },
-    name: { text: item.name },
-    count: { text: String(item.count ?? 1) },
-    slot: { text: slot ?? '' },
-    equipped: { text: equippedText(item) },
-    weight: { text: fact(item.encumbrance) },
-    ac: { text: fact(item.armour?.ac) },
-    dr: { text: fact(item.armour?.dr) },
-    min: { text: fact(item.weapon?.min) },
-    max: { text: fact(item.weapon?.max) },
-    damage: { text: item.weapon === undefined ? '' : `${item.weapon.min}-${item.weapon.max}` },
-    stats: { text: statsOf(item) },
-    kind: { text: item.kind === undefined ? '' : ITEM_KIND_WORD[item.kind] },
-    price: { text: fact(item.price) },
-    charges: { text: fact(item.charges) },
-    uses: { text: fact(item.uses) },
-    icon: icon === null ? { text: '' } : { text: '', glyph: { icon, label: slot ?? '' } },
+  return {
+    item: countedLabel(item),
+    name: item.name,
+    count: item.count ?? 1,
+    slot: slot ?? '',
+    equipped: equippedText(item),
+    worn: item.equipped,
+    wearable: verdict.state === 'wearable' || verdict.state === 'worn',
+    reason: verdict.state === 'blocked' ? verdict.label : '',
+    price: fact(item.price),
+    charges: fact(item.charges),
     action:
       action === null
         ? { text: '' }
-        : {
-            text: '',
-            glyph: action,
-            colour: verdict.state === 'blocked' ? 'yellow' : null
-          }
+        : { text: '', glyph: action, colour: verdict.state === 'blocked' ? 'yellow' : null },
+    ...realmFields(item, slot)
   };
-  return cells;
 }
 
-/** `2 gold, 3 silver, 50 copper` — the total on the ladder, named in the dictionary's words. */
-export function wealthLong(copper: number | null, t: UiLookup): string {
-  if (copper === null) return UNKNOWN;
-  const spread = copperSpread(copper);
-  const parts = DENOMINATIONS.filter((which) => spread[which] > 0).map(
-    (which) => `${spread[which]} ${t(`rewrites.coins.${which}`)}`
-  );
-  return parts.length === 0 ? `0 ${t('rewrites.coins.copper')}` : parts.join(', ');
-}
-
-export function renderInventory(
-  design: RewriteDesign,
-  facts: InventoryFacts,
-  t: UiLookup
-): Rewritten {
-  const spec = REWRITE_SPECS.inventory;
-  const [row, keys, wealth, load] = spec.lines as [
-    RewriteLineSpec,
-    RewriteLineSpec,
-    RewriteLineSpec,
-    RewriteLineSpec
-  ];
-  const lines: Drawn[] = [];
-  lines.push(
-    ...renderRows(
-      design,
-      spec,
-      row,
-      facts.items.map((item, i) => itemCells(item, i + 1)),
-      t
-    )
-  );
-  const keyLine = renderOne(design, keys, {
-    keys: {
-      text: facts.keys.length === 0 ? t('rewrites.inventory.noKeys') : facts.keys.join(', ')
-    },
-    keyCount: { text: String(facts.keys.length) }
-  });
-  if (keyLine) lines.push(keyLine);
-  const coins: Record<string, Cell> = {};
-  for (const which of DENOMINATIONS) coins[which] = { text: String(facts.coins[which] ?? 0) };
-  const wealthLine = renderOne(design, wealth, {
-    ...coins,
-    wealth: { text: figure(facts.wealth) },
-    wealthLong: { text: wealthLong(facts.wealth, t) }
-  });
-  if (wealthLine) lines.push(wealthLine);
+export function inventoryScope(facts: InventoryFacts, t: UiLookup): Row {
+  const coins: Record<string, Value> = {};
+  for (const which of DENOMINATIONS) coins[which] = facts.coins[which] ?? 0;
   const percent =
     facts.encumbrance !== null && facts.encumbranceMax !== null && facts.encumbranceMax > 0
-      ? String(Math.round((100 * facts.encumbrance) / facts.encumbranceMax))
-      : UNKNOWN;
-  const loadLine = renderOne(design, load, {
-    encumbrance: { text: figure(facts.encumbrance) },
-    encumbranceMax: { text: figure(facts.encumbranceMax) },
-    encumbranceWord: { text: facts.encumbranceWord ?? '' },
-    encumbrancePercent: { text: percent }
-  });
-  if (loadLine) lines.push(loadLine);
-  return { lines };
-}
-
-/* ────────────────────────────────────────────────────────── the roster */
-
-export interface WhoRow {
-  name: string;
-  title: string | null;
-  alignment: string | null;
-  gang: string | null;
-  flags: string | null;
-}
-
-export function renderWho(design: RewriteDesign, rows: readonly WhoRow[], t: UiLookup): Rewritten {
-  const spec = REWRITE_SPECS.who;
-  const [head, row] = spec.lines as [RewriteLineSpec, RewriteLineSpec];
-  const lines: Drawn[] = [];
-  const headLine = renderOne(design, head, { count: { text: String(rows.length) } });
-  if (headLine) lines.push(headLine);
-  lines.push(
-    ...renderRows(
-      design,
-      spec,
-      row,
-      rows.map((who, i) => ({
-        n: { text: String(i + 1) },
-        name: { text: who.name },
-        title: { text: who.title ?? '' },
-        alignment: { text: who.alignment ?? '' },
-        gang: { text: who.gang ?? '' },
-        flags: { text: who.flags ?? '' }
-      })),
-      t
-    )
-  );
-  return { lines };
-}
-
-/* ─────────────────────────────────────────────────────────── the shelf */
-
-export interface ShopRow {
-  name: string;
-  quantity: number | null;
-  /** Verbatim, as the counter said it. */
-  price: string;
-  /** The same in copper, or null where the words are not a price this client reads. */
-  cost: number | null;
-  note: string | null;
-  /** The realm's row for the kind, joined by main; the wire half is the shelf's. */
-  item: ItemEntity;
-  verdict: EquipVerdict;
-}
-
-export function renderShop(
-  design: RewriteDesign,
-  rows: readonly ShopRow[],
-  wealth: number | null,
-  t: UiLookup
-): Rewritten {
-  const spec = REWRITE_SPECS.shop;
-  const [row] = spec.lines as [RewriteLineSpec];
+      ? Math.round((100 * facts.encumbrance) / facts.encumbranceMax)
+      : null;
   return {
-    lines: renderRows(
-      design,
-      spec,
-      row,
-      rows.map((sold, i) => {
-        const short = wealth !== null && sold.cost !== null && sold.cost > wealth;
-        const icon = slotIcon(sold.item.realmSlot);
-        return {
-          n: { text: String(i + 1) },
-          item: { text: sold.name },
-          quantity: { text: fact(sold.quantity) },
-          price: { text: sold.price },
-          cost: { text: fact(sold.cost) },
-          afford: short ? { text: t('rewrites.shop.short'), colour: 'brightRed' } : { text: '' },
-          usable:
-            sold.verdict.state === 'blocked'
-              ? { text: sold.verdict.label, colour: 'yellow' }
-              : { text: '' },
-          note: { text: sold.note ?? '' },
-          weight: { text: fact(sold.item.encumbrance) },
-          stats: { text: statsOf(sold.item) },
-          kind: { text: sold.item.kind === undefined ? '' : ITEM_KIND_WORD[sold.item.kind] },
-          icon:
-            icon === null
-              ? { text: '' }
-              : { text: '', glyph: { icon, label: sold.item.realmSlot ?? '' } }
-        };
-      }),
-      t
-    )
+    items: facts.items.map(carriedRow),
+    itemCount: facts.items.length,
+    keys: names(facts.keys),
+    keyCount: facts.keys.length,
+    ...coins,
+    wealth: facts.wealth,
+    wealthLong: wealthLong(facts.wealth, t),
+    encumbrance: facts.encumbrance,
+    encumbranceMax: facts.encumbranceMax,
+    encumbranceWord: fact(facts.encumbranceWord),
+    encumbrancePercent: percent
   };
 }
 
-/* ─────────────────────────────────────────────────────────── the party */
+export function whoScope(rows: readonly WhoRow[]): Row {
+  return {
+    players: rows.map((who) => ({
+      name: who.name,
+      title: fact(who.title),
+      alignment: fact(who.alignment),
+      gang: fact(who.gang),
+      flags: fact(who.flags)
+    })),
+    count: rows.length
+  };
+}
 
-export interface PartyRow {
-  name: string;
-  class: string | null;
-  /** Percentages, as the listing prints them. */
-  health: number | null;
-  mana: number | null;
-  rank: string | null;
-  flag: string | null;
-  invited: boolean;
+export function shopScope(rows: readonly ShopRow[], wealth: number | null, t: UiLookup): Row {
+  return {
+    items: rows.map((sold) => {
+      const short = wealth !== null && sold.cost !== null && sold.cost > wealth;
+      return {
+        item: sold.name,
+        name: sold.name,
+        quantity: fact(sold.quantity),
+        price: sold.price,
+        cost: fact(sold.cost),
+        afford: short ? { text: t('rewrites.shop.short'), colour: 'brightRed' } : { text: '' },
+        short: wealth === null || sold.cost === null ? null : short,
+        usable:
+          sold.verdict.state === 'blocked'
+            ? { text: sold.verdict.label, colour: 'yellow' }
+            : { text: '' },
+        wearable: sold.verdict.state === 'wearable' || sold.verdict.state === 'worn',
+        note: fact(sold.note),
+        basePrice: fact(sold.item.price),
+        ...realmFields(sold.item, sold.item.realmSlot ?? null)
+      };
+    }),
+    count: rows.length
+  };
 }
 
 /** The word for a row's status letter: the listing's `R`, `M`, and what it left unexplained. */
@@ -625,60 +744,79 @@ function partyState(row: PartyRow, t: UiLookup): string {
   }
 }
 
-export function renderParty(
-  design: RewriteDesign,
-  rows: readonly PartyRow[],
-  bands: StatlineDesign['bands'],
-  t: UiLookup
-): Rewritten {
-  const spec = REWRITE_SPECS.party;
-  const [row] = spec.lines as [RewriteLineSpec];
+export function partyScope(rows: readonly PartyRow[], bands: VitalBands, t: UiLookup): Row {
   return {
-    lines: renderRows(
-      design,
-      spec,
-      row,
-      rows.map((member, i) => ({
-        n: { text: String(i + 1) },
-        name: { text: member.name },
-        class: { text: member.class ?? '' },
-        health: { text: fact(member.health), colour: bandFor(bands.hp, member.health, 100) },
-        mana: { text: fact(member.mana), colour: bandFor(bands.mana, member.mana, 100) },
-        rank: { text: member.rank ?? '' },
-        flag: { text: member.flag ?? '' },
-        state: { text: partyState(member, t) }
-      })),
-      t
-    )
+    members: rows.map((member) => ({
+      name: member.name,
+      class: fact(member.class),
+      health: {
+        text: String(fact(member.health)),
+        value: member.health,
+        colour: bandFor(bands.hp, member.health, 100)
+      },
+      mana: {
+        text: String(fact(member.mana)),
+        value: member.mana,
+        colour: bandFor(bands.mana, member.mana, 100)
+      },
+      rank: fact(member.rank),
+      flag: fact(member.flag),
+      state: partyState(member, t),
+      invited: member.invited,
+      resting: member.flag === 'R',
+      meditating: member.flag === 'M'
+    })),
+    count: rows.length
   };
 }
 
-/* ────────────────────────────────────────────────── the experience line */
-
-export interface ExperienceFacts {
-  gained: number;
-  /** The total after this gain, where the total was known. */
-  exp: number | null;
-  /** What the next level still costs after it, where that was known. */
-  need: number | null;
-  level: number | null;
-  expSession: number | null;
+export function experienceScope(gain: ExperienceFacts): Row {
+  return {
+    gained: gain.gained,
+    exp: gain.exp,
+    need: gain.need,
+    level: gain.level,
+    nextLevel: gain.level === null ? null : gain.level + 1,
+    expSession: gain.expSession
+  };
 }
 
-export function renderExperience(design: RewriteDesign, facts: ExperienceFacts): Rewritten {
-  const [line] = REWRITE_SPECS.experience.lines as [RewriteLineSpec];
-  const drawn = renderOne(design, line, {
-    gained: { text: String(facts.gained) },
-    exp: { text: figure(facts.exp) },
-    need: { text: figure(facts.need) },
-    level: { text: figure(facts.level) },
-    nextLevel: { text: facts.level === null ? UNKNOWN : String(facts.level + 1) },
-    expSession: { text: figure(facts.expSession) }
+/** Everything a design for this entity may name, the character's figures included. */
+export function scopeOf(facts: RewriteFacts, bands: VitalBands, t: UiLookup): Scope {
+  const me = characterScope(facts.figures, bands, t);
+  switch (facts.entity) {
+    case 'statline':
+      return me;
+    case 'inventory':
+      return { ...inventoryScope(facts.pack, t), me };
+    case 'who':
+      return { ...whoScope(facts.rows), me };
+    case 'shop':
+      return { ...shopScope(facts.rows, facts.figures.wealth, t), me };
+    case 'party':
+      return { ...partyScope(facts.rows, bands, t), me };
+    case 'experience':
+      return { ...experienceScope(facts.gain), me };
+  }
+}
+
+/* ─────────────────────────────────────────────────────────── drawing */
+
+/**
+ * A design drawn against the facts: one `Drawn` per line. The prompt row is
+ * the first line only; the designer says so where a template has more.
+ */
+export function renderRewrite(
+  design: Pick<RewriteDesign, 'template' | 'entity'>,
+  facts: RewriteFacts,
+  bands: VitalBands,
+  t: UiLookup
+): Drawn[] {
+  const lines = renderTemplate(design.template, scopeOf(facts, bands, t), {
+    label: columnLabel(t)
   });
-  return { lines: drawn ? [drawn] : [] };
+  return ENTITY_SPECS[design.entity].oneLine ? lines.slice(0, 1) : lines;
 }
-
-/* ─────────────────────────────────────────────────────────── to bytes */
 
 /**
  * The drawn lines as what the console is fed: each line's runs as SGR, a
@@ -686,13 +824,13 @@ export function renderExperience(design: RewriteDesign, facts: ExperienceFacts):
  * by the offset the line starts at — the shape `StreamChunk.marks` has for
  * a room's name.
  */
-export function rewriteToChunk(rewritten: Rewritten): {
+export function rewriteToChunk(lines: readonly Drawn[]): {
   text: string;
   marks: Array<{ offset: number; mark: TerminalMark }>;
 } {
   let text = '';
   const marks: Array<{ offset: number; mark: TerminalMark }> = [];
-  for (const line of rewritten.lines) {
+  for (const line of lines) {
     if (line.glyphs.length > 0) {
       marks.push({
         offset: text.length,
@@ -702,10 +840,4 @@ export function rewriteToChunk(rewritten: Rewritten): {
     text += `${toAnsi(line.segments)}\r\n`;
   }
   return { text, marks };
-}
-
-/** The tags a line of a kind may draw, as `{tag}` words for a hint. */
-export function tagsOf(kind: RewriteKind, key: string): string[] {
-  const line = REWRITE_SPECS[kind].lines.find((entry) => entry.key === key);
-  return line === undefined ? [] : line.tags.map((tag) => `{${tag}}`);
 }

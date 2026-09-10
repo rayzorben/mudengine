@@ -9349,7 +9349,7 @@ tr:hover .row-action.worn,
  * palette's colours, with the glyphs drawn in the cells the drawing left for
  * them — the same pictures the console lays over those cells.
  */
-.settings-form .rewrite-preview {
+.rewrite-preview {
   border-radius: 4px;
   display: block;
   font-family: var(--font-terminal, var(--font-dos));
@@ -9357,6 +9357,285 @@ tr:hover .row-action.worn,
   overflow-x: auto;
   padding: 6px 8px;
   white-space: pre;
+}
+
+/*
+ * The list of designs: the loops list's rows, with the switch first. A row
+ * that is off keeps its name quiet, so the eye finds what is drawing.
+ */
+.rewrite-list li > input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.rewrite-list .rewrite-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewrite-list li[data-on='false'] .rewrite-name {
+  color: var(--text-lo);
+}
+
+/*
+ * The editor a design opens in: a dialog over the settings screen, in the
+ * file browser's box and above its scrim for the same reason (the settings
+ * scrim sits at 110). Two panes -- the figures it may name, and the template
+ * with the listing drawn under it -- because the sidebar is what makes a
+ * template writable without the file's paragraph open beside it.
+ */
+.rewrite-editor-scrim {
+  align-items: center;
+  padding-top: 0;
+  z-index: 150;
+}
+
+.rewrite-editor {
+  height: min(760px, 92vh);
+  max-height: none;
+  width: min(1100px, 94vw);
+}
+
+.rewrite-editor-head {
+  align-items: end;
+  border-bottom: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  overflow: visible;
+  padding: 10px 12px;
+}
+
+.rewrite-editor-head > .settings-inline {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rewrite-editor-done {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.rewrite-editor-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.rewrite-sidebar {
+  border-right: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 6px;
+}
+
+.rewrite-category > summary {
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  list-style: none;
+  padding: 4px 6px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.rewrite-category > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 5px;
+  transition: transform var(--dur-control) var(--ease-out);
+}
+
+.rewrite-category[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.rewrite-category-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 6px;
+}
+
+/* A figure: its tag, the sentence about it, and what kind of thing it is. */
+.rewrite-field-row {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+}
+
+.rewrite-tag {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: var(--font-micro);
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.rewrite-tag:hover,
+.rewrite-tag:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  outline: none;
+}
+
+.rewrite-tag code {
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+}
+
+.rewrite-tag .hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewrite-kind {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+  font-size: calc(var(--font-micro) - 1px);
+}
+
+.rewrite-more {
+  flex: 0 0 auto;
+  padding: 2px;
+}
+
+/* The popout of a row's fields sits over the editor, so it outranks its scrim. */
+.rewrite-popout {
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 160;
+}
+
+.rewrite-popout .entry code {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.rewrite-popout .entry .hint {
+  color: var(--text-lo);
+}
+
+.rewrite-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.rewrite-tag-row > .rewrite-tag {
+  flex: 0 0 auto;
+}
+
+/* The sixteen, in the console's own palette, so a press shows what it puts in. */
+.rewrite-swatches {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(8, 1fr);
+  padding: 2px 6px;
+}
+
+.rewrite-swatch {
+  border: 1px solid var(--ink-line);
+  border-radius: 4px;
+  cursor: pointer;
+  height: 18px;
+  padding: 0;
+}
+
+.rewrite-swatch:hover,
+.rewrite-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rewrite-check {
+  align-items: center;
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  padding: 3px 6px;
+}
+
+.rewrite-pick input[type='color'] {
+  block-size: 18px;
+  border: 1px solid var(--ink-line);
+  border-radius: 4px;
+  cursor: pointer;
+  inline-size: 28px;
+  padding: 0;
+}
+
+.rewrite-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+/*
+ * Not allowed to shrink: the main pane is a flex column that scrolls, and a
+ * flex item yields its height to its neighbours before the pane overflows,
+ * which left the template two lines tall under a preview that took the rest.
+ */
+.rewrite-template-field {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* The template, in the console's face: what is typed here is drawn there. */
+.rewrite-template {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  flex: 0 0 auto;
+  font-family: var(--font-terminal, var(--font-dos));
+  font-size: inherit;
+  line-height: 1.4;
+  min-height: 12em;
+  overflow: auto;
+  padding: 6px 8px;
+  resize: vertical;
+  white-space: pre;
+}
+
+/* The prompt row is one line, so its box asks for less. */
+.rewrite-template[rows='3'] {
+  min-height: 4.5em;
+}
+
+.rewrite-template:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .rewrite-preview .rewrite-glyph {
@@ -9386,16 +9665,6 @@ tr:hover .row-action.worn,
   flex: 1 1 0;
   gap: 3px;
   min-width: 0;
-}
-
-.settings-form .statline-preview {
-  border-radius: 4px;
-  display: block;
-  font-family: var(--font-terminal, var(--font-dos));
-  line-height: 1.4;
-  overflow-x: auto;
-  padding: 6px 8px;
-  white-space: pre;
 }
 
 /*
