@@ -98,11 +98,9 @@ import { STATUS_LINE } from '../parse/patterns';
 import {
   figuresOf,
   isFullStatline,
-  renderStatline,
   statlineMatcher,
   STATLINE_MAX_CELLS,
-  withReading,
-  type StatlineDesign
+  withReading
 } from '../../shared/statline';
 import { toAnsi } from '../../shared/template';
 import { promptOpened, TerminalFeed } from './TerminalFeed';
@@ -931,8 +929,7 @@ export class SessionManager {
         design: (plain) => this.designPrompt(plain),
         // Not while a refusal stands: holding a prompt for a line that will
         // not be drawn is a delay for nothing.
-        designing: () =>
-          this.design.enabled && this.design.layout.trim().length > 0 && !this.designTooWideSaid,
+        designing: () => this.rewriter.promptDesign() !== null && !this.designTooWideSaid,
         // The listings the client draws itself, from the batch the classifier
         // assembled and what the tracker had published before it.
         rewrites: (type) => this.rewriter.wants(type),
@@ -2464,12 +2461,12 @@ export class SessionManager {
     rewrites: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites
   ): void {
     this.automationConfig = automation;
-    const design = rewrites.statline;
+    this.rewriter.configure(rewrites);
     // A new design gets to be refused once, out loud, if it is too wide. By
     // value: every reload resolves a fresh object for an unchanged file.
-    if (JSON.stringify(design) !== JSON.stringify(this.design)) this.designTooWideSaid = false;
-    this.design = design;
-    this.rewriter.configure(rewrites);
+    const template = this.rewriter.promptDesign()?.template ?? null;
+    if (template !== this.promptTemplate) this.designTooWideSaid = false;
+    this.promptTemplate = template;
     // The loops may have changed, and with them the routes this character
     // prefers; derived again the next time a route is planned.
     this.preferred = null;
@@ -3411,10 +3408,10 @@ export class SessionManager {
     reported: null,
     exact: null
   };
-  /** The status line this player designed (`ui.rewrites.statline`); drawn by the feed in the prompt's place. */
-  private design: StatlineDesign = DEFAULT_CONFIG.ui.rewrites.statline;
+  /** The prompt row's template as last configured, so a too-wide refusal is said once per design. */
+  private promptTemplate: string | null = null;
   private designTooWideSaid = false;
-  /** The listings this player has the client draw itself (`ui.rewrites`). */
+  /** The prompt row and the listings this player has the client draw itself (`ui.rewrites`). */
   private readonly rewriter = new Rewriter();
 
   /**
@@ -3447,14 +3444,11 @@ export class SessionManager {
    * wrapped prompt leaves its first row behind on every repaint.
    */
   private designPrompt(plain: string): { rendered: string; from: number; to: number } | null {
-    if (!this.design.enabled) return null;
+    if (this.rewriter.promptDesign() === null) return null;
     const from = plain.length - plain.trimStart().length;
     const prompt = this.tracker.readPrompt(plain.slice(from));
     if (!prompt) return null;
-    const drawn = renderStatline(
-      this.design,
-      withReading(figuresOf(this.tracker.current), prompt.read)
-    );
+    const drawn = this.rewriter.prompt(withReading(figuresOf(this.tracker.current), prompt.read));
     if (!drawn) return null;
     if (drawn.cells > STATLINE_MAX_CELLS) {
       if (!this.designTooWideSaid) {

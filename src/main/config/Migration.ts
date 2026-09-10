@@ -35,15 +35,17 @@ import {
   Scalar,
   type Node,
   type Pair,
-  type YAMLMap
+  type YAMLMap,
+  type YAMLSeq
 } from 'yaml';
 
 import { fileSlug } from '../../shared/files';
+import { isRecord } from '../../shared/values';
 import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
-import { DEFAULT_CONFIG } from '../../shared/config';
-import { DEFAULT_REWRITES, REWRITE_KINDS } from '../../shared/rewrites';
+import { DEFAULT_CONFIG, normalizeBands } from '../../shared/config';
+import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../shared/rewrites';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { DENOMINATIONS } from '../../shared/character';
 import { SERVER_FILE, type Home } from '../app/home';
@@ -178,6 +180,7 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheFindAlerts(home, note, options.template);
   statedTheStatusLine(home, note, options.template);
   theLineBecameARewrite(home, note, options.template);
+  theRewritesBecameAList(home, note, options.template);
   quietedTheStatusLineAsks(home, note);
   loopsTookTheirRecordedNames(home, note, options.loopShelf);
 }
@@ -236,16 +239,48 @@ function statedTheStatusLine(
   note(t('notices.migration.statusLineStated', { file: home.options }));
 }
 
+/** The shipped design for an entity, by name, since the list is the order. */
+function shippedDesign(entity: RewriteEntity): RewriteDesign {
+  const found = DEFAULT_REWRITES.find((design) => design.entity === entity);
+  if (found === undefined) throw new Error(`no shipped design for ${entity}`);
+  return structuredClone(found);
+}
+
+/** A design's `template:` as the file will state it: a block scalar where it has lines. */
+function designNode(document: Document, design: RewriteDesign): Node {
+  const node = document.createNode(design) as YAMLMap<unknown, unknown>;
+  const template = node.get('template', true);
+  if (isScalar(template) && design.template.includes('\n')) template.type = Scalar.BLOCK_LITERAL;
+  return node;
+}
+
+/** The `ui.rewrites` block as a node: the bands, then the designs in order. */
+function rewritesNode(
+  document: Document,
+  bands: unknown,
+  designs: readonly RewriteDesign[],
+  lead: string | undefined
+): Pair {
+  const block = document.createNode({}) as YAMLMap<unknown, unknown>;
+  block.items.push(document.createPair('bands', normalizeBands(bands)) as Pair);
+  const list = document.createNode([]) as YAMLSeq<unknown>;
+  for (const design of designs) list.items.push(designNode(document, design));
+  block.items.push(document.createPair('designs', list) as Pair);
+  const pair = document.createPair('rewrites', block) as Pair;
+  if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+  return pair;
+}
+
 /**
- * `ui.statline` became `ui.rewrites.statline` (2026-09-10, todo 99): the
- * designed status line is one of the listings the console can draw in the
- * realm's place, and the block gathers them.
+ * `ui.statline` became a design under `ui.rewrites` (2026-09-10, todo 99):
+ * the designed status line is one of the listings the console can draw in
+ * the realm's place, and the block gathers them as a list.
  *
  * The options file and every character's own, since a design is per
- * character. The old value node is moved whole, so a layout the player wrote
- * and its bands survive with their comments; the other listings come from
- * the defaults, off, with the template's paragraph for each so the file
- * says what they are. A file already stating `rewrites:` is left alone.
+ * character. The layout the player wrote becomes the prompt row's template
+ * and their bands the block's; the other designs come from the defaults,
+ * off. The player's own paragraph above the old key survives as the block's,
+ * else the template's. A file already stating `rewrites:` is left alone.
  */
 function theLineBecameARewrite(
   home: Home,
@@ -263,35 +298,131 @@ function theLineBecameARewrite(
       const at = ui.items.findIndex((item) => keyText(item) === 'statline');
       if (at === -1) return false;
       const old = ui.items[at]!;
-      const rewrites = document.createNode({}) as YAMLMap<unknown, unknown>;
-      const withLead = (pair: Pair, key: string): Pair => {
-        const lead = comments.get(key);
-        if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
-        return pair;
-      };
-      // The player's own paragraph above the old key, where they wrote one,
-      // else the template's; the value's comments travel with the value.
-      const statline = document.createPair('statline', old.value) as Pair;
-      const theirs = isScalar(old.key) ? old.key.commentBefore : undefined;
-      if (typeof theirs === 'string') {
-        if (isScalar(statline.key)) statline.key.commentBefore = theirs;
-        rewrites.items.push(statline);
-      } else rewrites.items.push(withLead(statline, 'ui.rewrites.statline'));
-      for (const kind of REWRITE_KINDS) {
-        const block = document.createNode(structuredClone(DEFAULT_REWRITES[kind]));
-        rewrites.items.push(
-          withLead(document.createPair(kind, block) as Pair, `ui.rewrites.${kind}`)
-        );
+      const stated: unknown = isMap(old.value) ? old.value.toJSON() : {};
+      const statline = shippedDesign('statline');
+      if (isRecord(stated)) {
+        if (typeof stated['enabled'] === 'boolean') statline.enabled = stated['enabled'];
+        if (typeof stated['layout'] === 'string') statline.template = stated['layout'];
       }
-      ui.items.splice(
-        at,
-        1,
-        withLead(document.createPair('rewrites', rewrites) as Pair, 'ui.rewrites')
+      const designs = DEFAULT_REWRITES.map((design) =>
+        design.entity === 'statline' ? statline : structuredClone(design)
       );
+      const theirs = isScalar(old.key) ? old.key.commentBefore : undefined;
+      const lead = typeof theirs === 'string' ? theirs : comments.get('ui.rewrites');
+      const bands = isRecord(stated) ? stated['bands'] : undefined;
+      ui.items.splice(at, 1, rewritesNode(document, bands, designs, lead));
       moved = true;
       return true;
     });
     if (moved) note(t('notices.migration.rewritesGathered', { file }));
+  }
+}
+
+/**
+ * How each of the older block's listings was laid out: the list its rows
+ * come from, and the one-off lines before and after them, in the order the
+ * console drew them.
+ */
+const OLDER_LISTINGS: Readonly<
+  Record<
+    Exclude<RewriteEntity, 'statline'>,
+    { list: string | null; before: string[]; after: string[] }
+  >
+> = {
+  inventory: { list: 'items', before: [], after: ['keys', 'wealth', 'load'] },
+  who: { list: 'players', before: ['head'], after: [] },
+  shop: { list: 'items', before: [], after: [] },
+  party: { list: 'members', before: [], after: [] },
+  experience: { list: null, before: ['line'], after: [] }
+};
+
+/**
+ * One of the older block's listings — `style`, `header` and a template per
+ * line — as one template in the grammar: the rows inside `{for …}`, inside
+ * `{table}` where the style was columns, the one-off lines around them. A
+ * line stated blank was off and stays out; `{keys}` drew `none` for an empty
+ * ring, which the `or` filter now says.
+ */
+function olderListingTemplate(entity: Exclude<RewriteEntity, 'statline'>, stated: unknown): string {
+  const raw = isRecord(stated) ? stated : {};
+  const lines = isRecord(raw['lines']) ? raw['lines'] : {};
+  const shape = OLDER_LISTINGS[entity];
+  const line = (key: string): string | null => {
+    const value = lines[key];
+    if (typeof value !== 'string' || value.trim().length === 0) return null;
+    return key === 'keys' ? value.replace(/\{keys\}/g, '{keys|or:none}') : value;
+  };
+  const out: string[] = [];
+  for (const key of shape.before) {
+    const text = line(key);
+    if (text !== null) out.push(text);
+  }
+  const row = shape.list === null ? null : line('row');
+  if (shape.list !== null && row !== null) {
+    const table = raw['style'] !== 'lines';
+    if (table) out.push(raw['header'] === false ? '{table}' : '{table header}');
+    out.push(`{for ${shape.list}}`, row, '{/for}');
+    if (table) out.push('{/table}');
+  }
+  for (const key of shape.after) {
+    const text = line(key);
+    if (text !== null) out.push(text);
+  }
+  return out.join('\n');
+}
+
+/**
+ * `ui.rewrites` became a list of designs (2026-09-10, todo 99, second
+ * half): a block keyed by kind, each with a template per line, is now
+ * `bands` and `designs`, one template each in the one grammar.
+ *
+ * The options file and every character's own. Each kind the file stated
+ * becomes the design of that name, on or off as it was, its lines folded
+ * into one template (`olderListingTemplate`); a kind it did not state gets
+ * the shipped design, off; the prompt row's bands become the block's. The
+ * paragraph above the key is the template's new one, since the old one
+ * described keys that no longer exist. A block already stating `designs:`
+ * is left alone.
+ */
+function theRewritesBecameAList(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    let moved = false;
+    edit(file, (document) => {
+      const ui = document.getIn(['ui'], true);
+      if (!isMap(ui)) return false;
+      const at = ui.items.findIndex((item) => keyText(item) === 'rewrites');
+      if (at === -1) return false;
+      const old = ui.items[at]!;
+      if (!isMap(old.value) || old.value.has('designs') || old.value.has('bands')) return false;
+      const stated: unknown = old.value.toJSON();
+      const block = isRecord(stated) ? stated : {};
+      const olderKinds = ['statline', 'inventory', 'who', 'shop', 'party', 'experience'] as const;
+      if (!olderKinds.some((kind) => kind in block)) return false;
+      const designs = DEFAULT_REWRITES.map((shipped) => {
+        const kind = shipped.entity;
+        const older = block[kind];
+        if (!isRecord(older)) return structuredClone(shipped);
+        const design = structuredClone(shipped);
+        if (typeof older['enabled'] === 'boolean') design.enabled = older['enabled'];
+        if (kind === 'statline') {
+          if (typeof older['layout'] === 'string') design.template = older['layout'];
+        } else design.template = olderListingTemplate(kind, older);
+        return design;
+      });
+      const statline = block['statline'];
+      const bands = isRecord(statline) ? statline['bands'] : undefined;
+      ui.items.splice(at, 1, rewritesNode(document, bands, designs, comments.get('ui.rewrites')));
+      moved = true;
+      return true;
+    });
+    if (moved) note(t('notices.migration.rewritesListed', { file }));
   }
 }
 

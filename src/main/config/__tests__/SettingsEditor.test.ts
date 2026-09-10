@@ -169,6 +169,65 @@ describe('creating a character', () => {
   });
 });
 
+/*
+ * The designs are a list, judged against what the character would inherit
+ * rather than the shipped six: the form shows the resolved list, and writing
+ * it back unchanged would pin Global's list into the character.
+ */
+describe('the designs a character keeps', () => {
+  const globalDesigns = DEFAULT_CONFIG.ui.rewrites.designs.map((design) =>
+    design.entity === 'inventory' ? { ...design, enabled: true } : design
+  );
+
+  beforeEach(() => {
+    fs.writeFileSync(
+      configPath,
+      `${OPTIONS}\nui:\n  rewrites:\n    designs: ${JSON.stringify(globalDesigns)}\n`,
+      'utf8'
+    );
+    editor = new SettingsEditor({ home });
+  });
+
+  it('writes the whole list once made, and drops it again when it agrees with Global', () => {
+    editor.saveProfile('vaelor', {
+      ...draft(),
+      rewrites: { ...DEFAULT_CONFIG.ui.rewrites, designs: globalDesigns }
+    });
+    const written = read('vaelor')['ui'] as { rewrites: { designs: unknown } };
+    expect(written.rewrites.designs).toEqual(globalDesigns);
+
+    const own = [
+      ...globalDesigns,
+      { name: 'Mine', entity: 'who', enabled: true, template: '{count}' }
+    ];
+    editor.saveProfile('vaelor', {
+      ...draft(),
+      rewrites: { ...DEFAULT_CONFIG.ui.rewrites, designs: own as typeof globalDesigns }
+    });
+    expect((read('vaelor')['ui'] as { rewrites: { designs: unknown } }).rewrites.designs).toEqual(
+      own
+    );
+
+    editor.saveProfile('vaelor', {
+      ...draft(),
+      rewrites: { ...DEFAULT_CONFIG.ui.rewrites, designs: globalDesigns }
+    });
+    const after = read('vaelor')['ui'] as { rewrites?: { designs?: unknown } };
+    expect(after.rewrites?.designs).toBeUndefined();
+  });
+
+  it('leaves an edit of another field from pinning Global’s list into the character', () => {
+    editor.saveProfile('vaelor', draft());
+    editor.saveProfile('vaelor', {
+      ...draft(),
+      afk: { enabled: true, afterMinutes: 5, reply: '{AFK}' },
+      rewrites: { ...DEFAULT_CONFIG.ui.rewrites, designs: globalDesigns }
+    });
+    const after = read('vaelor')['ui'] as { rewrites?: { designs?: unknown } } | undefined;
+    expect(after?.rewrites?.designs).toBeUndefined();
+  });
+});
+
 describe('editing a character that already exists', () => {
   /*
    * The failure this is guarding against: a character whose automation rules

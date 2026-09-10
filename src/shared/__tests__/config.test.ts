@@ -17,28 +17,38 @@ import {
 } from '../config';
 
 describe('normalizeRewrites', () => {
-  it('reads each listing against its spec and falls back per key', () => {
+  it('keeps every design naming an entity, drops the rest, and reads the bands', () => {
     const ui = normalizeConfig({
       ui: {
         rewrites: {
-          inventory: { enabled: true, style: 'sideways', lines: { row: '{item}', bogus: 'x' } },
-          experience: 'nope'
+          bands: {
+            hp: [
+              { atLeast: 0.5, colour: 'green' },
+              { atLeast: 1, colour: 'plaid' }
+            ]
+          },
+          designs: [
+            { name: ' Mine ', entity: 'inventory', enabled: true, template: '{item}' },
+            { name: 'Nope', entity: 'room', template: '{x}' },
+            'nope',
+            { entity: 'who' }
+          ]
         }
       }
     }).ui.rewrites;
-    expect(ui.inventory.enabled).toBe(true);
-    expect(ui.inventory.style).toBe('table');
-    expect(ui.inventory.lines['row']).toBe('{item}');
-    expect(ui.inventory.lines['keys']).toBe(DEFAULT_CONFIG.ui.rewrites.inventory.lines['keys']);
-    expect(ui.inventory.lines['bogus']).toBeUndefined();
-    expect(ui.experience).toEqual(DEFAULT_CONFIG.ui.rewrites.experience);
-    expect(ui.statline).toEqual(DEFAULT_CONFIG.ui.rewrites.statline);
+    expect(ui.designs).toEqual([
+      { name: 'Mine', entity: 'inventory', enabled: true, template: '{item}' },
+      { name: '', entity: 'who', enabled: false, template: '' }
+    ]);
+    expect(ui.bands.hp).toEqual([{ atLeast: 0.5, colour: 'green' }]);
+    expect(ui.bands.mana).toEqual(DEFAULT_CONFIG.ui.rewrites.bands.mana);
   });
 
-  it('keeps a line stated blank blank, which is how a line is turned off', () => {
-    const design = normalizeConfig({ ui: { rewrites: { inventory: { lines: { keys: '' } } } } }).ui
-      .rewrites.inventory;
-    expect(design.lines['keys']).toBe('');
+  it('keeps a stated empty list empty, and ships the six only where none is stated', () => {
+    expect(normalizeConfig({ ui: { rewrites: { designs: [] } } }).ui.rewrites.designs).toEqual([]);
+    expect(normalizeConfig({ ui: { rewrites: {} } }).ui.rewrites.designs).toEqual(
+      DEFAULT_CONFIG.ui.rewrites.designs
+    );
   });
 });
 
