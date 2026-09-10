@@ -244,9 +244,15 @@ notices:
       experience and the purse, and the status line and listings you can design to draw in the
       realm''s place. Turn any on there or on the Rewrites section in settings.'
     rewritesGathered:
-      '"ui.statline" in {file} moved to "ui.rewrites.statline", beside the listings the console
-      can draw in the realm''s place — the pack, the roster, a shop''s shelf, the party and the
-      experience line, all written in, off. The Rewrites section in settings edits them.'
+      '"ui.statline" in {file} became the Status line design under "ui.rewrites", beside the
+      listings the console can draw in the realm''s place — the pack, the roster, a shop''s
+      shelf, the party and the experience line, all written in, off. The Rewrites section in
+      settings keeps the list.'
+    rewritesListed:
+      '"ui.rewrites" in {file} is a list of designs now: each listing it stated became one
+      design, on or off as it was, its lines folded into one template, and the status line''s
+      colour bands became the block''s. The Rewrites section in settings keeps the list, and
+      each design opens in an editor that lists every figure it may name.'
     statusLineAsksQuieted:
       "pro and set were added to the quiet list in {file}: the status-line routine's own asks stay
       out of the console. Remove them there to see them."
@@ -864,14 +870,145 @@ rewrites:
     rank: Rank
     flag: Flag
     state: State
+    worn: Worn
+    wearable: Wearable
+    reason: Reason
+    realmSlot: Slot
+    speed: Speed
+    strength: Str
+    accuracy: Acc
+    weaponType: Type
+    hands: Hands
+    material: Material
+    minLevel: Lvl
+    limit: Limit
+    gettable: Gettable
+    id: Id
+    shops: Sold at
+    droppedBy: Dropped by
+    short: Short
+    basePrice: Base
+    invited: Invited
+    resting: Resting
+    meditating: Meditating
+    fullName: Full name
+    race: Race
+    level: Level
+    hp: HP
+    hpMax: Max HP
+    manaMax: Max MA
+    manaType: MA/KAI
+    exp: Exp
+    need: Need
+    expSession: Session
+    lives: Lives
+    wealth: Wealth
+    wealthLong: Wealth
+    room: Room
+    encumbrance: Load
+    encumbranceMax: Max load
+    encumbranceWord: Load
+    rows: Rows
+    first: First
+    last: Last
+  # One sentence per figure, read by the designer's sidebar; keyed by the
+  # figure's own name, shared wherever that name is offered.
+  fields:
+    items: The rows of the listing, one per thing.
+    itemCount: How many rows the listing has.
+    item: The thing as the listing printed it, count included.
+    name: Its name alone.
+    count: How many of it, where the listing counted.
+    slot: The slot the listing named it worn on.
+    equipped: The listing's own note on a thing in use, such as (Head).
+    worn: Whether it is in use.
+    wearable: Whether this character may put it on.
+    reason: Why this character may not put it on, where they may not.
+    price: The realm's base price, in copper.
+    charges: Uses left, where the listing counted them.
+    action: The pack card's own control, over two cells; a click equips or removes.
+    weight: The realm's weight for the kind.
+    ac: Armour class, from the realm data.
+    dr: Damage reduction, from the realm data.
+    min: The weapon's least damage.
+    max: The weapon's most damage.
+    damage: The weapon's damage, as least-most.
+    stats: Armour's AC/DR, or a weapon's damage, in one cell.
+    kind: What kind of thing the realm says it is.
+    realmSlot: Where the realm says this kind is worn.
+    speed: The weapon's speed.
+    strength: The strength the weapon asks for.
+    accuracy: The weapon's accuracy.
+    weaponType: The weapon's type.
+    hands: How many hands the weapon takes.
+    material: What the armour is made of.
+    uses: The most uses the realm records.
+    minLevel: The least level the realm allows it at.
+    limit: How many the realm allows to exist.
+    gettable: Whether the realm lets it be picked up.
+    id: The realm's own number for it.
+    shops: The shops known to sell it.
+    droppedBy: The monsters known to drop it.
+    icon: The picture for the slot it is worn on, over two cells.
+    keys: The keys carried, by name.
+    keyCount: How many keys are carried.
+    wealth: The purse, in copper.
+    wealthLong: The purse on the ladder, such as 2 gold, 3 silver.
+    runic: Runic coins in the pack.
+    platinum: Platinum pieces in the pack.
+    gold: Gold crowns in the pack.
+    silver: Silver nobles in the pack.
+    copper: Copper farthings in the pack.
+    encumbrance: What is carried, in the realm's units.
+    encumbranceMax: The most that can be carried.
+    encumbranceWord: The realm's word for the load, such as Medium.
+    encumbrancePercent: The load as a percentage of the most.
+    players: The rows of the roster, one per adventurer.
+    title: The class and rank the roster gives.
+    alignment: The alignment word the roster gives.
+    gang: The gang the roster names.
+    flags: The roster's status letters.
+    quantity: How many the counter has.
+    cost: The price in copper.
+    afford: Says short when the price is more than the purse holds.
+    short: Whether the price is more than the purse holds.
+    usable: Why this character may not wear it, where they may not.
+    note: The counter's own note on the row.
+    basePrice: The realm's base price, before the counter's markup.
+    members: The rows of the party, one per member.
+    class: The class the listing gives.
+    health: Health as a percentage, wearing the health colours.
+    mana: Mana as a percentage, wearing the mana colours.
+    rank: Frontrank, midrank or backrank.
+    flag: The listing's status letter, such as R.
+    state: The word for the status letter, such as resting.
+    invited: Whether they are invited and not yet in.
+    resting: Whether they are resting.
+    meditating: Whether they are meditating.
+    gained: What the line said was gained.
+    exp: Experience after the gain.
+    need: What the next level still costs.
+    level: The level the client last saw.
+    nextLevel: The level after it.
+    expSession: Experience gained this session.
+    fullName: Both names, as the stat sheet gives them.
+    race: The race, as the stat sheet gives it.
+    hp: Health, wearing the health colours.
+    hpMax: Health at most.
+    manaMax: Mana at most.
+    manaType: MA for casters, KAI for monks.
+    lives: Lives left.
+    room: The room the client last saw.
+    n: The row's place, from one.
+    rows: How many rows the list has.
+    first: Whether this is the first row.
+    last: Whether this is the last row.
   coins:
     runic: runic
     platinum: platinum
     gold: gold
     silver: silver
     copper: copper
-  inventory:
-    noKeys: none
   shop:
     short: short
   party:
@@ -2762,74 +2899,87 @@ settings:
       'The template sent is set statline full custom [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:
       — the realm keeps it on the character, so it stays set after the client is closed. Off or
       on, the client reads whatever the line turns out to be and says which pattern it reads it by.'
-    designLegend: Your Own Line
-    enabledLabel: Draw My Own Line
-    enabledHint:
-      The client reads the figures off every prompt and draws this line in its place, at the
-      moment the prompt arrives; what was drawn stays drawn in the scrollback.
-    layoutLabel: Layout
-    layoutHint:
-      'Text with tags in braces: a figure, a colour, bold, dim or reset. Anything else, emoji
-      included, is drawn as typed. What you type here is what the prompt row shows.'
-    previewLabel: As it will be drawn
-    previewEmpty: Nothing to draw.
-    cells: '{cells} of {max} cells; what you type shares the row, so leave it room.'
-    tooWide:
-      "{cells} cells — wider than the {max} the prompt row holds, so the realm's own line will be
-      drawn instead until this is shorter."
-    tagsNote:
-      'Figures: {figures}. Colours: {colours}, a hex such as {hex}, or {background} for the ground.
-      Also {attributes}.'
+  rewrites:
+    listLegend: Your Designs
+    note: Each design draws in place of what the realm printed, with what the client knows laid
+      beside it, the moment the listing completes; what was drawn stays drawn in the scrollback.
+      One design draws each listing, and turning one on turns off the others for it.
+    empty: None. Add one below.
+    enabledAria: Draw {name} yourself
+    editAria: Edit {name}
+    editTitle: Open in the editor
+    removeAria: Remove {name}
+    removeTitle: Remove this design
+    add: New design
+    entities:
+      statline: the prompt row
+      inventory: the pack
+      who: the roster
+      shop: a shop's shelf
+      party: the party
+      experience: the experience line
+    bandsLegend: Vital Colours
+    bandsNote:
+      On every line the client draws, a health or mana figure wears a colour by its share of
+      maximum; the first band whose floor it reaches wins. No bands, the line's own colour.
+      Unknown maximum, no colour.
     bandsHp: Health Colours
     bandsMana: Mana Colours
-    bandsHint:
-      From this share of maximum up, the figure wears this colour; the first band whose floor it
-      reaches wins. No bands is the layout's own colour. Unknown maximum, no colour.
     bandFromLabel: From, %
     bandColourLabel: Colour
     bandRemove: Remove
     bandRemoveAria: Remove band {number}
     addBand: Add a band
-  rewrites:
-    note:
-      Each listing below is drawn in place of what the realm printed, with what the client knows
-      laid beside it, the moment the listing completes. Off, the realm's own lines are painted.
-    inventory:
-      legend: The Pack
-    who:
-      legend: The Roster
-    shop:
-      legend: A Shop's Shelf
-    party:
-      legend: The Party
-    experience:
-      legend: The Experience Line
-    enabledLabel: Draw It Myself
-    enabledHint:
-      The lines the realm prints for this listing are withheld until it completes, and the
-      client's own drawing goes in their place; what was drawn stays drawn in the scrollback.
-    styleLabel: Layout
-    styleHint:
-      Columns lines every figure up under a name, as wide as its widest value; Lines draws each
-      row exactly as its template reads.
-    styleTable: Columns
-    styleLines: Lines
-    headerLabel: Column Names
-    headerHint: A first row naming each column, in the console's dim ink.
-    lines:
-      row: Each Row
-      keys: Keys
-      wealth: Wealth
-      load: Load
-      head: Heading
-      line: The Line
-    lineHint:
-      'Tags this line may draw: {tags}. Colours, bold, dim and reset as on the status line;
-      anything else is drawn as typed. Blank turns the line off. An icon or action is a picture
-      over two cells: the slot a thing is worn on, or the same control the pack card has, which
-      equips or removes with a click and says on hover why a thing cannot be worn.'
-    previewLabel: As it will be drawn
-    previewEmpty: Nothing to draw.
+    editor:
+      ariaLabel: Design a rewrite
+      nameLabel: Name
+      entityLabel: Draws
+      enabledLabel: Draw It Myself
+      enabledHint:
+        The lines the realm prints for this are withheld until it completes, and this drawing
+        goes in their place; off, the realm's own lines are painted.
+      templateLabel: Template
+      templateHint:
+        Text with tags in braces, one line here per line of the console. Click a figure, a colour
+        or a control on the left to put it at the caret.
+      done: Done
+      previewLabel: As it will be drawn
+      previewEmpty: Nothing to draw.
+      previewSample: Drawn from a sample; connect this character to see its own figures.
+      cells: '{cells} of {max} cells; what you type shares the row, so leave it room.'
+      tooWide:
+        "{cells} cells — wider than the {max} the prompt row holds, so the realm's own line will
+        be drawn instead until this is shorter."
+      oneLine: The prompt row is one line, so only the first line here is drawn.
+      problems:
+        unclosed: '{tag} was never closed.'
+        stray: '{tag} has nothing open to close; it is drawn as typed.'
+        badTest: '{tag} is not a test this grammar reads; its branch is never taken.'
+      sidebar:
+        listing: This listing
+        character: Character
+        row: Inside a row
+        colours: Colours
+        controls: Controls
+        rowsOf: 'Fields of {tag}'
+        repeat: Repeat for each
+        repeatHint: Draws the middle once per row, with the row's fields in scope.
+        insertHint: Puts {tag} at the caret.
+        pickColour: Any colour
+        pickColourHint: A colour of your own, as a hex the palette cannot repaint.
+        ground: On the ground
+        closers: Closers
+        closersHint: Puts back the colour or attribute in effect before.
+        ifHint: Draws the middle only when the test holds; else if and else take the other cases.
+        forHint: Draws the middle once per row, with the row's fields in scope.
+        tableHint: Lines every figure inside up in columns; header names them on a first row.
+        filtersHint: 'After a figure: |upper |lower |left |right |center |width:12 |or:text for a blank.'
+        kindText: text
+        kindNumber: number
+        kindFlag: yes or no
+        kindGlyph: a picture over two cells
+        kindList: a list
+        kindRecord: figures
   tabs:
     alerts: Alerts
     combat: Combat

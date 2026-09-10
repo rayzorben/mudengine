@@ -688,7 +688,7 @@ describe('owning the status line', () => {
     expect(fs.readFileSync(home.options, 'utf8')).toMatch(/set statline full custom/);
   });
 
-  it('moves a designed line the player already had under the rewrites, with the listings beside it', () => {
+  it('moves a designed line the player already had into the rewrites list, with the shipped designs beside it', () => {
     const layout = '{room} HP {hp}/{hpMax}> ';
     fs.writeFileSync(
       home.options,
@@ -709,24 +709,123 @@ describe('owning the status line', () => {
     for (const file of [home.options, home.profile('soul').file]) {
       const ui = (parse(fs.readFileSync(file, 'utf8')) as { ui: Record<string, unknown> }).ui;
       expect(ui['statline']).toBeUndefined();
-      const rewrites = ui['rewrites'] as Record<string, Record<string, unknown>>;
-      expect(rewrites['statline']?.['enabled']).toBe(true);
-      expect(rewrites['statline']?.['layout']).toBe(layout);
-      expect(rewrites['inventory']).toEqual(DEFAULT_CONFIG.ui.rewrites.inventory);
-      expect(rewrites['experience']).toEqual(DEFAULT_CONFIG.ui.rewrites.experience);
+      const rewrites = ui['rewrites'] as { bands: unknown; designs: Record<string, unknown>[] };
+      expect(rewrites.designs[0]).toEqual({
+        name: 'Status line',
+        entity: 'statline',
+        enabled: true,
+        template: layout
+      });
+      expect(rewrites.designs.slice(1)).toEqual(DEFAULT_CONFIG.ui.rewrites.designs.slice(1));
     }
-    // Where the block was, with the template's paragraph; the neighbours untouched.
+    // The player's own bands, empty, over the shipped ones; a file that
+    // stated none takes the shipped ones.
+    const options = parse(fs.readFileSync(home.options, 'utf8')) as {
+      ui: { rewrites: { bands: unknown } };
+    };
+    expect(options.ui.rewrites.bands).toEqual({ hp: [], mana: [] });
+    const soul = parse(fs.readFileSync(home.profile('soul').file, 'utf8')) as {
+      ui: { rewrites: { bands: unknown } };
+    };
+    expect(soul.ui.rewrites.bands).toEqual(DEFAULT_CONFIG.ui.rewrites.bands);
+    // Where the block was, with the player's own paragraph; the neighbours untouched.
     const text = fs.readFileSync(home.options, 'utf8');
     const keys = Object.keys(parse(text).ui as Record<string, unknown>);
     expect(keys).not.toContain('statline');
     expect(keys.indexOf('rewrites')).toBeGreaterThan(keys.indexOf('showLogo'));
     expect(keys.indexOf('rewrites')).toBeLessThan(keys.indexOf('alerts'));
-    expect(text).toMatch(/The pack, in place of/);
-    expect(said.filter((m) => m.includes('ui.rewrites.statline'))).toHaveLength(2);
+    expect(text).toMatch(/# my line\n  rewrites:/);
+    expect(fs.readFileSync(home.profile('soul').file, 'utf8')).toMatch(
+      /A template is text with tags/
+    );
+    expect(said.filter((m) => m.includes('Status line design'))).toHaveLength(2);
     // Twice over: a file already gathered is left alone.
     said = [];
     migrate(true);
-    expect(said.filter((m) => m.includes('ui.rewrites.statline'))).toHaveLength(0);
+    expect(said.filter((m) => m.includes('Status line design'))).toHaveLength(0);
+  });
+
+  it('folds a block keyed by kind into the list of designs, one template each', () => {
+    const older = [
+      'ui:',
+      '  showLogo: true',
+      '  rewrites:',
+      '    statline:',
+      '      enabled: true',
+      '      layout: "HP {hp}> "',
+      '      bands:',
+      '        hp:',
+      '          - { atLeast: 0.5, colour: green }',
+      '        mana: []',
+      '    inventory:',
+      '      enabled: true',
+      '      style: table',
+      '      header: false',
+      '      lines:',
+      '        row: "{action} {item} {weight}"',
+      '        keys: "Keys: {keys}"',
+      '        wealth: ""',
+      '        load: "Load: {encumbrance}"',
+      '    who:',
+      '      enabled: false',
+      '      style: lines',
+      '      header: true',
+      '      lines:',
+      '        head: "{count} here"',
+      '        row: "{name}"',
+      '    experience:',
+      '      enabled: true',
+      '      style: lines',
+      '      header: false',
+      '      lines:',
+      '        line: "+{gained}"',
+      '  alerts:',
+      '    minimum: info',
+      ''
+    ].join('\n');
+    fs.writeFileSync(home.options, older, 'utf8');
+    fs.mkdirSync(path.dirname(home.profile('soul').file), { recursive: true });
+    fs.writeFileSync(home.profile('soul').file, `name: Soul\nserver: Bearfather\n${older}`, 'utf8');
+    migrate(true);
+    for (const file of [home.options, home.profile('soul').file]) {
+      const ui = (parse(fs.readFileSync(file, 'utf8')) as { ui: Record<string, unknown> }).ui;
+      const rewrites = ui['rewrites'] as { bands: unknown; designs: Record<string, unknown>[] };
+      expect(rewrites.bands).toEqual({ hp: [{ atLeast: 0.5, colour: 'green' }], mana: [] });
+      expect(rewrites.designs.map((design) => [design['entity'], design['enabled']])).toEqual([
+        ['statline', true],
+        ['inventory', true],
+        ['who', false],
+        ['shop', false],
+        ['party', false],
+        ['experience', true]
+      ]);
+      expect(rewrites.designs[0]?.['template']).toBe('HP {hp}> ');
+      expect(rewrites.designs[1]?.['template']).toBe(
+        [
+          '{table}',
+          '{for items}',
+          '{action} {item} {weight}',
+          '{/for}',
+          '{/table}',
+          'Keys: {keys|or:none}',
+          'Load: {encumbrance}'
+        ].join('\n')
+      );
+      expect(rewrites.designs[2]?.['template']).toBe(
+        ['{count} here', '{for players}', '{name}', '{/for}'].join('\n')
+      );
+      expect(rewrites.designs[3]).toEqual(DEFAULT_CONFIG.ui.rewrites.designs[3]);
+      expect(rewrites.designs[5]?.['template']).toBe('+{gained}');
+    }
+    const text = fs.readFileSync(home.options, 'utf8');
+    const keys = Object.keys(parse(text).ui as Record<string, unknown>);
+    expect(keys.indexOf('rewrites')).toBeGreaterThan(keys.indexOf('showLogo'));
+    expect(keys.indexOf('rewrites')).toBeLessThan(keys.indexOf('alerts'));
+    expect(text).toMatch(/A template is text with tags/);
+    expect(said.filter((m) => m.includes('is a list of designs now'))).toHaveLength(2);
+    said = [];
+    migrate(true);
+    expect(said.filter((m) => m.includes('is a list of designs now'))).toHaveLength(0);
   });
 
   it('leaves a file that already answered it alone, twice over', () => {

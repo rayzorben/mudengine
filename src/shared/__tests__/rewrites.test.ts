@@ -1,27 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  activeDesign,
+  CHARACTER_FIELDS,
+  columnKeys,
   DEFAULT_REWRITES,
-  REWRITE_KINDS,
-  REWRITE_SPECS,
-  renderExperience,
-  renderInventory,
-  renderParty,
-  renderRows,
-  renderShop,
-  renderWho,
+  ENTITY_SPECS,
+  renderRewrite,
+  REWRITE_ENTITIES,
   rewriteToChunk,
+  ROW_FIELDS,
   slotIcon,
   wealthLong,
+  withEnabled,
+  type FieldSpec,
   type InventoryRow,
-  type RewriteDesign
+  type RewriteDesign,
+  type RewriteFacts,
+  type VitalBands
 } from '../rewrites';
-import { GLYPH_BLANK, renderTemplate, toAnsi } from '../template';
+import { GLYPH_BLANK, parseTemplate, pathsIn, type Drawn } from '../template';
 import { DEFAULT_CONFIG, normalizeRewrites } from '../config';
 import { DENOMINATIONS } from '../character';
 import { equipVerdict, UNKNOWN_WEARER, type Wearer } from '../gear';
 import { asUiDict, flattenDict, makeT } from '../i18n';
 import { wireItem, type ItemEntity } from '../entities';
+import type { StatlineFigures } from '../statline';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 
@@ -32,99 +36,102 @@ const t = makeT(dict, (problem) => {
 });
 const keys = flattenDict(dict);
 
-const plainOf = (line: { segments: { text: string }[] }): string =>
-  line.segments.map((segment) => segment.text).join('');
+const plainOf = (line: Drawn): string => line.segments.map((segment) => segment.text).join('');
 
-const design = (
-  kind: keyof typeof DEFAULT_REWRITES,
-  over: Partial<RewriteDesign> = {}
-): RewriteDesign => ({
-  ...structuredClone(DEFAULT_REWRITES[kind]),
+const BANDS: VitalBands = DEFAULT_CONFIG.ui.rewrites.bands;
+const NO_BANDS: VitalBands = { hp: [], mana: [] };
+
+const FIGURES: StatlineFigures = {
+  hp: 120,
+  hpMax: 156,
+  mana: 5,
+  manaMax: 28,
+  exp: 10,
+  need: 90,
+  wealth: 7,
+  state: 'resting',
+  name: 'Vaelor',
+  fullName: 'Vaelor Stone',
+  race: 'Human',
+  className: 'Mystic',
+  manaType: 'KAI',
+  level: 3,
+  room: 'Town Square',
+  lives: 9,
+  expSession: 12,
+  encumbrance: 100,
+  encumbranceMax: 400,
+  encumbranceWord: 'None'
+};
+
+const design = (entity: RewriteDesign['entity'], template: string): RewriteDesign => ({
+  name: '',
+  entity,
   enabled: true,
-  ...over
+  template
 });
 
-describe('the template grammar', () => {
-  it('draws a figure with its own colour and hands the layout colour back', () => {
-    const drawn = renderTemplate('{red}a{x}b', (tag) =>
-      tag === 'x' ? { text: 'X', colour: 'green' } : null
-    );
-    expect(drawn?.segments.map((s) => [s.text, s.fg])).toEqual([
-      ['a', 'red'],
-      ['X', 'green'],
-      ['b', 'red']
-    ]);
-    expect(drawn?.cells).toBe(3);
-  });
-
-  it('leaves two blank cells for a glyph and places it where they start', () => {
-    const drawn = renderTemplate('ab{g}cd', (tag) =>
-      tag === 'g' ? { text: '', glyph: { icon: 'head', label: 'Head' } } : null
-    );
-    expect(plainOf(drawn!)).toBe(`ab${GLYPH_BLANK}cd`);
-    expect(drawn?.glyphs).toEqual([{ x: 2, icon: 'head', label: 'Head' }]);
-  });
-
-  it('draws a tag it does not know as typed', () => {
-    expect(plainOf(renderTemplate('{nope} {bold}x', () => null)!)).toBe('{nope} x');
-  });
-
-  it('ends its bytes with a reset so what follows starts clean', () => {
-    expect(toAnsi([{ text: 'x', fg: 'red', bg: null, bold: true, dim: false }])).toBe(
-      '\x1b[0;1;31mx\x1b[0m'
-    );
-  });
+const shipped = (entity: RewriteDesign['entity']): RewriteDesign => ({
+  ...DEFAULT_REWRITES.find((entry) => entry.entity === entity)!,
+  enabled: true
 });
 
-describe('a table', () => {
-  const spec = REWRITE_SPECS.who;
-  const row = spec.lines[1]!;
-  const rows = [
-    { n: { text: '1' }, name: { text: 'Vaelor' }, title: { text: 'Kai Warrior' } },
-    { n: { text: '10' }, name: { text: 'Beaver IzCoo' }, title: { text: 'Squire' } }
-  ];
+describe('the prompt row', () => {
+  const facts: RewriteFacts = { entity: 'statline', figures: FIGURES };
+  const plain = { bg: null, bold: false, dim: false };
 
-  it('lines every column up under its name, numbers flush right', () => {
-    const lines = renderRows(
-      design('who', { lines: { row: '{n} {name} {title}|' } }),
-      spec,
-      row,
-      rows,
+  it('draws the figures, colours a banded one for its own characters only, and hands the colour back', () => {
+    const bands: VitalBands = {
+      hp: [
+        { atLeast: 0.75, colour: 'green' },
+        { atLeast: 0, colour: 'red' }
+      ],
+      mana: []
+    };
+    const [line] = renderRewrite(
+      design('statline', '{brightWhite}HP {hp}/{hpMax}{reset} ${wealth}{state}'),
+      facts,
+      bands,
       t
     );
-    expect(lines.map(plainOf)).toEqual([
-      ' # Name         Title      |',
-      ' 1 Vaelor       Kai Warrior|',
-      '10 Beaver IzCoo Squire     |'
+    expect(line?.segments).toEqual([
+      { text: 'HP ', fg: 'brightWhite', ...plain },
+      { text: '120', fg: 'green', ...plain },
+      { text: '/156', fg: 'brightWhite', ...plain },
+      { text: ' $7 (Resting)', fg: null, ...plain }
     ]);
+    expect(line?.cells).toBe('HP 120/156 $7 (Resting)'.length);
   });
 
-  it('draws the header in the dim ink and drops it when asked', () => {
-    const [head] = renderRows(design('who', { lines: { row: '{name}' } }), spec, row, rows, t);
-    expect(head?.segments[0]?.fg).toBe('brightBlack');
-    const lines = renderRows(
-      design('who', { header: false, lines: { row: '{name}' } }),
-      spec,
-      row,
-      rows,
+  it('draws an unknown figure as a question mark, never a zero, and no band without a maximum', () => {
+    const [line] = renderRewrite(
+      design('statline', '{brightWhite}HP {hp}/{hpMax}'),
+      { entity: 'statline', figures: { ...FIGURES, hpMax: null } },
+      BANDS,
       t
     );
-    expect(lines.map(plainOf)).toEqual(['Vaelor      ', 'Beaver IzCoo']);
+    expect(plainOf(line!)).toBe('HP 120/?');
+    expect(line?.segments).toEqual([{ text: 'HP 120/?', fg: 'brightWhite', ...plain }]);
   });
 
-  it('draws each row as its template reads in lines style', () => {
-    const lines = renderRows(
-      design('who', { style: 'lines', lines: { row: '{n}. {name}' } }),
-      spec,
-      row,
-      rows,
+  it('offers the character whole: the names, the resource word, the load, and the state as a test', () => {
+    const [line] = renderRewrite(
+      design(
+        'statline',
+        '{name} {fullName} {race} {class} {manaType} {encumbrance}/{encumbranceMax} {encumbranceWord}' +
+          ' {wealthLong} {if resting}zz{/if}{if state == "resting"}!{/if}'
+      ),
+      facts,
+      BANDS,
       t
     );
-    expect(lines.map(plainOf)).toEqual(['1. Vaelor', '10. Beaver IzCoo']);
+    expect(plainOf(line!)).toBe('Vaelor Vaelor Stone Human Mystic KAI 100/400 None 7 copper zz!');
   });
 
-  it('draws nothing for a line whose template is blank', () => {
-    expect(renderRows(design('who', { lines: { row: '' } }), spec, row, rows, t)).toEqual([]);
+  it('is one line: a second line of the template is not drawn', () => {
+    const lines = renderRewrite(design('statline', 'a\nb'), facts, BANDS, t);
+    expect(lines.map(plainOf)).toEqual(['a']);
+    expect(renderRewrite(design('statline', '   '), facts, BANDS, t)).toEqual([]);
   });
 });
 
@@ -153,7 +160,7 @@ describe('the pack', () => {
       id: 3,
       encumbrance: 400,
       realmSlot: 'Weapon Hand',
-      weapon: { min: 8, max: 20 },
+      weapon: { min: 8, max: 20, speed: 1100, type: 'Slash' },
       classes: [1]
     }),
     item('padded gloves', { id: 4, encumbrance: 40, realmSlot: 'Hands', armour: { ac: 1, dr: 0 } }),
@@ -161,26 +168,25 @@ describe('the pack', () => {
     item('torch', {}, { count: 6 })
   ].map((entity) => ({ item: entity, verdict: equipVerdict(entity, wearer, t) }));
 
-  const facts = {
-    items: rows,
-    keys: ['bone key', 'bone key'],
-    coins: { gold: 2, silver: 3, copper: 50 },
-    wealth: 2350,
-    encumbrance: 1744,
-    encumbranceMax: 4128,
-    encumbranceWord: 'Medium'
+  const facts: RewriteFacts = {
+    entity: 'inventory',
+    figures: FIGURES,
+    pack: {
+      items: rows,
+      keys: ['bone key', 'bone key'],
+      coins: { gold: 2, silver: 3, copper: 50 },
+      wealth: 2350,
+      encumbrance: 1744,
+      encumbranceMax: 4128,
+      encumbranceWord: 'Medium'
+    }
   };
+  const pack = (template: string): Drawn[] =>
+    renderRewrite(design('inventory', template), facts, BANDS, t);
 
   it("reaches the pack card's verdict for every row and draws it as the glyph", () => {
-    const drawn = renderInventory(
-      design('inventory', {
-        style: 'lines',
-        lines: { ...DEFAULT_REWRITES.inventory.lines, row: '{action}{item}' }
-      }),
-      facts,
-      t
-    );
-    const glyphs = drawn.lines.slice(0, 5).map((line) => line.glyphs[0] ?? null);
+    const drawn = pack('{for items}{action}{item}\n{/for}');
+    const glyphs = drawn.slice(0, 5).map((line) => line.glyphs[0] ?? null);
     expect(glyphs.map((g) => g?.icon ?? null)).toEqual(['worn', 'blocked', 'wear', null, 'wear']);
     expect(glyphs[0]?.commands).toEqual(['remove visored greathelm']);
     expect(glyphs[1]?.label).toBe('Only Warrior may use this');
@@ -188,74 +194,86 @@ describe('the pack', () => {
     expect(glyphs[2]?.commands).toEqual(['wear padded gloves']);
     // The unknown item keeps its control: unknown never refuses.
     expect(glyphs[4]?.commands).toEqual(['wear torch']);
-    expect(plainOf(drawn.lines[4]!)).toBe(`${GLYPH_BLANK}6 torch`);
+    expect(plainOf(drawn[4]!)).toBe(`${GLYPH_BLANK}6 torch`);
   });
 
-  it("draws the realm's figures and leaves blank what the realm lacks", () => {
-    const drawn = renderInventory(
-      design('inventory', {
-        header: false,
-        lines: {
-          ...DEFAULT_REWRITES.inventory.lines,
-          row: '{item}|{weight}|{stats}|{equipped}|{slot}'
-        }
-      }),
-      facts,
-      t
+  it("draws the realm's figures in columns and leaves blank what the realm lacks", () => {
+    const drawn = pack(
+      '{table}{for items}{item}|{weight}|{stats}|{equipped}|{slot}\n{/for}{/table}'
     );
-    expect(plainOf(drawn.lines[0]!)).toBe('visored greathelm|120|4/1 |(Head)|Head       ');
-    expect(plainOf(drawn.lines[1]!)).toBe('golden battleaxe |400|8-20|      |Weapon Hand');
-    expect(plainOf(drawn.lines[4]!)).toBe('6 torch          |   |    |      |           ');
+    expect(plainOf(drawn[0]!)).toBe('visored greathelm|120|4/1 |(Head)|Head       ');
+    expect(plainOf(drawn[1]!)).toBe('golden battleaxe |400|8-20|      |Weapon Hand');
+    expect(plainOf(drawn[4]!)).toBe('6 torch          |   |    |      |           ');
+  });
+
+  it('offers what the realm records about the kind, and the verdict as a test', () => {
+    const drawn = pack(
+      '{for items}{name}:{speed}:{weaponType}:{realmSlot}:{if wearable}ok{else}{reason}{/if}\n{/for}'
+    );
+    expect(plainOf(drawn[1]!)).toBe(
+      'golden battleaxe:1100:Slash:Weapon Hand:Only Warrior may use this'
+    );
+    expect(plainOf(drawn[2]!)).toBe('padded gloves:::Hands:ok');
   });
 
   it('draws the slot picture where the slot has one', () => {
-    const drawn = renderInventory(
-      design('inventory', {
-        header: false,
-        lines: { ...DEFAULT_REWRITES.inventory.lines, row: '{icon}{name}' }
-      }),
-      facts,
-      t
-    );
-    expect(drawn.lines[0]?.glyphs).toEqual([{ x: 0, icon: 'head', label: 'Head' }]);
-    expect(drawn.lines[3]?.glyphs).toEqual([]);
+    const drawn = pack('{for items}{icon}{name}\n{/for}');
+    expect(drawn[0]?.glyphs).toEqual([{ x: 0, icon: 'head', label: 'Head' }]);
+    expect(drawn[3]?.glyphs).toEqual([]);
     expect(slotIcon('Weapon Hand')).toBe('weapon');
     expect(slotIcon('Readied')).toBe('readied');
     expect(slotIcon('Pocket')).toBeNull();
   });
 
-  it('states the keys, the purse on the ladder and the load', () => {
-    const drawn = renderInventory(design('inventory'), facts, t);
-    const text = drawn.lines.map(plainOf);
+  it('states the keys, the purse on the ladder, the load and the character beside them', () => {
+    const drawn = renderRewrite(shipped('inventory'), facts, BANDS, t);
+    const text = drawn.map(plainOf);
+    expect(text[0]).toMatch(/Item\s+Wt/);
     expect(text.at(-3)).toBe('Keys: bone key, bone key');
     expect(text.at(-2)).toBe('Wealth: 23 gold, 5 silver  (2350 copper)');
     expect(text.at(-1)).toBe('Load: 1744/4128 Medium');
     expect(wealthLong(null, t)).toBe('?');
     expect(wealthLong(0, t)).toBe('0 copper');
     expect(wealthLong(1_010_203, t)).toBe('1 runic, 1 platinum, 2 gold, 3 copper');
+    expect(
+      pack('{keyCount} {itemCount} {gold} {encumbrancePercent}% {me.level} {me.hp}').map(plainOf)
+    ).toEqual(['2 5 2 42% 3 120']);
   });
 
-  it('says none for an empty key ring and draws nothing for a blanked line', () => {
-    const drawn = renderInventory(
-      design('inventory', { lines: { ...DEFAULT_REWRITES.inventory.lines, wealth: '', load: '' } }),
-      { ...facts, keys: [] },
+  it('says what the template says for an empty key ring, and draws nothing for a blank template', () => {
+    const drawn = renderRewrite(
+      design('inventory', '{dim}Keys:{/dim} {keys|or:none}'),
+      { ...facts, pack: { ...facts.pack, keys: [] } },
+      BANDS,
       t
     );
-    expect(drawn.lines.map(plainOf).at(-1)).toBe('Keys: none');
+    expect(drawn.map(plainOf)).toEqual(['Keys: none']);
+    expect(pack('')).toEqual([]);
   });
 });
 
 describe('the other listings', () => {
   it('draws the roster with its count', () => {
-    const drawn = renderWho(
-      design('who', { lines: { head: '{count} here', row: '{name} {gang}' } }),
-      [
-        { name: 'Vaelor', title: 'Kai Warrior', alignment: 'Good', gang: 'Mudengine', flags: 'S' },
-        { name: 'Rand', title: null, alignment: null, gang: null, flags: null }
-      ],
+    const drawn = renderRewrite(
+      design('who', '{count} here\n{table header}{for players}{name} {gang}\n{/for}{/table}'),
+      {
+        entity: 'who',
+        figures: FIGURES,
+        rows: [
+          {
+            name: 'Vaelor',
+            title: 'Kai Warrior',
+            alignment: 'Good',
+            gang: 'Mudengine',
+            flags: 'S'
+          },
+          { name: 'Rand', title: null, alignment: null, gang: null, flags: null }
+        ]
+      },
+      BANDS,
       t
     );
-    expect(drawn.lines.map(plainOf)).toEqual([
+    expect(drawn.map(plainOf)).toEqual([
       '2 here',
       'Name   Gang     ',
       'Vaelor Mudengine',
@@ -266,92 +284,102 @@ describe('the other listings', () => {
   it('marks a price the purse cannot meet and a thing this character may not wear', () => {
     const wearer: Wearer = { ...UNKNOWN_WEARER, classId: 2, classNames: { 1: 'Warrior' } };
     const axe = { ...wireItem('golden battleaxe'), id: 3, realmSlot: 'Weapon Hand', classes: [1] };
-    const drawn = renderShop(
-      design('shop', { header: false, lines: { row: '{item}|{afford}|{usable}' } }),
-      [
-        {
-          name: 'golden battleaxe',
-          quantity: 1,
-          price: '18 gold crowns',
-          cost: 1800,
-          note: null,
-          item: axe,
-          verdict: equipVerdict(axe, wearer, t)
-        },
-        {
-          name: 'torch',
-          quantity: 20,
-          price: '5 copper farthings',
-          cost: 5,
-          note: null,
-          item: wireItem('torch'),
-          verdict: equipVerdict(wireItem('torch'), wearer, t)
-        }
-      ],
-      100,
+    const drawn = renderRewrite(
+      design('shop', '{table}{for items}{item}|{afford}|{usable}|{if short}!{/if}\n{/for}{/table}'),
+      {
+        entity: 'shop',
+        figures: { ...FIGURES, wealth: 100 },
+        rows: [
+          {
+            name: 'golden battleaxe',
+            quantity: 1,
+            price: '18 gold crowns',
+            cost: 1800,
+            note: null,
+            item: axe,
+            verdict: equipVerdict(axe, wearer, t)
+          },
+          {
+            name: 'torch',
+            quantity: 20,
+            price: '5 copper farthings',
+            cost: 5,
+            note: null,
+            item: wireItem('torch'),
+            verdict: equipVerdict(wireItem('torch'), wearer, t)
+          }
+        ]
+      },
+      BANDS,
       t
     );
-    expect(drawn.lines.map(plainOf)).toEqual([
-      'golden battleaxe|short|Only Warrior may use this',
-      'torch           |     |                         '
+    expect(drawn.map(plainOf)).toEqual([
+      'golden battleaxe|short|Only Warrior may use this|!',
+      'torch           |     |                         |'
     ]);
-    expect(drawn.lines[0]?.segments.find((s) => s.text.startsWith('short'))?.fg).toBe('brightRed');
+    expect(drawn[0]?.segments.find((s) => s.text.startsWith('short'))?.fg).toBe('brightRed');
   });
 
-  it("colours a member's health by the status line's bands and names the flag", () => {
-    const drawn = renderParty(
-      design('party', { header: false, lines: { row: '{name} {health} {state}' } }),
-      [
-        {
-          name: 'Soul',
-          class: 'Warrior',
-          health: 35,
-          mana: null,
-          rank: 'Backrank',
-          flag: 'R',
-          invited: false
-        }
-      ],
-      DEFAULT_CONFIG.ui.rewrites.statline.bands,
+  it("colours a member's health by the bands and names the flag", () => {
+    const drawn = renderRewrite(
+      design('party', '{for members}{name} {health} {state}{if resting}*{/if}\n{/for}'),
+      {
+        entity: 'party',
+        figures: FIGURES,
+        rows: [
+          {
+            name: 'Soul',
+            class: 'Warrior',
+            health: 35,
+            mana: null,
+            rank: 'Backrank',
+            flag: 'R',
+            invited: false
+          }
+        ]
+      },
+      BANDS,
       t
     );
-    expect(plainOf(drawn.lines[0]!)).toBe('Soul 35 resting');
-    expect(drawn.lines[0]?.segments.find((s) => s.text === '35')?.fg).toBe('brightRed');
+    expect(plainOf(drawn[0]!)).toBe('Soul 35 resting*');
+    expect(drawn[0]?.segments.find((s) => s.text === '35')?.fg).toBe('brightRed');
   });
 
   it('draws the experience line with what is known and ? for what is not', () => {
-    const drawn = renderExperience(
-      design('experience', { lines: { line: '+{gained} {exp} {need} {nextLevel}' } }),
+    const drawn = renderRewrite(
+      design('experience', '+{gained} {exp} {need} {nextLevel}'),
       {
-        gained: 25,
-        exp: null,
-        need: 100,
-        level: 12,
-        expSession: 25
-      }
+        entity: 'experience',
+        figures: FIGURES,
+        gain: { gained: 25, exp: null, need: 100, level: 12, expSession: 25 }
+      },
+      NO_BANDS,
+      t
     );
-    expect(drawn.lines.map(plainOf)).toEqual(['+25 ? 100 13']);
+    expect(drawn.map(plainOf)).toEqual(['+25 ? 100 13']);
   });
 });
 
 describe('the bytes the console is fed', () => {
   it('ends every line and keys a mark to each line carrying a glyph', () => {
-    const drawn = renderInventory(
-      design('inventory', {
-        header: false,
-        lines: { row: '{action}{name}', keys: '', wealth: '', load: '' }
-      }),
+    const drawn = renderRewrite(
+      design('inventory', '{for items}{action}{name}\n{/for}'),
       {
-        items: [
-          { item: wireItem('torch'), verdict: equipVerdict(wireItem('torch'), UNKNOWN_WEARER, t) }
-        ],
-        keys: [],
-        coins: {},
-        wealth: null,
-        encumbrance: null,
-        encumbranceMax: null,
-        encumbranceWord: null
+        entity: 'inventory',
+        figures: FIGURES,
+        pack: {
+          items: [
+            { item: wireItem('torch'), verdict: equipVerdict(wireItem('torch'), UNKNOWN_WEARER, t) }
+          ],
+          keys: [],
+          coins: {},
+          wealth: null,
+          encumbrance: null,
+          encumbranceMax: null,
+          encumbranceWord: null
+        }
       },
+      BANDS,
       t
     );
     const chunk = rewriteToChunk(drawn);
@@ -366,22 +394,113 @@ describe('the bytes the console is fed', () => {
   });
 });
 
-describe('the dictionary', () => {
-  it('names every column a table can have and every coin', () => {
-    for (const kind of REWRITE_KINDS) {
-      for (const line of REWRITE_SPECS[kind].lines) {
-        if (!line.repeated) continue;
-        for (const tag of line.tags) {
-          if (tag === 'icon' || tag === 'action') continue;
-          expect(keys.has(`rewrites.labels.${tag}`), `rewrites.labels.${tag}`).toBe(true);
-        }
+describe('the list', () => {
+  const designs: RewriteDesign[] = [
+    design('inventory', 'a'),
+    { ...design('inventory', 'b'), enabled: false },
+    design('who', 'c')
+  ];
+
+  it('draws an entity by the first design that is on for it', () => {
+    expect(activeDesign(designs, 'inventory')?.template).toBe('a');
+    expect(activeDesign(designs, 'party')).toBeNull();
+    expect(activeDesign([{ ...designs[0]!, enabled: false }], 'inventory')).toBeNull();
+  });
+
+  it('turning one on turns off the others for its entity, and nothing else', () => {
+    const next = withEnabled(designs, 1, true);
+    expect(next.map((entry) => entry.enabled)).toEqual([false, true, true]);
+    expect(withEnabled(next, 1, false).map((entry) => entry.enabled)).toEqual([false, false, true]);
+    expect(withEnabled(designs, 9, true)).toEqual(designs);
+  });
+});
+
+describe('the catalogue and the dictionary', () => {
+  /** Every figure a template may name, by entity, from the catalogue. */
+  const offered = (entity: RewriteDesign['entity']): Set<string> => {
+    const out = new Set<string>();
+    const walk = (fields: readonly FieldSpec[], prefix: string): void => {
+      for (const field of fields) {
+        out.add(`${prefix}${field.key}`);
+        if (field.fields !== undefined)
+          walk(field.fields, field.kind === 'list' ? '' : `${prefix}${field.key}.`);
       }
+    };
+    walk(ENTITY_SPECS[entity].fields, '');
+    walk(CHARACTER_FIELDS, ENTITY_SPECS[entity].self === 'top' ? '' : 'me.');
+    for (const field of ROW_FIELDS) out.add(field.key);
+    return out;
+  };
+
+  it('ships every design off, parsing clean, naming only figures the catalogue offers', () => {
+    for (const shippedDesign of DEFAULT_REWRITES) {
+      expect(shippedDesign.enabled).toBe(false);
+      expect(parseTemplate(shippedDesign.template).problems).toEqual([]);
+      const known = offered(shippedDesign.entity);
+      for (const path of pathsIn(shippedDesign.template)) {
+        expect(known.has(path), `${shippedDesign.entity} names {${path}}`).toBe(true);
+      }
+    }
+    expect(DEFAULT_REWRITES.map((entry) => entry.entity)).toEqual([...REWRITE_ENTITIES]);
+    expect(normalizeRewrites(DEFAULT_CONFIG.ui.rewrites)).toEqual(DEFAULT_CONFIG.ui.rewrites);
+  });
+
+  it('names every column a table can have, describes every figure, and names every coin', () => {
+    for (const key of columnKeys()) {
+      expect(keys.has(`rewrites.labels.${key}`), `rewrites.labels.${key}`).toBe(true);
+    }
+    const described = new Set<string>();
+    const walk = (fields: readonly FieldSpec[]): void => {
+      for (const field of fields) {
+        described.add(field.key);
+        if (field.fields !== undefined) walk(field.fields);
+      }
+    };
+    for (const spec of Object.values(ENTITY_SPECS)) walk(spec.fields);
+    walk(CHARACTER_FIELDS);
+    walk(ROW_FIELDS);
+    for (const key of described) {
+      expect(keys.has(`rewrites.fields.${key}`), `rewrites.fields.${key}`).toBe(true);
+    }
+    // And nothing described that is not offered: a sentence about a figure
+    // nobody can name is copy that looks maintained and is dead.
+    for (const key of keys.keys()) {
+      if (!key.startsWith('rewrites.fields.')) continue;
+      expect(described.has(key.slice('rewrites.fields.'.length)), key).toBe(true);
     }
     for (const which of DENOMINATIONS) expect(keys.has(`rewrites.coins.${which}`)).toBe(true);
   });
 
-  it('ships every kind off, and the block reads back as itself', () => {
-    for (const kind of REWRITE_KINDS) expect(DEFAULT_REWRITES[kind].enabled).toBe(false);
-    expect(normalizeRewrites(DEFAULT_CONFIG.ui.rewrites)).toEqual(DEFAULT_CONFIG.ui.rewrites);
+  it('draws every shipped design against the character alone, so an unlisted figure shows itself', () => {
+    // A figure a design names that its scope lacks is drawn as typed; the
+    // shipped six name only what their entity offers, so none shows.
+    const facts: Record<RewriteDesign['entity'], RewriteFacts> = {
+      statline: { entity: 'statline', figures: FIGURES },
+      inventory: {
+        entity: 'inventory',
+        figures: FIGURES,
+        pack: {
+          items: [],
+          keys: [],
+          coins: {},
+          wealth: null,
+          encumbrance: null,
+          encumbranceMax: null,
+          encumbranceWord: null
+        }
+      },
+      who: { entity: 'who', figures: FIGURES, rows: [] },
+      shop: { entity: 'shop', figures: FIGURES, rows: [] },
+      party: { entity: 'party', figures: FIGURES, rows: [] },
+      experience: {
+        entity: 'experience',
+        figures: FIGURES,
+        gain: { gained: 1, exp: null, need: null, level: null, expSession: null }
+      }
+    };
+    for (const shippedDesign of DEFAULT_REWRITES) {
+      const text = renderRewrite(shippedDesign, facts[shippedDesign.entity], BANDS, t).map(plainOf);
+      expect(text.join('\n'), shippedDesign.entity).not.toMatch(/\{[a-z]/);
+    }
   });
 });

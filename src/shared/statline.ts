@@ -165,38 +165,31 @@ export function readingOf(g: Record<string, string | undefined>): StatlineReadin
 }
 
 /*
- * ───────────────────────────── the line the player designs ─────────────────
+/*
+ * ───────────────────────────── the figures a design draws from ────────────
  *
  * The client intercepts the prompt, reads the real figures out of it, and
- * draws its own status line in their place — rendered at write time, never as
- * a transform over the buffer, so scrollback keeps whatever was drawn then.
- * The player designs the presentation; the content is the template above,
- * which is a fact. The grammar is `template.ts`, shared with every other
- * rewrite. `mudengine-ui` § The status line the player designs is drawn at
+ * hands them with what it tracks beside them to the rewrite that draws the
+ * prompt row (`rewrites.ts`, `template.ts`) — rendered at write time, never
+ * as a transform over the buffer, so scrollback keeps whatever was drawn
+ * then. `mudengine-ui` § The status line the player designs is drawn at
  * write time, in the prompt row.
  */
-import { bandFor, renderTemplate, type Cell, type ColourBand, type Segment } from './template';
-
-/**
- * What the player authored. `layout` is text with `{tags}`: a figure
- * (`{hp}`, `{hpMax}`, `{mana}`, `{manaMax}`, `{exp}`, `{need}`, `{wealth}`,
- * `{state}`, `{level}`, `{room}`, `{lives}`, `{expSession}`), a colour by
- * name (`{red}`), by hex (`{#ff8800}`) or for the background (`{bg:blue}`),
- * `{bold}`, `{dim}`, `{reset}`. Anything else is drawn as typed, emoji
- * included. `bands` colour `{hp}` and `{mana}` by their fraction of maximum.
- */
-export interface StatlineDesign {
-  enabled: boolean;
-  layout: string;
-  bands: { hp: ColourBand[]; mana: ColourBand[] };
-}
 
 /** Everything a design may draw: the prompt's figures and what the client tracks beside them. */
 export interface StatlineFigures extends StatlineReading {
+  name: string | null;
+  fullName: string | null;
+  race: string | null;
+  className: string | null;
+  manaType: 'MA' | 'KAI' | null;
   level: number | null;
   room: string | null;
   lives: number | null;
   expSession: number | null;
+  encumbrance: number | null;
+  encumbranceMax: number | null;
+  encumbranceWord: string | null;
 }
 
 /**
@@ -208,69 +201,6 @@ export interface StatlineFigures extends StatlineReading {
  * not a guess about a terminal.
  */
 export const STATLINE_MAX_CELLS = 79;
-
-/** What an unknown figure is drawn as: never a zero, which would lie. */
-export const UNKNOWN = '?';
-
-/** The tags a layout may draw a figure with, in the order the designer lists them. */
-export const FIGURE_TAGS = [
-  'hp',
-  'hpMax',
-  'mana',
-  'manaMax',
-  'exp',
-  'need',
-  'wealth',
-  'state',
-  'level',
-  'room',
-  'lives',
-  'expSession'
-] as const;
-const FIGURE_TAG_SET: ReadonlySet<string> = new Set(FIGURE_TAGS);
-
-function figureText(tag: string, figures: StatlineFigures): string {
-  switch (tag) {
-    case 'state':
-      return figures.state === 'resting'
-        ? ' (Resting)'
-        : figures.state === 'meditating'
-          ? ' (Meditating)'
-          : '';
-    case 'room':
-      return figures.room ?? UNKNOWN;
-    default: {
-      const value = figures[tag as keyof StatlineFigures];
-      return typeof value === 'number' ? String(value) : UNKNOWN;
-    }
-  }
-}
-
-/**
- * The line a design draws for these figures, as runs with their attributes
- * and the cells they take, or null for an empty layout. A line wider than
- * `STATLINE_MAX_CELLS` is the caller's to refuse, with the figure in hand.
- *
- * A figure with bands wears its band's colour for its own characters only
- * and hands the layout's colour back afterwards; a figure whose maximum is
- * unknown wears no band, since an unknown share is not a safe one.
- */
-export function renderStatline(
-  design: StatlineDesign,
-  figures: StatlineFigures
-): { segments: Segment[]; cells: number } | null {
-  const drawn = renderTemplate(design.layout, (tag): Cell | null => {
-    if (!FIGURE_TAG_SET.has(tag)) return null;
-    const band =
-      tag === 'hp'
-        ? bandFor(design.bands.hp, figures.hp, figures.hpMax)
-        : tag === 'mana'
-          ? bandFor(design.bands.mana, figures.mana, figures.manaMax)
-          : null;
-    return { text: figureText(tag, figures), colour: band };
-  });
-  return drawn === null ? null : { segments: drawn.segments, cells: drawn.cells };
-}
 
 /**
  * What the client tracks, in the shape a design draws from. A prompt's own
@@ -287,10 +217,18 @@ export function figuresOf(state: CharacterState): StatlineFigures {
     need: state.progress.expNeeded,
     wealth: state.inventory.wealth,
     state: state.vitals.meditating ? 'meditating' : state.vitals.resting ? 'resting' : null,
+    name: state.name,
+    fullName: state.fullName,
+    race: state.race,
+    className: state.className,
+    manaType: state.vitals.manaType,
     level: state.progress.level,
     room: state.room.name,
     lives: state.progress.lives,
-    expSession: state.progress.expThisSession
+    expSession: state.progress.expThisSession,
+    encumbrance: state.inventory.encumbrance,
+    encumbranceMax: state.inventory.encumbranceMax,
+    encumbranceWord: state.inventory.encumbranceWord
   };
 }
 

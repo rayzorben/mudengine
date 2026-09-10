@@ -29,8 +29,8 @@ const DYNAMIC_CALLS: readonly { file: string; prefix: string; reason: string }[]
     file: 'src/shared/rewrites.ts',
     prefix: 'rewrites.labels',
     reason:
-      'A column is named after the tag that fills it (2026-09-10, todo 99): the tags are the ' +
-      'closed list in REWRITE_SPECS, and rewrites.test.ts asserts every tag has a label.'
+      'A column is named after the figure that fills it (2026-09-10, todo 99): the figures are ' +
+      'the closed catalogue in ENTITY_SPECS, and rewrites.test.ts asserts every one has a label.'
   },
   {
     file: 'src/shared/rewrites.ts',
@@ -38,6 +38,14 @@ const DYNAMIC_CALLS: readonly { file: string; prefix: string; reason: string }[]
     reason:
       'One name per denomination, keyed by DENOMINATIONS (2026-09-10, todo 99); ' +
       'rewrites.test.ts asserts all five are named.'
+  },
+  {
+    file: 'src/renderer/src/components/RewriteEditor.tsx',
+    prefix: 'rewrites.fields',
+    reason:
+      "The designer's sidebar describes each figure by its own name (2026-09-10, todo 99, the " +
+      'list): the figures are the closed catalogue in ENTITY_SPECS, and rewrites.test.ts ' +
+      'asserts every one is described.'
   }
 ];
 

@@ -20,21 +20,21 @@ import { quotedInCopper } from '../../shared/coins';
 import { wireItem } from '../../shared/entities';
 import { equipVerdict, type Wearer } from '../../shared/gear';
 import {
-  REWRITE_KINDS,
-  REWRITE_SPECS,
-  renderExperience,
-  renderInventory,
-  renderParty,
-  renderShop,
-  renderWho,
+  activeDesign,
+  ENTITY_SPECS,
+  renderRewrite,
+  REWRITE_ENTITIES,
   rewriteToChunk,
   type InventoryRow,
   type PartyRow,
-  type RewriteKind,
-  type Rewritten,
+  type RewriteDesign,
+  type RewriteEntity,
+  type RewriteFacts,
   type ShopRow,
   type WhoRow
 } from '../../shared/rewrites';
+import { figuresOf, type StatlineFigures } from '../../shared/statline';
+import type { Drawn } from '../../shared/template';
 import type { TerminalMark } from '../../shared/types';
 import { t } from '../app/i18n';
 import { itemList, parseCarriedEntries, parseCoinEntry, parseKeyEntries } from '../parse/inventory';
@@ -87,17 +87,37 @@ export class Rewriter {
     this.config = config;
   }
 
-  /** The enabled kind that draws in place of this block type, or null. */
-  kindFor(type: BlockType): RewriteKind | null {
-    for (const kind of REWRITE_KINDS) {
-      if (this.config[kind].enabled && REWRITE_SPECS[kind].blocks.includes(type)) return kind;
+  /** The design that draws this entity: the first enabled one, or null. */
+  designFor(entity: RewriteEntity): RewriteDesign | null {
+    return activeDesign(this.config.designs, entity);
+  }
+
+  /** The enabled entity that draws in place of this block type, or null. */
+  entityFor(type: BlockType): RewriteEntity | null {
+    for (const entity of REWRITE_ENTITIES) {
+      if (ENTITY_SPECS[entity].blocks.includes(type) && this.designFor(entity) !== null) {
+        return entity;
+      }
     }
     return null;
   }
 
   /** Whether a block of this type is drawn by the client rather than painted. */
   wants(type: BlockType): boolean {
-    return this.kindFor(type) !== null;
+    return this.entityFor(type) !== null;
+  }
+
+  /** The design that draws the prompt row, where one is on and says something. */
+  promptDesign(): RewriteDesign | null {
+    const design = this.designFor('statline');
+    return design !== null && design.template.trim().length > 0 ? design : null;
+  }
+
+  /** The prompt row drawn for these figures, or null where no design draws it. */
+  prompt(figures: StatlineFigures): Drawn | null {
+    const design = this.promptDesign();
+    if (design === null) return null;
+    return renderRewrite(design, { entity: 'statline', figures }, this.config.bands, t)[0] ?? null;
   }
 
   /**
@@ -106,22 +126,27 @@ export class Rewriter {
    * are painted as they were.
    */
   render(block: Block | BatchBlock, context: RewriteContext): RewriteChunk | null {
-    const kind = this.kindFor(block.type);
-    if (kind === null) return null;
-    const rewritten = this.draw(kind, block, context);
-    if (rewritten === null || rewritten.lines.length === 0) return null;
-    return rewriteToChunk(rewritten);
+    const entity = this.entityFor(block.type);
+    const design = entity === null ? null : this.designFor(entity);
+    if (entity === null || design === null) return null;
+    const facts = this.gather(entity, block, context);
+    if (facts === null) return null;
+    const lines = renderRewrite(design, facts, this.config.bands, t);
+    if (lines.length === 0) return null;
+    return rewriteToChunk(lines);
   }
 
-  private draw(
-    kind: RewriteKind,
+  private gather(
+    entity: RewriteEntity,
     block: Block | BatchBlock,
     context: RewriteContext
-  ): Rewritten | null {
-    const design = this.config[kind];
+  ): RewriteFacts | null {
+    const figures = figuresOf(context.state);
     const g = block.groups ?? {};
     const rows: ReadonlyArray<Record<string, string>> = 'rows' in block ? block.rows : [];
-    switch (kind) {
+    switch (entity) {
+      case 'statline':
+        return { entity, figures };
       case 'inventory': {
         const carrying = g['items'];
         const listed =
@@ -145,9 +170,10 @@ export class Rewriter {
           const coin = parseCoinEntry(entry);
           if (coin) coins[coin.denomination] = coin.count;
         }
-        return renderInventory(
-          design,
-          {
+        return {
+          entity,
+          figures,
+          pack: {
             items,
             keys: itemList(g['keys']).flatMap((entry) => parseKeyEntries(entry)),
             coins,
@@ -155,9 +181,8 @@ export class Rewriter {
             encumbrance: int(g['encumbrance']),
             encumbranceMax: int(g['encumbranceMax']),
             encumbranceWord: g['encumbranceWord']?.trim() ?? null
-          },
-          t
-        );
+          }
+        };
       }
       case 'who': {
         const who: WhoRow[] = rows.map((row) => ({
@@ -167,7 +192,7 @@ export class Rewriter {
           gang: row['gang']?.trim() ?? null,
           flags: row['flags'] ?? null
         }));
-        return renderWho(design, who, t);
+        return { entity, figures, rows: who };
       }
       case 'shop': {
         const shelf: ShopRow[] = rows
@@ -186,7 +211,7 @@ export class Rewriter {
             };
           })
           .filter((row) => row.name.length > 0);
-        return renderShop(design, shelf, context.state.inventory.wealth, t);
+        return { entity, figures, rows: shelf };
       }
       case 'party': {
         const party: PartyRow[] = rows.map((row) => ({
@@ -198,20 +223,24 @@ export class Rewriter {
           flag: row['flag'] ?? null,
           invited: row['invited'] !== undefined
         }));
-        return renderParty(design, party, this.config.statline.bands, t);
+        return { entity, figures, rows: party };
       }
       case 'experience': {
         const gained = int(g['exp']);
         if (gained === null) return null;
         const progress = context.state.progress;
         const need = progress.expNeeded === null ? null : Math.max(0, progress.expNeeded - gained);
-        return renderExperience(design, {
-          gained,
-          exp: progress.exp === null ? null : progress.exp + gained,
-          need,
-          level: progress.level,
-          expSession: progress.expThisSession + gained
-        });
+        return {
+          entity,
+          figures,
+          gain: {
+            gained,
+            exp: progress.exp === null ? null : progress.exp + gained,
+            need,
+            level: progress.level,
+            expSession: progress.expThisSession + gained
+          }
+        };
       }
     }
   }
