@@ -13,16 +13,13 @@ import { CheckField, NumberField, SelectField, TextField } from './FormField';
 import { t } from '../lib/i18n';
 import { fractionOf, percentOf } from '../lib/form';
 import {
-  ANSI_COLOURS,
   FIGURE_TAGS,
-  isAnsiColour,
   renderStatline,
   STATLINE_MAX_CELLS,
-  type ColourBand,
   type StatlineDesign,
-  type StatlineFigures,
-  type StatlineSegment
+  type StatlineFigures
 } from '@shared/statline';
+import { ANSI_COLOURS, isAnsiColour, type ColourBand, type Segment } from '@shared/template';
 import type { TerminalPalette } from '@shared/themes';
 
 /**
@@ -196,7 +193,7 @@ function Preview({
   segments,
   palette
 }: {
-  segments: readonly StatlineSegment[];
+  segments: readonly Segment[];
   palette: TerminalPalette;
 }): React.JSX.Element {
   const colourOf = (colour: string | null): string | undefined =>

@@ -18,13 +18,15 @@ import type {
   TerminalAction,
   TerminalActionName,
   TerminalMark,
-  TerminalSize
+  TerminalSize,
+  InlineGlyph
 } from '@shared/types';
 import { consoleWriter, noticeSequence, type ConsoleWriter } from '../lib/console';
 import type { NameIndex, SpanHit } from '../lib/names';
 import type { Box } from '../lib/menu';
 import { anchorRect, type PopoverAnchor } from '../lib/popover';
 import { MARK_GLYPH } from './marks';
+import { GLYPH_CELLS } from '@shared/template';
 import { splitMarks } from '../lib/chunks';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
@@ -777,9 +779,12 @@ export default function TerminalView({
              * on the prompt row. The log and the capture carry the line as
              * sent.
              */
-            term.write(`${MARK_INDENT}${segment.text}`, () => {
+            // Indented only for a glyph in the margin: a line the client drew
+            // (`ui.rewrites`) carries its glyphs inside its own cells.
+            const indent = mark.icon === undefined ? '' : MARK_INDENT;
+            term.write(`${indent}${segment.text}`, () => {
               if (marker) {
-                decorate(term, marker, mark, segment.text, {
+                decorate(term, marker, mark, indent, segment.text, {
                   send: (command) => handlers.current.onInput?.(`${command}\r`),
                   act: (action) => handlers.current.onAct?.(action)
                 });
@@ -1055,22 +1060,75 @@ function decorate(
   term: Terminal,
   marker: IMarker,
   mark: TerminalMark,
+  indent: string,
   text: string,
   press: Press
 ): void {
-  const decoration = term.registerDecoration({ marker, x: 0, width: MARK_INDENT.length });
+  const icon = mark.icon;
+  if (icon !== undefined) {
+    const decoration = term.registerDecoration({ marker, x: 0, width: indent.length });
+    if (!decoration) return;
+    decoration.onRender((element) => {
+      if (element.dataset['mark'] === icon) return;
+      element.dataset['mark'] = icon;
+      // Added, never assigned: xterm's own class carries the positioning.
+      element.classList.add('terminal-mark');
+      element.title = mark.label;
+      element.setAttribute('role', 'img');
+      element.setAttribute('aria-label', mark.label);
+      element.innerHTML = MARK_GLYPH[icon];
+    });
+  }
+  for (const glyph of mark.inline ?? []) inlineGlyph(term, marker, glyph, indent.length, press);
+  if (mark.actions?.length) actionButtons(term, marker, mark.actions, indent, text, press);
+}
+
+/**
+ * A glyph inside a line the client drew: over the two blank cells the
+ * drawing left for it, on the decoration layer like the margin's glyph so
+ * nothing in the grid moves. With commands it is a button — the equip gate
+ * beside a carried item — sent down the path a keystroke takes, and it hands
+ * the caret straight back; without, a statement with its label for a
+ * tooltip, which is how a slot's picture and a refusal's reason are read.
+ */
+function inlineGlyph(
+  term: Terminal,
+  marker: IMarker,
+  glyph: InlineGlyph,
+  indent: number,
+  press: Press
+): void {
+  const decoration = term.registerDecoration({
+    marker,
+    x: indent + glyph.x,
+    width: GLYPH_CELLS
+  });
   if (!decoration) return;
   decoration.onRender((element) => {
-    if (element.dataset['mark'] === mark.icon) return;
-    element.dataset['mark'] = mark.icon;
-    // Added, never assigned: xterm's own class carries the positioning.
-    element.classList.add('terminal-mark');
-    element.title = mark.label;
-    element.setAttribute('role', 'img');
-    element.setAttribute('aria-label', mark.label);
-    element.innerHTML = MARK_GLYPH[mark.icon];
+    if (element.dataset['mark'] === glyph.icon) return;
+    element.dataset['mark'] = glyph.icon;
+    element.classList.add('terminal-mark', 'terminal-glyph');
+    element.title = glyph.label;
+    element.setAttribute('aria-label', glyph.label);
+    element.innerHTML = MARK_GLYPH[glyph.icon];
+    const commands = glyph.commands;
+    if (commands === undefined || commands.length === 0) {
+      element.setAttribute('role', 'img');
+      return;
+    }
+    element.dataset['action'] = 'true';
+    element.setAttribute('role', 'button');
+    /*
+     * Clickable and never a tab stop: a thirty-item pack would put thirty
+     * stops into the scrollback, and focus lives in the terminal. The same
+     * control is on the pack card, keyboard-reachable there.
+     */
+    element.tabIndex = -1;
+    element.addEventListener('mousedown', (event) => event.preventDefault());
+    element.addEventListener('click', () => {
+      for (const command of commands) press.send(command);
+    });
   });
-  if (mark.actions?.length) actionButtons(term, marker, mark.actions, text, press);
 }
 
 /**
@@ -1096,6 +1154,7 @@ function actionButtons(
   term: Terminal,
   marker: IMarker,
   actions: readonly TerminalAction[],
+  indent: string,
   text: string,
   press: Press
 ): void {
@@ -1109,7 +1168,7 @@ function actionButtons(
    * what paints may be counted.
    */
   const printed = text.replace(ANSI, '').replace(/[\r\n]/g, '');
-  const from = MARK_INDENT.length + printed.length + 1;
+  const from = indent.length + printed.length + 1;
   const width = Math.max(1, term.cols - from);
   const decoration = term.registerDecoration({ marker, x: from, width });
   if (!decoration) return;

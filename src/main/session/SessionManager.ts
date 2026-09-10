@@ -52,7 +52,7 @@ import {
 import { actionsFor } from './actions';
 import { CharacterTracker } from '../parse/CharacterTracker';
 import { Classifier } from '../parse/Classifier';
-import { LineTokenizer, plainText } from '../net/LineTokenizer';
+import { LineTokenizer, plainText, stripAnsi } from '../net/LineTokenizer';
 import { TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
 import type { Block } from '../../shared/blocks';
@@ -65,6 +65,7 @@ import {
 } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
 import type { Traveller, WorldGraph } from '../world/WorldGraph';
+import type { Wearer } from '../../shared/gear';
 import { preferredEdges } from '../world/loopDraft';
 
 /** No preferred corridors: one value, so a session with none re-renders nothing. */
@@ -100,16 +101,18 @@ import {
   renderStatline,
   statlineMatcher,
   STATLINE_MAX_CELLS,
-  toAnsi,
   withReading,
   type StatlineDesign
 } from '../../shared/statline';
-import { TerminalFeed } from './TerminalFeed';
+import { toAnsi } from '../../shared/template';
+import { promptOpened, TerminalFeed } from './TerminalFeed';
+import { Rewriter } from './Rewriter';
 import {
   DEFAULT_CONFIG,
   type AutomationConfig,
   type LoginConfig,
-  type SupplyItem
+  type SupplyItem,
+  type RewritesUiConfig
 } from '../../shared/config';
 import { errorMessage } from '../../shared/values';
 import { sameTarget } from '../../shared/types';
@@ -471,6 +474,8 @@ export class SessionManager {
   private seq = 0;
   private lineSeq = 0;
   private idleTimer: NodeJS.Timeout | null = null;
+  /** When the tail now buffered first looked like a prompt still being written. */
+  private promptOpenedAt: number | null = null;
   /** Keystrokes since the last committed command. */
   private outbound = '';
   /** The command the last status line echoed, which the lines after it answer. */
@@ -927,7 +932,16 @@ export class SessionManager {
         // Not while a refusal stands: holding a prompt for a line that will
         // not be drawn is a delay for nothing.
         designing: () =>
-          this.design.enabled && this.design.layout.trim().length > 0 && !this.designTooWideSaid
+          this.design.enabled && this.design.layout.trim().length > 0 && !this.designTooWideSaid,
+        // The listings the client draws itself, from the batch the classifier
+        // assembled and what the tracker had published before it.
+        rewrites: (type) => this.rewriter.wants(type),
+        rewrite: (block) =>
+          this.rewriter.render(block, {
+            state: this.tracker.current,
+            world: this.world,
+            wearer: this.wearerNow()
+          })
       },
       // A held tail released by its timer, outside any chunk: painted as a
       // chunk of its own.
@@ -1923,6 +1937,7 @@ export class SessionManager {
     this.lineSeq = 0;
     this.tokenizer.reset();
     this.feed.reset();
+    this.promptOpenedAt = null;
     this.classifier.reset();
     this.tracker.reset();
     this.statlineSaid = { reported: null, exact: null };
@@ -2446,13 +2461,15 @@ export class SessionManager {
   configure(
     automation: AutomationConfig,
     login: LoginConfig,
-    design: StatlineDesign = DEFAULT_CONFIG.ui.statline
+    rewrites: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites
   ): void {
     this.automationConfig = automation;
+    const design = rewrites.statline;
     // A new design gets to be refused once, out loud, if it is too wide. By
     // value: every reload resolves a fresh object for an unchanged file.
     if (JSON.stringify(design) !== JSON.stringify(this.design)) this.designTooWideSaid = false;
     this.design = design;
+    this.rewriter.configure(rewrites);
     // The loops may have changed, and with them the routes this character
     // prefers; derived again the next time a route is planned.
     this.preferred = null;
@@ -2705,9 +2722,35 @@ export class SessionManager {
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null;
       this.flushPending();
-    }, IDLE_FLUSH_MS);
+    }, this.idleFlushDelay());
     // Never the reason a process stays alive.
     this.idleTimer.unref?.();
+  }
+
+  /**
+   * How long the quiet period is, given what is buffered.
+   *
+   * A prompt is a line that ends because the server went quiet — but a
+   * prompt that has opened its bracket and not closed it has not ended, and
+   * the server has not gone quiet, whatever the clock says. The bearfather
+   * BBS writes `[HP=40/40,…,S= (Resting)` and then ` ]:` about a tenth of a
+   * second later, longer than `IDLE_FLUSH_MS` a quarter of the time, and a
+   * flush between the two framed the halves as two lines neither of which
+   * read as a status line: the vitals and the resting state on every such
+   * prompt were lost. So an opened prompt waits `promptHoldMs` from when it
+   * was first seen opening, which is the bound on a prompt the server never
+   * finishes, and never less than the ordinary quiet period. A finished
+   * prompt is released as it always was.
+   */
+  private idleFlushDelay(): number {
+    const plain = stripAnsi(this.tokenizer.buffered).trimStart();
+    if (!promptOpened(plain) || STATUS_LINE.test(plain)) {
+      this.promptOpenedAt = null;
+      return IDLE_FLUSH_MS;
+    }
+    const now = Date.now();
+    this.promptOpenedAt ??= now;
+    return Math.max(IDLE_FLUSH_MS, tuning().session.promptHoldMs - (now - this.promptOpenedAt));
   }
 
   private cancelIdleFlush(): void {
@@ -2718,6 +2761,7 @@ export class SessionManager {
 
   private flushPending(): void {
     this.cancelIdleFlush();
+    this.promptOpenedAt = null;
     const at = Date.now();
     for (const framed of this.tokenizer.flush()) this.publishLine(framed, at);
     this.paint(at);
@@ -2754,6 +2798,8 @@ export class SessionManager {
     framed: { text: string; terminator: StreamLine['terminator'] },
     at: number
   ): void {
+    // Whatever was opening has been framed; the next tail is a new one.
+    this.promptOpenedAt = null;
     this.lineSeq += 1;
     const line: StreamLine = {
       seq: this.lineSeq,
@@ -2768,6 +2814,7 @@ export class SessionManager {
     this.sink.line(line);
 
     let classified: ReturnType<Classifier['classify']> | null = null;
+    const batchWas = this.classifier.batchType;
     try {
       classified = this.classifier.classify(line);
     } catch (error) {
@@ -2779,7 +2826,15 @@ export class SessionManager {
       line.terminator,
       line.plain,
       classified?.block.type ?? null,
-      classified ? this.markFor(classified.block) : undefined
+      classified ? this.markFor(classified.block) : undefined,
+      classified
+        ? {
+            block: classified.block,
+            batchWas,
+            batchNow: this.classifier.batchType,
+            ...(classified.batch ? { closed: classified.batch } : {})
+          }
+        : undefined
     );
     if (!classified) return;
 
@@ -3356,9 +3411,30 @@ export class SessionManager {
     reported: null,
     exact: null
   };
-  /** The status line this player designed (`ui.statline`); drawn by the feed in the prompt's place. */
-  private design: StatlineDesign = DEFAULT_CONFIG.ui.statline;
+  /** The status line this player designed (`ui.rewrites.statline`); drawn by the feed in the prompt's place. */
+  private design: StatlineDesign = DEFAULT_CONFIG.ui.rewrites.statline;
   private designTooWideSaid = false;
+  /** The listings this player has the client draw itself (`ui.rewrites`). */
+  private readonly rewriter = new Rewriter();
+
+  /**
+   * Who this character is, in the realm's own row ids — the join `wearerIn`
+   * in `client.ts` makes for the pack card, made here for the console's
+   * rewritten listing, through the same `WorldGraph` lookups so a Paladin
+   * cannot be one class to the card and another to the console.
+   */
+  private wearerNow(): Wearer {
+    const state = this.tracker.current;
+    const world = this.world;
+    return {
+      classId: world && state.className ? world.classId(state.className) : null,
+      raceId: world && state.race ? world.raceId(state.race) : null,
+      level: state.progress.level,
+      strength: state.progress.strength,
+      classNames: world?.namedClasses() ?? {},
+      raceNames: world?.namedRaces() ?? {}
+    };
+  }
 
   /**
    * The client's own status line in the prompt's place.

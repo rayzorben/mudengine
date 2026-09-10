@@ -24,7 +24,22 @@ const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
  * as read. An exemption is a claim with a date on it; when the call site
  * goes, the row goes.
  */
-const DYNAMIC_CALLS: readonly { file: string; prefix: string; reason: string }[] = [];
+const DYNAMIC_CALLS: readonly { file: string; prefix: string; reason: string }[] = [
+  {
+    file: 'src/shared/rewrites.ts',
+    prefix: 'rewrites.labels',
+    reason:
+      'A column is named after the tag that fills it (2026-09-10, todo 99): the tags are the ' +
+      'closed list in REWRITE_SPECS, and rewrites.test.ts asserts every tag has a label.'
+  },
+  {
+    file: 'src/shared/rewrites.ts',
+    prefix: 'rewrites.coins',
+    reason:
+      'One name per denomination, keyed by DENOMINATIONS (2026-09-10, todo 99); ' +
+      'rewrites.test.ts asserts all five are named.'
+  }
+];
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

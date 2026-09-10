@@ -61,7 +61,8 @@ import {
   withSpend,
   withoutRoomItem,
   withRoomItem,
-  withCharges
+  withCharges,
+  itemList
 } from './inventory';
 import { resolveByDeadReckoning, resolveFromCoordinates, resolveRoom } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -261,35 +262,6 @@ function list(value: string | undefined): string[] {
   if (!value) return [];
   return value
     .split(/,| and /)
-    .map((entry) => entry.trim().replace(/\.$/, ''))
-    .filter((entry) => entry.length > 0);
-}
-
-/**
- * The same, for a listing of **things**, which this server separates with
- * commas and never with `and`.
- *
- * `list` splits on ` and ` too, and that is wrong wherever an item's own name
- * contains the word: the shipped realm has two — `rope and grapple` and `black
- * and white serpent ring` — and the first is the item 157 of its exits are
- * gated on, so the router could never see one in a pack that held it. Both
- * appear in the corpus inside real listings, comma-separated
- * (`captures/044`: `… lyrist's companion (Back), black and white serpent ring
- * (Finger), jeweled main-gauche (Off-Hand) …`; `captures/119`: `You notice …
- * 2 rope and grapple, 2 mine pass, …`), and across all 218 captures **not one**
- * of the four listings this splits — 600 `You notice`, 25 `You are carrying`,
- * 17 key lines, and the coins inside them — uses ` and ` as a separator.
- *
- * `list` keeps the ` and ` for the listings measured the same way and left
- * alone: `Also here:` (1,240 lines), `Obvious exits:` (2,628) and the bare
- * purse sentence, which has one sample in the corpus and is prose, where a
- * final `and` is exactly what prose does. Widening a rule past its evidence in
- * either direction is the thing this file refuses.
- */
-function itemList(value: string | undefined): string[] {
-  if (!value) return [];
-  return value
-    .split(',')
     .map((entry) => entry.trim().replace(/\.$/, ''))
     .filter((entry) => entry.length > 0);
 }

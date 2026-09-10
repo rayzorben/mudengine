@@ -674,7 +674,7 @@ describe('owning the status line', () => {
     const automation = file['automation'] as Record<string, unknown>;
     const ui = file['ui'] as Record<string, unknown>;
     expect(automation['statline']).toEqual({ control: false });
-    expect(ui['statline']).toEqual(DEFAULT_CONFIG.ui.statline);
+    expect(ui['rewrites']).toEqual(DEFAULT_CONFIG.ui.rewrites);
     // Where the template puts it; the other blocks the migrations add come after.
     const keys = Object.keys(automation);
     expect(keys.indexOf('statline')).toBe(keys.indexOf('onPartyChange') + 1);
@@ -686,6 +686,47 @@ describe('owning the status line', () => {
     fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
     migrate(true);
     expect(fs.readFileSync(home.options, 'utf8')).toMatch(/set statline full custom/);
+  });
+
+  it('moves a designed line the player already had under the rewrites, with the listings beside it', () => {
+    const layout = '{room} HP {hp}/{hpMax}> ';
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  showLogo: true\n  # my line\n  statline:\n    enabled: true\n    layout: "' +
+        layout +
+        '"\n    bands:\n      hp: []\n      mana: []\n  alerts:\n    minimum: info\n',
+      'utf8'
+    );
+    fs.mkdirSync(path.dirname(home.profile('soul').file), { recursive: true });
+    fs.writeFileSync(
+      home.profile('soul').file,
+      'name: Soul\nserver: Bearfather\nui:\n  statline:\n    enabled: true\n    layout: "' +
+        layout +
+        '"\n',
+      'utf8'
+    );
+    migrate(true);
+    for (const file of [home.options, home.profile('soul').file]) {
+      const ui = (parse(fs.readFileSync(file, 'utf8')) as { ui: Record<string, unknown> }).ui;
+      expect(ui['statline']).toBeUndefined();
+      const rewrites = ui['rewrites'] as Record<string, Record<string, unknown>>;
+      expect(rewrites['statline']?.['enabled']).toBe(true);
+      expect(rewrites['statline']?.['layout']).toBe(layout);
+      expect(rewrites['inventory']).toEqual(DEFAULT_CONFIG.ui.rewrites.inventory);
+      expect(rewrites['experience']).toEqual(DEFAULT_CONFIG.ui.rewrites.experience);
+    }
+    // Where the block was, with the template's paragraph; the neighbours untouched.
+    const text = fs.readFileSync(home.options, 'utf8');
+    const keys = Object.keys(parse(text).ui as Record<string, unknown>);
+    expect(keys).not.toContain('statline');
+    expect(keys.indexOf('rewrites')).toBeGreaterThan(keys.indexOf('showLogo'));
+    expect(keys.indexOf('rewrites')).toBeLessThan(keys.indexOf('alerts'));
+    expect(text).toMatch(/The pack, in place of/);
+    expect(said.filter((m) => m.includes('ui.rewrites.statline'))).toHaveLength(2);
+    // Twice over: a file already gathered is left alone.
+    said = [];
+    migrate(true);
+    expect(said.filter((m) => m.includes('ui.rewrites.statline'))).toHaveLength(0);
   });
 
   it('leaves a file that already answered it alone, twice over', () => {
@@ -1858,7 +1899,11 @@ describe('the party remotes list is stated in the options file', () => {
     // key and comments and all.
     fs.writeFileSync(home.options, 'ui: {}\n', 'utf8');
     migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('party:');
+    // `ui.rewrites.party` is another migration's and another block's.
+    const file = parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
+    expect(
+      (file['automation'] as Record<string, unknown> | undefined)?.['remotes']
+    ).toBeUndefined();
   });
 });
 

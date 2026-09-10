@@ -34,6 +34,7 @@ import type {
   MovementConfig,
   RemotesConfig,
   StatlineConfig,
+  RewritesUiConfig,
   TalkConfig,
   AfkConfig,
   Server,
@@ -45,7 +46,6 @@ import type {
   SupplyItem
 } from './config';
 import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './drafts';
-import type { StatlineDesign } from './statline';
 import type { RemoteGrant, RemoteName } from './remotes';
 import type { CureGates, SpellTargeting } from './spellcraft';
 import type { ThemePreference } from './themes';
@@ -399,8 +399,8 @@ export interface ProfileEditable {
   talk: TalkConfig;
   /** Whether the client sets the prompt's shape on the way in. Resolved, like the rest. */
   statline: StatlineConfig;
-  /** The status line this player designed for this character. Resolved, like the rest. */
-  statlineDesign: StatlineDesign;
+  /** The status line and listings this player designed for this character. Resolved, like the rest. */
+  rewrites: RewritesUiConfig;
   /**
    * The loops this character alone may walk: `profiles/<id>/loops/`.
    *

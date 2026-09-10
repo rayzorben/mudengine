@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { asShippedWorld } from '@shared/worlds';
-import type { StatlineDesign, StatlineFigures } from '@shared/statline';
+import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
 import Icon from './Icon';
 import FormField, {
@@ -20,7 +20,7 @@ import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
 import LoopSection from './LoopSection';
 import RemoteList from './RemoteList';
-import StatlineDesigner from './StatlineDesigner';
+import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -59,7 +59,8 @@ import {
   PVP_ACTIONS,
   type EngagePolicy,
   type RetreatStrategy,
-  type PvpAction
+  type PvpAction,
+  type RewritesUiConfig
 } from '@shared/config';
 import { ACTIONABLE_REMOTES, type RemoteGrant, type RemoteName } from '@shared/remotes';
 import { NOTICE_CHANNELS, type NoticeChannel, type Severity } from '@shared/notifications';
@@ -376,7 +377,7 @@ const SECTIONS = [
   'remotes',
   'talk',
   'alerts',
-  'statline'
+  'rewrites'
 ] as const;
 type Section = (typeof SECTIONS)[number];
 const SECTION_LABEL: Record<Section, string> = {
@@ -390,7 +391,7 @@ const SECTION_LABEL: Record<Section, string> = {
   remotes: t('settings.tabs.remotes'),
   talk: t('settings.tabs.talk'),
   alerts: t('settings.tabs.alerts'),
-  statline: t('settings.tabs.statline')
+  rewrites: t('settings.tabs.rewrites')
 };
 
 interface CharacterForm {
@@ -543,8 +544,8 @@ interface CharacterForm {
   lookAtPlayers: boolean;
   /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
   statlineControl: boolean;
-  /** The status line this player designed — `ui.statline`. */
-  statlineDesign: StatlineDesign;
+  /** The status line and listings this player designed — `ui.rewrites`. */
+  rewrites: RewritesUiConfig;
   /** Whether the gang's own channel is one of the channels it answers on. */
   remoteGangpath: boolean;
   /** What anybody in this character's gang may ask for. */
@@ -676,7 +677,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     remotePlayers: entry.remotes.players,
     lookAtPlayers: entry.talk.lookAtPlayers,
     statlineControl: entry.statline.control,
-    statlineDesign: entry.statlineDesign
+    rewrites: entry.rewrites
   };
 }
 
@@ -870,7 +871,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     },
     talk: { lookAtPlayers: form.lookAtPlayers },
     statline: { control: form.statlineControl },
-    statlineDesign: form.statlineDesign
+    rewrites: form.rewrites
   };
 }
 
@@ -984,7 +985,7 @@ function emptyForm(
   const afk = defaults?.automation.afk ?? DEFAULT_CONFIG.automation.afk;
   const talk = defaults?.automation.talk ?? DEFAULT_CONFIG.automation.talk;
   const statline = defaults?.automation.statline ?? DEFAULT_CONFIG.automation.statline;
-  const statlineDesign = defaults?.ui.statline ?? DEFAULT_CONFIG.ui.statline;
+  const rewrites = defaults?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites;
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
   const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
@@ -1120,7 +1121,7 @@ function emptyForm(
     remotePlayers: remotes.players,
     lookAtPlayers: talk.lookAtPlayers,
     statlineControl: statline.control,
-    statlineDesign
+    rewrites
   };
 }
 
@@ -3173,7 +3174,7 @@ export default function SettingsScreen({
                     </fieldset>
                   )}
 
-                  {section === 'statline' && (
+                  {section === 'rewrites' && (
                     <>
                       <fieldset className="settings-menus">
                         <legend>{t('settings.statline.legend')}</legend>
@@ -3186,12 +3187,12 @@ export default function SettingsScreen({
                         />
                         <p className="settings-note">{t('settings.statline.templateNote')}</p>
                       </fieldset>
-                      <StatlineDesigner
+                      <RewritesDesigner
                         figures={figures}
-                        idPrefix="statline"
-                        onChange={(next) => patch({ statlineDesign: next })}
+                        idPrefix="rewrites"
+                        onChange={(next) => patch({ rewrites: next })}
                         palette={palette}
-                        value={form.statlineDesign}
+                        value={form.rewrites}
                       />
                     </>
                   )}

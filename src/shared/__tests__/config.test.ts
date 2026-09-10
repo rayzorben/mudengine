@@ -16,6 +16,32 @@ import {
   type AppConfig
 } from '../config';
 
+describe('normalizeRewrites', () => {
+  it('reads each listing against its spec and falls back per key', () => {
+    const ui = normalizeConfig({
+      ui: {
+        rewrites: {
+          inventory: { enabled: true, style: 'sideways', lines: { row: '{item}', bogus: 'x' } },
+          experience: 'nope'
+        }
+      }
+    }).ui.rewrites;
+    expect(ui.inventory.enabled).toBe(true);
+    expect(ui.inventory.style).toBe('table');
+    expect(ui.inventory.lines['row']).toBe('{item}');
+    expect(ui.inventory.lines['keys']).toBe(DEFAULT_CONFIG.ui.rewrites.inventory.lines['keys']);
+    expect(ui.inventory.lines['bogus']).toBeUndefined();
+    expect(ui.experience).toEqual(DEFAULT_CONFIG.ui.rewrites.experience);
+    expect(ui.statline).toEqual(DEFAULT_CONFIG.ui.rewrites.statline);
+  });
+
+  it('keeps a line stated blank blank, which is how a line is turned off', () => {
+    const design = normalizeConfig({ ui: { rewrites: { inventory: { lines: { keys: '' } } } } }).ui
+      .rewrites.inventory;
+    expect(design.lines['keys']).toBe('');
+  });
+});
+
 describe('toCssFontStack', () => {
   it('quotes families containing spaces and leaves generics bare', () => {
     expect(toCssFontStack(['LucidaProgrammer Nerd Font Mono', 'Consolas', 'monospace'])).toBe(

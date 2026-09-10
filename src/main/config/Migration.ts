@@ -43,6 +43,7 @@ import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
 import { DEFAULT_CONFIG } from '../../shared/config';
+import { DEFAULT_REWRITES, REWRITE_KINDS } from '../../shared/rewrites';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { DENOMINATIONS } from '../../shared/character';
 import { SERVER_FILE, type Home } from '../app/home';
@@ -176,6 +177,7 @@ export function migrateHome(options: MigrationOptions): void {
   theDoorsOpenByDefault(home, note);
   statedTheFindAlerts(home, note, options.template);
   statedTheStatusLine(home, note, options.template);
+  theLineBecameARewrite(home, note, options.template);
   quietedTheStatusLineAsks(home, note);
   loopsTookTheirRecordedNames(home, note, options.loopShelf);
 }
@@ -213,12 +215,14 @@ function statedTheStatusLine(
     }
 
     // And the line the player may design, beside the alerts it keeps company
-    // with in the template: the presentation half of the same feature.
+    // with in the template: the presentation half of the same feature. Since
+    // todo 99 it is one of the console's rewrites, so the whole block goes in;
+    // a file that states the older `ui.statline` is moved by `theLineBecameARewrite`.
     const ui = document.getIn(['ui'], true);
-    if (isMap(ui) && !ui.has('statline')) {
-      const block = document.createNode(structuredClone(DEFAULT_CONFIG.ui.statline));
-      const pair = document.createPair('statline', block) as Pair;
-      const lead = uiComments.get('ui.statline');
+    if (isMap(ui) && !ui.has('rewrites') && !ui.has('statline')) {
+      const block = document.createNode(structuredClone(DEFAULT_CONFIG.ui.rewrites));
+      const pair = document.createPair('rewrites', block) as Pair;
+      const lead = uiComments.get('ui.rewrites');
       if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
       ui.items.push(pair);
       changed = true;
@@ -230,6 +234,65 @@ function statedTheStatusLine(
 
   if (!stated) return;
   note(t('notices.migration.statusLineStated', { file: home.options }));
+}
+
+/**
+ * `ui.statline` became `ui.rewrites.statline` (2026-09-10, todo 99): the
+ * designed status line is one of the listings the console can draw in the
+ * realm's place, and the block gathers them.
+ *
+ * The options file and every character's own, since a design is per
+ * character. The old value node is moved whole, so a layout the player wrote
+ * and its bands survive with their comments; the other listings come from
+ * the defaults, off, with the template's paragraph for each so the file
+ * says what they are. A file already stating `rewrites:` is left alone.
+ */
+function theLineBecameARewrite(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    let moved = false;
+    edit(file, (document) => {
+      const ui = document.getIn(['ui'], true);
+      if (!isMap(ui) || ui.has('rewrites')) return false;
+      const at = ui.items.findIndex((item) => keyText(item) === 'statline');
+      if (at === -1) return false;
+      const old = ui.items[at]!;
+      const rewrites = document.createNode({}) as YAMLMap<unknown, unknown>;
+      const withLead = (pair: Pair, key: string): Pair => {
+        const lead = comments.get(key);
+        if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+        return pair;
+      };
+      // The player's own paragraph above the old key, where they wrote one,
+      // else the template's; the value's comments travel with the value.
+      const statline = document.createPair('statline', old.value) as Pair;
+      const theirs = isScalar(old.key) ? old.key.commentBefore : undefined;
+      if (typeof theirs === 'string') {
+        if (isScalar(statline.key)) statline.key.commentBefore = theirs;
+        rewrites.items.push(statline);
+      } else rewrites.items.push(withLead(statline, 'ui.rewrites.statline'));
+      for (const kind of REWRITE_KINDS) {
+        const block = document.createNode(structuredClone(DEFAULT_REWRITES[kind]));
+        rewrites.items.push(
+          withLead(document.createPair(kind, block) as Pair, `ui.rewrites.${kind}`)
+        );
+      }
+      ui.items.splice(
+        at,
+        1,
+        withLead(document.createPair('rewrites', rewrites) as Pair, 'ui.rewrites')
+      );
+      moved = true;
+      return true;
+    });
+    if (moved) note(t('notices.migration.rewritesGathered', { file }));
+  }
 }
 
 /**
@@ -3960,6 +4023,10 @@ function theTuningBlockGainedKeys(
     addKey('records', 'findLimit', DEFAULT_INTERNAL.tuning.records.findLimit);
     /* When a character stops looking like the same character (todo 11). */
     addKey('session', 'resetExpDropShare', DEFAULT_INTERNAL.tuning.session.resetExpDropShare);
+    /* A prompt the server writes in two pieces (2026-09-10, todo 01): how long the second may take. */
+    addKey('session', 'promptHoldMs', DEFAULT_INTERNAL.tuning.session.promptHoldMs);
+    /* How long a listing the client redraws waits for its prompt (2026-09-10, todo 99). */
+    addKey('session', 'rewriteHoldMs', DEFAULT_INTERNAL.tuning.session.rewriteHoldMs);
     /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
     addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
     addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
