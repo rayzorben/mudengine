@@ -770,6 +770,22 @@ tuning:
     # Framed lines retained; the terminal keeps the real backscroll.
     lineLogLimit: 500
 
+    # How long a prompt that has opened its bracket and not closed it may keep
+    # arriving before the client stops waiting for the rest. The bearfather BBS
+    # writes its prompt in two pieces about a tenth of a second apart (median
+    # 123ms, longest seen 686ms), and a prompt cut there used to be neither
+    # read nor redrawn. Waiting costs nothing: nothing else can follow a prompt
+    # on the wire until it ends. This is only what paints a prompt the server
+    # never finishes.
+    promptHoldMs: 1000
+
+    # How long the lines of a listing the client redraws (ui.rewrites) wait for
+    # the status line that ends the listing before they are painted as sent.
+    # The listing is redrawn whole at that prompt, which the idle flush frames
+    # 150ms after the last byte; this is the bound for a server that stalls in
+    # the middle of one.
+    rewriteHoldMs: 2000
+
     # Records the debug window keeps, and therefore how far back a bug report
     # reaches.
     #

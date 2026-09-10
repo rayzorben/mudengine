@@ -7,12 +7,19 @@ import {
   rawIndexOf,
   TerminalFeed,
   type Emitted,
-  type FeedSource
+  type FeedSource,
+  type LineFacts
 } from '../TerminalFeed';
+import type { BatchBlock } from '../../parse/Classifier';
+import type { Block } from '../../../shared/blocks';
+import type { LineTerminator } from '../../../shared/types';
 import { LineTokenizer, plainText } from '../../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
 import { STATUS_LINE } from '../../parse/patterns';
 import type { BlockType } from '../../../shared/blocks';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
+
+const PROMPT_HOLD_MS = DEFAULT_INTERNAL.tuning.session.promptHoldMs;
 
 const PROMPT = '\x1b[1;32m[HP=34/MA=12]:\x1b[0m';
 
@@ -26,11 +33,17 @@ function typeOf(plain: string): BlockType | null {
   if (/^Location: \d+,\d+$/.test(plain)) return 'user-profile';
   if (/ bites you for \d+ damage!$/.test(plain)) return 'mob-hits';
   if (/^\S+ gossips: /.test(plain)) return 'conversation-gossip';
+  if (/^You gain \d+ experience\./.test(plain)) return 'user-gain-experience';
   return null;
 }
 
 /** Drives a feed the way `SessionManager` does: frame, classify, emit, tail. */
-function harness(quiet: string[] = ['rm', 'l'], design?: FeedSource['design']) {
+function harness(
+  quiet: string[] = ['rm', 'l'],
+  design?: FeedSource['design'],
+  rewriting?: Pick<FeedSource, 'rewrites' | 'rewrite'>,
+  facts: (plain: string, type: BlockType | null) => LineFacts | undefined = () => undefined
+) {
   const released: Emitted[] = [];
   const tokenizer = new LineTokenizer();
   const feed = new TerminalFeed(
@@ -39,29 +52,31 @@ function harness(quiet: string[] = ['rm', 'l'], design?: FeedSource['design']) {
       isStatus: (plain) => STATUS_LINE.test(plain),
       now: () => Date.now(),
       // A design given is a design on: the two are one setting in the client.
-      ...(design ? { design, designing: () => true } : {})
+      ...(design ? { design, designing: () => true } : {}),
+      ...(rewriting ?? {})
     },
     (emitted) => released.push(emitted)
   );
   const painted: string[] = [];
+  const publish = (framed: { text: string; terminator: LineTerminator }): void => {
+    const plain = plainText(framed);
+    const type = typeOf(plain);
+    feed.line(framed.text, framed.terminator, plain, type, undefined, facts(plain, type));
+  };
   const chunk = (text: string): string => {
-    for (const framed of tokenizer.push(text)) {
-      feed.line(framed.text, framed.terminator, plainText(framed), typeOf(plainText(framed)));
-    }
+    for (const framed of tokenizer.push(text)) publish(framed);
     feed.partial(tokenizer.buffered);
     const out = feed.take();
     painted.push(out.text);
     return out.text;
   };
   const flush = (): string => {
-    for (const framed of tokenizer.flush()) {
-      feed.line(framed.text, framed.terminator, plainText(framed), typeOf(plainText(framed)));
-    }
+    for (const framed of tokenizer.flush()) publish(framed);
     const out = feed.take();
     painted.push(out.text);
     return out.text;
   };
-  return { feed, chunk, flush, released, painted, shown: () => painted.join('') };
+  return { feed, tokenizer, facts, chunk, flush, released, painted, shown: () => painted.join('') };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -284,9 +299,41 @@ describe('a status line the client draws itself', () => {
   it('paints a half-prompt as sent once the hold runs out, and finishes it raw', () => {
     const h = harness(['rm'], designer);
     expect(h.chunk('[HP=3')).toBe('');
+    // The quiet window's short hold is not this hold: a prompt still opening
+    // waits the measured span before the client gives up on the rest of it.
     vi.advanceTimersByTime(PARTIAL_DELAY_MS + 1);
+    expect(h.released).toEqual([]);
+    vi.advanceTimersByTime(PROMPT_HOLD_MS);
     expect(h.released.map((e) => e.text)).toEqual(['[HP=3']);
     expect(h.chunk('4/MA=12]:')).toBe('4/MA=12]:');
+  });
+
+  it('holds a prompt the server writes in two pieces a tenth of a second apart', () => {
+    /*
+     * The bearfather BBS's own shape (captures of 2026-09-09, 504 prompts):
+     * everything up to `(Resting)` in one write, ` ]:` in the next, the two
+     * 88–686ms apart. Painted raw at the forty-millisecond hold, every resting
+     * prompt on that realm showed the realm's line in place of the design.
+     */
+    const h = harness(['rm'], designer);
+    const first = '\x1b[0;36m[HP=40/40,MA=7/8,Exp=0,Need=2500,$=0,S= (Resting)';
+    expect(h.chunk(first)).toBe('');
+    vi.advanceTimersByTime(123);
+    expect(h.released).toEqual([]);
+    expect(h.chunk(' ]:')).toBe(DRAWN);
+    expect(h.released).toEqual([]);
+  });
+
+  it('gives a prompt still opening the long wait inside a quiet window too', () => {
+    const h = harness(['rm'], designer);
+    h.chunk(PROMPT);
+    h.flush();
+    h.feed.sent('rm', 'automation');
+    expect(h.chunk('rm\r\nLocation: 1,2147\r\n')).toBe('');
+    expect(h.chunk(PROMPT_REPAINT + '\x1b[1;32m[HP=3')).toBe(PROMPT_REPAINT);
+    vi.advanceTimersByTime(PARTIAL_DELAY_MS + 1);
+    expect(h.released).toEqual([]);
+    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN + '\x1b[0m');
   });
 
   it('holds a prompt cut between its bracket and its colon, and draws it once the colon lands', () => {
@@ -324,6 +371,141 @@ describe('a status line the client draws itself', () => {
     expect(rawIndexOf(text, 0)).toBe(0);
     expect(rawIndexOf(text, 8)).toBe('\x1b[1;32m[HP=34]:'.length);
     expect(rawIndexOf(text, 99)).toBe(text.length);
+  });
+});
+
+/*
+ * A listing the client draws itself (`ui.rewrites`): withheld from its
+ * header, drawn whole at the line that completes it, painted as sent where
+ * the design declines or the server never finishes.
+ */
+describe('a listing the client draws itself', () => {
+  const HEADER = 'You are carrying rope and grapple, 6 torch.\r\n';
+  const KEYS = 'You have no keys.\r\n';
+  const LOAD = 'Encumbrance: 100/4128 - None [2%]\r\n';
+  const DRAWN_PACK = '\x1b[0mrope and grapple\x1b[0m\r\n\x1b[0m6 torch\x1b[0m\r\n';
+
+  /**
+   * The classifier's batch collector, as far as the feed sees it: a pack
+   * listing opens on its header and closes on the status line; an
+   * experience line is one block of its own.
+   */
+  function listing(
+    rewrite: FeedSource['rewrite'],
+    wants: (type: BlockType) => boolean = (type) => type === 'user-inventory'
+  ) {
+    let open: BlockType | null = null;
+    let lines: string[] = [];
+    const facts = (plain: string, type: BlockType | null): LineFacts => {
+      const was = open;
+      let closed: BatchBlock | undefined;
+      if (open === null && /^You are carrying/.test(plain)) {
+        open = 'user-inventory';
+        lines = [plain];
+      } else if (open !== null) {
+        lines.push(plain);
+        if (STATUS_LINE.test(plain.trimStart())) {
+          closed = {
+            seq: 1,
+            at: 0,
+            type: open,
+            domain: 'session',
+            groups: { items: 'rope and grapple, 6 torch' },
+            rows: [{ items: 'rope and grapple, 6 torch' }],
+            text: lines.join('\n'),
+            confidence: 1
+          };
+          open = null;
+        }
+      }
+      const block: Block = {
+        seq: 1,
+        at: 0,
+        type: type ?? 'unknown',
+        domain: 'session',
+        groups: {},
+        text: plain,
+        confidence: 1
+      };
+      return { block, batchWas: was, batchNow: open, ...(closed ? { closed } : {}) };
+    };
+    const h = harness(['rm'], undefined, { rewrites: wants, rewrite }, facts);
+    return h;
+  }
+  const drawPack: FeedSource['rewrite'] = (block) =>
+    block.type === 'user-inventory'
+      ? { text: DRAWN_PACK, marks: [{ offset: 0, mark: { label: 'x', inline: [] } }] }
+      : null;
+
+  it('withholds the listing from its header and draws it whole at the prompt', () => {
+    const h = listing(drawPack);
+    expect(h.chunk('i\r\n')).toBe('i\r\n');
+    expect(h.chunk(HEADER + KEYS + LOAD)).toBe('');
+    expect(h.chunk(PROMPT)).toBe('');
+    // The idle flush frames the prompt, which completes the listing.
+    expect(h.flush()).toBe(DRAWN_PACK + PROMPT);
+    expect(h.released).toEqual([]);
+  });
+
+  it("keys the drawing's marks to where it lands in the chunk", () => {
+    const h = listing(drawPack);
+    h.chunk('i\r\n' + HEADER + KEYS + LOAD + PROMPT);
+    h.feed.take();
+    for (const framed of h.tokenizer.flush()) {
+      h.feed.line(
+        framed.text,
+        framed.terminator,
+        plainText(framed),
+        'status-line',
+        undefined,
+        h.facts(plainText(framed), 'status-line')
+      );
+    }
+    const out = h.feed.take();
+    expect(out.text.startsWith(DRAWN_PACK)).toBe(true);
+    expect(out.marks).toEqual([{ offset: 0, mark: { label: 'x', inline: [] } }]);
+  });
+
+  it("paints the realm's lines, in order, where the design declines", () => {
+    const h = listing(() => null);
+    expect(h.chunk(HEADER + KEYS + LOAD + PROMPT)).toBe('');
+    expect(h.flush()).toBe(HEADER + KEYS + LOAD + PROMPT);
+  });
+
+  it('paints what was withheld once the server stalls past the bound', () => {
+    const h = listing(drawPack);
+    expect(h.chunk(HEADER + KEYS)).toBe('');
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.session.rewriteHoldMs + 1);
+    expect(h.released.map((e) => e.text)).toEqual([HEADER + KEYS]);
+    // The rest arrives raw: the listing was not drawn and is not drawn late.
+    expect(h.chunk(LOAD + PROMPT)).toBe(LOAD + PROMPT);
+    expect(h.flush()).toBe('');
+  });
+
+  it('keeps a line the server volunteered mid-listing, after the drawing', () => {
+    const h = listing(drawPack);
+    const bite = 'A rat bites you for 3 damage!\r\n';
+    expect(h.chunk(HEADER + bite + KEYS + LOAD + PROMPT)).toBe('');
+    expect(h.flush()).toBe(DRAWN_PACK + bite + PROMPT);
+  });
+
+  it('leaves a listing whose header was already painted as it was sent', () => {
+    const h = listing(drawPack);
+    // The header's head goes out as an unterminated tail before it is framed.
+    expect(h.chunk('You are carr')).toBe('You are carr');
+    expect(h.chunk('ying rope and grapple, 6 torch.\r\n' + KEYS)).toBe(
+      'ying rope and grapple, 6 torch.\r\n' + KEYS
+    );
+    expect(h.chunk(LOAD + PROMPT)).toBe(LOAD + PROMPT);
+  });
+
+  it('draws one line in place of one block', () => {
+    const h = listing(
+      (block) =>
+        block.type === 'user-gain-experience' ? { text: '+25 exp\r\n', marks: [] } : null,
+      (type) => type === 'user-gain-experience'
+    );
+    expect(h.chunk('You gain 25 experience.\r\n')).toBe('+25 exp\r\n');
   });
 });
 

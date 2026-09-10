@@ -15,6 +15,8 @@
  * button main then refuses.
  */
 import type { CarriedItem } from './character';
+import type { ItemEntity } from './entities';
+import type { UiLookup } from './i18n';
 import { sameItem } from './items';
 
 /**
@@ -387,4 +389,93 @@ export function equipBlock(item: EquipRestrictions, wearer: Wearer): EquipBlock 
  */
 export function isWearable(item: EquipRestrictions | undefined): item is EquipRestrictions {
   return item?.slot !== undefined;
+}
+
+/**
+ * The refusal in words, from the realm's tables where it can name them.
+ *
+ * *You may not wear this* is the answer the server already gives for free;
+ * the whole reason to say it here is to say **why**, and `#4` under a heading
+ * is a half-read. A class or race the table cannot name falls back to the
+ * unnamed sentence rather than printing an id.
+ */
+export function blockReason(
+  blocked: EquipBlock,
+  classNames: Record<number, string>,
+  raceNames: Record<number, string>,
+  t: UiLookup
+): string {
+  switch (blocked.kind) {
+    case 'class': {
+      const named = blocked.allowed
+        .map((id) => classNames[id])
+        .filter((name) => name !== undefined);
+      return named.length === blocked.allowed.length && named.length > 0
+        ? t('cards.inventory.blocked.byClass', { classList: named.join(', ') })
+        : t('cards.inventory.blocked.byClassUnnamed');
+    }
+    case 'race': {
+      const named = blocked.allowed.map((id) => raceNames[id]).filter((name) => name !== undefined);
+      return named.length === blocked.allowed.length && named.length > 0
+        ? t('cards.inventory.blocked.byRace', { raceList: named.join(', ') })
+        : t('cards.inventory.blocked.byRaceUnnamed');
+    }
+    case 'level':
+      return t('cards.inventory.blocked.byLevel', { needed: blocked.needs, have: blocked.has });
+    case 'strength':
+      return t('cards.inventory.blocked.byStrength', { needed: blocked.needs, have: blocked.has });
+  }
+}
+
+/**
+ * What a control beside a carried item is, decided once for the pack card
+ * and the console's rewritten listing alike.
+ *
+ * `worn` comes off: **before every other test**, since an item the character
+ * is demonstrably wearing can come off whatever the realm file says (a lit
+ * torch has no `Worn` slot at all). `none` is a thing that is not kit — a
+ * glass jug — for which a control could only ever earn a refusal. `blocked`
+ * is kit this character may not put on, with the reason; `wearable` is the
+ * rest, an unknown realm row included, because unknown never refuses.
+ */
+export interface EquipVerdict {
+  state: 'worn' | 'wearable' | 'blocked' | 'none';
+  /** The tooltip: what pressing does, or why nothing can be pressed. */
+  label: string;
+  /** The realm's own verb, or null where there is nothing to send. */
+  command: string | null;
+}
+
+export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): EquipVerdict {
+  if (item.equipped) {
+    return {
+      state: 'worn',
+      label: t('cards.inventory.removeTooltip', { item: item.name }),
+      command: unequip(item.name)
+    };
+  }
+  const realm: EquipRestrictions = {
+    ...(item.realmSlot === undefined ? {} : { slot: item.realmSlot }),
+    ...(item.classes === undefined ? {} : { classes: item.classes }),
+    ...(item.races === undefined ? {} : { races: item.races }),
+    ...(item.minLevel === undefined ? {} : { minLevel: item.minLevel }),
+    ...(item.weapon === undefined ? {} : { weapon: item.weapon })
+  };
+  // A realm row with no slot is not kit; a row the realm lacks keeps its
+  // control, which is the refuse-rather-than-guess rule pointing the other way.
+  if (item.id !== undefined && !isWearable(realm))
+    return { state: 'none', label: '', command: null };
+  const blocked = equipBlock(realm, wearer);
+  if (blocked !== null) {
+    return {
+      state: 'blocked',
+      label: blockReason(blocked, wearer.classNames, wearer.raceNames, t),
+      command: null
+    };
+  }
+  return {
+    state: 'wearable',
+    label: t('cards.inventory.equipTooltip', { item: item.name }),
+    command: equip(item.name)
+  };
 }

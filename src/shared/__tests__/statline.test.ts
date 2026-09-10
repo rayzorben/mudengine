@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  bandFor,
   isFullStatline,
   readStatline,
   renderStatline,
@@ -9,12 +8,11 @@ import {
   STATLINE_MAX_CELLS,
   STATLINE_TEMPLATE,
   statlineMatcher,
-  toAnsi,
   withReading,
-  type ColourBand,
   type StatlineDesign,
   type StatlineFigures
 } from '../statline';
+import { bandFor, toAnsi, type ColourBand } from '../template';
 
 /*
  * The prompts below are what the two families printed for the client's own

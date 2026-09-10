@@ -9344,6 +9344,41 @@ tr:hover .row-action.worn,
  * wears), one row that never wraps, scrolled rather than folded so the cell
  * count beside it stays true. Chrome, so a radius is allowed.
  */
+/*
+ * A listing as the console will draw it: several rows, each a run of the
+ * palette's colours, with the glyphs drawn in the cells the drawing left for
+ * them — the same pictures the console lays over those cells.
+ */
+.settings-form .rewrite-preview {
+  border-radius: 4px;
+  display: block;
+  font-family: var(--font-terminal, var(--font-dos));
+  line-height: 1.4;
+  overflow-x: auto;
+  padding: 6px 8px;
+  white-space: pre;
+}
+
+.rewrite-preview .rewrite-glyph {
+  display: inline-block;
+  height: 1em;
+  vertical-align: -0.15em;
+  width: 2ch;
+}
+
+.rewrite-preview .rewrite-glyph svg {
+  height: 1.1em;
+  width: 1.1em;
+}
+
+.rewrite-preview .rewrite-glyph[data-mark='worn'] {
+  color: var(--ok);
+}
+
+.rewrite-preview .rewrite-glyph[data-mark='blocked'] {
+  color: var(--danger);
+}
+
 /* A band is a floor, a colour and a remove beside them: a control row, in
    which the two fields still stack label over control and share the width. */
 .statline-band > .settings-field {
@@ -9567,6 +9602,38 @@ tr:hover .row-action.worn,
 .terminal-mark[data-mark='bank'] {
   color: var(--mark-bank);
   opacity: 0.95;
+}
+
+/*
+ * A glyph inside a line the client drew (`ui.rewrites`): over the two cells
+ * the drawing left blank for it. One that acts — the equip gate beside a
+ * carried item — is a button and says so with the pointer; the states wear
+ * the pack card's own two tones, in use and refused, so the console and the
+ * card cannot disagree about what a shirt means.
+ */
+.terminal-glyph[data-action] {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.terminal-glyph[data-action]:hover,
+.terminal-glyph[data-action]:focus-visible {
+  opacity: 1;
+}
+
+.terminal-glyph:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 1px;
+}
+
+.terminal-glyph[data-mark='worn'] {
+  color: var(--ok);
+  opacity: 0.9;
+}
+
+.terminal-glyph[data-mark='blocked'] {
+  color: var(--danger);
+  opacity: 0.8;
 }
 
 /*
