@@ -93,6 +93,16 @@ import {
 import { SHIPPED_WORLD_LABEL, worldOfRealm } from '../../shared/worlds';
 import { commandOf, GREATERMUD_ONLY, type CommandName } from '../../shared/commands';
 import { STATUS_LINE } from '../parse/patterns';
+import {
+  figuresOf,
+  isFullStatline,
+  renderStatline,
+  statlineMatcher,
+  STATLINE_MAX_CELLS,
+  toAnsi,
+  withReading,
+  type StatlineDesign
+} from '../../shared/statline';
 import { TerminalFeed } from './TerminalFeed';
 import {
   DEFAULT_CONFIG,
@@ -896,7 +906,12 @@ export class SessionManager {
           this.internal.terminal.quiet.enabled &&
           this.internal.terminal.quiet.commands.includes(word),
         isStatus: (plain) => STATUS_LINE.test(plain),
-        now: () => Date.now()
+        now: () => Date.now(),
+        design: (plain) => this.designPrompt(plain),
+        // Not while a refusal stands: holding a prompt for a line that will
+        // not be drawn is a delay for nothing.
+        designing: () =>
+          this.design.enabled && this.design.layout.trim().length > 0 && !this.designTooWideSaid
       },
       // A held tail released by its timer, outside any chunk: painted as a
       // chunk of its own.
@@ -1890,6 +1905,7 @@ export class SessionManager {
     this.feed.reset();
     this.classifier.reset();
     this.tracker.reset();
+    this.statlineSaid = { reported: null, exact: null };
     this.queue.clear();
     this.sentLog.length = 0;
     this.link.reset();
@@ -2405,8 +2421,16 @@ export class SessionManager {
     this.internal = internal;
   }
 
-  configure(automation: AutomationConfig, login: LoginConfig): void {
+  configure(
+    automation: AutomationConfig,
+    login: LoginConfig,
+    design: StatlineDesign = DEFAULT_CONFIG.ui.statline
+  ): void {
     this.automationConfig = automation;
+    // A new design gets to be refused once, out loud, if it is too wide. By
+    // value: every reload resolves a fresh object for an unchanged file.
+    if (JSON.stringify(design) !== JSON.stringify(this.design)) this.designTooWideSaid = false;
+    this.design = design;
     // The loops may have changed, and with them the routes this character
     // prefers; derived again the next time a route is planned.
     this.preferred = null;
@@ -2952,6 +2976,8 @@ export class SessionManager {
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
     if (this.tracker.takeSheetRequest()) this.routines.askSheet();
+    // Likewise a prompt that stopped fitting what `pro` said the line was.
+    if (this.tracker.takeStatlineRequest()) this.routines.askProfile();
     /*
      * A pack listing is the fact a requested deposit is waiting on: it is what
      * restates the purse, and the figure the deposit names is composed from it
@@ -3100,6 +3126,7 @@ export class SessionManager {
        */
       this.pickUpAfterLoss(state);
       this.unrefuseWhatTheRoomPrints(state);
+      this.noteStatline(state);
       this.routines.onCharacter(state);
       this.rules.observe({ hangUpClean: this.hangUp.assess(state, Date.now()).clean });
       this.rules.onState(state);
@@ -3285,6 +3312,74 @@ export class SessionManager {
    */
   /** Said once per connection; a second `rm` in the same wrong realm adds nothing. */
   private realmMismatchSaid = false;
+  /** What `noteStatline` last said about the prompt's shape, so each change is said once. */
+  private statlineSaid: { reported: string | null; exact: boolean | null } = {
+    reported: null,
+    exact: null
+  };
+  /** The status line this player designed (`ui.statline`); drawn by the feed in the prompt's place. */
+  private design: StatlineDesign = DEFAULT_CONFIG.ui.statline;
+  private designTooWideSaid = false;
+
+  /**
+   * The client's own status line in the prompt's place.
+   *
+   * Read from the prompt itself, through the reader the tracker uses, because
+   * the tracker has not seen this prompt yet: the feed paints a tail the
+   * moment it arrives, ahead of framing. What the prompt does not carry — a
+   * maximum under `full`, the level, the room — is the last state's. A line
+   * wider than the prompt row is refused and said once per design, since a
+   * wrapped prompt leaves its first row behind on every repaint.
+   */
+  private designPrompt(plain: string): { rendered: string; from: number; to: number } | null {
+    if (!this.design.enabled) return null;
+    const from = plain.length - plain.trimStart().length;
+    const prompt = this.tracker.readPrompt(plain.slice(from));
+    if (!prompt) return null;
+    const drawn = renderStatline(
+      this.design,
+      withReading(figuresOf(this.tracker.current), prompt.read)
+    );
+    if (!drawn) return null;
+    if (drawn.cells > STATLINE_MAX_CELLS) {
+      if (!this.designTooWideSaid) {
+        this.designTooWideSaid = true;
+        this.sink.notice(
+          t('session.statline.tooWide', { cells: drawn.cells, max: STATLINE_MAX_CELLS })
+        );
+      }
+      return null;
+    }
+    return { rendered: toAnsi(drawn.segments), from, to: from + prompt.length };
+  }
+
+  /**
+   * What the realm said the prompt is, said once per report, and a prompt
+   * that stops fitting it, said once per lapse.
+   *
+   * The report names the pattern the prompt is read by from here on — the
+   * exact matcher, or the tolerant pattern for `full` and for a template this
+   * client cannot build from — because a silent fallback is the failure the
+   * whole feature exists to remove. The first prompt to fit is confirmed once;
+   * a prompt that stops fitting is the tracker's cue to ask `pro` again
+   * (`takeStatlineRequest`, taken in `onBlock`).
+   */
+  private noteStatline(state: CharacterState): void {
+    const now = state.statline;
+    const said = this.statlineSaid;
+    if (now.reported !== said.reported && now.reported !== null) {
+      if (isFullStatline(now.reported)) this.sink.notice(t('session.statline.full'));
+      else if (statlineMatcher(now.reported) === null) {
+        this.sink.notice(t('session.statline.loose', { statline: now.reported }));
+      } else this.sink.notice(t('session.statline.exact', { statline: now.reported }));
+    }
+    if (now.exact === true && said.exact === null) {
+      this.sink.notice(t('session.statline.verified'));
+    } else if (now.exact === false && said.exact !== false) {
+      this.sink.notice(t('session.statline.mismatch'));
+    }
+    this.statlineSaid = now;
+  }
 
   /**
    * The realm said where the character is, and the realm *data* has no such

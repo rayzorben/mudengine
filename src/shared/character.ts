@@ -1221,6 +1221,22 @@ export function bankKey(name: string): string {
     .trim();
 }
 
+/**
+ * What the realm says the prompt is, and whether the last prompt agreed.
+ *
+ * `reported` is `pro`'s `Statusline:` row, verbatim — the class-default word
+ * `full`, or the template somebody set, this client or another. The tracker
+ * builds an exact matcher from a template (`src/shared/statline.ts`) and reads
+ * every prompt through it; `exact` says whether the last one fitted. Null
+ * while there is no matcher — `full`, or a template the client cannot build
+ * from — because the tolerant pattern is then the reader and there is nothing
+ * for a prompt to agree with.
+ */
+export interface StatusLineFacts {
+  reported: string | null;
+  exact: boolean | null;
+}
+
 export interface CharacterState {
   phase: SessionPhase;
   /** See `RealmFamily`. */
@@ -1360,6 +1376,8 @@ export interface CharacterState {
    * one this project refuses.
    */
   abilities: AbilitySums | null;
+  /** See `StatusLineFacts`. */
+  statline: StatusLineFacts;
   /** Epoch ms of the last status line, i.e. the last confirmed heartbeat. */
   lastStatusAt: number | null;
   /** Epoch ms of the last change to any of the above. */
@@ -1436,6 +1454,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   buffs: [],
   spellbook: null,
   abilities: null,
+  statline: { reported: null, exact: null },
   lastStatusAt: null,
   updatedAt: null
 };

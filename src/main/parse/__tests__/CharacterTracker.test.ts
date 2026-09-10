@@ -9024,3 +9024,95 @@ describe('a command confusion threw away', () => {
     expect(tracker.pendingMoves).toBe(1);
   });
 });
+
+/*
+ * The prompt is read by the matcher built from what `pro` said it is, and by
+ * the tolerant pattern until `pro` has said, or where what it said cannot be
+ * built from. The prompts are the two families' renderings of the client's own
+ * template (2026-09-09); the `pro` row is GreaterMUD's, spacing and all.
+ */
+describe('the status line pro reports', () => {
+  const REPORT = 'Statusline:          [HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:';
+
+  it('reads a prompt exactly once pro has said what it is', () => {
+    const tracker = play([
+      '[HP=156/156,MA=11/28,Exp=1386670,Need=14402,Wealth=0 ]:',
+      REPORT,
+      '[HP=150/156,MA=11/28,Exp=1386670,Need=14402,Wealth=25 (Meditating) ]:'
+    ]);
+    const { statline, vitals, progress, inventory } = tracker.current;
+    expect(statline).toEqual({
+      reported: '[HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:',
+      exact: true
+    });
+    expect(vitals).toMatchObject({
+      hp: 150,
+      hpMax: 156,
+      mana: 11,
+      manaMax: 28,
+      meditating: true,
+      resting: false
+    });
+    expect(progress.exp).toBe(1386670);
+    expect(progress.expNeeded).toBe(14402);
+    expect(inventory.wealth).toBe(25);
+    expect(tracker.takeStatlineRequest()).toBe(false);
+  });
+
+  it('reads the same figures by the tolerant pattern before pro has said', () => {
+    const tracker = play(['[HP=40/40,MA=7/8,Exp=0,Need=2500,Wealth=0]:']);
+    expect(tracker.current.statline).toEqual({ reported: null, exact: null });
+    expect(tracker.current.vitals).toMatchObject({ hp: 40, hpMax: 40, mana: 7, manaMax: 8 });
+    expect(tracker.current.progress.expNeeded).toBe(2500);
+    expect(tracker.takeStatlineRequest()).toBe(false);
+  });
+
+  it('falls back to the tolerant pattern when a prompt stops fitting, and asks pro once', () => {
+    const tracker = play([
+      REPORT,
+      '[HP=156/156,MA=11/28,Exp=1,Need=2,Wealth=0 ]:',
+      '[HP=140/MA=11]:',
+      '[HP=130/MA=11]:'
+    ]);
+    expect(tracker.current.statline.exact).toBe(false);
+    // Read loosely: the figure moved, and the maximum the last exact prompt stated is kept.
+    expect(tracker.current.vitals.hp).toBe(130);
+    expect(tracker.current.vitals.hpMax).toBe(156);
+    expect(tracker.takeStatlineRequest()).toBe(true);
+    expect(tracker.takeStatlineRequest()).toBe(false);
+  });
+
+  it('reads full by the tolerant pattern, with nothing for a prompt to agree with', () => {
+    const tracker = play(['Statusline:          full', '[HP=134/MA=24]:']);
+    expect(tracker.current.statline).toEqual({ reported: 'full', exact: null });
+    expect(tracker.current.vitals.hp).toBe(134);
+  });
+
+  it('states the next level from a prompt carrying both the experience and what is owed', () => {
+    const tracker = play([
+      '[HP=10/MA=0]:',
+      'Welcome to level 3!',
+      '[HP=10/10,MA=0/0,Exp=100,Need=900,Wealth=0 ]:'
+    ]);
+    expect(tracker.current.progress.expTable?.rows).toContainEqual({
+      level: 4,
+      experience: 1000,
+      source: 'realm'
+    });
+  });
+
+  it('owes nothing on a negative Need, which the realm prints once the level is affordable', () => {
+    const tracker = play([REPORT, '[HP=10/10,MA=0/0,Exp=100,Need=-40,Wealth=0 ]:']);
+    expect(tracker.current.progress.expNeeded).toBe(0);
+    expect(tracker.current.statline.exact).toBe(true);
+  });
+
+  it('states nothing from Need=0, which is the realm saying the next level is affordable', () => {
+    const tracker = play([
+      '[HP=10/MA=0]:',
+      'Welcome to level 3!',
+      '[HP=10/10,MA=0/0,Exp=100,Need=0,Wealth=0 ]:'
+    ]);
+    expect(tracker.current.progress.expTable?.rows.find((row) => row.level === 4)).toBeUndefined();
+  });
+});

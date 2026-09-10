@@ -21,6 +21,13 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
     because:
       'the room-light alternation is built from `ROOM_LIGHTS` so the union the tracker ' +
       'branches on and the pattern that produces it cannot drift; module-level, in `RULES`'
+  },
+  'src/shared/statline.ts': {
+    count: 1,
+    because:
+      'the exact status-line matcher is generated from the template `pro` reports, which ' +
+      'is only known at runtime; built once per report in `statlineMatcher`, held by ' +
+      '`CharacterTracker`, and never called in a per-line path'
   }
 };
 

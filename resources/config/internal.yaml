@@ -26,9 +26,14 @@ terminal:
     # Enter, which prints the same block and says nothing to anybody. That has
     # no first word, so it answers to `enter` here -- add it to keep the idle
     # and mid-fight re-reads out of the console as well.
+    #
+    # `pro` and `set` are the status-line routine's: thirty lines of profile
+    # and a `Done.`, sent only when `automation.statline.control` is on.
     commands:
       - rm
       - look
+      - pro
+      - set
 
   # Decorate what the console recognises: a glyph beside a shop or bank's
   # name, and a monster's, item's or spell's name that can be clicked for what

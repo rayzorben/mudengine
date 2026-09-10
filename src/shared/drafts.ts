@@ -15,6 +15,7 @@ import {
   DEFAULT_CONFIG,
   ENGAGE_POLICIES,
   RETREAT_STRATEGIES,
+  normalizeStatlineDesign,
   type BlessingTarget,
   type DensityPreference,
   type EngagePolicy,
@@ -26,6 +27,7 @@ import {
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
 import { asLoops, type Loop } from './loops';
+import type { StatlineDesign } from './statline';
 
 /**
  * A load gate as the draft carries it: a closed union, so an unrecognised word
@@ -163,6 +165,8 @@ export interface GlobalDraft {
     consoleDarkTheme: ThemeId;
     vitals: { hp: VitalDraft; mana: VitalDraft };
     alerts: ProfileDraft['alerts'];
+    /** The status line everybody starts from. See `StatlineDesign`. */
+    statline: StatlineDesign;
   };
   logging: {
     enabled: boolean;
@@ -224,6 +228,7 @@ export interface GlobalDraft {
     remotes: ProfileDraft['remotes'];
     afk: ProfileDraft['afk'];
     talk: ProfileDraft['talk'];
+    statline: ProfileDraft['statline'];
   };
   /** The loops every character may walk: `global/loops/`. */
   loops: Loop[];
@@ -488,11 +493,20 @@ export interface ProfileDraft {
   afk: { enabled: boolean; afterMinutes: number; reply: string };
   /** `automation.talk` — what this character learns about other people. */
   talk: TalkDraft;
+  /** `automation.statline` — whether the client sets the prompt's shape. */
+  statline: StatlineDraft;
+  /** `ui.statline` — the status line this player designed for this character. */
+  statlineDesign: StatlineDesign;
 }
 
 /** The `automation.talk` block as a form edits it. */
 export interface TalkDraft {
   lookAtPlayers: boolean;
+}
+
+/** The `automation.statline` block as a form edits it. */
+export interface StatlineDraft {
+  control: boolean;
 }
 
 /**
@@ -843,7 +857,9 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       party: remoteNames(remotes['party']),
       players: playerGrants(remotes['players'])
     },
-    talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true }
+    talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
+    statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
+    statlineDesign: normalizeStatlineDesign(value['statlineDesign'])
   };
 }
 
@@ -925,7 +941,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         ? consoleUi['darkTheme']
         : DEFAULT_THEME,
       vitals: { hp: asVital(vitals['hp']), mana: asVital(vitals['mana']) },
-      alerts: asIf.alerts
+      alerts: asIf.alerts,
+      statline: normalizeStatlineDesign(ui['statline'])
     },
     logging: {
       enabled: logging['enabled'] === true,
@@ -1031,6 +1048,9 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       },
       talk: {
         lookAtPlayers: isRecord(automation['talk']) && automation['talk']['lookAtPlayers'] === true
+      },
+      statline: {
+        control: isRecord(automation['statline']) && automation['statline']['control'] === true
       }
     },
     loops: asLoops(value['loops'], LOOP_LIMITS)
