@@ -745,6 +745,81 @@ export interface WorldNames {
  * say* rather than zero — a spell that costs no mana and a spell whose cost is
  * not recorded are different facts, and only one of them can be acted on.
  */
+/**
+ * What a room's own spell does to whoever stands in it, and what stops it.
+ *
+ * The realm states both halves and nothing read either. `Rooms.Spell` names a
+ * real `Spells` row for 13,016 of the shipped realm's rooms, and 845 of them
+ * are the Silver River, whose spell carries no magnitude at all: it is a
+ * script that stops if you are carrying a log raft, a wooden skiff, a
+ * silverbark canoe or a river punt, and otherwise casts `battered` for 10–20.
+ * The script lives in `TBInfo`, which is not converted, so the chain is
+ * followed at build time (`src/main/world/spellHazard.ts`) and the answer
+ * written onto the spell.
+ *
+ * **`avoidedBy` is the half that makes this actionable.** A river the
+ * character has a boat for is a corridor; the same river without one is a
+ * hundred rooms of damage, and the router has to price those differently or
+ * the answer is wrong for one of the two characters asking.
+ */
+export interface SpellHazard {
+  /**
+   * Hit points a tick in the room is expected to cost. Absent where the chain
+   * does no damage the reader could put a number on — which, with `unread`
+   * set, is *not* the same as none.
+   */
+  damage?: number;
+  /** Items that stop it outright, as `Items` row ids, in the realm's order. */
+  avoidedBy?: number[];
+  /**
+   * Spells that stop it.
+   *
+   * Recorded and **never evaluated**: what the client knows about its own
+   * blessings is what the server printed, and a route priced on a bless that
+   * may have lapsed would be a guess with a walk at the end of it. Said on the
+   * card instead, so a person can act on it.
+   */
+  avoidedBySpell?: number[];
+  /** Whether it moves the character somewhere the exit table does not name. */
+  relocates?: boolean;
+  /**
+   * Whether the chain can put a monster in the room. Read, and priced as a
+   * discouragement like `unread`, because what it does is what a lair does;
+   * said as itself rather than as a chain that could not be followed.
+   */
+  summons?: boolean;
+  /**
+   * Whether the chain ran into something the reader could not follow.
+   *
+   * Unknown is never the reassuring answer: such a room is discouraged rather
+   * than walked for free, which is exactly what an unread script used to buy.
+   */
+  unread?: boolean;
+}
+
+/**
+ * Whether the pack already stops a room's spell.
+ *
+ * The one test both the router and the card make, so the route that walks the
+ * Silver River and the panel that explains why cannot disagree about whether
+ * the boat in the pack counts. `carrying` is `Traveller.keys` — the `Items`
+ * row ids the listing resolved — and an unlisted pack is *nobody has said*,
+ * which is never *avoided*: the reassuring answer is the dangerous one here.
+ *
+ * The spell half is deliberately not consulted: what the client knows about
+ * its own blessings is what the server printed, and a route priced on a bless
+ * that may have lapsed is a guess with a hundred rooms of damage after it. It
+ * is said on the card instead.
+ */
+export function hazardAvoided(
+  hazard: SpellHazard,
+  carrying: readonly number[] | undefined
+): boolean {
+  const wanted = hazard.avoidedBy;
+  if (wanted === undefined || wanted.length === 0 || carrying === undefined) return false;
+  return wanted.some((item) => carrying.includes(item));
+}
+
 export interface WorldSpell {
   id: number;
   name: string;
@@ -790,6 +865,17 @@ export interface WorldSpell {
    * end*, which is why `menace.ts` treats absence as a cast that lands.
    */
   resist?: number;
+  /**
+   * What it does to somebody standing in a room that casts it, and what stops
+   * it — format 30. See {@link SpellHazard}.
+   *
+   * Written only for the spells rooms actually cast (`Rooms.Spell`), and only
+   * where the chain reaches harm, a relocation, or something the reader could
+   * not follow. Absent means either *this spell is not a room's* or *it does
+   * nothing to whoever is standing there* — both of which are the same answer
+   * to the only question asked of it.
+   */
+  hazard?: SpellHazard;
   /**
    * What casting it actually does, from `Spells.Abil-n` — format 14.
    *
@@ -1424,6 +1510,60 @@ export interface WorldRoom {
 }
 
 /**
+ * Everything the realm knows about one room, resolved, for a room nobody is
+ * standing in.
+ *
+ * `CharacterTracker` attaches the shop, the lair, the script and the room's
+ * spell to the room the character *is* in, and every card that wanted them got
+ * them for free. A room on the map or on a route list has none of that: the
+ * map cell carries a name, its exits and two booleans, which is enough to draw
+ * a glyph and not enough to answer *what is in that lair* — the question the
+ * glyph raises and the one that decides whether to walk in.
+ *
+ * So this is the same resolution, addressed at a room by id. One query, not
+ * five: the shop, the lair, the hazard and the ways out are one answer about
+ * one place, and a panel that asked for them separately would draw four times
+ * as each landed.
+ */
+export interface RoomBrief {
+  id: RoomId;
+  name: string;
+  /** Every way out, resolved: where it goes by name, and what stands in it. */
+  exits: RoomBriefExit[];
+  /** The place this room holds, where the realm records one. Never its stock. */
+  place?: { kind: ShopKind; name: string };
+  /** What the realm says can spawn here. Absent where the room is no lair. */
+  lair?: WorldLair;
+  /** `Rooms.NPC` — who lives here, when the realm ties somebody to the room. */
+  npc?: string;
+  /** The spell the realm casts on whoever stands here, named. */
+  spell?: WorldSpell;
+  /**
+   * What that spell actually does to whoever stands here, and what stops it.
+   *
+   * The name alone does not answer the question the reader is asking — `river
+   * damage` and `inn rest` are the same column — so the resolved hazard comes
+   * with it where there is one. See {@link SpellHazard}.
+   */
+  hazard?: SpellHazard;
+  /** Those of `hazard.avoidedBy` the realm can name, so the panel can say them. */
+  hazardItems?: Array<{ id: number; name: string }>;
+  /** The realm's own light level, where it records one. Negative is dark. */
+  light?: number;
+  /** The words the room answers to, from its own script. */
+  commands?: RoomCommand[];
+}
+
+export interface RoomBriefExit {
+  direction: Direction;
+  to: RoomId;
+  /** The destination's name, where the realm has the room. */
+  name?: string;
+  /** What stands in the way, composed against the realm's item table. */
+  obstacle?: MapObstacle;
+}
+
+/**
  * One thing a room answers to, from its `TBInfo` script.
  *
  * Declared here rather than beside the parser because the renderer reads it and
@@ -1645,6 +1785,74 @@ export interface RouteStep {
    * step wearing it is on a route with no other way.
    */
   deadly?: boolean;
+  /**
+   * What that pass is expected to take in hit points — `danger` before the
+   * division by the health the route was planned at. The walker's rest before
+   * a trap reserves this much beyond the trap's damage; a share of a bar read
+   * at planning time could not be turned back into points once the character
+   * had healed. Absent with `danger`.
+   */
+  lairDamage?: number;
+  /**
+   * What one pass through the room's **own spell** is expected to take from
+   * this character, as a share of the health it had when the route was
+   * planned — the figure the router priced the step by
+   * (`Traveller.hazard`). Absent where the room casts nothing, where the
+   * chain reaches no harm, or where the pack already holds what stops it.
+   *
+   * Beside `danger` rather than folded into it because they are two different
+   * facts about a room and a person can act on only one of them: a lair is
+   * fought or avoided, and a room's spell is a *certainty* that an item in the
+   * pack can turn off outright.
+   */
+  hazard?: number;
+  /**
+   * Why `hazard` is a discouragement rather than a figure: the chain could
+   * not be followed, or it can summon something. A step wearing this draws
+   * the word, not the share — `2%` beside a room whose spell nobody could
+   * read was read as a lair figure (todo 01). Absent where the share is a
+   * damage the realm states.
+   */
+  hazardKind?: 'unread' | 'summons';
+}
+
+/**
+ * One spell a route walks through, folded across every room that casts it.
+ *
+ * Said at the head of the plan rather than only on the steps, for the reason
+ * the trap and lair counts are: a route of a hundred and four steps has its
+ * summary off the top of the panel long before the reader reaches the rooms
+ * that hurt. And the half that decides what to *do* is the last one — a
+ * hundred rooms of the Silver River are a corridor if you fetch a log raft
+ * first, and a wall of damage if you do not.
+ */
+export interface RouteHazard {
+  /** The realm's name for it — `river damage`, `swamp poison`. */
+  spell: string;
+  /** How many rooms on the way cast it. */
+  rooms: number;
+  /**
+   * What one pass is expected to take as a share of the health the route was
+   * planned at. Null where the chain reaches no figure — which is not zero:
+   * such a room is priced as a discouragement and says so as `unread` — and
+   * on `Route.carrying`, whose rooms are priced as if the item were carried.
+   */
+  share: number | null;
+  /** Whether the reader is walking it because the chain could not be followed. */
+  unread: boolean;
+  /** Whether the spell can put a monster in the room. */
+  summons: boolean;
+  /**
+   * What would stop it, named, that the pack does not already hold — *carry
+   * one of these and this stops happening*. Empty where the realm names
+   * nothing, which is most of them.
+   */
+  needs: Array<{ id: number; name: string }>;
+  /**
+   * Spells that would stop it, named. Recorded and never evaluated
+   * (`hazardAvoided`), so this is advice rather than a price.
+   */
+  needsSpell: string[];
 }
 
 /**
@@ -1667,21 +1875,31 @@ export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst:
   let count = 0;
   let worst: number | null = null;
   for (const step of steps) {
-    /*
-     * A `Spell Trap:` exit counts too, and did not until its spell was read
-     * (todo 00, 2026-09-06). It is a trap by the server's own reckoning —
-     * `SpellTrapExit` lets everybody through and fires a spell at them — and it
-     * carries the same `damage` field, taken from the realm's spell table
-     * rather than the instruction string. Excluding it said *no traps on this
-     * route* about a route through 21 exits that shoot poison darts.
-     */
-    const gate = step.requirement;
-    if (gate?.kind !== 'trap' && gate?.kind !== 'spell') continue;
+    const trap = trapOn(step);
+    if (trap === null) continue;
     count += 1;
-    const damage = gate.damage;
-    if (damage !== undefined && (worst === null || damage > worst)) worst = damage;
+    if (trap.damage !== null && (worst === null || trap.damage > worst)) worst = trap.damage;
   }
   return { count, worst };
+}
+
+/**
+ * The trap a step walks through, or null: the one requirement on a route that
+ * is neither opened nor paid nor refused, and the one the walker rests before
+ * (`Walker.holdForTrap`, `automation.health.restBeforeTraps`).
+ *
+ * A `Spell Trap:` exit counts too, and did not until its spell was read (todo
+ * 00, 2026-09-06). It is a trap by the server's own reckoning —
+ * `SpellTrapExit` lets everybody through and fires a spell at them — and it
+ * carries the same `damage` field, taken from the realm's spell table rather
+ * than the instruction string. Excluding it said *no traps on this route*
+ * about a route through 21 exits that shoot poison darts. `damage` is null
+ * where the realm states none, which is not zero.
+ */
+export function trapOn(step: Pick<RouteStep, 'requirement'>): { damage: number | null } | null {
+  const gate = step.requirement;
+  if (gate?.kind !== 'trap' && gate?.kind !== 'spell') return null;
+  return { damage: gate.damage ?? null };
 }
 
 /**
@@ -1699,16 +1917,28 @@ export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst:
 export function lairsAlong(steps: readonly RouteStep[]): {
   count: number;
   worst: number | null;
-  deadly: boolean;
+  /**
+   * The room a pass is expected to kill the character in, named — not merely
+   * *that* there is one.
+   *
+   * *One is expected to kill you* is unactionable without knowing which: a
+   * route of a hundred and four steps has the deadly room somewhere in it and
+   * the reader was left to scroll for a chip. Null where none is.
+   */
+  deadly: { room: RoomId; name: string } | null;
 } {
   let count = 0;
   let worst: number | null = null;
-  let deadly = false;
+  let deadly: { room: RoomId; name: string } | null = null;
   for (const step of steps) {
+    // The first, in walking order: it is the one that stops the walk, and a
+    // later one is a room the character never reaches. By lair or by the
+    // room's own spell — `deadly` is set from either, and a room whose spell
+    // takes the whole bar has no `danger` to be counted under.
+    if (step.deadly === true && deadly === null) deadly = { room: step.to, name: step.name };
     if (step.danger === undefined) continue;
     count += 1;
     if (worst === null || step.danger > worst) worst = step.danger;
-    if (step.deadly === true) deadly = true;
   }
   return { count, worst, deadly };
 }
@@ -1994,6 +2224,35 @@ export interface Route {
    * through doors that will not open.
    */
   blocks?: RouteBlock[];
+  /**
+   * What the rooms on the way do to whoever walks through them, folded per
+   * spell. See {@link RouteHazard}. Absent where nothing on the route casts
+   * anything the reader would want to know about.
+   */
+  hazards?: RouteHazard[];
+  /**
+   * A way round the worst of this one, where there is one.
+   *
+   * *There is no other way* was said off the price of a single search: the
+   * router walls a deadly lair rather than pruning it, so such a room is
+   * simply an expensive option the best route happened to include — and the
+   * client asserted an absolute from a relative result. This is the search
+   * that makes the sentence checkable: the rooms that priced the best route
+   * badly are excluded and the question asked again. Absent means it was
+   * asked and there is genuinely none, or that there was nothing bad enough
+   * to ask about — or that the route was not planned for a reader
+   * (`RouteOptions.alternatives`): a loop's leg pays for no second search.
+   */
+  otherWay?: Route;
+  /**
+   * The way this character would take carrying what stops the rooms on it,
+   * where that is materially shorter than the plan — the river with a log
+   * raft against the slums without one. Its `hazards[].needs` name what to
+   * fetch. Absent where nothing an item would quieten shortens the way by
+   * `tuning.world.alternativeMinSteps`, and on any route not planned for a
+   * reader (`RouteOptions.alternatives`).
+   */
+  carrying?: Route;
 }
 
 /**

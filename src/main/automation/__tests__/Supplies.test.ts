@@ -114,6 +114,12 @@ function planner(over: Partial<SupplyPlanner> = {}) {
     moveInFlight: () => false,
     walking: () => false,
     busy: () => false,
+    /*
+     * A lap is running unless a test says otherwise: an errand only ever
+     * starts itself from one, and these tests are about what it does once it
+     * has. The gate itself is asserted below.
+     */
+    looping: () => true,
     hold: () => log.push('hold'),
     release: () => log.push('release'),
     ...over
@@ -404,5 +410,49 @@ describe('yielding to the person at the keyboard', () => {
     vi.advanceTimersByTime(TUNING.supplies.errandTimeoutMs + 1000);
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
+  });
+});
+
+/*
+ * The bug todo 03 was reported for: killed and sent to the temple, the pack
+ * emptied onto the corpse, the client walked the character straight back out to
+ * the General Store. Standing still is not a reason to go shopping.
+ */
+describe('when an errand may start at all', () => {
+  it('starts nothing from an idle character with no lap running', () => {
+    const { planner: p, log } = planner({ looping: () => false });
+    const auto = make(p);
+    auto.onCharacter(character(0));
+    expect(auto.current).toBeNull();
+    expect(log).toEqual([]);
+  });
+
+  it('starts one while a lap is running', () => {
+    const { planner: p } = planner({ looping: () => true });
+    const auto = make(p);
+    auto.onCharacter(character(0));
+    expect(auto.current).not.toBeNull();
+  });
+
+  /* The second moment: the player asked to walk somewhere. */
+  it('starts one when a route is asked for, lap or no lap', () => {
+    const { planner: p } = planner({ looping: () => false });
+    const auto = make(p);
+    const errand = auto.considerBeforeRoute(character(0));
+    expect(errand?.item.name).toBe('torch');
+    expect(auto.current).toBe(errand);
+  });
+
+  it('starts nothing for a route while one is already running', () => {
+    const { planner: p } = planner({ looping: () => true });
+    const auto = make(p);
+    auto.onCharacter(character(0));
+    expect(auto.considerBeforeRoute(character(0))).toBeNull();
+  });
+
+  it('starts nothing for a route with the pack already stocked', () => {
+    const { planner: p } = planner({ looping: () => false });
+    const auto = make(p);
+    expect(auto.considerBeforeRoute(character(9))).toBeNull();
   });
 });

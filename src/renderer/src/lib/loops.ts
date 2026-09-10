@@ -79,6 +79,21 @@ export interface LoopRow {
   /** Whether the character already walks it, so the row can say so. */
   held: boolean;
   /**
+   * Everything this row can be found by, lower-cased: its name, its area and
+   * the rooms it visits.
+   *
+   * The rooms are in it because people do not agree on what a place is called.
+   * The shelf names each loop the way whoever recorded it did — `Slime Beast
+   * Loop` — and somebody who knows that lair as the Refuse Pit would search a
+   * shelf of four hundred and twenty and be told there is no such loop. Both
+   * are the same question and both are answered.
+   *
+   * Built once per row rather than per keystroke: this is joined out of nine
+   * strings on average, and a query is re-run on every character typed into a
+   * field over four hundred rows.
+   */
+  search: string;
+  /**
    * The places this loop visits, for matching against where the character is.
    *
    * Empty for a `by-name` row, and that emptiness is a fact rather than a gap:
@@ -193,6 +208,7 @@ export function loopRows(catalogue: readonly Loop[], own: readonly HeldLoop[]): 
     const loop = onShelf.get(key);
     if (loop !== undefined) {
       const category = loop.category ?? loopCategory(loop.name);
+      const stopsAt = loop.stops.map(splitStop);
       return {
         key: String(index),
         choice: { kind: 'loop', loop },
@@ -201,7 +217,8 @@ export function loopRows(catalogue: readonly Loop[], own: readonly HeldLoop[]): 
         category,
         shortName: shortName(loop.name, category),
         held: held.has(key),
-        stopsAt: loop.stops.map(splitStop)
+        search: searchText(loop.name, category, stopsAt),
+        stopsAt
       };
     }
     // Held and not on the shelf: already on disk, so there is nothing to file
@@ -216,6 +233,8 @@ export function loopRows(catalogue: readonly Loop[], own: readonly HeldLoop[]): 
       category,
       shortName: shortName(entry.name, category),
       held: true,
+      // No places to search by: `loop:list` answers with a name and a count.
+      search: searchText(entry.name, category, []),
       // Held-only: `loop:list` gave a count, not places. See `stopsAt`.
       stopsAt: []
     };
@@ -280,10 +299,12 @@ function sectionOf(row: LoopRow, here: LoopHere): LoopSection | null {
  * nobody asked, on every row of every room with no loop in it, which is most of
  * them.
  *
- * Every term has to appear somewhere in the name or the area, in any order:
- * the names are `Area: Room-map room`, so `sewer dark` and `dark sewer` are the
- * same question. The area is searched as well as the name, so typing an area
- * that a row's own name has had trimmed out of it still finds the row.
+ * Every term has to appear somewhere in the row's {@link LoopRow.search} text,
+ * in any order, so `sewer dark` and `dark sewer` are the same question. That
+ * text is the name, the area and the rooms the loop visits: the area because a
+ * row's own name has had it trimmed off the front, and the rooms because the
+ * name a loop was recorded under and the name of the place it walks are two
+ * different words for it and a reader may know either.
  *
  * A group with nothing left in it is dropped rather than drawn empty — while
  * searching, an open heading over no rows says the area has been searched and
@@ -302,8 +323,7 @@ export function groupLoops(
 
   for (const row of rows) {
     if (terms.length > 0) {
-      const haystack = `${row.name} ${row.category}`.toLowerCase();
-      if (!terms.every((term) => haystack.includes(term))) continue;
+      if (!terms.every((term) => row.search.includes(term))) continue;
     }
     const section = sectionOf(row, here);
     if (section !== null) {
@@ -331,6 +351,17 @@ export function groupLoops(
       loops: areas.get(category)!
     }))
   ];
+}
+
+/**
+ * What a row is found by, lower-cased once so a query never re-folds it.
+ *
+ * A room appears as many times as the loop visits it, which costs a few
+ * characters and saves a de-duplication: the string is only ever asked whether
+ * it *contains* a term.
+ */
+function searchText(name: string, category: string, stops: readonly LoopStopPlace[]): string {
+  return [name, category, ...stops.map((stop) => stop.name)].join(' ').toLowerCase();
 }
 
 /**

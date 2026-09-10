@@ -73,6 +73,12 @@ export interface SupplyPlanner {
   walking(): boolean;
   /** Anything that outranks shopping: an escape in flight, a haven armed. */
   busy(): boolean;
+  /**
+   * Whether a lap is actually running.
+   *
+   * The one state an errand may start itself from. See `consider`.
+   */
+  looping(): boolean;
   /** Hold the running loop for the errand, and let it go afterwards. */
   hold(): void;
   release(): void;
@@ -184,7 +190,17 @@ export class Supplies {
     }
     const errand = this.errand;
     if (errand === null) {
-      this.consider(state);
+      /*
+       * **An idle character never goes shopping.** This used to consider on
+       * every status line with nothing else holding the character, which meant
+       * standing still was enough — and standing still is exactly what a
+       * character does after it dies: killed and sent to the temple, the pack
+       * emptied onto the corpse, it was walked straight back out to the General
+       * Store for a torch it had no way of paying for. A shopping trip is part
+       * of going somewhere, so it starts where going somewhere starts: a lap,
+       * or a route the player asked for (`considerBeforeRoute`).
+       */
+      if (this.planner.looping()) this.consider(state);
       return;
     }
     switch (errand.stage) {
@@ -296,6 +312,25 @@ export class Supplies {
       return;
     }
     this.finish(errand, true, null, state);
+  }
+
+  /**
+   * The other moment an errand may start: the player has asked for a route.
+   *
+   * Answered *before* the route goes out, so the shop is visited first and the
+   * route walked after — the same order a lap gets, where the errand holds the
+   * lap rather than ending it. The caller owes the route back; see
+   * `SessionManager.walkRoute`.
+   *
+   * Returns the errand it started, so the caller can name the shop in the
+   * sentence it says about standing the route down.
+   */
+  considerBeforeRoute(state: CharacterState): Errand | null {
+    if (!this.enabled || !this.config.enabled) return null;
+    if (state.phase !== 'in-game') return null;
+    if (this.errand !== null) return null;
+    this.consider(state);
+    return this.errand;
   }
 
   /** Nothing is owed: is anything short, and can it be bought right now? */

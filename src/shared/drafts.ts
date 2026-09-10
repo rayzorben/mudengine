@@ -401,6 +401,7 @@ export interface ProfileDraft {
   health: {
     restBelow: number;
     restTo: number;
+    restBeforeTraps: number;
     meditateBelow: number;
     drinkHealingPotionBelow: number;
     drinkManaPotionBelow: number;
@@ -764,6 +765,10 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
        */
       restBelow: unit(health['restBelow'], DEFAULT_CONFIG.automation.health.restBelow),
       restTo: unit(health['restTo'], DEFAULT_CONFIG.automation.health.restTo),
+      restBeforeTraps: unit(
+        health['restBeforeTraps'],
+        DEFAULT_CONFIG.automation.health.restBeforeTraps
+      ),
       meditateBelow: unit(health['meditateBelow']),
       drinkHealingPotionBelow: unit(health['drinkHealingPotionBelow']),
       drinkManaPotionBelow: unit(health['drinkManaPotionBelow']),

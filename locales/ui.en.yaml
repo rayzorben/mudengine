@@ -244,8 +244,8 @@ notices:
       experience and the purse, and the status line you can design to draw in its place. Turn
       either on there or on the Status Line section in settings.'
     statusLineAsksQuieted:
-      'pro and set were added to the quiet list in {file}: the status-line routine''s own asks stay
-      out of the console. Remove them there to see them.'
+      "pro and set were added to the quiet list in {file}: the status-line routine's own asks stay
+      out of the console. Remove them there to see them."
     diagnosticsPreferenceDropped:
       many:
         '"ui.showDiagnostics" was removed from {count} files: the diagnostics cards are now hidden on
@@ -278,6 +278,15 @@ notices:
     gearButtonPinned:
       'A gear button was added to your toolbar, beside the dial. It puts back what the client
       last saw in each worn slot — the first press after a death.'
+    loopsRenamed:
+      one:
+        'The shipped loops are named the way whoever recorded them named them, rather than after the
+        room they start in. {count} loop of yours was copied from that shelf and has been renamed to
+        match: {loopList}'
+      many:
+        'The shipped loops are named the way whoever recorded them named them, rather than after the
+        room they start in. {count} loops of yours were copied from that shelf and have been renamed
+        to match: {loopList}'
     globalLoopsLifted:
       many:
         '{count} loops moved out of the options file into {globalLoopsDir}; every character inherits
@@ -347,6 +356,11 @@ notices:
         '{count} character files moved into directories of their own, so each can carry loops of its
         own.'
       one: 1 character file moved into a directory of its own, so it can carry loops of its own.
+    trapRest:
+      many: 'Resting before a trap was added to {count} files, at 45%: a walk now waits until
+        health covers the trap ahead and leaves that share of the bar after it. {fileList}'
+      one: 'Resting before a trap was added to {count} file, at 45%: a walk now waits until
+        health covers the trap ahead and leaves that share of the bar after it. {fileList}'
     restCeiling:
       many: 'A resting ceiling was added to {count} files, off: keep sitting back down until health
         reaches it. Casting turns out to break a rest and standing regenerates six times slower, so
@@ -633,6 +647,7 @@ terminal:
     withdrawAllTitle: Withdraw all coins from bank vault ({amount} copper)
   contextMenu:
     copy: Copy
+    copyLink: Copy link
     paste: Paste
   fontNotFixedPitch: "{fontName} is not fixed-pitch ('{widest}' is wider than '{narrowest}') — maps
     and frames will not align."
@@ -995,6 +1010,7 @@ cards:
     copy: Copy
     copyCard: Copy card
     copyLine: Copy line
+    copyLink: Copy link
   float:
     resizeTooltip: Resize
   header:
@@ -1303,12 +1319,17 @@ cards:
       party: party
     commandsValue: '{commandsSent} sent — last @{lastCommand} {agoText}'
     detail:
+      class: Class
       commands: Commands
       gang: Gang
       health: Health
       lastOnline: Last online
       lastSeen: Last seen
+      level: Level
+      race: Race
       where: Where
+    fromTitle: from their title
+    levelBand: '~{from}–{to}'
     healthNeverAnswered: no reply — request with @health
     lastOnlineNow: now
     neverInRoom: never
@@ -1603,6 +1624,26 @@ cards:
       found: Found
       lair: Lair
     title: Room
+  roomPeek:
+    ariaLabel: What the realm knows about {roomName}
+    answersHeading: Answers to
+    exitsLabel: Ways out
+    lightLabel: Light
+    livesHereLabel: Lives here
+    noExits: none recorded
+    pending: Asking the realm about this room…
+    pendingName: This room
+    placeLabel: Place
+    roomSpellDamage: about {damage} damage a tick
+    roomSpellLabel: Casts on you
+    roomSpellMoves: it moves you somewhere else
+    roomSpellSummons: it may summon something
+    roomSpellStoppedBy: Stopped by
+    unknownRoom: This realm's data has no room with that address.
+    walkHereButton: Walk here
+    walkHereTooltip: Walk the plan on screen only as far as this room
+    walkToButton: Walk to
+    walkToTooltip: Plan the way here. Nothing is walked until you read the steps and say so.
   route:
     alreadyHere: You are already here.
     destination:
@@ -1628,7 +1669,38 @@ cards:
       one: one lair on the way
     lairWorst: 'the worst about {percent}% of your health'
     shorterNeeds: 'This way crosses what you cannot pass. The shorter way needs:'
-    lairDeadly: one is expected to kill you, and there is no other way
+    lairDeadly: and there is no other way
+    lairDeadlyAt: expected to kill you at
+    hazardRooms:
+      many: '{spellName} in {roomCount} rooms'
+      one: '{spellName} in one room'
+    hazardShare: 'about {percent}% of your health each'
+    hazardSlight: under 1% of your health each
+    hazardUnread: this client cannot read what it does
+    hazardSummons: it may summon something
+    hazardSpell: 'Or be under: {spellList}'
+    hazardCarry: 'Carry one of these and the rooms on the way stop hurting:'
+    stepDeadly: expected to kill you
+    stepHazard: '{percent}%'
+    stepSlight: <1%
+    stepUnread: unread
+    stepSummons: summons
+    stepLair: 'lair · {percent}%'
+    alternatives:
+      many: '{count} alternate routes'
+      one: 1 alternate route
+    alternative:
+      plan: 'The planned way, {stepCount} steps'
+      round: 'A way round the worst of it, {stepCount} steps'
+      carrying: 'Carrying {itemList}, {stepCount} steps'
+    showing:
+      round: the way round
+      carrying: the way with the items
+    otherWayButton: Show it
+    otherWayTooltip: Show this route instead. Nothing is walked until you say so.
+    foldTooltip: Show the {count} rooms this row stands for
+    unfoldTooltip: Fold these rooms back into one row
+    foldCount: '×{count}'
     searchPlaceholder: Room name, or 1/2150
     typeMoreChars: Type at least two characters.
     walkButton: Walk it
@@ -1795,8 +1867,11 @@ cards:
       auction: auction
       broadcast: broadcast
       direct: direct
+      disconnected: disconnected
+      entered: entered
       gang: gang
       gossip: gossip
+      left: left
       say: say
       telepath: telepath
       yell: yell
@@ -1813,6 +1888,7 @@ cards:
       gang: Gang
       telepath: Tele
       local: Local
+      realm: Realm
     messageInputAria: Say something
     messagePlaceholder: message, or start with . " > / gos auc br - gb bg
     # The direction on this character's own receipts: `telepath to Brackle`.
@@ -2251,6 +2327,12 @@ settings:
       what gives you rest, heal, rest, heal. 0 rests once and resumes at the floor. Lifted to Rest
       If Below if it is under it.
     restToLabel: Keep Resting To HP %
+    restBeforeTrapsHint:
+      Before stepping through a trap, waits until health covers the trap's damage and still
+      leaves this share of maximum after it — or what the lair beyond is expected to take, if
+      more. Its own switch, so it rests before a trap even with Rest If Below at 0. 0 walks into
+      any trap at any health.
+    restBeforeTrapsLabel: Keep After a Trap HP %
     restingNote: One pair for both, because nothing rests while a loop is marching — a separate
       pause figure under the resting floor left the character walking while it was too hurt to sit
       down. Resting is a state the character is in, and only moving, attacking and casting break
@@ -2637,8 +2719,8 @@ settings:
     previewEmpty: Nothing to draw.
     cells: '{cells} of {max} cells; what you type shares the row, so leave it room.'
     tooWide:
-      '{cells} cells — wider than the {max} the prompt row holds, so the realm''s own line will be
-      drawn instead until this is shorter.'
+      "{cells} cells — wider than the {max} the prompt row holds, so the realm's own line will be
+      drawn instead until this is shorter."
     tagsNote:
       'Figures: {figures}. Colours: {colours}, a hex such as {hex}, or {background} for the ground.
       Also {attributes}.'
@@ -2694,6 +2776,8 @@ errors:
 session:
   supplies:
     abandonedDied: the character died
+    beforeRoute: Short of {item} — going to {shop} first, then on to {destination}.
+    beforeRouteNowhere: where you asked
     noShopAt: 'room {map}/{room} holds no shop in the realm data'
     noShopNamed: no shop is named for it
     shopUnplaced: 'the realm places no room for a shop called {shop}'
@@ -2802,9 +2886,8 @@ session:
     mismatch:
       The prompt no longer matches the status line the realm reported; reading it by the usual
       pattern and asking pro again.
-    tooWide:
-      'The status line you designed comes to {cells} cells and the prompt row holds {max}, so
-      the realm''s own line is drawn instead. Shorten it on the Status Line section in settings.'
+    tooWide: "The status line you designed comes to {cells} cells and the prompt row holds {max}, so
+      the realm's own line is drawn instead. Shorten it on the Status Line section in settings."
   walk:
     claimLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has given up waiting for it and is
@@ -3093,6 +3176,10 @@ automation:
     barrierUnknownSkill: unknown
     healthHolding: Too hurt to travel; waiting here until health is back.
     healthResumed: Health is back; walking on.
+    trapHolding:
+      'The way into {stepName} is a trap of up to {damage} damage; resting here to {needed} HP
+      (now {hp}) before taking it.'
+    trapResumed: Enough health for the trap into {stepName}; walking on.
     holdingBlind: Blind; waiting here until you can see again.
     holdingHeld: Paralysed; waiting here until you can move again.
     holdingPoisoned: Poisoned; waiting here until it runs its course.

@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { BATCH_RULES, RULES } from '../patterns';
 import { domainOf, type BlockType } from '../../../shared/blocks';
+import { TALK_PRESENCE_TYPES } from '../../../shared/talk';
 
 /**
  * Every block type the vocabulary declares.
@@ -102,6 +103,16 @@ describe('the conversation channels', () => {
     return [...map.matchAll(/^\s*'([a-z-]+)':\s*'conversation'/gm)].map((match) => match[1]!);
   };
 
+  /*
+   * What the card can show, which is not the same as what was *said*: the
+   * realm's comings and goings are `presence` blocks the card carries anyway,
+   * and they stay `presence` because the roster is maintained off them. So the
+   * pairing is against `isTalkBlock`'s own two halves rather than the domain
+   * alone -- otherwise naming one on the card reads as dead vocabulary, and
+   * adding one to `TALK_PRESENCE_TYPES` without naming it goes unnoticed.
+   */
+  const carriedTypes = (): string[] => [...conversationTypes(), ...TALK_PRESENCE_TYPES];
+
   const named = (): string[] => {
     const source = fs.readFileSync(
       path.resolve('src/renderer/src/components/ConversationCard.tsx'),
@@ -115,15 +126,13 @@ describe('the conversation channels', () => {
   };
 
   it('are all shown on the Talk card', () => {
-    const missing = conversationTypes().filter((type) => !named().includes(type));
+    const missing = carriedTypes().filter((type) => !named().includes(type));
     expect(missing, `no name on the Talk card for: ${missing.join(', ')}`).toEqual([]);
   });
 
-  it('and the card names none that are not channels', () => {
-    const stale = named().filter((type) => !conversationTypes().includes(type));
-    expect(stale, `Talk card names types that are not conversation: ${stale.join(', ')}`).toEqual(
-      []
-    );
+  it('and the card names none it does not carry', () => {
+    const stale = named().filter((type) => !carriedTypes().includes(type));
+    expect(stale, `Talk card names types it does not carry: ${stale.join(', ')}`).toEqual([]);
   });
 });
 

@@ -2393,6 +2393,123 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
 }
 
+// ------------------------------- assert: a room on the map answers for itself
+//
+// The map has drawn a lair glyph since the realm data was indexed and nothing
+// on the screen could say what was in one -- the Room card's Lair face is about
+// the room the character is *standing in*, and a room on the map is somewhere
+// else by definition. So a room now opens the realm's whole answer beside it,
+// and the way there is a button on that panel rather than the room's bare
+// click, which used to send a character somewhere on one mis-click.
+//
+// Clicked rather than hovered: a synthesised `pointerenter` would be testing
+// the dwell timer, and what is worth holding is that the panel opens beside the
+// room, states the room's facts, and carries the walk.
+{
+  /*
+   * Brought into view first, and in its own step: the rail scrolls, and a
+   * scroll that enclosed the anchor is one of the four things that dismiss
+   * a panel -- so scrolling in the same breath as the click would open the
+   * panel and then put it away again.
+   */
+  await evaluate(`
+    (() => {
+      document.querySelector('.map-card')?.scrollIntoView({ block: 'nearest' });
+      return true;
+    })()
+  `);
+  await sleep(150);
+  const clicked = await evaluate(`
+    (() => {
+      // A room the picture is actually *showing* -- and one the window is
+      // showing too. The SVG clips at its box but the elements outside it
+      // still have boxes, and the panel is clamped into the window: either way
+      // the check would be testing the harness's own choice of room rather
+      // than the placement.
+      const map = document.querySelector('.map-card .map-view').getBoundingClientRect();
+      const rooms = [...document.querySelectorAll('.map-card .map-room:not([data-kind="here"])')];
+      const room = rooms.find((node) => {
+        const box = node.getBoundingClientRect();
+        return box.left >= map.left && box.right <= map.right &&
+               box.top >= map.top && box.bottom <= map.bottom &&
+               box.top >= 0 && box.bottom <= window.innerHeight;
+      });
+      if (room === undefined) return null;
+      room.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return room.getAttribute('data-room');
+    })()
+  `);
+  check(clicked !== null, 'the map draws a room to point at', String(clicked));
+  await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+  const peek = await evaluate(`
+    (() => {
+      const panel = document.querySelector('.room-peek');
+      if (panel === null) return null;
+      const map = document.querySelector('.map-card .map-view').getBoundingClientRect();
+      const box = panel.getBoundingClientRect();
+      return {
+        badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
+        heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
+        exits: (panel.innerText.match(/Ways out/) || []).length,
+        walk: panel.querySelector('.peek-actions button')?.innerText ?? '',
+        // Beside the room rather than anywhere: it hangs off the room, and
+        // placePopover is what decides which side. Checked as an overlap in
+        // both axes with the picture's own box, which is what "beside" means
+        // for a panel placed against something inside it.
+        box: { left: box.left, top: box.top, width: box.width, height: box.height },
+        map: { left: map.left, top: map.top, width: map.width, height: map.height },
+        window: { width: window.innerWidth, height: window.innerHeight },
+        beside:
+          box.width > 0 &&
+          box.right > map.left - box.width &&
+          box.left < map.right + box.width &&
+          box.bottom > map.top - box.height &&
+          box.top < map.bottom + box.height
+      };
+    })()
+  `);
+  check(
+    peek !== null && peek.badge === clicked,
+    'a room on the map opens the realm’s answer about that room',
+    JSON.stringify(peek)
+  );
+  check(
+    peek !== null && peek.heading.length > 0 && peek.exits === 1,
+    'and states its name and the ways out of it',
+    JSON.stringify(peek)
+  );
+  check(peek !== null && peek.beside, 'placed against the room it hangs off', JSON.stringify(peek));
+  // The walk moved here from the room's own click, so this is the check that
+  // the map can still send anybody anywhere at all.
+  check(
+    peek !== null && /walk/i.test(peek.walk),
+    'and carries the walk, which the bare click used to be',
+    JSON.stringify(peek)
+  );
+  await evaluate(`document.querySelector('.room-peek .peek-actions button')?.click()`);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.route-panel')`));
+  check(
+    await evaluate(`!!document.querySelector('.route-panel')`),
+    'and pressing it plans the way there -- it never walks one'
+  );
+  check(
+    !(await evaluate(`!!document.querySelector('.room-peek')`)),
+    'and the panel goes with it, because one thing is open at a time'
+  );
+  /*
+   * Away again, so nothing below reads a panel this check left standing. The
+   * panel's own close, addressed as the *direct* child of the search row:
+   * `ClearField` keeps a clear button in the DOM whether or not it is drawn,
+   * so `.route-search button` is that one and empties the field instead.
+   */
+  await evaluate(`document.querySelector('.route-panel .route-search > button')?.click()`);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
+  check(
+    !(await evaluate(`!!document.querySelector('.route-panel')`)),
+    'and the route panel closes on its own ✕, leaving nothing standing'
+  );
+}
+
 // ------------------------------------------------- assert: the tab says who it is
 //
 // A profile's display name is a filename until the realm says who the character
@@ -2493,7 +2610,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await evaluate(`!!document.querySelector('.route-panel')`),
     'and Enter opens the route panel'
   );
-
   /*
    * The same field takes the pair the Room card's badge shows.
    *
@@ -2643,13 +2759,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   const heightBefore = await evaluate(`
     (() => {
-      const row = document.querySelector('.route-steps li');
+      const row = document.querySelector('.route-steps li.step');
       return row ? String(row.getBoundingClientRect().height) : 'none';
     })()
   `);
   const clicked = await evaluate(`
     (() => {
-      const name = document.querySelector('.route-steps li button.step-name');
+      const name = document.querySelector('.route-steps li.step button.step-name');
       if (!name) return 'the step name is not a control';
       name.click();
       return 'clicked';
@@ -2659,7 +2775,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await sleep(300);
   const pickStep = await evaluate(`
     (() => {
-      const row = document.querySelector('.route-steps li');
+      const row = document.querySelector('.route-steps li.step');
       if (!row) return JSON.stringify({ error: 'no steps' });
       const name = row.querySelector('button.step-name');
       return JSON.stringify({
@@ -2667,7 +2783,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         walkHere: !!row.querySelector('.step-walk'),
         pressed: name ? name.getAttribute('aria-pressed') : null,
         height: row.getBoundingClientRect().height,
-        others: document.querySelectorAll('.route-steps li[data-picked="true"]').length
+        others: document.querySelectorAll('.route-steps li.step[data-picked="true"]').length
       });
     })()
   `);
@@ -2679,12 +2795,140 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   check(picked.grew === 0, 'and the row does not change height when it is picked', pickStep);
 
   // Toggling off, because a selection nothing can clear is a mode.
-  await evaluate(`document.querySelector('.route-steps li button.step-name').click()`);
+  await evaluate(`document.querySelector('.route-steps li.step button.step-name').click()`);
   const unpick = await readUntil(
-    () => evaluate(`document.querySelectorAll('.route-steps li[data-picked="true"]').length`),
+    () => evaluate(`document.querySelectorAll('.route-steps li.step[data-picked="true"]').length`),
     (unpick) => Number(unpick) === 0
   );
   check(Number(unpick) === 0, 'and clicking it again puts it back', unpick);
+
+  /*
+   * And pointing at a room on the plan says what is in it.
+   *
+   * *Four lairs on the way, one is expected to kill you* is a summary, and
+   * before walking it the reader has to be able to look at each -- which is
+   * the panel the map opens, from the same query, with this list's own action:
+   * walk only as far as that room.
+   *
+   * Dispatched as `pointerover`, not `pointerenter`: React derives enter and
+   * leave from over and out at its own root, so a raw `pointerenter` on the
+   * element reaches no handler at all. `relatedTarget` is outside the row, or
+   * React reads it as a move *within* the element and fires nothing.
+   */
+  await evaluate(`
+    (() => {
+      const name = document.querySelector('.route-steps li.step button.step-name');
+      name.dispatchEvent(
+        new PointerEvent('pointerover', {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body
+        })
+      );
+      return true;
+    })()
+  `);
+  await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+  const planPeek = await evaluate(`
+    (() => {
+      const panel = document.querySelector('.room-peek');
+      if (panel === null) return null;
+      const step = document.querySelector('.route-steps li.step button.step-name');
+      return {
+        heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
+        step: step.innerText.trim(),
+        walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
+      };
+    })()
+  `);
+  check(
+    planPeek !== null && planPeek.heading.toLowerCase() === planPeek.step.toLowerCase(),
+    'pointing at a room on the plan opens the realm’s answer about that room',
+    JSON.stringify(planPeek)
+  );
+  check(
+    planPeek !== null && /walk here/i.test(planPeek.walk),
+    'and its action is to walk only that far, which is what picking the step means',
+    JSON.stringify(planPeek)
+  );
+  await capture('smoke-room-peek.png', 'the realm’s answer about a room on the plan');
+  // Away again, without walking anywhere: the checks below drive this panel.
+  await evaluate(`document.querySelector('.room-peek .card-close')?.click()`);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.room-peek')`)));
+  check(
+    !(await evaluate(`!!document.querySelector('.room-peek')`)),
+    'and the close glyph puts it away'
+  );
+
+  /*
+   * And the map under the head is the Map card's map, quick view included.
+   *
+   * There is one picture (`MapPlan`) and it is drawn in two places; a room
+   * that answered for itself on the card and stayed mute on the plan was the
+   * two drifting apart. Clicked, as on the card: a click settles the panel.
+   * The action follows the room -- the destination is the last step, so it
+   * says *walk here*; a neighbour the plan does not pass through says *walk
+   * to*, the card's own action, so nothing drawn is a room that cannot be
+   * gone to.
+   */
+  /** Click one room on the plan's map, wait for its panel, read it, put it away. */
+  const peekOnPlan = async (which) => {
+    const clicked = await evaluate(`
+      (() => {
+        const rooms = [...document.querySelectorAll('.route-map .map-room')];
+        const room = rooms.find((node) =>
+          ${
+            which === 'destination'
+              ? `node.getAttribute('data-kind') === 'here'`
+              : `node.getAttribute('data-kind') !== 'here'`
+          }
+        );
+        if (room === undefined) return null;
+        room.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return room.getAttribute('data-room');
+      })()
+    `);
+    if (clicked === null) return null;
+    await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+    const read = await evaluate(`
+      (() => {
+        const panel = document.querySelector('.room-peek');
+        if (panel === null) return null;
+        const steps = [...document.querySelectorAll('.route-steps li.step button.step-name')]
+          .map((step) => step.innerText.trim().toLowerCase());
+        const heading = panel.querySelector('.popover-head h2')?.innerText ?? '';
+        return {
+          badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
+          heading,
+          onPlan: steps.includes(heading.trim().toLowerCase()),
+          walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
+        };
+      })()
+    `);
+    await evaluate(`document.querySelector('.room-peek .card-close')?.click()`);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.room-peek')`)));
+    return read === null ? null : { ...read, clicked };
+  };
+  const planDestination = await peekOnPlan('destination');
+  const planNeighbour = await peekOnPlan('neighbour');
+  check(
+    planDestination !== null && planDestination.badge === planDestination.clicked,
+    'a room on the plan’s own map opens the same panel the Map card opens',
+    JSON.stringify(planDestination)
+  );
+  check(
+    planDestination !== null && /walk here/i.test(planDestination.walk),
+    'and the destination offers to walk here, being the last step',
+    JSON.stringify(planDestination)
+  );
+  check(
+    planNeighbour !== null &&
+      (planNeighbour.onPlan
+        ? /walk here/i.test(planNeighbour.walk)
+        : /walk to/i.test(planNeighbour.walk)),
+    'and a neighbour offers the walk that fits it: here on the plan, to off it',
+    JSON.stringify(planNeighbour)
+  );
 
   /*
    * The one that was broken. Before the fix the panel simply sat there: the
@@ -4063,6 +4307,36 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'returning to TALK brings the whole stream back'
   );
 
+  /*
+   * Who arrived and who went, on a pill of their own.
+   *
+   * These three are `presence` blocks and stay that way -- the roster is
+   * maintained off the same sentences -- so the card carries them by asking
+   * its own question (`isTalkBlock`) rather than by re-domaining a fact to
+   * suit one reader. Both halves are checked here because both were asked
+   * for: the lines are in the feed, and the button isolating them is real.
+   * A face nobody can click is a feature nobody has.
+   */
+  check(await evaluate(clickFace('realm')), 'the comings and goings earned a face too');
+  const realmFace = await readUntil(
+    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
+    (text) => /just entered/.test(text) && !/rope/.test(text)
+  );
+  check(
+    /just entered/.test(realmFace) && !/rope/.test(realmFace),
+    'and it shows an arrival with the conversation filtered away',
+    realmFace.slice(0, 160)
+  );
+  check(await evaluate(clickFace('talk')), 'and TALK is still offered beside it');
+  const bothFace = await readUntil(
+    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
+    (text) => /just entered/.test(text) && /telepath/.test(text)
+  );
+  check(
+    /just entered/.test(bothFace) && /telepath/.test(bothFace),
+    'and the arrival sits in the whole stream beside what was said'
+  );
+
   // The find row is put away until the search glyph in the action column
   // asks for it — the row it used to hold now shows conversation.
   check(
@@ -4423,6 +4697,81 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         showing,
       'and the picker follows it, like a channel word'
     );
+  }
+
+  /*
+   * Up and Down walk what has been said, and Down past the newest empties the
+   * box (todo 05).
+   *
+   * The three lines just sent are the history, newest first, so this is a
+   * positive control with known contents rather than an assertion about an
+   * empty list. Down four times from the oldest walks back out through all
+   * three and then clears, which is the half a player uses to abandon a recall
+   * without sending anything.
+   */
+  {
+    const arrow = async (key) => {
+      const code = key === 'ArrowUp' ? 38 : 40;
+      await cdp('Input.dispatchKeyEvent', {
+        type: 'rawKeyDown',
+        key,
+        code: key,
+        windowsVirtualKeyCode: code
+      });
+      await cdp('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key,
+        code: key,
+        windowsVirtualKeyCode: code
+      });
+      await sleep(120);
+      return evaluate(`document.querySelector('.conversation-say input')?.value ?? null`);
+    };
+    await evaluate(`document.querySelector('.conversation-say input')?.focus() ?? null`);
+    check((await arrow('ArrowUp')) === '/soul hi there', 'Up recalls the last line said');
+    check((await arrow('ArrowUp')) === '"hi there', 'and Up again the one before it');
+    check((await arrow('ArrowUp')) === '.hi there', 'and again the one before that');
+    check((await arrow('ArrowDown')) === '"hi there', 'Down walks forward again');
+    check((await arrow('ArrowDown')) === '/soul hi there', 'and again, towards the newest');
+    check((await arrow('ArrowDown')) === '', 'and Down past the newest clears the box');
+
+    /*
+     * And Up stops at the oldest rather than wrapping round to the newest.
+     * Walked rather than counted: earlier checks in this run have said things
+     * from this box too, so how deep the history is here is not this
+     * assertion's business — that it has a bottom, and that the bottom is a
+     * line and not an empty box, is.
+     */
+    let last = null;
+    let stopped = false;
+    for (let step = 0; step < 45; step += 1) {
+      const now = await arrow('ArrowUp');
+      if (now === last) {
+        stopped = true;
+        break;
+      }
+      last = now;
+    }
+    check(
+      stopped && typeof last === 'string' && last.length > 0,
+      'and Up at the oldest line stays there rather than wrapping',
+      JSON.stringify(last)
+    );
+
+    // Escape puts the box back and the caret in the game, as it does anywhere.
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await sleep(150);
   }
 
   /*
@@ -5923,6 +6272,32 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       );
     const before = await rows();
     check(before.split('|').length > 3, 'the pack has enough in it to need finding', before);
+
+    /*
+     * The find row is behind the search glyph in the action column (todo 06),
+     * so the positive control is that it is *not* there until it is asked for.
+     * A whole row standing open above the listing was a row spent on a question
+     * nobody was asking.
+     */
+    check(
+      (await evaluate(`!!document.querySelector('.inventory-card .table-find input')`)) === false,
+      'the pack keeps no find row open until one is asked for'
+    );
+    check(
+      await evaluate(`
+        (() => {
+          const glyph = document.querySelector('.inventory-card [data-action="find"]');
+          if (!glyph) return false;
+          glyph.click();
+          return true;
+        })()
+      `),
+      'and the action column offers a search glyph'
+    );
+    await readUntil(
+      () => evaluate(`!!document.querySelector('.inventory-card .table-find input')`),
+      (there) => there === true
+    );
 
     // Typed into the field the way a person types into it, so the caret has to
     // be able to get there at all.
@@ -8753,8 +9128,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     );
     check(shelved > 400, 'and it is full of the loops the client ships', `${shelved} on the shelf`);
 
-    // Narrowing it: the names are `Area: Room-map room`, so a word from either
-    // half finds a run of them.
+    // Narrowing it: a row is found by its area, the name whoever recorded it
+    // gave it, or any room it walks through, so a word finds a run of them.
     await type('.loop-search input', 'sewer');
     const narrowed = await readUntil(
       () => evaluate(`document.querySelectorAll('.loop-options li').length`),

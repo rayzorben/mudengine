@@ -18,6 +18,7 @@ import {
   formatTalkStamp,
   talkChannel,
   TALK_CHANNELS,
+  TALK_PRESENCE_TYPES,
   type TalkChannel,
   type TalkLayout,
   type TalkStamp
@@ -27,7 +28,7 @@ import type { CharacterState } from '@shared/character';
 import type { Block } from '@shared/blocks';
 
 export interface ConversationCardProps extends CardChrome {
-  /** Conversation blocks for this character, oldest first. */
+  /** What this character's card carries (`isTalkBlock`), oldest first. */
   messages: Block[];
   /** Which character's card this is, so its filters are remembered per character. */
   session: SessionId;
@@ -92,7 +93,18 @@ const CHANNELS: Record<string, string> = {
    * `--- Message Directed to Soul ---` receipt for one sent from this card.
    * "to you" was true of only the first of the two.
    */
-  'conversation-directed': t('cards.talk.channels.direct')
+  'conversation-directed': t('cards.talk.channels.direct'),
+  /*
+   * The comings and goings. Not channels the composer can be pointed at —
+   * nobody says anything on them — so they are absent from `TALK_CHANNELS`
+   * and the vocabulary test that pairs the two tables walks that list, not
+   * this one. Each is named by what happened, because the column beside it
+   * names the person and the realm's sentence is the same three words every
+   * time.
+   */
+  'player-enters': t('cards.talk.channels.entered'),
+  'player-exits': t('cards.talk.channels.left'),
+  'player-disconnects': t('cards.talk.channels.disconnected')
 };
 
 /**
@@ -114,7 +126,14 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
     id: 'local',
     label: t('cards.talk.tabs.local'),
     types: ['conversation-yell', 'conversation-local', 'conversation-directed']
-  }
+  },
+  /*
+   * Who arrived and who went, folded into one face the way `local` folds the
+   * three that are the same conversation: entering, leaving and dropping the
+   * line are one question — who is about — and three pills for it would be
+   * three controls over one answer.
+   */
+  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES }
 ];
 
 const FACE_IDS = FACES.map((face) => face.id);
@@ -356,6 +375,19 @@ interface ComposerProps {
  */
 function Composer({ channel, options, point, send }: ComposerProps) {
   const [draft, setDraft] = useState('');
+  /*
+   * What has been said from this box, newest first, and where the arrows are
+   * in it — `-1` being the live draft rather than an entry.
+   *
+   * Kept beside the draft and for the draft's reason: the composer owns what is
+   * being typed, and a character that drops keeps both. Lines are stored **as
+   * typed**, before `compose` puts a channel word in front of them, because
+   * what Up is for is saying the same thing again — and the same thing again on
+   * whichever channel is pointed at now, which is what the player would get by
+   * retyping it.
+   */
+  const [history, setHistory] = useState<string[]>([]);
+  const [at, setAt] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   // Below the hooks and before the form, so a character that drops keeps the
   // half-typed line for when it is back — which is what the card did while the
@@ -382,7 +414,40 @@ function Composer({ channel, options, point, send }: ComposerProps) {
      * server's answer to that is a scolding that costs a command.
      */
     if (said.command !== null) send(said.command);
+    /*
+     * The line joins the history unless it is already at the front of it. A
+     * line said twice running is one entry, as it is in a shell: arrowing back
+     * through five identical `y`s is the history being in the way of itself.
+     */
+    setHistory((was) =>
+      was[0] === draft ? was : [draft, ...was].slice(0, tuning().talkHistoryLimit)
+    );
+    setAt(-1);
     setDraft('');
+  };
+
+  /**
+   * Up and Down through what has been said.
+   *
+   * A single-line input has nowhere vertical to put the caret, so both keys are
+   * free — and both are what a person coming from any other console expects to
+   * work. Up walks back and stops at the oldest line rather than wrapping;
+   * Down walks forward and, past the newest, empties the box, which is the
+   * "until clear" half and the way back out of the history without sending
+   * anything.
+   *
+   * The caret is put at the end of the recalled line in the same frame, because
+   * a line recalled to be edited is nearly always edited at its end.
+   */
+  const recall = (step: 1 | -1): void => {
+    const next = Math.min(Math.max(at + step, -1), history.length - 1);
+    if (next === at) return;
+    setAt(next);
+    setDraft(next < 0 ? '' : (history[next] ?? ''));
+    requestAnimationFrame(() => {
+      const box = inputRef.current;
+      if (box) box.setSelectionRange(box.value.length, box.value.length);
+    });
   };
 
   return (
@@ -446,8 +511,23 @@ function Composer({ channel, options, point, send }: ComposerProps) {
       </select>
       <input
         aria-label={t('cards.talk.messageInputAria')}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          // Typing leaves the history: what is in the box is the player's own
+          // line again, and Down should empty it rather than walk back to it.
+          setAt(-1);
+        }}
         onKeyDown={(event) => {
+          /*
+           * Up and Down are the history, and they are claimed here rather than
+           * left to the browser: an input answers them by parking the caret at
+           * one end, which is a gesture nobody makes on a box one line tall.
+           */
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            recall(event.key === 'ArrowUp' ? 1 : -1);
+            return;
+          }
           /*
            * Enter is handled here rather than left to the form's implicit
            * submission — the same reason the route panel handles its own:
@@ -473,6 +553,7 @@ function Composer({ channel, options, point, send }: ComposerProps) {
           if (event.key !== 'Escape') return;
           event.preventDefault();
           setDraft('');
+          setAt(-1);
           inputRef.current?.blur();
         }}
         /*

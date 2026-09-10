@@ -11,6 +11,7 @@ import { itemKind } from '../../shared/items';
 import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
 import type { Quest } from '../../shared/quests';
 import { indexQuests } from './indexQuests';
+import { indexSpellHazards } from './spellHazard';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
@@ -76,8 +77,10 @@ import {
  * | 28 | **The item a lever needs.** `lift up talisman (Item: 815)` ended 172 of Paradigm's lever cells and 170 of stock's, and `parseAction` split it into the phrases like any other — so the router priced a passage the server refuses without the talisman at the cost of a free lever, and the walker said the words to a wall. `RequirementAction.item` carries the number; the router walls the exit for a pack that lacks it and names the item in the refusal; the item is indexed like a key so the name is there to say — todo 13 |
  * | 27 | **Which bundled world this is, and the archive it came from.** `world` names one of the two the client ships and `archive` is that file's name, size and SHA-1, so a database a player names can be recognised as the very bytes a bundled world was built from and loaded as that world rather than converted into a second copy keyed under a second name. And `Custom: Default` — the stock v1.11p data set's own name for itself, read off `mdb/majormud-v1.11p.zip` — reads as the MajorMUD family; it read as no family at all, so every calculator declined on the one world that ships for MajorMUD realms. Bumped for the cache, like 19 and 26 |
  * | 26 | **A quest step's alternatives, kept apart.** A text block holds one line per class — fifteen on the alignment chains — and each line is a complete route with its own gate, its own price and its own reward. `stepsInBlock` merged lines advancing the same counter to the same rank by *unioning* them, so a step said **be a Warrior and a Witchunter**, be level 22 and level 20 at once, and take all fifteen classes' perks: a wrong answer rather than a long one, on 23 of the 251 steps and every one of the three great chains. What every route shares stays on the step; the rest is `QuestStep.ways` (`shareRoutes`). Bumped for the **cache**, like format 19: a player who had already converted their own database would otherwise keep the union for ever, since none of the path, size or mtime `RealmLibrary.identity` also keys on moves when the converter changes |
+ * | 30 | **What a room's own spell does, and what stops it.** `Rooms.Spell` has been written out since format 13 and read by nothing, so the router priced the whole Silver River — 845 rooms whose spell bashes anybody without a boat against the rocks — at one step a room, and a route from the Pier to the Gnoll Encampment went eighty-eight of them rather than a hundred and four through the slums. The harm is one step down a chain the runtime cannot walk: `river damage` carries no magnitude at all, only `TextBlock 2750`, which reads `failitem 690:failitem 691:failitem 1181:failitem 3609:message 2096:cast 754` — a log raft, a wooden skiff, a silverbark canoe or a river punt stops it, and otherwise `battered` takes 10–20. `TBInfo` is not converted, so `indexSpellHazards` follows the chain here and writes the answer onto the spell (`BuiltSpell.hz`); the router prices the room by it and un-prices it for a pack holding one of the items — todo 01 |
+ * | 31 | **A lair's monsters are its own rows, and a room's spell can summon.** A lair names its monsters by row number and the index folded every row sharing a name into one record, so `Hillside Path, Guard Post` — row 224, a 100-HP gnoll scout that lands one blow in twenty-five — was weighed as row 2204, an 830-HP gnoll scout that swings four times a round, and a level-12 Paladin was told the room was expected to kill it. `BuiltMob.pr` and `pd` carry each row's own profile and disposition beside its number, so `WorldGraph.lairEntities` weighs the row the lair actually spawns; a name off the wire still folds, because the wire carries no number. And `spellHazard.ts` reads a roll table (`77:addexp 0`, `81:message 2645`) as the dice it is rather than as an unknown verb, and `summon` as a fact (`BuiltSpellHazard.sm`) rather than as a chain it cannot follow: 71 of Paradigm's 159 room spells were unread, and 29 rooms of the Silvermere's own weather were priced as a hazard — todo 01 |
  */
-export const REALM_FORMAT = 29;
+export const REALM_FORMAT = 31;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -379,6 +382,32 @@ export interface BuiltSpell {
    * cast that lands.
    */
   res?: number;
+  /**
+   * What this spell does to somebody standing in a room that casts it, and
+   * what stops it — format 30. Written only for the spells rooms actually
+   * cast, and only where the chain reaches harm, a relocation or something
+   * this client cannot read. See `spellHazard.ts`.
+   */
+  hz?: BuiltSpellHazard;
+}
+
+/**
+ * A room spell's effect on whoever is in the room, resolved at build time.
+ *
+ * Short keys like every other row in this file, which is tens of thousands of
+ * lines of JSON. `d` is hit points a tick; `av` the items that stop it; `sp`
+ * the spells that do; `tp` that it moves the character; `u` that the chain ran
+ * into something the reader could not follow — which is discouraging, never
+ * reassuring.
+ */
+export interface BuiltSpellHazard {
+  d?: number;
+  av?: number[];
+  sp?: number[];
+  tp?: 1;
+  /** 1 when the chain can put a monster in the room. Format 31. */
+  sm?: 1;
+  u?: 1;
 }
 
 /**
@@ -489,6 +518,22 @@ export interface BuiltMob {
    * is the only key the room table has for them.
    */
   i?: number[];
+  /**
+   * Which of `pf` each row in `i` fights with, by index, and `-1` for a row
+   * that states no attack at all. Format 31, and only written beside `pf`.
+   *
+   * The fold above is right for a name off the wire, which carries no row
+   * number, and wrong for a lair, which names its rows: weighed by name, a
+   * 100-HP gnoll scout became the 830-HP one that shares its name, and a
+   * guard post was called deadly to a character it could barely hit.
+   */
+  pr?: number[];
+  /**
+   * Each row's own disposition, one letter per row in `i` (`-` where the row
+   * states none), for the same reason as `pr`: the lair knows which row it
+   * spawns, so the row's answer outranks the fold's worst case.
+   */
+  pd?: string;
   /** Lowest maximum health any row with this name has. */
   hp: number;
   /** Highest, when the rows disagree. Absent when they do not. */
@@ -1204,6 +1249,19 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   }
 
   const spells = indexSpells(source);
+  /*
+   * What each room spell does to whoever stands in the room — format 30.
+   *
+   * Folded onto the spell rows rather than onto the 13,603 rooms that name
+   * one: 159 distinct spells cover them, and repeating the same answer eight
+   * hundred and forty-five times down the Silver River is a megabyte for
+   * nothing. The rooms already carry the id.
+   */
+  const hazards = indexSpellHazards(source);
+  for (const spell of spells) {
+    const hazard = hazards.get(spell.id);
+    if (hazard !== undefined) spell.hz = hazard;
+  }
   const races = indexRaces(source);
   const classes = indexClasses(source);
   const itemNames = indexItemNames(source);
@@ -1607,6 +1665,11 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       deathSpell?: number;
       /** Format 20: each distinct row profile, keyed on its own JSON. */
       profiles: Map<string, MobProfile>;
+      /**
+       * Format 31: per row that has a number, in `ids` order — the index of
+       * its profile in `profiles` (−1 for none) and its own disposition.
+       */
+      rows: Array<{ profile: number; how: MobDisposition | null }>;
       drops: Set<string>;
       /**
        * Ability id → every value the rows sharing this name state for it.
@@ -1645,7 +1708,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
 
     const span = spans.get(name);
     const how = span?.how ?? new Set<MobDisposition>();
-    if (align !== null) how.add(dispositionOf(align, kind ?? 0));
+    const rowHow = align === null ? null : dispositionOf(align, kind ?? 0);
+    if (rowHow !== null) how.add(rowHow);
     /*
      * Every row's answer is kept rather than folded to a single flag, because
      * *all of them* and *some of them* are different facts and the difference
@@ -1665,6 +1729,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       types: new Set<number>(),
       casts: new Set<number>(),
       profiles: new Map<string, MobProfile>(),
+      rows: [],
       drops: new Set<string>(),
       abil: new Map<number, Set<number>>()
     };
@@ -1710,10 +1775,15 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
      * order is the rows' order, which is what keeps two builds byte-identical.
      */
     const profile = rowProfile(row);
+    let which = -1;
     if (profile !== null) {
       const key = JSON.stringify(profile);
       if (!entry.profiles.has(key)) entry.profiles.set(key, profile);
+      which = [...entry.profiles.keys()].indexOf(key);
     }
+    // Format 31: this row's own answers, kept in step with `ids` so a lair
+    // can be weighed by the row it names rather than by the fold.
+    if (id !== null) entry.rows.push({ profile: which, how: rowHow });
     /*
      * The effect system — format 14. Every value every row states, gathered
      * here and reduced per id below, because how to reduce depends on the id.
@@ -1775,6 +1845,21 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       // Format 20. Row order, not sorted: a profile has no natural key and
       // the rows' order is the one order every build of one database shares.
       if (span.profiles.size > 0) mob.pf = [...span.profiles.values()].map(compactProfile);
+      /*
+       * Format 31. Only where the rows can be told apart at all: with one
+       * row the fold *is* the row, and a realm whose rows carry no number has
+       * nothing for a lair to name. `pd` is omitted where no row states a
+       * disposition, so it reads back as the fold's absence rather than as a
+       * row of stated unknowns.
+       */
+      if (span.rows.length === span.ids.length && span.ids.length > 0) {
+        if (span.profiles.size > 0) mob.pr = span.rows.map((row) => row.profile);
+        if (span.rows.some((row) => row.how !== null)) {
+          mob.pd = span.rows
+            .map((row) => (row.how === null ? '-' : DISPOSITION_CODE[row.how]))
+            .join('');
+        }
+      }
       // Capped and sorted: "one of these six" is a lead, a list of forty is
       // not, and a stable order is what keeps two builds byte-identical.
       if (span.drops.size > 0) mob.drops = [...span.drops].sort().slice(0, 6);

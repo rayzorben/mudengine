@@ -210,6 +210,62 @@ export function raceAndClass(pair: string | undefined): {
 }
 
 /**
+ * `<race> <class>` read off the **end** of a look description's opening clause.
+ *
+ * `raceAndClass` above splits a gang row's column, where the pair is the whole
+ * field and the race comes first. Here the pair is the tail of `massive,
+ * muscular Nekojin Ranger`, with one or two adjectives in front of it that are
+ * realm-flavoured prose and are not worth listing — so it is read from the far
+ * end instead: the last word is the class, and the word before it is the race
+ * unless the two before it spell one of the two-word races.
+ *
+ * The same refusal as its sibling. Fewer than two words left after the class is
+ * a clause that did not come out the way the frame says, and a class taken from
+ * it would be a race drawn on a card as a class.
+ */
+export function raceAndClassAtEnd(clause: string | undefined): {
+  race: string | null;
+  className: string | null;
+} {
+  const words = (clause ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
+  if (words.length < 3) return { race: null, className: null };
+  const className = words[words.length - 1]!;
+  const rest = words.slice(0, -1);
+  const two = rest.slice(-2).join(' ');
+  if (TWO_WORD_RACES.includes(two)) return { race: two, className };
+  return { race: rest[rest.length - 1]!, className };
+}
+
+/**
+ * The description sentence a look prints, filed against the person it names.
+ *
+ * It lands in the **registry** and not on the roster, for `withGangListing`'s
+ * reason: a race and a class are facts about a person that outlive any listing,
+ * and the roster is replaced wholesale by the next `who`. Until this, the two
+ * were knowable only for a member of this character's own gang — everybody else
+ * was a name and a rank title forever.
+ *
+ * The sentence names the player itself, so nothing is filed against the name
+ * that was *typed*: `l trick` prints `Trickster is a …`, and the server's
+ * spelling is the one that matches a roster row.
+ */
+export function withDescription(
+  s: CharacterState,
+  name: string | undefined,
+  clause: string | undefined,
+  at: number
+): CharacterState | null {
+  if (!name) return null;
+  const { race, className } = raceAndClassAtEnd(clause);
+  if (race === null || className === null) return null;
+  const players = observe(s.players, name, at, { race, className });
+  return players === s.players ? null : { ...s, players };
+}
+
+/**
  * The gang listing `bg` prints: every member, online and off.
  *
  * **The one listing that states a membership rather than a presence.** `who`

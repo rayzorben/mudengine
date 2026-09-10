@@ -51,6 +51,9 @@ import {
   parseLair,
   type WorldShop,
   type WorldShopItem,
+  hazardAvoided,
+  type RouteHazard,
+  type SpellHazard,
   type WorldSpell,
   type WorldRace,
   type WorldClass,
@@ -67,7 +70,7 @@ import {
 } from '../../shared/world';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
 import { HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
-import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
+import { dispositionFromCode, mobNameCandidates, type MobDisposition } from '../../shared/mobs';
 import {
   ARMOUR_TYPE,
   WEAPON_CLASS,
@@ -230,6 +233,53 @@ export interface Traveller {
    * `dangerPenalty` turns the share into route cost.
    */
   danger?: (room: WorldRoom) => number | null;
+  /**
+   * The same pass in hit points — `danger` before the division. Carried onto
+   * the step (`RouteStep.lairDamage`) for the walker's rest before a trap,
+   * which needs a reserve in points rather than a share of a bar that was
+   * read when the route was planned.
+   */
+  lairDamage?: (room: WorldRoom) => number | null;
+  /**
+   * What one pass through a room's **own spell** is expected to take from this
+   * character, as a share of the health it has now.
+   *
+   * The other half of what a room costs, and the half nothing read until todo
+   * 01. `Rooms.Spell` is a real spell row for 13,016 of the shipped realm's
+   * rooms, 845 of them the Silver River — whose spell stops if you are
+   * carrying a boat and otherwise bashes you against the rocks for 10–20. So
+   * the price depends on the pack as well as on the bar, which is why this is
+   * a function of the session like `danger` rather than a number on a room.
+   *
+   * Null where nothing can be weighed: no spell, a spell that harms nobody,
+   * an unread sheet, or an item in the pack that stops it — the last of which
+   * is not *unknown* but *free*, and both price at nothing.
+   */
+  hazard?: (room: WorldRoom) => number | null;
+  /**
+   * Rooms this search may not enter at all.
+   *
+   * Not a price — the one place in this router where an edge is *pruned* on
+   * the traveller's account rather than made expensive. It exists for one
+   * question: **is there another way that does not go through these?**
+   * `route()` asks it once, with the rooms that priced the best route badly,
+   * so *there is no other way* stops being an assertion off a single search
+   * and becomes something the client actually looked for.
+   *
+   * Never set by a caller planning a walk. A route the reader chooses from
+   * `Route.otherWay` is a route already planned; nothing re-plans through this.
+   */
+  avoid?: ReadonlySet<RoomId>;
+}
+
+/** What a caller wants beyond the plan itself. */
+export interface RouteOptions {
+  /**
+   * Whether to look for the alternatives a reader chooses between —
+   * `Route.carrying`, one more A* — as the route panel does. A loop's leg and
+   * a walk home are walked, not read, and do not pay for it.
+   */
+  alternatives?: boolean;
 }
 
 /**
@@ -959,6 +1009,16 @@ export class WorldGraph {
   private readonly mobs = new Map<string, WorldMob>();
   /** By the realm's own number, for lairs. Empty on a realm built before v9. */
   private readonly mobsById = new Map<number, WorldMob>();
+  /**
+   * Each row's own profile and disposition, by row number — format 31.
+   *
+   * A name off the wire folds every row sharing it (`mobs`); a lair names a
+   * row. `null` in the first is a row that states no attack; a row absent
+   * from either is a file written before the format, and falls back to the
+   * fold. See `lairEntities`.
+   */
+  private readonly rowProfiles = new Map<number, MobProfile | null>();
+  private readonly rowDispositions = new Map<number, MobDisposition | null>();
   /** Shops that stock something, by the number `Rooms.Shop` holds. */
   private readonly shops = new Map<number, WorldShop>();
   /**
@@ -1079,6 +1139,8 @@ export class WorldGraph {
 
   /** Every spell the realm names, in table order. */
   private spells: WorldSpell[] = [];
+  /** The same rows by id — see `spellById` for why this is not a scan. */
+  private spellsById = new Map<number, WorldSpell>();
   /** The realm's races and classes, in table order. Empty before v10. */
   private races: WorldRace[] = [];
   private classes: WorldClass[] = [];
@@ -1529,6 +1591,63 @@ export class WorldGraph {
     return { max, mobs };
   }
 
+  /**
+   * What a room's lair spawns, weighed as the rows the lair names.
+   *
+   * `lair()` answers by name, which is right for a readout — the card says
+   * what *a* gnoll scout is — and wrong for a price: a name folds every row
+   * sharing it and takes the worst, and the guard post on the Hillside Path
+   * names row 224, a 100-HP scout that lands one blow in twenty-five against
+   * a level-12 Paladin, not row 2204, the 830-HP one that swings four times a
+   * round. Weighed by name the room was expected to kill a character it could
+   * barely scratch (todo 01, 2026-09-10).
+   *
+   * So each row's own profile and disposition (format 31) replace the fold's
+   * here, and only here: the wire never carries a row number, so a monster
+   * *standing in the room* is still weighed by name. A file written before
+   * the format has nothing per row and degrades to the fold, which is the
+   * dangerous reading rather than the reassuring one. Empty for a room that
+   * is not a lair, and for a descriptor naming rows this table lacks.
+   */
+  lairEntities(room: WorldRoom): MobEntity[] {
+    if (!room.lair) return [];
+    const entities: MobEntity[] = [];
+    for (const id of parseLair(room.lair).ids) {
+      const mob = this.mobsById.get(id);
+      if (mob === undefined) continue;
+      const entity = this.buildMobEntity(mob.name);
+      if (this.rowProfiles.has(id)) {
+        const own = this.rowProfiles.get(id);
+        entity.profiles = own === null || own === undefined ? [] : [own];
+      }
+      if (this.rowDispositions.has(id)) {
+        entity.disposition = this.rowDispositions.get(id) ?? null;
+        // One row is certain about itself; the fold's doubt was about its twins.
+        entity.uncertain = false;
+      }
+      entities.push(entity);
+    }
+    return entities;
+  }
+
+  /**
+   * What a room's own spell does to whoever stands in it, or null.
+   *
+   * The room carries a spell id; the hazard is on the spell, because 159
+   * spells cover 13,603 rooms and writing the same answer onto each of the 845
+   * Silver River rooms would be a megabyte for nothing. This is the join, and
+   * the one place it is made — `Traveller.hazard`, the route's own steps and
+   * the room quick view all come through here.
+   *
+   * Null for a room with no spell, a spell the realm does not hold, and a
+   * spell whose chain reaches nothing worth pricing. The last is the ordinary
+   * case: two thirds of the realm's room spells are scenery.
+   */
+  hazardOf(room: WorldRoom): SpellHazard | null {
+    if (room.spell === undefined) return null;
+    return this.spellById(room.spell)?.hazard ?? null;
+  }
+
   shopRooms(): WorldRoom[] {
     return [...this.rooms.values()].filter((room) => room.shop !== undefined);
   }
@@ -1880,8 +1999,17 @@ export class WorldGraph {
    * cannot answer it — a room that heals you and a room that drowns you are
    * the same column and only the row tells them apart.
    */
+  /**
+   * The spell the realm numbers this, or null.
+   *
+   * Indexed rather than scanned: the router asks this **once per room it
+   * expands** since a room's own spell started pricing the way through it
+   * (todo 01), and a linear walk of 2,094 rows inside an A* over 57,511 rooms
+   * is the hidden `O(N²)` the standards name — measured at 430ms a route
+   * against 27ms with the map.
+   */
   spellById(id: number): WorldSpell | null {
-    return this.spells.find((spell) => spell.id === id) ?? null;
+    return this.spellsById.get(id) ?? null;
   }
 
   /**
@@ -2350,8 +2478,27 @@ export class WorldGraph {
       const abilities = readAbilities(record);
       if (abilities.length > 0) mob.abilities = abilities;
       this.mobs.set(mobKey(name), mob);
-      for (const id of Array.isArray(record['i']) ? record['i'] : []) {
-        if (typeof id === 'number') this.mobsById.set(id, mob);
+      const ids = (Array.isArray(record['i']) ? record['i'] : []).filter(
+        (id): id is number => typeof id === 'number'
+      );
+      // Format 31: the row's own answers ride beside its number, one entry
+      // per row, and are read only where the writer kept them in step.
+      // And only where every written profile was read back, or the indexes
+      // would point one along: `readProfiles` drops a row it cannot read.
+      const byRow =
+        Array.isArray(record['pr']) &&
+        record['pr'].length === ids.length &&
+        Array.isArray(record['pf']) &&
+        record['pf'].length === profiles.length;
+      const howByRow = typeof record['pd'] === 'string' && record['pd'].length === ids.length;
+      for (const [k, id] of ids.entries()) {
+        this.mobsById.set(id, mob);
+        if (byRow) {
+          const at = (record['pr'] as unknown[])[k];
+          this.rowProfiles.set(id, typeof at === 'number' ? (profiles[at] ?? null) : null);
+        }
+        if (howByRow)
+          this.rowDispositions.set(id, dispositionFromCode((record['pd'] as string)[k]));
       }
     }
   }
@@ -2456,9 +2603,18 @@ export class WorldGraph {
         const pair = readPair(record[key]);
         if (pair !== null) spell[field] = pair;
       }
+      /*
+       * What it does to somebody standing in a room that casts it — format 30.
+       * Absent on a realm converted before this reader existed, which reads as
+       * *this spell harms nobody standing in the room* — the answer every
+       * realm gave until now, and the one this exists to correct.
+       */
+      const hazard = readHazard(record['hz']);
+      if (hazard !== null) spell.hazard = hazard;
       spells.push(spell);
     }
     this.spells = spells;
+    this.spellsById = new Map(spells.map((spell) => [spell.id, spell]));
   }
 
   /**
@@ -2980,7 +3136,7 @@ export class WorldGraph {
    * anything stronger would be a guess that breaks admissibility and returns
    * routes that are not shortest.
    */
-  route(from: RoomId, to: RoomId, traveller: Traveller = {}): Route {
+  route(from: RoomId, to: RoomId, traveller: Traveller = {}, options: RouteOptions = {}): Route {
     const start = this.rooms.get(from);
     const goal = this.rooms.get(to);
 
@@ -3015,14 +3171,33 @@ export class WorldGraph {
        * one the refusal already knows how to say (todo 13). Nothing when the
        * opened way is no shorter, or needs nothing the route lacks.
        */
+      /*
+       * The way round the worst of it, and what the gates-open way would have
+       * needed. **Both, never one instead of the other.** A route holding a
+       * deadly lair is already at or above `wallCost`, so it takes the branch
+       * below every time — and returning there skipped the search that makes
+       * *and there is no other way* checkable, on precisely the routes that
+       * say it.
+       */
+      // Both alternatives only for a route planned to be read: a loop's leg
+      // and a walk home are walked, and neither reads a way round.
+      const other =
+        options.alternatives === true ? this.otherWay(from, to, goal, route, traveller) : null;
+      const equipped =
+        options.alternatives === true ? this.carrying(from, to, goal, route, traveller) : null;
+      const planned: Route = {
+        ...route,
+        ...(other === null ? {} : { otherWay: other }),
+        ...(equipped === null ? {} : { carrying: equipped })
+      };
       if (found.cost >= tuning().world.wallCost) {
         const opened = this.search(from, to, goal, traveller, true);
         if (opened !== null && opened.cost < found.cost) {
           const blocks = this.blocksAlong(opened.cameFrom, to, traveller);
-          if (blocks.length > 0) return { ...route, blocks };
+          if (blocks.length > 0) return { ...planned, blocks };
         }
       }
-      return route;
+      return planned;
     }
 
     /*
@@ -3051,6 +3226,139 @@ export class WorldGraph {
       reason: reasons.map(describeBlock).join('; '),
       blocks: reasons
     };
+  }
+
+  /**
+   * A way round the worst rooms on a route, where there is one.
+   *
+   * **The sentence this exists for is *and there is no other way*.** The
+   * router walls a deadly lair rather than pruning it, so such a room is an
+   * expensive option the cheapest route happened to include — and saying
+   * there is no other way was asserting an absolute from a relative result.
+   * A reader deciding whether to walk into something expected to kill them
+   * deserves the client to have actually looked.
+   *
+   * What counts as *the worst* is deliberately narrow: a room expected to kill
+   * (`deadly`), and a room whose own spell takes a real share of the bar
+   * (`otherWayShare`). A door or a toll is not — those are conditions the
+   * reader can clear, and the refusal already names them (`Route.blocks`).
+   *
+   * Offered only when it genuinely differs: a way that walks the same worst
+   * rooms is the same way with a different corner turned, which is what the
+   * player asked not to be shown — *n, n, e from the bank instead of e, n, n*.
+   * The cost is one extra A* per route that has something bad on it, and none
+   * at all for the ordinary route across town.
+   */
+  private otherWay(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    route: Route,
+    traveller: Traveller
+  ): Route | null {
+    const { otherWayShare } = tuning().world;
+    const worst = new Set<RoomId>();
+    for (const step of route.steps) {
+      if (step.deadly === true || (step.hazard ?? 0) >= otherWayShare) worst.add(step.to);
+    }
+    if (worst.size === 0) return null;
+    // The destination itself is never avoidable: a route that refused to enter
+    // the room it is planned to is not a route.
+    worst.delete(to);
+    if (worst.size === 0) return null;
+
+    /*
+     * **With the gates open**, like the search that explains a refusal. A way
+     * round a room expected to kill is very often a door this character cannot
+     * open — and pruning that door means finding nothing and saying *there is
+     * no other way* about a route that exists and merely wants a key. What is
+     * impassable is priced rather than removed, and named below.
+     */
+    const round = this.search(from, to, goal, { ...traveller, avoid: worst }, true);
+    if (round === null) return null;
+    const other = this.buildRoute(round.cameFrom, to, round.cost, traveller);
+    /*
+     * **A way round is expected to be dearer, so cost is not the test.** That
+     * is why it was not chosen, and offering it asks the reader to make the
+     * trade the router already made silently. One thing is the test: it must
+     * not be deadly itself, because a way round a room expected to kill you
+     * that walks into another one has answered the question with the same
+     * word.
+     *
+     * Cost was the test, briefly, and it made the whole search pointless for
+     * the case it exists for: pruning can only remove options, so a way round
+     * always costs **at least** what the plan costs — and a plan holding a
+     * deadly room costs `wallCost`, so every alternative was refused on the
+     * one route whose panel says *and there is no other way*.
+     *
+     * A route that crosses a wall carries what it needs, exactly as the plan
+     * does: trading a certain death for a door somebody can go and find the
+     * key to is the choice worth putting in front of them, and it is only a
+     * choice if the door is named.
+     */
+    if (other.steps.some((step) => step.deadly === true)) return null;
+    const blocks = this.blocksAlong(round.cameFrom, to, traveller);
+    /*
+     * Handed back with no `otherWay` of its own: an alternative is read and
+     * chosen, never used to plan a third. `buildRoute` sets none, so this is a
+     * statement about what is *not* done rather than something to strip.
+     */
+    return blocks.length > 0 ? { ...other, blocks } : other;
+  }
+
+  /**
+   * The way this character would take if it carried what stops the rooms on
+   * it — the second alternative, and the one the reader asked for by name.
+   *
+   * *I know there is another way, through the Silvermere River, but it needs
+   * a log raft* (todo 01). The plan through the slums is 107 steps because
+   * the router priced eighty rooms of river against an empty pack; the way
+   * down the river is 88 with a raft. `otherWay` cannot find that route — it
+   * avoids rooms the plan priced badly, and the plan avoids the river already
+   * — so this asks the opposite question: with every item-stopped hazard
+   * switched off, where would the search go?
+   *
+   * Offered only when it is **materially** shorter, by `alternativeMinSteps`
+   * (a way two steps shorter is the same way with a corner cut, which the
+   * reader asked not to be shown), and only when it actually crosses a room
+   * an item would quieten — a route shorter for any other reason would have
+   * been the plan. Built on the *equipped* traveller so its steps are priced
+   * as the premise says, while `hazards.needs` still names what the pack
+   * lacks; never deadly, by `otherWay`'s rule and for its reason. One more
+   * A* per route, and only when asked for (`RouteOptions.alternatives`): a
+   * loop's leg is walked, not read.
+   */
+  private carrying(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    route: Route,
+    traveller: Traveller
+  ): Route | null {
+    const priced = traveller.hazard;
+    if (priced === undefined) return null;
+    const quietened = (room: WorldRoom): boolean => {
+      const hazard = this.hazardOf(room);
+      return (
+        hazard !== null &&
+        (hazard.avoidedBy?.length ?? 0) > 0 &&
+        !hazardAvoided(hazard, traveller.keys)
+      );
+    };
+    const equipped: Traveller = {
+      ...traveller,
+      hazard: (room) => (quietened(room) ? null : priced(room))
+    };
+    const found = this.search(from, to, goal, equipped, false);
+    if (found === null) return null;
+    const other = this.buildRoute(found.cameFrom, to, found.cost, equipped);
+    if (route.steps.length - other.steps.length < tuning().world.alternativeMinSteps) return null;
+    if (other.steps.some((step) => step.deadly === true)) return null;
+    const crosses = other.steps.some((step) => {
+      const room = this.rooms.get(step.to);
+      return room !== undefined && quietened(room);
+    });
+    return crosses ? other : null;
   }
 
   /**
@@ -3103,6 +3411,9 @@ export class WorldGraph {
         // An exit pointing outside the dataset is a hole in the data, not a
         // route; following it would produce a step that cannot be walked.
         if (!next) continue;
+        // The one pruning this router does on the traveller's account, and
+        // only while it is answering *is there another way*. See `avoid`.
+        if (traveller.avoid?.has(nextId) === true) continue;
 
         const priced = edgePenalty(exit.requirement, traveller);
         // A gate held open is still the worst edge on the map, so the path this
@@ -3123,7 +3434,16 @@ export class WorldGraph {
         // And what is waiting in the room being stepped into: a lair priced
         // against this character, or nothing where nothing can be weighed.
         const risk = traveller.danger === undefined ? 0 : dangerPenalty(traveller.danger(next));
-        const tentative = currentCost + (1 + penalty + surcharge + risk) * along + wall;
+        /*
+         * And what the room itself does to whoever stands in it. Priced on the
+         * same slope as a lair and for the same reason — the step from
+         * *unpleasant* to *fatal* is continuous — but it is a **certainty**
+         * rather than a fight that might be walked past, which is why it is
+         * added rather than taken as the worse of the two: a poisoned lair is
+         * both.
+         */
+        const room = traveller.hazard === undefined ? 0 : dangerPenalty(traveller.hazard(next));
+        const tentative = currentCost + (1 + penalty + surcharge + risk + room) * along + wall;
         if (tentative >= (best.get(nextId) ?? Infinity)) continue;
 
         best.set(nextId, tentative);
@@ -3271,6 +3591,14 @@ export class WorldGraph {
         destination === undefined || traveller.danger === undefined
           ? null
           : traveller.danger(destination);
+      const hazard =
+        destination === undefined || traveller.hazard === undefined
+          ? null
+          : traveller.hazard(destination);
+      const lairDamage =
+        destination === undefined || traveller.lairDamage === undefined
+          ? null
+          : traveller.lairDamage(destination);
       steps.unshift({
         from: prev,
         to: cursor,
@@ -3295,14 +3623,94 @@ export class WorldGraph {
         ...(destination?.light !== undefined && destination.light < 0
           ? { light: destination.light }
           : {}),
-        ...(danger !== null && danger > 0
-          ? { danger, ...(danger >= tuning().world.deadlyShare ? { deadly: true } : {}) }
+        ...(danger !== null && danger > 0 ? { danger } : {}),
+        ...(lairDamage !== null && lairDamage > 0 ? { lairDamage } : {}),
+        // And what the room itself does to whoever stands in it, by the same
+        // rule and from the same call the router priced the step with.
+        ...(hazard !== null && hazard > 0 ? { hazard } : {}),
+        // And the word, where the share is a discouragement and not a figure.
+        ...(hazard !== null && hazard > 0 && destination !== undefined
+          ? hazardWordOf(this.hazardOf(destination))
+          : {}),
+        /*
+         * **Either of them reaching the wall makes the step deadly.** It was
+         * the lair's flag alone, so a room whose own *spell* takes the whole
+         * bar — `magma heat` is 30–60 against a level-4 character — priced as
+         * a wall, was walked, and said nothing at the head of the plan. The
+         * two facts are different and what they mean for the reader is the
+         * same one: you are expected to die there.
+         */
+        ...(Math.max(danger ?? 0, hazard ?? 0) >= tuning().world.deadlyShare
+          ? { deadly: true }
           : {})
       });
       cursor = prev;
     }
 
-    return { steps, cost, blocked: false };
+    const hazards = this.hazardsAlong(steps, traveller);
+    return { steps, cost, blocked: false, ...(hazards.length > 0 ? { hazards } : {}) };
+  }
+
+  /**
+   * The room spells a route walks through, folded one entry per spell.
+   *
+   * Per spell rather than per room because that is the shape of the answer: a
+   * route down the Silver River crosses eight hundred rooms of one spell, and
+   * a list of eight hundred lines saying *river damage* is a list nobody
+   * reads. What the reader wants is the name, how many rooms, what each costs
+   * — and above all what would stop it, which is one fact for all of them.
+   *
+   * `needs` is filtered against the pack, so an item already carried is not
+   * offered as a thing to fetch. It is filtered nowhere else: a character
+   * whose pack nobody has listed is told what the realm says, which is the
+   * honest half-answer rather than silence.
+   */
+  private hazardsAlong(steps: readonly RouteStep[], traveller: Traveller): RouteHazard[] {
+    const folded = new Map<number, RouteHazard>();
+    for (const step of steps) {
+      const room = this.rooms.get(step.to);
+      if (room?.spell === undefined) continue;
+      const spell = this.spellById(room.spell);
+      const hazard = spell?.hazard;
+      if (spell === null || hazard === undefined) continue;
+      if (hazardAvoided(hazard, traveller.keys)) continue;
+      const seen = folded.get(spell.id);
+      if (seen !== undefined) {
+        seen.rooms += 1;
+        continue;
+      }
+      folded.set(spell.id, {
+        spell: spell.name,
+        rooms: 1,
+        /*
+         * The first room's share stands for all of them, and that is exact
+         * rather than a sample: the damage is a figure the realm states per
+         * *spell*, and the health it is a share of is the health the route was
+         * planned at — so every room casting this spell is priced identically.
+         * Null where nothing could be weighed, which is not zero: the count
+         * and what stops it are still worth saying.
+         */
+        share: step.hazard ?? null,
+        unread: hazard.unread === true,
+        summons: hazard.summons === true,
+        needs: (hazard.avoidedBy ?? []).flatMap((id) => {
+          if (traveller.keys?.includes(id) === true) return [];
+          const item = this.item(id);
+          // A row the item index cannot name is left out: `carry item 3609`
+          // is the exact half-read `describeObstacle` refuses for a key.
+          return item === undefined ? [] : [{ id, name: item.name }];
+        }),
+        needsSpell: (hazard.avoidedBySpell ?? []).flatMap((id) => {
+          const named = this.spellById(id);
+          return named === null ? [] : [named.name];
+        })
+      });
+    }
+    // Worst first: the reader is deciding whether to walk it, and the figure
+    // that decides is the heaviest one.
+    return [...folded.values()].sort(
+      (a, b) => (b.share ?? 0) * b.rooms - (a.share ?? 0) * a.rooms || b.rooms - a.rooms
+    );
   }
 }
 
@@ -3516,6 +3924,40 @@ function readPair(value: unknown): [number, number] | null {
   if (typeof a !== 'number' || typeof b !== 'number') return null;
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return [a, b];
+}
+
+/**
+ * A room spell's hazard, from a record written by `buildRealm` — format 30.
+ *
+ * The same boundary rule `readPair` follows: a shape that is not what
+ * `BuiltSpellHazard` writes is dropped rather than repaired. Absent on every
+ * realm converted before this existed, which reads as *no hazard* — the answer
+ * the client gave for every room until now.
+ */
+function readHazard(value: unknown): SpellHazard | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const hazard: SpellHazard = {};
+  const damage = Number(record['d']);
+  if (Number.isFinite(damage) && damage > 0) hazard.damage = damage;
+  const avoidedBy = readIdList(record['av']);
+  if (avoidedBy.length > 0) hazard.avoidedBy = avoidedBy;
+  const avoidedBySpell = readIdList(record['sp']);
+  if (avoidedBySpell.length > 0) hazard.avoidedBySpell = avoidedBySpell;
+  if (record['tp'] === 1) hazard.relocates = true;
+  if (record['sm'] === 1) hazard.summons = true;
+  if (record['u'] === 1) hazard.unread = true;
+  // Nothing stated at all is nothing to carry: the writer omits a spell whose
+  // chain reaches no harm, so an empty object here is a row that says nothing.
+  return Object.keys(hazard).length > 0 ? hazard : null;
+}
+
+/** `RouteStep.hazardKind` for a spell priced on nothing the realm states. */
+function hazardWordOf(hazard: SpellHazard | null): { hazardKind?: 'unread' | 'summons' } {
+  if (hazard === null || hazard.damage !== undefined) return {};
+  if (hazard.unread === true) return { hazardKind: 'unread' };
+  if (hazard.summons === true) return { hazardKind: 'summons' };
+  return {};
 }
 
 /**

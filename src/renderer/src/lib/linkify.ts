@@ -51,3 +51,25 @@ export function linkify(text: string): LinkPart[] {
   // for "no links" — and an empty string stays an empty string.
   return parts.length > 0 ? parts : [{ text }];
 }
+
+/**
+ * The address under one column of a line, or null where there is none.
+ *
+ * The console draws its text into a grid rather than into elements, so a
+ * right-click there has a row and a column and no anchor to ask. This answers
+ * from the line's own text, which keeps the console and the cards agreeing on
+ * what a link *is* — the same narrow `http`/`https` rule, in one place, rather
+ * than xterm's own idea of a URL in the terminal and this one in the Talk card.
+ *
+ * `column` is zero-based and counted in characters of `text`, so a caller
+ * reading a folded console line joins the rows first and offsets into the join.
+ */
+export function linkAt(text: string, column: number): string | null {
+  let at = 0;
+  for (const part of linkify(text)) {
+    const end = at + part.text.length;
+    if (part.href !== undefined && column >= at && column < end) return part.href;
+    at = end;
+  }
+  return null;
+}

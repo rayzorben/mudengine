@@ -1146,6 +1146,41 @@ const TUNING_DEFAULTS = {
      */
     deadlyShare: 1,
     /**
+     * What one pass through a room whose spell this client **cannot read** is
+     * priced at, as a share of the bar.
+     *
+     * A room's own spell is followed to its harm at build time
+     * (`spellHazard.ts`), and 27 of the shipped realm's room spells end in a
+     * verb this reader cannot evaluate — `graveyard summon`, `fire trigger`.
+     * Unknown is never the reassuring answer, and here the reassuring answer
+     * is *walk through it for free*, which is what put a route down eighty-
+     * eight rooms of the Silver River. Small on purpose: a few plain steps
+     * each, so a corridor of them is avoided where there is an alternative
+     * and still walked where there is not. Zero would restore the bug.
+     */
+    unreadHazardShare: 0.02,
+    /**
+     * The share of the bar a room's own spell has to take before the router
+     * goes looking for a way round it (`Route.otherWay`).
+     *
+     * A second A* per route, so it is worth spending only where the answer
+     * would change somebody's mind. A twentieth of the bar per room is
+     * nothing on its own and a hundred rooms of it is the Silver River, so
+     * the threshold is per *room*: anything at or above this is worth asking
+     * *is there another way*, and anything below it is weather.
+     */
+    otherWayShare: 0.05,
+    /**
+     * How many steps shorter the way with the right items has to be before it
+     * is offered beside the plan (`Route.carrying`).
+     *
+     * The river with a log raft against the slums without one is 88 steps
+     * against 107 and worth a choice; a way two steps shorter is the same way
+     * with a corner cut, which is exactly what the reader asked not to be
+     * shown. One more A* per route planned for a reader.
+     */
+    alternativeMinSteps: 10,
+    /**
      * How many rounds of a lair's blows one pass through the room is priced
      * at. In and out is one round from whatever attacks on sight; two prices
      * every lair as if the character stood a round longer in each.
@@ -1239,6 +1274,14 @@ const TUNING_DEFAULTS = {
      * it; landing back at the live edge resumes at once and does not wait.
      */
     talkFollowResumeMs: 15_000,
+    /**
+     * Lines the Talk composer remembers for its Up arrow.
+     *
+     * A short list on purpose. This is the shell's history, not the card's
+     * backlog: what it is for is saying the same thing again, or fixing a typo
+     * in what was just said, and nobody arrows back forty lines to do either.
+     */
+    talkHistoryLimit: 40,
     /** Remembered notices. Same reasoning, same generosity. */
     noticeLimit: 400,
     /** The most panes worth having; see docs/profiles.md §7.3. */
@@ -1456,6 +1499,18 @@ const TUNING_DEFAULTS = {
      */
     roomSearchDebounceMs: 150,
     roomSearchMinChars: 2,
+    /**
+     * How long a pointer rests on a room before its quick view opens, and how
+     * long the panel stays after the pointer has left both it and the room.
+     *
+     * The dwell exists so sweeping across the map does not open two hundred
+     * panels; the linger exists because the panel is a thing to *read*, and a
+     * card that vanished while the hand was travelling the twenty pixels
+     * towards it would be unreachable by pointer. A click settles it, and
+     * neither number applies to a settled panel.
+     */
+    roomPeekDelayMs: 250,
+    roomPeekLingerMs: 220,
     /**
      * The server's own combat pulse, in milliseconds.
      *

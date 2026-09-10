@@ -937,6 +937,21 @@ automation:
     # character is hurt.
     restTo: 0.7
 
+    # Rest before stepping through a trap, until health covers what the trap
+    # does and still leaves this share of maximum after it. 0 walks into any
+    # trap at any health.
+    #
+    # A sliding scale, not a threshold: a 36-damage trap in front of 165 HP is
+    # fine at 110 and a 75-damage one wants 150, and both are 45% of the bar
+    # left over once the trap has fired. Where the room beyond the trap is a
+    # lair the router priced, the larger share is kept, so you do not step
+    # through a trap into a fight on what the trap left you. A trap that takes
+    # more than the bar holds is walked at full health. The walk stands still
+    # and says so, and the rest is sent as any other rest is -- under
+    # `automation.enabled`, never in a fight -- and on its own switch, so a
+    # `restBelow` of 0 does not turn this off.
+    restBeforeTraps: 0.45
+
     # And the same for mana. Ignored outright for a class that has none -- a
     # warrior's status line carries no MA= at all, and `med` for one is answered
     # `Your command had no effect.` in the room.

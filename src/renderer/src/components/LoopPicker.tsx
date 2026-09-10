@@ -5,7 +5,7 @@ import ClearField from './ClearField';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import type { Loop } from '@shared/loops';
+import { splitStop, type Loop } from '@shared/loops';
 
 export interface LoopPickerProps {
   /** Every loop the client ships, or an empty shelf while it is being read. */
@@ -69,16 +69,36 @@ export default function LoopPicker({
     fieldRef.current?.focus();
   }, []);
 
+  /*
+   * What each row can be found by: its name and the rooms it visits, folded
+   * once per shelf rather than once per keystroke over four hundred rows.
+   *
+   * The rooms are in it because the shelf names a loop the way whoever
+   * recorded it named it -- `Slime Beast Loop` -- and somebody who knows that
+   * lair as the Refuse Pit would otherwise be told the client has no such
+   * loop. The Loops modal answers both questions too (`lib/loops.ts`).
+   */
+  const haystacks = useMemo(
+    () =>
+      new Map(
+        catalogue.map((loop) => [
+          loop,
+          [loop.name, ...loop.stops.map((stop) => splitStop(stop).name)].join(' ').toLowerCase()
+        ])
+      ),
+    [catalogue]
+  );
+
   const matches = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
     if (terms.length === 0) return catalogue;
-    // Every term has to appear, in any order: the names are `Area: Room-map
-    // room`, so `sewer newhaven` and `newhaven sewer` are the same question.
+    // Every term has to appear, in any order: `sewer newhaven` and `newhaven
+    // sewer` are the same question.
     return catalogue.filter((loop) => {
-      const name = loop.name.toLowerCase();
-      return terms.every((term) => name.includes(term));
+      const haystack = haystacks.get(loop) ?? '';
+      return terms.every((term) => haystack.includes(term));
     });
-  }, [catalogue, query]);
+  }, [catalogue, haystacks, query]);
 
   const nav = useListNavigation<Loop>({ items: matches, onChoose: onToggle, onCancel: onDone });
 

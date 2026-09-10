@@ -968,6 +968,18 @@ export default function GlobalSettings({
                 value={percent(draft.automation.health.restTo)}
               />
               <NumberField
+                hint={t('settings.health.restBeforeTrapsHint')}
+                label={t('settings.health.restBeforeTrapsLabel')}
+                name="global-rest-before-traps"
+                onChange={(value) =>
+                  automation({
+                    health: { ...draft.automation.health, restBeforeTraps: fraction(value) }
+                  })
+                }
+                bar={barOfHealth(draft.automation.health.restBeforeTraps)}
+                value={percent(draft.automation.health.restBeforeTraps)}
+              />
+              <NumberField
                 hint={t('settings.health.meditateBelowHint')}
                 label={t('settings.health.meditateBelowLabel')}
                 name="global-med-below"

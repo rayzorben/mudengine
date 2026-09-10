@@ -68,6 +68,45 @@ function startRoom(name) {
   return found.length === 1 ? found[0] : null;
 }
 
+/**
+ * What a person calls this loop, off the file's own first line.
+ *
+ * `[Burning Plains (NW)-17 9507][Winterhawk]` — a title and whoever recorded
+ * it. The title is the name a player typed, and it is the half that says which
+ * loop this *is*: the second line's third field is only the room the loop
+ * starts from, and four of these files start at Narrow Ledge, so naming them
+ * after it produced `Barren Hills: Narrow Ledge-15 640` four times over and a
+ * numbered suffix to tell them apart. Their own titles are East Half, West
+ * Half, Middle and Full Loop — which is what somebody looking for one of them
+ * would type.
+ *
+ * The coordinates are shed, and the realm decides which digits they are. All
+ * 488 titles were typed by hand and the tail is spelled every way a person
+ * spells it — `-17 9507`, `  14 5489`, `+6 924`, `(17/25)`, `Section7 519` —
+ * so a pattern loose enough to catch them all is loose enough to take the `11`
+ * off `Undermountain Level 11`. So a trailing pair of numbers is coordinates
+ * only when **the realm has a room there**; otherwise it is part of the name.
+ * That keeps the fourteen whose title names a different room from the one the
+ * second line starts at, without ever asking the pattern to be sure on its own.
+ */
+function friendlyTitle(line, room) {
+  const title = (/^\[([^\]]*)\]/.exec(line ?? '')?.[1] ?? '').trim();
+  if (title.length === 0) return '';
+
+  const pair = /[\s\-+(/]*(\d{1,3})[\s/]+(\d{1,6})\)?\s*$/.exec(title);
+  if (pair && ((Number(pair[1]) === room.map && Number(pair[2]) === room.room) ||
+      world.byId(`${pair[1]}/${pair[2]}`))) {
+    return title.slice(0, pair.index).trim();
+  }
+  // Half a suffix: `Siren Trees-5`, `Bone-strewn Hillside (Vultures)- 9993`. A
+  // dash or a plus is required, so `Eladrin Level 1` keeps its level.
+  const one = /\s*[-+]\s*(\d{1,6})\s*$/.exec(title);
+  if (one && (Number(one[1]) === room.room || Number(one[1]) === room.map)) {
+    return title.slice(0, one.index).trim();
+  }
+  return title;
+}
+
 /** Every room the recorded directions walk through, or null where they do not fit. */
 function replay(from, steps) {
   const rooms = [from];
@@ -181,8 +220,13 @@ for (const name of files) {
     dropped.tiny += 1;
     continue;
   }
+  /*
+   * The player's own title, and the start room only where a file states none.
+   * A loop with no name at all is worse than one named after where it begins.
+   */
+  const title = friendlyTitle(lines[0], from);
   loops.push({
-    name: `${header[2]}: ${header[3]}`,
+    name: `${header[2]}: ${title.length > 0 ? title : header[3]}`,
     area: header[2],
     stops,
     rooms: rooms.length,
@@ -243,6 +287,11 @@ fs.writeFileSync(
 # the shipped realm data and reduced to the fewest places whose routes
 # reproduce the same loop. Nothing here is a recorded step -- the client
 # plans each leg itself, so a corridor that changes is picked up for free.
+#
+# Each is named the way whoever recorded it named it -- the title on the path
+# file's own first line -- under the area MegaMUD filed it in. The room the
+# loop starts from is its first stop, not its name: four paths that all begin
+# at Narrow Ledge are East Half, West Half, Middle and Full Loop.
 #
 # ${loops.length} loops from ${files.length} recorded paths.
 # Dropped: ${dropped.start} whose starting room the realm data does not have,

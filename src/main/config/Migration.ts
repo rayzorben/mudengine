@@ -39,6 +39,7 @@ import {
 } from 'yaml';
 
 import { fileSlug } from '../../shared/files';
+import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
 import { DEFAULT_CONFIG } from '../../shared/config';
@@ -84,6 +85,12 @@ export interface MigrationOptions {
    * is wrong in the file it documents.
    */
   internalTemplate?: string;
+  /**
+   * The shipped shelf of loops, for the one migration that has to recognise a
+   * loop somebody copied off it. A function rather than the list, so a client
+   * with no copied loop on disk never reads four hundred of them at startup.
+   */
+  loopShelf?: () => readonly Loop[];
   /** Said out loud: into the console and the terminal. */
   note: (message: string) => void;
 }
@@ -152,6 +159,7 @@ export function migrateHome(options: MigrationOptions): void {
    */
   restIsOnePair(home, note);
   statedTheRestCeiling(home, note);
+  statedTheTrapRest(home, note);
   theEscapeIsADirection(home, note, options.template);
   theLoopSettlesAfterAnEscape(home, note, options.internalTemplate);
   statedAutoReconnect(home, note);
@@ -169,6 +177,7 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheFindAlerts(home, note, options.template);
   statedTheStatusLine(home, note, options.template);
   quietedTheStatusLineAsks(home, note);
+  loopsTookTheirRecordedNames(home, note, options.loopShelf);
 }
 
 /**
@@ -1109,6 +1118,48 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
     stated.length === 1
       ? t('notices.migration.restCeiling.one', params)
       : t('notices.migration.restCeiling.many', params)
+  );
+}
+
+/**
+ * `automation.health.restBeforeTraps` into every file that states `health:`
+ * without it, at the shipped figure (2026-09-10, todo 01).
+ *
+ * `statedTheRestCeiling`'s gap and shape: a key inside a block the file
+ * already states is one `reconcileWithTemplate` never reaches, and a setting
+ * nobody's file names is one nobody finds. Beside `restTo`, because the three
+ * are the one Recover row on the screen; falls back to appending when the
+ * file states neither partner.
+ */
+function statedTheTrapRest(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'health'], true);
+      if (!isMap(block) || block.has('restBeforeTraps')) return false;
+      const pair = document.createPair(
+        'restBeforeTraps',
+        DEFAULT_CONFIG.automation.health.restBeforeTraps
+      ) as Pair;
+      const at = block.items.findIndex(
+        (item) => isScalar(item.key) && String(item.key.value) === 'restTo'
+      );
+      if (at === -1) block.items.push(pair);
+      else block.items.splice(at + 1, 0, pair);
+      if (isScalar(pair.key)) pair.key.commentBefore = REST_BEFORE_TRAPS_COMMENT;
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.trapRest.one', params)
+      : t('notices.migration.trapRest.many', params)
   );
 }
 
@@ -2519,6 +2570,12 @@ const REST_TO_COMMENT = ` Keep sitting back down until health reaches this; 0 is
  (measured 2026-09-02), and standing regenerates six times slower. Set this and
  you get rest, heal, rest, heal. A figure below \`restBelow\` is lifted to it.`;
 
+const REST_BEFORE_TRAPS_COMMENT = ` Rest before stepping through a trap, until health covers what the trap does
+ and still leaves this share of maximum after it -- a sliding scale, so a
+ 36-damage trap in front of 165 HP is fine at 110 and a 75-damage one wants
+ 150. Where the room beyond is a lair the router priced, the larger share is
+ kept. 0 walks into any trap at any health.`;
+
 const HEAL_IN_COMBAT_COMMENT = ` A different heal floor while in combat, when one is wanted -- MegaMUD's
  HpHealAtt%. A heal cast at 80% mid-fight is a round spent not hitting
  anything, and the round is what the fight is made of. 0 uses \`healBelow\` for
@@ -3093,6 +3150,89 @@ function dropDiagnosticsPreference(home: Home, note: (message: string) => void):
       ? t('notices.migration.diagnosticsPreferenceDropped.one', params)
       : t('notices.migration.diagnosticsPreferenceDropped.many', params)
   );
+}
+
+/**
+ * A loop copied off the shelf takes the name whoever recorded it gave it.
+ *
+ * The shelf used to name each loop after the room it starts from, because that
+ * is the field `build:loops` read: `Goblin caves: Slime Beast-1 1765`. The
+ * recorded file's *first* line carries the title a player typed —
+ * `Slime Beast Loop`, `Barren Hills (East Half)` — and that is the name people
+ * actually use for these places, so it is what the shelf ships now (todo 98).
+ *
+ * A loop is addressed by name everywhere in this client, so a file still
+ * holding the old spelling is not broken — but it is no longer the shelf's row,
+ * which means the Loops modal draws it as a loop of the player's own, the
+ * picker's tick beside the shelf row is gone, and choosing that row again files
+ * a **second copy** of the same route under the new name. So the files are
+ * brought across rather than left to diverge.
+ *
+ * **Matched on the places, not on the name**, because the name is exactly what
+ * changed. A file is renamed only when its stops are, one for one, a shelf
+ * loop's stops *and* it is filed under that loop's own area — a loop somebody
+ * wrote themselves does not carry `Goblin caves:` in front of it, and the two
+ * conditions together are what keeps this off a name a person chose. Two shelf
+ * loops with the same places under different names would make the answer a
+ * guess, so neither renames anything.
+ */
+function loopsTookTheirRecordedNames(
+  home: Home,
+  note: (message: string) => void,
+  shelf: (() => readonly Loop[]) | undefined
+): void {
+  if (shelf === undefined) return;
+
+  const files = [
+    home.globalLoops,
+    ...directories(home.serversDir).map((id) => home.server(id).loops),
+    ...directories(home.profilesDir).map((id) => home.profile(id).loops)
+  ].flatMap((dir) =>
+    listing(dir)
+      .filter((name) => /\.ya?ml$/i.test(name))
+      .map((name) => path.join(dir, name))
+  );
+  // Nothing copied, nothing to bring across — and the shelf stays unread.
+  if (files.length === 0) return;
+
+  const byPlaces = new Map<string, Loop | null>();
+  for (const loop of shelf()) {
+    const key = placesKey(loop);
+    byPlaces.set(key, byPlaces.has(key) ? null : loop);
+  }
+
+  const renamed: string[] = [];
+  for (const file of files) {
+    edit(file, (document) => {
+      const loop = asLoops([document.toJS() as unknown])[0];
+      if (loop === undefined) return false;
+      const shelved = byPlaces.get(placesKey(loop));
+      if (!shelved || shelved.name === loop.name) return false;
+      if (loopCategory(loop.name) !== shelved.category) return false;
+      document.set('name', shelved.name);
+      renamed.push(`${loop.name} -> ${shelved.name}`);
+      return true;
+    });
+  }
+
+  if (renamed.length === 0) return;
+  const params = { count: renamed.length, loopList: renamed.join(', ') };
+  note(
+    renamed.length === 1
+      ? t('notices.migration.loopsRenamed.one', params)
+      : t('notices.migration.loopsRenamed.many', params)
+  );
+}
+
+/**
+ * A loop's places as one string, which is its identity while its name moves.
+ *
+ * The dwell is in the key as well as the room: two loops round the same rooms
+ * that wait different lengths at each are two different loops to walk, and a
+ * rename that treated them as one would put the wrong name on somebody's file.
+ */
+function placesKey(loop: Loop): string {
+  return JSON.stringify(loop.stops.map((stop) => [stop.room, stop.linger ?? 0]));
 }
 
 /**
@@ -3823,6 +3963,16 @@ function theTuningBlockGainedKeys(
     /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
     addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
     addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
+    /* What a room's own spell costs, and when the router looks for another way
+       (2026-09-09, todo 01), and how much shorter the way with the right items
+       has to be to be offered (2026-09-10, todo 01). */
+    addKey('world', 'unreadHazardShare', DEFAULT_INTERNAL.tuning.world.unreadHazardShare);
+    addKey('world', 'otherWayShare', DEFAULT_INTERNAL.tuning.world.otherWayShare);
+    addKey('world', 'alternativeMinSteps', DEFAULT_INTERNAL.tuning.world.alternativeMinSteps);
+    /* The Talk card's recall and the room quick view's dwell (2026-09-09/10). */
+    addKey('view', 'talkHistoryLimit', DEFAULT_INTERNAL.tuning.view.talkHistoryLimit);
+    addKey('view', 'roomPeekDelayMs', DEFAULT_INTERNAL.tuning.view.roomPeekDelayMs);
+    addKey('view', 'roomPeekLingerMs', DEFAULT_INTERNAL.tuning.view.roomPeekLingerMs);
     /*
      * How long the Talk card holds its place after a scroll (2026-09-08). The
      * hold is the whole point of the feature and the expiry is the whole point

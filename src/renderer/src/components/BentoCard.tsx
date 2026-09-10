@@ -63,6 +63,16 @@ export interface CardTab {
    * faces are happy with the card's answer or with the text they show.
    */
   copyText?(): string;
+  /**
+   * What *this face* can do, drawn in the action column while it is on screen.
+   *
+   * The column is the card's, and most of what a card offers is the card's too
+   * — but a search belongs to the listing being searched, and the Self card has
+   * a pack on one face and a stat sheet on another. Offering the pack's find
+   * glyph over the sheet would be a control that can only ever do nothing.
+   * Drawn after the card's own, in the order the faces declare them.
+   */
+  actions?: CardAction[];
 }
 
 /**
@@ -429,7 +439,10 @@ export default function BentoCard({
         ]
       : []),
     { id: 'copy', label: t('cards.chrome.copy'), icon: 'copy' as const, run: copyCard },
-    ...(actions ?? [])
+    ...(actions ?? []),
+    // And the shown face's own, last: the card's offer is about the card and
+    // outranks one about whichever face happens to be up.
+    ...(tabs?.[at]?.actions ?? [])
   ];
   /*
    * How many glyphs fit down the card's right edge — **measured**, never a

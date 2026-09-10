@@ -11,6 +11,7 @@ import { ServerStore } from '../ServerStore';
 import { homeAt, type Home } from '../../app/home';
 import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
 import { DEFAULT_CONFIG } from '../../../shared/config';
+import type { Loop } from '../../../shared/loops';
 
 let dir = '';
 let old = '';
@@ -233,6 +234,8 @@ describe('the "stand up at" health thresholds', () => {
       // changes nothing — and deliberately *not* what the stand-up thresholds
       // this test removes used to mean. See `HealthConfig`.
       restTo: 0,
+      // And by `statedTheTrapRest`, at the shipped figure.
+      restBeforeTraps: 0.45,
       meditateBelow: 0.3
     });
   });
@@ -862,6 +865,118 @@ describe('the diagnostics preference', () => {
  * run the client, which is the pre-v1 rule's own case: a change to a shipped
  * default is a change to what is on disk.
  */
+describe('a loop copied off the shelf, after the shelf was renamed', () => {
+  /*
+   * The shelf as it is now: named the way whoever recorded the path named it,
+   * rather than after the room the loop starts in. Two entries, because the
+   * refusal below needs one whose places nothing on disk matches.
+   */
+  const SHELF: Loop[] = [
+    {
+      name: 'Goblin caves: Slime Beast Loop',
+      category: 'Goblin caves',
+      stops: [{ room: 'Huge Cave, Refuse Pit 1/1765' }, { room: 'Huge Cave 1/1764' }]
+    },
+    {
+      name: 'Sewers: CaveWorm',
+      category: 'Sewers',
+      stops: [{ room: 'Dark Cave 1/866' }, { room: 'Dark Cave 1/865' }]
+    }
+  ];
+
+  /* What the picker wrote when the shelf named a loop after its start room. */
+  const COPIED = `# Written by the client when this loop was chosen.
+name: 'Goblin caves: Slime Beast-1 1765'
+stops:
+  - 'Huge Cave, Refuse Pit 1/1765'
+  - 'Huge Cave 1/1764'
+`;
+
+  let reads = 0;
+
+  function migrateWithShelf(): void {
+    said = [];
+    reads = 0;
+    migrateHome({
+      home,
+      legacyOptions: [],
+      loopShelf: () => {
+        reads += 1;
+        return SHELF;
+      },
+      note: (message) => said.push(message)
+    });
+  }
+
+  function write(file: string, body: string): void {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, body, 'utf8');
+  }
+
+  const nameIn = (file: string): unknown =>
+    (parse(fs.readFileSync(file, 'utf8')) as { name: string }).name;
+
+  it('renames it, keeping the file and what is written above it', () => {
+    const file = path.join(home.profile('vaelor').loops, 'slime-beast.yaml');
+    write(file, COPIED);
+
+    migrateWithShelf();
+
+    expect(nameIn(file)).toBe('Goblin caves: Slime Beast Loop');
+    // The comments are the documentation; a rename must not cost them.
+    expect(fs.readFileSync(file, 'utf8')).toContain('# Written by the client');
+    expect(said.join(' ')).toContain('Goblin caves: Slime Beast Loop');
+  });
+
+  /*
+   * Matched on the places *and* the area, so a loop somebody wrote themselves
+   * keeps the name they gave it even when it happens to walk the same rooms.
+   * The name is exactly what changed, so it cannot be the thing matched on --
+   * but a name a person chose does not carry the shelf's area in front of it.
+   */
+  it('leaves a loop the player named alone', () => {
+    const file = path.join(home.globalLoops, 'mine.yaml');
+    write(
+      file,
+      "name: My gnoll grind\nstops:\n  - 'Huge Cave, Refuse Pit 1/1765'\n  - 'Huge Cave 1/1764'\n"
+    );
+
+    migrateWithShelf();
+
+    expect(nameIn(file)).toBe('My gnoll grind');
+    expect(said).toEqual([]);
+  });
+
+  it('leaves a loop that walks somewhere else alone', () => {
+    const file = path.join(home.server('greatermud').loops, 'elsewhere.yaml');
+    write(
+      file,
+      "name: 'Sewers: Dark Cave-1 866'\nstops:\n  - 'Dark Cave 1/866'\n  - 'Sewer Tunnel 1/604'\n"
+    );
+
+    migrateWithShelf();
+
+    expect(nameIn(file)).toBe('Sewers: Dark Cave-1 866');
+  });
+
+  it('does not read four hundred loops for a client that has copied none', () => {
+    migrateWithShelf();
+    expect(reads).toBe(0);
+    expect(said).toEqual([]);
+  });
+
+  it('is idempotent: a second run finds nothing left to rename', () => {
+    const file = path.join(home.profile('vaelor').loops, 'slime-beast.yaml');
+    write(file, COPIED);
+
+    migrateWithShelf();
+    migrateWithShelf();
+
+    expect(said).toEqual([]);
+    expect(nameIn(file)).toBe('Goblin caves: Slime Beast Loop');
+  });
+});
+
 describe('the loop shelf on an existing toolbar', () => {
   const INTERNAL = `# The user's own note about their row.
 toolbar:
@@ -2629,6 +2744,53 @@ describe('the resting ceiling', () => {
 });
 
 /*
+ * Resting before a trap (`statedTheTrapRest`, todo 01, 2026-09-10): the same
+ * gap the ceiling filled, one key along — a figure inside a block the file
+ * already states reaches nobody through the template, and a setting nobody's
+ * file names is one nobody finds.
+ */
+describe('resting before a trap', () => {
+  const read = (file: string): Record<string, unknown> =>
+    (
+      parse(fs.readFileSync(file, 'utf8')) as {
+        automation: { health: Record<string, unknown> };
+      }
+    ).automation.health;
+
+  const write = (file: string, health: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `automation:\n  health:\n${health}`, 'utf8');
+  };
+
+  it('adds it at the shipped figure, directly after the ceiling', () => {
+    write(home.options, '    restBelow: 0.5\n    restTo: 0.7\n    meditateBelow: 0.2\n');
+    migrate();
+    const health = read(home.options);
+    expect(health['restBeforeTraps']).toBe(0.45);
+    const keys = Object.keys(health);
+    expect(keys.indexOf('restBeforeTraps')).toBe(keys.indexOf('restTo') + 1);
+  });
+
+  it('never overwrites what the file already states', () => {
+    write(home.options, '    restBelow: 0.5\n    restBeforeTraps: 0.2\n');
+    migrate();
+    expect(read(home.options)['restBeforeTraps']).toBe(0.2);
+  });
+
+  it('reaches a profile, says so once, and is idempotent', () => {
+    write(home.options, '    restBelow: 0\n');
+    const profile = home.profile('festus');
+    write(profile.file, '    restBelow: 0.5\n');
+    migrate();
+    expect(read(profile.file)).toMatchObject({ restBelow: 0.5, restBeforeTraps: 0.45 });
+    const once = fs.readFileSync(profile.file, 'utf8');
+    expect(said.join(' ')).toContain('Resting before a trap');
+    migrate();
+    expect(fs.readFileSync(profile.file, 'utf8')).toBe(once);
+  });
+});
+
+/*
  * `restIsOnePair`. The loop's own health pair folds into the resting one, and
  * the user's numbers are carried across rather than discarded: a file that set
  * `loopPauseBelow` chose that figure deliberately, and dropping the key would
@@ -2650,7 +2812,7 @@ describe('the loop pause pair folded into the resting pair', () => {
   it('carries the figures across into an absent rest pair', () => {
     write(home.options, '    loopPauseBelow: 0.6\n    loopResumeAt: 0.9\n');
     migrate();
-    expect(read(home.options)).toEqual({ restBelow: 0.6, restTo: 0.9 });
+    expect(read(home.options)).toEqual({ restBelow: 0.6, restTo: 0.9, restBeforeTraps: 0.45 });
   });
 
   /* The rest pair wins where both are stated: it is the one the settings screen
@@ -2663,13 +2825,13 @@ describe('the loop pause pair folded into the resting pair', () => {
       '    restBelow: 0.5\n    restTo: 0.75\n    loopPauseBelow: 0.6\n    loopResumeAt: 0.9\n'
     );
     migrate();
-    expect(read(home.options)).toEqual({ restBelow: 0.5, restTo: 0.75 });
+    expect(read(home.options)).toEqual({ restBelow: 0.5, restTo: 0.75, restBeforeTraps: 0.45 });
   });
 
   it('folds each half independently', () => {
     write(home.options, '    restBelow: 0.5\n    loopResumeAt: 0.9\n');
     migrate();
-    expect(read(home.options)).toEqual({ restBelow: 0.5, restTo: 0.9 });
+    expect(read(home.options)).toEqual({ restBelow: 0.5, restTo: 0.9, restBeforeTraps: 0.45 });
   });
 
   it('reaches a profile, says so once, and is idempotent', () => {
@@ -2677,7 +2839,7 @@ describe('the loop pause pair folded into the resting pair', () => {
     const profile = home.profile('festus');
     write(profile.file, '    loopPauseBelow: 0.6\n    loopResumeAt: 0.9\n');
     migrate();
-    expect(read(profile.file)).toEqual({ restBelow: 0.6, restTo: 0.9 });
+    expect(read(profile.file)).toEqual({ restBelow: 0.6, restTo: 0.9, restBeforeTraps: 0.45 });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(said.join(' ')).toContain('folded into the resting pair');
     migrate();

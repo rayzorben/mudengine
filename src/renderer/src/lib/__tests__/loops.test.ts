@@ -162,6 +162,32 @@ describe('grouping and searching the shelf', () => {
     expect(groups[0]?.loops).toHaveLength(1);
   });
 
+  /*
+   * The shelf names a loop the way whoever recorded it named it — `Slime Beast
+   * Loop` — and somebody who knows that lair as the Refuse Pit would otherwise
+   * be told the client has no such loop. Both are the same question.
+   */
+  it('finds a row by a room it walks through', () => {
+    const named: Loop = {
+      name: 'Goblin caves: Slime Beast Loop',
+      stops: [{ room: 'Huge Cave, Refuse Pit 1/1765' }, { room: 'Huge Cave 1/1764' }],
+      category: 'Goblin caves'
+    };
+    const groups = groupLoops(loopRows([named], []), 'refuse pit');
+    expect(groups[0]?.loops.map((row) => row.name)).toEqual(['Goblin caves: Slime Beast Loop']);
+  });
+
+  /* Only the rooms it actually walks: a field that answered every loop for
+     every room name would be worse than one that answered none. */
+  it('does not match a room this loop never visits', () => {
+    const named: Loop = {
+      name: 'Goblin caves: Slime Beast Loop',
+      stops: [{ room: 'Huge Cave, Refuse Pit 1/1765' }, { room: 'Huge Cave 1/1764' }],
+      category: 'Goblin caves'
+    };
+    expect(groupLoops(loopRows([named], []), 'sewer tunnel')).toEqual([]);
+  });
+
   it('finds nothing rather than everything for a query that matches none', () => {
     expect(groupLoops(loopRows(shelf, []), 'nowhere at all')).toEqual([]);
   });

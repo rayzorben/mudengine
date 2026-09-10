@@ -245,6 +245,7 @@ describe('a character', () => {
         // The shipped ceiling, not 0: an omitted key falls back rather than
         // turning off the loop's health hold, which this pair now carries.
         restTo: 0.7,
+        restBeforeTraps: 0.45,
         meditateBelow: 0.25,
         drinkHealingPotionBelow: 0,
         drinkManaPotionBelow: 0,
@@ -308,6 +309,7 @@ describe('a character', () => {
         // nonsense block must not silently set a lap marching at any health.
         restBelow: 0.35,
         restTo: 0.7,
+        restBeforeTraps: 0.45,
         meditateBelow: 0,
         drinkHealingPotionBelow: 0,
         drinkManaPotionBelow: 0,

@@ -45,6 +45,7 @@ import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
 import type { BelongingsSink } from '../../shared/belongings';
 import type { TalkSink } from './TalkLog';
+import { isTalkBlock } from '../../shared/talk';
 import { SessionDebug } from './SessionDebug';
 
 export interface SessionSlot {
@@ -380,7 +381,7 @@ export class SessionHost {
           this.options.toAll(Push.block, { session: id, payload: block });
           // What was said outlives the socket: the Talk card's history is
           // written down and seeded back into the next attach's snapshot.
-          if (block.domain === 'conversation') this.options.talkFor(id).append(block);
+          if (isTalkBlock(block)) this.options.talkFor(id).append(block);
         },
         character: (state) => {
           debug.characterState(state);

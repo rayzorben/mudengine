@@ -148,6 +148,20 @@ export interface CardTableProps<Row> {
    * callback — it is an effect dependency.
    */
   onDetailHidden?(): void;
+  /**
+   * Whether the find row is out, when the card drives it from a glyph.
+   *
+   * Left `undefined` the field stands open above the table, which is right for
+   * a listing whose whole point is being searched. Given, it is the Talk card's
+   * arrangement applied to a table: the row appears because somebody asked for
+   * it, takes the caret because the next keystroke was always going there, and
+   * clears itself on the way out — a table left quietly narrowed by a query
+   * nobody can see is the failure the `n of m` line exists to prevent, and this
+   * does not create it.
+   */
+  findOpen?: boolean;
+  /** Escape in the find row: the card puts the glyph back. */
+  onFindDismiss?(): void;
 }
 
 export interface FindFieldProps {
@@ -268,9 +282,24 @@ export default function CardTable<Row>({
   returnFocus,
   scrollerRef,
   detailKey = null,
-  onDetailHidden
+  onDetailHidden,
+  findOpen,
+  onFindDismiss
 }: CardTableProps<Row>): React.JSX.Element {
   const [query, setQuery] = useState('');
+
+  /*
+   * A find row that is put away takes its query with it.
+   *
+   * Escape already clears in the field itself, but the glyph is the other way
+   * out and a table narrowed by a query with no field on screen is exactly the
+   * silent filter this card refuses to be. The `n of m` line would still say
+   * so; a row hidden by something the reader can no longer see or clear is a
+   * different failure and this closes it.
+   */
+  useEffect(() => {
+    if (findOpen === false) setQuery('');
+  }, [findOpen]);
 
   /*
    * The remembered choices are keyed against a *stable* list of what this build
@@ -359,14 +388,23 @@ export default function CardTable<Row>({
    * `12 of 40` line above exists to stop being silent.
    */
   const present = facets.filter((facet) => (counts.get(facet.id) ?? 0) > 0);
-  const tools = find !== undefined || present.length > 1 || count !== null;
+  const tools = (find !== undefined && findOpen !== false) || present.length > 1 || count !== null;
 
   return (
     <>
       {tools && (
         <div className="table-tools">
-          {find !== undefined && (
-            <FindField label={find} onChange={setQuery} query={query} returnFocus={returnFocus} />
+          {find !== undefined && findOpen !== false && (
+            <FindField
+              // Only when the row came out because somebody asked for it; a
+              // field that stands open never takes the caret on its own.
+              autoFocus={findOpen === true}
+              label={find}
+              onChange={setQuery}
+              onDismiss={onFindDismiss}
+              query={query}
+              returnFocus={returnFocus}
+            />
           )}
 
           {present.length > 1 && (

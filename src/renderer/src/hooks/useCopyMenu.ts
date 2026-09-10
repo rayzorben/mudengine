@@ -14,6 +14,8 @@ export interface CopyMenuState {
   line: string;
   /** Everything the card says. */
   all: string;
+  /** The address of the anchor under the pointer, or null for anything else. */
+  link: string | null;
 }
 
 /**
@@ -75,7 +77,15 @@ export function useCopyMenu(): {
       y: event.clientY,
       selection,
       line: lineUnder(target, card),
-      all: readable(card)
+      all: readable(card),
+      /*
+       * A link is the one thing on a card whose *text* is not what somebody
+       * wants: an address that has been shortened or run into a sentence
+       * copies as what it says rather than as where it goes. Read off the
+       * anchor, which is what `linkify` renders, so nothing here has to know
+       * what a URL looks like.
+       */
+      link: target.closest('a[href]')?.getAttribute('href') ?? null
     });
   }, []);
 
@@ -84,6 +94,20 @@ export function useCopyMenu(): {
   const items = useCallback(
     (open: CopyMenuState): MenuItem[] => {
       const entries: MenuItem[] = [];
+      /*
+       * First, because a right-click *on a link* is a click with one obvious
+       * answer, and the three below it are the card's ordinary offer.
+       */
+      if (open.link !== null) {
+        entries.push({
+          label: t('cards.copyMenu.copyLink'),
+          icon: 'link',
+          run: () => {
+            dismiss();
+            void writeClipboard(open.link ?? '');
+          }
+        });
+      }
       if (open.selection.length > 0) {
         entries.push({
           label: t('cards.copyMenu.copy'),

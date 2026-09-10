@@ -124,6 +124,7 @@ const api: IpcApi = {
   questBook: (session) => ipcRenderer.invoke(Invoke.questBook, session),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
+  roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
   draftLoop: (session, rooms) => ipcRenderer.invoke(Invoke.draftLoop, session, rooms),
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),
   lookup: (session, query) => ipcRenderer.invoke(Invoke.lookup, session, query),

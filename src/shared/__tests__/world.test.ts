@@ -6,6 +6,7 @@ import {
   openableHere,
   parseLair,
   lairsAlong,
+  trapOn,
   trapsAlong,
   type RouteStep
 } from '../world';
@@ -166,23 +167,46 @@ describe('lairsAlong', () => {
   });
 
   it('counts nothing on a route through no lair', () => {
-    expect(lairsAlong([step(), step()])).toEqual({ count: 0, worst: null, deadly: false });
+    expect(lairsAlong([step(), step()])).toEqual({ count: 0, worst: null, deadly: null });
   });
 
   it('counts every lair and keeps the heaviest share', () => {
     expect(lairsAlong([step(0.1), step(), step(0.45), step(0.2)])).toEqual({
       count: 3,
       worst: 0.45,
-      deadly: false
+      deadly: null
     });
   });
 
-  it('says so when the router walked a lair it walls, because there was no other way', () => {
+  /*
+   * **Which** room, not merely that there is one. On a hundred-and-four-step
+   * route the reader was told one was expected to kill them and left to scroll
+   * for the chip; the room is named at the head and is the control that opens
+   * what is in it.
+   */
+  it('names the room the router walked into that it expects to kill you', () => {
     expect(lairsAlong([step(0.1), step(1.4, true)])).toEqual({
       count: 2,
       worst: 1.4,
-      deadly: true
+      deadly: { room: '1/2', name: 'Somewhere' }
     });
+  });
+
+  /* A room whose own spell takes the bar is deadly with no lair to count. */
+  it('names a room deadly by its own spell, with no lair counted', () => {
+    const river: RouteStep = { ...step(), hazard: 1.5, deadly: true, name: 'Magma' };
+    expect(lairsAlong([step(), river])).toEqual({
+      count: 0,
+      worst: null,
+      deadly: { room: '1/2', name: 'Magma' }
+    });
+  });
+
+  /* The first, in walking order: a later one is a room nobody reaches. */
+  it('names the first of them, which is the one that stops the walk', () => {
+    const first: RouteStep = { ...step(1.2, true), to: '1/7', name: 'The Pit' };
+    const second: RouteStep = { ...step(1.9, true), to: '1/9', name: 'Deeper' };
+    expect(lairsAlong([first, second]).deadly).toEqual({ room: '1/7', name: 'The Pit' });
   });
 });
 
@@ -216,6 +240,19 @@ describe('trapsAlong', () => {
     // A derivative may write a bare `Trap`; *up to 0 damage* would be a
     // reassuring number the data never gave.
     expect(trapsAlong([step({ kind: 'trap', raw: 'Trap' })])).toEqual({ count: 1, worst: null });
+  });
+
+  /* The one rule for what a trap is, shared with the walker's rest before one. */
+  it('names the trap on a step, and its damage where the realm states one', () => {
+    expect(trapOn(step(null))).toBeNull();
+    expect(trapOn(step({ kind: 'door', raw: 'Door' }))).toBeNull();
+    expect(trapOn(step({ kind: 'trap', raw: 'Trap, 36 damage', damage: 36 }))).toEqual({
+      damage: 36
+    });
+    expect(trapOn(step({ kind: 'trap', raw: 'Trap' }))).toEqual({ damage: null });
+    expect(trapOn(step({ kind: 'spell', raw: 'Spell Trap: 12', damage: 9 }))).toEqual({
+      damage: 9
+    });
   });
 
   /*

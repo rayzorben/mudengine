@@ -115,6 +115,11 @@ export interface WalkProgress {
  * `IgnoreBlind` / `IgnorePoison` defaults, which wait — see
  * `afflictionHolding`.
  *
+ * `trap` is the step ahead firing a trap the character is not yet fit to
+ * take: the walk rests to the figure `automation.health.restBeforeTraps`
+ * names and then steps through — `Walker.holdForTrap`. A health hold by
+ * another floor, drawn as resting.
+ *
  * `barrier` is a shut door the ladder could not get past *this time round*:
  * every `open`, pick and bash the step was given has been spent and the way
  * is still closed. It is a hold rather than an ending because the reasons it
@@ -124,7 +129,7 @@ export interface WalkProgress {
  * hand. See `Walker.holdAtBarrier`.
  */
 export type WalkHold =
-  'health' | 'fight' | 'blind' | 'held' | 'poisoned' | 'barrier' | 'searching' | null;
+  'health' | 'fight' | 'trap' | 'blind' | 'held' | 'poisoned' | 'barrier' | 'searching' | null;
 
 /**
  * Which stated affliction stands a walk still, or null.

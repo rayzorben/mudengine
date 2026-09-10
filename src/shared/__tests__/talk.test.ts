@@ -6,12 +6,14 @@ import {
   DEFAULT_TALK_LAYOUT,
   DEFAULT_TALK_STAMP,
   formatTalkStamp,
+  isTalkBlock,
   isTalkLayout,
   isTalkStamp,
   prefixOf,
   talkChannel,
   TALK_CHANNELS,
   TALK_LAYOUTS,
+  TALK_PRESENCE_TYPES,
   TALK_STAMPS
 } from '../talk';
 
@@ -286,5 +288,29 @@ describe('how a line is arranged', () => {
     expect(isTalkLayout('condensed-aligned')).toBe(true);
     expect(isTalkLayout('columns')).toBe(false);
     expect(isTalkLayout(7)).toBe(false);
+  });
+});
+
+describe('what the Talk card carries', () => {
+  it('takes everything said, whatever channel it was said on', () => {
+    expect(isTalkBlock({ domain: 'conversation', type: 'conversation-gossip' })).toBe(true);
+    expect(isTalkBlock({ domain: 'conversation', type: 'conversation-telepath' })).toBe(true);
+  });
+
+  /*
+   * The three stay `presence`, because the roster is maintained off them. The
+   * card's membership is a second question about the same fact, which is why
+   * it is asked by a predicate rather than by moving them.
+   */
+  it("takes the realm's comings and goings without re-domaining them", () => {
+    for (const type of TALK_PRESENCE_TYPES) {
+      expect(isTalkBlock({ domain: 'presence', type }), type).toBe(true);
+    }
+  });
+
+  it('leaves the rest of the stream alone', () => {
+    expect(isTalkBlock({ domain: 'presence', type: 'player-arrives-room' })).toBe(false);
+    expect(isTalkBlock({ domain: 'combat', type: 'mob-hits' })).toBe(false);
+    expect(isTalkBlock({ domain: 'room', type: 'room-name' })).toBe(false);
   });
 });

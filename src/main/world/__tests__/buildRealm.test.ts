@@ -241,7 +241,65 @@ describe('naming what a monster is worth in health', () => {
    * whenever a fixture's `Type` changed.
    */
   const bare = (mobs: ReturnType<typeof indexMobs>) =>
-    mobs.map(({ i: _ids, ty: _types, ...rest }) => rest);
+    mobs.map(({ i: _ids, ty: _types, pr: _profiles, pd: _dispositions, ...rest }) => rest);
+
+  /*
+   * Format 31: each row's own disposition and profile beside its number, so a
+   * lair can be weighed by the row it names rather than by the fold — which
+   * took the 830-HP gnoll scout for the 100-HP one sharing its name.
+   */
+  it('keeps each row’s own disposition beside its number, in step with the ids', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 224, Name: 'gnoll scout', HP: 100, Align: 2, Type: 2, 'In Game': 1 },
+          { Number: 2204, Name: 'gnoll scout', HP: 830, Align: 3, Type: 0, 'In Game': 1 },
+          { Number: 7, Name: 'gnoll scout', HP: 100, 'In Game': 1 }
+        ]
+      })
+    );
+    expect(mobs[0]).toMatchObject({ i: [224, 2204, 7], d: 'h', x: 1, pd: 'hp-' });
+    // No row fights with anything, so there is no profile to index.
+    expect(mobs[0]?.pr).toBeUndefined();
+  });
+
+  it('indexes each row’s own profile beside its number, −1 for a row with none', () => {
+    const scout = (over: Record<string, unknown>) => ({
+      Name: 'gnoll scout',
+      HP: 100,
+      Align: 2,
+      Type: 2,
+      'In Game': 1,
+      ...over
+    });
+    const swing = (accuracy: number) => ({
+      'AttType-0': 1,
+      'Att%-0': 100,
+      'AttAcc-0': accuracy,
+      'AttMin-0': 4,
+      'AttMax-0': 15,
+      'AttEnergy-0': 1000
+    });
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          scout({ Number: 224, ...swing(70) }),
+          scout({ Number: 2204, ...swing(150) }),
+          // The same swing as 224, so it shares 224's profile rather than
+          // getting a third.
+          scout({ Number: 300, ...swing(70) }),
+          scout({ Number: 7 })
+        ]
+      })
+    );
+    expect(mobs[0]?.pf).toHaveLength(2);
+    expect(mobs[0]).toMatchObject({ i: [224, 2204, 300, 7], pr: [0, 1, 0, -1] });
+  });
+
+  it('writes no per-row disposition where no row states one', () => {
+    const mobs = indexMobs(fake({ Monsters: [{ Number: 1, Name: 'wisp', HP: 5, 'In Game': 1 }] }));
+    expect(mobs[0]?.pd).toBeUndefined();
+  });
 
   it('carries the realm’s own numbers for every row sharing a name, so a lair resolves', () => {
     const mobs = indexMobs(

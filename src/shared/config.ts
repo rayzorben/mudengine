@@ -1390,6 +1390,25 @@ export interface HealthConfig {
    */
   restTo: number;
   /**
+   * Rest before stepping through a trap until health covers the trap and
+   * still leaves this fraction of maximum after it. 0 walks into any trap at
+   * any health.
+   *
+   * A sliding scale rather than a threshold (2026-09-10, todo 01): a 36-damage
+   * trap in front of a 165-HP character is fine at 110 and a 75-damage one
+   * wants 150, and both of those are *this share of the bar left over once
+   * the trap has fired* — 45% in the two figures the player gave. Where the
+   * router priced the room beyond the trap as a lair (`RouteStep.danger`),
+   * the larger of the two shares is kept, so a character does not step
+   * through a trap into a fight on the health the trap left it. Capped at the
+   * maximum: a trap that takes more than the bar holds is walked at full
+   * health, which is the most anything here can do about it. Read by
+   * `Walker.holdForTrap`; `Recovery` sits the character down to the figure
+   * the walk names, on this switch alone — `restBelow: 0` does not turn it
+   * off, since the two are two decisions.
+   */
+  restBeforeTraps: number;
+  /**
    * Meditate when mana falls below this fraction. 0 never meditates.
    *
    * Ignored outright for a class with no mana — a warrior's status line carries
@@ -2280,6 +2299,7 @@ export const DEFAULT_CONFIG: AppConfig = {
        */
       restBelow: 0.35,
       restTo: 0.7,
+      restBeforeTraps: 0.45,
       meditateBelow: 0,
       drinkHealingPotionBelow: 0,
       drinkManaPotionBelow: 0,
@@ -3213,6 +3233,7 @@ function normalizeHealth(value: unknown): HealthConfig {
       const to = fraction(raw['restTo'], d.restTo);
       return to === 0 ? 0 : Math.max(to, restBelow);
     })(),
+    restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     meditateBelow: fraction(raw['meditateBelow'], d.meditateBelow),
     drinkHealingPotionBelow: fraction(raw['drinkHealingPotionBelow'], d.drinkHealingPotionBelow),
     drinkManaPotionBelow: fraction(raw['drinkManaPotionBelow'], d.drinkManaPotionBelow),

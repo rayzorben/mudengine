@@ -50,6 +50,7 @@
  * Dependency-free, and pure: the composer is a renderer surface and the
  * decision is where the tests are.
  */
+import type { Block, BlockType } from './blocks';
 import { commandOf, type CommandName } from './commands';
 
 /** What every channel has: what the realm knows it by, and a name to read. */
@@ -231,6 +232,30 @@ export function compose(typed: string, showing: TalkChannel): Said | null {
   if (ACTIONS.has(first)) return { command: line, channel: showing };
 
   return { command: `${prefixOf(showing)}${line}`, channel: showing };
+}
+
+/* ------------------------------------------------- what the card carries */
+
+/**
+ * The realm's own comings and goings, which the Talk card carries beside what
+ * was said.
+ *
+ * They are `presence`, not `conversation`, and they stay that way: the roster
+ * is maintained off these three and re-domaining them to get them into the
+ * card would move a fact to suit one reader. So the card's membership is its
+ * own question, asked here — one predicate both the live feed and the log on
+ * disk read, because a line the card shows and the log does not is a backlog
+ * that disagrees with the session that produced it.
+ */
+export const TALK_PRESENCE_TYPES: readonly BlockType[] = [
+  'player-enters',
+  'player-exits',
+  'player-disconnects'
+];
+
+/** Whether a block belongs in the Talk card, and so in its log. */
+export function isTalkBlock(block: Pick<Block, 'domain' | 'type'>): boolean {
+  return block.domain === 'conversation' || TALK_PRESENCE_TYPES.includes(block.type);
 }
 
 /* ------------------------------------------------------ how a line is drawn */
