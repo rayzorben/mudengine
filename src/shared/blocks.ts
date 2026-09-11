@@ -143,6 +143,29 @@ export type BlockType =
    */
   | 'user-reads-spell'
   /**
+   * The telnet field screen has taken the terminal: `train stats` at a trainer.
+   *
+   * `TrainCommand.cs:72` answers `train stats` with `Player.Exits()` and
+   * `PlayerWaitState.TrainStats` — no prompt, no sentence, nothing addressed to
+   * this character at all. The next thing on the wire is `AssignStatsState`'s
+   * screen, drawn entirely with cursor moves and carrying no newline, so
+   * `LineTokenizer` frames the whole of it as one `flush` line.
+   *
+   * Matched on `Char. Creation` and `Point Cost Chart`, which are the two
+   * constants of the header's single `Socket.Send` and identical in all three
+   * server builds (only the realm's own name between them differs:
+   * `G R E A T E R  M U D`, `P A R A D I G M`). Both, because one write is what
+   * puts them in the same framed line; and the pair rather than either alone,
+   * because an unanchored rule reading one phrase out of a blob is a rule
+   * somebody's gossip can fire.
+   *
+   * The fact that matters is that **the character is no longer at a command
+   * prompt**: every keystroke goes into a form field, and anything automation
+   * sends is typed into whichever one has focus. The read decides it is the
+   * realm's source, not a capture.
+   */
+  | 'user-stats-screen'
+  /**
    * The character came out of the stat-assignment screen having saved.
    *
    * `train stats` is not a command with an answer — `TrainCommand.cs:75` puts
@@ -753,6 +776,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-trains': 'status',
   'user-learns': 'status',
   'user-reads-spell': 'status',
+  'user-stats-screen': 'session',
   'user-stats-assigned': 'status',
   'user-gains': 'status',
   'player-status': 'status',

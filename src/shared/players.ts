@@ -173,6 +173,27 @@ export interface PlayerRecord {
   vitalsAt: number | null;
   /** True while they are in this character's party. */
   inParty: boolean;
+  /**
+   * The client their `@version` named, verbatim — `mudengine 0.6.5`,
+   * `MegaMMUD 2.1` — and null while nothing has answered.
+   *
+   * A fact about the *player*, so it is realm-wide: Soul runs whatever Soul
+   * runs whichever of this player's characters asked. Kept for a person to
+   * read; what the client acts on is `extendedRemotes` beside it, which is a
+   * different fact and is allowed to disagree.
+   */
+  client: string | null;
+  /**
+   * Whether this client's extended remotes reach them (`src/shared/remotes.ts`).
+   *
+   * Three-state, and `unknown` is the answer until something settles it —
+   * never `no`, which would quietly stop this client ever trying. `yes` comes
+   * from a `@version` naming this client; `no` from the extended question
+   * itself being refused or going unanswered, which is the only evidence that
+   * outranks what they said, since a player can restart into another client
+   * between one telepath and the next.
+   */
+  extendedRemotes: 'unknown' | 'yes' | 'no';
   /** Times they have sent an `@` command, trusted or not. */
   commandsSent: number;
   /** The last `@` command they sent, for the card to show, or null. */
@@ -219,6 +240,8 @@ export type PlayerFacts = Pick<
   | 'lastSeen'
   | 'vitals'
   | 'vitalsAt'
+  | 'client'
+  | 'extendedRemotes'
 >;
 
 /**
@@ -327,6 +350,8 @@ export function newPlayer(name: string, at: number): PlayerRecord {
     vitals: null,
     vitalsAt: null,
     inParty: false,
+    client: null,
+    extendedRemotes: 'unknown',
     commandsSent: 0,
     lastCommand: null,
     lastCommandAt: null
@@ -425,6 +450,8 @@ function same(before: PlayerRecord | undefined, after: PlayerRecord): boolean {
     before.lastRoomAt === after.lastRoomAt &&
     before.online === after.online &&
     before.inParty === after.inParty &&
+    before.client === after.client &&
+    before.extendedRemotes === after.extendedRemotes &&
     before.commandsSent === after.commandsSent &&
     before.lastCommand === after.lastCommand &&
     sameVitals(before.vitals, after.vitals)
@@ -543,6 +570,8 @@ export function toFacts(record: PlayerFacts): PlayerFacts {
     race: record.race,
     className: record.className,
     gangRank: record.gangRank,
+    client: record.client,
+    extendedRemotes: record.extendedRemotes,
     equipment: record.equipment,
     equipmentAt: record.equipmentAt,
     lastRoom: record.lastRoom,
@@ -708,6 +737,14 @@ export function readFacts(value: unknown): PlayerFacts | null {
     race: text(record['race']),
     className: text(record['className']),
     gangRank: text(record['gangRank']),
+    client: text(record['client']),
+    // The word or nothing: a file that says something else says nothing, and
+    // `unknown` is the answer that makes the client ask again rather than
+    // silently never trying an extended remote on somebody for ever.
+    extendedRemotes:
+      record['extendedRemotes'] === 'yes' || record['extendedRemotes'] === 'no'
+        ? record['extendedRemotes']
+        : 'unknown',
     equipment,
     equipmentAt: equipment === null ? null : equipmentAt,
     vitals,

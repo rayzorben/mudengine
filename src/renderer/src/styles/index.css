@@ -1789,14 +1789,9 @@ kbd {
   margin-top: 6px;
 }
 
-.walk-stop {
-  margin-top: 8px;
-  width: 100%;
-}
-
 /*
- * The loop face’s transport row: always drawn, never folded. Square quiet
- * buttons the height of a control, in a row under the heading, so pause and
+ * The movement’s transport row: always drawn, never folded. Square quiet
+ * buttons the height of a control, in a row under the heading, so play and
  * stop are where the eye already is rather than one kebab click away.
  */
 .loop-controls {
@@ -9479,6 +9474,17 @@ tr:hover .row-action.worn,
   overflow-x: auto;
   padding: 6px 8px;
   white-space: pre;
+}
+
+/*
+ * The sample of what the player types, on the prompt row only. It wears the
+ * state the template ends in, which is the whole point of drawing it (todo
+ * 08) — so the mark that says it is a sample rather than part of the drawing
+ * is a caret before it, never a colour of its own.
+ */
+.rewrite-preview .rewrite-typed::before {
+  content: '▏';
+  opacity: 0.7;
 }
 
 /*

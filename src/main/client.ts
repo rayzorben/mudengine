@@ -64,6 +64,7 @@ import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
+import type { MovementStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
@@ -172,6 +173,7 @@ const IDLE_STATE = {
   target: null,
   connectedAt: null,
   detail: null,
+  endedBy: null,
   negotiated: {
     localEnabled: [],
     remoteEnabled: [],
@@ -1600,8 +1602,36 @@ function registerIpc(): void {
      */
     return slot.manager.walkRoute(route);
   });
-  handle(Invoke.stopWalk, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.walker.stop(t('session.walk.stoppedByPlayer'));
+  /*
+   * The one play button and the one stop button.
+   *
+   * A character is routing, looping or stopped, and *stop* means the same
+   * thing in all three sentences — so main is asked to start or to stop, and
+   * decides for itself which of the two it is. See `src/shared/movement.ts`
+   * and `SessionManager.startMoving`.
+   *
+   * `loop` is what the card's picker says and `confirmed` is the answer to the
+   * one question play can ask back. Both parsed, not trusted: this turns into
+   * commands on a socket.
+   */
+  handle(
+    Invoke.startMoving,
+    (_caller, session: SessionId, loop: unknown, confirmed: unknown): MovementStart => {
+      const slot = host?.get(session);
+      if (!slot) return { refused: t('app.session.notConnected') };
+      if (loop !== null && typeof loop !== 'string') return { refused: t('app.loop.invalidName') };
+      /*
+       * `confirmed` is the **figure** the window was shown and the player
+       * agreed to, never a flag: main measures again and asks afresh if the
+       * journey has grown since. Anything that is not a finite number is *not
+       * agreed to*, which is the safe reading of a malformed payload.
+       */
+      const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
+      return slot.manager.startMoving(loop, agreed);
+    }
+  );
+  handle(Invoke.stopMoving, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.stopMoving();
   });
   /*
    * A loop is named rather than passed: unlike a route, nothing has been shown
@@ -1618,7 +1648,10 @@ function registerIpc(): void {
     if (typeof name !== 'string') return t('app.loop.invalidName');
     const loop = slot.manager.loopNamed(name);
     if (!loop) return t('app.loop.notFound', { name });
-    return slot.manager.loops.start(loop, slot.manager.character);
+    // Through the manager: one movement at a time, so a lap starting takes the
+    // character off whatever route it was walking, out loud.
+    const answer = slot.manager.startLoop(loop);
+    return 'refused' in answer ? answer.refused : null;
   });
   /*
    * Walk a loop that is not in this character's options at all.
@@ -1640,30 +1673,15 @@ function registerIpc(): void {
     if (!slot) return t('app.session.notConnected');
     const parsed = asLoop(loop);
     if (parsed === null) return t('app.loop.invalidLoop');
-    return slot.manager.loops.start(parsed, slot.manager.character);
-  });
-  handle(Invoke.stopLoop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    slot?.manager.loops.stop(t('session.walk.stoppedByPlayer'));
-    slot?.manager.walker.stop(t('session.walk.stoppedByPlayer'));
+    const answer = slot.manager.startLoop(parsed);
+    return 'refused' in answer ? answer.refused : null;
   });
   /*
-   * The loop's own controls, from its card. Pausing and skipping end the leg
-   * being walked for the same reason stopping does: the runner never touches
-   * the walker, and a leg left walking would arrive and dwell under a loop that
-   * had been told to hold. Resuming plans afresh from where the character is.
+   * The loop's own two controls, from its card — the ones that mean nothing
+   * for a route. Skipping ends the leg being walked for the reason stopping
+   * does: the runner never touches the walker, and a leg left walking would
+   * arrive and dwell under a loop that had been told to move on.
    */
-  handle(Invoke.pauseLoop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot || slot.manager.loops.progress.status !== 'running') return;
-    slot.manager.walker.stop(t('session.walk.stoppedByPlayer'));
-    slot.manager.loops.pause();
-  });
-  handle(Invoke.resumeLoop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    return slot.manager.loops.resume(slot.manager.character);
-  });
   handle(Invoke.skipLoopStop, (_caller, session: SessionId) => {
     const slot = host?.get(session);
     if (!slot) return t('app.session.notConnected');
@@ -1724,6 +1742,17 @@ function registerIpc(): void {
    * ran this from a pop-out meant that window, and moving their characters to a
    * window they are not looking at would be the client deciding for them.
    */
+  /*
+   * A window asking to be brought forward, which only ever happens because
+   * somebody clicked a desktop notification about a character in it. Nothing
+   * is refused out loud: a host with no windows to raise is a browser tab,
+   * which raises itself and never reaches this handler.
+   */
+  handle(Invoke.raiseWindow, (caller) => {
+    if (platform.windows === null || caller.windowId === -1) return;
+    platform.windows.focus(caller.windowId);
+  });
+
   handle(Invoke.gatherWindows, (caller) => {
     if (platform.windows === null) return t('app.window.noSecondWindow');
     if (!workspace || !host) return t('app.window.nothingToGather');

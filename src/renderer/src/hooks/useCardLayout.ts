@@ -324,6 +324,14 @@ export interface CardSettings {
   /** Talk card: how a line's parts are arranged. See `TALK_LAYOUTS`. */
   talkLayout?: TalkLayout;
   /**
+   * Talk card: carry a channel, and put it in front of what is typed.
+   *
+   * **Off unless this says so**, so the box sends what the player wrote. The
+   * why is in `mudengine-ui` under *the Talk card sends verbatim*; what it
+   * turns on is `compose` in `src/shared/talk.ts`.
+   */
+  talkChannels?: boolean;
+  /**
    * Map card: how much of the realm to fit on it, 0 (sparse) to 1 (dense).
    *
    * A fraction rather than a room count, because what it chooses is how small
@@ -698,6 +706,9 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
       ...(typeof found['talkStamps'] === 'boolean' ? { talkStamps: found['talkStamps'] } : {}),
       ...(isTalkStamp(found['talkStamp']) ? { talkStamp: found['talkStamp'] } : {}),
       ...(isTalkLayout(found['talkLayout']) ? { talkLayout: found['talkLayout'] } : {}),
+      ...(typeof found['talkChannels'] === 'boolean'
+        ? { talkChannels: found['talkChannels'] }
+        : {}),
       ...(typeof found['mapDensity'] === 'number' && Number.isFinite(found['mapDensity'])
         ? { mapDensity: Math.max(0, Math.min(1, found['mapDensity'])) }
         : {}),

@@ -7,7 +7,8 @@
  * the whole ergonomic problem: every line has to start with `gos`, and a
  * conversation is not one line. Nobody types `gos` forty times.
  *
- * So the composer carries a channel, and this decides what a typed line means
+ * So the composer *can* carry a channel — `CardSettings.talkChannels`, in the
+ * card's own gear and **off**. Turned on, this decides what a typed line means
  * next to it:
  *
  * - **Type a channel word and it switches**, and the line goes as typed.
@@ -167,6 +168,9 @@ export interface Said {
  *
  * A line whose first word is a channel switches to it and is sent unchanged —
  * including the word, because the server needs it. Everything else is prefixed.
+ *
+ * Reached only where the card is carrying a channel: with none, the composer
+ * sends the line itself and asks nothing.
  */
 export function compose(typed: string, showing: TalkChannel): Said | null {
   const line = typed.trim();

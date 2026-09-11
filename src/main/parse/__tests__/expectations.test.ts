@@ -151,6 +151,34 @@ describe('the queue of moves', () => {
     expect(memory.count).toBe(0);
   });
 
+  /*
+   * `Exits.Move` calls `CheckForHoldPerson()` and returns before anybody
+   * moves, printing the holding spell's own sentence — so a held step is
+   * answered and no room is coming. But that sentence is printed when the
+   * effect *lands* as well, where it refuses nothing at all, which is why
+   * this takes a move and never whatever happens to be at the head.
+   */
+  it('a hold takes the step it refused, and only a step', () => {
+    const memory = new Expectations();
+    memory.observeCommand('ne', inGame);
+    expect(memory.shiftHeldMove()).toBe(true);
+    expect(memory.moves).toBe(0);
+
+    // The effect landing mid-fight, with a look waiting on its own answer.
+    const landing = new Expectations();
+    landing.observeCommand('l s', inGame);
+    expect(landing.shiftHeldMove()).toBe(false);
+    expect(landing.count).toBe(1);
+  });
+
+  it('a hold skips a re-read whose room never came, as a refusal does', () => {
+    const memory = new Expectations();
+    memory.noteReread(true);
+    memory.observeCommand('ne', inGame);
+    expect(memory.shiftHeldMove()).toBe(true);
+    expect(memory.count).toBe(0);
+  });
+
   it('a refused command is never learned as a way through the realm', () => {
     const memory = new Expectations();
     memory.observeCommand('jump cliff', inGame);

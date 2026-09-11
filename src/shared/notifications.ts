@@ -26,6 +26,10 @@ import { attacksOnSight, DISPOSITION_WORD } from './mobs';
 import type { Block, BlockType } from './blocks';
 import type { UiLookup } from './i18n';
 import type { FindAlertsConfig } from './config';
+import type { WalkProgress } from './walk';
+import type { LoopProgress } from './loops';
+import { movementOf } from './movement';
+import type { ConnectionState } from './types';
 
 /**
  * Three levels, not five.
@@ -67,6 +71,25 @@ export const NOTICE_CHANNELS = [
 
 export type NoticeChannel = (typeof NOTICE_CHANNELS)[number];
 
+/**
+ * The happenings worth raising *outside* the window, as a closed list.
+ *
+ * An alert is a second reading of the stream for somebody who is looking; a
+ * desktop notification is for somebody who is not, and the two lists are not
+ * the same list. A severity floor cannot express this one: arriving where you
+ * asked to go ranks as the record, and it is the whole reason somebody walked
+ * away from the keyboard in the first place.
+ *
+ * So four happenings are named, and `critical` catches the rest of the
+ * ranking. Each is a switch, because what is worth being interrupted for is a
+ * fact about the player and not about the realm.
+ *
+ * The order is the order the settings screens offer the switches in.
+ */
+export const DESKTOP_ALERTS = ['attacked', 'hurt', 'arrived', 'hungup', 'critical'] as const;
+
+export type DesktopAlert = (typeof DESKTOP_ALERTS)[number];
+
 export interface Notice {
   /** Stable within a session, so a list can key on it without an index. */
   id: string;
@@ -75,6 +98,42 @@ export interface Notice {
   /** What kind of thing this is, for filtering — one of {@link NOTICE_CHANNELS}. */
   channel: NoticeChannel;
   text: string;
+  /**
+   * Which desktop notification this alert is one of, when it is one of the
+   * four named ones. Absent leaves {@link desktopAlert} to the ranking, which
+   * answers `critical` or nothing at all.
+   */
+  desktop?: DesktopAlert;
+}
+
+/**
+ * Which desktop notification an alert is, or null if it is not worth one.
+ *
+ * The named four outrank the ranking on purpose: a player attacking you is
+ * `critical` as well, and somebody who muted `attacked` has said what they
+ * meant — leaving it to be raised again as `critical` would make the switch a
+ * lie.
+ */
+export function desktopAlert(notice: Notice): DesktopAlert | null {
+  if (notice.desktop !== undefined) return notice.desktop;
+  return notice.severity === 'critical' ? 'critical' : null;
+}
+
+/**
+ * The desktop notification this alert is worth raising, for these preferences.
+ *
+ * Takes the shape rather than `DesktopAlertsConfig`, for the reason
+ * {@link wanted} does: `config.ts` imports this module for its values and a
+ * value import back the other way would close the loop.
+ */
+export function raisable(
+  prefs: { enabled: boolean; mute: readonly string[] },
+  notice: Notice
+): DesktopAlert | null {
+  if (!prefs.enabled) return null;
+  const alert = desktopAlert(notice);
+  if (alert === null) return null;
+  return prefs.mute.some((entry) => entry.toLowerCase() === alert) ? null : alert;
 }
 
 /**
@@ -320,6 +379,7 @@ function pvpNotice(block: Block, state: CharacterState, t: UiLookup): Notice | n
     at: block.at,
     severity: 'critical',
     channel: 'combat',
+    desktop: 'attacked',
     text: t('cards.alerts.combat.playerAttacking', { name: listed.name })
   };
 }
@@ -371,7 +431,14 @@ export function vitalNotices(
     label: string,
     was: { current: number | null; max: number | null },
     now: { current: number | null; max: number | null },
-    bounds: VitalThresholds
+    bounds: VitalThresholds,
+    /*
+     * Which desktop notification a *critical* crossing of this vital is.
+     * Health only: `hurt` is the one the player asked to be told about away
+     * from the keyboard, and mana running out is a decision about whether to
+     * cast, which nobody makes from another room.
+     */
+    alarm: DesktopAlert | undefined
   ): void => {
     // Unknown is not zero: a figure that has not arrived yet must never raise
     // an alarm, because the first thing a player does about a red bar is run from a
@@ -386,6 +453,7 @@ export function vitalNotices(
       at,
       severity: level === 'critical' ? 'critical' : 'warning',
       channel: 'vitals',
+      ...(level === 'critical' && alarm !== undefined ? { desktop: alarm } : {}),
       text: t('cards.alerts.vitals.crossing', {
         label,
         level,
@@ -399,15 +467,93 @@ export function vitalNotices(
     t('cards.player.detail.health'),
     { current: before.vitals.hp, max: before.vitals.hpMax },
     { current: after.vitals.hp, max: after.vitals.hpMax },
-    thresholds.hp
+    thresholds.hp,
+    'hurt'
   );
   check(
     t('cards.alerts.vitals.manaLabel'),
     { current: before.vitals.mana, max: before.vitals.manaMax },
     { current: after.vitals.mana, max: after.vitals.manaMax },
-    thresholds.mana
+    thresholds.mana,
+    undefined
   );
   return notices;
+}
+
+/**
+ * The route reaching where it was going.
+ *
+ * The one alert here that is *good news*, and it is kept for the reason the
+ * rest of the good news is dropped: a walk across the realm is the thing
+ * somebody starts and then goes and does something else during, so the moment
+ * it finishes is the moment they are not looking. `info`, because a player
+ * watching the card already has a bar that filled.
+ *
+ * From the crossing, like the vitals: `arrived` stands until the next route
+ * is planned, and one notice per push while it stands is the same figure
+ * announced over and over.
+ *
+ * **A loop never arrives** (2026-09-11). Its legs do, every few seconds — a
+ * two-room lap raised one notice and one desktop alert almost every five
+ * seconds, which is the client announcing its own footwork. An arrival is *I
+ * set off for somewhere and I am there*, and a lap sets off for nowhere. So
+ * the loop is handed in and `movementOf` decides: while the movement is the
+ * lap, the walk underneath it is the lap's business and says nothing.
+ *
+ * `at` is passed rather than read off a clock, so this stays as pure as the
+ * rest of the module; the caller stamps it with the moment the push landed.
+ */
+export function walkNotices(
+  before: WalkProgress,
+  after: WalkProgress,
+  loop: LoopProgress,
+  at: number,
+  t: UiLookup
+): Notice[] {
+  /*
+   * The lap is the movement *and* it is going, so this walk is one of its
+   * legs. A lap that is merely stopped silences nothing: the character is
+   * walking somewhere the player asked for, with a lap waiting to be pressed
+   * play on when it gets there.
+   */
+  const { kind, moving } = movementOf(after, loop);
+  if (kind === 'loop' && moving) return [];
+  if (after.status !== 'arrived' || before.status === 'arrived') return [];
+  const text =
+    after.destination === null
+      ? t('cards.alerts.walk.arrivedSomewhere')
+      : t('cards.alerts.walk.arrived', { destination: after.destination });
+  return [{ id: `walk${at}`, at, severity: 'info', channel: 'movement', desktop: 'arrived', text }];
+}
+
+/**
+ * The character leaving the realm without the player asking.
+ *
+ * Two of the three ways a connection ends are worth saying and one is not:
+ * pressing Disconnect is not news to whoever pressed it. The other two are the
+ * same fact to somebody who is away from the keyboard — the character is out
+ * of the realm and standing wherever it was — so they share a notification and
+ * differ only in the sentence.
+ *
+ * `warning` rather than `critical`: on this server family the damage is
+ * already done by the time this is read, and the ranking's loudest level is
+ * for a decision being made right now.
+ */
+export function linkNotices(
+  before: ConnectionState,
+  after: ConnectionState,
+  at: number,
+  t: UiLookup
+): Notice[] {
+  if (after.endedBy === null || after.endedBy === before.endedBy) return [];
+  if (after.endedBy === 'player') return [];
+  const text =
+    after.endedBy === 'client'
+      ? t('cards.alerts.session.hungUp')
+      : t('cards.alerts.session.dropped');
+  return [
+    { id: `link${at}`, at, severity: 'warning', channel: 'session', desktop: 'hungup', text }
+  ];
 }
 
 /**

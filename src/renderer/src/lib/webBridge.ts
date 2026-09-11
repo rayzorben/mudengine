@@ -173,12 +173,10 @@ export function createWebBridge(): IpcApi {
     getCharacter: (session) => invoke(Invoke.getCharacter, session),
     routeTo: (session, map, room) => invoke(Invoke.routeTo, session, map, room),
     walkRoute: (session, route) => invoke(Invoke.walkRoute, session, route),
-    stopWalk: (session) => invoke(Invoke.stopWalk, session),
+    startMoving: (session, loop, confirmed) => invoke(Invoke.startMoving, session, loop, confirmed),
+    stopMoving: (session) => invoke(Invoke.stopMoving, session),
     listLoops: (session) => invoke(Invoke.listLoops, session),
     startLoop: (session, name) => invoke(Invoke.startLoop, session, name),
-    stopLoop: (session) => invoke(Invoke.stopLoop, session),
-    pauseLoop: (session) => invoke(Invoke.pauseLoop, session),
-    resumeLoop: (session) => invoke(Invoke.resumeLoop, session),
     skipLoopStop: (session) => invoke(Invoke.skipLoopStop, session),
     reverseLoop: (session) => invoke(Invoke.reverseLoop, session),
     loopCatalogue: () => invoke(Invoke.loopCatalogue),
@@ -204,6 +202,11 @@ export function createWebBridge(): IpcApi {
     reorderSessions: (order) => invoke(Invoke.reorderSessions, order),
     popIn: (session) => invoke(Invoke.popIn, session),
     gatherWindows: () => invoke(Invoke.gatherWindows),
+    // The tab is on the viewer's machine and main is not, so raising *this*
+    // window means this window. The browser grants it off a notification click.
+    raiseWindow: async () => {
+      window.focus();
+    },
 
     getConfig: () => invoke(Invoke.getConfig),
     getInternal: () => invoke(Invoke.getInternal),

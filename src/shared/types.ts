@@ -77,9 +77,24 @@ export interface ConnectionState {
   connectedAt: number | null;
   /** Human-readable reason for the last transition to `closed` or `error`. */
   detail: string | null;
+  /**
+   * Who ended the last connection. Null while one has not ended.
+   *
+   * Three answers because the window has to tell them apart and `detail` is a
+   * sentence: comparing a translated string to decide whether a character was
+   * dropped is the guess this codebase refuses everywhere else. `player` is
+   * Disconnect, a dial at another realm, typing your way out to the BBS menu
+   * and quitting; `client` is the low-health hang-up acting for somebody who
+   * is not there; `realm` is the far end going without anybody here asking,
+   * which is the one that leaves a character standing in a lair.
+   */
+  endedBy: ConnectionEnd | null;
   /** Telnet options the engine and peer have agreed on, for diagnostics. */
   negotiated: NegotiatedOptions;
 }
+
+/** Who ended a connection. See `ConnectionState.endedBy`. */
+export type ConnectionEnd = 'player' | 'client' | 'realm';
 
 export interface NegotiatedOptions {
   /** Options the local side has agreed to perform (we sent WILL, peer sent DO). */

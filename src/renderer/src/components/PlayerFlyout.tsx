@@ -471,6 +471,31 @@ function PlayerDetail({
         )}
       </dd>
 
+      {/*
+        Which client they run, and whether this one can talk to it in its own
+        words. Two facts and they are allowed to disagree: what they *said*
+        (`@version`) and what actually worked, which is what the client acts on
+        — see `PlayerRecord.extendedRemotes`. Drawn only once something has
+        said either, because a row reading "unknown" on every stranger in the
+        realm is a row nobody reads.
+      */}
+      {record.client === null && record.extendedRemotes === 'unknown' ? null : (
+        <>
+          <dt>{t('cards.player.detail.client')}</dt>
+          <dd>
+            {record.client ?? <span className="quiet-note">{t('cards.player.clientUnnamed')}</span>}
+            <span className="quiet-note">
+              {' '}
+              {record.extendedRemotes === 'yes'
+                ? t('cards.player.clientExtended')
+                : record.extendedRemotes === 'no'
+                  ? t('cards.player.clientPlain')
+                  : t('cards.player.clientUntried')}
+            </span>
+          </dd>
+        </>
+      )}
+
       {record.commandsSent === 0 ? null : (
         <>
           <dt>{t('cards.player.detail.commands')}</dt>

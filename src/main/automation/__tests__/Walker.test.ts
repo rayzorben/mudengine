@@ -3427,6 +3427,77 @@ describe('waiting out a condition', () => {
     walk.dispose();
   });
 
+  /*
+   * Reported live 2026-09-11: `ne`, answered with `You are flat on your back!`
+   * and nothing else, and eight seconds later *Walk stopped: nothing came back
+   * after ne*. The client knew exactly where the character was standing the
+   * whole time — the server had refused the step, not lost it — so there was
+   * nothing to replan and nobody to ask.
+   *
+   * The realm names most of these holds and `CharacterTracker` sets the flag
+   * for those (the two tests above are that path). This is the other half: a
+   * spell whose row this realm does not mark, or does not carry at all. All
+   * the walk has then is the *sequence* — a step, an onset, silence — and
+   * `CheckForHoldPerson` is the only thing on the server that writes it.
+   */
+  it('holds a step an onset answered, instead of giving up on the journey', async () => {
+    const { walk } = walkerWith({});
+    expect(walk.start(ROUTE, afflicted({}))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(moves(sent)).toEqual(['e']);
+
+    walk.onBlock(block('spell-onset', { spells: 'knockdown' }));
+    // Past the nudge and the whole step deadline, which used to stop the walk.
+    await vi.advanceTimersByTimeAsync(TUNING.walk.nudgeAfterMs + config.walk.stepTimeoutMs + 100);
+    expect(walk.progress.status).toBe('walking');
+    expect(walk.progress.hold).toBe('held');
+    expect(walk.progress.reason).toBeNull();
+    // And nothing more went out for it: a hold is a wait, not a retry loop.
+    expect(moves(sent)).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * The bound, and it asks rather than gives up — `tuning.walk.heldFallbackMs`.
+   * A realm may ship a hold whose wear-off no table here pairs, and a flag
+   * with no ending would stand the route still for the evening. One step
+   * settles it: the server walks the character or refuses it again.
+   */
+  it('spends one step to find out whether a hold it cannot read is over', async () => {
+    const { walk } = walkerWith({});
+    expect(walk.start(ROUTE, afflicted({}))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    walk.onBlock(block('spell-onset', { spells: 'knockdown' }));
+    await vi.advanceTimersByTimeAsync(TUNING.walk.nudgeAfterMs + config.walk.stepTimeoutMs + 100);
+    expect(walk.progress.hold).toBe('held');
+
+    await vi.advanceTimersByTimeAsync(TUNING.walk.heldFallbackMs + TUNING.walk.holdMs);
+    expect(moves(sent)).toEqual(['e', 'e']);
+    expect(walk.progress.hold).toBeNull();
+    walk.dispose();
+  });
+
+  /*
+   * The same bound on the stated flag, which is the case a cure never comes
+   * for. Silent both ways: the condition has not passed, and saying it had
+   * would be a claim nothing on the wire has made.
+   */
+  it('asks again on a stated hold nothing ever ends, without saying it passed', async () => {
+    const { walk, become } = walkerWith({});
+    // The beat re-asks against `stateNow`, so the flag has to still be up
+    // there: this is the hold nothing ever ends, not one that quietly does.
+    become(afflicted({ held: 'yes' }));
+    expect(walk.start(ROUTE, afflicted({ held: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('held');
+
+    await vi.advanceTimersByTimeAsync(TUNING.walk.heldFallbackMs + TUNING.walk.holdMs);
+    expect(moves(sent)).toEqual(['e']);
+    expect(notices).not.toContain(t('automation.walk.afflictionResumed'));
+    walk.dispose();
+  });
+
   /* Unknown is not yes: nobody having said the character is blind is not a reason to stand still. */
   it('does not hold on a condition nobody has stated', async () => {
     const { walk } = walkerWith({});

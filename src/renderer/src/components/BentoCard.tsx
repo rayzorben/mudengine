@@ -651,6 +651,15 @@ export default function BentoCard({
           tabs under a heading that already names the first of them says the
           same word twice, and spends a row of vertical space doing it. Each
           pill carries its own affordance, so nothing between them has to.
+
+          **A lone face still names itself**, which is where its `label` is
+          drawn when it is not simply the card's title again. Every card whose
+          first face *is* the card passes the title there and reads exactly as
+          before; the Navigation card's one face does not — it is `ROUTE`,
+          `LOOP` or the card, depending on what the character is doing, and a
+          heading reading `NAVIGATION` over it would leave the card's one
+          question unanswered. Not a pill: a crumb with nothing beside it reads
+          as a tab that does nothing when pressed.
         */}
         <h2>
           {filters && filters.length > 0 ? (
@@ -691,6 +700,8 @@ export default function BentoCard({
                 </button>
               ))}
             </span>
+          ) : tabs && tabs.length === 1 ? (
+            tabs[0]!.label
           ) : (
             title
           )}

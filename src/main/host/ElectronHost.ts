@@ -275,7 +275,19 @@ export function createElectronHost(layout: Layout): Host {
     windows: {
       open: (owns) => createWindow({ owns })?.id ?? null,
       close: (windowId) => BrowserWindow.fromId(windowId)?.close(),
-      focus: (windowId) => BrowserWindow.fromId(windowId)?.focus(),
+      /*
+       * Minimised counts as behind everything else: a window brought forward
+       * for a character that has just been attacked has to actually appear,
+       * which `focus()` alone does not do to an iconified window. Same three
+       * calls as `claimInstance`'s `raise`, for the same reason.
+       */
+      focus: (windowId) => {
+        const window = BrowserWindow.fromId(windowId);
+        if (!window || window.isDestroyed()) return;
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+      },
       count: () => BrowserWindow.getAllWindows().length
     },
     mainWindowId: () => mainWindow?.id ?? null,

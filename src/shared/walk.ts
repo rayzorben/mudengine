@@ -21,6 +21,19 @@ export type WalkStatus =
 
 export interface WalkProgress {
   status: WalkStatus;
+  /**
+   * Whether this is a journey **the player asked for**, rather than a leg
+   * something else is walking: a loop's leg, a supply errand, the walk home
+   * from a `safe-haven` retreat.
+   *
+   * Published because `movementOf` cannot do its job without it. A lap's legs
+   * are walks, so after a lap is stopped the walker is left holding a stopped
+   * route that is the lap's own footwork — and a card that reported *that* as
+   * the route would be reporting the mechanism rather than the thing
+   * happening, which is the whole failure the one-face card exists to fix.
+   * True for an idle walker, which has walked nothing to be wrong about.
+   */
+  asked: boolean;
   /** Steps confirmed so far — not steps sent. */
   done: number;
   total: number;
@@ -113,7 +126,10 @@ export interface WalkProgress {
  * Why a walk is standing still. `blind`, `held` and `poisoned` are the
  * afflictions the server has stated and the walk waits out — MegaMUD's
  * `IgnoreBlind` / `IgnorePoison` defaults, which wait — see
- * `afflictionHolding`.
+ * `afflictionHolding`. `held` is also taken for a hold the client could not
+ * *name*: a step answered by a spell onset and then silence is a step
+ * `CheckForHoldPerson` refused, whatever the realm says about that spell
+ * (`Walker.onsetAnsweredStep`).
  *
  * `trap` is the step ahead firing a trap the character is not yet fit to
  * take: the walk rests to the figure `automation.health.restBeforeTraps`
@@ -136,9 +152,14 @@ export type WalkHold =
  *
  * **One predicate for the walker and the loop**, because two halves of one
  * gate in two files agree until one is edited (`fightIsRunning`'s own lesson).
- * Paralysis always holds: a step while held is a command spent to be refused,
- * and nothing in the options can make that a good idea. Blindness and poison
- * hold unless the player says otherwise — `walkWhileBlind`,
+ * Being held always holds, and there is no switch: a step while held is a
+ * command spent to be refused, and nothing in the options can make that a
+ * good idea. It is the whole family and not only paralysis — a knockdown,
+ * webbing, a net, a freeze, a roar — because the server keeps one flag for
+ * all of them (`CheckForHoldPerson`); see `CharacterState.afflictions.held`.
+ * How long the hold may stand before one step is spent finding out whether
+ * it is over is `tuning.walk.heldFallbackMs`, taken by both readers.
+ * Blindness and poison hold unless the player says otherwise — `walkWhileBlind`,
  * `walkWhilePoisoned` — because a blind character walking into a lair cannot
  * read the room it arrives in and misses every swing, and MegaMUD's own
  * defaults wait both out. Disease is not a movement matter and is left to the
@@ -156,6 +177,7 @@ export function afflictionHolding(
 
 export const IDLE_WALK: WalkProgress = {
   status: 'idle',
+  asked: true,
   done: 0,
   total: 0,
   destination: null,

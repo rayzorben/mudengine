@@ -591,6 +591,61 @@ describe('what a find is worth interrupting for', () => {
   });
 });
 
+/*
+ * `ui.alerts.desktop`, 2026-09-10 (todo 01).
+ *
+ * Two levels inside `ui:` like the find alerts above it, so nothing reconciles
+ * it. Written **on**, unlike those: nothing is raised while the window is in
+ * front, and a notification feature nobody finds is one that was never built.
+ */
+describe('what the desktop is asked to say', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  const desktopIn = (text: string): Record<string, unknown> =>
+    (((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>)?.[
+      'desktop'
+    ] as Record<string, unknown>) ?? {};
+
+  it('is stated on, with nothing muted', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n    mute: []\n', 'utf8');
+    migrate();
+    expect(desktopIn(fs.readFileSync(home.options, 'utf8'))).toEqual({
+      enabled: true,
+      whileFocused: false,
+      mute: []
+    });
+  });
+
+  it("brings the template's own paragraph", () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n', 'utf8');
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/not looking at/);
+  });
+
+  it('leaves an answered file alone, twice over', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    minimum: info\n    desktop:\n      enabled: false\n      whileFocused: true\n      mute: [arrived]\n',
+      'utf8'
+    );
+    migrate();
+    migrate();
+    expect(desktopIn(fs.readFileSync(home.options, 'utf8'))).toEqual({
+      enabled: false,
+      whileFocused: true,
+      mute: ['arrived']
+    });
+  });
+
+  it('does nothing to a file with no alerts block to reach into', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('desktop');
+  });
+});
+
 describe('the console keeping its own ground', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });
@@ -1156,9 +1211,10 @@ toolbar:
       'retaliate',
       'loot',
       'loop:open',
-      'loop:toggle',
-      'loop:stop',
-      'walk:stop'
+      // The three transport keys this row shipped with are one button now, and
+      // `theTransportBecameOneButton` renames the first of them in place —
+      // which is what keeps it here rather than appended past the shelf.
+      'move:toggle'
     ]);
   });
 
@@ -1456,6 +1512,9 @@ describe("the walk's nudge interval in an existing tuning file", () => {
     expect(Object.keys(walk())).toEqual([
       'holdMs',
       'maxHolds',
+      // How far the character may wander before play asks rather than walking
+      // it back. Beside the hold budget, where the shipped file puts it.
+      'resumeAskSteps',
       'nudgeAfterMs',
       'nudgeSamples',
       'recentSteps',
@@ -1513,7 +1572,8 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       searchRetryMs: DEFAULT_INTERNAL.tuning.walk.searchRetryMs,
       searchSayEveryMs: DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs,
       searchRecheckEvery: DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery,
-      leverTries: DEFAULT_INTERNAL.tuning.walk.leverTries
+      leverTries: DEFAULT_INTERNAL.tuning.walk.leverTries,
+      resumeAskSteps: DEFAULT_INTERNAL.tuning.walk.resumeAskSteps
     });
     expect(text).toContain("longer than this realm's own slowest answer");
     expect(text).not.toContain('so this is already the');
@@ -3811,5 +3871,141 @@ describe('the walker’s search count', () => {
       }
     ).tuning.queue;
     expect(queue['fumbleRetryMs']).toBe(DEFAULT_INTERNAL.tuning.queue.fumbleRetryMs);
+  });
+});
+
+/*
+ * `@where-room` is `@where` with the ambiguity taken out, and the *asker*
+ * chooses between them — so a grant of one that refused the other would refuse
+ * a wording nobody chose and nobody can see.
+ */
+describe('the room remote follows where', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const remotes = (): Record<string, unknown> =>
+    (parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'remotes'
+    ] as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-room-remote-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds it to the gang, the party and each player’s allow list', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  remotes:\n    gang: [where]\n    party: [health, where]\n' +
+        '    players:\n      soul:\n        allow: [where, do]\n        deny: []\n',
+      'utf8'
+    );
+    migrate();
+    const after = remotes();
+    expect(after['gang']).toEqual(['where', 'where-room']);
+    expect(after['party']).toEqual(['health', 'where', 'where-room']);
+    const players = after['players'] as Record<string, { allow: string[] }>;
+    expect(players['soul']?.allow).toEqual(['where', 'do', 'where-room']);
+    expect(said.join('\n')).toContain('@where-room');
+  });
+
+  it('keeps the file’s own spelling of the name', () => {
+    fs.writeFileSync(home.options, 'automation:\n  remotes:\n    gang: ["@where"]\n', 'utf8');
+    migrate();
+    expect(remotes()['gang']).toEqual(['@where', '@where-room']);
+  });
+
+  /*
+   * A `deny` names what somebody decided to refuse, and `comeback-room` walks
+   * this character across the realm on another player's word. Neither is a
+   * decision a migration may make.
+   */
+  it('touches neither a deny list nor the walking remote', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  remotes:\n    gang: [where, comeback]\n' +
+        '    players:\n      rend:\n        allow: []\n        deny: [where]\n',
+      'utf8'
+    );
+    migrate();
+    const after = remotes();
+    expect(after['gang']).toEqual(['where', 'comeback', 'where-room']);
+    const players = after['players'] as Record<string, { deny: string[] }>;
+    expect(players['rend']?.deny).toEqual(['where']);
+  });
+
+  it('grants nothing where nothing was granted, and is safe to run again', () => {
+    fs.writeFileSync(home.options, 'automation:\n  remotes:\n    gang: [health]\n', 'utf8');
+    migrate();
+    expect(remotes()['gang']).toEqual(['health']);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+});
+
+describe('the coins can be shed', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const loot = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)['loot'] ??
+      {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-shed-coins-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the empty list into a block that predates it, beside the collect list', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  loot:\n    coins: true\n    coinKinds: [gold]\n    items: []\n',
+      'utf8'
+    );
+    migrate();
+    expect(loot()['discardKinds']).toEqual([]);
+    const text = fs.readFileSync(home.options, 'utf8');
+    // Directly after the list it is exclusive with: a file whose two halves
+    // were pages apart would hide the rule between them.
+    expect(text.indexOf('coinKinds:')).toBeLessThan(text.indexOf('discardKinds:'));
+    expect(text.indexOf('discardKinds:')).toBeLessThan(text.indexOf('items:'));
+    expect(said.join('\n')).toContain('automation.loot.discardKinds');
+  });
+
+  it('carries the paragraph that says what a coin on neither list means', () => {
+    fs.writeFileSync(home.options, 'automation:\n  loot:\n    coins: true\n', 'utf8');
+    migrate();
+    // A phrase the comment's own re-wrapping cannot split.
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('different from "throw the copper');
+  });
+
+  it('leaves a list somebody filled in alone, and is safe to run again', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  loot:\n    coins: true\n    discardKinds: [copper]\n',
+      'utf8'
+    );
+    migrate();
+    expect(loot()['discardKinds']).toEqual(['copper']);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
   });
 });

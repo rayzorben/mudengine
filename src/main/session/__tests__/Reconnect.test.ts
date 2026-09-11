@@ -19,6 +19,7 @@ const state = (over: Partial<ConnectionState> = {}): ConnectionState => ({
   target: TARGET,
   connectedAt: null,
   detail: null,
+  endedBy: 'realm',
   negotiated: {
     localEnabled: [],
     remoteEnabled: [],

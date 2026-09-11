@@ -532,6 +532,35 @@ export class Walker {
    */
   private fightHeldSince: number | null = null;
   /**
+   * When the hold this walk is taking for a *condition* began, or null.
+   *
+   * `tuning.walk.heldFallbackMs` is measured from it, and unlike the health
+   * and fight holds that bound is not about giving up — it is about **asking
+   * again**. Every hold ends in the realm's own words and the client reads
+   * twenty-two of those sentences, but a realm is free to ship a
+   * twenty-third: a wear-off nothing here can read would otherwise stand a
+   * route still for the evening. One step is what settles it — the server
+   * either moves the character or prints the hold's own sentence again, and
+   * the refusal re-arms this with a fresh window. See `holdForAffliction`.
+   */
+  private heldSince: number | null = null;
+  /**
+   * A spell onset that landed while this step was outstanding, epoch ms, or
+   * null.
+   *
+   * **The refusal the client could not name.** `ActionFigure
+   * .CheckForHoldPerson` answers a held character's move by printing the
+   * holding spell's own onset sentence and returning — no room, no refusal
+   * this parser knows, nothing. Where the realm's ability row says that spell
+   * holds, `CharacterTracker` has already set the flag and this is not needed;
+   * where it does not — a spell a newer realm ships, one whose row this
+   * conversion lacks — the *sequence* is all that is left to read, and it is
+   * enough: a step, an onset, and then silence is a step the server refused.
+   *
+   * Cleared on every send, so it describes this attempt and no earlier one.
+   */
+  private onsetAnsweredStep: number | null = null;
+  /**
    * The character ran away and the journey has not been taken up again.
    *
    * Its own flag rather than the health hold, because the two clear on
@@ -575,6 +604,16 @@ export class Walker {
    * same distinction `stop`'s own `quiet` already makes for combat.
    */
   private quiet = false;
+  /**
+   * Whether this walk is a journey the player asked for. See
+   * `WalkProgress.asked`, which is this published.
+   *
+   * Its own flag rather than `!quiet`, though the two agree for the loop's leg
+   * and the errand: the walk home from a `safe-haven` retreat is announced —
+   * running away is exactly the thing that has to be said out loud — and is
+   * still nothing anybody asked for.
+   */
+  private asked = true;
 
   constructor(
     private config: AutomationConfig,
@@ -607,6 +646,30 @@ export class Walker {
     return last === undefined ? null : { to: last.to, name: last.name };
   }
 
+  /**
+   * The route this walk stopped part-way through, for the player to pick back
+   * up. Null while it is walking, once it has arrived, and before anything has
+   * been walked at all.
+   *
+   * `stop` deliberately keeps the route it was walking — that is what makes a
+   * stop *a pause that may or may not be permanent* — so everything needed to
+   * resume is already here: where it was going, and `left`, the steps it still
+   * owed when it stopped. `SessionManager.startMoving` plans afresh from
+   * wherever the character now stands and compares the two, which is how *you
+   * have wandered a long way from this route* is measured without a second
+   * copy of the route being kept anywhere.
+   *
+   * Unlike `journey` this ignores `resumeAfterLoss`: that flag is about what
+   * the *client* picks back up unasked across a dropped socket, and this is
+   * somebody pressing play.
+   */
+  get unfinished(): { to: RoomId; name: string; left: number } | null {
+    if (this.status !== 'stopped' || this.route === null) return null;
+    const last = this.route.steps.at(-1);
+    if (last === undefined) return null;
+    return { to: last.to, name: last.name, left: this.route.steps.length - this.index };
+  }
+
   get progress(): WalkProgress {
     const step = this.route?.steps[this.index] ?? null;
     const last = this.route?.steps.at(-1) ?? null;
@@ -622,6 +685,9 @@ export class Walker {
     const ahead = this.status === 'walking' ? (this.route?.steps.slice(this.index) ?? []) : [];
     return {
       status: this.status,
+      // An idle walker has walked nothing to be wrong about, and a stopped leg
+      // must not be read as a stopped route: see `movementOf`.
+      asked: this.status === 'idle' ? true : this.asked,
       done: this.index,
       total: this.route?.steps.length ?? 0,
       /*
@@ -741,12 +807,14 @@ export class Walker {
     from: CharacterState,
     {
       quiet = false,
+      asked = true,
       holdWhenHurt = true,
       resumeAfterFight = true,
       whileFighting = true,
       resumeAfterLoss = true
     }: {
       quiet?: boolean;
+      asked?: boolean;
       holdWhenHurt?: boolean;
       resumeAfterFight?: boolean;
       whileFighting?: boolean;
@@ -887,12 +955,15 @@ export class Walker {
     this.hold = null;
     this.fightClearedAt = null;
     this.fightHeldSince = null;
+    this.heldSince = null;
+    this.onsetAnsweredStep = null;
     // An escape belongs to the walk that ran away. A fresh route is the player
     // asking again, from here, with that already taken into account.
     this.escaped = false;
     // After the refusals, so a walk that was declined does not leave the next
     // one — which may be a plain one — inheriting this one's silence.
     this.quiet = quiet;
+    this.asked = asked;
     this.holdWhenHurt = holdWhenHurt;
     this.resumeAfterFight = resumeAfterFight;
     this.fightHeldCouldEnd = false;
@@ -1055,9 +1126,12 @@ export class Walker {
     this.status = 'idle';
     this.reason = null;
     this.hold = null;
+    this.asked = true;
     this.trapFloor = null;
     this.fightClearedAt = null;
     this.fightHeldSince = null;
+    this.heldSince = null;
+    this.onsetAnsweredStep = null;
     this.escaped = false;
     this.quiet = false;
     this.holdWhenHurt = true;
@@ -1230,6 +1304,12 @@ export class Walker {
       case 'user-search-succeeded':
       case 'user-search-failed':
         this.onSearchAnswered(block);
+        return;
+      case 'spell-onset':
+        // Only while this walk's own step is on the wire with nothing back —
+        // see `onsetAnsweredStep`. An onset at any other moment is an effect
+        // landing and refuses nothing.
+        if (this.stepSent) this.onsetAnsweredStep = block.at;
         return;
       default:
         return;
@@ -3227,6 +3307,9 @@ export class Walker {
     this.hold = null;
     this.fightClearedAt = null;
     this.fightHeldSince = null;
+    // The step landed, so whatever was holding it is over and the next one
+    // starts its own window — see `heldSince`.
+    this.heldSince = null;
     this.holds = 0;
     this.publish();
     this.sneakFirst(state);
@@ -3381,15 +3464,40 @@ export class Walker {
    * client; silent for a loop's leg, which reports its own holds.
    */
   private holdForAffliction(state: CharacterState): boolean {
-    const reason = afflictionHolding(state.afflictions, this.config.movement);
-    if (reason === null) {
+    /*
+     * The stated condition first, and then the one the server refused a move
+     * with and this client could not name — see `onsetAnsweredStep`. Second,
+     * because a flag the wire set is worth more than a sequence inferred from
+     * one, and the two answer the same hold either way.
+     */
+    const reason =
+      afflictionHolding(state.afflictions, this.config.movement) ??
+      (this.onsetAnsweredStep !== null ? 'held' : null);
+    /*
+     * The bound on a hold for a condition — see `heldSince`. It **asks again**
+     * rather than giving up, which is what makes it safe to have at all: the
+     * step that goes out next is either walked or answered with the hold's own
+     * sentence, and the refusal re-arms the hold with a fresh window.
+     *
+     * Silent, unlike the release below it. The condition has not passed — the
+     * client has run out of ways to find out whether it has — and saying it
+     * had would be a claim nothing on the wire has made.
+     */
+    const spent =
+      reason === 'held' &&
+      this.heldSince !== null &&
+      Date.now() - this.heldSince >= tuning().walk.heldFallbackMs;
+    if (reason === null || spent) {
       if (this.hold === 'blind' || this.hold === 'held' || this.hold === 'poisoned') {
         this.hold = null;
-        if (!this.quiet) this.events.notice?.(t('automation.walk.afflictionResumed'));
+        if (!this.quiet && !spent) this.events.notice?.(t('automation.walk.afflictionResumed'));
         this.publish();
       }
+      this.heldSince = null;
+      this.onsetAnsweredStep = null;
       return false;
     }
+    if (reason === 'held') this.heldSince ??= Date.now();
     if (this.hold !== reason) {
       this.hold = reason;
       if (!this.quiet) {
@@ -3548,6 +3656,9 @@ export class Walker {
     if (this.status !== 'walking' || this.route?.steps[this.index] !== step) return;
     this.stepSent = true;
     this.stepSentAt = Date.now();
+    // This attempt's own evidence, never the last one's — see
+    // `onsetAnsweredStep`.
+    this.onsetAnsweredStep = null;
     this.waitForAnswer(step, command);
   }
 
@@ -3676,6 +3787,25 @@ export class Walker {
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
+      /*
+       * **A step nothing answered while the character is held was refused,
+       * not lost**, and the difference is the whole of what a hold is for:
+       * the client knows exactly where the character is standing, so there is
+       * nothing to replan and nothing to ask a person about — the route goes
+       * on by itself the moment the condition passes.
+       *
+       * Reported as `Walk stopped: nothing came back after ne` until now, on
+       * a `ne` the server had answered with `You are flat on your back!` and
+       * a prompt. The realm's own words for the hold, in a sentence this
+       * parser did not read as anything, ended a journey that was never in
+       * any trouble.
+       *
+       * `holdForAffliction` and not `holdBeforeSending`: every other gate in
+       * that ladder is a reason not to *send*, and a step already on the wire
+       * with no answer is not waiting on any of them.
+       */
+      const now = this.events.stateNow?.();
+      if (now !== undefined && this.holdForAffliction(now)) return;
       this.stop(t('automation.walk.reasonTimeout', { command }));
     }, this.config.walk.stepTimeoutMs);
     this.timer.unref?.();

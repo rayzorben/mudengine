@@ -114,10 +114,20 @@ export const AFFLICTION_ONSETS: ReadonlyArray<{
     condition: 'diseased',
     pattern: /^You are inflicted with a hideous rotting disease!$/
   },
+  /*
+   * `You are held!` is the server's own fallback, not a guess: when
+   * `ActionFigure.CheckForHoldPerson` finds the `HoldPerson` ability but no
+   * active spell effect whose row carries a `DescMessage.Line3` to print, it
+   * sends this literal instead. Every *other* hold names itself in the realm's
+   * own words — `You are flat on your back!`, `You are entangled!` — which is
+   * message data no pattern here could enumerate, so those reach the same flag
+   * through the spell message table (`CharacterTracker`'s `spell-onset` case
+   * and `holdsMovement`).
+   */
   {
     type: 'user-held',
     condition: 'held',
-    pattern: /^(?:Your legs are paralyzed|You are held by .+)!$/
+    pattern: /^(?:Your legs are paralyzed|You are held(?: by .+)?)!$/
   }
 ];
 
@@ -293,6 +303,29 @@ export const RULES: Rule[] = [
       /^You hand over (?<price>.+?) and you receive training to attain level (?<level>\d+)\.$/
   },
   /*
+   * Going *into* the stat-assignment screen. Read from the server's own source
+   * (`AssignStatsState.ShowStaticText`), not a capture: the screen carries no
+   * newline, so no capture of it can be framed into lines to post.
+   *
+   * `train stats` prints nothing and shows no prompt (`TrainCommand.cs:72`),
+   * so the screen is the first thing the client sees — one `flush`-framed blob
+   * of cursor moves, with the whole form concatenated into it. The rule is
+   * therefore **unanchored**, the only one in this table that is, and it is
+   * paid for by matching two phrases rather than one: `Char. Creation` and
+   * `Point Cost Chart` are written by a single `Socket.Send`, so they are
+   * always in the same framed line however the rest of the screen fragments,
+   * and they are identical in all three server builds — only the realm's own
+   * name sits between them (`G R E A T E R  M U D`, `P A R A D I G M`).
+   *
+   * Placed above the exit sentence it pairs with. Nothing earlier in the table
+   * claims the blob: every rule above is anchored at `^` and the blob begins
+   * with the box rule the screen draws at row 1.
+   */
+  {
+    type: 'user-stats-screen',
+    pattern: /Char\. Creation[\s\S]*?Point Cost Chart/
+  },
+  /*
    * Coming out of the stat-assignment screen having saved — the only thing on
    * the wire that says `train stats` happened. Printed unconditionally on
    * `SAVE` and never on `EXIT` (`AssignStatsState`, the server's own source),
@@ -392,6 +425,10 @@ export const RULES: Rule[] = [
    * the words after `by` being the monster's own attack text), both ended by
    * `You can move again!` (3). Single samples are marked as such: where the
    * wire disagrees, the wire wins.
+   *
+   * These are the two shapes fixed in the server's *code*. The other twenty
+   * sentences that mean the same thing are the realm's message data and are
+   * matched through the spell message table instead — see `holdsMovement`.
    */
   { type: 'user-blind-ends', pattern: /^You can see again!$/ },
   onsetRule('poisoned'),

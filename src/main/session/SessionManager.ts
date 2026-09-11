@@ -35,6 +35,7 @@ import { Cures } from '../automation/Cures';
 import { Potions } from '../automation/Potions';
 import { LoopRunner } from '../automation/LoopRunner';
 import type { LoopProgress } from '../../shared/loops';
+import { movementOf, type Movement, type MovementStart } from '../../shared/movement';
 import { Events } from '../automation/Events';
 import type { Loop } from '../../shared/loops';
 import { splitStop } from '../../shared/loops';
@@ -93,7 +94,12 @@ import {
   type RealmFamily
 } from '../../shared/realm';
 import { SHIPPED_WORLD_LABEL, worldOfRealm } from '../../shared/worlds';
-import { commandOf, GREATERMUD_ONLY, type CommandName } from '../../shared/commands';
+import {
+  commandOf,
+  GREATERMUD_ONLY,
+  opensStatScreen,
+  type CommandName
+} from '../../shared/commands';
 import { STATUS_LINE } from '../parse/patterns';
 import {
   figuresOf,
@@ -116,6 +122,7 @@ import { errorMessage } from '../../shared/values';
 import { sameTarget } from '../../shared/types';
 import { t } from '../app/i18n';
 import type {
+  ConnectionEnd,
   ConnectionPhase,
   ConnectionState,
   ConnectionTarget,
@@ -609,11 +616,20 @@ export class SessionManager {
   private readonly engageLog: EngageDecision[] = [];
   private lastSize: TerminalSize = { cols: 80, rows: 24 };
 
+  /**
+   * Who asked for the hang-up now in flight, latched by `disconnect`.
+   *
+   * Cleared by every dial, so a `client` left over from last night's
+   * low-health hang-up cannot be read as the reason for tomorrow's loss.
+   */
+  private endedBy: ConnectionEnd | null = null;
+
   private current: ConnectionState = {
     phase: 'idle',
     target: null,
     connectedAt: null,
     detail: null,
+    endedBy: null,
     negotiated: {
       localEnabled: [],
       remoteEnabled: [],
@@ -698,12 +714,12 @@ export class SessionManager {
   /**
    * Whether the loop's current pause is this session's own answer to `@wait`.
    *
-   * `@ok` may only resume what `@wait` paused: a pause the player chose from
+   * `@ok` may only resume what `@wait` stopped: a stop the player chose from
    * the Loop card is theirs to end, and a follower's `@ok` walking a
-   * hand-paused loop away would be somebody else's typing moving this
-   * character. Cleared the moment the loop is seen in any state but `paused`,
-   * because however the pause ended — resumed here, resumed by hand, stopped,
-   * reset — the claim is spent.
+   * hand-stopped loop away would be somebody else's typing moving this
+   * character. Cleared the moment the loop is seen in any state but `stopped`,
+   * because however the hold ended — resumed here, resumed by hand, started
+   * afresh, reset — the claim is spent.
    */
   private pausedForFollowers = false;
   /**
@@ -1209,7 +1225,8 @@ export class SessionManager {
       automation.supplies,
       automation.enabled,
       this.queue,
-      (name) => (this.world === undefined ? wireItem(name) : this.world.buildItemEntity(name))
+      (name) => (this.world === undefined ? wireItem(name) : this.world.buildItemEntity(name)),
+      (message) => this.sink.notice(message)
     );
     /*
      * The light, asked by the walker before every step (`beforeStep`) and by
@@ -1271,6 +1288,7 @@ export class SessionManager {
         walk: (route) =>
           this.walker.start(route, this.tracker.current, {
             quiet: true,
+            asked: false,
             // An errand is a walk automation chose: it waits to be well, and
             // it waits for a fight to be over — the loop's own answers.
             holdWhenHurt: true,
@@ -1339,15 +1357,11 @@ export class SessionManager {
       progress: () => ({ walk: this.walker.progress, loop: this.loops.progress }),
       /*
        * A follower saying it cannot keep up. The loop is what would walk away
-       * from them, so the loop is what *pauses* — and `@ok` is the same
-       * follower saying it can again, which resumes it. It used to stop the
-       * loop outright, which read the same in the moment and cost the whole
-       * evening: `@ok` had nothing left to release, so one `@wait` ended the
-       * lap for good and the leader stood at a stop until somebody noticed.
-       * Paused keeps the loop and its place; resuming plans afresh from
-       * wherever the character now stands, exactly as the Loop card's own
-       * pause does — the leg being walked is ended here first, because the
-       * runner never touches the walker.
+       * from them, so the loop is what stops — and `@ok` is the same follower
+       * saying it can again, which resumes it. Stopping keeps the loop and its
+       * place, so the resume plans afresh from wherever the character now
+       * stands; the leg being walked is ended here too, because the runner
+       * never touches the walker.
        */
       pace: (who, ready) => {
         const follower = who.toLowerCase();
@@ -1355,25 +1369,42 @@ export class SessionManager {
           this.waitingFollowers.add(follower);
           if (this.loops.progress.status !== 'running') return;
           /*
-           * Pause before ending the leg, not after: `walker.stop` reports
-           * `ended` synchronously, and on a loop still *running* that is a
-           * counted failure — "skipping the stop" and a fresh leg planned, for
-           * a walk nothing went wrong with. Paused first, the runner reads the
-           * ending as what it is: a leg the pause ended.
+           * The lap before the leg, not after: `walker.stop` reports `ended`
+           * synchronously, and on a loop still *running* that is a counted
+           * failure — "skipping the stop" and a fresh leg planned, for a walk
+           * nothing went wrong with. Stopped first, the runner reads the
+           * ending as what it is: a leg the stop ended.
            */
-          this.loops.pause();
+          this.loops.stop(t('session.loop.pausedForRemote', { who }));
           this.pausedForFollowers = true;
           this.walker.stop(t('session.loop.pausedForRemote', { who }));
           return;
         }
         this.waitingFollowers.delete(follower);
         if (this.waitingFollowers.size > 0) return;
-        if (!this.pausedForFollowers || this.loops.progress.status !== 'paused') return;
+        if (!this.pausedForFollowers || this.loops.progress.status !== 'stopped') return;
         this.pausedForFollowers = false;
-        const refused = this.loops.resume(this.tracker.current);
+        /*
+         * Through `startMoving`, not straight at the runner: this is a second
+         * door onto the resume, and the wander check exists precisely because
+         * a stop keeps its place while the character does not. A follower's
+         * `@ok` is not somebody who can answer a question, so a lap that is
+         * now a journey away is **reported and left stopped** — the player
+         * presses play, having read how far.
+         */
+        const answer = this.startMoving(null, null);
         // Said out loud: a loop that quietly failed to walk on is the same
         // stalled evening the resume exists to prevent.
-        if (refused !== null) this.sink.notice(refused);
+        if ('refused' in answer) this.sink.notice(answer.refused);
+        if ('confirm' in answer) {
+          this.sink.notice(
+            t('session.move.tooFarForRemote', {
+              who,
+              name: answer.confirm.name,
+              stepCount: answer.confirm.steps
+            })
+          );
+        }
       },
       /*
        * Recorded on the player's own registry entry, which is what the Player
@@ -1387,7 +1418,65 @@ export class SessionManager {
         }
       },
       // A blessed party member says the spell wore off; recast on the event.
-      blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell)
+      blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
+      /*
+       * Which client another player runs — the fact the extended vocabulary
+       * turns on. On the registry with everything else known about them, and
+       * published for the same reason `commanded` is: nothing else about this
+       * character changed, so it would otherwise wait for something unrelated.
+       */
+      clientNamed: (from, client, extended) => {
+        const facts =
+          client === undefined
+            ? { extendedRemotes: extended }
+            : { client, extendedRemotes: extended };
+        if (this.tracker.noteRemoteClient(from, Date.now(), facts)) this.publishCharacter();
+      },
+      /*
+       * `@where-room`'s answer: where a peer is standing, as the realm
+       * addresses it. Written to their registry entry as a **sighting**, the
+       * same field a room's occupant list writes — the registry keeps a room
+       * number and no map, which is the shape it has always had, so the
+       * address is reported in full and the number is what is kept.
+       */
+      placed: (from, map, room, name) => {
+        this.sink.notice(
+          t('session.remotes.peerPlaced', {
+            who: from,
+            address: `${map}/${room}`,
+            room: name ?? t('session.remotes.peerPlacedUnnamed')
+          })
+        );
+        if (this.tracker.noteRemoteRoom(from, room, name, Date.now())) this.publishCharacter();
+      },
+      /*
+       * `@comeback-room`: walk to the address the sender stated.
+       *
+       * Through `walkRoute` and not `Walker.start`, so it is one movement at a
+       * time like every other door onto a route — a running lap is stopped for
+       * it, and the supply errand gets its say. Returns whether a walk really
+       * started, which is what decides the `{ok}`.
+       */
+      comeBack: (from, map, room) => {
+        const plan = this.planFromHere(roomId(map, room));
+        if (typeof plan === 'string') {
+          this.sink.notice(t('session.remotes.comebackRefused', { who: from, reason: plan }));
+          return false;
+        }
+        const refused = this.walkRoute(plan);
+        if (refused !== null) {
+          this.sink.notice(t('session.remotes.comebackRefused', { who: from, reason: refused }));
+          return false;
+        }
+        this.sink.notice(
+          t('session.remotes.comebackWalking', {
+            who: from,
+            stepCount: plan.steps.length,
+            address: `${map}/${room}`
+          })
+        );
+        return true;
+      }
     });
     /*
      * All four casters share one realm lookup, and it hands over the realm's
@@ -1496,6 +1585,7 @@ export class SessionManager {
         walk: (route) =>
           this.walker.start(route, this.tracker.current, {
             quiet: true,
+            asked: false,
             holdWhenHurt: false,
             resumeAfterFight: false,
             /*
@@ -1554,10 +1644,10 @@ export class SessionManager {
           this.wasLooping = running;
           this.combat.noteLooping(running);
           // However a follower-pause ended — resumed here, resumed by hand,
-          // stopped — the claim is spent: `@ok` may only resume what `@wait`
-          // paused. `pause()` publishes `paused`, so setting the flag after
-          // the call survives this line.
-          if (progress.status !== 'paused') this.pausedForFollowers = false;
+          // started again — the claim is spent: `@ok` may only resume what
+          // `@wait` stopped. `stop()` publishes `stopped`, so setting the flag
+          // after the call survives this line.
+          if (progress.status !== 'stopped') this.pausedForFollowers = false;
           this.sink.loop?.(progress);
         },
         locate: () => {
@@ -1726,7 +1816,15 @@ export class SessionManager {
       const detail = graceful
         ? t('session.connection.disconnected')
         : t('session.connection.closedByRemote');
-      this.patch({ phase: 'closed', connectedAt: null, detail });
+      /*
+       * Who ended it, for the window. `lost` is already the whole test of
+       * whether anybody here asked; what it does not say is *which* of the two
+       * here asked, and the latch does. Somebody who typed their way out to the
+       * BBS menu arrives ungracefully and is still the player.
+       */
+      const endedBy: ConnectionEnd = lost ? 'realm' : (this.endedBy ?? 'player');
+      this.endedBy = null;
+      this.patch({ phase: 'closed', connectedAt: null, detail, endedBy });
       this.sink.notice(detail);
       /*
        * A socket that went without this client asking is a *loss*, and a loss
@@ -1985,7 +2083,28 @@ export class SessionManager {
      */
     const sameRealm = this.current.target !== null && sameTarget(this.current.target, target);
     if (!sameRealm) {
-      if (this.loops.carried) this.loops.stop(t('session.loop.stoppedRealmChanged'));
+      /*
+       * **A different realm drops the lap whatever state it is in.** Its stops
+       * are room ids in a world this character is no longer in, and its place
+       * round them means nothing there.
+       *
+       * This used to read `if (carried) stop(...)`, which worked while a
+       * *stopped* lap was one nothing carried. Since a stop keeps its place
+       * (`src/shared/movement.ts`) a stopped lap is carried too, and `stop()`
+       * early-returns on one — so the guard neither said anything nor cleared
+       * `offline`, `carried` stayed true, and the `reset()` below was skipped:
+       * the old realm's lap survived into the new one with the old world's
+       * rooms in it, and the card offered play on it.
+       */
+      if (this.loops.progress.status !== 'idle') {
+        this.loops.stop(t('session.loop.stoppedRealmChanged'));
+        this.loops.reset();
+        this.waitingFollowers.clear();
+        this.pausedForFollowers = false;
+        this.sink.notice(
+          t('automation.loops.stopped', { reason: t('session.loop.stoppedRealmChanged') })
+        );
+      }
       if (this.journey !== null) {
         this.sink.notice(
           t('session.walk.notResumed', {
@@ -2020,7 +2139,8 @@ export class SessionManager {
     this.saidWaitingToBePlaced = false;
     this.awaitingPassword = false;
     this.cancelIdleFlush();
-    this.patch({ phase: 'connecting', target, detail: null, connectedAt: null });
+    this.endedBy = null;
+    this.patch({ phase: 'connecting', target, detail: null, connectedAt: null, endedBy: null });
     this.sink.notice(
       t('session.connection.connecting', {
         host: target.host,
@@ -2045,8 +2165,18 @@ export class SessionManager {
     return this.current;
   }
 
-  disconnect(): ConnectionState {
+  /**
+   * Hang up on purpose, and record who asked.
+   *
+   * `by` reaches the window as `ConnectionState.endedBy`, because the three
+   * ways a connection ends are three different facts to somebody who is not at
+   * the keyboard: they pressed Disconnect, the client hung up for them, or the
+   * realm went. Only the socket's own `close` knows whether it was graceful,
+   * so this latches the answer and the handler reads it.
+   */
+  disconnect(by: ConnectionEnd = 'player'): ConnectionState {
     if (!this.client.connected) return this.current;
+    this.endedBy = by;
     this.patch({ phase: 'closing' });
     this.client.disconnect();
     return this.current;
@@ -2100,6 +2230,20 @@ export class SessionManager {
         }
         this.login.observeCommand(command);
         this.classifier.observeCommand(command);
+        /*
+         * The earliest moment the client can know the command prompt is about
+         * to go away, and it is a whole round trip earlier than the screen
+         * itself. That margin is the point: the server answers `train stats`
+         * with no prompt at all, so the acknowledgement window the queue paces
+         * on is already open and the next drain would send into the form.
+         *
+         * Armed off what the player *typed*, so it is armed before the bytes
+         * this call is about reach the socket. A `train stats` the realm
+         * refuses (not at a trainer, wrong case) is answered with a prompt,
+         * which releases it — so being wrong here costs one round trip of
+         * automation and says so.
+         */
+        if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
         this.noteSent(command, 'user');
         this.noteQuestSaid(command);
         // A person is at the keyboard: the away clock starts over.
@@ -2255,7 +2399,7 @@ export class SessionManager {
    * Picks up what a lost connection left owed, once the character is back.
    *
    * Two things are carried across a loss and nothing else: a running or
-   * paused loop (`LoopRunner.carried`) and the route the player was walking
+   * stopped loop (`LoopRunner.carried`) and the route the player was walking
    * (`journey`). Everything else automated re-derives its decision from the
    * state on every line and needs nothing carried — resting, healing,
    * auto-combat, the errand from the next pack listing.
@@ -2283,8 +2427,8 @@ export class SessionManager {
     if (state.room.map === null || state.room.number === null) {
       // Said once and not on every line: the entry probe is what asks where
       // the character is, and this is only ever waiting for the answer. And
-      // only when something will in fact walk on — a paused lap is carried
-      // paused, and a promise that it walks on is one the client cannot keep.
+      // only when something will in fact walk on — a stopped lap is carried
+      // stopped, and a promise that it walks on is one the client cannot keep.
       const walksOn = journey !== null || this.loops.progress.status === 'running';
       if (walksOn && !this.saidWaitingToBePlaced) {
         this.saidWaitingToBePlaced = true;
@@ -2451,7 +2595,7 @@ export class SessionManager {
     if (this.tracker.current.phase !== 'in-game') return false;
     // The arbiter's answer, not this one's: a repeat of a question still
     // waiting to go is coalesced into it, and the caller is told so.
-    return this.remotes.ask(who, name);
+    return this.remotes.ask(who, name, this.tracker.current);
   }
 
   /** The client's own settings — which of its commands are quiet. Hot-reloaded. */
@@ -2885,6 +3029,18 @@ export class SessionManager {
       this.awaitingPassword = true;
     }
 
+    /*
+     * The telnet field screen, and the way back out of it.
+     *
+     * Ahead of every module, because none of them may propose anything while
+     * it is up and the queue is what stops them. The release is **any** prompt,
+     * not the status line alone: `SAVE` comes back through `Player.Enters` to
+     * the realm's own prompt and `QUIT` comes back to the character menu, and
+     * both mean the same thing — there is a command line again.
+     */
+    if (block.type === 'user-stats-screen') this.holdForStatScreen(t('session.stats.screen'));
+    else if (isPrompt(block.type)) this.releaseStatScreen();
+
     this.login.onBlock(block);
     /*
      * An unrecognised command is not refused by this server — it is *said out
@@ -3279,6 +3435,9 @@ export class SessionManager {
         // Shedding named junk reads the same maintained pack listing the loot
         // fills, and refuses combat and rest for itself.
         this.drop.onCharacter(state);
+        // And the purse's own half of the same list: the coins the player
+        // asked to be rid of, read off the listing that states how many.
+        this.loot.onCharacter(state);
         /*
          * And looking for what the room did not print. After the shedding and
          * before the banking for no reason but the reading order of the block;
@@ -4545,6 +4704,9 @@ export class SessionManager {
      * retreat that never happened.
      */
     const refused = this.walker.start(route, state, {
+      // Announced — running away is exactly the thing that has to be said out
+      // loud — and still nothing the player asked for.
+      asked: false,
       holdWhenHurt: false,
       resumeAfterFight: false,
       /*
@@ -4586,9 +4748,10 @@ export class SessionManager {
    *
    * Two things go, and they are the two that hold a *destination*:
    *
-   * - **A running or paused loop.** Paused as well as running: a pause keeps
-   *   the loop's place, and `resume` plans afresh from wherever the character
-   *   is — which after this is the temple.
+   * - **A running loop.** Stopped rather than forgotten, like every other
+   *   stop: it keeps its place, and pressing play plans afresh from wherever
+   *   the character is — which after this is the temple, and far enough from
+   *   the lap that `startMoving` asks before walking it back.
    * - **An armed safe-haven retreat.** It is spent when the fight ends, and a
    *   death *is* the fight ending: without this the next status line plans a
    *   route from the temple to a haven chosen for a fight that is already
@@ -4616,6 +4779,22 @@ export class SessionManager {
    * when the errand lets go (`walkOnAfterErrand`).
    */
   walkRoute(route: Route): string | null {
+    /*
+     * **One movement at a time.** A character is routing, looping or stopped
+     * (`src/shared/movement.ts`), and a route asked for while a lap runs used
+     * to start both: `Walker.start` supersedes the leg silently — it
+     * deliberately raises no `ended` — so the lap sat waiting for a leg that
+     * was never coming, then read the *route's* arrival as its own leg
+     * landing and planned its next stop from wherever the player had gone.
+     *
+     * A **stopped** lap is left exactly where it is. It is the longer-lived of
+     * the two memories and nothing about walking somewhere means giving it up:
+     * stopping a lap to walk to a shop and pressing play on arrival is the
+     * whole point of a stop being a pause.
+     */
+    if (this.loops.progress.status === 'running') {
+      this.loops.stop(t('session.loop.stoppedForRoute'));
+    }
     this.errandOwes = null;
     const errand = this.supplies.considerBeforeRoute(this.tracker.current);
     if (errand === null) return this.walker.start(route, this.tracker.current);
@@ -4629,6 +4808,175 @@ export class SessionManager {
       })
     );
     return null;
+  }
+
+  /** What this character is doing about going anywhere. See `movementOf`. */
+  get movement(): Movement {
+    return movementOf(this.walker.progress, this.loops.progress);
+  }
+
+  /**
+   * Stop moving — the one stop, whichever of the two is running.
+   *
+   * There were three (`walk:stop`, `loop:stop`, `loop:pause`) and the player
+   * had to know which of them applied before pressing one. They do not: a
+   * character is routing, looping or stopped, and *stop* means the same thing
+   * in all three sentences. See `src/shared/movement.ts`.
+   *
+   * **The lap first, then its leg.** `Walker.stop` reports `ended`
+   * synchronously, and on a lap still running that is read as a stop the
+   * client could not reach — a counted failure, and a fresh leg planned for a
+   * walk nothing went wrong with. Stopped first, the runner reads the ending
+   * as what it is.
+   *
+   * Nothing is forgotten either way: the lap keeps its place and the walker
+   * keeps its route, which is what `startMoving` picks back up.
+   */
+  stopMoving(): void {
+    const reason = t('session.walk.stoppedByPlayer');
+    if (this.loops.progress.status === 'running') this.loops.stop(reason);
+    this.walker.stop(reason);
+  }
+
+  /**
+   * Start moving: begin the named loop, or pick back up whatever was stopped.
+   *
+   * `loopName` is what the card's picker says, and it is only ever a *start*:
+   * naming the lap that is already stopped means resume it where it is, which
+   * is why the name is compared rather than obeyed. **Null is the picker's
+   * resume entry** — *whatever is stopped*, named by main rather than by the
+   * window, so the two can never disagree about which of the pair it was.
+   *
+   * **The wander check is the reason this returns a union rather than a
+   * refusal string.** A stop is a pause, so the character may have been walked
+   * — or killed and reborn in a temple on another map — a long way from
+   * whatever it was walking, and picking it back up would send it on a journey
+   * across the realm that nobody asked for. Past
+   * `tuning.walk.resumeAskSteps` the window asks first and presses play again
+   * with `confirmed`.
+   *
+   * The figure the two kinds measure is deliberately **not** the same, because
+   * the question is not:
+   *
+   * - A **route** already knows how far it had left when it stopped, so what
+   *   is asked about is the *difference* — how much further away the character
+   *   is now than it was. Walking on down a route you were already walking
+   *   asks nothing however long the route is.
+   * - A **lap** has no such figure: a leg is short by construction, so the
+   *   distance to the stop it is heading for **is** how far off the lap the
+   *   character has got.
+   */
+  startMoving(loopName: string | null, confirmed: number | null): MovementStart {
+    const state = this.tracker.current;
+    const movement = this.movement;
+    if (movement.moving) return { refused: t('session.move.alreadyMoving') };
+
+    const loop = this.loops.progress;
+    // A name that is not the lap already stopped is a different lap, and
+    // starting one is not resuming anything: it chooses its own nearest stop.
+    if (loopName !== null && loopName !== loop.name) {
+      const chosen = this.loopNamed(loopName);
+      if (chosen === undefined) {
+        return { refused: t('session.move.noSuchLoop', { name: loopName }) };
+      }
+      return this.startLoop(chosen);
+    }
+
+    /*
+     * Which of the two is picked back up is `movementOf`'s to say and not this
+     * method's, so the card cannot draw one and play the other: the face on
+     * screen and the thing play moves are the same reading of the same two
+     * progresses.
+     */
+    if (movement.kind === 'loop') return this.resumeLoop(state, confirmed);
+    if (movement.kind === 'route' && movement.resumable) return this.resumeRoute(confirmed);
+    return { refused: t('session.move.nothingToResume') };
+  }
+
+  /**
+   * A lap the player asked for, from the palette, the shelf or the card.
+   *
+   * **One movement at a time**: a lap starting takes the character off
+   * whatever route it was walking, said out loud rather than superseded
+   * silently by its own first leg — which is what `Walker.start` would do, and
+   * the mirror of the failure `walkRoute` stops a running lap to avoid.
+   */
+  startLoop(loop: Loop): MovementStart {
+    if (this.walker.walking) this.walker.stop(t('session.loop.stoppedForLoop'));
+    // Both destinations the walk was owed die with it: the shop it was going
+    // to and the route it was shopping on behalf of are about a journey the
+    // lap has just replaced.
+    this.journey = null;
+    this.errandOwes = null;
+    const refused = this.loops.start(loop, this.tracker.current);
+    return refused === null ? { started: true } : { refused };
+  }
+
+  /**
+   * The stopped lap, from wherever the character now stands.
+   *
+   * The distance to the stop it was heading for **is** how far off the lap the
+   * character has got, because a leg is short by construction. An unplannable
+   * leg is not a long one: `resume` reports the real refusal in the runner's
+   * own words rather than this guessing at it.
+   */
+  private resumeLoop(state: CharacterState, confirmed: number | null): MovementStart {
+    const loop = this.loops.progress;
+    const heading = this.loops.heading;
+    if (heading !== null) {
+      const plan = this.planFromHere(heading);
+      if (typeof plan !== 'string' && this.tooFar(plan.steps.length, confirmed)) {
+        return {
+          confirm: {
+            kind: 'loop',
+            name: loop.name ?? t('session.move.theLoop'),
+            steps: plan.steps.length
+          }
+        };
+      }
+    }
+    const refused = this.loops.resume(state);
+    return refused === null ? { started: true } : { refused };
+  }
+
+  /**
+   * The stopped route, planned afresh from here.
+   *
+   * What is asked about is the **difference** — how much further away the
+   * character is now than when it stopped — so walking on down a route you
+   * were already walking asks nothing however long the route is.
+   */
+  private resumeRoute(confirmed: number | null): MovementStart {
+    const owed = this.walker.unfinished;
+    if (owed === null) return { refused: t('session.move.nothingToResume') };
+    const plan = this.planFromHere(owed.to);
+    if (typeof plan === 'string') return { refused: plan };
+    const wandered = plan.steps.length - owed.left;
+    if (this.tooFar(wandered, confirmed)) {
+      return { confirm: { kind: 'route', name: owed.name, steps: wandered } };
+    }
+    // Through `walkRoute`, so a resumed route is consulted against the supply
+    // list exactly as the one the player drew was: being about to travel is
+    // what makes the pack matter, and resuming is being about to travel.
+    const refused = this.walkRoute(plan);
+    return refused === null ? { started: true } : { refused };
+  }
+
+  /**
+   * Whether this distance has to be asked about, given what was already
+   * agreed to.
+   *
+   * **`confirmed` is the figure the player was shown**, not a flag, and the
+   * distance is measured again on the way back through. A boolean was an
+   * unconditional bypass: the prompt says *34 steps*, the dialog sits there
+   * while the character is killed and reborn two maps away, and *walk it back*
+   * then walks a hundred and twenty with nothing asked — the exact sequence
+   * the prompt's own words describe. Agreeing to a journey is agreeing to
+   * *that* journey, so anything longer is asked again.
+   */
+  private tooFar(steps: number, confirmed: number | null): boolean {
+    if (steps <= tuning().walk.resumeAskSteps) return false;
+    return confirmed === null || steps > confirmed;
   }
 
   /**
@@ -4659,10 +5007,20 @@ export class SessionManager {
       this.retreat = null;
       this.sink.notice(t('session.safety.retreatDropped', { room: retreat.room }));
     }
-    const status = this.loops.progress.status;
-    if (status === 'running' || status === 'paused') {
-      this.loops.stop(t('session.loop.stoppedDied'));
-    }
+    /*
+     * A running lap is stopped; one already stopped **restates** why.
+     *
+     * The second half is not tidiness. `stop` is idempotent, so an
+     * already-stopped lap took nothing from a death — and `pausedForFollowers`
+     * is only spent when a publish shows the lap in some state other than
+     * `stopped`, which a skipped `stop()` never produces. A `@wait`, a death,
+     * and then `@ok` therefore walked the character out of the temple on a
+     * follower's say-so, past both guards. The claim is spent here explicitly,
+     * where the fact that spends it is.
+     */
+    if (this.loops.progress.status === 'running') this.loops.stop(t('session.loop.stoppedDied'));
+    else this.loops.restate(t('session.loop.stoppedDied'));
+    this.pausedForFollowers = false;
     // And an errand: the shop it was walking to is several maps away now.
     // With it goes the route it was shopping on behalf of — a death is the
     // player's cue to decide what happens next, not the client's.
@@ -4810,8 +5168,9 @@ export class SessionManager {
           })
     });
     // Through the same path the player's own disconnect takes, so the phase,
-    // the walker, the queue and the roster are all torn down identically.
-    this.disconnect();
+    // the walker, the queue and the roster are all torn down identically —
+    // said as the *client's* doing, because nobody pressed anything.
+    this.disconnect('client');
   }
 
   /**
@@ -4821,6 +5180,36 @@ export class SessionManager {
    * backwards from whatever just happened, and a session that runs all evening
    * must not grow one.
    */
+  /**
+   * Stands the arbiter down for as long as a form has the terminal.
+   *
+   * Cleared rather than paused: what is queued was decided for a character
+   * standing in a room, and the character is not standing in one — the server
+   * has already run `Player.Exits()` on them. The player's own keystrokes are
+   * untouched, as they are everywhere else; they never come through the queue,
+   * and typing into the form is the whole reason they are there.
+   *
+   * Said out loud, once, with the refusal recorded beside every other one: a
+   * client that silently stops automating looks exactly like a client that has
+   * crashed.
+   */
+  private holdForStatScreen(because: string): void {
+    if (!this.queue.hold(because)) return;
+    this.sink.notice(t('session.stats.held'));
+    this.noteSafety({
+      at: Date.now(),
+      action: 'stat screen',
+      because,
+      acted: true
+    });
+  }
+
+  /** A prompt came back, so there is a command line again. */
+  private releaseStatScreen(): void {
+    if (!this.queue.release()) return;
+    this.sink.notice(t('session.stats.released'));
+  }
+
   private noteSafety(decision: SafetyDecision): void {
     this.safetyLog.push(decision);
     if (this.safetyLog.length > tuning().session.safetyLogLimit) this.safetyLog.shift();

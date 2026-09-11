@@ -178,11 +178,128 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
   statedTheFindAlerts(home, note, options.template);
+  statedTheDesktopAlerts(home, note, options.template);
   statedTheStatusLine(home, note, options.template);
   theLineBecameARewrite(home, note, options.template);
   theRewritesBecameAList(home, note, options.template);
   quietedTheStatusLineAsks(home, note);
   loopsTookTheirRecordedNames(home, note, options.loopShelf);
+  theTransportBecameOneButton(home, note, options.internalTemplate);
+  theRoomRemoteFollowsWhere(home, note);
+  theCoinsCanBeShed(home, note);
+}
+
+/**
+ * `automation.loot.discardKinds` into every file that predates it, empty.
+ *
+ * A key inside a block the file already states is one `reconcileWithTemplate`
+ * never reaches, and a setting nobody's file names is a setting nobody finds —
+ * `coinKinds` needed exactly this treatment a fortnight ago. Written directly
+ * after it, because the two are one decision read together and a file whose
+ * *collect* and *discard* lists were pages apart would hide the rule that they
+ * are exclusive.
+ *
+ * **Empty, always.** The list is the one setting in the client that throws
+ * something away, and a migration that guessed at it would be spending the
+ * player's money on a reading of a file that says nothing.
+ */
+function theCoinsCanBeShed(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const loot = document.getIn(['automation', 'loot'], true);
+      if (!isMap(loot) || loot.has('discardKinds')) return false;
+
+      const pair = document.createPair('discardKinds', []) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = LOOT_DISCARD_COMMENT;
+      // Directly after the list it is exclusive with, wherever that sits; at
+      // the end for a file that never stated one.
+      const at = loot.items.findIndex((item) => keyText(item) === 'coinKinds');
+      if (at === -1) loot.items.push(pair);
+      else loot.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.coinsCanBeShed.one', params)
+      : t('notices.migration.coinsCanBeShed.many', params)
+  );
+}
+
+/** The template's own words for the list, so the two files read alike. */
+const LOOT_DISCARD_COMMENT = ` Which coins to put back on the floor whenever any are carried.
+
+ The other end of \`coinKinds\`, and the two are exclusive: a coin on both lists
+ would be picked up and dropped for ever, one command each way. A coin on
+ neither is kept -- that is the third answer the pair exists to express, and it
+ is what makes "stop collecting copper" different from "throw the copper away".
+
+ Empty here, and nothing shipped ever throws money away. A coin is only ever
+ dropped when the pack listing says how many are carried, in one
+ \`drop <count> <coin>\`, and never while an item in the pack answers to the same
+ word -- \`drop 15 copper\` would drop a copper ring instead, which is the
+ server's own matching rule and not a guess about it.`;
+
+/**
+ * `where-room` wherever `where` is granted — the same question, better worded.
+ *
+ * `@where-room` is `@where` with the ambiguity taken out: it answers with the
+ * realm's own address for the room rather than its name, and which of the two
+ * goes out is the **asker's** choice, made from whether this client believes
+ * the answerer runs it (`Remotes.ask`). So somebody who granted `where` and
+ * then saw the question refused would be refused for a wording they never
+ * chose and cannot see, which is the shape a permission must not have.
+ *
+ * `comeback-room` is deliberately **not** carried anywhere by this. It walks
+ * this character across the realm on somebody else's word — more authority
+ * than any grant in the table has ever carried — and nothing on disk can imply
+ * a decision nobody has made.
+ *
+ * Every list: the gang's, the party's, and each player's `allow`. A `deny` is
+ * left exactly as it is, for the same reason: adding a name to one would be
+ * refusing something nobody refused.
+ */
+function theRoomRemoteFollowsWhere(home: Home, note: (message: string) => void): void {
+  let added = 0;
+  editOptions(home, (document) => {
+    const remotes = document.getIn(['automation', 'remotes'], true);
+    if (!isMap(remotes)) return false;
+
+    let changed = false;
+    const follow = (node: unknown): void => {
+      if (!isSeq(node)) return;
+      const words = node.items.map((item) => (isScalar(item) ? String(item.value).trim() : ''));
+      const spelling = words.find((word) => word.replace(/^@/, '').toLowerCase() === 'where');
+      if (spelling === undefined) return;
+      if (words.some((word) => word.replace(/^@/, '').toLowerCase() === 'where-room')) return;
+      // Their own spelling: a file that writes `@where` keeps its `@`.
+      node.items.push(document.createNode(spelling.startsWith('@') ? '@where-room' : 'where-room'));
+      changed = true;
+      added += 1;
+    };
+
+    follow(remotes.get('gang', true));
+    follow(remotes.get('party', true));
+    const players = remotes.get('players', true);
+    if (isMap(players)) {
+      for (const item of players.items) {
+        const grant = item.value;
+        if (isMap(grant)) follow(grant.get('allow', true));
+      }
+    }
+    return changed;
+  });
+
+  if (added > 0) {
+    note(t('notices.migration.roomRemoteFollowsWhere', { file: home.options, count: added }));
+  }
 }
 
 /**
@@ -1433,6 +1550,49 @@ function statedTheFindAlerts(
 
   if (!stated) return;
   note(t('notices.migration.findAlertsStated', { file: home.options }));
+}
+
+/**
+ * `ui.alerts.desktop` into an options file that predates it, on.
+ *
+ * A key inside an existing block, so `reconcileWithTemplate` will not bring it
+ * — it copies whole top-level blocks and never reaches inside one. Written on
+ * rather than off, like the shipped default and for the shipped default's
+ * reason: a notification feature nobody finds is one that was never built,
+ * and nothing is raised while the window is in front anyway.
+ *
+ * Profiles are left alone. A character's `ui.alerts` is a sparse overlay and
+ * records merge by key, so one that states a floor and a mute list inherits
+ * this block from the options file untouched.
+ */
+function statedTheDesktopAlerts(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  let stated = false;
+
+  edit(home.options, (document) => {
+    const alerts = document.getIn(['ui', 'alerts'], true);
+    if (!isMap(alerts) || alerts.has('desktop')) return false;
+
+    const d = DEFAULT_CONFIG.ui.alerts.desktop;
+    const block = document.createNode({
+      enabled: d.enabled,
+      whileFocused: d.whileFocused,
+      mute: [...d.mute]
+    });
+    const pair = document.createPair('desktop', block) as Pair;
+    const lead = comments.get('ui.alerts.desktop');
+    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+    alerts.items.push(pair);
+    stated = true;
+    return true;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.desktopAlertsStated', { file: home.options }));
 }
 
 function statedTheDarkConsole(
@@ -4178,6 +4338,14 @@ function theTuningBlockGainedKeys(
      * neither can be tuned to how fast somebody reads.
      */
     addKey('view', 'talkFollowResumeMs', DEFAULT_INTERNAL.tuning.view.talkFollowResumeMs);
+    /*
+     * How long a desktop notification's kind rests before it may speak again
+     * about the same character (2026-09-10, todo 01). It is the number that
+     * decides whether an evening away leaves one notification or three
+     * hundred, so a file that cannot state it is a file in which the feature
+     * cannot be made bearable.
+     */
+    addKey('view', 'desktopAlertGapMs', DEFAULT_INTERNAL.tuning.view.desktopAlertGapMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -4291,3 +4459,145 @@ function directories(dir: string): string[] {
     return [];
   }
 }
+
+/**
+ * Three transport buttons become one, and the wander check gains its figure.
+ *
+ * `loop:toggle`, `loop:stop` and `walk:stop` were the toolbar asking the
+ * player to know whether they were looping or routing before they could press
+ * the right key. They are one thing — moving — so they are one button,
+ * `move:toggle`, and the palette's `loop:stop` is `move:stop` for the same
+ * reason.
+ *
+ * **Both lists are ids in a file the client tells the player to edit by hand**
+ * (`toolbar.pinned`, `palette.pinned`), and a pin left under a retired name is
+ * a button that silently stops being drawn — the failure
+ * `theLoopSettlesAfterAnEscape` records, in the same two lists. So the pins are
+ * renamed in place: the **first** of the three old toolbar ids becomes
+ * `move:toggle` and the rest are dropped, which keeps the button roughly where
+ * the row already had it rather than appending it at the end.
+ *
+ * The paragraph above `toolbar:` lists every button there is by name, so it is
+ * refreshed from the shipped template when it still recommends the old three.
+ * And `tuning.walk.resumeAskSteps` is written in beside `maxHolds`, for
+ * `statedTheStepNudge`'s reason: a key added inside an existing block reaches
+ * nobody who has already run the client, and this one decides whether pressing
+ * play walks a character across the realm or asks first.
+ */
+function theTransportBecameOneButton(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const retired = ['loop:toggle', 'loop:stop', 'walk:stop'];
+  let changed = false;
+  edit(home.internal, (document) => {
+    let touched = false;
+
+    const walk = document.getIn(['tuning', 'walk'], true);
+    if (isMap(walk) && !walk.has('resumeAskSteps')) {
+      // The default itself, never a copy: `internal.test.ts` binds the shipped
+      // template to `TUNING_DEFAULTS`, and a literal here would be a third copy
+      // nothing binds. `statedTheStepNudge` states the whole argument.
+      const pair = document.createPair(
+        'resumeAskSteps',
+        DEFAULT_INTERNAL.tuning.walk.resumeAskSteps
+      ) as Pair;
+      const at = walk.items.findIndex(
+        (item) => isScalar(item.key) && String(item.key.value) === 'maxHolds'
+      );
+      if (at === -1) walk.items.push(pair);
+      else walk.items.splice(at + 1, 0, pair);
+      if (isScalar(pair.key)) pair.key.commentBefore = RESUME_ASK_COMMENT;
+      touched = true;
+    }
+
+    const buttons = document.getIn(['toolbar', 'pinned'], true);
+    if (isSeq(buttons)) {
+      const has = (id: string): boolean =>
+        buttons.items.some((item) => isScalar(item) && item.value === id);
+      let kept = has('move:toggle');
+      const left = buttons.items.filter((item) => {
+        if (!isScalar(item) || !retired.includes(String(item.value))) return true;
+        touched = true;
+        if (kept) return false;
+        // The first of the three takes the new name where it already sat.
+        item.value = 'move:toggle';
+        kept = true;
+        return true;
+      });
+      buttons.items = left;
+    }
+
+    const navigate = document.getIn(['palette', 'pinned', 'navigate'], true);
+    if (isSeq(navigate)) {
+      const already = navigate.items.some((item) => isScalar(item) && item.value === 'move:stop');
+      navigate.items = navigate.items.filter((item) => {
+        if (!isScalar(item) || item.value !== 'loop:stop') return true;
+        touched = true;
+        if (already) return false;
+        item.value = 'move:stop';
+        return true;
+      });
+    }
+
+    const toolbar = document.get('toolbar', true);
+    const lead = document.contents;
+    if (isMap(toolbar) && isMap(lead)) {
+      const pair = lead.items.find((item) => keyText(item) === 'toolbar');
+      const key = pair === undefined ? null : (pair.key as Scalar);
+      const current = key === null ? undefined : key.commentBefore;
+      if (typeof current === 'string' && retired.some((id) => current.includes(id))) {
+        const fresh = templateLead(template, 'toolbar');
+        if (fresh !== undefined && fresh !== current) {
+          key!.commentBefore = fresh;
+          touched = true;
+        }
+      }
+    }
+
+    changed ||= touched;
+    return touched;
+  });
+  if (changed) note(t('notices.migration.oneTransportButton', { file: home.internal }));
+}
+
+/**
+ * The paragraph the shipped template puts above one **top-level** block.
+ *
+ * `templateComments` reads one and two levels *inside* a root block, which is
+ * where every stale paragraph it was written for lives. This one is the root
+ * block's own lead, and the list of button ids is in it.
+ */
+function templateLead(template: string | undefined, root: string): string | undefined {
+  if (template === undefined || !fs.existsSync(template)) return undefined;
+  let document: Document;
+  try {
+    document = parseDocument(fs.readFileSync(template, 'utf8'));
+  } catch {
+    return undefined;
+  }
+  if (document.errors.length > 0) return undefined;
+  const contents = document.contents;
+  if (!isMap(contents)) return undefined;
+  const pair = contents.items.find((item) => keyText(item) === root);
+  if (pair === undefined) return undefined;
+  const comment = (pair.key as Scalar).commentBefore;
+  return typeof comment === 'string' ? comment : undefined;
+}
+
+const RESUME_ASK_COMMENT = ` How far the character may have wandered from what it was walking before
+ pressing play asks about it first.
+
+ A stop is a pause that may or may not be permanent, so the thing it stopped is
+ still there hours later -- and the character may have been walked across the
+ realm, or killed and reborn in a temple on another map, in between. Picking it
+ back up is then a journey in its own right that nobody asked for, which on a
+ realm full of wandering monsters is not free. Past this many steps the client
+ answers play with a question.
+
+ Measured in the steps the resume would actually walk: for a route, how many
+ *more* than it still owed when it stopped, so walking on down a route you were
+ already on never asks however long it is; for a lap, the distance to the stop
+ it was heading for, since a leg is short by construction and that distance is
+ how far off the lap you are.`;

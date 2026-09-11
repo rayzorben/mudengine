@@ -31,7 +31,7 @@ const web = read('src/renderer/src/lib/webBridge.ts');
  * still has to be a method on the bridge; it is only the channel constant it
  * does not name.
  */
-const ANSWERED_IN_THE_WINDOW = ['copyText', 'pasteText', 'chooseRealm'] as const;
+const ANSWERED_IN_THE_WINDOW = ['copyText', 'pasteText', 'chooseRealm', 'raiseWindow'] as const;
 
 /** Whether a file mentions `Invoke.name`, `Send.name` or `Push.name`. */
 const mentions = (source: string, group: string, key: string): boolean =>

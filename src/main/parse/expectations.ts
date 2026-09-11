@@ -597,6 +597,33 @@ export class Expectations {
   }
 
   /**
+   * The move a *hold* has just refused — the realm's own words for the effect
+   * that is standing on the character (`You are flat on your back!`, `You are
+   * entangled!`, `You are held!`). Returns whether anything was taken.
+   *
+   * `Exits.Move` calls `CheckForHoldPerson()` before anybody is moved
+   * anywhere and returns the moment it answers true, printing the holding
+   * spell's own `DescMessage.Line3` and a prompt: **no room is coming**, and
+   * an unconsumed move here is the failure the toll refusal and `You are
+   * blind.` have both already shipped — `pendingMoves` above zero for the rest
+   * of the session, with the escape, the walk, the lap and retaliation all
+   * gated on it.
+   *
+   * Narrower than `shiftRefused`, which takes whatever is at the head: this
+   * sentence is printed **twice over** — when the effect lands as well as when
+   * it refuses a move — so only a move at the head may be taken for it. A
+   * `look` or a `st` waiting there is answering its own command, and the
+   * effect landing mid-fight has refused nothing at all.
+   */
+  shiftHeldMove(): boolean {
+    let ahead = 0;
+    while (this.pending[ahead]?.kind === 'reread') ahead += 1;
+    if (this.pending[ahead]?.kind !== 'move') return false;
+    this.pending.splice(0, ahead + 1);
+    return true;
+  }
+
+  /**
    * The peek a *look refusal* has just answered — `There are no exits to the
    * south!`, which is what `l s` gets at a wall, a hidden exit nobody has
    * found, a text exit or a remote-action one (`TryLookThroughExit`: the look

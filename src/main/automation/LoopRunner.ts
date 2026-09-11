@@ -147,6 +147,19 @@ export class LoopRunner {
    * same predicate, so the two cannot disagree about whether to move.
    */
   private afflicted: 'blind' | 'held' | 'poisoned' | null = null;
+  /**
+   * When the hold above began, while it is a `held` one. Null otherwise.
+   *
+   * The lap needs the bound `Walker.holdForAffliction` takes for the same
+   * reason and cannot borrow it: the walker's probe is the step it re-sends,
+   * and a lap held **between** legs is walking nothing to probe with. So the
+   * release here is a release into the next leg, whose first step is that
+   * probe — and whose own hold takes a fresh window if the server refuses it.
+   *
+   * `tuning.walk.heldFallbackMs` is the one statement of the figure; the rule
+   * is written twice because what the two do with it differs. See the key.
+   */
+  private heldSince: number | null = null;
   private movement: MovementConfig = DEFAULT_CONFIG.automation.movement;
   private walk: WalkConfig = DEFAULT_CONFIG.automation.walk;
   /**
@@ -183,9 +196,9 @@ export class LoopRunner {
    *
    * Its own flag for the reason the two above are: it clears on one fact —
    * the character back in the realm and placed — and on none of the ones the
-   * other holds watch. Set for a paused loop too, so a `resume` pressed while
+   * other holds watch. Set for a stopped loop too, so a `resume` pressed while
    * the socket is down plans nothing into it; only a running loop *reports*
-   * the hold, because a paused loop is not waiting for anything.
+   * the hold, because a stopped loop is not waiting for anything.
    */
   private offline = false;
   private timer: NodeJS.Timeout | null = null;
@@ -243,8 +256,8 @@ export class LoopRunner {
       stopNames: this.loop?.stops.map((entry) => splitStop(entry).name) ?? [],
       laps: this.laps,
       reason: this.reason,
-      // Only a running loop is *held*; a paused or stopped one is not waiting
-      // for anything, whatever the last status line said. Offline first: the
+      // Only a running loop is *held*; a stopped one is not waiting for
+      // anything, whatever the last status line said. Offline first: the
       // character is not in the realm, so nothing the others say is current.
       hold: running
         ? this.offline
@@ -279,6 +292,7 @@ export class LoopRunner {
     this.locates = 0;
     this.hurt = false;
     this.afflicted = null;
+    this.heldSince = null;
     this.escaped = false;
     this.offline = false;
     this.forward = true;
@@ -315,46 +329,67 @@ export class LoopRunner {
     return this.advance(true);
   }
 
+  /**
+   * Stops the lap where it is, whoever asked and whatever the reason.
+   *
+   * **The loop and its place round it are kept**, which is what folded
+   * `pause` into this method (2026-09-11): a stop is a pause that may or may
+   * not be permanent, so `resume` picks the very same lap up at the very same
+   * stop from wherever the character has got to since. Nothing is decided
+   * while stopped — `onCharacter` and `onWalkEnded` both return on anything
+   * but `running` — and the dwell is put down, because a lap that is not
+   * running is not between stops.
+   *
+   * The leg being walked is the caller's to end: the runner never touches the
+   * walker directly, and a leg left walking under a stopped loop would arrive
+   * and dwell as though nothing had happened. `SessionManager.stopMoving` is
+   * the one path that does both.
+   */
   stop(reason: string): void {
-    if (this.status !== 'running' && this.status !== 'paused') return;
+    if (this.status !== 'running') return;
     this.clearTimer();
     this.status = 'stopped';
     this.reason = reason;
     this.errand = false;
     this.offline = false;
+    this.lingering = false;
+    this.waiting = false;
     this.events.notice?.(t('automation.loops.stopped', { reason }));
     this.publish();
   }
 
   /**
-   * Holds the loop where it is until `resume`.
+   * Something that outranks the stop restates why the lap is not moving.
    *
-   * Unlike `stop`, the loop and its place round it are kept. The leg being
-   * walked is the caller's to end — the runner never touches the walker
-   * directly, and a leg left walking under a paused loop would arrive and
-   * dwell as though nothing had happened. Nothing is decided while paused:
-   * `onCharacter` and `onWalkEnded` both return on anything but `running`.
+   * `stop` is idempotent on purpose — the second press of a control is not a
+   * new thing going wrong, and a route asked for while the lap is already
+   * stopped must not say so again — but a **death** is neither of those: it is
+   * a different and more important fact about why nothing is moving, arriving
+   * after the stop that is on screen. Without this the card read *Soul asked
+   * the party to wait* under a character lying in a temple.
+   *
+   * Only for a lap that is already stopped; a running one is `stop`'s.
    */
-  pause(): void {
-    if (this.status !== 'running') return;
-    this.clearTimer();
-    this.status = 'paused';
-    this.lingering = false;
-    this.waiting = false;
-    this.events.notice?.(t('automation.loops.paused'));
+  restate(reason: string): void {
+    if (this.status !== 'stopped' || this.reason === reason) return;
+    this.reason = reason;
+    this.events.notice?.(t('automation.loops.stopped', { reason }));
     this.publish();
   }
 
   /**
    * Walks on from wherever the character actually is.
    *
-   * Planned afresh rather than from where the pause left it — the same
-   * recovery a fight gets — because a paused character may have been walked,
+   * Planned afresh rather than from where the stop left it — the same
+   * recovery a fight gets — because a stopped character may have been walked,
    * run or teleported in the meantime, and a route from a room it is not in
-   * is the desynchronisation the walker exists to refuse.
+   * is the desynchronisation the walker exists to refuse. How far it has
+   * wandered is `SessionManager.startMoving`'s question, not this one's: the
+   * runner plans a leg, and whether a leg that long is what the player meant
+   * is a decision only the player can make.
    */
   resume(state: CharacterState): string | null {
-    if (this.status !== 'paused' || !this.loop) return t('automation.loops.refusalNotPaused');
+    if (this.status !== 'stopped' || !this.loop) return t('automation.loops.refusalNotStopped');
     if (state.phase !== 'in-game') return t('automation.loops.refusalNotInRealm');
     this.status = 'running';
     this.reason = null;
@@ -401,11 +436,11 @@ export class LoopRunner {
    * For a stop the game will not let the character reach — a door somebody
    * shut, a lair that is somebody else's tonight. Counts towards the lap like
    * any step, because a lap is the list run through once however it is
-   * walked. While paused it only moves the pointer; the walk waits for
-   * `resume`. The leg being walked is the caller's to end, as with `pause`.
+   * walked. While stopped it only moves the pointer; the walk waits for
+   * `resume`. The leg being walked is the caller's to end, as with `stop`.
    */
   skip(): string | null {
-    if (!this.loop || (this.status !== 'running' && this.status !== 'paused')) {
+    if (!this.loop || (this.status !== 'running' && this.status !== 'stopped')) {
       return t('automation.loops.refusalNotLooping');
     }
     this.clearTimer();
@@ -417,7 +452,7 @@ export class LoopRunner {
         stopName: this.loop.stops[this.index]?.room ?? t('automation.loops.fallbackStop')
       })
     );
-    if (this.status === 'paused') {
+    if (this.status === 'stopped') {
       const next = nextStop(this.loop, this.index, this.forward);
       this.index = next.index;
       this.forward = next.forward;
@@ -437,7 +472,7 @@ export class LoopRunner {
    * flight finishes where it was going.
    */
   reverse(): string | null {
-    if (!this.loop || (this.status !== 'running' && this.status !== 'paused')) {
+    if (!this.loop || (this.status !== 'running' && this.status !== 'stopped')) {
       return t('automation.loops.refusalNotLooping');
     }
     if (!this.loop.bounce) return t('automation.loops.refusalNotBounce');
@@ -460,6 +495,7 @@ export class LoopRunner {
     this.lingering = false;
     this.hurt = false;
     this.afflicted = null;
+    this.heldSince = null;
     this.escaped = false;
     this.errand = false;
     this.offline = false;
@@ -473,10 +509,16 @@ export class LoopRunner {
   /**
    * Whether this loop is to be carried into the next connection.
    *
-   * True only for a loop the connection went out from under — running or
-   * paused. `SessionManager.connect` resets everything else a session holds
-   * and reads this to leave the loop alone; a loop stopped, or one running on
-   * a socket that has not closed yet, is put down as before.
+   * True only for a loop the connection went out from under — running, or
+   * stopped with its place kept, since a stop is a pause and the lap is still
+   * there to press play on. `SessionManager.connect` resets everything else a
+   * session holds and reads this to leave the loop alone; a loop nothing has
+   * started, or one running on a socket that has not closed yet, is put down
+   * as before.
+   *
+   * **A different realm is not a reconnection** and does not consult this:
+   * the stops are room ids in a world this character is no longer in, so
+   * `SessionManager` drops the lap outright and says so.
    */
   get carried(): boolean {
     return this.offline;
@@ -504,7 +546,7 @@ export class LoopRunner {
    */
   noteOffline(): void {
     if (this.offline) return;
-    if (this.status !== 'running' && this.status !== 'paused') return;
+    if (this.status !== 'running' && this.status !== 'stopped') return;
     this.offline = true;
     this.clearTimer();
     this.errand = false;
@@ -531,7 +573,7 @@ export class LoopRunner {
    * dwell from the state actually on the books before planning anything, and a
    * second copy of that here would be the two halves of one gate. The locate
    * budget starts over because the fact it bounds — where the character is —
-   * has just been re-established. A paused loop stays paused; `resume` plans
+   * has just been re-established. A stopped loop stays stopped; `resume` plans
    * afresh from wherever the character is, as it always has.
    */
   noteOnline(): void {
@@ -791,7 +833,13 @@ export class LoopRunner {
      * back. The edge is published and said once each way.
      */
     const affliction = afflictionHolding(state.afflictions, this.movement);
-    if (affliction !== null) {
+    /* The bound, and why the lap takes one of its own — see `heldSince`. */
+    const spent =
+      affliction === 'held' &&
+      this.heldSince !== null &&
+      this.now() - this.heldSince >= tuning().walk.heldFallbackMs;
+    if (affliction !== null && !spent) {
+      if (affliction === 'held') this.heldSince ??= this.now();
       if (this.afflicted !== affliction) {
         if (this.afflicted === null) this.events.notice?.(t('automation.loops.afflicted'));
         this.afflicted = affliction;
@@ -800,9 +848,12 @@ export class LoopRunner {
       }
       return;
     }
+    this.heldSince = null;
     if (this.afflicted !== null) {
       this.afflicted = null;
-      this.events.notice?.(t('automation.loops.afflictionOver'));
+      // Silent when the window is what released it: the condition has not
+      // passed, and the leg about to be planned is how the lap finds out.
+      if (!spent) this.events.notice?.(t('automation.loops.afflictionOver'));
       this.publish();
     }
     const fraction =
@@ -1165,6 +1216,23 @@ export class LoopRunner {
           this.stopRooms.slice(0, this.index + 1).reverse()
         : this.stopRooms.slice(this.index);
     return ahead.filter((room): room is RoomId => room !== null);
+  }
+
+  /**
+   * The room this lap is at or heading for, or null where the realm could not
+   * place it and while nothing has been started.
+   *
+   * Not `remainingStops`, which is deliberately empty for a lap that is not
+   * running: that list is what the map *draws*, and a lap the client is not
+   * walking must not be drawn as one it is. This is the same fact asked for a
+   * different reason — `SessionManager.startMoving` measures how far the
+   * character has wandered from the lap before it walks it back — and the
+   * difference between the two questions is exactly why they are two
+   * accessors.
+   */
+  get heading(): RoomId | null {
+    if (this.loop === null || this.status === 'idle') return null;
+    return this.stopRooms[this.index] ?? null;
   }
 
   /** The stop the character is standing in, else the first. */

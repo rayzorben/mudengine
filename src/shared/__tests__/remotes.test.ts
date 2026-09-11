@@ -19,7 +19,12 @@ import {
   REMOTE_NAMES,
   formatVitals,
   parseRemoteCall,
-  parseRemoteReply
+  parseRemoteReply,
+  formatRoomAddress,
+  parseRoomAddress,
+  isExtended,
+  plainRemote,
+  EXTENDED_REMOTES
 } from '../remotes';
 
 describe('the `@` command vocabulary', () => {
@@ -278,5 +283,96 @@ describe("answering @settings and @status in MegaMUD's frame with this client's 
     expect(formatStatus('loop', 'Rats stop 2/4 lap 1', 'unknown')).toBe(
       '{LOOP: Rats stop 2/4 lap 1 -Stealth?}'
     );
+  });
+});
+
+/*
+ * The extended pair. Everything about them exists because a room *name* is
+ * ambiguous — 83.85% of this realm's edges lead to a namesake — and the
+ * realm's own `map/number` is not.
+ */
+describe('the extended wording', () => {
+  it('pairs each extended name with the plain one it stands in for', () => {
+    for (const [plain, extended] of Object.entries(EXTENDED_REMOTES)) {
+      expect(isExtended(extended)).toBe(true);
+      expect(isExtended(plain as never)).toBe(false);
+      expect(plainRemote(extended)).toBe(plain);
+    }
+  });
+
+  it('has a row in the table for every extended name, like every other', () => {
+    for (const extended of Object.values(EXTENDED_REMOTES)) {
+      expect(REMOTE_NAMES).toContain(extended);
+      expect(REMOTES[extended].name).toBe(extended);
+    }
+  });
+
+  it('formats a room as its address, with the name behind it', () => {
+    expect(formatRoomAddress(1, 2150, 'Town Gates')).toBe('{1/2150 Town Gates}');
+    expect(formatRoomAddress(1, 2150, null)).toBe('{1/2150}');
+  });
+
+  /*
+   * Null rather than a number it does not have, the rule every formatter here
+   * keeps: a client walking to an address invented from a room read by name
+   * alone is the failure the address exists to prevent.
+   */
+  it('formats nothing for a character the realm data has not placed', () => {
+    expect(formatRoomAddress(null, 2150, 'Town Gates')).toBe(null);
+    expect(formatRoomAddress(1, null, 'Town Gates')).toBe(null);
+  });
+
+  it('reads an address out of a command argument, and refuses anything else', () => {
+    expect(parseRoomAddress('1/2150')).toEqual({ map: 1, room: 2150 });
+    expect(parseRoomAddress(' 1 / 2150 ')).toEqual({ map: 1, room: 2150 });
+    expect(parseRoomAddress('Town Gates')).toBe(null);
+    expect(parseRoomAddress('1/2150 Town Gates')).toBe(null);
+    expect(parseRoomAddress(null)).toBe(null);
+  });
+
+  it('reads the three replies only this conversation has', () => {
+    expect(parseRemoteReply('{mudengine 0.6.5}')).toEqual({
+      kind: 'version',
+      client: 'mudengine',
+      version: '0.6.5'
+    });
+    expect(parseRemoteReply('{MegaMMUD 2.1}')).toEqual({
+      kind: 'version',
+      client: 'MegaMMUD',
+      version: '2.1'
+    });
+    expect(parseRemoteReply('{1/2150 Town Gates}')).toEqual({
+      kind: 'room',
+      map: 1,
+      number: 2150,
+      name: 'Town Gates'
+    });
+    expect(parseRemoteReply('{1/2150}')).toEqual({
+      kind: 'room',
+      map: 1,
+      number: 2150,
+      name: null
+    });
+    expect(parseRemoteReply('{command invalid or not allowed}')).toEqual({ kind: 'refused' });
+  });
+
+  /*
+   * The shapes the version pattern must not swallow, since it runs over every
+   * brace-wrapped thing anybody says. `@where`'s own answers are among them,
+   * which is the collision that matters.
+   */
+  it('does not read another answer in the vocabulary as a version', () => {
+    for (const other of [
+      '{ok}',
+      '{No one}',
+      '{Nothing}',
+      '{yes: 1}',
+      '{Town Gates}',
+      '{Town Gates (Exits: N,S)}',
+      '{HP=600/600}',
+      '{WALK: Town Gates}'
+    ]) {
+      expect(parseRemoteReply(other)?.kind).not.toBe('version');
+    }
   });
 });

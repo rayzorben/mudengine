@@ -53,6 +53,7 @@ import type { ProfileAccent } from './profiles';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
+import type { MovementStart } from './movement';
 import type { RoomVerdict } from './verdict';
 import type {
   LoopDraft,
@@ -556,8 +557,16 @@ export const Invoke = {
   routeTo: 'world:route',
   /** Walk a planned route. Returns why it could not start, or null. */
   walkRoute: 'walk:start',
-  /** Abandon the walk in progress. */
-  stopWalk: 'walk:stop',
+  /**
+   * Start moving: begin the loop named, or pick back up whatever was stopped.
+   *
+   * The one play button. A character is routing, looping or stopped
+   * (`src/shared/movement.ts`), so there is one channel for *go* and one for
+   * *stop* rather than the five this replaced.
+   */
+  startMoving: 'move:start',
+  /** Stop moving, whichever of the two is running. The place is kept. */
+  stopMoving: 'move:stop',
   listLoops: 'loop:list',
   startLoop: 'loop:start',
   /**
@@ -568,11 +577,6 @@ export const Invoke = {
    * handler in main.
    */
   runLoop: 'loop:run',
-  stopLoop: 'loop:stop',
-  /** Hold the loop where it is, and end the leg being walked. */
-  pauseLoop: 'loop:pause',
-  /** Walk on from wherever the character actually is. */
-  resumeLoop: 'loop:resume',
   /** Give up on the current stop and head for the next. */
   skipLoopStop: 'loop:skip',
   /** Turn a bounce loop round. Refused for a plain loop. */
@@ -646,6 +650,18 @@ export const Invoke = {
    * the whole point. Main knows where everybody is, so main does it.
    */
   gatherWindows: 'windows:gather',
+  /**
+   * Bring the asking window to the front.
+   *
+   * For one caller: somebody clicking a desktop notification about a character
+   * whose window is behind everything else. A notification that cannot be
+   * acted on is a notification that gets turned off, and `window.focus()` in a
+   * renderer does not raise a `BrowserWindow` — only the host can.
+   *
+   * Answered in the window itself over the web bridge, where the tab is on the
+   * viewer's machine and main is not.
+   */
+  raiseWindow: 'windows:raise',
 
   // -- app level
   /** Current options plus the path they were read from. */
@@ -957,7 +973,25 @@ export interface IpcApi {
   routeTo(session: SessionId, map: number, room: number): Promise<Route>;
   /** Resolves to the reason the walk could not start, or null if it did. */
   walkRoute(session: SessionId, route: Route): Promise<string | null>;
-  stopWalk(session: SessionId): Promise<void>;
+  /**
+   * Start moving. `loop` names the loop the card's picker shows — null is the
+   * picker's resume entry, and the name of the lap already stopped means
+   * *resume it*.
+   *
+   * Resolves to what happened: walking, a refusal, or a question about how far
+   * the character has wandered from what it was walking. `confirmed` answers
+   * that question with **the figure the player was shown** — main measures
+   * again and asks afresh if the journey has grown since, so a dialog left
+   * standing through a death cannot become a blank cheque. See
+   * {@link MovementStart}.
+   */
+  startMoving(
+    session: SessionId,
+    loop: string | null,
+    confirmed: number | null
+  ): Promise<MovementStart>;
+  /** Stop moving, whichever of the two is running. Keeps its place. */
+  stopMoving(session: SessionId): Promise<void>;
   /**
    * The loops this session's *resolved* config defines. Asked per session
    * because a profile overlay replaces `automation.loops` — the global file's
@@ -972,10 +1006,6 @@ export interface IpcApi {
   runLoop(session: SessionId, loop: Loop): Promise<string | null>;
   /** Start a named loop from `automation.loops`. Resolves to a refusal, or null. */
   startLoop(session: SessionId, name: string): Promise<string | null>;
-  stopLoop(session: SessionId): Promise<void>;
-  pauseLoop(session: SessionId): Promise<void>;
-  /** Resolves to a refusal — not paused, not in the realm — or null. */
-  resumeLoop(session: SessionId): Promise<string | null>;
   /** Resolves to a refusal — nothing looping — or null. */
   skipLoopStop(session: SessionId): Promise<string | null>;
   /** Resolves to a refusal — nothing looping, or not a bounce loop — or null. */
@@ -1012,6 +1042,8 @@ export interface IpcApi {
   popOut(session: SessionId): Promise<string | null>;
   popIn(session: SessionId): Promise<string | null>;
   gatherWindows(): Promise<string | null>;
+  /** Bring this window to the front. See the channel. */
+  raiseWindow(): Promise<void>;
 
   getConfig(): Promise<ConfigSnapshot>;
   /** The client's internal settings — the palette's pinned commands live here. */

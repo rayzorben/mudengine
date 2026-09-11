@@ -339,3 +339,25 @@ export function noteRemoteCall(
     online: true
   });
 }
+
+/**
+ * What another player's client said it is, from the `@version` it answered.
+ *
+ * Two facts, and they are allowed to disagree: `client` is the string for a
+ * person to read, and `extendedRemotes` is what this client acts on. A
+ * `@version` naming this client settles both; a refused extended question
+ * settles only the second, because it says what does *not* work and nothing
+ * about what they are running instead.
+ */
+export function noteRemoteClient(
+  registry: PlayerRegistry,
+  from: string,
+  at: number,
+  facts: { client?: string; extendedRemotes: 'yes' | 'no' }
+): PlayerRegistry {
+  return observe(registry, from, at, {
+    ...(facts.client === undefined ? {} : { client: facts.client }),
+    extendedRemotes: facts.extendedRemotes,
+    online: true
+  });
+}

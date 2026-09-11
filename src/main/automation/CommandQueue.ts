@@ -156,6 +156,25 @@ export class CommandQueue {
   private timerAt = 0;
   /** When each outstanding command was sent, oldest first. */
   private outstanding: number[] = [];
+  /**
+   * Why the character is not at a command prompt at all, or null.
+   *
+   * Distinct from `typingHeld`, and absolute where that one is not. A
+   * half-typed line means the server would *glue* what is sent onto it, which
+   * an emergency is allowed to answer by committing the line first. A telnet
+   * field screen means there is no command line to send to: every byte is a
+   * keystroke in whichever form field has focus, and the character's family
+   * name is the field that has it on the way in. So nothing is exempt — not an
+   * emergency, not the player's own toolbar — and what is already queued is
+   * dropped rather than held, because an intent raised for a character
+   * standing in a room is not an intent about a form.
+   *
+   * The server gives the client nothing to pace on here: `train stats` prints
+   * no prompt (`TrainCommand.cs:72`), so `reclaimStalled` below hands the
+   * window back after the acknowledgement timeout and the queue sends into the
+   * form for as long as it is up. That is the bug this exists for.
+   */
+  private held: string | null = null;
 
   constructor(
     private config: AutomationConfig,
@@ -164,6 +183,34 @@ export class CommandQueue {
 
   configure(config: AutomationConfig): void {
     this.config = config;
+  }
+
+  /**
+   * Stands the whole queue down and empties it. Returns false if already held.
+   *
+   * Idempotent on purpose: the screen is armed from two independent facts —
+   * the command the player typed and the screen itself arriving — and the
+   * second must not re-announce what the first already said.
+   */
+  hold(reason: string): boolean {
+    if (this.held !== null) return false;
+    // Emptied first: `clear` is also what lifts a hold, so the order matters.
+    this.clear();
+    this.held = reason;
+    return true;
+  }
+
+  /** Back at a prompt. Returns false if nothing was held. */
+  release(): boolean {
+    if (this.held === null) return false;
+    this.held = null;
+    this.pump();
+    return true;
+  }
+
+  /** Why nothing may be sent, or null. */
+  get holding(): string | null {
+    return this.held;
   }
 
   get snapshot(): QueueSnapshot {
@@ -184,6 +231,10 @@ export class CommandQueue {
    * duplicate of something already queued, or past its expiry.
    */
   enqueue(intent: Intent): boolean {
+    // Ahead of the `user` exemption every other gate here makes: a person's
+    // toolbar press is a command for the realm too, and the realm is not what
+    // is listening.
+    if (this.held !== null) return false;
     if (!this.config.enabled && intent.priority !== 'user') return false;
     if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return false;
     /*
@@ -307,7 +358,17 @@ export class CommandQueue {
     return removed;
   }
 
+  /**
+   * Everything queued, gone.
+   *
+   * **And any hold with it.** Every caller outside this class is a session
+   * boundary — the socket closing, a new connection, the character walking out
+   * to the menu — and a hold is about the character who was standing there. A
+   * hold that outlived one of those would stand automation down for the rest
+   * of the process with nothing on screen saying why.
+   */
   clear(): void {
+    this.held = null;
     this.pending.length = 0;
     this.inFlight = 0;
     this.outstanding = [];
@@ -399,6 +460,10 @@ export class CommandQueue {
   }
 
   private drain(): void {
+    // Nothing reaches a form field. `enqueue` already refuses, so `pending` is
+    // empty; this is the invariant stated where a send would happen, so a
+    // future path that puts something back cannot route around it.
+    if (this.held !== null) return;
     /*
      * An abandoned line lapses before anything else is decided. Expiry is
      * frozen while the hold stands, so resolving the lapse *after* `expire`
@@ -515,6 +580,7 @@ export class CommandQueue {
   }
 
   private isSuppressed(): boolean {
+    if (this.held !== null) return true;
     return this.typingHeld && this.typingHeldUntil > Date.now();
   }
 

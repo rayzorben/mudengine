@@ -902,6 +902,34 @@ export function renderTemplate(
   // an empty one. A blank line inside is kept, as typed.
   if (lines.length > 1 && lines[lines.length - 1]!.length === 0) lines.pop();
 
+  /*
+   * A colour left standing at the end of the template is not nothing: a prompt
+   * row written `…]: {cyan}` is asking for what the player types next to be
+   * cyan, and there is no text of its own to carry it. Kept as a zero-width
+   * piece on the last line — after the pop, because a trailing newline says
+   * nothing follows on *this* line, not that the colour was withdrawn — so
+   * `toAnsi` can leave the console in that state rather than resetting out of
+   * it. Only the last line: every earlier one is followed by another drawn
+   * line, and each of those opens with a full SGR of its own.
+   */
+  const tail = lines[lines.length - 1]!;
+  const last = tail[tail.length - 1];
+  const ending = {
+    fg: style.fg[style.fg.length - 1] ?? null,
+    bg: style.bg[style.bg.length - 1] ?? null,
+    bold: style.bold > 0,
+    dim: style.dim > 0
+  };
+  if (
+    last === undefined ||
+    last.fg !== ending.fg ||
+    last.bg !== ending.bg ||
+    last.bold !== ending.bold ||
+    last.dim !== ending.dim
+  ) {
+    tail.push({ text: '', ...ending });
+  }
+
   return lines.map(toDrawn);
 }
 
@@ -992,6 +1020,31 @@ function toDrawn(pieces: readonly Piece[]): Drawn {
     }
     push(piece.text, piece);
   }
+  /*
+   * The state the line ends in, when the template said one and gave it no
+   * text to wear (`renderTemplate`'s zero-width tail). A run of no cells, so
+   * nothing measures or draws differently; `toAnsi` emits its SGR and skips
+   * the reset it would otherwise undo it with.
+   */
+  const ending = pieces[pieces.length - 1];
+  if (ending !== undefined && ending.text.length === 0 && ending.glyph === undefined) {
+    const drawn = segments[segments.length - 1];
+    if (
+      drawn === undefined ||
+      drawn.fg !== ending.fg ||
+      drawn.bg !== ending.bg ||
+      drawn.bold !== ending.bold ||
+      drawn.dim !== ending.dim
+    ) {
+      segments.push({
+        text: '',
+        fg: ending.fg,
+        bg: ending.bg,
+        bold: ending.bold,
+        dim: ending.dim
+      });
+    }
+  }
   return { segments, glyphs, cells };
 }
 
@@ -1040,10 +1093,18 @@ function sgrColour(colour: string, background: boolean): string {
 }
 
 /**
- * The runs as bytes for the console: one SGR per run, a reset at the end so
- * whatever the server prints after the line starts clean. Palette names
- * become the sixteen SGR colours, so the drawn line follows whichever
- * palette the console wears; a hex is a truecolor SGR.
+ * The runs as bytes for the console: one SGR per run, and by default a reset
+ * at the end so whatever the server prints after the line starts clean.
+ * Palette names become the sixteen SGR colours, so the drawn line follows
+ * whichever palette the console wears; a hex is a truecolor SGR.
+ *
+ * **Unless the template ended in a colour of its own.** A prompt row written
+ * `…]: {cyan}` is asking for what the player types next to be cyan — the one
+ * thing on the row the client does not draw — and a reset after it would
+ * throw away the only reason that tag was typed. That intent arrives as a
+ * zero-width final run whose SGR is emitted and then left standing; a
+ * template that ends in no styling produces a run with no styling, whose SGR
+ * *is* the reset, so the default is unchanged rather than special-cased.
  */
 export function toAnsi(segments: readonly Segment[]): string {
   let out = '';
@@ -1055,5 +1116,5 @@ export function toAnsi(segments: readonly Segment[]): string {
     if (segment.bg !== null) codes.push(sgrColour(segment.bg, true));
     out += `\x1b[${codes.join(';')}m${segment.text}`;
   }
-  return `${out}\x1b[0m`;
+  return segments[segments.length - 1]?.text === '' ? out : `${out}\x1b[0m`;
 }

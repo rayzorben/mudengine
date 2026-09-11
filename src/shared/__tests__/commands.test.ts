@@ -14,7 +14,13 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { COMMAND_WORDS, NOT_COMMANDS, commandOf, movementEffect } from '../commands';
+import {
+  COMMAND_WORDS,
+  NOT_COMMANDS,
+  commandOf,
+  movementEffect,
+  opensStatScreen
+} from '../commands';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 
@@ -125,5 +131,33 @@ describe('words that are not commands', () => {
       }
     }
     expect(offenders, 'a word the server has no command for, shipped to everybody').toEqual([]);
+  });
+});
+
+/*
+ * The one command whose answer is a form rather than a sentence, so the queue
+ * has to be stood down before the bytes go out — see `user-stats-screen`.
+ */
+describe('the command that opens the stat screen', () => {
+  it('is train with exactly the argument the server compares against', () => {
+    expect(opensStatScreen('train stats')).toBe(true);
+    expect(opensStatScreen('  train   stats  ')).toBe(true);
+  });
+
+  it('is not the training that buys a level', () => {
+    expect(opensStatScreen('train')).toBe(false);
+  });
+
+  it('mirrors the server’s case-sensitive comparison rather than softening it', () => {
+    // `TrainCommand` tests `trainArgs == "stats"` against an argument whose
+    // case `Player.cs:1912` deliberately keeps, so these are answered with
+    // `Your command had no effect.` and a prompt — not with the screen.
+    expect(opensStatScreen('train Stats')).toBe(false);
+    expect(opensStatScreen('TRAIN STATS')).toBe(false);
+  });
+
+  it('is not another word that happens to take the same argument', () => {
+    expect(opensStatScreen('set stats')).toBe(false);
+    expect(opensStatScreen('stats')).toBe(false);
   });
 });

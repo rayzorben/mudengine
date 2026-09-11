@@ -144,8 +144,9 @@ export interface FeedSource {
   /**
    * The line the client draws in the prompt's place, or null to paint the
    * realm's own. `rendered` replaces the plain characters `[from, to)` of the
-   * line, escape sequences among them included; what lies before and after
-   * — a leading newline, the echo, the terminator — is painted as sent.
+   * line, the escape sequences among them and the styling the server leaves
+   * standing after them included ({@link afterStyling}); what lies before and
+   * after — a leading newline, the echo, the terminator — is painted as sent.
    * Optional: the feed is also driven by tests that design nothing.
    */
   design?(plain: string): { rendered: string; from: number; to: number } | null;
@@ -211,8 +212,8 @@ const ESCAPE = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/y;
 /**
  * Where the `count`th plain character of `text` begins, stepping over the
  * escape sequences the plain text has lost — before any escape that follows
- * the character just counted, so a design replaces exactly the prompt's own
- * bytes and the reset the server prints after it is kept.
+ * the character just counted, which is where a design's replacement ends and
+ * {@link afterStyling} decides what of it goes with the prompt.
  */
 export function rawIndexOf(text: string, count: number): number {
   let seen = 0;
@@ -229,6 +230,31 @@ export function rawIndexOf(text: string, count: number): number {
     seen += 1;
   }
   return text.length;
+}
+
+/** A colour or attribute, the one sequence a drawn prompt's ending outlives. */
+const STYLING = /\x1B\[[0-9;]*m/y;
+
+/**
+ * Past the styling the server prints at `at`.
+ *
+ * The state left standing when a prompt ends is what paints the echo, so on a
+ * row the client draws it belongs to the design: a template ending `…]: {cyan}`
+ * is asking for what is typed next to be cyan, and both realm families print
+ * `ESC[0m` a byte after the colon, which would put it straight back. The drawn
+ * line always ends in an SGR of its own — the ending's, or the reset a
+ * template with no ending produces — so there is nothing to decide here and no
+ * flag to get wrong. Only SGR: a cursor move, an erase and the terminator are
+ * the row's own and are painted as sent.
+ */
+export function afterStyling(text: string, at: number): number {
+  let past = at;
+  for (;;) {
+    STYLING.lastIndex = past;
+    const styling = STYLING.exec(text);
+    if (!styling) return past;
+    past += styling[0].length;
+  }
 }
 
 interface Sent {
@@ -547,7 +573,7 @@ export class TerminalFeed {
     const design = this.source.design?.(plain);
     if (!design) return null;
     const from = rawIndexOf(text, design.from);
-    const to = rawIndexOf(text, design.to);
+    const to = afterStyling(text, rawIndexOf(text, design.to));
     return text.slice(0, from) + design.rendered + text.slice(to);
   }
 

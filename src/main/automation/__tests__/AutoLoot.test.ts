@@ -59,8 +59,12 @@ afterEach(() => {
 /** A supplies list with nothing on it, which is what most of these cases want. */
 const NO_SUPPLIES: SuppliesConfig = { enabled: false, items: [] };
 
-const make = (config: LootConfig, enabled = true, supplies = NO_SUPPLIES): AutoLoot =>
-  new AutoLoot(config, supplies, enabled, queue);
+let notices: string[] = [];
+
+const make = (config: LootConfig, enabled = true, supplies = NO_SUPPLIES): AutoLoot => {
+  notices = [];
+  return new AutoLoot(config, supplies, enabled, queue, undefined, (m) => notices.push(m));
+};
 
 /**
  * A realm that prices and weighs three things and has never heard of anything
@@ -559,5 +563,111 @@ describe('converting cash with an item', () => {
     auto.onBlock(block('status-line'), carrying('coin bag', 'Heavy'));
     drain();
     expect(sent).toEqual([]);
+  });
+});
+
+/*
+ * The other end of the same list: the coins the player asked to be rid of.
+ *
+ * The pair is exclusive by construction, so nothing here can be picked up and
+ * dropped for ever; a coin on neither list is *kept*, which is the third answer
+ * and the reason this is two lists rather than one switch.
+ */
+describe('putting cash back on the floor', () => {
+  const carrying = (coins: Partial<Record<string, number | null>>, items: string[] = []) => {
+    const base = state();
+    return {
+      ...base,
+      inventory: {
+        ...base.inventory,
+        coins: { ...base.inventory.coins, ...coins },
+        items: items.map((name) => ({ name, slot: null, equipped: false }))
+      }
+    } as CharacterState;
+  };
+
+  it('drops what it was told to, by the count the listing states', () => {
+    const auto = make(loot({ coins: true, coinKinds: ['gold'], discardKinds: ['copper'] }));
+    auto.onCharacter(carrying({ copper: 15, gold: 3 }));
+    drain();
+    expect(sent).toEqual(['drop 15 copper']);
+  });
+
+  it('drops nothing when the list is empty, which is what ships', () => {
+    const auto = make(loot({ coins: true }));
+    auto.onCharacter(carrying({ copper: 15 }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * Null is nobody has said. A fresh session has read no listing, and a `drop`
+   * composed from a count nothing stated is a command spent to be refused.
+   */
+  it('drops nothing for a denomination no listing has stated', () => {
+    const auto = make(loot({ discardKinds: ['copper'] }));
+    auto.onCharacter(carrying({ copper: null }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('asks once, and again only when the listing says the figure moved', () => {
+    const auto = make(loot({ discardKinds: ['copper'] }));
+    auto.onCharacter(carrying({ copper: 15 }));
+    drain();
+    auto.onCharacter(carrying({ copper: 15 }));
+    drain();
+    expect(sent).toEqual(['drop 15 copper']);
+
+    auto.onCharacter(carrying({ copper: 4 }));
+    drain();
+    expect(sent).toEqual(['drop 15 copper', 'drop 4 copper']);
+  });
+
+  /*
+   * `ItemContainer.GetItemStacks` is tried **before** the purse and strips the
+   * leading count, so `drop 15 copper` finds a copper ring and drops that. The
+   * server's own rule, read off its own source — refused out loud rather than
+   * worked around, because the alternative is this client throwing away a
+   * piece of kit to tidy up some change.
+   */
+  it('refuses while the pack holds something the same word names, and says so once', () => {
+    const auto = make(loot({ discardKinds: ['copper'] }));
+    auto.onCharacter(carrying({ copper: 15 }, ['a bright copper kettle']));
+    drain();
+    auto.onCharacter(carrying({ copper: 15 }, ['a bright copper kettle']));
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain('copper kettle');
+  });
+
+  it('drops again once that item has left the pack', () => {
+    const auto = make(loot({ discardKinds: ['copper'] }));
+    auto.onCharacter(carrying({ copper: 15 }, ['copper ring']));
+    drain();
+    expect(sent).toEqual([]);
+    auto.onCharacter(carrying({ copper: 15 }, []));
+    drain();
+    expect(sent).toEqual(['drop 15 copper']);
+  });
+
+  // A command spent mid-round is one the fight paid for; and whether an
+  // inventory command breaks a rest is unmeasured, as it is for `get`.
+  it('drops nothing in a fight or while sitting down', () => {
+    const auto = make(loot({ discardKinds: ['copper'] }));
+    auto.onCharacter({ ...carrying({ copper: 15 }), inCombat: true });
+    drain();
+    expect(sent).toEqual([]);
+    auto.onCharacter({
+      ...carrying({ copper: 15 }),
+      vitals: { ...EMPTY_CHARACTER.vitals, resting: true }
+    });
+    drain();
+    expect(sent).toEqual([]);
+    // The positive control: the same purse, standing up and out of the fight.
+    auto.onCharacter(carrying({ copper: 15 }));
+    drain();
+    expect(sent).toEqual(['drop 15 copper']);
   });
 });

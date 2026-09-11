@@ -497,3 +497,56 @@ describe('putting back a command the realm threw away', () => {
     expect(queue.resendLast('e')).toBe(false);
   });
 });
+
+describe('a screen that is not the command prompt', () => {
+  it('empties the queue and refuses everything, the player included', () => {
+    queue.enqueue({ command: 'a', priority: 'probe' });
+    queue.enqueue({ command: 'b', priority: 'probe' });
+    expect(sent).toEqual(['a']);
+
+    expect(queue.hold('the stat screen is up')).toBe(true);
+    expect(queue.snapshot.depth).toBe(0);
+    expect(queue.holding).toBe('the stat screen is up');
+
+    // Not the escape hatch typing has: a field screen has no command line for
+    // an emergency to be sent clean to, and the player's own toolbar press is
+    // a command for the realm too.
+    queue.enqueue({ command: 'n', priority: 'emergency' });
+    queue.enqueue({ command: 'i', priority: 'user' });
+    vi.advanceTimersByTime(10_000);
+    expect(sent).toEqual(['a']);
+  });
+
+  it('is idempotent, so two independent arms announce once', () => {
+    expect(queue.hold('you asked to train stats')).toBe(true);
+    expect(queue.hold('the stat screen is up')).toBe(false);
+    // The first reason stands: it is the one already said out loud.
+    expect(queue.holding).toBe('you asked to train stats');
+  });
+
+  it('sends again once a prompt says there is a command line', () => {
+    queue.hold('the stat screen is up');
+    expect(queue.release()).toBe(true);
+    expect(queue.release()).toBe(false);
+
+    queue.enqueue({ command: 'rm', priority: 'probe' });
+    expect(sent).toEqual(['rm']);
+  });
+
+  it('does not outlive the session it was holding for', () => {
+    queue.hold('the stat screen is up');
+    // What the socket closing, a reconnection and leaving the realm all call.
+    queue.clear();
+    expect(queue.holding).toBe(null);
+    queue.enqueue({ command: 'rm', priority: 'probe' });
+    expect(sent).toEqual(['rm']);
+  });
+
+  it('reads as standing down while it is up', () => {
+    expect(queue.snapshot.suppressed).toBe(false);
+    queue.hold('the stat screen is up');
+    expect(queue.snapshot.suppressed).toBe(true);
+    queue.release();
+    expect(queue.snapshot.suppressed).toBe(false);
+  });
+});

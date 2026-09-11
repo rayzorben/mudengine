@@ -83,16 +83,31 @@ let notices: string[];
 let commanded: string[];
 let queue: CommandQueue;
 let peers: Remotes;
+let clients: string[];
+let placed: string[];
+let comebacks: string[];
+/** Whether the fixture's `comeBack` says a walk started. See the block below. */
+let walks = true;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
   notices = [];
   commanded = [];
+  clients = [];
+  placed = [];
+  comebacks = [];
+  walks = true;
   queue = new CommandQueue(config, { send: (command) => sent.push(command) });
   peers = new Remotes(config, queue, {
     notice: (m) => notices.push(m),
-    commanded: (from, raw) => commanded.push(`${from}:${raw}`)
+    commanded: (from, raw) => commanded.push(`${from}:${raw}`),
+    clientNamed: (from, client, extended) => clients.push(`${from}:${client ?? '-'}:${extended}`),
+    placed: (from, map, room, name) => placed.push(`${from}:${map}/${room}:${name ?? '-'}`),
+    comeBack: (from, map, room) => {
+      comebacks.push(`${from}:${map}/${room}`);
+      return walks;
+    }
   });
 });
 
@@ -270,6 +285,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     const progress: { walk: WalkProgress; loop: LoopProgress } = {
       walk: {
         status: 'walking',
+        asked: true,
         done: 2,
         total: 5,
         destination: 'Newhaven, Bank',
@@ -494,8 +510,13 @@ describe('asking, which is the other half of the same vocabulary', () => {
       })
     );
     drain();
-    // Not itself, and not somebody who has not accepted the invitation.
-    expect(sent).toEqual(['/Soul @health']);
+    /*
+     * Not itself, and not somebody who has not accepted the invitation. The
+     * second question is which client they run: it decides the wording of
+     * every question after this one, and it is asked only while nothing has
+     * said — see `PlayerRecord.client`.
+     */
+    expect(sent).toEqual(['/Soul @health', '/Soul @version']);
   });
 
   /*
@@ -1089,5 +1110,191 @@ describe('a channel this client never answers on, from somebody with no grant', 
     peers.onBlock(said('conversation-telepath', 'Rend', '@health'), live());
     drain();
     expect(notices.join(' ')).toContain('has not been granted');
+  });
+});
+
+/*
+ * The extended vocabulary: two questions only another mudengine can answer,
+ * and the handshake that decides whether to ask them.
+ *
+ * The whole of it turns on one fact — that a room *name* is ambiguous and a
+ * room *address* is not — so the extended forms carry the address. Nothing is
+ * ever sent in this wording to somebody who has not said they run this client,
+ * and the moment one of them fails the plain wording goes instead.
+ */
+describe('talking to another one of these clients', () => {
+  /** A registry entry saying what is known about somebody's client. */
+  const knowing = (name: string, extended: 'unknown' | 'yes' | 'no'): Partial<CharacterState> => ({
+    players: {
+      [name.toLowerCase()]: {
+        name,
+        alignment: null,
+        title: null,
+        flags: null,
+        gang: null,
+        level: null,
+        race: null,
+        className: null,
+        gangRank: null,
+        client: extended === 'unknown' ? null : 'mudengine 0.6.5',
+        extendedRemotes: extended,
+        equipment: null,
+        equipmentAt: null,
+        lastRoom: null,
+        lastRoomName: null,
+        lastRoomAt: null,
+        lastSeen: 0,
+        online: true,
+        vitals: null,
+        vitalsAt: null,
+        inParty: false,
+        commandsSent: 0,
+        lastCommand: null,
+        lastCommandAt: null
+      }
+    }
+  });
+
+  const inRoom = (map: number, number: number, name: string): Partial<CharacterState> => ({
+    room: { ...structuredClone(EMPTY_CHARACTER.room), map, number, name }
+  });
+
+  it('asks the plain question of somebody nothing has said anything about', () => {
+    peers.ask('Soul', 'where', who());
+    drain();
+    expect(sent).toEqual(['/Soul @where']);
+  });
+
+  it('asks the extended question only of somebody who said they run this client', () => {
+    peers.ask('Soul', 'where', who(knowing('Soul', 'yes')));
+    drain();
+    expect(sent).toEqual(['/Soul @where-room']);
+  });
+
+  it('records the client a @version answer named, and that it can be talked to', () => {
+    peers.ask('Soul', 'version', who());
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{mudengine 0.6.5}'), who());
+    expect(clients).toEqual(['Soul:mudengine 0.6.5:yes']);
+  });
+
+  it('records another client as one the extended wording does not reach', () => {
+    peers.ask('Rand', 'version', who());
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Rand', '{MegaMMUD 2.1}'), who());
+    expect(clients).toEqual(['Rand:MegaMMUD 2.1:no']);
+  });
+
+  /*
+   * A reply is read only against a question this client asked. Nobody can
+   * volunteer one: every shape in this vocabulary is a brace-wrapped phrase,
+   * and a room genuinely called `Level 3` is a `@version` answer to a reader
+   * that goes by shape alone.
+   */
+  it('does not read a reply nobody asked for', () => {
+    peers.onBlock(said('conversation-telepath', 'Soul', '{mudengine 0.6.5}'), who());
+    expect(clients).toEqual([]);
+  });
+
+  it('reads where a peer said it is standing, by address', () => {
+    peers.ask('Soul', 'where', who(knowing('Soul', 'yes')));
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{1/2150 Town Gates}'), who());
+    expect(placed).toEqual(['Soul:1/2150:Town Gates']);
+  });
+
+  /*
+   * The fallback, and the fact behind it: `{command invalid or not allowed}`
+   * is what MegaMUD 2.1 answers a word it has no entry for (captured
+   * 2026-08-29). Nothing else this client sends is outside MegaMUD's own
+   * vocabulary, so it can only ever be about an extended question.
+   */
+  it('falls back to the plain wording when the extended one is refused', () => {
+    peers.ask('Rand', 'where', who(knowing('Rand', 'yes')));
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+
+    peers.onBlock(
+      said('conversation-telepath', 'Rand', '{command invalid or not allowed}'),
+      who(knowing('Rand', 'yes'))
+    );
+    drain();
+    expect(sent).toEqual(['/Rand @where-room', '/Rand @where']);
+    expect(clients).toEqual(['Rand:-:no']);
+  });
+
+  it('falls back when nothing comes back at all, and says so', () => {
+    peers.ask('Rand', 'where', who(knowing('Rand', 'yes')));
+    drain();
+    /*
+     * The positive control: the sweep really runs on this side of the deadline
+     * and writes nobody off. `drain` has already spent five of the thirty
+     * seconds, so the clock is read from here rather than from the ask.
+     */
+    vi.advanceTimersByTime(20_000);
+    peers.onCharacter(who(knowing('Rand', 'yes')));
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+
+    vi.advanceTimersByTime(10_000);
+    peers.onCharacter(who(knowing('Rand', 'yes')));
+    drain();
+    expect(sent).toEqual(['/Rand @where-room', '/Rand @where']);
+    expect(clients).toEqual(['Rand:-:no']);
+    expect(notices.join(' ')).toContain('Nothing came back from Rand');
+  });
+
+  it('answers @where-room with the realm’s own address and the room’s name', () => {
+    peers.onBlock(
+      said('conversation-telepath', 'Soul', '@where-room'),
+      who(inRoom(1, 2150, 'Town Gates'))
+    );
+    drain();
+    expect(sent).toEqual(['/Soul {1/2150 Town Gates}']);
+  });
+
+  it('answers @where-room with nothing at all where the realm has not placed it', () => {
+    peers.onBlock(
+      said('conversation-telepath', 'Soul', '@where-room'),
+      who({ room: { ...structuredClone(EMPTY_CHARACTER.room), name: 'Town Gates' } })
+    );
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('carries this character’s own address out with @comeback-room', () => {
+    peers.ask('Soul', 'comeback', who({ ...knowing('Soul', 'yes'), ...inRoom(1, 2150, 'Gates') }));
+    drain();
+    expect(sent).toEqual(['/Soul @comeback-room 1/2150']);
+  });
+
+  it('sends no @comeback-room from a room the realm data has not placed', () => {
+    peers.ask('Soul', 'comeback', who(knowing('Soul', 'yes')));
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices.join(' ')).toContain('no address');
+  });
+
+  it('walks to the address somebody sends, and acknowledges only a walk that started', () => {
+    peers.onBlock(said('conversation-telepath', 'Soul', '@comeback-room 1/2150'), who());
+    drain();
+    expect(comebacks).toEqual(['Soul:1/2150']);
+    expect(sent).toEqual(['/Soul {ok}']);
+  });
+
+  it('does not acknowledge a route that was refused', () => {
+    walks = false;
+    peers.onBlock(said('conversation-telepath', 'Soul', '@comeback-room 1/2150'), who());
+    drain();
+    expect(comebacks).toEqual(['Soul:1/2150']);
+    expect(sent).toEqual([]);
+  });
+
+  it('walks nowhere on an argument that is not an address', () => {
+    peers.onBlock(said('conversation-telepath', 'Soul', '@comeback-room the gates'), who());
+    drain();
+    expect(comebacks).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(notices.join(' ')).toContain('readable map/room');
   });
 });

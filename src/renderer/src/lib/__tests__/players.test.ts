@@ -18,6 +18,8 @@ function seen(fields: Partial<PlayerRecord> = {}): PlayerRecord {
     race: null,
     className: null,
     gangRank: null,
+    client: null,
+    extendedRemotes: 'unknown',
     equipment: null,
     equipmentAt: null,
     lastRoom: null,
