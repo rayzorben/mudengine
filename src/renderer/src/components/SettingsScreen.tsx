@@ -38,6 +38,7 @@ import {
   type History
 } from '../lib/history';
 import { useAutoSave } from '../hooks/useAutoSave';
+import { useSettingsPanel } from '../hooks/useSettingsPanel';
 import { PROFILE_ACCENTS, type ProfileAccent } from '@shared/profiles';
 import { isThemePreference, THEME_IDS, THEMES, type ThemePreference } from '@shared/themes';
 import type {
@@ -1264,6 +1265,8 @@ export default function SettingsScreen({
   const [problem, setProblem] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  /* Where the player dragged it, and the two gestures that move it. */
+  const panel = useSettingsPanel();
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
   /**
@@ -1834,11 +1837,29 @@ export default function SettingsScreen({
   };
 
   return (
-    <div className="settings-scrim" onMouseDown={close} role="presentation">
+    /*
+     * A layer over the workspace, not a modal over a scrim.
+     *
+     * The scrim took every click and the dialog took the whole window, so a
+     * setting could not be changed and *watched*: whatever it does happens in
+     * the console behind it, sometimes while a character is standing somewhere
+     * being hit. The layer passes the pointer through to the console
+     * (`pointer-events: none`, the panel itself takes them back), the panel is
+     * moved by its heading and resized from its corner, and the two ways out
+     * are the close glyph and Escape while it holds the caret.
+     *
+     * The one exception is the state with no characters at all: there is
+     * nothing behind the screen to reach and nothing to type at, so it keeps
+     * the scrim, keeps `aria-modal`, and keeps having no way out.
+     */
+    <div className="settings-layer" data-required={required ? 'true' : 'false'} role="presentation">
       <div
         aria-label={t('settings.dialog.ariaLabel')}
-        aria-modal="true"
+        aria-modal={required ? 'true' : undefined}
         className="surface settings"
+        data-dragging={panel.dragging ? 'true' : 'false'}
+        data-placed={!required && panel.placed ? 'true' : 'false'}
+        style={required ? undefined : panel.style}
         onKeyDown={(event) => {
           /*
            * The dialog owns its own Escape.
@@ -1879,10 +1900,19 @@ export default function SettingsScreen({
           if (confirming !== null) return setConfirming(null);
           close();
         }}
-        onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >
-        <header className="settings-head">
+        {/*
+          The heading is the handle, as a card's is. `onPointerDown` and not a
+          separate grip: the row is already the thing anybody grabs, and the
+          controls in it (the four crumbs, the close glyph) stop the press
+          themselves rather than the row testing what was under the pointer.
+        */}
+        <header
+          className="settings-head"
+          onDoubleClick={required ? undefined : panel.reset}
+          onPointerDown={required ? undefined : panel.move}
+        >
           {/*
             General to particular, left to right: the client, then what a new
             realm and a new character start from, then the realms, then the
@@ -1901,6 +1931,7 @@ export default function SettingsScreen({
               data-active={tab === 'client' ? 'true' : 'false'}
               onClick={() => openGlobal('client')}
               onMouseDown={keepFocus}
+              onPointerDown={stopDrag}
               type="button"
             >
               {t('settings.crumbs.mudEngine')}
@@ -1910,6 +1941,7 @@ export default function SettingsScreen({
               data-active={tab === 'defaults' ? 'true' : 'false'}
               onClick={() => openGlobal('defaults')}
               onMouseDown={keepFocus}
+              onPointerDown={stopDrag}
               type="button"
             >
               {t('settings.crumbs.global')}
@@ -1926,6 +1958,7 @@ export default function SettingsScreen({
                */
               onClick={goToServers}
               onMouseDown={keepFocus}
+              onPointerDown={stopDrag}
               type="button"
             >
               {t('settings.crumbs.realms')}
@@ -1935,6 +1968,7 @@ export default function SettingsScreen({
               data-active={tab === 'characters' ? 'true' : 'false'}
               onClick={() => setTab('characters')}
               onMouseDown={keepFocus}
+              onPointerDown={stopDrag}
               type="button"
             >
               {t('settings.crumbs.characters')}
@@ -1950,6 +1984,7 @@ export default function SettingsScreen({
               aria-label={t('settings.dialog.closeAria')}
               className="quiet"
               onClick={close}
+              onPointerDown={stopDrag}
               type="button"
             >
               ✕
@@ -3858,7 +3893,35 @@ export default function SettingsScreen({
             </button>
           </span>
         </footer>
+
+        {/*
+          The corner, and only the corner. The panel opens at the top left and
+          the two things anybody wants of it are *smaller* and *taller so the
+          form fits*; eight handles would be seven more edges to hit by
+          accident on a surface whose whole body is controls.
+        */}
+        {!required && (
+          <button
+            aria-label={t('settings.dialog.resizeAria')}
+            className="settings-grip"
+            onDoubleClick={panel.reset}
+            onPointerDown={panel.resize}
+            type="button"
+          />
+        )}
       </div>
     </div>
   );
+}
+
+/**
+ * A press on a control inside the heading is a click, never the start of a
+ * drag.
+ *
+ * Stopping it here rather than having the heading test what was underneath:
+ * the row is the handle, and a control that does not want to be dragged says
+ * so itself — which is one line per control and no list to keep in step.
+ */
+function stopDrag(event: React.PointerEvent): void {
+  event.stopPropagation();
 }

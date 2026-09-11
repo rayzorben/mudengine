@@ -1640,6 +1640,8 @@ cards:
       undeadYes: 'yes'
       healthRange: '{low}–{high} hp'
       healthRangeNote: ' — rows sharing this name disagree; the bar works high'
+      rowHere: ' — row {id}, which is what this room spawns'
+      rowNearest: ' — row {id}, which spawns {steps} steps away; no other of this name within {far}'
       foughtDamage: ' — {damage} damage dealt over {blows} swings, on average'
       foughtDuration: ' — about {seconds}s a fight'
       foughtJoined: ' — {joined} joined halfway'
@@ -1962,6 +1964,9 @@ cards:
       tracking: Tracking
       traps: Traps
       willpower: Willpower
+    # On an attribute the realm states a range for: the tint on the figure is
+    # its share of that range, so the tooltip says what the range is.
+    statRange: 'this race runs {low} to {high}'
     sight:
       # Beside the night-vision figure while the stat sheet has not named the race.
       raceUnknown: race not yet read
@@ -1990,9 +1995,14 @@ cards:
       columnHave: Have
       packUnread: The pack has not been read yet; send 'i'.
       columnShop: Shop
+      # A row with no shop: found on the floor rather than bought at a counter.
+      foundOnly: found
+      foundTooltip: Picked up off the floor when one is here and the pack is under the maximum. Nothing is bought.
+      # And the sentence under the table, about both ends of the list.
+      collects: Anything on this list is picked up when it is found, up to its maximum, and a spare over the maximum is put down.
       tableCaption: Items kept in stock
       empty: Nothing kept in stock yet.
-      howToAdd: To keep an item, click its name in the pack and set a minimum on its panel.
+      howToAdd: To keep an item, click its name in the pack and set a minimum on its panel. An item sold nowhere needs no shop — set a maximum and it is collected when found.
       switchedOff: Auto-buy is switched off on the toolbar; the list is kept but nothing is bought.
       copyRow: '{item}: {have} carried, keep {min}–{max}, from {shop}'
   stats:
@@ -2072,9 +2082,11 @@ cards:
       noMatch: Nothing said matches.
       none: Nobody has said anything yet.
     find: Find in what was said
-    # The heading's faces, in the realm's own channel words where one exists.
+    # The heading's toggles, in the realm's own channel words where one exists.
+    # `all` is the master: on, every channel is drawn and the rest are disabled
+    # in their own state.
     tabs:
-      all: Talk
+      all: All
       gossip: Gos
       auction: Auc
       broadcast: Br
@@ -2393,6 +2405,8 @@ settings:
     realms: Realms
   dialog:
     closeAria: Close settings
+    # The corner of the panel. Drag to resize, double-click to put it back.
+    resizeAria: Resize settings
     ariaLabel: Settings
     characterRequired: This client plays characters, and there are none yet. Make one below and this screen will let you out.
   footer:
@@ -3169,6 +3183,10 @@ automation:
     reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the AE spell'
     reasonRoundSpell: 'auto-combat: round spell'
     refusedAlreadyFighting: already fighting {target}
+    # Something already swung at is still standing here. `aa` switches target,
+    # so a second fight opened beside the first is always waste, and the block
+    # between `*Combat Off*` and `*Combat Engaged*` is where it used to happen.
+    refusedEngagedWith: 'already swinging at {target}, which is still here'
     refusedAvoided: '{target} is on the avoid list'
     refusedCostly: Attacking {target} causes an alignment penalty (-10 points).
     refusedDeathSpell: 'the realm says {target} casts a spell when it dies'
@@ -3315,6 +3333,10 @@ automation:
     going: 'Going to {shop} for {item} — {have} carried, keeping at least {min} ({steps} steps).'
     becauseShort: '{item}: {have} carried, keeping at least {min}'
     becauseShortRefused: '{item}: fewer than {min} carried'
+    # The other end of the list: what is carried over its stated maximum.
+    becauseOver: '{item}: {have} carried, keeping at most {max}'
+    surplusDropped: 'Dropping a spare {item} — {have} carried, keeping at most {max}.'
+    surplusAllWorn: 'Carrying {have} {item} over a maximum of {max}, and every one is in use.'
     reasonList: 'asking the counter what it sells, for {item}'
     reasonBuy: 'buying {item} ({bought} of {wanted})'
     refusalNoListing: '{shop} did not answer list'
@@ -3332,6 +3354,8 @@ automation:
     reasonCoinsDropped: 'loot: {count} {coin} on the floor'
     reasonConvert: 'loot: using {item} to convert cash'
     reasonListed: 'loot: {item} listed here'
+    # A supply the pack is under the ceiling of, found rather than bought.
+    reasonStocking: 'loot: {item} here, {have} carried of {max} kept'
     reasonWorth: 'loot: {item} is over the value threshold'
   party:
     reasonAssist: 'assist: {leader} is fighting {target}'

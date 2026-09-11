@@ -55,7 +55,7 @@ import { Classifier } from '../parse/Classifier';
 import { LineTokenizer, plainText, stripAnsi } from '../net/LineTokenizer';
 import { TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
-import type { Block } from '../../shared/blocks';
+import { isPrompt, type Block } from '../../shared/blocks';
 import {
   bankKey,
   ownAlignment,
@@ -1204,8 +1204,12 @@ export class SessionManager {
      * wire entity, which is what makes the predicates decline rather than
      * throw.
      */
-    this.loot = new AutoLoot(automation.loot, automation.enabled, this.queue, (name) =>
-      this.world === undefined ? wireItem(name) : this.world.buildItemEntity(name)
+    this.loot = new AutoLoot(
+      automation.loot,
+      automation.supplies,
+      automation.enabled,
+      this.queue,
+      (name) => (this.world === undefined ? wireItem(name) : this.world.buildItemEntity(name))
     );
     /*
      * The light, asked by the walker before every step (`beforeStep`) and by
@@ -2480,7 +2484,7 @@ export class SessionManager {
       automation.party
     );
     this.recovery.configure(automation.health, automation.enabled, automation.party);
-    this.loot.configure(automation.loot, automation.enabled);
+    this.loot.configure(automation.loot, automation.supplies, automation.enabled);
     this.drop.configure(automation.drop, automation.enabled);
     this.search.configure(automation.search, automation.enabled);
     this.deposit.configure(automation.banking, automation.enabled);
@@ -3074,13 +3078,21 @@ export class SessionManager {
     if (block.type === 'room-hidden-items') this.recordFinds();
 
     /*
-     * Any prompt is an acknowledgement: the server has finished with the last
+     * A prompt is an acknowledgement: the server has finished with the last
      * command and is waiting for input. Acking only on the *in-game* status
      * line meant the login sequence had nothing to ack it at all, so after
      * `window` answers the queue sat on the 3s timeout — the whole reason
      * logging in took four and a half seconds.
+     *
+     * **A prompt, not the whole `session` domain** (todo 07). The domain also
+     * holds `command-echo`, which is the server repeating a command it has
+     * not finished with — so every command handed back its own credit, the
+     * window never closed, and fifteen went out between two prompts.
+     * `GMUDInGameState.Process` queues fifteen and then says *Why don't you
+     * slow down for a few seconds?*, which is exactly what the transcript
+     * shows. See `isPrompt`.
      */
-    if (block.type === 'status-line' || block.domain === 'session') this.queue.notePrompt();
+    if (isPrompt(block.type)) this.queue.notePrompt();
     /*
      * Which command the next answer is about: the status line's own echo.
      *
@@ -5022,8 +5034,15 @@ export class SessionManager {
     const weapon = wieldedWeapon(state.inventory.items);
     const player = this.menacePlayer(state);
     const verdicts: Record<string, Verdict> = {};
+    // Weighed as the row the character's own room resolves each name to: a
+    // name holding two of the realm's rows was weighed as the worse of them
+    // wherever the room says which it is. See `WorldGraph.resolveMobRow`.
+    const at =
+      state.room.map === null || state.room.number === null
+        ? null
+        : roomId(state.room.map, state.room.number);
     for (const name of names) {
-      const entity = this.world?.buildMobEntity(name);
+      const entity = this.world?.buildMobEntity(name, { at });
       if (entity === undefined || entity.source === 'wire') continue;
       const [verdict] = weighVerdicts([entity], player, tuning().menace, sheet, weapon, family);
       if (verdict !== undefined) verdicts[name] = verdict;

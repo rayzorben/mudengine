@@ -993,6 +993,24 @@ tuning:
     # lair as if you stood a round longer in each.
     passRounds: 1
 
+    # How many times nearer than every other row sharing its name a monster has
+    # to spawn before the room is taken to have resolved which row it is.
+    #
+    # The wire carries a name and the realm holds several rows under it — a
+    # `gnoll scout` is a 100-HP row and an 830-HP one — so the card folded them
+    # and answered `100-830 hp`. Where the room's own lair names one, that is
+    # the answer and this does not apply. Where it does not, nearest-wins on its
+    # own would resolve a room one step nearer one row than the other, which is
+    # evidence of nothing: monsters wander and are dragged. Eight means five
+    # steps beats forty-one and does not beat thirty-nine.
+    mobRowMargin: 8
+
+    # How many rooms that search may reach before it gives the question up. It
+    # stops on its own as soon as no room left could change the answer, so this
+    # is only reached by a name whose rows all spawn a long way off — where the
+    # honest answer is "this room says nothing".
+    mobRowRooms: 20000
+
   # The process itself.
   app:
     # How long a quitting client waits for its last message to reach a pipe

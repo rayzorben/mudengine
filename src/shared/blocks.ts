@@ -895,3 +895,34 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
 export function domainOf(type: BlockType): BlockDomain {
   return DOMAIN_OF[type];
 }
+
+/**
+ * The block types that mean **the server is waiting for the next command**.
+ *
+ * This is the credit `CommandQueue` paces on, and it is a list rather than a
+ * domain because the `session` domain holds two different kinds of thing. A
+ * prompt is the server saying *your turn*; `login-welcome`, `login-failed`,
+ * `user-exits-realm` and above all `command-echo` are the server talking about
+ * a command it has **not** finished with.
+ *
+ * Crediting the whole domain made every command pay for the next one: the
+ * server echoes what it is given, the echo classified as `session`, and the
+ * window never closed — fifteen commands went out between two prompts and
+ * GreaterMUD answered *Why don't you slow down for a few seconds?*, which is
+ * `GMUDInGameState.Process` refusing at exactly fifteen queued (todo 07).
+ */
+const PROMPTS: ReadonlySet<BlockType> = new Set<BlockType>([
+  'status-line',
+  'prompt-username',
+  'prompt-password',
+  'prompt-new-password',
+  'prompt-selection',
+  'prompt-realm',
+  'prompt-character',
+  'prompt-menu'
+]);
+
+/** Whether this block is the server asking for the next command. See `PROMPTS`. */
+export function isPrompt(type: BlockType): boolean {
+  return PROMPTS.has(type);
+}

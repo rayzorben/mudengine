@@ -1241,6 +1241,65 @@ export interface MobProfile {
 }
 
 /**
+ * One of the realm's `Monsters` rows, answering for itself — format 32.
+ *
+ * Every field is the same column `WorldMob` folds across the rows sharing a
+ * name, read from this row alone. Absent still means *the realm states no
+ * such column*, never zero.
+ */
+export interface WorldMobRow {
+  /** The realm's row number — what a lair names and what a room resolves to. */
+  id: number;
+  hp: number;
+  /** Null where this row states no alignment: one row, certain about itself. */
+  disposition: MobDisposition | null;
+  /** How this row fights. Null where it states no attack at all. */
+  profile: MobProfile | null;
+  armour?: number;
+  damageResist?: number;
+  magicResist?: number;
+  experience?: number;
+  regen?: number;
+  follows?: number;
+  averageDamage?: number;
+  charmLevel?: number;
+  undead?: boolean;
+}
+
+/**
+ * Which of a name's rows a room resolved it to, and on what evidence.
+ *
+ * A refusal is a decision and so is a choice: the card shows one row's numbers
+ * where the name holds several, so it has to be able to say *this row, because
+ * this room's own lair names it* or *because the nearest other one is four
+ * hundred steps away*. Absent where nothing could be resolved, which leaves
+ * the fold and its range exactly as they were.
+ */
+export interface MobRowChoice {
+  /** The realm row the numbers came from. */
+  id: number;
+  /**
+   * `here` — this room's own lair or resident names exactly one of the rows.
+   * `nearest` — no row is named here, and one spawns decisively closer than
+   * every other row sharing the name.
+   */
+  how: 'here' | 'nearest';
+  /** Steps to the nearest room this row spawns in. Zero for `here`. */
+  steps: number;
+  /**
+   * How far the search looked without meeting another row of this name: every
+   * other row is further away than this.
+   *
+   * Null for `here`, where the room named the row outright and no distance was
+   * measured. A second row found anywhere inside the search is a refusal
+   * rather than a runner-up — which is why this is a radius and not the other
+   * row's distance: measuring *by how much* would mean sweeping on past the
+   * point where the answer had already been decided.
+   */
+  beyond: number | null;
+}
+
+/**
  * A monster the realm data can put a number on.
  *
  * **Named, not numbered**, because a name is all the stream ever gives: the
@@ -1261,6 +1320,26 @@ export interface WorldMob {
   hp: number;
   /** Present only when several rows share the name and disagree. */
   span?: [number, number];
+  /**
+   * The realm's own row numbers behind this name — format 9, carried here
+   * since format 32.
+   *
+   * The wire never says a number, so the fold above is what a bare name
+   * resolves to. But a *room* is evidence about which row is standing in it,
+   * and this is the list that evidence is weighed against: see
+   * `WorldGraph.resolveMobRow`. One entry is a name the realm places once.
+   */
+  ids?: number[];
+  /**
+   * Which row this is, when a room resolved the name to one of `ids`.
+   *
+   * Present only on the copy `WorldGraph.mobAt` returns, never on the shared
+   * fold — every magnitude below is then that row's own rather than the worst
+   * of its twins', and this says which row and on what evidence, because a
+   * card showing one row's numbers under a name that holds several is making
+   * a claim somebody has to be able to check.
+   */
+  row?: MobRowChoice;
   /**
    * Whether it starts the fight, from `Monsters.Align` and `Monsters.Type`.
    *
@@ -1631,6 +1710,18 @@ export type RoomId = string;
 
 export function roomId(map: number, room: number): RoomId {
   return `${map}/${room}`;
+}
+
+/**
+ * Where the character is, as an address, or null while it does not know.
+ *
+ * Null is not a room: a client that has not placed itself yet must not be
+ * given the first map's first room by an unguarded `roomId(map ?? 0, …)`, and
+ * everything that asks *from where* has to be able to hear *nowhere* and
+ * answer with what it knows without one.
+ */
+export function roomAddress(room: { map: number | null; number: number | null }): RoomId | null {
+  return room.map === null || room.number === null ? null : roomId(room.map, room.number);
 }
 
 /**

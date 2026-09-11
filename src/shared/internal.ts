@@ -1211,7 +1211,33 @@ const TUNING_DEFAULTS = {
      * at. In and out is one round from whatever attacks on sight; two prices
      * every lair as if the character stood a round longer in each.
      */
-    passRounds: 1
+    passRounds: 1,
+    /**
+     * How many times nearer than every other row sharing its name a monster
+     * has to spawn before the room is taken to have resolved which row it is
+     * (`WorldGraph.resolveMobRow`).
+     *
+     * The wire carries a name and the realm holds several rows under it —
+     * `gnoll scout` is a 100-HP row 224 and an 830-HP row 2204 — so the card
+     * folded them and answered `100–830 hp`. Where the room's own lair names
+     * one, that is the answer and nothing here applies. Where it does not,
+     * nearest-wins on its own would resolve a room one step nearer 224 than
+     * 2204, which is evidence of nothing: monsters wander and are dragged.
+     * Eight means five steps beats forty-one and does not beat thirty-nine.
+     * One would make any tie-break a resolution; a very large figure resolves
+     * nothing but the rows the realm places on one map only.
+     */
+    mobRowMargin: 8,
+    /**
+     * How many rooms that search may reach before it gives the question up.
+     *
+     * It stops on its own as soon as no room left could change the answer, so
+     * this is only ever reached by a name whose rows all spawn a long way off
+     * — where the honest answer is *this room says nothing* and walking the
+     * remaining fifty thousand rooms would not change it. Bounded because the
+     * question is asked from a status line.
+     */
+    mobRowRooms: 20_000
   },
   /** The process itself. */
   app: {

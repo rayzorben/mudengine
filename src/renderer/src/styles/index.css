@@ -4793,6 +4793,44 @@ button.lookup.quest-where svg {
 }
 
 /*
+ * A heading of **toggles** rather than faces, and the on state has to be loud.
+ *
+ * Faces answer *which one am I looking at*, and one of a row being tonal is
+ * enough to say so. Toggles answer *which of these are on*, with any number of
+ * them at once — so the row has to be readable as a pattern from across the
+ * screen rather than as one highlighted word (asked for in todo 06: "toggled
+ * on for any button should be very visible and bright"). The filled pill is
+ * the loudest register the palette has, and it is spent here because the row
+ * is the only thing on the card that carries state.
+ */
+.crumbs[role='group'] .crumb[data-active='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/*
+ * Under a master that is on, the rest are drawn **in their own state** and
+ * refuse the press. Hidden or blanked, turning the master off would put the
+ * reader back to nothing chosen; dimmed, the row still says what it will go
+ * back to.
+ */
+.crumbs[role='group'] .crumb:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.crumbs[role='group'] .crumb:disabled:hover {
+  background: color-mix(in srgb, var(--text-hi) 7%, transparent);
+  color: var(--text-lo-normal);
+}
+
+.crumbs[role='group'] .crumb:disabled[data-active='true']:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/*
  * The rooms the evidence still allowed, and the one that was taken.
  *
  * "You are at 1,219" and "you are at one of four places called Guild Street,
@@ -7814,37 +7852,121 @@ tr:hover .row-action.worn,
  * YAML is good at. This covers what YAML is bad at — a password, a port and a
  * menu answer — and says where the files are for everything else.
  */
-.settings-scrim {
+/*
+ * The layer the panel sits on, and it takes no pointer of its own.
+ *
+ * The screen used to be a modal over a scrim, which is the arrangement that
+ * made it impossible to change a setting and watch what it did: whatever a
+ * setting does happens in the console behind it, and the scrim ate every click
+ * meant for the console — including, once, while a character was being hit.
+ * The layer is inert and the panel takes the pointer back, which is exactly
+ * the arrangement the floating card layer already has.
+ */
+.settings-layer {
   align-items: center;
-  animation: scrim-in var(--dur-control) var(--ease-out);
-  background: var(--scrim);
   display: flex;
   inset: 0;
   justify-content: center;
   padding: 5vh 4vw;
+  pointer-events: none;
   position: fixed;
   z-index: 110;
 }
 
+/*
+ * With no characters at all there is nothing behind the screen to reach and
+ * nothing to type at, so the modal comes back whole: the scrim, the pointer,
+ * and the centring that goes with a box which is not being dragged.
+ */
+.settings-layer[data-required='true'] {
+  animation: scrim-in var(--dur-control) var(--ease-out);
+  background: var(--scrim);
+  pointer-events: auto;
+}
+
+/*
+ * How it opens, and what a drag then overrides.
+ *
+ * Wide, because height is the scarce dimension and the width was not being
+ * spent: at 900px the character form was three 190px tracks, so a section of
+ * switches was a column of one-per-row with two thirds of the dialog empty
+ * beside it and everything below it pushed off the bottom. Four tracks is what
+ * pays for itself, and `min(1180px, 94vw)` is what states it on a laptop and on
+ * a 3,000px display at once — which is why a panel nobody has dragged has **no
+ * box at all** rather than a default fraction. A fixed height like every card:
+ * the lists inside scroll rather than the panel growing past the window with a
+ * long roster of characters.
+ */
 .settings {
   animation: palette-in var(--dur-control) var(--ease-out);
   background: var(--glass-fill-strong);
   display: flex;
   flex-direction: column;
-  /* A fixed box, like every card: the lists inside it scroll rather than the
-     dialog growing past the window with a long roster of characters. */
   height: min(760px, 90vh);
   overflow: hidden;
-  /*
-   * Wide, because the height is the scarce dimension and the width was not
-   * being spent. At 900px the character form was three 190px tracks, so a
-   * section of switches was a column of one-per-row with two thirds of the
-   * dialog empty beside it and everything below it pushed off the bottom. Four
-   * tracks is what pays for itself: a switch and the count it discloses land on
-   * one line, and two switches share a line. `94vw` still caps it, so a narrow
-   * window shrinks the dialog rather than the dialog overflowing the window.
-   */
+  pointer-events: auto;
   width: min(1180px, 94vw);
+}
+
+/* Once it has been dragged, the box is the geometry and the flex centring of
+   the layer no longer decides anything. */
+.settings[data-placed='true'] {
+  position: absolute;
+}
+
+/*
+ * A drag has to be instant. Any transition on the box turns the panel into
+ * something that follows the pointer a frame behind, which reads as the window
+ * being slow rather than as easing.
+ */
+.settings[data-dragging='true'] {
+  animation: none;
+  user-select: none;
+}
+
+/*
+ * The heading is the handle, as a card's is — so it says so, and the controls
+ * on it keep the pointer they need.
+ */
+.settings-layer[data-required='false'] .settings-head {
+  cursor: grab;
+}
+
+.settings[data-dragging='true'] .settings-head {
+  cursor: grabbing;
+}
+
+.settings-head button {
+  cursor: pointer;
+}
+
+/*
+ * The corner. Two hairlines rather than a glyph: it is drawn over the last
+ * eighteen pixels of a footer that already has controls in it, and anything
+ * with a fill there reads as a third button.
+ */
+.settings-grip {
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    var(--ink-edge) 45% 55%,
+    transparent 55% 70%,
+    var(--ink-edge) 70% 80%,
+    transparent 80%
+  );
+  block-size: 18px;
+  border: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+  inline-size: 18px;
+  padding: 0;
+  position: absolute;
+  right: 0;
+}
+
+.settings-grip:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: -2px;
 }
 
 .settings-head {
@@ -10234,11 +10356,58 @@ tr:hover .row-action.worn,
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 0.85em;
-  opacity: 0.8;
+  /*
+   * In the settings screen's own section rotation, so the sheet's three
+   * blocks are told apart by the grammar the rest of the client already uses
+   * rather than by a fourth palette invented here. Full strength: the
+   * headings are four short words on a card of numbers, and this is the one
+   * place on the card carrying a hue, so the `opacity: 0.8` that used to
+   * temper them would only make a coloured word muddy.
+   */
+  color: var(--group-hue, var(--text-lo));
+}
+
+.self-card .readout dt.group[data-group='1'] {
+  --group-hue: var(--section-a);
+}
+
+.self-card .readout dt.group[data-group='2'] {
+  --group-hue: var(--section-b);
+}
+
+.self-card .readout dt.group[data-group='3'] {
+  --group-hue: var(--section-c);
 }
 
 .self-card .readout dd.group {
   margin-top: var(--gap);
+}
+
+/*
+ * An attribute drawn against the range its own race runs.
+ *
+ * `--stat-share` is set on the element as a plain number — the figure's place
+ * between the race's floor and its ceiling — and the ink is mixed from it, so
+ * no threshold is chosen here or anywhere else: a stat at the bottom of its
+ * race's range is as quiet as any muted figure on the card, one at the top is
+ * the accent outright, and every value between reads as where it actually is.
+ * `themes.test.ts` holds the ends and the middle above the text threshold.
+ *
+ * `--text-lo` and not `--text-hi` at the floor deliberately: the lowest number
+ * on a stat sheet is the least interesting one on it, and a ramp that starts
+ * at full ink has nowhere quiet to start from.
+ */
+.self-card .readout dd.stat {
+  color: color-mix(in srgb, var(--accent) calc(var(--stat-share, 0) * 100%), var(--text-lo));
+}
+
+/*
+ * A skill the sheet printed as zero. Not `inert`, which is the dash: *trained
+ * to nothing* is an answer and *nothing has said* is not, and the two rows sit
+ * beside each other on a sheet that prints plenty of both.
+ */
+.self-card .readout dd.none {
+  color: var(--text-lo-quiet);
 }
 
 .supply-control {

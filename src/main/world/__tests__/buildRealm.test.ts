@@ -241,29 +241,66 @@ describe('naming what a monster is worth in health', () => {
    * whenever a fixture's `Type` changed.
    */
   const bare = (mobs: ReturnType<typeof indexMobs>) =>
-    mobs.map(({ i: _ids, ty: _types, pr: _profiles, pd: _dispositions, ...rest }) => rest);
+    mobs.map(({ i: _ids, ty: _types, rw: _rows, ...rest }) => rest);
 
   /*
-   * Format 31: each row's own disposition and profile beside its number, so a
-   * lair can be weighed by the row it names rather than by the fold — which
-   * took the 830-HP gnoll scout for the 100-HP one sharing its name.
+   * Format 32: each row answering for itself beside its number, so a lair —
+   * or a name resolved by the room it stands in — is weighed by the row rather
+   * than by the fold, which took the 830-HP gnoll scout for the 100-HP one
+   * sharing its name.
    */
-  it('keeps each row’s own disposition beside its number, in step with the ids', () => {
+  it('keeps each row’s own numbers beside its number, in step with the ids', () => {
     const mobs = indexMobs(
       fake({
         Monsters: [
-          { Number: 224, Name: 'gnoll scout', HP: 100, Align: 2, Type: 2, 'In Game': 1 },
-          { Number: 2204, Name: 'gnoll scout', HP: 830, Align: 3, Type: 0, 'In Game': 1 },
+          {
+            Number: 224,
+            Name: 'gnoll scout',
+            HP: 100,
+            Align: 2,
+            Type: 2,
+            ArmourClass: 75,
+            EXP: 340,
+            'In Game': 1
+          },
+          {
+            Number: 2204,
+            Name: 'gnoll scout',
+            HP: 830,
+            Align: 3,
+            Type: 0,
+            ArmourClass: 40,
+            EXP: 2000,
+            'In Game': 1
+          },
           { Number: 7, Name: 'gnoll scout', HP: 100, 'In Game': 1 }
         ]
       })
     );
-    expect(mobs[0]).toMatchObject({ i: [224, 2204, 7], d: 'h', x: 1, pd: 'hp-' });
-    // No row fights with anything, so there is no profile to index.
-    expect(mobs[0]?.pr).toBeUndefined();
+    expect(mobs[0]).toMatchObject({ i: [224, 2204, 7], d: 'h', x: 1 });
+    /*
+     * The fold takes the worst of them — the hardest to hit, the least worth
+     * killing — and each row keeps its own, which is the whole point: 75 AC
+     * and 340 experience belong to row 224 and not to the 830-HP one.
+     */
+    expect(mobs[0]).toMatchObject({ ac: 75, xp: 340, hp: 100, hi: 830 });
+    expect(mobs[0]?.rw).toEqual([
+      { hp: 100, d: 'h', ac: 75, xp: 340 },
+      { hp: 830, d: 'p', ac: 40, xp: 2000 },
+      { hp: 100 }
+    ]);
   });
 
-  it('indexes each row’s own profile beside its number, −1 for a row with none', () => {
+  it('writes no per-row record for a name the realm places once', () => {
+    const mobs = indexMobs(
+      fake({ Monsters: [{ Number: 224, Name: 'gnoll scout', HP: 100, 'In Game': 1 }] })
+    );
+    // With one row the fold *is* the row, and writing it twice would be the
+    // same fact in two places for every unshared name in the realm.
+    expect(mobs[0]?.rw).toBeUndefined();
+  });
+
+  it('indexes each row’s own profile beside its number, absent for a row with none', () => {
     const scout = (over: Record<string, unknown>) => ({
       Name: 'gnoll scout',
       HP: 100,
@@ -293,12 +330,8 @@ describe('naming what a monster is worth in health', () => {
       })
     );
     expect(mobs[0]?.pf).toHaveLength(2);
-    expect(mobs[0]).toMatchObject({ i: [224, 2204, 300, 7], pr: [0, 1, 0, -1] });
-  });
-
-  it('writes no per-row disposition where no row states one', () => {
-    const mobs = indexMobs(fake({ Monsters: [{ Number: 1, Name: 'wisp', HP: 5, 'In Game': 1 }] }));
-    expect(mobs[0]?.pd).toBeUndefined();
+    expect(mobs[0]).toMatchObject({ i: [224, 2204, 300, 7] });
+    expect(mobs[0]?.rw?.map((row) => row.p)).toEqual([0, 1, 0, undefined]);
   });
 
   it('carries the realm’s own numbers for every row sharing a name, so a lair resolves', () => {

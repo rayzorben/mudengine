@@ -36,6 +36,22 @@ import { readable, useCopyMenu } from '../hooks/useCopyMenu';
  * it sits and the convention is stated here instead: pass the card's title for
  * face 0 unless the faces are genuinely both something else.
  */
+/**
+ * One toggle in a card's heading. See `BentoCardProps.filters`.
+ *
+ * `disabled` draws it in its own state and refuses the press — the shape a
+ * master toggle needs, since *All is on so this one does not decide right now*
+ * is a different fact from *this one is off*, and hiding the row under a
+ * master would lose the state the reader set.
+ */
+export interface CardFilter {
+  id: string;
+  label: string;
+  on: boolean;
+  disabled?: boolean;
+  toggle(): void;
+}
+
 export interface CardTab {
   id: string;
   /** The crumb. For face 0 this is ordinarily the card's own title. */
@@ -128,6 +144,26 @@ export interface BentoCardProps {
    * rest are the working.
    */
   tabs?: CardTab[];
+  /**
+   * A group of toggles in the heading instead of a trail of faces.
+   *
+   * The difference from `tabs` is what the controls *mean*, not where they
+   * are drawn. A face is one of several answers and exactly one is showing; a
+   * filter narrows one answer and any number may be on. The Talk card is the
+   * case: its channels were faces, so watching gossip *and* the gang meant
+   * watching everything, and the reader could not say *these two and not the
+   * rest* — which is the whole question a channel list is asked (todo 06).
+   *
+   * Drawn in the crumbs' own slot and with their look, because a card's
+   * heading is where its controls live either way; told apart by state rather
+   * than by shape — `aria-pressed` and a group, not `aria-selected` and a
+   * tablist — and by the on state being loud, since with several on at once
+   * *which of these are on* is the only question the row answers.
+   *
+   * A card gives one or the other. With filters the title is not drawn: the
+   * first filter is the card's own name.
+   */
+  filters?: CardFilter[];
   /**
    * Which face is showing, for a card that decides that for itself.
    *
@@ -303,6 +339,7 @@ export default function BentoCard({
   bodyRef,
   className,
   tabs,
+  filters,
   active,
   onActive,
   onClose,
@@ -616,7 +653,26 @@ export default function BentoCard({
           pill carries its own affordance, so nothing between them has to.
         */}
         <h2>
-          {tabs && tabs.length > 1 ? (
+          {filters && filters.length > 0 ? (
+            <span className="crumbs" role="group">
+              {filters.map((filter) => (
+                <button
+                  aria-pressed={filter.on}
+                  className="crumb"
+                  data-active={filter.on ? 'true' : 'false'}
+                  disabled={filter.disabled === true}
+                  key={filter.id}
+                  onClick={filter.toggle}
+                  // A card is read, never typed into: narrowing it must not
+                  // take the caret out of the terminal.
+                  onMouseDown={keepFocus}
+                  type="button"
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </span>
+          ) : tabs && tabs.length > 1 ? (
             <span className="crumbs" role="tablist">
               {tabs.map((tab, index) => (
                 <button

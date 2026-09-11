@@ -1941,6 +1941,37 @@ describe('lairs', () => {
   describe('weighed by the row it names', () => {
     const weak = { a: [[1, 1, 70, 4, 15, 500, 0]], c: [] };
     const strong = { a: [[1, 1, 150, 15, 40, 250, 0]], c: [] };
+    /**
+     * A corridor of `count` rooms walkable **both** ways.
+     *
+     * `corridor` links each room east to the next and nothing back, which is a
+     * one-way drop: a spawn one step behind the reader is unreachable, and a
+     * search that followed it would answer with the row it could get to rather
+     * than the row that is near. Which is the right behaviour, and the wrong
+     * fixture for a question about distance.
+     */
+    const line = (count: number): Array<Record<string, unknown>> =>
+      Array.from({ length: count }, (_, i) => ({
+        m: 1,
+        r: i + 1,
+        n: `Room ${i + 1}`,
+        x: {
+          ...(i + 1 < count ? { e: { m: 1, r: i + 2 } } : {}),
+          ...(i > 0 ? { w: { m: 1, r: i } } : {})
+        }
+      }));
+    /** The pair the whole decision is named after: rows 224 and 2204. */
+    const scoutRows = {
+      n: 'gnoll scout',
+      hp: 100,
+      hi: 830,
+      i: [224, 2204],
+      d: 'h',
+      rw: [
+        { hp: 100, ac: 75, xp: 340 },
+        { hp: 830, ac: 40, xp: 2000 }
+      ]
+    };
     const rooms = [
       { m: 1, r: 1, n: 'Guard Post', x: {}, lair: '(Max 3): 224,' },
       { m: 1, r: 2, n: 'Barracks', x: {}, lair: '(Max 1): 2204,' },
@@ -1958,9 +1989,14 @@ describe('lairs', () => {
               hi: 830,
               i: [224, 2204],
               d: 'h',
+              // The fold: the hardest to hit and the least worth killing.
+              ac: 75,
+              xp: 340,
               pf: [weak, strong],
-              pr: [0, 1],
-              pd: 'hh'
+              rw: [
+                { hp: 100, d: 'h', p: 0, ac: 75, xp: 340 },
+                { hp: 830, d: 'h', p: 1, ac: 40, xp: 2000 }
+              ]
             },
             {
               n: 'guardsman',
@@ -1969,13 +2005,15 @@ describe('lairs', () => {
               d: 'h',
               x: 1,
               pf: [weak],
-              pr: [0, 0],
-              pd: 'he'
+              rw: [
+                { hp: 200, d: 'h', p: 0 },
+                { hp: 200, d: 'e', p: 0 }
+              ]
             },
-            { n: 'old man', hp: 10, i: [5], d: 'p', pf: [weak], pr: [-1], pd: 'p' }
+            { n: 'old man', hp: 10, i: [5, 6], d: 'p', pf: [weak], rw: [{ hp: 10, d: 'p' }, {}] }
           ]
         },
-        31
+        32
       );
 
     it('hands a lair the row’s own profile, not the fold’s worst', () => {
@@ -2001,6 +2039,215 @@ describe('lairs', () => {
       expect(byRow().lairEntities(byRow().byId('1/4')!)[0]?.profiles).toEqual([]);
     });
 
+    /*
+     * And the readout says the same thing the price does. `lair()` folded by
+     * name, so the room quick view hovering a route step answered `100-830 hp`
+     * about Dragon's Teeth Hills 2/390 -- whose descriptor is `(Max 1): 224,`,
+     * a 100-HP scout -- and the Room card's own LAIR face said it about the
+     * room the character was standing in.
+     */
+    it('reads a lair as the row its descriptor names, range and all', () => {
+      const graph = byRow();
+      const post = graph.lair(graph.byId('1/1')!);
+      expect(post?.mobs).toHaveLength(1);
+      expect(post?.mobs[0]).toMatchObject({
+        name: 'gnoll scout',
+        hp: 100,
+        armour: 75,
+        experience: 340,
+        row: { id: 224, how: 'here', steps: 0, beyond: null }
+      });
+      // The fold's range was doubt about the row's twins, and the row is not
+      // in doubt about itself.
+      expect(post?.mobs[0]).not.toHaveProperty('span');
+      expect(graph.lair(graph.byId('1/2')!)?.mobs[0]).toMatchObject({ hp: 830, experience: 2000 });
+      // The disposition too, for a name whose rows disagree about it.
+      expect(graph.lair(graph.byId('1/3')!)?.mobs[0]).toMatchObject({
+        disposition: 'hates-evil',
+        uncertain: false
+      });
+    });
+
+    it('lists two rows of one name as the two monsters they are', () => {
+      const warren = makeWorld(
+        [{ m: 1, r: 1, n: 'Warren', x: {}, lair: '(Max 2): 224,2204,224,' }],
+        {
+          mobs: [
+            {
+              n: 'gnoll scout',
+              hp: 100,
+              hi: 830,
+              i: [224, 2204],
+              d: 'h',
+              rw: [
+                { hp: 100, d: 'h' },
+                { hp: 830, d: 'h' }
+              ]
+            }
+          ]
+        },
+        32
+      );
+      // Two entries, not one line saying `100-830`: the descriptor names both
+      // rows and they are a 100-HP monster and an 830-HP one. The repeat is
+      // still one line, because a row is its own identity.
+      expect(warren.lair(warren.byId('1/1')!)?.mobs.map((mob) => mob.hp)).toEqual([100, 830]);
+    });
+
+    it('folds by name again on a realm with no per-row records', () => {
+      // Format 31 wrote no `rw`, so the fold is every answer the file holds and
+      // two ids of one name are one line, exactly as they always were.
+      const older = makeWorld(
+        [{ m: 1, r: 1, n: 'Warren', x: {}, lair: '(Max 2): 224,2204,' }],
+        { mobs: [{ n: 'gnoll scout', hp: 100, hi: 830, i: [224, 2204], d: 'h' }] },
+        31
+      );
+      const only = older.lair(older.byId('1/1')!)?.mobs;
+      expect(only).toHaveLength(1);
+      expect(only?.[0]).toMatchObject({ hp: 830, span: [100, 830] });
+      expect(only?.[0]).not.toHaveProperty('row');
+    });
+
+    /*
+     * And a name off the wire is resolved by the room it was printed in
+     * (todo 02). The wire carries no row number, so `gnoll scout` folded rows
+     * 224 and 2204 and the card answered `100–830 hp` for a monster the room's
+     * own lair names outright.
+     */
+    describe('resolved by the room the name was printed in', () => {
+      it('takes the row this room’s own lair names', () => {
+        const graph = byRow();
+        expect(graph.resolveMobRow('gnoll scout', '1/1')).toEqual({
+          id: 224,
+          how: 'here',
+          steps: 0,
+          beyond: null
+        });
+        const here = graph.mobAt('gnoll scout', '1/1')!;
+        expect(here).toMatchObject({ hp: 100, armour: 75, experience: 340 });
+        // One row states one number, so the fold's range goes with the fold.
+        expect(here).not.toHaveProperty('span');
+        expect(graph.mobAt('gnoll scout', '1/2')).toMatchObject({ hp: 830, experience: 2000 });
+      });
+
+      it('reads a modifier off the name the way every other lookup does', () => {
+        // `thin gnoll scout` is what the server printed; `MobNameModifierType`
+        // hangs the word on and the realm's row does not carry it.
+        expect(byRow().mobAt('thin gnoll scout', '1/1')).toMatchObject({ hp: 100 });
+      });
+
+      it('leaves the fold alone where the room says nothing', () => {
+        const graph = byRow();
+        // Room 1/3 is a `guardsman` lair: it names neither gnoll scout row, and
+        // the corridor these rooms sit in has no exits to search along.
+        expect(graph.resolveMobRow('gnoll scout', '1/3')).toBeNull();
+        expect(graph.mobAt('gnoll scout', '1/3')).toMatchObject({ hp: 830, span: [100, 830] });
+        expect(graph.mobAt('gnoll scout', null)).toMatchObject({ hp: 830 });
+      });
+
+      it('refuses a room whose own lair names two of them', () => {
+        const graph = makeWorld(
+          [{ m: 1, r: 1, n: 'Both', x: {}, lair: '(Max 3): 224,2204,' }],
+          { mobs: [scoutRows] },
+          32
+        );
+        // The room cannot tell them apart, so neither can anything reading it.
+        expect(graph.resolveMobRow('gnoll scout', '1/1')).toBeNull();
+        expect(graph.mobAt('gnoll scout', '1/1')).toMatchObject({ hp: 830, span: [100, 830] });
+      });
+
+      it('takes the decisively nearer row where no room here names one', () => {
+        // A corridor: the scout's two rows spawn at either end, and the reader
+        // stands one step from row 224 and eleven from row 2204.
+        const rows = line(13).map((room, i) =>
+          i === 0
+            ? { ...room, lair: '(Max 1): 224,' }
+            : i === 12
+              ? { ...room, lair: '(Max 1): 2204,' }
+              : room
+        );
+        const graph = makeWorld(rows, { mobs: [scoutRows] }, 32);
+        expect(graph.resolveMobRow('gnoll scout', '1/2')).toMatchObject({
+          id: 224,
+          how: 'nearest',
+          steps: 1,
+          // Nothing else of the name inside eight times that, which is what
+          // makes one step evidence rather than a coin toss.
+          beyond: 8
+        });
+        expect(graph.mobAt('gnoll scout', '1/2')).toMatchObject({ hp: 100 });
+      });
+
+      it('refuses two rows that are about as near as each other', () => {
+        // Three steps against five is not evidence: a monster wanders, and it
+        // is dragged. `mobRowMargin` is what the nearer one has to beat.
+        const rows = line(9).map((room, i) =>
+          i === 0
+            ? { ...room, lair: '(Max 1): 224,' }
+            : i === 8
+              ? { ...room, lair: '(Max 1): 2204,' }
+              : room
+        );
+        const graph = makeWorld(rows, { mobs: [scoutRows] }, 32);
+        expect(graph.resolveMobRow('gnoll scout', '1/4')).toBeNull();
+      });
+
+      it('answers where the other row is nowhere the search could reach', () => {
+        const rows = line(4).map((room, i) =>
+          i === 0 ? { ...room, lair: '(Max 1): 224,' } : room
+        );
+        const graph = makeWorld(rows, { mobs: [scoutRows] }, 32);
+        // Row 2204 is placed in no room at all, which is the strongest form of
+        // the answer rather than the weakest.
+        expect(graph.resolveMobRow('gnoll scout', '1/3')).toMatchObject({
+          id: 224,
+          how: 'nearest',
+          steps: 2,
+          // Four rooms is the whole of what there is to walk, so the radius
+          // searched is the map rather than the margin.
+          beyond: 2
+        });
+      });
+
+      it('lists only the resolved row’s rooms as where this monster is', () => {
+        const rows = line(13).map((room, i) =>
+          i === 0
+            ? { ...room, lair: '(Max 1): 224,' }
+            : i === 12
+              ? { ...room, lair: '(Max 1): 2204,' }
+              : room
+        );
+        const graph = makeWorld(rows, { mobs: [scoutRows] }, 32);
+        // Folded, the name is in both rooms; resolved, the other room is where
+        // its namesake lives. And `mobPlaces` matched on object identity, so a
+        // re-answered copy lost the list outright.
+        expect(graph.mobPlaces(graph.mobAsPrinted('gnoll scout')!)?.rooms).toBe(2);
+        expect(graph.mobPlaces(graph.mobAt('gnoll scout', '1/1')!)?.rooms).toBe(1);
+      });
+
+      it('resolves nothing for a name the realm places once', () => {
+        const graph = byRow();
+        expect(graph.resolveMobRow('old man', '1/4')).toBeNull();
+        expect(graph.mobAt('old man', '1/4')).toMatchObject({ hp: 10 });
+      });
+    });
+
+    it('and the row’s own numbers, never the worst of its twins’', () => {
+      const graph = byRow();
+      // The fold is the hardest to hit and the least worth killing.
+      expect(graph.mob('gnoll scout')).toMatchObject({ hp: 830, armour: 75, experience: 340 });
+      expect(graph.lairEntities(graph.byId('1/1')!)[0]).toMatchObject({
+        hp: 100,
+        armour: 75,
+        experience: 340
+      });
+      expect(graph.lairEntities(graph.byId('1/2')!)[0]).toMatchObject({
+        hp: 830,
+        armour: 40,
+        experience: 2000
+      });
+    });
+
     it('degrades to the fold on a file written before the rows were kept', () => {
       const graph = makeWorld(
         rooms,
@@ -2010,6 +2257,31 @@ describe('lairs', () => {
         30
       );
       expect(graph.lairEntities(graph.byId('1/1')!)[0]?.profiles).toHaveLength(2);
+      expect(graph.lairEntities(graph.byId('1/1')!)[0]?.hp).toBe(830);
+    });
+
+    it('refuses a row list the writer did not keep in step with the ids', () => {
+      const graph = makeWorld(
+        rooms,
+        {
+          mobs: [
+            {
+              n: 'gnoll scout',
+              hp: 100,
+              hi: 830,
+              i: [224, 2204],
+              d: 'h',
+              pf: [weak, strong],
+              // One short: read by position, this would answer for 2204 with
+              // 224's record and for 224 with nothing.
+              rw: [{ hp: 100, p: 0 }]
+            }
+          ]
+        },
+        32
+      );
+      expect(graph.mobRow(224)).toBeUndefined();
+      expect(graph.lairEntities(graph.byId('1/1')!)[0]?.hp).toBe(830);
     });
 
     it('is empty for a room that is not a lair', () => {

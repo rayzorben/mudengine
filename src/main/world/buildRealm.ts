@@ -79,8 +79,9 @@ import {
  * | 26 | **A quest step's alternatives, kept apart.** A text block holds one line per class — fifteen on the alignment chains — and each line is a complete route with its own gate, its own price and its own reward. `stepsInBlock` merged lines advancing the same counter to the same rank by *unioning* them, so a step said **be a Warrior and a Witchunter**, be level 22 and level 20 at once, and take all fifteen classes' perks: a wrong answer rather than a long one, on 23 of the 251 steps and every one of the three great chains. What every route shares stays on the step; the rest is `QuestStep.ways` (`shareRoutes`). Bumped for the **cache**, like format 19: a player who had already converted their own database would otherwise keep the union for ever, since none of the path, size or mtime `RealmLibrary.identity` also keys on moves when the converter changes |
  * | 30 | **What a room's own spell does, and what stops it.** `Rooms.Spell` has been written out since format 13 and read by nothing, so the router priced the whole Silver River — 845 rooms whose spell bashes anybody without a boat against the rocks — at one step a room, and a route from the Pier to the Gnoll Encampment went eighty-eight of them rather than a hundred and four through the slums. The harm is one step down a chain the runtime cannot walk: `river damage` carries no magnitude at all, only `TextBlock 2750`, which reads `failitem 690:failitem 691:failitem 1181:failitem 3609:message 2096:cast 754` — a log raft, a wooden skiff, a silverbark canoe or a river punt stops it, and otherwise `battered` takes 10–20. `TBInfo` is not converted, so `indexSpellHazards` follows the chain here and writes the answer onto the spell (`BuiltSpell.hz`); the router prices the room by it and un-prices it for a pack holding one of the items — todo 01 |
  * | 31 | **A lair's monsters are its own rows, and a room's spell can summon.** A lair names its monsters by row number and the index folded every row sharing a name into one record, so `Hillside Path, Guard Post` — row 224, a 100-HP gnoll scout that lands one blow in twenty-five — was weighed as row 2204, an 830-HP gnoll scout that swings four times a round, and a level-12 Paladin was told the room was expected to kill it. `BuiltMob.pr` and `pd` carry each row's own profile and disposition beside its number, so `WorldGraph.lairEntities` weighs the row the lair actually spawns; a name off the wire still folds, because the wire carries no number. And `spellHazard.ts` reads a roll table (`77:addexp 0`, `81:message 2645`) as the dice it is rather than as an unknown verb, and `summon` as a fact (`BuiltSpellHazard.sm`) rather than as a chain it cannot follow: 71 of Paradigm's 159 room spells were unread, and 29 rooms of the Silvermere's own weather were priced as a hazard — todo 01 |
+ * | 32 | **A row's own numbers, so a name standing in a room can be resolved to one of them.** Format 31 gave a lair the row it spawns; the wire still carried only a name, so the Reference card answered *gnoll scout* with the fold of rows 224 and 2204 — `100–830 hp`, 75 AC, and a fight it priced at 2,161 hp of chewing. But a room is a very strong clue to which row is standing in it: the Gnoll Tent's own lair names 224, and the nearest room row 2204 spawns in is on another map. `BuiltMob.rw` carries every row's own health, defence, worth, regeneration, pursuit and average blow beside its number — subsuming `pr` and `pd`, which were the same per-row shape written as two parallel arrays — and `WorldGraph.resolveMobRow` picks the row by the room, saying which and how. Written only where a name holds several rows, because with one row the fold *is* the row — todo 02 |
  */
-export const REALM_FORMAT = 31;
+export const REALM_FORMAT = 32;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -519,21 +520,21 @@ export interface BuiltMob {
    */
   i?: number[];
   /**
-   * Which of `pf` each row in `i` fights with, by index, and `-1` for a row
-   * that states no attack at all. Format 31, and only written beside `pf`.
+   * Each row in `i`, in `i`'s order, answering for itself — format 32.
    *
-   * The fold above is right for a name off the wire, which carries no row
-   * number, and wrong for a lair, which names its rows: weighed by name, a
-   * 100-HP gnoll scout became the 830-HP one that shares its name, and a
-   * guard post was called deadly to a character it could barely hit.
+   * The fold above is right for a name nothing can place, and wrong wherever
+   * the row *is* known: weighed by name, a 100-HP gnoll scout became the
+   * 830-HP one that shares its name, and a guard post was called deadly to a
+   * character it could barely hit. A lair names its rows outright (format 31)
+   * and a room resolves a name standing in it to one of them
+   * (`WorldGraph.resolveMobRow`), and both then want the row's own numbers
+   * rather than the worst of its twins'.
+   *
+   * Written **only where `i` holds more than one row**: with one row the fold
+   * is that row already, and writing it twice would be the same fact in two
+   * places for every one of the realm's 1,300 unshared names.
    */
-  pr?: number[];
-  /**
-   * Each row's own disposition, one letter per row in `i` (`-` where the row
-   * states none), for the same reason as `pr`: the lair knows which row it
-   * spawns, so the row's answer outranks the fold's worst case.
-   */
-  pd?: string;
+  rw?: BuiltMobRow[];
   /** Lowest maximum health any row with this name has. */
   hp: number;
   /** Highest, when the rows disagree. Absent when they do not. */
@@ -664,6 +665,36 @@ export interface BuiltMob {
    * effect without a rebuild.
    */
   ab?: Array<[number, number]>;
+}
+
+/**
+ * One of the realm's `Monsters` rows, answering for itself — format 32.
+ *
+ * Every field here is the same column `BuiltMob` folds, taken from this row
+ * alone and folded with nothing. The fold is the answer for a name nothing
+ * can place to a row; this is the answer wherever something can, and the two
+ * are different questions rather than two accuracies of one.
+ *
+ * The short keys match `BuiltMob`'s so a reader can overlay one on the other
+ * field by field. Absent means *this row states no such column*, which is the
+ * same absence `BuiltMob` uses and reads the same way: not zero.
+ */
+export interface BuiltMobRow {
+  /** Index into `BuiltMob.pf`, absent for a row that states no attack at all. */
+  p?: number;
+  /** This row's `Monsters.Align`/`Type` reading, absent where it states none. */
+  d?: string;
+  /** `Monsters.HP` — this row's own maximum, never a span. */
+  hp: number;
+  ac?: number;
+  dr?: number;
+  mr?: number;
+  xp?: number;
+  rgn?: number;
+  fol?: number;
+  dmg?: number;
+  chl?: number;
+  und?: 1;
 }
 
 /**
@@ -1666,10 +1697,11 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       /** Format 20: each distinct row profile, keyed on its own JSON. */
       profiles: Map<string, MobProfile>;
       /**
-       * Format 31: per row that has a number, in `ids` order — the index of
-       * its profile in `profiles` (−1 for none) and its own disposition.
+       * Format 32: every row that has a number, in `ids` order, answering for
+       * itself — its profile's index in `profiles` and its own columns, folded
+       * with nothing. See `BuiltMobRow`.
        */
-      rows: Array<{ profile: number; how: MobDisposition | null }>;
+      rows: BuiltMobRow[];
       drops: Set<string>;
       /**
        * Ability id → every value the rows sharing this name state for it.
@@ -1781,9 +1813,32 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       if (!entry.profiles.has(key)) entry.profiles.set(key, profile);
       which = [...entry.profiles.keys()].indexOf(key);
     }
-    // Format 31: this row's own answers, kept in step with `ids` so a lair
-    // can be weighed by the row it names rather than by the fold.
-    if (id !== null) entry.rows.push({ profile: which, how: rowHow });
+    /*
+     * Format 32: this row's own answers, kept in step with `ids` so a lair —
+     * or a name resolved to a row by the room it is standing in — is weighed
+     * by the row rather than by the worst of its twins. Read straight off the
+     * columns rather than through `worse`/`least`, which fold across rows and
+     * have nothing to fold here.
+     */
+    if (id !== null) {
+      const own: BuiltMobRow = { hp };
+      if (which >= 0) own.p = which;
+      if (rowHow !== null) own.d = DISPOSITION_CODE[rowHow];
+      const stated = (column: string): number | undefined => {
+        const value = number(row[column]);
+        return value === null || value <= 0 || value === BLANK_AS_NUMBER ? undefined : value;
+      };
+      own.ac = stated('ArmourClass');
+      own.dr = stated('DamageResist');
+      own.mr = stated('MagicRes');
+      own.xp = stated('EXP');
+      own.rgn = stated('HPRegen');
+      own.fol = stated('Follow%');
+      own.dmg = stated('AvgDmg');
+      own.chl = stated('CharmLVL');
+      if (number(row['Undead']) === 1) own.und = 1;
+      entry.rows.push(own);
+    }
     /*
      * The effect system — format 14. Every value every row states, gathered
      * here and reduced per id below, because how to reduce depends on the id.
@@ -1846,20 +1901,13 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       // the rows' order is the one order every build of one database shares.
       if (span.profiles.size > 0) mob.pf = [...span.profiles.values()].map(compactProfile);
       /*
-       * Format 31. Only where the rows can be told apart at all: with one
-       * row the fold *is* the row, and a realm whose rows carry no number has
-       * nothing for a lair to name. `pd` is omitted where no row states a
-       * disposition, so it reads back as the fold's absence rather than as a
-       * row of stated unknowns.
+       * Format 32. Only where the rows can be told apart at all: with one row
+       * the fold *is* the row, and a realm whose rows carry no number has
+       * nothing for a lair or a room to name. Kept in step with `i` or not
+       * written at all — a reader indexes one by the other, and a list one
+       * short would answer for the row beside the one asked about.
        */
-      if (span.rows.length === span.ids.length && span.ids.length > 0) {
-        if (span.profiles.size > 0) mob.pr = span.rows.map((row) => row.profile);
-        if (span.rows.some((row) => row.how !== null)) {
-          mob.pd = span.rows
-            .map((row) => (row.how === null ? '-' : DISPOSITION_CODE[row.how]))
-            .join('');
-        }
-      }
+      if (span.ids.length > 1 && span.rows.length === span.ids.length) mob.rw = span.rows;
       // Capped and sorted: "one of these six" is a lead, a list of forty is
       // not, and a stable order is what keeps two builds byte-identical.
       if (span.drops.size > 0) mob.drops = [...span.drops].sort().slice(0, 6);

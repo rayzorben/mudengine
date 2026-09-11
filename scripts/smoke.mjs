@@ -4276,66 +4276,106 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   check(/telepath/.test(said), 'across every channel, not just one', said.slice(0, 90));
 
   /*
-   * The channels are the heading's faces now — TALK is the whole stream and
-   * each channel that has spoken earns a pill. GOS shows gossip alone, and
-   * TALK brings everything back: the same guarantee the mute chips gave,
-   * asked of the control that replaced them.
+   * The channels are the heading's **toggles** (todo 06), not its faces. A
+   * face means exactly one is showing, so watching gossip *and* the gang meant
+   * watching everything and *these two and not the rest* could not be said at
+   * all. ALL is the master: on, every channel is drawn and the rest are
+   * disabled **in their own state**, so turning it off puts the reader's own
+   * choices back rather than starting them again from nothing.
    */
-  const clickFace = (word) => `
+  const toggle = (word) => `
     (() => {
       const crumb = [...document.querySelectorAll('.conversation-card .crumbs .crumb')]
         .find((c) => c.innerText.trim().toLowerCase() === '${word}');
-      if (crumb) crumb.click();
-      return !!crumb;
+      if (!crumb || crumb.disabled) return false;
+      crumb.click();
+      return true;
     })()
   `;
-  check(await evaluate(clickFace('gos')), 'the gossip channel earned a face in the heading');
-  const gossipFace = await readUntil(
-    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (gossipFace) => !/telepath/.test(gossipFace) && /rope/.test(gossipFace)
-  );
+  const crumbState = (word) => `
+    (() => {
+      const crumb = [...document.querySelectorAll('.conversation-card .crumbs .crumb')]
+        .find((c) => c.innerText.trim().toLowerCase() === '${word}');
+      return crumb
+        ? { on: crumb.getAttribute('aria-pressed'), disabled: crumb.disabled }
+        : null;
+    })()
+  `;
   check(
-    !/telepath/.test(gossipFace) && /rope/.test(gossipFace),
-    'a channel face shows that channel alone'
+    (await evaluate(`document.querySelector('.conversation-card .crumbs')?.getAttribute('role')`)) ===
+      'group',
+    'the channel row is a group of toggles, not a tablist'
   );
-  check(await evaluate(clickFace('talk')), 'and TALK is always offered');
-  await waitFor(async () =>
-    /telepath/.test(await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`))
+  const underAll = await evaluate(crumbState('gos'));
+  check(
+    underAll?.on === 'true' && underAll?.disabled === true,
+    'with ALL on, a channel is drawn in its own state and refuses the press',
+    JSON.stringify(underAll)
   );
+  check(await evaluate(toggle('all')), 'ALL is the one control that is always live');
+  check(
+    (await evaluate(crumbState('gos')))?.disabled === false,
+    'and turning it off hands the row back'
+  );
+  // Nothing has been muted yet, so the whole stream is still on screen: the
+  // master is a master, not a second filter.
   check(
     /telepath/.test(await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`)),
-    'returning to TALK brings the whole stream back'
+    'with nothing muted, ALL off shows everything ALL on did'
   );
-
-  /*
-   * Who arrived and who went, on a pill of their own.
-   *
-   * These three are `presence` blocks and stay that way -- the roster is
-   * maintained off the same sentences -- so the card carries them by asking
-   * its own question (`isTalkBlock`) rather than by re-domaining a fact to
-   * suit one reader. Both halves are checked here because both were asked
-   * for: the lines are in the feed, and the button isolating them is real.
-   * A face nobody can click is a feature nobody has.
-   */
-  check(await evaluate(clickFace('realm')), 'the comings and goings earned a face too');
-  const realmFace = await readUntil(
+  check(await evaluate(toggle('tele')), 'a channel that has spoken earns a toggle');
+  const muted = await readUntil(
     () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => /just entered/.test(text) && !/rope/.test(text)
+    (text) => !/telepath/.test(text) && /rope/.test(text)
   );
   check(
-    /just entered/.test(realmFace) && !/rope/.test(realmFace),
-    'and it shows an arrival with the conversation filtered away',
-    realmFace.slice(0, 160)
+    !/telepath/.test(muted) && /rope/.test(muted),
+    'turning one off takes that channel alone off the feed',
+    muted.slice(0, 120)
   );
-  check(await evaluate(clickFace('talk')), 'and TALK is still offered beside it');
-  const bothFace = await readUntil(
+  /*
+   * Who arrived and who went, on a toggle of their own. These three are
+   * `presence` blocks and stay that way -- the roster is maintained off the
+   * same sentences -- so the card carries them by asking its own question
+   * (`isTalkBlock`) rather than by re-domaining a fact to suit one reader.
+   */
+  check(await evaluate(toggle('realm')), 'the comings and goings earned a toggle too');
+  const withoutRealm = await readUntil(
+    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
+    (text) => !/just entered/.test(text) && /rope/.test(text)
+  );
+  check(
+    !/just entered/.test(withoutRealm) && /rope/.test(withoutRealm),
+    'and two off at once is two off, which a face could never say',
+    withoutRealm.slice(0, 160)
+  );
+  // The master forces them back on without forgetting what was chosen.
+  check(await evaluate(toggle('all')), 'ALL goes back on');
+  const forced = await readUntil(
     () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
     (text) => /just entered/.test(text) && /telepath/.test(text)
   );
   check(
-    /just entered/.test(bothFace) && /telepath/.test(bothFace),
-    'and the arrival sits in the whole stream beside what was said'
+    /just entered/.test(forced) && /telepath/.test(forced),
+    'and forces every channel back on top of what was muted'
   );
+  check(
+    (await evaluate(crumbState('tele')))?.on === 'false',
+    'while the muted one still shows the state it will go back to'
+  );
+  check(await evaluate(toggle('all')), 'and ALL off again');
+  const reverted = await readUntil(
+    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
+    (text) => !/telepath/.test(text) && /rope/.test(text)
+  );
+  check(
+    !/telepath/.test(reverted),
+    'reverts to what the reader had chosen, not to nothing'
+  );
+  // Left as the rest of this run expects to find it.
+  await evaluate(toggle('tele'));
+  await evaluate(toggle('realm'));
+  await evaluate(toggle('all'));
 
   // The find row is put away until the search glyph in the action column
   // asks for it — the row it used to hold now shows conversation.
@@ -9672,6 +9712,116 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       /accent: cyan/.test(await fileBecomes(freshly, (text) => /accent: cyan/.test(text))),
       'and Ctrl/Cmd Z does the same, which is what anybody actually presses'
     );
+  }
+
+  /*
+   * The screen is a panel over the workspace, not a modal over a scrim (todo
+   * 04): the point of it is that a setting can be changed and *watched*, and
+   * what a setting does happens in the console behind it — sometimes while a
+   * character is standing somewhere being hit. So the layer has to let a
+   * pointer through to the terminal, and the screen has to still be there
+   * afterwards, because the two ways out are its own glyph and its own Escape.
+   */
+  {
+    // It ships unplaced -- the stylesheet's own size, centred -- because a
+    // fraction cannot state a form's width on a laptop and on a large display
+    // at once. A drag is what gives it a box.
+    check(
+      (await evaluate(
+        `document.querySelector('.settings')?.getAttribute('data-placed')`
+      )) === 'false',
+      'the panel ships as the dialog always looked, with no box of its own'
+    );
+    const grip = await evaluate(`
+      (() => {
+        const g = document.querySelector('.settings-grip');
+        if (!g) return null;
+        const r = g.getBoundingClientRect();
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+      })()
+    `);
+    check(grip !== null, 'the panel has a corner to resize from');
+    // Up and to the left: the corner alone moves, so the panel shrinks away
+    // from the bottom right and uncovers the console under it.
+    await cdp('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: grip.x,
+      y: grip.y,
+      button: 'left',
+      clickCount: 1
+    });
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(grip.x - 400 * step),
+        y: Math.round(grip.y - 300 * step),
+        button: 'left',
+        buttons: 1
+      });
+    }
+    await cdp('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: grip.x - 400,
+      y: grip.y - 300,
+      button: 'left'
+    });
+    /*
+     * Where the reader put it, and remembered as fractions of the workspace so
+     * a box from another display can always be dragged back.
+     */
+    const geometry = await waitFor(async () =>
+      evaluate(`
+        (() => {
+          const el = document.querySelector('.settings');
+          if (!el || el.getAttribute('data-placed') !== 'true') return null;
+          const r = el.getBoundingClientRect();
+          return { width: el.style.width, height: el.style.height, w: Math.round(r.width),
+                   right: Math.round(r.right), bottom: Math.round(r.bottom) };
+        })()
+      `)
+    );
+    check(
+      /%$/.test(geometry?.width ?? '') && /%$/.test(geometry?.height ?? ''),
+      'the corner resizes it, in fractions of the workspace and never pixels',
+      JSON.stringify(geometry)
+    );
+
+    // A point on the console that the panel is no longer over.
+    const box = await evaluate(`
+      (() => {
+        const t = document.querySelector('.terminal-cell');
+        const p = document.querySelector('.settings');
+        if (!t || !p) return null;
+        const r = t.getBoundingClientRect();
+        const s = p.getBoundingClientRect();
+        const y = Math.round(Math.min(r.bottom - 8, (s.bottom + r.bottom) / 2));
+        const x = Math.round(r.left + Math.min(40, r.width / 4));
+        return y > s.bottom && y < r.bottom ? { x, y } : null;
+      })()
+    `);
+    check(box !== null, 'shrinking it uncovers the console behind it');
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await cdp('Input.dispatchMouseEvent', {
+        type,
+        x: box.x,
+        y: box.y,
+        button: 'left',
+        clickCount: 1
+      });
+    }
+    await waitFor(async () => (await focusPath()) === 'terminal');
+    check(
+      (await focusPath()) === 'terminal',
+      'a click behind the settings panel reaches the console',
+      await focusPath()
+    );
+    check(
+      await evaluate(`!!document.querySelector('.settings')`),
+      'and does not dismiss it — only its glyph and its own Escape do'
+    );
+    // The caret is in the terminal now, and Escape there belongs to the
+    // server — so the way back into the panel is a press on the panel.
+    await evaluate(`(document.querySelector('.settings-head .crumb')?.focus(), true)`);
   }
 
   // Escape hands the keyboard back to the game: this dialog holds the caret

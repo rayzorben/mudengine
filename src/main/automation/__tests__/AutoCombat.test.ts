@@ -1723,6 +1723,70 @@ describe('asking once about one monster', () => {
     expect(sent).toEqual(['a giant rat', 'a giant rat']);
   });
 
+  /*
+   * The case the single-slot cooldown could not answer (todo 07). Two monsters
+   * in the room, and `aa <mob>` is answered by `*Combat Off*` then `*Combat
+   * Engaged*` — so between the two blocks the target is null and the room
+   * looks like one nobody is fighting in. Attacking the second overwrote the
+   * first's record, so the first read as never asked about, and the live
+   * transcript shows `aa thin gnoll scout` / `aa gnoll scout` alternating once
+   * a prompt for ever, neither monster ever swinging back.
+   */
+  it('does not alternate between two monsters in the room', () => {
+    const auto = make(combat());
+    const here = {
+      ...EMPTY_CHARACTER.room,
+      occupants: [mob('thin gnoll scout', 'hostile'), mob('gnoll scout', 'hostile')]
+    };
+    auto.onCharacter(state({ room: here }));
+    drain();
+    expect(sent).toHaveLength(1);
+    const first = sent[0]!;
+
+    /*
+     * Twenty of the server's own answers: `*Combat Off*` and `*Combat Engaged*`
+     * are one answer arriving as two blocks, and every Off used to be read as
+     * a room with a free hand in it.
+     *
+     * Asserted on the **set** of things swung at rather than the count of
+     * swings: re-asking about the *same* monster once the engage cooldown has
+     * run out is the settled behaviour (an attack refused for a reason this
+     * client cannot see leaves the room exactly as it was), and twenty drains
+     * is twice that cooldown. The bug was never the count — it was that the
+     * second monster was ever swung at at all.
+     */
+    for (let i = 0; i < 20; i += 1) {
+      auto.onCharacter(state({ room: here, inCombat: false }));
+      auto.onCharacter(
+        state({
+          room: here,
+          inCombat: true,
+          combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: first.slice(2) }
+        })
+      );
+      drain();
+    }
+    expect([...new Set(sent)]).toEqual([first]);
+  });
+
+  it('goes for the other one once the first is dead, without waiting out a cooldown', () => {
+    // The guard above must not become a tax on the next fight: a kill clears
+    // the target, and the room still holds something worth swinging at.
+    const auto = make(combat());
+    const thin = mob('thin gnoll scout', 'hostile');
+    const stout = mob('gnoll scout', 'hostile');
+    auto.onCharacter(state({ room: { ...EMPTY_CHARACTER.room, occupants: [thin, stout] } }));
+    drain();
+    expect(sent).toHaveLength(1);
+    // The one it went for dies and leaves the room.
+    const dead = sent[0]!.slice(2);
+    const left = [thin, stout].filter((who) => who.name !== dead);
+    auto.onCharacter(state({ room: { ...EMPTY_CHARACTER.room, occupants: left } }));
+    drain();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).not.toBe(sent[0]);
+  });
+
   it('cancels a queued attack when its monster vanishes', () => {
     // The server holds output while the player has a half-typed line, so a
     // whole fight can arrive as one burst: an attack decided early in the

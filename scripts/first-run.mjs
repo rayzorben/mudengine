@@ -278,10 +278,17 @@ await cdp('Input.dispatchKeyEvent', {
 await sleep(400);
 check(await evaluate(`!!document.querySelector('.settings')`), 'Escape does not dismiss it');
 
-// A press on the scrim, which is the click "outside the form" the report named.
+/*
+ * A press outside the form, which is the click the report named.
+ *
+ * The scrim is `.settings-layer[data-required='true']` since the screen became
+ * a movable panel (todo 04): with characters it is an inert layer the pointer
+ * passes through to the console, and with none it is the modal it always was,
+ * because there is nothing behind it to reach and no way out of it.
+ */
 await evaluate(`
   (() => {
-    const scrim = document.querySelector('.settings-scrim');
+    const scrim = document.querySelector('.settings-layer[data-required="true"]');
     if (!scrim) return false;
     scrim.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     return true;

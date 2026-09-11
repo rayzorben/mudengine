@@ -25,6 +25,18 @@
  *   list of names, matched by prefix because that is how the server reads
  *   `get`. Nothing here weighs, values or sells.
  *
+ * ## A supply is collected off the floor as well as bought
+ *
+ * `automation.supplies` states a floor and a ceiling per item, and until now
+ * the only way it filled one was a walk to a shop. Which is wrong for half of
+ * what a list holds: a `black star key` is min 2, max 2 and is sold nowhere —
+ * it is found. So a floor entry naming a listed supply the pack is **under the
+ * ceiling of** is taken, whether it was lying in the open or a search turned it
+ * up, exactly as a name on the loot list is. Under the ceiling and never past
+ * it: at four torches of a maximum six, a fifth and a sixth are picked up and a
+ * seventh is left where it is. `Supplies` owns the other end of the same rule —
+ * see its `considerSurplus`.
+ *
  * ## Hidden cash is asked for by quantity
  *
  * A `search` prints the same `You notice … here.` sentence a look does, and
@@ -42,7 +54,8 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
-import type { EncumbranceGate, LootConfig } from '../../shared/config';
+import type { EncumbranceGate, LootConfig, SuppliesConfig } from '../../shared/config';
+import { carriedCount } from '../../shared/supplies';
 import { DENOMINATIONS } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
@@ -87,6 +100,13 @@ export class AutoLoot {
 
   constructor(
     private config: LootConfig,
+    /**
+     * The supplies list, for its **ceiling** only: what is short is a walk to
+     * a shop and `Supplies`' business, and what is on the floor here is this
+     * module's. One list read by both, so the two cannot disagree about how
+     * many of a thing the character is supposed to be carrying.
+     */
+    private supplies: SuppliesConfig,
     private enabled: boolean,
     private readonly queue: CommandQueue,
     /**
@@ -102,8 +122,9 @@ export class AutoLoot {
     private readonly realmItem: (name: string) => ItemEntity = (name) => wireItem(name)
   ) {}
 
-  configure(config: LootConfig, enabled: boolean): void {
+  configure(config: LootConfig, supplies: SuppliesConfig, enabled: boolean): void {
     this.config = config;
+    this.supplies = supplies;
     this.enabled = enabled;
   }
 
@@ -212,11 +233,64 @@ export class AutoLoot {
           if (worth !== 'too heavy') this.take(named, t('automation.loot.reasonListed', { item }));
           continue;
         }
+        /*
+         * And a supply the pack is under the ceiling of, which is the same
+         * instruction stated in the other list — a `black star key` at min 2,
+         * max 2 is sold nowhere and can only ever be found. Under the ceiling
+         * and never past it: the count is re-read from the pack on every
+         * proposal, and `attempted` is cleared by the pack confirming the last
+         * one, so a floor holding three keys is taken one at a time until the
+         * pack says two.
+         */
+        const stocking = this.stockingUp(bare, state);
+        if (stocking !== null) {
+          if (worth !== 'too heavy') {
+            this.take(
+              stocking.name,
+              t('automation.loot.reasonStocking', {
+                item,
+                have: stocking.have,
+                max: stocking.max
+              })
+            );
+          }
+          continue;
+        }
         if (worth === 'worth it') {
           this.take(bare, t('automation.loot.reasonWorth', { item }));
         }
       }
     }
+  }
+
+  /**
+   * The supplies row this floor entry would fill, while the pack is under its
+   * ceiling — or null.
+   *
+   * Matched by `nameAnswersTo` against the configured name, which is the rule
+   * `carriedCount` counts by and the rule the server reads a typed `get` by:
+   * what is taken has to be what is counted, or a `torch` picked up against a
+   * `torch` row would never satisfy it. The command carries the **configured**
+   * name for the same reason — the floor's own spelling may be `2 torch`, and
+   * the count in front of a thing is not part of it.
+   */
+  private stockingUp(
+    bare: string,
+    state: CharacterState
+  ): { name: string; have: number; max: number } | null {
+    if (!this.supplies.enabled) return null;
+    const floor = bareName(bare);
+    if (floor.length === 0) return null;
+    for (const row of this.supplies.items) {
+      const wanted = bareName(row.name);
+      const ceiling = Math.max(row.min, row.max);
+      if (wanted.length === 0 || ceiling <= 0) continue;
+      if (!nameAnswersTo(floor, wanted)) continue;
+      const have = carriedCount(state, row.name);
+      if (have >= ceiling) continue;
+      return { name: row.name, have, max: ceiling };
+    }
+    return null;
   }
 
   /**

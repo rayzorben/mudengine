@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AutoLoot } from '../AutoLoot';
 import { CommandQueue } from '../CommandQueue';
-import { DEFAULT_CONFIG, type AutomationConfig, type LootConfig } from '../../../shared/config';
+import {
+  DEFAULT_CONFIG,
+  type AutomationConfig,
+  type LootConfig,
+  type SuppliesConfig
+} from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
@@ -51,7 +56,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const make = (config: LootConfig, enabled = true): AutoLoot => new AutoLoot(config, enabled, queue);
+/** A supplies list with nothing on it, which is what most of these cases want. */
+const NO_SUPPLIES: SuppliesConfig = { enabled: false, items: [] };
+
+const make = (config: LootConfig, enabled = true, supplies = NO_SUPPLIES): AutoLoot =>
+  new AutoLoot(config, supplies, enabled, queue);
 
 /**
  * A realm that prices and weighs three things and has never heard of anything
@@ -64,7 +73,7 @@ const REALM: Record<string, { price?: number; encumbrance?: number }> = {
   'rusty nail': { price: 0, encumbrance: 1 }
 };
 const withRealm = (config: LootConfig): AutoLoot =>
-  new AutoLoot(config, true, queue, (name) => ({
+  new AutoLoot(config, NO_SUPPLIES, true, queue, (name) => ({
     ...wireItem(name),
     ...(REALM[name.toLowerCase()] ?? {}),
     source: REALM[name.toLowerCase()] === undefined ? 'wire' : 'hybrid'
@@ -221,6 +230,107 @@ describe('named items', () => {
     );
     drain();
     expect(sent).toEqual([]);
+  });
+});
+
+/*
+ * The supplies list states a floor and a ceiling per item, and until todo 05
+ * the only way it filled one was a walk to a shop — which is no way at all for
+ * the half of a list that is sold nowhere. A `black star key` at min 2, max 2
+ * is found; a torch is both bought and found.
+ */
+describe('a supply found on the floor', () => {
+  const stocking = (items: SuppliesConfig['items']): SuppliesConfig => ({ enabled: true, items });
+  const supply = (
+    name: string,
+    min: number,
+    max: number,
+    shop = ''
+  ): SuppliesConfig['items'][0] => ({
+    name,
+    min,
+    max,
+    shop,
+    at: null
+  });
+  /** A pack holding `count` of `name`, as a listing would have left it. */
+  const carrying = (name: string, count: number): CharacterState => {
+    const base = state();
+    return {
+      ...base,
+      inventory: {
+        ...base.inventory,
+        items: Array.from({ length: count }, () => wireItem(name))
+      }
+    };
+  };
+
+  it('picks one up while the pack is under the ceiling', () => {
+    const auto = make(loot(), true, stocking([supply('black star key', 2, 2)]));
+    auto.onBlock(
+      block('room-items', { items: 'a black star key, a rusty nail' }),
+      carrying('black star key', 1)
+    );
+    drain();
+    // The configured name, not the floor's spelling: `get` reads a prefix and
+    // the article is the listing's.
+    expect(sent).toEqual(['get black star key']);
+  });
+
+  it('leaves it where it is once the ceiling is reached', () => {
+    const auto = make(loot(), true, stocking([supply('black star key', 2, 2)]));
+    auto.onBlock(block('room-items', { items: 'a black star key' }), carrying('black star key', 2));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * The case the todo is written around: torches at min 3, max 6, four
+   * carried. A fifth and a sixth are picked up and a seventh is left.
+   */
+  it('fills the gap between what is carried and the maximum, not the minimum', () => {
+    const list = stocking([supply('torch', 3, 6, 'General Store')]);
+    const at = (count: number): string[] => {
+      sent = [];
+      const auto = make(loot(), true, list);
+      auto.onBlock(block('room-items', { items: 'a torch' }), carrying('torch', count));
+      drain();
+      return sent;
+    };
+    expect(at(4)).toEqual(['get torch']);
+    expect(at(5)).toEqual(['get torch']);
+    expect(at(6)).toEqual([]);
+    expect(at(7)).toEqual([]);
+  });
+
+  it('takes one a search turned up, which is the same floor', () => {
+    const auto = make(loot(), true, stocking([supply('black star key', 2, 2)]));
+    auto.onBlock(
+      block('room-hidden-items', { items: 'a black star key' }),
+      carrying('black star key', 0)
+    );
+    drain();
+    expect(sent).toEqual(['get black star key']);
+  });
+
+  it('takes nothing off a list that is switched off', () => {
+    const auto = make(loot(), true, {
+      enabled: false,
+      items: [supply('black star key', 2, 2)]
+    });
+    auto.onBlock(block('room-items', { items: 'a black star key' }), carrying('black star key', 0));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('is not the loot list: an unlisted thing beside it is still left', () => {
+    const auto = make(loot(), true, stocking([supply('black star key', 2, 2)]));
+    auto.onBlock(
+      block('room-items', { items: 'a rusty key, a black star key' }),
+      carrying('black star key', 0)
+    );
+    drain();
+    expect(sent).toEqual(['get black star key']);
   });
 });
 

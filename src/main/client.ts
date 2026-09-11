@@ -2034,7 +2034,17 @@ function registerIpc(): void {
   handle(Invoke.lookup, (_caller, session: SessionId, query: unknown) => {
     const world = worldFor(session);
     if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };
-    const found = world.lookup(typeof query === 'string' ? query.slice(0, 128) : '');
+    /*
+     * Asked from where the reader is standing, which is what tells two of the
+     * realm's rows apart under one name: the Gnoll Tent's own lair names row
+     * 224 and the nearest room row 2204 spawns in is on another map, so the
+     * card answers `100 hp` rather than the fold's `100–830`. A session whose
+     * character has not placed itself yet passes null and gets the fold.
+     */
+    const here = host?.get(session)?.manager.character.room;
+    const at =
+      !here || here.map === null || here.number === null ? null : roomId(here.map, here.number);
+    const found = world.lookup(typeof query === 'string' ? query.slice(0, 128) : '', 12, at);
     // And what this character's realm has learned about each monster named,
     // beside the realm's figure. Only where fighting has taught something.
     const lore = loreFor(session);
