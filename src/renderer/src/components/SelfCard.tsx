@@ -20,7 +20,7 @@
  * First on the rail, before Vitals: the shipped arrangement is what a rail
  * that has never been arranged looks like, and the character is step one.
  */
-import { memo, useState } from 'react';
+import { memo, useState, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
@@ -55,11 +55,48 @@ function figure(value: number | null): string {
   return value === null ? '—' : value.toLocaleString();
 }
 
-function Row({ label, value }: { label: string; value: number | null }) {
+/**
+ * One label and one number, drawn against whatever says how big the number is.
+ *
+ * Three readings, and the card gets whichever it can honestly make:
+ *
+ * - **Against the race's own range** (`span`), where the realm states one.
+ *   93 strength says nothing on its own; 93 in a Kang's 55-to-160 says the
+ *   character is a third of the way up its own race. The share is handed to
+ *   the stylesheet as a number and the tint is mixed from it, so nothing here
+ *   picks a threshold: the reading *is* the number.
+ * - **A stated zero is quiet**, because *trained to nothing* is a real answer
+ *   and one worth telling apart from the dash below at a glance.
+ * - **A dash for what has not printed**, which is `inert` and not zero.
+ */
+function Row({
+  label,
+  value,
+  span
+}: {
+  label: string;
+  value: number | null;
+  span?: [number, number];
+}) {
+  const share =
+    value === null || span === undefined || span[1] <= span[0]
+      ? null
+      : Math.min(1, Math.max(0, (value - span[0]) / (span[1] - span[0])));
+  const tone = value === null ? 'inert' : share !== null ? 'stat' : value === 0 ? 'none' : '';
   return (
     <>
       <dt>{label}</dt>
-      <dd className={value === null ? 'inert' : ''}>{figure(value)}</dd>
+      <dd
+        className={tone}
+        style={share === null ? undefined : ({ '--stat-share': share } as CSSProperties)}
+        title={
+          span === undefined
+            ? undefined
+            : t('cards.self.statRange', { low: span[0], high: span[1] })
+        }
+      >
+        {figure(value)}
+      </dd>
     </>
   );
 }
@@ -78,7 +115,7 @@ function SelfCard({
   const [face, chooseFace] = useRememberedChoice(session, 'self-tab', FACE_IDS, FACE_IDS[0]!);
   /* The PACK face's find row. Held, never remembered: a search is asked now. */
   const [finding, setFinding] = useState(false);
-  const { progress, sight, room } = character;
+  const { progress, sight, room, attributeSpans: spans } = character;
   /*
    * Whether the pack has been read at all. `Supplies.consider` refuses to act
    * until it has — *an unlisted pack is not an empty one* — and this row is
@@ -134,16 +171,36 @@ function SelfCard({
         <dt className="span">{t('cards.self.labels.exp')}</dt>
         <dd className={`span${progress.exp === null ? ' inert' : ''}`}>{figure(progress.exp)}</dd>
 
-        <dt className="group">{t('cards.self.groups.attributes')}</dt>
+        <dt className="group" data-group="1">
+          {t('cards.self.groups.attributes')}
+        </dt>
         <dd className="group" />
-        <Row label={t('cards.self.labels.strength')} value={progress.strength} />
-        <Row label={t('cards.self.labels.intellect')} value={progress.intellect} />
-        <Row label={t('cards.self.labels.willpower')} value={progress.willpower} />
-        <Row label={t('cards.self.labels.agility')} value={progress.agility} />
-        <Row label={t('cards.self.labels.health')} value={progress.health} />
-        <Row label={t('cards.self.labels.charm')} value={progress.charm} />
+        <Row
+          label={t('cards.self.labels.strength')}
+          value={progress.strength}
+          span={spans?.strength}
+        />
+        <Row
+          label={t('cards.self.labels.intellect')}
+          value={progress.intellect}
+          span={spans?.intellect}
+        />
+        <Row
+          label={t('cards.self.labels.willpower')}
+          value={progress.willpower}
+          span={spans?.willpower}
+        />
+        <Row
+          label={t('cards.self.labels.agility')}
+          value={progress.agility}
+          span={spans?.agility}
+        />
+        <Row label={t('cards.self.labels.health')} value={progress.health} span={spans?.health} />
+        <Row label={t('cards.self.labels.charm')} value={progress.charm} span={spans?.charm} />
 
-        <dt className="group">{t('cards.self.groups.skills')}</dt>
+        <dt className="group" data-group="2">
+          {t('cards.self.groups.skills')}
+        </dt>
         <dd className="group" />
         <dt className="span">{t('cards.self.labels.armour')}</dt>
         <dd className={`span${progress.armourClass === null ? ' inert' : ''}`}>
@@ -160,7 +217,9 @@ function SelfCard({
         <Row label={t('cards.self.labels.magicRes')} value={progress.magicRes} />
         <Row label={t('cards.self.labels.spellcasting')} value={progress.spellcasting} />
 
-        <dt className="group">{t('cards.self.groups.sight')}</dt>
+        <dt className="group" data-group="3">
+          {t('cards.self.groups.sight')}
+        </dt>
         <dd className="group" />
         <dt className="span">{t('cards.self.labels.nightVision')}</dt>
         <dd className={`span${sight === null ? ' inert' : ''}`}>
@@ -310,7 +369,12 @@ function SelfCard({
             {row.shop}
           </span>
         ) : (
-          <span className="slot unknown">{t('cards.self.supplies.noShop')}</span>
+          // A row with no shop is not a row that does nothing: it is filled
+          // off the floor instead of out of a shop (`AutoLoot.stockingUp`),
+          // which is what a `black star key` at min 2, max 2 is for.
+          <span className="slot" title={t('cards.self.supplies.foundTooltip')}>
+            {t('cards.self.supplies.foundOnly')}
+          </span>
         )
     },
     {
@@ -351,6 +415,7 @@ function SelfCard({
         rows={rows}
         session={session}
       />
+      <p className="settings-note">{t('cards.self.supplies.collects')}</p>
       <p className="settings-note">{t('cards.self.supplies.howToAdd')}</p>
     </>
   );

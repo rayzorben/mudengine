@@ -418,6 +418,145 @@ describe('yielding to the person at the keyboard', () => {
  * emptied onto the corpse, the client walked the character straight back out to
  * the General Store. Standing still is not a reason to go shopping.
  */
+/*
+ * The other end of the list (todo 05). A list states how many of a thing to
+ * carry, so it has to answer for the number being *exceeded* as well as for it
+ * being short — `max 2` meaning *at least 2* is a key nobody wanted a third of
+ * riding along for ever.
+ */
+describe('what the pack holds over the maximum', () => {
+  /** A pack of `torches`, `equipped` of which are in a slot. */
+  const holding = (torches: number, equipped = 0): CharacterState => {
+    const base = character(torches);
+    return {
+      ...base,
+      inventory: {
+        ...base.inventory,
+        items: base.inventory.items.map((item, at) =>
+          at < equipped ? { ...item, equipped: true } : item
+        )
+      }
+    };
+  };
+
+  it('puts one spare down, and says why', () => {
+    const { planner: p } = planner();
+    make(p).onCharacter(holding(6));
+    drain();
+    expect(sent).toEqual(['drop torch']);
+    expect(notices.join(' ')).toContain('Dropping a spare torch');
+    // A decision somebody will ask about, so it is on the safety trace as an
+    // action rather than only in the queue's reason.
+    expect(decisions.some((d) => d.action === 'supplies' && d.acted)).toBe(true);
+  });
+
+  it('puts nothing down at the maximum, or under it', () => {
+    const { planner: p } = planner();
+    make(p).onCharacter(holding(5));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('one at a time: nothing more until the pack has answered', () => {
+    const { planner: p } = planner();
+    const supplies = make(p);
+    // A status line arrives every few hundred milliseconds and the pack
+    // listing that says the surplus is gone arrives seconds later. Without a
+    // declared postcondition the character puts its whole stock on the floor
+    // in between.
+    for (let i = 0; i < 6; i += 1) {
+      supplies.onCharacter(holding(7));
+      drain();
+    }
+    expect(sent).toEqual(['drop torch']);
+  });
+
+  it('and proposes again once the deadline passes with the pack unchanged', () => {
+    const { planner: p } = planner();
+    const supplies = make(p);
+    supplies.onCharacter(holding(7));
+    drain();
+    vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
+    supplies.onCharacter(holding(7));
+    drain();
+    expect(sent).toEqual(['drop torch', 'drop torch']);
+  });
+
+  /*
+   * The refusal that is the point rather than caution: dropping a lit torch in
+   * a dark room is the client putting a character somewhere it cannot see.
+   */
+  it('never puts down one that is in use, and says every one is', () => {
+    const { planner: p } = planner();
+    make(p).onCharacter(holding(6, 6));
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices.join(' ')).toContain('every one is in use');
+  });
+
+  it('takes the spare rather than the one in use', () => {
+    const { planner: p } = planner();
+    make(p).onCharacter(holding(6, 5));
+    drain();
+    expect(sent).toEqual(['drop torch']);
+  });
+
+  it('stands aside for anything else that has the character', () => {
+    for (const over of [
+      { walking: () => true },
+      { busy: () => true },
+      { moveInFlight: () => true }
+    ]) {
+      sent = [];
+      const { planner: p } = planner(over);
+      make(p).onCharacter(holding(6));
+      drain();
+      expect(sent).toEqual([]);
+    }
+  });
+
+  it('needs no lap: a ceiling is not a shopping trip', () => {
+    const { planner: p } = planner({ looping: () => false });
+    make(p).onCharacter(holding(6));
+    drain();
+    expect(sent).toEqual(['drop torch']);
+  });
+});
+
+describe('a row that names no shop', () => {
+  const KEYS: SuppliesConfig = {
+    enabled: true,
+    items: [{ name: 'black star key', min: 2, max: 2, shop: '', at: null }]
+  };
+
+  it('is never walked to a shop, and never refused for having none', () => {
+    const { planner: p, log } = planner({
+      shopRoom: () => 'no shop is named for it'
+    });
+    make(p, KEYS).onCharacter(character(1));
+    drain();
+    // Found rather than bought (`AutoLoot.stockingUp`), so a status line does
+    // not say *nowhere to buy* about a row that is working correctly.
+    expect(sent).toEqual([]);
+    expect(log).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('still has its ceiling kept', () => {
+    const { planner: p } = planner();
+    const base = character(0);
+    make(p, KEYS).onCharacter({
+      ...base,
+      inventory: {
+        ...base.inventory,
+        items: [wireItem('black star key'), wireItem('black star key'), wireItem('black star key')]
+      }
+    });
+    drain();
+    expect(sent).toEqual(['drop black star key']);
+  });
+});
+
 describe('when an errand may start at all', () => {
   it('starts nothing from an idle character with no lap running', () => {
     const { planner: p, log } = planner({ looping: () => false });

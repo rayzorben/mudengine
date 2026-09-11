@@ -163,6 +163,26 @@ describe('theme legibility', () => {
     }
   });
 
+  /*
+   * The Self card draws an attribute against the range its own race runs:
+   * `color-mix(in srgb, var(--accent) <share>, var(--text-lo))`, the share
+   * being the figure's place between the race's floor and ceiling. Both ends
+   * are checked above and neither argument covers the middle, for the reason
+   * the channel hue states: contrast is not linear.
+   */
+  it('keeps an attribute legible anywhere in its race’s range', () => {
+    for (const theme of ALL) {
+      for (const share of [0, 0.25, 0.5, 0.75, 1]) {
+        const mixed = mix(theme.chrome.accent, theme.chrome['text-lo-normal'], share);
+        const ratio = contrast(mixed, theme.chrome['ink-card']);
+        expect(
+          ratio,
+          `${theme.id}: ${share * 100}% accent into text-lo = ${ratio.toFixed(2)}:1 on ink-card`
+        ).toBeGreaterThan(4.5);
+      }
+    }
+  });
+
   it('keeps body and muted text legible on the card fill', () => {
     for (const theme of ALL) {
       for (const key of ['text-hi', 'text', 'text-lo-normal'] as const) {

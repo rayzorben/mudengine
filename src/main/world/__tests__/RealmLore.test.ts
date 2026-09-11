@@ -16,18 +16,25 @@ const rows: Record<string, { name: string; hp: number; span?: [number, number] }
 };
 
 /**
- * A realm that names two monsters. Only `mobAsPrinted` is reached for here, so
- * a stub is honest rather than lazy: standing up 55,806 rooms to ask what a
- * giant rat is worth would be testing the file loader again. It undoes a name
- * modifier with the shared rule rather than a second copy of it — what is
- * being checked on this side is *which* accessor the lore asks.
+ * A realm that names two monsters. Only the two name accessors are reached for
+ * here, so a stub is honest rather than lazy: standing up 55,806 rooms to ask what a giant rat
+ * is worth would be testing the file loader again. It undoes a name modifier
+ * with the shared rule rather than a second copy of it — what is being checked
+ * on this side is *which* accessor the lore asks.
+ *
+ * Two accessors and one answer: `maximumFor` asks `mobAt`, because the room a
+ * monster is standing in resolves a name holding several of the realm's rows
+ * to one of them and a bar drawn against the fold's high end is drawn against
+ * the wrong row wherever it does; `learnedFor` asks `mobAsPrinted`, because
+ * folding a character's fights is a question about spelling and not about
+ * where anybody is standing. The stub ignores the room, which is what a name
+ * holding one row does too.
  */
-const world = {
-  mobAsPrinted: (name: string) =>
-    mobNameCandidates(name)
-      .map((candidate) => rows[candidate])
-      .find((row) => row !== undefined)
-} as unknown as WorldGraph;
+const named = (name: string) =>
+  mobNameCandidates(name)
+    .map((candidate) => rows[candidate])
+    .find((row) => row !== undefined);
+const world = { mobAt: named, mobAsPrinted: named } as unknown as WorldGraph;
 
 let dir: string;
 let file: string;
@@ -44,6 +51,33 @@ afterEach(() => {
 /** Writes eagerly, which is what a test wants and a fight does not. */
 const store = (notify?: (message: string) => void): RealmLore =>
   new RealmLore({ file, saveDelayMs: 0, ...(notify ? { notify } : {}) });
+
+/*
+ * And the regeneration figure is asked the same way (2026-09-10). The two are
+ * read together in one estimate — `combat.healthFor` corrects a maximum by
+ * what the monster healed back — so a maximum from row 224 corrected by row
+ * 2204's regeneration is a bar drawn from two different monsters. `gnoll
+ * scout` folds to 168 a tick; row 224's own figure is 8.
+ */
+describe('the two halves of the health estimate ask the same question', () => {
+  const byRoom = {
+    mobAt: (name: string, from: string | null) =>
+      name !== 'gnoll scout'
+        ? undefined
+        : from === '1/1'
+          ? { hp: 100, regen: 8 }
+          : { hp: 830, regen: 168 },
+    mobAsPrinted: () => undefined
+  } as unknown as WorldGraph;
+
+  it('resolves the regeneration by the room, as the maximum beside it is', () => {
+    const lore = store().forRealm('gmud.sqlite', byRoom);
+    expect(lore.regenFor('gnoll scout', '1/1')).toBe(8);
+    // No room, or one that cannot tell the rows apart: the fold, as before.
+    expect(lore.regenFor('gnoll scout')).toBe(168);
+    expect(lore.maximumFor('gnoll scout', '1/1').max).toBe(100);
+  });
+});
 
 describe('what is known about a monster', () => {
   it('answers from the realm data where the realm speaks', () => {

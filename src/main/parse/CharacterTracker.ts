@@ -67,7 +67,7 @@ import {
 import { resolveByDeadReckoning, resolveFromCoordinates, resolveRoom } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world';
-import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
+import { mobKey, nameAnswersTo, roomAddress, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, spellKey, wordsOf, type SpellLore } from '../../shared/spell-messages';
@@ -1113,6 +1113,18 @@ export class CharacterTracker {
     room.npc = world.buildNpcEntity(placed);
     // Now that the room is placed, its exits can say where they go.
     room.exits = world.buildExitEntities(room.exits, placed);
+    /*
+     * And its occupants can say which row they are. `Also here:` arrives
+     * before `Obvious exits:` completes the room, so the address in hand when
+     * that list was read is the room the character was standing in *before*
+     * the step — the wrong room, and wrong confidently rather than merely
+     * unresolved, since rung one of `resolveMobRow` reads the room's own lair
+     * and the room behind you names its own rows. Seven edges across the two
+     * shipped worlds answer a different row of the same name that way
+     * (`dark goblin archer` 967 against 48, `vampire elder` 835 against 2813).
+     */
+    const at = roomAddress(room);
+    room.occupants = room.occupants.map((who) => this.asRowHere(who, at));
   }
 
   /**
@@ -1193,16 +1205,36 @@ export class CharacterTracker {
    * knows gets theirs. An occupant neither can improve on is returned
    * untouched, which is the ordinary case on a derivative realm.
    */
-  private hydrate(occupants: RoomOccupant[], s: CharacterState): RoomOccupant[] {
+  private asRowHere(who: RoomOccupant, at: RoomId | null): RoomOccupant {
     const world = this.world;
+    if (world === undefined || who.kind !== 'mob') return who;
+    // Standing *here*, which is what tells two of the realm's rows apart under
+    // one name — see `WorldGraph.resolveMobRow`.
+    const mob = world.buildMobEntity(who.name, { charmed: who.charmed === true, at });
+    /*
+     * And the classification's own answer is brought into step with the row's.
+     *
+     * `classifyOccupant` is dependency-free and takes a name-only lookup, so
+     * `disposition` and `uncertain` have always come off the fold — the worst
+     * of every row sharing the name, marked uncertain wherever they disagree
+     * (21 names in the shipped realm). `AutoCombat` reads `who.disposition` to
+     * decide whether to swing and `who.mob.hp` to price the swing in the same
+     * filter, so leaving one half folded is two halves of one fact
+     * disagreeing: a row the realm states is good reads as *uncertain* and is
+     * swung at, which is exactly the refusal that is not a setting.
+     *
+     * `costly` is not brought over: `BuiltMobRow` carries no alignment cost,
+     * so there is no row answer to prefer to the fold's — and *sometimes* on a
+     * resolved row is the same artefact, a format bump away.
+     */
+    return mob.row === undefined
+      ? { ...who, mob }
+      : { ...who, mob, disposition: mob.disposition, uncertain: mob.uncertain };
+  }
+
+  private hydrate(occupants: RoomOccupant[], s: CharacterState): RoomOccupant[] {
     return occupants.map((occupant) => {
-      if (occupant.kind === 'mob') {
-        if (world === undefined) return occupant;
-        return {
-          ...occupant,
-          mob: world.buildMobEntity(occupant.name, { charmed: occupant.charmed === true })
-        };
-      }
+      if (occupant.kind === 'mob') return this.asRowHere(occupant, roomAddress(s.room));
       if (occupant.kind === 'player') {
         const key = playerKey(occupant.name);
         const listed = s.online.find((entry) => playerKey(entry.name) === key) ?? null;
@@ -1872,6 +1904,9 @@ export class CharacterTracker {
     if (this.state.inventory.items !== before.inventory.items || this.state.race !== before.race) {
       this.rememberSight();
     }
+    // And what the race's attributes run between, which moves only with the
+    // race itself — the sheet reads a number against it (`AttributeSpans`).
+    if (this.state.race !== before.race) this.rememberSpans();
     /*
      * The realm's row for what is being fought, joined from the one place a
      * new state is committed — the placement `rememberPlayers` and the gear
@@ -1916,7 +1951,10 @@ export class CharacterTracker {
       this.state = { ...this.state, combat: { ...this.state.combat, targetEntity: null } };
       return;
     }
-    const built = world.buildMobEntity(name, { charmed: occupant?.charmed === true });
+    const built = world.buildMobEntity(name, {
+      charmed: occupant?.charmed === true,
+      at: roomAddress(this.state.room)
+    });
     // A wire-only entity carries nothing the name did not already say, so it
     // is not worth publishing — `null` is the honest answer for a monster the
     // realm cannot place, and the card already says so.
@@ -2237,6 +2275,20 @@ export class CharacterTracker {
     const sight = sightOf(vision, carriedLights(s.inventory.items), race !== null);
     if (sameSight(s.sight, sight)) return;
     this.state = { ...s, sight };
+  }
+
+  /**
+   * What the realm says this race's attributes run between.
+   *
+   * Its own join rather than a field of `sightOf`'s: sight moves with the pack
+   * as well as the race and this moves with nothing but the race, so folding
+   * them would re-read the race table on every listing.
+   */
+  private rememberSpans(): void {
+    const s = this.state;
+    const spans = s.race === null ? null : (this.world?.raceSpans(s.race) ?? null);
+    if (spans === null && s.attributeSpans === null) return;
+    this.state = { ...s, attributeSpans: spans };
   }
 
   /**
@@ -3510,7 +3562,22 @@ export class CharacterTracker {
         return {
           ...s,
           online: roster,
-          room: { ...s.room, occupants: this.reclassify(s.room.occupants, roster) }
+          room: {
+            ...s.room,
+            /*
+             * Hydrated again, because `reclassify` returns what
+             * `classifyOccupant` answers and that shape carries no entity:
+             * a `who` listing was silently dropping the realm's row from
+             * every monster in the room, and `Also here:` routinely arrives
+             * before the first listing. Re-derived rather than carried
+             * across, since the listing may also have just turned a monster
+             * into a person.
+             */
+            occupants: this.hydrate(this.reclassify(s.room.occupants, roster), {
+              ...s,
+              online: roster
+            })
+          }
         };
       }
 

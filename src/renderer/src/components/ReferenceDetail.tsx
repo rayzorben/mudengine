@@ -348,6 +348,24 @@ function MobDetail({
       <dd>
         {mobHealth(mob)}
         {mob.span && <span className="quiet">{t('cards.reference.mob.healthRangeNote')}</span>}
+        {/*
+          And which of the realm's rows these figures are, where the room the
+          reader is standing in resolved the name to one of several. A card
+          showing one row's numbers under a name that holds two is making a
+          claim, so it says which row and on what evidence -- the room's own
+          lair, or the next row sharing the name being a long way off.
+        */}
+        {mob.row !== undefined && (
+          <span className="quiet">
+            {mob.row.how === 'here'
+              ? t('cards.reference.mob.rowHere', { id: mob.row.id })
+              : t('cards.reference.mob.rowNearest', {
+                  id: mob.row.id,
+                  steps: mob.row.steps,
+                  far: mob.row.beyond ?? 0
+                })}
+          </span>
+        )}
       </dd>
       {/*
         What this character's realm has learned by fighting it, beside the

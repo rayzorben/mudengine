@@ -1708,9 +1708,28 @@ describe('the status line the player designed', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write(PROMPT);
-    await until(() => manager!.character.vitals.hp === 100);
-    expect(painted.join('')).toContain('[HP=100/150');
-    expect(notices.filter((notice) => notice.includes('83'))).toHaveLength(1);
+    /*
+     * Waited on the **paint**, not on the vitals.
+     *
+     * The two arrive by different paths and the paint is the later one: a
+     * prompt still arriving is held (`PARTIAL_DELAY_MS`) while the tracker has
+     * already read the figures off it, so `hp === 100` says nothing about
+     * whether the row has been written yet. Under a loaded suite this failed
+     * about one run in three, on the assertion below rather than on the one it
+     * was really about.
+     */
+    await until(() => painted.join('').includes('[HP=100/150'));
+    /*
+     * Matched on the sentence, not on the bare figure.
+     *
+     * 83 is the width the design comes to — and it is also two digits that
+     * turn up inside the ephemeral port the kernel handed this test's server,
+     * which `connecting` and `connected` both print. A filter on `'83'` alone
+     * counted those two notices as refusals on roughly one run in four, and
+     * which run failed was decided by the port allocator rather than by
+     * anything the client did.
+     */
+    expect(notices.filter((notice) => notice.includes('83 cells'))).toHaveLength(1);
   });
 });
 
@@ -1834,6 +1853,77 @@ describe('a quiet command asked from a card', () => {
     expect(fed).not.toContain('Location: 1,2140');
     expect(fed).not.toMatch(/(?:\n|\[K)rm\r\n/);
     expect(fed).toContain('Obvious exits: ');
+  }, 15000);
+});
+
+/*
+ * The queue's credit is the prompt (todo 07). The `session` domain also holds
+ * `command-echo` — the server repeating a command it has *not* finished with —
+ * and crediting the whole domain made every command pay for the next one:
+ * fifteen went out between two prompts and GreaterMUD answered *Why don't you
+ * slow down for a few seconds?*, which `GMUDInGameState.Process` sends at
+ * exactly fifteen queued.
+ */
+describe('what counts as the server being ready for the next command', () => {
+  it('spends one credit per prompt, and an echo of our own command is not one', async () => {
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    /*
+     * Automation on — `ask` is refused without it — but with nothing asked on
+     * the way in, so the entry batch is not competing for the window with what
+     * this case sends. A window of one makes every credit visible, and a long
+     * acknowledgement timeout keeps the stall reclaim out of the measurement:
+     * what is being asserted is which *line* releases a command.
+     */
+    manager.configure(
+      {
+        ...DEFAULT_CONFIG.automation,
+        enabled: true,
+        onEnterRealm: [],
+        pacing: { window: 1, minGapMs: 10, ackTimeoutMs: 30_000 }
+      },
+      DEFAULT_CONFIG.connection.login
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.write('[HP=98/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.vitals.hp === 98);
+
+    const typed = (): string[] =>
+      Buffer.concat(chunks)
+        .toString('latin1')
+        .split('\r\n')
+        .filter((line) => line.length > 0);
+    /*
+     * Three more asked for behind whatever the realm-entry routines want. Which
+     * of them goes first is those modules' business and not this case's: what
+     * is asserted is that the wire holds **one** until the server answers.
+     */
+    for (const command of ['rm', 'exp', 'gb']) expect(manager.ask(command)).toBe(true);
+    await until(() => typed().length === 1);
+    const first = typed()[0]!;
+
+    /*
+     * The server echoing what it was given, on its own line. This is the line
+     * that used to hand the credit straight back — with it counted, every
+     * command paid for the next and fifteen went out between two prompts.
+     *
+     * A positive control on the negative: the echo really was read (it reaches
+     * the classifier, which types it `command-echo`), and the queue still did
+     * not send. Without the control, a framing regression that swallowed the
+     * line would pass this as though the rule worked.
+     */
+    socket.write(`${first}\r\n`);
+    await until(() => lines.some((line) => line.plain.trim() === first));
+    expect(typed()).toEqual([first]);
+
+    // A prompt is the credit, and it releases exactly one.
+    socket.write('[HP=98/MA=50]:' + PROMPT_REPAINT);
+    await until(() => typed().length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(typed()).toHaveLength(2);
   }, 15000);
 });
 

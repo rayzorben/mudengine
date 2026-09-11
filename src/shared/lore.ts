@@ -29,6 +29,7 @@
  * Dependency-free: main learns and persists it, the renderer only reads what
  * reaches it inside `TargetHealth`.
  */
+import type { RoomId } from './world';
 
 /** What fighting one kind of monster repeatedly has taught. */
 export interface MobLoreEntry {
@@ -112,8 +113,17 @@ export interface MobLore {
    *
    * `null` is a real answer and the common one for a realm the client does not
    * ship: nothing knows, and the caller says so rather than inventing a bar.
+   *
+   * `at` is the room the monster is standing in, where the caller knows it. A
+   * name may hold several of the realm's rows with different health, and the
+   * room is what tells them apart (`WorldGraph.resolveMobRow`); without one
+   * the answer is the fold's high end, which is the same cautious reading it
+   * has always been.
    */
-  maximumFor(name: string): {
+  maximumFor(
+    name: string,
+    at?: RoomId | null
+  ): {
     max: number | null;
     source: 'realm' | 'learned' | null;
     span: [number, number] | null;
@@ -165,7 +175,7 @@ export interface MobLore {
    * inferred from an estimate that is itself the thing being corrected would be
    * a loop.
    */
-  regenFor(name: string): number | null;
+  regenFor(name: string, at?: RoomId | null): number | null;
   /** A listing named an item the realm knows and the slot it sits in. */
   observeSlot(worn: number, word: string, at: number): void;
 }

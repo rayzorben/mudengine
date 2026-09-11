@@ -111,6 +111,20 @@ export class Supplies {
   private errand: Errand | null = null;
   /** Items refused recently, and until when they are left alone. */
   private readonly retryAt = new Map<string, number>();
+  /** Standing conditions already said, so they are said once. See `report`. */
+  private readonly reported = new Set<string>();
+  /**
+   * A `drop` proposed for a surplus, and the deadline it is owed an answer by.
+   *
+   * A declared postcondition with a bounded deadline, which is what anything
+   * corrective here needs (`Recovery`'s rule): the pack listing is what says
+   * the surplus is gone, and it arrives whole seconds after the command. The
+   * queue's own coalescing does not cover it — a status line arrives every few
+   * hundred milliseconds and each one is a fresh enqueue *after* the last has
+   * already gone out, so without this the character puts its entire stock on
+   * the floor before the listing catches up.
+   */
+  private readonly droppedUntil = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
   /**
    * The whole errand's deadline.
@@ -144,6 +158,8 @@ export class Supplies {
     this.clearErrandTimer();
     this.errand = null;
     this.retryAt.clear();
+    this.reported.clear();
+    this.droppedUntil.clear();
   }
 
   dispose(): void {
@@ -201,6 +217,9 @@ export class Supplies {
        * or a route the player asked for (`considerBeforeRoute`).
        */
       if (this.planner.looping()) this.consider(state);
+      // And the other end of the same rule, which needs no errand and no lap:
+      // what the pack holds over a stated ceiling.
+      this.considerSurplus(state);
       return;
     }
     switch (errand.stage) {
@@ -345,6 +364,14 @@ export class Supplies {
     const now = this.now();
     for (const item of this.config.items) {
       if (item.min <= 0) continue;
+      /*
+       * A row naming no shop is a thing that is found rather than bought — a
+       * `black star key` at min 2, max 2 is sold nowhere. Skipped in silence
+       * rather than refused per status line: `AutoLoot` fills it off the floor
+       * (`stockingUp`), and *no shop chosen* said once a second about a row
+       * that is working correctly is noise.
+       */
+      if (item.shop.trim().length === 0) continue;
       const until = this.retryAt.get(bareName(item.name));
       if (until !== undefined && until > now) continue;
       const have = carriedCount(state, item.name);
@@ -352,6 +379,126 @@ export class Supplies {
       this.begin(item, have, state);
       return;
     }
+  }
+
+  /**
+   * What the pack holds over a stated ceiling, put down one at a time.
+   *
+   * The other end of the rule `AutoLoot.stockingUp` keeps: a list states how
+   * many of a thing to carry, and the client fills up to that number off the
+   * floor and out of a shop — so it has to answer for the number being
+   * exceeded too, or *max 2* would mean *at least 2* and a key nobody wanted a
+   * third of would ride along for ever.
+   *
+   * Three refusals, and each is the point rather than caution:
+   *
+   * - **Never something the character is wearing, wielding or has readied.**
+   *   `loadout` is what is in a slot, and dropping a lit torch in a dark room
+   *   is the client putting a character somewhere it cannot see. The surplus is
+   *   found among the spares or it is not found.
+   * - **Never while anything else has the character** — the same gate the
+   *   errand takes. A `drop` in front of an escape is a command ahead of the
+   *   move that gets the character out.
+   * - **One at a time, confirmed by the pack.** `drop` takes one, the listing
+   *   that follows says how many are left, and the next status line decides
+   *   again. Coalesced per item, so a listing repeating is one decision.
+   *
+   * Said out loud as a safety decision, because putting a player's property on
+   * the floor is a thing somebody will ask about.
+   */
+  private considerSurplus(state: CharacterState): void {
+    if (this.config.items.length === 0) return;
+    if (fightIsRunning(state) || state.vitals.resting || state.vitals.meditating) return;
+    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
+    // An unlisted pack is not an empty one, and it is not an overfull one
+    // either: nothing is surplus until the pack has been read.
+    if (state.inventory.items.length === 0) return;
+    const now = this.now();
+    for (const row of this.config.items) {
+      const ceiling = Math.max(row.min, row.max);
+      if (ceiling <= 0) continue;
+      const have = carriedCount(state, row.name);
+      if (have <= ceiling) {
+        // Back inside the ceiling: whatever was proposed was answered, and the
+        // next surplus starts from nothing owed.
+        this.droppedUntil.delete(bareName(row.name));
+        continue;
+      }
+      const owed = this.droppedUntil.get(bareName(row.name));
+      if (owed !== undefined && owed > now) continue;
+      const spare = this.spareOf(state, row.name);
+      if (spare === null) {
+        // Every one of them is in a slot. Said once per item, so a character
+        // wielding two of something does not report it on every status line.
+        this.report(
+          `supplies:surplus-worn:${bareName(row.name)}`,
+          t('automation.supplies.becauseOver', { item: row.name, have, max: ceiling }),
+          t('automation.supplies.surplusAllWorn', { item: row.name, have, max: ceiling })
+        );
+        continue;
+      }
+      const reason = t('automation.supplies.surplusDropped', {
+        item: spare,
+        have,
+        max: ceiling
+      });
+      this.droppedUntil.set(bareName(row.name), now + tuning().supplies.buyTimeoutMs);
+      this.queue.enqueue({
+        command: `drop ${spare}`,
+        priority: 'probe',
+        coalesceKey: `supplies:surplus:${bareName(row.name)}`,
+        expiresAt: now + tuning().supplies.expiresMs,
+        reason
+      });
+      this.events.decided?.({
+        at: this.now(),
+        action: 'supplies',
+        because: t('automation.supplies.becauseOver', {
+          item: row.name,
+          have,
+          max: ceiling
+        }),
+        acted: true
+      });
+      this.events.notice?.(reason);
+      return;
+    }
+  }
+
+  /**
+   * One carried item answering to this name that is **not** in use.
+   *
+   * `equipped` and not `loadout`: the loadout is what was last *seen* in a
+   * slot and is never emptied by an item coming off, which is right for
+   * putting a kit back on and wrong here — it would refuse to drop a spare
+   * torch because a torch had once been readied. `equipped` is the listing's
+   * own answer for this row, right now.
+   *
+   * Matched by `nameAnswersTo` against the configured name, the same rule
+   * `carriedCount` counts by, so what is put down is one of the ones counted.
+   */
+  private spareOf(state: CharacterState, name: string): string | null {
+    const wanted = bareName(name);
+    for (const item of state.inventory.items) {
+      if (item.equipped === true) continue;
+      if (!nameAnswersTo(bareName(item.name), wanted)) continue;
+      return item.name;
+    }
+    return null;
+  }
+
+  /** One sentence per subject, so a standing condition is not said per line. */
+  private report(key: string, because: string, message: string): void {
+    if (this.reported.has(key)) return;
+    this.reported.add(key);
+    this.events.notice?.(message);
+    this.events.decided?.({
+      at: this.now(),
+      action: 'supplies',
+      because,
+      acted: false,
+      refused: message
+    });
   }
 
   private begin(item: SupplyItem, have: number, state: CharacterState): void {

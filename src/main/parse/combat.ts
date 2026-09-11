@@ -31,7 +31,7 @@ import {
 } from '../../shared/character';
 import type { FightRecord, FightSink } from '../../shared/fights';
 import type { MobLore } from '../../shared/lore';
-import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
+import { mobKey, nameAnswersTo, roomAddress, roomId, type RoomId } from '../../shared/world';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
 
@@ -339,7 +339,12 @@ export class FightTracker {
     return {
       ...s,
       inCombat: true,
-      combat: { ...s.combat, engaged: true, target, health: this.healthFor(target, at) }
+      combat: {
+        ...s.combat,
+        engaged: true,
+        target,
+        health: this.healthFor(target, at, roomAddress(s.room))
+      }
     };
   }
 
@@ -370,7 +375,10 @@ export class FightTracker {
     // only reading available before the first blow.
     const ledger = this.recordDamage(key, 0, false, at);
     ledger.observed = band;
-    ledger.anchor = anchorToBand(this.healthFor(key, at)?.remaining ?? null, band);
+    ledger.anchor = anchorToBand(
+      this.healthFor(key, at, roomAddress(s.room))?.remaining ?? null,
+      band
+    );
     ledger.anchoredAfter = ledgerTotal(ledger);
     // And when, so the regeneration added since is measured from this `look`
     // rather than from the first blow of the fight.
@@ -378,7 +386,10 @@ export class FightTracker {
 
     // Only a change worth republishing when it is the monster on the card.
     if (s.combat.target === null || mobKey(s.combat.target) !== key) return null;
-    return { ...s, combat: { ...s.combat, health: this.healthFor(s.combat.target, at) } };
+    return {
+      ...s,
+      combat: { ...s.combat, health: this.healthFor(s.combat.target, at, roomAddress(s.room)) }
+    };
   }
 
   /**
@@ -415,7 +426,10 @@ export class FightTracker {
   missed(s: CharacterState, at: number, target: string | undefined): CharacterState | null {
     if (!target || mobKey(target) === mobKey(s.combat.target ?? '')) return null;
     const combat = struck(s.combat, at, { at: target });
-    return { ...s, combat: { ...combat, health: this.healthFor(combat.target, at) } };
+    return {
+      ...s,
+      combat: { ...combat, health: this.healthFor(combat.target, at, roomAddress(s.room)) }
+    };
   }
 
   /**
@@ -493,11 +507,17 @@ export class FightTracker {
     const ledger = this.recordDamage(target, damage, mine, at);
     if (!mine) {
       if (s.combat.target === null || mobKey(s.combat.target) !== ledger.key) return null;
-      return { ...s, combat: { ...s.combat, health: this.healthFor(s.combat.target, at) } };
+      return {
+        ...s,
+        combat: { ...s.combat, health: this.healthFor(s.combat.target, at, roomAddress(s.room)) }
+      };
     }
 
     const combat = struck(s.combat, at, { at: target });
-    return { ...s, combat: { ...combat, health: this.healthFor(combat.target, at) } };
+    return {
+      ...s,
+      combat: { ...combat, health: this.healthFor(combat.target, at, roomAddress(s.room)) }
+    };
   }
 
   /**
@@ -743,12 +763,19 @@ export class FightTracker {
    * **no maximum and no bar** — which is the honest rendering of "this client
    * does not know how tough this is" and the one a player can act on.
    */
-  private healthFor(target: string | null, now = 0): TargetHealth | null {
+  private healthFor(target: string | null, now = 0, at: RoomId | null = null): TargetHealth | null {
     if (target === null) return null;
     const key = mobKey(target);
     const ledger = this.ledgers.get(key);
     const damage: Damage = { mine: ledger?.mine ?? 0, others: ledger?.others ?? 0 };
-    const known = this.sources.lore.maximumFor(key);
+    /*
+     * Asked from the room the fight is in. A name may hold several of the
+     * realm's rows with different health and the fold takes the high end, so a
+     * bar for `gnoll scout` was drawn against 830 in a room whose lair spawns
+     * the 100-HP one — a monster reading nine-tenths full at the moment it
+     * died. See `WorldGraph.resolveMobRow`.
+     */
+    const known = this.sources.lore.maximumFor(key, at);
 
     let remaining: number | null = null;
     // A monster believed dead reads as empty whether or not anything knows how
@@ -773,7 +800,7 @@ export class FightTracker {
        * back that is not there yet, which is the reassuring error this whole
        * estimate exists to avoid.
        */
-      const regen = this.sources.lore.regenFor(key);
+      const regen = this.sources.lore.regenFor(key, at);
       let healed = 0;
       if (regen !== null && regen > 0 && ledger !== undefined && now > 0) {
         const elapsed = now - ledger.anchoredAt;

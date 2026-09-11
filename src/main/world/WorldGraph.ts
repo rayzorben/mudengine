@@ -58,6 +58,8 @@ import {
   type WorldRace,
   type WorldClass,
   type WorldMob,
+  type WorldMobRow,
+  type MobRowChoice,
   type MobAttack,
   type MobCast,
   type MobProfile,
@@ -70,7 +72,7 @@ import {
 } from '../../shared/world';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
 import { HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
-import { dispositionFromCode, mobNameCandidates, type MobDisposition } from '../../shared/mobs';
+import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
 import {
   ARMOUR_TYPE,
   WEAPON_CLASS,
@@ -82,7 +84,7 @@ import {
 import { tuning } from '../app/tuning';
 import { spellTargeting } from '../../shared/spellcraft';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
-import type { RoomExit } from '../../shared/character';
+import type { AttributeSpans, RoomExit } from '../../shared/character';
 import type { SpellOption } from '../../shared/ipc';
 import {
   asRealmFamily,
@@ -1010,15 +1012,24 @@ export class WorldGraph {
   /** By the realm's own number, for lairs. Empty on a realm built before v9. */
   private readonly mobsById = new Map<number, WorldMob>();
   /**
-   * Each row's own profile and disposition, by row number — format 31.
+   * Each row answering for itself, by row number — format 32.
    *
    * A name off the wire folds every row sharing it (`mobs`); a lair names a
-   * row. `null` in the first is a row that states no attack; a row absent
-   * from either is a file written before the format, and falls back to the
-   * fold. See `lairEntities`.
+   * row outright and a room resolves a name to one (`resolveMobRow`). A row
+   * absent from here is a name the realm places once — the fold *is* the row —
+   * or a file written before the format, and both fall back to the fold, which
+   * is the cautious reading rather than the reassuring one.
    */
-  private readonly rowProfiles = new Map<number, MobProfile | null>();
-  private readonly rowDispositions = new Map<number, MobDisposition | null>();
+  private readonly rowsById = new Map<number, WorldMobRow>();
+  /**
+   * `roomId|name` → the row that room resolves the name to. Bounded.
+   *
+   * The search behind it is a breadth-first sweep that can reach the whole map
+   * for a name nothing spawns nearby, and the questions repeat exactly: every
+   * status line re-weighs the same occupants standing in the same room. Keyed
+   * on the pair because the answer is about both.
+   */
+  private readonly resolvedRows = new Map<string, MobRowChoice | null>();
   /** Shops that stock something, by the number `Rooms.Shop` holds. */
   private readonly shops = new Map<number, WorldShop>();
   /**
@@ -1098,6 +1109,30 @@ export class WorldGraph {
     const found = rowNamed(this.races, name);
     if (!found) return null;
     return found.abilities ?? [];
+  }
+
+  /**
+   * What the realm says a race's six attributes run between, by the word the
+   * stat sheet prints, or null for a race no table names.
+   *
+   * The floor is what creation rolls and the ceiling is what training reaches
+   * — a Kang's strength is 55 to 160 — so a number on its own says nothing and
+   * the same number against this says how far up the race's own range this
+   * character has come. An attribute the realm states no range for is left
+   * out rather than given the table's widest, which would read as a range
+   * somebody could act on.
+   */
+  raceSpans(name: string): AttributeSpans | null {
+    const found = rowNamed(this.races, name);
+    if (!found) return null;
+    const spans: AttributeSpans = {};
+    if (found.str) spans.strength = found.str;
+    if (found.int) spans.intellect = found.int;
+    if (found.wil) spans.willpower = found.wil;
+    if (found.agl) spans.agility = found.agl;
+    if (found.hea) spans.health = found.hea;
+    if (found.chm) spans.charm = found.chm;
+    return spans;
   }
 
   /**
@@ -1384,21 +1419,25 @@ export class WorldGraph {
    * target by what it carries is the question `WorldMob.drops` could not
    * answer, since a bare name has no price and no weight.
    */
-  buildMobEntity(rawName: string, observed: { charmed?: boolean } = {}): MobEntity {
+  buildMobEntity(
+    rawName: string,
+    observed: { charmed?: boolean; at?: RoomId | null } = {}
+  ): MobEntity {
     const raw = rawName.trim();
     /*
-     * Least stripping first. `MobNameModifierType` hangs a whole run of words
-     * off either end, so `small elite guardsman` has to reach `guardsman` —
-     * and the ladder is ordered so the *longest* name that matches wins,
-     * because a shorter one is a different monster whose disposition decides
-     * whether the client swings. One rule, shared with the classifier, or the
-     * two ends of the client disagree about what the realm knows.
+     * Least stripping first (`mobAsPrinted`, inside `mobAt`).
+     * `MobNameModifierType` hangs a whole run of words off either end, so
+     * `small elite guardsman` has to reach `guardsman` — and the ladder is
+     * ordered so the *longest* name that matches wins, because a shorter one
+     * is a different monster whose disposition decides whether the client
+     * swings. One rule, shared with the classifier, or the two ends of the
+     * client disagree about what the realm knows.
+     *
+     * `at` is the room the name was printed in, where the caller has one: it
+     * resolves a name holding several of the realm's rows to the one that
+     * spawns here rather than to the worst of them. See `resolveMobRow`.
      */
-    let known: WorldMob | undefined;
-    for (const candidate of mobNameCandidates(raw)) {
-      known = this.mob(candidate);
-      if (known !== undefined) break;
-    }
+    const known = this.mobAt(raw, observed.at ?? null);
     const entity: MobEntity = {
       name: known?.name ?? raw,
       rawName: raw,
@@ -1412,6 +1451,7 @@ export class WorldGraph {
     };
     if (known === undefined) return entity;
 
+    if (known.row !== undefined) entity.row = known.row;
     entity.hp = known.hp;
     if (known.span !== undefined) entity.span = known.span;
     if (known.armour !== undefined) entity.armour = known.armour;
@@ -1473,11 +1513,17 @@ export class WorldGraph {
     if (room.npcId === undefined) return null;
     const known = this.mobsById.get(room.npcId);
     if (known === undefined) return null;
+    /*
+     * The room names the row, so the resident answers as itself rather than as
+     * the worst of the rows sharing its name — the same evidence a lair gives,
+     * and `disposition` is the one thing here the fold takes a worst-of.
+     */
+    const row = this.rowsById.get(room.npcId);
     const entity: NpcEntity = {
       name: known.name,
       source: 'mdb',
       id: room.npcId,
-      disposition: known.disposition,
+      disposition: row === undefined ? known.disposition : row.disposition,
       costly: known.costly
     };
     if (room.shop !== undefined) {
@@ -1558,6 +1604,161 @@ export class WorldGraph {
     return this.mobsById.get(id);
   }
 
+  /** One row, answering for itself. Undefined for a name the realm places once. */
+  mobRow(id: number): WorldMobRow | undefined {
+    return this.rowsById.get(id);
+  }
+
+  /**
+   * Which of a name's rows is standing in this room, and on what evidence.
+   *
+   * The wire carries no row number, so a name has always folded every row
+   * sharing it and taken the worst of them: `gnoll scout` is row 224, a
+   * 100-HP scout, and row 2204, an 830-HP one, and the card answered
+   * `100–830 hp` and priced the fight at 2,161 hp of chewing. But the *room*
+   * is evidence, and a strong one — the realm says which rows it spawns, and
+   * a monster does not walk far from where it spawned.
+   *
+   * Two rungs, and a refusal under both:
+   *
+   * 1. **Here.** The room's own lair or resident names exactly one of the
+   *    rows. Nothing beats this and nothing is searched.
+   * 2. **Nearest.** Breadth-first from the room over walkable exits, keeping
+   *    the first distance at which each row is reached, and stopping once the
+   *    answer can no longer change: past `mobRowMargin` times the nearest hit
+   *    there is no runner-up that could still be called close. The nearest row
+   *    wins only by that margin, so five steps against a thousand resolves and
+   *    five against seven does not.
+   *
+   * Otherwise null, which leaves the fold and its stated range exactly as they
+   * were — an ambiguous room is one to report rather than one to guess at.
+   * Doors, keys and level gates are walked through here: a monster that spawns
+   * behind a locked door is still the one in front of you, and refusing to
+   * count it would make the wrong row look nearest.
+   */
+  resolveMobRow(name: string, from: RoomId | null): MobRowChoice | null {
+    const mob = this.mobAsPrinted(name);
+    const ids = mob?.ids;
+    // One row is not a choice, and a realm with no per-row records has nothing
+    // to resolve *to*: the fold is already every answer the file holds.
+    if (mob === undefined || ids === undefined || ids.length < 2) return null;
+    if (from === null || !this.rooms.has(from)) return null;
+    const wanted = new Set(ids.filter((id) => this.rowsById.has(id)));
+    if (wanted.size < 2) return null;
+
+    const key = `${from}|${mob.name}`;
+    const held = this.resolvedRows.get(key);
+    if (held !== undefined) return held;
+    const answer = this.searchMobRow(from, wanted);
+    // Bounded like any per-session cache: a character walks through rooms and
+    // meets names, and the pair is what would otherwise grow without end.
+    if (this.resolvedRows.size >= RESOLVED_ROW_CACHE) this.resolvedRows.clear();
+    this.resolvedRows.set(key, answer);
+    return answer;
+  }
+
+  /** The two rungs of `resolveMobRow`, once the candidates are known. */
+  private searchMobRow(from: RoomId, wanted: ReadonlySet<number>): MobRowChoice | null {
+    const here = this.rooms.get(from);
+    if (here === undefined) return null;
+
+    /*
+     * Rung one: what the realm says spawns in this very room. A resident and a
+     * lair are both claims about *this* room, and one of them naming exactly
+     * one candidate ends the question — there is nothing a distance could add.
+     */
+    const named = new Set<number>();
+    if (here.npcId !== undefined && wanted.has(here.npcId)) named.add(here.npcId);
+    if (here.lair !== undefined) {
+      for (const id of parseLair(here.lair).ids) if (wanted.has(id)) named.add(id);
+    }
+    if (named.size === 1) {
+      const [id] = [...named];
+      return { id: id!, how: 'here', steps: 0, beyond: null };
+    }
+    // Two of the name's rows spawn in this room: the room cannot tell them
+    // apart, and neither can anything downstream of it.
+    if (named.size > 1) return null;
+
+    /*
+     * Rung two. The reverse index is already built for the Reference card's
+     * *spawns in* list, so the target set is a lookup rather than a scan, and
+     * the sweep tests each room against a handful of addresses.
+     */
+    const targets = new Map<RoomId, number>();
+    const spawns = this.mobRooms();
+    for (const id of wanted) {
+      for (const entry of spawns.get(id) ?? []) {
+        const at = roomId(entry.room.map, entry.room.room);
+        // First writer wins, so a room two rows both spawn in resolves to
+        // neither: it is added under the first and read back as a tie below.
+        if (!targets.has(at)) targets.set(at, id);
+        else if (targets.get(at) !== id) targets.set(at, TIED_ROW);
+      }
+    }
+    if (targets.size === 0) return null;
+
+    /*
+     * The margin is what makes this a resolution rather than a coin toss.
+     * Nearest-wins on its own would answer *row 224* for a room one step
+     * nearer 224 than 2204, which is evidence of nothing — a monster wanders,
+     * and it is dragged. So the sweep runs out to `mobRowMargin` times the
+     * first hit's distance and the answer stands only if nothing else of the
+     * name turned up inside it: a second row found anywhere in that ring is a
+     * refusal, and the sweep past it would be spent learning by how much.
+     */
+    const { mobRowMargin, mobRowRooms } = tuning().world;
+    const found = new Map<number, number>();
+    const seen = new Set<RoomId>([from]);
+    let queue: RoomId[] = [from];
+    let closest: number | null = null;
+    let reached = 0;
+    for (let depth = 0; queue.length > 0 && seen.size <= mobRowRooms; depth += 1) {
+      if (closest !== null && depth > closest * mobRowMargin) break;
+      reached = depth;
+      const next: RoomId[] = [];
+      for (const id of queue) {
+        const hit = targets.get(id);
+        // A room two of the rows share says both are here and neither is
+        // nearer, which is a tie at this distance rather than a resolution.
+        if (hit === TIED_ROW) return null;
+        if (hit !== undefined && !found.has(hit)) {
+          if (found.size > 0) return null;
+          found.set(hit, depth);
+          closest = depth;
+        }
+        for (const exit of this.rooms.get(id)?.exits ?? []) {
+          const to = roomId(exit.map, exit.room);
+          if (seen.has(to)) continue;
+          seen.add(to);
+          next.push(to);
+        }
+      }
+      queue = next;
+    }
+    const [best] = [...found.entries()];
+    if (best === undefined) return null;
+    return { id: best[0], how: 'nearest', steps: best[1], beyond: reached };
+  }
+
+  /**
+   * A monster by name, answering as the row this room resolves it to.
+   *
+   * The one overlay point. Everything that asks the realm what a name is worth
+   * — the card, the appraisal auto-combat ranks on, the health bar's maximum —
+   * comes through here, so a room that can tell two rows apart tells all of
+   * them at once and none of them can disagree about it. A room that cannot,
+   * or a name the realm places once, gets the fold it always got.
+   */
+  mobAt(name: string, from: RoomId | null): WorldMob | undefined {
+    const mob = this.mobAsPrinted(name);
+    if (mob === undefined) return undefined;
+    const choice = this.resolveMobRow(name, from);
+    if (choice === null) return mob;
+    const row = this.rowsById.get(choice.id);
+    return row === undefined ? mob : mobAsRow(mob, row, choice);
+  }
+
   /**
    * What a room's lair spawns, resolved.
    *
@@ -1577,6 +1778,15 @@ export class WorldGraph {
    * (a derivative that added monsters after this data was built) comes back
    * with an empty list rather than null, so the face can say *that* instead
    * of the map promising a lair the card silently declines to show.
+   *
+   * **By the row, because the descriptor names one.** A lair is the strongest
+   * evidence about a monster there is — stronger than the search
+   * `resolveMobRow` runs for a name off the wire, because there is nothing to
+   * search for: `(Max 1): 224,` says row 224, and row 224 is a 100-HP gnoll
+   * scout. Read through the fold, the room quick view answered `100–830 hp`
+   * about that room — the range across row 224 and row 2204, an 830-HP scout
+   * that spawns somewhere else entirely — and the Room card's own `LAIR` face
+   * said the same about the room the character was standing in.
    */
   lair(room: WorldRoom): WorldLair | null {
     if (!room.lair) return null;
@@ -1584,9 +1794,22 @@ export class WorldGraph {
     // it — see its own note for the four that were being invented per lair.
     const { max, ids } = parseLair(room.lair);
     const mobs: WorldMob[] = [];
+    const seen = new Set<string>();
     for (const id of ids) {
       const mob = this.mobsById.get(id);
-      if (mob && !mobs.includes(mob)) mobs.push(mob);
+      if (mob === undefined) continue;
+      const row = this.rowsById.get(id);
+      /*
+       * A row is its own identity; the fold's is the name. So where the file
+       * carries rows a descriptor naming 224 and 2204 names *two* monsters and
+       * gets two lines, and where it does not — a realm built before format 32
+       * — the fold is every answer the file holds and two ids of one name are
+       * one line, as they have always been.
+       */
+      const key = row === undefined ? `n:${mob.name}` : `r:${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      mobs.push(row === undefined ? mob : mobAsRow(mob, row, namedHere(id)));
     }
     return { max, mobs };
   }
@@ -1594,20 +1817,19 @@ export class WorldGraph {
   /**
    * What a room's lair spawns, weighed as the rows the lair names.
    *
-   * `lair()` answers by name, which is right for a readout — the card says
-   * what *a* gnoll scout is — and wrong for a price: a name folds every row
-   * sharing it and takes the worst, and the guard post on the Hillside Path
-   * names row 224, a 100-HP scout that lands one blow in twenty-five against
-   * a level-12 Paladin, not row 2204, the 830-HP one that swings four times a
-   * round. Weighed by name the room was expected to kill a character it could
-   * barely scratch (todo 01, 2026-09-10).
+   * `lair()`'s answer in the shape a price is taken from: the same rows, with
+   * the drops resolved and the profiles whole, because `weighVerdicts` reads a
+   * `MobEntity` and a readout reads a `WorldMob`. Both come off the row the
+   * descriptor names — the guard post on the Hillside Path names row 224, a
+   * 100-HP scout that lands one blow in twenty-five against a level-12
+   * Paladin, not row 2204, the 830-HP one that swings four times a round, and
+   * weighed by name the room was expected to kill a character it could barely
+   * scratch (todo 01, 2026-09-10).
    *
-   * So each row's own profile and disposition (format 31) replace the fold's
-   * here, and only here: the wire never carries a row number, so a monster
-   * *standing in the room* is still weighed by name. A file written before
-   * the format has nothing per row and degrades to the fold, which is the
-   * dangerous reading rather than the reassuring one. Empty for a room that
-   * is not a lair, and for a descriptor naming rows this table lacks.
+   * A file written before format 32 has nothing per row and degrades to the
+   * fold, which is the dangerous reading rather than the reassuring one.
+   * Empty for a room that is not a lair, and for a descriptor naming rows this
+   * table lacks.
    */
   lairEntities(room: WorldRoom): MobEntity[] {
     if (!room.lair) return [];
@@ -1616,15 +1838,7 @@ export class WorldGraph {
       const mob = this.mobsById.get(id);
       if (mob === undefined) continue;
       const entity = this.buildMobEntity(mob.name);
-      if (this.rowProfiles.has(id)) {
-        const own = this.rowProfiles.get(id);
-        entity.profiles = own === null || own === undefined ? [] : [own];
-      }
-      if (this.rowDispositions.has(id)) {
-        entity.disposition = this.rowDispositions.get(id) ?? null;
-        // One row is certain about itself; the fold's doubt was about its twins.
-        entity.uncertain = false;
-      }
+      overlayRow(entity, this.rowsById.get(id));
       entities.push(entity);
     }
     return entities;
@@ -1718,9 +1932,18 @@ export class WorldGraph {
      * mob index is keyed by name and `mobsById` maps the ids onto it, so this
      * asks the id index which of its entries *is* this mob rather than keeping
      * a third index of name → ids.
+     *
+     * Through the fold and not through the argument, because `mobAt` hands
+     * back a *copy* re-answered by one row and an identity test against that
+     * copy matches nothing: the card lost its whole `spawns in` list the day
+     * the room began resolving the name. And where one row was resolved, only
+     * that row's rooms are places this monster is — the other row's are where
+     * its namesake lives, which is the confusion the resolution exists to end.
      */
+    const fold = this.mobs.get(mobKey(mob.name));
+    const only = mob.row?.id;
     for (const [id, rooms] of this.mobRooms()) {
-      if (this.mobsById.get(id) !== mob) continue;
+      if (only !== undefined ? id !== only : this.mobsById.get(id) !== fold) continue;
       found.push(...rooms);
     }
     if (found.length === 0) return undefined;
@@ -2067,7 +2290,7 @@ export class WorldGraph {
    * kind; each list is capped separately so eleven "heal" spells cannot crowd
    * out the one monster that also matched.
    */
-  lookup(query: string, limit = 12): WorldLookup {
+  lookup(query: string, limit = 12, at: RoomId | null = null): WorldLookup {
     const needle = query.trim().toLowerCase();
     if (needle.length === 0) {
       return { mobs: [], items: [], spells: [], races: [], classes: [], classNames: {} };
@@ -2099,6 +2322,14 @@ export class WorldGraph {
       const printed = this.mobAsPrinted(needle);
       if (printed) mobs = [printed];
     }
+    /*
+     * And answered as the row the reader's own room resolves each name to,
+     * where it can — the card is where the fold was read as a claim about one
+     * monster, and `100–830 hp` is what a name holding two rows looks like
+     * when nothing has been asked about the room it was clicked in. Unresolved
+     * names come back untouched, span and all.
+     */
+    mobs = mobs.map((mob) => this.mobAt(mob.name, at) ?? mob);
 
     return {
       mobs,
@@ -2481,24 +2712,48 @@ export class WorldGraph {
       const ids = (Array.isArray(record['i']) ? record['i'] : []).filter(
         (id): id is number => typeof id === 'number'
       );
-      // Format 31: the row's own answers ride beside its number, one entry
-      // per row, and are read only where the writer kept them in step.
-      // And only where every written profile was read back, or the indexes
-      // would point one along: `readProfiles` drops a row it cannot read.
+      if (ids.length > 0) mob.ids = ids;
+      /*
+       * Format 32: each row's own answers ride beside its number, and are read
+       * only where the writer kept the two lists in step — a list one short
+       * would answer for the row beside the one asked about. And only where
+       * every written profile was read back, for the same reason:
+       * `readProfiles` drops a row it cannot read, which slides every index
+       * after it along by one.
+       */
+      const rows = Array.isArray(record['rw']) ? record['rw'] : [];
       const byRow =
-        Array.isArray(record['pr']) &&
-        record['pr'].length === ids.length &&
-        Array.isArray(record['pf']) &&
-        record['pf'].length === profiles.length;
-      const howByRow = typeof record['pd'] === 'string' && record['pd'].length === ids.length;
+        rows.length === ids.length &&
+        (!Array.isArray(record['pf']) || record['pf'].length === profiles.length);
       for (const [k, id] of ids.entries()) {
         this.mobsById.set(id, mob);
-        if (byRow) {
-          const at = (record['pr'] as unknown[])[k];
-          this.rowProfiles.set(id, typeof at === 'number' ? (profiles[at] ?? null) : null);
-        }
-        if (howByRow)
-          this.rowDispositions.set(id, dispositionFromCode((record['pd'] as string)[k]));
+        if (!byRow) continue;
+        const own = rows[k];
+        if (typeof own !== 'object' || own === null) continue;
+        const row = own as Record<string, unknown>;
+        const hp = Number(row['hp']);
+        if (!Number.isFinite(hp) || hp <= 0) continue;
+        const at = row['p'];
+        const kept: WorldMobRow = {
+          id,
+          hp,
+          disposition: dispositionFromCode(row['d']),
+          profile: typeof at === 'number' ? (profiles[at] ?? null) : null
+        };
+        const stated = (key: string): number | undefined => {
+          const value = Number(row[key]);
+          return Number.isFinite(value) && value > 0 ? value : undefined;
+        };
+        kept.armour = stated('ac');
+        kept.damageResist = stated('dr');
+        kept.magicResist = stated('mr');
+        kept.experience = stated('xp');
+        kept.regen = stated('rgn');
+        kept.follows = stated('fol');
+        kept.averageDamage = stated('dmg');
+        kept.charmLevel = stated('chl');
+        if (row['und'] === 1) kept.undead = true;
+        this.rowsById.set(id, kept);
       }
     }
   }
@@ -3838,6 +4093,94 @@ function isCastable(spell: WorldSpell): boolean {
  * formats; this is the one row of that table the reader has to know.
  */
 const PROFILES_SINCE = 20;
+
+/**
+ * How many `room|name` resolutions are kept before the table is dropped whole.
+ *
+ * A character walks through rooms and meets names, so the pair is what grows;
+ * a thousand of them is more rooms than a loop visits and a few tens of
+ * kilobytes. Cleared rather than evicted one at a time: the next room re-asks
+ * for what it needs, and the answer is a breadth-first sweep that has already
+ * been paid for once — an LRU here would be bookkeeping for a table that is
+ * cheap to refill and never hot after a walk has moved on.
+ */
+const RESOLVED_ROW_CACHE = 1000;
+
+/** A room two of a name's rows both spawn in: it tells them apart for nobody. */
+const TIED_ROW = -1;
+
+/**
+ * A monster entity, re-answered by one of the realm's rows rather than by the
+ * fold of every row sharing its name.
+ *
+ * Every magnitude is replaced rather than merged, absences included: a row
+ * that states no armour is a row with no armour, and keeping the fold's figure
+ * for it would put another row's armour class on this one. Nothing else on the
+ * entity is the realm's to say — `charmed` and `rawName` came off the wire.
+ */
+function overlayRow(entity: MobEntity, row: WorldMobRow | undefined): void {
+  if (row === undefined) return;
+  entity.row = namedHere(row.id);
+  entity.hp = row.hp;
+  delete entity.span;
+  entity.disposition = row.disposition;
+  // One row is certain about itself; the fold's doubt was about its twins.
+  entity.uncertain = false;
+  entity.armour = row.armour;
+  entity.damageResist = row.damageResist;
+  entity.magicResist = row.magicResist;
+  entity.experience = row.experience;
+  entity.regen = row.regen;
+  entity.follows = row.follows;
+  entity.averageDamage = row.averageDamage;
+  entity.charmLevel = row.charmLevel;
+  entity.undead = row.undead;
+  if (entity.profiles !== undefined) entity.profiles = row.profile === null ? [] : [row.profile];
+}
+
+/**
+ * A row a room names outright — its lair descriptor or its resident.
+ *
+ * The strongest evidence there is and the only kind that needs no search: the
+ * realm states the number, so there is no nearer row and no margin to weigh.
+ * `steps: 0` and no radius say exactly that, which is what `MobRowChoice.how`
+ * already means by `here`.
+ */
+function namedHere(id: number): MobRowChoice {
+  return { id, how: 'here', steps: 0, beyond: null };
+}
+
+/**
+ * The fold, answering as one of its rows.
+ *
+ * `overlayRow`'s twin for the shape the realm's tables are read in, and the
+ * reason there are two: a `MobEntity` is built from a name off the wire and
+ * filled in on the way out, a `WorldMob` is the shared record every reader
+ * holds and must never be written to. Every magnitude the fold took the worst
+ * of becomes this row's own, and `span` goes with them — one row is certain
+ * about itself, and the doubt was always about its twins.
+ */
+function mobAsRow(mob: WorldMob, row: WorldMobRow, choice: MobRowChoice): WorldMob {
+  const resolved: WorldMob = {
+    ...mob,
+    hp: row.hp,
+    disposition: row.disposition,
+    uncertain: false,
+    row: choice
+  };
+  delete resolved.span;
+  resolved.armour = row.armour;
+  resolved.damageResist = row.damageResist;
+  resolved.magicResist = row.magicResist;
+  resolved.experience = row.experience;
+  resolved.regen = row.regen;
+  resolved.follows = row.follows;
+  resolved.averageDamage = row.averageDamage;
+  resolved.charmLevel = row.charmLevel;
+  resolved.undead = row.undead;
+  if (mob.profiles !== undefined) resolved.profiles = row.profile === null ? [] : [row.profile];
+  return resolved;
+}
 
 /** Every figure in a compact slot is a finite number, or the slot is dropped. */
 function figures(slot: unknown): number[] | null {

@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
-import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
+import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
 import { FindField } from './CardTable';
 import { t } from '../lib/i18n';
 import NamedText from './NamedText';
@@ -10,7 +10,7 @@ import type { PopoverAnchor } from '../lib/popover';
 import { matches } from '../lib/table';
 import { tuning } from '../lib/tuning';
 import { linkify } from '../lib/linkify';
-import { useRememberedChoice } from '../hooks/useRemembered';
+import { useRemembered, useRememberedChoice } from '../hooks/useRemembered';
 import {
   compose,
   DEFAULT_TALK_LAYOUT,
@@ -108,12 +108,21 @@ const CHANNELS: Record<string, string> = {
 };
 
 /**
- * The card's faces: everything, then one per channel, in the heading where
- * the mute chips used to spend a row of the body. `types: null` is the whole
- * stream; `local` folds the three channels that are the same conversation —
- * what is said in the room reaches the same ears whether it was said, yelled
- * or directed. A face appears only while its channel has said something,
- * the same rule the chips followed: a control over nothing is chrome.
+ * The card's channel toggles, in the heading where the mute chips used to
+ * spend a row of the body.
+ *
+ * **Toggles and not faces** (2026-09-10, todo 06). They were faces, which
+ * means exactly one is showing — so watching gossip *and* the gang meant
+ * watching everything, and *these two and not the rest* could not be said at
+ * all, which is the one question a channel list is asked. `All` is the master:
+ * on, every channel is drawn and the rest are disabled **in their own state**,
+ * because *All is on* is a different fact from *this one is off* and turning
+ * All back off has to put the reader's own choices back.
+ *
+ * `local` folds the three channels that are the same conversation — what is
+ * said in the room reaches the same ears whether it was said, yelled or
+ * directed. A toggle appears only while its channel has said something, the
+ * same rule the chips followed: a control over nothing is chrome.
  */
 const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[] | null }> = [
   { id: 'talk', label: t('cards.talk.tabs.all'), types: null },
@@ -137,6 +146,10 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
 ];
 
 const FACE_IDS = FACES.map((face) => face.id);
+/** Every toggle but the master, which is the set a reader can mute. */
+const CHANNEL_IDS = FACE_IDS.slice(1);
+/** The master's two remembered words. See the card's own note. */
+const ALL_WORDS = ['on', 'off'] as const;
 
 /**
  * The two channels whose lines can be this character's own outbound half.
@@ -604,12 +617,19 @@ function ConversationCard({
   ...chrome
 }: ConversationCardProps) {
   /*
-   * Which face is showing, remembered per character like the rail's
-   * arrangement: the channel somebody watches is a standing choice. A
-   * remembered face whose channel has gone quiet falls back to the whole
-   * stream rather than an empty card.
+   * Which channels are showing, remembered per character like the rail's
+   * arrangement: the channels somebody watches are a standing choice.
+   *
+   * Two remembered things, because the master and the row underneath it are
+   * two decisions. `talk-all` is one of two words and ships **on**, which is
+   * what the card has always opened as; `talk-muted` is the set the reader
+   * turned *off*, so nothing stored means nothing muted and a channel added to
+   * the parser later arrives visible rather than silently absent. A stored id
+   * the build no longer knows is dropped by the hook.
    */
-  const [faceId, chooseFace] = useRememberedChoice(session, 'talk-tab', FACE_IDS, FACE_IDS[0]!);
+  const [allWord, chooseAll] = useRememberedChoice(session, 'talk-all', ALL_WORDS, 'on');
+  const all = allWord === 'on';
+  const muted = useRemembered(session, 'talk-muted', CHANNEL_IDS);
   /*
    * How this card draws a line, from the gear in its own action column. Read
    * off `chrome.settings` rather than taken as a prop of its own: that object
@@ -710,20 +730,38 @@ function ConversationCard({
       ),
     [messages]
   );
-  const face = faces.find((entry) => entry.id === faceId) ?? faces[0]!;
+
+  /*
+   * The block types on screen: every one while `All` is on, otherwise the
+   * union of the channels that are not muted.
+   *
+   * Null is *everything*, which is what `All` means and also what an empty
+   * mute set under it comes to — kept as null rather than the union so a
+   * channel the parser gains and this list has not caught up with is still
+   * drawn while All is on.
+   */
+  const showing = useMemo(() => {
+    if (all) return null;
+    const types = new Set<string>();
+    for (const entry of FACES) {
+      if (entry.types === null || muted.has(entry.id)) continue;
+      for (const type of entry.types) types.add(type);
+    }
+    return types;
+  }, [all, muted]);
 
   const shown = useMemo(
     () =>
       messages.filter(
         (message) =>
-          (face.types === null || face.types.includes(message.type)) &&
+          (showing === null || showing.has(message.type)) &&
           matches(query, [
             CHANNELS[message.type] ?? message.type,
             message.groups['player'] ?? t('cards.map.legendYou'),
             message.groups['sent'] ?? message.groups['message'] ?? message.text
           ])
       ),
-    [messages, face, query]
+    [messages, showing, query]
   );
 
   /*
@@ -825,17 +863,20 @@ function ConversationCard({
   /*
    * A different view of the backlog starts at the newest line, hold or no
    * hold: the place somebody was holding was a place in the conversation they
-   * were reading, and another face, a search or another character is not it.
-   * The find row counts because it is a row — opening it makes the box shorter,
-   * and a reader at the live edge would otherwise be left a line above it with
-   * nothing to tell them so.
+   * were reading, and a narrowed set of channels, a search or another
+   * character is not it. The find row counts because it is a row — opening it
+   * makes the box shorter, and a reader at the live edge would otherwise be
+   * left a line above it with nothing to tell them so.
    *
-   * Declared after the effect above and a layout effect like it, so on a face
-   * or search change it is this one that lands, in the same frame.
+   * Keyed on the set of channels drawn rather than on the toggles, so muting a
+   * channel that has said nothing does not move the reader. Declared after the
+   * effect above and a layout effect like it, so on a change it is this one
+   * that lands, in the same frame.
    */
+  const showingKey = showing === null ? '*' : [...showing].sort().join(',');
   useLayoutEffect(() => {
     follow();
-  }, [face.id, query, finding, session]);
+  }, [showingKey, query, finding, session]);
 
   /* The hold is a timer this card owns, so it goes when the card does. */
   useEffect(() => () => window.clearTimeout(resumeRef.current), []);
@@ -904,19 +945,34 @@ function ConversationCard({
       <Composer channel={channel} options={options} point={point} send={onSend} />
     </>
   );
-  const tabs: CardTab[] = faces.map((entry) => ({
-    id: entry.id,
-    label: entry.label,
-    content
-  }));
+  /*
+   * The heading's controls. `All` first and always live; every other one is
+   * drawn in its own state and refuses the press while `All` is on, so
+   * turning the master off puts the reader's own choices back rather than
+   * starting them again from nothing.
+   */
+  const filters: CardFilter[] = faces.map((entry) =>
+    entry.types === null
+      ? {
+          id: entry.id,
+          label: entry.label,
+          on: all,
+          toggle: () => chooseAll(all ? 'off' : 'on')
+        }
+      : {
+          id: entry.id,
+          label: entry.label,
+          on: !muted.has(entry.id),
+          disabled: all,
+          toggle: () => muted.toggle(entry.id)
+        }
+  );
 
   return (
     <BentoCard
-      active={face.id}
       badge={<span className="chip off">{shown.length}</span>}
       className="conversation-card"
-      onActive={chooseFace}
-      tabs={tabs}
+      filters={filters}
       {...chrome}
       actions={[
         {

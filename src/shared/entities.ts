@@ -44,6 +44,7 @@ import type { AlignmentCost, MobDisposition } from './mobs';
 import type {
   MapObstacle,
   MobProfile,
+  MobRowChoice,
   Requirement,
   RoomCommand,
   WorldClass,
@@ -202,6 +203,15 @@ export interface MobEntity {
   id?: number;
   /** The high end of what the realm records, which is what a bar works from. */
   hp?: number;
+  /**
+   * Which of the realm's rows this is, where a room resolved it to one.
+   *
+   * Present only where the name held several rows and something could tell
+   * them apart — the room's own lair, or a row spawning decisively nearer
+   * than the rest (`WorldGraph.resolveMobRow`). Every figure below is then
+   * that row's own and `span` is absent, because one row states one number.
+   */
+  row?: MobRowChoice;
   /** `[low, high]` where rows sharing this name disagree. */
   span?: [number, number];
   /**

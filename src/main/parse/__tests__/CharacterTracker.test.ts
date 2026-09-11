@@ -181,6 +181,109 @@ describe('vitals', () => {
   });
 });
 
+/*
+ * Which of the realm's rows an occupant is, decided by the room it is standing
+ * in rather than by the room behind you (2026-09-10).
+ *
+ * `Also here:` arrives before `Obvious exits:` completes the room, so the
+ * address in hand when the list is read is the previous room's. And
+ * `classifyOccupant` takes a name-only lookup, so the occupant's own
+ * `disposition` and `uncertain` came off the fold while `occupant.mob` came
+ * off the row — the two halves `AutoCombat` reads in one filter.
+ */
+describe('an occupant is the row its own room resolves it to', () => {
+  function twoLairs(): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rows-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({
+      v: 32,
+      source: 'test',
+      rooms: 2,
+      generatedAt: 'x',
+      mobs: [
+        {
+          n: 'gnoll scout',
+          hp: 100,
+          hi: 830,
+          i: [224, 2204],
+          // The fold: the worst disposition of the two, marked uncertain
+          // because they disagree, and the high end of the health.
+          d: 'h',
+          x: 1,
+          rw: [
+            { hp: 100, d: 'p' },
+            { hp: 830, d: 'h' }
+          ]
+        }
+      ]
+    });
+    const rooms = [
+      { m: 1, r: 1, n: 'Guard Post', x: { e: { m: 1, r: 2 } }, lair: '(Max 1): 2204,' },
+      { m: 1, r: 2, n: 'Gnoll Tent', x: { w: { m: 1, r: 1 } }, lair: '(Max 1): 224,' }
+    ];
+    const body = [header, ...rooms.map((r) => JSON.stringify(r))].join('\n') + '\n';
+    fs.writeFileSync(file, zlib.gzipSync(body));
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+
+  /** Standing in the Guard Post, then stepping east into the Gnoll Tent. */
+  const walk = (): CharacterTracker =>
+    play(
+      [
+        '[HP=98]:',
+        'Guard Post',
+        'Obvious exits: east',
+        '[HP=98]:e',
+        'Gnoll Tent',
+        'Also here: gnoll scout.',
+        'Obvious exits: west',
+        '[HP=98]:'
+      ],
+      twoLairs()
+    );
+
+  it('answers the room it arrived in, not the one it stepped out of', () => {
+    const [scout] = walk().current.room.occupants;
+    // Row 224 — the Gnoll Tent's own. Resolved against the Guard Post, which
+    // is where `Also here:` was read, it would be row 2204's 830.
+    expect(scout?.mob).toMatchObject({ hp: 100, row: { id: 224, how: 'here' } });
+  });
+
+  it('and the classification agrees with it, because one filter reads both', () => {
+    const [scout] = walk().current.room.occupants;
+    expect(scout?.mob?.disposition).toBe('passive');
+    // The fold says hostile-and-uncertain; the row says passive and is certain
+    // about itself. `AutoCombat` reads these two, not `mob`.
+    expect(scout?.disposition).toBe('passive');
+    expect(scout?.uncertain).toBe(false);
+  });
+
+  it('keeps the realm’s answer when a listing re-reads the room', () => {
+    const tracker = play(
+      [
+        '[HP=98]:',
+        'Gnoll Tent',
+        'Also here: gnoll scout.',
+        'Obvious exits: west',
+        '[HP=98]:who',
+        '             Current Adventurers',
+        '             ===================',
+        '             Vaelor                -  Apprentice',
+        '[HP=98]:'
+      ],
+      twoLairs()
+    );
+    // `reclassify` returns what `classifyOccupant` answers, and that shape
+    // carries no entity: the listing was dropping the row from every monster
+    // in the room, and `Also here:` routinely arrives before the first one.
+    const [scout] = tracker.current.room.occupants;
+    expect(scout?.mob).toMatchObject({ hp: 100, row: { id: 224 } });
+    expect(scout?.disposition).toBe('passive');
+  });
+});
+
 describe('room assembly', () => {
   const room = [
     'Newhaven, Village Entrance',

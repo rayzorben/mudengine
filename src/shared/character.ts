@@ -1237,6 +1237,23 @@ export interface StatusLineFacts {
   exact: boolean | null;
 }
 
+/**
+ * What the realm says a race's attributes run between: floor at creation,
+ * ceiling at full training.
+ *
+ * Six optional pairs rather than six required ones, because a derivative may
+ * state some columns and not others, and an attribute with no stated range is
+ * a different fact from one whose range happens to be narrow.
+ */
+export interface AttributeSpans {
+  strength?: [number, number];
+  intellect?: [number, number];
+  willpower?: [number, number];
+  agility?: [number, number];
+  health?: [number, number];
+  charm?: [number, number];
+}
+
 export interface CharacterState {
   phase: SessionPhase;
   /** See `RealmFamily`. */
@@ -1310,6 +1327,17 @@ export interface CharacterState {
    * `loadout` is.
    */
   sight: Sight | null;
+  /**
+   * What the realm says this race's six attributes run between, or null.
+   *
+   * Joined from the race table beside `sight` and for the same reason: a
+   * number on a stat sheet says nothing on its own, and 93 strength against
+   * the Kang range of 55 to 160 says how far up its own race this character
+   * has come. Null until the realm has named the race, and an attribute the
+   * realm states no range for is simply absent — the sheet then draws that one
+   * plainly rather than against a range nobody stated.
+   */
+  attributeSpans: AttributeSpans | null;
   /**
    * Everything known about other players, kept between sightings.
    *
@@ -1445,6 +1473,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   banks: [],
   loadout: [],
   sight: null,
+  attributeSpans: null,
   inCombat: false,
   combat: NO_COMBAT,
   tally: NO_TALLY,

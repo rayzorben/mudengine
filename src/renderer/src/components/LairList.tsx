@@ -92,7 +92,13 @@ export default function LairList({ lair, mine, inspect }: LairListProps) {
         {lair.mobs.map((mob) => {
           const sure = attacksOnSight(mob.disposition, mine);
           return (
-            <Fragment key={mob.name}>
+            /*
+             * Keyed by the row, not the name: a descriptor naming two rows of
+             * one name — row 224's 100-HP gnoll scout and row 2204's 830-HP
+             * one — is two monsters and two lines, and two lines under one key
+             * is React drawing the first one twice.
+             */
+            <Fragment key={mob.row?.id ?? mob.name}>
               <dt>
                 {inspect ? (
                   <button

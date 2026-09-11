@@ -16,7 +16,7 @@ import {
   type MobLoreEntry,
   type SlotLoreEntry
 } from '../../shared/lore';
-import { mobKey } from '../../shared/world';
+import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import type { WorldGraph } from './WorldGraph';
@@ -103,10 +103,15 @@ export class RealmLore {
   forRealm(realm: string, world: WorldGraph | undefined): MobLore {
     const key = realmKey(realm);
     return {
-      maximumFor: (name) => this.maximumFor(key, world, name),
+      maximumFor: (name, at) => this.maximumFor(key, world, name, at ?? null),
       observe: (name, outcome) => this.observe(key, name, outcome),
       learnedFor: (name) => this.learnedFor(key, world, name),
-      regenFor: (name) => world?.mob(name)?.regen ?? null,
+      // Resolved by the room, exactly as `maximumFor` above is: the two are
+      // read together in one estimate (`combat.healthFor`), and a maximum from
+      // row 224 corrected by row 2204's regeneration is a bar drawn from two
+      // different monsters. `gnoll scout` folds to 168 a tick; row 224's own
+      // figure is 8.
+      regenFor: (name, at) => world?.mobAt(name, at ?? null)?.regen ?? null,
       slotWordsFor: (worn) => this.slotWordsFor(key, worn),
       observeSlot: (worn, word, at) => this.observeSlot(key, worn, word, at)
     };
@@ -195,7 +200,8 @@ export class RealmLore {
   private maximumFor(
     realm: string,
     world: WorldGraph | undefined,
-    name: string
+    name: string,
+    at: RoomId | null
   ): { max: number | null; source: 'realm' | 'learned' | null; span: [number, number] | null } {
     const key = mobKey(name);
 
@@ -207,8 +213,11 @@ export class RealmLore {
      * is the rule `classifyOccupant` uses, so the Combat card and the room
      * listing agree about which monster is being fought.
      */
-    const known = world?.mobAsPrinted(key);
+    const known = world?.mobAt(key, at);
     if (known) {
+      // And as the row the room resolves it to, where it can: `gnoll scout` is
+      // a 100-HP row and an 830-HP one, and a bar drawn against the wrong one
+      // says *nearly dead* about something at full health, or the reverse.
       return { max: known.hp, source: 'realm', span: known.span ?? null };
     }
 

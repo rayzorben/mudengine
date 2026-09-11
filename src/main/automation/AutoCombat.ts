@@ -188,8 +188,22 @@ export class AutoCombat {
   private rounds = 0;
   private roundTimer: NodeJS.Timeout | null = null;
   private state: CharacterState | null = null;
-  /** The thing the last engage attempt was aimed at, and when. */
-  private opened: { at: number; target: string } | null = null;
+  /**
+   * When a fight was last asked for on each monster, by name.
+   *
+   * **A map and not one slot** (2026-09-10, todo 07). The settled rule is *one
+   * ask per monster*, and the slot could hold one: attacking the second gnoll
+   * scout overwrote the first's record outright, so the first read as never
+   * asked about and the client alternated `aa thin gnoll scout` and
+   * `aa gnoll scout` for ever, once a prompt, with neither monster ever
+   * getting a swing in. The doc and the shape behind it were the two halves of
+   * a rule that had come apart.
+   *
+   * Pruned in `swing` rather than swept: an entry past the cooldown answers
+   * nothing, and the room's occupants are the only names ever put in it.
+   */
+  private readonly opened = new Map<string, number>();
+
   /** True once this fight's opener has been spent. */
   private openerSpent = false;
   /**
@@ -384,7 +398,7 @@ export class AutoCombat {
     this.refused.clear();
     this.rounds = 0;
     this.state = null;
-    this.opened = null;
+    this.opened.clear();
     this.openerSpent = false;
     this.retreating = false;
     this.walking = false;
@@ -652,7 +666,7 @@ export class AutoCombat {
         const key = mobKey(who.name);
         if (who.kind !== 'mob' || present.has(key)) continue;
         this.queue.cancel((intent) => intent.coalesceKey === `attack:${key}`);
-        if (this.opened?.target === key) this.opened = null;
+        this.opened.delete(key);
       }
       this.confirmArrival(was, state);
     }
@@ -1039,6 +1053,27 @@ export class AutoCombat {
     if (state.combat.target !== null) {
       return t('automation.combat.refusedAlreadyFighting', { target: state.combat.target });
     }
+    /*
+     * And while something else this client already swung at is still standing
+     * in this room.
+     *
+     * The guard above reads `combat.target`, and `aa <mob>` is answered by
+     * `*Combat Off*` and then `*Combat Engaged*` — one answer arriving as two
+     * blocks, with the target null between them. For that one block the room
+     * looks like one nobody is fighting in, and the client opened a second
+     * fight in it: the live transcript is `aa thin gnoll scout` /
+     * `aa gnoll scout` alternating once a prompt for ever, each `aa` dropping
+     * the fight the last one opened, neither monster ever swinging back.
+     *
+     * `aa` *switches* target, so a second fight opened while the first monster
+     * is still standing is always waste — which makes the room the test rather
+     * than the timing. It releases itself: a monster that dies or flees leaves
+     * the occupant list, and the sweep in `onCharacter` drops it from `opened`
+     * in the same breath, so the next fight opens with no wait at all. The
+     * cooldown bounds an entry the sweep never sees.
+     */
+    const engaged = this.stillEngaged(state);
+    if (engaged !== null) return t('automation.combat.refusedEngagedWith', { target: engaged });
     if (this.walking && !this.config.whileWalking && !this.looping) {
       return t('automation.combat.refusedWalking');
     }
@@ -1288,6 +1323,26 @@ export class AutoCombat {
   }
 
   /**
+   * A monster this client has swung at inside the cooldown that is still in
+   * the room, or null.
+   *
+   * The fact behind *do not open a second fight in a room where the first is
+   * still standing*. Named rather than a boolean, because the refusal says
+   * which one — every way of declining a fight says so.
+   */
+  private stillEngaged(state: CharacterState): string | null {
+    if (this.opened.size === 0) return null;
+    const now = Date.now();
+    const cooldown = tuning().combat.engageCooldownMs;
+    for (const who of state.room.occupants) {
+      if (who.kind !== 'mob') continue;
+      const asked = this.opened.get(mobKey(who.name));
+      if (asked !== undefined && now - asked < cooldown) return who.name;
+    }
+    return null;
+  }
+
+  /**
    * Proposes one attack, at most one per target per cooldown.
    *
    * Coalesced by *intent* — one attack on one thing — and never by command
@@ -1297,19 +1352,18 @@ export class AutoCombat {
    */
   private swing(target: string, why: string): boolean {
     const now = Date.now();
+    const cooldown = tuning().combat.engageCooldownMs;
     const key = mobKey(target);
-    if (
-      this.opened &&
-      this.opened.target === key &&
-      now - this.opened.at < tuning().combat.engageCooldownMs
-    ) {
-      return false;
-    }
+    const asked = this.opened.get(key);
+    if (asked !== undefined && now - asked < cooldown) return false;
 
     const verb = this.opener() ?? this.config.attack;
     if (verb.length === 0) return false;
 
-    this.opened = { at: now, target: key };
+    // Past the cooldown an entry answers nothing, so the map holds only what
+    // is still deciding something — the room's occupants, at most.
+    for (const [name, at] of this.opened) if (now - at >= cooldown) this.opened.delete(name);
+    this.opened.set(key, now);
     this.openerSpent = true;
     /*
      * Not announced, unlike an escape.
