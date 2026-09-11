@@ -118,7 +118,32 @@ export const REMOTE_NAMES = [
    * spelling, deliberately — an alias would be a second permission switch
    * for the same command.
    */
-  'bless-expired'
+  'bless-expired',
+  /*
+   * The extended pair, and the reason there is such a thing as an extended
+   * remote at all.
+   *
+   * MegaMUD's answers are **prose for a person**: `@where` comes back as
+   * `{Town Gates (Exits: N,S)}`, which is the room's *name*, and 83.85% of the
+   * realm's edges lead to a namesake (`sameRoomAgain`). So a client that is
+   * asked to walk to a name is asked to guess, which is why `@goto` and
+   * `@comeback` are `unread` here — an ambiguous room is refused rather than
+   * guessed, everywhere in this client.
+   *
+   * Both ends of a conversation between two mudengine clients have the realm
+   * database open, and the realm has an unambiguous address for every room:
+   * `map/number`. These two carry that instead of the name, which dissolves the
+   * ambiguity rather than working around it.
+   *
+   * **Only sent to a client that said it was this one.** `@version` answers
+   * `{mudengine 0.6.5}`, that answer is kept against the player, and `ask`
+   * upgrades the question only for somebody it has heard say so. A MegaMUD on
+   * the other end answers `{command invalid or not allowed}` (captured
+   * 2026-08-29, the `@seen` note below), which is a fact this client reads: the
+   * player is recorded as not running it and the plain question goes instead.
+   */
+  'where-room',
+  'comeback-room'
 ] as const;
 
 export type RemoteName = (typeof REMOTE_NAMES)[number];
@@ -402,8 +427,45 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   },
   // Acted and not answered, like `@join`: the recast the sender sees land on
   // them is the acknowledgement both clients can already read.
-  'bless-expired': { name: 'bless-expired', support: 'acted' }
+  'bless-expired': { name: 'bless-expired', support: 'acted' },
+  /*
+   * `@where` with the ambiguity taken out, and `@comeback` made possible by
+   * the same fact. See the note beside them in `REMOTE_NAMES`.
+   *
+   * `comeback-room` is `acted` and **not** granted by anything shipped: it
+   * walks this character across the realm on somebody else's word, which is
+   * more authority than any other grant in the table carries. `where-room` is
+   * `answered` and is granted wherever `where` is, by migration, because they
+   * are the same question and the asker picks the wording.
+   */
+  'where-room': { name: 'where-room', support: 'answered' },
+  'comeback-room': { name: 'comeback-room', support: 'acted' }
 };
+
+/**
+ * The extended wording of a question, for a peer known to run this client.
+ *
+ * One map, read in both directions (`plainRemote`), so the pair cannot drift:
+ * an upgrade with no way back would be a question that fails silently for ever
+ * once a peer changes client.
+ */
+export const EXTENDED_REMOTES: Readonly<Partial<Record<RemoteName, RemoteName>>> = {
+  where: 'where-room',
+  comeback: 'comeback-room'
+};
+
+/** Whether this is one of the extended pair. */
+export function isExtended(name: RemoteName): boolean {
+  return Object.values(EXTENDED_REMOTES).includes(name);
+}
+
+/** The plain question an extended one stands in for, or null. */
+export function plainRemote(name: RemoteName): RemoteName | null {
+  for (const [plain, extended] of Object.entries(EXTENDED_REMOTES)) {
+    if (extended === name) return plain as RemoteName;
+  }
+  return null;
+}
 
 /** One `@` command as it arrived, with whatever followed it. */
 export interface RemoteCall {
@@ -459,14 +521,74 @@ export type RemoteReply =
       mana: number | null;
       manaMax: number | null;
     }
-  | { kind: 'ok' };
+  | { kind: 'ok' }
+  /**
+   * `{mudengine 0.6.5}` — the answer to `@version`, in the shape MegaMUD's own
+   * (`{MegaMMUD 2.1}`) gave. A client name and a version, nothing else.
+   */
+  | { kind: 'version'; client: string; version: string }
+  /**
+   * `{1/2150 Town Gates}` — the answer to `@where-room`: the realm's own
+   * address for a room, and its name behind it because a number names nothing.
+   * The name is optional; the address is not.
+   */
+  | { kind: 'room'; map: number; number: number; name: string | null }
+  /**
+   * `{command invalid or not allowed}` — what MegaMUD 2.1 answers a word it has
+   * no entry for (captured 2026-08-29, `captures/215`, answering `@seen`). It
+   * is the one reply in the vocabulary that is a statement about the *question*
+   * rather than the character, and it is what tells this client that an
+   * extended remote reached a client that is not this one.
+   */
+  | { kind: 'refused' };
 
 const VITALS =
   /^\{\s*(?:HP|H)\s*=\s*(?<hp>\d+)\s*\/\s*(?<hpMax>\d+)(?:\s*,\s*(?:MA|KAI|M|K)\s*=\s*(?<mana>\d+)\s*\/\s*(?<manaMax>\d+))?\s*\}$/i;
 
+/**
+ * `{1/2150 Town Gates}`, and `{1/2150}` for a room nothing has named.
+ *
+ * The address leads, and it leads because it is the half another client parses:
+ * a name can hold digits, a slash and a space, and a reader that had to find
+ * the address inside it would be guessing again.
+ */
+const ROOM_ADDRESS = /^\{\s*(?<map>\d+)\s*\/\s*(?<number>\d+)\s*(?<name>[^}]*?)\s*\}$/;
+/**
+ * `{mudengine 0.6.5}`. Two words: a client name, and a version beginning with a
+ * digit.
+ *
+ * Deliberately tight, because this runs over every brace-wrapped thing anybody
+ * says. `{No one}`, `{Nothing}`, `{ok}` and `{yes: 1}` are all refused by it,
+ * and so is every `@where` answer, which is either a bare room name or carries
+ * `(Exits: …)`. A room genuinely called `Level 3` would fit — which is the
+ * other reason the caller reads this only for a `@version` it asked.
+ */
+const VERSION = /^\{\s*(?<client>[A-Za-z][\w.+-]*)\s+(?<version>\d[\w.+-]*)\s*\}$/;
+/** MegaMUD 2.1's answer to a word it has no entry for. Captured, verbatim. */
+const REFUSED = /^\{\s*command invalid or not allowed\s*\}$/i;
+
 export function parseRemoteReply(message: string): RemoteReply | null {
   const text = message.trim();
   if (/^\{\s*ok\s*\}$/i.test(text)) return { kind: 'ok' };
+  if (REFUSED.test(text)) return { kind: 'refused' };
+  const room = ROOM_ADDRESS.exec(text);
+  if (room?.groups) {
+    const name = room.groups['name'] ?? '';
+    return {
+      kind: 'room',
+      map: Number(room.groups['map']),
+      number: Number(room.groups['number']),
+      name: name.length === 0 ? null : name
+    };
+  }
+  const version = VERSION.exec(text);
+  if (version?.groups) {
+    return {
+      kind: 'version',
+      client: version.groups['client']!,
+      version: version.groups['version']!
+    };
+  }
   const match = VITALS.exec(text);
   if (!match?.groups) return null;
   const mana = match.groups['mana'];
@@ -690,6 +812,39 @@ export function formatStatus(
   const word = mode === 'walk' ? 'WALK' : mode === 'loop' ? 'LOOP' : 'IDLE';
   const suffix = stealth === 'sneaking' ? ' -Sneaking' : stealth === 'unknown' ? ' -Stealth?' : '';
   return `{${word}: ${doing}${suffix}}`;
+}
+
+/**
+ * `{1/2150 Town Gates}` — this character's room as the realm addresses it.
+ *
+ * **Null where the realm has not placed the character**, like every other
+ * formatter here: a room this client is reading by name alone has no address,
+ * and inventing one would send another client walking to a room off a guess.
+ * The name is carried behind the address as a courtesy to a person reading the
+ * telepath; the address is what the other client acts on.
+ */
+export function formatRoomAddress(
+  map: number | null,
+  room: number | null,
+  name: string | null
+): string | null {
+  if (map === null || room === null) return null;
+  return name === null ? `{${map}/${room}}` : `{${map}/${room} ${name}}`;
+}
+
+/**
+ * The address out of an extended remote's **argument** — `@comeback-room
+ * 1/2150` — or null.
+ *
+ * Bare rather than braced: braces wrap an *answer*, and this is what a command
+ * carries. Parse, do not validate: the caller gets a pair of numbers or
+ * nothing, and never a string it has to re-read.
+ */
+export function parseRoomAddress(argument: string | null): { map: number; room: number } | null {
+  if (argument === null) return null;
+  const match = /^\s*(\d{1,6})\s*\/\s*(\d{1,6})\s*$/.exec(argument);
+  if (!match) return null;
+  return { map: Number(match[1]), room: Number(match[2]) };
 }
 
 /** `{mudengine 0.5.0}`, in the shape of `{MegaMMUD 2.1}`. */

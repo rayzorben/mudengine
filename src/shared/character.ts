@@ -73,7 +73,18 @@ export interface Afflictions {
   blind: Affliction;
   poisoned: Affliction;
   diseased: Affliction;
-  /** Paralysed or held — `Your legs are paralyzed!`, `You are held by …!` — ended by `You can move again!`. */
+  /**
+   * Held where the character stands, by anything — paralysis (`Your legs are
+   * paralyzed!`), a knockdown (`You are flat on your back!`), webbing, a net,
+   * a chain, a roar. One flag rather than one per effect, because the server
+   * keeps one: `ActionFigure.CheckForHoldPerson` asks whether any active spell
+   * grants `HoldPerson` (74) and refuses the move, and `holdsMovement` is that
+   * same ability row read off the realm's own spell table. The two sentences
+   * fixed in the server's code reach it through `patterns.ts`; the twenty the
+   * realm states as message data reach it through the spell message table.
+   * Ended by `You can move again!`, by the holding spell's own wear-off, or by
+   * a step that lands — see `stoodUp`.
+   */
   held: Affliction;
 }
 

@@ -31,6 +31,8 @@ const facts = (over: Partial<PlayerFacts> = {}): PlayerFacts => ({
   race: null,
   className: null,
   gangRank: null,
+  client: null,
+  extendedRemotes: 'unknown',
   equipment: null,
   equipmentAt: null,
   lastRoom: null,

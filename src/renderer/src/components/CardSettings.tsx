@@ -92,7 +92,7 @@ const LAYOUT_LABELS: Record<TalkLayout, string> = {
  *   are and each one's default, so a card that always has something true to
  *   say offers no such control rather than one that would do nothing.
  * - **What one particular card can be set to**, where a card has anything of
- *   its own. The Talk card's three and the Map card's density are drawn only
+ *   its own. The Talk card's four and the Map card's density are drawn only
  *   for those cards — `cardId` is already the argument that decides which
  *   controls exist at all, and the rule the auto-hide toggle states applies
  *   unchanged: a control that would do nothing is worse than one not offered.
@@ -225,6 +225,23 @@ export default function CardSettingsPopup({
               </select>
             </label>
           )}
+
+          {/*
+            The channel, which is off: the box sends what was typed, and this
+            is where the picker is asked for. Stored only where it differs from
+            the shipped answer, the rule the stamp above states.
+          */}
+          <label className="card-settings-check">
+            <input
+              checked={value.talkChannels ?? false}
+              onChange={(event) => {
+                const on = event.target.checked;
+                onChange({ talkChannels: on ? true : undefined });
+              }}
+              type="checkbox"
+            />
+            <span>{t('cards.settings.talk.channels')}</span>
+          </label>
 
           <label className="card-settings-field">
             <span>{t('cards.settings.talk.layout')}</span>

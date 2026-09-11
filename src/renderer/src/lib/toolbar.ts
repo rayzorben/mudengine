@@ -4,6 +4,8 @@ import {
   type AutomationSwitches
 } from '@shared/config';
 
+import type { Movement } from '@shared/movement';
+
 import type { IconName } from '../components/Icon';
 import { t } from './i18n';
 
@@ -34,9 +36,16 @@ export const TOOLBAR_ACTIONS = [
   'gear:restore',
   'loop:open',
   'loop:build',
-  'loop:toggle',
-  'loop:stop',
-  'walk:stop'
+  /**
+   * Go, or stop — the whole transport, on one key (2026-09-11).
+   *
+   * It was three: `loop:toggle`, `loop:stop` and `walk:stop`, which asked the
+   * player to know whether they were looping or routing before they could
+   * press the right one. They are one thing — *moving* — so this is one
+   * button, and which of the two it stops is main's to work out
+   * (`SessionManager.stopMoving`).
+   */
+  'move:toggle'
 ] as const;
 export type ToolbarActionId = (typeof TOOLBAR_ACTIONS)[number];
 
@@ -182,9 +191,8 @@ export interface ToolbarSubject {
   connected: boolean;
   /** Whether a dial or a hang-up is already in flight. */
   dialling: boolean;
-  /** Whether a loop is running, paused, or neither. */
-  loop: 'running' | 'paused' | 'idle';
-  walking: boolean;
+  /** Routing, looping or stopped, and whether it is going. See `movementOf`. */
+  movement: Movement;
   /**
    * Whether anything the character was wearing is in the pack and off.
    *
@@ -200,10 +208,10 @@ export interface ToolbarSubject {
   restoreGear(): void;
   connect(): void;
   disconnect(): void;
-  pauseLoop(): void;
-  resumeLoop(): void;
-  stopLoop(): void;
-  stopWalk(): void;
+  /** Play: pick back up whatever was stopped. The card's picker is not here. */
+  startMoving(): void;
+  /** Stop, whichever of the two is running. */
+  stopMoving(): void;
   /**
    * Open the Loops modal — the shelf, not a control over the running loop.
    *
@@ -236,15 +244,12 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     switches,
     connected,
     dialling,
-    loop,
-    walking,
+    movement,
     setSwitch,
     connect,
     disconnect,
-    pauseLoop,
-    resumeLoop,
-    stopLoop,
-    stopWalk,
+    startMoving,
+    stopMoving,
     openLoops,
     openBuilder,
     canRestoreGear,
@@ -331,33 +336,18 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     ...shelf,
     ...builder,
     {
-      id: 'loop:toggle',
+      id: 'move:toggle',
       /*
-       * One button, two words. A loop is either running or held, and a row
-       * with a play *and* a pause on it spends two slots to say what one
-       * says — with the dead one greyed most of the time.
+       * One button, two words. A character is going or it is not, and a row
+       * with a play *and* a stop on it spends two slots to say what one says —
+       * with the dead one greyed most of the time. The picker is the card's;
+       * this presses play on whatever was last being walked.
        */
-      label: loop === 'running' ? t('toolbar.pauseLoop') : t('toolbar.resumeLoop'),
-      icon: loop === 'running' ? 'pause' : 'play',
-      on: loop === 'running',
-      disabled: loop === 'idle',
-      run: () => (loop === 'running' ? pauseLoop() : resumeLoop())
-    },
-    {
-      id: 'loop:stop',
-      label: t('toolbar.stopLoop'),
-      icon: 'stop',
-      on: false,
-      disabled: loop === 'idle',
-      run: stopLoop
-    },
-    {
-      id: 'walk:stop',
-      label: t('toolbar.stopWalk'),
-      icon: 'route',
-      on: walking,
-      disabled: !walking,
-      run: stopWalk
+      label: movement.moving ? t('toolbar.stopMoving') : t('toolbar.startMoving'),
+      icon: movement.moving ? 'stop' : 'play',
+      on: movement.moving,
+      disabled: !movement.moving && !movement.resumable,
+      run: () => (movement.moving ? stopMoving() : startMoving())
     }
   ];
 

@@ -888,6 +888,11 @@ export class SettingsEditor {
           finds: {
             items: [...config.ui.alerts.finds.items],
             cashOverCopper: config.ui.alerts.finds.cashOverCopper
+          },
+          desktop: {
+            enabled: config.ui.alerts.desktop.enabled,
+            whileFocused: config.ui.alerts.desktop.whileFocused,
+            mute: [...config.ui.alerts.desktop.mute]
           }
         },
         rewrites: structuredClone(config.ui.rewrites)
@@ -991,6 +996,9 @@ export class SettingsEditor {
         set(['ui', 'alerts', 'mute'], [...draft.ui.alerts.mute]);
         set(['ui', 'alerts', 'finds', 'items'], [...draft.ui.alerts.finds.items]);
         set(['ui', 'alerts', 'finds', 'cashOverCopper'], draft.ui.alerts.finds.cashOverCopper);
+        set(['ui', 'alerts', 'desktop', 'enabled'], draft.ui.alerts.desktop.enabled);
+        set(['ui', 'alerts', 'desktop', 'whileFocused'], draft.ui.alerts.desktop.whileFocused);
+        set(['ui', 'alerts', 'desktop', 'mute'], [...draft.ui.alerts.desktop.mute]);
         set(['ui', 'rewrites'], structuredClone(draft.ui.rewrites));
 
         set(['logging', 'enabled'], draft.logging.enabled);

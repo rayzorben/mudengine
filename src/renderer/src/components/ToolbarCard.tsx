@@ -122,11 +122,12 @@ export default function ToolbarCard({
  *
  * `aria-pressed` rather than a class alone: the lit state is the whole message
  * of this control, and somebody who cannot see the tone still has to be told
- * whether their character is fighting on its own. The transport buttons are
- * not toggles and say so by carrying no pressed state.
+ * whether their character is fighting on its own. The transport button is not
+ * a toggle — it is play *or* stop, and what it presses changes with it — and
+ * says so by carrying no pressed state.
  */
 function ToolbarKey({ button }: { button: ToolbarButton }) {
-  const toggle = button.id !== 'loop:stop' && button.id !== 'walk:stop';
+  const toggle = button.id !== 'move:toggle';
   return (
     <button
       aria-pressed={toggle ? button.on : undefined}

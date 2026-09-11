@@ -21,9 +21,10 @@
  *   specifically breaks one has never been asked of the wire. Refusing is the
  *   direction that cannot cost anything but a delay, so coins go on waiting
  *   until `npm run probe:rest` says. The claim has a date on it.
- * - **Pick up anything not named.** Coins are on or off; everything else is a
- *   list of names, matched by prefix because that is how the server reads
- *   `get`. Nothing here weighs, values or sells.
+ * - **Pick up anything not named.** Coins are a switch and a list of
+ *   denominations; everything else is a list of names, matched by prefix
+ *   because that is how the server reads `get`. Nothing here weighs, values or
+ *   sells.
  *
  * ## A supply is collected off the floor as well as bought
  *
@@ -47,6 +48,21 @@
  * floor may hold several, so a counted `get` there would take one and leave
  * the rest, where the bare form takes the lot.
  *
+ * ## And the other end of the same list: coins it puts back
+ *
+ * `discardKinds` is `coinKinds` inverted — the denominations to shed rather
+ * than collect, exclusive with it by construction (`normalizeLoot`) so nothing
+ * can be picked up and dropped for ever. A coin on neither list is *kept*,
+ * which is the third answer the pair exists to express.
+ *
+ * It reads the pack listing, like `AutoDrop`, because the server's own
+ * `DropCommand` needs the count: `drop {#} {name}` is its stated syntax, and
+ * the coin branch is reached only when a number leads. And it refuses while
+ * the pack holds an item the same word would match — `GetItemStacks` is tried
+ * **first** and strips the count, so `drop 15 copper` drops a copper ring and
+ * never reaches the purse. That is the server's own rule, read, not a guess
+ * about it; the same hazard `COIN` below exists for on the way in.
+ *
  * Proposes to `CommandQueue` in the `probe` band like `Recovery`; nothing here
  * touches a socket.
  */
@@ -56,7 +72,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { EncumbranceGate, LootConfig, SuppliesConfig } from '../../shared/config';
 import { carriedCount } from '../../shared/supplies';
-import { DENOMINATIONS } from '../../shared/character';
+import { DENOMINATIONS, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
 import { wireItem, type ItemEntity } from '../../shared/entities';
@@ -87,6 +103,24 @@ const COIN = /^(?<count>\d+) (?<coin>copper|silver|gold|platinum|runic)(?: [a-z]
  * *heavy*. Anything else is unranked and leaves every gate closed — see
  * `atLeast`.
  */
+/**
+ * The server's own rule for whether a typed word names a carried thing.
+ *
+ * `Misc.IsMatch`, transcribed: the typed text has to appear in the name
+ * **starting a word** — so `copper` names a `copper ring` and a `bright copper
+ * kettle`, and does not name `coppice`. Read here rather than reused from
+ * `nameAnswersTo`, which answers the different question of whether a listed
+ * item answers to a configured name and is anchored at the start.
+ */
+function matchesWord(name: string, word: string): boolean {
+  const text = name.toLowerCase();
+  const wanted = word.toLowerCase();
+  for (let at = text.indexOf(wanted); at !== -1; at = text.indexOf(wanted, at + 1)) {
+    if (at === 0 || text[at - 1] === ' ') return true;
+  }
+  return false;
+}
+
 const GRADE_RANK: Readonly<Record<string, number>> = {
   none: 0,
   light: 1,
@@ -97,6 +131,26 @@ const GRADE_RANK: Readonly<Record<string, number>> = {
 export class AutoLoot {
   /** Names already asked for in this room, lower case. */
   private attempted = new Set<string>();
+
+  /**
+   * Denominations already asked to drop, with the count the ask was for.
+   *
+   * `AutoDrop`'s rule, keyed on the figure rather than the name: the pack is
+   * the release, and what says a `drop 15 copper` landed is the next listing
+   * saying the copper is no longer 15. Keyed that way rather than cleared on
+   * any change, because a kill's coins arriving would otherwise re-arm an ask
+   * the server has not answered yet.
+   */
+  private shed = new Map<Denomination, number>();
+
+  /**
+   * Denominations whose drop was refused because the pack holds a namesake.
+   *
+   * Said once per session per coin. The situation persists for as long as the
+   * item is carried, and the listing that restates the purse arrives every few
+   * seconds — a line per listing is the terminal again.
+   */
+  private saidClash = new Set<Denomination>();
 
   constructor(
     private config: LootConfig,
@@ -119,7 +173,14 @@ export class AutoLoot {
      * answers neither, which is what a realm with no data says and is a first
      * class answer rather than an error.
      */
-    private readonly realmItem: (name: string) => ItemEntity = (name) => wireItem(name)
+    private readonly realmItem: (name: string) => ItemEntity = (name) => wireItem(name),
+    /**
+     * Something worth telling the player, for the one decision here that is a
+     * **refusal**: a coin this client will not shed because dropping it would
+     * drop a piece of kit instead. A safety feature that silently declines is
+     * worse than one never offered.
+     */
+    private readonly notice: (message: string) => void = () => {}
   ) {}
 
   configure(config: LootConfig, supplies: SuppliesConfig, enabled: boolean): void {
@@ -130,6 +191,63 @@ export class AutoLoot {
 
   reset(): void {
     this.attempted.clear();
+    this.shed.clear();
+    this.saidClash.clear();
+  }
+
+  /**
+   * The purse, read off the maintained listing: what to put back on the floor.
+   *
+   * Driven from the state path rather than `onBlock` for `AutoDrop`'s reason —
+   * the listing is both the trigger and the release, and the figure this needs
+   * is the one the block has already been folded into.
+   */
+  onCharacter(state: CharacterState): void {
+    /*
+     * The release, before any gate: a count that has moved is an ask the
+     * server has answered one way or the other, and the denomination is free
+     * to be asked about again. Read whether or not this is currently allowed
+     * to act, exactly as the pack frees a dropped name in `AutoDrop`.
+     */
+    for (const [coin, asked] of this.shed) {
+      if (state.inventory.coins[coin] !== asked) this.shed.delete(coin);
+    }
+
+    if (!this.enabled || state.phase !== 'in-game') return;
+    if (this.config.discardKinds.length === 0) return;
+    if (state.inCombat) return;
+    // Unmeasured rather than settled, as for the `get` above.
+    if (state.vitals.resting || state.vitals.meditating) return;
+
+    for (const coin of this.config.discardKinds) {
+      const count = state.inventory.coins[coin];
+      // Null is nobody has said, and 0 is nothing to shed. Neither is a drop.
+      if (count === null || count <= 0) continue;
+      if (this.shed.has(coin)) continue;
+      /*
+       * The server tries the pack **before** the purse and strips the count
+       * while doing it (`ItemContainer.GetItemStacks`), so a `drop 15 copper`
+       * with a copper ring in the pack drops the ring. Its own rule, read off
+       * its own source: a name matches where the typed word begins a word of
+       * it. Refused rather than worked around, and said once — the alternative
+       * is this client throwing away a piece of kit to tidy up some change.
+       */
+      const clash = state.inventory.items.find((item) => matchesWord(item.name, coin));
+      if (clash !== undefined) {
+        if (this.saidClash.has(coin)) continue;
+        this.saidClash.add(coin);
+        this.notice(t('automation.loot.discardBlocked', { coin, item: clash.name }));
+        continue;
+      }
+      this.shed.set(coin, count);
+      this.queue.enqueue({
+        command: `drop ${count} ${coin}`,
+        priority: 'probe',
+        coalesceKey: `loot:shed:${coin}`,
+        expiresAt: Date.now() + tuning().loot.expiresMs,
+        reason: t('automation.loot.reasonDiscard', { count, coin })
+      });
+    }
   }
 
   onBlock(block: Block, state: CharacterState): void {

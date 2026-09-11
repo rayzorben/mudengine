@@ -38,7 +38,7 @@ import {
   type ThemePreference
 } from './themes';
 import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
-import { SEVERITIES, type Severity } from './notifications';
+import { DESKTOP_ALERTS, SEVERITIES, type Severity } from './notifications';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { mobKey } from './world';
@@ -352,6 +352,42 @@ export interface AlertsUiConfig {
   mute: string[];
   /** What a `search` turning something up is worth interrupting for. */
   finds: FindAlertsConfig;
+  /** What is worth interrupting somebody who is not looking at the window. */
+  desktop: DesktopAlertsConfig;
+}
+
+/**
+ * What the operating system is asked to say, for a player who is elsewhere.
+ *
+ * The Alerts card is a second reading of the stream for somebody who is
+ * looking at it. This is the third reading, for somebody who is not looking at
+ * the client at all — which is the state a MUD client is in most of an
+ * evening, because the whole point of automating a character is that you can
+ * go and do something else.
+ *
+ * A list of happenings rather than a severity floor, because the two do not
+ * agree: arriving where you asked to go is the record and it is also the one
+ * thing somebody walked away expecting to be told about. `DESKTOP_ALERTS` is
+ * the list; a mute rather than an allow list, so a happening added later
+ * arrives switched on.
+ *
+ * On by default, and not while the window has the focus. Both halves matter:
+ * a notification feature nobody finds is one that was never built, and a
+ * notification for something already on screen is the reason people turn
+ * notifications off.
+ */
+export interface DesktopAlertsConfig {
+  /** Raise anything at all. */
+  enabled: boolean;
+  /**
+   * Raise them while the window has the focus too.
+   *
+   * Off: the Alerts card is already on screen and the rail already counts what
+   * was missed. On is for a window kept small in a corner.
+   */
+  whileFocused: boolean;
+  /** Happenings that raise nothing, by name — one of {@link DESKTOP_ALERTS}. */
+  mute: string[];
 }
 
 /**
@@ -1118,6 +1154,25 @@ export interface LootConfig {
    * the settings screen rather than reading as a switch that does not work.
    */
   coinKinds: Denomination[];
+  /**
+   * Which denominations to put back on the floor whenever any are carried.
+   *
+   * The other end of `coinKinds`, and the two are **exclusive**: a
+   * denomination on both lists would be picked up and dropped for ever, one
+   * command each way. Stated here rather than in `automation.drop` so the rule
+   * between them is visible in one block — and enforced by `normalizeLoot`,
+   * where a file naming a coin on both loses it from *this* one, because
+   * dropping is the destructive reading of an ambiguous file.
+   *
+   * **A coin on neither list is kept.** That is the third answer the pair
+   * exists to express: copper is not worth bending down for and is not worth
+   * a command to shed, so the twelve of it already in the purse stay there.
+   *
+   * Empty by default, and nothing about the shipped configuration ever throws
+   * money away. **Not in MegaMUD**, whose cash page collects and converts and
+   * never sheds.
+   */
+  discardKinds: Denomination[];
   /**
    * Stop collecting coins once the server grades the load this heavily.
    * `never` never refuses.
@@ -2157,7 +2212,12 @@ export const DEFAULT_CONFIG: AppConfig = {
       hp: { caution: 0.5, critical: 0.25 },
       mana: { caution: 0.5, critical: 0.25 }
     },
-    alerts: { minimum: 'info', mute: [], finds: { items: [], cashOverCopper: 0 } },
+    alerts: {
+      minimum: 'info',
+      mute: [],
+      finds: { items: [], cashOverCopper: 0 },
+      desktop: { enabled: true, whileFocused: false, mute: [] }
+    },
     // Every design off; each is what a player starts designing from. The
     // bands are the HUD's own shape -- a colour from a share of maximum up.
     rewrites: {
@@ -2318,6 +2378,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       // All five: this is what `coins: true` alone has always meant, so the
       // default changes nothing about how the client behaves.
       coinKinds: [...DENOMINATIONS],
+      discardKinds: [],
       items: [],
       minPrice: 0,
       maxEncumbrance: 0,
@@ -2731,9 +2792,17 @@ function normalizeConsoleUi(value: unknown): ConsoleUiConfig {
 
 function normalizeAlerts(raw: unknown): AlertsUiConfig {
   const d = DEFAULT_CONFIG.ui.alerts;
-  if (!isRecord(raw)) return { ...d, mute: [...d.mute], finds: normalizeFindAlerts(undefined) };
+  if (!isRecord(raw)) {
+    return {
+      ...d,
+      mute: [...d.mute],
+      finds: normalizeFindAlerts(undefined),
+      desktop: normalizeDesktopAlerts(undefined)
+    };
+  }
   return {
     finds: normalizeFindAlerts(raw['finds']),
+    desktop: normalizeDesktopAlerts(raw['desktop']),
     minimum: oneOf(raw['minimum'], SEVERITIES, d.minimum),
     // Lowercased and de-duplicated: a channel name is what the notice carries,
     // and `Combat` in the file matching nothing would be a setting that reads
@@ -2743,6 +2812,32 @@ function normalizeAlerts(raw: unknown): AlertsUiConfig {
         (Array.isArray(raw['mute']) ? raw['mute'] : [])
           .map((entry) => String(entry).trim().toLowerCase())
           .filter((entry) => entry.length > 0)
+      )
+    )
+  };
+}
+
+/**
+ * What the desktop is asked to say, read forgivingly.
+ *
+ * The mute list is filtered against `DESKTOP_ALERTS` rather than merely
+ * lowercased, unlike the channel list beside it: the channels are eleven words
+ * a notice carries and an unknown one is harmless, while an unknown happening
+ * here is a switch somebody believes they turned off. A name nothing answers
+ * to is dropped so the form shows what the file actually does.
+ */
+function normalizeDesktopAlerts(value: unknown): DesktopAlertsConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.ui.alerts.desktop;
+  const named = new Set<string>(DESKTOP_ALERTS);
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    whileFocused: bool(raw['whileFocused'], d.whileFocused),
+    mute: Array.from(
+      new Set(
+        (Array.isArray(raw['mute']) ? raw['mute'] : [])
+          .map((entry) => String(entry).trim().toLowerCase())
+          .filter((entry) => named.has(entry))
       )
     )
   };
@@ -3358,9 +3453,23 @@ function normalizeLoot(value: unknown): LootConfig {
   const coinKinds = Array.isArray(raw['coinKinds'])
     ? DENOMINATIONS.filter((name) => (raw['coinKinds'] as unknown[]).includes(name))
     : d.coinKinds;
+  /*
+   * Exclusive with the list above, and **this** is the one that loses a
+   * disagreement. A file naming gold on both is a file whose author meant one
+   * of two things, and only one of the readings is destructive: collecting a
+   * coin that is then dropped costs two commands a lap, while dropping a coin
+   * the player meant to keep is money on the floor of a room they have left.
+   * So the ambiguity resolves towards keeping.
+   */
+  const discardKinds = Array.isArray(raw['discardKinds'])
+    ? DENOMINATIONS.filter(
+        (name) => (raw['discardKinds'] as unknown[]).includes(name) && !coinKinds.includes(name)
+      )
+    : d.discardKinds.filter((name) => !coinKinds.includes(name));
   return {
     coins: bool(raw['coins'], d.coins),
     coinKinds,
+    discardKinds,
     stopAtGrade: gate(raw['stopAtGrade'], d.stopAtGrade),
     convertWith: str(raw['convertWith'], d.convertWith).trim(),
     convertAt: gate(raw['convertAt'], d.convertAt),

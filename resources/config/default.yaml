@@ -255,6 +255,33 @@ ui:
       items: []
       cashOverCopper: 0
 
+    # What the operating system is asked to say when you are not looking at
+    # this window -- which is most of an evening, because automating a
+    # character is what lets you go and do something else.
+    #
+    # A list of happenings rather than a level, because the two disagree:
+    # arriving where you asked to go is only the record, and it is the one
+    # thing you walked away expecting to be told about. `mute` names the ones
+    # that raise nothing:
+    #
+    #   attacked  a player attacking you
+    #   hurt      health crossing into critical
+    #   arrived   a route reaching where it was going
+    #   hungup    leaving the realm without you asking -- the link dropped, or
+    #             the low-health hang-up acted for you
+    #   critical  anything else the client ranks critical
+    #
+    # `whileFocused` raises them while this window is in front as well. Off,
+    # because what they would say is already on the Alerts card. One
+    # notification per character at a time, the newest, and each kind then
+    # rests a minute before it speaks again about that character -- being
+    # attacked is a fresh line several times a round. Clicking one brings the
+    # window forward and shows that character.
+    desktop:
+      enabled: true
+      whileFocused: false
+      mute: []
+
   # Show the HUD rail beside the console.
   #
   # The HUD is what you read while playing, and it appears on its own without
@@ -737,6 +764,21 @@ automation:
     # Auto-Get Cash switch and no way to say which coins; this is the finer
     # control it wanted. An empty list takes none.
     coinKinds: [runic, platinum, gold, silver, copper]
+
+    # Which coins to put back on the floor whenever any are carried.
+    #
+    # The other end of `coinKinds`, and the two are exclusive: a coin on both
+    # lists would be picked up and dropped for ever, one command each way. A
+    # coin on neither is kept -- that is the third answer the pair exists to
+    # express, and it is what makes "stop collecting copper" different from
+    # "throw the copper away".
+    #
+    # Empty here, and nothing shipped ever throws money away. A coin is only
+    # ever dropped when the pack listing says how many are carried, in one
+    # `drop <count> <coin>`, and never while an item in the pack answers to the
+    # same word -- `drop 15 copper` would drop a copper ring instead, which is
+    # the server's own matching rule and not a guess about it.
+    discardKinds: []
 
     # Stop collecting coins once the server grades the load this heavily --
     # MegaMUD's "Don't collect if it will make you medium / heavy", as one

@@ -71,12 +71,11 @@ const api: IpcApi = {
   getCharacter: (session) => ipcRenderer.invoke(Invoke.getCharacter, session),
   routeTo: (session, map, room) => ipcRenderer.invoke(Invoke.routeTo, session, map, room),
   walkRoute: (session, route) => ipcRenderer.invoke(Invoke.walkRoute, session, route),
-  stopWalk: (session) => ipcRenderer.invoke(Invoke.stopWalk, session),
+  startMoving: (session, loop, confirmed) =>
+    ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
+  stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),
   startLoop: (session, name) => ipcRenderer.invoke(Invoke.startLoop, session, name),
-  stopLoop: (session) => ipcRenderer.invoke(Invoke.stopLoop, session),
-  pauseLoop: (session) => ipcRenderer.invoke(Invoke.pauseLoop, session),
-  resumeLoop: (session) => ipcRenderer.invoke(Invoke.resumeLoop, session),
   skipLoopStop: (session) => ipcRenderer.invoke(Invoke.skipLoopStop, session),
   reverseLoop: (session) => ipcRenderer.invoke(Invoke.reverseLoop, session),
   loopCatalogue: () => ipcRenderer.invoke(Invoke.loopCatalogue),
@@ -103,6 +102,7 @@ const api: IpcApi = {
   reorderSessions: (order) => ipcRenderer.invoke(Invoke.reorderSessions, order),
   popIn: (session) => ipcRenderer.invoke(Invoke.popIn, session),
   gatherWindows: () => ipcRenderer.invoke(Invoke.gatherWindows),
+  raiseWindow: () => ipcRenderer.invoke(Invoke.raiseWindow),
 
   getConfig: () => ipcRenderer.invoke(Invoke.getConfig),
   getInternal: () => ipcRenderer.invoke(Invoke.getInternal),

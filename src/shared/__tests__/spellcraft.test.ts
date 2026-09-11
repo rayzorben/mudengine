@@ -6,6 +6,7 @@ import {
   castsOnOthers,
   castsOnSelf,
   cureGates,
+  holdsMovement,
   resolveSpell,
   spellCost,
   spellTargeting,
@@ -238,5 +239,44 @@ describe('spellTargeting', () => {
     expect(castsBare('self')).toBe(true);
     expect(castsBare('friendly')).toBe(false);
     expect(castsBare('unknown')).toBe(false);
+  });
+});
+
+/*
+ * `ActionFigure.CheckForHoldPerson` asks one question — does any active spell
+ * grant `HoldPerson` — and refuses the move if so. So the ability row is the
+ * whole definition, and the 60 spells of the shipped realm that carry it are
+ * the list; `abilities-realm.test.ts` asserts that against the real data.
+ */
+describe('holdsMovement', () => {
+  it('reads the ability the server refuses a move on', () => {
+    expect(holdsMovement({ abilities: [[74, 1]] })).toBe(true);
+    // Beside others, in any position: a spell states several rows.
+    expect(
+      holdsMovement({
+        abilities: [
+          [1, 20],
+          [74, 1],
+          [19, 3]
+        ]
+      })
+    ).toBe(true);
+  });
+
+  it('does not read a spell that only lasts a while', () => {
+    expect(holdsMovement({ abilities: [[3, 10]] })).toBe(false);
+    expect(holdsMovement({ abilities: [] })).toBe(false);
+  });
+
+  /*
+   * A realm that does not say is not a realm that says no — but it answers
+   * false all the same, because an unstated hold must never stand a walk
+   * still. What catches those is the refusal on the wire: see
+   * `Walker.onsetAnsweredStep`.
+   */
+  it('answers false for a realm that states nothing, and for no spell at all', () => {
+    expect(holdsMovement({})).toBe(false);
+    expect(holdsMovement(null)).toBe(false);
+    expect(holdsMovement(undefined)).toBe(false);
   });
 });

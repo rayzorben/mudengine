@@ -777,6 +777,29 @@ export function commandOf(input: string): CommandName | null {
 }
 
 /**
+ * Whether this command hands the terminal over to the stat-assignment screen.
+ *
+ * `train stats` at a trainer is the one command in the table whose answer is
+ * not a sentence and not a prompt: `TrainCommand.cs:72` calls `Player.Exits()`
+ * and drops the character into `PlayerWaitState.TrainStats`, from which the
+ * next thing on the wire is a telnet field form. See `user-stats-screen`.
+ *
+ * **The argument is matched exactly as the server matches it.** `trainArgs ==
+ * "stats"` is a case-sensitive comparison against a trimmed argument
+ * (`Player.cs:1912` keeps the command's case; its `.ToLower()` is commented
+ * out), so `train Stats` is answered with `Your command had no effect.` and a
+ * prompt. Mirroring that rather than being tolerant of it keeps this a reading
+ * of the server rather than a guess about it — and the screen's own block is
+ * the second, independent arm for a realm whose rule turns out to differ.
+ */
+export function opensStatScreen(input: string): boolean {
+  if (commandOf(input) !== 'Train') return false;
+  const text = input.trim();
+  const space = text.search(/\s/);
+  return space >= 0 && text.slice(space + 1).trim() === 'stats';
+}
+
+/**
  * Whether this command can leave the character standing somewhere else.
  *
  * An empty line is a bare Enter, which reprints the room the character is

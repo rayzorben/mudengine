@@ -109,7 +109,20 @@ notices:
     servers:
       noHost: '{file} does not name a host, so it is not a realm'
       readError: '{file} could not be read: {message}'
+  desktopAlerts:
+    refused:
+      'Desktop notifications are switched on, but this system will not show them. Nothing will be
+      raised outside the window until it is allowed to.'
+    title: '{name}'
+    unavailable:
+      'Desktop notifications are switched on, but nothing here can show one. Alerts are still kept
+      on the Alerts card.'
+    untitled: MudEngine
   migration:
+    oneTransportButton:
+      "The toolbar's three transport buttons are one — play or stop, whichever of a route and a
+      loop is on — and {file} was migrated to match, with the figure that decides when play asks
+      before walking a character back to what it left."
     lightStated:
       one:
         'Lighting a torch before a dark room is now a setting, on by default, and was written into
@@ -230,6 +243,11 @@ notices:
       '"ui.alerts.finds" was written into {file}, both off: what a search turning something up is
       worth interrupting for. Words to watch for and a figure in copper — set either there or on
       the Alerts section in settings. The Room card''s Finds face lists everything either way.'
+    desktopAlertsStated:
+      '"ui.alerts.desktop" was written into {file}, on: five happenings the operating system is
+      asked to say when this window is not in front — a player attacking you, health critically
+      low, a route arriving, leaving the realm unasked, and anything else critical. Switch any of
+      them off there or on the Alerts section in settings.'
     darkConsoleStated:
       '"ui.console" was written into {file}, on: under a light theme the console keeps a dark
       palette, because a light one has to make the realm''s black its paper. Choose which dark
@@ -321,6 +339,18 @@ notices:
       chooses between and was removed from your tuning file. Any figure you had set there was
       the answer to a different question and is not carried into either end.'
     optionsMoved: Options moved from {from} to {to}.
+    coinsCanBeShed:
+      one: '"automation.loot.discardKinds" was written into {fileList}, empty: which coins to put
+        back on the floor whenever any are carried, the other end of "coinKinds". Nothing is
+        dropped until you name one.'
+      many: '"automation.loot.discardKinds" was written into {count} files ({fileList}), empty:
+        which coins to put back on the floor whenever any are carried, the other end of
+        "coinKinds". Nothing is dropped until you name one.'
+    roomRemoteFollowsWhere:
+      "@where-room was added beside @where in {count} grants in {file}: it is the same question
+      answered with the realm's own address for the room instead of its name, and which of the two
+      goes out is the asker's choice. @comeback-room was not added anywhere — it walks this
+      character on somebody else's word, and that is a decision to make on purpose."
     partyRemotesStated:
       '"automation.remotes.party" was written into {file}: the remotes anybody who has joined this
       character''s party may ask for. It ships with @health and @bless-expired on it, which is
@@ -563,7 +593,9 @@ palette:
     settingsDefaultsLabel: 'Settings: what a new realm or character starts with…'
     settingsLabel: 'Settings: add or edit a character, realm or password…'
     askHealthLabel: 'Ask {name} for their health'
-    askHealthRefused:
+    askWhereLabel: 'Ask {name} where they are'
+    askComebackLabel: 'Ask {name} to come back here'
+    askRefused:
       'Not asked: {name} — this character is not in the realm, or the same question is already
       waiting to go.'
     showIdleStatus: idle
@@ -602,8 +634,8 @@ palette:
     gotoLabel: 'Goto: {roomName}'
     gotoVisitedHint: '{roomReference} · {agoText}'
     loopLabel: 'Loop: {loopName}'
-    loopStopHint: and stop the walk with it
-    loopStopLabel: Stop looping
+    moveStopHint: routing or looping — it keeps its place, so play picks it back up
+    moveStopLabel: Stop moving
     loopStopsHint:
       many: '{stopCount} stops'
       one: '{stopCount} stop'
@@ -698,19 +730,17 @@ toolbar:
   lookAtPlayers: Auto-Inspect New Players
   loot: Auto-Get Cash
   openDoors: Auto-Open Doors
-  pauseLoop: Pause Loop
   pickLocks: Auto-Pick Locks
   remotes: Remote Control (@ commands)
   restoreGear: Re-equip Gear / Auto-Equip
   restWithLeader: Follower Auto-Rest
   search: Auto-Search Rooms
-  resumeLoop: Resume Loop
   retaliate: Retaliate When Attacked
   sneak: Auto-Sneak on Move
   openLoops: Path Library / Select Loop
   buildLoop: Build a Loop / Path Editor
-  stopLoop: Stop Loop
-  stopWalk: Stop Movement
+  startMoving: Start Moving / Resume
+  stopMoving: Stop Moving
 tabs:
   head:
     newCharacterAria: New character
@@ -1043,6 +1073,9 @@ cards:
       mobArrived: '{name} is in the room — {dispositionWord}'
       mobArrivedUncertainSuffix: ', by the worst of what the realm says'
       playerArrived: '{name} is in the room — {alignment}'
+    session:
+      dropped: The link dropped — you are out of the realm
+      hungUp: Hung up for you — you are out of the realm
     severity:
       info: info
       warning: warning
@@ -1052,6 +1085,9 @@ cards:
     vitals:
       crossing: '{label} {level}: {current} of {max}'
       manaLabel: Mana
+    walk:
+      arrived: 'Arrived at {destination}'
+      arrivedSomewhere: Arrived where the route ended
   quests:
     anyOf: Any one of
     badge:
@@ -1403,17 +1439,23 @@ cards:
     undo: Undo (Ctrl/⌘ Z)
   # Where the character is going, in the two ways it can be going anywhere: a
   # route somebody chose and walks once, or a loop walked round and round. One
-  # card, two faces, and the face follows whichever is actually happening —
-  # so neither half says a word about the other any more.
+  # card and one face, named for whichever is happening — routing, looping or
+  # stopped — so the card never reports the mechanism under the other one.
   navigation:
+    actions:
+      play: Start Selected Loop
+      resume: Resume — pick up where it left off
+      stop: Stop Moving
+    idle:
+      nothing: Not currently moving.
+    # The first entry of the picker when something is stopped: what play will
+    # pick back up, above the loops it could start instead.
+    resumeLoopOption: 'Resume: {loopName}'
+    resumeRouteOption: 'Resume route to {destination}'
     loop:
       actions:
-        pause: Pause Loop
-        play: Start Selected Loop
-        resume: Resume Loop
         reverse: Reverse Path Direction
         skip: Skip Waypoint
-        stop: Stop Loop
       directionBackward: backward
       directionForward: forward
       directionLabel: Direction
@@ -1430,7 +1472,6 @@ cards:
       statusHeld: held
       statusPoisoned: poisoned
       statusOffline: offline
-      statusPaused: paused
       statusResting: resting
       statusRunning: running
       statusStopped: stopped
@@ -1445,7 +1486,6 @@ cards:
       meterLabel: '{done}/{total} steps'
       roomTooltip: Open {roomName} in the route panel
       sendingLabel: Sending
-      stopButton: Stop Movement / Cancel Route
       title: Route
       towardLabel: Heading
     title: Navigation
@@ -1513,6 +1553,7 @@ cards:
     commandsValue: '{commandsSent} sent — last @{lastCommand} {agoText}'
     detail:
       class: Class
+      client: Client
       commands: Commands
       gang: Gang
       health: Health
@@ -1523,6 +1564,10 @@ cards:
       where: Where
     fromTitle: from their title
     levelBand: '~{from}–{to}'
+    clientUnnamed: nothing has said
+    clientExtended: · answers this client's own wording
+    clientPlain: · MegaMUD wording only
+    clientUntried: · untried
     healthNeverAnswered: no reply — request with @health
     lastOnlineNow: now
     neverInRoom: never
@@ -1925,6 +1970,8 @@ cards:
       findDays: Show finds from the last (days)
       findDaysAll: all
     talk:
+      # Off: the box sends what was typed, so `gos` is how a line gossips.
+      channels: Put a channel in front.
       layout: Message format
       layouts:
         condensed: Condensed
@@ -2095,7 +2142,10 @@ cards:
       local: Local
       realm: Realm
     messageInputAria: Say something
+    # With a channel showing; the openers that go somewhere else are listed.
     messagePlaceholder: message, or start with . " > / gos auc br - gb bg
+    # The shipped box: what is typed is what is sent, channel word and all.
+    messagePlaceholderAsTyped: sent as typed — gos to gossip, l to look
     # The direction on this character's own receipts: `telepath to Brackle`.
     sentTo: to
     title: Talk
@@ -2226,6 +2276,26 @@ settings:
       session: session
       stealth: stealth
       vitals: vitals
+    desktopEnabledHint:
+      Raise the happenings below outside the window, where the system shows them. Clicking one
+      brings the window forward and shows that character.
+    desktopEnabledLabel: Notify On The Desktop
+    desktopFocusedHint:
+      Raise them while this window is in front as well. Off, because what they would say is already
+      on the Alerts card.
+    desktopFocusedLabel: Even When In Front
+    desktopLegend: Desktop Notifications
+    desktopMuteHint: Ticked raises nothing. Everything else is raised whenever this window is not in front.
+    desktopMuteLabel: Never Notify About
+    desktopNote:
+      One notification per character at a time, the newest. The Alerts card keeps every one of them
+      whether or not it was raised here.
+    happening:
+      arrived: a route arriving
+      attacked: a player attacking you
+      critical: anything else critical
+      hungup: leaving the realm unasked
+      hurt: health critically low
     findCashHint:
       Cash a search turns up, in copper, worth interrupting for. Everything the client knows about
       money is normalised into copper, so one figure covers every coin the realm prints. 0 never
@@ -2638,6 +2708,10 @@ settings:
       Which coins are worth bending down for. The cheap ones are most of what drops and every get
       is a command; unticking them all takes none.
     lootCoinKindsLabel: Coins to Collect
+    lootDiscardKindsHint:
+      Which coins to put back on the floor whenever you are carrying any. A coin on neither row is
+      kept — that is how you stop collecting copper without throwing away the copper you have.
+    lootDiscardKindsLabel: Coins to Discard
     lootConvertAtLabel: Convert When
     lootConvertWithHint:
       An item that turns small coin into large — GreaterMUD's coin bag. The client cannot tell
@@ -2957,6 +3031,10 @@ settings:
         Text with tags in braces, one line here per line of the console. Click a figure, a colour
         or a control on the left to put it at the caret.
       done: Done
+      typed: what you type
+      typedNote:
+        The words after the row are what you type into it. A colour left standing at the end of
+        the template paints them, because nothing resets after the line the caret shares.
       previewLabel: As it will be drawn
       previewEmpty: Nothing to draw.
       previewSample: Drawn from a sample; connect this character to see its own figures.
@@ -3059,12 +3137,24 @@ session:
       client will work out where it is from the rooms it walks into instead.
     noRealmData: No realm data.
     stoppedDied: you were killed, and the realm has moved you
+    stoppedForLoop: you started a loop
+    stoppedForRoute: you asked for a route
     stoppedDisconnected: you disconnected
     stoppedLeftRealm: you left the realm
     stoppedRealmChanged: this is a different realm
     unknownRoom: I cannot tell which room you are in.
     unknownStopName: The realm data has no room called {name}.
     pausedForRemote: '{who} asked the party to wait'
+  # Play and stop. A character is routing, looping or stopped, so there is one
+  # of each rather than one per mechanism -- see `src/shared/movement.ts`.
+  move:
+    alreadyMoving: This character is already moving.
+    noSuchLoop: There is no loop called {name}.
+    nothingToResume: There is nothing to pick back up.
+    theLoop: the loop
+    tooFarForRemote:
+      '{who} said the party is ready, but {name} is {stepCount} steps from here — press play to
+      walk back to it.'
   finds:
     coins: coins
     forgot: 'Forgot the {what} found in {room}.'
@@ -3136,6 +3226,19 @@ session:
       character’s tab to walk the {realm} world, or name one on the realm’s settings page.
     left: Left the realm. Everything known about this character is forgotten; entering again asks
       for it afresh.
+  stats:
+    asked: you asked to train stats
+    screen: the stat screen is up
+    held: Automation is standing down and its queue has been emptied — the stat screen has the
+      keyboard, and anything sent now would be typed into one of its fields. Your own typing still
+      goes through.
+    released: Back at a prompt; automation is running again.
+  remotes:
+    peerPlaced: '{who} is in {room} ({address}).'
+    peerPlacedUnnamed: a room they did not name
+    comebackWalking: '{who} asked this character to come to {address}; walking {stepCount} steps.'
+    comebackRefused: '{who} asked this character to come to them, and the route was refused:
+      {reason}'
   statline:
     exact: 'The realm reports the status line as {statline}; every prompt is read by it exactly.'
     full: The realm reports the status line as full; the prompt is read by the usual pattern.
@@ -3289,11 +3392,10 @@ automation:
     fallbackNextStop: the next stop
     fallbackStop: a stop
     fallbackWhy: the walk failed
-    paused: Loop paused; the leg being walked has stopped.
     resumed: Loop resumed from here.
     skipped: 'Skipping {stopName} at your request.'
     reversed: Loop turned round; it takes effect at the next stop.
-    refusalNotPaused: The loop is not paused.
+    refusalNotStopped: There is no stopped loop to resume.
     refusalNotLooping: Nothing is looping.
     refusalNotBounce: Only a bounce loop has a direction to reverse.
   banking:
@@ -3352,6 +3454,11 @@ automation:
       that name and this one may not be it.
   loot:
     reasonCoinsDropped: 'loot: {count} {coin} on the floor'
+    reasonDiscard: 'loot: shedding {count} {coin}'
+    discardBlocked:
+      'Not dropping the {coin} in the purse: “{item}” is in the pack and the realm reads
+      “drop {coin}” as that item first, so it would go on the floor instead. Take it out of the
+      pack, or take {coin} off the discard list.'
     reasonConvert: 'loot: using {item} to convert cash'
     reasonListed: 'loot: {item} listed here'
     # A supply the pack is under the ceiling of, found rather than bought.
@@ -3383,6 +3490,22 @@ automation:
       one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
+    peerIsOurs:
+      "{who} answered @version with {client}, so questions to them will use this client's own
+      wording — a room's realm address rather than its name."
+    peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's
+      wording."
+    extendedRefused:
+      "{who} refused @{name} in this client's own wording, so they are not running it after all —
+      asking again the way MegaMUD words it."
+    extendedLapsed:
+      'Nothing came back from {who}, so they are recorded as not running this client — asking @{name}
+      the way MegaMUD words it instead.'
+    comebackUnplaced:
+      'Nothing has placed this character in the realm data, so there is no address to ask {who} to
+      come back to. Nothing was sent.'
+    comebackUnreadable: '{from} sent @comeback-room without a readable map/room address, so nothing
+      was walked.'
     reasonAnswering: answering {name}
     reasonAsking: asking {who} {body}
     reasonDo: '@do from {from}'
@@ -3451,7 +3574,7 @@ automation:
       (now {hp}) before taking it.'
     trapResumed: Enough health for the trap into {stepName}; walking on.
     holdingBlind: Blind; waiting here until you can see again.
-    holdingHeld: Paralysed; waiting here until you can move again.
+    holdingHeld: Held fast; waiting here until you can move again.
     holdingPoisoned: Poisoned; waiting here until it runs its course.
     afflictionResumed: The condition has passed; walking on.
     leverFetching:
@@ -3514,7 +3637,23 @@ automation:
     fallbackMove: the move
     fallbackLight: light
     fallbackBarrier: door
-# How a sighting of another player is phrased, shared by the people cards.
+# Play was pressed on a movement that was stopped a long time and a long way
+# ago. A stop keeps its place, so the lap you stopped at ten o'clock is still
+# there at midnight -- after the character has been walked to a bank, killed,
+# and reborn in a temple two maps away. Past `tuning.walk.resumeAskSteps` the
+# client asks rather than walking it back across the realm unasked.
+movement:
+  stay: Stay here
+  title: '{name} has wandered a long way'
+  walkIt: Walk it back
+  wanderedFromLoop:
+    'Getting back to {loopName} is {stepCount} steps from here — the loop was stopped somewhere
+    else.'
+  wanderedFromRoute: '{destination} is {stepCount} steps further away than when the route stopped.'
+  whatHappens: 'Walking it back is a journey like any other: through whatever lives on the way, with
+    auto-combat and the rest deciding as they always do. Staying here changes nothing — the
+    movement keeps its place, and play is there to press again.'
+
 # The client thinks the character in the realm is not the one its records are
 # about, and is asking. It only ever asks: deleting the only copy of what
 # somebody learned is not a decision taken from a heuristic.
@@ -3539,6 +3678,7 @@ reset:
     slots, the spellbook, the measured spell durations and the quest counters. What it learned about
     the realm itself stays: the map, the shops and the other players did not change.'
 
+# How a sighting of another player is phrased, shared by the people cards.
 players:
   sighting:
     daysAgo: '{days}d ago'

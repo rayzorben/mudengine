@@ -98,6 +98,21 @@ const writeConfig = (theme) =>
       '    mana:',
       '      caution: 0.5',
       '      critical: 0.25',
+      /*
+       * No desktop notifications from a test run (2026-09-10, todo 01). Two
+       * reasons and both stand on their own: a harness must not put real
+       * notifications on somebody's screen, which is the same rule that makes
+       * every harness here refuse a session without `xvfb-run` rather than
+       * steal the keyboard; and under `xvfb` there is no notification service
+       * to take them, where the call can leave Electron's browser process
+       * waiting on a bus nothing answers -- a run that then hangs on the next
+       * `Runtime.evaluate` rather than failing a check. The Alerts card is
+       * asserted either way; what is switched off here is only the third
+       * reading of it.
+       */
+      '  alerts:',
+      '    desktop:',
+      '      enabled: false',
       'logging:',
       '  enabled: true',
       `  directory: '${LOG_DIR}'`,
@@ -2959,8 +2974,54 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `before ${JSON.stringify(beforeWalk)} after ${JSON.stringify(afterWalk)}`
   );
 
+  /*
+   * And now a route really is being walked, which is the one moment the
+   * Navigation card is the *route's*: named for it in the heading, with the
+   * destination as a control rather than as text.
+   *
+   * A room the character is not in opens in the route panel, as a room clicked
+   * on the map does -- the same `chooseOnMap`, so the two cannot drift apart.
+   * Asserted here rather than under the lap further down: a lap hides the leg
+   * it is walking, because the route is the mechanism and not the thing
+   * happening.
+   */
+  if (!afterWalk.open) {
+    const routeHead = await evaluate(
+      `document.querySelector('.navigation-card h2')?.innerText.trim() ?? ''`
+    );
+    check(
+      /route/i.test(String(routeHead)),
+      'walking a route names the Navigation card for it',
+      String(routeHead)
+    );
+    const heading = await evaluate(`
+      (() => {
+        const button = document.querySelector('.navigation-card .walk-destination button.lookup');
+        if (!button) return '';
+        button.click();
+        return button.innerText.trim();
+      })()
+    `);
+    check(
+      String(heading).length > 0,
+      'and names where it is going as a control',
+      String(routeHead)
+    );
+    await sleep(500);
+    const panelText = await evaluate(
+      `document.querySelector('.route-panel')?.innerText.replace(/\\s+/g, ' ') ?? ''`
+    );
+    check(
+      String(heading).length > 0 && panelText.includes(String(heading)),
+      'and pressing it opens the route panel on that room',
+      `${String(heading)} -- ${JSON.stringify(panelText)}`
+    );
+    await press('Escape', 'Escape', 27);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
+  }
+
   // Leave nothing running, and put the caret back where it lives.
-  await evaluate(`(window.mudengine.stopWalk('${SESSION}'), true)`);
+  await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
   if (afterWalk.open) await press('Escape', 'Escape', 27);
   await sleep(400);
 
@@ -2994,26 +3055,27 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   // Sampled before the gesture: the step can reach the wire faster than the
   // evaluates that follow the click, and a snapshot taken after it misses it.
   /*
-   * The picker lives on the Loop face, so get there first.
+   * The picker is what play will move, and it is on the card whatever the
+   * character was last doing.
    *
-   * Which face the card opens on follows what the character is doing, and a
-   * walk was stopped a few lines above — so this is also the check that a
-   * crumb click actually moves the card, before anything is asserted about
-   * what is on the face it moved to.
+   * A walk was stopped a few lines above, so the card is the route's -- and
+   * the picker is still there, with the stopped route first and every lap
+   * under it. That is the whole of why it is one control: without it a route
+   * that ended at a shut door left the card with no way to start anything.
    */
   {
-    const clicked = await evaluate(`
+    const offered = await evaluate(`
       (() => {
-        const card = document.querySelector('.navigation-card');
-        if (!card) return 'no navigation card';
-        const crumbs = [...card.querySelectorAll('.crumb')];
-        const loop = crumbs.find((c) => /loop/i.test(c.innerText));
-        if (!loop) return 'no loop crumb';
-        loop.click();
-        return 'ok';
+        const picker = document.querySelector('.navigation-card .loop-card-picker');
+        if (!picker) return 'no picker';
+        return [...picker.options].map((o) => o.value).join('|');
       })()
     `);
-    check(clicked === 'ok', 'the Navigation card offers a Loop face', String(clicked));
+    check(
+      /^\|/.test(String(offered)) && /Smoke loop/.test(String(offered)),
+      'the stopped route is what play would move, with the loops under it',
+      String(offered)
+    );
     await sleep(200);
   }
   /*
@@ -3119,26 +3181,33 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
   await sleep(900);
   /*
-   * Starting a loop turns the Navigation card to its Loop face on its own.
+   * Starting a loop makes the Navigation card the loop's, and nothing else's.
    *
-   * The card is one card with two faces and the face follows what the
-   * character is actually doing, so this is the whole feature in one
-   * assertion: the crumb is selected, and the body is the loop's rather than
-   * the leg's. Read off `aria-selected`, which is the same fact the styling
-   * hangs off, so a face that merely *looks* active does not pass.
+   * The card draws **one** face -- what the character is doing, in the player's
+   * own three words -- so this is the whole feature in one assertion: the only
+   * crumb there is says Loop, and there is no Route face beside it describing
+   * the lap's own footwork.
    */
-  const onLoopFace = await evaluate(`
-    (() => {
-      const card = document.querySelector('.navigation-card');
-      if (!card) return 'no card';
-      const active = card.querySelector('.crumb[aria-selected="true"]');
-      return active ? active.innerText.trim() : 'none selected';
-    })()
-  `);
+  const faces = JSON.parse(
+    await evaluate(`
+      (() => {
+        const card = document.querySelector('.navigation-card');
+        if (!card) return JSON.stringify({ found: false });
+        return JSON.stringify({
+          found: true,
+          heading: card.querySelector('h2')?.innerText.trim() ?? '',
+          crumbs: [...card.querySelectorAll('.crumb')].map((c) => c.innerText.trim())
+        });
+      })()
+    `)
+  );
+  // One face, named in the heading: a lone crumb would read as a tab that does
+  // nothing, and `NAVIGATION` over it would leave the card's one question --
+  // routing, looping or stopped -- unanswered.
   check(
-    /loop/i.test(String(onLoopFace)),
-    'starting a loop shows the Loop face',
-    String(onLoopFace)
+    faces.found && /loop/i.test(faces.heading ?? '') && faces.crumbs.length === 0,
+    'starting a loop makes the card the loop, and only the loop',
+    JSON.stringify(faces)
   );
   const loopCard = await evaluate(
     `document.querySelector('.navigation-card')?.innerText.replace(/\\s+/g, ' ') ?? ''`
@@ -3220,14 +3289,22 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   `);
   await sleep(250);
   await capture('smoke-navigation.png', 'the Navigation card, running a loop');
-  // The loop face is where a loop is driven from: pause, stop and skip rather
-  // than the picker, which belongs to a character with nothing running.
+  /*
+   * The transport, which is the movement's rather than the lap's: one stop,
+   * and the lap's own skip beside it. No pause -- a stop keeps the lap's
+   * place, so play is the resume and a third word for the same state was a
+   * distinction nobody could hold.
+   */
+  const running = await evaluate(
+    `[...document.querySelectorAll('.navigation-card .loop-control')].map((b) => b.dataset.action).join(',')`
+  );
   check(
-    (await evaluate(
-      `['pause', 'stop', 'skip'].every((id) => !!document.querySelector('.navigation-card [data-action="' + id + '"]'))`
-    )) === true,
-    'with pause, stop and skip to hand',
-    loopCard
+    /stop/.test(String(running)) &&
+      /skip/.test(String(running)) &&
+      !/pause/.test(String(running)) &&
+      !/play/.test(String(running)),
+    'with stop and skip to hand, and no pause or play beside them',
+    String(running)
   );
   check(
     // `received` holds what the socket got, which is not always a string.
@@ -3311,21 +3388,22 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(trail)
   );
   /*
-   * And the Route face is one click away, still describing the leg the loop
-   * is walking. It is the half the loop no longer talks about, so this is
-   * also the check that the two faces did not collapse into one.
+   * And there is still no Route face beside it: a loop's legs are the
+   * mechanism, not the thing happening, and the card reports what the player
+   * would say the character is doing.
    */
-  const routeFace = await evaluate(`
+  const soleFace = await evaluate(`
     (() => {
       const card = document.querySelector('.navigation-card');
-      const crumbs = [...card.querySelectorAll('.crumb')];
-      const route = crumbs.find((c) => /route/i.test(c.innerText));
-      if (!route) return 'no route crumb';
-      route.click();
-      return 'ok';
+      if (!card) return 'no card';
+      return card.querySelector('h2')?.innerText.trim() ?? '';
     })()
   `);
-  check(routeFace === 'ok', 'the Route face is still reachable by its crumb', String(routeFace));
+  check(
+    /loop/i.test(String(soleFace)) && !/route/i.test(String(soleFace)),
+    'and the lap never draws a Route face beside it',
+    String(soleFace)
+  );
 
   /*
    * ------------------------------------------------- assert: the quest book
@@ -3770,92 +3848,61 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   const card = await evaluate(
     `document.querySelector('.navigation-card')?.innerText.replace(/\\s+/g, ' ') ?? ''`
   );
-  /*
-   * The loop's own words are gone from it. `Stop looping` was a control on
-   * this face for something the face beside it drives, and the loop's name and
-   * lap were rows here duplicating the card next door -- which is what made
-   * the two one card.
-   */
+  // The card is the lap's and says nothing about the leg it is walking: the
+  // route is the mechanism, and reporting the mechanism is reporting the
+  // client's own footwork.
   check(
-    !/Stop looping/.test(card) && !/Loops Completed/.test(card),
-    'and says nothing about the loop, which the other face owns',
+    !/^ROUTE/i.test(String(card)) && /Smoke loop/.test(String(card)),
+    'and the card reports the lap rather than the leg under it',
     card
   );
   /*
-   * A room the character is not in is a control, not text: the destination
-   * the card names opens in the route panel, as a room clicked on the map
-   * does -- the same `chooseOnMap`, so the two cannot drift apart.
+   * One stop, through the one channel there is. `move:stop` does not need to
+   * be told which of a route and a lap it is stopping -- that is the whole
+   * reason it replaced `loop:stop` and `walk:stop`.
    */
-  const destinationControl = await evaluate(`
-    (() => {
-      const button = document.querySelector('.navigation-card .walk-destination button.lookup');
-      if (!button) return '';
-      button.click();
-      return button.innerText.trim();
-    })()
-  `);
-  check(destinationControl.length > 0, 'the Route face names its destination as a control', card);
-  await sleep(500);
-  const panelText = await evaluate(
-    `document.querySelector('.route-panel')?.innerText.replace(/\\s+/g, ' ') ?? ''`
-  );
-  // The reference, not the name: the route's last step is *named* the same,
-  // so a name would match a plan to any like-named room. `1/2141` is the loop's
-  // first stop and is unique.
-  check(
-    panelText.includes('1/2141'),
-    'and pressing it opens the route panel on that room',
-    JSON.stringify(panelText)
-  );
-  check(
-    /Newhaven, Weapons Shop.*1\/2141/.test(panelText),
-    'with the room named in its head, resolved from the realm',
-    JSON.stringify(panelText)
-  );
-  await press('Escape', 'Escape', 27);
-  await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
-  check(
-    !(await evaluate(`!!document.querySelector('.route-panel')`)),
-    'and Escape puts the panel away for the checks that follow'
-  );
-  await evaluate(`(window.mudengine.stopLoop('${SESSION}'), true)`);
+  await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
   await sleep(400);
   /*
-   * Stopping takes the transport controls with it: pause, skip and stop are
-   * for a loop that is running, and a control that does nothing is worse than
-   * none. What is left is the picker and its play button.
-   *
-   * Asked of the Loop face on purpose, and the face is *selected* first — the
-   * card follows the activity, so stopping brings the route face forward, and
-   * reading `.loop-control` off whatever happened to be on screen would find
-   * none of them and pass for the wrong reason.
+   * Stopping turns stop into play and leaves skip where it is: a stop keeps
+   * the lap's place, and skipping a stop it cannot reach before pressing play
+   * is exactly what somebody does with a stopped lap (`LoopRunner.skip` moves
+   * the pointer and waits).
    */
-  const stopped = await evaluate(`
-    (() => {
-      const card = document.querySelector('.navigation-card');
-      if (!card) return 'no card';
-      const loop = [...card.querySelectorAll('.crumb')].find((c) => /loop/i.test(c.innerText));
-      if (!loop) return 'no loop crumb';
-      loop.click();
-      return 'ok';
-    })()
-  `);
-  check(
-    stopped === 'ok',
-    'the Loop face is still there once the loop has stopped',
-    String(stopped)
-  );
   const controls = await readUntil(
     () =>
       evaluate(
         `[...document.querySelectorAll('.navigation-card .loop-control')].map((b) => b.dataset.action).join(',')`
       ),
-    (controls) => !/pause|skip|stop/.test(String(controls)) && /play/.test(String(controls))
+    (controls) => !/stop/.test(String(controls)) && /play/.test(String(controls))
   );
   check(
-    !/pause|skip|stop/.test(String(controls)) && /play/.test(String(controls)),
-    'and stopping the loop leaves the picker rather than its transport controls',
+    !/stop/.test(String(controls)) &&
+      /play/.test(String(controls)) &&
+      /skip/.test(String(controls)),
+    'and stopping the lap leaves the play that picks it back up, and skip beside it',
     String(controls)
+  );
+  /*
+   * And the card is still the lap's, with the lap named as what play would
+   * move: a stop keeps what it stopped, which is what makes it a pause that
+   * may or may not be permanent.
+   */
+  const afterStop = await evaluate(`
+    (() => {
+      const card = document.querySelector('.navigation-card');
+      if (!card) return 'no card';
+      const picker = card.querySelector('.loop-card-picker');
+      return JSON.stringify({
+        crumbs: [...card.querySelectorAll('.crumb')].map((c) => c.innerText.trim()),
+        chosen: picker ? picker.options[picker.selectedIndex]?.text ?? '' : 'no picker'
+      });
+    })()
+  `);
+  check(
+    /loop/i.test(String(afterStop)) && /Resume/.test(String(afterStop)),
+    'with the stopped lap named as the thing play would resume',
+    String(afterStop)
   );
 
   /*
@@ -4128,7 +4175,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       'and the card reports it as a loop that is actually running',
       String(afterChoice)
     );
-    await evaluate(`(window.mudengine.stopLoop('${SESSION}'), true)`);
+    await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
     await sleep(400);
     /*
      * Answer the step the loop's first leg already sent.
@@ -4519,11 +4566,144 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
 
   /*
+   * What the box sends, which is what was typed (todo 03).
+   *
+   * This is the console's own line in a smaller box: nothing is added to it, so
+   * `l` looks and a line that gossips says `gos` — which is the line the player
+   * already knows how to write, and the one a client putting a word in front of
+   * it would have them typing around.
+   */
+  const composerThere = await shown('.conversation-say input');
+  check(
+    composerThere && !(await evaluate(`!!document.querySelector('.conversation-say select')`)),
+    'the Talk box carries no channel until somebody asks for one'
+  );
+
+  {
+    const before = Buffer.concat(received).length;
+    await evaluate(`
+      (() => {
+        const input = document.querySelector('.conversation-say input');
+        if (!input) return false;
+        input.focus();
+        const set = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        ).set;
+        set.call(input, 'anyone selling a rope');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await sleep(120);
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    });
+    await sleep(400);
+    const sent = Buffer.concat(received).subarray(before).toString('latin1');
+    check(
+      sent.includes('anyone selling a rope') && !sent.includes('gos anyone'),
+      'and a line goes out as typed, with nothing in front of it',
+      JSON.stringify(sent.slice(0, 60))
+    );
+  }
+
+  {
+    /* The other half of it: a command typed here is a command. */
+    const before = Buffer.concat(received).length;
+    await evaluate(`
+      (() => {
+        const input = document.querySelector('.conversation-say input');
+        input.focus();
+        const set = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        ).set;
+        set.call(input, 'l');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await sleep(120);
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    });
+    await sleep(400);
+    const sent = Buffer.concat(received).subarray(before).toString('latin1');
+    check(
+      /(^|\r|\n)l\r/.test(sent) && !sent.includes('gos'),
+      'so `l` looks in the room rather than being said to the realm',
+      JSON.stringify(sent.slice(0, 40))
+    );
+  }
+
+  /*
+   * And the channel is where the option for it is: the card's own gear.
+   *
+   * Found by its label rather than by its place in the panel — a control that
+   * has to be counted to is a control nobody can name. Rewording the label
+   * means updating this, which is the bargain every string this harness
+   * asserts makes.
+   */
+  await evaluate(
+    `(document.querySelector('.conversation-card .card-action[data-action="settings"]')?.click(), true)`
+  );
+  await sleep(250);
+  const askedForChannels = await evaluate(`
+    (() => {
+      const panel = document.querySelector('.card-settings');
+      if (!panel) return 'no panel';
+      const box = [...panel.querySelectorAll('.card-settings-check')].find((label) =>
+        /channel/i.test(label.innerText)
+      );
+      if (!box) return 'no option';
+      const input = box.querySelector('input[type="checkbox"]');
+      if (input.checked) return 'already on';
+      input.click();
+      return 'turned on';
+    })()
+  `);
+  check(
+    askedForChannels === 'turned on',
+    'the channel is an option in the card gear, and it ships off',
+    JSON.stringify(askedForChannels)
+  );
+  // The gear toggles: the click-away listens for `pointerdown`, which `.click()`
+  // does not raise.
+  await evaluate(
+    `(document.querySelector('.conversation-card .card-action[data-action="settings"]')?.click(), true)`
+  );
+  const pickerCame = await shown('.conversation-say select');
+  check(pickerCame, 'and turning it on brings the picker out');
+  /*
+   * And the panel is shut behind it. Asserted rather than assumed: a popup left
+   * standing is a portal over the workspace, and every gesture after this one
+   * would be pressing on it instead of on the card it named.
+   */
+  check(await gone('.card-settings'), 'and the gear closes the panel it opened');
+
+  /*
    * The channel, and the two things it has to do.
    *
    * The composer sends verbatim — the realm's vocabulary is the vocabulary —
    * which is right and is also why every line had to start with `gos`. Nobody
-   * types `gos` forty times. So the box carries a channel, and a line that
+   * types `gos` forty times. So the box can carry a channel, and a line that
    * *does* start with one switches to it, so the next line goes there without
    * being told again.
    */
@@ -4848,6 +5028,34 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     })()
   `);
   await sleep(200);
+
+  /*
+   * And the option goes back off, which is also the assertion that it is an
+   * option: the picker is drawn from it and goes with it, rather than being
+   * chrome that happens to be there.
+   */
+  await evaluate(
+    `(document.querySelector('.conversation-card .card-action[data-action="settings"]')?.click(), true)`
+  );
+  await sleep(250);
+  await evaluate(`
+    (() => {
+      const panel = document.querySelector('.card-settings');
+      const box = [...(panel?.querySelectorAll('.card-settings-check') ?? [])].find((label) =>
+        /channel/i.test(label.innerText)
+      );
+      box?.querySelector('input[type="checkbox"]')?.click();
+      return true;
+    })()
+  `);
+  await evaluate(
+    `(document.querySelector('.conversation-card .card-action[data-action="settings"]')?.click(), true)`
+  );
+  check(
+    await gone('.conversation-say select'),
+    'and turning the option off takes the picker with it'
+  );
+  check(await gone('.card-settings'), 'and the panel is shut behind it again');
 
   /*
    * A link somebody gossiped, followable.
@@ -8043,10 +8251,23 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // The bottom edge of the console: the strip appears there mid-drag, which
     // is what gives the drop somewhere to land.
     await drag(grip, { x: consoleBox.x, y: consoleBox.bottom - 2 });
-    const docked = await evaluate(`
-      JSON.stringify([...document.querySelectorAll('.dock-below [data-card]')]
-        .map((c) => c.dataset.card))
-    `);
+    /*
+     * The drop's own effect, polled rather than read in the turn the drag
+     * ended in: docking mounts a strip and moves the card into it, which is a
+     * layout change, and the read above used to land before the commit. Seen
+     * to flake on `main` as well as here, on all four checks below at once
+     * (five runs, one failure) — the shape todo 14 exists for. `readUntil`
+     * hands back the last reading either way, so the check still reports what
+     * was actually there rather than a timeout.
+     */
+    const docked = await readUntil(
+      async () =>
+        evaluate(`
+          JSON.stringify([...document.querySelectorAll('.dock-below [data-card]')]
+            .map((c) => c.dataset.card))
+        `),
+      (reading) => JSON.parse(reading).length === 1
+    );
     check(
       JSON.parse(docked).length === 1,
       'a card dragged to the foot of the console docks below it',
@@ -8073,19 +8294,20 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
     // Back over the console, so the float assertions below still have a float
     // to work with -- and so the strip is seen to disappear behind it.
+    await shown('.dock-below .card-grip');
     const dockedGrip = await boxOf('.dock-below .card-grip');
     await drag(dockedGrip, { x: consoleBox.x, y: consoleBox.y });
+    /* The float coming back is the positive control for the strip going. */
+    const floating = await shown('.float-layer .float');
     check(
       !(await evaluate(`!!document.querySelector('.dock-below')`)),
       'and the strip disappears once nothing is in it'
     );
-    check(
-      await evaluate(`!!document.querySelector('.float-layer .float')`),
-      'and the card is floating again'
-    );
+    check(floating, 'and the card is floating again');
   }
 
   // And back. A card that can only be lifted off is a card someone loses.
+  await shown('.float > .card .card-grip');
   const back = await boxOf('.float > .card .card-grip');
   const railBox = await boxOf('.rail');
   await drag(back, { x: railBox.x, y: railBox.top + 6 });

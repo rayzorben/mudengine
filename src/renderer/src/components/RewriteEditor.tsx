@@ -260,7 +260,14 @@ export default function RewriteEditor({
               </p>
             ))}
             <span className="settings-label">{t('settings.rewrites.editor.previewLabel')}</span>
-            <Preview lines={drawn} palette={palette} />
+            <Preview
+              lines={drawn}
+              palette={palette}
+              {...(spec.oneLine ? { typed: t('settings.rewrites.editor.typed') } : {})}
+            />
+            {spec.oneLine && (
+              <p className="settings-note">{t('settings.rewrites.editor.typedNote')}</p>
+            )}
             {spec.oneLine &&
               (tooWide ? (
                 <p className="settings-warn">
@@ -810,13 +817,27 @@ export function piecesOf(line: Drawn): Piece[] {
 
 export function Preview({
   lines,
-  palette
+  palette,
+  typed
 }: {
   lines: readonly Drawn[];
   palette: TerminalPalette;
+  /**
+   * A sample of what the player types, drawn after the last line in the state
+   * that line ends in.
+   *
+   * Only the prompt row has one, because only the prompt row is shared with a
+   * caret. A colour left standing at the end of a template is the one thing
+   * about the row that cannot be seen otherwise — it has no text of its own to
+   * wear — and not seeing it is how a `{cyan}` at the end reads as a tag that
+   * does nothing.
+   */
+  typed?: string;
 }): React.JSX.Element {
   const colourOf = (colour: string | null): string | undefined =>
     colour === null ? undefined : isAnsiColour(colour) ? palette[colour] : colour;
+  /* The run the line ends in, zero-width or not; nothing drawn is plain ink. */
+  const ending = lines[lines.length - 1]?.segments.at(-1);
   return (
     <output
       className="rewrite-preview"
@@ -824,36 +845,58 @@ export function Preview({
     >
       {lines.length === 0
         ? t('settings.rewrites.editor.previewEmpty')
-        : lines.map((line, row) => (
-            <div key={row}>
-              {piecesOf(line).map((piece, index) =>
-                piece.kind === 'glyph' ? (
+        : lines.map((line, row) => {
+            /*
+             * Once, because the blank-row test is asked of the drawn pieces
+             * rather than of the runs: a line whose only run is the template's
+             * zero-width ending (`…{cyan}`) draws nothing, and a `<div>` with
+             * no text in it has no height.
+             */
+            const pieces = piecesOf(line);
+            return (
+              <div key={row}>
+                {pieces.map((piece, index) =>
+                  piece.kind === 'glyph' ? (
+                    <span
+                      aria-label={piece.glyph.label}
+                      className="rewrite-glyph"
+                      dangerouslySetInnerHTML={{ __html: MARK_GLYPH[piece.glyph.icon] }}
+                      data-mark={piece.glyph.icon}
+                      key={index}
+                      role="img"
+                      title={piece.glyph.label}
+                    />
+                  ) : (
+                    <span
+                      key={index}
+                      style={{
+                        background: colourOf(piece.segment.bg),
+                        color: colourOf(piece.segment.fg),
+                        fontWeight: piece.segment.bold ? 700 : undefined,
+                        opacity: piece.segment.dim ? 0.6 : undefined
+                      }}
+                    >
+                      {piece.text}
+                    </span>
+                  )
+                )}
+                {pieces.length === 0 && !(typed && row === lines.length - 1) ? ' ' : null}
+                {typed !== undefined && row === lines.length - 1 ? (
                   <span
-                    aria-label={piece.glyph.label}
-                    className="rewrite-glyph"
-                    dangerouslySetInnerHTML={{ __html: MARK_GLYPH[piece.glyph.icon] }}
-                    data-mark={piece.glyph.icon}
-                    key={index}
-                    role="img"
-                    title={piece.glyph.label}
-                  />
-                ) : (
-                  <span
-                    key={index}
+                    className="rewrite-typed"
                     style={{
-                      background: colourOf(piece.segment.bg),
-                      color: colourOf(piece.segment.fg),
-                      fontWeight: piece.segment.bold ? 700 : undefined,
-                      opacity: piece.segment.dim ? 0.6 : undefined
+                      background: colourOf(ending?.bg ?? null),
+                      color: colourOf(ending?.fg ?? null),
+                      fontWeight: ending?.bold ? 700 : undefined,
+                      opacity: ending?.dim ? 0.6 : undefined
                     }}
                   >
-                    {piece.text}
+                    {typed}
                   </span>
-                )
-              )}
-              {line.segments.length === 0 && line.glyphs.length === 0 ? ' ' : null}
-            </div>
-          ))}
+                ) : null}
+              </div>
+            );
+          })}
     </output>
   );
 }

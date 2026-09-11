@@ -71,6 +71,7 @@ import { mobKey, nameAnswersTo, roomAddress, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, spellKey, wordsOf, type SpellLore } from '../../shared/spell-messages';
+import { holdsMovement } from '../../shared/spellcraft';
 import { afflictionOnset, STATUS_LINE } from './patterns';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
@@ -86,8 +87,8 @@ import { ATTACK_COMMANDS, commandOf } from '../../shared/commands';
 import { wireExit, wireItem } from '../../shared/entities';
 import type { CurrencyEntity, ExitEntity, ItemEntity } from '../../shared/entities';
 import { addCoins } from '../../shared/coins';
-import { playerEntity, playerKey } from '../../shared/players';
-import { noteRemoteCall, trackPlayers } from './players';
+import { observe, playerEntity, playerKey } from '../../shared/players';
+import { noteRemoteCall, noteRemoteClient, trackPlayers } from './players';
 import { trackTally } from './tally';
 import { NO_TALLY } from '../../shared/tally';
 import {
@@ -1501,6 +1502,9 @@ export class CharacterTracker {
       s.combat.attackers.length > 0 || s.combat.target !== null
         ? { ...s.combat, attackers: [], target: null, health: null }
         : s.combat;
+    // A step that landed is the one proof a hold has passed that needs no
+    // sentence to read — see `stoodUp`.
+    const afflictions = stoodUp(s);
 
     const room: Room = emptyRoom();
     if (arrived) {
@@ -1562,7 +1566,7 @@ export class CharacterTracker {
      * `MoveCommand` before any room description, so it arrives whether or not
      * the room that follows can be seen or placed.
      */
-    return { ...s, room, combat, stealth: this.stealthAfterMove() };
+    return { ...s, room, combat, afflictions, stealth: this.stealthAfterMove() };
   }
 
   /**
@@ -2182,6 +2186,42 @@ export class CharacterTracker {
     this.pendingStops = this.pendingStops.filter((pending) => pending.suspects.length > 0);
   }
 
+  /**
+   * A spell onset that stands the character still, and the move it refused.
+   *
+   * **The realm states which spells hold and the server states what that
+   * does**, so neither is guessed here. `holdsMovement` is the ability row
+   * (`HoldPerson`, 74) that `ActionFigure.CheckForHoldPerson` tests, and 60 of
+   * the shipped realm's spells carry it: `knockdown`, `entangle`, `thick
+   * webbing`, `freeze`, `gust of wind`, `chain`, `roar` and the rest. Their
+   * onset sentences are the realm's message data — `You are flat on your
+   * back!`, `You are caught in a chain!` — twenty distinct ones, which is
+   * twenty patterns `patterns.ts` would have had to carry and keep in step
+   * with every realm it is pointed at. Two sentences are fixed in the
+   * server's *code* and stay there (`Your legs are paralyzed!`, `You are
+   * held!`).
+   *
+   * **The same sentence is printed twice over**, which is what makes the move
+   * worth consuming: once when the effect lands, and again by
+   * `CheckForHoldPerson` every time a held character tries to walk — the
+   * refusal the player sees as `[HP …]: ne` answered by `You are flat on your
+   * back!` and nothing else. `Exits.Move` returns there before anybody moves,
+   * so no room is coming, and `shiftHeldMove` is what keeps that step from
+   * sitting in the queue gating the escape, the walk, the lap and retaliation
+   * until it goes stale — the failure the toll refusal and `You are blind.`
+   * have both already shipped once each.
+   *
+   * Only a move at the head is taken, never whatever is there: the landing
+   * print refuses nothing, and a `look` waiting at the head is answering its
+   * own command. Null when nothing here holds, or when the flag already says
+   * so.
+   */
+  private heldByOnset(s: CharacterState, candidates: readonly string[]): CharacterState | null {
+    if (!candidates.some((name) => holdsMovement(this.world?.spellNamed(name)))) return null;
+    this.expect.shiftHeldMove();
+    return afflicted(s, 'held', 'yes');
+  }
+
   private withBuff(s: CharacterState, buff: ActiveBuff): CharacterState {
     const kept = s.buffs.filter((held) => !this.buffMatches(held, this.buffNames(buff)));
     // A list-size bound, not a knob: nothing legitimate holds this many.
@@ -2300,6 +2340,51 @@ export class CharacterTracker {
   noteRemoteCall(from: string, raw: string, at: number): boolean {
     const before = this.state.players;
     const players = noteRemoteCall(before, from, raw, at);
+    if (players === before) return false;
+    this.state = { ...this.state, players, updatedAt: at };
+    this.rememberPlayers(before, players);
+    return true;
+  }
+
+  /**
+   * Note which client another player answered `@version` with, or that this
+   * client's extended remotes do not reach them. See `noteRemoteClient`.
+   *
+   * Here rather than in `Remotes` for `noteRemoteCall`'s reason: the registry
+   * lives on `CharacterState` and this owns it. Which replies are read at all
+   * is the responder's decision — it reads one only for a question it asked —
+   * and by the time this is called that has already been settled.
+   */
+  noteRemoteClient(
+    from: string,
+    at: number,
+    facts: { client?: string; extendedRemotes: 'yes' | 'no' }
+  ): boolean {
+    const before = this.state.players;
+    const players = noteRemoteClient(before, from, at, facts);
+    if (players === before) return false;
+    this.state = { ...this.state, players, updatedAt: at };
+    this.rememberPlayers(before, players);
+    return true;
+  }
+
+  /**
+   * Where another client said it was standing, from a `@where-room` answer.
+   *
+   * A **sighting**, and stamped as one: `lastRoomAt` is what the Player card
+   * ages, and a peer's own word about where it is is exactly as good as seeing
+   * them there. The map is not kept, because the registry has never had a
+   * field for one — see `PlayerRecord.lastRoom`; the address is reported whole
+   * by whoever asked.
+   */
+  noteRemoteRoom(from: string, room: number, name: string | null, at: number): boolean {
+    const before = this.state.players;
+    const players = observe(before, from, at, {
+      lastRoom: room,
+      ...(name === null ? {} : { lastRoomName: name }),
+      lastRoomAt: at,
+      online: true
+    });
     if (players === before) return false;
     this.state = { ...this.state, players, updatedAt: at };
     this.rememberPlayers(before, players);
@@ -3349,6 +3434,8 @@ export class CharacterTracker {
           movedSomehow && (s.combat.attackers.length > 0 || s.combat.target !== null)
             ? { ...s.combat, attackers: [], target: null, health: null }
             : s.combat;
+        // The same move, read for the other thing it proves — see `stoodUp`.
+        const afflictions = movedSomehow ? stoodUp(s) : s.afflictions;
 
         /*
          * A room block that carries no name.
@@ -3398,7 +3485,7 @@ export class CharacterTracker {
             // to before.
             this.attachRealm(room);
             this.room.discard();
-            return { ...s, room, combat, stealth };
+            return { ...s, room, combat, afflictions, stealth };
           }
         }
 
@@ -3545,7 +3632,7 @@ export class CharacterTracker {
         // `combat` and `stealth` are both computed above, ahead of the early
         // returns, so every way out of this case agrees about the fight and
         // about whether this character is still unseen.
-        return { ...s, room, combat, stealth };
+        return { ...s, room, combat, afflictions, stealth };
       }
 
       case 'who-list': {
@@ -4452,6 +4539,17 @@ export class CharacterTracker {
         const followsCast = cast !== null && block.at - cast.at <= tuning().spells.onsetWindowMs;
 
         /*
+         * **A hold is an onset the character cannot walk out of**, and the
+         * realm says which onsets those are — see `heldByOnset`. Taken before
+         * the buff bookkeeping and folded into whatever it decides, because
+         * the two are independent: `You are flat on your back!` establishes a
+         * buff *and* stands the walk still, and the branches below return
+         * `null` for a sentence that changed no buff.
+         */
+        const base = this.heldByOnset(s, candidates) ?? s;
+        const held = base === s ? null : base;
+
+        /*
          * No table entry: the `You feel …!` frame alone. Everything it can
          * teach comes from the cast it follows — the effect word for the `st`
          * timer, and the whole sentence as that spell's start, so the next
@@ -4464,7 +4562,7 @@ export class CharacterTracker {
             this.spellLore.learn(cast.spell, 'start', block.text.trim(), block.at);
             this.lastSelfCast = null;
           }
-          return null;
+          return held;
         }
 
         /*
@@ -4481,8 +4579,8 @@ export class CharacterTracker {
         if (followsCast && named !== undefined) {
           if (effect) this.buffEffects.set(effect, cast.spell);
           this.lastSelfCast = null;
-          if (s.buffs.some((buff) => this.buffMatches(buff, [cast.spell]))) return null;
-          return this.withBuff(s, { spell: cast.spell, by: null, appliedAt: cast.at });
+          if (base.buffs.some((buff) => this.buffMatches(buff, [cast.spell]))) return held;
+          return this.withBuff(base, { spell: cast.spell, by: null, appliedAt: cast.at });
         }
 
         /*
@@ -4496,12 +4594,12 @@ export class CharacterTracker {
          * lucky!` is five spells, and a reader asking whether bless is up
          * must be answered yes whichever of the five it really is.
          */
-        if (s.buffs.some((buff) => this.buffMatches(buff, candidates))) return null;
-        const inBook = candidates.filter((candidate) => this.knowsSpell(s, candidate));
+        if (base.buffs.some((buff) => this.buffMatches(buff, candidates))) return held;
+        const inBook = candidates.filter((candidate) => this.knowsSpell(base, candidate));
         const spell = inBook.length === 1 ? inBook[0]! : candidates[0]!;
         const rest = candidates.filter((candidate) => candidate !== spell);
         this.noteContradiction(candidates, block.at);
-        return this.withBuff(s, {
+        return this.withBuff(base, {
           spell,
           by: null,
           appliedAt: block.at,
@@ -4565,6 +4663,18 @@ export class CharacterTracker {
          */
         let next = s;
         for (const name of names) {
+          /*
+           * The realm's own ability row first, for the hold family: twenty of
+           * its stop sentences end a condition whose *start* is message data
+           * `patterns.ts` cannot enumerate (`You get back on your feet.` ends
+           * six spells, none of which `afflictionOnset` has ever heard of), so
+           * the pairing below answers null for every one of them. See
+           * `holdsMovement` and `heldByOnset` — one test, read from both ends,
+           * exactly as the onset pairing is.
+           */
+          if (holdsMovement(this.world?.spellNamed(name))) {
+            next = afflicted(next, 'held', 'no') ?? next;
+          }
           const start = this.spellLore.startOf(name);
           const condition = start === null ? null : afflictionOnset(start);
           if (condition === null) continue;
@@ -5148,6 +5258,25 @@ export class CharacterTracker {
 }
 
 /** One affliction flag moved, or null when the server said what was already known. */
+/**
+ * What a confirmed step says about being held: that the character is not.
+ *
+ * The one release that needs no sentence. Every hold ends in the realm's own
+ * words and the client reads twenty-two of them, but a realm is free to ship a
+ * twenty-third — and a `held` flag with no ending stands a route and a lap
+ * still for the rest of the session, which is the failure the whole
+ * three-state vocabulary exists to avoid. `Exits.Move` refuses a held
+ * character before anybody moves anywhere, so a step that *landed* is proof
+ * the hold was over, whoever caused the step and whatever the wire said about
+ * it.
+ *
+ * Only `held`: a blind character walks, a poisoned one walks, and arriving
+ * somewhere says nothing about either.
+ */
+function stoodUp(s: CharacterState): Afflictions {
+  return s.afflictions.held === 'yes' ? { ...s.afflictions, held: 'no' } : s.afflictions;
+}
+
 function afflicted(
   s: CharacterState,
   which: keyof Afflictions,

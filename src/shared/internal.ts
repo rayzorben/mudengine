@@ -680,6 +680,25 @@ const TUNING_DEFAULTS = {
     /** How many holds run back to back before it walks on regardless. */
     maxHolds: 3,
     /**
+     * How far the character may have wandered from what it was walking before
+     * pressing play asks about it first.
+     *
+     * A stop is a pause that may or may not be permanent, so the thing it
+     * stopped is still there hours later — and the character may have been
+     * walked across the realm, or killed and reborn in a temple on another
+     * map, in between. Picking it back up is then a journey in its own right
+     * that nobody asked for, which on a realm full of wandering monsters is
+     * not free. Past this many steps `SessionManager.startMoving` answers with
+     * a question instead of a command.
+     *
+     * Measured in the steps the resume would actually walk: for a route, how
+     * many *more* than it still owed when it stopped, so walking on down a
+     * route you were already on never asks however long it is; for a lap, the
+     * distance to the stop it was heading for, since a leg is short by
+     * construction and that distance is how far off the lap you are.
+     */
+    resumeAskSteps: 30,
+    /**
      * How long a route waits out a fight before it gives up on the journey.
      *
      * A fight normally ends by itself — the monster dies, the character runs,
@@ -696,6 +715,30 @@ const TUNING_DEFAULTS = {
      * two minutes only ever expires on one it is not.
      */
     fightHoldMs: 120_000,
+    /**
+     * How long a walk stands still for a condition before spending one step
+     * to find out whether it is over.
+     *
+     * **A retry, not a deadline.** The other two bounds in this block give up;
+     * this one asks. A hold ends when the realm says so and the client reads
+     * twenty-two of those sentences — the two fixed in the server's code
+     * (`You can move again!`, and `You are held!`'s own pair) and the twenty
+     * the message table pairs with a spell whose `HoldPerson` row the realm
+     * states. A realm is free to ship a twenty-third, and a wear-off nothing
+     * here can read would otherwise stand a route still for the evening.
+     *
+     * One step is what settles it, and it is the cheapest thing that can:
+     * `Exits.Move` either walks the character or prints the holding spell's
+     * own sentence again, which re-arms the hold with a fresh window. So the
+     * cost of being wrong is one command every half minute, and the cost of
+     * having no bound at all is the journey.
+     *
+     * Long enough that a hold this client *can* read is over well inside it —
+     * the realm states `knockdown` at `Dur` 4 against `hold person`'s 4 and
+     * `sphere of isolation`'s 200, in units nothing has measured — and short
+     * enough that an unreadable one costs seconds rather than an evening.
+     */
+    heldFallbackMs: 30_000,
     /**
      * How much longer than this realm's own slowest answer a step may go
      * unanswered before the walk sends one bare Enter to force a status line
@@ -902,6 +945,28 @@ const TUNING_DEFAULTS = {
      * arguing with them.
      */
     replyEveryMs: 600_000
+  },
+  /** The `@` conversation with another player's client. */
+  remotes: {
+    /**
+     * How long a question sent to another client waits for its answer before
+     * it is written off.
+     *
+     * It decides one thing only: whether an **extended** remote — a question
+     * only this client can answer — went to somebody who is not running it, so
+     * the plain wording is sent instead and the player is recorded as not
+     * reachable that way. Erring long costs a question its latency once; erring
+     * short records somebody as the wrong client on a slow evening and stops
+     * asking them the better question.
+     *
+     * **Not measured against a peer.** There is no capture of two of these
+     * clients talking, because there has never been a second one. Thirty
+     * seconds is chosen against what a telepath round trip costs on the wire
+     * here — a status line answers in about 1.2s and the slowest measured
+     * command answer is well under ten — with the rest as margin for a client
+     * whose player is mid-fight. Revisit with a capture.
+     */
+    replyMs: 30_000
   },
   /**
    * How many commands one press or one `@` may spend.
@@ -1336,6 +1401,23 @@ const TUNING_DEFAULTS = {
     talkHistoryLimit: 40,
     /** Remembered notices. Same reasoning, same generosity. */
     noticeLimit: 400,
+    /**
+     * The least time between two desktop notifications of the *same kind*
+     * about the same character.
+     *
+     * Without it the client raises one per flush that carries a new alert, and
+     * a player being attacked is a fresh `user-hits` several times a round —
+     * an evening away would leave a notification centre with hundreds of
+     * entries in it, which is the state everybody's first act is to turn the
+     * feature off from. Four blows from the same person is one thing that
+     * happened.
+     *
+     * Per kind rather than per character, so a floor on being attacked cannot
+     * swallow the notice that the character then died. A minute: long enough
+     * for a fight to be one notification, short enough that somebody who did
+     * not look the first time is asked again.
+     */
+    desktopAlertGapMs: 60_000,
     /** The most panes worth having; see docs/profiles.md §7.3. */
     maxPanes: 4,
     /**
@@ -1621,7 +1703,7 @@ export const DEFAULT_INTERNAL: InternalConfig = {
   palette: {
     pinned: {
       character: ['settings'],
-      navigate: ['route', 'loop:*', 'loop:stop'],
+      navigate: ['route', 'loop:*', 'move:stop'],
       layout: ['pane:*', 'cards:reset']
     }
   },
@@ -1657,9 +1739,7 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // hundred and twenty loops, and a shelf reachable only from a menu at
       // the end of a row is the "command nobody can find" failure again.
       'loop:open',
-      'loop:toggle',
-      'loop:stop',
-      'walk:stop'
+      'move:toggle'
     ]
   }
 };

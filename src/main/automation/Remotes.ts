@@ -53,12 +53,14 @@ import type { Block } from '../../shared/blocks';
 import { gangOnRoster, joinedTheParty, ownGang, type CharacterState } from '../../shared/character';
 import type { AutomationConfig, RemotesConfig } from '../../shared/config';
 import {
+  EXTENDED_REMOTES,
   REMOTES,
   formatEncumbrance,
   formatExp,
   formatHave,
   formatLevel,
   formatLives,
+  formatRoomAddress,
   formatSettings,
   formatStatus,
   formatVersion,
@@ -68,18 +70,24 @@ import {
   formatWhere,
   formatWho,
   isActionable,
+  isExtended,
   judgeRemote,
   parseRemoteCall,
+  parseRemoteReply,
+  parseRoomAddress,
+  plainRemote,
   reachableBy,
   type RemoteCall,
   type RemoteName,
   type RemoteRefusal,
   type RemoteEvidence,
+  type RemoteReply,
   type RemoteVerdict
 } from '../../shared/remotes';
 import { t } from '../app/i18n';
 import { CLIENT_NAME, CLIENT_VERSION } from '../app/version';
 import { bareName, countedLabel } from '../../shared/items';
+import { playerKey } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
 
@@ -223,16 +231,66 @@ export interface RemoteEvents {
    * applied.
    */
   blessExpired?(from: string, spell: string): void;
+  /**
+   * Another player's client answered `@version`, or stopped answering the
+   * extended question this client had asked it.
+   *
+   * `client` is what they said, verbatim, and is absent when nothing was said —
+   * a refusal and a silence settle only whether the extended wording reaches
+   * them, and say nothing about what they are running instead.
+   */
+  clientNamed?(from: string, client: string | undefined, extended: 'yes' | 'no'): void;
+  /**
+   * Another client answered `@where-room` with the realm's own address for the
+   * room it is standing in.
+   */
+  placed?(from: string, map: number, room: number, name: string | null): void;
+  /**
+   * Somebody asked this character to come to a room, by address. Returns
+   * whether a walk actually started, which is what decides whether `{ok}` goes
+   * back: an acknowledgement for a route that was refused is a lie the sender
+   * waits on.
+   */
+  comeBack?(from: string, map: number, room: number): boolean;
+}
+
+/**
+ * A question sent to another client that this module reads the answer to.
+ *
+ * **One slot per player, and the newest question wins.** A reply names no
+ * command — `{1/2150 Town Gates}` is an answer, not an answer *to* something —
+ * so binding it to one of two outstanding questions would be a guess, and this
+ * client refuses those. Only the questions whose answers are read at all are
+ * recorded: `@version`, and the extended pair. `@health` is not, because its
+ * answer is a fact the tracker folds in from any quarter.
+ */
+interface Outstanding {
+  name: RemoteName;
+  /** The player's own spelling, so a lapse is reported in it. */
+  who: string;
+  at: number;
 }
 
 export class Remotes {
   /** Whether this character was resting at the last state change. See `onCharacter`. */
   private resting = false;
 
+  /** Questions sent and not yet answered, by player. See {@link Outstanding}. */
+  private readonly asked = new Map<string, Outstanding>();
+
   constructor(
     private config: AutomationConfig,
     private readonly queue: CommandQueue,
-    private readonly events: RemoteEvents = {}
+    private readonly events: RemoteEvents = {},
+    /**
+     * This client's own name, as `@version` answers it.
+     *
+     * Handed in rather than imported, for the reason every other fact here is:
+     * the comparison that decides whether a peer runs *this* client is the
+     * whole of the extended vocabulary's safety, and a test that cannot state
+     * both sides of it cannot test it.
+     */
+    private readonly client: string = CLIENT_NAME
   ) {}
 
   configure(config: AutomationConfig): void {
@@ -268,6 +326,16 @@ export class Remotes {
     if (state.name !== null && from.toLowerCase() === state.name.toLowerCase()) return;
     // Overhearing somebody drive a third character is not being asked. See above.
     if (!addressedToUs(block, state)) return;
+
+    /*
+     * An **answer** to something this client asked, before anything is read as
+     * a question. The gate is the ledger and not the permission lists: a reply
+     * is read only from somebody with a question of ours outstanding, so
+     * nobody can volunteer one, and being allowed to ask is a different thing
+     * from being answered.
+     */
+    const reply = parseRemoteReply(message);
+    if (reply !== null && this.readReply(from, reply)) return;
 
     const command = parseRemoteCall(message);
     if (command === null) return;
@@ -359,14 +427,64 @@ export class Remotes {
    * same character its health twice is one question, asking two characters is
    * two.
    */
-  ask(who: string, name: RemoteName, argument?: string): boolean {
+  ask(who: string, name: RemoteName, state: CharacterState, argument?: string): boolean {
+    /*
+     * The better wording, for somebody who has said they can read it.
+     *
+     * Decided here rather than at each caller, so the palette, the party and
+     * the follower's pacing all get it and none of them has to know the
+     * extended vocabulary exists. `unknown` and `no` both send the plain
+     * question: an upgrade is offered only on evidence.
+     */
+    const better = EXTENDED_REMOTES[name];
+    const upgraded =
+      better !== undefined && state.players[playerKey(who)]?.extendedRemotes === 'yes';
+    const wanted = upgraded ? better! : name;
+
+    let carried = argument;
+    if (wanted === 'comeback-room') {
+      /*
+       * The one extended remote that carries a fact **outward**: *come back to
+       * me* has to say where *me* is, and the realm's address is the half that
+       * is not ambiguous. Refused rather than guessed where the character is
+       * unplaced — a `@comeback` with no address is a walk to nowhere, and the
+       * plain wording would be a different request, not a weaker one.
+       */
+      const { map, number } = state.room;
+      if (map === null || number === null) {
+        this.events.notice?.(t('automation.remotes.comebackUnplaced', { who }));
+        return false;
+      }
+      carried = `${map}/${number}`;
+    }
+
+    return this.send(who, wanted, carried);
+  }
+
+  /**
+   * One question, in the wording given, with no upgrade applied.
+   *
+   * The fallback path's door, and it has to be a different one from `ask`:
+   * what `ask` reads to decide the wording is the registry, and the registry
+   * is written by the very event the fallback raises — from outside this
+   * module, a state push later. Re-entering `ask` there would upgrade the
+   * question again off the state it was refused on, for ever.
+   */
+  private send(who: string, name: RemoteName, argument?: string): boolean {
     const body = argument === undefined ? `@${name}` : `@${name} ${argument}`;
-    return this.queue.enqueue({
+    const taken = this.queue.enqueue({
       command: `/${who} ${body}`,
       priority: 'user',
-      coalesceKey: argument === undefined ? `remote:${name}:${who.toLowerCase()}` : undefined,
+      coalesceKey: argument === undefined ? `remote:${name}:${playerKey(who)}` : undefined,
       reason: t('automation.remotes.reasonAsking', { who, body })
     });
+    // Only what has an answer this module reads, and only once it is really on
+    // its way: a question coalesced into one already queued is the same
+    // question, and its deadline is the one already running.
+    if (taken && (name === 'version' || isExtended(name))) {
+      this.asked.set(playerKey(who), { name, who, at: Date.now() });
+    }
+    return taken;
   }
 
   /**
@@ -387,7 +505,16 @@ export class Remotes {
     for (const member of state.party.members) {
       if (member.invited) continue;
       if (me !== null && member.name.toLowerCase() === me) continue;
-      this.ask(member.name, 'health');
+      this.ask(member.name, 'health', state);
+      /*
+       * And which client they run, once, because it decides the wording of
+       * every question after this one. Only while nothing has said: the answer
+       * is a fact about the player and is kept realm-wide, so a party that
+       * re-forms all evening asks nobody twice.
+       */
+      if (state.players[playerKey(member.name)]?.client == null) {
+        this.ask(member.name, 'version', state);
+      }
     }
   }
 
@@ -405,6 +532,7 @@ export class Remotes {
    * character is.
    */
   onCharacter(state: CharacterState): void {
+    if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     const resting = state.vitals.resting || state.vitals.meditating;
     const was = this.resting;
     this.resting = resting;
@@ -412,12 +540,96 @@ export class Remotes {
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     const leader = state.party.following;
     if (leader === null) return;
-    this.ask(leader, resting ? 'wait' : 'ok');
+    this.ask(leader, resting ? 'wait' : 'ok', state);
+  }
+
+  /**
+   * A question that was never answered.
+   *
+   * Swept from the state path rather than a timer of its own: `onCharacter`
+   * runs on every status line, the keep-alive produces one on an idle
+   * character, and a module that owns a timer owns cancelling it. The lapse is
+   * only ever *later* than the deadline, never earlier, which is the direction
+   * that costs nothing.
+   */
+  private sweep(now: number): void {
+    const deadline = now - tuning().remotes.replyMs;
+    for (const [key, outstanding] of [...this.asked]) {
+      if (outstanding.at > deadline) continue;
+      this.asked.delete(key);
+      /*
+       * Silence is evidence about the extended vocabulary and about nothing
+       * else. A client that answers neither `@version` nor an extended
+       * question is not one this client can talk to — which is exactly what is
+       * recorded, and it is corrected the moment a `@version` does come back.
+       */
+      this.events.clientNamed?.(outstanding.who, undefined, 'no');
+      const plain = plainRemote(outstanding.name);
+      if (plain === null) continue;
+      this.events.notice?.(
+        t('automation.remotes.extendedLapsed', { who: outstanding.who, name: plain })
+      );
+      this.send(outstanding.who, plain);
+    }
+  }
+
+  /**
+   * An answer to a question this client asked. Returns whether it was read.
+   *
+   * Read only against the one question outstanding for that player: a reply of
+   * the wrong shape for it is left alone rather than folded in on the strength
+   * of its shape, because every one of these is a brace-wrapped phrase and
+   * shapes collide.
+   */
+  private readReply(from: string, reply: RemoteReply): boolean {
+    const key = playerKey(from);
+    const outstanding = this.asked.get(key);
+    if (outstanding === undefined) return false;
+
+    if (reply.kind === 'version' && outstanding.name === 'version') {
+      this.asked.delete(key);
+      const named = `${reply.client} ${reply.version}`;
+      const mine = reply.client.toLowerCase() === this.client.toLowerCase();
+      this.events.clientNamed?.(from, named, mine ? 'yes' : 'no');
+      this.events.notice?.(
+        mine
+          ? t('automation.remotes.peerIsOurs', { who: from, client: named })
+          : t('automation.remotes.peerIsOther', { who: from, client: named })
+      );
+      return true;
+    }
+
+    if (reply.kind === 'room' && outstanding.name === 'where-room') {
+      this.asked.delete(key);
+      this.events.placed?.(from, reply.map, reply.number, reply.name);
+      return true;
+    }
+
+    /*
+     * The one reply that is about the *question*: MegaMUD 2.1's answer to a
+     * word it has no entry for. It arrives only for an extended remote, since
+     * nothing else this client sends is outside MegaMUD's own vocabulary — so
+     * it settles that the peer is not running this client, and the plain
+     * wording goes instead. Automatically, and out loud, because a question
+     * that quietly became a different question is one nobody can debug.
+     */
+    if (reply.kind === 'refused' && isExtended(outstanding.name)) {
+      this.asked.delete(key);
+      this.events.clientNamed?.(from, undefined, 'no');
+      const plain = plainRemote(outstanding.name);
+      if (plain === null) return true;
+      this.events.notice?.(t('automation.remotes.extendedRefused', { who: from, name: plain }));
+      this.send(from, plain);
+      return true;
+    }
+
+    return false;
   }
 
   /** Forgotten with the connection: a fresh session has said nothing to anybody. */
   reset(): void {
     this.resting = false;
+    this.asked.clear();
   }
 
   /**
@@ -612,6 +824,22 @@ export class Remotes {
         );
         return;
       }
+      /*
+       * The same question with the ambiguity taken out. `@where`'s answer is a
+       * room *name*, and 83.85% of this realm's edges lead to a namesake — so
+       * a peer that acted on one would be acting on a guess. This answers with
+       * the realm's own address, and the name behind it for whoever reads the
+       * telepath.
+       *
+       * Null where the realm has not placed this character, like every other
+       * answer here: a client walking to an address invented from a room read
+       * by name alone is the failure the address exists to prevent.
+       */
+      case 'where-room': {
+        const { map, number, name } = state.room;
+        this.say(from, command, formatRoomAddress(map, number, name), prefix);
+        return;
+      }
       case 'who': {
         /*
          * The people in the room, and the strangers that may be people. The
@@ -705,8 +933,17 @@ export class Remotes {
           return;
         }
         const { walk, loop } = progress;
-        // The loop first: a loop's leg *is* a walk, so both are running at
-        // once, and the answer is the loop rather than the leg it is on.
+        /*
+         * The loop first: a loop's leg *is* a walk, so both are running at
+         * once, and the answer is the loop rather than the leg it is on — the
+         * same first rule `movementOf` states, made here rather than read from
+         * there **because the question is different**. A card asks *what is
+         * this character on*, and answers `LOOP` for a lap that is stopped
+         * with its place kept; a stranger's `@` asks *what is it doing*, and a
+         * character standing still is `IDLE` to them however much the client
+         * is remembering. MegaMUD's own frame has the three words and no
+         * fourth.
+         */
         if (loop.status === 'running') {
           const where = loop.name ?? '?';
           this.reply(
@@ -873,6 +1110,29 @@ export class Remotes {
             })
           );
         }
+        return;
+      }
+
+      case 'comeback-room': {
+        /*
+         * *Come to where I am*, with where that is stated rather than named.
+         * This is the one command in the vocabulary that walks this character
+         * across the realm on somebody else's word, which is why nothing
+         * shipped grants it and why the address is parsed into a pair of
+         * numbers or refused — `parseRoomAddress` returns null and nothing is
+         * sent, rather than a walk aimed at whatever a malformed argument
+         * happened to resemble.
+         */
+        const where = parseRoomAddress(command.argument);
+        if (where === null) {
+          this.events.notice?.(t('automation.remotes.comebackUnreadable', { from }));
+          return;
+        }
+        const walking = this.events.comeBack?.(from, where.map, where.room) === true;
+        // `{ok}` only for a walk that actually started. The sender is waiting
+        // on this character arriving, and an acknowledgement for a route the
+        // realm data could not plan is a wait that never ends.
+        if (walking) this.reply(from, '{ok}', prefix);
         return;
       }
 

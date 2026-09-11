@@ -113,6 +113,37 @@ describe('the styles', () => {
       ])
     ).toBe('\x1b[0;1;97mHP \x1b[0;38;2;255;136;0;44m120\x1b[0m');
   });
+
+  /*
+   * todo 08. A prompt row ending `]: {cyan}` is asking for the one thing on
+   * the row the client does not draw — what the player types next. The reset
+   * that keeps a listing from leaking its colour was throwing that away.
+   */
+  it('ends in the colour the template ends in, rather than resetting out of it', () => {
+    const [row] = renderTemplate('[HP {hp}]: {cyan}', SCOPE);
+    // A run of no cells, so nothing measures or draws differently.
+    expect(row?.cells).toBe(renderTemplate('[HP {hp}]: ', SCOPE)[0]?.cells);
+    expect(toAnsi(row!.segments).endsWith('\x1b[0;36m')).toBe(true);
+  });
+
+  it('still resets after a template that ends in no colour of its own', () => {
+    const [row] = renderTemplate('{cyan}[HP {hp}]{reset}: ', SCOPE);
+    expect(toAnsi(row!.segments).endsWith('\x1b[0m')).toBe(true);
+    // And after one that never mentioned a colour at all.
+    expect(toAnsi(renderTemplate('[HP {hp}]: ', SCOPE)[0]!.segments).endsWith('\x1b[0m')).toBe(
+      true
+    );
+  });
+
+  /*
+   * Only the last line. Every earlier one is followed by another drawn line,
+   * and each of those opens with a full SGR of its own.
+   */
+  it('leaves the reset on every line but the last', () => {
+    const lines = renderTemplate('{cyan}one\ntwo{red}', SCOPE);
+    expect(toAnsi(lines[0]!.segments).endsWith('\x1b[0m')).toBe(true);
+    expect(toAnsi(lines[1]!.segments).endsWith('\x1b[0;31m')).toBe(true);
+  });
 });
 
 describe('the controls', () => {

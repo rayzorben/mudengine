@@ -497,6 +497,40 @@ describe('conversation, movement, items', () => {
     // Coming out of the stat screen having saved, live on Paradigm.
     expectType('To prevent accidental suicide or reroll, these commands', 'user-stats-assigned');
   });
+
+  /*
+   * Going into it. The screen is drawn with cursor moves and carries no
+   * newline at all, so the tokenizer frames the whole form as one `flush`
+   * line — which is why the rule is the only unanchored one in the table and
+   * why this fixture is a blob rather than a line.
+   *
+   * Reconstructed from `AssignStatsState.ShowStaticText`'s own format strings
+   * with the ANSI stripped, the box characters decoded from CP437 and the rows
+   * concatenated in the order they are sent: there is no capture of this
+   * screen, because there are no lines in it to post.
+   */
+  const STAT_SCREEN =
+    '.' +
+    '\u2500'.repeat(37) +
+    '.' +
+    '\u2500'.repeat(2) +
+    '.' +
+    '/ G R E A T E R  M U D Char. Creation /    \\  \u250c\u2500    Point Cost Chart    \u2500\u2510' +
+    '\u2502\u251c\u2500\u2500.   \u2502 \u2502' +
+    ' '.repeat(26) +
+    '\u2502' +
+    '\u2502 \u00af Given Name\u00ae\u2502___\\_/  \u2502 1st 10 points: 1 CP each \u2502';
+
+  it('reads the field screen the trainer hands the terminal to', () => {
+    expectType(STAT_SCREEN, 'user-stats-screen');
+  });
+
+  it('does not read one of the screen’s two phrases out of somebody’s sentence', () => {
+    // Unanchored rules are cheap to fire by accident, so this one costs two
+    // phrases from the same `Socket.Send` rather than one.
+    const block = classify('Festus gossips: anyone remember the Char. Creation screen?');
+    expect(block.type).not.toBe('user-stats-screen');
+  });
 });
 
 describe('unknown lines', () => {
@@ -1859,6 +1893,9 @@ describe('afflictions, on and off', () => {
     ['The disease dies down.', 'user-disease-ends'],
     ['Your legs are paralyzed!', 'user-held'],
     ["You are held by the queen's spit!", 'user-held'],
+    // `CheckForHoldPerson`'s own fallback, when the ability is on the
+    // character and no active effect carries a sentence to print for it.
+    ['You are held!', 'user-held'],
     ['You can move again!', 'user-held-ends']
   ];
   for (const [text, type] of cases) {

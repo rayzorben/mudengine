@@ -64,7 +64,13 @@ import {
   type RewritesUiConfig
 } from '@shared/config';
 import { ACTIONABLE_REMOTES, type RemoteGrant, type RemoteName } from '@shared/remotes';
-import { NOTICE_CHANNELS, type NoticeChannel, type Severity } from '@shared/notifications';
+import {
+  DESKTOP_ALERTS,
+  NOTICE_CHANNELS,
+  type DesktopAlert,
+  type NoticeChannel,
+  type Severity
+} from '@shared/notifications';
 import { errorMessage } from '@shared/values';
 
 /**
@@ -89,6 +95,19 @@ const DEFAULT_ALERTS = DEFAULT_CONFIG.ui.alerts;
  * channel added to `NOTICE_CHANNELS` fails to compile here until it has a
  * label, where the local copy this replaced could silently fall behind.
  */
+/**
+ * The word beside each desktop switch, keyed by the same closed union for the
+ * same reason: a happening added to `DESKTOP_ALERTS` does not compile until
+ * somebody has decided what to call it.
+ */
+const HAPPENING_LABEL: Record<DesktopAlert, string> = {
+  attacked: t('settings.alerts.happening.attacked'),
+  hurt: t('settings.alerts.happening.hurt'),
+  arrived: t('settings.alerts.happening.arrived'),
+  hungup: t('settings.alerts.happening.hungup'),
+  critical: t('settings.alerts.happening.critical')
+};
+
 const CHANNEL_LABEL: Record<NoticeChannel, string> = {
   combat: t('settings.alerts.channel.combat'),
   vitals: t('settings.alerts.channel.vitals'),
@@ -536,6 +555,10 @@ interface CharacterForm {
   alertFindItems: string[];
   /** Found cash worth interrupting for, in copper. `0` never alerts. */
   alertFindCash: number;
+  /** What the desktop is asked to say when this window is not in front. */
+  alertDesktop: boolean;
+  alertDesktopFocused: boolean;
+  alertDesktopMuted: string[];
   /** `automation.afk` — answering for an absent player. */
   afkEnabled: boolean;
   afkAfterMinutes: string;
@@ -668,6 +691,9 @@ function formOf(entry: ProfileEditable): CharacterForm {
     alertMuted: entry.alerts.mute,
     alertFindItems: entry.alerts.finds.items,
     alertFindCash: entry.alerts.finds.cashOverCopper,
+    alertDesktop: entry.alerts.desktop.enabled,
+    alertDesktopFocused: entry.alerts.desktop.whileFocused,
+    alertDesktopMuted: entry.alerts.desktop.mute,
     afkEnabled: entry.afk.enabled,
     afkAfterMinutes: String(entry.afk.afterMinutes),
     afkReply: entry.afk.reply,
@@ -856,7 +882,12 @@ function draftOf(form: CharacterForm): ProfileDraft {
     alerts: {
       minimum: form.alertMinimum,
       mute: form.alertMuted,
-      finds: { items: form.alertFindItems, cashOverCopper: form.alertFindCash }
+      finds: { items: form.alertFindItems, cashOverCopper: form.alertFindCash },
+      desktop: {
+        enabled: form.alertDesktop,
+        whileFocused: form.alertDesktopFocused,
+        mute: form.alertDesktopMuted
+      }
     },
     afk: {
       enabled: form.afkEnabled,
@@ -1112,6 +1143,9 @@ function emptyForm(
     alertMuted: [...alerts.mute],
     alertFindItems: [...alerts.finds.items],
     alertFindCash: alerts.finds.cashOverCopper,
+    alertDesktop: alerts.desktop.enabled,
+    alertDesktopFocused: alerts.desktop.whileFocused,
+    alertDesktopMuted: [...alerts.desktop.mute],
     afkEnabled: afk.enabled,
     afkAfterMinutes: String(afk.afterMinutes),
     afkReply: afk.reply,
@@ -3306,6 +3340,58 @@ export default function SettingsScreen({
                         ))}
                       </div>
                       <p className="settings-note">{t('settings.alerts.note')}</p>
+                    </fieldset>
+                  )}
+                  {/*
+                    A third reading of the same facts, for the state this
+                    client spends most of an evening in: the window behind
+                    something else, because automating a character is what lets
+                    somebody go and do something else. Named happenings rather
+                    than a floor -- arriving where you asked to go is the record
+                    and is also the one thing somebody walked away expecting.
+                  */}
+                  {section === 'alerts' && (
+                    <fieldset className="settings-menus">
+                      <legend>{t('settings.alerts.desktopLegend')}</legend>
+                      <div className="settings-inline">
+                        <CheckField
+                          checked={form.alertDesktop}
+                          hint={t('settings.alerts.desktopEnabledHint')}
+                          label={t('settings.alerts.desktopEnabledLabel')}
+                          name="alert-desktop"
+                          onChange={(value) => patch({ alertDesktop: value })}
+                        />
+                        <CheckField
+                          checked={form.alertDesktopFocused}
+                          hint={t('settings.alerts.desktopFocusedHint')}
+                          label={t('settings.alerts.desktopFocusedLabel')}
+                          name="alert-desktop-focused"
+                          onChange={(value) => patch({ alertDesktopFocused: value })}
+                        />
+                      </div>
+                      <span className="settings-label">
+                        {t('settings.alerts.desktopMuteLabel')}
+                        <Hint id="hint-alert-desktop">{t('settings.alerts.desktopMuteHint')}</Hint>
+                      </span>
+                      <div className="settings-checks">
+                        {DESKTOP_ALERTS.map((happening) => (
+                          <CheckField
+                            checked={form.alertDesktopMuted.includes(happening)}
+                            describedBy="hint-alert-desktop"
+                            key={happening}
+                            label={HAPPENING_LABEL[happening]}
+                            name={`desktop-mute-${happening}`}
+                            onChange={(value) =>
+                              patch({
+                                alertDesktopMuted: value
+                                  ? [...form.alertDesktopMuted, happening]
+                                  : form.alertDesktopMuted.filter((entry) => entry !== happening)
+                              })
+                            }
+                          />
+                        ))}
+                      </div>
+                      <p className="settings-note">{t('settings.alerts.desktopNote')}</p>
                     </fieldset>
                   )}
                   {/*

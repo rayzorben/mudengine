@@ -20,11 +20,14 @@
  *   the **negative** one — a book holding no `RemovesSpell` carrier at all
  *   cannot cure a disease — and that is the only claim `disease` makes.
  *
- * Dependency-free like everything in `shared/`. The one import is a *type*,
+ * Dependency-free like everything in `shared/`. `WorldSpell` is a *type*,
  * which is erased — see the module-cycle rule in `CLAUDE.md`: a type-only cycle
- * is harmless where a value cycle is not.
+ * is harmless where a value cycle is not. `abilities.ts` is a value import and
+ * safe for the other half of that rule: it imports nothing, so it cannot be
+ * the far side of a cycle.
  */
 
+import { HAZARD_ABILITY } from './abilities';
 import type { WorldSpell } from './world';
 
 /**
@@ -192,6 +195,33 @@ export function cureGates(spells: ReadonlyArray<AbilityPairs | undefined>): Cure
     }
   }
   return { poison, blindness, disease };
+}
+
+/**
+ * Whether this spell stops the character moving while it lasts.
+ *
+ * **The server's own test, not a reading of the spell's name.**
+ * `ActionFigure.CheckForHoldPerson` asks `GetAbility(HoldPerson)` and nothing
+ * else; a move is refused by `Exits.Move` (`inActionFigure.CheckForHoldPerson()`
+ * on a `Normal` or `ActionExit` move) before anybody is moved anywhere. So the
+ * ability row *is* the definition, and the 60 spells on the shipped realm that
+ * carry it are the whole list — `knockdown`, `entangle`, `thick webbing`,
+ * `freeze`, `hold person`, `paralyze`, `chain`, `gust of wind`, `roar` and the
+ * rest, which no naming rule would have gathered and no memory of MajorMUD
+ * would have got right.
+ *
+ * The ability id is `HAZARD_ABILITY.holdPerson` rather than a second literal
+ * here: `menace.ts` already prices a round of it, and a number that decides
+ * two things in two spellings is the pair this codebase keeps together
+ * everywhere else.
+ *
+ * `undefined` abilities is a realm that does not say — a derivative realm, a
+ * pre-v14 conversion — and answers false, which never holds a walk. The
+ * refusal on the wire is what catches those: see `CharacterTracker`'s
+ * `spell-onset` case.
+ */
+export function holdsMovement(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
+  return (spell?.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.holdPerson);
 }
 
 /**

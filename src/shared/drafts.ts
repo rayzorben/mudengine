@@ -27,6 +27,7 @@ import {
   type TabsPreference
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
+import { DESKTOP_ALERTS } from './notifications';
 import { asLoops, type Loop } from './loops';
 
 /**
@@ -219,6 +220,7 @@ export interface GlobalDraft {
     loot: {
       coins: boolean;
       coinKinds: Denomination[];
+      discardKinds: Denomination[];
       items: string[];
       minPrice: number;
       maxEncumbrance: number;
@@ -484,6 +486,8 @@ export interface ProfileDraft {
     mute: string[];
     /** What a `search` turning something up is worth interrupting for. */
     finds: { items: string[]; cashOverCopper: number };
+    /** What the desktop is asked to say when the window is not in front. */
+    desktop: { enabled: boolean; whileFocused: boolean; mute: string[] };
   };
   /**
    * Whether this character answers another player's `@` commands —
@@ -658,6 +662,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const movement = isRecord(value['movement']) ? value['movement'] : {};
   const spells = isRecord(value['spells']) ? value['spells'] : {};
   const alerts = isRecord(value['alerts']) ? value['alerts'] : {};
+  const desktopAlerts = isRecord(alerts['desktop']) ? alerts['desktop'] : {};
   const remotes = isRecord(value['remotes']) ? value['remotes'] : {};
   const afk = isRecord(value['afk']) ? value['afk'] : {};
 
@@ -853,6 +858,14 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
           0,
           Math.round(Number(isRecord(alerts['finds']) ? alerts['finds']['cashOverCopper'] : 0) || 0)
         )
+      },
+      desktop: {
+        // On unless the file says otherwise: a notification feature nobody
+        // finds is one that was never built. `normalizeDesktopAlerts` drops a
+        // happening nothing answers to, so the form shows what the file does.
+        enabled: desktopAlerts['enabled'] !== false,
+        whileFocused: desktopAlerts['whileFocused'] === true,
+        mute: words(desktopAlerts['mute'], DESKTOP_ALERTS.length)
       }
     },
     afk: {
@@ -1021,6 +1034,19 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         coinKinds: Array.isArray(loot['coinKinds'])
           ? DENOMINATIONS.filter((name) => (loot['coinKinds'] as unknown[]).includes(name))
           : [...DENOMINATIONS],
+        // Exclusive with the list above, and the same way round `normalizeLoot`
+        // resolves it: an ambiguous file keeps its coins rather than sheds them.
+        discardKinds: Array.isArray(loot['discardKinds'])
+          ? DENOMINATIONS.filter(
+              (name) =>
+                (loot['discardKinds'] as unknown[]).includes(name) &&
+                !(
+                  Array.isArray(loot['coinKinds'])
+                    ? (loot['coinKinds'] as unknown[])
+                    : DENOMINATIONS
+                ).includes(name)
+            )
+          : [],
         stopAtGrade: asGate(loot['stopAtGrade']),
         convertWith: text(loot['convertWith']).slice(0, 40),
         convertAt: asGate(loot['convertAt']),

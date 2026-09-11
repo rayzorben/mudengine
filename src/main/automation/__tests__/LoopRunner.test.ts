@@ -178,13 +178,13 @@ describe('when the lap actually begins', () => {
     expect(runner.progress.lapBegunAt).toBe(begun);
   });
 
-  it('survives a pause and a resume, because a restart is not a start', () => {
+  it('survives a stop and a resume, because a restart is not a start', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
     const begun = runner.progress.lapBegunAt;
-    runner.pause();
+    runner.stop('asked');
     expect(runner.progress.lapBegunAt).toBe(begun);
     runner.resume(state());
     expect(runner.progress.lapBegunAt).toBe(begun);
@@ -498,13 +498,13 @@ describe('holding after an escape', () => {
 
   /* The player asking for the lap back outranks the beat it is taking — and
      `resume` plans afresh for the stop it is pointed at, as it always has. */
-  it('lets go when the player resumes a paused loop', () => {
+  it('lets go when the player resumes a stopped loop', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, at(100));
     runner.onWalkEnded(true, null, at(100));
     runner.noteEscaped();
-    runner.pause();
+    runner.stop('asked');
     expect(runner.resume(at(100))).toBeNull();
     expect(runner.progress.hold).toBeNull();
     expect(walked).toEqual(['Arena', 'Arena']);
@@ -698,30 +698,41 @@ describe('the stops a lap still owes', () => {
    * still says why it ended — but a map that went on marking its stops would
    * be drawing a lap nothing is walking.
    */
-  it('owes nothing once the lap has stopped, and everything again on the next one', () => {
+  it('owes nothing once the lap has been forgotten, and everything again on the next one', () => {
     const runner = new LoopRunner(rooms().planner, {});
     runner.start(abc, state());
     expect(runner.progress.remainingStops).not.toEqual([]);
-    runner.stop('asked');
+    runner.reset();
     expect(runner.progress.remainingStops).toEqual([]);
     runner.start(abc, state());
     expect(runner.progress.remainingStops).toEqual(['1/1', '1/2', '1/3']);
   });
 
-  /* A pause keeps the loop's place, so it keeps what the lap still owes. */
-  it('keeps them while the lap is paused', () => {
+  /*
+   * A stopped lap is not drawn, and it has not forgotten anything.
+   *
+   * These are two questions and they have different answers, which is why they
+   * are two accessors: the map must not ring a lap the client is not walking
+   * — a picture of a plan nobody is following is worse than none — while the
+   * lap itself keeps its place for the play that picks it back up, and
+   * `heading` is what `SessionManager.startMoving` measures the wander from.
+   */
+  it('stops being drawn while the lap is stopped, without forgetting its place', () => {
     const runner = new LoopRunner(rooms().planner, {});
     runner.start(abc, state());
-    runner.pause();
-    expect(runner.progress.remainingStops).toEqual(['1/1', '1/2', '1/3']);
+    runner.stop('asked');
+    expect(runner.progress.remainingStops).toEqual([]);
+    expect(runner.heading).toBe('1/1');
+    expect(runner.progress).toMatchObject({ status: 'stopped', stop: 1, stops: 3 });
   });
 });
 
 /*
- * The card's controls. Pause keeps the loop and its place; resume plans afresh
- * from wherever the character is; skip gives up on a stop; reverse is only a
- * thing a bounce loop can do. The leg being walked is the caller's to end —
- * the runner never touches the walker — so nothing here asserts on the walker.
+ * The card's controls. Stop keeps the loop and its place — a stop is a pause
+ * that may or may not be permanent; resume plans afresh from wherever the
+ * character is; skip gives up on a stop; reverse is only a thing a bounce loop
+ * can do. The leg being walked is the caller's to end — the runner never
+ * touches the walker — so nothing here asserts on the walker.
  */
 describe('the loop card’s controls', () => {
   const bounce: Loop = {
@@ -730,14 +741,14 @@ describe('the loop card’s controls', () => {
     bounce: true
   };
 
-  it('pauses where it is, decides nothing while paused, and walks on from here on resume', () => {
+  it('stops where it is, decides nothing while stopped, and walks on from here on resume', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.pause();
-    expect(runner.progress.status).toBe('paused');
+    runner.stop('asked');
+    expect(runner.progress.status).toBe('stopped');
     expect(runner.progress.name).toBe('Arena');
-    // A fight ending or a room arriving while paused moves nothing.
+    // A fight ending or a room arriving while stopped moves nothing.
     runner.onWalkEnded(true, null, state());
     runner.onCharacter(state());
     vi.advanceTimersByTime(10_000);
@@ -755,7 +766,7 @@ describe('the loop card’s controls', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.pause();
+    runner.stop('asked');
     expect(runner.resume(state({ inCombat: true }))).toBeNull();
     expect(runner.progress).toMatchObject({ status: 'running', hold: 'fight' });
     expect(walked).toEqual(['Arena']);
@@ -763,20 +774,22 @@ describe('the loop card’s controls', () => {
     expect(walked).toEqual(['Arena', 'Arena']);
   });
 
-  it('refuses to resume what is not paused', () => {
+  it('refuses to resume a lap that is running', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    expect(runner.resume(state())).toMatch(/not paused/i);
+    expect(runner.resume(state())).toMatch(/no stopped loop/i);
   });
 
-  it('can be stopped while paused', () => {
+  /* Stopping twice is idempotent, and the first reason is the one that stands:
+     the second call is a control pressed again, not a new thing going wrong. */
+  it('keeps the first reason when stopped twice', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.pause();
     runner.stop('asked');
-    expect(runner.progress.status).toBe('stopped');
+    runner.stop('asked again');
+    expect(runner.progress).toMatchObject({ status: 'stopped', reason: 'asked' });
   });
 
   it('skips the current stop and heads for the next', () => {
@@ -789,11 +802,11 @@ describe('the loop card’s controls', () => {
     expect(walked).toEqual(['Arena', 'Road']);
   });
 
-  it('while paused, skip only moves the pointer and the walk waits for resume', () => {
+  it('while stopped, skip only moves the pointer and the walk waits for resume', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.pause();
+    runner.stop('asked');
     expect(runner.skip()).toBeNull();
     expect(runner.progress.stop).toBe(2);
     expect(walked).toEqual(['Arena']);
@@ -819,7 +832,7 @@ describe('the loop card’s controls', () => {
     const runner = new LoopRunner(planner().planner, {});
     expect(runner.skip()).toMatch(/nothing is looping/i);
     expect(runner.reverse()).toMatch(/nothing is looping/i);
-    expect(runner.resume(state())).toMatch(/not paused/i);
+    expect(runner.resume(state())).toMatch(/no stopped loop/i);
   });
 
   /*
@@ -986,7 +999,7 @@ describe('an errand', () => {
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
     runner.noteErrand();
-    runner.pause();
+    runner.stop('asked');
     runner.resume(state());
     expect(runner.progress.hold).toBeNull();
     expect(walked).toEqual(['Arena', 'Arena']);
@@ -1068,21 +1081,21 @@ describe('losing the connection', () => {
     expect(walked).toEqual(['Arena', 'Road']);
   });
 
-  it('a paused lap stays paused across it, and resumes by hand from here', () => {
+  it('a stopped lap keeps its place across it, and resumes by hand from here', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.pause();
+    runner.stop('asked');
     runner.noteOffline();
     expect(runner.carried).toBe(true);
-    // A paused loop is not waiting for anything, so it reports no hold.
-    expect(runner.progress).toMatchObject({ status: 'paused', hold: null });
+    // A stopped loop is not waiting for anything, so it reports no hold.
+    expect(runner.progress).toMatchObject({ status: 'stopped', hold: null });
     expect(runner.resume(state({ phase: 'unknown' }))).toBe(
       t('automation.loops.refusalNotInRealm')
     );
     runner.noteOnline();
     expect(runner.carried).toBe(false);
-    expect(runner.progress.status).toBe('paused');
+    expect(runner.progress.status).toBe('stopped');
     expect(runner.resume(state())).toBeNull();
     expect(walked).toEqual(['Arena', 'Arena']);
   });
@@ -1094,7 +1107,7 @@ describe('losing the connection', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.pause();
+    runner.stop('asked');
     runner.noteOffline();
     expect(runner.resume(state())).toBeNull();
     expect(runner.progress).toMatchObject({ status: 'running', hold: 'offline' });
@@ -1220,6 +1233,34 @@ describe('waiting out a condition between legs', () => {
     runner.onCharacter(state());
     expect(runner.progress.hold).toBeNull();
     expect(notices).toContain(t('automation.loops.afflictionOver'));
+  });
+
+  /*
+   * The lap's half of `tuning.walk.heldFallbackMs`, and why it needs one of
+   * its own: the walker's probe is the step it re-sends, and a lap held
+   * *between* legs is walking nothing to probe with. So the release here is a
+   * release into the next leg — silent, because the condition has not passed
+   * and the leg is how the lap finds out.
+   */
+  it('plans the next leg again once a hold nothing ends has stood long enough', () => {
+    let clock = 1_000_000;
+    const { planner: p, walked } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) }, () => clock);
+    runner.configure(DEFAULT_CONFIG.automation.health, DEFAULT_CONFIG.automation.movement);
+    runner.start(loop, state());
+    const legs = walked.length;
+    const held = state({ afflictions: { ...EMPTY_CHARACTER.afflictions, held: 'yes' } });
+    runner.onCharacter(held);
+    expect(runner.progress.hold).toBe('held');
+    runner.onCharacter(held);
+    expect(walked.length).toBe(legs);
+
+    clock += DEFAULT_INTERNAL.tuning.walk.heldFallbackMs;
+    runner.onCharacter(held);
+    expect(runner.progress.hold).toBeNull();
+    expect(walked.length).toBeGreaterThan(legs);
+    expect(notices).not.toContain(t('automation.loops.afflictionOver'));
   });
 
   it('walks on blind when the movement block says so', () => {

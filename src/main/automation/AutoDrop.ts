@@ -23,7 +23,9 @@
  * - **Anything equipped.** A worn helm that happens to answer to a junk name
  *   stays on the head, whatever the list says.
  * - **Coins.** They are not `CarriedItem`s, so they cannot match; stated here
- *   because it is a promise and not an accident of the shape.
+ *   because it is a promise and not an accident of the shape. Shedding them is
+ *   `AutoLoot`'s (`automation.loot.discardKinds`), where the list it is
+ *   exclusive with lives and where the coin vocabulary already is.
  *
  * ## When it will not drop
  *

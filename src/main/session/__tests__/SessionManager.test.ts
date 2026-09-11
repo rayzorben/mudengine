@@ -732,6 +732,53 @@ describe('a person at the keyboard', () => {
     await until(() => Buffer.concat(chunks).toString('latin1').includes('rm\r\n'));
     expect(manager.automation.queue.suppressed).toBe(false);
   });
+
+  /*
+   * The stat screen, which is not a half-typed line and not a menu.
+   *
+   * `train stats` is answered with `Player.Exits()` and a telnet field form,
+   * and with **no prompt** — so the acknowledgement window the queue paces on
+   * never closes, `reclaimStalled` hands the credit back, and everything
+   * automation proposes is typed into whichever field has focus. The first one
+   * is the character's family name: the report this is from is a character
+   * called `Festus CPREV`.
+   */
+  it('stands automation down for the stat screen and picks it back up at a prompt', async () => {
+    const { sink } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    /*
+     * The positive control on the way in, in both halves: the entry probe has
+     * really sent, and it still has more queued behind the pacing gap. So an
+     * absence below is this hold, and not a client that had gone quiet.
+     */
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(
+      () =>
+        Buffer.concat(chunks).toString('latin1').includes('rm\r\n') &&
+        manager!.automation.queue.depth > 0
+    );
+
+    const before = Buffer.concat(chunks).toString('latin1');
+    manager.send('train stats\r');
+    expect(manager.automation.queue.suppressed).toBe(true);
+    // Emptied, not paused: what was queued was decided for a character who was
+    // standing in a room, and the server has already taken them out of it.
+    expect(manager.automation.queue.depth).toBe(0);
+
+    // The client has had its chance: the rest of the entry probe was due
+    // several times over inside this.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(Buffer.concat(chunks).toString('latin1')).toBe(before + 'train stats\r\n');
+
+    // Back at a prompt, whichever way the screen was left.
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => !manager!.automation.queue.suppressed);
+  });
 });
 
 describe('the decision trace', () => {
@@ -2449,12 +2496,13 @@ describe('a death stops everything that was going somewhere', () => {
   });
 
   /*
-   * A pause keeps the loop's place and `resume` plans afresh from wherever the
-   * character is — which after this is a temple nobody chose. So a paused loop
-   * is stopped too, rather than left as something a follower's `@ok` or a
-   * click could walk away from the temple.
+   * A lap already stopped is left stopped, with its place: a stop keeps what it
+   * stopped, and a death does not make that a lie. What it must not do is walk
+   * — the character is in a temple nobody chose, and the only thing that walks
+   * it out is somebody pressing play, which asks first because the temple is a
+   * long way from the lap (`startMoving`).
    */
-  it('stops a paused loop as well as a running one', async () => {
+  it('leaves a lap that was already stopped stopped, and walks nothing', async () => {
     const { sink } = collect();
     manager = new SessionManager(sink, undefined, {
       ...DEFAULT_CONFIG.automation,
@@ -2467,11 +2515,20 @@ describe('a death stops everything that was going somewhere', () => {
     socket.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
     await until(() => manager!.character.room.number === 2140);
     manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-    manager.loops.pause();
-    expect(manager.loops.progress.status).toBe('paused');
+    manager.stopMoving();
+    expect(manager.loops.progress).toMatchObject({ status: 'stopped', name: 'lap' });
 
+    /*
+     * The temple placing the character is the positive control: the death line
+     * demonstrably went through the parser and the room after it landed, so
+     * the lap standing untouched a moment later is a decision rather than a
+     * test that got there first.
+     */
     socket.write('You have been killed!\r\n');
-    await until(() => manager!.loops.progress.status === 'stopped');
+    socket.write('Location: 1,2999\r\n[HP=10/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.room.number === 2999);
+    expect(manager.loops.progress).toMatchObject({ status: 'stopped', name: 'lap' });
+    expect(manager.walker.progress.status).not.toBe('walking');
   });
 
   /*
@@ -3037,13 +3094,13 @@ describe('a follower pacing the loop', () => {
   }
 
   /*
-   * `@wait` used to *stop* the loop — the `@ok` callback read `if (ready)
-   * return;` — so one fallen-behind follower ended the lap for good and the
-   * leader stood at a stop until somebody noticed. The pair is a pause and a
-   * resume now, and the resume waits for the last of several waiting
-   * followers, because the loop walks away from whoever is still behind.
+   * `@wait` used to end the lap — the `@ok` callback read `if (ready)
+   * return;` — so one fallen-behind follower ended it for good and the leader
+   * stood at a stop until somebody noticed. It is a stop and a resume now,
+   * and a stop keeps the lap's place; the resume waits for the last of several
+   * waiting followers, because the loop walks away from whoever is behind.
    */
-  it('pauses on @wait and resumes when the last waiting follower says @ok', async () => {
+  it('stops on @wait and resumes when the last waiting follower says @ok', async () => {
     const { sink } = collect();
     manager = pacedManager(sink);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
@@ -3051,44 +3108,79 @@ describe('a follower pacing the loop', () => {
     await looping(socket);
 
     socket.write('Soul telepaths: @wait\r\n');
-    await until(() => manager!.loops.progress.status === 'paused');
+    await until(() => manager!.loops.progress.status === 'stopped');
     socket.write('Yang telepaths: @wait\r\n');
 
-    // The first @ok is not enough: Yang is still catching up. The pause has
+    // The first @ok is not enough: Yang is still catching up. The stop has
     // been observed, so the absence a moment later is a real decision.
     socket.write('Soul telepaths: @ok\r\n');
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(manager.loops.progress.status).toBe('paused');
+    expect(manager.loops.progress.status).toBe('stopped');
 
     socket.write('Yang telepaths: @ok\r\n');
     await until(() => manager!.loops.progress.status === 'running');
   });
 
   /*
-   * `@ok` may only resume what `@wait` paused. A pause the player chose from
-   * the Loop card is theirs to end, and a follower's `@ok` walking a
-   * hand-paused loop away would be somebody else's typing moving this
+   * `@ok` may only resume what `@wait` stopped. A stop the player chose from
+   * the Navigation card is theirs to end, and a follower's `@ok` walking a
+   * hand-stopped loop away would be somebody else's typing moving this
    * character.
    */
-  it('leaves a pause the player chose alone', async () => {
+  it('leaves a stop the player chose alone', async () => {
     const { sink, notices } = collect();
     manager = pacedManager(sink);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     await looping(socket);
 
-    // The player pauses from the card (the IPC handler's own call)...
-    manager.loops.pause();
-    expect(manager.loops.progress.status).toBe('paused');
+    // The player stops from the card (the IPC handler's own call)...
+    manager.stopMoving();
+    expect(manager.loops.progress.status).toBe('stopped');
 
     // ...and a follower's @ok is read, reported, and resumes nothing. The
     // follower-ready notice is the positive control: the line demonstrably
-    // reached the remotes, and the pause still stood.
+    // reached the remotes, and the stop still stood.
     const said = notices.length;
     socket.write('Soul telepaths: @ok\r\n');
     await until(() => notices.length > said);
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.loops.progress.status).toBe('paused');
+    expect(manager.loops.progress.status).toBe('stopped');
+  });
+
+  /*
+   * A death spends the claim, and it says so.
+   *
+   * Folding `pause` into `stop` made this the one path that still meant "ended
+   * for good": `stopGoingAnywhere` skipped a lap that was not running, so
+   * nothing published, so `pausedForFollowers` was never cleared — and a
+   * follower's `@ok` then walked the character out of the temple past both
+   * guards and past the wander check, which `startMoving` owns and
+   * `LoopRunner.resume` does not.
+   */
+  it('spends the wait claim on a death, and restates why the lap is not moving', async () => {
+    const { sink, notices } = collect();
+    manager = pacedManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    await looping(socket);
+
+    socket.write('Soul telepaths: @wait\r\n');
+    await until(() => manager!.loops.progress.status === 'stopped');
+
+    socket.write('You have been killed!\r\n');
+    socket.write('Location: 1,2999\r\n[HP=10/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.room.number === 2999);
+    // The card's one sentence about the lap is about the death, not about a
+    // follower who asked the party to wait ten minutes ago.
+    expect(manager.loops.progress.reason).toBe(t('session.loop.stoppedDied'));
+
+    const said = notices.length;
+    socket.write('Soul telepaths: @ok\r\n');
+    await until(() => notices.length > said);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(manager.loops.progress.status).toBe('stopped');
+    expect(manager.walker.progress.status).not.toBe('walking');
   });
 });
 
@@ -3518,6 +3610,47 @@ describe('picking up after a lost connection', () => {
     }
   });
 
+  /*
+   * And a lap that was **stopped** when the link went, which is the case a
+   * stop keeping its place created.
+   *
+   * The guard read `if (carried) stop(...)`, which worked while a stopped lap
+   * was one nothing carried. Since a stop is a pause the lap is carried too,
+   * and `stop()` early-returns on one — so nothing was said, `offline` was
+   * never cleared, `carried` stayed true and the reset below it was skipped:
+   * the old realm's lap survived into the new one with the old world's room
+   * ids in it, and the card offered play on it.
+   */
+  it('puts a stopped lap down too, rather than carrying it into another realm', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, undefined, automation());
+    await manager.connect(dial());
+    const first = await client();
+    await placed(first);
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+    manager.stopMoving();
+    first.destroy();
+    // The positive control: it really was carried, so the drop below is a
+    // decision rather than a lap that was never there.
+    await until(() => manager!.loops.carried);
+
+    const other = net.createServer((socket) => socket.on('error', () => {}));
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const otherPort = (other.address() as net.AddressInfo).port;
+    try {
+      await manager.connect({ host: '127.0.0.1', port: otherPort, encoding: 'cp437' });
+      expect(manager.loops.progress).toMatchObject({ status: 'idle', name: null });
+      expect(manager.loops.carried).toBe(false);
+      expect(manager.movement).toEqual({ kind: null, moving: false, resumable: false });
+      expect(notices).toContain(
+        t('automation.loops.stopped', { reason: t('session.loop.stoppedRealmChanged') })
+      );
+    } finally {
+      manager.disconnect();
+      await new Promise<void>((resolve) => other.close(() => resolve()));
+    }
+  });
+
   /* Four rooms in a line, each with its own name so nothing is ambiguous. */
   const line = (): WorldGraph => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-pickup-'));
@@ -3611,17 +3744,17 @@ describe('picking up after a lost connection', () => {
     expect(manager.walker.progress.status).not.toBe('walking');
   });
 
-  /* A paused lap is carried paused, so nothing walks on when the room arrives
-     and the client must not say that something will. The placement letting
-     the carry go is the positive control. */
-  it('carries a paused lap paused, without promising that it walks on', async () => {
+  /* A stopped lap is carried stopped, so nothing walks on when the room
+     arrives and the client must not say that something will. The placement
+     letting the carry go is the positive control. */
+  it('carries a stopped lap stopped, without promising that it walks on', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, automation());
     await manager.connect(dial());
     const first = await client();
     await placed(first);
     manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
-    manager.loops.pause();
+    manager.stopMoving();
     first.destroy();
     await until(() => manager!.loops.carried);
 
@@ -3631,7 +3764,7 @@ describe('picking up after a lost connection', () => {
     await until(() => manager!.character.phase === 'in-game');
     second.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
     await until(() => !manager!.loops.carried);
-    expect(manager.loops.progress).toMatchObject({ status: 'paused', name: 'lap' });
+    expect(manager.loops.progress).toMatchObject({ status: 'stopped', name: 'lap' });
     expect(notices).not.toContain(t('session.reconnect.waitingToBePlaced'));
     expect(notices).not.toContain(t('automation.loops.walkingOnAfterReconnect'));
   });
@@ -4228,5 +4361,255 @@ describe('SessionManager finds', () => {
     await until(() => manager!.character.room.hidden.length > 0);
     expect(manager.character.room.map).toBeNull();
     expect(rows).toEqual([]);
+  });
+});
+
+/**
+ * One play button and one stop button.
+ *
+ * A character is routing, looping or stopped (`src/shared/movement.ts`), and
+ * the three things this asserts are the three the shape was changed for: stop
+ * keeps what it stopped, play picks it back up from wherever the character now
+ * is, and play asks first when "wherever it now is" is a long way off.
+ */
+describe('starting and stopping a movement', () => {
+  /** Forty rooms in a line, `1/1` at the south end and `1/40` at the north. */
+  const corridor = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-moving-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = Array.from({ length: 40 }, (_unused, index) => {
+      const r = index + 1;
+      return {
+        m: 1,
+        r,
+        n: `Room ${r}`,
+        x: {
+          ...(r < 40 ? { n: { m: 1, r: r + 1 } } : {}),
+          ...(r > 1 ? { s: { m: 1, r: r - 1 } } : {})
+        }
+      };
+    });
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  const quiet: AutomationConfig = {
+    ...DEFAULT_CONFIG.automation,
+    enabled: true,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    onEnterRealm: [],
+    rules: []
+  };
+
+  /** In the realm at the north end of the corridor. */
+  async function atTheNorthEnd(): Promise<{ socket: net.Socket; world: WorldGraph }> {
+    const world = corridor();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, quiet);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,40\r\nRoom 40\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 40);
+    return { socket, world };
+  }
+
+  /** Puts the character somewhere else without walking it there. */
+  async function standIn(socket: net.Socket, room: number): Promise<void> {
+    socket.write(
+      `Location:            1,${room}\r\nRoom ${room}\r\nObvious exits: south, north\r\n`
+    );
+    await until(() => manager!.character.room.number === room);
+  }
+
+  it('picks a stopped route back up from where the character is standing', async () => {
+    const { socket, world } = await atTheNorthEnd();
+    expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
+    manager!.stopMoving();
+    expect(manager!.walker.progress.status).toBe('stopped');
+
+    // One step of it was walked by hand, so the route it picks back up is one
+    // step shorter than the one it stopped: planned afresh, never replayed.
+    await standIn(socket, 39);
+    expect(manager!.startMoving(null, null)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 1 });
+  });
+
+  /*
+   * The length of the route is not the question — how much *further away* the
+   * character is than when it stopped is. A route somebody stopped at the top
+   * of and never left must never ask, however long it is.
+   */
+  it('asks nothing about a long route the character has not wandered off', async () => {
+    const { world } = await atTheNorthEnd();
+    expect(manager!.walkRoute(world.route('1/40', '1/1'))).toBeNull();
+    expect(manager!.walker.progress.total).toBe(39);
+    manager!.stopMoving();
+    expect(manager!.startMoving(null, null)).toEqual({ started: true });
+  });
+
+  it('asks before walking a wandered character back to its route', async () => {
+    const { socket, world } = await atTheNorthEnd();
+    expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
+    manager!.stopMoving();
+    // Thirty-seven steps from the two it still owed: thirty-five further away
+    // than it was, over the thirty `resumeAskSteps` allows.
+    await standIn(socket, 1);
+    expect(manager!.startMoving(null, null)).toEqual({
+      confirm: { kind: 'route', name: 'Room 38', steps: 35 }
+    });
+    // Nothing was sent on the strength of a question.
+    expect(manager!.walker.progress.status).toBe('stopped');
+
+    expect(manager!.startMoving(null, 35)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 37 });
+  });
+
+  /*
+   * A lap keeps its place through a stop, and the same play resumes it. The
+   * name the picker holds is the lap already stopped, which is what makes it a
+   * resume rather than a fresh start — a different name would start that one.
+   */
+  it('stops a lap and its leg together, and resumes the same lap', async () => {
+    await atTheNorthEnd();
+    expect(
+      manager!.loops.start(
+        { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
+        manager!.character
+      )
+    ).toBeNull();
+    expect(manager!.walker.progress.status).toBe('walking');
+
+    manager!.stopMoving();
+    expect(manager!.loops.progress).toMatchObject({ status: 'stopped', name: 'lap', stop: 1 });
+    expect(manager!.walker.progress.status).toBe('stopped');
+
+    expect(manager!.startMoving('lap', null)).toEqual({ started: true });
+    expect(manager!.loops.progress).toMatchObject({ status: 'running', name: 'lap', stop: 1 });
+  });
+
+  /*
+   * One movement at a time. A route asked for while a lap runs used to start
+   * both: `Walker.start` supersedes the leg silently, so the lap sat waiting
+   * for a leg that was never coming and then read the route's arrival as its
+   * own.
+   */
+  it('stops a running lap when the player asks for a route', async () => {
+    const { world } = await atTheNorthEnd();
+    manager!.loops.start(
+      { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
+      manager!.character
+    );
+    expect(manager!.loops.progress.status).toBe('running');
+
+    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
+    expect(manager!.loops.progress).toMatchObject({
+      status: 'stopped',
+      reason: t('session.loop.stoppedForRoute')
+    });
+    // And the lap is left where it was, for the play that picks it back up.
+    expect(manager!.loops.progress.name).toBe('lap');
+    expect(manager!.movement).toEqual({ kind: 'route', moving: true, resumable: false });
+  });
+
+  it('refuses play while the character is already moving', async () => {
+    const { world } = await atTheNorthEnd();
+    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
+    expect(manager!.startMoving(null, null)).toEqual({
+      refused: t('session.move.alreadyMoving')
+    });
+  });
+
+  it('refuses play when nothing has been walked at all', async () => {
+    await atTheNorthEnd();
+    expect(manager!.startMoving(null, null)).toEqual({
+      refused: t('session.move.nothingToResume')
+    });
+  });
+
+  /*
+   * Agreeing to a journey is agreeing to *that* journey.
+   *
+   * `confirmed` is the figure the player was shown, not a flag: the prompt
+   * sits open, the character is killed and reborn somewhere else, and *walk it
+   * back* would otherwise be a blank cheque for a walk across the realm — the
+   * exact sequence the prompt's own words describe.
+   */
+  it('asks again when the journey has grown since it was agreed to', async () => {
+    const { socket, world } = await atTheNorthEnd();
+    expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
+    manager!.stopMoving();
+    await standIn(socket, 5);
+    const asked = manager!.startMoving(null, null);
+    expect(asked).toMatchObject({ confirm: { steps: 31 } });
+
+    // Further away than the figure that was agreed to: asked afresh, and
+    // nothing walked on the strength of the old answer.
+    await standIn(socket, 1);
+    expect(manager!.startMoving(null, 31)).toEqual({
+      confirm: { kind: 'route', name: 'Room 38', steps: 35 }
+    });
+    expect(manager!.walker.progress.status).toBe('stopped');
+    // The figure it was actually shown walks it.
+    expect(manager!.startMoving(null, 35)).toEqual({ started: true });
+  });
+
+  /*
+   * A lap that was stopped keeps its place, so the walker is left holding the
+   * leg it was walking — and that stopped route is the lap's own footwork.
+   * Reported as a route it would take the card, and play would walk the leg
+   * rather than resume the lap.
+   */
+  it('picks the lap back up rather than the leg it left stopped', async () => {
+    await atTheNorthEnd();
+    manager!.loops.start(
+      { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
+      manager!.character
+    );
+    manager!.stopMoving();
+    expect(manager!.walker.progress).toMatchObject({ status: 'stopped', asked: false });
+    expect(manager!.movement).toEqual({ kind: 'loop', moving: false, resumable: true });
+    expect(manager!.startMoving(null, null)).toEqual({ started: true });
+    expect(manager!.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
+  });
+
+  /*
+   * And the other way round: a route the player asked for stopped the lap, so
+   * when *it* stops the card has to go on reporting it. Drawn as the lap it
+   * displaced, the route's reason would be unreadable and play would walk away
+   * from where the player was going.
+   */
+  it('keeps reporting a route that displaced a lap, once it stops too', async () => {
+    const { world } = await atTheNorthEnd();
+    manager!.loops.start(
+      { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
+      manager!.character
+    );
+    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
+    manager!.stopMoving();
+    expect(manager!.movement).toEqual({ kind: 'route', moving: false, resumable: true });
+    expect(manager!.walker.progress.asked).toBe(true);
+  });
+
+  /* One movement at a time from every door, not only from a route: a lap
+     started from the palette takes the character off the route it was walking,
+     out loud, rather than being superseded silently by its own first leg. */
+  it('stops a route the player was walking when a lap is started', async () => {
+    const { world } = await atTheNorthEnd();
+    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
+    expect(
+      manager!.startLoop({ name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] })
+    ).toEqual({ started: true });
+    expect(manager!.loops.progress.status).toBe('running');
   });
 });

@@ -33,7 +33,24 @@ import {
   themesOfAppearance,
   type TerminalPalette
 } from '@shared/themes';
-import { NOTICE_CHANNELS, type Severity } from '@shared/notifications';
+import {
+  DESKTOP_ALERTS,
+  NOTICE_CHANNELS,
+  type DesktopAlert,
+  type Severity
+} from '@shared/notifications';
+
+/**
+ * The word beside each desktop switch. The character form's wording wins on
+ * both pages, so it is the same table drawn twice rather than two.
+ */
+const HAPPENING_LABEL: Record<DesktopAlert, string> = {
+  attacked: t('settings.alerts.happening.attacked'),
+  hurt: t('settings.alerts.happening.hurt'),
+  arrived: t('settings.alerts.happening.arrived'),
+  hungup: t('settings.alerts.happening.hungup'),
+  critical: t('settings.alerts.happening.critical')
+};
 import type { StreamEncoding } from '@shared/types';
 
 /**
@@ -1702,6 +1719,16 @@ export default function GlobalSettings({
               Which coins, as a row of chips rather than five checkboxes: the
               question is "which of these five", and five boxes down a column
               reads as five unrelated settings.
+
+              Two rows, and the pair is the setting. Turning a coin on in one
+              row takes it out of the other, because a coin on both would be
+              picked up and dropped for ever — the rule `normalizeLoot` keeps
+              on disk, made unreachable here rather than reported after the
+              fact. A coin on neither row is *kept*, which is the answer the
+              pair exists to express and the reason this is not one tri-state
+              chip: "collect", "shed" and "leave alone" are three decisions
+              about the same coin, and a control that cycled them would make
+              the shipped answer a click away from throwing money out.
             */}
             <FormField
               hint={t('settings.movement.lootCoinKindsHint')}
@@ -1726,7 +1753,52 @@ export default function GlobalSettings({
                                 ? draft.automation.loot.coinKinds.filter((k) => k !== coin)
                                 : DENOMINATIONS.filter(
                                     (k) => k === coin || draft.automation.loot.coinKinds.includes(k)
-                                  )
+                                  ),
+                              // Off the other row, if it was on it.
+                              discardKinds: on
+                                ? draft.automation.loot.discardKinds
+                                : draft.automation.loot.discardKinds.filter((k) => k !== coin)
+                            }
+                          })
+                        }
+                        onMouseDown={keepFocus}
+                        type="button"
+                      >
+                        {coin}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </FormField>
+            <FormField
+              hint={t('settings.movement.lootDiscardKindsHint')}
+              label={t('settings.movement.lootDiscardKindsLabel')}
+              name="global-loot-discard-kinds"
+              wide
+            >
+              {() => (
+                <div className="chip-row">
+                  {DENOMINATIONS.map((coin) => {
+                    const on = draft.automation.loot.discardKinds.includes(coin);
+                    return (
+                      <button
+                        aria-pressed={on}
+                        className="chip"
+                        key={coin}
+                        onClick={() =>
+                          automation({
+                            loot: {
+                              ...draft.automation.loot,
+                              discardKinds: on
+                                ? draft.automation.loot.discardKinds.filter((k) => k !== coin)
+                                : DENOMINATIONS.filter(
+                                    (k) =>
+                                      k === coin || draft.automation.loot.discardKinds.includes(k)
+                                  ),
+                              coinKinds: on
+                                ? draft.automation.loot.coinKinds
+                                : draft.automation.loot.coinKinds.filter((k) => k !== coin)
                             }
                           })
                         }
@@ -2266,6 +2338,67 @@ export default function GlobalSettings({
                 onChange={(value) => automation({ afk: { ...draft.automation.afk, reply: value } })}
                 value={draft.automation.afk.reply}
               />
+            </div>
+          </fieldset>
+          {/*
+            The third reading, for a player who is not looking at the window at
+            all — which is most of an evening, because automating a character
+            is what lets somebody go and do something else.
+          */}
+          <fieldset className="settings-menus">
+            <legend>{t('settings.alerts.desktopLegend')}</legend>
+            <div className="settings-inline">
+              <CheckField
+                checked={draft.ui.alerts.desktop.enabled}
+                hint={t('settings.alerts.desktopEnabledHint')}
+                label={t('settings.alerts.desktopEnabledLabel')}
+                name="global-alert-desktop"
+                onChange={(value) =>
+                  patch('ui', {
+                    alerts: {
+                      ...draft.ui.alerts,
+                      desktop: { ...draft.ui.alerts.desktop, enabled: value }
+                    }
+                  })
+                }
+              />
+              <CheckField
+                checked={draft.ui.alerts.desktop.whileFocused}
+                hint={t('settings.alerts.desktopFocusedHint')}
+                label={t('settings.alerts.desktopFocusedLabel')}
+                name="global-alert-desktop-focused"
+                onChange={(value) =>
+                  patch('ui', {
+                    alerts: {
+                      ...draft.ui.alerts,
+                      desktop: { ...draft.ui.alerts.desktop, whileFocused: value }
+                    }
+                  })
+                }
+              />
+            </div>
+            <div className="settings-checks">
+              {DESKTOP_ALERTS.map((happening) => (
+                <CheckField
+                  checked={draft.ui.alerts.desktop.mute.includes(happening)}
+                  key={happening}
+                  label={HAPPENING_LABEL[happening]}
+                  name={`global-desktop-mute-${happening}`}
+                  onChange={(value) =>
+                    patch('ui', {
+                      alerts: {
+                        ...draft.ui.alerts,
+                        desktop: {
+                          ...draft.ui.alerts.desktop,
+                          mute: value
+                            ? [...draft.ui.alerts.desktop.mute, happening]
+                            : draft.ui.alerts.desktop.mute.filter((entry) => entry !== happening)
+                        }
+                      }
+                    })
+                  }
+                />
+              ))}
             </div>
           </fieldset>
           <fieldset className="settings-menus">

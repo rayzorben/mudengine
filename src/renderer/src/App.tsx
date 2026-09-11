@@ -102,6 +102,7 @@ import { useCardDrag } from './hooks/useCardDrag';
 import { useCardResize } from './hooks/useCardResize';
 import { reordered } from './lib/reorder';
 import { useDensity } from './hooks/useDensity';
+import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useOverridablePreference } from './hooks/usePreference';
 import { useTheme } from './hooks/useTheme';
@@ -129,6 +130,7 @@ import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
+import { movementOf, type MovementConfirm } from '@shared/movement';
 import type { CombatTally } from '@shared/tally';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
@@ -137,16 +139,19 @@ import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
 import type { Find } from '@shared/finds';
 import type { Addressed, ResetNotice } from '@shared/ipc';
+import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import {
   findNotices,
+  linkNotices,
   mayNotice,
   noticeFor,
   partyNotices,
   roomNotices,
   rosterNotices,
   vitalNotices,
+  walkNotices,
   wanted,
   type Notice
 } from '@shared/notifications';
@@ -183,6 +188,7 @@ const INITIAL_STATE: ConnectionState = {
   target: null,
   connectedAt: null,
   detail: null,
+  endedBy: null,
   negotiated: {
     localEnabled: [],
     remoteEnabled: [],
@@ -318,6 +324,38 @@ const measureAbove = (): number => heightOf('.dock-above > .card', DOCK_RANGE.mi
 const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_RANGE.min);
 
 /** No characters loaded: one empty list, so the rail's props hold still while it is empty. */
+/**
+ * The questions the palette offers about another player, by name.
+ *
+ * Named rather than derived from the vocabulary: most of the fifty-odd `@`
+ * commands are things nobody asks a person for from a command palette, and a
+ * list that grew one entry per player per remote would bury every other
+ * command in the client. The wording each one goes out in is main's decision
+ * — see `Remotes.ask` — so these are the *questions*, not the spellings.
+ */
+const ASKABLE_REMOTES: ReadonlyArray<{
+  name: RemoteName;
+  /** A literal `t()` each, so `i18n-coverage.test.ts` can read the keys. */
+  label: (name: string) => string;
+  keywords: readonly string[];
+}> = [
+  {
+    name: 'health',
+    label: (name) => t('palette.character.askHealthLabel', { name }),
+    keywords: ['health', 'party']
+  },
+  {
+    name: 'where',
+    label: (name) => t('palette.character.askWhereLabel', { name }),
+    keywords: ['where', 'room']
+  },
+  {
+    name: 'comeback',
+    label: (name) => t('palette.character.askComebackLabel', { name }),
+    keywords: ['comeback', 'come']
+  }
+];
+
 const NO_SESSIONS: SessionSummary[] = [];
 /** A character whose file names no supplies. One list, so a card's props hold still. */
 const NO_SUPPLIES: SupplyItem[] = [];
@@ -468,18 +506,17 @@ interface CardContext {
   builder: BuilderApi | null;
   /** Bring the builder out, from the Map card's own action. Null with `builder`. */
   openBuilder: (() => void) | null;
-  stopWalk(): void;
-  stopLoop(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
   /**
-   * The loop face's controls. `loops` is the character's own list to pick
+   * The Navigation card's transport. `startMoving` takes the picker's choice,
+   * or null where there is none; `loops` is the character's own list to pick
    * from — null on a pinned float, whose list belongs to the shown character.
    */
   loops: ReadonlyArray<{ name: string; stops: number }> | null;
+  startMoving(loop: string | null): void;
+  stopMoving(): void;
   startLoop(name: string): void;
-  pauseLoop(): void;
-  resumeLoop(): void;
   skipLoop(): void;
   reverseLoop(): void;
   /** Whose Player flyout is open from one of this character's listings, lower-cased, or null. */
@@ -534,13 +571,11 @@ interface AddressedActions {
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
-  stopWalk(): void;
-  stopLoop(): void;
+  startMoving(loop: string | null): void;
+  stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
   startLoop(name: string): void;
-  pauseLoop(): void;
-  resumeLoop(): void;
   skipLoop(): void;
   reverseLoop(): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
@@ -683,13 +718,10 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loop={view.loop}
           loops={ctx.loops}
           onChoose={ctx.chooseOnMap}
-          onPauseLoop={ctx.pauseLoop}
-          onResumeLoop={ctx.resumeLoop}
           onReverseLoop={ctx.reverseLoop}
           onSkipLoop={ctx.skipLoop}
-          onStartLoop={ctx.startLoop}
-          onStopLoop={ctx.stopLoop}
-          onStopWalk={ctx.stopWalk}
+          onStart={ctx.startMoving}
+          onStop={ctx.stopMoving}
           walk={view.walk}
         />
       );
@@ -1081,6 +1113,19 @@ export default function App() {
    * noticed*.
    */
   const [resetAsked, setResetAsked] = useState<Addressed<ResetNotice> | null>(null);
+  /**
+   * The character has wandered a long way from what it was walking, and play
+   * is asking before it walks it back. Null while nothing has been asked.
+   *
+   * Held in the window rather than in main, like `resetAsked` beside it: main
+   * decided there was a question (it is the only side that can measure the
+   * distance) and this is the window holding it until somebody answers. The
+   * loop the picker named goes with it, so pressing *walk it* presses exactly
+   * the play that was pressed.
+   */
+  const [wandered, setWandered] = useState<
+    ({ session: SessionId; loop: string | null } & MovementConfirm) | null
+  >(null);
   /*
    * Which character the settings screen opens on.
    *
@@ -2015,7 +2060,26 @@ export default function App() {
    */
   useEffect(() => {
     const off = [
-      api.onState(({ session: id, payload }) => patchView(id, (v) => ({ ...v, state: payload }))),
+      api.onState(({ session: id, payload }) =>
+        patchView(id, (v) => {
+          /*
+           * A character that has left the realm without anybody here asking:
+           * the link dropped, or the low-health hang-up acted for a player who
+           * was not there. `endedBy` is the fact, decided in main, because the
+           * alternative is comparing a translated sentence.
+           */
+          const raised = wanted(alertsRef.current, linkNotices(v.state, payload, Date.now(), t));
+          return {
+            ...v,
+            state: payload,
+            notices: raised.reduce(
+              (log, notice) => capped(log, notice, tuning().noticeLimit),
+              v.notices
+            ),
+            unseen: missed(v.unseen, raised, shownRef.current.has(id))
+          };
+        })
+      ),
       api.onCharacter(({ session: id, payload }) =>
         patchView(id, (v) => {
           /*
@@ -2066,7 +2130,27 @@ export default function App() {
           };
         })
       ),
-      api.onWalk(({ session: id, payload }) => patchView(id, (v) => ({ ...v, walk: payload }))),
+      api.onWalk(({ session: id, payload }) =>
+        patchView(id, (v) => {
+          // The route reaching where it was going: the one piece of good news
+          // kept, because it is the moment somebody who walked away wants.
+          const raised = wanted(
+            alertsRef.current,
+            // The lap is handed in because a lap never arrives: while it is the
+            // movement, the walk underneath is its own footwork.
+            walkNotices(v.walk, payload, v.loop, Date.now(), t)
+          );
+          return {
+            ...v,
+            walk: payload,
+            notices: raised.reduce(
+              (log, notice) => capped(log, notice, tuning().noticeLimit),
+              v.notices
+            ),
+            unseen: missed(v.unseen, raised, shownRef.current.has(id))
+          };
+        })
+      ),
       api.onLoop(({ session: id, payload }) =>
         patchView(id, (v) => ({
           ...v,
@@ -2343,6 +2427,46 @@ export default function App() {
     },
     [paneAt, panes]
   );
+
+  /*
+   * The alerts worth saying outside the window, for a player who has gone and
+   * done something else. Built from what actually landed in each character's
+   * log rather than raised where the notices are folded in: that happens inside
+   * a state updater, and a notification has to happen exactly once.
+   */
+  const alertSubjects = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(views).map(([id, view]) => [
+          id,
+          { notices: view.notices, name: view.character.name }
+        ])
+      ),
+    [views]
+  );
+  const openAlerted = useCallback(
+    (id: SessionId) => {
+      // The window first: a tab switched behind a window nobody can see is a
+      // notification that did nothing.
+      void api.raiseWindow();
+      showSession(id);
+    },
+    [api, showSession]
+  );
+  const sayAboutAlerts = useCallback(
+    (message: string) => {
+      const handle = activeTerminal();
+      if (handle) handle.notice(message);
+      else pendingNotices.current.push(message);
+    },
+    [activeTerminal]
+  );
+  useDesktopAlerts({
+    subjects: alertSubjects,
+    prefs: config.ui.alerts.desktop,
+    onOpen: openAlerted,
+    onRefused: sayAboutAlerts
+  });
 
   /**
    * The rail, dragged into a new order.
@@ -2744,7 +2868,7 @@ export default function App() {
    * row was typed, read and picked out of a list that names the room and its
    * reference. What cannot be walked still opens the panel — a blocked route
    * has conditions to read, and a refusal has a reason — so nothing silently
-   * fails, and `walk:stop` is a keystroke away either way.
+   * fails, and stopping is a keystroke away either way.
    *
    * The rows are `transient`: they exist for as long as the query, and a shelf
    * entry naming one would be a row nobody could reach from the shelf.
@@ -3212,23 +3336,20 @@ export default function App() {
     },
     [chooseOnMap]
   );
-  const stopWalk = useCallback(() => {
-    void api.stopWalk(session);
+  const stopMoving = useCallback(() => {
+    // One stop for both: main works out whether it is a lap or a route, and
+    // stops the leg with the lap — a stopped walk under a live loop is a walk
+    // the loop would just restart. Neither forgets where it was.
+    void api.stopMoving(session);
     // The rail takes no typed input, so a click in it must not keep the caret:
-    // stopping a walk is exactly the moment you want to be able to type.
-    returnFocus();
-  }, [api, returnFocus, session]);
-  const stopLoop = useCallback(() => {
-    // Stops the loop and the leg it was walking; main does both, because a
-    // stopped walk under a live loop is a walk the loop would just restart.
-    void api.stopLoop(session);
+    // stopping is exactly the moment you want to be able to type.
     returnFocus();
   }, [api, returnFocus, session]);
   /*
-   * The loop face's other controls, each handing the caret back like every
-   * click in the rail. A refusal — nothing paused, a plain loop asked to turn
-   * round — is said in the console of the character it was about, the same
-   * way the palette's loop command reports one.
+   * The lap's other controls, each handing the caret back like every click in
+   * the rail. A refusal — nothing looping, a plain loop asked to turn round —
+   * is said in the console of the character it was about, the same way the
+   * palette's loop command reports one.
    */
   const sayRefusal = useCallback(
     (sid: SessionId) => (refused: string | null) => {
@@ -3374,14 +3495,34 @@ export default function App() {
     }),
     [builderCharacterName, builderRealmName, searchRooms, loadMap, draftLoop, saveDraftLoop]
   );
-  const pauseLoop = useCallback(() => {
-    void api.pauseLoop(session);
-    returnFocus();
-  }, [api, returnFocus, session]);
-  const resumeLoop = useCallback(() => {
-    void api.resumeLoop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
+  /*
+   * Play, for any character — the float's own as well as the shown one.
+   *
+   * Three answers and one of them is a question: main measures how far the
+   * character has wandered from whatever it was walking, and past
+   * `tuning.walk.resumeAskSteps` it asks rather than walking it back across
+   * the realm. The window holds the question until somebody answers it, and
+   * pressing play again with `confirmed` is the answer. See `MovementPrompt`.
+   */
+  const startMovingIn = useCallback(
+    (sid: SessionId, loop: string | null, confirmed: number | null) => {
+      void api.startMoving(sid, loop, confirmed).then((answer) => {
+        if ('confirm' in answer) {
+          setWandered({ session: sid, loop, ...answer.confirm });
+          return;
+        }
+        if ('refused' in answer) sayRefusal(sid)(answer.refused);
+      });
+    },
+    [api, sayRefusal]
+  );
+  const startMoving = useCallback(
+    (loop: string | null) => {
+      startMovingIn(session, loop, null);
+      returnFocus();
+    },
+    [returnFocus, session, startMovingIn]
+  );
   const skipLoop = useCallback(() => {
     void api.skipLoopStop(session).then(sayRefusal(session));
     returnFocus();
@@ -3849,21 +3990,29 @@ export default function App() {
        * behalf; the Player flyout's rule ("addressed at the character whose
        * listing was clicked") is the shape to copy then.
        */
-      ...askable.map((name) => ({
-        id: `remote:health:${name.toLowerCase()}`,
-        icon: 'user' as const,
-        label: t('palette.character.askHealthLabel', { name }),
-        keywords: ['ask', 'health', '@health', 'remote', 'party', name],
-        group: 'character' as const,
-        run: () => {
-          void api.askRemote(session, name, 'health').then((sent) => {
-            if (!sent)
-              terminals.current
-                .get(session)
-                ?.notice(t('palette.character.askHealthRefused', { name }));
-          });
-        }
-      })),
+      ...askable.flatMap((name) =>
+        /*
+         * Three questions per person, and they are the three a person actually
+         * asks: how are you, where are you, and come to me. Which *wording*
+         * goes out is main's decision and not offered here — a peer running
+         * this client is asked in its own words and everybody else in
+         * MegaMUD's, automatically (`Remotes.ask`), so the palette names the
+         * question rather than the spelling.
+         */
+        ASKABLE_REMOTES.map((remote) => ({
+          id: `remote:${remote.name}:${name.toLowerCase()}`,
+          icon: 'user' as const,
+          label: remote.label(name),
+          keywords: ['ask', 'remote', `@${remote.name}`, ...remote.keywords, name],
+          group: 'character' as const,
+          run: () => {
+            void api.askRemote(session, name, remote.name).then((sent) => {
+              if (!sent)
+                terminals.current.get(session)?.notice(t('palette.character.askRefused', { name }));
+            });
+          }
+        }))
+      ),
 
       // View: how the client presents itself, rather than what it is doing.
       {
@@ -3978,18 +4127,23 @@ export default function App() {
           });
         }
       })),
-      // Only while a loop is actually running: a stop for a loop that is
-      // not looping is a control that does nothing, which is worse than none.
-      ...(view.loop.status === 'running'
+      /*
+       * Stop, whichever of the two is running — and only while one is: a stop
+       * for a character standing still is a control that does nothing, which
+       * is worse than none. One command rather than the two it replaced, for
+       * the reason the toolbar has one button: *stop* means the same thing
+       * whether the character is routing or looping.
+       */
+      ...(movementOf(view.walk, view.loop).moving
         ? [
             {
-              id: 'loop:stop',
+              id: 'move:stop',
               icon: 'stop' as const,
-              label: t('palette.navigate.loopStopLabel'),
-              hint: t('palette.navigate.loopStopHint'),
-              keywords: ['loop', 'stop', 'halt'],
+              label: t('palette.navigate.moveStopLabel'),
+              hint: t('palette.navigate.moveStopHint'),
+              keywords: ['loop', 'walk', 'route', 'stop', 'halt', 'move'],
               group: 'navigate' as const,
-              run: () => void api.stopLoop(session)
+              run: () => void api.stopMoving(session)
             }
           ]
         : []),
@@ -4447,6 +4601,8 @@ export default function App() {
   selectPlayerRef.current = selectPlayer;
   const sayRefusalRef = useRef(sayRefusal);
   sayRefusalRef.current = sayRefusal;
+  const startMovingRef = useRef(startMovingIn);
+  startMovingRef.current = startMovingIn;
 
   /**
    * Re-base one character's Combat Stats card to its totals as they stand.
@@ -4484,17 +4640,14 @@ export default function App() {
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
-        stopWalk: () => void api.stopWalk(sid),
-        stopLoop: () => void api.stopLoop(sid),
+        startMoving: (loop) => startMovingRef.current(sid, loop, null),
+        stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
         // in `App` rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
         resetStats: () => resetStatsRef.current(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
-        pauseLoop: () => void api.pauseLoop(sid),
-        resumeLoop: () =>
-          void api.resumeLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         skipLoop: () =>
           void api.skipLoopStop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         reverseLoop: () =>
@@ -4603,8 +4756,8 @@ export default function App() {
         realmAt: loadedAt,
         builder: shown ? builderApi : null,
         openBuilder: shown ? openBuilder : null,
-        stopWalk: shown ? stopWalk : bound.stopWalk,
-        stopLoop: shown ? stopLoop : bound.stopLoop,
+        startMoving: shown ? startMoving : bound.startMoving,
+        stopMoving: shown ? stopMoving : bound.stopMoving,
         // Addressed always: a pinned float's Reset re-bases that character's
         // card, never the one being watched.
         resetStats: bound.resetStats,
@@ -4612,8 +4765,6 @@ export default function App() {
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
         startLoop: shown ? startLoop : bound.startLoop,
-        pauseLoop: shown ? pauseLoop : bound.pauseLoop,
-        resumeLoop: shown ? resumeLoop : bound.resumeLoop,
         skipLoop: shown ? skipLoop : bound.skipLoop,
         reverseLoop: shown ? reverseLoop : bound.reverseLoop,
         subject: flyout !== null && flyout.session === sid ? playerKey(flyout.name) : null,
@@ -4640,13 +4791,10 @@ export default function App() {
           switches: switchesFor(sid),
           connected: v.state.phase === 'connected',
           dialling: v.state.phase === 'connecting' || v.state.phase === 'closing',
-          loop:
-            v.loop.status === 'running'
-              ? 'running'
-              : v.loop.status === 'paused'
-                ? 'paused'
-                : 'idle',
-          walking: v.walk.status === 'walking',
+          // One reading of the two progresses, shared with the Navigation
+          // card, so the button and the card cannot disagree about whether
+          // this character is going anywhere.
+          movement: movementOf(v.walk, v.loop),
           /*
            * The same function main will run when the button is pressed, over
            * the same two facts — so a button that is lit is a button that will
@@ -4659,10 +4807,10 @@ export default function App() {
             void api.setAutomationSwitch(sid, name, on).then(sayRefusal(sid)),
           connect: () => dial(sid),
           disconnect: () => hangUp(sid),
-          pauseLoop: shown ? pauseLoop : () => void api.pauseLoop(sid),
-          resumeLoop: shown ? resumeLoop : () => void api.resumeLoop(sid).then(sayRefusal(sid)),
-          stopLoop: shown ? stopLoop : () => void api.stopLoop(sid),
-          stopWalk: shown ? stopWalk : () => void api.stopWalk(sid),
+          // The picker is the card's; the toolbar presses play on whatever
+          // this character was last walking.
+          startMoving: () => startMovingIn(sid, null, null),
+          stopMoving: shown ? stopMoving : () => void api.stopMoving(sid),
           /*
            * The modal is the shown character's, like the route panel: it files
            * into a scope and starts a loop, and both are addressed at whoever
@@ -4712,13 +4860,12 @@ export default function App() {
       selectPlayer,
       session,
       size,
-      stopLoop,
-      stopWalk,
+      startMoving,
+      startMovingIn,
+      stopMoving,
       navigationVisible,
       loops,
       startLoop,
-      pauseLoop,
-      resumeLoop,
       skipLoop,
       reverseLoop,
       sayRefusal
@@ -5441,6 +5588,36 @@ export default function App() {
         not cover — automation rules, per-character UI — stays in the YAML,
         which is what YAML is good at, and the screen says where the files are.
       */}
+      {/*
+        Play asked back: the character has wandered a long way from what it was
+        walking. The same play is pressed again, `confirmed`, or the movement
+        is left stopped exactly where it was.
+      */}
+      <MovementPrompt
+        asked={
+          wandered === null
+            ? null
+            : { kind: wandered.kind, name: wandered.name, steps: wandered.steps }
+        }
+        characterName={
+          profiles.find((profile) => profile.id === wandered?.session)?.name ??
+          wandered?.session ??
+          ''
+        }
+        onStay={() => {
+          setWandered(null);
+          returnFocus();
+        }}
+        onWalk={() => {
+          const asked = wandered;
+          setWandered(null);
+          // The figure that was on screen goes back with the answer: agreeing
+          // to a journey is agreeing to *that* journey, and main asks again if
+          // it has grown while the dialog stood.
+          if (asked) startMovingIn(asked.session, asked.loop, asked.steps);
+          returnFocus();
+        }}
+      />
       <ResetPrompt
         characterName={
           profiles.find((profile) => profile.id === resetAsked?.session)?.name ??

@@ -65,7 +65,7 @@ palette:
     navigate:
       - route
       - 'loop:*'
-      - 'loop:stop'
+      - 'move:stop'
     # Nothing in View is reached often enough to earn a permanent row; expand
     # the heading, or pin what you use with one click.
     layout:
@@ -92,8 +92,8 @@ palette:
 # `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
 # `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,
 # `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
-# on, by clicking rooms on the map), `loop:toggle`, `loop:stop` and
-# `walk:stop`.
+# on, by clicking rooms on the map) and `move:toggle` -- one key for the whole
+# transport, which goes or stops whichever of a route and a loop is on.
 toolbar:
   pinned:
     - connect
@@ -112,9 +112,7 @@ toolbar:
     # one you stop toggling.
     - search
     - 'loop:open'
-    - 'loop:toggle'
-    - 'loop:stop'
-    - 'walk:stop'
+    - 'move:toggle'
 
 # Every number the client uses to decide something.
 #
@@ -573,6 +571,23 @@ tuning:
     # How many holds run back to back before it walks on regardless.
     maxHolds: 3
 
+    # How far the character may have wandered from what it was walking before
+    # pressing play asks about it first.
+    #
+    # A stop is a pause that may or may not be permanent, so the thing it
+    # stopped is still there hours later -- and the character may have been
+    # walked across the realm, or killed and reborn in a temple on another map,
+    # in between. Picking it back up is then a journey in its own right that
+    # nobody asked for, which on a realm full of wandering monsters is not free.
+    # Past this many steps the client answers play with a question.
+    #
+    # Measured in the steps the resume would actually walk: for a route, how
+    # many *more* than it still owed when it stopped, so walking on down a
+    # route you were already on never asks however long it is; for a lap, the
+    # distance to the stop it was heading for, since a leg is short by
+    # construction and that distance is how far off the lap you are.
+    resumeAskSteps: 30
+
     # How long a route waits out a fight before it gives up on the journey.
     #
     # A fight normally ends by itself — the monster dies, the character runs,
@@ -586,6 +601,22 @@ tuning:
     # Generous on purpose: a fight this client is actually fighting is seconds,
     # so two minutes only ever expires on one it is not.
     fightHoldMs: 120000
+
+    # How long a walk stands still for a condition before spending one step to
+    # find out whether it is over.
+    #
+    # A retry, not a deadline. The other bounds here give up; this one asks. A
+    # hold ends when the realm says so, and the client reads twenty-two of those
+    # sentences: the two fixed in the server's own code, and the twenty the
+    # message table pairs with a spell the realm marks as holding. A realm is
+    # free to ship a twenty-third, and a wear-off nothing here can read would
+    # otherwise stand a route still for the evening.
+    #
+    # One step settles it, and it is the cheapest thing that can: the server
+    # either walks the character or prints the holding spell's own sentence
+    # again, which re-arms the hold with a fresh window. Being wrong costs one
+    # command every half minute; having no bound at all costs the journey.
+    heldFallbackMs: 30000
 
     # How much longer than this realm's own slowest answer a step may go
     # unanswered before the walk sends one bare Enter to force a status line out
@@ -736,6 +767,21 @@ tuning:
     # twice in a minute has been answered once; a reply per line is a client
     # arguing with them.
     replyEveryMs: 600000
+
+  # The `@` conversation with another player's client.
+  remotes:
+    # How long a question sent to another client waits for its answer before it
+    # is written off.
+    #
+    # It decides one thing only: whether an extended remote — a question only
+    # this client can answer — went to somebody who is not running it, so the
+    # plain wording is sent instead and the player is recorded as not reachable
+    # that way. Erring long costs a question its latency once; erring short
+    # records somebody as the wrong client on a slow evening.
+    #
+    # Not measured against a peer: there has never been a second one of these
+    # clients to capture. Revisit with a capture.
+    replyMs: 30000
 
   # How many commands one press or one `@` may spend.
   #
@@ -1085,6 +1131,14 @@ tuning:
 
     # Remembered notices. Same reasoning, same generosity.
     noticeLimit: 400
+
+    # The least time between two desktop notifications of the same kind about
+    # the same character. Without it the client raises one per flush that
+    # carries a new alert, and being attacked is a fresh line several times a
+    # round -- an evening away would leave hundreds of them. Per kind, so a
+    # floor on being attacked cannot swallow the notice that the character
+    # then died.
+    desktopAlertGapMs: 60000
 
     # The most panes worth having; see docs/profiles.md §7.3.
     maxPanes: 4

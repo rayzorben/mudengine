@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { AUTOMATION_SWITCH_NAMES, automationSwitches, DEFAULT_CONFIG } from '@shared/config';
 import { DEFAULT_INTERNAL } from '@shared/internal';
 
+import { NOT_MOVING, type Movement } from '@shared/movement';
+
 import { shippedToolbar } from '../../hooks/useToolbarPins';
 import { TOOLBAR_ACTIONS, toolbarButtons, type ToolbarSubject } from '../toolbar';
 
@@ -10,21 +12,21 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   switches: automationSwitches(DEFAULT_CONFIG.automation),
   connected: false,
   dialling: false,
-  loop: 'idle',
-  walking: false,
+  movement: NOT_MOVING,
   canRestoreGear: false,
   setSwitch: vi.fn(),
   restoreGear: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
-  pauseLoop: vi.fn(),
-  resumeLoop: vi.fn(),
-  stopLoop: vi.fn(),
-  stopWalk: vi.fn(),
+  startMoving: vi.fn(),
+  stopMoving: vi.fn(),
   openLoops: vi.fn(),
   openBuilder: vi.fn(),
   ...over
 });
+
+const going = (kind: 'route' | 'loop'): Movement => ({ kind, moving: true, resumable: false });
+const stopped = (kind: 'route' | 'loop'): Movement => ({ kind, moving: false, resumable: true });
 
 describe('the toolbar vocabulary', () => {
   /*
@@ -38,9 +40,8 @@ describe('the toolbar vocabulary', () => {
   it('leaves the loop shelf off a toolbar that cannot open one', () => {
     const ids = toolbarButtons(subject({ openLoops: null })).map((button) => button.id);
     expect(ids).not.toContain('loop:open');
-    // The rest of the transport still addresses the float's own character.
-    expect(ids).toContain('loop:stop');
-    expect(ids).toContain('walk:stop');
+    // The transport still addresses the float's own character.
+    expect(ids).toContain('move:toggle');
   });
 
   it('offers every automation switch and every action, exactly once', () => {
@@ -56,7 +57,7 @@ describe('the toolbar vocabulary', () => {
    */
   it('keeps the same order whatever is on the row', () => {
     const first = toolbarButtons(subject()).map((button) => button.id);
-    const second = toolbarButtons(subject({ connected: true, loop: 'running' })).map(
+    const second = toolbarButtons(subject({ connected: true, movement: going('loop') })).map(
       (button) => button.id
     );
     expect(second).toEqual(first);
@@ -98,17 +99,33 @@ describe('the toolbar vocabulary', () => {
     expect(setSwitch).toHaveBeenCalledWith('retreat', true);
   });
 
-  /* One button, two words: a loop is either running or held. */
-  it('turns the loop button round rather than offering two', () => {
-    const running = toolbarButtons(subject({ loop: 'running' })).find(
-      (button) => button.id === 'loop:toggle'
-    )!;
-    const paused = toolbarButtons(subject({ loop: 'paused' })).find(
-      (button) => button.id === 'loop:toggle'
-    )!;
-    expect(running.icon).toBe('pause');
-    expect(paused.icon).toBe('play');
-    expect(running.label).not.toBe(paused.label);
+  /*
+   * One button, two words — and the same two words whichever of the pair is
+   * on. *Stop* means the same thing for a route as for a lap, which is the
+   * whole reason this replaced three buttons.
+   */
+  it('turns the one transport button round rather than offering two', () => {
+    const key = (movement: Movement) =>
+      toolbarButtons(subject({ movement })).find((button) => button.id === 'move:toggle')!;
+    expect(key(going('loop')).icon).toBe('stop');
+    expect(key(going('route')).icon).toBe('stop');
+    expect(key(going('route')).label).toBe(key(going('loop')).label);
+    expect(key(stopped('loop')).icon).toBe('play');
+    expect(key(going('loop')).label).not.toBe(key(stopped('loop')).label);
+  });
+
+  it('presses the half that is live', () => {
+    const startMoving = vi.fn();
+    const stopMoving = vi.fn();
+    const key = (movement: Movement) =>
+      toolbarButtons(subject({ movement, startMoving, stopMoving })).find(
+        (button) => button.id === 'move:toggle'
+      )!;
+    key(going('route')).run();
+    expect(stopMoving).toHaveBeenCalledTimes(1);
+    expect(startMoving).not.toHaveBeenCalled();
+    key(stopped('loop')).run();
+    expect(startMoving).toHaveBeenCalledTimes(1);
   });
 
   /*
@@ -116,14 +133,15 @@ describe('the toolbar vocabulary', () => {
    * moves is one nobody can reach for.
    */
   it('greys the transport when there is nothing to transport', () => {
-    const idle = toolbarButtons(subject());
-    expect(idle.find((button) => button.id === 'loop:toggle')!.disabled).toBe(true);
-    expect(idle.find((button) => button.id === 'loop:stop')!.disabled).toBe(true);
-    expect(idle.find((button) => button.id === 'walk:stop')!.disabled).toBe(true);
-
-    const busy = toolbarButtons(subject({ loop: 'running', walking: true }));
-    expect(busy.find((button) => button.id === 'loop:stop')!.disabled).toBe(false);
-    expect(busy.find((button) => button.id === 'walk:stop')!.disabled).toBe(false);
+    const key = (movement: Movement) =>
+      toolbarButtons(subject({ movement })).find((button) => button.id === 'move:toggle')!;
+    // Nothing walked and nothing remembered: there is nothing for play to do.
+    expect(key(NOT_MOVING).disabled).toBe(true);
+    // A route that arrived is the movement the card reports on, and there is
+    // still nothing left of it to walk.
+    expect(key({ kind: 'route', moving: false, resumable: false }).disabled).toBe(true);
+    expect(key(stopped('route')).disabled).toBe(false);
+    expect(key(going('loop')).disabled).toBe(false);
   });
 });
 
@@ -132,11 +150,11 @@ describe('the shipped toolbar row', () => {
 
   it('names only buttons this build actually has', () => {
     const shipped = shippedToolbar(
-      ['connect', 'automation', 'combat', 'retaliate', 'loot', 'loop:toggle', 'loop:stop'],
+      ['connect', 'automation', 'combat', 'retaliate', 'loot', 'move:toggle', 'loop:stop'],
       ids
     );
     expect([...shipped].sort()).toEqual(
-      ['automation', 'combat', 'connect', 'loop:stop', 'loop:toggle', 'loot', 'retaliate'].sort()
+      ['automation', 'combat', 'connect', 'move:toggle', 'loot', 'retaliate'].sort()
     );
   });
 
@@ -161,7 +179,7 @@ describe('the loop builder on the toolbar', () => {
   });
 
   it('sits beside the shelf, and is never greyed', () => {
-    const buttons = toolbarButtons(subject({ loop: 'idle' }));
+    const buttons = toolbarButtons(subject());
     const ids = buttons.map((button) => button.id);
     expect(ids.indexOf('loop:build')).toBe(ids.indexOf('loop:open') + 1);
     expect(buttons.find((button) => button.id === 'loop:build')?.disabled).toBeUndefined();

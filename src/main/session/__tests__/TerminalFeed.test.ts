@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ABANDON_MS,
+  afterStyling,
   BARE_ENTER,
   PARTIAL_DELAY_MS,
   rawIndexOf,
@@ -277,22 +278,40 @@ describe('a status line the client draws itself', () => {
 
   it("paints its own line in the prompt's place, and the echo after it as sent", () => {
     const h = harness(['rm'], designer);
-    // The newline before is kept, the prompt's own colour and text replaced,
-    // the reset the server prints after it kept.
-    expect(h.chunk('\r\n' + PROMPT)).toBe('\r\n' + DRAWN + '\x1b[0m');
+    // The newline before is kept, the prompt's own colour and text replaced —
+    // the reset the server prints after it among them, because the state the
+    // row ends in is the drawn line's.
+    expect(h.chunk('\r\n' + PROMPT)).toBe('\r\n' + DRAWN);
     expect(h.chunk('n')).toBe('n');
     expect(h.flush()).toBe('');
   });
 
   it('draws a prompt that arrives whole with its terminator', () => {
     const h = harness(['rm'], designer);
-    expect(h.chunk(PROMPT + PROMPT_REPAINT)).toBe(DRAWN + '\x1b[0m' + PROMPT_REPAINT);
+    expect(h.chunk(PROMPT + PROMPT_REPAINT)).toBe(DRAWN + PROMPT_REPAINT);
+  });
+
+  /*
+   * A template ending `…]: {cyan}` asks for what is typed next to be cyan, and
+   * both realm families print `ESC[0m` a byte after the colon — GreaterMUD
+   * (`orohost`, 2026-09-11) and Paradigm (`paramud`, same day) alike. Kept, it
+   * landed on the design's ending and the echo came back in the default ink,
+   * which is how the tag was reported as doing nothing.
+   */
+  it('leaves the colour a design ends in standing over the echo', () => {
+    const ending = '\x1b[0;1mHP 34/?\x1b[0;36m';
+    const h = harness(['rm'], (plain) => {
+      const match = STATUS_LINE.exec(plain);
+      return match ? { rendered: ending, from: 0, to: match[0].length } : null;
+    });
+    expect(h.chunk('\x1b[0;36m[HP=34/MA=12]:\x1b[0m')).toBe(ending);
+    expect(h.chunk('n')).toBe('n');
   });
 
   it('holds a prompt split across two chunks and draws it once', () => {
     const h = harness(['rm'], designer);
     expect(h.chunk('\x1b[1;32m[HP=3')).toBe('');
-    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN + '\x1b[0m');
+    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN);
     expect(h.released).toEqual([]);
   });
 
@@ -333,7 +352,7 @@ describe('a status line the client draws itself', () => {
     expect(h.chunk(PROMPT_REPAINT + '\x1b[1;32m[HP=3')).toBe(PROMPT_REPAINT);
     vi.advanceTimersByTime(PARTIAL_DELAY_MS + 1);
     expect(h.released).toEqual([]);
-    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN + '\x1b[0m');
+    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN);
   });
 
   it('holds a prompt cut between its bracket and its colon, and draws it once the colon lands', () => {
@@ -362,7 +381,7 @@ describe('a status line the client draws itself', () => {
     h.flush();
     h.feed.sent('rm', 'automation');
     expect(h.chunk('rm\r\nLocation: 1,2147\r\n')).toBe('');
-    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + DRAWN + '\x1b[0m');
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + DRAWN);
     expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
   });
 
@@ -371,6 +390,14 @@ describe('a status line the client draws itself', () => {
     expect(rawIndexOf(text, 0)).toBe(0);
     expect(rawIndexOf(text, 8)).toBe('\x1b[1;32m[HP=34]:'.length);
     expect(rawIndexOf(text, 99)).toBe(text.length);
+  });
+
+  it('steps past the styling after a prompt and stops at everything else', () => {
+    // Every SGR in a run, and nothing that moves the cursor or ends the row.
+    expect(afterStyling('\x1b[0m\x1b[1;32mn', 0)).toBe('\x1b[0m\x1b[1;32m'.length);
+    expect(afterStyling('\x1b[0m' + PROMPT_REPAINT, 0)).toBe('\x1b[0m'.length);
+    expect(afterStyling('n\x1b[0m', 0)).toBe(0);
+    expect(afterStyling('', 0)).toBe(0);
   });
 });
 

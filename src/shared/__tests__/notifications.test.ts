@@ -1,14 +1,22 @@
+import { NO_LOOP } from '../loops';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 import {
+  desktopAlert,
+  linkNotices,
   noticeFor,
   partyNotices,
+  raisable,
   roomNotices,
   rosterNotices,
-  vitalNotices
+  vitalNotices,
+  walkNotices,
+  type Notice
 } from '../notifications';
+import { IDLE_WALK } from '../walk';
+import type { ConnectionState } from '../types';
 import { asUiDict, makeT } from '../i18n';
 import { EMPTY_CHARACTER, type CharacterState } from '../character';
 import type { Block, BlockType } from '../blocks';
@@ -92,12 +100,139 @@ describe('which blocks are worth a notice', () => {
   });
 });
 
+const LINK: ConnectionState = {
+  phase: 'connected',
+  target: null,
+  connectedAt: 1000,
+  detail: null,
+  endedBy: null,
+  negotiated: {
+    localEnabled: [],
+    remoteEnabled: [],
+    binary: false,
+    suppressGoAhead: false,
+    remoteEcho: false
+  }
+};
+
+describe('what is worth saying outside the window', () => {
+  const alert = (over: Partial<Notice>): Notice => ({
+    id: 'x',
+    at: 1,
+    severity: 'info',
+    channel: 'room',
+    text: 'something',
+    ...over
+  });
+
+  it('answers critical for a ranked alert that names no happening', () => {
+    expect(desktopAlert(alert({ severity: 'critical' }))).toBe('critical');
+    expect(desktopAlert(alert({ severity: 'warning' }))).toBeNull();
+  });
+
+  /*
+   * The named four outrank the ranking: a player attacking you is critical as
+   * well, and somebody who muted `attacked` has said what they meant. Raising
+   * it again as `critical` would make the switch a lie.
+   */
+  it('lets a muted happening stay muted, however it is ranked', () => {
+    const attacked = alert({ severity: 'critical', desktop: 'attacked' });
+    expect(desktopAlert(attacked)).toBe('attacked');
+    expect(raisable({ enabled: true, mute: ['attacked'] }, attacked)).toBeNull();
+    expect(raisable({ enabled: true, mute: [] }, attacked)).toBe('attacked');
+  });
+
+  it('raises nothing at all when it is switched off', () => {
+    expect(raisable({ enabled: false, mute: [] }, alert({ severity: 'critical' }))).toBeNull();
+  });
+});
+
+describe('a route reaching where it was going', () => {
+  const arrived = { ...IDLE_WALK, status: 'arrived' as const, destination: 'Bank of Godfrey' };
+
+  it('alerts on the crossing into arrived, naming where', () => {
+    const raised = walkNotices(IDLE_WALK, arrived, NO_LOOP, 5, t);
+    expect(raised).toHaveLength(1);
+    expect(raised[0]!.desktop).toBe('arrived');
+    expect(raised[0]!.channel).toBe('movement');
+    expect(raised[0]!.text).toContain('Bank of Godfrey');
+  });
+
+  it('alerts once, not on every push while it stands arrived', () => {
+    expect(walkNotices(arrived, arrived, NO_LOOP, 6, t)).toHaveLength(0);
+  });
+
+  it('says nothing about a walk that stopped', () => {
+    const stopped = { ...IDLE_WALK, status: 'stopped' as const, reason: 'a shut door' };
+    expect(walkNotices(IDLE_WALK, stopped, NO_LOOP, 7, t)).toHaveLength(0);
+  });
+
+  /*
+   * A lap never arrives. Its legs do, every few seconds — a two-room lap
+   * raised one of these almost every five seconds, which is the client
+   * announcing its own footwork rather than telling anybody anything.
+   */
+  it('says nothing about a leg landing under a running loop', () => {
+    const looping = { ...NO_LOOP, status: 'running' as const, name: 'Arena' };
+    expect(walkNotices(IDLE_WALK, arrived, looping, 8, t)).toHaveLength(0);
+  });
+
+  /*
+   * And a lap that is merely *stopped* does not silence a route: the character
+   * is walking somewhere the player asked for, with a lap waiting to be
+   * pressed play on when it gets there.
+   */
+  it('still announces a route walked while a lap sits stopped', () => {
+    const waiting = { ...NO_LOOP, status: 'stopped' as const, name: 'Arena' };
+    expect(walkNotices(IDLE_WALK, arrived, waiting, 9, t)).toHaveLength(1);
+  });
+});
+
+describe('a character leaving the realm', () => {
+  it('says nothing when the player pressed Disconnect', () => {
+    expect(linkNotices(LINK, { ...LINK, phase: 'closed', endedBy: 'player' }, 8, t)).toHaveLength(
+      0
+    );
+  });
+
+  it('alerts when the link went without anybody here asking', () => {
+    const raised = linkNotices(LINK, { ...LINK, phase: 'closed', endedBy: 'realm' }, 9, t);
+    expect(raised).toHaveLength(1);
+    expect(raised[0]!.desktop).toBe('hungup');
+    expect(raised[0]!.channel).toBe('session');
+  });
+
+  it('alerts when the client hung up for an absent player, in its own words', () => {
+    const byClient = { ...LINK, phase: 'closed' as const, endedBy: 'client' as const };
+    const raised = linkNotices(LINK, byClient, 10, t);
+    expect(raised).toHaveLength(1);
+    expect(raised[0]!.text).not.toBe(
+      linkNotices(LINK, { ...LINK, phase: 'closed', endedBy: 'realm' }, 10, t)[0]!.text
+    );
+    // And once: a closed state republished says the same thing again.
+    expect(linkNotices(byClient, byClient, 11, t)).toHaveLength(0);
+  });
+});
+
 describe('a vital that has just got worse', () => {
   it('alerts on the crossing into critical', () => {
     const raised = vitalNotices(withVitals(60, 100), withVitals(20, 100), BOUNDS, t);
     expect(raised).toHaveLength(1);
     expect(raised[0]!.severity).toBe('critical');
     expect(raised[0]!.channel).toBe('vitals');
+    // And is the happening somebody switches on to be told about away from the
+    // window, rather than merely one of the critical ones.
+    expect(raised[0]!.desktop).toBe('hurt');
+  });
+
+  /*
+   * Health only. Mana running out is a decision about whether to cast, and
+   * nobody makes that from another room.
+   */
+  it('names no desktop happening for a caution crossing, or for mana', () => {
+    expect(vitalNotices(withVitals(90, 100), withVitals(40, 100), BOUNDS, t)[0]!.desktop).toBe(
+      undefined
+    );
   });
 
   it('alerts once, not on every status line below the line', () => {

@@ -4,6 +4,8 @@ import zlib from 'node:zlib';
 import path from 'node:path';
 
 import { WorldGraph } from '../WorldGraph';
+import { holdsMovement } from '../../../shared/spellcraft';
+import { parseSpellMessagesCsv } from '../../../shared/spell-messages';
 import {
   ABILITY_INTERNAL,
   ABILITY_SHAPE,
@@ -687,5 +689,53 @@ describe('the shipped realm places its monsters', () => {
         expect(graph!.get(room.map, room.room)?.name.trim()).toBe(spawn.roomName);
       }
     }
+  });
+});
+
+/*
+ * Which spells stand a character still, and in what words — the two halves of
+ * one fact, kept in two files the realm ships: the `HoldPerson` ability row in
+ * the world data, and the effect's own sentences in the message table.
+ *
+ * Reported live 2026-09-11 as a walk that stopped: `ne`, answered with `You
+ * are flat on your back!` and nothing else. A claim about the shipped *data*
+ * rather than about a fixture, for `resolve.test.ts`'s reason — what is being
+ * asserted is that these sentences cannot be enumerated by hand in
+ * `patterns.ts`, and only the real realm can say that.
+ */
+describe.runIf(available)('the spells that hold a character still', () => {
+  /** The realm's own message rows, exactly as the client loads them. */
+  const messages = parseSpellMessagesCsv(
+    fs.readFileSync(path.resolve('resources/world/spell-messages.csv'), 'utf8')
+  );
+
+  const holding = (): Array<{ n: string; ab?: Array<[number, number]> }> =>
+    shipped('spells').filter((spell) => holdsMovement({ abilities: spell.ab }));
+
+  it('finds the family the realm marks, and it is far more than paralysis', () => {
+    const names = holding().map((spell) => spell.n);
+    expect(names).toContain('knockdown');
+    expect(names).toContain('hold person');
+    expect(names).toContain('entangle');
+    expect(names).toContain('thick webbing');
+    // `Your legs are paralyzed!` is one sentence of many: a hand-written list
+    // of patterns would have had to carry the rest and keep them in step.
+    expect(names.length).toBeGreaterThan(30);
+  });
+
+  it('states both ends of the knockdown the walk was stopped by', () => {
+    const spell = graph!.spellNamed('knockdown');
+    expect(spell).not.toBeNull();
+    expect(holdsMovement(spell)).toBe(true);
+    const row = messages.find((entry) => entry.spell === 'knockdown');
+    expect(row?.start).toBe('You are flat on your back!');
+    expect(row?.stop).toBe('You get back on your feet.');
+  });
+
+  /* The negative control: a duration spell that lasts and holds nobody. */
+  it('does not call an ordinary blessing a hold', () => {
+    const bless = graph!.spellNamed('bless');
+    expect(bless).not.toBeNull();
+    expect(holdsMovement(bless)).toBe(false);
   });
 });

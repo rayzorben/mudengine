@@ -15,6 +15,7 @@ import {
   toCssFontStack,
   type AppConfig
 } from '../config';
+import { DENOMINATIONS } from '../character';
 
 describe('normalizeRewrites', () => {
   it('keeps every design naming an entity, drops the rest, and reads the bands', () => {
@@ -732,5 +733,40 @@ describe('the automation switches the toolbar flips', () => {
     expect(asAutomationSwitch('combat.enabled')).toBeNull();
     expect(asAutomationSwitch(7)).toBeNull();
     expect(asAutomationSwitch('toString')).toBeNull();
+  });
+});
+
+/*
+ * The two coin lists are exclusive, and the file is where that is enforced: a
+ * coin on both would be picked up and dropped for ever, one command each way.
+ */
+describe('the coins collected and the coins shed', () => {
+  const loot = (raw: Record<string, unknown>) =>
+    normalizeConfig({ automation: { loot: raw } }).automation.loot;
+
+  it('ships collecting all five and shedding none', () => {
+    expect(DEFAULT_CONFIG.automation.loot.coinKinds).toEqual([...DENOMINATIONS]);
+    expect(DEFAULT_CONFIG.automation.loot.discardKinds).toEqual([]);
+  });
+
+  it('keeps a coin a file names on both lists, rather than shedding it', () => {
+    // Only one of the two readings throws money away, so an ambiguous file
+    // resolves towards keeping.
+    const after = loot({ coinKinds: ['gold', 'copper'], discardKinds: ['copper', 'silver'] });
+    expect(after.coinKinds).toEqual(['gold', 'copper']);
+    expect(after.discardKinds).toEqual(['silver']);
+  });
+
+  it('refuses a word that is not a denomination', () => {
+    expect(loot({ coinKinds: [], discardKinds: ['copper', 'groats'] }).discardKinds).toEqual([
+      'copper'
+    ]);
+  });
+
+  it('leaves a coin on neither list alone, which is how a purse is kept', () => {
+    const after = loot({ coinKinds: ['gold'], discardKinds: ['runic'] });
+    expect(after.coinKinds).toEqual(['gold']);
+    expect(after.discardKinds).toEqual(['runic']);
+    for (const list of [after.coinKinds, after.discardKinds]) expect(list).not.toContain('copper');
   });
 });

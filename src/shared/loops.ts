@@ -362,8 +362,17 @@ export function nextStop(
  * What a running loop reports. Here rather than beside the runner because the
  * renderer draws it and `src/shared/` is the one place all three processes may
  * import from.
+ *
+ * **There is no `paused`** (2026-09-11). There was, and beside `stopped` it
+ * was a distinction the player had to hold and the client could not keep: a
+ * lap the person paused and a lap that gave up on three stops in a row were
+ * drawn with different words, offered different controls, and both left the
+ * character standing in a corridor. Both are now `stopped`, which keeps the
+ * loop and its place — `resume` plans afresh from wherever the character
+ * actually is, which is what the old `resume` did for a pause anyway. A stop
+ * is a pause that may or may not be permanent. See `src/shared/movement.ts`.
  */
-export type LoopStatus = 'idle' | 'running' | 'paused' | 'stopped';
+export type LoopStatus = 'idle' | 'running' | 'stopped';
 
 /**
  * Why a running loop is standing still, when it is. `fight` is the point of

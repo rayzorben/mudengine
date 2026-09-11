@@ -365,12 +365,24 @@ const TalkLine = memo(function TalkLine(props: TalkLineProps) {
   );
 });
 
-interface ComposerProps {
-  /** The channel the box is pointed at, and every channel it can be pointed at. */
+/** The channel the box is pointed at, and every channel it can be pointed at. */
+interface ComposerPicker {
   channel: TalkChannel;
   options: readonly TalkChannel[];
   /** Points the composer at a channel, remembering it where it can be. */
   point(next: TalkChannel): void;
+}
+
+interface ComposerProps {
+  /**
+   * The picker, or `null` where the box sends what was typed and nothing else.
+   *
+   * Null is the shipped answer (`CardSettings.talkChannels`). One prop and not
+   * a flag beside a channel, because a channel showing with no picker to change
+   * it is a state nobody can get out of: the word would go in front of every
+   * line with no control on screen saying so.
+   */
+  picker: ComposerPicker | null;
   /** Sends a line — `ConversationCardProps.onSend`. Absent offline, and the box with it. */
   send?(line: string): void;
 }
@@ -386,7 +398,7 @@ interface ComposerProps {
  * the box. A key pressed here now redraws a form of two controls; the figures
  * are in `mudengine-ui` under *the window redraws what changed*.
  */
-function Composer({ channel, options, point, send }: ComposerProps) {
+function Composer({ picker, send }: ComposerProps) {
   const [draft, setDraft] = useState('');
   /*
    * What has been said from this box, newest first, and where the arrows are
@@ -408,25 +420,39 @@ function Composer({ channel, options, point, send }: ComposerProps) {
   if (!send) return null;
 
   const say = (): void => {
-    /*
-     * Still verbatim, and now with a channel in front of it when one is needed.
-     *
-     * The realm's own vocabulary is the vocabulary — `gos`, `auc`, `br`, `gb` —
-     * and a client that rewrote it would be a second thing to keep in step with
-     * a command table it does not own. What `compose` adds is the *prefix*, and
-     * only when the line does not already begin with a channel: type `br yo`
-     * and it broadcasts and moves the picker, so the next line goes there too
-     * without being told again. See `shared/talk.ts`.
-     */
-    const said = compose(draft, channel);
-    if (said === null) return;
-    if (said.channel.word !== channel.word) point(said.channel);
-    /*
-     * An address with nothing after it — `/Soul` — moves the picker and sends
-     * nothing. It names somebody to talk to and says nothing to them, and the
-     * server's answer to that is a scolding that costs a command.
-     */
-    if (said.command !== null) send(said.command);
+    if (picker === null) {
+      /*
+       * The line as it was typed, spacing and all — main trims before it
+       * interprets anything (`SessionManager.send`), so nothing here has to.
+       *
+       * An empty box is the one thing not sent, and deliberately: main reads a
+       * bare Return as a reread of the room, and Down past the newest line is
+       * how a recall is abandoned. Those two together would make *put the box
+       * back* into *nudge the server*.
+       */
+      if (draft.trim().length === 0) return;
+      send(draft);
+    } else {
+      /*
+       * Verbatim still, and with a channel in front of it when one is needed.
+       *
+       * The realm's own vocabulary is the vocabulary — `gos`, `auc`, `br`,
+       * `gb` — and a client that rewrote it would be a second thing to keep in
+       * step with a command table it does not own. What `compose` adds is the
+       * *prefix*, and only when the line does not already begin with a channel:
+       * type `br yo` and it broadcasts and moves the picker, so the next line
+       * goes there too without being told again. See `shared/talk.ts`.
+       */
+      const said = compose(draft, picker.channel);
+      if (said === null) return;
+      if (said.channel.word !== picker.channel.word) picker.point(said.channel);
+      /*
+       * An address with nothing after it — `/Soul` — moves the picker and sends
+       * nothing. It names somebody to talk to and says nothing to them, and the
+       * server's answer to that is a scolding that costs a command.
+       */
+      if (said.command !== null) send(said.command);
+    }
     /*
      * The line joins the history unless it is already at the front of it. A
      * line said twice running is one entry, as it is in a shell: arrowing back
@@ -471,11 +497,17 @@ function Composer({ channel, options, point, send }: ComposerProps) {
         say();
       }}
     >
-      {/*
-            The picker, and it is a `select` rather than a row of pills: this is
-            one choice out of six sitting on the same line as the box it
-            qualifies, which is what a select is, and a row of six pills here
-            would take the width the message needs.
+      {picker !== null && (
+        <>
+          {/*
+            The picker, drawn only where there is one: a control over a decision
+            nothing is making would be the card describing something it does not
+            do.
+
+            It is a `select` rather than a row of pills: this is one choice out
+            of six sitting on the same line as the box it qualifies, which is
+            what a select is, and a row of six pills here would take the width
+            the message needs.
 
             **No `keepFocus` on the mousedown, and that is the whole reason this
             could not be opened.** A native select raises its popup on
@@ -494,34 +526,36 @@ function Composer({ channel, options, point, send }: ComposerProps) {
             vocabularies: the filters above already name the same channels in
             the same words.
           */}
-      <select
-        aria-label={t('cards.alerts.columns.channel')}
-        data-owns-keys="true"
-        onChange={(event) => {
-          const chosen = options.find((entry) => entry.word === event.target.value);
-          if (chosen) point(chosen);
-          inputRef.current?.focus();
-        }}
-        onKeyDown={(event) => {
-          /*
-           * Escape hands the keyboard back, exactly as it does from the
-           * message box beside it. Opening the picker and changing nothing
-           * would otherwise leave the caret parked on chrome, and a held
-           * caret is a swallowed keystroke. A native popup takes its own
-           * Escape first, so this is the one that arrives after it closes.
-           */
-          if (event.key !== 'Escape') return;
-          event.preventDefault();
-          event.currentTarget.blur();
-        }}
-        value={channel.word}
-      >
-        {options.map((entry) => (
-          <option key={entry.word} value={entry.word}>
-            {entry.label}
-          </option>
-        ))}
-      </select>
+          <select
+            aria-label={t('cards.alerts.columns.channel')}
+            data-owns-keys="true"
+            onChange={(event) => {
+              const chosen = picker.options.find((entry) => entry.word === event.target.value);
+              if (chosen) picker.point(chosen);
+              inputRef.current?.focus();
+            }}
+            onKeyDown={(event) => {
+              /*
+               * Escape hands the keyboard back, exactly as it does from the
+               * message box beside it. Opening the picker and changing nothing
+               * would otherwise leave the caret parked on chrome, and a held
+               * caret is a swallowed keystroke. A native popup takes its own
+               * Escape first, so this is the one that arrives after it closes.
+               */
+              if (event.key !== 'Escape') return;
+              event.preventDefault();
+              event.currentTarget.blur();
+            }}
+            value={picker.channel.word}
+          >
+            {picker.options.map((entry) => (
+              <option key={entry.word} value={entry.word}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
       <input
         aria-label={t('cards.talk.messageInputAria')}
         onChange={(event) => {
@@ -570,17 +604,25 @@ function Composer({ channel, options, point, send }: ComposerProps) {
           inputRef.current?.blur();
         }}
         /*
-         * What the box does, in the box. The channel is already showing to
-         * the left, so the placeholder's job is the part nobody would
-         * guess: that a line starting with one of the realm's own openers
-         * goes there instead. Listing every opener `compose` acts on beats
-         * naming two of them — `/` and `>` address one person and the
-         * picker cannot offer either until somebody has been named, and a
-         * player who can see `.` and `"` does not have to discover that
-         * say and yell are punctuation here. Glyphs first, then words, so
-         * the run reads as one vocabulary rather than a sentence.
+         * What the box does, in the box, and the two boxes do two things.
+         *
+         * With no channel it says what is typed is what is sent. With one
+         * showing to the left, the part nobody would guess is that a line
+         * starting with one of the realm's own openers goes *there* instead —
+         * and listing every opener `compose` acts on beats naming two of them,
+         * because `/` and `>` address one person and the picker cannot offer
+         * either until somebody has been named, and a player who can see `.`
+         * and `"` does not have to discover that say and yell are punctuation
+         * here. Glyphs first, then words, so the run reads as one vocabulary.
+         *
+         * Two literal `t()` calls and not one conditional key: the coverage
+         * test reads the literal after `t(`.
          */
-        placeholder={t('cards.talk.messagePlaceholder')}
+        placeholder={
+          picker === null
+            ? t('cards.talk.messagePlaceholderAsTyped')
+            : t('cards.talk.messagePlaceholder')
+        }
         ref={inputRef}
         spellCheck={false}
         value={draft}
@@ -634,22 +676,27 @@ function ConversationCard({
    * How this card draws a line, from the gear in its own action column. Read
    * off `chrome.settings` rather than taken as a prop of its own: that object
    * is already this card's settings for *this* character, addressed the way a
-   * pinned float's are, so a second route to the same three values would be a
+   * pinned float's are, so a second route to the same four values would be a
    * second thing to address correctly.
    *
    * The time is drawn unless somebody said not to. It is *recorded* either
    * way — `Block.at` is stamped by the classifier and `TalkLog` writes the
    * whole block — so this decides what the card shows and never what is kept.
+   *
+   * The channel is the one that ships **off**; `mudengine-ui` has why, under
+   * *the Talk card sends verbatim*.
    */
   const settings = chrome.settings?.value;
   const stamped = settings?.talkStamps ?? true;
   const stampFormat = settings?.talkStamp ?? DEFAULT_TALK_STAMP;
   const layout: TalkLayout = settings?.talkLayout ?? DEFAULT_TALK_LAYOUT;
+  const channels = settings?.talkChannels ?? false;
   /*
    * Which channel the composer is pointed at, remembered like the filters and
    * for the same reason: having to choose it again on every launch is the
    * client asking after being told. Gossip is the default because it is the one
-   * everybody is in.
+   * everybody is in. Kept whether or not the picker is drawn, so turning it
+   * back on finds the channel this character was last talking on.
    */
   const [channelWord, chooseChannel] = useRememberedChoice(
     session,
@@ -942,7 +989,7 @@ function ConversationCard({
   const content = (
     <>
       {feed}
-      <Composer channel={channel} options={options} point={point} send={onSend} />
+      <Composer picker={channels ? { channel, options, point } : null} send={onSend} />
     </>
   );
   /*

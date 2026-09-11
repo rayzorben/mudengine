@@ -7009,6 +7009,152 @@ describe('what the server has said is wrong with the character', () => {
     });
   });
 
+  /*
+   * The hold family, reported live 2026-09-11: `ne`, and the server answered
+   * `You are flat on your back!` and nothing else. Eight seconds later the
+   * walk stopped with *nothing came back after ne* and the expectation queue
+   * gave the step up — a journey ended by a knockdown the client did not know
+   * was a knockdown.
+   *
+   * The realm states which spells hold (`HoldPerson`, ability 74 — 60 of the
+   * shipped realm's spells) and the message table states their sentences
+   * (twenty distinct ones), so neither is written down here. `holdsMovement`
+   * is the join.
+   */
+  describe('being held, in the realm’s own words', () => {
+    /** A realm that states `knockdown` the way the shipped one does. */
+    function holdRealm(): WorldGraph {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-holds-'));
+      const file = path.join(dir, 'rooms.jsonl.gz');
+      const header = {
+        v: 32,
+        source: 'test',
+        rooms: 0,
+        generatedAt: 'x',
+        spells: [
+          // `HoldPerson` is 74; the value is the realm's own and decides nothing.
+          { id: 318, n: 'knockdown', dur: 4, ab: [[74, 1]] },
+          // A duration spell that does *not* hold, to keep the test honest.
+          { id: 8, n: 'bless', dur: 90, ab: [[3, 10]] }
+        ]
+      };
+      fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(header) + '\n'));
+      const graph = WorldGraph.load(file);
+      fs.rmSync(dir, { recursive: true, force: true });
+      return graph;
+    }
+
+    /** The two sentences `spell-messages.csv` pairs with `knockdown`. */
+    function knockdownLore(): SpellLore {
+      return spellLoreOf(
+        SpellMessageBook.fromRows([
+          {
+            spell: 'knockdown',
+            start: 'You are flat on your back!',
+            stop: 'You get back on your feet.'
+          },
+          { spell: 'bless', start: 'You feel lucky!', stop: 'The effects of bless wear off!' }
+        ]),
+        new SpellMessageBook()
+      );
+    }
+
+    it('holds on the spell the realm marks, and lets go on its wear-off', () => {
+      const down = play(
+        ['[HP=143/MA=29]:', 'You are flat on your back!'],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        knockdownLore()
+      );
+      expect(down.current.afflictions.held).toBe('yes');
+
+      const up = play(
+        ['[HP=143/MA=29]:', 'You are flat on your back!', 'You get back on your feet.'],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        knockdownLore()
+      );
+      expect(up.current.afflictions.held).toBe('no');
+    });
+
+    /*
+     * The whole of the reported failure: `Exits.Move` calls
+     * `CheckForHoldPerson()` and returns before anybody moves, so no room is
+     * coming. Left queued, the step gated the escape, the walk, the lap and
+     * retaliation until it went stale — the failure the toll refusal and `You
+     * are blind.` have each already shipped once.
+     */
+    it('consumes the step the hold refused, so nothing waits for a room', () => {
+      const tracker = play(
+        ['[HP=143/MA=29]:', { send: 'ne' }, 'You are flat on your back!'],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        knockdownLore()
+      );
+      expect(tracker.current.afflictions.held).toBe('yes');
+      expect(tracker.pendingMoves).toBe(0);
+    });
+
+    /*
+     * A buff landing mid-step refuses nothing, and taking its move would hand
+     * the room that *is* coming to the wrong expectation — the one position
+     * loss in 113 recorded sessions was exactly that.
+     */
+    it('leaves the step alone for an onset the realm does not call a hold', () => {
+      const tracker = play(
+        ['[HP=143/MA=29]:', { send: 'ne' }, 'You feel lucky!'],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        knockdownLore()
+      );
+      expect(tracker.current.afflictions.held).toBe('unknown');
+      expect(tracker.pendingMoves).toBe(1);
+    });
+
+    /*
+     * `You are held!` is the literal `CheckForHoldPerson` falls back to when
+     * the ability is on the character but no active effect carries a sentence
+     * to print. Fixed in the server's code, so it is a pattern and needs no
+     * realm at all.
+     */
+    it('reads the server’s own fallback sentence with no realm loaded', () => {
+      const tracker = play(['[HP=143/MA=29]:', 'You are held!']);
+      expect(tracker.current.afflictions.held).toBe('yes');
+    });
+
+    /*
+     * The release that needs no sentence, for the realm that ships a
+     * twenty-first hold the table does not pair. A held character is refused
+     * before it moves, so a step that *landed* is proof the hold was over.
+     */
+    it('lets go on a step that landed, whatever the wire said', () => {
+      const tracker = play(
+        [
+          '[HP=143/MA=29]:',
+          'You are flat on your back!',
+          { send: 'ne' },
+          'Dragon\u2019s Teeth Hills',
+          'Obvious exits: west, northeast',
+          '[HP=144/MA=25]:'
+        ],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        knockdownLore()
+      );
+      expect(tracker.current.afflictions.held).toBe('no');
+    });
+  });
+
   it('reads the disease, and not somebody else’s', () => {
     const tracker = play([
       '[HP=34]:',
@@ -7850,6 +7996,8 @@ describe('what the realm remembers about a player', () => {
       race: null,
       className: null,
       gangRank: null,
+      client: null,
+      extendedRemotes: 'unknown',
       equipment: [{ name: 'gilded robes', slot: 'Torso' }],
       equipmentAt: 1_700_000_000_500,
       lastRoom: null,
