@@ -4,6 +4,11 @@ import {
   SpellMessageBook,
   spellKey,
   spellLoreOf,
+  effectKey,
+  type CauseVerdict,
+  type EffectLasting,
+  type EffectLedger,
+  type LearnedEffect,
   type SpellLore
 } from '../../shared/spell-messages';
 
@@ -79,6 +84,12 @@ interface LoreFile {
    * so the wire is the only source. Optional for the same reason `slots` is.
    */
   deaths?: Record<string, Record<string, LearnedDeath>>;
+  /**
+   * What each realm worked out about the effects it could not name, keyed by
+   * the sentence that announces one (todo 00, 2026-09-12). See
+   * {@link LearnedEffect}. Optional for the same reason `slots` is.
+   */
+  effects?: Record<string, Record<string, LearnedEffect>>;
 }
 
 /** What one realm taught about one spell's sentences. Either half may be absent. */
@@ -99,6 +110,8 @@ export class RealmLore {
   private readonly deaths = new Map<string, Map<string, LearnedDeath>>();
   /** The same, sentence → monster, which is the direction the classifier asks. */
   private readonly deathIndex = new Map<string, Map<string, string>>();
+  /** What each realm worked out about unnameable effects. See `ledgerFor`. */
+  private readonly effects = new Map<string, Map<string, LearnedEffect>>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
@@ -215,8 +228,105 @@ export class RealmLore {
         this.options.notify?.(
           t('notices.world.lore.spellUnlearned', { spell: name, kind, text: gone.text })
         );
-      }
+      },
+      effects: this.ledgerFor(key)
     });
+  }
+
+  /* ------------------------------------------------------------- effects */
+
+  /**
+   * What one realm has worked out about the sentences nothing can name.
+   *
+   * A monster's spell prints its own message and names no spell, and no realm
+   * database on hand ships the message table — so the client cannot answer
+   * *which spell*, only *which effect*, and the sentence is that effect's
+   * identity (`unnamedEffect`). Two things are worth keeping about one, and
+   * both are facts about the **world** rather than about a character, which
+   * is why they live here beside monster health and the death sentences:
+   *
+   * 1. **Whether the stat sheet reprints it.** `StatCommand.cs:50` prints
+   *    `DescMessage.Line3` for every timed effect on the player, and that is
+   *    the same line the spell printed when it landed — so a sheet read while
+   *    the effect is up settles it. A `no` is what stops the next sighting of
+   *    `You are poisoned!` answering a `rest` from costing another `st`,
+   *    for ever, on this realm.
+   * 2. **What it inflicts**, deduced: a condition that turns on while the
+   *    effect is up and nothing known causes it is *suspected*, and the
+   *    effect ending with the condition is what *confirms* it. A condition
+   *    that arrives while the effect is not up retracts the suspicion
+   *    outright rather than weakening it — the wire has said the two are
+   *    unrelated, and a weaker guess is still a guess.
+   *
+   * Said out loud on every write, as the sentence lessons are: a deduction
+   * that will sit a character down or stand one up is a decision somebody
+   * has to be able to read.
+   */
+  private ledgerFor(realm: string): EffectLedger {
+    return {
+      seen: (text) => this.effects.get(realm)?.get(effectKey(text)) ?? null,
+      lasting: (text, lasting, at) => this.observeEffect(realm, text, lasting, at),
+      causes: (text, condition, verdict) => this.observeCause(realm, text, condition, verdict)
+    };
+  }
+
+  private observeEffect(realm: string, text: string, lasting: EffectLasting, at: number): void {
+    const key = effectKey(text);
+    const sentence = text.trim();
+    if (key.length === 0) return;
+    this.load();
+    let table = this.effects.get(realm);
+    if (!table) {
+      table = new Map();
+      this.effects.set(realm, table);
+    }
+    const held = table.get(key);
+    if (held?.lasting === lasting) return;
+    table.set(key, { ...held, text: sentence, at: held?.at ?? at, lasting });
+    this.schedule();
+    // Two literal calls rather than one on a computed key: the dictionary's
+    // readers are found by reading the source, and a key built at runtime is
+    // one `i18n-coverage.test.ts` cannot see.
+    if (lasting === 'yes') {
+      this.options.notify?.(t('notices.world.lore.effectLasting', { text: sentence }));
+    } else {
+      this.options.notify?.(t('notices.world.lore.effectPassing', { text: sentence }));
+    }
+  }
+
+  private observeCause(
+    realm: string,
+    text: string,
+    condition: string,
+    verdict: CauseVerdict | null
+  ): void {
+    const key = effectKey(text);
+    this.load();
+    const held = this.effects.get(realm)?.get(key);
+    // Only an effect the sheet has vouched for carries a deduction: a
+    // sentence that may not be an effect at all cannot be what causes one.
+    if (!held || held.lasting !== 'yes') return;
+    const causes = { ...held.causes };
+    if (verdict === null) {
+      if (causes[condition] === undefined) return;
+      delete causes[condition];
+    } else {
+      if (causes[condition] === verdict || causes[condition] === 'confirmed') return;
+      causes[condition] = verdict;
+    }
+    const next: LearnedEffect = { ...held };
+    if (Object.keys(causes).length > 0) next.causes = causes;
+    else delete next.causes;
+    this.effects.get(realm)?.set(key, next);
+    this.schedule();
+    const said = { text: held.text, condition };
+    if (verdict === null) {
+      this.options.notify?.(t('notices.world.lore.effectCauseDropped', said));
+    } else if (verdict === 'confirmed') {
+      this.options.notify?.(t('notices.world.lore.effectCauseConfirmed', said));
+    } else {
+      this.options.notify?.(t('notices.world.lore.effectCauseSuspected', said));
+    }
   }
 
   /* --------------------------------------------------------------- slots */
@@ -457,6 +567,15 @@ export class RealmLore {
       }
       this.spells.set(realmKey(realm), table);
     }
+    for (const [realm, entries] of Object.entries(file.effects ?? {})) {
+      if (typeof entries !== 'object' || entries === null) continue;
+      const table = new Map<string, LearnedEffect>();
+      for (const [text, value] of Object.entries(entries)) {
+        const entry = readEffectEntry(value, text);
+        if (entry) table.set(effectKey(entry.text), entry);
+      }
+      this.effects.set(realmKey(realm), table);
+    }
   }
 
   /** True once the file was found unparseable; nothing is written over it. */
@@ -511,6 +630,12 @@ export class RealmLore {
       deaths[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
     }
 
+    const effects: NonNullable<LoreFile['effects']> = {};
+    for (const [realm, table] of this.effects) {
+      if (table.size === 0) continue;
+      effects[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
+    }
+
     const temporary = `${this.options.file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
@@ -522,7 +647,8 @@ export class RealmLore {
             realms,
             ...(Object.keys(slots).length > 0 ? { slots } : {}),
             ...(Object.keys(spells).length > 0 ? { spells } : {}),
-            ...(Object.keys(deaths).length > 0 ? { deaths } : {})
+            ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
+            ...(Object.keys(effects).length > 0 ? { effects } : {})
           } satisfies LoreFile,
           null,
           2
@@ -580,6 +706,37 @@ function readSpellEntry(value: unknown): LearnedSpellMessages | null {
   const stop = half(record['stop']);
   if (!start && !stop) return null;
   return { ...(start ? { start } : {}), ...(stop ? { stop } : {}) };
+}
+
+/**
+ * One learned effect, or null when the row names no sentence.
+ *
+ * The key is the whitespace-normalised sentence, and `text` is what to print;
+ * a row missing `text` falls back to its own key, so a file edited by hand
+ * still reads. `lasting` is a closed word: anything else is `unknown`, which
+ * is the reading that costs one `st` rather than the one that suppresses it.
+ */
+function readEffectEntry(value: unknown, key: string): LearnedEffect | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const raw = record['text'];
+  const text = (typeof raw === 'string' && raw.trim().length > 0 ? raw : key).trim();
+  if (text.length === 0) return null;
+  const at = record['at'];
+  const lasting = record['lasting'];
+  const causes: Record<string, CauseVerdict> = {};
+  const held = record['causes'];
+  if (typeof held === 'object' && held !== null) {
+    for (const [condition, verdict] of Object.entries(held)) {
+      if (verdict === 'suspected' || verdict === 'confirmed') causes[condition] = verdict;
+    }
+  }
+  return {
+    text,
+    at: typeof at === 'number' && Number.isFinite(at) ? at : 0,
+    lasting: lasting === 'yes' || lasting === 'no' ? lasting : 'unknown',
+    ...(Object.keys(causes).length > 0 ? { causes } : {})
+  };
 }
 
 /** One slot entry, or null. Only non-empty strings count as words. */

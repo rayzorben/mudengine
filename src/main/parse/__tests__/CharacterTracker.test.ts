@@ -24,8 +24,11 @@ import type { RoomOccupant } from '../../../shared/character';
 import type { PlayerFacts, RealmPlayers } from '../../../shared/players';
 import { NO_BELONGINGS } from '../../../shared/belongings';
 import {
+  effectKey,
   SpellMessageBook,
   spellLoreOf,
+  type EffectLedger,
+  type LearnedEffect,
   type SpellLore,
   type SpellMessageKind
 } from '../../../shared/spell-messages';
@@ -7815,13 +7818,39 @@ describe('the spell message table and what it teaches', () => {
   /** The `st` sheet with the given effect lines at its foot, terminated by the prompt. */
   const sheet = (...tail: string[]): string[] => [...SHEET, ...tail, '[HP=334/KAI=2]:'];
 
+  /** An effect ledger that remembers, as `RealmLore`'s does, without a file. */
+  function ledger(): EffectLedger & { rows: Map<string, LearnedEffect> } {
+    const rows = new Map<string, LearnedEffect>();
+    return {
+      rows,
+      seen: (text) => rows.get(effectKey(text)) ?? null,
+      lasting: (text, lasting, at) => {
+        const held = rows.get(effectKey(text));
+        rows.set(effectKey(text), { ...held, text: text.trim(), at: held?.at ?? at, lasting });
+      },
+      causes: (text, condition, verdict) => {
+        const held = rows.get(effectKey(text));
+        if (!held || held.lasting !== 'yes') return;
+        const causes = { ...held.causes };
+        if (verdict === null) delete causes[condition];
+        else if (causes[condition] !== 'confirmed') causes[condition] = verdict;
+        const next: LearnedEffect = { ...held };
+        if (Object.keys(causes).length > 0) next.causes = causes;
+        else delete next.causes;
+        rows.set(effectKey(text), next);
+      }
+    };
+  }
+
   function table(): {
     lore: SpellLore;
+    effects: ReturnType<typeof ledger>;
     taught: Array<{ spell: string; kind: SpellMessageKind; text: string }>;
     forgot: Array<{ spell: string; kind: SpellMessageKind }>;
   } {
     const taught: Array<{ spell: string; kind: SpellMessageKind; text: string }> = [];
     const forgot: Array<{ spell: string; kind: SpellMessageKind }> = [];
+    const effects = ledger();
     const shipped = SpellMessageBook.fromRows([
       {
         spell: 'way of the tiger',
@@ -7840,9 +7869,10 @@ describe('the spell message table and what it teaches', () => {
     ]);
     const lore = spellLoreOf(shipped, new SpellMessageBook(), {
       learned: (spell, kind, text) => taught.push({ spell, kind, text }),
-      unlearned: (spell, kind) => forgot.push({ spell, kind })
+      unlearned: (spell, kind) => forgot.push({ spell, kind }),
+      effects
     });
-    return { lore, taught, forgot };
+    return { lore, effects, taught, forgot };
   }
   const names = (tracker: CharacterTracker): string[] =>
     tracker.current.buffs.map((buff) => buff.spell);
@@ -8099,6 +8129,197 @@ describe('the spell message table and what it teaches', () => {
     expect(names(tracker)).toEqual(['strange glow']);
   });
 
+  /*
+   * An effect somebody *else* landed, which the learning here could never see
+   * before (todo 00, 2026-09-12): it matches no frame, follows no cast of this
+   * character's, and names no spell any table on disk holds. The stat sheet is
+   * what answers for it — the server prints every timed effect's own landing
+   * line on the sheet, friend or foe alike — so the sentence is the identity
+   * and the sheet is the listing that maintains it.
+   */
+  it('learns an effect nobody cast on the sheet that reprints it', () => {
+    const { lore, effects } = table();
+    const tracker = play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        ...sheet('You are enveloped in a green jelly!')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(effects.seen('You are enveloped in a green jelly!')?.lasting).toBe('yes');
+    expect(names(tracker)).toEqual(['effect: You are enveloped in a green jelly!']);
+    // And it is the realm's from now on: the sentence reads as that effect's
+    // start without a sheet in front of it.
+    expect(lore.match('You are enveloped in a green jelly!')?.starts).toEqual([
+      'effect: you are enveloped in a green jelly!'
+    ]);
+  });
+
+  it('learns its ending from the one sentence left unclaimed while it is up', () => {
+    const { lore, taught } = table();
+    const tracker = play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        ...sheet('You are enveloped in a green jelly!'),
+        { wait: 60_000 },
+        'The green jelly dissolves.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(names(tracker)).toEqual([]);
+    expect(taught).toContainEqual({
+      spell: 'effect: You are enveloped in a green jelly!',
+      kind: 'stop',
+      text: 'The green jelly dissolves.'
+    });
+  });
+
+  /*
+   * What the effect *does*, deduced — the whole of the evidence, and the bar
+   * for acting on it. A suspicion is written down; only the effect and the
+   * condition ending together turns it into the verdict that clears a flag.
+   */
+  it('suspects an unnameable effect of the condition nothing else explains', () => {
+    const { lore, effects } = table();
+    play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        ...sheet('You are enveloped in a green jelly!'),
+        'Poison burns through your veins!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(effects.seen('You are enveloped in a green jelly!')?.causes).toEqual({
+      poisoned: 'suspected'
+    });
+  });
+
+  it('confirms it when the effect and the condition end together, and clears the flag after', () => {
+    const { lore, effects } = table();
+    const first = play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        ...sheet('You are enveloped in a green jelly!'),
+        'Poison burns through your veins!',
+        { wait: 60_000 },
+        'The green jelly dissolves.',
+        'The dizzying poison runs its course.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(first.current.afflictions.poisoned).toBe('no');
+    expect(effects.seen('You are enveloped in a green jelly!')?.causes).toEqual({
+      poisoned: 'confirmed'
+    });
+
+    /*
+     * And the next time, the ending alone is enough — which is the deadlock
+     * this exists to break: the poison flag came off on the effect's own
+     * sentence, with nothing else said about it.
+     */
+    const second = play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        'Poison burns through your veins!',
+        { wait: 60_000 },
+        'The green jelly dissolves.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(second.current.afflictions.poisoned).toBe('no');
+  });
+
+  it('drops the suspicion when the condition ends while the effect is still up', () => {
+    const { lore, effects } = table();
+    play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        ...sheet('You are enveloped in a green jelly!'),
+        'Poison burns through your veins!',
+        { wait: 10_000 },
+        'The dizzying poison runs its course.'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    // The jelly is still on the list and the poison has gone: the two are
+    // unrelated, and a suspicion the wire contradicted is not a weaker one.
+    expect(effects.seen('You are enveloped in a green jelly!')?.causes).toBeUndefined();
+  });
+
+  it('suspects nothing while a named spell already explains the condition', () => {
+    const { lore, effects } = table();
+    play(
+      [
+        '[HP=334/KAI=2]:',
+        'You are enveloped in a green jelly!',
+        ...sheet('You are enveloped in a green jelly!'),
+        'You are blind!'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    // Blindness is not poison and nothing named is up for it either, so the
+    // jelly is suspected of that one instead — the deduction is per condition.
+    expect(effects.seen('You are enveloped in a green jelly!')?.causes).toEqual({
+      blind: 'suspected'
+    });
+  });
+
+  it('never reads a line of the sheet as an ending', () => {
+    const { lore } = table();
+    /*
+     * The sheet's lines arrive twice — once each as their own block, then
+     * again as the batch — and one of them saying an effect is up must not be
+     * read as the end of the one buff whose ending nobody knows.
+     */
+    const tracker = play(
+      [
+        '[HP=334/KAI=2]:',
+        'You cast odd hum on yourself!',
+        ...sheet('You are enveloped in a green jelly!')
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(names(tracker)).toContain('odd hum');
+  });
+
   it('wants the stat sheet only when a sheet could settle the question', () => {
     const { lore } = table();
     // A learned start means the sheet would print it: one buff, one unknown ending — ask.
@@ -8120,16 +8341,42 @@ describe('the spell message table and what it teaches', () => {
     // Taken once.
     expect(single.takeSheetRequest()).toBe(false);
 
-    // Nothing knows this buff's start, so no sheet could show it: no ask.
+    /*
+     * Nothing knows this buff's start, so no sheet could say whether *it* is
+     * gone — but the sheet can still say whether the sentence that arrived is
+     * an effect of its own, which is a question nothing else answers (todo
+     * 00). So it is asked, and then it is settled for good: the sheet comes
+     * back without the sentence, the realm writes down that it is no lasting
+     * effect, and the next sighting asks nothing.
+     */
+    const { lore: second, effects } = table();
     const blind = play(
+      [
+        '[HP=34]:',
+        'You cast odd hum on yourself!',
+        { wait: 60_000 },
+        'The hum dies away.',
+        ...sheet()
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      second
+    );
+    expect(blind.takeSheetRequest()).toBe(true);
+    expect(effects.seen('The hum dies away.')?.lasting).toBe('no');
+
+    // Same realm, same sentence, a session later: the question is answered.
+    const again = play(
       ['[HP=34]:', 'You cast odd hum on yourself!', { wait: 60_000 }, 'The hum dies away.'],
       undefined,
       undefined,
       undefined,
       undefined,
-      lore
+      second
     );
-    expect(blind.takeSheetRequest()).toBe(false);
+    expect(again.takeSheetRequest()).toBe(false);
 
     // A line naming somebody in the room is nobody's question.
     const emote = play(

@@ -587,7 +587,30 @@ const TUNING_DEFAULTS = {
      * recognised. One ask per new question would be one per room emote in a
      * crowded room; this is the floor between two.
      */
-    sheetAskMs: 30_000
+    sheetAskMs: 30_000,
+    /**
+     * The longest a sentence nothing recognised may wait for a stat sheet and
+     * still have the sheet's *silence* count against it (todo 00). The sheet
+     * carries every lasting effect's own landing line, so one asked for after
+     * the sentence and printed without it says the sentence was not a lasting
+     * effect — unless the effect expired in between, which is the only reason
+     * for a bound at all. Past this the candidate is dropped unresolved
+     * rather than refused, and either way the next sheet that does carry the
+     * sentence overwrites the verdict.
+     */
+    effectVerdictMs: 15_000,
+    /**
+     * How far apart an unnameable effect ending and a condition ending may be
+     * and still be read as one event — which is what turns a *suspicion* about
+     * what the effect causes into a verdict acted on (`deduceCauses`).
+     *
+     * The server ends a spell and everything it granted in one tick, so the
+     * two sentences arrive inside a single combat round (`hunting.roundSeconds`,
+     * five). Wider would let an unrelated cure a round later confirm the wrong
+     * effect, and the confirmed verdict is what *clears* a condition — the
+     * reassuring direction, which wants the higher bar.
+     */
+    effectCauseMs: 5000
   },
   /** Drinking on the character's behalf — `Potions`. */
   potions: {

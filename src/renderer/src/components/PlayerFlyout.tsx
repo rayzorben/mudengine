@@ -86,6 +86,20 @@ export interface PlayerFlyoutProps {
    * card's room names already follow.
    */
   onSelectGang?(gang: string, anchor: PopoverAnchor): void;
+  /**
+   * Put one of the three questions to this person — `@health`, `@where`,
+   * `@comeback` — on behalf of the character whose listing they were clicked
+   * on.
+   *
+   * Optional, for the reason `onSelectGang` is: a surface with no arbiter
+   * behind it must not draw a control bound to nowhere. A pinned float leaves
+   * it out, as it leaves out the loop picker.
+   *
+   * Which *wording* goes out is main's (`Remotes.ask`): a peer running this
+   * client is asked in its own words and everybody else in MegaMUD's. So this
+   * names the question, never the spelling.
+   */
+  onAsk?(name: string, remote: RemoteName): void;
   onDismiss(): void;
   /** Hands the caret back to the game after a menu that took it. */
   returnFocus(): void;
@@ -127,11 +141,17 @@ type Face = 'player' | 'equipment' | 'access';
  *
  * ## What it does not do
  *
- * It asks the server for nothing. Every fact here arrived on a broadcast, a
- * listing or a room this character was in anyway. And **nothing here is a
- * bar**: another player's health is a figure their client quoted at a moment
- * they chose, and a bar is how this client draws a number it is reading now.
- * The quotation is printed with the time it came in beside it.
+ * **Opening it asks the server for nothing.** Every fact drawn here arrived on
+ * a broadcast, a listing or a room this character was in anyway, so bringing
+ * the panel out costs nothing from the budget the walking and fighting are
+ * done from. What a person *presses* is a different thing, and the three asks
+ * are the Party card's rule exactly: a control that proposes to the arbiter in
+ * the realm's own verbs, never a panel that fetches to fill itself in.
+ *
+ * And **nothing here is a bar**: another player's health is a figure their
+ * client quoted at a moment they chose, and a bar is how this client draws a
+ * number it is reading now. The quotation is printed with the time it came in
+ * beside it.
  *
  * Never focused — it is read and clicked, not typed into, so the caret stays
  * with the game and Escape reaches it through a capture listener. In a portal,
@@ -143,6 +163,7 @@ export default function PlayerFlyout({
   remotes,
   onGrant,
   onSelectGang,
+  onAsk,
   onDismiss,
   returnFocus,
   inspect
@@ -269,7 +290,10 @@ export default function PlayerFlyout({
         {record === null ? (
           <p className="empty">{t('cards.player.unknownName', { name: asked.name })}</p>
         ) : face === 'player' ? (
-          <PlayerDetail now={now} onSelectGang={onSelectGang} record={record} />
+          <>
+            <PlayerDetail now={now} onSelectGang={onSelectGang} record={record} />
+            {onAsk && <PlayerAsks name={record.name} onAsk={onAsk} />}
+          </>
         ) : face === 'equipment' ? (
           <PlayerEquipment inspect={inspect} now={now} record={record} />
         ) : (
@@ -322,6 +346,57 @@ export default function PlayerFlyout({
  * Nothing is drawn for a person nothing is known about: three rows of *unknown*
  * is the reassuring answer to a question nobody asked.
  */
+/**
+ * The three questions a person actually asks another player, as controls.
+ *
+ * These were one palette command *per person per question* — three rows for
+ * everybody the roster had ever listed, which on a busy realm buried every
+ * other command in the client behind a hundred of them (todo 04, 2026-09-12,
+ * with the screenshot). The palette is a list of *commands*; who to ask is an
+ * argument, and an argument belongs where the subject is.
+ *
+ * Three, because they are the three: how are you, where are you, come to me.
+ * The rest of the fifty-odd `@` vocabulary is not something anybody asks a
+ * person for by pressing a button, and the Access face is where the whole list
+ * is granted.
+ *
+ * A press is a *proposal*, as the Party card's two controls are: main decides
+ * the wording and may refuse it outright, and says so in the console.
+ */
+function PlayerAsks({
+  name,
+  onAsk
+}: {
+  name: string;
+  onAsk(name: string, remote: RemoteName): void;
+}) {
+  const asks: ReadonlyArray<{ remote: RemoteName; label: string }> = [
+    { remote: 'health', label: t('cards.player.ask.health') },
+    { remote: 'where', label: t('cards.player.ask.where') },
+    { remote: 'comeback', label: t('cards.player.ask.comeback') }
+  ];
+  return (
+    <div
+      aria-label={t('cards.player.ask.groupAria', { name })}
+      className="player-asks"
+      role="group"
+    >
+      <span className="player-asks-legend">{t('cards.player.ask.legend')}</span>
+      {asks.map((ask) => (
+        <button
+          className="quiet"
+          key={ask.remote}
+          onClick={() => onAsk(name, ask.remote)}
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          {ask.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function PlayerStanding({ record }: { record: PlayerRecord }) {
   const reading = titleReading(record.title);
   const readClass = reading !== null && reading.classes.length === 1 ? reading.classes[0]! : null;

@@ -64,6 +64,10 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
     ...DEFAULT_CONFIG.automation.train,
     wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
   },
+  loot: structuredClone(DEFAULT_CONFIG.automation.loot),
+  drop: structuredClone(DEFAULT_CONFIG.automation.drop),
+  search: { ...DEFAULT_CONFIG.automation.search },
+  banking: { ...DEFAULT_CONFIG.automation.banking },
   // Empty is what OPTIONS below gives a character: the options file states no
   // loops, so a draft matching it writes no `loops:` key.
   loops: [],
@@ -546,6 +550,43 @@ describe('what a character plays against, and what keeps it alive', () => {
       party: [],
       players: {}
     });
+  });
+
+  /*
+   * What a character bends down for is its own (todo 03, 2026-09-12). The four
+   * blocks were on the Global draft alone, so `resolveProfile` would have
+   * overlaid a hand-written `automation.loot:` all along and no screen could
+   * write one — reported as *"i do not see auto collect or discard cash on the
+   * players ui"*.
+   */
+  it('writes a character’s own answer to what it picks up and what it sheds', () => {
+    editor.saveProfile(
+      'vaelor',
+      draft({
+        loot: {
+          ...DEFAULT_CONFIG.automation.loot,
+          coins: true,
+          coinKinds: ['runic', 'platinum', 'gold', 'silver'],
+          discardKinds: ['copper']
+        },
+        banking: { autoDeposit: true, depositThresholdCopper: 100_000, keepCopper: 500 }
+      })
+    );
+    const automation = read('vaelor')['automation'] as Record<string, unknown>;
+    expect(automation['loot']).toMatchObject({
+      coins: true,
+      coinKinds: ['runic', 'platinum', 'gold', 'silver'],
+      discardKinds: ['copper']
+    });
+    expect(automation['banking']).toEqual({
+      autoDeposit: true,
+      depositThresholdCopper: 100_000,
+      keepCopper: 500
+    });
+    // And the two that were not touched are still stated, like every other
+    // block a character owns: creating takes the copy whole.
+    expect(automation['drop']).toEqual({ ...DEFAULT_CONFIG.automation.drop });
+    expect(automation['search']).toEqual({ ...DEFAULT_CONFIG.automation.search });
   });
 
   /*

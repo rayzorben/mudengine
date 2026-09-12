@@ -386,3 +386,73 @@ describe('the spell sentences a realm taught', () => {
     });
   });
 });
+
+/*
+ * What a realm works out about a spell it cannot name — todo 00, 2026-09-12.
+ * Kept beside the monster health for the same reason: what a monster's spell
+ * does is a fact about the world, not about whoever it landed on.
+ */
+describe('the effects a realm could not name', () => {
+  const shipped = SpellMessageBook.fromRows([
+    { spell: 'bless', start: 'You feel lucky!', stop: 'The effects of bless wear off!' }
+  ]);
+
+  it('remembers the sheet’s verdict and what the effect turned out to cause', () => {
+    const said: string[] = [];
+    const realm = store((message) => said.push(message));
+    const effects = realm.spellsFor('gmud.sqlite', shipped).effects;
+
+    expect(effects.seen('You are enveloped in a green jelly!')).toBeNull();
+    effects.lasting('You are enveloped in a green jelly!', 'yes', 5);
+    effects.causes('You are enveloped in a green jelly!', 'poisoned', 'suspected');
+    effects.causes('You are enveloped in a green jelly!', 'poisoned', 'confirmed');
+    // A verdict is reached once: the confirmed reading is not walked back.
+    effects.causes('You are enveloped in a green jelly!', 'poisoned', 'suspected');
+    // And a sentence the sheet declined is written down as the refusal it is.
+    effects.lasting('You are poisoned!', 'no', 9);
+    expect(said).toHaveLength(4);
+    expect(said[3]).toContain('You are poisoned!');
+
+    expect(effects.seen('  You  are enveloped in a GREEN jelly!  ')).toEqual({
+      text: 'You are enveloped in a green jelly!',
+      at: 5,
+      lasting: 'yes',
+      causes: { poisoned: 'confirmed' }
+    });
+
+    realm.flush();
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
+    expect(file.effects[realmKey('gmud.sqlite')]).toEqual({
+      'you are enveloped in a green jelly!': {
+        text: 'You are enveloped in a green jelly!',
+        at: 5,
+        lasting: 'yes',
+        causes: { poisoned: 'confirmed' }
+      },
+      'you are poisoned!': { text: 'You are poisoned!', at: 9, lasting: 'no' }
+    });
+
+    const again = store().spellsFor('gmud.sqlite', shipped).effects;
+    expect(again.seen('You are poisoned!')?.lasting).toBe('no');
+    // Another realm worked nothing out.
+    expect(
+      store().spellsFor('paradigm.sqlite', shipped).effects.seen('You are poisoned!')
+    ).toBeNull();
+  });
+
+  it('drops a cause the wire contradicted rather than weakening it', () => {
+    const realm = store();
+    const effects = realm.spellsFor('gmud.sqlite', shipped).effects;
+    effects.lasting('You are covered in acid!', 'yes', 1);
+    effects.causes('You are covered in acid!', 'blind', 'suspected');
+    effects.causes('You are covered in acid!', 'blind', null);
+    expect(effects.seen('You are covered in acid!')?.causes).toBeUndefined();
+  });
+
+  it('records nothing against a sentence the sheet has not vouched for', () => {
+    const realm = store();
+    const effects = realm.spellsFor('gmud.sqlite', shipped).effects;
+    effects.causes('You are poisoned!', 'poisoned', 'suspected');
+    expect(effects.seen('You are poisoned!')).toBeNull();
+  });
+});
