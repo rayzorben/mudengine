@@ -246,6 +246,8 @@ describe('a character', () => {
         // turning off the loop's health hold, which this pair now carries.
         restTo: 0.7,
         restBeforeTraps: 0.45,
+        // Absent above, and on: a blank field must not sit a character down in a lair.
+        restNextDoor: true,
         meditateBelow: 0.25,
         drinkHealingPotionBelow: 0,
         drinkManaPotionBelow: 0,
@@ -266,6 +268,8 @@ describe('a character', () => {
         provideLight: false,
         lightDimRooms: false,
         extinguishInLight: false,
+        // Absent above, and off: it walks the character back to where it died.
+        recoverGear: false,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         // Except the one that is on by default and whose absence would switch
@@ -283,6 +287,7 @@ describe('a character', () => {
         heal: '',
         healPartyWith: '',
         attackFallback: '',
+        autoChoose: false,
         attackCasts: 0,
         areaCasts: 0,
         healBelow: 0,
@@ -310,6 +315,8 @@ describe('a character', () => {
         restBelow: 0.35,
         restTo: 0.7,
         restBeforeTraps: 0.45,
+        // Absent above, and on: a blank field must not sit a character down in a lair.
+        restNextDoor: true,
         meditateBelow: 0,
         drinkHealingPotionBelow: 0,
         drinkManaPotionBelow: 0,
@@ -328,6 +335,8 @@ describe('a character', () => {
         provideLight: false,
         lightDimRooms: false,
         extinguishInLight: false,
+        // Absent above, and off: it walks the character back to where it died.
+        recoverGear: false,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         // The shipped default, for the same reason `restBelow` keeps 0.35
@@ -348,6 +357,7 @@ describe('a character', () => {
         healParty: false,
         minMana: 0,
         attackFallback: '',
+        autoChoose: false,
         attackCasts: 0,
         areaCasts: 0,
         cures: { blindness: '', poison: '', disease: '' },
@@ -465,6 +475,8 @@ describe('a character', () => {
         maxMonsterExperience: 0,
         engage: 'all',
         retaliate: false,
+        // Absent above, and off: it spends a command per fight.
+        hideForOpener: false,
         // Absent above too, and it defaults on: MegaMUD's own default joins.
         joinFights: true,
         maxMobs: 3,

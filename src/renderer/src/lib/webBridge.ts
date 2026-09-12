@@ -260,6 +260,7 @@ export function createWebBridge(): IpcApi {
     questBook: (session) => invoke(Invoke.questBook, session),
     localMap: (session, map, room, radius) => invoke(Invoke.localMap, session, map, room, radius),
     roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
+    huntingGrounds: (session, radius) => invoke(Invoke.huntingGrounds, session, radius),
     draftLoop: (session, rooms) => invoke(Invoke.draftLoop, session, rooms),
     wearer: (session) => invoke(Invoke.wearer, session),
     lookup: (session, query) => invoke(Invoke.lookup, session, query),

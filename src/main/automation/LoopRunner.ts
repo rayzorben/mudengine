@@ -77,6 +77,12 @@ export interface LoopEvents {
    * one command away.
    */
   locate?(): void;
+  /**
+   * When the lap stops for earning too little: where would earn more, in a
+   * sentence, or null when nothing within reach is known to. Asked once, at
+   * the stop, so the reason says what to do rather than only what happened.
+   */
+  betterSpot?(): string | null;
 }
 
 export interface LoopPlanner {
@@ -817,12 +823,13 @@ export class LoopRunner {
      */
     const rate = this.rateUnderFloor(state);
     if (rate !== null) {
-      this.stop(
-        t('automation.loops.reasonLowExp', {
-          rate: Math.round(rate),
-          floor: this.walk.minExpPerHour
-        })
-      );
+      const reason = t('automation.loops.reasonLowExp', {
+        rate: Math.round(rate),
+        floor: this.walk.minExpPerHour
+      });
+      // The stop was already loud; naming the better lair makes it useful (todo 05).
+      const better = this.events.betterSpot?.() ?? null;
+      this.stop(better === null ? reason : `${reason} ${better}`);
       return;
     }
     /*

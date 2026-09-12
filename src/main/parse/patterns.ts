@@ -112,7 +112,13 @@ export const AFFLICTION_ONSETS: ReadonlyArray<{
   {
     type: 'user-diseased',
     condition: 'diseased',
-    pattern: /^You are inflicted with a hideous rotting disease!$/
+    /*
+     * Two sentences. The first is the corpus's; `You are diseased!` is the
+     * wererat's bite on the live realm — three times in one fight
+     * (`out/drive-L30-wererat.jsonl`, 2026-09-12), unread, so the condition
+     * was never recorded and `spells.cures` had nothing to cure.
+     */
+    pattern: /^(?:You are inflicted with a hideous rotting disease|You are diseased)!$/
   },
   /*
    * `You are held!` is the server's own fallback, not a guess: when
@@ -545,10 +551,20 @@ export const RULES: Rule[] = [
    * suffix is an item name from the realm's tables, so it is bounded on
    * ` with your ` and never enumerated. And a thrown weapon puts the item
    * *before* the target: `You hurl your chakram at large black dragon!`
+   *
+   * And the trailing clause the mob's rule below has always taken, from this
+   * side: `You swing at wererat, but it dodges out of the way!` — 110 times
+   * `it` and twice `he` on the live wire (2026-09-12, todo 11), every one of
+   * them unread while the mob's 155 misses were counted, so the fight record
+   * described a character who never missed. `PlayerAttackType.cs:379` writes
+   * `he`/`she` by the target's gender and the wire writes `it`; wire beats
+   * source, so both are taken, and the bare sentence stays for the tree that
+   * ends it at the name.
    */
   {
     type: 'user-misses',
-    pattern: /^You (?:\w+|\w+ your [\w' -]+?) at (?<target>[\w' -]+?)(?: with your [\w' -]+)?!$/
+    pattern:
+      /^You (?:\w+|\w+ your [\w' -]+?) at (?<target>[\w' -]+?)(?: with your [\w' -]+)?(?:, but (?:it|he|she|they) dodges?(?: out of the way)?)?!$/
   },
   /* MajorMUD's one-word form of the same fact: `You miss giant crab!` */
   { type: 'user-misses', pattern: /^You miss (?<target>[\w' -]+)!$/ },
@@ -1028,6 +1044,21 @@ export const RULES: Rule[] = [
     type: 'mob-arrives-room',
     pattern:
       /^(?:(?:A|An|The) )?(?<line>.+?) (?:in(?:to)? the room from|in from) (?:the )?(?<direction>[\w ]+)[.!]$/
+  },
+  /*
+   * The one death sentence the server composes itself. `Mob.cs:1235` prints
+   * `mobType.DeathMessage.Line3` — free text per monster type, no grammar to
+   * match, `The mutant sighs softy, and dies!` typo and all — and falls back to
+   * `<name> falls to the ground dead.` for a monster whose builder left the
+   * field empty. **Read from the server's source, 2026-09-12; no capture holds
+   * it.** Every other death sentence is learned per realm from the line that
+   * arrives immediately before `You gain N experience.` and names the
+   * target (`CharacterTracker`, `RealmLore.deathOf`), and then classified
+   * here as `mob-dies` by exact sentence.
+   */
+  {
+    type: 'mob-dies',
+    pattern: /^(?:(?:A|An|The) )?(?<line>.+?) falls to the ground dead\.$/
   },
 
   /*
@@ -1628,7 +1659,16 @@ export const RULES: Rule[] = [
   },
 
   { type: 'room-exits', pattern: /^Obvious exits: (?<exits>[\w, ]+)/, expectColour: [32] },
-  { type: 'room-also-here', pattern: /^Also here: (?<who>.+?)\.?$/, expectColour: [35] },
+  /*
+   * Both sentences end where the server ends them — `Also here: {list}.`
+   * (`Player.cs:2809`) and `You notice {list} here.` — and **a line that does
+   * not is a record the server wrapped**, read whole by the `wraps: 'record'`
+   * batch rules below (todo 03, 2026-09-12). The period on `Also here:` used
+   * to be optional, which let a wrapped first line (`…, tall orc`) pass as a
+   * complete listing with a name cut in half; 143 of the corpus's 1,201 read
+   * that way, every one a crowded room.
+   */
+  { type: 'room-also-here', pattern: /^Also here: (?<who>.+?)\.$/, expectColour: [35] },
   { type: 'room-items', pattern: /^You notice (?<items>.+?) here\.$/, expectColour: [36] },
 
   /*
@@ -1723,8 +1763,24 @@ export interface BatchRule {
    * `(Bard)`, `[M: 70%] [H:100%]`, `- Midrank` on the next three. Lines are
    * joined until the result matches a qualifier, then closed, so the next
    * row starts fresh rather than being glued onto a completed one.
+   *
+   * `record` is the third shape, for **one sentence that ends at its own
+   * terminator rather than at the prompt** (todo 03, 2026-09-12). `You notice
+   * 197 gold crowns, …, 74 copper farthings,` / `skin-covered book, holy writ
+   * here.` is one floor listing, and `Also here:` wraps the same way in a
+   * crowded room — onto a third line at least once in the corpus. Neither
+   * can wait for the status line: `Obvious exits:` completes the room draft
+   * first and a late listing would land on nothing. So a `record` opens only
+   * on a header its own qualifier does *not* already satisfy (a whole line
+   * was read by the single-line rule), joins every line with a space, and
+   * **closes the moment the joined text satisfies a qualifier** — or drops
+   * without a block when the table reads a line as something else, the
+   * prompt arrives, or `maxLines` is reached. The join is driven from the
+   * opening line, never from a tail that happens to end `here.`; and the
+   * fold is a word boundary, not a width — 67, 75 and 76 characters in three
+   * live samples, so no column count is encoded.
    */
-  wraps?: boolean | 'assemble';
+  wraps?: boolean | 'assemble' | 'record';
   /**
    * Whether a wrapped tail of this listing can look like a room name, so that
    * `room-name` is refused while the listing is open.
@@ -1858,6 +1914,36 @@ const GANG_ROW =
   /^(?<name>[A-Z][\w'-]*)(?: (?<last>[A-Z][\w'-]*))?\s{2,}(?<level>\d+) (?<who>.+?)\s+(?:- (?<online>Online))?\s*(?:\[(?<rank>\w+)\])?\s*$/;
 
 export const BATCH_RULES: BatchRule[] = [
+  {
+    /*
+     * A floor listing the server wrapped. Live (`out/drive-L30-loop.jsonl`,
+     * 2026-09-12): 65 of 72 `You notice` lines arrived in two pieces and every
+     * one read as room description, while 283 gold crowns sat unseen across
+     * six laps; 123 of the corpus's 571 wrap too, and those are the piles with
+     * the potions and the weapons in them. See `wraps: 'record'`.
+     */
+    type: 'room-items',
+    header: /^You notice /,
+    shape: 'object',
+    wraps: 'record',
+    maxLines: 6,
+    qualifiers: [/^You notice (?<items>.+?) here\.$/]
+  },
+  {
+    /*
+     * The occupant list, wrapped: 143 of the corpus's 1,201, by definition the
+     * crowded rooms — `Also here: …, nasty orc rogue, tall orc` / `warrior, …`
+     * cuts a monster's name in half, and `maxMobs`, `whenOutnumbered` and the
+     * menace ranking all counted the room short. Corpus-only: no GreaterMUD
+     * room driven so far held enough to wrap. Same shape, same terminator.
+     */
+    type: 'room-also-here',
+    header: /^Also here: /,
+    shape: 'object',
+    wraps: 'record',
+    maxLines: 6,
+    qualifiers: [/^Also here: (?<who>.+?)\.$/]
+  },
   {
     /*
      * `bank`, standing in one. Live at the Bank of Godfrey (2026-08-29):

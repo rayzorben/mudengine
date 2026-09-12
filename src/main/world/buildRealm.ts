@@ -80,8 +80,10 @@ import {
  * | 30 | **What a room's own spell does, and what stops it.** `Rooms.Spell` has been written out since format 13 and read by nothing, so the router priced the whole Silver River — 845 rooms whose spell bashes anybody without a boat against the rocks — at one step a room, and a route from the Pier to the Gnoll Encampment went eighty-eight of them rather than a hundred and four through the slums. The harm is one step down a chain the runtime cannot walk: `river damage` carries no magnitude at all, only `TextBlock 2750`, which reads `failitem 690:failitem 691:failitem 1181:failitem 3609:message 2096:cast 754` — a log raft, a wooden skiff, a silverbark canoe or a river punt stops it, and otherwise `battered` takes 10–20. `TBInfo` is not converted, so `indexSpellHazards` follows the chain here and writes the answer onto the spell (`BuiltSpell.hz`); the router prices the room by it and un-prices it for a pack holding one of the items — todo 01 |
  * | 31 | **A lair's monsters are its own rows, and a room's spell can summon.** A lair names its monsters by row number and the index folded every row sharing a name into one record, so `Hillside Path, Guard Post` — row 224, a 100-HP gnoll scout that lands one blow in twenty-five — was weighed as row 2204, an 830-HP gnoll scout that swings four times a round, and a level-12 Paladin was told the room was expected to kill it. `BuiltMob.pr` and `pd` carry each row's own profile and disposition beside its number, so `WorldGraph.lairEntities` weighs the row the lair actually spawns; a name off the wire still folds, because the wire carries no number. And `spellHazard.ts` reads a roll table (`77:addexp 0`, `81:message 2645`) as the dice it is rather than as an unknown verb, and `summon` as a fact (`BuiltSpellHazard.sm`) rather than as a chain it cannot follow: 71 of Paradigm's 159 room spells were unread, and 29 rooms of the Silvermere's own weather were priced as a hazard — todo 01 |
  * | 32 | **A row's own numbers, so a name standing in a room can be resolved to one of them.** Format 31 gave a lair the row it spawns; the wire still carried only a name, so the Reference card answered *gnoll scout* with the fold of rows 224 and 2204 — `100–830 hp`, 75 AC, and a fight it priced at 2,161 hp of chewing. But a room is a very strong clue to which row is standing in it: the Gnoll Tent's own lair names 224, and the nearest room row 2204 spawns in is on another map. `BuiltMob.rw` carries every row's own health, defence, worth, regeneration, pursuit and average blow beside its number — subsuming `pr` and `pd`, which were the same per-row shape written as two parallel arrays — and `WorldGraph.resolveMobRow` picks the row by the room, saying which and how. Written only where a name holds several rows, because with one row the fold *is* the row — todo 02 |
+ * | 33 | **The realm's own clocks: a lair's respawn and a placed monster's.** `Rooms.Delay` was in every room row and read by nothing, so the client could price what a lair *costs* and never what it *pays*, and it sat a character down in a room that makes monsters every twenty seconds (todos 05 and 08). `BuiltRoom.dl` carries the column as the realm states it — minutes, except an Arena room and a negative figure are seconds (`Room.GetDelayInSeconds`), and GreaterMUD's regen adds thirty seconds to the elapsed time before comparing (`RegenSlot.cs:33`), so the reading lives in `src/shared/hunting.ts` behind the family. `BuiltMobRow.rt` is `Monsters.RegenTime` in hours, the clock a *placed* monster comes back on (`MobType.Regen * 3600`) — a boss's, never a lair's — todo 05 |
+ * | 34 | **A spell's element.** `Spells.AttType` was in every spell row and read by nothing, so a lightning bolt could not be told from a fireball when the monster in front of the character resisted lightning; `BuiltSpell.at` carries the column as the realm states it and `WorldSpell.element` is `Spell.GetSpellAttackType`'s reading (0 cold, 1 hot, 2 stone, 3 lightning, 4 normal, 5 water, 6 poison), so `chooseAttackSpell` can take the monster's `Rlit` off the damage the way `Spell.CheckResistance` does — todo 09 |
  */
-export const REALM_FORMAT = 32;
+export const REALM_FORMAT = 34;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -343,6 +345,8 @@ export interface BuiltSpell {
    * a full word per spell is a megabyte for nothing.
    */
   dif?: number;
+  /** `Spells.AttType`, as stated — the element (format 34). */
+  at?: number;
   /**
    * `Abil-n` / `AbilVal-n` — format 14, and the same pairs an item carries.
    *
@@ -691,6 +695,8 @@ export interface BuiltMobRow {
   mr?: number;
   xp?: number;
   rgn?: number;
+  /** `Monsters.RegenTime`, hours: a placed monster's clock (format 33). */
+  rt?: number;
   fol?: number;
   dmg?: number;
   chl?: number;
@@ -1151,6 +1157,14 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
      */
     if (row['Spell']) room['sp'] = row['Spell'];
     if (row['Lair'] && row['Lair'] !== '') room['lair'] = row['Lair'];
+    /*
+     * The lair's respawn clock — format 33. As the realm states it, unit rules
+     * and the family's offset applied where it is read (`respawnSeconds`), so
+     * a MajorMUD conversion and a GreaterMUD one carry the same column.
+     * Omitted at zero: no clock is stated, not a clock of nothing.
+     */
+    const delay = number(row['Delay']);
+    if (delay !== null && delay !== 0 && delay !== BLANK_AS_NUMBER) room['dl'] = delay;
     if (row['Placed'] && row['Placed'] !== '') room['placed'] = row['Placed'];
 
     drafts.push({ room, cmd: number(row['CMD']) });
@@ -1475,6 +1489,9 @@ export function indexSpells(source: RealmSource): BuiltSpell[] {
     if (minBase !== 0 || maxBase !== 0) entry.pw = [minBase, maxBase];
     const cap = number(row['Cap']);
     if (cap !== null && cap > 0) entry.cap = cap;
+    // The element — format 34. Zero is cold, so only a blank is omitted.
+    const attackType = number(row['AttType']);
+    if (attackType !== null && attackType !== BLANK_AS_NUMBER) entry.at = attackType;
     for (const [levels, amount, field] of [
       ['MinIncLVLs', 'MinInc', 'mig'],
       ['MaxIncLVLs', 'MaxInc', 'mag'],
@@ -1833,6 +1850,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       own.mr = stated('MagicRes');
       own.xp = stated('EXP');
       own.rgn = stated('HPRegen');
+      own.rt = stated('RegenTime');
       own.fol = stated('Follow%');
       own.dmg = stated('AvgDmg');
       own.chl = stated('CharmLVL');

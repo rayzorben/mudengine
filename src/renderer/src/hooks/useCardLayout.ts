@@ -141,6 +141,13 @@ export const CARDS = [
    */
   { id: 'quests', label: t('cards.quests.title') },
   /*
+   * Where to hunt, from where the character stands: the lairs within reach,
+   * priced for this character, best first. Put away by default and reached
+   * through the palette (*Where should I hunt?*), because it is a question
+   * asked before an evening rather than a readout watched through one.
+   */
+  { id: 'hunting', label: t('cards.hunting.title') },
+  /*
    * There is no Shop card. A shop is a property of a *room*, so it is a face of
    * the Room card — `ROOM · SHOP`, and `TEMPLE`, `BANK` or `TRAINER` where the
    * realm says so. As a card of its own it appeared and disappeared from the
@@ -198,7 +205,8 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'banks',
   'stats',
   'builder',
-  'quests'
+  'quests',
+  'hunting'
 ];
 
 /**

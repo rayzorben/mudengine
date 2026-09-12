@@ -27,6 +27,8 @@ import path from 'node:path';
 import { homePaths } from './home.mjs';
 import YAML from 'yaml';
 
+import { LoopStore } from '../../src/main/config/LoopStore.ts';
+import { asLoops, mergeLoops } from '../../src/shared/loops.ts';
 import { resolveProfile } from '../../src/shared/profiles.ts';
 
 /**
@@ -73,42 +75,104 @@ export function configPath() {
 
 /**
  * Every character that plays on the test realm **and** has credentials, in
- * filename order.
+ * filename order, with the loops the client would hand it.
  *
  * Chosen by *target*, never by filename: a file renamed, or a second character
  * added, cannot send a password somewhere else by accident. A profile that
  * will not resolve is skipped rather than guessed at, exactly as the client
  * skips it.
+ *
+ * **The loops are folded in the way the client folds them** (todo 02,
+ * 2026-09-12): `global/loops/`, then the character's server's, then its own,
+ * narrowest winning by name (`LoopStore.forProfile`, `client.ts`'s `loopsFor`).
+ * `resolveProfile` is a pure function over parsed YAML and cannot touch the
+ * disk, so a helper that handed it the profile file alone resolved every
+ * character with `automation.loops` empty -- and `play-probe`'s whole
+ * `PLAY_LOOP=1` branch, guarded by `loops.length > 0`, had never once run.
+ * Servers made the same move a fortnight earlier and `baseConfig` was
+ * patched for them alone; this is the same fix for the same class of
+ * silence the header above describes. A loop file that will not parse is
+ * reported, as `LoopStore` reports it to the client, never dropped quietly.
+ *
+ * `root` is for a test; a probe reads the home this run was given.
  */
-export function localProfiles() {
-  const home = homePaths();
-  const source = baseConfig(home);
-  if (!fs.existsSync(home.profilesDir)) return [];
+export function localProfiles(root = undefined) {
+  const home = root === undefined ? homePaths() : homePaths(root);
+  const loops = new LoopStore(home, (problem) => console.warn(`loops: ${problem}`));
+  try {
+    const source = baseConfig(home, loops.globalLoops);
+    if (!fs.existsSync(home.profilesDir)) return [];
+    const serverIds = serverDirectories(home);
 
-  const found = [];
-  for (const id of fs
-    .readdirSync(home.profilesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-    .map((entry) => entry.name)
-    .sort()) {
-    let raw;
-    try {
-      raw = YAML.parse(fs.readFileSync(home.profile(id).file, 'utf8'));
-    } catch {
-      continue;
+    const found = [];
+    for (const id of fs
+      .readdirSync(home.profilesDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name)
+      .sort()) {
+      let raw;
+      try {
+        raw = YAML.parse(fs.readFileSync(home.profile(id).file, 'utf8'));
+      } catch {
+        continue;
+      }
+      if (!raw) continue;
+      const result = resolveProfile(id, raw, source);
+      if (result.error !== undefined) continue;
+      if (!isLocalRealm(result.profile.target.host)) continue;
+      if (!result.profile.config.connection.login.username) continue;
+      // The client's own order: what the file states, the server's, the
+      // character's; later wins by name.
+      const serverId = serverIds.get(result.profile.serverName.trim().toLowerCase());
+      result.profile.config.automation.loops = mergeLoops(
+        result.profile.config.automation.loops,
+        serverId === undefined ? [] : loops.forServer(serverId),
+        loops.forProfile(id)
+      );
+      found.push(result.profile);
     }
-    if (!raw) continue;
-    const result = resolveProfile(id, raw, source);
-    if (result.error !== undefined) continue;
-    if (!isLocalRealm(result.profile.target.host)) continue;
-    if (!result.profile.config.connection.login.username) continue;
-    found.push(result.profile);
+    return found;
+  } finally {
+    // Never started polling; this drops its listeners.
+    loops.dispose();
   }
-  return found;
 }
 
 /**
- * The options file with the servers on disk folded in.
+ * Server directory ids by the name inside each file, lower-cased -- the
+ * client's `ServerStore.idFor`. The id is the directory and the name is what
+ * a character says, so the two need this map to meet.
+ */
+function serverDirectories(home) {
+  const ids = new Map();
+  let names = [];
+  try {
+    names = fs
+      .readdirSync(home.serversDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name);
+  } catch {
+    names = [];
+  }
+  for (const id of names) {
+    try {
+      const server = YAML.parse(fs.readFileSync(home.server(id).file, 'utf8'));
+      ids.set(
+        String(server?.name ?? id)
+          .trim()
+          .toLowerCase(),
+        id
+      );
+    } catch {
+      // A server that will not parse is one the client would skip too.
+    }
+  }
+  return ids;
+}
+
+/**
+ * The options file with the servers on disk folded in, and the global loops
+ * where a caller has read them.
  *
  * Servers are files now (`servers/<id>/server.yaml`), and a character names one
  * by name — so a base without them resolves no character at all, and every
@@ -119,14 +183,22 @@ export function localProfiles() {
  * opposite reason — to learn the passwords it must then find nowhere else —
  * and which had gone on resolving against the bare options file for a day
  * after the servers moved, finding no character and so no password.
+ *
+ * `globalLoops` is laid over whatever the file itself states, as
+ * `ConfigStore.composed` lays `global/loops/` over it; the file's own list
+ * goes through `asLoops` first because a stop there is a bare string and
+ * `mergeLoops` compares parsed loops.
  */
-export function baseConfig(home) {
+export function baseConfig(home, globalLoops = []) {
   let source = {};
   try {
     source = YAML.parse(fs.readFileSync(home.options, 'utf8')) ?? {};
   } catch {
     source = {};
   }
+  const automation =
+    typeof source.automation === 'object' && source.automation !== null ? source.automation : {};
+  const loops = mergeLoops(asLoops(automation.loops), globalLoops);
 
   const servers = [...(Array.isArray(source.servers) ? source.servers : [])];
   let ids = [];
@@ -153,7 +225,7 @@ export function baseConfig(home) {
       // A server that will not parse is one the client would skip too.
     }
   }
-  return { ...source, servers };
+  return { ...source, servers, automation: { ...automation, loops } };
 }
 
 /** The first such character, or null. */

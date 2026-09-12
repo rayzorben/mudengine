@@ -60,6 +60,10 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   party: { ...DEFAULT_CONFIG.automation.party },
   health: { ...DEFAULT_CONFIG.automation.health },
   movement: { ...DEFAULT_CONFIG.automation.movement },
+  train: {
+    ...DEFAULT_CONFIG.automation.train,
+    wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
+  },
   // Empty is what OPTIONS below gives a character: the options file states no
   // loops, so a draft matching it writes no `loops:` key.
   loops: [],

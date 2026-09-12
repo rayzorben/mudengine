@@ -178,6 +178,27 @@ export interface MobLore {
   regenFor(name: string, at?: RoomId | null): number | null;
   /** A listing named an item the realm knows and the slot it sits in. */
   observeSlot(worn: number, word: string, at: number): void;
+  /**
+   * The monster whose learned death sentence this whole line is, or null.
+   *
+   * `MobType.DeathMessage.Line3` is free text per monster type, typed by
+   * whoever built the realm, and the shipped database has no column for it —
+   * so the sentence is knowable only from the wire, and once known it is
+   * the one announcement of a kill that names the monster and reaches
+   * everybody in the room, whoever landed the blow. Optional: a lore built
+   * before this existed answers nothing.
+   */
+  deathOf?(text: string): string | null;
+  /** A monster's death sentence, read positionally off the wire (see `CharacterTracker`). */
+  observeDeath?(name: string, text: string, at: number): void;
+}
+
+/** What one realm taught about how one monster dies. */
+export interface LearnedDeath {
+  /** The whole line, as the server printed it. */
+  text: string;
+  /** Epoch ms of the kill it was read beside. */
+  at: number;
 }
 
 /** A lore that knows nothing and learns nothing. The zero-realm client. */
@@ -187,7 +208,9 @@ export const NO_LORE: MobLore = {
   learnedFor: () => null,
   regenFor: () => null,
   slotWordsFor: () => [],
-  observeSlot: () => {}
+  observeSlot: () => {},
+  deathOf: () => null,
+  observeDeath: () => {}
 };
 
 /**

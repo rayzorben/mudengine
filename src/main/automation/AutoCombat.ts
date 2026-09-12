@@ -90,11 +90,21 @@ import {
 import type { RealmFamily } from '../../shared/realm';
 import { attacksOnSight } from '../../shared/mobs';
 import { resolveSpell, spellCost } from '../../shared/spellcraft';
+import {
+  chooseAttackSpell,
+  type SpellChoice,
+  type SpellChoiceRefusal
+} from '../../shared/spellchoice';
 import { mobKey, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
 export interface AutoCombatEvents {
   notice?(message: string): void;
+  /**
+   * The spellbook has never been read and *Auto Choose Best Spell* needs it:
+   * whoever owns the routines asks for the listing (`Routines.askBook`).
+   */
+  needBook?(): void;
   /**
    * A fight opened, or declined, and what decided it.
    *
@@ -264,6 +274,10 @@ export class AutoCombat {
   private openerSpent = false;
   /** Whether the held-backstab sentence has been said. See `sayOpenerNeedsStealth`. */
   private saidOpenerNeedsStealth = false;
+  /** The derived round spell last said, so the choice is announced on change only. */
+  private saidChoice: string | null = null;
+  /** The derivation's last refusal said, once per kind. */
+  private saidChoiceRefusal: SpellChoiceRefusal | null = null;
   /**
    * The round spell last proposed, and when. The only record of *which* spell
    * `Your spell has no effect on …` is about — the sentence names the target
@@ -322,6 +336,7 @@ export class AutoCombat {
      * has to hit it lives here. See `SpellsConfig`.
      */
     private spells: SpellsConfig = {
+      autoChoose: false,
       attack: '',
       areaAttack: '',
       areaMinMobs: 3,
@@ -454,6 +469,8 @@ export class AutoCombat {
   /** A new connection. Nothing about the last fight carries over. */
   reset(): void {
     this.refused.clear();
+    this.saidChoice = null;
+    this.saidChoiceRefusal = null;
     this.rounds = 0;
     this.state = null;
     this.opened.clear();
@@ -1524,6 +1541,15 @@ export class AutoCombat {
     this.events.notice?.(t('automation.combat.openerNeedsStealth', { verb }));
   }
 
+  /**
+   * Whether the configured opener is refused this session — for the character
+   * or for the weapon in hand. `AutoStealth` asks before spending a `hide` on
+   * a backstab the server would not perform.
+   */
+  openerRefused(): boolean {
+    return this.isRefused(this.config.opener);
+  }
+
   /** Whether a configured word is one of the spellings of a refused verb. */
   private isRefused(word: string): boolean {
     const spelled = word.trim().toLowerCase();
@@ -1761,6 +1787,13 @@ export class AutoCombat {
       }
     }
 
+    // *Auto Choose Best Spell*: the round spell is derived, not typed (todo 09).
+    if (this.spells.autoChoose) {
+      if (this.spells.minMana > 0 && fraction !== null && fraction < this.spells.minMana)
+        return null;
+      return this.chosenSpell(state);
+    }
+
     const attack = this.spells.attack.trim();
     if (attack.length === 0) return null;
     /*
@@ -1781,6 +1814,92 @@ export class AutoCombat {
   /** Whether a per-target cap has been spent on this spell. 0 is no cap. */
   private capped(spell: string, cap: number): boolean {
     return cap > 0 && (this.casts.get(spell) ?? 0) >= cap;
+  }
+
+  /**
+   * The best attack spell for this target, now, from the book the client has
+   * read and the realm's own figures — `chooseAttackSpell`. The spells the
+   * server has refused on this target and the ones capped this fight are
+   * excluded, which is how the fallback derives itself. A choice that changes
+   * is said; a refusal is said once per kind, and an unread book is asked for.
+   */
+  private chosenSpell(state: CharacterState): { spell: string; area: boolean } | null {
+    const { combat, magery, family } = this.realmClass();
+    const excluded = new Set<string>(this.ineffective);
+    if (this.spells.attackCasts > 0) {
+      for (const [spell, count] of this.casts) {
+        if (count >= this.spells.attackCasts) excluded.add(spell);
+      }
+    }
+    const entity = state.combat.targetEntity;
+    const choice = chooseAttackSpell(
+      state.spellbook === null
+        ? { book: null }
+        : {
+            book: state.spellbook,
+            realm: this.realmSpell,
+            level: state.progress.level,
+            mana: state.vitals.mana,
+            sheet: prowessSheetOf(state, { combat, magery }),
+            family,
+            target: {
+              remaining: state.combat.health?.remaining ?? null,
+              magicRes: entity?.magicResist ?? null,
+              abilities: entity?.abilities
+            },
+            excluded,
+            killConfidence: tuning().spells.killConfidence
+          }
+    );
+    if (choice.chosen === null) {
+      this.sayChoiceRefusal(choice.refusal);
+      return null;
+    }
+    this.sayChoice(choice);
+    return { spell: choice.chosen.spell.name, area: false };
+  }
+
+  private sayChoice(choice: SpellChoice): void {
+    const chosen = choice.chosen;
+    if (chosen === null) return;
+    const key = `${chosen.spell.name}|${choice.why}`;
+    if (this.saidChoice === key) return;
+    this.saidChoice = key;
+    this.saidChoiceRefusal = null;
+    const params = {
+      spell: chosen.spell.name,
+      min: chosen.min,
+      max: chosen.max,
+      expected: Math.round(chosen.expected),
+      cost: chosen.cost ?? '?'
+    };
+    this.events.notice?.(
+      choice.why === 'kills'
+        ? t('automation.spells.choseKills', params)
+        : t('automation.spells.choseHardest', params)
+    );
+  }
+
+  private sayChoiceRefusal(refusal: SpellChoiceRefusal | null): void {
+    if (refusal === null || refusal === 'no-mana') return;
+    if (this.saidChoiceRefusal === refusal) return;
+    this.saidChoiceRefusal = refusal;
+    this.saidChoice = null;
+    switch (refusal) {
+      case 'no-book':
+        this.events.notice?.(t('automation.spells.noBookYet'));
+        this.events.needBook?.();
+        return;
+      case 'empty-book':
+        this.events.notice?.(t('automation.spells.emptyBook'));
+        return;
+      case 'no-attack-spells':
+        this.events.notice?.(t('automation.spells.noAttackSpells'));
+        return;
+      case 'all-resisted':
+        this.events.notice?.(t('automation.spells.allResisted'));
+        return;
+    }
   }
 
   /**

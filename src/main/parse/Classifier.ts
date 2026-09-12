@@ -332,7 +332,12 @@ export class Classifier {
      * and what the wire has taught. A lookup rather than the table, as `names`
      * is, because what has been learned changes while the session runs.
      */
-    private readonly spells?: (text: string) => SpellMessageHit | null
+    private readonly spells?: (text: string) => SpellMessageHit | null,
+    /**
+     * The monster whose learned death sentence a whole line is. Per realm and
+     * learned as the session runs, so a lookup for the reason `spells` is.
+     */
+    private readonly deaths?: (text: string) => string | null
   ) {}
 
   /** The type of the listing being collected, or null between listings. */
@@ -399,7 +404,7 @@ export class Classifier {
   classify(line: StreamLine): { block: Block; batch?: BatchBlock; tails?: Block[] } {
     const text = line.plain;
     const block = this.classifyLine(line, text);
-    let batch = this.feedBatch(line, text);
+    let batch = this.feedBatch(line, text, block.type);
 
     /*
      * Each segment goes through the whole of `classifyLine` rather than a
@@ -415,12 +420,23 @@ export class Classifier {
     let rest = block.type === 'status-line' ? tailAfterPrompt(text) : null;
     while (rest !== null) {
       const next = this.classifyLine(line, rest);
-      const found = this.feedBatch(line, rest);
+      const found = this.feedBatch(line, rest, next.type);
       batch ??= found;
       tails.push(next);
       // `tailAfterPrompt` always returns a strictly shorter string, so this
       // terminates on any input.
       rest = next.type === 'status-line' ? tailAfterPrompt(rest) : null;
+    }
+
+    /*
+     * A wrapped floor listing answering a `search` is the same retype
+     * `answerSearch` gives the single-line one. The per-line blocks of a
+     * record are `unknown`, so the slot is still armed when the record
+     * closes; consumed here, where the listing actually is.
+     */
+    if (batch?.type === 'room-items' && this.searching) {
+      this.searching = false;
+      batch = { ...batch, type: 'room-hidden-items', domain: domainOf('room-hidden-items') };
     }
 
     return {
@@ -443,7 +459,7 @@ export class Classifier {
     const block = this.answerSearch(
       line,
       text,
-      this.asSpellMessage(line, text, this.matchLine(line, text))
+      this.asDeathSentence(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
     );
 
     /*
@@ -461,6 +477,19 @@ export class Classifier {
       return block;
     }
     if (!this.inDescription || text.trim().length === 0) return block;
+    /*
+     * A record the server wrapped is not prose, on any of its lines. Its
+     * header ends the description exactly as the whole sentence does, and
+     * its tail is read by the batch that closes on it — so both stay
+     * `unknown` here rather than becoming scenery, which is where 65 wrapped
+     * floor listings in one live run went (todo 03). The batch is fed after
+     * this, so the header's own line asks the rule table; a continuation
+     * finds the record already open.
+     */
+    if (this.batch?.rule.wraps === 'record' || opensRecord(text)) {
+      this.inDescription = false;
+      return block;
+    }
 
     return this.build(line, 'room-description', {}, text, tuning().parse.baseConfidence);
   }
@@ -611,6 +640,21 @@ export class Classifier {
       text,
       confidence
     );
+  }
+
+  /**
+   * A whole line the realm has taught is one monster's death sentence.
+   *
+   * Only `unknown` is open to it: the sentence is free text per monster type
+   * (`MobType.DeathMessage.Line3`) and matched whole, so a line any frame or
+   * the spell table already read stands. The group is the monster as the lore
+   * keyed it, which is `mobKey`'s spelling.
+   */
+  private asDeathSentence(line: StreamLine, text: string, block: Block): Block {
+    if (!this.deaths || block.type !== 'unknown') return block;
+    const mob = this.deaths(text);
+    if (mob === null) return block;
+    return this.build(line, 'mob-dies', { mob }, text, tuning().parse.baseConfidence);
   }
 
   /**
@@ -794,11 +838,20 @@ export class Classifier {
     };
   }
 
-  /** Accumulates multi-line blocks, returning one when it completes. */
-  private feedBatch(line: StreamLine, text: string): BatchBlock | undefined {
+  /**
+   * Accumulates multi-line blocks, returning one when it completes.
+   *
+   * `type` is what the rule table made of this same line, which only a
+   * `wraps: 'record'` batch reads: a line the table claimed is one the record
+   * cannot continue through.
+   */
+  private feedBatch(line: StreamLine, text: string, type: BlockType): BatchBlock | undefined {
     if (!this.batch) {
       const rule = BATCH_RULES.find((candidate) => candidate.header.test(text));
       if (!rule) return undefined;
+      // A record already whole on its header line was read by the single-line
+      // rule; there is nothing to join.
+      if (rule.wraps === 'record' && rule.qualifiers.some((q) => q.test(text))) return undefined;
       /*
        * The header's own captures are kept.
        *
@@ -850,8 +903,27 @@ export class Classifier {
      * population. See `BatchRule.maxLines`.
      */
     const cap = rule.maxLines === 'roster' ? tuning().parse.rosterLines : rule.maxLines;
-    const done = lines.length >= cap || STATUS_LINE_START.test(text);
-    if (!done) return undefined;
+    if (rule.wraps === 'record') {
+      /*
+       * A record closes on its own terminator, not the prompt's: the joined
+       * sentence satisfying a qualifier is the whole block, and it has to be
+       * handed on before `Obvious exits:` completes the room it belongs to.
+       * Anything else that ends it — the table reading this line as something
+       * of its own, the prompt, the cap — ends it with nothing: the lines were
+       * each offered to the table on their own already.
+       */
+      const whole = foldWraps(rule, lines).some((joined) =>
+        rule.qualifiers.some((qualifier) => qualifier.test(joined))
+      );
+      if (!whole) {
+        const ended = type !== 'unknown' || lines.length >= cap || STATUS_LINE_START.test(text);
+        if (ended) this.batch = null;
+        return undefined;
+      }
+    } else {
+      const done = lines.length >= cap || STATUS_LINE_START.test(text);
+      if (!done) return undefined;
+    }
 
     const rows: Array<Record<string, string>> = [];
     const merged: Record<string, string> = {};
@@ -917,6 +989,15 @@ function targetByGrammar(middle: string): string | null {
 }
 
 /**
+ * Whether this line opens a record the server may have wrapped — the header
+ * of a `wraps: 'record'` batch rule. Asked by `classifyLine` before the batch
+ * is fed, so the header itself is kept out of the room description.
+ */
+function opensRecord(text: string): boolean {
+  return BATCH_RULES.some((rule) => rule.wraps === 'record' && rule.header.test(text));
+}
+
+/**
  * Rejoins the lines the server folded, for a rule that says its block wraps.
  *
  * The server formats to a width of its own choosing and puts a real CRLF at the
@@ -932,6 +1013,15 @@ function targetByGrammar(middle: string): string | null {
  */
 function foldWraps(rule: BatchRule, lines: string[]): string[] {
   if (rule.wraps === 'assemble') return assembleWraps(rule, lines);
+  // One sentence, folded at word boundaries: a single space is what each fold ate.
+  if (rule.wraps === 'record') {
+    return [
+      lines
+        .map((piece) => piece.trim())
+        .filter((piece) => piece.length > 0)
+        .join(' ')
+    ];
+  }
   if (rule.wraps !== true) return lines;
 
   const folded: string[] = [];

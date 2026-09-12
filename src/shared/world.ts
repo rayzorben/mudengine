@@ -9,6 +9,7 @@
  * in the renderer.
  */
 import type { Alignment } from './alignment';
+import type { SpellElement } from './spellchoice';
 import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
@@ -905,6 +906,12 @@ export interface WorldSpell {
   /** The ceiling the scaling reaches — `Spells.Cap`. 508 spells state one. */
   cap?: number;
   /**
+   * `Spells.AttType` read as `Spell.GetSpellAttackType` reads it (format 34,
+   * todo 09): which of a monster's resistances takes a share of the damage
+   * (`Spell.CheckResistance`). Absent where the column is blank.
+   */
+  element?: SpellElement;
+  /**
    * How the magnitude grows with level: `[levels per step, amount per step]`,
    * from `MinIncLVLs`/`MinInc` and the `Max` pair beside it.
    *
@@ -1260,6 +1267,12 @@ export interface WorldMobRow {
   magicResist?: number;
   experience?: number;
   regen?: number;
+  /**
+   * `Monsters.RegenTime`, in hours: how long a *placed* monster stays dead
+   * (`RegenSlot.Regen`: `MobType.Regen * 3600`). A lair room respawns on
+   * its own `Delay` instead; this is the boss's clock (format 33, todo 05).
+   */
+  regenHours?: number;
   follows?: number;
   averageDamage?: number;
   charmLevel?: number;
@@ -1390,6 +1403,8 @@ export interface WorldMob {
    * `src/main/parse/combat.ts`.
    */
   regen?: number;
+  /** Hours a placed one stays dead — `Monsters.RegenTime` (format 33). */
+  regenHours?: number;
   /**
    * The chance it follows when this character leaves the room, as a percentage.
    *
@@ -1547,6 +1562,13 @@ export interface WorldRoom {
   npcId?: number;
   /** Mob lair descriptor, verbatim from the realm data. */
   lair?: string;
+  /**
+   * `Rooms.Delay`, as the realm states it — the lair's respawn clock (format
+   * 33, todo 05). Minutes, except that an Arena room and a negative figure
+   * are seconds (`Room.GetDelayInSeconds`); `respawnSeconds` in
+   * `src/shared/hunting.ts` is the one reading, family offset included.
+   */
+  delay?: number;
   /**
    * The realm's own light level, graded −999 … +1000. Absent means the realm
    * recorded none, which is an ordinary lit room.

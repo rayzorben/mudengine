@@ -89,6 +89,8 @@ interface Ledger {
    */
   killedAfter: number | null;
   killedAt: number | null;
+  /** What said it died: the room's sentence, or the experience line as proxy. */
+  killedBy: 'sentence' | 'experience' | null;
   /**
    * Whether the first blow this client saw against this monster was its own.
    *
@@ -114,6 +116,7 @@ function newLedger(key: string, byMe: boolean, at = 0): Ledger {
     observed: null,
     killedAfter: null,
     killedAt: null,
+    killedBy: null,
     opened: byMe
   };
 }
@@ -526,14 +529,20 @@ export class FightTracker {
    * takes another blow (see `suspectDeath`). Returns the state unchanged when
    * nothing this client watched can have died.
    */
-  died(s: CharacterState, at: number): CharacterState {
+  died(
+    s: CharacterState,
+    at: number,
+    by: 'sentence' | 'experience' = 'experience'
+  ): CharacterState {
     /*
      * Something died. The nearest thing this server has to an announcement
      * — the death sentence itself is realm data, not a fixed phrase — so
      * it is recorded as a suspicion against the current target and tested
-     * by whether that target takes another blow. See `suspectDeath`.
+     * by whether that target takes another blow. See `suspectDeath`. `by`
+     * says whether the line before this one was the target's own sentence,
+     * which the record keeps beside the kill (todo 04).
      */
-    const died = this.suspectDeath(s.combat.target, at);
+    const died = this.suspectDeath(s.combat.target, at, by);
     /*
      * And a thing that died is a thing that is no longer in the room.
      *
@@ -551,13 +560,45 @@ export class FightTracker {
      * something that is not there.
      */
     if (!died) return s;
-    const killed = mobKey(s.combat.target ?? '');
+    return this.leaves(s, mobKey(s.combat.target ?? ''), false);
+  }
+
+  /**
+   * The room said which thing died — its own death sentence, learned or the
+   * server's fallback — whoever killed it.
+   *
+   * This is the case the experience line cannot reach: a kill somebody else
+   * landed, one worth no experience, or the second of two monsters. One
+   * instance leaves, because one sentence is one death; the state is returned
+   * unchanged when nothing here answers to the name. A ledger for it settles
+   * as a kill by sentence, the stronger of the two readings.
+   */
+  diedNamed(s: CharacterState, name: string, at: number): CharacterState {
+    const key = mobKey(name);
+    if (key.length === 0) return s;
+    if (!s.room.occupants.some((who) => mobKey(who.name) === key)) return s;
+    const ledger = this.ledgers.get(key);
+    if (ledger && ledgerTotal(ledger) > 0) {
+      ledger.killedAfter = ledgerTotal(ledger);
+      ledger.killedAt = at;
+      ledger.killedBy = 'sentence';
+    }
+    return this.leaves(s, key, true);
+  }
+
+  /** A dead monster leaves the room, the target and the attacker list. */
+  private leaves(s: CharacterState, killed: string, one: boolean): CharacterState {
+    let dropped = false;
+    const occupants = s.room.occupants.filter((who) => {
+      if (mobKey(who.name) !== killed) return true;
+      if (one && dropped) return true;
+      dropped = true;
+      return false;
+    });
+    const stillHere = occupants.some((who) => mobKey(who.name) === killed);
     return {
       ...s,
-      room: {
-        ...s.room,
-        occupants: s.room.occupants.filter((who) => mobKey(who.name) !== killed)
-      },
+      room: { ...s.room, occupants },
       /*
        * The bar goes with the target — a reading of a monster that is not
        * there is the stale-target problem wearing a percentage — and so
@@ -569,9 +610,13 @@ export class FightTracker {
        */
       combat: {
         ...s.combat,
-        target: null,
-        health: null,
-        attackers: s.combat.attackers.filter((name) => mobKey(name) !== killed)
+        // A namesake still standing keeps the target and the bar: the fight
+        // with it is the same fight, and `aa` switches to it by itself.
+        target: stillHere && mobKey(s.combat.target ?? '') === killed ? s.combat.target : null,
+        health: stillHere && mobKey(s.combat.target ?? '') === killed ? s.combat.health : null,
+        attackers: stillHere
+          ? s.combat.attackers
+          : s.combat.attackers.filter((name) => mobKey(name) !== killed)
       }
     };
   }
@@ -610,6 +655,7 @@ export class FightTracker {
       // else's kill crediting this character with experience.
       ledger.killedAfter = null;
       ledger.killedAt = null;
+      ledger.killedBy = null;
     }
     return ledger;
   }
@@ -633,12 +679,13 @@ export class FightTracker {
    * none more is settled as a kill when the fight ends. The test costs one
    * number and removes the only way this can learn something false.
    */
-  private suspectDeath(target: string | null, at: number): boolean {
+  private suspectDeath(target: string | null, at: number, by: 'sentence' | 'experience'): boolean {
     if (target === null) return false;
     const ledger = this.ledgers.get(mobKey(target));
     if (!ledger || ledgerTotal(ledger) <= 0) return false;
     ledger.killedAfter = ledgerTotal(ledger);
     ledger.killedAt = at;
+    ledger.killedBy = by;
     return true;
   }
 
@@ -712,6 +759,7 @@ export class FightTracker {
           : null,
       mob: ledger.key,
       killed,
+      ...(killed && ledger.killedBy !== null ? { killedBy: ledger.killedBy } : {}),
       mine: ledger.mine,
       others: ledger.others,
       blows: ledger.blows,

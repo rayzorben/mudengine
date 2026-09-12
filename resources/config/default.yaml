@@ -697,6 +697,19 @@ automation:
     lightDimRooms: false
     extinguishInLight: true
 
+    # Go back for the kit after a death.
+    #
+    # A death drops everything where the character stood and wakes it in the
+    # temple naked; measured 2026-09-12, a level-30 character put back on top
+    # of its own falchion punched a wererat for 16 and sent no `get` all
+    # session. With this on the client notices the strip (the kit it remembers
+    # is no longer in the pack, and the armour class reads zero), walks back to
+    # the room it died in -- holding when hurt, fighting nothing on the way --
+    # takes what is still lying there and the coins, and puts the kit back on.
+    # Every refusal is said out loud. Off: it walks the character somewhere
+    # unasked, towards whatever did the killing.
+    recoverGear: false
+
     # Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
     # defaults (0) wait the condition out before the script goes on. Off, a
     # route or a loop stands still while the server says the character is
@@ -1081,6 +1094,19 @@ automation:
     # character is hurt.
     restTo: 0.7
 
+    # Rest next door to a lair rather than in it.
+    #
+    # A lair is dangerous for what it is about to contain. Measured 2026-09-12,
+    # twice: a character won a fight, sat down at 20% in a room whose clock
+    # makes three wererats every twenty seconds, and met them at 2%. With this
+    # on, a rest in a room the realm marks as a lair with a short clock is
+    # refused there, out loud with the figure; a neighbouring room the realm
+    # holds no lair in is looked into first (`l <direction>`), entered only if
+    # it is empty, rested in, and stepped back from when nothing else has the
+    # character. Where no neighbour is safe the rest goes ahead where it is,
+    # said once. On: it acts only when resting was going to act.
+    restNextDoor: true
+
     # Rest before stepping through a trap, until health covers what the trap
     # does and still leaves this share of maximum after it. 0 walks into any
     # trap at any health.
@@ -1115,6 +1141,33 @@ automation:
     healingPotionName: healing potion
     manaPotionName: mana potion
 
+  # Spending character points -- the `train stats` screen.
+  #
+  # Every level hands out character points, and an unspent one is hit points
+  # the character never has. `train stats` replaces the whole screen with a
+  # form; the client stands down from it and touches nothing, because the
+  # first field is the family name and a command typed there renames the
+  # character. With `stats` on, the client itself opens the form at a
+  # trainer when points are unspent, reads its figures, buys the cheapest
+  # wanted point first until nothing wanted is affordable, and saves. It
+  # never types into the name fields and never quits the form; what it
+  # bought, what was refused and what is left are all said out loud.
+  #
+  # `wanted` is where each stat should end up. 0, or a figure at or under
+  # the current one, leaves that stat alone -- so the switch does nothing
+  # until a figure here is raised. The race's ceiling caps a figure above it.
+  # The price is the server's: the first ten points above the race's base
+  # cost 1 CP each, the next ten 2 each, and so on.
+  train:
+    stats: false
+    wanted:
+      strength: 0
+      intellect: 0
+      willpower: 0
+      agility: 0
+      health: 0
+      charm: 0
+
   # Casting -- MegaMUD's Spells tab, at its smallest useful size.
   #
   # One spell and one floor, deliberately. "Cast this when that" is what
@@ -1131,6 +1184,20 @@ automation:
   # a cast on yourself goes out bare, with no target -- a targetless cast
   # lands on the caster.
   spells:
+    # Auto Choose Best Spell.
+    #
+    # On, the round spell is worked out every round from the spellbook the
+    # client has read and the realm's own figures, the way a player who knows
+    # their spells would: a spell the monster resists is not cast (a lightning
+    # bolt at something that resists lightning is mana thrown away), the
+    # cheapest spell whose *least* roll would finish what is left of the
+    # monster is cast when there is one, and otherwise the hardest hitter the
+    # pool can pay for. The cures below come from the book the same way where
+    # their boxes are blank. The choice is said out loud each time it changes.
+    # `attack` and `attackFallback` are what is cast with this off. Off:
+    # it spends mana on a reading you did not type.
+    autoChoose: false
+
     attack: ''
 
     # The spell for a crowded room -- MegaMUD's MultAttack. When at least
@@ -1379,6 +1446,18 @@ automation:
     # first: spending it is the point of having it. `bs` for a thief, `ju` for a
     # mystic. Blank for none.
     opener: ''
+
+    # Get back into the shadows between fights, so `bs` lands again.
+    #
+    # The realm grants a backstab through `sn` and `hide` alone, both refused
+    # while a monster is in the room, and the first blow spends it. A character
+    # standing in a lair therefore opens every fight after the first in plain
+    # sight -- measured 2026-09-12 as a 156-damage opener thrown away for a
+    # 38-damage swing, every fight. With this on the client sends `hide` when
+    # the character is seen in an empty room standing still, and `sn` when a
+    # lap or a route has it. Only for an opener that is `bs`; a jumpkick has
+    # nothing to hide for. Off, because it spends a command per fight.
+    hideForOpener: false
 
     # Monsters never attacked automatically, as the realm spells them.
     #

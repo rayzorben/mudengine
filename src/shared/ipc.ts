@@ -24,6 +24,7 @@ import type { CharacterState } from './character';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
 import type { Quest } from './quests';
+import type { HuntingAdvice } from './hunting';
 import type {
   AlertsUiConfig,
   AutomationSwitch,
@@ -32,6 +33,7 @@ import type {
   ConfigSnapshot,
   HealthConfig,
   MovementConfig,
+  TrainConfig,
   RemotesConfig,
   StatlineConfig,
   RewritesUiConfig,
@@ -386,6 +388,8 @@ export interface ProfileEditable {
   health: HealthConfig;
   /** What a route is allowed to do on the way — MegaMUD's Movement. */
   movement: MovementConfig;
+  /** Spending character points on the stat screen. Resolved, like the rest. */
+  train: TrainConfig;
   /**
    * Whether this character answers another player's `@` commands. Resolved.
    *
@@ -773,6 +777,8 @@ export const Invoke = {
    * path, or null if the dialog was dismissed.
    */
   chooseRealm: 'settings:choose-realm',
+  /** Where to hunt from here: the lairs within reach, priced for this character. */
+  huntingGrounds: 'world:hunt',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
   /** How much realm data is loaded. */
@@ -1147,6 +1153,14 @@ export interface IpcApi {
    * fifty-seven thousand of them. Null for a room the realm does not hold.
    */
   roomBrief(session: SessionId, map: number, room: number): Promise<RoomBrief | null>;
+  /**
+   * Where this character should hunt: every lair within `radius` steps of
+   * where it stands, priced by the realm's own respawn clock and the same
+   * arithmetic the Room card prices a fight with, best first. Addressed, and
+   * asked on demand — the sweep and the pricing are work, and the answer moves
+   * with the character.
+   */
+  huntingGrounds(session: SessionId, radius: number): Promise<HuntingAdvice>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
    * go on.

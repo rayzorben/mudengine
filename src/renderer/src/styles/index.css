@@ -2828,6 +2828,63 @@ button.lookup.quest-where svg {
   background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
 }
 
+/* ======================================================== hunting grounds card */
+/*
+ * The head is one line: where the sweep started on the left, the reach chips
+ * on the right. The detail under the table is the Room card's readout grammar
+ * plus two lists (the monsters, the rooms) drawn as rows with the figure
+ * quiet at the end, and the loop's controls in the Navigation card's own row.
+ */
+.hunt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 0 var(--pad) var(--gap-tight, 6px);
+}
+.hunt-head .hunt-note {
+  color: var(--text-lo);
+  font-size: var(--font-size-small, 0.9em);
+}
+.hunt-head .chips {
+  display: flex;
+  gap: 4px;
+}
+.hunt-table tr[data-open='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+}
+.hunt-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap) var(--pad);
+}
+.hunt-mobs,
+.hunt-rooms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hunt-mobs li,
+.hunt-rooms li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap);
+  align-items: baseline;
+}
+.hunt-detail .quiet {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small, 0.9em);
+  white-space: nowrap;
+}
+.hunt-actions {
+  justify-content: flex-start;
+}
+
 /* ======================================================= loop builder card */
 
 /*
@@ -8161,6 +8218,14 @@ tr:hover .row-action.worn,
  * faces do -- the control and what it changes stay in one place.
  */
 .settings-sections {
+  /*
+   * The strip wraps: twelve sections at the character page's width no longer
+   * fit one line, and a strip that ran past the form's box (824px in 754,
+   * `npm run smoke`, 2026-09-12) took the whole form with it. A second row of
+   * pills is the same grammar; a horizontal scroll on a tab strip is not.
+   */
+  flex-wrap: wrap;
+  row-gap: 4px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ink-line);
 }
@@ -8630,11 +8695,13 @@ tr:hover .row-action.worn,
 .settings-form[data-section='profile'],
 .settings-form[data-section='realm'],
 .settings-form[data-section='spells'],
+.settings-form[data-section='train'],
 .settings-form[data-section='talk'],
 .settings-form[data-section='appearance'],
 .settings-sections .crumb[data-section='profile'],
 .settings-sections .crumb[data-section='realm'],
 .settings-sections .crumb[data-section='spells'],
+.settings-sections .crumb[data-section='train'],
 .settings-sections .crumb[data-section='talk'],
 .settings-sections .crumb[data-section='appearance'] {
   --section-hue: var(--section-a);

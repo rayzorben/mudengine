@@ -692,6 +692,12 @@ export type BlockType =
    */
   | 'mob-arrives-room'
   /**
+   * A monster's death sentence. `MobType.DeathMessage.Line3` is realm data
+   * (todo 04, 2026-09-12), so only the server-composed fallback is a pattern;
+   * the rest are learned per realm from the line before the experience line.
+   */
+  | 'mob-dies'
+  /**
    * `<Name> is looking around the room.` / `is looking at you.` — somebody
    * sizing the room up, which on a PvP realm is the moment before something
    * happens. Captured live (`npm run probe:pvp`) and in the corpus.
@@ -905,6 +911,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'player-arrives-room': 'presence',
   'player-leaves-room': 'presence',
   'mob-arrives-room': 'presence',
+  'mob-dies': 'combat',
   'room-light': 'room',
   'room-unseen': 'room',
   'player-looks': 'presence',

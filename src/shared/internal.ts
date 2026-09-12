@@ -520,6 +520,12 @@ const TUNING_DEFAULTS = {
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
+    /**
+     * How sure one cast has to be of finishing the monster before the
+     * cheapest spell that would outranks the hardest hitter (`chooseAttackSpell`,
+     * todo 09). The reviewer's worked example switched at 99%.
+     */
+    killConfidence: 0.9,
     /** How long a heal proposal stays worth sending. */
     healExpiresMs: 3000,
     /** Long enough for the next status line to say whether the heal worked. */
@@ -593,6 +599,71 @@ const TUNING_DEFAULTS = {
   loot: {
     expiresMs: 5000
   },
+  /**
+   * Where to hunt — `src/shared/hunting.ts`, the cycle model MMUD-Explorer's
+   * Model D is built on (`.scratch/MMUD-Explorer/docs/exp-per-hour-models.md`),
+   * closed-form. Every figure here is one of that model's stated mechanics.
+   */
+  hunting: {
+    /** A combat round, seconds — the server's `ROUND_SECONDS`, and MME's tick. */
+    roundSeconds: 5,
+    /** A resting regeneration tick, seconds (`Player.cs`: resting ticks at 15s, triple the rate). */
+    restTickSeconds: 15,
+    /** A standing regeneration tick, seconds (`REGEN_TICK_SECONDS`). */
+    passiveTickSeconds: 121,
+    /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
+    killOverheadMs: 1500,
+    /** One step of a walk — the movement round measured at 1,239ms. */
+    stepMs: 1250,
+    /**
+     * GreaterMUD's regen adds thirty seconds to the elapsed time before it
+     * compares with the room's delay (`RegenSlot.cs:33`, the author's own
+     * comment calls it a kept bug), so a lair comes back this much sooner
+     * than `Rooms.Delay` says. Measured 18–20s after the kill in a `Delay=1`
+     * lair; MajorMUD has no such offset.
+     */
+    greatermudRespawnOffsetSeconds: 30,
+    /**
+     * What the opening backstab is worth in ordinary swings. Measured
+     * 2026-09-12 on `orohost`: 62 backstabs at a mean 156.5 damage against
+     * 218 swings at 38.5.
+     */
+    backstabMultiplier: 4,
+    /** How many rooms a suggested loop visits at most. */
+    maxLoopRooms: 8,
+    /** How many suggestions are handed back. */
+    maxSpots: 12,
+    /** How far the loop's own low-experience stop looks for a better lair, in steps. */
+    betterSpotRadius: 80
+  },
+  /** Spending character points on the stat screen — `StatScreen`. */
+  train: {
+    /**
+     * How long the screen has to echo a keystroke before the driver lets go
+     * of it. The live form answered every key inside a quarter of a second.
+     */
+    echoMs: 4000,
+    /** A `train stats` still queued after this is for a moment that has passed. */
+    expiresMs: 8000
+  },
+  /** Going back for the kit after a death — `GearRecovery`. */
+  gearRecovery: {
+    /** How long the pack has to reflect the `get`s before the kit is put on with what arrived. */
+    collectMs: 8000,
+    /** A `get` or `wear` still queued after this is for a room already left. */
+    expiresMs: 6000
+  },
+  /** Getting back into the shadows between fights — `AutoStealth`. */
+  stealth: {
+    /**
+     * The floor between two asks. A `hide` that failed its roll is asked for
+     * again at this rate, not once per status line: at Stealth 20 the roll
+     * fails seven times in eight, and a prompt answers every ask.
+     */
+    askEveryMs: 4000,
+    /** A `hide` or `sn` still queued after this is for a room already left. */
+    expiresMs: 5000
+  },
   /** Readying a light before a dark step — `AutoLight`. */
   light: {
     /** A `light`/`remove` still queued after this is for a room already left. */
@@ -650,6 +721,15 @@ const TUNING_DEFAULTS = {
      * slowly, and a `rest` that arrives two seconds late is still a rest.
      */
     expiresMs: 5000,
+    /**
+     * A lair whose effective respawn is at most this many seconds is not a
+     * resting place (`RestAway`, todo 08). A rest from 20% to 70% takes
+     * minutes, so a clock of ten minutes or less is one that runs out during
+     * it; a boss's clock of hours is not.
+     */
+    lairClockMaxSeconds: 600,
+    /** How long a `l <direction>` and then the step next door may go unanswered. */
+    peekMs: 4000,
     /**
      * How long a proposed `rest` is trusted to be in flight before it is
      * proposed again.
@@ -1652,6 +1732,13 @@ const TUNING_DEFAULTS = {
      */
     roomPeekDelayMs: 250,
     roomPeekLingerMs: 220,
+    /**
+     * How far the Hunting card looks from where the character stands, in
+     * steps, at its usual reach; *near* is half and *far* is double. A sweep
+     * this wide over Paradigm is a few thousand rooms and prices a few dozen
+     * lairs, once per ask.
+     */
+    huntRadiusSteps: 80,
     /**
      * The server's own combat pulse, in milliseconds.
      *

@@ -12,6 +12,7 @@ import {
   learn,
   learnSlot,
   loreMaximum,
+  type LearnedDeath,
   type MobLore,
   type MobLoreEntry,
   type SlotLoreEntry
@@ -71,6 +72,13 @@ interface LoreFile {
    * the spell's name. Optional for the same reason `slots` is.
    */
   spells?: Record<string, Record<string, LearnedSpellMessages>>;
+  /**
+   * How each monster dies, per realm, keyed by `mobKey` — the whole line the
+   * server printed immediately before this character's experience line
+   * (todo 04, 2026-09-12). Realm data with no column in the shipped database,
+   * so the wire is the only source. Optional for the same reason `slots` is.
+   */
+  deaths?: Record<string, Record<string, LearnedDeath>>;
 }
 
 /** What one realm taught about one spell's sentences. Either half may be absent. */
@@ -87,6 +95,10 @@ export class RealmLore {
   private readonly spells = new Map<string, Map<string, LearnedSpellMessages>>();
   /** The learned half of each realm's `SpellLore`, built once per realm. */
   private readonly spellBooks = new Map<string, SpellMessageBook>();
+  /** How each monster dies, per realm, per `mobKey`. See `LoreFile.deaths`. */
+  private readonly deaths = new Map<string, Map<string, LearnedDeath>>();
+  /** The same, sentence → monster, which is the direction the classifier asks. */
+  private readonly deathIndex = new Map<string, Map<string, string>>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
@@ -113,8 +125,48 @@ export class RealmLore {
       // figure is 8.
       regenFor: (name, at) => world?.mobAt(name, at ?? null)?.regen ?? null,
       slotWordsFor: (worn) => this.slotWordsFor(key, worn),
-      observeSlot: (worn, word, at) => this.observeSlot(key, worn, word, at)
+      observeSlot: (worn, word, at) => this.observeSlot(key, worn, word, at),
+      deathOf: (text) => this.deathOf(key, text),
+      observeDeath: (name, text, at) => this.observeDeath(key, name, text, at)
     };
+  }
+
+  /* -------------------------------------------------------------- deaths */
+
+  private deathOf(realm: string, text: string): string | null {
+    this.load();
+    return this.deathIndex.get(realm)?.get(text.trim()) ?? null;
+  }
+
+  /**
+   * The line before this character's experience line named the target: that
+   * is how this monster dies, on this realm, and it is said out loud because
+   * a learned sentence takes a monster out of the room on its own from now on.
+   * Re-observed unchanged, nothing is written; a different sentence for the
+   * same monster replaces the old one, since a name may hold several rows
+   * and the latest reading is the one the wire just confirmed.
+   */
+  private observeDeath(realm: string, name: string, text: string, at: number): void {
+    const key = mobKey(name);
+    const sentence = text.trim();
+    if (key.length === 0 || sentence.length === 0) return;
+    this.load();
+    let table = this.deaths.get(realm);
+    if (!table) {
+      table = new Map();
+      this.deaths.set(realm, table);
+    }
+    if (table.get(key)?.text === sentence) return;
+    table.set(key, { text: sentence, at });
+    this.indexDeaths(realm);
+    this.schedule();
+    this.options.notify?.(t('notices.world.lore.deathLearned', { mob: key, text: sentence }));
+  }
+
+  private indexDeaths(realm: string): void {
+    const index = new Map<string, string>();
+    for (const [key, entry] of this.deaths.get(realm) ?? []) index.set(entry.text, key);
+    this.deathIndex.set(realm, index);
   }
 
   /**
@@ -386,6 +438,16 @@ export class RealmLore {
       }
       this.slots.set(realmKey(realm), table);
     }
+    for (const [realm, entries] of Object.entries(file.deaths ?? {})) {
+      if (typeof entries !== 'object' || entries === null) continue;
+      const table = new Map<string, LearnedDeath>();
+      for (const [name, value] of Object.entries(entries)) {
+        const entry = readDeathEntry(value);
+        if (entry && mobKey(name).length > 0) table.set(mobKey(name), entry);
+      }
+      this.deaths.set(realmKey(realm), table);
+      this.indexDeaths(realmKey(realm));
+    }
     for (const [realm, entries] of Object.entries(file.spells ?? {})) {
       if (typeof entries !== 'object' || entries === null) continue;
       const table = new Map<string, LearnedSpellMessages>();
@@ -443,6 +505,12 @@ export class RealmLore {
       spells[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
     }
 
+    const deaths: NonNullable<LoreFile['deaths']> = {};
+    for (const [realm, table] of this.deaths) {
+      if (table.size === 0) continue;
+      deaths[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
+    }
+
     const temporary = `${this.options.file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
@@ -453,7 +521,8 @@ export class RealmLore {
             v: 1,
             realms,
             ...(Object.keys(slots).length > 0 ? { slots } : {}),
-            ...(Object.keys(spells).length > 0 ? { spells } : {})
+            ...(Object.keys(spells).length > 0 ? { spells } : {}),
+            ...(Object.keys(deaths).length > 0 ? { deaths } : {})
           } satisfies LoreFile,
           null,
           2
@@ -488,6 +557,14 @@ export class RealmLore {
 }
 
 const EMPTY_ANSWER = { max: null, source: null, span: null } as const;
+
+/** One learned death sentence, or null when the row holds none. */
+function readDeathEntry(value: unknown): LearnedDeath | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { text, at } = value as Record<string, unknown>;
+  if (typeof text !== 'string' || text.trim().length === 0) return null;
+  return { text: text.trim(), at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
+}
 
 /** One learned spell entry, or null when neither half is a sentence. */
 function readSpellEntry(value: unknown): LearnedSpellMessages | null {

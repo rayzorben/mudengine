@@ -187,7 +187,239 @@ export function migrateHome(options: MigrationOptions): void {
   theTransportBecameOneButton(home, note, options.internalTemplate);
   theRoomRemoteFollowsWhere(home, note);
   theCoinsCanBeShed(home, note);
+  statedTheHideForOpener(home, note);
+  statedTheGearRecovery(home, note);
+  statedTheRestNextDoor(home, note);
+  statedTheSpellChoice(home, note);
+  statedTheTraining(home, note);
 }
+
+/**
+ * `automation.train` into an options file that predates it, off and wanting
+ * nothing (todo 10, 2026-09-12). The whole block, in the options file alone,
+ * as `drop` and `banking` were: a profile inherits it. After `movement:`
+ * where the file has one, as the template orders them.
+ */
+function statedTheTraining(home: Home, note: (message: string) => void): void {
+  editOptions(home, (document) => {
+    const automation = document.get('automation', true);
+    if (!isMap(automation) || automation.has('train')) return false;
+    const pair = document.createPair('train', {
+      ...DEFAULT_CONFIG.automation.train,
+      wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
+    }) as Pair;
+    if (isScalar(pair.key)) pair.key.commentBefore = TRAIN_COMMENT;
+    const after = automation.items.findIndex((item) => keyText(item) === 'movement');
+    if (after >= 0) automation.items.splice(after + 1, 0, pair);
+    else automation.items.push(pair);
+    note(t('notices.migration.training', { file: home.options }));
+    return true;
+  });
+}
+
+/** The template's own words, abridged, so the two files read alike. */
+const TRAIN_COMMENT = ` Spending character points -- the \`train stats\` screen.
+
+ Every level hands out character points, and an unspent one is hit points
+ the character never has. With \`stats\` on, the client opens the form at a
+ trainer when points are unspent, reads its figures, buys the cheapest
+ wanted point first until nothing wanted is affordable, and saves. It never
+ types into the name fields and never quits the form; what it bought, what
+ was refused and what is left are all said out loud. \`wanted\` is where each
+ stat should end up: 0, or a figure at or under the current one, leaves
+ that stat alone, so the switch does nothing until a figure is raised.`;
+
+/**
+ * `automation.spells.autoChoose` into every file that states `spells:` and
+ * predates it, off (todo 09, 2026-09-12): the same gap as every key added
+ * inside a block, at the head of the block because it changes what every box
+ * under it means.
+ */
+function statedTheSpellChoice(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'spells'], true);
+      if (!isMap(block) || block.has('autoChoose')) return false;
+      const pair = document.createPair('autoChoose', false) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = AUTO_CHOOSE_COMMENT;
+      block.items.unshift(pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.spellChoice.one', params)
+      : t('notices.migration.spellChoice.many', params)
+  );
+}
+
+/** The template's own words for the switch, so the two files read alike. */
+const AUTO_CHOOSE_COMMENT = ` Auto Choose Best Spell.
+
+ On, the round spell is worked out every round from the spellbook the
+ client has read and the realm's own figures, the way a player who knows
+ their spells would: a spell the monster resists is not cast (a lightning
+ bolt at something that resists lightning is mana thrown away), the
+ cheapest spell whose *least* roll would finish what is left of the
+ monster is cast when there is one, and otherwise the hardest hitter the
+ pool can pay for. The cures below come from the book the same way where
+ their boxes are blank. The choice is said out loud each time it changes.
+ \`attack\` and \`attackFallback\` are what is cast with this off. Off:
+ it spends mana on a reading you did not type.`;
+
+/**
+ * `automation.health.restNextDoor` into every file that states `health:` and
+ * predates it, **on** (todo 08, 2026-09-12) — the one key written on, because
+ * it acts only when resting was going to act, and the other default is the
+ * one that sat a character down in a lair twice and killed it. Beside
+ * `restTo`, since it is about the same rest.
+ */
+function statedTheRestNextDoor(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'health'], true);
+      if (!isMap(block) || block.has('restNextDoor')) return false;
+      const pair = document.createPair('restNextDoor', true) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = REST_NEXT_DOOR_COMMENT;
+      // After the resting figures — the trap floor sits directly after the
+      // ceiling and keeps that place — and before the mana and the potions.
+      const after = ['restBeforeTraps', 'restTo', 'restBelow']
+        .map((key) => block.items.findIndex((item) => keyText(item) === key))
+        .find((index) => index !== -1);
+      if (after === undefined) block.items.push(pair);
+      else block.items.splice(after + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.restNextDoor.one', params)
+      : t('notices.migration.restNextDoor.many', params)
+  );
+}
+
+/** The template's own words for the switch, so the two files read alike. */
+const REST_NEXT_DOOR_COMMENT = ` Rest next door to a lair rather than in it.
+
+ A lair is dangerous for what it is about to contain. Measured 2026-09-12,
+ twice: a character won a fight, sat down at 20% in a room whose clock
+ makes three wererats every twenty seconds, and met them at 2%. With this
+ on, a rest in a room the realm marks as a lair with a short clock is
+ refused there, out loud with the figure; a neighbouring room the realm
+ holds no lair in is looked into first (\`l <direction>\`), entered only if
+ it is empty, rested in, and stepped back from when nothing else has the
+ character. Where no neighbour is safe the rest goes ahead where it is,
+ said once. On: it acts only when resting was going to act.`;
+
+/**
+ * `automation.movement.recoverGear` into every file that states `movement:`
+ * and predates it, off (todo 07, 2026-09-12). The same gap `statedTheLight-
+ * AndSupplies` closes for the same block, and off for the reason the template
+ * gives: it walks the character back towards whatever killed it.
+ */
+function statedTheGearRecovery(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const movement = document.getIn(['automation', 'movement'], true);
+      if (!isMap(movement) || movement.has('recoverGear')) return false;
+      const pair = document.createPair('recoverGear', false) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = RECOVER_GEAR_COMMENT;
+      movement.items.push(pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.gearRecovery.one', params)
+      : t('notices.migration.gearRecovery.many', params)
+  );
+}
+
+/** The template's own words for the switch, so the two files read alike. */
+const RECOVER_GEAR_COMMENT = ` Go back for the kit after a death.
+
+ A death drops everything where the character stood and wakes it in the
+ temple naked; measured 2026-09-12, a level-30 character put back on top
+ of its own falchion punched a wererat for 16 and sent no \`get\` all
+ session. With this on the client notices the strip (the kit it remembers
+ is no longer in the pack, and the armour class reads zero), walks back to
+ the room it died in -- holding when hurt, fighting nothing on the way --
+ takes what is still lying there and the coins, and puts the kit back on.
+ Every refusal is said out loud. Off: it walks the character somewhere
+ unasked, towards whatever did the killing.`;
+
+/**
+ * `automation.combat.hideForOpener` into every file that states `combat:` and
+ * predates it, off.
+ *
+ * The same gap as `theCoinsCanBeShed` above: a key inside a block the file
+ * already states is one `reconcileWithTemplate` never reaches, and a setting
+ * absent from the file is one nobody finds. Written directly after `opener`,
+ * because it is about the opener and means nothing without one.
+ *
+ * **Off, always.** It spends a command per fight, and a migration cannot
+ * know whether the character is a backstabber.
+ */
+function statedTheHideForOpener(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat) || combat.has('hideForOpener')) return false;
+
+      const pair = document.createPair('hideForOpener', false) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = HIDE_FOR_OPENER_COMMENT;
+      const at = combat.items.findIndex((item) => keyText(item) === 'opener');
+      if (at === -1) combat.items.push(pair);
+      else combat.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.hideForOpener.one', params)
+      : t('notices.migration.hideForOpener.many', params)
+  );
+}
+
+/** The template's own words for the switch, so the two files read alike. */
+const HIDE_FOR_OPENER_COMMENT = ` Get back into the shadows between fights, so \`bs\` lands again.
+
+ The realm grants a backstab through \`sn\` and \`hide\` alone, both refused
+ while a monster is in the room, and the first blow spends it. A character
+ standing in a lair therefore opens every fight after the first in plain
+ sight -- measured 2026-09-12 as a 156-damage opener thrown away for a
+ 38-damage swing, every fight. With this on the client sends \`hide\` when
+ the character is seen in an empty room standing still, and \`sn\` when a
+ lap or a route has it. Only for an opener that is \`bs\`; a jumpkick has
+ nothing to hide for. Off, because it spends a command per fight.`;
 
 /**
  * `automation.loot.discardKinds` into every file that predates it, empty.
@@ -4247,6 +4479,13 @@ function theTuningBlockGainedKeys(
     // nothing to read it in a file copied before it existed would be the
     // setting somebody edits and then waits to see work.
     addGroup('menace', { ...DEFAULT_INTERNAL.tuning.menace });
+    // The shadows between fights (todo 01) and where to hunt (todo 05),
+    // 2026-09-12: two groups a file copied before them would otherwise lack.
+    addGroup('stealth', { ...DEFAULT_INTERNAL.tuning.stealth });
+    addGroup('hunting', { ...DEFAULT_INTERNAL.tuning.hunting });
+    addGroup('gearRecovery', { ...DEFAULT_INTERNAL.tuning.gearRecovery });
+    // The stat screen driver (todo 10, 2026-09-12).
+    addGroup('train', { ...DEFAULT_INTERNAL.tuning.train });
 
     /** One key into a sub-block the file already states, with its paragraph. */
     const addKey = (group: string, key: string, value: number): void => {
@@ -4279,6 +4518,13 @@ function theTuningBlockGainedKeys(
     /* The wheel on a map: how much a notch zooms, and when the card writes it down. */
     addKey('view', 'mapZoomStepPercent', DEFAULT_INTERNAL.tuning.view.mapZoomStepPercent);
     addKey('view', 'mapZoomSettleMs', DEFAULT_INTERNAL.tuning.view.mapZoomSettleMs);
+    /* How far the Hunting card looks (2026-09-12, todo 05). */
+    addKey('view', 'huntRadiusSteps', DEFAULT_INTERNAL.tuning.view.huntRadiusSteps);
+    /* A lair's clock and the look next door (2026-09-12, todo 08). */
+    addKey('rest', 'lairClockMaxSeconds', DEFAULT_INTERNAL.tuning.rest.lairClockMaxSeconds);
+    addKey('rest', 'peekMs', DEFAULT_INTERNAL.tuning.rest.peekMs);
+    /* How sure a kill must be before the cheapest spell wins (2026-09-12, todo 09). */
+    addKey('spells', 'killConfidence', DEFAULT_INTERNAL.tuning.spells.killConfidence);
     /*
      * How long a command the realm threw away waits before it goes again
      * (2026-09-06, todo 02) — the server's own 1,000ms fumble delay.

@@ -19,6 +19,7 @@
  *   every iteration, which is O(n² log n) over 55,806 rooms.
  */
 import fs from 'node:fs';
+import { spellElementOf } from '../../shared/spellchoice';
 import zlib from 'node:zlib';
 
 import { t } from '../app/i18n';
@@ -1859,6 +1860,57 @@ export class WorldGraph {
   }
 
   /**
+   * The room's placed resident (`Rooms.NPC`), weighed as its own row — the
+   * same reading `lairEntities` gives a lair, for the room that has a boss
+   * rather than a lair. Its clock is the row's `regenHours`, not the room's
+   * `delay`. Empty for a room with no resident, or one this table lacks.
+   */
+  residentEntities(room: WorldRoom): MobEntity[] {
+    if (room.npcId === undefined) return [];
+    const mob = this.mobsById.get(room.npcId);
+    if (mob === undefined) return [];
+    const entity = this.buildMobEntity(mob.name);
+    overlayRow(entity, this.rowsById.get(room.npcId));
+    return [entity];
+  }
+
+  /**
+   * Every room within `steps` moves of `from`, with the fewest steps to each
+   * — a plain breadth-first sweep over the exits and portals, pricing nothing.
+   *
+   * For a question about the *neighbourhood* (where to hunt, todo 05) rather
+   * than a way to one room: a route per candidate costs the main thread
+   * 51ms median on Paradigm and there are thousands of candidates, while
+   * this walks each room once. A door or a level gate is an exit here; the
+   * route the reader then asks for prices it. Bounded by `steps`, and by the
+   * realm: a sweep that reaches nothing new stops.
+   */
+  withinSteps(from: RoomId, steps: number): Map<RoomId, number> {
+    const seen = new Map<RoomId, number>();
+    if (!this.rooms.has(from)) return seen;
+    seen.set(from, 0);
+    let frontier: RoomId[] = [from];
+    for (let depth = 1; depth <= steps && frontier.length > 0; depth += 1) {
+      const next: RoomId[] = [];
+      for (const id of frontier) {
+        const room = this.rooms.get(id);
+        if (room === undefined) continue;
+        const ways = [
+          ...room.exits.map((exit) => roomId(exit.map, exit.room)),
+          ...this.portalsFrom(id).map((portal) => roomId(portal.map, portal.room))
+        ];
+        for (const to of ways) {
+          if (seen.has(to) || !this.rooms.has(to)) continue;
+          seen.set(to, depth);
+          next.push(to);
+        }
+      }
+      frontier = next;
+    }
+    return seen;
+  }
+
+  /**
    * What a room's own spell does to whoever stands in it, or null.
    *
    * The room carries a spell id; the hazard is on the spell, because 159
@@ -2763,6 +2815,7 @@ export class WorldGraph {
         kept.magicResist = stated('mr');
         kept.experience = stated('xp');
         kept.regen = stated('rgn');
+        kept.regenHours = stated('rt');
         kept.follows = stated('fol');
         kept.averageDamage = stated('dmg');
         kept.charmLevel = stated('chl');
@@ -2849,6 +2902,9 @@ export class WorldGraph {
        */
       const difficulty = Number(record['dif']);
       if (Number.isFinite(difficulty) && difficulty !== 0) spell.difficulty = difficulty;
+      // The element — format 34; a file written before it names none.
+      const element = spellElementOf(typeof record['at'] === 'number' ? record['at'] : null);
+      if (element !== undefined) spell.element = element;
       // What casting it does — format 14, and the whole of what a spell card
       // said nothing about: 1,985 of the realm's 1,990 spells carry these.
       const abilities = readAbilities(record);
@@ -3303,6 +3359,8 @@ export class WorldGraph {
       result.lair = raw['lair'];
     }
     if (typeof raw['li'] === 'number') result.light = raw['li'];
+    // The lair's respawn clock as the realm states it — format 33.
+    if (typeof raw['dl'] === 'number' && raw['dl'] !== 0) result.delay = raw['dl'];
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
     /*
      * The words the room answers — format 13. A malformed entry is dropped
@@ -4145,6 +4203,7 @@ function overlayRow(entity: MobEntity, row: WorldMobRow | undefined): void {
   entity.magicResist = row.magicResist;
   entity.experience = row.experience;
   entity.regen = row.regen;
+  entity.regenHours = row.regenHours;
   entity.follows = row.follows;
   entity.averageDamage = row.averageDamage;
   entity.charmLevel = row.charmLevel;
@@ -4188,6 +4247,7 @@ function mobAsRow(mob: WorldMob, row: WorldMobRow, choice: MobRowChoice): WorldM
   resolved.magicResist = row.magicResist;
   resolved.experience = row.experience;
   resolved.regen = row.regen;
+  resolved.regenHours = row.regenHours;
   resolved.follows = row.follows;
   resolved.averageDamage = row.averageDamage;
   resolved.charmLevel = row.charmLevel;

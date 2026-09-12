@@ -28,7 +28,7 @@ import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
 import type { Affliction, Afflictions, CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
-import { resolveSpell, spellCost } from '../../shared/spellcraft';
+import { cureGates, resolveSpell, spellCost, spellTargeting } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
@@ -46,6 +46,8 @@ const CURES: readonly Cure[] = ['blindness', 'poison', 'disease'];
 export class Cures {
   private lastCastAt = new Map<Cure, number>();
   private previous = new Map<Cure, Affliction>();
+  /** The cures derived from the book and said, once each. */
+  private saidDerived = new Map<Cure, string>();
 
   constructor(
     private config: SpellsConfig,
@@ -60,7 +62,9 @@ export class Cures {
      * new question would be another callback threaded from `SessionManager`.
      * See `resolveSpell`.
      */
-    private readonly realmSpell: (name: string) => WorldSpell | null = () => null
+    private readonly realmSpell: (name: string) => WorldSpell | null = () => null,
+    /** Where a derived cure is said, once (todo 09). */
+    private readonly events: { notice?(message: string): void } = {}
   ) {}
 
   configure(config: SpellsConfig, enabled: boolean): void {
@@ -71,6 +75,33 @@ export class Cures {
   reset(): void {
     this.lastCastAt.clear();
     this.previous.clear();
+    this.saidDerived.clear();
+  }
+
+  /**
+   * The cheapest spell in the book the realm says cures this affliction —
+   * `cureGates`' own reading of the ability rows — cast on the character
+   * itself, so never an enemy-targeted spell. Empty where nothing derives, or
+   * where the switch is off; the derivation is said once per cure.
+   */
+  private derived(state: CharacterState, cure: Cure): string {
+    if (!this.config.autoChoose || state.spellbook === null) return '';
+    let best: { name: string; cost: number } | null = null;
+    for (const known of state.spellbook) {
+      const realm = this.realmSpell(known.name);
+      if (realm === null) continue;
+      const aim = spellTargeting(realm.targets);
+      if (aim === 'enemy' || aim === 'enemies') continue;
+      if (!cureGates([realm.abilities ?? []])[cure]) continue;
+      const cost = known.cost ?? realm.mana ?? Number.MAX_SAFE_INTEGER;
+      if (best === null || cost < best.cost) best = { name: known.name, cost };
+    }
+    if (best === null) return '';
+    if (this.saidDerived.get(cure) !== best.name) {
+      this.saidDerived.set(cure, best.name);
+      this.events.notice?.(t('automation.cure.derived', { affliction: cure, spell: best.name }));
+    }
+    return best.name;
   }
 
   onCharacter(state: CharacterState): void {
@@ -81,7 +112,8 @@ export class Cures {
       this.previous.set(cure, current);
       if (current !== 'yes') continue;
 
-      const spell = this.config.cures[cure].trim();
+      // The box, or — under *Auto Choose Best Spell* — the book's own cure.
+      const spell = this.config.cures[cure].trim() || this.derived(state, cure);
       if (spell.length === 0) continue;
       if (!manaAtLeast(state, this.config.minMana)) continue;
 

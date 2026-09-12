@@ -22,7 +22,7 @@ import type {
   PlayerEntity
 } from './entities';
 import type { ExperienceTable } from './experience';
-import type { RoomCommand, WorldLair, WorldShop, WorldSpell } from './world';
+import type { Direction, RoomCommand, WorldLair, WorldShop, WorldSpell } from './world';
 import type { WoundBand } from './wounds';
 import { NO_PLAYERS, type PlayerRegistry } from './players';
 import { NO_TALLY, type CombatTally } from './tally';
@@ -1330,6 +1330,24 @@ export interface CharacterState {
    */
   loadout: Loadout;
   /**
+   * Where the character last died, and when (todo 07, 2026-09-12).
+   *
+   * Written at `user-dies` from the room the character was standing in,
+   * *before* the trail is cleared — the trail clear is right for the escape
+   * and destroys the one fact going back for the kit needs. Kept across a
+   * socket like the loadout, because a reconnect after a death is the common
+   * case; null until a death, and null on a new session.
+   */
+  lastDeath: { map: number | null; number: number | null; name: string | null; at: number } | null;
+  /**
+   * The room a `look <direction>` described, read as a different room from
+   * the one the character stands in (todo 08, 2026-09-12). `RestAway` reads
+   * it before stepping into a neighbour to rest; nothing else changes on a
+   * peek, which is `Room.coffee`'s `wasLooking` rule kept. Null until a peek
+   * is answered, and the last one afterwards — `at` says how stale.
+   */
+  peeked: { direction: Direction | null; room: Room; at: number } | null;
+  /**
    * What the character sees by, worked out from the race, the kit and the
    * pack — `src/shared/light.ts`. Null until the realm has named the race or
    * a listing has read the pack, because a sight worked out from nothing is a
@@ -1483,6 +1501,8 @@ export const EMPTY_CHARACTER: CharacterState = {
   gangListing: null,
   banks: [],
   loadout: [],
+  lastDeath: null,
+  peeked: null,
   sight: null,
   attributeSpans: null,
   inCombat: false,

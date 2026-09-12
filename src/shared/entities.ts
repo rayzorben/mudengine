@@ -256,6 +256,8 @@ export interface MobEntity {
   experience?: number;
   /** Hit points regained per server tick. */
   regen?: number;
+  /** Hours a placed monster stays dead — `Monsters.RegenTime`. A lair room has its own clock. */
+  regenHours?: number;
   /** Percentage chance it follows you out when you run. */
   follows?: number;
   undead?: boolean;

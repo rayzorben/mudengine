@@ -367,6 +367,11 @@ export class Routines {
    * spellbook (captures/056) was produced by the full word too — the short
    * forms are evidenced only on GreaterMUD.
    */
+  /** *Auto Choose Best Spell* found no book read: one listing, on the same terms as entry. */
+  askBook(state: CharacterState): void {
+    this.askSpellbook(state);
+  }
+
   private askSpellbook(state: CharacterState): void {
     if (!this.config.enabled) return;
     if (this.askedBook !== null) return;
