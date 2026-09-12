@@ -481,6 +481,12 @@ export class SessionManager {
   private idleTimer: NodeJS.Timeout | null = null;
   /** When the tail now buffered first looked like a prompt still being written. */
   private promptOpenedAt: number | null = null;
+  /**
+   * Whether this realm writes its state after the prompt's colon
+   * (`[HP=10/40]: (Resting)`). Then the colon is not where a prompt ends, and
+   * `tailIsWholePrompt` may not frame one at it.
+   */
+  private promptTrails = false;
   /** Keystrokes since the last committed command. */
   private outbound = '';
   /** The command the last status line echoed, which the lines after it answer. */
@@ -1721,7 +1727,14 @@ export class SessionManager {
       for (const framed of this.tokenizer.push(text)) this.publishLine(framed, at);
       this.feed.partial(this.tokenizer.buffered);
       this.paint(at);
-      this.armIdleFlush();
+      /*
+       * A prompt the server has finished writing is framed now, not after
+       * the quiet period: it carries the vitals and credits the next queued
+       * command, and nothing follows a finished `]:` on the wire but this
+       * client's own echo (`mudengine-wire` § Line framing, 2026-09-11).
+       */
+      if (this.tailIsWholePrompt()) this.flushPending();
+      else this.armIdleFlush();
       /*
        * Deliberately *not* `routines.noteSent()`: the keep-alive counts this
        * client's own silence, and bytes arriving are not it. This realm
@@ -2035,6 +2048,7 @@ export class SessionManager {
     this.lineLog.length = 0;
     this.lineSeq = 0;
     this.tokenizer.reset();
+    this.promptTrails = false;
     this.feed.reset();
     this.promptOpenedAt = null;
     this.classifier.reset();
@@ -2898,6 +2912,18 @@ export class SessionManager {
     return Math.max(IDLE_FLUSH_MS, tuning().session.promptHoldMs - (now - this.promptOpenedAt));
   }
 
+  /**
+   * Whether the unterminated tail is a status line the server has finished:
+   * the colon closes it and nothing follows. `STATUS_LINE` accepts `]` alone
+   * and a state after the colon, and neither of those is a finished prompt.
+   */
+  private tailIsWholePrompt(): boolean {
+    if (this.promptTrails) return false;
+    const plain = stripAnsi(this.tokenizer.buffered).trimStart();
+    const match = STATUS_LINE.exec(plain);
+    return match !== null && match[0].endsWith(':') && match[0].length === plain.trimEnd().length;
+  }
+
   private cancelIdleFlush(): void {
     if (!this.idleTimer) return;
     clearTimeout(this.idleTimer);
@@ -2982,6 +3008,10 @@ export class SessionManager {
         : undefined
     );
     if (!classified) return;
+    if (classified.block.type === 'status-line' && !this.promptTrails) {
+      this.promptTrails =
+        STATUS_LINE.exec(line.plain.trimStart())?.groups?.['stateB'] !== undefined;
+    }
 
     try {
       this.act(classified.block, classified.batch);
@@ -3370,7 +3400,7 @@ export class SessionManager {
       this.unrefuseWhatTheRoomPrints(state);
       this.noteStatline(state);
       this.routines.onCharacter(state);
-      this.rules.observe({ hangUpClean: this.hangUp.assess(state, Date.now()).clean });
+      this.rules.observe({ hangUpClean: this.hangUp.clean(state, Date.now()) });
       this.rules.onState(state);
       this.walker.onCharacter(state);
       this.loops.onCharacter(state);

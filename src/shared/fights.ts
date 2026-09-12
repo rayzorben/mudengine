@@ -181,25 +181,110 @@ export const AS_PRINTED: MobResolver = (printed) => printed;
  * and `large giant rat` fold onto `giant rat`; `giant rat king` does not,
  * because the realm names it.
  */
-export function summarizeFights(
-  records: readonly FightRecord[],
+/**
+ * The sums a summary is made of, per printed name.
+ *
+ * A record is read once and asked about many times, so what is kept is the
+ * fold rather than the fights: a fight adds into its name's sums as it
+ * happens, and a question is answered by adding up the names that resolve to
+ * the monster asked about. Nothing here is lost against `summarizeFights`
+ * over the records — every figure in a `FightSummary` is a sum, a count or a
+ * maximum.
+ */
+export interface FightFold {
+  fights: number;
+  kills: number;
+  mine: number;
+  blows: number;
+  /** Fights that ran long enough to time, and their total. */
+  timed: number;
+  ms: number;
+  opened: number;
+  latest: number;
+}
+
+export type FightFolds = Map<string, FightFold>;
+
+/** Adds one fight into the folds, under the name the server printed. */
+export function foldFight(into: FightFolds, record: FightRecord): void {
+  const fold = into.get(record.mob) ?? {
+    fights: 0,
+    kills: 0,
+    mine: 0,
+    blows: 0,
+    timed: 0,
+    ms: 0,
+    opened: 0,
+    latest: -Infinity
+  };
+  fold.fights += 1;
+  if (record.killed) fold.kills += 1;
+  fold.mine += record.mine;
+  fold.blows += record.blows;
+  if (record.ms !== null) {
+    fold.timed += 1;
+    fold.ms += record.ms;
+  }
+  if (record.opened) fold.opened += 1;
+  if (record.at > fold.latest) fold.latest = record.at;
+  into.set(record.mob, fold);
+}
+
+/**
+ * What several folds say about one monster, or null when none names it.
+ *
+ * `resolve` is asked once per printed name rather than once per fight, which
+ * is what makes a question against forty thousand fights cost a walk of a
+ * few hundred names.
+ */
+export function summarizeFolds(
+  folds: ReadonlyArray<ReadonlyMap<string, FightFold>>,
   name: string,
   resolve: MobResolver = AS_PRINTED
 ): FightSummary | null {
   const wanted = mobKey(name);
   if (wanted.length === 0) return null;
   const target = resolve(wanted);
-  const mine = records.filter((record) => record.mob === wanted || resolve(record.mob) === target);
-  if (mine.length === 0) return null;
-  const timed = mine.filter((record) => record.ms !== null);
-  const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+  let fights = 0;
+  let kills = 0;
+  let mine = 0;
+  let blows = 0;
+  let timed = 0;
+  let ms = 0;
+  let opened = 0;
+  let latest = -Infinity;
+  for (const table of folds) {
+    for (const [mob, fold] of table) {
+      if (mob !== wanted && resolve(mob) !== target) continue;
+      fights += fold.fights;
+      kills += fold.kills;
+      mine += fold.mine;
+      blows += fold.blows;
+      timed += fold.timed;
+      ms += fold.ms;
+      opened += fold.opened;
+      if (fold.latest > latest) latest = fold.latest;
+    }
+  }
+  if (fights === 0) return null;
   return {
-    fights: mine.length,
-    kills: mine.filter((record) => record.killed).length,
-    meanMine: sum(mine.map((record) => record.mine)) / mine.length,
-    meanBlows: sum(mine.map((record) => record.blows)) / mine.length,
-    meanMs: timed.length === 0 ? null : sum(timed.map((record) => record.ms ?? 0)) / timed.length,
-    opened: mine.filter((record) => record.opened).length,
-    latest: Math.max(...mine.map((record) => record.at))
+    fights,
+    kills,
+    meanMine: mine / fights,
+    meanBlows: blows / fights,
+    meanMs: timed === 0 ? null : ms / timed,
+    opened,
+    latest
   };
+}
+
+/** The same answer read straight off the records, for a caller holding them. */
+export function summarizeFights(
+  records: readonly FightRecord[],
+  name: string,
+  resolve: MobResolver = AS_PRINTED
+): FightSummary | null {
+  const folds: FightFolds = new Map();
+  for (const record of records) foldFight(folds, record);
+  return summarizeFolds([folds], name, resolve);
 }

@@ -2538,10 +2538,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         return true;
       })()
     `);
-    const after = await readUntil(
-      mapWindow,
-      (after) => after !== null && after.v[0] !== plan.v[0]
-    );
+    const after = await readUntil(mapWindow, (after) => after !== null && after.v[0] !== plan.v[0]);
     const unitsPerPixel = plan.v[2] / plan.width;
     const wanted = Math.sign(plan.farthest) * Math.min(Math.abs(plan.farthest), 15 * unitsPerPixel);
     const moved = after === null ? null : after.v[0] - plan.v[0];
@@ -4643,8 +4640,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     })()
   `;
   check(
-    (await evaluate(`document.querySelector('.conversation-card .crumbs')?.getAttribute('role')`)) ===
-      'group',
+    (await evaluate(
+      `document.querySelector('.conversation-card .crumbs')?.getAttribute('role')`
+    )) === 'group',
     'the channel row is a group of toggles, not a tablist'
   );
   const underAll = await evaluate(crumbState('gos'));
@@ -4709,10 +4707,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
     (text) => !/telepath/.test(text) && /rope/.test(text)
   );
-  check(
-    !/telepath/.test(reverted),
-    'reverts to what the reader had chosen, not to nothing'
-  );
+  check(!/telepath/.test(reverted), 'reverts to what the reader had chosen, not to nothing');
   // Left as the rest of this run expects to find it.
   await evaluate(toggle('tele'));
   await evaluate(toggle('realm'));
@@ -5302,9 +5297,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     });
     // The caret back in the game, which is what Escape is being asserted to do
     // anywhere: the box emptying is the other half and is read below.
-    await waitFor(async () =>
-      evaluate(`!!document.activeElement?.closest('.terminal-cell')`)
-    );
+    await waitFor(async () => evaluate(`!!document.activeElement?.closest('.terminal-cell')`));
   }
 
   /*
@@ -5550,16 +5543,39 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
             '\x1b[1;32m[HP=98/MA=50]:\x1b[0m ',
           'latin1'
         );
-      await hostSays(() => liveSockets[0]?.write(enter(shopRoom.name, shopRoom.exits)), shopRoom.name, {
-        prompt: true
-      });
+      await hostSays(
+        () => liveSockets[0]?.write(enter(shopRoom.name, shopRoom.exits)),
+        shopRoom.name,
+        {
+          prompt: true
+        }
+      );
 
-      const faces = JSON.parse(
-        await evaluate(`
-          JSON.stringify(
-            [...document.querySelectorAll('.room-card .crumb')].map((c) => c.innerText.trim())
-          )
-        `)
+      /*
+       * Named for the kind, which is what made `WorldShop.kind` a fact with a
+       * consumer: it was computed by `shopKind()` and read by nothing. A temple
+       * reads TEMPLE and a bank BANK rather than all six reading SHOP.
+       */
+      const expected = { temple: 'Temple', tavern: 'Tavern', bank: 'Bank', trainer: 'Trainer' };
+      const wanted = expected[shopRoom.place] ?? (shopRoom.place === 'inn' ? 'Inn' : 'Shop');
+      /*
+       * Polled for the face, not read once. A finished prompt is framed the
+       * moment it arrives (2026-09-11), so the flushed line `hostSays` waits
+       * for lands in the same tick as the room's pushes, and the card draws
+       * them on its next coalesced flush (`chromeFlushMs`). Read before that,
+       * the crumbs were the previous room's; the face is the effect under
+       * test and is what this waits for.
+       */
+      const facesNow = async () =>
+        JSON.parse(
+          await evaluate(`
+            JSON.stringify(
+              [...document.querySelectorAll('.room-card .crumb')].map((c) => c.innerText.trim())
+            )
+          `)
+        );
+      const faces = await readUntil(facesNow, (list) =>
+        list.some((face) => face.toLowerCase() === wanted.toLowerCase())
       );
       /*
        * **The shop arrived with the room.**
@@ -5591,13 +5607,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         'and every line of its stock is named rather than numbered',
         JSON.stringify(roomShop)
       );
-      /*
-       * Named for the kind, which is what made `WorldShop.kind` a fact with a
-       * consumer: it was computed by `shopKind()` and read by nothing. A temple
-       * reads TEMPLE and a bank BANK rather than all six reading SHOP.
-       */
-      const expected = { temple: 'Temple', tavern: 'Tavern', bank: 'Bank', trainer: 'Trainer' };
-      const wanted = expected[shopRoom.place] ?? (shopRoom.place === 'inn' ? 'Inn' : 'Shop');
       check(
         faces.some((face) => face.toLowerCase() === wanted.toLowerCase()),
         `standing in a shop grows a ${wanted} face on the Room card`,
@@ -5714,15 +5723,20 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           'and the room the character stands in carries them, with nothing asked for',
           String(onState)
         );
-        const answerFace = await evaluate(`
-          (() => {
-            const face = [...document.querySelectorAll('.room-card .crumb')]
-              .find((c) => c.innerText.trim().toLowerCase() === 'answers');
-            if (!face) return null;
-            face.click();
-            return true;
-          })()
-        `);
+        // Polled for the face, for the reason the shop face above is.
+        const answerFace = await readUntil(
+          () =>
+            evaluate(`
+              (() => {
+                const face = [...document.querySelectorAll('.room-card .crumb')]
+                  .find((c) => c.innerText.trim().toLowerCase() === 'answers');
+                if (!face) return null;
+                face.click();
+                return true;
+              })()
+            `),
+          (found) => found === true
+        );
         check(answerFace === true, 'and standing in it grows an Answers face on the Room card');
         const said = await readUntil(
           () =>
@@ -6238,9 +6252,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // The caret coming back, which the panel hands over as it goes rather than
     // in the turn it unmounted. Its control is the wait above: the panel was
     // there, and it is not now.
-    await waitFor(async () =>
-      evaluate(`!!document.activeElement?.closest('.terminal-cell')`)
-    );
+    await waitFor(async () => evaluate(`!!document.activeElement?.closest('.terminal-cell')`));
     check(
       await evaluate(`!!document.activeElement?.closest('.terminal-cell')`),
       'with the caret still in the terminal'
@@ -10606,9 +10618,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // fraction cannot state a form's width on a laptop and on a large display
     // at once. A drag is what gives it a box.
     check(
-      (await evaluate(
-        `document.querySelector('.settings')?.getAttribute('data-placed')`
-      )) === 'false',
+      (await evaluate(`document.querySelector('.settings')?.getAttribute('data-placed')`)) ===
+        'false',
       'the panel ships as the dialog always looked, with no box of its own'
     );
     const grip = await evaluate(`
@@ -13611,7 +13622,12 @@ if (logFiles[0]) {
   `);
   check(asked, "the Room card offers to ask 'rm' quietly");
   await readUntil(
-    async () => (Buffer.concat(received).toString('latin1').match(/rm\r\n/g) ?? []).length,
+    async () =>
+      (
+        Buffer.concat(received)
+          .toString('latin1')
+          .match(/rm\r\n/g) ?? []
+      ).length,
     (now) => now > rmBefore
   );
   const rmAfter = (

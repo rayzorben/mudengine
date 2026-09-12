@@ -1113,6 +1113,13 @@ const TUNING_DEFAULTS = {
     fightFlushMs: 2000,
     /** How many it holds if a flush never happens. */
     fightsHeld: 2000,
+    /**
+     * How many recorded fights are folded per turn of the event loop when a
+     * character's record is first read back. Forty thousand fights parse in
+     * a quarter of a second, and that quarter used to be one stall of the
+     * socket; sliced, the socket is read between the slices.
+     */
+    fightsFoldSlice: 500,
     /** How long the conversation log holds lines before writing them. */
     talkFlushMs: 2000,
     /** How many it holds if a flush never happens. */

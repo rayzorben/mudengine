@@ -2060,7 +2060,7 @@ function registerIpc(): void {
    * click on a card. One handler across the three indexes because the caller
    * has a *name* and should not need to know which table answers it.
    */
-  handle(Invoke.lookup, (_caller, session: SessionId, query: unknown) => {
+  handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {
     const world = worldFor(session);
     if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };
     /*
@@ -2085,10 +2085,10 @@ function registerIpc(): void {
     // One read of the record for every monster named, resolved through the
     // realm table the way the lore is, so a rat king's fights stay its own.
     const fights = Object.fromEntries(
-      fightLogs.get(session)?.summaries(
+      (await fightLogs.get(session)?.summaries(
         found.mobs.map((mob) => mob.name),
         (printed) => world.mobAsPrinted(printed)?.name ?? printed
-      ) ?? []
+      )) ?? []
     ) as Record<string, FightSummary>;
     /*
      * Where every shop that sells one of these items is.
