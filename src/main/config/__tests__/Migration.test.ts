@@ -236,6 +236,8 @@ describe('the "stand up at" health thresholds', () => {
       restTo: 0,
       // And by `statedTheTrapRest`, at the shipped figure.
       restBeforeTraps: 0.45,
+      // And by `statedTheRestNextDoor`, on.
+      restNextDoor: true,
       meditateBelow: 0.3
     });
   });
@@ -313,7 +315,9 @@ describe('the round combat macro', () => {
       avoidDeathSpell: false,
       maxTargetHealth: 0,
       minMobs: 0,
-      maxMonsterExperience: 0
+      maxMonsterExperience: 0,
+      // And by `statedTheHideForOpener`, off.
+      hideForOpener: false
     });
   });
 
@@ -2986,7 +2990,11 @@ describe('resting before a trap', () => {
     const profile = home.profile('festus');
     write(profile.file, '    restBelow: 0.5\n');
     migrate();
-    expect(read(profile.file)).toMatchObject({ restBelow: 0.5, restBeforeTraps: 0.45 });
+    expect(read(profile.file)).toMatchObject({
+      restBelow: 0.5,
+      restBeforeTraps: 0.45,
+      restNextDoor: true
+    });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(said.join(' ')).toContain('Resting before a trap');
     migrate();
@@ -3016,7 +3024,12 @@ describe('the loop pause pair folded into the resting pair', () => {
   it('carries the figures across into an absent rest pair', () => {
     write(home.options, '    loopPauseBelow: 0.6\n    loopResumeAt: 0.9\n');
     migrate();
-    expect(read(home.options)).toEqual({ restBelow: 0.6, restTo: 0.9, restBeforeTraps: 0.45 });
+    expect(read(home.options)).toEqual({
+      restBelow: 0.6,
+      restTo: 0.9,
+      restBeforeTraps: 0.45,
+      restNextDoor: true
+    });
   });
 
   /* The rest pair wins where both are stated: it is the one the settings screen
@@ -3029,13 +3042,23 @@ describe('the loop pause pair folded into the resting pair', () => {
       '    restBelow: 0.5\n    restTo: 0.75\n    loopPauseBelow: 0.6\n    loopResumeAt: 0.9\n'
     );
     migrate();
-    expect(read(home.options)).toEqual({ restBelow: 0.5, restTo: 0.75, restBeforeTraps: 0.45 });
+    expect(read(home.options)).toEqual({
+      restBelow: 0.5,
+      restTo: 0.75,
+      restBeforeTraps: 0.45,
+      restNextDoor: true
+    });
   });
 
   it('folds each half independently', () => {
     write(home.options, '    restBelow: 0.5\n    loopResumeAt: 0.9\n');
     migrate();
-    expect(read(home.options)).toEqual({ restBelow: 0.5, restTo: 0.9, restBeforeTraps: 0.45 });
+    expect(read(home.options)).toEqual({
+      restBelow: 0.5,
+      restTo: 0.9,
+      restBeforeTraps: 0.45,
+      restNextDoor: true
+    });
   });
 
   it('reaches a profile, says so once, and is idempotent', () => {
@@ -3043,7 +3066,12 @@ describe('the loop pause pair folded into the resting pair', () => {
     const profile = home.profile('festus');
     write(profile.file, '    loopPauseBelow: 0.6\n    loopResumeAt: 0.9\n');
     migrate();
-    expect(read(profile.file)).toEqual({ restBelow: 0.6, restTo: 0.9, restBeforeTraps: 0.45 });
+    expect(read(profile.file)).toEqual({
+      restBelow: 0.6,
+      restTo: 0.9,
+      restBeforeTraps: 0.45,
+      restNextDoor: true
+    });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(said.join(' ')).toContain('folded into the resting pair');
     migrate();
@@ -3952,6 +3980,187 @@ describe('the room remote follows where', () => {
   });
 });
 
+describe('choosing the spell is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const spells = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'spells'
+    ] ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-spell-choice-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch off at the head of a spells block that predates it, once', () => {
+    fs.writeFileSync(home.options, 'automation:\n  spells:\n    attack: mmis\n', 'utf8');
+    migrate();
+    expect(spells()['autoChoose']).toBe(false);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('autoChoose:')).toBeLessThan(text.indexOf('attack:'));
+    expect(said.join('\n')).toContain('automation.spells.autoChoose');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+
+  it('leaves a stated switch alone', () => {
+    fs.writeFileSync(home.options, 'automation:\n  spells:\n    autoChoose: true\n', 'utf8');
+    migrate();
+    expect(spells()['autoChoose']).toBe(true);
+  });
+});
+
+describe('resting next door to a lair is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const health = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'health'
+    ] ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rest-next-door-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch on into a health block that predates it, beside the ceiling', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  health:\n    restBelow: 0.35\n    restTo: 0.7\n    meditateBelow: 0\n',
+      'utf8'
+    );
+    migrate();
+    expect(health()['restNextDoor']).toBe(true);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('restTo:')).toBeLessThan(text.indexOf('restNextDoor:'));
+    expect(text.indexOf('restNextDoor:')).toBeLessThan(text.indexOf('meditateBelow:'));
+    expect(said.join('\n')).toContain('automation.health.restNextDoor');
+    const after = text;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+
+  it('leaves a switch somebody turned off alone', () => {
+    fs.writeFileSync(home.options, 'automation:\n  health:\n    restNextDoor: false\n', 'utf8');
+    migrate();
+    expect(health()['restNextDoor']).toBe(false);
+  });
+});
+
+describe('fetching the kit after a death is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const movement = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'movement'
+    ] ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-recover-gear-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch off into a movement block that predates it, and is safe to run again', () => {
+    fs.writeFileSync(home.options, 'automation:\n  movement:\n    openDoors: true\n', 'utf8');
+    migrate();
+    expect(movement()['recoverGear']).toBe(false);
+    expect(said.join('\n')).toContain('automation.movement.recoverGear');
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+
+  it('leaves a stated switch alone', () => {
+    fs.writeFileSync(home.options, 'automation:\n  movement:\n    recoverGear: true\n', 'utf8');
+    migrate();
+    expect(movement()['recoverGear']).toBe(true);
+  });
+});
+
+describe('hiding for the opener is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const combat = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'combat'
+    ] ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-hide-opener-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch off into a block that predates it, after the opener', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  combat:\n    enabled: true\n    opener: bs\n    engage: hostile\n',
+      'utf8'
+    );
+    migrate();
+    expect(combat()['hideForOpener']).toBe(false);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('opener:')).toBeLessThan(text.indexOf('hideForOpener:'));
+    expect(text.indexOf('hideForOpener:')).toBeLessThan(text.indexOf('engage:'));
+    expect(said.join('\n')).toContain('automation.combat.hideForOpener');
+  });
+
+  it('leaves a stated switch alone, and is safe to run again', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  combat:\n    opener: bs\n    hideForOpener: true\n',
+      'utf8'
+    );
+    migrate();
+    expect(combat()['hideForOpener']).toBe(true);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+
+  it('writes nothing into a file that states no combat block', () => {
+    fs.writeFileSync(home.options, 'automation:\n  loot:\n    coins: true\n', 'utf8');
+    migrate();
+    expect(combat()['hideForOpener']).toBeUndefined();
+  });
+});
+
 describe('the coins can be shed', () => {
   let home: Home;
   let dir: string;
@@ -4007,5 +4216,58 @@ describe('the coins can be shed', () => {
     const after = fs.readFileSync(home.options, 'utf8');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+});
+
+describe('training is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const automation = (): Record<string, unknown> =>
+    (parse(fs.readFileSync(home.options, 'utf8')).automation ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-training-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the whole block off and wanting nothing, after movement, into the options file alone, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    openDoors: true\n  spells:\n    attack: mmis\n',
+      'utf8'
+    );
+    const profile = home.profile('vaelor');
+    fs.mkdirSync(path.dirname(profile.file), { recursive: true });
+    fs.writeFileSync(
+      profile.file,
+      'name: Vaelor\nautomation:\n  movement:\n    sneak: true\n',
+      'utf8'
+    );
+    migrate();
+    expect(automation()['train']).toEqual(DEFAULT_CONFIG.automation.train);
+    const text = fs.readFileSync(home.options, 'utf8');
+    // Between the two the file stated, as the template orders them.
+    const keys = Object.keys(automation());
+    expect(keys.indexOf('movement')).toBeLessThan(keys.indexOf('train'));
+    expect(keys.indexOf('train')).toBeLessThan(keys.indexOf('spells'));
+    expect(said.join('\n')).toContain('automation.train');
+    expect(parse(fs.readFileSync(profile.file, 'utf8')).automation).not.toHaveProperty('train');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+
+  it('leaves a stated block alone', () => {
+    fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
+    migrate();
+    expect(automation()['train']).toEqual({ stats: true });
   });
 });

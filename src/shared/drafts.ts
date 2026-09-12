@@ -16,6 +16,7 @@ import {
   ENGAGE_POLICIES,
   RETREAT_STRATEGIES,
   normalizeRewrites,
+  normalizeTrain,
   type RewritesUiConfig,
   type BlessingTarget,
   type DensityPreference,
@@ -55,6 +56,7 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
+import type { TrainedAttribute } from './training';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
@@ -197,7 +199,10 @@ export interface GlobalDraft {
     party: ProfileDraft['party'];
     health: ProfileDraft['health'];
     movement: ProfileDraft['movement'];
+    train: ProfileDraft['train'];
     spells: {
+      /** Derive the round spell and the cures from the book. See `SpellsConfig`. */
+      autoChoose: boolean;
       attack: string;
       areaAttack: string;
       areaMinMobs: number;
@@ -367,6 +372,8 @@ export interface ProfileDraft {
     enabled: boolean;
     attack: string;
     opener: string;
+    /** Hide, or sneak while moving, between fights so the opener lands. See `CombatConfig`. */
+    hideForOpener: boolean;
     engage: EngagePolicy;
     retaliate: boolean;
     /** Open on a monster a stranger is already fighting. See `CombatConfig`. */
@@ -403,6 +410,8 @@ export interface ProfileDraft {
   health: {
     restBelow: number;
     restTo: number;
+    /** Rest next door to a lair rather than in it. See `HealthConfig`. */
+    restNextDoor: boolean;
     restBeforeTraps: number;
     meditateBelow: number;
     drinkHealingPotionBelow: number;
@@ -422,11 +431,18 @@ export interface ProfileDraft {
     provideLight: boolean;
     lightDimRooms: boolean;
     extinguishInLight: boolean;
+    /** Go back for the kit after a death. See `MovementConfig`. */
+    recoverGear: boolean;
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
     collectKeys: boolean;
+  };
+  /** Spending character points on the stat screen — `automation.train`. See `TrainConfig`. */
+  train: {
+    stats: boolean;
+    wanted: Record<TrainedAttribute, number>;
   };
   /**
    * The loops this character walks — `automation.loops`.
@@ -445,6 +461,8 @@ export interface ProfileDraft {
    */
   loops: Loop[];
   spells: {
+    /** Derive the round spell and the cures from the book. See `SpellsConfig`. */
+    autoChoose: boolean;
     attack: string;
     areaAttack: string;
     areaMinMobs: number;
@@ -725,6 +743,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
        */
       attack: word(combat['attack']) || 'a',
       opener: word(combat['opener']),
+      // Off unless said: it spends a command per fight.
+      hideForOpener: combat['hideForOpener'] === true,
       engage: engagePolicy(combat['engage']),
       // The one boolean here that defaults *on*, because it is the one that
       // cannot start a fight: something is already swinging. See `CombatConfig`.
@@ -770,6 +790,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
        */
       restBelow: unit(health['restBelow'], DEFAULT_CONFIG.automation.health.restBelow),
       restTo: unit(health['restTo'], DEFAULT_CONFIG.automation.health.restTo),
+      // On unless said off: a blank field must not sit a character down in a lair.
+      restNextDoor: health['restNextDoor'] !== false,
       restBeforeTraps: unit(
         health['restBeforeTraps'],
         DEFAULT_CONFIG.automation.health.restBeforeTraps
@@ -799,6 +821,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
       lightDimRooms: movement['lightDimRooms'] === true,
       extinguishInLight: movement['extinguishInLight'] === true,
+      // Off unless said: it walks the character back to where it died.
+      recoverGear: movement['recoverGear'] === true,
       // The shipped default when the payload omits it, on the health block's
       // rule above: this one is on by default, and a form that failed to send
       // the field would silently switch it off.
@@ -807,6 +831,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
           ? DEFAULT_CONFIG.automation.movement.collectKeys
           : movement['collectKeys'] === true
     },
+    // The options file's own reading: a figure is a whole number, 0 to 999.
+    train: normalizeTrain(value['train']),
     /*
      * Parsed by the same function the options file goes through, so a loop
      * chosen on the screen and a loop typed into YAML cannot mean different
@@ -816,6 +842,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
      */
     loops: asLoops(value['loops'], LOOP_LIMITS),
     spells: {
+      // Off unless said: it spends mana on a reading the player did not type.
+      autoChoose: spells['autoChoose'] === true,
       // The whole name, unlike a command word: the server matches a spell on a
       // prefix, so `ice` would cast whatever begins with it.
       attack: typeof spells['attack'] === 'string' ? spells['attack'].trim().slice(0, 40) : '',
@@ -1008,8 +1036,10 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       party: asIf.party,
       health: asIf.health,
       movement: asIf.movement,
+      train: asIf.train,
       afk: asIf.afk,
       spells: {
+        autoChoose: spells['autoChoose'] === true,
         attack: text(spells['attack']).slice(0, 40),
         areaAttack: text(spells['areaAttack']).slice(0, 40),
         areaMinMobs: Math.max(1, Math.min(99, Math.round(Number(spells['areaMinMobs']) || 3))),

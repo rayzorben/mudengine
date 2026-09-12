@@ -23,6 +23,10 @@ import { AutoDrop } from '../automation/AutoDrop';
 import { AutoSearch } from '../automation/AutoSearch';
 import { AutoLoot } from '../automation/AutoLoot';
 import { AutoLight } from '../automation/AutoLight';
+import { AutoStealth } from '../automation/AutoStealth';
+import { GearRecovery } from '../automation/GearRecovery';
+import { StatScreen } from '../automation/StatScreen';
+import { RestAway } from '../automation/RestAway';
 import { AutoKeys, type KeyedWay } from '../automation/AutoKeys';
 import { Supplies } from '../automation/Supplies';
 import { Remotes } from '../automation/Remotes';
@@ -43,6 +47,7 @@ import {
   OPPOSITE,
   asDirection,
   hazardAvoided,
+  parseLair,
   roomId,
   type WorldRoom,
   type Direction,
@@ -146,6 +151,17 @@ import {
 } from '../../shared/verdict';
 import { LairCosts } from '../world/LairCosts';
 import { attacksOnSight } from '../../shared/mobs';
+import { regeneration } from '../../shared/prowess';
+import {
+  compareSpots,
+  estimateSpot,
+  respawnSeconds,
+  type HuntingAdvice,
+  type HuntingConstants,
+  type HuntingRoom,
+  type HuntingSpot,
+  type SpotMob
+} from '../../shared/hunting';
 
 /**
  * The part of a chunk of keystrokes the server's line editor would keep.
@@ -548,6 +564,21 @@ export class SessionManager {
    */
   private lastEscapeSent = 0;
   /**
+   * The escape whose answer has not come: the direction sent, by when, how
+   * many times its door has been opened, and every direction tried from this
+   * room. A declared postcondition, as `Walker` arms `expecting` — the escape
+   * used to be complete the moment the byte left, and `The door is closed!`
+   * was recorded as an escape (todo 06, 2026-09-12). See `settleEscape`.
+   */
+  private escapeAwaiting: {
+    direction: Direction;
+    how: EscapeRung;
+    why: string;
+    deadline: number;
+    opened: number;
+    tried: Set<Direction>;
+  } | null = null;
+  /**
    * Rooms this character has run out of, newest last, while the fight it ran
    * from is still going.
    *
@@ -694,6 +725,14 @@ export class SessionManager {
   private readonly deposit: AutoDeposit;
   /** Readying a light before the dark. See `AutoLight`. */
   private readonly light: AutoLight;
+  /** Getting back into the shadows between fights. See `AutoStealth`. */
+  private readonly stealth: AutoStealth;
+  /** Going back for the kit after a death. See `GearRecovery`. */
+  private readonly recoverGear: GearRecovery;
+  /** Resting next door to a lair rather than in it. See `RestAway`. */
+  private readonly restAway: RestAway;
+  /** Spending character points on the stat screen. See `StatScreen`. */
+  private readonly statScreen: StatScreen;
   /** Bending down for the key to the door in front of you. See `AutoKeys`. */
   private readonly keys: AutoKeys;
   /** Keeping the pack stocked. See `Supplies`. */
@@ -935,7 +974,9 @@ export class SessionManager {
       },
       // And the spell message table, for the whole-line sentences no frame
       // reads; a lookup because what has been learned changes as the session runs.
-      (text) => spellLore.match(text)
+      (text) => spellLore.match(text),
+      // And how this realm's monsters die, learned the same way (todo 04).
+      (text) => lore.deathOf?.(text) ?? null
     );
     this.world = world;
     // A different realm is a different set of corridors; the preferred ones
@@ -1006,6 +1047,16 @@ export class SessionManager {
         } else {
           this.tracker.observeReread();
         }
+        /*
+         * The arbiter's own `train stats` — the stat screen driver's proposal
+         * — arms the hold a round trip early exactly as a typed one does
+         * below, and for the same reason: the server answers it with no
+         * prompt, and the next drain would otherwise send into the form. Safe
+         * from inside this callback: one drain sends one command, and the
+         * hold empties what it would have scheduled next.
+         */
+        if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
+        this.statScreen.noteSent(command, 'automation');
         const reported = this.reportable(command);
         this.sink.command?.(reported, 'automation');
         this.noteSent(command, 'automation');
@@ -1067,6 +1118,7 @@ export class SessionManager {
       ended: (arrived, reason) => {
         this.loops.onWalkEnded(arrived, reason, this.tracker.current);
         this.supplies.onWalkEnded(arrived, reason, this.tracker.current);
+        this.recoverGear.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to) => {
         if (direction === 'portal') {
@@ -1179,6 +1231,8 @@ export class SessionManager {
       this.queue,
       {
         notice: (message) => this.sink.notice(message),
+        // The choice found no book read: the routines ask once (todo 09).
+        needBook: () => this.routines.askBook(this.tracker.current),
         /*
          * The trace, not the console. A refusal to open a fight is not news
          * the *game's* surface should carry — it happens in every corridor and
@@ -1243,6 +1297,18 @@ export class SessionManager {
       notice: (message) => this.sink.notice(message),
       decided: (decision) => this.noteSafety(decision),
       escaping: () => this.isRetreating()
+    });
+    /*
+     * The shadows, asked for between fights. Told whether a lap or a route
+     * has the character, because the answer is a different command: `sn` for
+     * the step ahead, `hide` for standing still.
+     */
+    this.stealth = new AutoStealth(automation.combat, automation.enabled, this.queue, {
+      notice: (message) => this.sink.notice(message),
+      escaping: () => this.isRetreating(),
+      moving: () => this.walker.walking || this.loops.progress.status === 'running',
+      moveInFlight: () => this.tracker.pendingMoves > 0,
+      openerRefused: () => this.combat.openerRefused()
     });
     /*
      * And the key to the door in front of the character, which is the other
@@ -1313,6 +1379,120 @@ export class SessionManager {
         release: () => {
           this.loops.noteErrandOver();
           this.walkOnAfterErrand();
+        }
+      },
+      {
+        notice: (message) => this.sink.notice(message),
+        decided: (decision) => this.noteSafety(decision)
+      }
+    );
+    /*
+     * The kit, after a death: a leg back to where the character died, taking
+     * and dressing on arrival. The errand's planner, with the same refusals
+     * (a move in flight, a walk running, an escape), and a leg's options:
+     * holding when hurt, fighting nothing on the way, owed to nobody across
+     * a lost connection.
+     */
+    this.recoverGear = new GearRecovery(
+      automation.movement,
+      automation.enabled,
+      this.queue,
+      {
+        here: () => {
+          const here = this.tracker.current.room;
+          return here.map === null || here.number === null ? null : roomId(here.map, here.number);
+        },
+        routeTo: (room) => this.planFromHere(room),
+        walk: (route) =>
+          this.walker.start(route, this.tracker.current, {
+            quiet: false,
+            asked: false,
+            holdWhenHurt: true,
+            resumeAfterFight: true,
+            whileFighting: false,
+            resumeAfterLoss: false
+          }),
+        moveInFlight: () => this.tracker.pendingMoves > 0,
+        walking: () => this.walker.walking,
+        busy: () => this.isRetreating() || this.retreat !== null || this.escapeAwaiting !== null
+      },
+      {
+        notice: (message) => this.sink.notice(message),
+        decided: (decision) => this.noteSafety(decision)
+      }
+    );
+    /*
+     * And where a rest is taken: not in a room that makes monsters on a short
+     * clock, when a neighbour the realm holds no lair in can be looked into
+     * and found empty. The clock is the realm's own (`Rooms.Delay`, read the
+     * way `huntingGrounds` reads it); the neighbours are the room's exits
+     * into rooms with no lair and no resident, plain exits first.
+     */
+    this.restAway = new RestAway(
+      automation.health,
+      automation.enabled,
+      this.queue,
+      {
+        here: () => {
+          const here = this.tracker.current.room;
+          return here.map === null || here.number === null ? null : roomId(here.map, here.number);
+        },
+        lairClock: (room) => {
+          const found = this.world?.byId(room);
+          if (!found?.lair) return null;
+          const { greatermudRespawnOffsetSeconds } = tuning().hunting;
+          return respawnSeconds(found.delay ?? null, this.serverFamily, {
+            greatermudRespawnOffsetSeconds
+          });
+        },
+        neighbours: (room) => {
+          const found = this.world?.byId(room);
+          if (!found) return [];
+          return found.exits
+            .flatMap((exit) => {
+              const to = roomId(exit.map, exit.room);
+              const next = this.world?.byId(to);
+              if (!next || next.lair !== undefined || next.npcId !== undefined) return [];
+              const direction = asDirection(exit.direction);
+              if (direction === null) return [];
+              return [{ direction, to, name: next.name, plain: exit.requirement === null }];
+            })
+            .sort((a, b) => Number(b.plain) - Number(a.plain))
+            .map(({ direction, to, name }) => ({ direction, to, name }));
+        },
+        moveInFlight: () => this.tracker.pendingMoves > 0,
+        walking: () => this.walker.walking && this.walker.holding === null,
+        looping: () => this.loops.progress.status === 'running',
+        busy: () => this.isRetreating() || this.retreat !== null || this.escapeAwaiting !== null
+      },
+      {
+        notice: (message) => this.sink.notice(message),
+        decided: (decision) => this.noteSafety(decision)
+      }
+    );
+    /*
+     * And the character points, on the one screen the queue stands down for.
+     * The driver is handed a write past the queue because the hold refuses
+     * every intent while the form is up, and the form is what it is typing
+     * into; its keystrokes are reported as the arbiter's are, so the capture
+     * shows them. Whether the room is a trainer's is the resolved room's own
+     * shop, as the bank's is below.
+     */
+    this.statScreen = new StatScreen(
+      automation.train,
+      automation.enabled,
+      this.queue,
+      {
+        atTrainer: () => {
+          const here = this.tracker.current.room;
+          if (here.map === null || here.number === null) return false;
+          const room = this.world?.byId(roomId(here.map, here.number));
+          if (!room || room.shop === undefined) return false;
+          return this.world?.shop(room.shop)?.kind === 'trainer';
+        },
+        write: (bytes) => {
+          this.client.send(bytes);
+          this.sink.command?.(bytes.replace(/\r?\n$/, ''), 'automation');
         }
       },
       {
@@ -1508,7 +1688,8 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       undefined,
-      realmSpell
+      realmSpell,
+      { notice: (message) => this.sink.notice(message) }
     );
     this.blessings = new Blessings(
       automation.spells,
@@ -1633,6 +1814,8 @@ export class SessionManager {
         }
       },
       {
+        // Where would earn more, for the low-experience stop (todo 05).
+        betterSpot: () => this.betterHuntingWords(),
         notice: (message) => this.sink.notice(message),
         progress: (progress) => {
           // A loop's walk engages: the loop was chosen for what lives on it.
@@ -2072,6 +2255,10 @@ export class SessionManager {
     this.search.reset();
     this.deposit.reset();
     this.light.reset();
+    this.stealth.reset();
+    this.recoverGear.reset();
+    this.restAway.reset();
+    this.statScreen.reset();
     this.keys.reset();
     this.supplies.reset();
     this.remotes.reset();
@@ -2142,6 +2329,7 @@ export class SessionManager {
     this.lastHangUpRefusal = null;
     this.lastAskedToEscape = 0;
     this.lastEscapeSent = 0;
+    this.escapeAwaiting = null;
     this.retreat = null;
     this.safetyLog.length = 0;
     this.engageLog.length = 0;
@@ -2232,7 +2420,17 @@ export class SessionManager {
       const command = this.outbound.slice(0, newline).trim();
       this.outbound = this.outbound.slice(newline + 1).replace(/^\n/, '');
       committed = true;
-      if (command.length > 0) {
+      /*
+       * While the stat screen has the keyboard a committed line is a field's
+       * contents, not a command: nothing here is a step, a re-read or a word
+       * the classifier should pair an echo with. Ten bare Enters walking that
+       * form to SAVE were each filed as a re-read of the room, and each was
+       * reported unanswered eight seconds later — nine notices about nothing
+       * (live, 2026-09-12, todo 10). The hold is the one fact that says so.
+       */
+      if (this.queue.holding !== null) {
+        // Nothing to observe; the bytes still go out below.
+      } else if (command.length > 0) {
         /*
          * The tracker is the one thing here that knows the command table, the
          * walker's hint and this room's own text exits, so it is what says
@@ -2258,6 +2456,7 @@ export class SessionManager {
          * automation and says so.
          */
         if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
+        this.statScreen.noteSent(command, 'user');
         this.noteSent(command, 'user');
         this.noteQuestSaid(command);
         // A person is at the keyboard: the away clock starts over.
@@ -2517,6 +2716,10 @@ export class SessionManager {
     this.search.reset();
     this.deposit.reset();
     this.light.reset();
+    this.stealth.reset();
+    this.recoverGear.reset();
+    this.restAway.reset();
+    this.statScreen.reset();
     this.keys.reset();
     this.supplies.reset();
     this.remotes.reset();
@@ -2532,6 +2735,7 @@ export class SessionManager {
     this.lastHangUpRefusal = null;
     this.lastAskedToEscape = 0;
     this.lastEscapeSent = 0;
+    this.escapeAwaiting = null;
     this.retreat = null;
     /*
      * An edge the realm refused was refused for *this* character — a door it
@@ -2647,6 +2851,10 @@ export class SessionManager {
     this.search.configure(automation.search, automation.enabled);
     this.deposit.configure(automation.banking, automation.enabled);
     this.light.configure(automation.movement, automation.enabled);
+    this.stealth.configure(automation.combat, automation.enabled);
+    this.recoverGear.configure(automation.movement, automation.enabled);
+    this.restAway.configure(automation.health, automation.enabled);
+    this.statScreen.configure(automation.train, automation.enabled);
     this.keys.configure(automation.movement, automation.enabled);
     this.supplies.configure(automation.supplies, automation.enabled);
     this.remotes.configure(automation);
@@ -2861,6 +3069,7 @@ export class SessionManager {
     if (this.automationTimer) clearTimeout(this.automationTimer);
     this.automationTimer = null;
     this.queue.dispose();
+    this.statScreen.dispose();
     this.routines.dispose();
     this.link.dispose();
     this.rules.dispose();
@@ -3070,6 +3279,9 @@ export class SessionManager {
      */
     if (block.type === 'user-stats-screen') this.holdForStatScreen(t('session.stats.screen'));
     else if (isPrompt(block.type)) this.releaseStatScreen();
+    // The one thing that reads the screen, fed every block: the dump, each
+    // keystroke's echo, and the sentence the server prints on SAVE alone.
+    this.statScreen.onBlock(block);
 
     this.login.onBlock(block);
     /*
@@ -3151,6 +3363,10 @@ export class SessionManager {
      */
     this.combat.onBlock(block);
     this.loot.onBlock(block, this.tracker.current);
+    // A floor listing the server wrapped arrives as a batch, and the loot
+    // reads the floor; without this a pile long enough to wrap — which is the
+    // pile worth having — was one the loot was never told about (todo 03).
+    if (batch) this.loot.onBlock(batch, this.tracker.current);
     this.light.onBlock(block, this.tracker.current);
     this.supplies.onBlock(block, this.tracker.current);
     this.remotes.onBlock(block, this.tracker.current);
@@ -3234,8 +3450,11 @@ export class SessionManager {
     // Both are applied, deliberately not short-circuited: `||` would skip the
     // batch whenever the line that completed it also changed state — and the
     // line that completes a stat sheet is the status line, which always does.
+    const roomBefore = this.tracker.current.room;
     const lineChanged = this.tracker.apply(block);
     const batchChanged = batch ? this.tracker.apply(batch, batch.rows) : false;
+    // An escape in flight reads what the server said back (todo 06).
+    if (this.escapeAwaiting !== null) this.settleEscape(block, roomBefore);
     const changed = lineChanged || batchChanged;
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
@@ -3343,10 +3562,13 @@ export class SessionManager {
      * loud: once, naming the command, because "a step went unanswered" is a
      * sentence a player can only agree with.
      */
-    for (const lost of this.tracker.expireStaleClaims(Date.now())) {
+    const lapsed = this.tracker.expireStaleClaims(Date.now());
+    // Several bare re-reads lapsing together are one sentence, not one each.
+    const bareReads = lapsed.filter((lost) => !lost.moved && lost.command.length === 0).length;
+    for (const lost of lapsed) {
       const seconds = this.staleMoveSeconds;
       /*
-       * Four literal keys rather than one composed sentence, because
+       * Five literal keys rather than one composed sentence, because
        * `i18n-coverage.test.ts` reads the key straight after `t(` — and
        * because only a **move** held anything. `pendingMoves` counts moves
        * alone, so a lapsed peek or bare Enter gated neither the escape nor the
@@ -3360,13 +3582,16 @@ export class SessionManager {
             ? t('session.walk.claimLapsedUntyped', { seconds })
             : t('session.walk.claimLapsed', { command: lost.command, seconds })
         );
-      } else {
-        this.sink.notice(
-          lost.command.length === 0
-            ? t('session.walk.readLapsedUntyped', { seconds })
-            : t('session.walk.readLapsed', { command: lost.command, seconds })
-        );
+      } else if (lost.command.length > 0) {
+        this.sink.notice(t('session.walk.readLapsed', { command: lost.command, seconds }));
+      } else if (bareReads === 1) {
+        this.sink.notice(t('session.walk.readLapsedUntyped', { seconds }));
       }
+    }
+    if (bareReads > 1) {
+      this.sink.notice(
+        t('session.walk.readLapsedSeveral', { count: bareReads, seconds: this.staleMoveSeconds })
+      );
     }
     this.combat.noteMovePending(this.tracker.pendingMoves > 0);
     // Republish only on a real change: during a combat burst most lines say
@@ -3424,6 +3649,10 @@ export class SessionManager {
       // away, not while walking home, not while anything else has the
       // character. See `Supplies.consider`.
       this.supplies.onCharacter(state);
+      // And the kit after a death, on the same terms as the errand.
+      this.recoverGear.onCharacter(state);
+      // And the character points, at a trainer, under the switch.
+      this.statScreen.onCharacter(state);
       this.considerHangingUp(state);
       /*
        * And fighting is considered *last*, after both escapes have had their
@@ -3492,7 +3721,23 @@ export class SessionManager {
        * somewhere is not one to sit down; when the walk ends, resting is
        * considered again on the very next tick.
        */
-      if (this.mayRest()) this.restNow(state);
+      /*
+       * The shadows before the rest: `hide` then `rest` is the order a
+       * backstabber wants, since a class with `ShadowHome` keeps its stealth
+       * through the rest and every other class has it broken by the `rest`
+       * itself. Refuses a fight, a monster, a move in flight and a rest for
+       * itself.
+       */
+      this.stealth.onCharacter(state);
+      /*
+       * And *where* the rest is taken, before whether (todo 08): a room that
+       * makes monsters on a short clock is not a resting place while a
+       * neighbour can be looked into and found empty. `took-over` is the rest
+       * refused here and the step out in flight; `rest-here` is a lair with no
+       * safe neighbour, where the rest goes ahead, said once.
+       */
+      const away = this.restAway.consider(state, this.recovery.wouldRest(state));
+      if (away !== 'took-over' && this.mayRest()) this.restNow(state);
     }
   }
 
@@ -3524,6 +3769,9 @@ export class SessionManager {
    */
   private mayRest(): boolean {
     if (this.isRetreating()) return false;
+    // An escape whose answer has not come is a room the character may still
+    // be standing in — the one it just tried to leave (todo 06).
+    if (this.escapeAwaiting !== null) return false;
     /*
      * A walk that is *marching* refuses, and a walk that is standing still for
      * health does not — those were one condition until a route learned to wait
@@ -3580,7 +3828,8 @@ export class SessionManager {
     this.heal.onCharacter(state);
     this.potions.onCharacter(state);
     this.cures.onCharacter(state);
-    if (this.mayRest()) this.restNow(state);
+    const away = this.restAway.consider(state, this.recovery.wouldRest(state));
+    if (away !== 'took-over' && this.mayRest()) this.restNow(state);
   }
 
   /**
@@ -4035,6 +4284,204 @@ export class SessionManager {
   }
 
   /**
+   * Where this character should hunt, from where it stands (todo 05).
+   *
+   * Every lair within `radius` steps (`WorldGraph.withinSteps`, a plain sweep,
+   * never a route per room) and every placed monster, grouped by what they
+   * spawn, each group priced once with the arithmetic the Room card prices a
+   * fight with (`weighVerdicts`) and the realm's own clock (`Rooms.Delay`,
+   * a resident's `RegenTime`), through `estimateSpot`: kill, rest, walk,
+   * wait. The loop a suggestion would walk is the nearest rooms of the group,
+   * at most `tuning.hunting.maxLoopRooms`; its length is an estimate from the
+   * sweep's distances, said as one. Best first; a deadly spot last; an
+   * unknown rate never a high one. Nothing here is a prediction, and every
+   * unknown is named on the spot rather than zeroed.
+   */
+  huntingGrounds(radius: number): HuntingAdvice {
+    const state = this.tracker.current;
+    const world = this.world;
+    // Every figure the model runs on, named here so each has a reader.
+    const {
+      roundSeconds,
+      restTickSeconds,
+      passiveTickSeconds,
+      killOverheadMs,
+      stepMs,
+      greatermudRespawnOffsetSeconds,
+      backstabMultiplier,
+      maxLoopRooms,
+      maxSpots,
+      betterSpotRadius
+    } = tuning().hunting;
+    const c: HuntingConstants = {
+      roundSeconds,
+      restTickSeconds,
+      passiveTickSeconds,
+      killOverheadMs,
+      stepMs,
+      greatermudRespawnOffsetSeconds,
+      backstabMultiplier,
+      maxLoopRooms,
+      maxSpots,
+      betterSpotRadius
+    };
+    const { combat, magery, family } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery });
+    const regen = regeneration(sheet, null, family);
+    const backstab = commandOf(this.automationConfig.combat.opener.trim()) === 'BackStab';
+    const assumptions = {
+      family,
+      hpMax: state.vitals.hpMax,
+      restingHealthPerTick: regen?.restingHealth.value ?? null,
+      backstab,
+      constants: c
+    };
+    const refused = (refusal: string): HuntingAdvice => ({
+      from: null,
+      radius,
+      spots: [],
+      assumptions,
+      refusal
+    });
+    if (!world || world.size === 0) return refused(t('session.hunt.noRealmData'));
+    const here = state.room;
+    if (here.map === null || here.number === null) return refused(t('session.hunt.unknownRoom'));
+    const from = roomId(here.map, here.number);
+    const start = world.byId(from);
+    if (!start) return refused(t('session.hunt.unknownRoom'));
+
+    /*
+     * Grouped by what spawns, not by name: two rooms naming the same rows at
+     * the same cap are one hunting ground with two rooms in it, which is
+     * what a loop is made of.
+     */
+    const groups = new Map<
+      string,
+      { rooms: HuntingRoom[]; sample: WorldRoom; via: 'lair' | 'resident'; spawns: number | null }
+    >();
+    for (const [id, steps] of world.withinSteps(from, radius)) {
+      const room = world.byId(id);
+      if (!room) continue;
+      let key: string;
+      let via: 'lair' | 'resident';
+      let spawns: number | null = null;
+      if (room.lair) {
+        const lair = parseLair(room.lair);
+        key = `lair:${lair.max ?? 1}:${[...lair.ids].sort((a, b) => a - b).join(',')}`;
+        via = 'lair';
+        spawns = lair.max;
+      } else if (room.npcId !== undefined) {
+        key = `resident:${room.npcId}`;
+        via = 'resident';
+      } else {
+        continue;
+      }
+      const entry = groups.get(key) ?? { rooms: [], sample: room, via, spawns };
+      entry.rooms.push({ id, map: room.map, room: room.room, name: room.name, steps });
+      groups.set(key, entry);
+    }
+
+    const player = this.menacePlayer(state);
+    const weapon = wieldedWeapon(state.inventory.items);
+    const spots: HuntingSpot[] = [];
+    for (const [key, group] of groups) {
+      const entities =
+        group.via === 'lair'
+          ? world.lairEntities(group.sample)
+          : world.residentEntities(group.sample);
+      if (entities.length === 0) continue;
+      const verdicts = weighVerdicts(entities, player, tuning().menace, sheet, weapon, family);
+      const mobs: SpotMob[] = entities.map((entity, index) => ({
+        name: entity.name,
+        experience: entity.experience ?? null,
+        rounds: verdicts[index]?.rounds?.value ?? null,
+        perRound: verdicts[index]?.menace?.perRound ?? null
+      }));
+      const rooms = [...group.rooms].sort((a, b) => a.steps - b.steps);
+      // A resident is one room and one clock; a lair is a loop of its rooms.
+      const loop = group.via === 'lair' ? rooms.slice(0, c.maxLoopRooms) : rooms.slice(0, 1);
+      /*
+       * The loop's length, from the sweep's distances: out to the farthest
+       * room and back, plus a step between neighbours. A route per leg would
+       * be exact and cost the main thread a route per room per group; the
+       * card's own *Loop it* plans the real legs.
+       */
+      const loopSteps =
+        loop.length <= 1
+          ? 0
+          : 2 * (loop[loop.length - 1]!.steps - loop[0]!.steps) + 2 * (loop.length - 1);
+      const clock: HuntingSpot['clock'] =
+        group.via === 'lair'
+          ? group.sample.delay === undefined
+            ? null
+            : 'delay'
+          : (entities[0]?.regenHours ?? null) === null
+            ? null
+            : 'regenTime';
+      const respawn =
+        group.via === 'lair'
+          ? respawnSeconds(group.sample.delay ?? null, family, c)
+          : entities[0]?.regenHours === undefined
+            ? null
+            : entities[0].regenHours * 3600;
+      const estimate = estimateSpot(
+        {
+          rooms: loop.length,
+          spawns: group.spawns,
+          mobs,
+          respawnSeconds: respawn,
+          loopSteps,
+          character: {
+            hpMax: state.vitals.hpMax,
+            restingHealthPerTick: regen?.restingHealth.value ?? null,
+            passiveHealthPerTick: regen?.health.value ?? null,
+            backstab
+          }
+        },
+        c
+      );
+      spots.push({
+        key,
+        mobs,
+        clock,
+        respawnSeconds: respawn,
+        spawns: group.spawns,
+        rooms: loop,
+        roomCount: rooms.length,
+        loopSteps,
+        estimate
+      });
+    }
+    spots.sort(compareSpots);
+    return {
+      from: { id: from, name: start.name },
+      radius,
+      spots: spots.slice(0, c.maxSpots),
+      assumptions,
+      refusal: null
+    };
+  }
+
+  /**
+   * The better lair, in a sentence, for the lap that stopped for earning too
+   * little — or null when nothing within `tuning.hunting.betterSpotRadius`
+   * has a known rate. The stop was already loud; this makes it useful.
+   */
+  private betterHuntingWords(): string | null {
+    const { betterSpotRadius } = tuning().hunting;
+    const advice = this.huntingGrounds(betterSpotRadius);
+    const best = advice.spots.find((spot) => spot.estimate.expPerHour !== null);
+    const first = best?.rooms[0];
+    if (!best || !first || best.estimate.expPerHour === null) return null;
+    return t('session.hunt.better', {
+      mobs: best.mobs.map((mob) => mob.name).join(', '),
+      room: `${first.name} ${first.map}/${first.room}`,
+      steps: first.steps,
+      rate: Math.round(best.estimate.expPerHour).toLocaleString()
+    });
+  }
+
+  /**
    * What the pack holds, as `Items` row ids, for a keyed door and an item
    * gate — one question the server answers one way, so one field.
    *
@@ -4438,7 +4885,10 @@ export class SessionManager {
    * a noted one is still taken over nothing. Rung 1 ignores the sort entirely:
    * the character came through that passage, whatever the realm says it wants.
    */
-  private wayOut(state: CharacterState): { direction: Direction; how: EscapeRung } | null {
+  private wayOut(
+    state: CharacterState,
+    tried: ReadonlySet<Direction> = new Set()
+  ): { direction: Direction; how: EscapeRung } | null {
     const here =
       state.room.map !== null && state.room.number !== null
         ? roomId(state.room.map, state.room.number)
@@ -4448,12 +4898,13 @@ export class SessionManager {
      * Every compass exit this room has, plainest first. A text exit
      * (`go manhole`) is deliberately absent: it is not one word, the server
      * answers an unrunnable one by saying it **out loud in the room**, and an
-     * escape is the worst moment to announce anything.
+     * escape is the worst moment to announce anything. A direction the server
+     * has already refused from this room (`tried`) is not an exit either.
      */
     const exits = state.room.exits
       .flatMap((exit) => {
         const direction = asDirection(exit.direction);
-        return direction === null ? [] : [{ ...exit, direction }];
+        return direction === null || tried.has(direction) ? [] : [{ ...exit, direction }];
       })
       .sort((a, b) => Number(encumbered(a)) - Number(encumbered(b)));
 
@@ -4462,7 +4913,7 @@ export class SessionManager {
 
     if (here !== null) {
       const back = this.tracker.wayBackFrom(here);
-      if (back !== null && !forbidden.has(back.from)) {
+      if (back !== null && !forbidden.has(back.from) && !tried.has(OPPOSITE[back.direction])) {
         const way = OPPOSITE[back.direction];
         /*
          * Answered by *any* source that knows this room has that exit — the
@@ -4536,15 +4987,21 @@ export class SessionManager {
    * placed — the walker refuses to walk into a fight, so a route can never be
    * the escape itself.
    */
-  private escape(state: CharacterState, why: string, now: number): void {
+  private escape(
+    state: CharacterState,
+    why: string,
+    now: number,
+    tried: ReadonlySet<Direction> = new Set()
+  ): void {
     const safety = this.automationConfig.safety.retreat;
     const here =
       state.room.map !== null && state.room.number !== null
         ? roomId(state.room.map, state.room.number)
         : null;
 
-    const out = this.wayOut(state);
+    const out = this.wayOut(state, tried);
     if (out === null) {
+      this.escapeAwaiting = null;
       /*
        * Nothing to send, so nothing is sent, and it says so. This is the whole
        * lesson of the word this replaced: for seventy seconds the client
@@ -4620,18 +5077,111 @@ export class SessionManager {
     this.walker.noteEscaped();
 
     this.sink.notice(escapeNotice(out.how, out.direction, why));
-    this.noteSafety({
-      at: now,
-      action: 'retreat',
-      because: `${why} — ${out.direction} (${out.how})`,
-      acted: true
-    });
+    /*
+     * **Recorded on the outcome, not the send.** `acted: true` used to be
+     * written here, at the moment the byte left — so `The door is closed!`
+     * answering it was an escape the trace called successful, the character
+     * rested in the lair it believed it had left, and three wererats found
+     * it at 2% (todo 06). `settleEscape` writes the decision when the room
+     * changes, or when the server refuses, or when nothing answers in time.
+     */
+    this.escapeAwaiting = {
+      direction: out.direction,
+      how: out.how,
+      why,
+      deadline: now + tuning().session.retreatPatienceMs,
+      opened: 0,
+      tried: new Set([...tried, out.direction])
+    };
     this.queue.enqueue({
       command: out.direction,
       priority: 'emergency',
       coalesceKey: 'escape',
       reason: t('session.safety.escapeReason', { why })
     });
+  }
+
+  /**
+   * What the server said back to the escape, read against the block that
+   * just applied — the postcondition `escape` arms.
+   *
+   * Five answers. A room that is not the one the move was sent from is the
+   * escape landing, and the decision is recorded `acted: true` only now. A
+   * death is a teleport and not an escape. `direction-failed` naming a
+   * barrier is a shut door, and `movement.openDoors` opens it — `open
+   * <direction>` then the direction again, both in the `emergency` band,
+   * bounded by `openTries`; the walker's own rung, without its bash, which
+   * spends rounds the character does not have. Any other refusal drops to the
+   * next rung of the ladder **now**, not after `cooldownMs`: a refusal is new
+   * information and the ladder is already ranked. `command-refused` (mortally
+   * wounded) refuses everything, and the deadline covers an answer that never
+   * came. Every branch writes the decision it took.
+   */
+  private settleEscape(block: Block, before: CharacterState['room']): void {
+    const waiting = this.escapeAwaiting;
+    if (waiting === null) return;
+    const now = Date.now();
+    const state = this.tracker.current;
+    const decision = `${waiting.why} — ${waiting.direction} (${waiting.how})`;
+    const settle = (acted: boolean, refused?: string): void => {
+      this.escapeAwaiting = null;
+      this.noteSafety({
+        at: now,
+        action: 'retreat',
+        because: decision,
+        acted,
+        ...(refused === undefined ? {} : { refused })
+      });
+    };
+
+    if (block.type === 'user-dies') {
+      settle(false, t('session.safety.escapeKilled'));
+      return;
+    }
+    const moved =
+      state.room.name !== before.name ||
+      state.room.map !== before.map ||
+      state.room.number !== before.number;
+    if (moved && state.room.name !== null) {
+      settle(true);
+      return;
+    }
+    if (block.type === 'direction-failed') {
+      const barrier = block.groups['barrier'];
+      const doors = this.automationConfig.movement;
+      if (barrier !== undefined && doors.openDoors && waiting.opened < doors.openTries) {
+        waiting.opened += 1;
+        waiting.deadline = now + tuning().session.retreatPatienceMs;
+        this.lastEscapeSent = now;
+        this.sink.notice(
+          t('session.safety.escapeOpening', { barrier, direction: waiting.direction })
+        );
+        this.queue.enqueue({
+          command: `open ${waiting.direction}`,
+          priority: 'emergency',
+          coalesceKey: 'escape:open',
+          reason: t('session.safety.escapeReason', { why: waiting.why })
+        });
+        this.queue.enqueue({
+          command: waiting.direction,
+          priority: 'emergency',
+          coalesceKey: 'escape',
+          reason: t('session.safety.escapeReason', { why: waiting.why })
+        });
+        return;
+      }
+      const tried = waiting.tried;
+      settle(false, block.text);
+      // The next rung, now: the refusal is the new information the ladder was
+      // waiting for, and `cooldownMs` exists to stop a spam of moves, not this.
+      this.escape(state, waiting.why, now, tried);
+      return;
+    }
+    if (block.type === 'command-refused') {
+      settle(false, block.text);
+      return;
+    }
+    if (now > waiting.deadline) settle(false, t('session.safety.escapeUnanswered'));
   }
 
   /**

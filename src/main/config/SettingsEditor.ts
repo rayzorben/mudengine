@@ -361,6 +361,7 @@ export class SettingsEditor {
           [['automation', 'party'], draft.party, DEFAULT_CONFIG.automation.party],
           [['automation', 'health'], draft.health, DEFAULT_CONFIG.automation.health],
           [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
+          [['automation', 'train'], draft.train, DEFAULT_CONFIG.automation.train],
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
           [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
@@ -925,6 +926,7 @@ export class SettingsEditor {
         party: { ...config.automation.party },
         health: { ...config.automation.health },
         movement: { ...config.automation.movement },
+        train: { ...config.automation.train, wanted: { ...config.automation.train.wanted } },
         spells: { ...config.automation.spells },
         loot: { ...config.automation.loot, items: [...config.automation.loot.items] },
         drop: { ...config.automation.drop, items: [...config.automation.drop.items] },
@@ -1022,6 +1024,10 @@ export class SettingsEditor {
         set(['automation', 'party'], { ...draft.automation.party });
         set(['automation', 'health'], { ...draft.automation.health });
         set(['automation', 'movement'], { ...draft.automation.movement });
+        set(['automation', 'train'], {
+          ...draft.automation.train,
+          wanted: { ...draft.automation.train.wanted }
+        });
         set(['automation', 'spells'], { ...draft.automation.spells });
         set(['automation', 'loot'], { ...draft.automation.loot });
         set(['automation', 'drop'], { ...draft.automation.drop });
@@ -1151,6 +1157,7 @@ export class SettingsEditor {
         party: effective?.automation.party ?? DEFAULT_CONFIG.automation.party,
         health: effective?.automation.health ?? DEFAULT_CONFIG.automation.health,
         movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
+        train: effective?.automation.train ?? DEFAULT_CONFIG.automation.train,
         remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
         talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
@@ -1302,6 +1309,7 @@ function blank(id: string): ProfileEditable {
     party: DEFAULT_CONFIG.automation.party,
     health: DEFAULT_CONFIG.automation.health,
     movement: DEFAULT_CONFIG.automation.movement,
+    train: DEFAULT_CONFIG.automation.train,
     remotes: DEFAULT_CONFIG.automation.remotes,
     afk: DEFAULT_CONFIG.automation.afk,
     talk: DEFAULT_CONFIG.automation.talk,

@@ -302,6 +302,39 @@ function isProcHousekeeping(block: Block): boolean {
 }
 
 /**
+ * The shape of a death sentence, as far as free text has one: one sentence,
+ * ending in a full stop or a bang, no figure in it, not a paragraph. Enough to
+ * keep a listing row, a damage line the frames missed, or a `Location:` out of
+ * the lore; the naming test beside it does the rest.
+ */
+function looksLikeDeathSentence(text: string): boolean {
+  if (!/[.!]$/.test(text)) return false;
+  if (/\d/.test(text)) return false;
+  return text.split(/\s+/).length <= 20;
+}
+
+/**
+ * Whether `text` says `name` as whole words, in the monster key's spelling.
+ * A scan rather than a pattern built from the name: `compiled-patterns.test.ts`
+ * holds every runtime-built expression to module load, and a key is letters
+ * a word boundary is *not a letter* around.
+ */
+function namesMob(text: string, name: string): boolean {
+  const key = mobKey(name);
+  if (key.length === 0) return false;
+  const hay = mobKey(text);
+  for (let from = 0; ;) {
+    const at = hay.indexOf(key, from);
+    if (at < 0) return false;
+    const before = at === 0 ? '' : hay.charAt(at - 1);
+    const after = hay.charAt(at + key.length);
+    if (!isKeyLetter(before) && !isKeyLetter(after)) return true;
+    from = at + 1;
+  }
+}
+const isKeyLetter = (ch: string): boolean => ch >= 'a' && ch <= 'z';
+
+/**
  * The last section `abil` prints, and therefore the proof it was all read.
  *
  * `Player.GetAllAbilitiesFormattedString` appends the five containers in a
@@ -460,6 +493,16 @@ export class CharacterTracker {
    * `st` timer is a live read, so nothing has to persist.
    */
   private lastSelfCast: { spell: string; at: number } | null = null;
+  /**
+   * The last line the table could not read, kept for exactly one block.
+   *
+   * A monster's death sentence is realm data (`MobType.DeathMessage.Line3`)
+   * and arrives immediately before `You gain N experience.` — 29 of 29 in the
+   * live run of 2026-09-12 — so the experience line is what says, after the
+   * fact, that the unread line before it was the target dying. Cleared by any
+   * block but a prompt, as `landed` is: a line in between is somebody else's.
+   */
+  private lastUnknown: { text: string; at: number } | null = null;
   /** Learned `onset effect (lower) → spell name`, so the `st` timer can be attributed. */
   private buffEffects = new Map<string, string>();
   /**
@@ -682,6 +725,17 @@ export class CharacterTracker {
      * early, never wrong in the reassuring direction.
      */
     if (this.state.phase === 'in-game' && breaksStealth(trimmed)) this.breakStealth();
+    /*
+     * And the two that ask for it back. Neither receipt is trusted (see the
+     * `user-hide-initiate` case), so the send is the only moment the answer
+     * can be marked as *not yet known* — which is where `AutoCombat.opener`
+     * spends the backstab, and where a hidden character was read as `seen`
+     * until 2026-09-12: 34 `hide`s in twelve minutes, every fight after them
+     * opened with `a`.
+     */
+    if (this.state.phase === 'in-game' && (named === 'Hide' || named === 'Sneak')) {
+      this.attemptStealth();
+    }
     this.fight.noteCommand(
       named !== null && ATTACK_COMMANDS.has(named) && argument.length > 0 && !atBarrier
         ? argument
@@ -867,6 +921,7 @@ export class CharacterTracker {
   }
 
   reset(): void {
+    this.lastUnknown = null;
     // A new session, not a new realm: what the realm knows about the other
     // players is seeded back in, everyone offline until this session sees them.
     this.state = {
@@ -1133,6 +1188,41 @@ export class CharacterTracker {
     this.sneakedThisMove = false;
     if (this.state.stealth === 'seen') return;
     this.state = { ...this.state, stealth: 'seen' };
+  }
+
+  /**
+   * Whether the line before the experience line was the target's own death
+   * sentence — and if so, the realm learns it.
+   *
+   * Positional, not grammatical: there is no grammar to match, so the test is
+   * that an unread line arrived immediately before the kill was confirmed by
+   * other means **and names the monster this character was fighting**. The
+   * target is the constraint that makes it safe — the experience is this
+   * character's, so the thing that died is the thing it was hitting — and
+   * `looksLikeDeathSentence` keeps a listing row or a figure out. Once
+   * learned, the same sentence with no experience line behind it is a kill
+   * somebody else landed (`mob-dies`).
+   */
+  private deathSentenceBefore(s: CharacterState, at: number): 'sentence' | 'experience' {
+    const last = this.lastUnknown;
+    const target = s.combat.target;
+    if (last === null || target === null) return 'experience';
+    if (!looksLikeDeathSentence(last.text) || !namesMob(last.text, target)) return 'experience';
+    this.lore.observeDeath?.(target, last.text, at);
+    return 'sentence';
+  }
+
+  /**
+   * `hide` or `sn` going out. The character was seen and may not be now; the
+   * receipts settle the failures (`user-hide-failed`, `user-sneak-failed`)
+   * and a move's `Sneaking...` settles the success, so until one arrives the
+   * honest word is `unknown` — which never holds the opener, the direction
+   * the reviewer of 2026-09-12 chose: assume the shadows until told otherwise,
+   * at the price of one downgraded swing when wrong.
+   */
+  private attemptStealth(): void {
+    if (this.state.stealth !== 'seen') return;
+    this.state = { ...this.state, stealth: 'unknown' };
   }
 
   private rememberTheWayBack(s: CharacterState, room: Room, moved: Direction | null): void {
@@ -1859,6 +1949,13 @@ export class CharacterTracker {
      */
     if (!proc && !isProcHousekeeping(block)) this.fight.interrupt();
     const reduced = this.reduce(block, rows, proc);
+    // After the reducer, so the experience line reads the line before it.
+    if (block.type === 'unknown') {
+      const text = block.text.trim();
+      if (text.length > 0) this.lastUnknown = { text, at: block.at };
+    } else if (!isProcHousekeeping(block)) {
+      this.lastUnknown = null;
+    }
     /*
      * A quotation belongs to the shop it was made in. When a block puts the
      * character in a *different* room, the counter's listing goes with the
@@ -2636,7 +2733,9 @@ export class CharacterTracker {
       // those people, which is precisely what outlives their being here.
       players: allOffline(s.players, Date.now()),
       banks: s.banks.map((bank) => ({ ...bank })),
-      loadout: s.loadout.map((worn) => ({ ...worn }))
+      loadout: s.loadout.map((worn) => ({ ...worn })),
+      // And where it died: a reconnect after a death is when the kit is fetched.
+      lastDeath: s.lastDeath === null ? null : { ...s.lastDeath }
     };
   }
 
@@ -2936,7 +3035,20 @@ export class CharacterTracker {
         // Death strips what was cast: the temple room two lines away holds a
         // character with none of its blessings, and a list kept through it
         // would stop every recast until each fallback clock ran out.
-        return { ...s, inCombat: false, combat: NO_COMBAT, buffs: [] };
+        return {
+          ...s,
+          inCombat: false,
+          combat: NO_COMBAT,
+          buffs: [],
+          // Where it died, kept for the kit lying there (`GearRecovery`): the
+          // room the character was standing in when the sentence arrived.
+          lastDeath: {
+            map: s.room.map,
+            number: s.room.number,
+            name: s.room.name,
+            at: block.at
+          }
+        };
       }
 
       /*
@@ -3019,8 +3131,10 @@ export class CharacterTracker {
       case 'user-gain-experience': {
         const gained = int(g['exp']) ?? 0;
         // Something died, and the fight says which thing and takes it out of
-        // the room and the attacker list — see `FightTracker.died`.
-        const after = this.fight.died(s, block.at);
+        // the room and the attacker list — see `FightTracker.died`. The line
+        // before this one, if it named the target, was its death sentence,
+        // and the realm learns it (`deathSentenceBefore`).
+        const after = this.fight.died(s, block.at, this.deathSentenceBefore(s, block.at));
         return {
           ...after,
           progress: {
@@ -3399,7 +3513,15 @@ export class CharacterTracker {
          */
         if (expectation?.kind === 'peek') {
           this.room.discard();
-          return null;
+          /*
+           * Published as *another* room, never as this one: `RestAway` reads
+           * what stands next door before stepping there (todo 08). The
+           * direction is the peek's own command (`l n`), and a peek nothing
+           * can direct is published with none.
+           */
+          const target = expectation.command?.split(/\s+/)[1];
+          const direction = target === undefined ? null : (MOVE_COMMANDS[target] ?? null);
+          return { ...s, peeked: { direction, room, at: block.at } };
         }
 
         /*
@@ -3988,6 +4110,19 @@ export class CharacterTracker {
        * something the client swings at first — while retaliation, which needs
        * no disposition, still works the moment it hits back.
        */
+      /*
+       * A monster's death sentence, learned (`mob`) or the server's own
+       * fallback (`line`, resolved against the room). The room said which
+       * thing died, whoever killed it — the case the experience line cannot
+       * reach: somebody else's kill, one worth nothing, the second of two.
+       */
+      case 'mob-dies': {
+        const named = g['mob'] ?? g['attacker'] ?? g['line'] ?? '';
+        if (named.length === 0) return null;
+        const after = this.fight.diedNamed(s, named, block.at);
+        return after === s ? null : after;
+      }
+
       case 'mob-arrives-room': {
         const named = g['attacker'] ?? trimVerb(g['line'] ?? '');
         if (named.length === 0) return null;
@@ -4485,6 +4620,16 @@ export class CharacterTracker {
       case 'user-not-sneaking':
       case 'user-sneak-failed':
       case 'user-cant-sneak':
+      /*
+       * `hide`'s failures, which on this build are honest: `HideCommand.cs`
+       * appends `You don't think you are hidden.` on every branch that does
+       * not set `Hiding`, the roll included. The bare `Attempting to hide...`
+       * is left where `user-sneak-initiate` is — moving nothing — because
+       * the walker must not skip its own `sn` on the strength of a hide, and
+       * no capture holds the success line (read from source, 2026-09-12).
+       */
+      case 'user-hide-failed':
+      case 'user-cant-hide':
         return s.stealth === 'seen' ? null : { ...s, stealth: 'seen' };
 
       /*

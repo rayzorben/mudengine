@@ -201,6 +201,34 @@ describe('keeping what was learned', () => {
 
 /* The key becomes a filename's worth of characters and nothing else: a realm
    named after a path must not be able to grow keys that are really paths. */
+describe('how a monster dies', () => {
+  it('learns the sentence once, says so, persists it and answers it back', () => {
+    const said: string[] = [];
+    const realm = store((message) => said.push(message));
+    const lore = realm.forRealm('gmud.sqlite', undefined);
+    lore.observeDeath?.('The Mutant', 'The mutant sighs softy, and dies!', 5);
+    lore.observeDeath?.('mutant', 'The mutant sighs softy, and dies!', 9);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('mutant');
+    expect(lore.deathOf?.('The mutant sighs softy, and dies!')).toBe('mutant');
+    expect(lore.deathOf?.('The mutant growls.')).toBeNull();
+
+    realm.flush();
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
+    expect(file.deaths[realmKey('gmud.sqlite')]['mutant']).toEqual({
+      text: 'The mutant sighs softy, and dies!',
+      at: 5
+    });
+
+    const again = store().forRealm('gmud.sqlite', undefined);
+    expect(again.deathOf?.('The mutant sighs softy, and dies!')).toBe('mutant');
+    // Another realm learned nothing.
+    expect(
+      store().forRealm('paradigm.sqlite', undefined).deathOf?.('The mutant sighs softy, and dies!')
+    ).toBeNull();
+  });
+});
+
 describe('the key a realm’s monsters are stored under', () => {
   it('reduces anything to a plain name', () => {
     expect(realmKey('GMUD 2023.sqlite')).toBe('gmud-2023.sqlite');

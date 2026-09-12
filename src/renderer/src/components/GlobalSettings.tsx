@@ -138,6 +138,7 @@ const SECTIONS: Record<GlobalScope, readonly Section[]> = {
     'spells',
     'party',
     'movement',
+    'train',
     'remotes',
     'alerts',
     'rewrites'
@@ -153,6 +154,7 @@ type Section =
   | 'spells'
   | 'party'
   | 'movement'
+  | 'train'
   | 'remotes'
   | 'alerts'
   | 'rewrites';
@@ -166,6 +168,7 @@ const SECTION_LABEL: Record<Section, string> = {
   spells: t('settings.tabs.spells'),
   party: t('settings.tabs.party'),
   movement: t('settings.tabs.movement'),
+  train: t('settings.tabs.train'),
   remotes: t('settings.tabs.remotes'),
   alerts: t('settings.tabs.alerts'),
   rewrites: t('settings.tabs.rewrites')
@@ -753,6 +756,15 @@ export default function GlobalSettings({
               value={draft.automation.combat.engage}
             />
           </div>
+          <CheckField
+            checked={draft.automation.combat.hideForOpener}
+            hint={t('settings.combat.hideForOpenerHint')}
+            label={t('settings.combat.hideForOpener')}
+            name="global-hide-for-opener"
+            onChange={(value) =>
+              automation({ combat: { ...draft.automation.combat, hideForOpener: value } })
+            }
+          />
 
           <div className="settings-inline">
             <NumberField
@@ -1009,6 +1021,15 @@ export default function GlobalSettings({
                 value={percent(draft.automation.health.meditateBelow)}
               />
             </div>
+            <CheckField
+              checked={draft.automation.health.restNextDoor}
+              hint={t('settings.health.restNextDoorHint')}
+              label={t('settings.health.restNextDoor')}
+              name="global-rest-next-door"
+              onChange={(value) =>
+                automation({ health: { ...draft.automation.health, restNextDoor: value } })
+              }
+            />
           </fieldset>
 
           <fieldset className="settings-menus">
@@ -1237,6 +1258,15 @@ export default function GlobalSettings({
       {shown === 'spells' && (
         <>
           <p className="settings-note">{t('settings.spells.rulesPointerNote')}</p>
+          <CheckField
+            checked={draft.automation.spells.autoChoose}
+            hint={t('settings.spells.autoChooseHint')}
+            label={t('settings.spells.autoChoose')}
+            name="global-spell-auto-choose"
+            onChange={(value) =>
+              automation({ spells: { ...draft.automation.spells, autoChoose: value } })
+            }
+          />
           <div className="settings-inline">
             <SpellField
               hint={t('settings.spells.castHint')}
@@ -1676,6 +1706,15 @@ export default function GlobalSettings({
                 />
               </>
             )}
+            <CheckField
+              checked={draft.automation.movement.recoverGear}
+              hint={t('settings.movement.recoverGearHint')}
+              label={t('settings.movement.recoverGear')}
+              name="global-recover-gear"
+              onChange={(value) =>
+                automation({ movement: { ...draft.automation.movement, recoverGear: value } })
+              }
+            />
             <CheckField
               checked={draft.automation.movement.walkWhileBlind}
               hint={t('settings.movement.walkWhileBlindHint')}
@@ -2128,6 +2167,119 @@ export default function GlobalSettings({
             />
           </Advanced>
         </>
+      )}
+
+      {shown === 'train' && (
+        <fieldset className="settings-menus">
+          <legend>{t('settings.train.legend')}</legend>
+          <p className="settings-warn">{t('settings.train.warning')}</p>
+          <CheckField
+            checked={draft.automation.train.stats}
+            hint={t('settings.train.statsHint')}
+            label={t('settings.train.stats')}
+            name="global-train-stats"
+            onChange={(value) => automation({ train: { ...draft.automation.train, stats: value } })}
+          />
+          <p className="settings-note">{t('settings.train.wantedNote')}</p>
+          <div className="settings-inline">
+            <NumberField
+              label={t('settings.train.strength')}
+              name="global-train-strength"
+              onChange={(value) =>
+                automation({
+                  train: {
+                    ...draft.automation.train,
+                    wanted: {
+                      ...draft.automation.train.wanted,
+                      strength: Number.parseInt(value, 10) || 0
+                    }
+                  }
+                })
+              }
+              value={draft.automation.train.wanted.strength}
+            />
+            <NumberField
+              label={t('settings.train.intellect')}
+              name="global-train-intellect"
+              onChange={(value) =>
+                automation({
+                  train: {
+                    ...draft.automation.train,
+                    wanted: {
+                      ...draft.automation.train.wanted,
+                      intellect: Number.parseInt(value, 10) || 0
+                    }
+                  }
+                })
+              }
+              value={draft.automation.train.wanted.intellect}
+            />
+            <NumberField
+              label={t('settings.train.willpower')}
+              name="global-train-willpower"
+              onChange={(value) =>
+                automation({
+                  train: {
+                    ...draft.automation.train,
+                    wanted: {
+                      ...draft.automation.train.wanted,
+                      willpower: Number.parseInt(value, 10) || 0
+                    }
+                  }
+                })
+              }
+              value={draft.automation.train.wanted.willpower}
+            />
+            <NumberField
+              label={t('settings.train.agility')}
+              name="global-train-agility"
+              onChange={(value) =>
+                automation({
+                  train: {
+                    ...draft.automation.train,
+                    wanted: {
+                      ...draft.automation.train.wanted,
+                      agility: Number.parseInt(value, 10) || 0
+                    }
+                  }
+                })
+              }
+              value={draft.automation.train.wanted.agility}
+            />
+            <NumberField
+              label={t('settings.train.health')}
+              name="global-train-health"
+              onChange={(value) =>
+                automation({
+                  train: {
+                    ...draft.automation.train,
+                    wanted: {
+                      ...draft.automation.train.wanted,
+                      health: Number.parseInt(value, 10) || 0
+                    }
+                  }
+                })
+              }
+              value={draft.automation.train.wanted.health}
+            />
+            <NumberField
+              label={t('settings.train.charm')}
+              name="global-train-charm"
+              onChange={(value) =>
+                automation({
+                  train: {
+                    ...draft.automation.train,
+                    wanted: {
+                      ...draft.automation.train.wanted,
+                      charm: Number.parseInt(value, 10) || 0
+                    }
+                  }
+                })
+              }
+              value={draft.automation.train.wanted.charm}
+            />
+          </div>
+        </fieldset>
       )}
 
       {shown === 'remotes' && (

@@ -63,6 +63,7 @@ import {
   type PvpAction,
   type RewritesUiConfig
 } from '@shared/config';
+import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import { ACTIONABLE_REMOTES, type RemoteGrant, type RemoteName } from '@shared/remotes';
 import {
   DESKTOP_ALERTS,
@@ -88,6 +89,21 @@ const DEFAULT_COMBAT = DEFAULT_CONFIG.automation.combat;
 const DEFAULT_HEALTH = DEFAULT_CONFIG.automation.health;
 const DEFAULT_MOVEMENT = DEFAULT_CONFIG.automation.movement;
 const DEFAULT_SPELLS = DEFAULT_CONFIG.automation.spells;
+
+/** The six wanted figures as the form holds them: strings, so a half-typed one is not a 0. */
+function wantedStrings(
+  wanted: Record<TrainedAttribute, string | number>
+): Record<TrainedAttribute, string> {
+  const out = {} as Record<TrainedAttribute, string>;
+  for (const attribute of TRAINED_ATTRIBUTES) out[attribute] = String(wanted[attribute]);
+  return out;
+}
+function wantedNumbers(wanted: Record<TrainedAttribute, string>): Record<TrainedAttribute, number> {
+  const out = {} as Record<TrainedAttribute, number>;
+  for (const attribute of TRAINED_ATTRIBUTES)
+    out[attribute] = Number.parseInt(wanted[attribute], 10) || 0;
+  return out;
+}
 const DEFAULT_ALERTS = DEFAULT_CONFIG.ui.alerts;
 
 /**
@@ -394,6 +410,7 @@ const SECTIONS = [
   'spells',
   'party',
   'movement',
+  'train',
   'remotes',
   'talk',
   'alerts',
@@ -408,6 +425,7 @@ const SECTION_LABEL: Record<Section, string> = {
   spells: t('settings.tabs.spells'),
   party: t('settings.tabs.party'),
   movement: t('settings.tabs.movement'),
+  train: t('settings.tabs.train'),
   remotes: t('settings.tabs.remotes'),
   talk: t('settings.tabs.talk'),
   alerts: t('settings.tabs.alerts'),
@@ -460,6 +478,8 @@ interface CharacterForm {
   combat: boolean;
   combatAttack: string;
   combatOpener: string;
+  /** Hide (or sneak, while moving) between fights so the opener lands again. */
+  combatHideForOpener: boolean;
   combatEngage: EngagePolicy;
   combatRetaliate: boolean;
   /** Open on a monster a stranger is already fighting — MegaMUD's PoliteAttacks, inverted. */
@@ -486,6 +506,8 @@ interface CharacterForm {
   restBelow: string;
   restTo: string;
   restBeforeTraps: string;
+  /** Rest next door to a lair rather than in it. */
+  restNextDoor: boolean;
   meditateBelow: string;
   /** And where a running loop holds still and walks on again. */
   /** Potions: what to drink, and below what. */
@@ -497,6 +519,8 @@ interface CharacterForm {
   /** Spells — the one cast a rule cannot time. */
   spellAttack: string;
   spellAreaAttack: string;
+  /** Derive the round spell and the cures from the book. */
+  spellAutoChoose: boolean;
   spellAreaMinMobs: string;
   spellAreaMinMana: string;
   /** The fallback once the round spell has no effect, and the per-target cast caps (0 is no limit). */
@@ -532,6 +556,8 @@ interface CharacterForm {
   bashTries: string;
   sneak: boolean;
   provideLight: boolean;
+  /** Go back for the kit after a death. */
+  recoverGear: boolean;
   lightDimRooms: boolean;
   extinguishInLight: boolean;
   /** Conditions as waits, inverted: off waits blindness / poison out. */
@@ -539,6 +565,9 @@ interface CharacterForm {
   walkWhilePoisoned: boolean;
   /** Bend down for a key an exit of this room needs. */
   collectKeys: boolean;
+  /** Spending character points on the stat screen — `automation.train`. */
+  trainStats: boolean;
+  trainWanted: Record<TrainedAttribute, string>;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -623,6 +652,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     combat: entry.combat.enabled,
     combatAttack: entry.combat.attack,
     combatOpener: entry.combat.opener,
+    combatHideForOpener: entry.combat.hideForOpener,
     combatEngage: entry.combat.engage,
     combatRetaliate: entry.combat.retaliate,
     combatJoinFights: entry.combat.joinFights,
@@ -648,12 +678,14 @@ function formOf(entry: ProfileEditable): CharacterForm {
     restTo: percent(entry.health.restTo),
     restBeforeTraps: percent(entry.health.restBeforeTraps),
     meditateBelow: percent(entry.health.meditateBelow),
+    restNextDoor: entry.health.restNextDoor,
     potionVerb: entry.health.potionVerb,
     healingPotionName: entry.health.healingPotionName,
     drinkHealingPotionBelow: percent(entry.health.drinkHealingPotionBelow),
     manaPotionName: entry.health.manaPotionName,
     drinkManaPotionBelow: percent(entry.health.drinkManaPotionBelow),
     spellAttack: entry.spells.attack,
+    spellAutoChoose: entry.spells.autoChoose,
     spellAreaAttack: entry.spells.areaAttack,
     spellAreaMinMobs: String(entry.spells.areaMinMobs),
     spellAreaMinMana: percent(entry.spells.areaMinMana),
@@ -679,11 +711,14 @@ function formOf(entry: ProfileEditable): CharacterForm {
     bashTries: String(entry.movement.bashTries),
     sneak: entry.movement.sneak,
     provideLight: entry.movement.provideLight,
+    recoverGear: entry.movement.recoverGear,
     lightDimRooms: entry.movement.lightDimRooms,
     extinguishInLight: entry.movement.extinguishInLight,
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     collectKeys: entry.movement.collectKeys,
+    trainStats: entry.train.stats,
+    trainWanted: wantedStrings(entry.train.wanted),
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
@@ -797,6 +832,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       enabled: form.combat,
       attack: form.combatAttack,
       opener: form.combatOpener,
+      hideForOpener: form.combatHideForOpener,
       engage: form.combatEngage,
       retaliate: form.combatRetaliate,
       joinFights: form.combatJoinFights,
@@ -830,6 +866,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       restTo: fractionOf(form.restTo),
       restBeforeTraps: fractionOf(form.restBeforeTraps),
       meditateBelow: fractionOf(form.meditateBelow),
+      restNextDoor: form.restNextDoor,
       drinkHealingPotionBelow: fractionOf(form.drinkHealingPotionBelow),
       drinkManaPotionBelow: fractionOf(form.drinkManaPotionBelow),
       potionVerb: form.potionVerb === 'use' ? 'use' : 'drink',
@@ -838,6 +875,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     },
     spells: {
       attack: form.spellAttack.trim(),
+      autoChoose: form.spellAutoChoose,
       areaAttack: form.spellAreaAttack.trim(),
       areaMinMobs: Math.max(1, Number.parseInt(form.spellAreaMinMobs, 10) || 3),
       areaMinMana: fractionOf(form.spellAreaMinMana),
@@ -872,12 +910,14 @@ function draftOf(form: CharacterForm): ProfileDraft {
       bashTries: Number.parseInt(form.bashTries, 10) || 0,
       sneak: form.sneak,
       provideLight: form.provideLight,
+      recoverGear: form.recoverGear,
       lightDimRooms: form.lightDimRooms,
       extinguishInLight: form.extinguishInLight,
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
       collectKeys: form.collectKeys
     },
+    train: { stats: form.trainStats, wanted: wantedNumbers(form.trainWanted) },
     loops: form.loops,
     alerts: {
       minimum: form.alertMinimum,
@@ -1011,6 +1051,7 @@ function emptyForm(
   const health = defaults?.automation.health ?? DEFAULT_HEALTH;
   const party = defaults?.automation.party ?? DEFAULT_CONFIG.automation.party;
   const movement = defaults?.automation.movement ?? DEFAULT_MOVEMENT;
+  const train = defaults?.automation.train ?? DEFAULT_CONFIG.automation.train;
   const spells = defaults?.automation.spells ?? DEFAULT_SPELLS;
   const alerts = defaults?.ui.alerts ?? DEFAULT_ALERTS;
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
@@ -1078,6 +1119,7 @@ function emptyForm(
     combat: combat.enabled,
     combatAttack: combat.attack,
     combatOpener: combat.opener,
+    combatHideForOpener: combat.hideForOpener,
     combatEngage: combat.engage,
     combatRetaliate: combat.retaliate,
     combatJoinFights: combat.joinFights,
@@ -1100,12 +1142,14 @@ function emptyForm(
     restTo: percent(health.restTo),
     restBeforeTraps: percent(health.restBeforeTraps),
     meditateBelow: percent(health.meditateBelow),
+    restNextDoor: health.restNextDoor,
     potionVerb: health.potionVerb,
     healingPotionName: health.healingPotionName,
     drinkHealingPotionBelow: percent(health.drinkHealingPotionBelow),
     manaPotionName: health.manaPotionName,
     drinkManaPotionBelow: percent(health.drinkManaPotionBelow),
     spellAttack: spells.attack,
+    spellAutoChoose: spells.autoChoose,
     spellAreaAttack: spells.areaAttack,
     spellAreaMinMobs: String(spells.areaMinMobs),
     spellAreaMinMana: percent(spells.areaMinMana),
@@ -1131,11 +1175,14 @@ function emptyForm(
     bashTries: String(movement.bashTries),
     sneak: movement.sneak,
     provideLight: movement.provideLight,
+    recoverGear: movement.recoverGear,
     lightDimRooms: movement.lightDimRooms,
     extinguishInLight: movement.extinguishInLight,
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
     collectKeys: movement.collectKeys,
+    trainStats: train.stats,
+    trainWanted: wantedStrings(train.wanted),
     loops: [],
     // `ProfileDraft` types this as a plain string, since a draft is a payload
     // parsed at the boundary; the form holds the closed union.
@@ -2582,6 +2629,13 @@ export default function SettingsScreen({
                                 value={form.combatOpener}
                               />
                             </div>
+                            <CheckField
+                              checked={form.combatHideForOpener}
+                              hint={t('settings.combat.hideForOpenerHint')}
+                              label={t('settings.combat.hideForOpener')}
+                              name="hide-for-opener"
+                              onChange={(value) => patch({ combatHideForOpener: value })}
+                            />
                             <NumberField
                               hint={t('settings.combat.refreshHint')}
                               label={t('settings.combat.refreshLabel')}
@@ -2690,6 +2744,13 @@ export default function SettingsScreen({
                             value={form.meditateBelow}
                           />
                         </div>
+                        <CheckField
+                          checked={form.restNextDoor}
+                          hint={t('settings.health.restNextDoorHint')}
+                          label={t('settings.health.restNextDoor')}
+                          name="rest-next-door"
+                          onChange={(value) => patch({ restNextDoor: value })}
+                        />
                       </fieldset>
 
                       <fieldset className="settings-menus">
@@ -2891,6 +2952,13 @@ export default function SettingsScreen({
                       )}
                       <fieldset className="settings-menus">
                         <legend>{t('settings.spells.legend')}</legend>
+                        <CheckField
+                          checked={form.spellAutoChoose}
+                          hint={t('settings.spells.autoChooseHint')}
+                          label={t('settings.spells.autoChoose')}
+                          name="spell-auto-choose"
+                          onChange={(value) => patch({ spellAutoChoose: value })}
+                        />
                         <SpellField
                           hint={t('settings.spells.castHint')}
                           label={t('settings.spells.castLabel')}
@@ -3134,6 +3202,71 @@ export default function SettingsScreen({
                       </fieldset>
                       <p className="settings-note">{t('settings.party.blessingsMoved')}</p>
                     </>
+                  )}
+
+                  {section === 'train' && (
+                    <fieldset className="settings-menus">
+                      <legend>{t('settings.train.legend')}</legend>
+                      <p className="settings-warn">{t('settings.train.warning')}</p>
+                      <CheckField
+                        checked={form.trainStats}
+                        hint={t('settings.train.statsHint')}
+                        label={t('settings.train.stats')}
+                        name="train-stats"
+                        onChange={(value) => patch({ trainStats: value })}
+                      />
+                      <p className="settings-note">{t('settings.train.wantedNote')}</p>
+                      <div className="settings-inline">
+                        <NumberField
+                          label={t('settings.train.strength')}
+                          name="train-strength"
+                          onChange={(value) =>
+                            patch({ trainWanted: { ...form.trainWanted, strength: value } })
+                          }
+                          value={form.trainWanted.strength}
+                        />
+                        <NumberField
+                          label={t('settings.train.intellect')}
+                          name="train-intellect"
+                          onChange={(value) =>
+                            patch({ trainWanted: { ...form.trainWanted, intellect: value } })
+                          }
+                          value={form.trainWanted.intellect}
+                        />
+                        <NumberField
+                          label={t('settings.train.willpower')}
+                          name="train-willpower"
+                          onChange={(value) =>
+                            patch({ trainWanted: { ...form.trainWanted, willpower: value } })
+                          }
+                          value={form.trainWanted.willpower}
+                        />
+                        <NumberField
+                          label={t('settings.train.agility')}
+                          name="train-agility"
+                          onChange={(value) =>
+                            patch({ trainWanted: { ...form.trainWanted, agility: value } })
+                          }
+                          value={form.trainWanted.agility}
+                        />
+                        <NumberField
+                          label={t('settings.train.health')}
+                          name="train-health"
+                          onChange={(value) =>
+                            patch({ trainWanted: { ...form.trainWanted, health: value } })
+                          }
+                          value={form.trainWanted.health}
+                        />
+                        <NumberField
+                          label={t('settings.train.charm')}
+                          name="train-charm"
+                          onChange={(value) =>
+                            patch({ trainWanted: { ...form.trainWanted, charm: value } })
+                          }
+                          value={form.trainWanted.charm}
+                        />
+                      </div>
+                    </fieldset>
                   )}
 
                   {section === 'remotes' && (
@@ -3532,6 +3665,13 @@ export default function SettingsScreen({
                             />
                           </>
                         )}
+                        <CheckField
+                          checked={form.recoverGear}
+                          hint={t('settings.movement.recoverGearHint')}
+                          label={t('settings.movement.recoverGear')}
+                          name="recover-gear"
+                          onChange={(value) => patch({ recoverGear: value })}
+                        />
                         <CheckField
                           checked={form.walkWhileBlind}
                           hint={t('settings.movement.walkWhileBlindHint')}

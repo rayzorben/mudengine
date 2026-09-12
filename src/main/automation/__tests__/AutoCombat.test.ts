@@ -20,7 +20,7 @@ import type { Block } from '../../../shared/blocks';
 import type { ItemEntity, MobEntity } from '../../../shared/entities';
 import { WEAPON_HAND } from '../../../shared/items';
 import type { RealmFamily } from '../../../shared/realm';
-import type { MobAttack } from '../../../shared/world';
+import type { MobAttack, WorldSpell } from '../../../shared/world';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -1411,6 +1411,104 @@ describe('casting in a fight', () => {
       vitals: { ...EMPTY_CHARACTER.vitals, mana: 40, manaMax: 100, manaType: 'MA' }
     });
 
+  /*
+   * *Auto Choose Best Spell* (todo 09): the round spell is derived from the
+   * book and the realm's figures. The reviewer's example — a lightning-
+   * resisting monster — never sees the bolt.
+   */
+  it('derives the round spell from the book, skipping what the target resists, and says so once', () => {
+    const realm = (name: string) =>
+      (
+        ({
+          'lightning bolt': {
+            id: 8,
+            name: 'lightning bolt',
+            short: 'lbol',
+            level: 8,
+            mana: 3,
+            targets: 8,
+            power: [40, 60],
+            element: 'lightning'
+          },
+          'fire jet': {
+            id: 9,
+            name: 'fire jet',
+            short: 'fjet',
+            level: 6,
+            mana: 5,
+            targets: 8,
+            power: [30, 55],
+            element: 'fire'
+          }
+        }) as Record<string, WorldSpell>
+      )[name] ?? null;
+    const auto = new AutoCombat(
+      combat({ engage: 'none' }),
+      true,
+      queue,
+      { notice: (m) => notices.push(m) },
+      { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 },
+      realm
+    );
+    const target: MobEntity = {
+      name: 'mutant',
+      rawName: 'mutant',
+      source: 'hybrid',
+      charmed: false,
+      disposition: 'hostile',
+      uncertain: false,
+      costly: 'never',
+      hp: 100,
+      abilities: [[66, 100]]
+    };
+    const fight = state({
+      inCombat: true,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'mutant', targetEntity: target },
+      vitals: { ...EMPTY_CHARACTER.vitals, mana: 40, manaMax: 100, manaType: 'MA' },
+      progress: { ...EMPTY_CHARACTER.progress, level: 10 },
+      spellbook: [
+        { name: 'lightning bolt', short: 'lbol', level: 8, cost: 3 },
+        { name: 'fire jet', short: 'fjet', level: 6, cost: 5 }
+      ]
+    });
+    auto.onCharacter(fight);
+    auto.onBlock(block('user-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual(['c fjet mutant']);
+    expect(notices.filter((n) => /Casting fire jet/.test(n))).toHaveLength(1);
+    // Said once: the next round repeats the choice and not the sentence.
+    auto.onBlock(block('user-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(notices.filter((n) => /Casting fire jet/.test(n))).toHaveLength(1);
+  });
+
+  it('asks for the book once when the choice has none to read', () => {
+    let asked = 0;
+    const auto = new AutoCombat(
+      combat({ engage: 'none' }),
+      true,
+      queue,
+      { notice: (m) => notices.push(m), needBook: () => (asked += 1) },
+      { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 }
+    );
+    const fight = state({
+      inCombat: true,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'giant rat' },
+      vitals: { ...EMPTY_CHARACTER.vitals, mana: 40, manaMax: 100, manaType: 'MA' },
+      spellbook: null
+    });
+    auto.onCharacter(fight);
+    auto.onBlock(block('user-hits'));
+    auto.onBlock(block('user-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual([]);
+    expect(asked).toBe(1);
+    expect(notices.some((n) => /no spellbook to choose from/.test(n))).toBe(true);
+  });
+
   it('casts the attack spell on the mid-round tick', () => {
     const auto = make(combat({ engage: 'none' }), true, {
       attack: 'ma',
@@ -1430,7 +1528,8 @@ describe('casting in a fight', () => {
       minMana: 0.15,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoChoose: false
     });
     auto.onCharacter(fighting());
     auto.onBlock(block('user-hits'));
@@ -1458,7 +1557,8 @@ describe('casting in a fight', () => {
       minMana: 0,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoChoose: false
     });
     auto.onCharacter(fighting());
     auto.onBlock(block('mob-hits'));
@@ -1488,7 +1588,8 @@ describe('casting in a fight', () => {
       minMana: 0.9,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoChoose: false
     });
     auto.onCharacter(fighting());
     auto.onBlock(block('user-hits'));
@@ -1517,7 +1618,8 @@ describe('casting in a fight', () => {
       minMana: 0.9,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoChoose: false
     });
     auto.onCharacter(
       state({
@@ -1554,7 +1656,8 @@ describe('casting in a fight', () => {
       minMana: 0,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoChoose: false
     });
     auto.onCharacter(fighting());
     auto.onBlock(block('user-hits'));
@@ -1598,6 +1701,7 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoChoose: false,
       ...over
     });
     const crowded = (mobCount: number, mana = 40) =>

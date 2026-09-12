@@ -77,7 +77,9 @@ function play(
       present: () => tracker.current.room.occupants.map((who) => who.name),
       mob: (name) => world?.mob(name)
     },
-    spellLore ? (text) => spellLore.match(text) : undefined
+    spellLore ? (text) => spellLore.match(text) : undefined,
+    // And how this realm's monsters die, from the same lore the tracker learns into.
+    (text) => lore?.deathOf?.(text) ?? null
   );
   let seq = 0;
   // Lines are a millisecond apart unless a step says otherwise, so a test
@@ -305,6 +307,48 @@ describe('room assembly', () => {
     // Exits complete a room; everything before is a draft. A half-room on the
     // HUD is worse than the previous one.
     expect(play(room.slice(0, 4)).current.room.name).toBeNull();
+  });
+
+  /*
+   * The server wraps both listings at a word boundary (todo 03, 2026-09-12),
+   * and the joined record has to reach the draft before the exits close it.
+   * Live: this pile was walked through six times and never seen.
+   */
+  it('assembles a room whose floor and occupants the server wrapped', () => {
+    const r = play([
+      'Ancient Stronghold, Stable',
+      'You notice 39 gold crowns, 72 silver nobles, 4 copper farthings, ice crystal',
+      'falchion, iron earrings, crimson cloak, platinum bracers, gold jeweled ring,',
+      'black leather belt here.',
+      'Also here: short wererat, wererat,',
+      'wererat.',
+      'Obvious exits: closed door south'
+    ]).current.room;
+    expect(r.name).toBe('Ancient Stronghold, Stable');
+    expect(r.items.map((item) => item.name)).toEqual([
+      'ice crystal falchion',
+      'iron earrings',
+      'crimson cloak',
+      'platinum bracers',
+      'gold jeweled ring',
+      'black leather belt'
+    ]);
+    expect(r.cash).toMatchObject({ gold: 39, silver: 72, copper: 4 });
+    expect(names(r.occupants)).toEqual(['short wererat', 'wererat', 'wererat']);
+  });
+
+  /*
+   * A death is a teleport and clears the trail, which is right for the escape
+   * and would destroy the one fact going back for the kit needs (todo 07).
+   */
+  it('records where the character died, before the trail is cleared', () => {
+    const tracker = play([...room, 'Location: 1,2150', 'You have been killed!']);
+    expect(tracker.current.lastDeath).toMatchObject({
+      map: 1,
+      number: 2150,
+      name: 'Newhaven, Village Entrance'
+    });
+    expect(tracker.trail).toEqual([]);
   });
 
   it('does not leak a fragment of one room into the next', () => {
@@ -1722,6 +1766,122 @@ describe('the fight this character is in', () => {
     expect(tracker.current.combat.attackers).toEqual([]);
   });
 
+  /*
+   * The death sentence is realm data with no column in the shipped database,
+   * so it is read positionally: the unread line immediately before this
+   * character's experience line, naming the target (todo 04, 2026-09-12; 29 of
+   * 29 live kills arrived in that order). Learned, it takes the monster out
+   * of the room on its own — the kill nobody's experience line announces.
+   */
+  describe('the death sentence', () => {
+    const remembered = (): MobLore & { deaths: Map<string, string> } => {
+      const deaths = new Map<string, string>();
+      return {
+        ...NO_LORE,
+        deaths,
+        deathOf: (text) => [...deaths].find(([, sentence]) => sentence === text)?.[0] ?? null,
+        observeDeath: (name, text) => void deaths.set(name, text)
+      };
+    };
+
+    it('is learned from the line before the experience line, when it names the target', () => {
+      const lore = remembered();
+      play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'The orc rogue utters a low growl, and dies.',
+          'You gain 25 experience.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(lore.deaths.get('orc rogue')).toBe('The orc rogue utters a low growl, and dies.');
+    });
+
+    it('learns nothing from a line that names something else, or carries a figure', () => {
+      const lore = remembered();
+      play(
+        [
+          '[HP=98/MA=50]:',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'Rend makes a complex circling gesture!',
+          'You gain 25 experience.',
+          'You slash the orc rogue for 40 damage!',
+          'The orc rogue has 3 lives left.',
+          'You gain 25 experience.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(lore.deaths.size).toBe(0);
+    });
+
+    it('takes the monster out of the room on its learned sentence alone, whoever killed it', () => {
+      const lore = remembered();
+      lore.deaths.set('orc rogue', 'The orc rogue utters a low growl, and dies.');
+      const tracker = play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue, orc rogue, giant rat.',
+          'Obvious exits: north',
+          'The orc rogue utters a low growl, and dies.'
+        ],
+        combatWorld(),
+        lore
+      );
+      // One sentence is one death: the namesake stays.
+      expect(names(tracker.current.room.occupants)).toEqual(['orc rogue', 'giant rat']);
+    });
+
+    /* Read from `Mob.cs:1235`, the one death sentence the server composes itself. */
+    it('reads the server’s own fallback without being taught', () => {
+      const tracker = play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: giant rat.',
+          'Obvious exits: north',
+          'The giant rat falls to the ground dead.'
+        ],
+        combatWorld()
+      );
+      expect(tracker.current.room.occupants).toEqual([]);
+    });
+
+    it('records which of the two said the monster died', () => {
+      const records: FightRecord[] = [];
+      const sink: FightSink = { record: (record) => void records.push(record) };
+      const lore = remembered();
+      play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'The orc rogue utters a low growl, and dies.',
+          'You gain 25 experience.',
+          '*Combat Off*',
+          '*Combat Engaged*',
+          'You slash the giant rat for 40 damage!',
+          'You gain 5 experience.',
+          '*Combat Off*'
+        ],
+        combatWorld(),
+        lore,
+        sink
+      );
+      expect(records.map((record) => [record.mob, record.killed, record.killedBy])).toEqual([
+        ['orc rogue', true, 'sentence'],
+        ['giant rat', true, 'experience']
+      ]);
+    });
+  });
+
   it('drops an attacker the server says is not there', () => {
     // `Your command had no effect.` — the same cleanup a death does, for the
     // same reason: something absent cannot be attacking this character.
@@ -3110,6 +3270,45 @@ describe('moving unseen', () => {
     feed('Sneaking...');
     feed('The fat mutant hits you for 7 damage!');
     expect(tracker.current.stealth).toBe('seen');
+  });
+
+  /*
+   * `hide` and `sn` going out ask for the shadows back, and neither receipt
+   * says whether they came: the honest word until a move or a failure says is
+   * `unknown`, which is where the opener is spent (todo 01, 2026-09-12: 34
+   * `hide`s and every fight after them opened with `a`).
+   */
+  it('is unknown once hide or sn has gone out from a seen character', () => {
+    for (const command of ['hide', 'sn']) {
+      const { tracker, feed } = feeder();
+      feed('[HP=33]:');
+      expect(tracker.current.stealth).toBe('seen');
+      tracker.observeCommand(command);
+      expect(tracker.current.stealth, command).toBe('unknown');
+    }
+  });
+
+  /* `HideCommand.cs` appends the sentence on every branch that does not hide. */
+  it('is seen again when the hide is refused or fails', () => {
+    for (const line of [
+      "Attempting to hide... You don't think you are hidden.",
+      'You may not hide while attacking or being attacked!'
+    ]) {
+      const { tracker, feed } = feeder();
+      feed('[HP=33]:');
+      tracker.observeCommand('hide');
+      feed(line);
+      expect(tracker.current.stealth, line).toBe('seen');
+    }
+  });
+
+  /* And the bare receipt moves nothing: the walker must still ask before its step. */
+  it('stays unknown on the bare Attempting to hide...', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    tracker.observeCommand('hide');
+    feed('Attempting to hide...');
+    expect(tracker.current.stealth).toBe('unknown');
   });
 
   /* Nobody is sneaking through a closed socket, and "seen" would be a claim
@@ -5820,6 +6019,27 @@ describe('a room the character cannot see', () => {
     ]);
     expect(t.pendingCount).toBe(0);
     expect(t.current.room.name).toBe('Huge Cave, Ledge');
+  });
+
+  /*
+   * And a peek that *is* answered publishes the neighbour as another room
+   * (todo 08): what stands next door, read before stepping there to rest,
+   * with the character's own room untouched.
+   */
+  it('publishes the room a peek described, as a different room', () => {
+    const t = play([
+      '[HP=311/KAI=27]:',
+      'Huge Cave, Ledge',
+      'Obvious exits: northwest',
+      { send: 'l nw' },
+      'Huge Cave, Floor',
+      'Also here: cave rat.',
+      'Obvious exits: southeast'
+    ]);
+    expect(t.current.room.name).toBe('Huge Cave, Ledge');
+    expect(t.current.peeked?.direction).toBe('nw');
+    expect(t.current.peeked?.room.name).toBe('Huge Cave, Floor');
+    expect(t.current.peeked?.room.occupants.map((who) => who.name)).toEqual(['cave rat']);
   });
 
   /*

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { Cures, RETRY_MS } from '../Cures';
+import type { WorldSpell } from '../../../shared/world';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import {
   EMPTY_CHARACTER,
@@ -106,6 +107,62 @@ describe('curing by a sentence', () => {
       queue
     ).onCharacter(state({ poisoned: 'yes' }));
     expect(sent).toEqual([]);
+  });
+
+  /* Under *Auto Choose Best Spell*, a blank box is filled from the book (todo 09). */
+  it('derives the cheapest cure the book holds when the box is blank, and says so once', () => {
+    const said: string[] = [];
+    const realm = (name: string) =>
+      (
+        ({
+          'cure poison': {
+            id: 1,
+            name: 'cure poison',
+            short: 'cupo',
+            mana: 8,
+            targets: 2,
+            abilities: [[20, 1]]
+          },
+          antidote: {
+            id: 2,
+            name: 'antidote',
+            short: 'anti',
+            mana: 4,
+            targets: 1,
+            abilities: [[20, 1]]
+          },
+          'poison bolt': {
+            id: 3,
+            name: 'poison bolt',
+            short: 'pbol',
+            mana: 2,
+            targets: 8,
+            abilities: [[20, 1]]
+          }
+        }) as Record<string, WorldSpell>
+      )[name] ?? null;
+    const cures = new Cures(
+      spells({ autoChoose: true, cures: { blindness: '', poison: '', disease: '' } }),
+      true,
+      queue,
+      undefined,
+      realm,
+      { notice: (m) => said.push(m) }
+    );
+    const poisoned = {
+      ...state({ poisoned: 'yes' }),
+      spellbook: [
+        { name: 'cure poison', short: 'cupo', level: 1, cost: 8 },
+        { name: 'antidote', short: 'anti', level: 1, cost: 4 },
+        { name: 'poison bolt', short: 'pbol', level: 1, cost: 2 }
+      ]
+    };
+    cures.onCharacter(poisoned);
+    vi.advanceTimersByTime(50);
+    // The cheapest that cures, cast on the character — never the enemy-targeted bolt.
+    expect(sent).toEqual(['c anti']);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/Curing poison with antidote/);
   });
 
   it('is off with automation off, and out of the realm', () => {

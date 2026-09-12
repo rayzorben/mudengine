@@ -41,6 +41,7 @@ import StatsCard from './components/StatsCard';
 import ConversationCard from './components/ConversationCard';
 import BanksCard from './components/BanksCard';
 import QuestCard from './components/QuestCard';
+import HuntingCard from './components/HuntingCard';
 import InventoryCard from './components/InventoryCard';
 import SessionCard from './components/SessionCard';
 import SessionTerminal from './components/SessionTerminal';
@@ -490,6 +491,15 @@ interface CardContext {
    * bound call for exactly that reason.
    */
   loadQuests(): ReturnType<IpcApi['questBook']>;
+  /** Where to hunt from where this character stands — addressed, like the book. */
+  loadHunting(radius: number): ReturnType<IpcApi['huntingGrounds']>;
+  /**
+   * Walks a loop the Hunting card built, filed nowhere or under this
+   * character — the builder's own save, offered for the *shown* character
+   * only, since a lap started on a pinned float's character is a character
+   * walked away while somebody watches another.
+   */
+  runHunt: ((loop: Loop, destination: LoopDestination) => void) | null;
   /**
    * When the configuration last reloaded, so the book is asked for again.
    *
@@ -571,6 +581,7 @@ interface AddressedActions {
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
+  loadHunting(radius: number): ReturnType<IpcApi['huntingGrounds']>;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
@@ -888,6 +899,27 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loadQuests={ctx.loadQuests}
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
           realmAt={ctx.realmAt}
+          session={ctx.session}
+        />
+      );
+    case 'hunting':
+      /*
+       * Unconditional, like the quests: a realm with no lair within reach is a
+       * fact the card states. Put away by default; the palette's *Where should
+       * I hunt?* brings it out. Addressed like the book, and its two actions
+       * are the shown character's only, for `chooseOnMap`'s reason.
+       */
+      return (
+        <HuntingCard
+          {...chrome}
+          chooseOnMap={ctx.chooseOnMap}
+          hereKey={
+            character.room.map === null || character.room.number === null
+              ? null
+              : `${character.room.map}/${character.room.number}`
+          }
+          loadHunting={ctx.loadHunting}
+          runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
           session={ctx.session}
         />
       );
@@ -3425,6 +3457,15 @@ export default function App() {
     [api, profiles, sayRefusal, session]
   );
 
+  /** A loop the Hunting card built: the same two outcomes as the builder's save. */
+  const runHunt = useCallback(
+    (loop: Loop, destination: LoopDestination) => {
+      runChosenLoop({ kind: 'loop', loop }, destination);
+      returnFocus();
+    },
+    [returnFocus, runChosenLoop]
+  );
+
   const startLoop = useCallback(
     (name: string) => {
       void api.startLoop(session, name).then(sayRefusal(session));
@@ -3959,6 +4000,29 @@ export default function App() {
         group: 'navigate' as const,
         keywords: ['build', 'create', 'draw', 'make', 'new', 'waypoint', 'path', 'editor'],
         run: openBuilder
+      },
+      /*
+       * The question an evening starts with, and the one the client could
+       * price all along and never did (todo 05). Brings the Hunting card out;
+       * the card asks main from where the character stands.
+       */
+      {
+        id: 'hunt:where',
+        icon: 'search' as const,
+        label: t('palette.navigate.huntLabel'),
+        group: 'navigate' as const,
+        keywords: [
+          'hunt',
+          'hunting',
+          'where',
+          'lair',
+          'exp',
+          'experience',
+          'grind',
+          'rate',
+          'spot'
+        ],
+        run: () => cards.show('hunting')
       },
       {
         id: 'search',
@@ -4640,6 +4704,7 @@ export default function App() {
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
+        loadHunting: (radius) => api.huntingGrounds(sid, radius),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
@@ -4753,6 +4818,8 @@ export default function App() {
         endPeek: shown ? endPeek : null,
         goToRoom,
         loadQuests: bound.loadQuests,
+        loadHunting: bound.loadHunting,
+        runHunt: shown ? runHunt : null,
         realmAt: loadedAt,
         builder: shown ? builderApi : null,
         openBuilder: shown ? openBuilder : null,

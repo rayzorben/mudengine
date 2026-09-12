@@ -1608,7 +1608,7 @@ describe('running away', () => {
      decision: the command says what was sent, and this says why — and, since
      there are four ways to know an exit, which of them answered. */
   it('records why it ran, which way, and how it knew that way', async () => {
-    const { sink, traces } = collect();
+    const { sink, notices, traces } = collect();
     manager = new SessionManager(sink, undefined, escaping());
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
@@ -1617,12 +1617,64 @@ describe('running away', () => {
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
+    // The decision is written on the outcome, not the send (todo 06): the
+    // room the move reached is what says the escape acted.
+    await until(() => notices.some((notice) => RAN.test(notice)));
+    socket.write('Rat Warren\r\nObvious exits: south\r\n');
 
     await until(() => traces.some((trace) => trace.safety.length > 0));
     const decision = traces.at(-1)?.safety[0];
     expect(decision).toMatchObject({ action: 'retreat', acted: true });
     expect(decision?.because).toMatch(/health at \d+%/);
     expect(decision?.because).toMatch(/— n \(printed\)$/);
+  });
+
+  /*
+   * The escape reads what the server said back (todo 06, 2026-09-12). Live,
+   * `s` was answered `The door is closed!`, the trace said `acted: true`, and
+   * the character rested in the lair it believed it had left. A shut door is
+   * the walker's own rung: open it and run again.
+   */
+  it('opens a shut door on the way out and runs again', async () => {
+    const { sink, notices, traces } = collect();
+    manager = new SessionManager(sink, undefined, escaping());
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = sent(socket, /open n\r\nn\r\n/);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write(ROOM);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+    await until(() => notices.some((notice) => RAN.test(notice)));
+    socket.write('The door is closed!\r\n');
+
+    expect(await seen).toMatch(/\bn\r\nopen n\r\nn\r\n/);
+    expect(notices.some((notice) => /door n is shut/.test(notice))).toBe(true);
+    // Not an escape yet: nothing has been recorded as acted.
+    expect(traces.flatMap((trace) => trace.safety).some((d) => d.acted)).toBe(false);
+  });
+
+  it('falls to the next rung the moment a direction is refused, and records the refusal', async () => {
+    const { sink, notices, traces } = collect();
+    manager = new SessionManager(sink, undefined, escaping());
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = sent(socket, /\bs\r\n/);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write(ROOM);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+    await until(() => notices.some((notice) => /Running n:/.test(notice)));
+    socket.write('There is no exit in that direction!\r\n');
+
+    // South, the other printed exit — inside the cooldown, not after it.
+    expect(await seen).toMatch(/\bn\r\ns\r\n/);
+    const refused = traces.flatMap((trace) => trace.safety).find((d) => d.acted === false);
+    expect(refused).toMatchObject({ action: 'retreat', acted: false });
+    expect(refused?.refused).toMatch(/no exit in that direction/);
+    expect(notices.some((notice) => /Running s:/.test(notice))).toBe(true);
   });
 
   it('does nothing while it is switched off', async () => {
@@ -2528,9 +2580,13 @@ describe('the lap after an escape', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=40/MA=50]:' + PROMPT_REPAINT);
     await until(() => /\bn\r\n/.test(seen()));
-
-    // The fight ends, and 40 of 100 is under the resting floor.
-    socket.write('*Combat Off*\r\n[HP=40/MA=50]:' + PROMPT_REPAINT);
+    // The fight ends and the escape lands — a room the move was not sent
+    // from. Until it lands nothing rests in the room the character just tried
+    // to leave (todo 06); until the fight ends, a hurt character runs again.
+    socket.write('*Combat Off*\r\n');
+    socket.write('Rat Warren\r\nObvious exits: south\r\n');
+    // 40 of 100 is under the resting floor.
+    socket.write('[HP=40/MA=50]:' + PROMPT_REPAINT);
     await until(() => /\brest\b/.test(seen()));
   });
 });

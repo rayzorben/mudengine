@@ -446,6 +446,10 @@ tuning:
 
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
+    # How sure one cast has to be of finishing the monster before the cheapest
+    # spell that would outranks the hardest hitter, under Auto Choose Best Spell.
+    killConfidence: 0.9
+
     # How long a heal proposal stays worth sending.
     healExpiresMs: 3000
 
@@ -505,6 +509,52 @@ tuning:
   loot:
     expiresMs: 5000
 
+  # Where to hunt — `src/shared/hunting.ts`, the cycle model MMUD-Explorer's
+  # Model D is built on, closed-form. `roundSeconds` is a combat round;
+  # `restTickSeconds` and `passiveTickSeconds` the two regeneration ticks;
+  # `killOverheadMs` the looting and retargeting per kill; `stepMs` one
+  # step of a walk; `greatermudRespawnOffsetSeconds` the thirty seconds
+  # GreaterMUD's regen adds before comparing with a room's delay (its author
+  # calls it a kept bug), so a lair comes back that much sooner there;
+  # `backstabMultiplier` what the opening backstab is worth in swings
+  # (measured 4.1×); `maxLoopRooms` and `maxSpots` bound the suggestions;
+  # `betterSpotRadius` is how far the lap's low-experience stop looks for a
+  # better lair.
+  hunting:
+    roundSeconds: 5
+    restTickSeconds: 15
+    passiveTickSeconds: 121
+    killOverheadMs: 1500
+    stepMs: 1250
+    greatermudRespawnOffsetSeconds: 30
+    backstabMultiplier: 4
+    maxLoopRooms: 8
+    maxSpots: 12
+    betterSpotRadius: 80
+
+  # Going back for the kit after a death — `GearRecovery`. `collectMs` is how
+  # long the pack has to reflect the `get`s before the kit is put on with what
+  # arrived; `expiresMs` drops a command still queued when the room has changed.
+  gearRecovery:
+    collectMs: 8000
+    expiresMs: 6000
+
+  # Spending character points on the stat screen — `StatScreen`. `echoMs` is
+  # how long the screen has to echo a keystroke before the driver lets go of
+  # it; `expiresMs` drops a `train stats` still queued when the moment has
+  # passed.
+  train:
+    echoMs: 4000
+    expiresMs: 8000
+
+  # Getting back into the shadows between fights — `AutoStealth`.
+  # `askEveryMs` floors the retry after a failed roll, so a low-Stealth
+  # character is not asking once per status line; `expiresMs` drops an ask
+  # still queued when the room has already changed.
+  stealth:
+    askEveryMs: 4000
+    expiresMs: 5000
+
   # Readying a light before a dark step — `AutoLight`. A `light` or `remove`
   # still queued after this is for a room already left.
   light:
@@ -546,6 +596,13 @@ tuning:
     # Generous, unlike an attack's: what this reacts to is a number that moves
     # slowly, and a `rest` that arrives two seconds late is still a rest.
     expiresMs: 5000
+
+    # A lair whose effective respawn is at most this many seconds is not a
+    # resting place; a rest takes minutes, and a clock of ten minutes or less
+    # runs out during it. `peekMs` is how long the look next door, and then the
+    # step, may go unanswered.
+    lairClockMaxSeconds: 600
+    peekMs: 4000
 
     # How long a proposed `rest` is trusted to be in flight before it is asked
     # for again. `(Resting)` is the server's answer and does not exist until the
@@ -1330,6 +1387,10 @@ tuning:
     roomPeekDelayMs: 250
 
     roomPeekLingerMs: 220
+
+    # How far the Hunting card looks from where the character stands, in
+    # steps, at its usual reach; near is half and far is double.
+    huntRadiusSteps: 80
 
     # The server's own combat pulse, in milliseconds. Damage per round is the
     # one figure that needs a length for a round, and the stream carries blows

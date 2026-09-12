@@ -167,6 +167,37 @@ describe('combat', () => {
   });
 
   /*
+   * The same sentence from both sides of the fight, as a pair: the mob's
+   * rule took the trailing clause from the day it was written and the
+   * player's did not, and nothing said they were mirrors until 55 of this
+   * character's misses read as nothing beside 155 of the monster's (live,
+   * 2026-09-12). Whichever side gains a spelling, the other must too.
+   */
+  it('reads a miss with its dodge clause from either side of the fight', () => {
+    const pairs: Array<[string, string]> = [
+      [
+        'The wererat swings at you with their bastard sword, but you dodge!',
+        'You swing at wererat, but it dodges out of the way!'
+      ],
+      [
+        'The mutant swings at you, but you dodge out of the way!',
+        'You swing at wererat champion, but he dodges out of the way!'
+      ]
+    ];
+    for (const [theirs, ours] of pairs) {
+      expect(classify(theirs).type).toBe('mob-misses');
+      expect(expectType(ours, 'user-misses')['target']).toBe(ours.match(/at ([\w ]+?),/)![1]);
+    }
+    expect(
+      expectType('You swing at wererat shaman, but she dodges out of the way!', 'user-misses')[
+        'target'
+      ]
+    ).toBe('wererat shaman');
+    // The bare sentence still reads: it is what the other GreaterMUD tree prints.
+    expect(expectType('You swing at wererat!', 'user-misses')['target']).toBe('wererat');
+  });
+
+  /*
    * A monster walking in. The arrival verb is per-monster realm data exactly
    * like the attack message, so again only the frame is matched.
    */
@@ -2355,6 +2386,126 @@ describe('the spellbook listing', () => {
  * which matters because what a search turns up stays concealed and its coins
  * refuse a bare `get`. Measured on the live realm 2026-09-02.
  */
+/*
+ * The server folds a long sentence at a word boundary with a real CRLF, so a
+ * floor listing or an occupant list long enough to wrap arrives in pieces of
+ * which only the first announces itself (todo 03, 2026-09-12: 65 of 72 live
+ * `You notice` lines, 123 + 143 in the corpus). A `wraps: 'record'` batch
+ * joins the pieces and closes on the sentence's own terminator — before
+ * `Obvious exits:` completes the room it belongs to.
+ */
+describe('a room sentence the server wrapped', () => {
+  const run = (lines: string[]) => {
+    const classifier = new Classifier(NAMES);
+    return lines.map((plain) => classifier.classify(line(plain)));
+  };
+
+  it('joins a two-line floor listing and hands it on where the second line ends it', () => {
+    const [name, prose, head, tail] = run([
+      'Dank Chamber',
+      '    Water drips somewhere in the dark.',
+      'You notice 197 gold crowns, 614 silver nobles, 74 copper farthings,',
+      'skin-covered book, holy writ here.'
+    ]);
+    expect(name?.block.type).toBe('room-name');
+    expect(prose?.block.type).toBe('room-description');
+    // Neither piece is scenery, and neither is read alone.
+    expect(head?.block.type).toBe('unknown');
+    expect(head?.batch).toBeUndefined();
+    expect(tail?.block.type).toBe('unknown');
+    expect(tail?.batch?.type).toBe('room-items');
+    expect(tail?.batch?.groups['items']).toBe(
+      '197 gold crowns, 614 silver nobles, 74 copper farthings, skin-covered book, holy writ'
+    );
+  });
+
+  /* Verbatim from the corpus (captures/039, 082): the fold lands inside a name. */
+  it('mends a name the fold cut in half, across three lines', () => {
+    const results = run([
+      'Also here: tall orc warlord, nasty orc captain, nasty orc lieutenant, orc',
+      'warrior, orc fanatic, angry ogre gladiator, fierce orc fanatic, ogre',
+      'gladiator.'
+    ]);
+    expect(results.slice(0, 2).every((r) => r.batch === undefined)).toBe(true);
+    expect(results[2]?.batch?.type).toBe('room-also-here');
+    expect(results[2]?.batch?.groups['who']).toBe(
+      'tall orc warlord, nasty orc captain, nasty orc lieutenant, orc warrior, orc fanatic, angry ogre gladiator, fierce orc fanatic, ogre gladiator'
+    );
+  });
+
+  /* The optional period let this read as a whole listing ending in `tall orc`. */
+  it('no longer reads a wrapped first line as a complete occupant list', () => {
+    expect(classify('Also here: young girl, orc rogue, nasty orc rogue, tall orc').type).toBe(
+      'unknown'
+    );
+    expect(expectType('Also here: young girl, tall orc warlord.', 'room-also-here')['who']).toBe(
+      'young girl, tall orc warlord'
+    );
+  });
+
+  it('opens no record for a sentence that is whole on its own line', () => {
+    const [only] = run(['You notice 3 gold crowns, 8 silver nobles here.']);
+    expect(only?.block.type).toBe('room-items');
+    expect(only?.batch).toBeUndefined();
+  });
+
+  /* A line the table reads is one the record cannot continue through. */
+  it('drops an unterminated record when the table claims the next line, reading that line as itself', () => {
+    const [, exits, prompt] = run([
+      'You notice 197 gold crowns, 614 silver nobles,',
+      'Obvious exits: north, south',
+      '[HP=100]:'
+    ]);
+    expect(exits?.block.type).toBe('room-exits');
+    expect(exits?.batch).toBeUndefined();
+    expect(prompt?.batch).toBeUndefined();
+  });
+
+  it('is the same retype for a wrapped listing that answers a search', () => {
+    const classifier = new Classifier(NAMES);
+    classifier.observeCommand('search');
+    classifier.classify(line('You notice 4 copper farthings, scroll of minor healing,'));
+    const { batch } = classifier.classify(line('rusty key here.'));
+    expect(batch?.type).toBe('room-hidden-items');
+    expect(batch?.groups['items']).toBe('4 copper farthings, scroll of minor healing, rusty key');
+  });
+});
+
+/*
+ * A monster's death sentence is realm data (`MobType.DeathMessage.Line3`), so
+ * only the server's own fallback is a pattern; the rest reach the classifier
+ * as a lookup the realm's lore fills as fights are won (todo 04).
+ */
+describe('the wererat’s bite', () => {
+  /* Live, three times in one fight (`out/drive-L30-wererat.jsonl`, 2026-09-12); unread until now. */
+  it('reads You are diseased! as the disease onset, beside the corpus’s longer sentence', () => {
+    expect(classify('You are diseased!').type).toBe('user-diseased');
+    expect(classify('You are inflicted with a hideous rotting disease!').type).toBe(
+      'user-diseased'
+    );
+  });
+});
+
+describe('a monster dying', () => {
+  it('reads the server’s composed fallback, naming the monster off the room', () => {
+    const g = expectType('The orc rogue falls to the ground dead.', 'mob-dies');
+    expect(g['attacker']).toBe('orc rogue');
+  });
+
+  it('reads a sentence the realm has taught, and nothing it has not', () => {
+    const taught = new Map([['mutant', 'The mutant sighs softy, and dies!']]);
+    const classifier = new Classifier(
+      NAMES,
+      undefined,
+      (text) => [...taught].find(([, sentence]) => sentence === text)?.[0] ?? null
+    );
+    const learned = classifier.classify(line('The mutant sighs softy, and dies!')).block;
+    expect(learned.type).toBe('mob-dies');
+    expect(learned.groups['mob']).toBe('mutant');
+    expect(classifier.classify(line('The mutant coughs, and dies!')).block.type).toBe('unknown');
+  });
+});
+
 describe('a floor listing that answers a search', () => {
   const feed = (classifier: Classifier, plain: string) => classifier.classify(line(plain)).block;
 

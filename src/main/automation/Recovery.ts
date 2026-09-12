@@ -303,6 +303,21 @@ export class Recovery {
    * safety decision here, for the same reason — it should be possible to see at
    * a glance exactly what had to be true.
    */
+  /**
+   * Whether this line would sit the character down, or keep it sitting —
+   * read without deciding, for `RestAway`, which asks before the rest is
+   * proposed whether the room it would be proposed in is one to rest in.
+   */
+  wouldRest(state: CharacterState): boolean {
+    if (!this.enabled || state.phase !== 'in-game') return false;
+    if (fightIsHere(state) || this.refused.has('rest')) return false;
+    const { hp, hpMax, resting } = state.vitals;
+    if (this.needed !== null && hp !== null && hp < this.needed) return true;
+    if (this.below(hp, hpMax, this.config.restBelow)) return true;
+    const { restTo } = this.config;
+    return restTo > 0 && (this.sitting || resting) && this.below(hp, hpMax, restTo);
+  }
+
   onCharacter(state: CharacterState): void {
     this.state = state;
     if (!this.enabled) return;

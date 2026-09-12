@@ -68,6 +68,7 @@ import type { MovementStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
+import type { HuntingAdvice } from '../shared/hunting';
 import { SessionHost } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
@@ -2021,6 +2022,30 @@ function registerIpc(): void {
       return localMap(world, roomId(map, room), asked);
     }
   );
+  handle(Invoke.huntingGrounds, (_caller, session: SessionId, radius: unknown) => {
+    const manager = host?.get(session)?.manager;
+    // Parsed, never trusted: a radius is a sweep's bound on main's own thread.
+    const steps =
+      typeof radius === 'number' && Number.isFinite(radius)
+        ? Math.max(1, Math.min(400, Math.trunc(radius)))
+        : tuning().hunting.betterSpotRadius;
+    if (!manager) {
+      return {
+        from: null,
+        radius: steps,
+        spots: [],
+        assumptions: {
+          family: null,
+          hpMax: null,
+          restingHealthPerTick: null,
+          backstab: false,
+          constants: tuning().hunting
+        },
+        refusal: t('session.hunt.noSession')
+      } satisfies HuntingAdvice;
+    }
+    return manager.huntingGrounds(steps);
+  });
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the

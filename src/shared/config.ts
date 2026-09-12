@@ -45,6 +45,7 @@ import { mobKey } from './world';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
+import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 import { isAnsiColour, type ColourBand } from './template';
 import { DEFAULT_REWRITES, isRewriteEntity, type RewriteDesign, type VitalBands } from './rewrites';
 
@@ -803,6 +804,19 @@ export interface CombatConfig {
    * 2026-09-02.
    */
   opener: string;
+  /**
+   * Get back into the shadows between fights, so the opener lands again.
+   *
+   * A backstab is granted by `sn` and `hide` alone, both refused while a
+   * monster is in the room, and spent by the first blow — so a character
+   * hunting in a lair opens every fight after the first in plain sight
+   * (measured 2026-09-12: 4.1× the ordinary swing thrown away each time). On,
+   * `AutoStealth` sends `hide` when the character is seen in an empty room
+   * standing still, and `sn` when a lap or route has it — the walker's own
+   * verb, since the step ahead is what the stealth is for. Only for an
+   * opener the command table calls `BackStab`; `ju` has nothing to hide for.
+   */
+  hideForOpener: boolean;
   /** Which monsters to start on. See {@link EngagePolicy}. */
   engage: EngagePolicy;
   /**
@@ -1454,6 +1468,21 @@ export interface HealthConfig {
    */
   restTo: number;
   /**
+   * Rest next door to a lair rather than in it (todo 08, 2026-09-12).
+   *
+   * A lair is dangerous for what it is *about* to contain: measured twice, a
+   * character sat down at 20% in a room whose clock makes three wererats
+   * every twenty seconds and met them at 2%. On, a rest proposed in a room
+   * the realm marks as a lair with a clock under `tuning.rest.lairClockMaxSeconds`
+   * is refused there, out loud with the figure; a neighbour the realm holds
+   * no lair in is peeked (`l <direction>`), entered only if empty, rested in,
+   * and stepped back from when nothing else has the character. Where no
+   * neighbour is safe the rest goes ahead where it is, said once. On by
+   * default: it acts only when resting was going to act, and the other
+   * default is the one that killed the character.
+   */
+  restNextDoor: boolean;
+  /**
    * Rest before stepping through a trap until health covers the trap and
    * still leaves this fraction of maximum after it. 0 walks into any trap at
    * any health.
@@ -1614,6 +1643,19 @@ export interface MovementConfig {
    */
   lightDimRooms: boolean;
   /**
+   * Go back for the kit after a death (todo 07, 2026-09-12).
+   *
+   * A death drops everything where the character stood; `GearRecovery`
+   * notices the strip (the loadout remembers items the pack read since no
+   * longer holds, and the armour class has fallen to zero), walks back to the
+   * room it died in as a leg — holding when hurt, fighting nothing on the way
+   * — takes what is still lying there and the coins, and puts the kit back
+   * on. Off, like everything that walks a character somewhere unasked; every
+   * refusal is said out loud, since a recovery that quietly gave up is a
+   * character believing it is dressed.
+   */
+  recoverGear: boolean;
+  /**
    * Put a burning light out again in a room that does not need it, so a torch
    * lasts the sewer rather than the walk to it. MegaMUD does the same at every
    * step flagged as naturally lit. Only while nothing is walking the
@@ -1659,6 +1701,21 @@ export interface MovementConfig {
 }
 
 /**
+ * Spending character points on the `train stats` screen — `StatScreen`.
+ *
+ * Off by default, and inert while every wanted figure is at or under the
+ * sheet's: the reviewer's rule (todo 10). `wanted` is where each stat should
+ * end up; 0 leaves it alone. The screen replaces the whole terminal and
+ * anything typed lands in a field, which is why the queue stands down for it
+ * and only this one driver, which reads the screen, is let through.
+ */
+export interface TrainConfig {
+  /** Auto Train Stats. */
+  stats: boolean;
+  wanted: Record<TrainedAttribute, number>;
+}
+
+/**
  * Casting — MegaMUD's **Spells** tab.
  *
  * MegaMUD's spell handling is a table per spell with a condition each, and
@@ -1671,6 +1728,18 @@ export interface MovementConfig {
  * (the wear-off) with a clock behind it. Utility casting stays rules.
  */
 export interface SpellsConfig {
+  /**
+   * *Auto Choose Best Spell* (todo 09, 2026-09-12). On, the round spell is
+   * derived every round from the spellbook the client has read and the
+   * realm's own figures — a spell the target resists is not cast, the
+   * cheapest whose least roll finishes what is left of the monster is, and
+   * otherwise the hardest hitter the pool can pay for — and the cures come
+   * from the book the same way where their boxes are blank. `attack` and
+   * `attackFallback` are what is cast with it off. Off, because it spends
+   * mana on a reading the player did not type; the choice is said out loud
+   * each time it changes.
+   */
+  autoChoose: boolean;
   /**
    * The spell to attack with. Blank casts nothing.
    *
@@ -2074,6 +2143,8 @@ export interface AutomationConfig {
   movement: MovementConfig;
   /** Casting, at the one moment a rule cannot express. */
   spells: SpellsConfig;
+  /** Spending character points on the stat screen. */
+  train: TrainConfig;
 }
 
 export interface AppConfig {
@@ -2329,6 +2400,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       enabled: false,
       attack: 'a',
       opener: '',
+      hideForOpener: false,
       engage: 'hostile',
       retaliate: true,
       joinFights: true,
@@ -2365,6 +2437,7 @@ export const DEFAULT_CONFIG: AppConfig = {
        */
       restBelow: 0.35,
       restTo: 0.7,
+      restNextDoor: true,
       restBeforeTraps: 0.45,
       meditateBelow: 0,
       drinkHealingPotionBelow: 0,
@@ -2421,11 +2494,17 @@ export const DEFAULT_CONFIG: AppConfig = {
       provideLight: true,
       lightDimRooms: false,
       extinguishInLight: true,
+      recoverGear: false,
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       collectKeys: true
     },
+    train: {
+      stats: false,
+      wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 }
+    },
     spells: {
+      autoChoose: false,
       attack: '',
       areaAttack: '',
       areaMinMobs: 3,
@@ -3327,7 +3406,8 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     loops: asLoops(raw['loops']),
     events: asEvents(raw['events']),
     movement: normalizeMovement(raw['movement']),
-    spells: normalizeSpells(raw['spells'])
+    spells: normalizeSpells(raw['spells']),
+    train: normalizeTrain(raw['train'])
   };
 }
 
@@ -3364,6 +3444,7 @@ function normalizeHealth(value: unknown): HealthConfig {
       const to = fraction(raw['restTo'], d.restTo);
       return to === 0 ? 0 : Math.max(to, restBelow);
     })(),
+    restNextDoor: bool(raw['restNextDoor'], d.restNextDoor),
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     meditateBelow: fraction(raw['meditateBelow'], d.meditateBelow),
     drinkHealingPotionBelow: fraction(raw['drinkHealingPotionBelow'], d.drinkHealingPotionBelow),
@@ -3564,10 +3645,23 @@ function normalizeMovement(value: unknown): MovementConfig {
     provideLight: bool(raw['provideLight'], d.provideLight),
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
     extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),
+    recoverGear: bool(raw['recoverGear'], d.recoverGear),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     collectKeys: bool(raw['collectKeys'], d.collectKeys)
   };
+}
+
+/** A wanted figure is a whole number; the race's ceiling is applied at the screen, not here. */
+export function normalizeTrain(value: unknown): TrainConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.automation.train;
+  const wanted = isRecord(raw['wanted']) ? raw['wanted'] : {};
+  const figures = {} as Record<TrainedAttribute, number>;
+  for (const attribute of TRAINED_ATTRIBUTES) {
+    figures[attribute] = int(wanted[attribute], d.wanted[attribute], 0, 999);
+  }
+  return { stats: bool(raw['stats'], d.stats), wanted: figures };
 }
 
 /**
@@ -3616,6 +3710,7 @@ function normalizeSpells(value: unknown): SpellsConfig {
      * the verb and splitting it would cast `ice` — or, since the server matches
      * on a prefix, whatever spell happens to begin with it.
      */
+    autoChoose: bool(raw['autoChoose'], d.autoChoose),
     attack: str(raw['attack'], d.attack).trim(),
     areaAttack: str(raw['areaAttack'], d.areaAttack).trim(),
     areaMinMobs: int(raw['areaMinMobs'], d.areaMinMobs, 1, 99),
@@ -3732,6 +3827,7 @@ function normalizeCombat(value: unknown): CombatConfig {
     attack: str(raw['attack'], d.attack).split(/\s+/)[0] ?? d.attack,
     // Blank is meaningful here and means "no opener", so it is *not* defaulted.
     opener: typeof raw['opener'] === 'string' ? raw['opener'].trim().split(/\s+/)[0] || '' : '',
+    hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),
     engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
     retaliate: bool(raw['retaliate'], d.retaliate),
     joinFights: bool(raw['joinFights'], d.joinFights),

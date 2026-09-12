@@ -20,10 +20,19 @@ import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { FightLog } from '../src/main/session/FightLog.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { commandOf } from '../src/shared/commands.ts';
+import { homePaths } from './lib/home.mjs';
 import { HOST, PORT, configPath, localProfile, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The YAML files in this character's own loops directory, or none. */
+const loopFilesOf = (id) => {
+  try {
+    return fs.readdirSync(homePaths().profile(id).loops).filter((name) => /\.ya?ml$/i.test(name));
+  } catch {
+    return [];
+  }
+};
 const PLAY_MS = Number(process.env.PLAY_MS ?? 1_200_000);
 const HUNT = 'Newhaven, Arena';
 const ROAD = 'Newhaven, Narrow Road';
@@ -57,7 +66,6 @@ const fights = new FightLog(
   { notice: (message) => log('fights', message) }
 );
 
-
 const blocksBySeq = new Map();
 /**
  * Everything a counter has said this character cannot use, for the whole run.
@@ -85,7 +93,8 @@ let lastListing = null;
 const recent = [];
 let linesSeen = 0;
 /** Whether a line matching `pattern` arrived after the `mark`th line. */
-const sawSince = (mark, pattern) => recent.slice(Math.max(0, recent.length - (linesSeen - mark))).some((t) => pattern.test(t));
+const sawSince = (mark, pattern) =>
+  recent.slice(Math.max(0, recent.length - (linesSeen - mark))).some((t) => pattern.test(t));
 const session = new SessionManager(
   {
     data: () => {},
@@ -209,8 +218,7 @@ async function walkTo(name, limit = 40) {
         await say(`bash ${step.direction}`, 2500);
         await say(`bash ${step.direction}`, 2500);
       }
-    }
-    else if (step.requirement && !passable(step.requirement)) {
+    } else if (step.requirement && !passable(step.requirement)) {
       return `${step.name} is gated (${step.requirement.raw})`;
     }
     await say(step.command, 1600);
@@ -291,14 +299,22 @@ async function shop() {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const here = hereId();
     if (here === null) break;
-    const route = world.nearest(here, (room) => !visited.has(`${room.map}/${room.room}`) && wanted(room), 20, passable);
+    const route = world.nearest(
+      here,
+      (room) => !visited.has(`${room.map}/${room.room}`) && wanted(room),
+      20,
+      passable
+    );
     if (!route || route.steps.length === 0) {
       log('phase', `nothing left to buy within reach for ${wealth} copper`);
       break;
     }
     const there = world.byId(route.steps.at(-1).to);
     visited.add(route.steps.at(-1).to);
-    log('phase', `shopping: ${wealth} copper, walking ${route.steps.length} steps to ${there.name}`);
+    log(
+      'phase',
+      `shopping: ${wealth} copper, walking ${route.steps.length} steps to ${there.name}`
+    );
     const back = [];
     for (const step of route.steps) {
       if (step.requirement?.kind === 'door') await say(`open ${step.direction}`, 1200);
@@ -313,8 +329,8 @@ async function shop() {
      * bought a sash the listing had marked unusable.
      */
     const usable = new Set(
-    (lastListing ?? []).filter((row) => !row.note).map((row) => row.item.toLowerCase())
-  );
+      (lastListing ?? []).filter((row) => !row.note).map((row) => row.item.toLowerCase())
+    );
     const stock = (world.shop(there.shop)?.items ?? []).filter(
       (item) => affordable(item) && (lastListing === null || usable.has(item.name.toLowerCase()))
     );
@@ -401,125 +417,157 @@ async function main() {
 
   /** The hunting ground, or the nearest lair in range when the ground refuses us. */
   async function reachGround() {
-  /*
-   * A loop, when the character's options define one: this is what a player
-   * actually does all evening, and the driver should exercise the same thing.
-   * The loop walks; auto-combat fights what it meets; this only watches, and
-   * reports a line per lap so the record shows the rate.
-   */
-  const loops = session.loopNames;
-  if (process.env.PLAY_LOOP === '1' && loops.length > 0) {
-    const loop = session.loopNamed(loops[0]);
-    const refused = session.loops.start(loop, me());
-    log('phase', refused ? `loop refused: ${refused}` : `looping ${loop.name} (${loop.stops.length} stops)`);
-    if (!refused) {
-      let lastLap = 0;
-      let restarts = 0;
-      let redials = 0;
-      while (Date.now() < until) {
-        await wait(15000);
-        /*
-         * Overnight resilience: a dropped socket must not end five hours of
-         * grinding. Reconnect, wait out the login automation, restart the
-         * loop. Bounded, because a server that is down stays down.
-         */
-        if (me().phase !== 'in-game') {
-          if (redials >= 5) {
-            log('phase', 'connection lost and redials spent; giving up the loop');
-            break;
-          }
-          redials += 1;
-          log('phase', `connection lost; redialling (${redials})`);
-          try {
-            await session.connect(target());
-          } catch (error) {
-            log('phase', `redial failed: ${error?.message ?? error}`);
-            await wait(30000);
-            continue;
-          }
-          const back = Date.now() + 60_000;
-          while (Date.now() < back && me().phase !== 'in-game') await wait(500);
-          if (me().phase !== 'in-game') continue;
-          await say('rm', 1500);
-          const again = session.loops.start(loop, me());
-          log('phase', again ? `loop refused after redial: ${again}` : 'loop resumed after redial');
-          if (again) break;
-          continue;
-        }
-        const p = session.loops.progress;
-        if (p.laps !== lastLap) {
-          lastLap = p.laps;
-          log('phase', `lap ${p.laps}, level ${me().progress.level}, exp ${me().progress.expThisSession}, hp ${Math.round((health() ?? 0) * 100)}%, needed ${me().progress.expNeeded ?? '?'}`);
-        }
-        /*
-         * The level is earned: break the loop, train, come back. The
-         * tracker keeps `expNeeded` live off the gain lines, so no `exp` is
-         * spent asking. The loop is stopped first because a walk to the guild
-         * under a live loop is a walk the loop would replan away from.
-         */
-        if ((me().progress.expNeeded ?? 1) <= 0 && !me().inCombat) {
-          log('phase', 'level is there; pausing the loop to train');
-          session.loops.stop('training');
-          const guild = await walkTo(GUILD, 25);
-          if (!guild) {
-            await say('train', 3000);
-            await say('exp');
-            // A level moved the maxima; the sheet is the cheap way to learn them.
-            await say('health');
-            log('phase', `trained: level ${me().progress.level}`);
-          } else log('phase', `could not reach the guild: ${guild}`);
-          const again = session.loops.start(loop, me());
-          if (again) {
-            log('phase', `loop refused after training: ${again}`);
-            break;
-          }
-          continue;
-        }
-        /*
-         * Death insurance: everything is on the temple floor and a naked
-         * character grinding with its fists earns nothing and dies again.
-         * The starter shops give the padded set away, so being broke is no
-         * excuse not to dress.
-         */
-        // Only when a listing has been seen: a fresh session's empty state
-        // is ignorance, not nakedness, and shopping on it wasted a night.
-        const listed = me().inventory.wealth !== null;
-        const naked = !me().inventory.items.some((item) => item.equipped);
-        if (listed && naked && !me().inCombat && me().inventory.items.length === 0) {
-          log('phase', 'naked mid-loop; pausing to re-equip');
-          session.loops.stop('re-equipping');
-          await say('i', 2000);
-          if (!me().inventory.items.some((item) => item.equipped)) {
-            if (await shop()) log('phase', 're-equipped');
-          }
-          const again = session.loops.start(loop, me());
-          if (again) {
-            log('phase', `loop refused after re-equipping: ${again}`);
-            break;
-          }
-          continue;
-        }
-        if (p.status !== 'running') {
-          log('phase', `loop ended: ${p.reason ?? 'stopped'}`);
+    /*
+     * A loop, when the character's options define one: this is what a player
+     * actually does all evening, and the driver should exercise the same thing.
+     * The loop walks; auto-combat fights what it meets; this only watches, and
+     * reports a line per lap so the record shows the rate.
+     */
+    const loops = session.loopNames;
+    /*
+     * Asked to loop and found none is a probe that cannot do what it was asked,
+     * and it says so rather than falling through to the arena walk in silence
+     * (todo 02: the branch below had never run, because `localProfiles` handed
+     * every character an empty list). Two answers, told apart the way `skip()`
+     * tells them: a character with no loop files is a character with no loops;
+     * one with files on disk and none resolved is the fold broken, and the run
+     * stops there rather than measure the wrong thing.
+     */
+    if (process.env.PLAY_LOOP === '1' && loops.length === 0) {
+      const onDisk = loopFilesOf(profile.id);
+      if (onDisk.length > 0) {
+        log(
+          'phase',
+          `PLAY_LOOP=1 but none of this character's ${onDisk.length} loop files reached the session (${onDisk.join(', ')}); the fold in local-realm.mjs is broken`
+        );
+        process.exit(1);
+      }
+      log('phase', 'PLAY_LOOP=1 but this character has no loops; walking the arena instead');
+    }
+    if (process.env.PLAY_LOOP === '1' && loops.length > 0) {
+      const loop = session.loopNamed(loops[0]);
+      const refused = session.loops.start(loop, me());
+      log(
+        'phase',
+        refused ? `loop refused: ${refused}` : `looping ${loop.name} (${loop.stops.length} stops)`
+      );
+      if (!refused) {
+        let lastLap = 0;
+        let restarts = 0;
+        let redials = 0;
+        while (Date.now() < until) {
+          await wait(15000);
           /*
-           * A lost location is recoverable: `rm` answers with coordinates,
-           * which resolve exactly. Bounded, because a loop that dies for a
-           * different reason every minute is a finding, not a retry case.
+           * Overnight resilience: a dropped socket must not end five hours of
+           * grinding. Reconnect, wait out the login automation, restart the
+           * loop. Bounded, because a server that is down stays down.
            */
-          if (restarts < 8) {
-            restarts += 1;
+          if (me().phase !== 'in-game') {
+            if (redials >= 5) {
+              log('phase', 'connection lost and redials spent; giving up the loop');
+              break;
+            }
+            redials += 1;
+            log('phase', `connection lost; redialling (${redials})`);
+            try {
+              await session.connect(target());
+            } catch (error) {
+              log('phase', `redial failed: ${error?.message ?? error}`);
+              await wait(30000);
+              continue;
+            }
+            const back = Date.now() + 60_000;
+            while (Date.now() < back && me().phase !== 'in-game') await wait(500);
+            if (me().phase !== 'in-game') continue;
             await say('rm', 1500);
             const again = session.loops.start(loop, me());
-            log('phase', again ? `loop restart refused: ${again}` : `loop restarted (${restarts})`);
-            if (!again) continue;
+            log(
+              'phase',
+              again ? `loop refused after redial: ${again}` : 'loop resumed after redial'
+            );
+            if (again) break;
+            continue;
           }
-          break;
+          const p = session.loops.progress;
+          if (p.laps !== lastLap) {
+            lastLap = p.laps;
+            log(
+              'phase',
+              `lap ${p.laps}, level ${me().progress.level}, exp ${me().progress.expThisSession}, hp ${Math.round((health() ?? 0) * 100)}%, needed ${me().progress.expNeeded ?? '?'}`
+            );
+          }
+          /*
+           * The level is earned: break the loop, train, come back. The
+           * tracker keeps `expNeeded` live off the gain lines, so no `exp` is
+           * spent asking. The loop is stopped first because a walk to the guild
+           * under a live loop is a walk the loop would replan away from.
+           */
+          if ((me().progress.expNeeded ?? 1) <= 0 && !me().inCombat) {
+            log('phase', 'level is there; pausing the loop to train');
+            session.loops.stop('training');
+            const guild = await walkTo(GUILD, 25);
+            if (!guild) {
+              await say('train', 3000);
+              await say('exp');
+              // A level moved the maxima; the sheet is the cheap way to learn them.
+              await say('health');
+              log('phase', `trained: level ${me().progress.level}`);
+            } else log('phase', `could not reach the guild: ${guild}`);
+            const again = session.loops.start(loop, me());
+            if (again) {
+              log('phase', `loop refused after training: ${again}`);
+              break;
+            }
+            continue;
+          }
+          /*
+           * Death insurance: everything is on the temple floor and a naked
+           * character grinding with its fists earns nothing and dies again.
+           * The starter shops give the padded set away, so being broke is no
+           * excuse not to dress.
+           */
+          // Only when a listing has been seen: a fresh session's empty state
+          // is ignorance, not nakedness, and shopping on it wasted a night.
+          const listed = me().inventory.wealth !== null;
+          const naked = !me().inventory.items.some((item) => item.equipped);
+          if (listed && naked && !me().inCombat && me().inventory.items.length === 0) {
+            log('phase', 'naked mid-loop; pausing to re-equip');
+            session.loops.stop('re-equipping');
+            await say('i', 2000);
+            if (!me().inventory.items.some((item) => item.equipped)) {
+              if (await shop()) log('phase', 're-equipped');
+            }
+            const again = session.loops.start(loop, me());
+            if (again) {
+              log('phase', `loop refused after re-equipping: ${again}`);
+              break;
+            }
+            continue;
+          }
+          if (p.status !== 'running') {
+            log('phase', `loop ended: ${p.reason ?? 'stopped'}`);
+            /*
+             * A lost location is recoverable: `rm` answers with coordinates,
+             * which resolve exactly. Bounded, because a loop that dies for a
+             * different reason every minute is a finding, not a retry case.
+             */
+            if (restarts < 8) {
+              restarts += 1;
+              await say('rm', 1500);
+              const again = session.loops.start(loop, me());
+              log(
+                'phase',
+                again ? `loop restart refused: ${again}` : `loop restarted (${restarts})`
+              );
+              if (!again) continue;
+            }
+            break;
+          }
         }
       }
     }
-  }
 
-  const failed = await walkTo(ground);
+    const failed = await walkTo(ground);
     if (!failed) return true;
     log('phase', `could not reach ${ground}: ${failed}`);
     let lair = nearestLair(ground);
@@ -544,7 +592,13 @@ async function main() {
     }
     if (!lair || lair.steps.length === 0) return false;
     const there = lair.steps.at(-1);
-    log('phase', `trying ${there.name} instead (${lair.steps.length} steps, ${world.lairOf(world.byId(there.to)).map((m) => `${m.name}(${m.hp})`).join(', ')})`);
+    log(
+      'phase',
+      `trying ${there.name} instead (${lair.steps.length} steps, ${world
+        .lairOf(world.byId(there.to))
+        .map((m) => `${m.name}(${m.hp})`)
+        .join(', ')})`
+    );
     const went = await walkTo(there.name, 60);
     if (went) {
       log('phase', `could not reach it: ${went}`);
@@ -578,7 +632,10 @@ async function main() {
       lastCheck = Date.now();
       await say('exp');
       const gained = me().progress.expThisSession;
-      log('phase', `exp this session ${gained} (+${gained - lastExp}), level ${me().progress.level}, wealth ${me().inventory.wealth}`);
+      log(
+        'phase',
+        `exp this session ${gained} (+${gained - lastExp}), level ${me().progress.level}, wealth ${me().inventory.wealth}`
+      );
       lastExp = gained;
       if ((me().progress.expNeeded ?? 1) <= 0) {
         log('phase', 'experience for the next level is there; asking the guild');
@@ -607,7 +664,10 @@ async function main() {
         const lair = nearestLair(ground);
         if (lair && lair.steps.length > 0) {
           const there = lair.steps.at(-1);
-          log('phase', `arena is quiet; trying ${there.name} (${lair.steps.length} steps, lair of ${world.byId(there.to)?.lair})`);
+          log(
+            'phase',
+            `arena is quiet; trying ${there.name} (${lair.steps.length} steps, lair of ${world.byId(there.to)?.lair})`
+          );
           const went = await walkTo(there.name, 45);
           if (!went) ground = there.name;
           else log('phase', `could not reach it: ${went}`);
@@ -635,7 +695,10 @@ async function main() {
   const home = await walkTo(ROAD, 45);
   if (home) log('phase', `could not leave the fight before hanging up: ${home}`);
   await say('i');
-  log('phase', `done: level ${me().progress.level}, exp ${me().progress.expThisSession} this session, wealth ${me().inventory.wealth}, in ${hereName()} at ${Math.round((health() ?? 0) * 100)}%`);
+  log(
+    'phase',
+    `done: level ${me().progress.level}, exp ${me().progress.expThisSession} this session, wealth ${me().inventory.wealth}, in ${hereName()} at ${Math.round((health() ?? 0) * 100)}%`
+  );
   /*
    * A run that gained nothing says *which* nothing happened. Without this the
    * only record was "0 experience", which reads as a client defect and was

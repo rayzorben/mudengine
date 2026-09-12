@@ -65,6 +65,14 @@ export interface FightRecord {
   mob: string;
   /** Whether it died, as far as the death suspicion could tell. */
   killed: boolean;
+  /**
+   * What said so: the monster's own death sentence, or the experience line
+   * standing in for one. A kill read off a proxy is weaker evidence than one
+   * the room announced, and a reader deciding what to learn from should be
+   * able to tell them apart. Absent on a record written before this existed,
+   * and on a fight nothing died in.
+   */
+  killedBy?: 'sentence' | 'experience';
   /** Damage this character dealt. */
   mine: number;
   /** Damage anybody else dealt, which is a different fight. */

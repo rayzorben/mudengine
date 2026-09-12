@@ -339,6 +339,36 @@ notices:
       chooses between and was removed from your tuning file. Any figure you had set there was
       the answer to a different question and is not carried into either end.'
     optionsMoved: Options moved from {from} to {to}.
+    spellChoice:
+      one: '"automation.spells.autoChoose" was written into {fileList}, off: pick the round spell
+        and the cures from the spellbook each round. The spells you named are cast until you turn it
+        on.'
+      many: '"automation.spells.autoChoose" was written into {count} files ({fileList}), off: pick
+        the round spell and the cures from the spellbook each round. The spells you named are cast
+        until you turn it on.'
+    training: '"automation.train" was written into {file}, off: at a trainer with character points
+      unspent, open the stat screen and buy the figures set under Training, cheapest point first.
+      Nothing is spent until you turn it on and raise a figure.'
+    restNextDoor:
+      one:
+        '"automation.health.restNextDoor" was written into {fileList}, on: a rest in a lair with a
+        short clock is taken next door, in a neighbour looked into first and found empty.'
+      many:
+        '"automation.health.restNextDoor" was written into {count} files ({fileList}), on: a rest
+        in a lair with a short clock is taken next door, in a neighbour looked into first and found
+        empty.'
+    gearRecovery:
+      one: '"automation.movement.recoverGear" was written into {fileList}, off: after a death, walk
+        back for the kit and put it on. Nothing walks until you turn it on.'
+      many: '"automation.movement.recoverGear" was written into {count} files ({fileList}), off:
+        after a death, walk back for the kit and put it on. Nothing walks until you turn it on.'
+    hideForOpener:
+      one: '"automation.combat.hideForOpener" was written into {fileList}, off: hide (or sneak,
+        while a lap or route has the character) between fights, so an opening backstab lands
+        again.'
+      many: '"automation.combat.hideForOpener" was written into {count} files ({fileList}), off:
+        hide (or sneak, while a lap or route has the character) between fights, so an opening
+        backstab lands again.'
     coinsCanBeShed:
       one: '"automation.loot.discardKinds" was written into {fileList}, empty: which coins to put
         back on the floor whenever any are carried, the other end of "coinKinds". Nothing is
@@ -507,6 +537,7 @@ notices:
       readError: 'could not read {file}: {message}'
       writeError: 'could not write {file}: {message}'
       spellLearned: 'Learned the {kind} of {spell}: "{text}"'
+      deathLearned: 'Learned how {mob} dies: "{text}" — it leaves the room on that line from now on, whoever killed it.'
       spellUnlearned: 'Unlearned the {kind} of {spell}: "{text}" — the stat sheet still showed it'
     spellMessages:
       readError: 'could not read the spell message table {file}: {message}'
@@ -640,6 +671,7 @@ palette:
       many: '{stopCount} stops'
       one: '{stopCount} stop'
     buildLabel: Build a loop on the map
+    huntLabel: Where should I hunt?
     routeLabel: Route to room
     searchLabel: Search the console
   noMatches: No matching command, and no room by that name.
@@ -1099,6 +1131,61 @@ cards:
     walk:
       arrived: 'Arrived at {destination}'
       arrivedSomewhere: Arrived where the route ended
+  hunting:
+    title: Hunting Grounds
+    caption: Lairs within reach, priced for this character, best first
+    find: Find a lair or a room
+    none: No lair within reach. Look farther, or move.
+    loading: Pricing the lairs within reach…
+    refresh: Ask again
+    from: '{count} lairs within {radius} steps of {room}'
+    reachLabel: How far to look
+    reach:
+      near: Near
+      usual: Usual
+      far: Far
+    columns:
+      lair: Lair
+      rate: Exp/h
+      rooms: Rooms
+      steps: Steps
+      cost: Cost
+    deadly: deadly
+    deadlyLong: One room of this is expected to take the whole health bar.
+    ceiling: 'up to {rate}'
+    unknownParts: 'Rate not known: {parts} unknown'
+    unknown:
+      experience: the experience
+      rounds: the rounds to kill
+      damage: the damage taken
+      respawn: the respawn clock
+      rest: the rest
+      health: the health bar
+    detail:
+      rate: Expected
+      rateValue: '{rate} exp/h'
+      ceiling: Ceiling
+      spawns: Up at once
+      respawn: Respawn
+      respawnHours: '{hours} h'
+      rounds: A kill
+      roundsValue: 'about {rounds} rounds'
+      openerCredited: (opener credited)
+      cost: A room costs
+      costValue: '{hp} hp ({share} of the bar)'
+      cycle: A cycle
+      cycleValue: 'fight {combat}, rest {rest}, walk {walk}, wait {wait}'
+    mobFigures: '{exp} exp · {rounds} rounds · {perRound} hp/round'
+    roomFigures: '{map}/{room} · {steps} steps'
+    moreRooms:
+      many: 'and {count} more rooms hold this lair'
+      one: 'and {count} more room holds this lair'
+    walkThere: Walk there
+    loopIt: Loop it
+    saveLoop: Save as a loop
+    oneRoomNoLoop: One room is a place to stand, not a loop
+    loopName: '{mobs} hunt'
+    copyRow: '{mobs}: {rate} exp/h, {rooms} rooms, {steps} steps'
   quests:
     anyOf: Any one of
     badge:
@@ -2466,6 +2553,10 @@ settings:
     openerHint: Sent for the first blow of a fight only. Blank for none.
     openerLabel: Opening Attack
     openerPlaceholder: bs
+    hideForOpener: Hide Between Fights
+    hideForOpenerHint:
+      Sends hide when this character is seen in an empty room, and sneak instead while a lap or
+      route has it, so the opening backstab lands again. Only for an opener of bs.
     openingFightsWarning: Opening fights unasked can cost a character; the default only retaliates.
     openWarning: With this on, the client opens fights by itself — never on a player.
     preferHint: In this order, whatever the setting above says. Still never a player.
@@ -2621,6 +2712,10 @@ settings:
       more. Its own switch, so it rests before a trap even with Rest If Below at 0. 0 walks into
       any trap at any health.
     restBeforeTrapsLabel: Keep After a Trap HP %
+    restNextDoor: Rest Next Door to a Lair
+    restNextDoorHint:
+      A room that makes monsters on a short clock is not a resting place. Looks into a neighbour the
+      realm holds no lair in, steps there only if it is empty, rests, and steps back.
     restingNote: One pair for both, because nothing rests while a loop is marching — a separate
       pause figure under the resting floor left the character walking while it was too hurt to sit
       down. Resting is a state the character is in, and only moving, attacking and casting break
@@ -2660,6 +2755,26 @@ settings:
     removeTitle: Take this loop off
     scopeGlobal: every character
     scopeRealm: this realm
+  train:
+    legend: Training
+    warning: A point bought here is permanent, and the form it is bought on renames the character if
+      anything else is typed into it. The client types only figures, only into the six stat
+      fields, and saves.
+    stats: Auto Train Stats
+    statsHint:
+      At a trainer with character points unspent, opens the stat screen, buys the wanted figures
+      below as far as the points go — cheapest point first — and saves. Off, the client stands
+      down from that screen and touches nothing.
+    wantedNote:
+      Where each stat should end up. 0, or a figure at or under the current one, leaves that stat
+      alone; the race's ceiling caps a figure above it. The first ten points above the race's base
+      cost 1 CP each, the next ten 2 each, and so on.
+    strength: Strength
+    intellect: Intellect
+    willpower: Willpower
+    agility: Agility
+    health: Health
+    charm: Charm
   movement:
     provideLight: Auto-Light (Light Dark Rooms)
     provideLightHint:
@@ -2682,6 +2797,10 @@ settings:
     extinguishInLightHint:
       Removes the lit torch in a room that does not need it, while nothing is walking the character,
       so a torch lasts the sewer rather than the walk there.
+    recoverGear: Fetch the Kit After a Death
+    recoverGearHint:
+      Walks back to the room the character died in, takes the kit and coins still lying there, and
+      puts the kit back on. Holds when hurt and fights nothing on the way; every refusal is said.
     collectKeys: Pick Up a Key the Way Out Needs
     collectKeysHint:
       Only when the realm says an exit of the room needs it, no listing has shown it in the pack,
@@ -2952,6 +3071,11 @@ settings:
       Sent as c <spell> <target> on the mid-round tick. The whole name — the realm matches on a
       prefix.
     castLabel: Combat Spell (Round Spell)
+    autoChoose: Auto Choose Best Spell
+    autoChooseHint:
+      Picks the round spell each round from your spellbook and the realm's figures — never one the
+      monster resists, the cheapest that would finish it, else the hardest hitter — and the cures
+      where their boxes are blank. The spells below are cast with this off.
     fallbackCastHint:
       Cast instead for the rest of the fight once the game says the combat spell has no effect on
       the target. Blank leaves the fight to the round attacks.
@@ -3093,6 +3217,7 @@ settings:
     spells: Spells
     rewrites: Rewrites
     talk: Talk
+    train: Training
   talk:
     legend: Other Players
     lookHint:
@@ -3139,6 +3264,11 @@ session:
     disconnected: Disconnected.
     failed: 'Connection failed: {detail}'
     socketError: 'Connection error: {message}'
+  hunt:
+    noRealmData: This realm has no world data loaded, so nothing can say where to hunt.
+    noSession: No character is loaded for that session.
+    unknownRoom: The client does not know where this character is standing yet; move or look first.
+    better: 'Within {steps} steps, {mobs} at {room} is expected to pay about {rate}/h.'
   loop:
     ambiguousStopName: '{count} rooms are called {name} — name it as "{name} {map}/{room}".'
     preferUnresolved: 'The route {loopName} names a stop the realm cannot settle, so it is not preferred.'
@@ -3203,6 +3333,9 @@ session:
       'Not running: {why}, but this room has named no exit and there is nothing behind us to
       retrace. Standing and fighting.'
     escapeNoExitReason: no exit known from this room
+    escapeOpening: 'The {barrier} {direction} is shut: opening it and running again.'
+    escapeUnanswered: nothing answered the escape in time
+    escapeKilled: killed before the move landed
     escapePrinted: 'Running {direction}: {why}. It is the exit the room listed.'
     escapeReason: 'safety: {why}'
     escapeRetrace: 'Retreating {direction}, the way we came: {why}.'
@@ -3280,6 +3413,9 @@ session:
     readLapsedUntyped:
       Nothing answered the last re-read in {seconds}s, so the client has stopped waiting for it.
       Nothing was held up by it.
+    readLapsedSeveral:
+      Nothing answered the last {count} re-reads in {seconds}s, so the client has stopped waiting
+      for them. Nothing was held up by them.
     stoppedByPlayer: you asked it to
     stoppedConnectionClosed: the connection closed
     stoppedLeftRealm: you left the realm
@@ -3290,6 +3426,12 @@ session:
       have — this character's world.database may not match this realm. Routes will fail from here.
 # What the automations say: loops, login, peers, hang-up.
 automation:
+  stealth:
+    reasonHide: 'hiding, so the next fight opens with {verb}'
+    reasonSneak: 'sneaking, so the next fight opens with {verb}'
+    ceiling: 'Stealth {skill} is past {ceiling}: a move rolls no more than {ceiling} and sneaking
+      no more than 95, while hiding rolls the whole figure — the skill past {ceiling} only pays
+      standing still.'
   combat:
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something walked in the realm data could not place'
@@ -3358,6 +3500,60 @@ automation:
     notifyReason: 'telling {caster} their {spell} wore off'
   cure:
     reason: 'cure: {affliction}'
+    derived: 'Curing {affliction} with {spell}, the cheapest spell in the book that does.'
+  spells:
+    choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): its least roll finishes what is left of the target.'
+    choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast, {cost} mana): the hardest hitter the pool can pay for.'
+    noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the realm for the listing.
+    emptyBook: 'Auto Choose Best Spell: the spellbook is empty — this character has no spells yet.'
+    noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
+    allResisted: 'Auto Choose Best Spell: every attack spell in the book is resisted by this target; the round attacks carry the fight.'
+  train:
+    reason: 'spending {cp} character points at the trainer'
+    nothingWanted: "Auto Train Stats: {cp} CP unspent, but every wanted figure is at or under the sheet's ({figures}). Raise a figure under Training to spend them."
+    nothingAffordable: 'Auto Train Stats: {cp} CP unspent, but the cheapest wanted point ({attribute}, {cost} CP) costs more than that.'
+    whyNothingWanted: every wanted figure is at or under the current one
+    whyUnaffordable: 'the cheapest wanted point costs {cost} CP and {left} are left'
+    notName: 'Not driving this stat screen: it has the name up for editing, which the client never touches. Finish it by hand — Enter through to SAVE.'
+    whyNotName: the screen offers the name for editing
+    capped: "{attributes} wanted above the race's ceiling; aiming at the ceiling."
+    leaving: 'Nothing to buy on the stat screen ({why}); leaving it unchanged.'
+    opening: 'Spending {spent} of {cp} CP: {purchases}.'
+    purchase: '{attribute} {from}→{to} ({cost} CP)'
+    echoed: 'The stat screen echoed something other than what was typed into {attribute}; nothing more is bought this visit.'
+    refused: 'The stat screen refused it — “{sentence}”. Nothing more is bought this visit; what it accepted is saved.'
+    desync: 'The stat screen shows {attribute} at {shown}, not the {expected} it first said; nothing more is bought this visit.'
+    saved: 'Trained: {purchases}. {left} CP left.'
+    savedNothing: 'The stat screen was saved unchanged. {left} CP left.'
+    because: '{spent} CP spent'
+    cpLeft: '{because} ({cp} CP left)'
+    lapsed: 'The stat screen did not answer the last keystroke in {seconds}s. The client has let go of it: finish it by hand — Enter through to SAVE.'
+    whyLapsed: the screen stopped answering
+    attribute:
+      strength: Strength
+      intellect: Intellect
+      willpower: Willpower
+      agility: Agility
+      health: Health
+      charm: Charm
+  gearRecovery:
+    going: 'Stripped by the death: {count} remembered items are not in the pack. Going back to {room} for them ({steps} steps).'
+    taking: 'Taking {count} from the floor: {items}.'
+    takingGone: '{gone} of the kit are not on this floor.'
+    takingCapped: '{capped} more than the cap were left.'
+    dressed: 'Kit back on: {worn} put on, {notTaken} asked for and not taken, {missing} still missing.'
+    refused: 'Not fetching the kit: {refused}'
+    refusalUnplaced: 'the client does not know where the character died, and {count} items are missing'
+    refusalNoRoute: 'no route back to {room}: {why}'
+    refusalNotReached: 'the walk back to {room} ended early: {why}'
+    refusalLeft: the character is no longer standing where it died
+    refusalNothingHere: 'nothing of the kit is on this floor ({items}); somebody took it, or the realm cleaned up'
+    whyStopped: the walk stopped
+    becauseStripped: '{count} remembered items were on the floor where the character died'
+    becauseDied: the character died and was stripped
+    reasonTaking: 'fetching {item} back after the death'
+    reasonCoins: 'fetching the {coin} dropped by the death'
+    reasonDressing: putting the recovered kit back on
   gear:
     capped:
       'Only {max} were sent; {more} more were left. Each one is a command out of the same budget
@@ -3554,6 +3750,20 @@ automation:
     notInParty:
       ' The party grants it, and they are not on the party listing — a party command settles
       it, and an invitation nobody accepted is not membership.'
+  restAway:
+    refusingHere: 'Not resting here: this room makes monsters every {seconds}s. Looking into {name} first.'
+    noSafeRoom: 'Resting here after all: this room makes monsters every {seconds}s and no neighbour is safe to rest in.'
+    refusalNoSafeRoom: no neighbouring room is free of lairs and empty
+    becauseClock: 'the room makes monsters every {seconds}s'
+    becauseStepped: 'stepped {direction} out of the lair to rest'
+    notSafe: 'Not resting in {name}: {who} standing there.'
+    peekUnanswered: 'Nothing described {name} in time; not stepping into a room unseen.'
+    stepping: 'Stepping {direction} into {name} to rest, out of the lair.'
+    stepUnanswered: 'The step {direction} was not answered; resting where the character stands.'
+    steppingBack: 'Rested; stepping {direction} back.'
+    reasonPeek: 'looking into {name} before resting there'
+    reasonStep: 'stepping into {name} to rest'
+    reasonBack: stepping back after resting next door
   recovery:
     reasonHealth: 'recovery: health is low'
     reasonMana: 'recovery: mana is low'
