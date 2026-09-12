@@ -45,7 +45,10 @@ import zlib from 'node:zlib';
 import { errorMessage } from '../../shared/values';
 import {
   AS_PRINTED,
-  summarizeFights,
+  foldFight,
+  summarizeFolds,
+  type FightFold,
+  type FightFolds,
   type FightRecord,
   type FightSink,
   type FightSummary,
@@ -60,6 +63,18 @@ export interface FightLogEvents {
 
 export class FightLog implements FightSink {
   private held: FightRecord[] = [];
+  /** Every fight this instance has recorded, folded as it happened. */
+  private readonly recorded: FightFolds = new Map();
+  /**
+   * What the file held before this instance opened it, folded once on the
+   * first question and off the thread. See `pastRecord`.
+   */
+  private before: Promise<ReadonlyMap<string, FightFold>> | null = null;
+  /**
+   * How long the file was when this instance opened it. Everything past that
+   * is this instance's own, already in `recorded`, and is not read back.
+   */
+  private readonly priorBytes: number;
   private timer: NodeJS.Timeout | null = null;
   /** Reported once. A file that will not open will not open again either. */
   private complained = false;
@@ -70,10 +85,13 @@ export class FightLog implements FightSink {
   constructor(
     private readonly file: string,
     private readonly events: FightLogEvents = {}
-  ) {}
+  ) {
+    this.priorBytes = lengthOf(file);
+  }
 
   record(fight: FightRecord): void {
     this.held.push(fight);
+    foldFight(this.recorded, fight);
     if (this.held.length > tuning().records.fightsHeld) this.held.shift();
     if (this.timer !== null) return;
     this.timer = setTimeout(() => {
@@ -123,32 +141,110 @@ export class FightLog implements FightSink {
   }
 
   /**
-   * What this character's record says about a monster: the file, plus what is
-   * held and not yet written — a fight that ended a second ago counts. Read
-   * on a click, never on a tick: the file is read whole each time, and a
-   * lookup is something a person does.
+   * What this character's record says about a monster: everything written
+   * before this session, plus every fight this session has seen — a fight
+   * that ended a second ago counts. Asked on a click, never on a tick.
    */
-  summary(name: string, resolve: MobResolver = AS_PRINTED): FightSummary | null {
-    return this.summaries([name], resolve).get(name) ?? null;
+  async summary(name: string, resolve: MobResolver = AS_PRINTED): Promise<FightSummary | null> {
+    return (await this.summaries([name], resolve)).get(name) ?? null;
   }
 
   /**
-   * Several names against one read of the file. A lookup returns up to a
-   * dozen monsters, and reading and decompressing the whole record once per
-   * monster would be the same file twelve times for one click.
+   * Several names against one record.
+   *
+   * The file is read **once per instance and off the thread**: 41,679 fights
+   * gunzipped and parsed on a click cost the socket a full second, in the
+   * middle of whatever the character was doing (`mudengine-world` § Every
+   * fight is written down, 2026-09-11). What is kept is the fold per printed
+   * name, so a question walks a few hundred names rather than the fights.
    */
-  summaries(
+  async summaries(
     names: readonly string[],
     resolve: MobResolver = AS_PRINTED
-  ): Map<string, FightSummary> {
-    const records = [...readFights(this.file), ...this.held];
+  ): Promise<Map<string, FightSummary>> {
+    const before = await this.pastRecord();
     const out = new Map<string, FightSummary>();
     for (const name of names) {
-      const summary = summarizeFights(records, name, resolve);
+      const summary = summarizeFolds([before, this.recorded], name, resolve);
       if (summary !== null) out.set(name, summary);
     }
     return out;
   }
+
+  /**
+   * The record as it stood before this instance, folded. Started by the first
+   * question and shared by every later one; a file that cannot be read is
+   * said out loud once and answers as empty, so the fights this session sees
+   * are still counted.
+   */
+  private pastRecord(): Promise<ReadonlyMap<string, FightFold>> {
+    this.before ??= foldFile(this.file, this.priorBytes).catch((error: unknown) => {
+      this.events.notice?.(
+        `Fight statistics could not be read from ${this.file}: ${errorMessage(error)}`
+      );
+      return new Map<string, FightFold>();
+    });
+    return this.before;
+  }
+}
+
+/** The file's length, or zero for one not there yet. */
+function lengthOf(file: string): number {
+  try {
+    return fs.statSync(file).size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Folds the first `bytes` of a log, asynchronously and in slices.
+ *
+ * A prefix of a gzip-member file that ends on a member boundary is itself a
+ * valid stream, and the prefix an instance measured on opening ends on one:
+ * every member past it is that instance's own append. The decompression
+ * runs on the thread pool; the parse yields to the event loop every
+ * `records.fightsFoldSlice` fights, so a socket read is never behind more
+ * than one slice of it.
+ */
+async function foldFile(file: string, bytes: number): Promise<FightFolds> {
+  const folds: FightFolds = new Map();
+  if (bytes === 0) return folds;
+  const raw = Buffer.alloc(bytes);
+  const handle = await fs.promises.open(file, 'r');
+  let read: number;
+  try {
+    read = (await handle.read(raw, 0, bytes, 0)).bytesRead;
+  } finally {
+    await handle.close();
+  }
+  // `Z_SYNC_FLUSH` for the reason `readFights` gives: a truncated last member
+  // is what a crash leaves, and everything before it is still the record.
+  const text = await new Promise<string>((resolve, reject) => {
+    zlib.gunzip(
+      raw.subarray(0, read),
+      { finishFlush: zlib.constants.Z_SYNC_FLUSH },
+      (error, out) => (error ? reject(error) : resolve(out.toString('utf8')))
+    );
+  });
+  const slice = tuning().records.fightsFoldSlice;
+  let start = 0;
+  let parsed = 0;
+  while (start < text.length) {
+    let end = text.indexOf('\n', start);
+    if (end === -1) end = text.length;
+    if (end > start) {
+      try {
+        foldFight(folds, JSON.parse(text.slice(start, end)) as FightRecord);
+      } catch {
+        // One malformed line costs one fight, not the file.
+      }
+      parsed += 1;
+      if (parsed % slice === 0) await new Promise<void>((next) => setImmediate(next));
+    }
+    start = end + 1;
+  }
+  return folds;
 }
 
 /**

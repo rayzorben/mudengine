@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
+import ts from 'typescript';
 
 import { DEFAULT_INTERNAL, normalizeInternal, pinnedMatches } from '../internal';
 
@@ -192,6 +193,56 @@ describe('the tuning block', () => {
     }
     expect(unread).toEqual([]);
   });
+
+  /*
+   * And the number a timer runs on is one of them.
+   *
+   * `setInterval` is the polling primitive, and a period typed at the call is
+   * exactly the constant this block exists to keep out of the code that acts
+   * on it. Every period in the tree is a *name* — `tuning()`, or the player's
+   * own configuration (a rule's `every`, a routine's idle threshold) — and
+   * this holds it by walking the calls rather than counting them: a cap of ten
+   * was proposed (2026-09-11, todo 01) and declined, because a count cannot
+   * tell a clock from a poll, and a poll on a named period is one somebody can
+   * tune. Tests are exempt; a fake host may tick however it likes.
+   */
+  it('names every interval period, never a bare number', () => {
+    // The detector on a snippet it must and must not flag: the positive
+    // control an empty list of offenders needs before it can mean anything.
+    const probe = ts.createSourceFile(
+      'probe.ts',
+      [
+        'setInterval(f, 1000);',
+        'window.setInterval(f, 60 * 1000);',
+        'setInterval(f, tuning().files.pollIntervalMs);',
+        'setInterval(f, every);'
+      ].join('\n'),
+      ts.ScriptTarget.Latest,
+      true
+    );
+    expect(barePeriods(probe)).toEqual([1, 2]);
+
+    const offenders: string[] = [];
+    const files = walk(path.resolve('src')).filter(
+      (file) => /\.tsx?$/.test(file) && !file.includes('__tests__') && !/\.test\.tsx?$/.test(file)
+    );
+    for (const file of files) {
+      const text = fs.readFileSync(file, 'utf8');
+      // A file without the word has no call to walk.
+      if (!text.includes('setInterval')) continue;
+      const source = ts.createSourceFile(
+        file,
+        text,
+        ts.ScriptTarget.Latest,
+        true,
+        file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      );
+      for (const line of barePeriods(source)) {
+        offenders.push(`${path.relative(process.cwd(), file)}:${line}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });
 
 /** Every file under a directory, recursively. */
@@ -200,4 +251,34 @@ function walk(dir: string): string[] {
     const full = path.join(dir, entry.name);
     return entry.isDirectory() ? walk(full) : [full];
   });
+}
+
+/** The line of every `setInterval` in a file whose period is literals through and through. */
+function barePeriods(source: ts.SourceFile): number[] {
+  const lines: number[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && calleeOf(node) === 'setInterval') {
+      const period = node.arguments[1];
+      if (period === undefined || !namesSomething(period)) {
+        lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return lines;
+}
+
+/** What a call is a call to: `setInterval(...)` and `window.setInterval(...)` alike. */
+function calleeOf(call: ts.CallExpression): string | null {
+  const callee = call.expression;
+  if (ts.isIdentifier(callee)) return callee.text;
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  return null;
+}
+
+/** Whether an expression names anything — a call, a field, a variable — or is literals through and through. */
+function namesSomething(node: ts.Node): boolean {
+  if (ts.isIdentifier(node)) return true;
+  return ts.forEachChild(node, namesSomething) === true;
 }

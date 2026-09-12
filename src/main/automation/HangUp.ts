@@ -36,6 +36,15 @@ import { attacksOnSight } from '../../shared/mobs';
  * disagree the wire wins — but nobody has asked the wire, so the safe direction
  * is the only one worth acting on.
  */
+/** The facts `assess` words, and `clean` only counts. */
+interface HangUpFindings {
+  inCombat: boolean;
+  mobEngaged: boolean;
+  onSight: string[];
+  unplaced: string[];
+  pvp: { name: string | null; minutes: number; clearInMs: number } | null;
+}
+
 export interface HangUpAssessment {
   /** True when no reason to expect a penalty was found. Never "safe". */
   clean: boolean;
@@ -152,16 +161,16 @@ export class HangUpWatch {
     }
   }
 
-  /** Every reason found not to hang up, or none. */
-  assess(state: CharacterState, now: number): HangUpAssessment {
-    const reasons: string[] = [];
-    let clearInMs: number | null = null;
-
-    if (state.inCombat) reasons.push(t('automation.hangUp.reasonInCombat'));
-
-    if (this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS) {
-      reasons.push(t('automation.hangUp.reasonMobEngaged'));
-    }
+  /**
+   * What stands against hanging up, unworded.
+   *
+   * One set of tests for both readers below: the guard field asks on every
+   * status line and needs a boolean, the settings path asks on a click and
+   * needs the sentences. Wording five reasons per line for a boolean was 4%
+   * of the parse path (2026-09-11).
+   */
+  private findings(state: CharacterState, now: number): HangUpFindings {
+    const mobEngaged = this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS;
 
     /*
      * `ShouldMobAttackTarget` is set the moment a monster decides to attack, a
@@ -183,27 +192,57 @@ export class HangUpWatch {
       if (verdict === true && !onSight.includes(who.name)) onSight.push(who.name);
       else if (verdict === null && !unplaced.includes(who.name)) unplaced.push(who.name);
     }
-    if (onSight.length > 0) {
-      reasons.push(t('automation.hangUp.reasonMobOnSight', { names: onSight.join(', ') }));
-    }
-    if (unplaced.length > 0) {
-      reasons.push(t('automation.hangUp.reasonMobUnplaced', { names: unplaced.join(', ') }));
-    }
 
+    let pvp: HangUpFindings['pvp'] = null;
     if (this.lastPvpAt !== null) {
       const since = now - this.lastPvpAt;
       if (since < PVP_WINDOW_MS) {
-        const minutes = Math.ceil((PVP_WINDOW_MS - since) / 60000);
-        reasons.push(
-          this.lastPvpWith !== null
-            ? t('automation.hangUp.reasonPvpNamed', { name: this.lastPvpWith, minutes })
-            : t('automation.hangUp.reasonPvpUnnamed', { minutes })
-        );
-        clearInMs = PVP_WINDOW_MS - since;
+        pvp = {
+          name: this.lastPvpWith,
+          minutes: Math.ceil((PVP_WINDOW_MS - since) / 60000),
+          clearInMs: PVP_WINDOW_MS - since
+        };
       }
     }
 
-    return { clean: reasons.length === 0, reasons, clearInMs };
+    return { inCombat: state.inCombat, mobEngaged, onSight, unplaced, pvp };
+  }
+
+  /** Whether no reason to expect a penalty was found. Never "safe". */
+  clean(state: CharacterState, now: number): boolean {
+    const found = this.findings(state, now);
+    return (
+      !found.inCombat &&
+      !found.mobEngaged &&
+      found.onSight.length === 0 &&
+      found.unplaced.length === 0 &&
+      found.pvp === null
+    );
+  }
+
+  /** Every reason found not to hang up, in words, or none. */
+  assess(state: CharacterState, now: number): HangUpAssessment {
+    const found = this.findings(state, now);
+    const reasons: string[] = [];
+    if (found.inCombat) reasons.push(t('automation.hangUp.reasonInCombat'));
+    if (found.mobEngaged) reasons.push(t('automation.hangUp.reasonMobEngaged'));
+    if (found.onSight.length > 0) {
+      reasons.push(t('automation.hangUp.reasonMobOnSight', { names: found.onSight.join(', ') }));
+    }
+    if (found.unplaced.length > 0) {
+      reasons.push(t('automation.hangUp.reasonMobUnplaced', { names: found.unplaced.join(', ') }));
+    }
+    if (found.pvp !== null) {
+      reasons.push(
+        found.pvp.name !== null
+          ? t('automation.hangUp.reasonPvpNamed', {
+              name: found.pvp.name,
+              minutes: found.pvp.minutes
+            })
+          : t('automation.hangUp.reasonPvpUnnamed', { minutes: found.pvp.minutes })
+      );
+    }
+    return { clean: reasons.length === 0, reasons, clearInMs: found.pvp?.clearInMs ?? null };
   }
 }
 

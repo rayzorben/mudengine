@@ -35,6 +35,18 @@
  * was seen in the room is stamped only when *this* block replaced the occupant
  * list: a listing, an arrival, a departure. That is the difference the reducer
  * produced, read the same way everything else here is.
+ *
+ * ## And why each fold runs only when what it reads was replaced
+ *
+ * The same rule, applied to the cost rather than the timestamp. `observe`
+ * hands the registry back unchanged when a sighting says nothing new, so
+ * folding the whole roster on every block always produced the same registry
+ * — at an `observe` per online player per line, two allocations and a
+ * twenty-field compare each. On a real capture that was 70% of everything
+ * the main thread spent per line (2026-09-11). Every fold below is gated on
+ * the reference of the state it reads: the reducer replaces the roster, the
+ * room, the party and the fight only on the blocks that change them, and a
+ * block that changed none of them has nothing for that fold to say.
  */
 
 import type { Block } from '../../shared/blocks';
@@ -82,6 +94,8 @@ export function trackPlayers(
   const self = state.name?.toLowerCase() ?? null;
   /** This character is not one of the other players. */
   const other = (name: string): boolean => name.trim().length > 0 && name.toLowerCase() !== self;
+  // Learning this character's own name changes who counts as *other*.
+  const named = state.name !== previous.name;
 
   /*
    * A departure marks the record offline and keeps it. Somebody who logged off
@@ -100,7 +114,9 @@ export function trackPlayers(
    * lower-casing is the duplicate-key bug this module exists to prevent, in the
    * one place where getting it wrong marks a live player offline.
    */
-  const listed = new Set(state.online.map((entry) => playerKey(entry.name)));
+  let listedNames: Set<string> | null = null;
+  const listed = (): Set<string> =>
+    (listedNames ??= new Set(state.online.map((entry) => playerKey(entry.name))));
 
   /*
    * The roster is authoritative for the fields it carries, so it is folded
@@ -120,26 +136,28 @@ export function trackPlayers(
    * this project refuses. The rest of the roster's fields are still folded —
    * only the claim the listing already settled is left alone.
    */
-  const presenceSettled = block.type === 'gang-roster';
-  for (const entry of state.online) {
-    if (!other(entry.name)) continue;
-    next = observe(next, entry.name, at, {
-      /*
-       * A provisional entry comes from an arrival broadcast, which carries no
-       * alignment — `undefined` leaves whatever a listing already established
-       * rather than blanking it. That distinction is the rule `observe`
-       * documents, and this is the case it exists for: without it, every
-       * arrival broadcast would erase the roster's own knowledge one name at a
-       * time.
-       */
-      alignment: entry.provisional ? undefined : entry.alignment,
-      title: entry.provisional ? undefined : entry.title,
-      flags: entry.provisional ? undefined : entry.flags,
-      // A look can name a gang on somebody a listing has not reached yet; a
-      // provisional row that names none has simply not said.
-      gang: entry.provisional ? (entry.gang ?? undefined) : entry.gang,
-      online: presenceSettled ? undefined : true
-    });
+  if (state.online !== previous.online || named) {
+    const presenceSettled = block.type === 'gang-roster';
+    for (const entry of state.online) {
+      if (!other(entry.name)) continue;
+      next = observe(next, entry.name, at, {
+        /*
+         * A provisional entry comes from an arrival broadcast, which carries no
+         * alignment — `undefined` leaves whatever a listing already established
+         * rather than blanking it. That distinction is the rule `observe`
+         * documents, and this is the case it exists for: without it, every
+         * arrival broadcast would erase the roster's own knowledge one name at a
+         * time.
+         */
+        alignment: entry.provisional ? undefined : entry.alignment,
+        title: entry.provisional ? undefined : entry.title,
+        flags: entry.provisional ? undefined : entry.flags,
+        // A look can name a gang on somebody a listing has not reached yet; a
+        // provisional row that names none has simply not said.
+        gang: entry.provisional ? (entry.gang ?? undefined) : entry.gang,
+        online: presenceSettled ? undefined : true
+      });
+    }
   }
 
   /*
@@ -166,7 +184,7 @@ export function trackPlayers(
    *
    * `lastSeen` is untouched — `offlineUnlisted` has that argument.
    */
-  if (block.type === 'who-list') next = offlineUnlisted(next, listed);
+  if (block.type === 'who-list') next = offlineUnlisted(next, listed());
 
   /*
    * Who is in the room, and *where* the room is. This and the combat sighting
@@ -180,16 +198,18 @@ export function trackPlayers(
    * stamp from the block that did, and a record somehow placed without one
    * takes this block's time rather than showing a room with no time beside it.
    */
-  const relisted = state.room.occupants !== previous.room.occupants;
-  for (const occupant of state.room.occupants) {
-    if (occupant.kind !== 'player' || !other(occupant.name)) continue;
-    const held = next[occupant.name.toLowerCase()];
-    next = observe(next, occupant.name, at, {
-      lastRoom: state.room.number,
-      lastRoomName: state.room.name,
-      lastRoomAt: relisted || held?.lastRoomAt == null ? at : undefined,
-      online: true
-    });
+  if (state.room !== previous.room || named) {
+    const relisted = state.room.occupants !== previous.room.occupants;
+    for (const occupant of state.room.occupants) {
+      if (occupant.kind !== 'player' || !other(occupant.name)) continue;
+      const held = next[occupant.name.toLowerCase()];
+      next = observe(next, occupant.name, at, {
+        lastRoom: state.room.number,
+        lastRoomName: state.room.name,
+        lastRoomAt: relisted || held?.lastRoomAt == null ? at : undefined,
+        online: true
+      });
+    }
   }
 
   /*
@@ -198,49 +218,51 @@ export function trackPlayers(
    * member has not answered, so a party listing does not erase an answer given
    * a minute ago — the same rule as the alignment above.
    */
-  for (const member of state.party.members) {
-    if (!other(member.name)) continue;
+  if (state.party.members !== previous.party.members || named) {
+    for (const member of state.party.members) {
+      if (!other(member.name)) continue;
+      /*
+       * `vitalsAt` is passed only when the figures are **new**, never on every
+       * listing that repeats them.
+       *
+       * A party listing arrives far more often than an `@health` answer, and
+       * stamping it with the current block's time on each one would age a
+       * five-minute-old quotation back to "just now" — the exact lie `vitalsAt`
+       * exists to prevent. Relying on `observe`'s identity return to discard the
+       * write would be correct only by accident of an unrelated optimisation, and
+       * would start moving the moment `same()` gained a field.
+       */
+      const held = next[member.name.toLowerCase()];
+      const fresh =
+        member.vitals !== null &&
+        (held?.vitals == null ||
+          held.vitals.hp !== member.vitals.hp ||
+          held.vitals.hpMax !== member.vitals.hpMax ||
+          held.vitals.mana !== member.vitals.mana ||
+          held.vitals.manaMax !== member.vitals.manaMax);
+
+      next = observe(next, member.name, at, {
+        inParty: true,
+        online: true,
+        vitals: member.vitals ?? undefined,
+        vitalsAt: fresh ? at : undefined
+      });
+    }
+
     /*
-     * `vitalsAt` is passed only when the figures are **new**, never on every
-     * listing that repeats them.
+     * Somebody who has left the party is still a player worth knowing about, so
+     * the flag is cleared rather than the record dropped.
      *
-     * A party listing arrives far more often than an `@health` answer, and
-     * stamping it with the current block's time on each one would age a
-     * five-minute-old quotation back to "just now" — the exact lie `vitalsAt`
-     * exists to prevent. Relying on `observe`'s identity return to discard the
-     * write would be correct only by accident of an unrelated optimisation, and
-     * would start moving the moment `same()` gained a field.
+     * **Only when the party has actually changed shape**, not on every block. The
+     * sweep is O(registry) and the registry grows for the whole session, so
+     * running it per block made every line of somebody else's chat cost a walk of
+     * every name ever seen. `partySize` is carried in the fold and compared
+     * first: a listing that repeats the same members does no work at all.
      */
-    const held = next[member.name.toLowerCase()];
-    const fresh =
-      member.vitals !== null &&
-      (held?.vitals == null ||
-        held.vitals.hp !== member.vitals.hp ||
-        held.vitals.hpMax !== member.vitals.hpMax ||
-        held.vitals.mana !== member.vitals.mana ||
-        held.vitals.manaMax !== member.vitals.manaMax);
-
-    next = observe(next, member.name, at, {
-      inParty: true,
-      online: true,
-      vitals: member.vitals ?? undefined,
-      vitalsAt: fresh ? at : undefined
-    });
-  }
-
-  /*
-   * Somebody who has left the party is still a player worth knowing about, so
-   * the flag is cleared rather than the record dropped.
-   *
-   * **Only when the party has actually changed shape**, not on every block. The
-   * sweep is O(registry) and the registry grows for the whole session, so
-   * running it per block made every line of somebody else's chat cost a walk of
-   * every name ever seen. `partySize` is carried in the fold and compared
-   * first: a listing that repeats the same members does no work at all.
-   */
-  const stale = partyLeavers(next, state);
-  for (const record of stale) {
-    next = observe(next, record.name, record.lastSeen, { inParty: false });
+    const stale = partyLeavers(next, state);
+    for (const record of stale) {
+      next = observe(next, record.name, record.lastSeen, { inParty: false });
+    }
   }
 
   // Speaking is a sighting: it proves they are logged in, and nothing else.
@@ -269,22 +291,24 @@ export function trackPlayers(
    * behind it is as likely to be a quest NPC as a person, and inventing a
    * player out of a monster is what this whole card must not do.
    */
-  for (const attacker of state.combat.attackers) {
-    if (!other(attacker)) continue;
-    if (!listed.has(attacker.toLowerCase())) continue;
-    /*
-     * Stamped with the last blow rather than this block's time, for the reason
-     * the room sighting gives: `attackers` persists for the whole fight, and
-     * the fight is proved live by its blows, not by whatever line happens to
-     * arrive while it is on. `lastBlowAt` moves only when the reducer saw a
-     * blow, which is a block that republishes the state anyway.
-     */
-    next = observe(next, attacker, at, {
-      lastRoom: state.room.number,
-      lastRoomName: state.room.name,
-      lastRoomAt: state.combat.lastBlowAt ?? at,
-      online: true
-    });
+  if (state.combat !== previous.combat || state.room !== previous.room || named) {
+    for (const attacker of state.combat.attackers) {
+      if (!other(attacker)) continue;
+      if (!listed().has(attacker.toLowerCase())) continue;
+      /*
+       * Stamped with the last blow rather than this block's time, for the reason
+       * the room sighting gives: `attackers` persists for the whole fight, and
+       * the fight is proved live by its blows, not by whatever line happens to
+       * arrive while it is on. `lastBlowAt` moves only when the reducer saw a
+       * blow, which is a block that republishes the state anyway.
+       */
+      next = observe(next, attacker, at, {
+        lastRoom: state.room.number,
+        lastRoomName: state.room.name,
+        lastRoomAt: state.combat.lastBlowAt ?? at,
+        online: true
+      });
+    }
   }
 
   return next;

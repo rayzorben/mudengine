@@ -163,14 +163,14 @@ describe('what the record says about a monster', () => {
     }
     return printed;
   };
-  it('adds up the file and what is still held, across the printed spellings', () => {
+  it('adds up the file and what is still held, across the printed spellings', async () => {
     const log = new FightLog(file);
     log.record(fight({ mob: 'giant rat', mine: 30, blows: 6, killed: true, ms: 4000, at: 1 }));
     log.flush();
     log.record(
       fight({ mob: 'small giant rat', mine: 10, blows: 2, killed: false, ms: null, at: 2 })
     );
-    expect(log.summary('giant rat', resolve)).toEqual({
+    expect(await log.summary('giant rat', resolve)).toEqual({
       fights: 2,
       kills: 1,
       meanMine: 20,
@@ -180,27 +180,69 @@ describe('what the record says about a monster', () => {
       latest: 2
     });
     // Null is no fights, not zero of everything.
-    expect(log.summary('cave bear', resolve)).toBeNull();
+    expect(await log.summary('cave bear', resolve)).toBeNull();
     // With no realm table at all, a spelling is itself: nothing folds.
-    expect(log.summary('giant rat')?.fights).toBe(1);
+    expect((await log.summary('giant rat'))?.fights).toBe(1);
     log.dispose();
   });
 
   /* `mobNameCandidates` is an order, and its safety is the caller stopping at
      the first name the realm knows: a rat king the realm names is its own
      monster, and fifty of its fights must not become the rat's. */
-  it('keeps a longer monster the realm names out of a shorter one it also names', () => {
+  it('keeps a longer monster the realm names out of a shorter one it also names', async () => {
     const log = new FightLog(file);
     log.record(fight({ mob: 'giant rat king', mine: 100, at: 1 }));
     log.record(fight({ mob: 'giant rat', mine: 10, at: 2 }));
     log.record(fight({ mob: 'small giant rat', mine: 12, at: 3 }));
-    expect(log.summary('giant rat', resolve)?.fights).toBe(2);
-    expect(log.summary('giant rat king', resolve)?.fights).toBe(1);
-    expect(log.summary('rat', resolve)).toBeNull();
+    expect((await log.summary('giant rat', resolve))?.fights).toBe(2);
+    expect((await log.summary('giant rat king', resolve))?.fights).toBe(1);
+    expect(await log.summary('rat', resolve)).toBeNull();
     // One read for the lot.
-    expect([...log.summaries(['giant rat', 'rat', 'cave bear'], resolve).keys()]).toEqual([
+    expect([...(await log.summaries(['giant rat', 'rat', 'cave bear'], resolve)).keys()]).toEqual([
       'giant rat'
     ]);
+    log.dispose();
+  });
+
+  it('reads what earlier sessions wrote once, and never counts its own writes twice', async () => {
+    /*
+     * The whole file was gunzipped and parsed on every click: 41,679 fights,
+     * a second of the socket's thread. Now the part written before this
+     * instance is folded once, off the thread, and this instance's own
+     * fights are folded as they happen — including the ones it goes on to
+     * flush into the same file.
+     */
+    vi.useRealTimers();
+    const earlier = new FightLog(file);
+    earlier.record(fight({ mob: 'giant rat', mine: 30, at: 1 }));
+    earlier.record(fight({ mob: 'giant rat', mine: 10, at: 2 }));
+    earlier.dispose();
+
+    const log = new FightLog(file);
+    log.record(fight({ mob: 'giant rat', mine: 20, at: 3 }));
+    expect(await log.summary('giant rat')).toMatchObject({ fights: 3, meanMine: 20, latest: 3 });
+    log.flush();
+    expect((await log.summary('giant rat'))?.fights).toBe(3);
+    log.record(fight({ mob: 'giant rat', mine: 40, at: 4 }));
+    expect(await log.summary('giant rat')).toMatchObject({ fights: 4, meanMine: 25, latest: 4 });
+    log.dispose();
+
+    // And the file itself holds all four for the next session.
+    const later = new FightLog(file);
+    expect((await later.summary('giant rat'))?.fights).toBe(4);
+    later.dispose();
+  });
+
+  it('answers as empty, out loud, from a record it cannot read', async () => {
+    vi.useRealTimers();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, Buffer.from('not a gzip stream at all'));
+    const notices: string[] = [];
+    const log = new FightLog(file, { notice: (message) => notices.push(message) });
+    log.record(fight({ mob: 'giant rat', at: 5 }));
+    expect((await log.summary('giant rat'))?.fights).toBe(1);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain('could not be read');
     log.dispose();
   });
 });

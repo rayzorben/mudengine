@@ -211,6 +211,54 @@ describe('SessionManager line framing', () => {
     expect(lines.at(-1)?.plain).toBe('Obvious exits: north, south');
   });
 
+  it('frames a finished prompt the moment it arrives, not after the quiet period', async () => {
+    /*
+     * The status line carries the vitals and credits the next queued command,
+     * and nothing follows a finished `]:` on the wire but this client's own
+     * echo (a 50MB GreaterMUD capture, 2026-09-11: 27,166 prompt-ending
+     * chunks, every continuation an echo). Waiting out the quiet period read
+     * every prompt a median 127ms late and half of them the whole 150ms.
+     */
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    const sent = Date.now();
+    socket.write(
+      `You are in a room.\r\n${PROMPT_REPAINT}\x1b[0;36m[HP=\x1b[1;36m100\x1b[0;36m/MA=\x1b[1;36m50\x1b[0;36m]:`
+    );
+
+    await until(() => manager!.character.vitals.hp === 100);
+    expect(Date.now() - sent).toBeLessThan(IDLE_FLUSH_MS);
+    expect(lines.at(-1)?.plain).toBe('[HP=100/MA=50]:');
+    expect(lines.at(-1)?.terminator).toBe('flush');
+  });
+
+  it('still waits when something follows the colon, and once the realm puts its state there', async () => {
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    // The echo glued to the prompt is not a finished prompt: the quiet period
+    // frames it, as it always did.
+    socket.write('[HP=100/MA=50]:n');
+    await new Promise((resolve) => setTimeout(resolve, IDLE_FLUSH_MS / 3));
+    expect(lines.filter((line) => line.plain.startsWith('[HP='))).toHaveLength(0);
+    await until(() => manager!.character.vitals.hp === 100);
+    expect(lines.at(-1)?.plain).toBe('[HP=100/MA=50]:n');
+
+    // A realm that writes its state after the colon: from then on a bare `]:`
+    // waits for whatever the realm puts after it.
+    socket.write(`${PROMPT_REPAINT}[HP=90/MA=50]: (Resting)`);
+    await until(() => manager!.character.vitals.hp === 90);
+    socket.write(`${PROMPT_REPAINT}[HP=80/MA=50]:`);
+    await new Promise((resolve) => setTimeout(resolve, IDLE_FLUSH_MS / 3));
+    expect(manager!.character.vitals.hp).toBe(90);
+    await until(() => manager!.character.vitals.hp === 80);
+  });
+
   it('waits for the second half of a prompt the server writes in two pieces', async () => {
     /*
      * The bearfather BBS writes `[HP=40/40,…,S= (Resting)` and then ` ]:` a
