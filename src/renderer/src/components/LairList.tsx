@@ -12,6 +12,7 @@
  */
 import { Fragment } from 'react';
 
+import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { Alignment, CharacterState } from '@shared/character';
@@ -64,7 +65,19 @@ export function lairCopyText(lair: WorldLair): string {
             ? t('cards.room.lair.upTo.one')
             : t('cards.room.lair.upTo.many', { max: lair.max })
         }`;
-  return [head, ...lair.mobs.map((mob) => `${mob.name} — ${healthOf(mob)}`)].join('\n');
+  /*
+   * The number goes into the paste because it is drawn on the rows: a copy
+   * that dropped it would be the card copying something other than the face
+   * on screen, and the number is the half of a pasted lair that is worth
+   * anything outside this client.
+   */
+  return [
+    head,
+    ...lair.mobs.map((mob) => {
+      const number = entityNumberText(mob);
+      return `${mob.name}${number === null ? '' : ` ${number}`} — ${healthOf(mob)}`;
+    })
+  ].join('\n');
 }
 
 export default function LairList({ lair, mine, inspect }: LairListProps) {
@@ -113,6 +126,11 @@ export default function LairList({ lair, mine, inspect }: LairListProps) {
                 ) : (
                   <span className="occupant mob">{mob.name}</span>
                 )}
+                {/* The realm's own row, beside the name rather than in the
+                    value column: a lair descriptor *names rows*, so this is
+                    the one place a monster's number is certain, and it says
+                    which of two `gnoll scout` lines is which. */}
+                <EntityNumber of={mob} />
               </dt>
               <dd>
                 {healthOf(mob)}

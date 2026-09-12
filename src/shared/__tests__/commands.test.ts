@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMMAND_WORDS,
   NOT_COMMANDS,
+  breaksStealth,
   commandOf,
   movementEffect,
   opensStatScreen
@@ -159,5 +160,87 @@ describe('the command that opens the stat screen', () => {
   it('is not another word that happens to take the same argument', () => {
     expect(opensStatScreen('set stats')).toBe(false);
     expect(opensStatScreen('stats')).toBe(false);
+  });
+});
+
+/*
+ * The commands that put a sneaking character back in plain sight, which the
+ * server never says a word about. Every expectation here is a site in
+ * `BreakStealth()`'s caller list, cited beside `STEALTH_BREAKING`.
+ */
+describe('what costs a character its stealth', () => {
+  it('is every way of opening a fight, in any spelling', () => {
+    for (const command of ['a rat', 'bs fat mutant', 'aa gnoll', 'allout gnoll', 'kick rat']) {
+      expect(breaksStealth(command), command).toBe(true);
+    }
+  });
+
+  it('is a cast, an item’s spell, and the sitting down that follows', () => {
+    for (const command of ['c mm rat', 'cast bless', 'use wand', 'rest', 'med']) {
+      expect(breaksStealth(command), command).toBe(true);
+    }
+  });
+
+  it('is the shopping and the dressing', () => {
+    for (const command of ['buy torch', 'give gold to Soul', 'wear ring', 'ready sword']) {
+      expect(breaksStealth(command), command).toBe(true);
+    }
+  });
+
+  /*
+   * The walker's answer to a hidden edge is `search <direction>`, and that goes
+   * to the exit's own `SearchExit`, which breaks nothing. Only the bare form
+   * reaches `Player.TrySearch`.
+   */
+  it('is a bare search and not a directional one', () => {
+    expect(breaksStealth('search')).toBe(true);
+    expect(breaksStealth('sea')).toBe(true);
+    expect(breaksStealth('search n')).toBe(false);
+    expect(breaksStealth('search chest')).toBe(false);
+  });
+
+  it('is not a step, a look, or anything else that only reads', () => {
+    for (const command of ['n', 'ne', 'l', 'i', 'st', 'exp', 'rm', 'who', 'sn']) {
+      expect(breaksStealth(command), command).toBe(false);
+    }
+  });
+
+  /*
+   * The barrier work breaks stealth too and is deliberately absent: it is read
+   * from `door-changed`, which knows the one branch that does not.
+   */
+  it('leaves the barrier work to the sentence that answers it', () => {
+    for (const command of ['open n', 'close n', 'pick n', 'lock n']) {
+      expect(breaksStealth(command), command).toBe(false);
+    }
+  });
+
+  /*
+   * `CommManager.CheckCommandForComm` runs before the table, and only the two
+   * the room can hear break stealth.
+   */
+  it('is what the room hears, and not what is said elsewhere', () => {
+    expect(breaksStealth('.hello')).toBe(true);
+    expect(breaksStealth('"hello')).toBe(true);
+    expect(breaksStealth('/Soul @health')).toBe(false);
+    expect(breaksStealth('>Soul hello')).toBe(false);
+    expect(breaksStealth('-hello')).toBe(false);
+    expect(breaksStealth("'hello")).toBe(false);
+  });
+
+  /*
+   * A word the table has no entry for is said out loud or performed as an
+   * emote — both break stealth. A text exit is the third thing it can be, and
+   * a move that kept stealth prints `Sneaking...` behind it.
+   */
+  it('assumes a word the table lacks was said out loud', () => {
+    expect(breaksStealth('smile')).toBe(true);
+    expect(breaksStealth('hello there')).toBe(true);
+    expect(breaksStealth('go manhole')).toBe(true);
+  });
+
+  it('says nothing about an empty line, which is not a command', () => {
+    expect(breaksStealth('')).toBe(false);
+    expect(breaksStealth('   ')).toBe(false);
   });
 });

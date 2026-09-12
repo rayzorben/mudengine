@@ -247,11 +247,30 @@ describe('combat', () => {
     ).toBe('jumpkicking');
   });
 
-  /* Backstab refuses on the *weapon*, so the sentence has a different shape. */
-  it('reads the backstab refusal, which is worded differently', () => {
-    expect(expectType('You may not backstab with this weapon!', 'attack-refused')['skill']).toBe(
-      'backstab'
-    );
+  /*
+   * Backstab refuses on the *weapon*, so the sentence has a different shape —
+   * and `weapon` is captured because that is what the reader has to know: a
+   * refusal about equipment lasts as long as the equipment
+   * (`AutoCombat.refused`).
+   *
+   * Two wordings, one fact. `You cannot backstab with this weapon.` is the
+   * corpus's (`captures/005:538`, `captures/106:12`, both MajorMUD) and
+   * `You may not backstab with this weapon!` is GreaterMUD's, live 2026-09-11.
+   */
+  it('reads the backstab refusal in both families’ wording', () => {
+    for (const line of [
+      'You may not backstab with this weapon!',
+      'You cannot backstab with this weapon.'
+    ]) {
+      const groups = expectType(line, 'attack-refused');
+      expect(groups['skill'], line).toBe('backstab');
+      expect(groups['weapon'], line).toBe('this weapon');
+    }
+    // And the class refusals carry no weapon, which is how the two are told
+    // apart without matching the sentence a second time.
+    expect(
+      expectType("You don't know the first thing about bashing!", 'attack-refused')['weapon']
+    ).toBeUndefined();
   });
 
   /*

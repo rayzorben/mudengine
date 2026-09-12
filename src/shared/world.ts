@@ -1613,8 +1613,14 @@ export interface RoomBrief {
   place?: { kind: ShopKind; name: string };
   /** What the realm says can spawn here. Absent where the room is no lair. */
   lair?: WorldLair;
-  /** `Rooms.NPC` — who lives here, when the realm ties somebody to the room. */
-  npc?: string;
+  /**
+   * `Rooms.NPC` — who lives here, when the realm ties somebody to the room.
+   *
+   * The row as well as the name, because `Rooms.NPC` **is** a row number: a
+   * resident is the one monster in this panel whose number is never in
+   * question, and the id was in scope and thrown away until 2026-09-11.
+   */
+  npc?: { id: number; name: string };
   /** The spell the realm casts on whoever stands here, named. */
   spell?: WorldSpell;
   /**

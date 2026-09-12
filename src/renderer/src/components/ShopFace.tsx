@@ -1,4 +1,5 @@
 import CardTable, { type Column } from './CardTable';
+import EntityNumber from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
@@ -238,6 +239,21 @@ export default function ShopFace({
           )}
         </>
       )
+    },
+    {
+      /*
+       * The realm's own `Items` row, as it is in the pack and for the same
+       * two reasons: findable, and sortable. `StockRow.id` is null for a row
+       * the counter listed and the file does not know, which is exactly the
+       * case the empty cell is honest about — the shop is selling something
+       * this client's data has never heard of.
+       */
+      id: 'number',
+      label: t('entity.numberColumn'),
+      name: t('entity.numberColumnLabel'),
+      numeric: true,
+      value: (row) => row.id,
+      cell: (row) => (row.id === null ? null : <EntityNumber of={{ id: row.id }} />)
     },
     {
       /*

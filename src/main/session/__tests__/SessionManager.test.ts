@@ -236,6 +236,37 @@ describe('SessionManager line framing', () => {
     expect(manager.character.vitals.resting).toBe(true);
   });
 
+  it('frames what the realm appends to a finished prompt without waiting the prompt hold', async () => {
+    /*
+     * The realm writes what it volunteers straight onto the prompt row with no
+     * terminator between them — `[HP=127/MA=156]:Broadcast from Mist "dame"`,
+     * captures/025 line 313 — so the sentence is only ever framed by the idle
+     * flush. Where the prompt itself is one `STATUS_LINE` does not accept —
+     * `[hp=` lower-cased, captures/076, 43 times — the buffered text read as a
+     * prompt *still arriving*, so it waited `promptHoldMs`; and because the
+     * flush is re-armed by every chunk, a realm that kept talking pushed the
+     * deadline out again each time. The broadcast reached the Talk card
+     * seconds after it was said, or not until the room went quiet.
+     *
+     * The hold is left long here so that finishing quickly is the assertion:
+     * arriving well inside it proves the tail is no longer held for a prompt.
+     */
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      session: { ...DEFAULT_INTERNAL.tuning.session, promptHoldMs: IDLE_FLUSH_MS * 20 }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    socket.write('[hp=127/ma=156]:Broadcast from Mist "dame"');
+
+    // The positive control is the line arriving at all, well inside the hold.
+    await until(() => lines.length >= 1, IDLE_FLUSH_MS * 8);
+    expect(lines[0]?.plain).toBe('[hp=127/ma=156]:Broadcast from Mist "dame"');
+  });
+
   it('gives up on a prompt the server never finishes', async () => {
     const { sink, lines } = collect();
     manager = new SessionManager(sink);

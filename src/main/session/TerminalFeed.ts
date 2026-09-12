@@ -194,14 +194,38 @@ interface HeldLine {
 const PROMPT_OPENING = /^\s*\[(?:HP|H)=/i;
 
 /**
- * Whether a tail has opened like a prompt: the shape the tolerant pattern
- * begins with, whether or not the rest has arrived. Shared with the idle
- * flush, which must not frame half a prompt as a line any more than the feed
- * may paint half of one — the bearfather BBS writes `[HP=…,S= (Resting)` and
- * ` ]:` a tenth of a second apart (`tuning.session.promptHoldMs`).
+ * A prompt that has closed its bracket and had something written after it.
+ *
+ * `]` then a non-space character: the server finished the prompt and carried
+ * straight on, which is what `tailAfterPrompt` reads on the framed line. The
+ * bracket must be closed for this to fire, so `[HP=…,S= (Resting)` — where
+ * the parenthesised state precedes the `]` that has not arrived — is not it.
+ */
+const PROMPT_PASSED = /\][^\s]|\]\s+\S/;
+
+/**
+ * Whether a tail has opened like a prompt *and is still being written*: the
+ * shape the tolerant pattern begins with, whether or not the rest has
+ * arrived. Shared with the idle flush, which must not frame half a prompt as
+ * a line any more than the feed may paint half of one — the bearfather BBS
+ * writes `[HP=…,S= (Resting)` and ` ]:` a tenth of a second apart
+ * (`tuning.session.promptHoldMs`).
+ *
+ * **A prompt the server has already written past is not still arriving.** The
+ * realm appends what it volunteers straight onto the prompt row with no
+ * terminator between them (`[HP=127/MA=156]:Broadcast from Mist "dame"`,
+ * captures/025 line 313), and that sentence is only framed by the idle flush.
+ * Where the prompt is one `STATUS_LINE` accepts, the flush's own early return
+ * already released it; where it is not — `[hp=` lower-cased, captures/076, 43
+ * times — the buffer read as a prompt still opening and waited
+ * `promptHoldMs`. Because `armIdleFlush` re-arms on every chunk, each further
+ * byte from the realm pushed that deadline out again, so on a talkative realm
+ * the broadcast reached the Talk card seconds late, or not until the room
+ * went quiet. Once the bracket has closed and something follows it, there is
+ * nothing left to wait for.
  */
 export function promptOpened(plain: string): boolean {
-  return PROMPT_OPENING.test(plain);
+  return PROMPT_OPENING.test(plain) && !PROMPT_PASSED.test(plain);
 }
 /** A prompt that has closed its bracket and not yet its colon. */
 const PROMPT_UNCLOSED = /\]\s*$/;

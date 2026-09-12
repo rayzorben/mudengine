@@ -2,9 +2,11 @@ import type { SupplyList } from './SupplyControls';
 import { memo, useEffect, useMemo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import EntityNumber from './EntityNumber';
 import ReferenceDetail, {
   entryFigure,
   entryKey,
+  entryNumber,
   entryWord,
   flattenLookup,
   type ReferenceEntry
@@ -177,6 +179,11 @@ function ReferenceCard({
                 >
                   <span className="what">{entry.name}</span>
                   <span className="kind">{entryWord(entry)}</span>
+                  {/* Beside the kind rather than at the end: the realm's
+                      number says *which row this is* and belongs with the
+                      word that says what kind of row it is, while the figure
+                      at the end is the one thing the rows are compared by. */}
+                  <EntityNumber of={entryNumber(entry)} />
                   {/* One figure per row — the one that says how big it is. */}
                   {figure !== null && <span className="fig">{figure}</span>}
                 </li>

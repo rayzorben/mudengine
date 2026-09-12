@@ -2,7 +2,13 @@ import type { SupplyList } from './SupplyControls';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import ReferenceDetail, { entryWord, flattenLookup, type ReferenceEntry } from './ReferenceDetail';
+import ReferenceDetail, {
+  entryNumber,
+  entryWord,
+  flattenLookup,
+  type ReferenceEntry
+} from './ReferenceDetail';
+import EntityNumber from './EntityNumber';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import type { RealmFamily } from '@shared/character';
 import { type PopoverAnchor } from '../lib/popover';
@@ -174,7 +180,14 @@ export default function ReferencePopover({
       <PopoverHead
         badge={
           entry !== 'pending' && entry !== null ? (
-            <span className="chip quiet">{entryWord(entry)}</span>
+            <>
+              <span className="chip quiet">{entryWord(entry)}</span>
+              {/* The realm's own number, where the card's heading carries it
+                  too — this panel draws no `reference-name` of its own, so
+                  without it the panel a clicked name opens would be the one
+                  surface that could not say which row it was about. */}
+              <EntityNumber of={entryNumber(entry)} />
+            </>
           ) : null
         }
         onClose={onDismiss}

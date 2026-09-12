@@ -83,7 +83,7 @@ import { isWoundBand } from '../../shared/wounds';
 import { FightTracker, playerDies } from './combat';
 import { Expectations, MOVE_COMMANDS, type LapsedClaim } from './expectations';
 import { RoomDraft } from './draft';
-import { ATTACK_COMMANDS, commandOf } from '../../shared/commands';
+import { ATTACK_COMMANDS, breaksStealth, commandOf } from '../../shared/commands';
 import { wireExit, wireItem } from '../../shared/entities';
 import type { CurrencyEntity, ExitEntity, ItemEntity } from '../../shared/entities';
 import { addCoins } from '../../shared/coins';
@@ -665,6 +665,23 @@ export class CharacterTracker {
     // `Object.hasOwn`, not a truthy lookup: every object inherits `toString`
     // and `constructor`, and `bas constructor` is not a door.
     const atBarrier = named === 'Bash' && Object.hasOwn(MOVE_COMMANDS, argument.toLowerCase());
+    /*
+     * And what it costs in stealth, before it goes out.
+     *
+     * The server breaks stealth for a dozen ordinary commands and announces
+     * none of them (`breaksStealth`), so the only evidence left is the
+     * *absence* of `Sneaking...` on the next move — which arrives after that
+     * move has been taken. Reported 2026-09-11: a character sneaked, backstabbed
+     * what was in the room, then walked into the next one in plain sight and
+     * opened with `a` rather than `bs`, because `stealth` still said `sneaking`
+     * from the receipt two moves back.
+     *
+     * The command, not the answer, for the reason the door is read from its
+     * sentence and this is not: there is no sentence. A move the server
+     * announces sets it straight again on arrival, so this can only ever be
+     * early, never wrong in the reassuring direction.
+     */
+    if (this.state.phase === 'in-game' && breaksStealth(trimmed)) this.breakStealth();
     this.fight.noteCommand(
       named !== null && ATTACK_COMMANDS.has(named) && argument.length > 0 && !atBarrier
         ? argument
@@ -1087,6 +1104,35 @@ export class CharacterTracker {
     const settled: Stealth = this.sneakedThisMove ? 'sneaking' : 'seen';
     this.sneakedThisMove = false;
     return settled;
+  }
+
+  /**
+   * A sentence the server prints beside `BreakStealth()`. The character is
+   * visible from now on, and the move's receipt is spent with it.
+   *
+   * The flag goes too for `direction-failed`'s reason: a `Sneaking...` printed
+   * before the door was picked belongs to the move the door refused, and left
+   * standing it would be spent on the move after it.
+   */
+  private stealthBroke(s: CharacterState): CharacterState | null {
+    this.sneakedThisMove = false;
+    return s.stealth === 'seen' ? null : { ...s, stealth: 'seen' };
+  }
+
+  /**
+   * The same thing outside the reducer: a command going out, or a monster
+   * swinging, that the server breaks stealth for without saying so.
+   *
+   * Committed here rather than returned because neither caller is answering a
+   * block — one is the send path and the other has a state of its own to fold
+   * in first. Nothing is pushed from here: the prompt that answers the command
+   * is a block, and it is microseconds behind. What reads this in between is
+   * `Walker.sneakFirst`, through `tracker.current`, which is the whole point.
+   */
+  private breakStealth(): void {
+    this.sneakedThisMove = false;
+    if (this.state.stealth === 'seen') return;
+    this.state = { ...this.state, stealth: 'seen' };
   }
 
   private rememberTheWayBack(s: CharacterState, room: Room, moved: Direction | null): void {
@@ -4441,6 +4487,34 @@ export class CharacterTracker {
       case 'user-cant-sneak':
         return s.stealth === 'seen' ? null : { ...s, stealth: 'seen' };
 
+      /*
+       * The barrier work, which is the one of `BreakStealth()`'s thirty
+       * callers **this client provokes itself** (see `sneakedThisMove` for why
+       * the others are read off the move instead).
+       *
+       * Every branch of `Door.cs` that moves a barrier calls it beside the
+       * sentence and says nothing about it — opening (375), closing (193),
+       * locking (218), picking (152) and unlocking with a key (247) — and
+       * `Your skill fails you this time.` is the failed pick doing the same
+       * (167, the only sender of that sentence in the server). `already` is
+       * the exception the group is captured for: `The door was already open.`
+       * is `TryOpenDoor` declining to act, and it is the one branch with no
+       * `BreakStealth()` in it.
+       *
+       * Without this the walk had to wait a whole move to find out. Reported
+       * 2026-09-11: a route picked and opened a locked door and then stepped
+       * through it believing it was sneaking, because the only evidence
+       * available — no `Sneaking...` on the step — arrives after the step.
+       * The flag goes with the state for `direction-failed`'s reason: a
+       * `Sneaking...` from before the door would otherwise be spent on the
+       * move after it.
+       */
+      case 'door-changed':
+        if (g['already'] !== undefined) return null;
+        return this.stealthBroke(s);
+      case 'skill-failed':
+        return this.stealthBroke(s);
+
       /* --------------------------------------------------- afflictions */
       // Each pair is the server saying a condition began and ended; nothing
       // else moves a flag, so a cure the server answers with nothing leaves it.
@@ -5011,16 +5085,32 @@ export class CharacterTracker {
        * somebody hitting this character. Anything else with this character as
        * the attacker names what it is fighting.
        */
-      case 'mob-hits':
-        return this.fight.blowOnMe(s, block.at, this.vouchedFor(s, g));
+      case 'mob-hits': {
+        /*
+         * And a monster swinging at this character has already seen it.
+         *
+         * `Mob.TryFindTarget` clears `Sneaking` and `Hiding` on whoever it
+         * picks (`Mob.cs:1888`) and says nothing, so the blow is the only
+         * evidence there is — and without it a character jumped mid-route
+         * walked the rest of the way believing it was still unseen.
+         */
+        const blow = this.fight.blowOnMe(s, block.at, this.vouchedFor(s, g));
+        return this.stealthBroke(blow) ?? blow;
+      }
 
       /*
        * The same blow without ` for <n> damage!` behind it, which is also the
        * shape of any sentence about somebody standing here — so the realm is
        * asked whether the thing named would have swung. See `swingingAtMe`.
        */
-      case 'mob-misses':
-        return this.fight.blowOnMe(s, block.at, this.swingingAtMe(s, this.vouchedFor(s, g)));
+      case 'mob-misses': {
+        const attacker = this.swingingAtMe(s, this.vouchedFor(s, g));
+        const blow = this.fight.blowOnMe(s, block.at, attacker);
+        // Only a swing the realm will vouch for costs the stealth: this
+        // pattern is loose enough to catch a sentence that is about nothing
+        // more than something standing here, and that has seen nobody.
+        return attacker === undefined ? blow : (this.stealthBroke(blow) ?? blow);
+      }
 
       /*
        * This character swung and missed.

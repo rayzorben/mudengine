@@ -825,6 +825,17 @@ splitter:
 # Shared listing chrome: find, filter chips, sorting, the N-of-M line.
 # The clear inside a find field. `{label}` is the field's own name, so the
 # button says what it empties rather than only that it empties something.
+# The realm's own row number for a thing, wherever one is printed beside a
+# name. `numberRows` is the honest answer where a name holds several rows and
+# nothing has settled which — see `EntityNumber`.
+entity:
+  number: '#{id}'
+  numberTooltip: The realm's own number for this
+  numberRows: '{rows} rows'
+  numberRowsTooltip: 'The realm holds several rows under this name, and nothing here says
+    which: {ids}'
+  numberColumn: '#'
+  numberColumnLabel: The realm's number
 field:
   clear: Clear "{label}"
 table:
@@ -3309,7 +3320,12 @@ automation:
     refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
     refusedWalking: walking a route, and whileWalking is off
     standDown: Auto-combat is standing down after break; it resumes when you move or attack.
+    openerNeedsStealth: '{verb} only lands while this character is sneaking, so fights it is seen
+      opening are opened with the ordinary attack instead.'
     verbRefused: The realm refused {verb}; dropping it from this character's attacks for this session.
+    verbRefusedWeapon: 'The realm refused {verb} for the weapon in hand, not for this character;
+      it comes back when the weapon does.'
+    verbBack: '{verb} is back: the weapon the realm refused it with is no longer in hand.'
     whyHitBack: hitting back
     whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {costs}{hazards})'
     whyInRoom: in the room

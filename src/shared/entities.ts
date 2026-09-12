@@ -134,7 +134,25 @@ export interface ItemEntity {
   count?: number;
 
   // --- what the realm says about the kind ----------------------------------
+  /**
+   * The realm's row for this kind of thing — **the first one, where the name
+   * holds several**, because that is the row the shops reference
+   * (`WorldGraph.itemsByName`).
+   *
+   * So it is not what to *print* as this thing's number: see `ids` and
+   * `entityNumber`.
+   */
   id?: number;
+  /**
+   * Every row the name belongs to, where the realm knows the name at all.
+   *
+   * The honest answer to *what number is this*: twenty of the shipped realm's
+   * 1,918 item names are shared by two or more rows (`iron key` is three,
+   * `void sphere` four), and picking one of them to print would be the same
+   * guess `Traveller.keys` refuses to make about a keyed door. One entry is a
+   * name the realm places once.
+   */
+  ids?: readonly number[];
   /** Base cost in copper, before a shop's markup. */
   price?: number;
   encumbrance?: number;
@@ -200,7 +218,15 @@ export interface MobEntity {
   charmed: boolean;
 
   // --- what the realm says -------------------------------------------------
-  id?: number;
+  /**
+   * Every `Monsters` row the name belongs to — 229 of the shipped realm's
+   * 1,514 names hold more than one, up to eight.
+   *
+   * The wire never states a number, so a bare name resolves to this list and
+   * `row` is the one entry a *room* could settle it to. One entry is a name
+   * the realm places once. See `entityNumber`.
+   */
+  ids?: readonly number[];
   /** The high end of what the realm records, which is what a bar works from. */
   hp?: number;
   /**
@@ -457,6 +483,65 @@ export function wireItem(
   if (observed.count !== undefined) entity.count = observed.count;
   if (observed.rawText !== undefined) entity.rawText = observed.rawText;
   return entity;
+}
+
+/**
+ * Anything the realm gives a row number to, as far as printing that number
+ * goes.
+ *
+ * Structural rather than a union of the entity types, because the same two
+ * questions are asked of six shapes — `ItemEntity`, `MobEntity`, `WorldItem`,
+ * `WorldMob`, `WorldSpell`, `NpcEntity` — and half of them live in
+ * `./world.ts`, which this module may not import values from.
+ */
+export interface Numbered {
+  /** A single row's number, for the tables where a name means one row. */
+  id?: number;
+  /** Every row a name belongs to, where the name is what was looked up. */
+  ids?: readonly number[];
+  /** The row a *room* settled a name holding several to. */
+  row?: { id: number };
+}
+
+/**
+ * The realm's own number for a thing, or null where no single row answers.
+ *
+ * Three readings, in order, and the order is the argument:
+ *
+ * 1. **`row`** — a room's own lair named this row, or it is the only one that
+ *    spawns anywhere near. That is evidence about *this* monster and outranks
+ *    the list it was chosen from.
+ * 2. **`ids` of exactly one** — the realm places the name once, so the name
+ *    *is* the row.
+ * 3. **`id`** — the shapes that have no `ids` because they were looked up as a
+ *    row rather than as a name: a spell, a race, a class, a room's resident,
+ *    and every `WorldItem` a reference lookup returns (four `void sphere`
+ *    rows come back as four entries, each answering for itself).
+ *
+ * Null for `ids` holding several with no `row` to settle it, which is the
+ * refuse-rather-than-guess rule applied to a figure: `iron key` is three rows
+ * and printing one of their numbers would be the same coin toss
+ * `Traveller.keys` declines to make. `entityRows` is what says so instead.
+ */
+export function entityNumber(of: Numbered): number | null {
+  if (of.row !== undefined) return of.row.id;
+  if (of.ids !== undefined) return of.ids.length === 1 ? of.ids[0]! : null;
+  return of.id ?? null;
+}
+
+/**
+ * How many of the realm's rows share this name, where more than one does and
+ * nothing has settled which.
+ *
+ * Null whenever `entityNumber` answers, so the two are exclusive and a caller
+ * draws one or the other. What it buys is a reader who can tell *the realm
+ * does not know this thing* from *the realm knows four of them*, which is the
+ * difference between an empty figure and an honest one.
+ */
+export function entityRows(of: Numbered): number | null {
+  if (entityNumber(of) !== null) return null;
+  const rows = of.ids?.length ?? 0;
+  return rows > 1 ? rows : null;
 }
 
 /**

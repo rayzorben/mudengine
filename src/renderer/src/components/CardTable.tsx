@@ -27,8 +27,17 @@ import type { SessionId } from '@shared/ipc';
  */
 export interface Column<Row> {
   id: string;
-  /** The heading, and the word the sort control announces. */
+  /** The heading, and the word the sort control announces where `name` is absent. */
   label: string;
+  /**
+   * What the sort control announces, where the heading itself is a symbol.
+   *
+   * `#` over the realm's row numbers is the whole heading a five-digit column
+   * can carry, and *Sort by #* is not a sentence: a heading that is a glyph
+   * needs a word somewhere, and this is it. Absent for every ordinary column,
+   * whose heading already is the word.
+   */
+  name?: string;
   value(row: Row): CellValue;
   /** Drawn instead of the value, where the row needs a control, a chip or a bar. */
   cell?(row: Row): ReactNode;
@@ -483,7 +492,9 @@ export default function CardTable<Row>({
                         className="sort"
                         onClick={() => chooseSort(writeSort(nextSort(sort, column.id)))}
                         onMouseDown={keepFocus}
-                        title={t('table.sortByColumn', { columnLabel: column.label })}
+                        title={t('table.sortByColumn', {
+                          columnLabel: column.name ?? column.label
+                        })}
                         type="button"
                       >
                         {column.label}
