@@ -2995,6 +2995,123 @@ describe('moving unseen', () => {
     expect(tracker.current.stealth).toBe('seen');
   });
 
+  /*
+   * The doors: the one family of `BreakStealth()` call sites this client
+   * provokes itself, and the one it therefore has to read rather than wait a
+   * whole move to find out about. Reported 2026-09-11 as a route that picked
+   * and opened a locked door and stepped through believing it was sneaking.
+   */
+  it('is seen after opening, closing or picking a barrier', () => {
+    for (const line of [
+      'The door is now open.',
+      'The door is now closed.',
+      'You successfully unlocked the door.',
+      'You bashed the door open.',
+      'Your skill fails you this time.'
+    ]) {
+      const { tracker, feed } = feeder();
+      feed('[HP=33]:');
+      feed('Sneaking...');
+      expect(tracker.current.stealth, line).toBe('sneaking');
+      feed(line);
+      expect(tracker.current.stealth, line).toBe('seen');
+    }
+  });
+
+  /*
+   * And `already` is the server declining to act — `TryOpenDoor`'s and
+   * `TryBashDoor`'s one branch with no `BreakStealth()` beside it — which is
+   * the whole reason the word is captured.
+   */
+  it('is left alone by a barrier that was already in that state', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    feed('Sneaking...');
+    feed('The door was already open.');
+    expect(tracker.current.stealth).toBe('sneaking');
+  });
+
+  /*
+   * And the receipt goes with it: a `Sneaking...` printed before the door was
+   * picked belongs to the move the door refused, and left standing it would
+   * be spent on the move *after* the door.
+   */
+  it('does not spend a move receipt from before the door', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    tracker.observeCommand('n');
+    feed('Sneaking...');
+    feed('The door is closed!');
+    feed('You successfully unlocked the door.');
+    feed('The door is now open.');
+
+    tracker.observeCommand('n');
+    feed('Newhaven, Narrow Path');
+    feed('Obvious exits: north, south, east, west');
+    expect(tracker.current.stealth).toBe('seen');
+  });
+
+  /*
+   * The fight, which is where this was reported from: a character sneaked into
+   * a room, backstabbed what was in it, walked on and opened the next fight
+   * with `a` rather than `bs`, because the last thing said about stealth was
+   * the `Sneaking...` two moves back. `AttackCommand.cs:408` breaks it beside
+   * `*Combat Engaged*`, and `BackstabCombatRound.DoPostRound` breaks it for the
+   * one case that exempts — both without a word.
+   */
+  it('is seen the moment this character attacks', () => {
+    for (const command of ['a fat mutant', 'bs fat mutant', 'c mm fat mutant']) {
+      const { tracker, feed } = feeder();
+      feed('[HP=33]:');
+      feed('Sneaking...');
+      expect(tracker.current.stealth, command).toBe('sneaking');
+      tracker.observeCommand(command);
+      expect(tracker.current.stealth, command).toBe('seen');
+    }
+  });
+
+  /*
+   * And the rest of the silent list: sitting down, dressing, shopping and a
+   * bare search all call `BreakStealth()` and none of them says so.
+   */
+  it('is seen after the other commands the server breaks it for', () => {
+    for (const command of ['rest', 'med', 'wear ring', 'buy torch', 'search']) {
+      const { tracker, feed } = feeder();
+      feed('[HP=33]:');
+      feed('Sneaking...');
+      tracker.observeCommand(command);
+      expect(tracker.current.stealth, command).toBe('seen');
+    }
+  });
+
+  /*
+   * The walker's answer to a hidden edge, and the asks it spends a lap on.
+   * Costing an `sn` per look or per hidden exit is how a correction becomes
+   * its own bug.
+   */
+  it('is left alone by a step, a look, an ask or a telepath', () => {
+    for (const command of ['l', 'i', 'st', 'rm', 'search n', '/Soul @health']) {
+      const { tracker, feed } = feeder();
+      feed('[HP=33]:');
+      feed('Sneaking...');
+      tracker.observeCommand(command);
+      expect(tracker.current.stealth, command).toBe('sneaking');
+    }
+  });
+
+  /*
+   * The other half, which no command of this character's can account for:
+   * `Mob.TryFindTarget` clears `Sneaking` on whoever it picks (`Mob.cs:1888`)
+   * and says nothing, so the blow is the only evidence there is.
+   */
+  it('is seen once something in the room swings at it', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    feed('Sneaking...');
+    feed('The fat mutant hits you for 7 damage!');
+    expect(tracker.current.stealth).toBe('seen');
+  });
+
   /* Nobody is sneaking through a closed socket, and "seen" would be a claim
      about a realm this character is no longer in. */
   it('forgets it on leaving the realm', () => {

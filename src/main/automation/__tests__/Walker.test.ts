@@ -1643,6 +1643,41 @@ describe('sneaking before a route', () => {
    * A person in the room is no bar to it, and that is the server's rule rather
    * than a kindness: `Room.Mobs` holds monsters only.
    */
+  /*
+   * The door work the walk does itself breaks stealth (`Door.cs` calls
+   * `BreakStealth()` beside every sentence that moves a barrier), and the
+   * retry behind the door is not a *fresh* send — so before 2026-09-11 the
+   * ask never happened and the character stepped through in plain sight.
+   * Reported with the transcript in todo 01.
+   */
+  it('sneaks again behind a door it just opened', () => {
+    let now = at(1, 1, { stealth: 'sneaking' });
+    const walk = new Walker(
+      {
+        ...config,
+        movement: { ...config.movement, sneak: true, openDoors: true, openTries: 1 }
+      },
+      queue,
+      { notice: (m) => notices.push(m), stateNow: () => now }
+    );
+    walk.start(ROUTE, now);
+    vi.advanceTimersByTime(200);
+    // Already sneaking, so the first step costs no `sn`.
+    expect(sent).toEqual(['e']);
+
+    // `The door is closed!`, and then the `open` that answers it.
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'open e']);
+
+    // `The door is now open.` — and the tracker has said what opening it did.
+    now = at(1, 1, { stealth: 'seen' });
+    walk.onBlock(block('door-changed', { barrier: 'door', state: 'open' }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'open e', 'sn', 'e']);
+    walk.dispose();
+  });
+
   it('still sneaks with only a player in the room', () => {
     const walk = sneaking();
     walk.start(

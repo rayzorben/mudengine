@@ -26,6 +26,7 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 
+import EntityNumber from './EntityNumber';
 import LairList from './LairList';
 import { shopKindLabel } from './ShopFace';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
@@ -238,7 +239,13 @@ function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }
         {brief.npc !== undefined && (
           <>
             <dt>{t('cards.roomPeek.livesHereLabel')}</dt>
-            <dd className="span">{brief.npc}</dd>
+            {/* With the realm's own row. `Rooms.NPC` *is* a row number, so
+                this is the one monster on the panel whose number is never in
+                question — the lair's are `LairList`'s. */}
+            <dd className="span">
+              {brief.npc.name}
+              <EntityNumber of={{ id: brief.npc.id }} />
+            </dd>
           </>
         )}
         {/*

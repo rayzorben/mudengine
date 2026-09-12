@@ -18,6 +18,7 @@ import {
 import { classifyOccupant, type AlignmentCost, type MobDisposition } from '../../../shared/mobs';
 import type { Block } from '../../../shared/blocks';
 import type { ItemEntity, MobEntity } from '../../../shared/entities';
+import { WEAPON_HAND } from '../../../shared/items';
 import type { RealmFamily } from '../../../shared/realm';
 import type { MobAttack } from '../../../shared/world';
 
@@ -1026,6 +1027,42 @@ describe('what to swing with', () => {
   });
 
   /*
+   * A backstab from a character the server can see is **not refused** — it is
+   * silently downgraded: `AttackCommand.cs:408` clears `CanBackstab` when `bs`
+   * arrives from somebody neither sneaking nor hiding, and `Room.cs:681` gives
+   * it an ordinary round. So spending the opener there buys exactly what
+   * `attack` buys, and the opener is held instead.
+   */
+  it('does not spend a backstab opener on a character the realm can see', () => {
+    const auto = make(combat({ opener: 'bs' }));
+    auto.onCharacter(state({ room, stealth: 'seen' }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+    expect(notices.filter((n) => /sneaking/.test(n))).toHaveLength(1);
+  });
+
+  /*
+   * `unknown` is nobody having said, and it never refuses — the rule every
+   * threshold in this client follows. Hiding is not tracked on `Stealth` at
+   * all (no success line for `hide` has ever been captured), so a hidden
+   * character reads `unknown` and keeps its backstab.
+   */
+  it('spends it on a character nobody has said anything about', () => {
+    const auto = make(combat({ opener: 'bs' }));
+    auto.onCharacter(state({ room, stealth: 'unknown' }));
+    drain();
+    expect(sent).toEqual(['bs giant rat']);
+  });
+
+  /* And an opener that has nothing to do with stealth is unaffected. */
+  it('spends a jumpkick opener whatever the realm can see', () => {
+    const auto = make(combat({ opener: 'ju' }));
+    auto.onCharacter(state({ room, stealth: 'seen' }));
+    drain();
+    expect(sent).toEqual(['ju giant rat']);
+  });
+
+  /*
    * A fight that is running sends nothing of its own. The round verbs that
    * used to cycle here went on 2026-09-02: no class asks the realm for its
    * attack each round (captures/032 — one `bs ha`, then 94 lines of unprompted
@@ -1203,6 +1240,81 @@ describe('a verb the realm refuses', () => {
     );
     drain();
     expect(sent).toEqual(['a giant rat']);
+  });
+
+  /*
+   * And the backstab refusal is about the **weapon**, not the character:
+   * `AttackCommand.cs:115` reads `WeaponSlot.EquippedItem.CanBackstab` where
+   * every other arm of that switch reads `GetAbility`.
+   *
+   * Reported 2026-09-11 out of the player's own log — `bs du` holding a golden
+   * pike answered `You may not backstab with this weapon!`, the pike was
+   * swapped for an ice crystal falchion that backstabs perfectly well, and
+   * every fight for the rest of the session opened with plain `attack`.
+   */
+  describe('a refusal the realm blamed on the weapon', () => {
+    const holding = (weapon: string, room?: CharacterState['room']): CharacterState =>
+      state({
+        ...(room === undefined ? {} : { room }),
+        inventory: {
+          ...EMPTY_CHARACTER.inventory,
+          items: [
+            {
+              name: weapon,
+              source: 'wire',
+              slot: WEAPON_HAND,
+              equipped: true,
+              charges: null
+            }
+          ]
+        }
+      });
+    const rat = { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] };
+
+    it('comes back the moment the hand holds something else', () => {
+      const auto = make(combat({ opener: 'bs' }));
+      auto.onCharacter(holding('golden pike'));
+      auto.onBlock(block('attack-refused', { skill: 'backstab', weapon: 'this weapon' }));
+
+      // Still the pike, so still refused.
+      auto.onCharacter(holding('golden pike', rat));
+      drain();
+      expect(sent).toEqual(['a giant rat']);
+
+      // `You are now holding ice crystal falchion.`, and the first fight ends
+      // so the opener is available again.
+      auto.onCharacter({ ...holding('ice crystal falchion', rat), inCombat: true });
+      auto.onCharacter(
+        holding('ice crystal falchion', {
+          ...EMPTY_CHARACTER.room,
+          occupants: [mob('kobold thief', 'hostile')]
+        })
+      );
+      drain();
+      expect(sent).toEqual(['a giant rat', 'bs kobold thief']);
+      expect(notices.filter((n) => /no longer in hand/.test(n))).toHaveLength(1);
+    });
+
+    /*
+     * A refusal taken before any listing named the weapon is still a weapon's
+     * refusal, not the character's — collapsing the two made it permanent.
+     */
+    it('is released by the first listing that names a weapon', () => {
+      const auto = make(combat({ opener: 'bs' }));
+      auto.onBlock(block('attack-refused', { skill: 'backstab', weapon: 'this weapon' }));
+      auto.onCharacter(holding('ice crystal falchion', rat));
+      drain();
+      expect(sent).toEqual(['bs giant rat']);
+    });
+
+    /* And a class refusal is not released by a weapon change. */
+    it('does not release a refusal the realm blamed on the character', () => {
+      const auto = make(combat({ opener: 'bash' }));
+      auto.onBlock(block('attack-refused', { skill: 'bashing' }));
+      auto.onCharacter(holding('ice crystal falchion', rat));
+      drain();
+      expect(sent).toEqual(['a giant rat']);
+    });
   });
 });
 

@@ -7500,6 +7500,68 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
 
   /*
+   * The realm's own row number, on the row. The number MegaMUD printed and
+   * the number the realm editor is indexed by, which this client has held
+   * since the data was indexed and drew nowhere (todo 04).
+   *
+   * The expected figure is **asked of the realm** rather than typed here, for
+   * the reason the shop room above is: a number in this file would be a second
+   * copy of the world, stale the first time `build:world` ran. And it is
+   * measured inside its own cell, like the quest row's chip -- the name column
+   * clips with an ellipsis, so a figure that is in the DOM can still be drawn
+   * entirely outside the column it belongs to.
+   */
+  {
+    const expected = await evaluate(`
+      (async () => {
+        const found = await window.mudengine.lookup('${SESSION}', 'quarterstaff');
+        const row = (found.items ?? []).find((item) => item.name === 'quarterstaff');
+        return row === undefined ? '' : String(row.id);
+      })()
+    `);
+    const drawn = await evaluate(`
+      (() => {
+        const row = [...document.querySelectorAll('.carried tbody tr')].find(
+          (tr) => tr.querySelector('.what')?.innerText.trim() === 'quarterstaff'
+        );
+        const figure = row && row.querySelector('.entity-id');
+        if (!figure) return JSON.stringify({ text: null });
+        const cell = figure.closest('td');
+        const f = figure.getBoundingClientRect();
+        const c = cell.getBoundingClientRect();
+        const scroller = row.closest('.table-scroller');
+        return JSON.stringify({
+          text: figure.innerText.trim(),
+          width: Math.round(f.width),
+          inside: f.left >= c.left - 1 && f.right <= c.right + 1,
+          /*
+           * The column it is drawn in is a fifth one on a 320px rail card,
+           * and a table here never scrolls sideways -- the name column yields
+           * with an ellipsis instead. This is the assertion that keeps that
+           * true, and it is the reason the check is here rather than in a
+           * unit test.
+           */
+          overflow: scroller ? scroller.scrollWidth - scroller.clientWidth : null
+        });
+      })()
+    `);
+    const figure = JSON.parse(String(drawn));
+    check(
+      String(expected).length > 0 &&
+        figure.text === `#${expected}` &&
+        figure.width > 0 &&
+        figure.inside,
+      'the pack draws the realm’s own number for a thing, inside its own column',
+      JSON.stringify({ expected: String(expected), ...figure })
+    );
+    check(
+      figure.overflow !== null && figure.overflow <= 0,
+      'and the column it added does not make the pack scroll sideways',
+      JSON.stringify(figure)
+    );
+  }
+
+  /*
    * And putting one down takes it off the card, without an `i`.
    *
    * The listing annotates anything worn or wielded with the slot it is in and

@@ -51,7 +51,7 @@ export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
   if (lair !== null) brief.lair = lair;
 
   const npc = room.npcId === undefined ? undefined : graph.mobById(room.npcId);
-  if (npc !== undefined) brief.npc = npc.name;
+  if (npc !== undefined && room.npcId !== undefined) brief.npc = { id: room.npcId, name: npc.name };
 
   const spell = room.spell === undefined ? null : graph.spellById(room.spell);
   if (spell !== null) brief.spell = spell;

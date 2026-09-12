@@ -6236,6 +6236,30 @@ button.lookup.quest-where svg {
   margin-left: auto;
 }
 
+/*
+ * The realm's own row number beside a name — the same quiet monospace figure
+ * the reference list's `.fig` is, because that is what it is: a magnitude
+ * beside a name rather than a fact about the thing. Stated once, for the six
+ * surfaces `EntityNumber` is drawn on.
+ *
+ * `several` is the answer where a name holds more than one row. It is drawn
+ * quieter still and in the chrome face rather than the monospace one, so *4
+ * rows* cannot be misread as a number the reader can go and look up — the
+ * numbers are on the tooltip.
+ */
+.entity-id {
+  flex: 0 0 auto;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.entity-id.several {
+  font-family: inherit;
+  font-style: italic;
+}
+
 /* The realm's whole answer about the chosen thing, above the matches. */
 .reference-detail {
   padding: 6px 6px 8px;

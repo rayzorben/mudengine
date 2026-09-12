@@ -1049,23 +1049,6 @@ export class Walker {
      * would be the client narrating the game's own rules.
      */
     /*
-     * Sneak first, when asked to and when the character is not already.
-     *
-     * Ahead of the first step because what it decides is whether the things in
-     * the *next* room notice the arrival, and `Stealth` is three-state for the
-     * reason this needs: `unknown` means nobody has said, which is not
-     * `sneaking`, and a character that believes it is hidden and is not walks
-     * into a lair in plain sight.
-     */
-    if (this.config.movement.sneak && from.stealth !== 'sneaking' && !cannotSneakHere(from)) {
-      this.queue.enqueue({
-        command: 'sn',
-        priority: 'movement',
-        coalesceKey: 'sneak',
-        reason: t('automation.walk.reasonSneak')
-      });
-    }
-    /*
      * And the same beat the *middle* of a route already took, before the first
      * step of a new one — because the room a route is planned from is the room
      * the character is standing in, which is exactly where engagement fires.
@@ -1086,7 +1069,7 @@ export class Walker {
      * the decision is still revisable.
      */
     if (this.holdBeforeSending(from)) return null;
-    this.sendCurrent();
+    this.sendCurrent(true, from);
     return null;
   }
 
@@ -3312,22 +3295,40 @@ export class Walker {
     this.heldSince = null;
     this.holds = 0;
     this.publish();
-    this.sneakFirst(state);
     if (this.holdBeforeSending(state)) return;
-    this.sendCurrent();
+    this.sendCurrent(true, state);
   }
 
   /**
    * Ahead of the next step, when the character is meant to be sneaking and is
    * not.
    *
-   * `start` does this before a route's first step because what it decides is
-   * whether the things in the *next* room notice the arrival. A fight breaks
-   * stealth, so without asking again here every step of a resumed journey was
-   * taken in plain sight by a character configured to sneak, and nothing said
-   * so — which is exactly what `Stealth` is three-state for: `unknown` is not
-   * `sneaking`, and a character that believes it is hidden and is not walks
-   * into a lair in the open.
+   * **Immediately before the step, every step, and that is the whole point.**
+   * What it decides is whether the things in the *next* room notice the
+   * arrival, so the only moment it can be decided from is the one the step
+   * goes out in. This used to be asked in two places — once before a route's
+   * first step and once when a hold let go — and that left the two cases the
+   * walk provokes itself uncovered:
+   *
+   * - **A retry behind a door.** Picking or opening a barrier breaks stealth
+   *   silently (`Door.cs`; the client now reads it, see
+   *   `CharacterTracker.stealthBroke`), and the retry is not a fresh send, so
+   *   nothing asked again. Reported 2026-09-11 as a character that sneaked,
+   *   walked into a shut door, picked it, opened it and stepped through in
+   *   plain sight.
+   * - **Every ordinary step after the first.** A fight, a rest and equipping
+   *   all break stealth, and a route's second step inherited whatever the
+   *   first believed.
+   *
+   * Called from `sendCurrent` after `beforeStep`, so a torch readied for the
+   * next room cannot break the stealth this just asked for: the two share the
+   * `movement` band and the arbiter keeps a band in order. Coalesced, so a
+   * retry that asks again while the first `sn` is still queued is one
+   * command.
+   *
+   * `Stealth` is three-state for the reason this needs: `unknown` means nobody
+   * has said, which is not `sneaking`, and a character that believes it is
+   * hidden and is not walks into a lair in the open.
    */
   private sneakFirst(state: CharacterState): void {
     if (!this.config.movement.sneak || state.stealth === 'sneaking') return;
@@ -3599,7 +3600,13 @@ export class Walker {
     return Math.min(hpMax, Math.ceil(trap.damage + reserve));
   }
 
-  private sendCurrent(fresh = true): void {
+  /**
+   * `from` is the state the caller was deciding on, for the two callers that
+   * hold one before the tracker has pushed it — `start` and `carryOn`. Read
+   * *after* `stateNow`, which is the fresher answer wherever it exists, and
+   * the same `stateNow() ?? state` order every hold in this file uses.
+   */
+  private sendCurrent(fresh = true, from?: CharacterState): void {
     const step = this.route?.steps[this.index];
     if (!step) return;
 
@@ -3611,11 +3618,15 @@ export class Walker {
      * share a band and the arbiter keeps a band in order, so a torch asked
      * for here is lit before the character moves. Only a fresh send — a
      * retry behind a door is the same step into the same room.
+     *
+     * The sneak is asked on **every** send and after the light, which is the
+     * one thing here that is not per-step-per-room: see `sneakFirst`.
      */
-    if (fresh) {
-      const now = this.events.stateNow?.();
-      if (now !== undefined) this.events.beforeStep?.({ name: step.name, light: step.light }, now);
+    const now = this.events.stateNow?.() ?? from;
+    if (fresh && now !== undefined) {
+      this.events.beforeStep?.({ name: step.name, light: step.light }, now);
     }
+    if (now !== undefined) this.sneakFirst(now);
     this.events.stepping?.(step.command, step.direction, step.to);
     this.stepSent = false;
     const queued = this.queue.enqueue({

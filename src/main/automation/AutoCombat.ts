@@ -77,6 +77,7 @@ import { ownAlignment, type CharacterState, type RoomOccupant } from '../../shar
 import { ATTACK_COMMANDS, commandOf, REREAD_ROOM } from '../../shared/commands';
 import type { CombatConfig, PartyConfig, SpellsConfig } from '../../shared/config';
 import type { MobEntity } from '../../shared/entities';
+import { WEAPON_HAND } from '../../shared/items';
 import { weighRoom, type HazardKind, type Menace } from '../../shared/menace';
 import {
   prowessSheetOf,
@@ -141,6 +142,46 @@ const REFUSED_WORDS: Record<string, readonly string[]> = {
 };
 
 /**
+ * What the pack says is in the weapon hand, by name, or null while nothing
+ * has said.
+ *
+ * The slot reaches the state two ways and both answer here: the listing's own
+ * parenthesis (`ice crystal falchion (Weapon Hand)`, live 2026-09-11) and the
+ * realm's `Worn` code where no listing has named it
+ * (`CharacterTracker.slotOf`). Deliberately **not** `wieldedWeapon`, which
+ * answers with the realm's pricing row and has no identity in it.
+ *
+ * Only an identity is wanted — has the hand changed since the server refused
+ * a backstab — so a name is the whole answer and `null` is a real one.
+ */
+function weaponInHand(state: CharacterState): string | null {
+  const held = state.inventory.items.find((item) => item.equipped && item.slot === WEAPON_HAND);
+  return held?.name ?? null;
+}
+
+/**
+ * Whether a configured word is one of the spellings of `skill`.
+ *
+ * The command table's own word lists, never a prefix: `bash` also answers to
+ * `aa` and `allout`, and `backstab` answers only to `bs`.
+ */
+function answersTo(skill: string, word: string): boolean {
+  return REFUSED_WORDS[skill]?.includes(word.trim().toLowerCase()) === true;
+}
+
+/**
+ * What the server blamed a refused attack on.
+ *
+ * Two shapes rather than a nullable name, because a weapon nobody has listed
+ * yet is *not* the same claim as a refusal about the character: collapsing the
+ * two made an unlistable weapon's refusal permanent, which is the bug this
+ * type exists to prevent. `weapon: null` is a weapon-blamed refusal taken
+ * before any listing named what was in the hand, and the first listing that
+ * names one releases it.
+ */
+type Refusal = { blames: 'character' } | { blames: 'weapon'; weapon: string | null };
+
+/**
  * The word the trace uses for each hazard a monster brings.
  *
  * A switch of literal lookups rather than `t(\`…${kind}\`)`, because the copy
@@ -174,16 +215,31 @@ function hazardWord(kind: HazardKind): string {
 
 export class AutoCombat {
   /**
-   * Attacks the server has refused this session, keyed by the word it refused.
+   * Attacks the server has refused, keyed by the word it refused, against the
+   * weapon it blamed — `null` where it blamed the character.
    *
-   * Cleared on a new connection, deliberately. It is a fact about a *class*, so
-   * it does survive a fight ending — but a session can be pointed at a
-   * different server and a different character, and the two failures are not
-   * symmetric: forgetting costs one refusal announced in the room and corrects
-   * itself immediately, while remembering wrongly leaves a verb silently never
-   * sent, for a character that can use it, with nothing on screen to say why.
+   * **The two are not the same fact, and reading them as one was a bug.** Four
+   * of the five refusals are class abilities (`AttackCommand.cs` reads
+   * `GetAbility`), and a class does not change; the backstab refusal reads
+   * `WeaponSlot.EquippedItem.CanBackstab`, and a weapon comes off. Reported
+   * 2026-09-11 from the player's own log: `bs du` holding a golden pike
+   * answered `You may not backstab with this weapon!`, the pike was dropped
+   * for an ice crystal falchion which backstabs perfectly well (`You surprise
+   * slash practice dummy for 186 damage!` on the very next `bs`), and
+   * auto-combat opened every fight for the rest of the session with plain
+   * `attack` — silently, until a reconnect cleared this map.
+   *
+   * A weapon-blamed entry is therefore released the moment the hand holds
+   * something else, out loud (`releaseWeaponRefusals`). A class-blamed one
+   * survives a fight ending: re-learning it every fight would mean spending
+   * the command every fight. Both go on a new connection, because a session
+   * can be pointed at a different server and a different character, and the
+   * two failures are not symmetric: forgetting costs one refused command and
+   * corrects itself immediately, while remembering wrongly leaves a verb
+   * silently never sent, for a character that can use it, with nothing on
+   * screen to say why.
    */
-  private readonly refused = new Set<string>();
+  private readonly refused = new Map<string, Refusal>();
   /** Rounds counted in this fight, for `refreshRounds`. */
   private rounds = 0;
   private roundTimer: NodeJS.Timeout | null = null;
@@ -206,6 +262,8 @@ export class AutoCombat {
 
   /** True once this fight's opener has been spent. */
   private openerSpent = false;
+  /** Whether the held-backstab sentence has been said. See `sayOpenerNeedsStealth`. */
+  private saidOpenerNeedsStealth = false;
   /**
    * The round spell last proposed, and when. The only record of *which* spell
    * `Your spell has no effect on …` is about — the sentence names the target
@@ -400,6 +458,7 @@ export class AutoCombat {
     this.state = null;
     this.opened.clear();
     this.openerSpent = false;
+    this.saidOpenerNeedsStealth = false;
     this.retreating = false;
     this.walking = false;
     this.looping = false;
@@ -581,17 +640,38 @@ export class AutoCombat {
         const skill = block.groups['skill']?.toLowerCase() ?? '';
         const words = REFUSED_WORDS[skill];
         if (words === undefined || this.refused.has(skill)) return;
-        this.refused.add(skill);
+        /*
+         * What the sentence blamed. `weapon` is on the block only for the
+         * backstab refusal, which names the thing in hand rather than the
+         * character — so the entry records what was in the hand and is given
+         * back when the hand changes. See the field.
+         *
+         * `this.state` is the line before this one, because `onBlock` runs
+         * ahead of the tracker: the weapon the refusal was about.
+         */
+        const blamed: Refusal =
+          block.groups['weapon'] === undefined
+            ? { blames: 'character' }
+            : { blames: 'weapon', weapon: this.state === null ? null : weaponInHand(this.state) };
+        this.refused.set(skill, blamed);
         // The longest spelling, which is the one a person recognises.
         const verb = words.at(-1) ?? skill;
         /*
-         * Said out loud, once, because the refusal itself is printed *in the
-         * room*: a client that kept sending the verb would announce the
-         * character's shortcomings to everybody present, once a round, for as
-         * long as the fight lasted. Somebody who configured `bash` and has no
-         * bashing needs to know that is why nothing is happening.
+         * Said out loud, once: a verb the server will not take is a command
+         * spent out of the budget the fight is being fought with, once a
+         * fight, and nothing else on screen says why the setting is doing
+         * nothing. Somebody who configured `bash` and has no bashing needs to
+         * know that is the reason.
+         *
+         * The weapon is not named in either sentence, deliberately: the
+         * server's own wording is *with this weapon*, and the pack listing the
+         * client would name it from can be absent or a minute old.
          */
-        this.events.notice?.(t('automation.combat.verbRefused', { verb }));
+        this.events.notice?.(
+          blamed.blames === 'character'
+            ? t('automation.combat.verbRefused', { verb })
+            : t('automation.combat.verbRefusedWeapon', { verb })
+        );
         return;
       }
 
@@ -641,6 +721,13 @@ export class AutoCombat {
 
     if (!this.acting) return;
     if (state.phase !== 'in-game') return;
+
+    /*
+     * A verb the server refused with the weapon that is no longer in hand.
+     * Above the fight, because the answer decides which verb this line's own
+     * attack would go out as. See `releaseWeaponRefusals`.
+     */
+    this.releaseWeaponRefusals(state);
 
     // A fight that has ended takes its opener and its round cycle with it.
     if (was?.inCombat && !state.inCombat) this.endFight();
@@ -1357,7 +1444,7 @@ export class AutoCombat {
     const asked = this.opened.get(key);
     if (asked !== undefined && now - asked < cooldown) return false;
 
-    const verb = this.opener() ?? this.config.attack;
+    const verb = this.opener(this.state) ?? this.config.attack;
     if (verb.length === 0) return false;
 
     // Past the cooldown an entry answers nothing, so the map holds only what
@@ -1386,22 +1473,86 @@ export class AutoCombat {
     });
   }
 
-  /** The opener, once per fight, if one is configured and not refused. */
-  private opener(): string | null {
+  /**
+   * The opener, once per fight, if one is configured, not refused, and
+   * something the character can actually make right now.
+   *
+   * **A backstab needs stealth, and without it the server does not refuse —
+   * it downgrades.** `AttackCommand.cs:408` clears `CanBackstab` and breaks
+   * stealth when `bs` arrives from a character that is neither sneaking nor
+   * hiding, and `Room.cs:681` then gives it an ordinary combat round: no
+   * sentence, no penalty, the same blows a plain `attack` would have bought.
+   * Seen in the player's own transcript of 2026-09-11, where `bs tall mutant`
+   * one move after a picked door scored `You cut tall mutant for 18 damage!`
+   * and nothing else, while the same command from a sneaking character scored
+   * `You surprise slash …` for 186.
+   *
+   * So the opener is held rather than spent, and `attack` opens instead. Held
+   * only against what the server has actually said: `seen` is the server
+   * having printed no `Sneaking...` on a move, and `unknown` is nobody having
+   * said — which never refuses, the rule every threshold in this client
+   * follows. Hiding is not tracked on `Stealth` at all (no success line has
+   * ever been captured for `hide`), so a hidden character reads `unknown` and
+   * keeps its backstab.
+   *
+   * Only a verb the command table calls `backstab` is held. `ju` is an
+   * opener too and has nothing to do with stealth.
+   */
+  private opener(state: CharacterState | null): string | null {
     if (this.openerSpent) return null;
     const opener = this.config.opener.trim();
     if (opener.length === 0) return null;
-    return this.isRefused(opener) ? null : opener;
+    if (this.isRefused(opener)) return null;
+    if (answersTo('backstab', opener) && state?.stealth === 'seen') {
+      this.sayOpenerNeedsStealth(opener);
+      return null;
+    }
+    return opener;
+  }
+
+  /**
+   * The held backstab, said once a session.
+   *
+   * A refusal nobody can read did not happen — and somebody who set `bs` as
+   * their opener and has `movement.sneak` off needs to be told that is why it
+   * never goes out. Once, not once a fight: a sneak that fails is ordinary,
+   * and a grind would be a console of this line.
+   */
+  private sayOpenerNeedsStealth(verb: string): void {
+    if (this.saidOpenerNeedsStealth) return;
+    this.saidOpenerNeedsStealth = true;
+    this.events.notice?.(t('automation.combat.openerNeedsStealth', { verb }));
   }
 
   /** Whether a configured word is one of the spellings of a refused verb. */
   private isRefused(word: string): boolean {
     const spelled = word.trim().toLowerCase();
     if (spelled.length === 0) return false;
-    for (const skill of this.refused) {
-      if (REFUSED_WORDS[skill]?.includes(spelled) === true) return true;
-    }
+    for (const skill of this.refused.keys()) if (answersTo(skill, spelled)) return true;
     return false;
+  }
+
+  /**
+   * A refusal the server blamed on a weapon, given back because the hand
+   * holds something else now.
+   *
+   * Said out loud for the reason the refusal itself is: the verb goes back
+   * into use and somebody watching the fight should be able to read why it
+   * stopped and why it started again. Once per release — the entry is gone
+   * with it, and the server is welcome to refuse the new weapon too.
+   */
+  private releaseWeaponRefusals(state: CharacterState): void {
+    if (this.refused.size === 0) return;
+    const held = weaponInHand(state);
+    for (const [skill, blamed] of this.refused) {
+      if (blamed.blames !== 'weapon' || blamed.weapon === held) continue;
+      // Nothing is in the hand and nothing was known to be: no change.
+      if (held === null && blamed.weapon === null) continue;
+      this.refused.delete(skill);
+      this.events.notice?.(
+        t('automation.combat.verbBack', { verb: REFUSED_WORDS[skill]?.at(-1) ?? skill })
+      );
+    }
   }
 
   /**

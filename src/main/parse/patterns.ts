@@ -582,24 +582,41 @@ export const RULES: Rule[] = [
       /^(?:He|She|It|They) appears? to be (?<band>unwounded|slightly wounded|moderately wounded|heavily wounded|severely wounded|very critically wounded|critically wounded|mortally wounded)\./
   },
   /*
-   * The two refusals automation has to hear, both read out of the server rather
-   * than captured — see the note on `attack-refused` in `shared/blocks.ts`.
+   * The refusals automation has to hear. The first is read out of the server
+   * rather than captured — see the note on `attack-refused` in
+   * `shared/blocks.ts`.
    *
    * `AttackCommand.Execute` gates five attack types and prints one of these
    * before doing anything else: jumpkick, punch and kick want the Mystic class,
    * bash and smash want the trained ability. The gerund is captured because it
    * is the only thing in the sentence that says *which verb* was refused, and
    * that is what auto-combat drops.
-   *
-   * Backstab is the odd one: it refuses on the *weapon* rather than the class
-   * and the sentence has a different shape, so it is matched separately rather
-   * than by widening the first pattern until it would match prose.
    */
   {
     type: 'attack-refused',
     pattern: /^You don't know the first thing about (?<skill>\w+ing)!/
   },
-  { type: 'attack-refused', pattern: /^You may not (?<skill>backstab) with this weapon!/ },
+  /*
+   * Backstab is the odd one, and `weapon` is captured because of it: it
+   * refuses on the **weapon in hand** rather than on the class
+   * (`AttackCommand.cs:115` reads `WeaponSlot.EquippedItem.CanBackstab`,
+   * where every other arm of that switch reads `GetAbility`). A refusal about
+   * equipment lasts exactly as long as the equipment — see
+   * `AutoCombat.refused` — and the group is what lets the reader tell the two
+   * apart without matching the sentence a second time.
+   *
+   * Two wordings, and **the wire's comes first**: `You cannot backstab with
+   * this weapon.` is in the corpus twice (`captures/005:538`,
+   * `captures/106:12`, both MajorMUD, both followed by `*Combat Engaged*` and
+   * an ordinary round), while `You may not backstab with this weapon!` is the
+   * GreaterMUD source's spelling and was confirmed live on 2026-09-11
+   * (`bs du` holding a golden pike). One pattern rather than two: the same
+   * fact in two families' punctuation.
+   */
+  {
+    type: 'attack-refused',
+    pattern: /^You (?:may not|cannot) (?<skill>backstab) with (?<weapon>this weapon)[.!]$/
+  },
   {
     type: 'attack-ineffective',
     pattern: /^Your (?<weapon>weapon|fists) (?:has|have) no effect against this (?<target>.+?)!/
@@ -1316,11 +1333,17 @@ export const RULES: Rule[] = [
    * ever been captured for this particular sentence, so the noun is the
    * closed list the source names rather than a free run of words — `The way
    * ahead is now open.` is a room description, not a door.
+   *
+   * `already` is captured because it is the difference between the server
+   * acting and the server declining to: every branch of `Door.cs` that
+   * actually moves a barrier calls `BreakStealth()` beside the sentence, and
+   * `The door was already open.` is the one that does not. See
+   * `CharacterTracker`'s `door-changed` case.
    */
   {
     type: 'door-changed',
     pattern:
-      /^(?:The (?<barrier>door|gate|portcullis) (?:is|was) (?:now |already )?(?<state>open|closed)\.|You successfully (?<state2>unlocked) the (?<barrier2>door|gate|portcullis)\.)$/
+      /^(?:The (?<barrier>door|gate|portcullis) (?:is|was) (?:now |(?<already>already) )?(?<state>open|closed)\.|You successfully (?<state2>unlocked) the (?<barrier2>door|gate|portcullis)\.)$/
   },
   /*
    * `You bashed the door open.` — the other way a barrier ends up open, and

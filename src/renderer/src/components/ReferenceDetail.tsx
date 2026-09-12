@@ -1,6 +1,8 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
 import { Fragment, useState } from 'react';
+import EntityNumber from './EntityNumber';
 import { t } from '../lib/i18n';
+import type { Numbered } from '@shared/entities';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
 import {
@@ -116,6 +118,29 @@ export function entryWord(entry: ReferenceEntry): string {
  */
 export function entryKey(entry: ReferenceEntry, index: number): string {
   return `${index}:${entry.kind}:${entry.name}`;
+}
+
+/**
+ * The realm row a match is, whichever kind of thing it is.
+ *
+ * Four of the five kinds are looked up *as rows* and answer with their own
+ * number: two spells named `maelstrom` come back as two entries, and four
+ * `void sphere` rows as four. A monster is the exception — the fold is by
+ * name, so it answers with `ids` and with the `row` a room settled it to.
+ */
+export function entryNumber(entry: ReferenceEntry): Numbered {
+  switch (entry.kind) {
+    case 'mob':
+      return entry.mob;
+    case 'item':
+      return entry.item;
+    case 'spell':
+      return entry.spell;
+    case 'race':
+      return entry.race;
+    case 'class':
+      return entry.className;
+  }
 }
 
 /** The one figure a list row carries: the one that says how big it is. */
@@ -1447,6 +1472,10 @@ export default function ReferenceDetail({
         <div className="reference-name">
           {entry.name}
           <span className="chip quiet">{entryWord(entry)}</span>
+          {/* The realm's own number, last in the heading: it identifies the
+              row rather than describing the thing, which is what a reader
+              wants once they have decided this is the right thing. */}
+          <EntityNumber of={entryNumber(entry)} />
         </div>
       )}
       {entry.kind === 'mob' && (

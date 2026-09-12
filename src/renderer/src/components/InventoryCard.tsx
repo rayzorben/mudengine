@@ -3,7 +3,9 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
 import CardTable, { type Column, type Facet } from './CardTable';
+import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
+import { entityNumber } from '@shared/entities';
 import { equipVerdict, UNKNOWN_WEARER, type GearAction, type Wearer } from '@shared/gear';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
@@ -485,6 +487,30 @@ export function InventoryBody({
         ) : (
           <span className="what">{item.name}</span>
         )
+    },
+    {
+      /*
+       * The realm's own `Items` row — the number MegaMUD printed and the
+       * number the realm editor is indexed by, which the client has held
+       * since the data was indexed and drew nowhere.
+       *
+       * A column rather than a figure beside the name, because in a table it
+       * earns the two things a column is: it is **findable**, so typing
+       * `1234` narrows a hundred-item pack to the thing, and sortable, which
+       * groups a realm's content by when it was authored. Numeric, so it
+       * sorts as a magnitude and sits under a right-aligned heading like the
+       * weight beside it.
+       *
+       * `value` is the plain text and `cell` the drawn figure, which is the
+       * split every column here makes — and it is what puts the *rows* answer
+       * (`iron key` is three) into the find text as well as on screen.
+       */
+      id: 'number',
+      label: t('entity.numberColumn'),
+      name: t('entity.numberColumnLabel'),
+      numeric: true,
+      value: (item) => entityNumber(item) ?? entityNumberText(item),
+      cell: (item) => <EntityNumber of={item} />
     },
     {
       id: 'weight',

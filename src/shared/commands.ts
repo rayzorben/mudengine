@@ -626,6 +626,101 @@ export const ATTACK_COMMANDS: ReadonlySet<CommandName> = new Set([
 ]);
 
 /**
+ * The commands that leave this character standing in plain sight.
+ *
+ * `BreakStealth()` has thirty callers in the server and **not one of them
+ * prints a word about it**. The only statement of stealth on the wire is
+ * `Sneaking...`, and that arrives on the next successful move — after the step
+ * it describes has been taken. So a break has to be read off the command that
+ * causes it, in the one place every outbound command passes through
+ * (`CharacterTracker.observeCommand`).
+ *
+ * Command *names*, so every spelling comes free through `commandOf`. Each
+ * entry is a site in the server, not a guess:
+ *
+ * - the attack verbs — `AttackCommand.cs:408`, beside `*Combat Engaged*`. The
+ *   one case it exempts is a backstab *from* stealth, and
+ *   `BackstabCombatRound.DoPostRound` clears `Sneaking` when that round lands,
+ *   which is the same command's output.
+ * - `Cast` and `Use` — `Player.InitiateSpell:5752` clears it before the mana
+ *   check, so a cast that fails the roll has still broken it, and an item's
+ *   spell reaches the same call (`Spell.cs:2005`).
+ * - `Rest` (`RestCommand.cs:33`), `Meditate` (`MeditateCommand.cs:37`),
+ *   `Break` (`BreakCommand.cs:28`), `Share` (`ShareCommand.cs:68`),
+ *   `Equip` (`EquipCommand.cs:138,165`), `Buy` (`BuyCommand.cs:189`),
+ *   `Give` (`GiveCommand.cs:88,237`).
+ * - `Search` — bare only; see `breaksStealth`.
+ *
+ * **Not here, deliberately.** The barrier work (`Open`, `Close`, `Lock`,
+ * `Pick`) breaks stealth too and is read from `door-changed` instead, because
+ * that sentence knows the one branch that does not (`The door was already
+ * open.`). `Light`, `Remove`, `Get` and `Drop` call nothing, and a potion's
+ * spell is applied directly rather than cast (`DrinkCommand.cs:77`), so
+ * `Drink` is safe as well.
+ *
+ * The pessimistic direction is cheap and the optimistic one is not: a command
+ * listed here that the server refuses costs one `sn`, and a missing one walks
+ * a character into a lair believing it is hidden.
+ */
+export const STEALTH_BREAKING: ReadonlySet<CommandName> = new Set<CommandName>([
+  ...ATTACK_COMMANDS,
+  'Buy',
+  'Break',
+  'Cast',
+  'Equip',
+  'Give',
+  'Meditate',
+  'Rest',
+  'Search',
+  'Share',
+  'Use'
+]);
+
+/**
+ * The five characters that make a line a comm rather than a command, and the
+ * two of them the room can hear.
+ *
+ * `CommManager.CheckCommandForComm` runs before the command table: `.` is talk
+ * and `"` is a shout, and those two alone call `BreakStealth()` (`:243`,
+ * `:259`) — the room heard it. `/` telepath, `>` tell and `-`/`'` broadcast go
+ * to somebody elsewhere and say nothing here, so they leave stealth alone.
+ */
+const HEARD_IN_THE_ROOM = new Set(['.', '"']);
+const COMM_PREFIXES = new Set(['.', '"', '/', '>', '-', "'"]);
+
+/**
+ * Whether sending this puts the character back in plain sight.
+ *
+ * Two rules beyond the list, and the second is the one that is easy to miss.
+ *
+ * `search <direction>` is exempt: `SearchCommand.cs` sends a bare search to
+ * `Player.TrySearch`, which breaks stealth beside `Your search revealed
+ * nothing.`, and a directional one to the exit's own `SearchExit`, which does
+ * not. The walker's answer to a hidden edge is the directional form, so this
+ * is the difference between a walk that sneaks and one that pays an `sn` at
+ * every hidden exit.
+ *
+ * **A word the table has no entry for is not silence.** It is said out loud in
+ * the room (`Player.cs:1883`) or performed as an emote
+ * (`ActionFigure.PerformAction:281`), and both break stealth; the third thing
+ * it can be is a text exit (`go manhole`), which is a move, and a move that
+ * kept stealth prints `Sneaking...` — so the receipt corrects this the moment
+ * it lands. The `SlowTalk` branch answers `Your command had no effect.` and
+ * breaks nothing, and which branch a character takes is not visible from here:
+ * that one costs an `sn` and is the direction to be wrong in.
+ */
+export function breaksStealth(input: string): boolean {
+  const text = input.trim();
+  if (text.length === 0) return false;
+  const first = text.slice(0, 1);
+  if (COMM_PREFIXES.has(first)) return HEARD_IN_THE_ROOM.has(first);
+  const command = commandOf(text);
+  if (command === null) return true;
+  if (command === 'Search') return text.search(/\s/) < 0;
+  return STEALTH_BREAKING.has(command);
+}
+
+/**
  * The command that re-reads the room without telling the room.
  *
  * A bare Enter. The server answers it with the room block for wherever the

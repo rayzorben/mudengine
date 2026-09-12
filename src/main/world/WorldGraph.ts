@@ -1371,6 +1371,15 @@ export class WorldGraph {
     if (known === undefined) return entity;
 
     entity.id = known.id;
+    /*
+     * And every row the *name* holds, which is what a card prints as this
+     * thing's number. `id` above is `itemsByName`'s first row and the one the
+     * shops reference; for twenty of the shipped realm's names that is one of
+     * several, and printing it would make the same claim `oneRowNamed`
+     * refuses to make about a key.
+     */
+    const rows = this.itemRowsByName.get(name.toLowerCase());
+    if (rows !== undefined && rows.length > 0) entity.ids = rows;
     if (known.price !== undefined) entity.price = known.price;
     if (known.encumbrance !== undefined) entity.encumbrance = known.encumbrance;
     if (known.kind !== undefined) entity.kind = known.kind;
@@ -1452,6 +1461,11 @@ export class WorldGraph {
     if (known === undefined) return entity;
 
     if (known.row !== undefined) entity.row = known.row;
+    // Every `Monsters` row the name holds, for the number a card prints. The
+    // fold is by name, so this is the list `row` was resolved out of — and
+    // where nothing resolved it, the list is the honest answer. See
+    // `entityNumber`.
+    if (known.ids !== undefined) entity.ids = known.ids;
     entity.hp = known.hp;
     if (known.span !== undefined) entity.span = known.span;
     if (known.armour !== undefined) entity.armour = known.armour;

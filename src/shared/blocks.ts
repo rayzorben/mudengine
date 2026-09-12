@@ -301,10 +301,15 @@ export type BlockType =
    * being a class that lacks the skill and typing it anyway, which is a thing
    * to *recognise* rather than a thing to go and do on a live realm.
    *
-   * It matters because the refusal is printed in the room. A client that had
-   * `bash` in its round list and no bashing would announce that once a round
-   * for as long as the fight lasted, so this is what lets auto-combat drop the
-   * verb and say so.
+   * **The backstab refusal is the exception twice over**: it is in the corpus
+   * (`You cannot backstab with this weapon.`) and it blames the *weapon* and
+   * not the class, so the block carries a `weapon` group. A fact about
+   * equipment lasts as long as the equipment, which is what
+   * `AutoCombat.refused` reads it as.
+   *
+   * It matters because a verb the server will not take is a command spent out
+   * of the budget the fight is being fought with, once a fight, silently. This
+   * is what lets auto-combat drop the verb and say so.
    */
   | 'attack-refused'
   /**

@@ -98,6 +98,17 @@ export const WORN_SLOT: Readonly<Record<number, string>> = {
 };
 
 /**
+ * `Worn` code 1 — the hand a weapon is swung with, by the word the listing
+ * prints for it (`ice crystal falchion (Weapon Hand)`, live 2026-09-11).
+ *
+ * Named because one slot in the table decides something on its own: a refusal
+ * the server blames on *this weapon* lasts as long as this weapon, and the
+ * only way to notice the hand has changed is to read it. Everything else in
+ * `WORN_SLOT` is the Reference card's.
+ */
+export const WEAPON_HAND = 'Weapon Hand';
+
+/**
  * `Items.WeaponType`: **handedness × damage kind**, which is two axes and not
  * one.
  *
