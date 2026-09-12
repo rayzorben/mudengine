@@ -109,6 +109,19 @@ autoReconnect: true
 # automation:
 #   idle:
 #     afterSeconds: 90
+#   # What this character bends down for, and what it sheds. Per character
+#   # because two on one realm rarely answer it the same way: one hunts and one
+#   # hauls. The Movement section of this character's settings writes these.
+#   loot:
+#     coins: true
+#     # A coin on neither list is KEPT -- that is the third answer the pair
+#     # exists to express, and it is what makes "stop collecting copper"
+#     # different from "throw the copper away".
+#     coinKinds: [runic, platinum, gold, silver]
+#     discardKinds: [copper]
+#   banking:
+#     autoDeposit: true
+#     depositThresholdCopper: 100000
 #   # What this character keeps in stock, and where it buys it. The Self card
 #   # and the item panel write this list; a hand-written one reads the same.
 #   supplies:

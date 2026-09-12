@@ -36,6 +36,115 @@
 
 export type SpellMessageKind = 'start' | 'stop';
 
+/**
+ * An effect the tables cannot name, held under the sentence that announces it.
+ *
+ * A monster's spell prints its own message and names nothing this client can
+ * read, and no realm database on hand ships the message table to look one up
+ * in — so *which spell* has no answer. *Which effect* does: the server prints
+ * `DescMessage.Line3` when the spell lands (`Spell.cs:1233`, `:1360`) and
+ * prints the same line again for every timed effect on the sheet
+ * (`StatCommand.cs:50`), so the sentence is the effect's identity on the wire
+ * and the sheet is the listing that maintains it.
+ *
+ * Marked, so no reader mistakes one for a spell's name: `spellNamed` will
+ * never resolve it, a blessing configuration can never match it, and the card
+ * that draws it can say what it is instead of printing a sentence as a noun.
+ */
+const UNNAMED_MARK = 'effect: ';
+
+/** The key an unnameable effect is held under: its own sentence, marked. */
+export function unnamedEffect(sentence: string): string {
+  return `${UNNAMED_MARK}${sentence.trim()}`;
+}
+
+/** Whether a buff's `spell` is a sentence this client could not name. */
+export function isUnnamedEffect(spell: string): boolean {
+  return spell.trimStart().toLowerCase().startsWith(UNNAMED_MARK);
+}
+
+/** The sentence behind such a key, or null for an ordinary spell name. */
+export function unnamedEffectSentence(spell: string): string | null {
+  const text = spell.trimStart();
+  if (!isUnnamedEffect(text)) return null;
+  const sentence = text.slice(UNNAMED_MARK.length).trim();
+  return sentence.length > 0 ? sentence : null;
+}
+
+/**
+ * Whether the stat sheet has ever reprinted an effect's sentence.
+ *
+ * `no` is a finding, not an absence: a sheet was read while the sentence
+ * would have been on it and did not carry it, so whatever printed that line
+ * is not a *lasting* effect here — an instant spell, or a refusal wearing an
+ * effect's grammar (`You are poisoned!` answering a `rest`). Either way there
+ * is nothing for this client to hold, and nothing to spend another `st` on.
+ */
+export type EffectLasting = 'unknown' | 'yes' | 'no';
+
+/** How sure this realm is that an effect inflicts a condition. */
+export type CauseVerdict = 'suspected' | 'confirmed';
+
+/** What one realm has worked out about one sentence nothing could name. */
+export interface LearnedEffect {
+  /** The sentence the server printed when it landed — the effect's identity. */
+  text: string;
+  /** Epoch ms of the first sighting. */
+  at: number;
+  /** See {@link EffectLasting}. */
+  lasting: EffectLasting;
+  /**
+   * What the effect is suspected or known to inflict, keyed by the condition
+   * (`Afflictions`). Absent until something was deduced; a condition that
+   * arrived without the effect up is deleted rather than downgraded, because
+   * a suspicion the wire contradicted is not a weaker suspicion.
+   */
+  causes?: Record<string, CauseVerdict>;
+}
+
+/**
+ * What a realm remembers about the effects it could not name.
+ *
+ * Separate from the two sentence books because it is a different kind of
+ * fact: the books answer *what does this line mean*, and this answers *what
+ * has this realm worked out about a line nothing means yet*. The parse path
+ * holds it through {@link SpellLore} for the same reason it holds them —
+ * it may not open a file, and a test wants neither.
+ */
+export interface EffectLedger {
+  /** What is known about a sentence, or null when it is new here. */
+  seen(text: string): LearnedEffect | null;
+  /** Records the sheet's verdict on whether the sentence is a lasting effect. */
+  lasting(text: string, lasting: Exclude<EffectLasting, 'unknown'>, at: number): void;
+  /**
+   * Records what the effect inflicts. `null` retracts: the condition arrived
+   * while the effect was not up, so the effect is not what causes it.
+   */
+  causes(text: string, condition: string, verdict: CauseVerdict | null): void;
+}
+
+/**
+ * The key one effect is held under: its sentence, whitespace-normalised and
+ * lower-cased.
+ *
+ * Whitespace for the reason {@link SpellMessageBook}'s trie normalises it —
+ * the message table carries a double space in `The  feeling of tranquility
+ * wears off.` — and case because the *identity* travels as a spell key
+ * (`unnamedEffect`), which is lower-cased wherever a spell name is. The
+ * server's own spelling is kept alongside, in `LearnedEffect.text`, since
+ * that is what is printed back and what the trie still matches on.
+ */
+export function effectKey(text: string): string {
+  return wordsOf(text).join(' ').toLowerCase();
+}
+
+/** A ledger that remembers nothing. The zero-data client. */
+export const NO_EFFECT_LEDGER: EffectLedger = {
+  seen: () => null,
+  lasting: () => {},
+  causes: () => {}
+};
+
 /** One spell's two sentences, as the shipped file states them. */
 export interface SpellMessageRow {
   /** The spell's name, as the realm's Spells table spells it. */
@@ -288,6 +397,8 @@ export interface SpellLore {
   learn(spell: string, kind: SpellMessageKind, text: string, at: number): void;
   /** A learned sentence the wire has since contradicted. */
   unlearn(spell: string, kind: SpellMessageKind): void;
+  /** What this realm has worked out about the effects it cannot name. */
+  readonly effects: EffectLedger;
 }
 
 /** A lore that knows no sentence and learns none. The zero-data client. */
@@ -296,7 +407,8 @@ export const NO_SPELL_LORE: SpellLore = {
   startOf: () => null,
   stopOf: () => null,
   learn: () => {},
-  unlearn: () => {}
+  unlearn: () => {},
+  effects: NO_EFFECT_LEDGER
 };
 
 /**
@@ -313,6 +425,8 @@ export function spellLoreOf(
   hooks: {
     learned?(spell: string, kind: SpellMessageKind, text: string, at: number): void;
     unlearned?(spell: string, kind: SpellMessageKind): void;
+    /** Where an unnameable effect's findings are kept. See {@link EffectLedger}. */
+    effects?: EffectLedger;
   } = {}
 ): SpellLore {
   const merge = (a: SpellMessageHit | null, b: SpellMessageHit | null): SpellMessageHit | null => {
@@ -334,6 +448,7 @@ export function spellLoreOf(
     },
     unlearn: (spell, kind) => {
       if (learned.remove(spell, kind)) hooks.unlearned?.(spell, kind);
-    }
+    },
+    effects: hooks.effects ?? NO_EFFECT_LEDGER
   };
 }

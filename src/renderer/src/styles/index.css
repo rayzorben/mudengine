@@ -6583,6 +6583,30 @@ button.lookup.quest-where svg {
 }
 
 /*
+ * The three questions, under what is known about the person.
+ *
+ * Wrapping, because the panel's width comes from the room beside the anchor
+ * and three labels do not always share a line. A legend rather than a card
+ * heading: this is one row of controls inside a face, not a section of it.
+ */
+.player-asks {
+  align-items: center;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  margin-top: var(--gap);
+  padding-top: var(--gap);
+}
+
+.player-asks-legend {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin-right: auto;
+  text-transform: uppercase;
+}
+
+/*
  * The room quick view: what the realm knows about a room nobody is standing
  * in, opened by a pointer resting on one.
  *

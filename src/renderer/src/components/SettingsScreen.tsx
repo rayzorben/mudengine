@@ -12,6 +12,7 @@ import FormField, {
 } from './FormField';
 import { Hint } from './Hint';
 import Advanced from './Advanced';
+import CarrySections from './CarrySections';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
@@ -58,10 +59,14 @@ import {
   RETREAT_STRATEGIES,
   POTION_VERBS,
   PVP_ACTIONS,
+  type BankingConfig,
+  type DropConfig,
   type EngagePolicy,
+  type LootConfig,
   type RetreatStrategy,
   type PvpAction,
-  type RewritesUiConfig
+  type RewritesUiConfig,
+  type SearchConfig
 } from '@shared/config';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import { ACTIONABLE_REMOTES, type RemoteGrant, type RemoteName } from '@shared/remotes';
@@ -568,6 +573,19 @@ interface CharacterForm {
   /** Spending character points on the stat screen — `automation.train`. */
   trainStats: boolean;
   trainWanted: Record<TrainedAttribute, string>;
+  /*
+   * Held whole, like `rewrites`, rather than flattened into eighteen fields.
+   * They are the *same four blocks the Global page edits*, and the controls
+   * below are that page's controls unchanged — a flattened copy here would be
+   * a second spelling of each field for a form to forget one of. The numbers
+   * inside are numbers rather than the strings the flat fields use, which is
+   * what Global already does with them: a half-typed price reads as the value
+   * so far, and the clamp is the same one on both pages.
+   */
+  loot: LootConfig;
+  drop: DropConfig;
+  search: SearchConfig;
+  banking: BankingConfig;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -719,6 +737,10 @@ function formOf(entry: ProfileEditable): CharacterForm {
     collectKeys: entry.movement.collectKeys,
     trainStats: entry.train.stats,
     trainWanted: wantedStrings(entry.train.wanted),
+    loot: structuredClone(entry.loot),
+    drop: structuredClone(entry.drop),
+    search: { ...entry.search },
+    banking: { ...entry.banking },
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
@@ -918,6 +940,10 @@ function draftOf(form: CharacterForm): ProfileDraft {
       collectKeys: form.collectKeys
     },
     train: { stats: form.trainStats, wanted: wantedNumbers(form.trainWanted) },
+    loot: form.loot,
+    drop: form.drop,
+    search: form.search,
+    banking: form.banking,
     loops: form.loops,
     alerts: {
       minimum: form.alertMinimum,
@@ -1062,6 +1088,10 @@ function emptyForm(
   const retreat = defaults?.automation.retreat ?? DEFAULT_CONFIG.automation.safety.retreat;
   const hangUp = defaults?.automation.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp;
   const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
+  const loot = defaults?.automation.loot ?? DEFAULT_CONFIG.automation.loot;
+  const drop = defaults?.automation.drop ?? DEFAULT_CONFIG.automation.drop;
+  const search = defaults?.automation.search ?? DEFAULT_CONFIG.automation.search;
+  const banking = defaults?.automation.banking ?? DEFAULT_CONFIG.automation.banking;
 
   return {
     id: '',
@@ -1183,6 +1213,10 @@ function emptyForm(
     collectKeys: movement.collectKeys,
     trainStats: train.stats,
     trainWanted: wantedStrings(train.wanted),
+    loot: structuredClone(loot),
+    drop: structuredClone(drop),
+    search: { ...search },
+    banking: { ...banking },
     loops: [],
     // `ProfileDraft` types this as a plain string, since a draft is a payload
     // parsed at the boundary; the form holds the closed union.
@@ -3695,6 +3729,23 @@ export default function SettingsScreen({
                         />
                         <p className="settings-note">{t('settings.movement.note')}</p>
                       </fieldset>
+
+                      {/*
+                        What this character picks up, puts down, searches for
+                        and banks — the same four fieldsets the Global page has
+                        always had, which this page had none of (todo 03).
+                        `resolveProfile` overlays whatever `automation:` a
+                        profile states, so a character could hold its own
+                        answers all along and no screen could write one.
+                      */}
+                      <CarrySections
+                        banking={form.banking}
+                        drop={form.drop}
+                        idPrefix=""
+                        loot={form.loot}
+                        onChange={patch}
+                        search={form.search}
+                      />
 
                       {/*
                         The loops this character owns, and the ones it merely

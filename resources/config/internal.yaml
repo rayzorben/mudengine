@@ -497,6 +497,13 @@ tuning:
     # The least often an `st` is asked for to settle a buff ending nothing
     # recognised.
     sheetAskMs: 30000
+    # The longest a sentence nothing recognised may wait for an `st` and still
+    # have the sheet's silence count as "not a lasting effect". Past this the
+    # candidate is dropped unresolved instead.
+    effectVerdictMs: 15000
+    # How far apart an unnameable effect ending and a condition ending may be
+    # and still be read as one event, which is what confirms what it causes.
+    effectCauseMs: 5000
 
   # Drinking on the character's behalf — `Potions`.
   potions:

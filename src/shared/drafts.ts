@@ -222,21 +222,10 @@ export interface GlobalDraft {
       notifyPartyOnWearOff: boolean;
       invokeItems: boolean;
     };
-    loot: {
-      coins: boolean;
-      coinKinds: Denomination[];
-      discardKinds: Denomination[];
-      items: string[];
-      minPrice: number;
-      maxEncumbrance: number;
-      stopAtGrade: EncumbranceGate;
-      convertWith: string;
-      convertAt: EncumbranceGate;
-    };
-    drop: { enabled: boolean; items: string[]; whenEncumbered: boolean; worthless: boolean };
-    /** Looking for what a room did not print. See `SearchConfig`. */
-    search: { enabled: boolean; tries: number };
-    banking: { autoDeposit: boolean; depositThresholdCopper: number; keepCopper: number };
+    loot: ProfileDraft['loot'];
+    drop: ProfileDraft['drop'];
+    search: ProfileDraft['search'];
+    banking: ProfileDraft['banking'];
     remotes: ProfileDraft['remotes'];
     afk: ProfileDraft['afk'];
     talk: ProfileDraft['talk'];
@@ -444,6 +433,33 @@ export interface ProfileDraft {
     stats: boolean;
     wanted: Record<TrainedAttribute, number>;
   };
+  /*
+   * The four blocks below are a character's as much as the ones above it
+   * (todo 03, 2026-09-12). They were on the Global draft alone, typed inline,
+   * so a character could state them in its own file — `resolveProfile`
+   * overlays whatever `automation:` a profile holds — and no screen could
+   * write one and no form could show it. Two characters sharing a realm want
+   * different answers here more than almost anywhere else: one hunts and one
+   * hauls.
+   */
+  /** What to pick up, unasked — `automation.loot`. See `LootConfig`. */
+  loot: {
+    coins: boolean;
+    coinKinds: Denomination[];
+    discardKinds: Denomination[];
+    items: string[];
+    minPrice: number;
+    maxEncumbrance: number;
+    stopAtGrade: EncumbranceGate;
+    convertWith: string;
+    convertAt: EncumbranceGate;
+  };
+  /** What to put back down — `automation.drop`. See `DropConfig`. */
+  drop: { enabled: boolean; items: string[]; whenEncumbered: boolean; worthless: boolean };
+  /** Looking for what a room did not print — `automation.search`. See `SearchConfig`. */
+  search: { enabled: boolean; tries: number };
+  /** Banking the purse — `automation.banking`. See `BankingConfig`. */
+  banking: { autoDeposit: boolean; depositThresholdCopper: number; keepCopper: number };
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -679,6 +695,10 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const party = isRecord(value['party']) ? value['party'] : {};
   const movement = isRecord(value['movement']) ? value['movement'] : {};
   const spells = isRecord(value['spells']) ? value['spells'] : {};
+  const loot = isRecord(value['loot']) ? value['loot'] : {};
+  const drop = isRecord(value['drop']) ? value['drop'] : {};
+  const search = isRecord(value['search']) ? value['search'] : {};
+  const banking = isRecord(value['banking']) ? value['banking'] : {};
   const alerts = isRecord(value['alerts']) ? value['alerts'] : {};
   const desktopAlerts = isRecord(alerts['desktop']) ? alerts['desktop'] : {};
   const remotes = isRecord(value['remotes']) ? value['remotes'] : {};
@@ -833,6 +853,53 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     },
     // The options file's own reading: a figure is a whole number, 0 to 999.
     train: normalizeTrain(value['train']),
+    loot: {
+      coins: loot['coins'] === true,
+      coinKinds: Array.isArray(loot['coinKinds'])
+        ? DENOMINATIONS.filter((name) => (loot['coinKinds'] as unknown[]).includes(name))
+        : [...DENOMINATIONS],
+      // Exclusive with the list above, and the same way round `normalizeLoot`
+      // resolves it: an ambiguous file keeps its coins rather than sheds them.
+      discardKinds: Array.isArray(loot['discardKinds'])
+        ? DENOMINATIONS.filter(
+            (name) =>
+              (loot['discardKinds'] as unknown[]).includes(name) &&
+              !(
+                Array.isArray(loot['coinKinds']) ? (loot['coinKinds'] as unknown[]) : DENOMINATIONS
+              ).includes(name)
+          )
+        : [],
+      stopAtGrade: asGate(loot['stopAtGrade']),
+      convertWith: text(loot['convertWith']).slice(0, 40),
+      convertAt: asGate(loot['convertAt']),
+      items: words(loot['items'], 32),
+      minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
+      maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0))
+    },
+    drop: {
+      enabled: drop['enabled'] === true,
+      items: words(drop['items'], 32),
+      whenEncumbered: drop['whenEncumbered'] === true,
+      worthless: drop['worthless'] === true
+    },
+    search: {
+      enabled: search['enabled'] === true,
+      // Floored at one for the reason `normalizeSearch` states: `enabled` is
+      // what turns it off, and "on, zero searches" is a switch somebody flips
+      // and then waits to see work.
+      tries: clamp(search['tries'], 1, 5, 1)
+    },
+    banking: {
+      autoDeposit: banking['autoDeposit'] === true,
+      depositThresholdCopper: Math.max(
+        0,
+        Math.min(1_000_000_000, Math.round(Number(banking['depositThresholdCopper']) || 0))
+      ),
+      keepCopper: Math.max(
+        0,
+        Math.min(1_000_000_000, Math.round(Number(banking['keepCopper']) || 0))
+      )
+    },
     /*
      * Parsed by the same function the options file goes through, so a loop
      * chosen on the screen and a loop typed into YAML cannot mean different
@@ -942,10 +1009,6 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
   const pacing = isRecord(automation['pacing']) ? automation['pacing'] : {};
   const walk = isRecord(automation['walk']) ? automation['walk'] : {};
   const spells = isRecord(automation['spells']) ? automation['spells'] : {};
-  const loot = isRecord(automation['loot']) ? automation['loot'] : {};
-  const drop = isRecord(automation['drop']) ? automation['drop'] : {};
-  const search = isRecord(automation['search']) ? automation['search'] : {};
-  const banking = isRecord(automation['banking']) ? automation['banking'] : {};
   const remotes = isRecord(automation['remotes']) ? automation['remotes'] : {};
 
   /*
@@ -1059,55 +1122,11 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
         invokeItems: spells['invokeItems'] === true
       },
-      loot: {
-        coins: loot['coins'] === true,
-        coinKinds: Array.isArray(loot['coinKinds'])
-          ? DENOMINATIONS.filter((name) => (loot['coinKinds'] as unknown[]).includes(name))
-          : [...DENOMINATIONS],
-        // Exclusive with the list above, and the same way round `normalizeLoot`
-        // resolves it: an ambiguous file keeps its coins rather than sheds them.
-        discardKinds: Array.isArray(loot['discardKinds'])
-          ? DENOMINATIONS.filter(
-              (name) =>
-                (loot['discardKinds'] as unknown[]).includes(name) &&
-                !(
-                  Array.isArray(loot['coinKinds'])
-                    ? (loot['coinKinds'] as unknown[])
-                    : DENOMINATIONS
-                ).includes(name)
-            )
-          : [],
-        stopAtGrade: asGate(loot['stopAtGrade']),
-        convertWith: text(loot['convertWith']).slice(0, 40),
-        convertAt: asGate(loot['convertAt']),
-        items: words(loot['items'], 32),
-        minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
-        maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0))
-      },
-      drop: {
-        enabled: drop['enabled'] === true,
-        items: words(drop['items'], 32),
-        whenEncumbered: drop['whenEncumbered'] === true,
-        worthless: drop['worthless'] === true
-      },
-      search: {
-        enabled: search['enabled'] === true,
-        // Floored at one for the reason `normalizeSearch` states: `enabled` is
-        // what turns it off, and "on, zero searches" is a switch somebody flips
-        // and then waits to see work.
-        tries: clamp(search['tries'], 1, 5, 1)
-      },
-      banking: {
-        autoDeposit: banking['autoDeposit'] === true,
-        depositThresholdCopper: Math.max(
-          0,
-          Math.min(1_000_000_000, Math.round(Number(banking['depositThresholdCopper']) || 0))
-        ),
-        keepCopper: Math.max(
-          0,
-          Math.min(1_000_000_000, Math.round(Number(banking['keepCopper']) || 0))
-        )
-      },
+      // Read by the function that already knows how, like the blocks above.
+      loot: asIf.loot,
+      drop: asIf.drop,
+      search: asIf.search,
+      banking: asIf.banking,
       remotes: {
         enabled: remotes['enabled'] === true,
         gangpath: remotes['gangpath'] === true,

@@ -12068,6 +12068,42 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(known.length >= 2, 'it keeps what it has seen of the other players', JSON.stringify(known));
 
   /*
+   * And the palette carries no row per person (todo 04). This is the half that
+   * has to be checked with a roster loaded: the commands were built from it,
+   * so with nobody known the list looks correct however it is written. Asked
+   * by *name*, because the group they sat in collapses and an empty filter
+   * would pass whatever the answer.
+   */
+  await evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'k', ctrlKey: true, bubbles: true
+  })), true)`);
+  await paletteReady();
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('.palette input');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, 'Rayth');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  const perPerson = await evaluate(
+    `JSON.stringify([...document.querySelectorAll('.palette li')]
+       .map((li) => li.innerText.replace(/\\s+/g, ' ').trim())
+       .filter((text) => /^Ask /.test(text)))`
+  );
+  check(
+    perPerson === '[]',
+    'and the palette has no command per person: who to ask is an argument, not a command',
+    perPerson
+  );
+  await evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape', bubbles: true
+  })), true)`);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.palette')`)));
+
+  /*
    * Somebody who only ever *spoke* is in it. That is the whole point of the
    * registry over the roster: `Rayth telepaths:` reaches across the realm, and
    * before this card nothing recorded that the name existed at all.
@@ -12202,6 +12238,23 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   const fromRealm = grimjaw?.who ?? null;
   check(fromRealm === 'Grimjaw', 'a name on the Realm card is there to press', String(fromRealm));
+  const hitTest = await evaluate(`
+    (() => {
+      const panel = document.querySelector('.player-flyout');
+      const name = [...document.querySelectorAll('.realm-card button.realm-name')]
+        .find((b) => b.innerText.trim() === 'Grimjaw');
+      const r = name ? name.getBoundingClientRect() : null;
+      const at = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+      return JSON.stringify({
+        panel: panel ? panel.getBoundingClientRect().toJSON() : null,
+        asks: !!document.querySelector('.player-asks'),
+        body: document.querySelector('.player-flyout .popover-body')?.innerText.slice(0, 60) ?? '',
+        name: r ? r.toJSON() : null,
+        hit: at ? (at.className || at.tagName) : null
+      });
+    })()
+  `);
+  check(false, 'DIAGNOSTIC before the Realm-card press', hitTest);
   await evaluate(`window.__flyoutGone = false; new MutationObserver(() => {
     if (!document.querySelector('.player-flyout')) window.__flyoutGone = true;
   }).observe(document.body, { childList: true }); true`);
@@ -12230,6 +12283,22 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     fromRealmText.includes(fromRealm),
     'and the flyout follows it to that person',
     `${fromRealm} :: ${fromRealmText.slice(0, 200)}`
+  );
+
+  /*
+   * The three questions live here, beside the person they are about -- and the
+   * palette does not carry one per person any more (todo 04). Both halves are
+   * checked, because removing the flood without keeping the capability
+   * reachable is the failure this project calls a command nobody can find.
+   */
+  const asks = await evaluate(
+    `JSON.stringify([...document.querySelectorAll('.player-flyout .player-asks button')]
+       .map((b) => b.innerText.trim()))`
+  );
+  check(
+    /health/i.test(asks) && /where/i.test(asks) && /come back/i.test(asks),
+    'the flyout is where a player is asked for their health, where they are, and to come back',
+    asks
   );
 
   /*

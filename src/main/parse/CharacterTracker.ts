@@ -70,9 +70,18 @@ import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world
 import { mobKey, nameAnswersTo, roomAddress, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
-import { NO_SPELL_LORE, spellKey, wordsOf, type SpellLore } from '../../shared/spell-messages';
+import {
+  effectKey,
+  isUnnamedEffect,
+  NO_SPELL_LORE,
+  spellKey,
+  unnamedEffect,
+  unnamedEffectSentence,
+  wordsOf,
+  type SpellLore
+} from '../../shared/spell-messages';
 import { holdsMovement } from '../../shared/spellcraft';
-import { afflictionOnset, STATUS_LINE } from './patterns';
+import { afflictionOnset, PLAYER_STATUS_HEADER, STATUS_LINE } from './patterns';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
@@ -400,6 +409,12 @@ function splitSpells(group: string | undefined): string[] {
  * `You say` do not. This is a gate on what may be *learned*, not a reader —
  * nothing is typed from it.
  */
+/**
+ * Every affliction, taken from the zero value so the list cannot drift from
+ * the type it enumerates — the two halves of a closed union, in one place.
+ */
+const AFFLICTIONS = Object.keys(NO_AFFLICTIONS) as ReadonlyArray<keyof Afflictions>;
+
 export function looksLikeEffectSentence(text: string): boolean {
   if (!/^[A-Z][^\d"]*[.!]$/.test(text)) return false;
   return wordsOf(text).length <= 14;
@@ -528,6 +543,42 @@ export class CharacterTracker {
    * acted on by `Routines` — the tracker records and never sends.
    */
   private sheetWanted = false;
+  /**
+   * Sentences nothing recognised that may be an effect *landing*, each
+   * waiting for a stat sheet to say so.
+   *
+   * The learning that was here read only this character's own casts, so a
+   * spell somebody else landed could never teach anything: its sentence
+   * matched no frame, followed no cast, and was dropped. The sheet is what
+   * answers for it — `StatCommand.cs:50` prints `DescMessage.Line3` for every
+   * timed effect on the player, which is the very line the spell printed when
+   * it landed (`Spell.cs:1233`, `:1360`), friend or foe alike. So a sentence
+   * reprinted there is a lasting effect and is learned under its own words
+   * (`unnamedEffect`); one the sheet leaves out is not, and *that* is written
+   * down too, so `You are poisoned!` answering a `rest` costs this realm one
+   * `st` in its lifetime rather than one per sighting.
+   *
+   * Bounded and aged out by `tuning.spells.pendingStopMs`, as the endings are.
+   */
+  private pendingOnsets: Array<{ text: string; at: number; stopFor?: string }> = [];
+  /**
+   * When each unnameable effect last ended, and when each condition last did,
+   * so that the two — printed as separate sentences, in either order — can be
+   * read as the one event that confirms what the effect causes. Both are
+   * bounded by the buff list and by the four conditions. See `deduceCauses`.
+   */
+  private readonly effectEnded = new Map<string, number>();
+  private readonly conditionEnded = new Map<keyof Afflictions, number>();
+  /**
+   * Whether the stat sheet is being printed right now.
+   *
+   * Its lines arrive twice: once each as their own block, and again as the
+   * `player-status` batch. A line of the sheet is the *listing restating*
+   * what is up, so it may not be read as an ending — without this, an
+   * unrecognised effect sentence on the sheet ends the one buff whose stop
+   * nobody knows, in the middle of the sentence that says it is still there.
+   */
+  private sheetOpen = false;
   /**
    * The matcher built from what `pro` last said the prompt is, or null while
    * the tolerant pattern is the reader (`src/shared/statline.ts` builds it).
@@ -981,6 +1032,10 @@ export class CharacterTracker {
     this.lastSelfCast = null;
     this.buffEffects.clear();
     this.pendingStops = [];
+    this.pendingOnsets = [];
+    this.sheetOpen = false;
+    this.effectEnded.clear();
+    this.conditionEnded.clear();
     this.recentlyStopped.clear();
     this.sheetWanted = false;
     this.statlineMatcher = null;
@@ -1010,6 +1065,10 @@ export class CharacterTracker {
     this.expect.dropHint();
     // The buffs go with the realm, and so does every half-learned ending.
     this.pendingStops = [];
+    this.pendingOnsets = [];
+    this.sheetOpen = false;
+    this.effectEnded.clear();
+    this.conditionEnded.clear();
     this.recentlyStopped.clear();
     this.sheetWanted = false;
     if (this.state.phase === 'unknown' && this.state.room.name === null) return false;
@@ -1948,7 +2007,16 @@ export class CharacterTracker {
      * binding and then arms a new one in `FightTracker.hit`.
      */
     if (!proc && !isProcHousekeeping(block)) this.fight.interrupt();
+    /*
+     * **The sheet is open from its header until its batch closes.** Its lines
+     * arrive twice — once each as their own block, then again as the
+     * `player-status` batch — and a line of a listing restating what is up is
+     * not an event. Set before the reducer so the `unknown` case sees it, and
+     * cleared after, so the batch that closes the sheet is still read as one.
+     */
+    if (PLAYER_STATUS_HEADER.test(block.text.trim())) this.sheetOpen = true;
     const reduced = this.reduce(block, rows, proc);
+    if (block.type === 'player-status' || block.type === 'status-line') this.sheetOpen = false;
     // After the reducer, so the experience line reads the line before it.
     if (block.type === 'unknown') {
       const text = block.text.trim();
@@ -2027,6 +2095,10 @@ export class CharacterTracker {
      * one the reducer produced.
      */
     const tally = trackTally(base.tally, block, base, before, proc);
+    // Folded from the same place and for the same reason `trackPlayers` is: a
+    // condition can move in any of a dozen cases, and this reads the
+    // transition rather than any one of them. See `deduceCauses`.
+    this.deduceCauses(before, base, block.at);
     if (!next) {
       if (base === this.state && players === this.state.players && tally === this.state.tally)
         return false;
@@ -2229,19 +2301,28 @@ export class CharacterTracker {
   private readSheet(s: CharacterState, text: string, at: number): ActiveBuff[] {
     const up = new Set<string>();
     const timers = new Map<string, number>();
+    const printed: string[] = [];
     for (const raw of text.split(/\r?\n/)) {
       const line = raw.trim();
       if (line.length === 0) continue;
       const timed = /^(?<line>.+?)\s*\((?<seconds>\d+)s\)$/.exec(line);
       const sentence = timed?.groups?.['line'] ?? line;
       const seconds = timed ? Number(timed.groups?.['seconds']) : null;
-      for (const name of this.spellsBegunBy(sentence)) {
+      const names = this.spellsBegunBy(sentence);
+      // Only a line that accounted for nothing is a candidate effect: a
+      // sentence the frames or the learned onset map already turned into a
+      // buff is that buff being restated, not a second one.
+      if (names.length === 0) printed.push(sentence);
+      for (const name of names) {
         up.add(spellKey(name));
         if (seconds !== null && Number.isFinite(seconds)) {
           timers.set(spellKey(name), at + seconds * 1000);
         }
       }
     }
+    // Before the keeping below, because it adds to `up`: an effect this sheet
+    // has just named is one the same sheet must not then be read as dropping.
+    const found = this.resolveEffects(printed, up, at);
 
     const kept: ActiveBuff[] = [];
     for (const buff of s.buffs) {
@@ -2255,7 +2336,246 @@ export class CharacterTracker {
       kept.push(expiresAt === undefined ? { ...buff } : { ...buff, expiresAt });
     }
     this.settlePending(up, at);
+    // A newly named effect that nothing on the list already covers. Appended
+    // after the keeping so its own `appliedAt` is this sheet rather than the
+    // sighting, which is the honest reading: when it landed is not known.
+    for (const buff of found) {
+      if (!kept.some((held) => this.buffMatches(held, [buff.spell]))) kept.push(buff);
+    }
     return kept;
+  }
+
+  /**
+   * What the sheet says about the sentences nothing could name.
+   *
+   * The sheet is the arbiter for both halves of the question, and it can be
+   * because of one fact about the server: `StatCommand.cs:50` prints
+   * `DescMessage.Line3` for **every** timed effect on the player, and that is
+   * the same line the spell printed when it landed (`Spell.cs:1233`, `:1360`).
+   * Hostile effects are not filtered out, and a sentence that was printed on
+   * landing came from a non-empty `Line3`, so the sheet is bound to carry it
+   * while it lasts.
+   *
+   * So: **a sentence the sheet prints is a lasting effect**, learned under
+   * its own words (`unnamedEffect`) so that every rule this client already
+   * has for a buff — the listing that drops what is gone, the ending learned
+   * from the next unclaimed sentence, the duration — applies to it without
+   * knowing which spell it is. And **a sentence the sheet leaves out is not
+   * one**, which is the half that pays for the asking: `You are poisoned!`
+   * answering a `rest` is refused once per realm rather than once a sighting.
+   *
+   * The wire's own order is what makes the negative safe: the server prints
+   * the landing line before it renders a sheet asked for afterwards, so a
+   * sheet that could have carried it and did not is a statement. The one gap
+   * is an effect that *expired* in between, which is why a candidate older
+   * than `tuning.spells.effectVerdictMs` is dropped unresolved instead — and
+   * why the mistake is cheap either way: the next sheet that does carry the
+   * sentence overwrites the verdict.
+   */
+  private resolveEffects(printed: readonly string[], up: Set<string>, at: number): ActiveBuff[] {
+    const found: ActiveBuff[] = [];
+    const seen = new Set<string>();
+    for (const sentence of printed) {
+      const key = effectKey(sentence);
+      if (key.length === 0 || seen.has(key)) continue;
+      seen.add(key);
+      if (!looksLikeEffectSentence(sentence)) continue;
+      const spell = unnamedEffect(sentence);
+      this.spellLore.effects.lasting(sentence, 'yes', at);
+      this.spellLore.learn(spell, 'start', sentence, at);
+      up.add(spellKey(spell));
+      found.push({ spell, by: null, appliedAt: at });
+      /*
+       * And it is not an ending. The same sentence may have been acted on as
+       * the one buff whose stop nobody knew, or be waiting on a shortlist of
+       * them — the sheet has just said it is an effect that is *up*, which is
+       * the stronger statement, so both readings go.
+       */
+      for (const pending of this.pendingOnsets) {
+        if (effectKey(pending.text) !== key || pending.stopFor === undefined) continue;
+        this.spellLore.unlearn(pending.stopFor, 'stop');
+      }
+      this.pendingStops = this.pendingStops.filter((pending) => effectKey(pending.text) !== key);
+    }
+
+    const verdictMs = tuning().spells.effectVerdictMs;
+    this.pendingOnsets = this.pendingOnsets.filter((pending) => {
+      const key = effectKey(pending.text);
+      if (seen.has(key)) return false;
+      if (at - pending.at > verdictMs) return false;
+      this.spellLore.effects.lasting(pending.text, 'no', at);
+      return false;
+    });
+    return found;
+  }
+
+  /**
+   * A sentence that may be an effect landing, held for the next sheet.
+   *
+   * Refused outright where this realm has already settled that the sentence
+   * is no lasting effect: a listing is asked for when it would settle
+   * something, and a question already answered settles nothing.
+   */
+  private suspectEffect(text: string, at: number): void {
+    if (this.spellLore.effects.seen(text)?.lasting === 'no') return;
+    const key = effectKey(text);
+    if (key.length === 0) return;
+    if (this.pendingOnsets.some((pending) => effectKey(pending.text) === key)) return;
+    this.pendingOnsets.push({ text, at });
+    // A list-size bound, not a knob, as the pending endings have.
+    if (this.pendingOnsets.length > 20) this.pendingOnsets.shift();
+    this.sheetWanted = true;
+  }
+
+  /**
+   * What an effect nothing can name turns out to *do*.
+   *
+   * The client already reads this for a named spell, from the realm's own
+   * data: the table pairs the spell's start sentence with its stop, and
+   * `afflictionOnset` says which condition that sentence turns on — which is
+   * how `You are blind!` wearing off clears the flag. An effect that has no
+   * name has no row to read, so the only evidence is the coincidence, and
+   * this is the whole of it:
+   *
+   * - a condition turns on, nothing named explains it, and an unnamed effect
+   *   is up — **suspected**;
+   * - the condition turns off in the same breath the effect ends —
+   *   **confirmed**;
+   * - the condition turns off while the effect is still up — the two are
+   *   unrelated and the suspicion is **dropped**, not weakened.
+   *
+   * A suspicion is written down, so what it is built on can be read, and it
+   * is never enough on its own to sit a character down or stand one up: that
+   * is what the confirmed verdict is for. The realm keeps both
+   * (`RealmLore.ledgerFor`), because what a monster's spell does is a fact
+   * about the world and not about who it landed on.
+   */
+  private deduceCauses(before: CharacterState, after: CharacterState, at: number): void {
+    // Nothing to read off a block that moved neither. Reference equality, as
+    // the player fold's gate is: the reducer hands back the same list when it
+    // changed nothing, and a status line arrives several times a second.
+    if (after.afflictions === before.afflictions && after.buffs === before.buffs) return;
+    const ledger = this.spellLore.effects;
+    const window = tuning().spells.effectCauseMs;
+    const unnamed = (buffs: readonly ActiveBuff[]): string[] =>
+      buffs
+        .map((buff) => unnamedEffectSentence(buff.spell))
+        .filter((sentence): sentence is string => sentence !== null);
+    const up = unnamed(after.buffs);
+
+    for (const condition of AFFLICTIONS) {
+      const was = before.afflictions[condition];
+      const now = after.afflictions[condition];
+      if (was === now) continue;
+      if (now === 'yes') {
+        if (up.length === 0 || this.namedCause(after, condition)) continue;
+        for (const sentence of up) {
+          // A verdict is reached once. Re-suspecting what the wire already
+          // confirmed would walk a finding backwards on every recurrence.
+          if (ledger.seen(sentence)?.causes?.[condition] === 'confirmed') continue;
+          ledger.causes(sentence, condition, 'suspected');
+        }
+        continue;
+      }
+      if (now !== 'no') continue;
+      // Still up while the condition has gone: whatever this effect does, it
+      // is not that.
+      for (const sentence of up) {
+        if (ledger.seen(sentence)?.causes?.[condition] === undefined) continue;
+        ledger.causes(sentence, condition, null);
+      }
+      this.conditionEnded.set(condition, at);
+      for (const [sentence, ended] of this.effectEnded) {
+        if (at - ended <= window) this.confirmCause(sentence, condition);
+      }
+    }
+
+    /*
+     * And the other order. The effect's own ending and the condition's are two
+     * sentences, and which the server writes first is its business — so each
+     * is recorded as it happens and each looks for the other. Both maps are
+     * bounded by the buff list and the four conditions.
+     */
+    for (const sentence of unnamed(before.buffs)) {
+      if (up.includes(sentence)) continue;
+      this.effectEnded.set(sentence, at);
+      // A list-size bound, not a knob: the window is five seconds and the
+      // oldest entry is the least useful.
+      if (this.effectEnded.size > 20) {
+        const oldest = this.effectEnded.keys().next().value;
+        if (oldest !== undefined) this.effectEnded.delete(oldest);
+      }
+      for (const [condition, ended] of this.conditionEnded) {
+        if (at - ended <= window) this.confirmCause(sentence, condition);
+      }
+    }
+  }
+
+  /** A suspicion the wire has now shown twice over. Never a promotion of nothing. */
+  private confirmCause(sentence: string, condition: keyof Afflictions): void {
+    const ledger = this.spellLore.effects;
+    if (ledger.seen(sentence)?.causes?.[condition] !== 'suspected') return;
+    ledger.causes(sentence, condition, 'confirmed');
+  }
+
+  /**
+   * Which conditions a spell turns on, and so which its ending turns off.
+   *
+   * Three sources, in order of authority, and none of them a guess:
+   *
+   * 1. **The realm's own ability row** for the hold family — `HoldPerson`
+   *    (74), the one ability `ActionFigure.CheckForHoldPerson` tests.
+   * 2. **The shipped message table's pairing**: the spell's start sentence,
+   *    which `afflictionOnset` recognises for blindness, poison, disease and
+   *    the two holds fixed in the server's code.
+   * 3. **What this realm worked out**, and only where it was *confirmed* —
+   *    the condition ended in the same breath as the effect, observed, not
+   *    inferred (`deduceCauses`). A suspicion never reaches here: it is
+   *    written down to be read, not acted on.
+   *
+   * The third makes the ending self-fulfilling from then on, which is worth
+   * stating plainly: once confirmed, this clears the condition, so the
+   * coincidence that confirmed it will recur. It cannot *strengthen* anything
+   * false — a verdict is confirmed once, from evidence gathered before
+   * anything acted on it — and the retraction that answers a false one fires
+   * on the other transition, the condition ending while the effect is still
+   * up, which this does not touch.
+   */
+  private conditionsOf(name: string): Array<keyof Afflictions> {
+    const sentence = unnamedEffectSentence(name);
+    if (sentence !== null) {
+      const causes = this.spellLore.effects.seen(sentence)?.causes ?? {};
+      return AFFLICTIONS.filter((condition) => causes[condition] === 'confirmed');
+    }
+    const conditions: Array<keyof Afflictions> = [];
+    if (holdsMovement(this.world?.spellNamed(name))) conditions.push('held');
+    const start = this.spellLore.startOf(name);
+    const stated = start === null ? null : afflictionOnset(start);
+    if (stated !== null && !conditions.includes(stated)) conditions.push(stated);
+    return conditions;
+  }
+
+  /**
+   * Whether a spell that is up and *has* a name is known to cause a
+   * condition — so a condition it explains teaches an unnamed effect nothing.
+   *
+   * Read exactly as the wear-off reads it: the realm's `HoldPerson` row for
+   * the hold family, and for the rest the table's own pairing of the spell
+   * with the sentence `afflictionOnset` recognises.
+   */
+  private namedCause(s: CharacterState, condition: keyof Afflictions): boolean {
+    return s.buffs.some((buff) =>
+      this.buffNames(buff).some(
+        (name) => !isUnnamedEffect(name) && this.conditionsOf(name).includes(condition)
+      )
+    );
+  }
+
+  /** The sentence was read as this buff's ending; a sheet can take that back. */
+  private actedAsStop(text: string, spell: string): void {
+    const key = effectKey(text);
+    const pending = this.pendingOnsets.find((held) => effectKey(held.text) === key);
+    if (pending) pending.stopFor = spell;
   }
 
   /** Every spell a sheet line says is up: the table's starts, then the learned onset map. */
@@ -3179,12 +3499,30 @@ export class CharacterTracker {
 
       case 'player-status': {
         // The stat sheet is where maxima come from; the status line has none.
+        const buffs = this.readSheet(s, block.text, block.at);
+        /*
+         * **The listing drops what has ended, and so must what it turned on.**
+         * A buff the sheet has stopped printing ended without a sentence this
+         * client read — which is the very case where the condition it caused
+         * would otherwise stand for ever, because nothing else is coming to
+         * clear it. Same reading as the wear-off's (`conditionsOf`), from the
+         * one side of the listing that removes.
+         */
+        const dropped = s.buffs.filter((held) => !buffs.some((kept) => kept.spell === held.spell));
+        let cleared = s;
+        for (const buff of dropped) {
+          for (const name of this.buffNames(buff)) {
+            for (const condition of this.conditionsOf(name)) {
+              cleared = afflicted(cleared, condition, 'no') ?? cleared;
+            }
+          }
+        }
         return {
-          ...s,
+          ...cleared,
           // Paramud's `st` prints a countdown after each active buff; the
           // batch swallows those lines, so they are read out of the sheet text
           // and attributed through the learned onset map. See `applyBuffTimers`.
-          buffs: this.readSheet(s, block.text, block.at),
+          buffs,
           name: g['first'] ?? s.name,
           fullName: g['first'] ? [g['first'], g['last'] ?? ''].join(' ').trim() : s.fullName,
           race: g['race'] ?? s.race,
@@ -4891,13 +5229,9 @@ export class CharacterTracker {
            * `holdsMovement` and `heldByOnset` — one test, read from both ends,
            * exactly as the onset pairing is.
            */
-          if (holdsMovement(this.world?.spellNamed(name))) {
-            next = afflicted(next, 'held', 'no') ?? next;
+          for (const condition of this.conditionsOf(name)) {
+            next = afflicted(next, condition, 'no') ?? next;
           }
-          const start = this.spellLore.startOf(name);
-          const condition = start === null ? null : afflictionOnset(start);
-          if (condition === null) continue;
-          next = afflicted(next, condition, 'no') ?? next;
         }
         const ended = next.buffs.filter((buff) => this.buffMatches(buff, names));
         // A wear-off naming nothing on the list is still a fact — a debuff
@@ -5463,6 +5797,26 @@ export class CharacterTracker {
           this.lastSelfCast = null;
           return null;
         }
+        /*
+         * **A line of the sheet is the listing restating what is up**, not an
+         * event, so it ends nothing. It is still worth a candidate: the sheet
+         * printing a sentence nothing recognises is the positive statement
+         * that it is a lasting effect, and `readSheet` reads that off the
+         * batch a moment later.
+         */
+        /*
+         * **Every unclaimed sentence is a candidate onset**, whatever else is
+         * made of it below. No cast of this character's is in front of it, so
+         * it is either an effect somebody else landed — which the learning
+         * here could never see, reading own casts only — or the end of one
+         * that is up, or no effect at all. The sheet is the one thing that
+         * separates the three, and holding the sentence against all of them
+         * until it arrives is what stops the client choosing early.
+         */
+        this.suspectEffect(text, block.at);
+        // A line of the sheet is the listing restating what is up, not an
+        // event: it ends nothing.
+        if (this.sheetOpen) return null;
         const suspects = s.buffs.filter((buff) => !this.knowsStop(buff));
         if (suspects.length === 0) return null;
         // Either way the sheet is worth asking for, if it can speak: a
@@ -5473,6 +5827,7 @@ export class CharacterTracker {
           const buff = suspects[0]!;
           this.spellLore.learn(buff.spell, 'stop', text, block.at);
           this.recentlyStopped.set(spellKey(buff.spell), block.at);
+          this.actedAsStop(text, buff.spell);
           this.buffsEnded([buff], block.at, false);
           return { ...s, buffs: s.buffs.filter((held) => held !== buff) };
         }

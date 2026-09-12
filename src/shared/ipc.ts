@@ -33,6 +33,10 @@ import type {
   ConfigSnapshot,
   HealthConfig,
   MovementConfig,
+  LootConfig,
+  DropConfig,
+  SearchConfig,
+  BankingConfig,
   TrainConfig,
   RemotesConfig,
   StatlineConfig,
@@ -390,6 +394,16 @@ export interface ProfileEditable {
   movement: MovementConfig;
   /** Spending character points on the stat screen. Resolved, like the rest. */
   train: TrainConfig;
+  /*
+   * What the character picks up, puts down, searches for and banks — resolved,
+   * like the rest (todo 03, 2026-09-12). They were reachable only on the
+   * Global page, so `automation.loot` was a client-wide answer to a question
+   * two characters on one realm rarely answer the same way.
+   */
+  loot: LootConfig;
+  drop: DropConfig;
+  search: SearchConfig;
+  banking: BankingConfig;
   /**
    * Whether this character answers another player's `@` commands. Resolved.
    *

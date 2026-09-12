@@ -325,38 +325,6 @@ const measureAbove = (): number => heightOf('.dock-above > .card', DOCK_RANGE.mi
 const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_RANGE.min);
 
 /** No characters loaded: one empty list, so the rail's props hold still while it is empty. */
-/**
- * The questions the palette offers about another player, by name.
- *
- * Named rather than derived from the vocabulary: most of the fifty-odd `@`
- * commands are things nobody asks a person for from a command palette, and a
- * list that grew one entry per player per remote would bury every other
- * command in the client. The wording each one goes out in is main's decision
- * — see `Remotes.ask` — so these are the *questions*, not the spellings.
- */
-const ASKABLE_REMOTES: ReadonlyArray<{
-  name: RemoteName;
-  /** A literal `t()` each, so `i18n-coverage.test.ts` can read the keys. */
-  label: (name: string) => string;
-  keywords: readonly string[];
-}> = [
-  {
-    name: 'health',
-    label: (name) => t('palette.character.askHealthLabel', { name }),
-    keywords: ['health', 'party']
-  },
-  {
-    name: 'where',
-    label: (name) => t('palette.character.askWhereLabel', { name }),
-    keywords: ['where', 'room']
-  },
-  {
-    name: 'comeback',
-    label: (name) => t('palette.character.askComebackLabel', { name }),
-    keywords: ['comeback', 'come']
-  }
-];
-
 const NO_SESSIONS: SessionSummary[] = [];
 /** A character whose file names no supplies. One list, so a card's props hold still. */
 const NO_SUPPLIES: SupplyItem[] = [];
@@ -3066,6 +3034,33 @@ export default function App() {
   const dismissFlyout = useCallback(() => setFlyout(null), []);
 
   /**
+   * One of the three questions put to a player, from the flyout hanging off
+   * their name.
+   *
+   * Addressed at the character whose listing was clicked, not the shown one —
+   * `PlayerAsked.session`, the rule every other control on that panel follows,
+   * and the reason a pinned float can carry it at all. The refusal lands in
+   * *that* character's console for the same reason the lap's does: a sentence
+   * about a character belongs in front of the character it is about.
+   *
+   * This was three palette commands per person (todo 04): with a realm's
+   * roster loaded, a hundred rows of *Ask X for their Y* stood between the
+   * palette's own filter and every other command in the client. The palette
+   * lists commands; who to ask is an argument, and an argument belongs beside
+   * its subject.
+   */
+  const askPlayer = useCallback(
+    (name: string, remote: RemoteName) => {
+      const sid = flyout?.session ?? null;
+      if (sid === null) return;
+      void api.askRemote(sid, name, remote).then((sent) => {
+        if (!sent) terminals.current.get(sid)?.notice(t('cards.player.ask.refused', { name }));
+      });
+    },
+    [api, flyout]
+  );
+
+  /**
    * A gang clicked — in the console, or on the person whose gang it is.
    *
    * A gang is an entity like a person or an item: it is printed in the `who`
@@ -3611,34 +3606,6 @@ export default function App() {
   );
 
   /*
-   * Everyone this character can ask, by name: the roster, then anybody the
-   * registry still holds as online, minus this character.
-   *
-   * Memoised by **value**, in two steps. `character` is republished on every
-   * status line and arrives over IPC through structured clone, so
-   * `character.online` and `character.players` are fresh references each time
-   * and a memo keyed on them recomputes per line — which would then rebuild
-   * the forty-odd commands below per line, the churn this exists to absorb.
-   * The first memo reduces the names to one string; the second keys on that
-   * string, and a string compares by value, so the array below keeps its
-   * identity for as long as the names do.
-   */
-  const askableKey = useMemo<string>(() => {
-    const self = character.name?.toLowerCase() ?? null;
-    const names = new Map<string, string>();
-    for (const entry of character.online) names.set(entry.name.toLowerCase(), entry.name);
-    for (const record of Object.values(character.players)) {
-      if (record.online) names.set(record.name.toLowerCase(), record.name);
-    }
-    if (self !== null) names.delete(self);
-    return [...names.values()].sort((a, b) => a.localeCompare(b)).join('\u0000');
-  }, [character.name, character.online, character.players]);
-  const askable = useMemo<string[]>(
-    () => (askableKey.length === 0 ? [] : askableKey.split('\u0000')),
-    [askableKey]
-  );
-
-  /*
    * Each character's connection phase, memoised by **value** the way
    * `askable` is and for its reason: the palette's commands read only the
    * phase out of `views`, and listing `views` itself as a dependency rebuilt
@@ -4035,48 +4002,6 @@ export default function App() {
         movesFocus: true,
         run: () => setSearchOpen(true)
       },
-
-      /*
-       * A question for another player, by name. `Remotes.ask` was
-       * reachable only from a party forming; *"ask somebody for their health"*
-       * is the ordinary way a person would use it, and a command nobody can
-       * find does not exist. One command per person this character knows to
-       * be in the realm — the roster and the registry's online records — the
-       * way a loop or a realm is one command each: findable by typing the
-       * name, and never a picker to learn. Not this character itself, whose
-       * numbers are on its own card.
-       *
-       * Three things here name the same character and must go on doing so:
-       * the names come from `character`, the ask is addressed to `session`,
-       * and the refusal lands in `terminals.current.get(session)` — all the
-       * shown one. A split pane that showed another character's roster here
-       * would have to move all three together, or ask on the wrong character's
-       * behalf; the Player flyout's rule ("addressed at the character whose
-       * listing was clicked") is the shape to copy then.
-       */
-      ...askable.flatMap((name) =>
-        /*
-         * Three questions per person, and they are the three a person actually
-         * asks: how are you, where are you, and come to me. Which *wording*
-         * goes out is main's decision and not offered here — a peer running
-         * this client is asked in its own words and everybody else in
-         * MegaMUD's, automatically (`Remotes.ask`), so the palette names the
-         * question rather than the spelling.
-         */
-        ASKABLE_REMOTES.map((remote) => ({
-          id: `remote:${remote.name}:${name.toLowerCase()}`,
-          icon: 'user' as const,
-          label: remote.label(name),
-          keywords: ['ask', 'remote', `@${remote.name}`, ...remote.keywords, name],
-          group: 'character' as const,
-          run: () => {
-            void api.askRemote(session, name, remote.name).then((sent) => {
-              if (!sent)
-                terminals.current.get(session)?.notice(t('palette.character.askRefused', { name }));
-            });
-          }
-        }))
-      ),
 
       // View: how the client presents itself, rather than what it is doing.
       {
@@ -4521,7 +4446,6 @@ export default function App() {
       editDefaults,
       loops,
       view.loop.status,
-      askable,
       widths.rail,
       widths.tabs,
       widths.above,
@@ -5556,6 +5480,7 @@ export default function App() {
           asked={flyout}
           character={(views[flyout.session] ?? EMPTY_VIEW).character}
           inspect={inspect}
+          onAsk={askPlayer}
           onDismiss={dismissFlyout}
           onGrant={(name, grant) => void api.setRemoteGrant(flyout.session, name, grant)}
           onSelectGang={(gang, anchor) => selectGang(flyout.session, gang, anchor)}

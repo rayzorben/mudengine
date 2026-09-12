@@ -7,6 +7,21 @@
  * the forgiving variants.
  */
 import { vitalLevel, type VitalLevel, type VitalThresholds } from '@shared/character';
+import type { EncumbranceGate } from '@shared/config';
+import { t } from './i18n';
+
+/**
+ * The three load gates, in order.
+ *
+ * One list, so the four selects that offer them — two on each settings page
+ * since the character form gained the same fieldsets (todo 03) — cannot come
+ * to disagree about the words or their order.
+ */
+export const GRADE_OPTIONS = (): Array<{ value: EncumbranceGate; label: string }> => [
+  { value: 'never', label: t('settings.movement.lootGradeNever') },
+  { value: 'medium', label: t('settings.movement.lootGradeMedium') },
+  { value: 'heavy', label: t('settings.movement.lootGradeHeavy') }
+];
 
 /** A stored fraction as the whole percent a person types. */
 export function percentOf(fraction: number): number {

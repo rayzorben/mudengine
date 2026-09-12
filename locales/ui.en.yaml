@@ -539,6 +539,11 @@ notices:
       spellLearned: 'Learned the {kind} of {spell}: "{text}"'
       deathLearned: 'Learned how {mob} dies: "{text}" — it leaves the room on that line from now on, whoever killed it.'
       spellUnlearned: 'Unlearned the {kind} of {spell}: "{text}" — the stat sheet still showed it'
+      effectLasting: 'Learned an effect nothing here names: "{text}" — the stat sheet carries it, so it lasts and is tracked from now on.'
+      effectPassing: 'Not a lasting effect: "{text}" — the stat sheet did not carry it, so no further stat sheet is spent on it.'
+      effectCauseSuspected: '"{text}" is suspected of causing {condition} — nothing else up explains it.'
+      effectCauseConfirmed: '"{text}" causes {condition} — the condition ended with the effect.'
+      effectCauseDropped: '"{text}" does not cause {condition} after all — the condition arrived without it.'
     spellMessages:
       readError: 'could not read the spell message table {file}: {message}'
       empty: 'the spell message table {file} holds no rows; buff endings fall back to the frames'
@@ -623,12 +628,6 @@ palette:
     settingsClientLabel: 'Settings: MudEngine itself…'
     settingsDefaultsLabel: 'Settings: what a new realm or character starts with…'
     settingsLabel: 'Settings: add or edit a character, realm or password…'
-    askHealthLabel: 'Ask {name} for their health'
-    askWhereLabel: 'Ask {name} where they are'
-    askComebackLabel: 'Ask {name} to come back here'
-    askRefused:
-      'Not asked: {name} — this character is not in the realm, or the same question is already
-      waiting to go.'
     showIdleStatus: idle
     showLabel: 'Show: {characterName}'
   dialogLabel: Command palette
@@ -1645,6 +1644,15 @@ cards:
         many: '{commandsSent} commands — last @{lastCommand}'
         one: '{commandsSent} command — last @{lastCommand}'
     ariaLabel: About {name}
+    ask:
+      comeback: Come back here
+      groupAria: Ask {name}
+      health: Their health
+      legend: Ask them
+      refused:
+        'Not asked: {name} — this character is not in the realm, or the same question is already
+        waiting to go.'
+      where: Where they are
     chip:
       offline: offline
       party: party

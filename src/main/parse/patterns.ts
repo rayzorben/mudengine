@@ -137,6 +137,17 @@ export const AFFLICTION_ONSETS: ReadonlyArray<{
   }
 ];
 
+/**
+ * The first line of the `st` sheet.
+ *
+ * Exported because `CharacterTracker` needs the same test: the sheet's lines
+ * arrive once each as their own block *and* again as the `player-status`
+ * batch, and a line of a listing restating what is up must never be read as
+ * an effect ending. One statement of the shape, used by the batch rule that
+ * opens on it and by the tracker that has to know one is open.
+ */
+export const PLAYER_STATUS_HEADER = /^Name:\s+[\w\s]+\s+Lives\/CP:\s+\d+\/\d+/;
+
 /** Which condition a sentence announces the onset of, or null for any other. */
 export function afflictionOnset(sentence: string): keyof Afflictions | null {
   const text = sentence.trim();
@@ -2462,7 +2473,7 @@ export const BATCH_RULES: BatchRule[] = [
   },
   {
     type: 'player-status',
-    header: /^Name:\s+[\w\s]+\s+Lives\/CP:\s+\d+\/\d+/,
+    header: PLAYER_STATUS_HEADER,
     shape: 'object',
     /*
      * Nine rows of figures and then one line per active buff — the server
