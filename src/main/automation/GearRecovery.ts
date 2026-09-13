@@ -50,6 +50,20 @@ const ACTION = 'recover gear';
 export class GearRecovery {
   /** The death last acted on, so one death is one attempt. */
   private handled: number | null = null;
+  /**
+   * Recoveries that have failed in a row (todo 21).
+   *
+   * **In a row**, and reset by one that reaches the kit: a run of failures is
+   * what says the trip is not working, where one failure among successes says
+   * only that something went wrong once. Bounded by
+   * `movement.recoverGearTries`, because a recovery walks a freshly dead and
+   * stripped character back to the room that killed it — where that room is
+   * still dangerous the attempt is itself a way to die, and each trip costs a
+   * life.
+   */
+  private failures = 0;
+  /** Whether the bound has been said, so it is said once rather than per death. */
+  private saidSpent = false;
   private phase: Phase = { kind: 'idle' };
 
   constructor(
@@ -69,6 +83,8 @@ export class GearRecovery {
   reset(): void {
     this.handled = null;
     this.phase = { kind: 'idle' };
+    this.failures = 0;
+    this.saidSpent = false;
   }
 
   /** Every state change. */
@@ -104,6 +120,29 @@ export class GearRecovery {
       return;
     }
     if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
+
+    /*
+     * The bounds, before anything is walked (todo 21).
+     *
+     * Both are about the same thing: a recovery is a trip back to the room
+     * that killed this character, and a client that keeps making it spends
+     * lives — which are finite and unrecoverable — on a cloak. The lives floor
+     * is the one a player reasons in and it holds whatever the counter says;
+     * the try count catches the case where lives are plentiful and the room is
+     * simply lethal.
+     *
+     * An unread life count does not stop it: unknown is not *low*, the rule
+     * every threshold here follows.
+     */
+    const bound = this.bound(state);
+    if (bound !== null) {
+      this.handled = death.at;
+      if (!this.saidSpent) {
+        this.saidSpent = true;
+        this.refuse(bound);
+      }
+      return;
+    }
 
     this.handled = death.at;
     const to = roomId(death.map, death.number);
@@ -142,7 +181,7 @@ export class GearRecovery {
     const { to } = this.phase;
     if (!arrived || this.planner.here() !== to) {
       this.phase = { kind: 'idle' };
-      this.refuse(
+      this.failed(
         t('automation.gearRecovery.refusalNotReached', {
           room: state.lastDeath?.name ?? to,
           why: reason ?? t('automation.gearRecovery.whyStopped')
@@ -150,6 +189,14 @@ export class GearRecovery {
       );
       return;
     }
+    /*
+     * Reached the pile, which is what the run of failures was counting the
+     * absence of. Reset here rather than at the dressing: the trip is the
+     * dangerous part and it worked, and an item nobody else left on the floor
+     * is not a reason to call the journey a failure (todo 21).
+     */
+    this.failures = 0;
+    this.saidSpent = false;
     this.phase = { kind: 'collecting', to, asked: new Set(), askedAt: 0 };
     this.collect(state);
   }
@@ -167,7 +214,7 @@ export class GearRecovery {
     if (this.planner.here() !== to) {
       // Wandered, or walked: the pile is somewhere the character is not.
       this.phase = { kind: 'idle' };
-      this.refuse(t('automation.gearRecovery.refusalLeft'));
+      this.failed(t('automation.gearRecovery.refusalLeft'));
       return;
     }
     const missing = this.missing(state);
@@ -261,6 +308,35 @@ export class GearRecovery {
       if (!names.includes(worn.item)) names.push(worn.item);
     }
     return names;
+  }
+
+  /**
+   * Why this recovery must not be attempted, or null to go.
+   *
+   * The lives floor first, because it is the one a player reasons in and the
+   * one whose cost cannot be undone. `0` disables either bound, and an unread
+   * life count stops nothing: unknown is not low.
+   */
+  private bound(state: CharacterState): string | null {
+    const lives = state.progress.lives;
+    const floor = this.config.recoverGearFloor;
+    if (floor > 0 && lives !== null && lives <= floor) {
+      return t('automation.gearRecovery.refusalLives', { lives, floor });
+    }
+    const tries = this.config.recoverGearTries;
+    if (tries > 0 && this.failures >= tries) {
+      return t('automation.gearRecovery.refusalTries', { tries });
+    }
+    return null;
+  }
+
+  /**
+   * A recovery that did not get there. Counted, so a run of them stops the
+   * next one being attempted — see `failures`.
+   */
+  private failed(refused: string): void {
+    this.failures += 1;
+    this.refuse(refused);
   }
 
   private refuse(refused: string): void {

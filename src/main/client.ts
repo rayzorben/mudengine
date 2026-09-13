@@ -2046,6 +2046,30 @@ function registerIpc(): void {
     }
     return manager.huntingGrounds(steps);
   });
+  /*
+   * Where this character may go and level. Addressed, and answered from the
+   * realm's own shop rows rather than from a room name — see `trainersTaking`.
+   * No session is an empty list, which is what the picker draws as *nowhere
+   * the realm says will take you*.
+   */
+  handle(Invoke.trainers, (_caller, session: SessionId) => {
+    return host?.get(session)?.manager?.trainers() ?? [];
+  });
+  /*
+   * The items the realm says would serve each condition a potion rule can
+   * name. A property of the realm rather than the character, so one call
+   * answers every row the settings screen draws.
+   */
+  handle(Invoke.itemsServing, (_caller, session: SessionId) => {
+    const world = worldFor(session);
+    if (!world) return {};
+    return {
+      hp: world.itemsServing('hp').map((item) => item.name),
+      poisoned: world.itemsServing('poisoned').map((item) => item.name),
+      blind: world.itemsServing('blind').map((item) => item.name),
+      diseased: world.itemsServing('diseased').map((item) => item.name)
+    };
+  });
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the

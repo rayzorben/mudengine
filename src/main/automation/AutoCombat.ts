@@ -113,6 +113,16 @@ export interface AutoCombatEvents {
    * because that is where the rest of it lives.
    */
   decided?(decision: EngageDecision): void;
+  /**
+   * Whether this character's class can get into the shadows at all — the
+   * realm's own `ClassStealth` row, through `SessionManager.capabilities()`
+   * (todo 28).
+   *
+   * `undefined` or `null` is *unknown* and never refuses, the rule every
+   * threshold here follows: a class the realm cannot place keeps its opener,
+   * and the stealth state decides as it always did.
+   */
+  canHide?(): boolean | null;
 }
 
 /**
@@ -274,6 +284,8 @@ export class AutoCombat {
   private openerSpent = false;
   /** Whether the held-backstab sentence has been said. See `sayOpenerNeedsStealth`. */
   private saidOpenerNeedsStealth = false;
+  /** Whether the *this class cannot backstab* notice has been said this session. */
+  private saidOpenerNeedsClass = false;
   /** The derived round spell last said, so the choice is announced on change only. */
   private saidChoice: string | null = null;
   /** The derivation's last refusal said, once per kind. */
@@ -784,7 +796,7 @@ export class AutoCombat {
    *
    * The one part of this that cannot start a fight — something is already
    * swinging — which is why it is checked before every other guard and is not
-   * gated on `engage`, `maxMobs`, `minHealth` or a walk. It *is* gated on a
+   * gated on `engage`, `maxMobs` or a walk. It *is* gated on a
    * escape in flight; see below for why that one is different. The CoffeeScript
    * engine did exactly and only this (`user.coffee`, `onMobAttacking`), and it
    * is still the most defensible thing here.
@@ -1032,10 +1044,6 @@ export class AutoCombat {
     if (this.retreating) return false;
     if (Date.now() < this.standDownUntil) return false;
     if (state.combat.target !== null) return false;
-    const fraction =
-      state.vitals.hp !== null && state.vitals.hpMax ? state.vitals.hp / state.vitals.hpMax : null;
-    if (this.config.minHealth > 0 && fraction !== null && fraction < this.config.minHealth)
-      return false;
     if (this.config.maxMobs > 0 && countMobs(state.room.occupants) > this.config.maxMobs)
       return false;
     return this.pick(state) !== null;
@@ -1180,17 +1188,6 @@ export class AutoCombat {
     if (engaged !== null) return t('automation.combat.refusedEngagedWith', { target: engaged });
     if (this.walking && !this.config.whileWalking && !this.looping) {
       return t('automation.combat.refusedWalking');
-    }
-
-    const fraction =
-      state.vitals.hp !== null && state.vitals.hpMax ? state.vitals.hp / state.vitals.hpMax : null;
-    // Unknown is not low: a maximum that has not arrived must never stop this,
-    // for the same reason it must never start an escape.
-    if (this.config.minHealth > 0 && fraction !== null && fraction < this.config.minHealth) {
-      return t('automation.combat.refusedMinHealth', {
-        percent: Math.round(fraction * 100),
-        floor: Math.round(this.config.minHealth * 100)
-      });
     }
 
     const here = countMobs(state.room.occupants);
@@ -1520,11 +1517,43 @@ export class AutoCombat {
     const opener = this.config.opener.trim();
     if (opener.length === 0) return null;
     if (this.isRefused(opener)) return null;
-    if (answersTo('backstab', opener) && state?.stealth === 'seen') {
-      this.sayOpenerNeedsStealth(opener);
-      return null;
+    if (answersTo('backstab', opener)) {
+      /*
+       * **A class that cannot hide will never land one** (todo 28,
+       * 2026-09-12). `combat.opener` survives a reroll — a profile set up for
+       * a Ninja was still asking for `bs` as a Mage, a Priest and a
+       * Witchunter — and the notice below told each of them *why it was
+       * withheld this time*, which implies it could work next time. It cannot:
+       * the realm grants stealth to three classes by row, and this reads that
+       * row rather than the character's momentary state.
+       *
+       * Said once and the opener dropped for the session, exactly as a verb
+       * the server refuses is, because the answer will not change until the
+       * player edits the setting.
+       */
+      if (this.events.canHide?.() === false) {
+        this.sayOpenerNeedsClass(opener);
+        return null;
+      }
+      if (state?.stealth === 'seen') {
+        this.sayOpenerNeedsStealth(opener);
+        return null;
+      }
     }
     return opener;
+  }
+
+  /**
+   * The opener a class can never use, said once a session.
+   *
+   * Its own sentence rather than the stealth one: *get into the shadows first*
+   * is advice a Mage cannot take, and a refusal that describes a fixable
+   * situation when the situation is not fixable is worse than silence.
+   */
+  private sayOpenerNeedsClass(verb: string): void {
+    if (this.saidOpenerNeedsClass) return;
+    this.saidOpenerNeedsClass = true;
+    this.events.notice?.(t('automation.combat.openerWrongClass', { verb }));
   }
 
   /**

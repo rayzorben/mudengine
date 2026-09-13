@@ -814,7 +814,7 @@ function ConversationCard({
   /*
    * Who is a person, keyed by value — see `People`. The key is every fact
    * `isKnownPlayer` and `isOwnName` read, so the closure below is stale only
-   * in ways those two cannot observe; the `askableKey` in `App.tsx` is the
+   * in ways those two cannot observe; the `phasesKey` in `App.tsx` is the
    * same shape for the same reason.
    */
   const peopleKey =

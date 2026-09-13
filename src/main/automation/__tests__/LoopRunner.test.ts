@@ -1263,6 +1263,40 @@ describe('waiting out a condition between legs', () => {
     expect(notices).not.toContain(t('automation.loops.afflictionOver'));
   });
 
+  /*
+   * And the same bound for poison and blindness (todo 23).
+   *
+   * The argument never turned on which condition it was: a stated affliction
+   * whose *ending* the client cannot read holds the lap for ever. Measured —
+   * a poisoned character stood at full health in a cave for two and a half
+   * minutes, because the poison's wear-off was being read as a spell buff
+   * ending. The pattern is fixed; this is what makes the next unread ending a
+   * pause rather than a deadlock.
+   */
+  it.each(['poisoned', 'blind'] as const)(
+    'plans the next leg again once a %s hold has stood long enough',
+    (condition) => {
+      let clock = 1_000_000;
+      const { planner: p, walked } = planner();
+      const runner = new LoopRunner(p, {}, () => clock);
+      runner.configure(DEFAULT_CONFIG.automation.health, DEFAULT_CONFIG.automation.movement);
+      runner.start(loop, state());
+      const legs = walked.length;
+      const stuck = state({
+        afflictions: { ...EMPTY_CHARACTER.afflictions, [condition]: 'yes' }
+      });
+      runner.onCharacter(stuck);
+      expect(runner.progress.hold).toBe(condition === 'blind' ? 'blind' : 'poisoned');
+      runner.onCharacter(stuck);
+      expect(walked.length).toBe(legs);
+
+      clock += DEFAULT_INTERNAL.tuning.walk.heldFallbackMs;
+      runner.onCharacter(stuck);
+      expect(runner.progress.hold).toBeNull();
+      expect(walked.length).toBeGreaterThan(legs);
+    }
+  );
+
   it('walks on blind when the movement block says so', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});

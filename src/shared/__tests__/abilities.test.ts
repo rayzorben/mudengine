@@ -8,7 +8,14 @@ import {
   abilityIsNotable,
   abilityIsUnread,
   abilityName,
-  abilityShape
+  abilityShape,
+  capabilitiesOf,
+  holdsAbility,
+  IMMUNE_TO_POISON_ABILITY,
+  PICKLOCKS_ABILITY,
+  poisonRefusesRest,
+  restsInTheShadows,
+  SHADOW_HOME_ABILITY
 } from '../abilities';
 
 /*
@@ -391,5 +398,119 @@ describe('the ids GreaterMUD owns', () => {
    */
   it('reads MeetsReqToHit as a number', () => {
     expect(ABILITY_SHAPE[1101]).toBe('points');
+  });
+});
+
+/*
+ * `ShadowHome` — read from the realm's own class row, and gated on the engine.
+ *
+ * Three commands read it and all three as an exemption from standing the
+ * character up: `rest` does not break stealth (`RestCommand.cs:31`), and
+ * `hide`/`sneak` do not clear `Resting` (`HideCommand.cs:20`,
+ * `SneakCommand.cs:28`). See todo 17.
+ */
+describe('resting in the shadows', () => {
+  const withIt = [
+    [103, 0],
+    [31, 0],
+    [SHADOW_HOME_ABILITY, 0]
+  ] as ReadonlyArray<readonly [number, number]>;
+  const without = [
+    [31, 0],
+    [123, 50]
+  ] as ReadonlyArray<readonly [number, number]>;
+
+  it('answers off the class row, not off a class name', () => {
+    expect(restsInTheShadows(withIt, 'greatermud')).toBe(true);
+    expect(restsInTheShadows(without, 'greatermud')).toBe(false);
+  });
+
+  /*
+   * The reviewer's condition, and the shipped data already agrees with it:
+   * Paradigm grants the ability to seven classes and MajorMUD's own realm to
+   * none. The family gates the *behaviour* regardless, because it is the
+   * server's branch — a MajorMUD server running a converted database would
+   * carry the column and not honour it.
+   */
+  it('is false on another engine even where the data states it', () => {
+    expect(restsInTheShadows(withIt, 'majormud')).toBe(false);
+  });
+
+  /* Unknown is never the permissive answer. */
+  it('is false while the engine is unknown, and with no row at all', () => {
+    expect(restsInTheShadows(withIt, null)).toBe(false);
+    expect(restsInTheShadows(undefined, 'greatermud')).toBe(false);
+  });
+});
+
+/*
+ * What a character can do, from the class row and the race row together
+ * (todo 22).
+ *
+ * The server asks one question — `GetAbility(x)` looks across every container
+ * — so a Ninja's picklocks and a Gnome's are the same fact to it, and a reader
+ * consulting one row would answer no to half the characters who can.
+ */
+describe('what a character can do', () => {
+  const NINJA = [
+    [31, 0],
+    [103, 0],
+    [PICKLOCKS_ABILITY, 0],
+    [SHADOW_HOME_ABILITY, 0]
+  ] as ReadonlyArray<readonly [number, number]>;
+  /* Paradigm's own Gnome: Illu, GrantPicklocks, GrantTraps. */
+  const GNOME = [
+    [36, 5],
+    [13, 65],
+    [PICKLOCKS_ABILITY, 0],
+    [1002, 0]
+  ] as ReadonlyArray<readonly [number, number]>;
+  /* And a Kang, whose race grants poison immunity and nothing else does. */
+  const KANG = [
+    [IMMUNE_TO_POISON_ABILITY, 100],
+    [7, 10],
+    [2, 5]
+  ] as ReadonlyArray<readonly [number, number]>;
+  const WARRIOR = [[31, 0]] as ReadonlyArray<readonly [number, number]>;
+  const HUMAN = [] as ReadonlyArray<readonly [number, number]>;
+
+  it('answers from either row', () => {
+    expect(holdsAbility(capabilitiesOf(NINJA, HUMAN), PICKLOCKS_ABILITY)).toBe(true);
+    expect(holdsAbility(capabilitiesOf(WARRIOR, GNOME), PICKLOCKS_ABILITY)).toBe(true);
+    expect(holdsAbility(capabilitiesOf(WARRIOR, HUMAN), PICKLOCKS_ABILITY)).toBe(false);
+  });
+
+  /*
+   * `null` is not `false`: a realm the client could not load, or a sheet that
+   * has not arrived, must not decide a Gnome cannot pick locks.
+   */
+  it('says unknown where neither row is known', () => {
+    expect(capabilitiesOf(null, null).abilities).toBeNull();
+    expect(holdsAbility(capabilitiesOf(null, null), PICKLOCKS_ABILITY)).toBeNull();
+  });
+
+  it('knows one row even where the other is unknown', () => {
+    expect(holdsAbility(capabilitiesOf(NINJA, null), PICKLOCKS_ABILITY)).toBe(true);
+    expect(holdsAbility(capabilitiesOf(null, GNOME), PICKLOCKS_ABILITY)).toBe(true);
+  });
+
+  /*
+   * The reviewer's case: `RestCommand.cs:28` lifts the refusal for a character
+   * that is *immune*, which a Kang is by race. Telling one it cannot rest
+   * would be the client inventing a refusal the server does not make.
+   */
+  it('does not refuse a poisoned Kang its rest', () => {
+    expect(poisonRefusesRest(capabilitiesOf(WARRIOR, KANG), 'greatermud')).toBe(false);
+    expect(poisonRefusesRest(capabilitiesOf(WARRIOR, HUMAN), 'greatermud')).toBe(true);
+  });
+
+  /* Unknown immunity does not lift it: the server tests for the ability. */
+  it('refuses where the rows are unknown, because unknown grants nothing', () => {
+    expect(poisonRefusesRest(capabilitiesOf(null, null), 'greatermud')).toBe(true);
+  });
+
+  it('is false on another engine, whatever the rows say', () => {
+    expect(poisonRefusesRest(capabilitiesOf(WARRIOR, HUMAN), 'majormud')).toBe(false);
+    expect(poisonRefusesRest(capabilitiesOf(WARRIOR, HUMAN), null)).toBe(false);
   });
 });

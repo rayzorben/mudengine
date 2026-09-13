@@ -41,6 +41,17 @@ export interface StealthEvents {
    * for a backstab the server will not perform is a wasted command.
    */
   openerRefused?(): boolean;
+  /**
+   * Whether this character's class carries `ShadowHome` on the loaded realm —
+   * `restsInTheShadows` (`src/shared/abilities.ts`), which reads the realm's
+   * own `Classes.Abil-n` and requires the GreaterMUD family.
+   *
+   * With it, `hide` and `sneak` do not clear `Resting` (`HideCommand.cs:20`,
+   * `SneakCommand.cs:28`) and `rest` does not break stealth
+   * (`RestCommand.cs:31`), so the two do not undo each other in either
+   * direction and a resting character may be asked for the shadows.
+   */
+  restsHidden?(): boolean;
 }
 
 /** Past this the move roll gains nothing (`Exits.cs:149` clamps at 100). */
@@ -94,12 +105,17 @@ export class AutoStealth {
      */
     if (cannotSneakHere(state)) return;
     /*
-     * Both commands clear `Resting` for every class but the three with
-     * `ShadowHome` (`HideCommand.cs`, `SneakCommand.cs`), and the client
-     * cannot yet tell which this is. Standing a hurt character up to hide it
-     * is the wrong trade; the rest ending re-asks this.
+     * Both commands clear `Resting` (`HideCommand.cs:20`, `SneakCommand.cs:28`)
+     * — unless the class carries `ShadowHome`, which exempts it. Standing a
+     * hurt character up to hide it is the wrong trade, so without the ability
+     * this waits and the rest ending re-asks.
+     *
+     * With it, resting is not a reason to wait: the character stays seated and
+     * gains the shadows, which is the whole of the hide-rest-backstab loop the
+     * ability exists for (todo 17). Read from the realm's own class row, never
+     * from a class name, and false on any realm but GreaterMUD's engine.
      */
-    if (state.vitals.resting) return;
+    if (state.vitals.resting && this.events.restsHidden?.() !== true) return;
     const now = this.now();
     if (now - this.askedAt < tuning().stealth.askEveryMs) return;
     this.askedAt = now;

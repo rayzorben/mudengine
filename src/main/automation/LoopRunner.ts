@@ -154,13 +154,23 @@ export class LoopRunner {
    */
   private afflicted: 'blind' | 'held' | 'poisoned' | null = null;
   /**
-   * When the hold above began, while it is a `held` one. Null otherwise.
+   * When the hold above began, whichever affliction it is for. Null otherwise.
    *
    * The lap needs the bound `Walker.holdForAffliction` takes for the same
    * reason and cannot borrow it: the walker's probe is the step it re-sends,
    * and a lap held **between** legs is walking nothing to probe with. So the
    * release here is a release into the next leg, whose first step is that
    * probe — and whose own hold takes a fresh window if the server refuses it.
+   *
+   * **All three, not just `held`** (todo 23, 2026-09-12). The bound was
+   * written for `held` and the argument never depended on which condition it
+   * was: any stated affliction whose *ending* the client cannot read holds the
+   * lap for ever. Measured — a poisoned character stood at full health in a
+   * cave for two and a half minutes and would have stood there all night,
+   * because the poison's wear-off was being read as a spell buff ending. The
+   * pattern bug is fixed above; **this is the bound that would have made it a
+   * pause rather than a deadlock**, and it holds for the next ending nobody
+   * has captured yet.
    *
    * `tuning.walk.heldFallbackMs` is the one statement of the figure; the rule
    * is written twice because what the two do with it differs. See the key.
@@ -219,8 +229,8 @@ export class LoopRunner {
   /**
    * Where a loop holds still for health, and where it walks on again.
    *
-   * Auto-combat's `minHealth` stops fights being *opened* low; nothing stopped
-   * the loop marching a 6% character through lairs that attack on sight —
+   * Nothing stopped the loop marching a 6% character through lairs that
+   * attack on sight —
    * measured live. Holding still is what lets `automation.health` rest where
    * the character stands. A hysteresis pair, so a heal that nudges past the
    * floor does not resume a march that dips straight back under it; constants
@@ -842,11 +852,9 @@ export class LoopRunner {
     const affliction = afflictionHolding(state.afflictions, this.movement);
     /* The bound, and why the lap takes one of its own — see `heldSince`. */
     const spent =
-      affliction === 'held' &&
-      this.heldSince !== null &&
-      this.now() - this.heldSince >= tuning().walk.heldFallbackMs;
+      this.heldSince !== null && this.now() - this.heldSince >= tuning().walk.heldFallbackMs;
     if (affliction !== null && !spent) {
-      if (affliction === 'held') this.heldSince ??= this.now();
+      this.heldSince ??= this.now();
       if (this.afflicted !== affliction) {
         if (this.afflicted === null) this.events.notice?.(t('automation.loops.afflicted'));
         this.afflicted = affliction;

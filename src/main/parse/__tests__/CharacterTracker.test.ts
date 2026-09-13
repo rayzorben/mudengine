@@ -9030,6 +9030,31 @@ describe('the spellbook', () => {
     expect(play(['[HP=34]:']).current.spellbook).toBeNull();
   });
 
+  /*
+   * And the other half of that distinction, which is the whole of todo 15:
+   * `You have no spells.` is the *answer* a Warrior or a Ninja gets, printed
+   * by the same command as the listing (`SpellsCommand.cs:40` is the `else` of
+   * the branch that prints it). Read as nothing, the client was left saying it
+   * had never asked — a false statement rather than a missing one, and the one
+   * state `Belongings` keeps null to mean.
+   */
+  it('reads an empty book as empty, not as unread', () => {
+    const tracker = play(['[HP=34]:', 'You have no spells.']);
+    expect(tracker.current.spellbook).toEqual([]);
+    expect(tracker.current.spellbook).not.toBeNull();
+  });
+
+  it('takes the resource word off the empty answer too', () => {
+    expect(play(['[HP=334]:', 'You have no powers.']).current.vitals.manaType).toBe('KAI');
+    expect(play(['[HP=34]:', 'You have no spells.']).current.vitals.manaType).toBe('MA');
+  });
+
+  /* And a later listing fills an empty book, as it replaces a full one. */
+  it('is replaced by a listing that arrives after an empty answer', () => {
+    const tracker = play(['[HP=34]:', 'You have no spells.', ...powers]);
+    expect(tracker.current.spellbook).toHaveLength(2);
+  });
+
   it('is read whole from the listing, and the header restates the resource', () => {
     const tracker = play(powers);
     expect(tracker.current.spellbook).toEqual([
@@ -9949,5 +9974,75 @@ describe('the status line pro reports', () => {
       '[HP=10/10,MA=0/0,Exp=100,Need=0,Wealth=0 ]:'
     ]);
     expect(tracker.current.progress.expTable?.rows.find((row) => row.level === 4)).toBeUndefined();
+  });
+});
+
+/*
+ * On the ground: a state between fighting and dead (todo 20).
+ *
+ * The server prints `You drop to the ground!` at `CurHP < 1` and kills at
+ * `Misc.DeathHP`, which is **−30** — so thirty hit points of it are
+ * survivable, and from the drop every command is refused. Unread, the client
+ * announced a retreat for a character lying on the floor and sent it.
+ */
+describe('being mortally wounded', () => {
+  it('starts up, because nobody has been knocked down', () => {
+    expect(play(['[HP=34]:']).current.mortallyWounded).toBe(false);
+  });
+
+  it('is recorded on the drop, and is not a death', () => {
+    const tracker = play(['[HP=34]:', 'You drop to the ground!']);
+    expect(tracker.current.mortallyWounded).toBe(true);
+    // None of what a death tears down: this one may still stand up.
+    expect(tracker.current.lastDeath).toBeNull();
+  });
+
+  /* The status line is the proof of standing, not a clock. */
+  it('lifts on a status line stating positive health', () => {
+    const tracker = play(['[HP=34]:', 'You drop to the ground!', '[HP=12]:']);
+    expect(tracker.current.mortallyWounded).toBe(false);
+  });
+
+  /*
+   * And not on a negative one, which is the whole window: at −8 the character
+   * is still on the ground and still refusing everything.
+   */
+  it('stays down on a status line stating negative health', () => {
+    const tracker = play(['[HP=34]:', 'You drop to the ground!', '[HP=-8]:']);
+    expect(tracker.current.mortallyWounded).toBe(true);
+  });
+
+  it('is cleared by the death that ends it', () => {
+    const tracker = play(['[HP=34]:', 'You drop to the ground!', 'You have been killed!']);
+    expect(tracker.current.mortallyWounded).toBe(false);
+  });
+});
+
+/*
+ * The poison the realm actually casts, read from both ends (todo 23).
+ *
+ * `You feel ill.` is what 22 spells in `spell-messages.csv` print when they
+ * land, paired there with `The effects of the poison wear off!`. Unlisted as
+ * an onset it was unread — and the *ending* then matched the generic
+ * buff-expiry frame, whose pairing asks what the stopped spell's start turns
+ * on and got null. `poisoned` stayed `yes` for ever and a lap holding for it
+ * stood at full health until the run was killed.
+ */
+describe("the realm's own poison", () => {
+  it('reads the start the realm states', () => {
+    expect(play(['[HP=34]:', 'You feel ill.']).current.afflictions.poisoned).toBe('yes');
+  });
+
+  /* The ending is the spell table's, so it is tested against the shipped
+     table in `spell-timing.test.ts`. */
+
+  /* The two captured sentences still read, and still end the same way. */
+  it('keeps the captured onsets', () => {
+    expect(
+      play(['[HP=34]:', 'Poison burns through your veins!']).current.afflictions.poisoned
+    ).toBe('yes');
+    expect(
+      play(['[HP=34]:', 'You are dizzy and disoriented from poison!']).current.afflictions.poisoned
+    ).toBe('yes');
   });
 });

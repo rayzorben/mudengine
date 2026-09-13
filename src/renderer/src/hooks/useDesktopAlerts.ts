@@ -26,7 +26,13 @@ import { useEffect, useRef } from 'react';
 
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
-import { raisable, type DesktopAlert, type Notice } from '@shared/notifications';
+import {
+  raisable,
+  raisableWhileFocused,
+  type AlertRule,
+  type DesktopAlert,
+  type Notice
+} from '@shared/notifications';
 import type { DesktopAlertsConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 
@@ -43,6 +49,8 @@ export interface DesktopAlertsOptions {
   subjects: Record<SessionId, AlertSubject>;
   /** What the player asked to be told about away from the window. */
   prefs: DesktopAlertsConfig;
+  /** The player's own alert rows, which may overrule the two flags above. */
+  rules: readonly AlertRule[];
   /** Bring this window forward, then show the character the notice was about. */
   onOpen(session: SessionId): void;
   /** Somewhere to say that nothing can be raised at all. Called at most once. */
@@ -71,6 +79,7 @@ function away(): boolean {
 export function useDesktopAlerts({
   subjects,
   prefs,
+  rules,
   onOpen,
   onRefused
 }: DesktopAlertsOptions): void {
@@ -145,7 +154,16 @@ export function useDesktopAlerts({
        */
       if (mark === undefined || mark === newest.id) continue;
       if (standing.current !== 'ready') continue;
-      if (!prefs.whileFocused && !away()) continue;
+      /*
+       * The blanket *not while I am looking*, unless a row the player wrote
+       * says otherwise for one of these notices (todo 29). Checked against the
+       * fresh ones rather than as a flat gate, because a single row asking to
+       * be told while the window is in front must not be silenced by the
+       * default that covers everything else.
+       */
+      const focusOk =
+        away() || subject.notices.some((notice) => raisableWhileFocused(prefs, notice, rules));
+      if (!focusOk) continue;
 
       /*
        * Only what arrived since the last look, newest first, and only the
@@ -165,7 +183,9 @@ export function useDesktopAlerts({
       let raise: Notice | undefined;
       let kind: DesktopAlert | undefined;
       for (const notice of [...fresh].reverse()) {
-        const named = raisable(prefs, notice);
+        const named = raisable(prefs, notice, rules);
+        // And the focus rule for *this* notice, not for the batch.
+        if (named !== null && !away() && !raisableWhileFocused(prefs, notice, rules)) continue;
         if (named === null) continue;
         if (now - (rested.current.get(`${id}:${named}`) ?? -Infinity) < gap) continue;
         raise = notice;

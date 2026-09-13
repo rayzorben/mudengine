@@ -252,3 +252,91 @@ describe('standing where it died', () => {
     expect(sent).toEqual([]);
   });
 });
+
+/*
+ * The bounds on trying again (todo 21).
+ *
+ * A recovery walks a freshly dead, stripped character back to the room that
+ * killed it. Where that room is still dangerous the attempt is itself a way to
+ * die, and without a bound the client makes the trip again, and again, each one
+ * costing a life. Measured on a soak run: two deaths on one journey, fifty
+ * minutes, zero laps.
+ */
+describe('the bounds on going back', () => {
+  const withBounds = (over: Partial<MovementConfig>) => make(movement(over));
+
+  const lives = (state: CharacterState, count: number | null): CharacterState => ({
+    ...state,
+    progress: { ...state.progress, lives: count }
+  });
+
+  it('refuses at the lives floor, naming both figures', () => {
+    withBounds({ recoverGearFloor: 2 }).onCharacter(lives(stripped(), 2));
+    expect(walked).toEqual([]);
+    expect(notices.join('\n')).toMatch(/2 lives left/);
+    expect(decisions.at(-1)?.acted).toBe(false);
+  });
+
+  it('goes with lives to spare', () => {
+    withBounds({ recoverGearFloor: 2 }).onCharacter(lives(stripped(), 3));
+    expect(walked).toHaveLength(1);
+  });
+
+  /* Unknown is not low — the rule every threshold in this client follows. */
+  it('goes where the life count has not been read', () => {
+    withBounds({ recoverGearFloor: 2 }).onCharacter(lives(stripped(), null));
+    expect(walked).toHaveLength(1);
+  });
+
+  it('treats a floor of zero as no floor at all', () => {
+    withBounds({ recoverGearFloor: 0 }).onCharacter(lives(stripped(), 1));
+    expect(walked).toHaveLength(1);
+  });
+
+  /*
+   * And the try count, for the case where lives are plentiful and the room is
+   * simply lethal. Counted in a row: each failed journey, then the refusal.
+   */
+  it('stops after the stated number of journeys that did not reach the kit', () => {
+    const recovery = withBounds({ recoverGearTries: 2, recoverGearFloor: 0 });
+    for (let death = 1; death <= 3; death += 1) {
+      const state = {
+        ...stripped(),
+        lastDeath: { map: 8, number: 915, name: 'Ancient Stronghold, Stable', at: DIED_AT + death }
+      };
+      recovery.onCharacter(state);
+      recovery.onWalkEnded(false, 'stopped', state);
+    }
+    // Two journeys, then the third refused before walking.
+    expect(walked).toHaveLength(2);
+    expect(notices.join('\n')).toMatch(/did not reach it/);
+  });
+
+  /* A journey that reaches the pile clears the run. */
+  it('forgets the failures once a recovery gets there', () => {
+    const recovery = withBounds({ recoverGearTries: 2, recoverGearFloor: 0 });
+    const first = {
+      ...stripped(),
+      lastDeath: { map: 8, number: 915, name: 'Ancient Stronghold, Stable', at: DIED_AT + 1 }
+    };
+    recovery.onCharacter(first);
+    recovery.onWalkEnded(false, 'stopped', first);
+
+    const second = {
+      ...atTheStable(),
+      lastDeath: { map: 8, number: 915, name: 'Ancient Stronghold, Stable', at: DIED_AT + 2 }
+    };
+    recovery.onCharacter(second);
+    here = '8/915';
+    recovery.onWalkEnded(true, null, second);
+
+    // A third is attempted, because the run was broken by the one that worked.
+    const third = {
+      ...stripped(),
+      lastDeath: { map: 8, number: 915, name: 'Ancient Stronghold, Stable', at: DIED_AT + 3 }
+    };
+    here = '1/100';
+    recovery.onCharacter(third);
+    expect(walked.length).toBeGreaterThan(1);
+  });
+});

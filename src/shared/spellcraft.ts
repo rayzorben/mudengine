@@ -162,6 +162,7 @@ const DISPELL_MAGIC = 73;
 const POISON = 19;
 const BLIND_USER = 107;
 const REMOVES_SPELL = 122;
+const HEALS = 18;
 
 export type AbilityPairs = ReadonlyArray<readonly [number, number]>;
 
@@ -179,6 +180,42 @@ export interface CureGates {
   poison: boolean;
   blindness: boolean;
   disease: boolean;
+}
+
+/**
+ * What a single spell *serves*, for offering items that could be used on it
+ * (todo 19).
+ *
+ * `cureGates` above answers a different question — *can this book cure X at
+ * all* — and deliberately opens every gate for a spell the realm cannot name,
+ * because a cure must never be disabled by ignorance. This is the offering
+ * side, where the opposite is right: a list of items to choose from must hold
+ * only items the realm **says** serve the condition, so an unnameable spell
+ * serves nothing rather than everything.
+ *
+ * `diseased` is the honest weak one. There is no *cure disease* mark; the
+ * realm states `RemovesSpell`, a generic dispel, so a row carrying it *might*
+ * end a disease. Offered, and it is why the list for disease is long.
+ *
+ * `held` serves nothing: no capture names a spell that ends a hold, and
+ * `Cures` has never had a slot for it.
+ */
+export function spellServes(abilities: AbilityPairs | undefined): {
+  hp: boolean;
+  poisoned: boolean;
+  blind: boolean;
+  diseased: boolean;
+} {
+  const serves = { hp: false, poisoned: false, blind: false, diseased: false };
+  if (abilities === undefined) return serves;
+  for (const [id, value] of abilities) {
+    if (id === HEALS) serves.hp = true;
+    if (id === CURE_POISON) serves.poisoned = true;
+    if (id === DISPELL_MAGIC && value === POISON) serves.poisoned = true;
+    if (id === DISPELL_MAGIC && value === BLIND_USER) serves.blind = true;
+    if (id === REMOVES_SPELL) serves.diseased = true;
+  }
+  return serves;
 }
 
 export function cureGates(spells: ReadonlyArray<AbilityPairs | undefined>): CureGates {

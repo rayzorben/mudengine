@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { asShippedWorld } from '@shared/worlds';
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
+import type { TrainerChoice } from '@shared/world';
+import type { PotionRule, PotionWhen } from '@shared/config';
+import type { AlertRule } from '@shared/notifications';
+import AlertList from './AlertList';
+import PotionList from './PotionList';
 import Icon from './Icon';
 import FormField, {
   CheckField,
@@ -334,6 +339,25 @@ export interface SettingsScreenProps {
    * is a package missing its data, and a hand-written loop still works.
    */
   loadLoops(): Promise<Loop[]>;
+  /**
+   * The trainers the realm says will take a character, cheapest first.
+   *
+   * Addressed, because the answer is about *that* character's level and
+   * class, and asked when the Train tab is opened rather than with the
+   * snapshot — it is a scan of the room index, and most visits to this screen
+   * are about something else.
+   *
+   * Empty is a real answer and the picker says so: a level the client has not
+   * read, a realm built before the bands were converted, or genuinely nothing
+   * in band all mean *there is nowhere to send this character*.
+   */
+  loadTrainers(session: SessionId): Promise<TrainerChoice[]>;
+  /**
+   * The items the realm says would serve each condition a potion rule can
+   * name, for the rule list's suggestions. A property of the realm, so one
+   * call answers every row.
+   */
+  loadServing(session: SessionId): Promise<Partial<Record<PotionWhen, string[]>>>;
 }
 
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
@@ -496,7 +520,6 @@ interface CharacterForm {
   partyAssist: boolean;
   partyDefend: boolean;
   partyRest: boolean;
-  combatMinHealth: string;
   combatWhileWalking: boolean;
   combatRefresh: string;
   combatAvoid: string;
@@ -518,6 +541,8 @@ interface CharacterForm {
   /** Potions: what to drink, and below what. */
   potionVerb: string;
   healingPotionName: string;
+  /** The player's own *use this when that* rules. See `PotionList`. */
+  potionRules: PotionRule[];
   drinkHealingPotionBelow: string;
   manaPotionName: string;
   drinkManaPotionBelow: string;
@@ -563,6 +588,8 @@ interface CharacterForm {
   provideLight: boolean;
   /** Go back for the kit after a death. */
   recoverGear: boolean;
+  recoverGearTries: string;
+  recoverGearFloor: string;
   lightDimRooms: boolean;
   extinguishInLight: boolean;
   /** Conditions as waits, inverted: off waits blindness / poison out. */
@@ -572,6 +599,9 @@ interface CharacterForm {
   collectKeys: boolean;
   /** Spending character points on the stat screen — `automation.train`. */
   trainStats: boolean;
+  trainLevels: boolean;
+  /** The chosen trainer's shop row, as text, or '' for the cheapest. */
+  trainTrainer: string;
   trainWanted: Record<TrainedAttribute, string>;
   /*
    * Held whole, like `rewrites`, rather than flattened into eighteen fields.
@@ -597,6 +627,8 @@ interface CharacterForm {
   loops: Loop[];
   /** Alerts — what this character is worth interrupting you for. */
   alertMinimum: Severity;
+  /** The player's own rows. See `AlertList`. */
+  alertRules: AlertRule[];
   alertMuted: string[];
   /** Words that make a find worth interrupting for. See `FindAlertsConfig`. */
   alertFindItems: string[];
@@ -682,7 +714,6 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // A percentage on screen and a fraction in the file, like every other
     // threshold here: one representation on disk, the one people think in on
     // the form.
-    combatMinHealth: String(Math.round(entry.combat.minHealth * 100)),
     combatWhileWalking: entry.combat.whileWalking,
     combatRefresh: String(entry.combat.refreshRounds),
     combatAvoid: joinNames(entry.combat.avoid),
@@ -699,6 +730,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     restNextDoor: entry.health.restNextDoor,
     potionVerb: entry.health.potionVerb,
     healingPotionName: entry.health.healingPotionName,
+    potionRules: entry.health.potions.map((rule) => ({ ...rule })),
     drinkHealingPotionBelow: percent(entry.health.drinkHealingPotionBelow),
     manaPotionName: entry.health.manaPotionName,
     drinkManaPotionBelow: percent(entry.health.drinkManaPotionBelow),
@@ -730,12 +762,16 @@ function formOf(entry: ProfileEditable): CharacterForm {
     sneak: entry.movement.sneak,
     provideLight: entry.movement.provideLight,
     recoverGear: entry.movement.recoverGear,
+    recoverGearTries: String(entry.movement.recoverGearTries),
+    recoverGearFloor: String(entry.movement.recoverGearFloor),
     lightDimRooms: entry.movement.lightDimRooms,
     extinguishInLight: entry.movement.extinguishInLight,
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     collectKeys: entry.movement.collectKeys,
     trainStats: entry.train.stats,
+    trainLevels: entry.train.levels,
+    trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
     trainWanted: wantedStrings(entry.train.wanted),
     loot: structuredClone(entry.loot),
     drop: structuredClone(entry.drop),
@@ -745,6 +781,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
     alertMinimum: entry.alerts.minimum,
+    alertRules: entry.alerts.rules.map((rule) => ({ ...rule })),
     alertMuted: entry.alerts.mute,
     alertFindItems: entry.alerts.finds.items,
     alertFindCash: entry.alerts.finds.cashOverCopper,
@@ -860,7 +897,6 @@ function draftOf(form: CharacterForm): ProfileDraft {
       joinFights: form.combatJoinFights,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
       maxFightCost: (Number.parseInt(form.combatMaxFightCost, 10) || 0) / 100,
-      minHealth: (Number.parseInt(form.combatMinHealth, 10) || 0) / 100,
       whileWalking: form.combatWhileWalking,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
       avoid: splitNames(form.combatAvoid),
@@ -893,6 +929,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       drinkManaPotionBelow: fractionOf(form.drinkManaPotionBelow),
       potionVerb: form.potionVerb === 'use' ? 'use' : 'drink',
       healingPotionName: form.healingPotionName.trim(),
+      // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
+      // way a nameless blessing is: a rule naming nothing fires on nothing.
+      potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
       manaPotionName: form.manaPotionName.trim()
     },
     spells: {
@@ -933,13 +972,22 @@ function draftOf(form: CharacterForm): ProfileDraft {
       sneak: form.sneak,
       provideLight: form.provideLight,
       recoverGear: form.recoverGear,
+      recoverGearTries: Number.parseInt(form.recoverGearTries, 10) || 0,
+      recoverGearFloor: Number.parseInt(form.recoverGearFloor, 10) || 0,
       lightDimRooms: form.lightDimRooms,
       extinguishInLight: form.extinguishInLight,
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
       collectKeys: form.collectKeys
     },
-    train: { stats: form.trainStats, wanted: wantedNumbers(form.trainWanted) },
+    train: {
+      stats: form.trainStats,
+      wanted: wantedNumbers(form.trainWanted),
+      levels: form.trainLevels,
+      // 0 is *the cheapest that will take me*, which is what the picker's
+      // first entry means and what an unset field says.
+      trainer: Number.parseInt(form.trainTrainer, 10) || 0
+    },
     loot: form.loot,
     drop: form.drop,
     search: form.search,
@@ -948,6 +996,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
     alerts: {
       minimum: form.alertMinimum,
       mute: form.alertMuted,
+      // Whole, with the name trimmed as `normalizeAlertRules` trims it: a row
+      // naming nothing is inert rather than firing on everything.
+      rules: form.alertRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
       finds: { items: form.alertFindItems, cashOverCopper: form.alertFindCash },
       desktop: {
         enabled: form.alertDesktop,
@@ -1158,7 +1209,6 @@ function emptyForm(
     partyAssist: party.assistLeader,
     partyDefend: party.defendParty,
     partyRest: party.restWithLeader,
-    combatMinHealth: percent(combat.minHealth),
     combatWhileWalking: combat.whileWalking,
     combatRefresh: String(combat.refreshRounds),
     combatAvoid: joinNames(combat.avoid),
@@ -1175,6 +1225,7 @@ function emptyForm(
     restNextDoor: health.restNextDoor,
     potionVerb: health.potionVerb,
     healingPotionName: health.healingPotionName,
+    potionRules: health.potions.map((rule) => ({ ...rule })),
     drinkHealingPotionBelow: percent(health.drinkHealingPotionBelow),
     manaPotionName: health.manaPotionName,
     drinkManaPotionBelow: percent(health.drinkManaPotionBelow),
@@ -1206,12 +1257,16 @@ function emptyForm(
     sneak: movement.sneak,
     provideLight: movement.provideLight,
     recoverGear: movement.recoverGear,
+    recoverGearTries: String(movement.recoverGearTries),
+    recoverGearFloor: String(movement.recoverGearFloor),
     lightDimRooms: movement.lightDimRooms,
     extinguishInLight: movement.extinguishInLight,
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
     collectKeys: movement.collectKeys,
     trainStats: train.stats,
+    trainLevels: train.levels,
+    trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
     trainWanted: wantedStrings(train.wanted),
     loot: structuredClone(loot),
     drop: structuredClone(drop),
@@ -1221,6 +1276,7 @@ function emptyForm(
     // `ProfileDraft` types this as a plain string, since a draft is a payload
     // parsed at the boundary; the form holds the closed union.
     alertMinimum: (alerts.minimum as Severity) ?? DEFAULT_ALERTS.minimum,
+    alertRules: (alerts.rules ?? []).map((rule) => ({ ...rule })),
     alertMuted: [...alerts.mute],
     alertFindItems: [...alerts.finds.items],
     alertFindCash: alerts.finds.cashOverCopper,
@@ -1312,7 +1368,9 @@ export default function SettingsScreen({
   revealConfig,
   revealProfiles,
   chooseRealm,
-  loadLoops
+  loadLoops,
+  loadTrainers,
+  loadServing
 }: SettingsScreenProps) {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
   /**
@@ -1832,6 +1890,59 @@ export default function SettingsScreen({
     active.save.flush();
     onClose();
   };
+
+  /*
+   * Where this character may go and level (todo 18).
+   *
+   * Asked when the Train tab is opened for an existing character, and cleared
+   * when the chosen character changes so the list can never belong to
+   * somebody else — the bands are per level and per class, and a picker
+   * showing another character's rooms would offer walks the server refuses.
+   *
+   * `null` is *not asked yet* and `[]` is *nowhere*, which the picker draws
+   * differently: the first is a list still loading, the second is a statement
+   * about this character. The same distinction `spellbook` keeps.
+   */
+  const [trainers, setTrainers] = useState<TrainerChoice[] | null>(null);
+  /*
+   * What the realm says would serve each condition, for the potion rule
+   * list's suggestions. A property of the realm and not the character, so it
+   * is asked once per open rather than per row or per selection — and left as
+   * an empty map where nothing answers, which the field draws as no
+   * suggestions and stays typable.
+   */
+  const [serving, setServing] = useState<Partial<Record<PotionWhen, string[]>>>({});
+  useEffect(() => {
+    if (!open || tab !== 'characters' || section !== 'train') return;
+    if (selected === null || selected === NEW_CHARACTER) {
+      setTrainers([]);
+      return;
+    }
+    let stale = false;
+    setTrainers(null);
+    void loadTrainers(selected).then(
+      (rows) => void (stale || setTrainers(rows)),
+      // A list that could not be read is not a reason to refuse the save
+      // somebody came here to make — the picker says nowhere, as `loadLoops`
+      // says an empty shelf.
+      () => void (stale || setTrainers([]))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [open, tab, section, selected, loadTrainers]);
+  useEffect(() => {
+    if (!open || tab !== 'characters' || section !== 'health') return;
+    if (selected === null || selected === NEW_CHARACTER) return;
+    let stale = false;
+    void loadServing(selected).then(
+      (found) => void (stale || setServing(found)),
+      () => void (stale || setServing({}))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [open, tab, section, selected, loadServing]);
 
   if (!open) return null;
 
@@ -2593,17 +2704,6 @@ export default function SettingsScreen({
                                 ]}
                                 value={form.combatEngage}
                               />
-                              {/* The fifteenth percentage field, and the one
-                                  that had neither figure nor bar. */}
-                              <NumberField
-                                bar={barOfHealth(form.combatMinHealth)}
-                                figure={ofHealth(form.combatMinHealth)}
-                                hint={t('settings.combat.minHealthHint')}
-                                label={t('settings.combat.minHealthLabel')}
-                                name="min-health"
-                                onChange={(value) => patch({ combatMinHealth: value })}
-                                value={form.combatMinHealth}
-                              />
                               <NumberField
                                 hint={t('settings.combat.maxMobsHint')}
                                 label={t('settings.combat.maxMobsLabel')}
@@ -2833,6 +2933,25 @@ export default function SettingsScreen({
                           onChange={(value) => patch({ potionVerb: value })}
                           options={POTION_VERBS.map((verb) => ({ value: verb, label: verb }))}
                           value={form.potionVerb}
+                        />
+                      </fieldset>
+
+                      {/*
+                        And the rest of it: *use this item when that is true*
+                        (todo 19). Its own fieldset rather than more rows in
+                        the one above, because the two there are a pair of
+                        named slots and this is a list — and because the name
+                        field's suggestions are filtered by each row's own
+                        condition, which is a different kind of control.
+                      */}
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.health.potionRuleLegend')}</legend>
+                        <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
+                        <PotionList
+                          namePrefix="potion-rule"
+                          onChange={(potionRules) => patch({ potionRules })}
+                          potions={form.potionRules}
+                          serving={serving}
                         />
                       </fieldset>
 
@@ -3242,6 +3361,65 @@ export default function SettingsScreen({
                     <fieldset className="settings-menus">
                       <legend>{t('settings.train.legend')}</legend>
                       <p className="settings-warn">{t('settings.train.warning')}</p>
+                      {/*
+                        Going to collect the level, and where (todo 18).
+                        Above the stat screen's own switch because it comes
+                        first in time: the points this spends are awarded by
+                        the level this collects.
+                      */}
+                      <CheckField
+                        checked={form.trainLevels}
+                        hint={t('settings.train.levelsHint')}
+                        label={t('settings.train.levels')}
+                        name="train-levels"
+                        onChange={(value) => patch({ trainLevels: value })}
+                      />
+                      {form.trainLevels && (
+                        <>
+                          {/*
+                            Only the rooms the realm says will take this
+                            character at this level — a trainer that refuses
+                            is a walk across two maps to be told so. The class
+                            room stops at level 10 and every band has a
+                            ceiling, so the list shrinks as the character
+                            grows and a stated room can stop being offered.
+                          */}
+                          <SelectField
+                            hint={t('settings.train.trainerHint')}
+                            label={t('settings.train.trainerLabel')}
+                            name="train-trainer"
+                            onChange={(value) => patch({ trainTrainer: value })}
+                            options={[
+                              { value: '', label: t('settings.train.trainerCheapest') },
+                              ...(trainers ?? []).map((entry) => ({
+                                value: String(entry.shop),
+                                label: t('settings.train.trainerOption', {
+                                  name: entry.name,
+                                  room: entry.roomName,
+                                  cost: entry.cost.toLocaleString()
+                                })
+                              }))
+                            ]}
+                            value={form.trainTrainer}
+                          />
+                          {/*
+                            Said out loud, because an empty picker and a
+                            picker still loading look the same and mean
+                            opposite things. And a stated room no longer in
+                            the list is the case the reviewer asked about:
+                            the errand refuses rather than quietly walking
+                            somewhere else.
+                          */}
+                          {trainers !== null && trainers.length === 0 && (
+                            <p className="settings-warn">{t('settings.train.trainerNowhere')}</p>
+                          )}
+                          {trainers !== null &&
+                            form.trainTrainer !== '' &&
+                            !trainers.some((entry) => String(entry.shop) === form.trainTrainer) && (
+                              <p className="settings-warn">{t('settings.train.trainerStale')}</p>
+                            )}
+                        </>
+                      )}
                       <CheckField
                         checked={form.trainStats}
                         hint={t('settings.train.statsHint')}
@@ -3431,6 +3609,24 @@ export default function SettingsScreen({
                         value={form.rewrites}
                       />
                     </>
+                  )}
+
+                  {section === 'alerts' && (
+                    <fieldset className="settings-menus">
+                      {/*
+                        The player's own rows first, because they decide before
+                        the floor and the mute list below do — reading the
+                        screen top to bottom should be reading the order the
+                        client asks in (todo 29).
+                      */}
+                      <legend>{t('settings.alerts.ruleLegend')}</legend>
+                      <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
+                      <AlertList
+                        namePrefix="alert-rule"
+                        onChange={(alertRules) => patch({ alertRules })}
+                        rules={form.alertRules}
+                      />
+                    </fieldset>
                   )}
 
                   {section === 'alerts' && (
@@ -3706,6 +3902,29 @@ export default function SettingsScreen({
                           name="recover-gear"
                           onChange={(value) => patch({ recoverGear: value })}
                         />
+                        {/*
+                          The bounds, drawn only where the switch is on: two
+                          numbers limiting a feature nobody has turned on are
+                          two controls that do nothing (todo 21).
+                        */}
+                        {form.recoverGear && (
+                          <div className="settings-inline">
+                            <NumberField
+                              hint={t('settings.movement.recoverGearFloorHint')}
+                              label={t('settings.movement.recoverGearFloorLabel')}
+                              name="recover-gear-floor"
+                              onChange={(value) => patch({ recoverGearFloor: value })}
+                              value={form.recoverGearFloor}
+                            />
+                            <NumberField
+                              hint={t('settings.movement.recoverGearTriesHint')}
+                              label={t('settings.movement.recoverGearTriesLabel')}
+                              name="recover-gear-tries"
+                              onChange={(value) => patch({ recoverGearTries: value })}
+                              value={form.recoverGearTries}
+                            />
+                          </div>
+                        )}
                         <CheckField
                           checked={form.walkWhileBlind}
                           hint={t('settings.movement.walkWhileBlindHint')}

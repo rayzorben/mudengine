@@ -99,6 +99,26 @@ function dictionaryKeys(): Set<string> {
   return new Set(flattenDict(dict ?? {}).keys());
 }
 
+/*
+ * The dictionary parses at all — checked before anything reads it.
+ *
+ * `dictionaryKeys()` below runs at describe-time, so a YAML fault takes the
+ * whole file down with the parser's own message and no hint about the cause.
+ * The cause is nearly always the same one: a value written unquoted over
+ * several lines that contains a colon, which YAML reads as a nested key. Four
+ * strings hit it while todos 18-21 were being written.
+ */
+describe('the UI dictionary', () => {
+  it('parses, and a value carrying a colon is quoted', () => {
+    const raw = readFileSync(join(ROOT, 'locales', 'ui.en.yaml'), 'utf8');
+    expect(
+      () => parse(raw),
+      'locales/ui.en.yaml did not parse. A multi-line value containing a colon must be quoted: ' +
+        'YAML reads `Off by default: a character` as a nested key.'
+    ).not.toThrow();
+  });
+});
+
 describe('the UI dictionary and its readers agree', () => {
   const keys = dictionaryKeys();
   const usage = scanUsage();

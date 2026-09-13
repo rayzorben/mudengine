@@ -552,6 +552,54 @@ describe('naming what a shop stocks', () => {
     expect(indexShops(fake({ Rooms: [room()] }))).toEqual([]);
   });
 
+  /*
+   * Who a place serves — format 35. The columns are in every shop row and
+   * were read by nothing, so a client wanting to go and collect a level had
+   * no way to pick a room (todo 18). `ClassRest` 0 is *anybody* and is left
+   * out rather than written as a zero the reader would have to know means
+   * nothing.
+   */
+  it('carries a training room band, its class restriction and its markup', () => {
+    const [trainer] = indexShops(
+      fake({
+        Shops: [
+          {
+            Number: 26,
+            Name: 'Ninja Training Room',
+            ShopType: 8,
+            MinLVL: 1,
+            MaxLVL: 10,
+            'Markup%': 300,
+            ClassRest: 7
+          }
+        ]
+      })
+    );
+    expect(trainer).toEqual({
+      id: 26,
+      n: 'Ninja Training Room',
+      items: [],
+      markup: 300,
+      t: 8,
+      min: 1,
+      max: 10,
+      cls: 7
+    });
+  });
+
+  it('leaves an unrestricted trainer without a class, rather than carrying a zero', () => {
+    const [trainer] = indexShops(
+      fake({
+        Shops: [
+          { Number: 74, Name: 'Titan Trainer', ShopType: 8, MinLVL: 21, MaxLVL: 50, ClassRest: 0 }
+        ]
+      })
+    );
+    expect(trainer?.cls).toBeUndefined();
+    expect(trainer?.min).toBe(21);
+    expect(trainer?.max).toBe(50);
+  });
+
   /* Item zero is the realm's empty slot, not an item. */
   it('never reads an empty slot as item zero', () => {
     const [shop] = indexShops(

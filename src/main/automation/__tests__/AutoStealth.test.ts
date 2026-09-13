@@ -79,12 +79,32 @@ describe('standing still in an empty room', () => {
     expect(sent).toEqual([]);
   });
 
-  /* `hide` clears `Resting` for every class the client can tell apart. */
+  /*
+   * `hide` clears `Resting` (`HideCommand.cs:20`), so standing a hurt
+   * character up to hide it is the wrong trade — unless the class carries
+   * `ShadowHome`, below.
+   */
   it('does nothing while resting', () => {
     const state = seen();
     make().onCharacter({ ...state, vitals: { ...state.vitals, resting: true } });
     drain();
     expect(sent).toEqual([]);
+  });
+
+  /*
+   * With `ShadowHome` the two do not undo each other in either direction
+   * (`HideCommand.cs:20`, `SneakCommand.cs:28`, `RestCommand.cs:31`), so the
+   * character stays seated *and* gains the shadows — which is the whole of the
+   * hide-rest-backstab loop the ability exists for (todo 17).
+   */
+  it('hides a resting character whose class rests in the shadows', () => {
+    const state = seen();
+    make(combat(), { restsHidden: () => true }).onCharacter({
+      ...state,
+      vitals: { ...state.vitals, resting: true }
+    });
+    drain();
+    expect(sent).toEqual(['hide']);
   });
 
   it('does nothing once the answer is unknown or sneaking', () => {

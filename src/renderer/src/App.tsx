@@ -151,7 +151,9 @@ import {
   partyNotices,
   roomNotices,
   rosterNotices,
+  namedNotices,
   vitalNotices,
+  watchNotices,
   walkNotices,
   wanted,
   type Notice
@@ -1266,7 +1268,7 @@ export default function App() {
    * The shelf and this character's own, as the rows the modal draws.
    *
    * Memoised on both, so a status line republishing `character` does not
-   * rebuild four hundred rows — the reason `askable` is memoised on its own
+   * rebuild four hundred rows — the reason `phasesKey` is memoised on its own
    * beside the palette's commands.
    */
   const loopChoices = useMemo(() => loopRows(catalogue ?? [], loops), [catalogue, loops]);
@@ -2095,6 +2097,14 @@ export default function App() {
            */
           const raised = wanted(alertsRef.current, [
             ...vitalNotices(v.character, payload, vitalsRef.current, t),
+            // And the player's own numeric watches, on their own figures and
+            // in their own direction (todo 29). Beside the client's three
+            // levels rather than inside them: *above 80% mana* is a thing
+            // somebody wants and a level cannot say.
+            ...watchNotices(v.character, payload, alertsRef.current.rules, t),
+            // And the named ones: an item or a person the player is waiting
+            // for, wherever it turned up.
+            ...namedNotices(v.character, payload, alertsRef.current.rules, t),
             // Who is in the realm is the other thing that arrives as a state
             // change rather than as a line worth alerting on: an arrival is a
             // name, and what the realm thinks of them lands with the next
@@ -2464,6 +2474,9 @@ export default function App() {
   useDesktopAlerts({
     subjects: alertSubjects,
     prefs: config.ui.alerts.desktop,
+    // The player's own rows, which may overrule both flags above for the one
+    // notice they claim (todo 29).
+    rules: config.ui.alerts.rules,
     onOpen: openAlerted,
     onRefused: sayAboutAlerts
   });
@@ -2776,7 +2789,13 @@ export default function App() {
       // The shelf of shipped loops, for the Movement tab. Asked for when
       // that picker opens rather than with the snapshot: four hundred
       // loops, and most visits to that screen are about a password.
-      loadLoops: () => api.loopCatalogue()
+      loadLoops: () => api.loopCatalogue(),
+      // And the trainers that will take a character, for the Train tab's
+      // picker. Addressed: the bands are per level and per class.
+      loadTrainers: (session: SessionId) => api.trainers(session),
+      // And what the realm says would serve each condition, for the potion
+      // rule list's suggestions.
+      loadServing: (session: SessionId) => api.itemsServing(session)
     }),
     [api, reveal]
   );
@@ -3606,12 +3625,11 @@ export default function App() {
   );
 
   /*
-   * Each character's connection phase, memoised by **value** the way
-   * `askable` is and for its reason: the palette's commands read only the
-   * phase out of `views`, and listing `views` itself as a dependency rebuilt
-   * the whole command list — a few hundred objects — on every state flush,
-   * which on a busy realm is several times a second. The string changes when
-   * a phase does and not otherwise.
+   * Each character's connection phase, memoised by **value**: the palette's
+   * commands read only the phase out of `views`, and listing `views` itself
+   * as a dependency rebuilt the whole command list — a few hundred objects —
+   * on every state flush, which on a busy realm is several times a second.
+   * The string changes when a phase does and not otherwise.
    */
   const phasesKey = useMemo<string>(
     () =>
@@ -5642,6 +5660,8 @@ export default function App() {
         revealConfig={settingsApi.revealConfig}
         chooseRealm={settingsApi.chooseRealm}
         loadLoops={settingsApi.loadLoops}
+        loadTrainers={settingsApi.loadTrainers}
+        loadServing={settingsApi.loadServing}
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}
         saveGlobal={settingsApi.saveGlobal}

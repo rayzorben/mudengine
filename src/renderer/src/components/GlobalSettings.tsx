@@ -796,18 +796,6 @@ export default function GlobalSettings({
               }
               value={String(draft.automation.combat.minMobs)}
             />
-            <NumberField
-              hint={t('settings.combat.minHealthHint')}
-              label={t('settings.combat.minHealthLabel')}
-              name="global-min-health"
-              onChange={(value) =>
-                automation({
-                  combat: { ...draft.automation.combat, minHealth: fraction(value) }
-                })
-              }
-              bar={barOfHealth(draft.automation.combat.minHealth)}
-              value={percent(draft.automation.combat.minHealth)}
-            />
           </div>
 
           <TextField

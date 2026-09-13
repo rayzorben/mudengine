@@ -2413,6 +2413,45 @@ describe('which way out', () => {
   });
 
   /**
+   * And nothing is sent at all once the character is on the ground.
+   *
+   * `You drop to the ground!` is the server saying every command from here is
+   * refused. The client went on proposing — *Retreating ne, the way we came:
+   * health at -8%*, sent, refused — because every threshold is a share of
+   * maximum and they all keep saying *act, urgently* the further past zero the
+   * figure goes (todo 20).
+   *
+   * The positive control is the first escape: without it an empty wire would
+   * pass for the wrong reason.
+   */
+  it('sends nothing once the character is on the ground', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 3);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+
+    // Positive control: hurt and standing, the escape fires.
+    socket.write('[HP=10]:\r\n');
+    await until(() => /\bs\r\n/.test(seen()));
+    const before = seen();
+
+    // And then it goes down. Health past zero, which every threshold reads as
+    // *more* urgent, and the realm refusing everything.
+    socket.write('You drop to the ground!\r\n');
+    await until(() => manager!.character.mortallyWounded);
+    socket.write('[HP=-8]:\r\n');
+    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+
+    expect(seen()).toBe(before);
+  });
+
+  /**
    * A refused escape is a refusal, not an escape in flight.
    *
    * Everything that could keep a character alive is gated on *is an escape

@@ -104,6 +104,12 @@ export interface Notice {
    * answers `critical` or nothing at all.
    */
   desktop?: DesktopAlert;
+  /**
+   * Which of the player's own watches produced this, where one did — the hook
+   * an `AlertRule` claims by (todo 29). Absent on every notice the channels
+   * alone account for, which is most of them.
+   */
+  watch?: AlertWatch;
 }
 
 /**
@@ -128,12 +134,40 @@ export function desktopAlert(notice: Notice): DesktopAlert | null {
  */
 export function raisable(
   prefs: { enabled: boolean; mute: readonly string[] },
-  notice: Notice
+  notice: Notice,
+  /**
+   * The player's own rows (todo 29). A row claiming this notice decides
+   * whether it is raised at all, over the mute list — the same precedence
+   * `wanted` gives it, and for the same reason: a row is the more specific
+   * statement.
+   */
+  rules: readonly AlertRule[] = []
 ): DesktopAlert | null {
   if (!prefs.enabled) return null;
   const alert = desktopAlert(notice);
   if (alert === null) return null;
+  const rule = ruleFor(rules, notice);
+  if (rule !== null) return rule.notify ? alert : null;
   return prefs.mute.some((entry) => entry.toLowerCase() === alert) ? null : alert;
+}
+
+/**
+ * Whether this notice may be raised while the window has the focus.
+ *
+ * The blanket answer is `desktop.whileFocused`; a row that claims the notice
+ * overrules it, which is the whole of *tell me about this one even when I am
+ * looking* (todo 29). Its own function because the hook asks it at a different
+ * moment from `raisable` — the focus is checked before the fresh notices are
+ * even walked — and the two questions are genuinely separate.
+ */
+export function raisableWhileFocused(
+  prefs: { whileFocused: boolean },
+  notice: Notice,
+  rules: readonly AlertRule[] = []
+): boolean {
+  const rule = ruleFor(rules, notice);
+  if (rule !== null && rule.notify) return rule.whileFocused || prefs.whileFocused;
+  return prefs.whileFocused;
 }
 
 /**
@@ -283,6 +317,125 @@ const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeCh
    */
 };
 
+/* ------------------------------------------------------------ alert rules */
+
+/**
+ * What a rule watches — the closed union, and its runtime half beside it
+ * (todo 29, 2026-09-12).
+ *
+ * Two shapes, deliberately. A **channel** rule is the old mute list turned the
+ * right way up: it says what to do with everything arriving on one of the
+ * eleven channels, which is how somebody says *I do not care about items* or
+ * *tell me about the party, loudly*. A **watch** rule is a condition the
+ * channels cannot express — a number crossing a figure the player chose, a
+ * name they are waiting for — and each has its own fields.
+ *
+ * Kept as one union rather than two lists because the settings screen draws
+ * one table and the answer for a notice is *the first rule that claims it*:
+ * two lists would need an order between them anyway, and it would be invisible.
+ */
+export const ALERT_WATCHES = [
+  /** Health, as a share of maximum or as a figure. */
+  'health',
+  /** Mana, likewise; a class with none never matches. */
+  'mana',
+  /** A person — not a monster — swinging at this character. */
+  'attacked',
+  /** An item found or picked up whose name matches. */
+  'item',
+  /** A named player seen: arriving, listed, or speaking. */
+  'player'
+] as const;
+export type AlertWatch = (typeof ALERT_WATCHES)[number];
+
+/** Which side of the figure a `health` or `mana` rule fires on. */
+export const ALERT_SIDES = ['below', 'above'] as const;
+export type AlertSide = (typeof ALERT_SIDES)[number];
+
+/**
+ * One row of the player's alert list.
+ *
+ * **Order is the rule**: the first row that claims a notice decides it, so a
+ * quiet blanket row at the bottom and a loud specific one above it says what
+ * MegaMUD's own tables could not. A notice no row claims keeps the severity
+ * `NOTABLE` gave it and is shown — the list adds and overrides, it is not an
+ * allow list, so a channel added to the client later arrives visible.
+ */
+export interface AlertRule {
+  /**
+   * What this row is about: one of the eleven channels, or one of the five
+   * watches. A word the client does not know is dropped at load rather than
+   * defaulted, the closed union's runtime rule.
+   */
+  on: NoticeChannel | AlertWatch;
+  /** Whether the row does anything at all. Off keeps it in the list, editable. */
+  enabled: boolean;
+  /**
+   * The level this row's notices carry, or null to keep the one the client
+   * decided. **The ranking is still the client's by default** — what a line
+   * costs is a fact about the realm — and this is the player overruling it for
+   * their own reasons, one row at a time, which is a different thing from a
+   * per-character severity table replacing it.
+   */
+  level: Severity | null;
+  /** Whether a notice claimed by this row is shown at all. */
+  alert: boolean;
+  /** Whether it also raises a desktop notification. */
+  notify: boolean;
+  /**
+   * Raise that notification even while the window has the focus. Meaningless
+   * — and refused by the form — while `notify` is off.
+   */
+  whileFocused: boolean;
+  /** `below` or `above`, for the two watches that are numbers. */
+  side: AlertSide;
+  /**
+   * The figure. A share of maximum when `percent`, else the number itself —
+   * *below 60%* and *below 100 hit points* are both things a player says, and
+   * which they meant is not guessable from the number.
+   */
+  value: number;
+  percent: boolean;
+  /**
+   * The name a `item` or `player` row waits for, matched the way the server
+   * matches a typed name. Empty matches nothing, so an unfinished row is inert
+   * rather than firing on everything.
+   */
+  name: string;
+}
+
+/**
+ * Whether a rule's `on` is one of the numeric watches, which is what decides
+ * whether the form draws a figure at all. One statement of it, because a
+ * figure on a row nothing reads it for is a control that does nothing.
+ */
+export function alertIsMeasured(on: AlertRule['on']): on is 'health' | 'mana' {
+  return on === 'health' || on === 'mana';
+}
+
+/** Whether a rule's `on` names something matched by name rather than by kind. */
+export function alertIsNamed(on: AlertRule['on']): on is 'item' | 'player' {
+  return on === 'item' || on === 'player';
+}
+
+/**
+ * The rule that claims a notice, or null where none does.
+ *
+ * A channel rule claims anything on its channel; a watch rule claims a notice
+ * the producer marked with that watch (`Notice.watch`). Disabled rows are
+ * skipped rather than claiming and doing nothing, so a row turned off leaves
+ * the one below it in charge — which is what somebody turning a row off
+ * expects, and the opposite of what skipping *after* claiming would do.
+ */
+export function ruleFor(rules: readonly AlertRule[], notice: Notice): AlertRule | null {
+  for (const rule of rules) {
+    if (!rule.enabled) continue;
+    if (rule.on === notice.channel) return rule;
+    if (notice.watch !== undefined && rule.on === notice.watch) return rule;
+  }
+  return null;
+}
+
 /**
  * Whether a block could produce a notice at all.
  *
@@ -309,14 +462,31 @@ export function mayNotice(block: Block): boolean {
  * would close the loop.
  */
 export function wanted(
-  prefs: { minimum: Severity; mute: readonly string[] },
+  prefs: { minimum: Severity; mute: readonly string[]; rules?: readonly AlertRule[] },
   notices: readonly (Notice | null | undefined)[]
 ): Notice[] {
   const floor = SEVERITIES.indexOf(prefs.minimum);
   const muted = new Set(prefs.mute.map((channel) => channel.toLowerCase()));
+  const rules = prefs.rules ?? [];
   const kept: Notice[] = [];
   for (const notice of notices) {
     if (!notice) continue;
+    /*
+     * The player's own row first, where one claims this (todo 29).
+     *
+     * A row that claims a notice decides it outright — shown or not, and at
+     * which level — because it is a more specific statement than either the
+     * floor or the mute list, which are about *everything*. The floor still
+     * applies to what no row claims, so an empty list behaves exactly as the
+     * client always did and a client that gains a channel later arrives with
+     * it visible.
+     */
+    const rule = ruleFor(rules, notice);
+    if (rule !== null) {
+      if (!rule.alert) continue;
+      kept.push(rule.level === null ? notice : { ...notice, severity: rule.level });
+      continue;
+    }
     // `SEVERITIES` runs loudest first, so a *lower* index is louder and the
     // floor is an upper bound on the index rather than a lower one.
     if (SEVERITIES.indexOf(notice.severity) > floor) continue;
@@ -380,6 +550,9 @@ function pvpNotice(block: Block, state: CharacterState, t: UiLookup): Notice | n
     severity: 'critical',
     channel: 'combat',
     desktop: 'attacked',
+    // The watch a player's own row claims by (todo 29): *a person swinging at
+    // me*, which is a different question from *anything on the combat channel*.
+    watch: 'attacked',
     text: t('cards.alerts.combat.playerAttacking', { name: listed.name })
   };
 }
@@ -391,6 +564,69 @@ function pvpNotice(block: Block, state: CharacterState, t: UiLookup): Notice | n
  */
 function noticedAt(state: CharacterState): number {
   return state.updatedAt ?? state.lastStatusAt ?? 0;
+}
+
+/**
+ * The player's own numeric watches, as crossings (todo 29, 2026-09-12).
+ *
+ * Beside `vitalNotices` rather than inside it, because the two ask different
+ * questions: that one watches the client's three *levels* and only downward,
+ * where a rule watches **one figure the player chose**, in the direction they
+ * chose. *Tell me when mana is back above 80%* is a thing somebody wants and
+ * the levels cannot say.
+ *
+ * **Still a crossing, not a value.** A notice per status line while standing
+ * at 20% health is noise that hides the crossing that mattered — the reason
+ * `vitalNotices` watches edges — and that reasoning does not change because
+ * the figure is the player's. So this fires only where the previous status
+ * line was on the other side.
+ *
+ * An unknown figure on either side crosses nothing: unknown never alarms, and
+ * a maximum that has not arrived would make every percentage rule fire on the
+ * first status line of a session.
+ */
+export function watchNotices(
+  before: CharacterState,
+  after: CharacterState,
+  rules: readonly AlertRule[],
+  t: UiLookup
+): Notice[] {
+  const notices: Notice[] = [];
+  const at = noticedAt(after);
+  for (const rule of rules) {
+    if (!rule.enabled || !alertIsMeasured(rule.on)) continue;
+    const was = rule.on === 'health' ? before.vitals.hp : before.vitals.mana;
+    const now = rule.on === 'health' ? after.vitals.hp : after.vitals.mana;
+    const max = rule.on === 'health' ? after.vitals.hpMax : after.vitals.manaMax;
+    if (was === null || now === null) continue;
+    // The figure the rule is really about: a share needs a maximum, and
+    // without one there is nothing to be a share of.
+    if (rule.percent && (max === null || max <= 0)) continue;
+    const mark = rule.percent ? ((max ?? 0) * rule.value) / 100 : rule.value;
+    const crossed = rule.side === 'below' ? was >= mark && now < mark : was <= mark && now > mark;
+    if (!crossed) continue;
+    notices.push({
+      id: `w${rule.on}${rule.side}${rule.value}-${at}`,
+      at,
+      severity: rule.level ?? 'warning',
+      channel: 'vitals',
+      watch: rule.on,
+      ...(rule.notify ? { desktop: 'hurt' as const } : {}),
+      text:
+        rule.on === 'health'
+          ? t('cards.alerts.vitals.watchHealth', {
+              side: rule.side,
+              mark: Math.round(mark),
+              current: now
+            })
+          : t('cards.alerts.vitals.watchMana', {
+              side: rule.side,
+              mark: Math.round(mark),
+              current: now
+            })
+    });
+  }
+  return notices;
 }
 
 /**
@@ -646,6 +882,81 @@ export function partyNotices(
  * for money over a figure they chose, and an alert nobody asked for at a level
  * nobody chose is the one this project spends its silence budget avoiding.
  */
+/**
+ * The player's own named watches: an item, and a person (todo 29).
+ *
+ * Beside `findNotices` rather than inside it, because that one is about what a
+ * **search** turned up — a narrower and louder fact, with its own settings —
+ * and these are *anything of this name, however it arrived*: on the floor, in
+ * the pack, or standing in the room.
+ *
+ * **Only what has just appeared.** Both halves compare against the previous
+ * state and report the difference, for the reason every other producer here
+ * does: a notice per status line while a gold ring lies on the floor is noise
+ * that hides the moment it turned up.
+ *
+ * Matched by substring, case-insensitively, as `finds.items` is — somebody
+ * types the word they are waiting for, not the realm's spelling of it.
+ */
+export function namedNotices(
+  before: CharacterState,
+  after: CharacterState,
+  rules: readonly AlertRule[],
+  t: UiLookup
+): Notice[] {
+  const wanted = rules.filter(
+    (rule) => rule.enabled && alertIsNamed(rule.on) && rule.name.trim().length > 0
+  );
+  if (wanted.length === 0) return [];
+
+  const at = noticedAt(after);
+  const notices: Notice[] = [];
+
+  const items = wanted.filter((rule) => rule.on === 'item');
+  if (items.length > 0) {
+    const had = new Set(before.room.items.map((item) => item.name.toLowerCase()));
+    for (const item of after.room.items) {
+      const name = item.name.toLowerCase();
+      if (had.has(name)) continue;
+      for (const rule of items) {
+        if (!name.includes(rule.name.trim().toLowerCase())) continue;
+        notices.push({
+          id: `watch-item-${at}-${name}`,
+          at,
+          severity: rule.level ?? 'warning',
+          channel: 'items',
+          watch: 'item',
+          text: t('cards.alerts.watch.item', { what: item.name })
+        });
+        break;
+      }
+    }
+  }
+
+  const people = wanted.filter((rule) => rule.on === 'player');
+  if (people.length > 0) {
+    const had = new Set(before.room.occupants.map((who) => who.name.toLowerCase()));
+    for (const who of after.room.occupants) {
+      const name = who.name.toLowerCase();
+      if (had.has(name)) continue;
+      for (const rule of people) {
+        if (!name.includes(rule.name.trim().toLowerCase())) continue;
+        notices.push({
+          id: `watch-player-${at}-${name}`,
+          at,
+          severity: rule.level ?? 'warning',
+          channel: 'presence',
+          watch: 'player',
+          text: t('cards.alerts.watch.player', { who: who.name })
+        });
+        break;
+      }
+    }
+  }
+
+  return notices;
+}
+
 export function findNotices(
   before: CharacterState,
   after: CharacterState,

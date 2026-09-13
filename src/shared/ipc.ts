@@ -47,6 +47,7 @@ import type {
   SpellsConfig,
   RetreatStrategy,
   PartyConfig,
+  PotionWhen,
   PvpAction,
   SuppliesConfig,
   SupplyItem
@@ -66,6 +67,7 @@ import type {
   RoomBrief,
   RoomId,
   Route,
+  TrainerChoice,
   WorldLookup,
   WorldNames,
   WorldRoom
@@ -793,6 +795,8 @@ export const Invoke = {
   chooseRealm: 'settings:choose-realm',
   /** Where to hunt from here: the lairs within reach, priced for this character. */
   huntingGrounds: 'world:hunt',
+  trainers: 'world:trainers',
+  itemsServing: 'world:serving',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
   /** How much realm data is loaded. */
@@ -1175,6 +1179,34 @@ export interface IpcApi {
    * with the character.
    */
   huntingGrounds(session: SessionId, radius: number): Promise<HuntingAdvice>;
+  /**
+   * The trainers that will take this character, cheapest first (todo 18).
+   *
+   * Addressed, because the answer depends on this character's level and
+   * class, and asked on demand — the settings screen's picker is the reader,
+   * and a list that would be stale the moment the character levels has no
+   * business on a push.
+   *
+   * Empty where the realm states no bands (a world built before format 35),
+   * where the character's level is unread, or where nothing takes it. All
+   * three are the same answer to the player: there is nowhere to send you,
+   * and the picker says so rather than offering a room that will refuse.
+   */
+  trainers(session: SessionId): Promise<TrainerChoice[]>;
+  /**
+   * The items the realm says would serve each condition a potion rule can
+   * name — the picker's suggestions (todo 19).
+   *
+   * One call for every condition rather than one per row: the answer is a
+   * property of the realm, not of the character, and the settings screen draws
+   * several rows at once. Keyed by condition, empty where the realm names
+   * nothing or holds no data.
+   *
+   * Addressed only to find the realm this character is on; nothing about the
+   * character narrows it. Suggestions, never a gate: a derivative realm may
+   * hold an item the shipped data lacks, and the field stays typable.
+   */
+  itemsServing(session: SessionId): Promise<Partial<Record<PotionWhen, string[]>>>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
    * go on.

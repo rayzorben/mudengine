@@ -239,6 +239,13 @@ export class Recovery {
    */
   private readonly refused = new Set<string>();
   /**
+   * Whether the *cannot rest while poisoned* refusal has been said for the
+   * stretch of poison in progress. Cleared the moment the condition is no
+   * longer stated, so a second poisoning says it again — it is a fact about
+   * the character's situation, not a lesson about the realm.
+   */
+  private saidPoisoned = false;
+  /**
    * The verb this module last proposed and how long an answer to it is still
    * expected. A refusal is honoured only against this: the server answers in
    * order, but a player's own command can be echoed on a bare line between
@@ -254,7 +261,17 @@ export class Recovery {
     private enabled: boolean,
     private readonly queue: CommandQueue,
     private party: PartyConfig = DEFAULT_CONFIG.automation.party,
-    private readonly events: { notice?(message: string): void } = {}
+    private readonly events: {
+      notice?(message: string): void;
+      /**
+       * Whether the server refuses `rest` outright while poisoned — the
+       * GreaterMUD family's rule (`RestCommand.cs:28`, which tests `Poison`
+       * before anything else and answers `You are poisoned!` instead of
+       * sitting the character down). False on any other engine and while the
+       * family is unknown: unknown is never the permissive answer.
+       */
+      poisonRefusesRest?(): boolean;
+    } = {}
   ) {}
 
   configure(config: HealthConfig, enabled: boolean, party?: PartyConfig): void {
@@ -269,6 +286,7 @@ export class Recovery {
     this.sitting = false;
     this.needed = null;
     this.refused.clear();
+    this.saidPoisoned = false;
     this.proposed = null;
   }
 
@@ -282,6 +300,25 @@ export class Recovery {
    * somebody who set `meditateBelow` and sees nothing happen needs to know
    * the realm said no, not the client.
    */
+  /**
+   * Whether a `rest` would be refused outright for poison.
+   *
+   * Two facts, both required: the engine is the one with the rule, and the
+   * wire has *stated* the condition. `unknown` is not poisoned — the rule
+   * every threshold in this client follows — so a character nobody has said
+   * is poisoned still rests, and the worst case is the one command this
+   * already spends when a rest is broken.
+   *
+   * The flag that stops it being said twice is cleared by `onCharacter`
+   * rather than here: this is reached only when a rest is *wanted*, and a
+   * character cured back to full health wants none — so clearing here would
+   * leave the sentence unsaid for the next poisoning.
+   */
+  private restIsPoisoned(state: CharacterState): boolean {
+    if (state.afflictions.poisoned !== 'yes') return false;
+    return this.events.poisonRefusesRest?.() === true;
+  }
+
   noteNoEffect(command: string | null): void {
     if (command === null) return;
     const verb = command.trim().toLowerCase();
@@ -331,6 +368,16 @@ export class Recovery {
     const { hp, hpMax, mana, manaMax, resting, meditating } = state.vitals;
 
     /*
+     * The poison sentence is said once per stretch of poison, so the memory of
+     * having said it is cleared wherever the condition is *observed* to be
+     * over — here, off every status line — and not inside the branch that says
+     * it. That branch is reached only when a rest is wanted, and a character
+     * cured back to full health wants none, so clearing there would leave the
+     * next poisoning silent.
+     */
+    if (state.afflictions.poisoned !== 'yes') this.saidPoisoned = false;
+
+    /*
      * Already down, and nothing sends it back up.
      *
      * The status line says so on every repaint, so there is nothing left to
@@ -362,6 +409,31 @@ export class Recovery {
     if (countThreats(state) > 0) return;
 
     if (this.wantsRest(hp, hpMax) && !this.refused.has('rest')) {
+      /*
+       * **A poisoned character cannot rest at all on this engine.**
+       * `RestCommand.cs:28` tests `GetAbility(Poison)` before anything else
+       * and answers `You are poisoned!` instead of sitting the character
+       * down, so every `rest` proposed here is a command spent to be told
+       * the same thing — and the client would keep spending them, because
+       * `askedUntil` expires and nothing else refuses (todo 17).
+       *
+       * Read off the affliction the wire states, never off that sentence:
+       * `You are poisoned!` is the refusal *and* a poison onset in other
+       * realms, and reading it as an onset would reset the cure's
+       * once-per-onset clock every time a rest was attempted.
+       *
+       * Said once per stretch of poison, and it names the cure, because a
+       * character that cannot rest and has no cure configured is stuck in a
+       * state it cannot recover from and the player is the only one who can
+       * change that.
+       */
+      if (this.restIsPoisoned(state)) {
+        if (!this.saidPoisoned) {
+          this.saidPoisoned = true;
+          this.events.notice?.(t('automation.recovery.restPoisoned'));
+        }
+        return;
+      }
       this.propose('rest', t('automation.recovery.reasonHealth'));
       return;
     }

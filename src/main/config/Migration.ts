@@ -192,6 +192,11 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheRestNextDoor(home, note);
   statedTheSpellChoice(home, note);
   statedTheTraining(home, note);
+  theCombatFloorWent(home, note);
+  statedTheLevelling(home, note);
+  statedThePotionRules(home, note);
+  statedTheRecoveryBounds(home, note);
+  statedTheAlertRules(home, note);
 }
 
 /**
@@ -200,6 +205,48 @@ export function migrateHome(options: MigrationOptions): void {
  * as `drop` and `banking` were: a profile inherits it. After `movement:`
  * where the file has one, as the template orders them.
  */
+/**
+ * `combat.minHealth` is gone: there is no health floor on *opening* a fight.
+ *
+ * The goal of the game is survival, and a character that will not swing at
+ * what is swinging at it is not safer for the refusal — it is a character
+ * losing a fight it is in anyway (todo 13). Low health is the retreat's
+ * business and the rest's, and both act on the character rather than on the
+ * decision to engage. Measured: a 75% floor on a character rarely above 75%
+ * declined 80 of 86 rooms with a monster in them, and the experience rate went
+ * to nothing while the character walked laps past what it would not touch.
+ *
+ * Nothing on disk changes behaviour by this: the key shipped at 0, which was
+ * already off. What goes is the option, so a file stating it is not left
+ * naming a setting the client no longer reads.
+ */
+function theCombatFloorWent(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const cleaned: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat)) return false;
+      if (!combat.has('minHealth')) return false;
+      combat.delete('minHealth');
+      // An emptied block reads as a setting somebody meant to fill in, the
+      // same reason `dropDiagnosticsPreference` deletes `ui` when it empties.
+      if (combat.items.length === 0) document.deleteIn(['automation', 'combat']);
+      cleaned.push(file);
+      return true;
+    });
+  }
+
+  if (cleaned.length === 0) return;
+  const params = { count: cleaned.length, fileList: cleaned.join(', ') };
+  note(
+    cleaned.length === 1
+      ? t('notices.migration.combatFloorDropped.one', params)
+      : t('notices.migration.combatFloorDropped.many', params)
+  );
+}
+
 function statedTheTraining(home: Home, note: (message: string) => void): void {
   editOptions(home, (document) => {
     const automation = document.get('automation', true);
@@ -259,6 +306,208 @@ function statedTheSpellChoice(home: Home, note: (message: string) => void): void
       : t('notices.migration.spellChoice.many', params)
   );
 }
+
+/**
+ * `automation.train.levels` and `trainer` into every file that already states
+ * `train:` and predates them (todo 18, 2026-09-12), off and 0.
+ *
+ * `statedTheTraining` above writes the whole block from `DEFAULT_CONFIG`, so a
+ * file that never had one gets both free; this is the other half — the files
+ * written between that migration and this one, which have a `train:` block
+ * holding only the stat screen's half.
+ *
+ * At the head of the block, because collecting the level comes first in time:
+ * the points `stats` spends are awarded by the level `levels` collects.
+ */
+function statedTheLevelling(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'train'], true);
+      if (!isMap(block) || block.has('levels')) return false;
+      const trainer = document.createPair('trainer', 0) as Pair;
+      block.items.unshift(trainer);
+      const levels = document.createPair('levels', false) as Pair;
+      if (isScalar(levels.key)) levels.key.commentBefore = LEVELLING_COMMENT;
+      block.items.unshift(levels);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.levelling.one', params)
+      : t('notices.migration.levelling.many', params)
+  );
+}
+
+/**
+ * `ui.alerts.rules` into every file that states `alerts:` and predates it
+ * (todo 29, 2026-09-12), empty.
+ *
+ * At the **head** of the block, because that is the order the client asks in:
+ * a row decides before `minimum` and `mute` are consulted, and a file whose
+ * reading order disagrees with the client's is one somebody reasons about
+ * wrongly.
+ *
+ * Empty, so nothing changes for anybody: the list adds to the two settings
+ * below rather than replacing them.
+ */
+function statedTheAlertRules(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['ui', 'alerts'], true);
+      if (!isMap(block) || block.has('rules')) return false;
+      const pair = document.createPair('rules', []) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = ALERT_RULES_COMMENT;
+      block.items.unshift(pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.alertRules.one', params)
+      : t('notices.migration.alertRules.many', params)
+  );
+}
+
+/** The template's own words, abridged, so the two files read alike. */
+const ALERT_RULES_COMMENT = ` Your own alerts, tried in order.
+
+ The FIRST row that matches a notice decides it -- whether it is shown, how
+ loud, and whether it also raises a desktop notification. Anything no row
+ matches keeps the level the client gave it and meets \`minimum\` and \`mute\`
+ below. \`on\` is one of the eleven channels or one of five conditions:
+ \`health\` and \`mana\` (a figure you choose, fired on the crossing),
+ \`attacked\` (a person swinging at you), \`item\` and \`player\` (matched by
+ \`name\`). \`level\` empty keeps what the client decided. See the template for
+ a worked example.`;
+
+/**
+ * `automation.movement.recoverGearTries` and `recoverGearFloor` into every
+ * file that already states `recoverGear` (todo 21, 2026-09-12).
+ *
+ * Beside the switch they bound, and only where the switch is stated: a
+ * `movement:` block that never mentioned going back for the kit belongs to
+ * somebody who has not turned it on, and two numbers bounding a feature they
+ * do not use are two keys for the sake of keys.
+ */
+function statedTheRecoveryBounds(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'movement'], true);
+      if (!isMap(block) || block.has('recoverGearTries')) return false;
+      if (!block.has('recoverGear')) return false;
+      const floor = document.createPair(
+        'recoverGearFloor',
+        DEFAULT_CONFIG.automation.movement.recoverGearFloor
+      ) as Pair;
+      block.items.push(floor);
+      const tries = document.createPair(
+        'recoverGearTries',
+        DEFAULT_CONFIG.automation.movement.recoverGearTries
+      ) as Pair;
+      if (isScalar(tries.key)) tries.key.commentBefore = RECOVERY_BOUNDS_COMMENT;
+      block.items.splice(block.items.length - 1, 0, tries);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.recoveryBounds.one', params)
+      : t('notices.migration.recoveryBounds.many', params)
+  );
+}
+
+/** The template's own words, abridged, so the two files read alike. */
+const RECOVERY_BOUNDS_COMMENT = ` And the bounds on trying again.
+
+ A recovery walks a freshly dead, stripped character back to the room that
+ killed it, so where that room is still dangerous the trip is itself a way to
+ die -- and each one costs a life. \`recoverGearFloor\` stops once this many
+ lives are left; \`recoverGearTries\` is how many journeys in a row may fail to
+ reach the kit before it gives up. A journey that gets there clears the run.
+ 0 disables either.`;
+
+/**
+ * `automation.health.potions` into every file that states `health:` and
+ * predates it (todo 19, 2026-09-12), empty.
+ *
+ * Beside the two named potion slots, since it is the rest of the same idea:
+ * *use this when that is true*, for anything the two cannot say.
+ */
+function statedThePotionRules(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'health'], true);
+      if (!isMap(block) || block.has('potions')) return false;
+      /*
+       * Only where the block already carries the named potion slots. A
+       * `health:` block that states a threshold and nothing about potions is
+       * not a file that predates this list — it is one whose owner has never
+       * asked for potions at all, and writing an empty list into it would add
+       * a key to a file for the sake of it. The template ships the key; this
+       * is for the files that already went to the trouble of a potion
+       * section.
+       */
+      if (!block.has('healingPotionName')) return false;
+      const pair = document.createPair('potions', []) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = POTION_RULES_COMMENT;
+      block.items.push(pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.potionRules.one', params)
+      : t('notices.migration.potionRules.many', params)
+  );
+}
+
+/** The template's own words, abridged, so the two files read alike. */
+const POTION_RULES_COMMENT = ` And anything else, with its own condition -- *use this when that is true*.
+
+ Each row is an item name, a \`when\` (hp, mana, poisoned, blind, diseased,
+ held), a \`below\` share of maximum for the two that are measured, and
+ \`drink\` or \`use\`. Only an item the pack lists is ever asked for, and only a
+ condition the wire has stated fires one: unknown is not afflicted. Empty,
+ because spending a player's consumables unasked is its own failure.`;
+
+/** The template's own words, abridged, so the two files read alike. */
+const LEVELLING_COMMENT = ` Going to collect the level.
+
+ In this game you do not level by earning the experience: you earn it, then
+ you walk to a trainer and pay. Until you do, every point past the threshold
+ does nothing at all -- no hit points, no skills, no character points. Off,
+ because a player banking levels for a reroll exists. \`trainer\` is the
+ trainer's own shop row, or 0 for the cheapest that will take this character;
+ the settings screen offers only the rooms the realm says will take it.`;
 
 /** The template's own words for the switch, so the two files read alike. */
 const AUTO_CHOOSE_COMMENT = ` Auto Choose Best Spell.

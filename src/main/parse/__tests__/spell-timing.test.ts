@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Classifier } from '../Classifier';
 import { CharacterTracker } from '../CharacterTracker';
+import { WorldGraph } from '../../world/WorldGraph';
 import { Blessings } from '../../automation/Blessings';
 import { CommandQueue } from '../../automation/CommandQueue';
 import { DEFAULT_CONFIG, type BlessingConfig } from '../../../shared/config';
@@ -31,7 +32,10 @@ function shippedSpellLore(): SpellLore {
  * self-cast confirmation, and the `st` sheet's countdowns — which is why
  * `protection from evil` was recast every 30 seconds while it had 90 left.
  */
-function feeder(spellLore?: SpellLore): {
+function feeder(
+  spellLore?: SpellLore,
+  world?: WorldGraph
+): {
   tracker: CharacterTracker;
   feed: (text: string, terminator?: 'newline' | 'flush') => string;
   ask: (command: string) => void;
@@ -42,7 +46,7 @@ function feeder(spellLore?: SpellLore): {
     spellLore ? (text) => spellLore.match(text) : undefined
   );
   const tracker = new CharacterTracker(
-    undefined,
+    world,
     undefined,
     undefined,
     undefined,
@@ -297,6 +301,75 @@ describe('the kai powers, replayed through the real tracker and Blessings', () =
     } finally {
       blessings.dispose();
       queue.dispose();
+    }
+  });
+});
+
+/*
+ * The realm's own poison, read from both ends through the shipped table
+ * (todo 23).
+ *
+ * `You feel ill.` is what 22 spells in `spell-messages.csv` print when they
+ * land, paired there with `The effects of the poison wear off!`. Unlisted as
+ * an onset the start was unread — and the *ending* matched the generic
+ * buff-expiry frame, whose pairing asks what the stopped spell's start turns
+ * on and got null. `poisoned` stayed `yes` for ever: a lap holding for it
+ * stood at full health in a cave until the run was killed.
+ *
+ * Against the shipped table, because the pairing is the table's and a fixture
+ * would be testing the test.
+ */
+describe("the realm's own poison, through the shipped table", () => {
+  it('reads the start and clears it on the ending the table pairs with it', () => {
+    const { tracker, feed } = feeder(shippedSpellLore());
+    feed('[HP=34]:');
+    feed('You feel ill.');
+    expect(tracker.current.afflictions.poisoned).toBe('yes');
+    feed('The effects of the poison wear off!');
+    expect(tracker.current.afflictions.poisoned).toBe('no');
+  });
+});
+
+/*
+ * A knockdown, read from both ends through the shipped table and the shipped
+ * realm (todo 24, re-analysed 2026-09-12 after todo 00).
+ *
+ * The todo reports 52 unread sentences and two broken links: that
+ * `spell-onset` only matches `You feel …!` where these say `You are …!`, and
+ * that the shipped realm carries no spell message table at all. Both were true
+ * when it was written and neither is now — `resources/world/spell-messages.csv`
+ * ships, pairing `You are flat on your back!` with `You get back on your
+ * feet.`, and the classifier reads the sentence through the table rather than
+ * through the frame.
+ *
+ * Held against the **shipped** table and the **shipped** realm, because the
+ * whole chain is data: the sentence names its spells, the realm's row carries
+ * `HoldPerson` (74), and `holdsMovement` is the one test.
+ */
+describe('a knockdown, through the shipped table and realm', () => {
+  it('holds the character on the onset and lets go on the release', () => {
+    const world = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    const { tracker, feed } = feeder(shippedSpellLore(), world);
+    feed('[HP=34]:');
+    feed('You are flat on your back!');
+    expect(tracker.current.afflictions.held).toBe('yes');
+    feed('You get back on your feet.');
+    expect(tracker.current.afflictions.held).toBe('no');
+  });
+
+  /* The comment's other example, and a net, which pairs a different release. */
+  it("reads the realm's other holds the same way", () => {
+    const world = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    for (const [onset, release] of [
+      ['You are entangled!', 'The effects of entangle wear off!'],
+      ['You are entangled in a net!', 'You work yourself free.']
+    ] as const) {
+      const { tracker, feed } = feeder(shippedSpellLore(), world);
+      feed('[HP=34]:');
+      feed(onset);
+      expect(tracker.current.afflictions.held, onset).toBe('yes');
+      feed(release);
+      expect(tracker.current.afflictions.held, release).toBe('no');
     }
   });
 });

@@ -15,7 +15,10 @@ const automation: AutomationConfig = {
 const NOTHING = { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 };
 const train = (wanted: Partial<TrainConfig['wanted']> = {}, stats = true): TrainConfig => ({
   stats,
-  wanted: { ...NOTHING, ...wanted }
+  wanted: { ...NOTHING, ...wanted },
+  // The levelling errand's own two, which this driver does not read.
+  levels: false,
+  trainer: 0
 });
 
 /*

@@ -535,6 +535,21 @@ export function nameInMessage(middle: string, sources: NameSources): string | nu
   const text = middle.trim();
   if (text.length === 0) return null;
   const lower = text.toLowerCase();
+  /*
+   * The server's own article, stepped over (todo 30, 2026-09-12).
+   *
+   * `Also here:` lists a monster bare — `short half-ogre bodyguard` — and the
+   * blow prints it with the article the server puts on: `The short half-ogre
+   * bodyguard swings at you…`. Matched from the very start, the room's listing
+   * missed it, the leading-word fallback took **`The`** as the attacker, and
+   * auto-combat sent `aa The short half-ogre bodyguard` four times, each
+   * answered `Your command had no effect.`
+   *
+   * Both are tried, longest match winning as they already do, so a monster
+   * whose *own* name begins with `The` is still found: this offers the room a
+   * second place to match, never a shorter answer.
+   */
+  const bare = lower.startsWith('the ') ? lower.slice(4) : null;
 
   // 1. The room, longest first.
   let best: string | null = null;
@@ -542,7 +557,8 @@ export function nameInMessage(middle: string, sources: NameSources): string | nu
     const name = who.trim();
     if (name.length === 0) continue;
     const key = name.toLowerCase();
-    if (lower !== key && !lower.startsWith(`${key} `)) continue;
+    const fits = (against: string): boolean => against === key || against.startsWith(`${key} `);
+    if (!fits(lower) && !(bare !== null && fits(bare))) continue;
     if (best === null || name.length > best.length) best = name;
   }
   if (best !== null) return best;

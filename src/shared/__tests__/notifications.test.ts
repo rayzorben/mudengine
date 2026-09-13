@@ -5,14 +5,19 @@ import { parse } from 'yaml';
 
 import {
   desktopAlert,
+  namedNotices,
   linkNotices,
   noticeFor,
   partyNotices,
   raisable,
+  raisableWhileFocused,
   roomNotices,
   rosterNotices,
   vitalNotices,
   walkNotices,
+  wanted,
+  watchNotices,
+  type AlertRule,
   type Notice
 } from '../notifications';
 import { IDLE_WALK } from '../walk';
@@ -570,5 +575,254 @@ describe('somebody in the party in trouble', () => {
       t
     );
     expect(raised).toHaveLength(2);
+  });
+});
+
+/*
+ * The player's own alert rows (todo 29, 2026-09-12).
+ *
+ * They add to the floor and the mute list rather than replacing them: the
+ * first enabled row that claims a notice decides it outright, and anything no
+ * row claims still meets `minimum` and `mute`. So an empty list behaves
+ * exactly as the client always did.
+ */
+describe('the alert rules', () => {
+  const rule = (over: Partial<AlertRule> & { on: AlertRule['on'] }): AlertRule => ({
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: false,
+    whileFocused: false,
+    side: 'below',
+    value: 0,
+    percent: true,
+    name: '',
+    ...over
+  });
+
+  const said = (over: Partial<Notice> = {}): Notice => ({
+    id: 'n1',
+    at: 1,
+    severity: 'info',
+    channel: 'items',
+    text: 'something',
+    ...over
+  });
+
+  it('behaves exactly as before with no rules', () => {
+    const notices = [said(), said({ id: 'n2', severity: 'critical', channel: 'combat' })];
+    expect(wanted({ minimum: 'info', mute: [] }, notices)).toHaveLength(2);
+    expect(wanted({ minimum: 'info', mute: ['items'] }, notices)).toHaveLength(1);
+  });
+
+  it('hides what a row says not to show, whatever the floor allows', () => {
+    const kept = wanted(
+      { minimum: 'info', mute: [], rules: [rule({ on: 'items', alert: false })] },
+      [said()]
+    );
+    expect(kept).toEqual([]);
+  });
+
+  /*
+   * And the other way: a row shows what the *mute list* hides, because a row
+   * is the more specific statement of the two.
+   */
+  it('shows what a row claims even where the channel is muted', () => {
+    const kept = wanted({ minimum: 'info', mute: ['items'], rules: [rule({ on: 'items' })] }, [
+      said()
+    ]);
+    expect(kept).toHaveLength(1);
+  });
+
+  it('raises the level a row states, leaving the rest alone', () => {
+    const kept = wanted(
+      { minimum: 'info', mute: [], rules: [rule({ on: 'items', level: 'critical' })] },
+      [said()]
+    );
+    expect(kept[0]?.severity).toBe('critical');
+  });
+
+  /* The first enabled row wins; a row turned off leaves the next in charge. */
+  it('takes the first enabled row that claims it', () => {
+    const rules = [
+      rule({ on: 'items', enabled: false, alert: false }),
+      rule({ on: 'items', level: 'warning' })
+    ];
+    const kept = wanted({ minimum: 'info', mute: [], rules }, [said()]);
+    expect(kept[0]?.severity).toBe('warning');
+  });
+
+  /* A watch row claims by the watch the producer marked, not by the channel. */
+  it('claims a notice by its watch as well as by its channel', () => {
+    const kept = wanted(
+      { minimum: 'critical', mute: [], rules: [rule({ on: 'attacked', level: 'info' })] },
+      [said({ channel: 'combat', severity: 'critical', watch: 'attacked' })]
+    );
+    expect(kept[0]?.severity).toBe('info');
+  });
+
+  /* And the desktop half: a row decides whether it is raised at all. */
+  it('lets a row turn a notification on where the mute list turned it off', () => {
+    const notice = said({ channel: 'combat', watch: 'attacked', desktop: 'attacked' });
+    const prefs = { enabled: true, mute: ['attacked'] };
+    expect(raisable(prefs, notice)).toBeNull();
+    expect(raisable(prefs, notice, [rule({ on: 'attacked', notify: true })])).toBe('attacked');
+  });
+
+  it('lets a row ask to be raised while the window is in front', () => {
+    const notice = said({ channel: 'combat', watch: 'attacked', desktop: 'attacked' });
+    expect(raisableWhileFocused({ whileFocused: false }, notice)).toBe(false);
+    expect(
+      raisableWhileFocused({ whileFocused: false }, notice, [
+        rule({ on: 'attacked', notify: true, whileFocused: true })
+      ])
+    ).toBe(true);
+  });
+});
+
+/*
+ * The player's own numeric watches (todo 29).
+ *
+ * Their figure, their direction — and still a crossing rather than a value,
+ * for the reason `vitalNotices` watches edges: a notice per status line while
+ * standing at 20% health hides the crossing that mattered.
+ */
+describe('a figure the player chose', () => {
+  const watch = (over: Partial<AlertRule> & { on: AlertRule['on'] }): AlertRule => ({
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: false,
+    whileFocused: false,
+    side: 'below',
+    value: 0,
+    percent: true,
+    name: '',
+    ...over
+  });
+
+  it('fires when health crosses the share it was given', () => {
+    const raised = watchNotices(
+      withVitals(70, 100),
+      withVitals(50, 100),
+      [watch({ on: 'health', side: 'below', value: 60 })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+    expect(raised[0]?.watch).toBe('health');
+  });
+
+  /* And not again while it stays there: the crossing is the fact. */
+  it('does not fire again while it stays below', () => {
+    const rules = [watch({ on: 'health', side: 'below', value: 60 })];
+    expect(watchNotices(withVitals(50, 100), withVitals(40, 100), rules, t)).toEqual([]);
+  });
+
+  /* Upward too, which the client's own levels deliberately never do. */
+  it('fires on the way back up where the row asked for above', () => {
+    const raised = watchNotices(
+      withVitals(50, 100),
+      withVitals(90, 100),
+      [watch({ on: 'health', side: 'above', value: 80 })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+  });
+
+  /* An absolute figure, which is the other thing a player says. */
+  it('takes a figure rather than a share', () => {
+    const raised = watchNotices(
+      withVitals(150, 500),
+      withVitals(80, 500),
+      [watch({ on: 'health', side: 'below', value: 100, percent: false })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+  });
+
+  /* Unknown never alarms — the rule every threshold in this client follows. */
+  it('crosses nothing while a figure or a maximum is unread', () => {
+    const rules = [watch({ on: 'health', side: 'below', value: 60 })];
+    expect(watchNotices(withVitals(70, 100), withVitals(null, 100), rules, t)).toEqual([]);
+    expect(watchNotices(withVitals(70, null), withVitals(50, null), rules, t)).toEqual([]);
+  });
+
+  it('ignores a row that is turned off', () => {
+    const raised = watchNotices(
+      withVitals(70, 100),
+      withVitals(50, 100),
+      [watch({ on: 'health', side: 'below', value: 60, enabled: false })],
+      t
+    );
+    expect(raised).toEqual([]);
+  });
+});
+
+/*
+ * The player's own named watches (todo 29): an item, and a person.
+ *
+ * Beside the finds settings rather than inside them: those are about what a
+ * *search* turned up, and these are anything of this name however it arrived.
+ */
+describe('a name the player is waiting for', () => {
+  const watch = (over: Partial<AlertRule> & { on: AlertRule['on'] }): AlertRule => ({
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: false,
+    whileFocused: false,
+    side: 'below',
+    value: 0,
+    percent: true,
+    name: '',
+    ...over
+  });
+
+  const withRoom = (over: Partial<CharacterState['room']>, at = 2000): CharacterState => ({
+    ...EMPTY_CHARACTER,
+    room: { ...EMPTY_CHARACTER.room, ...over },
+    updatedAt: at
+  });
+
+  it('says so when the item turns up on the floor', () => {
+    const raised = namedNotices(
+      withRoom({ items: [] }),
+      withRoom({ items: [{ name: 'a gold jeweled ring' }] as never }),
+      [watch({ on: 'item', name: 'jeweled ring' })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+    expect(raised[0]?.watch).toBe('item');
+  });
+
+  /* And not again while it lies there: what appeared is the fact. */
+  it('does not say so again while it is still there', () => {
+    const room = { items: [{ name: 'a gold jeweled ring' }] as never };
+    expect(
+      namedNotices(withRoom(room), withRoom(room), [watch({ on: 'item', name: 'ring' })], t)
+    ).toEqual([]);
+  });
+
+  it('says so when the person walks in', () => {
+    const raised = namedNotices(
+      withRoom({ occupants: [] }),
+      withRoom({ occupants: [{ name: 'Rend' }] as never }),
+      [watch({ on: 'player', name: 'rend' })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+    expect(raised[0]?.channel).toBe('presence');
+  });
+
+  /* A row with no name is inert rather than firing on everything. */
+  it('does nothing for a row that names nothing', () => {
+    expect(
+      namedNotices(
+        withRoom({ items: [] }),
+        withRoom({ items: [{ name: 'a rusty dagger' }] as never }),
+        [watch({ on: 'item', name: '  ' })],
+        t
+      )
+    ).toEqual([]);
   });
 });
