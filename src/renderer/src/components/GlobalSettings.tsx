@@ -3,6 +3,7 @@ import Advanced from './Advanced';
 import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
+import PotionList from './PotionList';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
 import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
 import CarrySections from './CarrySections';
@@ -18,7 +19,6 @@ import { t } from '../lib/i18n';
 import {
   RETREAT_STRATEGIES,
   PVP_ACTIONS,
-  POTION_VERBS,
   type EngagePolicy,
   type RetreatStrategy
 } from '@shared/config';
@@ -671,12 +671,12 @@ export default function GlobalSettings({
             }
           />
           <CheckField
-            checked={draft.automation.combat.joinFights}
-            hint={t('settings.combat.joinFightsHint')}
-            label={t('settings.combat.joinFights')}
-            name="global-join-fights"
+            checked={draft.automation.combat.politeAttacks}
+            hint={t('settings.combat.politeAttacksHint')}
+            label={t('settings.combat.politeAttacks')}
+            name="global-polite-attacks"
             onChange={(value) =>
-              automation({ combat: { ...draft.automation.combat, joinFights: value } })
+              automation({ combat: { ...draft.automation.combat, politeAttacks: value } })
             }
           />
 
@@ -793,25 +793,7 @@ export default function GlobalSettings({
             wide
           />
           <fieldset className="settings-menus">
-            <legend>{t('settings.combat.avoidKindLegend')}</legend>
-            <CheckField
-              checked={draft.automation.combat.avoidUndead}
-              hint={t('settings.combat.avoidUndeadHint')}
-              label={t('settings.combat.avoidUndeadLabel')}
-              name="global-avoid-undead"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, avoidUndead: value } })
-              }
-            />
-            <CheckField
-              checked={draft.automation.combat.avoidDeathSpell}
-              hint={t('settings.combat.avoidDeathSpellHint')}
-              label={t('settings.combat.avoidDeathSpellLabel')}
-              name="global-avoid-death-spell"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, avoidDeathSpell: value } })
-              }
-            />
+            <legend>{t('settings.combat.monstersLegend')}</legend>
             <NumberField
               hint={t('settings.combat.maxTargetHealthHint')}
               label={t('settings.combat.maxTargetHealthLabel')}
@@ -841,18 +823,6 @@ export default function GlobalSettings({
               value={String(draft.automation.combat.maxMonsterExperience)}
             />
           </fieldset>
-          <TextField
-            hint={t('settings.combat.preferHint')}
-            label={t('settings.combat.preferLabel')}
-            name="global-prefer"
-            onChange={(value) =>
-              automation({ combat: { ...draft.automation.combat, prefer: splitNames(value) } })
-            }
-            placeholder={t('settings.combat.preferPlaceholder')}
-            value={joinNames(draft.automation.combat.prefer)}
-            wide
-          />
-
           <Advanced label={t('settings.global.combat.advancedPacing')}>
             <div className="settings-inline">
               <NumberField
@@ -868,14 +838,6 @@ export default function GlobalSettings({
                   })
                 }
                 value={draft.automation.combat.refreshRounds}
-              />
-              <CheckField
-                checked={draft.automation.combat.whileWalking}
-                label={t('settings.combat.whileWalking')}
-                name="global-while-walking"
-                onChange={(value) =>
-                  automation({ combat: { ...draft.automation.combat, whileWalking: value } })
-                }
               />
             </div>
             <p className="settings-note">{t('settings.global.combat.pacingNote')}</p>
@@ -992,69 +954,26 @@ export default function GlobalSettings({
             />
           </fieldset>
 
+          {/*
+            The player's own *use this when that* list, on this page too
+            (todo 00). It was the character page's alone, which made it the one
+            overlay-able list a new character could never be given a starting
+            point for — the two named slots that used to stand here are gone,
+            and this says everything they said.
+
+            No `serving` suggestions: the realm's item list is a session's
+            answer about a character's realm, and this page is every realm.
+          */}
           <fieldset className="settings-menus">
-            <legend>{t('settings.health.potionLegend')}</legend>
-            <p className="settings-note">{t('settings.health.potionNote')}</p>
-            <div className="settings-inline">
-              <TextField
-                label={t('settings.health.healingPotionLabel')}
-                name="global-healing-potion"
-                onChange={(value) =>
-                  automation({ health: { ...draft.automation.health, healingPotionName: value } })
-                }
-                spellCheck={false}
-                value={draft.automation.health.healingPotionName}
-              />
-              <NumberField
-                hint={t('settings.health.potionBelowHint')}
-                label={t('settings.health.drinkHealingBelowLabel')}
-                name="global-healing-potion-below"
-                onChange={(value) =>
-                  automation({
-                    health: { ...draft.automation.health, drinkHealingPotionBelow: fraction(value) }
-                  })
-                }
-                bar={barOfHealth(draft.automation.health.drinkHealingPotionBelow)}
-                value={percent(draft.automation.health.drinkHealingPotionBelow)}
-              />
-            </div>
-            <div className="settings-inline">
-              <TextField
-                label={t('settings.health.manaPotionLabel')}
-                name="global-mana-potion"
-                onChange={(value) =>
-                  automation({ health: { ...draft.automation.health, manaPotionName: value } })
-                }
-                spellCheck={false}
-                value={draft.automation.health.manaPotionName}
-              />
-              <NumberField
-                hint={t('settings.health.potionBelowHint')}
-                label={t('settings.health.drinkManaBelowLabel')}
-                name="global-mana-potion-below"
-                onChange={(value) =>
-                  automation({
-                    health: { ...draft.automation.health, drinkManaPotionBelow: fraction(value) }
-                  })
-                }
-                bar={barOfMana(draft.automation.health.drinkManaPotionBelow)}
-                value={percent(draft.automation.health.drinkManaPotionBelow)}
-              />
-            </div>
-            <SelectField
-              hint={t('settings.health.potionVerbHint')}
-              label={t('settings.health.potionVerbLabel')}
-              name="global-potion-verb"
-              onChange={(value) =>
-                automation({
-                  health: {
-                    ...draft.automation.health,
-                    potionVerb: value === 'use' ? 'use' : 'drink'
-                  }
-                })
+            <legend>{t('settings.health.potionRuleLegend')}</legend>
+            <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
+            <PotionList
+              namePrefix="global-potion"
+              onChange={(potions) =>
+                automation({ health: { ...draft.automation.health, potions } })
               }
-              options={POTION_VERBS.map((verb) => ({ value: verb, label: verb }))}
-              value={draft.automation.health.potionVerb}
+              potions={draft.automation.health.potions}
+              serving={{}}
             />
           </fieldset>
 
@@ -1533,18 +1452,11 @@ export default function GlobalSettings({
 
       {shown === 'movement' && (
         <>
+          {/* Four questions, four fieldsets (todo 00) -- the character page
+              groups them the same way, because one setting keeps one shape on
+              every page that shows it. */}
           <fieldset className="settings-menus">
-            <legend>{t('settings.movement.legend')}</legend>
-            {/*
-              A switch and the count it discloses are one row, and the count is
-              beside the switch it belongs to rather than in a run of three at
-              the foot of the fieldset. They were: "Tries per door", "Pick
-              tries" and "Bash tries" sat below every switch on the page, so the
-              only thing saying which count belonged to which switch was the
-              order they happened to be written in. One setting, one shape, on
-              every page that shows it -- the character's own Movement tab pairs
-              them the same way.
-            */}
+            <legend>{t('settings.movement.doorsLegend')}</legend>
             <div className="settings-inline">
               <CheckField
                 checked={draft.automation.movement.openDoors}
@@ -1621,6 +1533,10 @@ export default function GlobalSettings({
                 value={draft.automation.movement.bashTries}
               />
             </div>
+          </fieldset>
+
+          <fieldset className="settings-menus">
+            <legend>{t('settings.movement.stealthLegend')}</legend>
             <CheckField
               checked={draft.automation.movement.sneak}
               hint={t('settings.movement.sneakHint')}
@@ -1630,6 +1546,10 @@ export default function GlobalSettings({
                 automation({ movement: { ...draft.automation.movement, sneak: value } })
               }
             />
+          </fieldset>
+
+          <fieldset className="settings-menus">
+            <legend>{t('settings.movement.lightLegend')}</legend>
             <CheckField
               checked={draft.automation.movement.provideLight}
               hint={t('settings.movement.provideLightHint')}
@@ -1666,15 +1586,10 @@ export default function GlobalSettings({
                 />
               </>
             )}
-            <CheckField
-              checked={draft.automation.movement.recoverGear}
-              hint={t('settings.movement.recoverGearHint')}
-              label={t('settings.movement.recoverGear')}
-              name="global-recover-gear"
-              onChange={(value) =>
-                automation({ movement: { ...draft.automation.movement, recoverGear: value } })
-              }
-            />
+          </fieldset>
+
+          <fieldset className="settings-menus">
+            <legend>{t('settings.movement.afflictionsLegend')}</legend>
             <CheckField
               checked={draft.automation.movement.walkWhileBlind}
               hint={t('settings.movement.walkWhileBlindHint')}
@@ -1693,6 +1608,19 @@ export default function GlobalSettings({
                 automation({
                   movement: { ...draft.automation.movement, walkWhilePoisoned: value }
                 })
+              }
+            />
+          </fieldset>
+
+          <fieldset className="settings-menus">
+            <legend>{t('settings.movement.carryLegend')}</legend>
+            <CheckField
+              checked={draft.automation.movement.recoverGear}
+              hint={t('settings.movement.recoverGearHint')}
+              label={t('settings.movement.recoverGear')}
+              name="global-recover-gear"
+              onChange={(value) =>
+                automation({ movement: { ...draft.automation.movement, recoverGear: value } })
               }
             />
             <CheckField

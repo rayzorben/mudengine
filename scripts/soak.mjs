@@ -88,7 +88,8 @@ function log(who, kind, text, extra = {}) {
    * output when it had produced four lines.
    */
   out.write(`${JSON.stringify({ t: Date.now(), at: Date.now(), who, kind, text, ...extra })}\n`);
-  if (kind !== 'line') console.log(`[${new Date().toISOString().slice(11, 19)}] ${who} ${kind}: ${text}`);
+  if (kind !== 'line')
+    console.log(`[${new Date().toISOString().slice(11, 19)}] ${who} ${kind}: ${text}`);
 }
 
 /**
@@ -221,13 +222,7 @@ const BLOW_BLOCKS = new Set(['user-hits', 'user-misses', 'mob-hits', 'mob-misses
  * has no rule for, and counting them would bury the sixty that matter under
  * ninety thousand that do not.
  */
-const NOISE = [
-  /^\s*$/,
-  /^\[HP=/,
-  /^-{5,}$/,
-  /^={5,}$/,
-  /^\s*\.{3,}\s*$/
-];
+const NOISE = [/^\s*$/, /^\[HP=/, /^-{5,}$/, /^={5,}$/, /^\s*\.{3,}\s*$/];
 
 /** One character, driven. */
 class Driver {
@@ -282,8 +277,9 @@ class Driver {
         combat: {
           ...profile.config.automation.combat,
           enabled: true,
-          retaliate: true,
-          whileWalking: true
+          retaliate: true
+          // A route fights on the way of its own accord since todo 00, so
+          // there is no third switch to set here.
         },
         health: { ...profile.config.automation.health, restBelow: 0.5 },
         /*
@@ -997,7 +993,11 @@ async function lightUp(driver) {
     if (!isBlinding(driver.me.room.light)) return 'created one';
   }
   const back = await driver.walkTo(STAGING, 45);
-  log(driver.role, 'phase', back ? `still dark and stuck: ${back}` : 'still dark; went back to staging');
+  log(
+    driver.role,
+    'phase',
+    back ? `still dark and stuck: ${back}` : 'still dark; went back to staging'
+  );
   return back ?? 'retreated';
 }
 
@@ -1095,7 +1095,10 @@ async function operator(rest, settle = 2500) {
 /** What the run found, as numbers and as the shapes behind them. */
 function summarise() {
   const top = (map, n) =>
-    [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([text, count]) => ({ count, text }));
+    [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+      .map(([text, count]) => ({ count, text }));
   const summary = {
     ranMs: Date.now() - started,
     deaths: tally.deaths,
@@ -1117,7 +1120,11 @@ function summarise() {
 const started = Date.now();
 
 async function main() {
-  log('run', 'phase', `soaking for ${Math.round(SOAK_MS / 60000)} minutes; sys ${SYS ? 'on' : 'off'}`);
+  log(
+    'run',
+    'phase',
+    `soaking for ${Math.round(SOAK_MS / 60000)} minutes; sys ${SYS ? 'on' : 'off'}`
+  );
   if (!(await leader.connect())) {
     log('leader', 'phase', 'never reached the realm');
     return;

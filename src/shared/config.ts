@@ -720,8 +720,6 @@ export type RetreatStrategy = (typeof RETREAT_STRATEGIES)[number];
  *   in as many words.
  * - **A monster the realm calls good**, because attacking one spends the
  *   character's standing rather than its health, permanently and cumulatively.
- *   Naming one under `prefer` is how somebody asks for it anyway, which is a
- *   deliberate instruction rather than a blanket one.
  */
 export type EngagePolicy = 'none' | 'hostile' | 'likely' | 'all';
 
@@ -805,18 +803,20 @@ export interface CombatConfig {
    */
   retaliate: boolean;
   /**
-   * Open on a monster somebody **outside the party** is already fighting.
+   * Leave alone a monster somebody **outside the party** is already fighting.
    *
-   * MegaMUD's *PoliteAttacks*, inverted so that the default keeps what this
-   * client did before the field existed — MegaMUD's own default is
-   * `PoliteAttacks=0`, join. Off, a monster `combat.claimed` holds (a
-   * stranger seen swinging at it within `tuning.combat.assistFreshMs`) is
-   * refused with the stranger's name in the trace: opening on it is stealing
-   * a kill, and on a PvP realm it is an invitation. A party member's fight is
-   * never a claim — joining that is assisting, and has its own switch.
-   * Hitting back ignores this, as it ignores every other limit here.
+   * MegaMUD's *PoliteAttacks*, in MegaMUD's own direction and under its own
+   * name (todo 00): on, a monster `combat.claimed` holds (a stranger seen
+   * swinging at it within `tuning.combat.assistFreshMs`) is refused with the
+   * stranger's name in the trace, because opening on it is stealing a kill and
+   * on a PvP realm it is an invitation. A party member's fight is never a
+   * claim — joining that is assisting, and has its own switch. Hitting back
+   * ignores this, as it ignores every other limit here.
+   *
+   * Ships off, which is the behaviour this client had before the field
+   * existed and MegaMUD's own `PoliteAttacks=0`.
    */
-  joinFights: boolean;
+  politeAttacks: boolean;
   /**
    * Do not open a fight when this many monsters are in the room. 0 never
    * refuses.
@@ -841,26 +841,6 @@ export interface CombatConfig {
    */
   maxFightCost: number;
   /**
-   * Whether to open fights while walking a planned route.
-   *
-   * Off, and the reason changed on 2026-09-02 when a route learned to wait a
-   * fight out and walk on (`Walker.holdForFight`). It used to be that a walk
-   * *ended* the moment combat started, so attacking every rat between here and
-   * the bank turned one route into a dozen — a cost this setting existed to
-   * avoid, and one that no longer exists.
-   *
-   * What is left is the argument the whole of `AutoCombat` keeps: opening a
-   * fight nobody asked for is the client deciding to spend the character's
-   * health, and a route is the player having said where they want to be rather
-   * than what they want to fight. That is a preference, not a hazard, which is
-   * why turning it on is now a reasonable thing to do and a lap is what it
-   * makes the journey into.
-   *
-   * Retaliation is unaffected either way: something already hitting the
-   * character holds the walk whether or not this client swings first.
-   */
-  whileWalking: boolean;
-  /**
    * Re-read the room every this many rounds of a fight. 0 never does.
    *
    * MegaMUD's *rescan room*. A fight is the one situation where the room list
@@ -882,27 +862,6 @@ export interface CombatConfig {
    * The place for the thing that is technically hostile and reliably fatal.
    */
   avoid: string[];
-  /**
-   * Never open on anything the realm marks **undead**.
-   *
-   * `Monsters.Undead`, and the first refusal this client could express about a
-   * *kind* of monster rather than about a name — before the room's occupants
-   * carried their realm rows, the only way to say "not the skeletons" was to
-   * list every skeleton in the realm by name.
-   *
-   * Retaliation is unaffected, like every other gate here: something already
-   * swinging is a fight that has started, and declining to hit back is how a
-   * character dies politely.
-   */
-  avoidUndead: boolean;
-  /**
-   * Never open on anything the realm says casts a spell **when it dies**.
-   *
-   * `Monsters.DeathSpell` — 146 of the shipped realm's monsters carry one, and
-   * nothing in the stream says so until it already has. It is the one fact
-   * about a monster that cannot be learned by fighting it carefully.
-   */
-  avoidDeathSpell: boolean;
   /**
    * Do not open on anything the realm says has more health than this.
    * 0 never refuses.
@@ -939,15 +898,6 @@ export interface CombatConfig {
    * do nothing on a derivative realm.
    */
   maxMonsterExperience: number;
-  /**
-   * Monsters attacked first, in this order, whatever `engage` says.
-   *
-   * MegaMUD's per-monster attack priority, as a list rather than a flag on
-   * 1,800 rows. A name here is attacked even where the realm data calls it
-   * passive — which is a deliberate instruction, unlike `all`, which is a
-   * blanket one. Players are still never attacked; see {@link EngagePolicy}.
-   */
-  prefer: string[];
 }
 
 /**
@@ -1339,6 +1289,25 @@ export interface BankingConfig {
   depositThresholdCopper: number;
   /** What stays in the purse for tolls and shops, in copper. */
   keepCopper: number;
+  /**
+   * The bank this character banks at — a `Shops` row id, or 0 for *whichever
+   * counter it is standing at* (todo 00).
+   *
+   * The threshold has always fired at any counter the realm grades `bank`,
+   * which is right for a character that passes several and wrong for one
+   * whose vault is somewhere particular: a balance spread across four vaults
+   * is four figures nobody can add up, and the realm states each separately.
+   *
+   * Keyed by the row, not the shop's name, for `trainersTaking`'s reason: two
+   * rows can share a name and be different counters. A row the realm no
+   * longer places, or one on another realm, deposits nowhere and says so —
+   * never silently at the nearest one instead, which would be the client
+   * choosing a vault the player did not.
+   *
+   * **It does not walk anywhere.** Which bank is the question this answers;
+   * going to one is `automation.loops` and the player's own route.
+   */
+  bank: number;
 }
 
 /**
@@ -1478,38 +1447,17 @@ export interface HealthConfig {
    */
   meditateBelow: number;
   /**
-   * Drink the healing potion when health falls below this fraction. 0 never.
+   * What to use, and when — *use an item of this name when that is true*
+   * (todo 19, 2026-09-12; the only potion setting since todo 00).
    *
-   * MegaMUD's Health tab had a potion row beside *Heal if below*, and a
-   * warrior has no other way to mend mid-fight. Only when the pack lists one:
-   * a `drink` for a potion that is not carried is a command spent to be told
-   * so, in the room. The potion's *sentence* is not read — the corpus has
-   * `You drink the red potion, and a healing warmth spreads through your
-   * body!` twelve times and the next status line carries the result — so the
-   * effect reaches the client the way every vital does.
-   */
-  drinkHealingPotionBelow: number;
-  /** The same for mana. 0 never, and ignored for a class with no mana. */
-  drinkManaPotionBelow: number;
-  /**
-   * `drink` or `use`. Both are in the server's own command table, so neither
-   * is ever said out loud; `drink` is the default because it is the one the
-   * corpus has actually seen consume a potion (`You drink the red potion…`),
-   * where `use` has only been seen on other things.
-   */
-  potionVerb: PotionVerb;
-  /** What to ask for, as the pack lists it. Matched the way the server matches a typed name. */
-  healingPotionName: string;
-  manaPotionName: string;
-  /**
-   * Any other item, and when to use it — MegaMUD's potion rows generalised
-   * (todo 19, 2026-09-12).
-   *
-   * The two thresholds above are health and mana, which is what MegaMUD had
-   * and what most characters need. This is the rest of it: *use a potion of
-   * this name when that is true*, several of them, each with its own
-   * condition. A character wanting two healing potions at different depths, or
-   * an antidote the moment it is poisoned, could not say so before.
+   * There were two named slots beside this, health and mana, carrying a name,
+   * a threshold and a shared verb each — MegaMUD's own Health tab. They went
+   * (todo 00) because this list says everything they said and four things
+   * they could not: a second healing potion at a second depth, an antidote
+   * the moment the character is poisoned, a scroll that is read rather than
+   * drunk, and any of it on an item the realm names something else entirely.
+   * Two vocabularies for one question is how somebody sets one and wonders
+   * why the other still decides.
    *
    * Empty by default, like `supplies.items`, and for the same reason:
    * spending a player's consumables unasked is its own failure. What this
@@ -2469,18 +2417,14 @@ export const DEFAULT_CONFIG: AppConfig = {
       hideForOpener: false,
       engage: 'hostile',
       retaliate: true,
-      joinFights: true,
+      politeAttacks: false,
       maxMobs: 0,
       maxFightCost: 0,
-      whileWalking: false,
       refreshRounds: 3,
       avoid: [],
-      avoidUndead: false,
-      avoidDeathSpell: false,
       maxTargetHealth: 0,
       minMobs: 0,
-      maxMonsterExperience: 0,
-      prefer: []
+      maxMonsterExperience: 0
     },
     // Off, like everything automated. A client that sits down on its own is one
     // deciding when a fight is over.
@@ -2505,11 +2449,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       restNextDoor: true,
       restBeforeTraps: 0.45,
       meditateBelow: 0,
-      drinkHealingPotionBelow: 0,
-      drinkManaPotionBelow: 0,
-      potionVerb: 'drink',
-      healingPotionName: 'healing potion',
-      manaPotionName: 'mana potion',
       potions: []
     },
     loot: {
@@ -2528,7 +2467,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     drop: { enabled: false, items: [], whenEncumbered: false, worthless: false },
     search: { enabled: false, tries: 1 },
     // 500 gold and 5 gold, on the measured ladder: 100 copper to the gold.
-    banking: { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500 },
+    banking: { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500, bank: 0 },
     // On, with nothing listed: the switch is what the toolbar flips, and the
     // list is what the Self card and the item panel fill. An empty list does
     // nothing, so the default is safe and the first item added starts working.
@@ -2628,7 +2567,6 @@ export const AUTOMATION_SWITCHES = {
   automation: ['enabled'],
   combat: ['combat', 'enabled'],
   retaliate: ['combat', 'retaliate'],
-  engageWhileWalking: ['combat', 'whileWalking'],
   retreat: ['safety', 'retreat', 'enabled'],
   hangUp: ['safety', 'hangUp', 'enabled'],
   loot: ['loot', 'coins'],
@@ -3515,12 +3453,7 @@ function normalizeHealth(value: unknown): HealthConfig {
     restNextDoor: bool(raw['restNextDoor'], d.restNextDoor),
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     meditateBelow: fraction(raw['meditateBelow'], d.meditateBelow),
-    drinkHealingPotionBelow: fraction(raw['drinkHealingPotionBelow'], d.drinkHealingPotionBelow),
-    potions: normalizePotionRules(raw['potions']),
-    drinkManaPotionBelow: fraction(raw['drinkManaPotionBelow'], d.drinkManaPotionBelow),
-    potionVerb: oneOf<PotionVerb>(raw['potionVerb'], POTION_VERBS, d.potionVerb),
-    healingPotionName: str(raw['healingPotionName'], d.healingPotionName).trim(),
-    manaPotionName: str(raw['manaPotionName'], d.manaPotionName).trim()
+    potions: normalizePotionRules(raw['potions'])
   };
 }
 
@@ -3684,7 +3617,10 @@ function normalizeBanking(value: unknown): BankingConfig {
       0,
       1_000_000_000
     ),
-    keepCopper: int(raw['keepCopper'], d.keepCopper, 0, 1_000_000_000)
+    keepCopper: int(raw['keepCopper'], d.keepCopper, 0, 1_000_000_000),
+    // A shop row id. 0 is *whichever counter it is standing at*, which is what
+    // a file predating the setting was doing.
+    bank: int(raw['bank'], d.bank, 0, 1_000_000)
   };
 }
 
@@ -3940,24 +3876,20 @@ function normalizeCombat(value: unknown): CombatConfig {
     hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),
     engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
     retaliate: bool(raw['retaliate'], d.retaliate),
-    joinFights: bool(raw['joinFights'], d.joinFights),
+    politeAttacks: bool(raw['politeAttacks'], d.politeAttacks),
     // Capped where the retreat guard is, for the same reason: a room holding more
     // than twenty things is not a number anybody is tuning against.
     maxMobs: int(raw['maxMobs'], d.maxMobs, 0, 20),
     maxFightCost: fraction(raw['maxFightCost'], d.maxFightCost),
-    whileWalking: bool(raw['whileWalking'], d.whileWalking),
     // Capped low on purpose: every round is a fraction of a second, so a client
     // asked to look every round would spend most of a fight looking.
     refreshRounds: int(raw['refreshRounds'], d.refreshRounds, 0, 20),
     avoid: mobNames(raw['avoid']),
-    avoidUndead: bool(raw['avoidUndead'], d.avoidUndead),
     minMobs: int(raw['minMobs'], d.minMobs, 0, 99),
     maxMonsterExperience: int(raw['maxMonsterExperience'], d.maxMonsterExperience, 0, 100_000_000),
-    avoidDeathSpell: bool(raw['avoidDeathSpell'], d.avoidDeathSpell),
     // Capped far above any health the shipped realm states, so a typo cannot
     // silently mean "never fight anything".
-    maxTargetHealth: int(raw['maxTargetHealth'], d.maxTargetHealth, 0, 1_000_000),
-    prefer: mobNames(raw['prefer'])
+    maxTargetHealth: int(raw['maxTargetHealth'], d.maxTargetHealth, 0, 1_000_000)
   };
 }
 

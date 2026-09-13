@@ -20,7 +20,7 @@
  *
  * Three refusals follow from that and are not configurable:
  *
- * - **Never a player.** Not at `engage: all`, not by way of `prefer`. On a PvP
+ * - **Never a player.** Not at `engage: all`, by any setting. On a PvP
  *   realm the first blow opens a five-minute window in which a disconnect is
  *   penalised and can kill (docs/greatermud/combat.md), and the thing on the
  *   other end is a person. A rule can say it in as many words; this will not
@@ -34,8 +34,7 @@
  *   nothing for any other alignment. That cost is not to the fight: it is
  *   cumulative, it moves a Neutral character towards Outlaw, and it changes who
  *   attacks them afterwards. Spending a character's standing is not a decision
- *   this client makes unasked, at any setting — naming one under `prefer` is
- *   how somebody asks for it, which is deliberate rather than blanket.
+ *   this client makes unasked, at any setting.
  *
  * And one that *is* configurable, because it is a genuine trade rather than a
  * refusal: **a name the realm data disagrees with itself about**. Twenty-one of
@@ -306,6 +305,17 @@ export class AutoCombat {
   /** True while `Walker` has a route running. */
   private walking = false;
   private looping = false;
+  /**
+   * Whether this journey is fighting, and whether the player has said not to.
+   *
+   * `travelling` is armed by the route or the lap that started (todo 00) and
+   * disarmed when nothing is moving any more; `declined` is the player having
+   * turned auto-combat off *during* one, which holds for the rest of that
+   * journey and is taken back by the next one. Both are session-scoped: the
+   * player's own file is never written by either.
+   */
+  private travelling = false;
+  private declined = false;
   /** Until when a typed `break` keeps this from fighting. See the constant. */
   private standDownUntil = 0;
   /** Whether a step is outstanding, as of the last line. See `movePending`. */
@@ -411,6 +421,16 @@ export class AutoCombat {
     spells?: SpellsConfig,
     party?: PartyConfig
   ): void {
+    /*
+     * The switch going off *during* a journey is the player overruling the
+     * journey's own override (todo 00), and it has to be caught on the edge:
+     * once travelling, `acting` ignores `config.enabled`, so without this the
+     * toolbar's switch would do nothing until the character stopped walking.
+     * Turning it back on the same way clears the refusal, which is what makes
+     * the control answer in both directions.
+     */
+    if (this.config.enabled && !config.enabled) this.declineWhileTravelling();
+    if (!this.config.enabled && config.enabled) this.declined = false;
     this.config = config;
     this.enabled = enabled;
     if (spells) this.spells = spells;
@@ -491,6 +511,8 @@ export class AutoCombat {
     this.retreating = false;
     this.walking = false;
     this.looping = false;
+    this.travelling = false;
+    this.declined = false;
     this.standDownUntil = 0;
     this.movePendingNow = false;
     this.arrivedAt = 0;
@@ -504,56 +526,94 @@ export class AutoCombat {
 
   /** Whether a route is being walked, which decides whether to start anything. */
   noteWalking(walking: boolean): void {
+    this.setTravelling(walking || this.looping);
     this.walking = walking;
   }
 
-  /**
-   * Whether a loop is running its loop.
-   *
-   * A planned route is left alone by default (`whileWalking`): attacking
-   * everything between here and the bank turns one route into a dozen. A loop
-   * is the opposite case — the loop was chosen *because* of what lives on
-   * it, and a loop that walks past every monster completes its laps having
-   * gained nothing, which is what the first live run did. So a loop's walk
-   * engages, whatever `whileWalking` says; MegaMUD's loops attack per step
-   * for the same reason.
-   */
+  /** Whether a loop is running its lap. */
   noteLooping(looping: boolean): void {
+    this.setTravelling(looping || this.walking);
     this.looping = looping;
+  }
+
+  /**
+   * Going somewhere turns fighting on; stopping puts it back (todo 00).
+   *
+   * `automation.combat.whileWalking` used to ask, per route, whether to open
+   * fights on the way — and a lap overrode it, because a lap walked past
+   * everything on it completes its rounds having gained nothing. The setting
+   * went because the override was the right answer both times: the player
+   * asked to go somewhere, what lives between here and there is the realm's
+   * business, and a client that walks a character through a corridor of
+   * monsters without swinging is the one that comes back at the level it left.
+   *
+   * **Armed at the start of a journey, not per step.** A route starting and a
+   * lap's first room are the same moment to this — `noteWalking` and
+   * `noteLooping` both arrive with the movement — and arming on the edge is
+   * what makes {@link declineWhileTravelling} last the whole journey instead
+   * of being undone by the next room.
+   *
+   * **Session-scoped, and never written to the player's file.** It ends when
+   * the movement does, which is what makes it answerable by stopping rather
+   * than by remembering to put a switch back.
+   */
+  private setTravelling(moving: boolean): void {
+    if (moving === this.travelling) return;
+    this.travelling = moving;
+    // A fresh journey takes back a refusal made during the last one: the
+    // player said *not this route*, not *never again*.
+    if (moving) this.declined = false;
+  }
+
+  /**
+   * The player turning auto-combat off while going somewhere (todo 00).
+   *
+   * The journey's override is the client's decision, so the player has to be
+   * able to overrule it — and the overruling has to outlast the room it was
+   * made in, or the next arrival turns fighting straight back on. It holds
+   * until this journey ends; the next one asks again.
+   */
+  declineWhileTravelling(): void {
+    if (this.travelling) this.declined = true;
   }
 
   /**
    * Whether this module will act at all right now.
    *
-   * The master switch, and then the block's own — except that **a running loop
-   * fights whatever the block says** (todo 03, 2026-09-06). A loop is chosen
-   * *because* of what lives on it; one walked with auto-combat off completes
-   * its laps having gained nothing, and the character comes back after eight
-   * hours at the level it left. `whileWalking` was already overridden here for
-   * that exact argument, and this is the same argument one setting further
-   * out: the switch says what to do about a monster the *player* walked into,
-   * and a loop's monsters are the point of the loop.
-   *
-   * Session-scoped and announced, never written into the player's own file:
-   * the client does not edit somebody's configuration on its own initiative,
-   * and it ends when the loop does — which is what makes it answerable by
-   * stopping the loop rather than by remembering to put a switch back.
-   * `LoopRunner` says it out loud once per lap, because a client that fights
-   * while a switch reads off is otherwise two surfaces disagreeing in silence.
+   * The master switch, then the block's own — except that **going somewhere
+   * fights whatever the block says**, unless the player has said otherwise for
+   * this journey (todo 00; a lap alone overrode it from todo 03, 2026-09-06).
+   * See {@link setTravelling} for the argument.
    */
   private get acting(): boolean {
-    return this.enabled && (this.config.enabled || this.looping);
+    return this.enabled && (this.config.enabled || (this.travelling && !this.declined));
   }
 
   /**
-   * Whether the loop is the only reason this is acting, so the loop can say so.
+   * Whether the only thing standing this down is the player's own refusal of
+   * this journey's override.
    *
-   * Read by `LoopRunner` at the moment a lap starts; false the rest of the
-   * time, including for a loop on a character whose switch is already on,
-   * where there is nothing to announce.
+   * `onCharacter` returns on `acting` before `engage` can report anything, so
+   * without this the loudest gate the player can reach would be the one that
+   * said nothing — and *why did it stop fighting* is exactly the question a
+   * refusal exists to answer. Everything else that makes `acting` false (the
+   * master switch, the block's own switch while standing still) is the player
+   * reading a switch they set and finding it obeyed, which needs no sentence.
    */
-  get fightingBecauseLooping(): boolean {
-    return this.enabled && !this.config.enabled;
+  private get declinedOnly(): boolean {
+    return this.enabled && !this.config.enabled && this.travelling && this.declined;
+  }
+
+  /**
+   * Whether the journey is the only reason this is acting, so it can say so.
+   *
+   * Read at the moment a lap or a route starts; false the rest of the time,
+   * including on a character whose switch is already on, where there is
+   * nothing to announce. A client that fights while a switch reads off is two
+   * surfaces disagreeing in silence.
+   */
+  get fightingBecauseTravelling(): boolean {
+    return this.enabled && !this.config.enabled && !this.declined;
   }
 
   /**
@@ -748,7 +808,9 @@ export class AutoCombat {
       this.casts.clear();
     }
 
-    if (!this.acting) return;
+    // A journey the player declined still reports itself: `engage` reaches
+    // `whyNot`, which names the refusal and sends nothing. See `declinedOnly`.
+    if (!this.acting && !this.declinedOnly) return;
     if (state.phase !== 'in-game') return;
 
     /*
@@ -787,7 +849,14 @@ export class AutoCombat {
       this.confirmArrival(was, state);
     }
 
-    if (this.retaliation(state)) return;
+    /*
+     * Hitting back is an *action*, so it runs only while this module is really
+     * acting. `declinedOnly` is a door through the early return above opened
+     * for reporting alone, and without this guard it let a declined journey
+     * swing — the player pressing the toolbar switch, reading the refusal in
+     * the trace, and watching the client keep fighting anyway.
+     */
+    if (this.acting && this.retaliation(state)) return;
     this.engage(state);
   }
 
@@ -1020,14 +1089,11 @@ export class AutoCombat {
    * mid-corridor was otherwise walked past, because engagement correctly
    * stands down while a move is unanswered.
    *
-   * Every guard here is the engage path's own, so the two cannot disagree about
-   * what is worth stopping for. **The walk policy is one of them**, and used
-   * not to be: `SessionManager` supplied that half as `a loop is running`,
-   * which is `whyNot`'s `looping` and drops its `whileWalking` — so a plain
-   * route with `whileWalking` on had auto-combat opening fights the walker
-   * would not wait for. Two halves of one gate in two files, agreeing until
-   * one of them was edited. Only the move-pending guard is left out: the
-   * caller has already refused to plan across an unanswered move.
+   * Every guard here is the engage path's own, so the two cannot disagree
+   * about what is worth stopping for — both read `acting`, which is where the
+   * journey override and the player's refusal of it now live. Only the
+   * move-pending guard is left out: the caller has already refused to plan
+   * across an unanswered move.
    */
   quarry(state: CharacterState): boolean {
     if (!this.acting) return false;
@@ -1038,9 +1104,6 @@ export class AutoCombat {
     ) {
       return false;
     }
-    // The caller is a walk in progress by construction, so `whyNot`'s
-    // `this.walking` half is a given and only the policy is left to read.
-    if (!this.config.whileWalking && !this.looping) return false;
     if (this.retreating) return false;
     if (Date.now() < this.standDownUntil) return false;
     if (state.combat.target !== null) return false;
@@ -1054,11 +1117,10 @@ export class AutoCombat {
    *
    * **Every way of declining says so.** There are eleven of them, and until
    * they were written down the answer to *why did it walk past those two
-   * thugs* took replaying a recorded session through a bespoke script — the
-   * question turned out to be `whileWalking` with no loop running, which is
-   * one line of configuration and was invisible from everything the client
-   * recorded. `SafetyDecision`'s docblock already states the principle for the
-   * escapes; this is the same principle applied to the loudest thing here.
+   * thugs* took replaying a recorded session through a bespoke script, from
+   * one line of configuration invisible in everything the client recorded.
+   * `SafetyDecision`'s docblock already states the principle for the escapes;
+   * this is the same principle applied to the loudest thing here.
    *
    * The gates are checked in the order they were, and the reason is *reported*
    * rather than returned early, so the trace names the first thing that
@@ -1186,8 +1248,10 @@ export class AutoCombat {
      */
     const engaged = this.stillEngaged(state);
     if (engaged !== null) return t('automation.combat.refusedEngagedWith', { target: engaged });
-    if (this.walking && !this.config.whileWalking && !this.looping) {
-      return t('automation.combat.refusedWalking');
+    // The journey turned fighting on and the player turned it back off; it
+    // stays off until the next one (`declineWhileTravelling`).
+    if (this.travelling && this.declined && !this.config.enabled) {
+      return t('automation.combat.refusedDeclinedTravelling');
     }
 
     const here = countMobs(state.room.occupants);
@@ -1211,16 +1275,22 @@ export class AutoCombat {
   /**
    * Which thing in the room to open on, or why none of them will do.
    *
-   * `prefer` first and in its own order, because that list is somebody naming
-   * the thing they came for. Everything else **by menace** — what a round
-   * beside each is expected to cost this character, per hit point it has,
-   * from the realm's own attack and spell columns against the character's
-   * own sheet (`src/shared/menace.ts`) — so the fight that would have cost
-   * the most is the one ended first. It used to be the order the room listed
-   * them, which was the only order the client had any reason to believe in
-   * until the realm data could say how each one fights; the listing's order
-   * survives only as the tie-break, and for monsters the realm cannot weigh
-   * at all, which go first because unknown is not safe.
+   * **By menace** — what a round beside each is expected to cost this
+   * character, per hit point it has, from the realm's own attack and spell
+   * columns against the character's own sheet (`src/shared/menace.ts`) — so
+   * the fight that would have cost the most is the one ended first. It used to
+   * be the order the room listed them, which was the only order the client had
+   * any reason to believe in until the realm data could say how each one
+   * fights; the listing's order survives only as the tie-break, and for
+   * monsters the realm cannot weigh at all, which go first because unknown is
+   * not safe.
+   *
+   * A named list that jumped the weighing (`prefer`, the *Attack Priority
+   * List*) sat above all of this until todo 00. It went to make room for the
+   * realm-wide priority list todo 01 asks for, and because the order it
+   * imposed was a flat one: a name either jumped the queue or did not, where
+   * what somebody means by *fight the shamans first* is a rank against the
+   * weighing rather than a replacement for it.
    *
    * Every refusal below is applied *before* the weighing, not after: a
    * monster on `avoid` is not the most dangerous thing here, it is not a
@@ -1236,13 +1306,6 @@ export class AutoCombat {
     const mobs = state.room.occupants.filter((who) => who.kind === 'mob');
     if (mobs.length === 0) return null;
     const mine = ownAlignment(state);
-
-    for (const name of this.config.prefer) {
-      const found = mobs.find((who) => mobKey(who.name) === name);
-      if (found && !this.config.avoid.includes(name)) {
-        return { target: found.name, because: t('automation.combat.whyPreferred') };
-      }
-    }
 
     // The first reason, kept: it belongs to the first monster the room listed,
     // which is the one somebody looking at the console is looking at.
@@ -1269,7 +1332,7 @@ export class AutoCombat {
        */
       const claim = state.combat.claimed[mobKey(who.name)];
       if (
-        !this.config.joinFights &&
+        this.config.politeAttacks &&
         claim !== undefined &&
         Date.now() - claim.at <= tuning().combat.assistFreshMs
       ) {
@@ -1278,30 +1341,10 @@ export class AutoCombat {
       }
       /*
        * Attacking it would certainly cost the character ten evil points,
-       * cumulatively, for as long as it plays. No setting spends that unasked;
-       * `prefer` above is how somebody asks.
+       * cumulatively, for as long as it plays. No setting spends that unasked.
        */
       if (who.costly === 'always') {
         decline(who, t('automation.combat.refusedCostly', { target: who.name }));
-        continue;
-      }
-      /*
-       * What the realm says about the *kind*, which the occupant now carries.
-       *
-       * These sit above the `engage: all` shortcut on purpose: `all` is a
-       * blanket instruction about dispositions, and an explicit "not the
-       * undead" is a narrower one that must survive it. Each reads off the
-       * entity and is silent where the realm says nothing — a monster it
-       * cannot place is already handled by the disposition gate below, and
-       * refusing here as well would make `engage: all` useless on a
-       * derivative realm.
-       */
-      if (this.config.avoidUndead && who.mob?.undead === true) {
-        decline(who, t('automation.combat.refusedUndead', { target: who.name }));
-        continue;
-      }
-      if (this.config.avoidDeathSpell && who.mob?.deathSpell !== undefined) {
-        decline(who, t('automation.combat.refusedDeathSpell', { target: who.name }));
         continue;
       }
       const worth = this.config.maxMonsterExperience;

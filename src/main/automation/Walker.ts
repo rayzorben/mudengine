@@ -904,7 +904,7 @@ export class Walker {
      * over a live fight is `leavingAFight`'s question further down, and the
      * answer now depends on whether anything this client runs would end that
      * fight. Walking out is the escape for a character that will not fight;
-     * for one whose `combat.whileWalking` says *finish them on the way*, it
+     * for one whose journey is fighting on the way (todo 00), it
      * was the client overruling the other decision it is not entitled to
      * overrule. Both readings are the player's own configuration, so neither
      * is guessed at.
@@ -1026,11 +1026,11 @@ export class Walker {
      * big skeleton` at t=7634, `*Combat Engaged*` came back at t=7703, and the
      * route's opening `n` went out at t=7916 — 213ms later, over a monster the
      * client had just re-engaged and was two rounds from killing, on a profile
-     * with `combat.enabled`, `retaliate` **and `whileWalking` all on**. Three
-     * settings say *finish fights while walking* and this one line overrode
-     * every one of them.
+     * with `combat.enabled` **and `retaliate` both on**, and a route that
+     * fights on the way; every one of them says *finish fights while walking*
+     * and this one line overrode the lot.
      *
-     * `AutoCombat.quarry` already reads `whileWalking` for precisely this —
+     * `AutoCombat.quarry` already asks the journey override for precisely this —
      * the walker holds a step out of a room engagement would open on — but
      * that path sits *below* this flag in `holdBeforeSending`, so it was never
      * asked. `canEndAFight` is the predicate that was missing, and it is the

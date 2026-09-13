@@ -115,8 +115,12 @@ export class AutoDeposit {
     private config: BankingConfig,
     private enabled: boolean,
     private readonly queue: CommandQueue,
-    /** Whether the resolved room the character stands in is a bank counter. */
-    private readonly atBank: (state: CharacterState) => boolean,
+    /**
+     * The realm's shop row for the counter the character is standing at, or
+     * null where the resolved room is not a bank. The row, not a yes, so
+     * {@link wrongBank} can tell *not a bank* from *not your bank*.
+     */
+    private readonly bankHere: (state: CharacterState) => number | null,
     private readonly events: { notice?(message: string): void } = {},
     private readonly now: () => number = () => Date.now()
   ) {}
@@ -124,6 +128,20 @@ export class AutoDeposit {
   configure(config: BankingConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
+  }
+
+  /**
+   * Whether this counter is one the player said not to bank at.
+   *
+   * `bank: 0` is *whichever counter it is standing at*, which is what every
+   * file did before the setting existed, so it agrees with everything. A
+   * stated row agrees with itself and nothing else — including a row this
+   * realm does not place, which banks nowhere rather than at the nearest
+   * counter instead: choosing the vault is the whole point of the setting,
+   * and choosing a different one is the client overruling it.
+   */
+  private wrongBank(counter: number): boolean {
+    return this.config.bank > 0 && this.config.bank !== counter;
   }
 
   reset(): void {
@@ -152,8 +170,13 @@ export class AutoDeposit {
     // One at a time: the second press before the first listing lands is the
     // same request, and it is already waiting.
     if (this.pending !== null && at < this.pending.expiresAt) return false;
-    if (!this.atBank(state)) {
+    const counter = this.bankHere(state);
+    if (counter === null) {
       this.events.notice?.(t('automation.banking.notAtCounter'));
+      return false;
+    }
+    if (this.wrongBank(counter)) {
+      this.events.notice?.(t('automation.banking.notYourBank'));
       return false;
     }
 
@@ -198,9 +221,14 @@ export class AutoDeposit {
     this.pending = null;
 
     // The counter again: a listing is a round trip, and a character can walk
-    // out of a bank inside one.
-    if (!this.atBank(state)) {
+    // out of a bank — or into a different one — inside one.
+    const counter = this.bankHere(state);
+    if (counter === null) {
       this.events.notice?.(t('automation.banking.notAtCounter'));
+      return;
+    }
+    if (this.wrongBank(counter)) {
+      this.events.notice?.(t('automation.banking.notYourBank'));
       return;
     }
 
@@ -271,7 +299,8 @@ export class AutoDeposit {
      * the character walked — which is the terminal talking over the realm, and
      * a notice nobody asked for is worse than none.
      */
-    if (!this.atBank(state)) return;
+    const counter = this.bankHere(state);
+    if (counter === null || this.wrongBank(counter)) return;
 
     const at = this.now();
     if (at - this.lastAt < tuning().banking.cooldownMs) return;

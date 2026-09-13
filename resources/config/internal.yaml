@@ -87,7 +87,7 @@ palette:
 # block replaces the default list whole.
 #
 # Names are button ids. The switches are `automation` (the master), `combat`,
-# `retaliate`, `engageWhileWalking`, `retreat`, `hangUp`, `loot`, `drop`,
+# `retaliate`, `retreat`, `hangUp`, `loot`, `drop`,
 # `search`, `autoDeposit`, `openDoors`, `pickLocks`, `bashDoors`, `sneak`,
 # `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
 # `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,

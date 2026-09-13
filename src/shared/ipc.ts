@@ -67,6 +67,7 @@ import type {
   RoomBrief,
   RoomId,
   Route,
+  BankChoice,
   TrainerChoice,
   WorldLookup,
   WorldNames,
@@ -331,6 +332,18 @@ export interface SpellOption {
   name: string;
   short: string | null;
   targeting: SpellTargeting;
+  /**
+   * Which conditions the realm says this spell serves — `spellServes` over its
+   * ability rows, carried so a picker can offer only the spells that answer
+   * the question it is asking (todo 00).
+   *
+   * The three cure fields all drew the whole spellbook before this, so *Cure
+   * Poison* offered every spell the character knows and the blindness field
+   * only looked filtered because its **gate** happened to close more often.
+   * Absent for a realm this build cannot read the columns of, which every
+   * reader treats as *offer it anyway*: unknown must never empty a picker.
+   */
+  serves?: { hp: boolean; poisoned: boolean; blind: boolean; diseased: boolean };
 }
 
 export interface ProfileEditable {
@@ -796,6 +809,7 @@ export const Invoke = {
   /** Where to hunt from here: the lairs within reach, priced for this character. */
   huntingGrounds: 'world:hunt',
   trainers: 'world:trainers',
+  banks: 'world:banks',
   itemsServing: 'world:serving',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
@@ -1193,6 +1207,14 @@ export interface IpcApi {
    * and the picker says so rather than offering a room that will refuse.
    */
   trainers(session: SessionId): Promise<TrainerChoice[]>;
+  /**
+   * Every bank counter this character's realm places (todo 00).
+   *
+   * Addressed, like `trainers`, because which realm is loaded is a property of
+   * the session — the shipped worlds place different counters, and a row id
+   * means nothing across two of them.
+   */
+  banks(session: SessionId): Promise<BankChoice[]>;
   /**
    * The items the realm says would serve each condition a potion rule can
    * name — the picker's suggestions (todo 19).

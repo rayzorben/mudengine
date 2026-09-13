@@ -197,6 +197,7 @@ export function migrateHome(options: MigrationOptions): void {
   statedThePotionRules(home, note);
   statedTheRecoveryBounds(home, note);
   statedTheAlertRules(home, note);
+  theCombatAndPotionSettingsWent(home, note);
 }
 
 /**
@@ -367,6 +368,127 @@ function statedTheLevelling(home: Home, note: (message: string) => void): void {
  * Found in review. Pre-v1 there is no legacy to keep, but there is also no
  * excuse for changing a shape and leaving the user's own files behind it.
  */
+/**
+ * The combat and potion settings todo 00 took out, and the one it renamed.
+ *
+ * Five keys go from `automation.combat` and four from `automation.health`,
+ * and `joinFights` becomes `politeAttacks` **with its meaning flipped**:
+ *
+ * - `joinFights` → `politeAttacks`, negated. MegaMUD's own name and MegaMUD's
+ *   own direction — on means *leave somebody else's monster alone*. A file
+ *   saying `joinFights: false` meant exactly that, so it becomes
+ *   `politeAttacks: true`, and the behaviour the file asked for is kept.
+ * - `whileWalking` goes: a route and a lap now both fight, and the player
+ *   turning auto-combat off during one is how that is declined.
+ * - `avoidUndead` and `avoidDeathSpell` go: neither earned a switch of its
+ *   own, and `avoid` says the same thing by name.
+ * - `prefer` goes with the *Attack Priority List* it drew, to make room for
+ *   the ranked list todo 01 adds.
+ * - `drinkHealingPotionBelow`, `drinkManaPotionBelow`, `healingPotionName`,
+ *   `manaPotionName` and `potionVerb` go: `potions` says all of it.
+ *
+ * **The two named potion slots are carried into `potions` rather than
+ * deleted**, where the file gave one a threshold: somebody who wrote
+ * `drinkHealingPotionBelow: 0.4` asked for a behaviour, and dropping the key
+ * would silently stop it. A 0 threshold asked for nothing and carries
+ * nothing. `potionVerb` rides along as each carried row's own verb, which is
+ * where a verb lives now.
+ *
+ * Pre-v1 there is no legacy to keep, but a shape that changes under somebody's
+ * file without their file changing with it is a setting that stops working
+ * and says nothing.
+ */
+function theCombatAndPotionSettingsWent(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const changed: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      let touched = false;
+
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (isMap(combat)) {
+        /*
+         * The rename first, and only where the file actually said something:
+         * a file that never stated `joinFights` was getting the old default
+         * (join), which is the new default (`politeAttacks: false`) — so
+         * writing anything would state a setting the player never had.
+         */
+        if (combat.has('joinFights')) {
+          const joined = combat.get('joinFights', true);
+          const joins = !(isScalar(joined) && joined.value === false);
+          combat.delete('joinFights');
+          // Only the non-default is worth stating; the default is inherited.
+          if (!joins) combat.set('politeAttacks', true);
+          touched = true;
+        }
+        for (const key of ['whileWalking', 'avoidUndead', 'avoidDeathSpell', 'prefer']) {
+          if (!combat.has(key)) continue;
+          combat.delete(key);
+          touched = true;
+        }
+        if (combat.items.length === 0) document.deleteIn(['automation', 'combat']);
+      }
+
+      const health = document.getIn(['automation', 'health'], true);
+      if (isMap(health)) {
+        const verbNode = health.get('potionVerb', true);
+        const verb = isScalar(verbNode) && verbNode.value === 'use' ? 'use' : 'drink';
+        /*
+         * Carried in the order they fired, so a file that had both keeps the
+         * health potion ahead of the mana one. Appended after whatever the
+         * player has already written: their own rows were deliberate and
+         * these are a translation of a default-shaped setting.
+         */
+        const carried: Array<{ name: string; when: string; below: number; verb: string }> = [];
+        const carry = (thresholdKey: string, nameKey: string, when: string, fallback: string) => {
+          const below = health.get(thresholdKey, true);
+          const share = isScalar(below) ? Number(below.value) : 0;
+          if (!(share > 0)) return;
+          const named = health.get(nameKey, true);
+          const name = isScalar(named) ? String(named.value ?? '').trim() : '';
+          carried.push({ name: name.length > 0 ? name : fallback, when, below: share, verb });
+        };
+        carry('drinkHealingPotionBelow', 'healingPotionName', 'hp', 'healing potion');
+        carry('drinkManaPotionBelow', 'manaPotionName', 'mana', 'mana potion');
+
+        let dropped = false;
+        for (const key of [
+          'drinkHealingPotionBelow',
+          'drinkManaPotionBelow',
+          'healingPotionName',
+          'manaPotionName',
+          'potionVerb'
+        ]) {
+          if (!health.has(key)) continue;
+          health.delete(key);
+          dropped = true;
+        }
+
+        if (carried.length > 0) {
+          const existing = health.get('potions', true);
+          const rows = isSeq(existing) ? [...existing.items] : [];
+          for (const row of carried) rows.push(document.createNode(row));
+          health.set('potions', document.createNode(rows));
+        }
+        if (dropped) touched = true;
+        if (health.items.length === 0) document.deleteIn(['automation', 'health']);
+      }
+
+      if (touched) changed.push(file);
+      return touched;
+    });
+  }
+
+  if (changed.length === 0) return;
+  const params = { count: changed.length, fileList: changed.join(', ') };
+  note(
+    changed.length === 1
+      ? t('notices.migration.combatAndPotionSettings.one', params)
+      : t('notices.migration.combatAndPotionSettings.many', params)
+  );
+}
+
 function statedTheAlertRules(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
@@ -3151,12 +3273,10 @@ function statedTheEntityPredicates(home: Home, note: (message: string) => void):
         if (comment.length > 0 && isScalar(pair.key)) pair.key.commentBefore = comment;
         changed = true;
       };
-      add(['automation', 'combat'], 'avoidUndead', false, COMBAT_KIND_COMMENT);
       add(['automation', 'combat'], 'minMobs', 0, '');
       add(['automation', 'combat'], 'maxMonsterExperience', 0, '');
       add(['automation', 'spells'], 'healBelowInCombat', 0, HEAL_IN_COMBAT_COMMENT);
-      add(['automation', 'combat'], 'avoidDeathSpell', false, '');
-      add(['automation', 'combat'], 'maxTargetHealth', 0, '');
+      add(['automation', 'combat'], 'maxTargetHealth', 0, COMBAT_KIND_COMMENT);
       add(['automation', 'loot'], 'coinKinds', [...DENOMINATIONS], LOOT_COINS_COMMENT);
       add(['automation', 'loot'], 'stopAtGrade', 'never', LOOT_GRADE_COMMENT);
       add(['automation', 'loot'], 'convertWith', '', LOOT_CONVERT_COMMENT);
@@ -3164,6 +3284,7 @@ function statedTheEntityPredicates(home: Home, note: (message: string) => void):
       add(['automation', 'loot'], 'minPrice', 0, LOOT_VALUE_COMMENT);
       add(['automation', 'loot'], 'maxEncumbrance', 0, LOOT_WEIGHT_COMMENT);
       add(['automation', 'drop'], 'worthless', false, DROP_WORTHLESS_COMMENT);
+      add(['automation', 'banking'], 'bank', 0, BANK_WHICH_COMMENT);
       if (changed) stated.push(file);
       return changed;
     });
@@ -3438,11 +3559,15 @@ const AREA_SPELL_COMMENT = ` The spell for a crowded room -- MegaMUD's MultAttac
  everything, and the ten evil points are a cost no setting spends unasked.
  Blank casts nothing.`;
 
-const COMBAT_KIND_COMMENT = ` Three refusals about a kind of monster rather than a name, from the realm's
- own columns: undead, casts a spell when it dies (146 monsters do, and nothing
- says so until it already has), and more health than you want to open on --
- 0 never refuses. All three are silent where the realm says nothing, and none
- of them touches retaliation.`;
+const BANK_WHICH_COMMENT = ` Which counter this character's vault is at, as a \`Shops\` row id -- the
+ settings screen picks it from the realm's own list. 0 is whichever counter it
+ happens to be standing at, which is what this did before the setting existed.
+ A balance is per counter, so banking wherever you walk past leaves several
+ figures that cannot be added up.`;
+
+const COMBAT_KIND_COMMENT = ` A refusal from the realm's own column rather than a name: more health than
+ you want to open on. 0 never refuses. Silent where the realm says nothing,
+ and it does not touch retaliation.`;
 
 const NUDGE_AFTER_COMMENT = ` How much longer than this realm's own slowest answer a step may go unanswered
  before the walk sends one bare Enter to force a status line out of the server.

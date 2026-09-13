@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { asShippedWorld } from '@shared/worlds';
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
-import type { TrainerChoice } from '@shared/world';
+import type { BankChoice, TrainerChoice } from '@shared/world';
 import type { PotionRule, PotionWhen } from '@shared/config';
 import type { AlertRule } from '@shared/notifications';
 import AlertList from './AlertList';
@@ -60,9 +60,8 @@ import type { StreamEncoding } from '@shared/types';
 import {
   DEFAULT_CONFIG,
   DEFAULT_REALM_NAME,
-  RETREAT_STRATEGIES,
-  POTION_VERBS,
   PVP_ACTIONS,
+  RETREAT_STRATEGIES,
   type BankingConfig,
   type DropConfig,
   type EngagePolicy,
@@ -313,6 +312,12 @@ export interface SettingsScreenProps {
    */
   loadTrainers(session: SessionId): Promise<TrainerChoice[]>;
   /**
+   * The bank counters this character's realm places, for the *which vault*
+   * picker (todo 00). Addressed, like the trainers, because a shop row means
+   * nothing across two realms.
+   */
+  loadBanks(session: SessionId): Promise<BankChoice[]>;
+  /**
    * The items the realm says would serve each condition a potion rule can
    * name, for the rule list's suggestions. A property of the realm, so one
    * call answers every row.
@@ -471,8 +476,8 @@ interface CharacterForm {
   combatHideForOpener: boolean;
   combatEngage: EngagePolicy;
   combatRetaliate: boolean;
-  /** Open on a monster a stranger is already fighting — MegaMUD's PoliteAttacks, inverted. */
-  combatJoinFights: boolean;
+  /** Leave alone a monster a stranger is already fighting — MegaMUD's PoliteAttacks. */
+  combatPoliteAttacks: boolean;
   combatMaxMobs: string;
   /** Share of current health a fight may be expected to cost, as a percentage string. */
   combatMaxFightCost: string;
@@ -480,16 +485,11 @@ interface CharacterForm {
   partyAssist: boolean;
   partyDefend: boolean;
   partyRest: boolean;
-  combatWhileWalking: boolean;
   combatRefresh: string;
   combatAvoid: string;
-  /** Refusals about a *kind* of monster, from the realm's own columns. */
-  combatAvoidUndead: boolean;
-  combatAvoidDeathSpell: boolean;
   combatMaxTargetHealth: string;
   combatMinMobs: string;
   combatMaxMonsterExp: string;
-  combatPrefer: string;
   /** Health — resting and meditating. Percentages on screen, fractions on disk. */
   restBelow: string;
   restTo: string;
@@ -498,14 +498,8 @@ interface CharacterForm {
   restNextDoor: boolean;
   meditateBelow: string;
   /** And where a running loop holds still and walks on again. */
-  /** Potions: what to drink, and below what. */
-  potionVerb: string;
-  healingPotionName: string;
   /** The player's own *use this when that* rules. See `PotionList`. */
   potionRules: PotionRule[];
-  drinkHealingPotionBelow: string;
-  manaPotionName: string;
-  drinkManaPotionBelow: string;
   /** Spells — the one cast a rule cannot time. */
   spellAttack: string;
   spellAreaAttack: string;
@@ -664,7 +658,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     combatHideForOpener: entry.combat.hideForOpener,
     combatEngage: entry.combat.engage,
     combatRetaliate: entry.combat.retaliate,
-    combatJoinFights: entry.combat.joinFights,
+    combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
     combatMaxFightCost: String(Math.round(entry.combat.maxFightCost * 100)),
     partyAssist: entry.party.assistLeader,
@@ -673,26 +667,17 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // A percentage on screen and a fraction in the file, like every other
     // threshold here: one representation on disk, the one people think in on
     // the form.
-    combatWhileWalking: entry.combat.whileWalking,
     combatRefresh: String(entry.combat.refreshRounds),
     combatAvoid: joinNames(entry.combat.avoid),
-    combatAvoidUndead: entry.combat.avoidUndead,
-    combatAvoidDeathSpell: entry.combat.avoidDeathSpell,
     combatMaxTargetHealth: String(entry.combat.maxTargetHealth),
     combatMinMobs: String(entry.combat.minMobs),
     combatMaxMonsterExp: String(entry.combat.maxMonsterExperience),
-    combatPrefer: joinNames(entry.combat.prefer),
     restBelow: percent(entry.health.restBelow),
     restTo: percent(entry.health.restTo),
     restBeforeTraps: percent(entry.health.restBeforeTraps),
     meditateBelow: percent(entry.health.meditateBelow),
     restNextDoor: entry.health.restNextDoor,
-    potionVerb: entry.health.potionVerb,
-    healingPotionName: entry.health.healingPotionName,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
-    drinkHealingPotionBelow: percent(entry.health.drinkHealingPotionBelow),
-    manaPotionName: entry.health.manaPotionName,
-    drinkManaPotionBelow: percent(entry.health.drinkManaPotionBelow),
     spellAttack: entry.spells.attack,
     spellAutoChoose: entry.spells.autoChoose,
     spellAreaAttack: entry.spells.areaAttack,
@@ -848,18 +833,14 @@ function draftOf(form: CharacterForm): ProfileDraft {
       hideForOpener: form.combatHideForOpener,
       engage: form.combatEngage,
       retaliate: form.combatRetaliate,
-      joinFights: form.combatJoinFights,
+      politeAttacks: form.combatPoliteAttacks,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
       maxFightCost: (Number.parseInt(form.combatMaxFightCost, 10) || 0) / 100,
-      whileWalking: form.combatWhileWalking,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
       avoid: splitNames(form.combatAvoid),
-      avoidUndead: form.combatAvoidUndead,
-      avoidDeathSpell: form.combatAvoidDeathSpell,
       maxTargetHealth: Math.max(0, Number.parseInt(form.combatMaxTargetHealth, 10) || 0),
       minMobs: Math.max(0, Number.parseInt(form.combatMinMobs, 10) || 0),
-      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0),
-      prefer: splitNames(form.combatPrefer)
+      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0)
     },
     hangUp: {
       enabled: form.hangUp,
@@ -879,14 +860,9 @@ function draftOf(form: CharacterForm): ProfileDraft {
       restBeforeTraps: fractionOf(form.restBeforeTraps),
       meditateBelow: fractionOf(form.meditateBelow),
       restNextDoor: form.restNextDoor,
-      drinkHealingPotionBelow: fractionOf(form.drinkHealingPotionBelow),
-      drinkManaPotionBelow: fractionOf(form.drinkManaPotionBelow),
-      potionVerb: form.potionVerb === 'use' ? 'use' : 'drink',
-      healingPotionName: form.healingPotionName.trim(),
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
-      potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
-      manaPotionName: form.manaPotionName.trim()
+      potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() }))
     },
     spells: {
       attack: form.spellAttack.trim(),
@@ -1150,32 +1126,23 @@ function emptyForm(
     combatHideForOpener: combat.hideForOpener,
     combatEngage: combat.engage,
     combatRetaliate: combat.retaliate,
-    combatJoinFights: combat.joinFights,
+    combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
     combatMaxFightCost: percent(combat.maxFightCost),
     partyAssist: party.assistLeader,
     partyDefend: party.defendParty,
     partyRest: party.restWithLeader,
-    combatWhileWalking: combat.whileWalking,
     combatRefresh: String(combat.refreshRounds),
     combatAvoid: joinNames(combat.avoid),
-    combatAvoidUndead: combat.avoidUndead,
-    combatAvoidDeathSpell: combat.avoidDeathSpell,
     combatMaxTargetHealth: String(combat.maxTargetHealth),
     combatMinMobs: String(combat.minMobs),
     combatMaxMonsterExp: String(combat.maxMonsterExperience),
-    combatPrefer: joinNames(combat.prefer),
     restBelow: percent(health.restBelow),
     restTo: percent(health.restTo),
     restBeforeTraps: percent(health.restBeforeTraps),
     meditateBelow: percent(health.meditateBelow),
     restNextDoor: health.restNextDoor,
-    potionVerb: health.potionVerb,
-    healingPotionName: health.healingPotionName,
     potionRules: health.potions.map((rule) => ({ ...rule })),
-    drinkHealingPotionBelow: percent(health.drinkHealingPotionBelow),
-    manaPotionName: health.manaPotionName,
-    drinkManaPotionBelow: percent(health.drinkManaPotionBelow),
     spellAttack: spells.attack,
     spellAutoChoose: spells.autoChoose,
     spellAreaAttack: spells.areaAttack,
@@ -1310,6 +1277,7 @@ export default function SettingsScreen({
   chooseRealm,
   loadLoops,
   loadTrainers,
+  loadBanks,
   loadServing
 }: SettingsScreenProps) {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
@@ -1852,6 +1820,13 @@ export default function SettingsScreen({
    * suggestions and stays typable.
    */
   const [serving, setServing] = useState<Partial<Record<PotionWhen, string[]>>>({});
+  /*
+   * The counters this character's realm places. `null` is *not asked yet*,
+   * which draws no picker at all — a control offering only *any counter*
+   * while the realm's answer is still coming is a control that lies about
+   * what the realm holds. Asked on the Movement tab, where banking is drawn.
+   */
+  const [banks, setBanks] = useState<BankChoice[] | null>(null);
   useEffect(() => {
     if (!open || tab !== 'characters' || section !== 'train') return;
     if (selected === null || selected === NEW_CHARACTER) {
@@ -1871,6 +1846,24 @@ export default function SettingsScreen({
       stale = true;
     };
   }, [open, tab, section, selected, loadTrainers]);
+  useEffect(() => {
+    if (!open || tab !== 'characters' || section !== 'movement') return;
+    if (selected === null || selected === NEW_CHARACTER) {
+      setBanks([]);
+      return;
+    }
+    let stale = false;
+    setBanks(null);
+    void loadBanks(selected).then(
+      (rows) => void (stale || setBanks(rows)),
+      // A list that could not be read is not a reason to refuse the save:
+      // the picker simply is not drawn, and `bank: 0` keeps working.
+      () => void (stale || setBanks([]))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [open, tab, section, selected, loadBanks]);
   useEffect(() => {
     if (!open || tab !== 'characters' || section !== 'health') return;
     if (selected === null || selected === NEW_CHARACTER) return;
@@ -2620,11 +2613,11 @@ export default function SettingsScreen({
                               onChange={(value) => patch({ combatRetaliate: value })}
                             />
                             <CheckField
-                              checked={form.combatJoinFights}
-                              hint={t('settings.combat.joinFightsHint')}
-                              label={t('settings.combat.joinFights')}
-                              name="join-fights"
-                              onChange={(value) => patch({ combatJoinFights: value })}
+                              checked={form.combatPoliteAttacks}
+                              hint={t('settings.combat.politeAttacksHint')}
+                              label={t('settings.combat.politeAttacks')}
+                              name="polite-attacks"
+                              onChange={(value) => patch({ combatPoliteAttacks: value })}
                             />
                             {/* What it opens fights with, and the three limits
                                 that qualify it, on one row: each of the
@@ -2668,13 +2661,6 @@ export default function SettingsScreen({
                                 value={form.combatMinMobs}
                               />
                             </div>
-                            <CheckField
-                              checked={form.combatWhileWalking}
-                              hint={t('settings.combat.whileWalkingHint')}
-                              label={t('settings.combat.whileWalking')}
-                              name="while-walking"
-                              onChange={(value) => patch({ combatWhileWalking: value })}
-                            />
                           </>
                         )}
                       </fieldset>
@@ -2731,20 +2717,6 @@ export default function SettingsScreen({
                               value={form.combatAvoid}
                               wide
                             />
-                            <CheckField
-                              checked={form.combatAvoidUndead}
-                              hint={t('settings.combat.avoidUndeadHint')}
-                              label={t('settings.combat.avoidUndeadLabel')}
-                              name="avoid-undead"
-                              onChange={(value) => patch({ combatAvoidUndead: value })}
-                            />
-                            <CheckField
-                              checked={form.combatAvoidDeathSpell}
-                              hint={t('settings.combat.avoidDeathSpellHint')}
-                              label={t('settings.combat.avoidDeathSpellLabel')}
-                              name="avoid-death-spell"
-                              onChange={(value) => patch({ combatAvoidDeathSpell: value })}
-                            />
                             <NumberField
                               hint={t('settings.combat.maxTargetHealthHint')}
                               label={t('settings.combat.maxTargetHealthLabel')}
@@ -2758,16 +2730,6 @@ export default function SettingsScreen({
                               name="max-monster-exp"
                               onChange={(value) => patch({ combatMaxMonsterExp: value })}
                               value={form.combatMaxMonsterExp}
-                            />
-                            <TextField
-                              hint={t('settings.combat.preferHint')}
-                              label={t('settings.combat.preferLabel')}
-                              name="prefer"
-                              onChange={(value) => patch({ combatPrefer: value })}
-                              placeholder={t('settings.combat.preferPlaceholder')}
-                              spellCheck={false}
-                              value={form.combatPrefer}
-                              wide
                             />
                           </fieldset>
                         </>
@@ -2824,74 +2786,6 @@ export default function SettingsScreen({
                           label={t('settings.health.restNextDoor')}
                           name="rest-next-door"
                           onChange={(value) => patch({ restNextDoor: value })}
-                        />
-                      </fieldset>
-
-                      <fieldset className="settings-menus">
-                        <legend>{t('settings.health.potionLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.potionNote')}</p>
-                        <div className="settings-inline">
-                          <TextField
-                            label={t('settings.health.healingPotionLabel')}
-                            name="healing-potion"
-                            onChange={(value) => patch({ healingPotionName: value })}
-                            spellCheck={false}
-                            value={form.healingPotionName}
-                          />
-                          <NumberField
-                            hint={t('settings.health.potionBelowHint')}
-                            label={t('settings.health.drinkHealingBelowLabel')}
-                            name="healing-potion-below"
-                            bar={barOfHealth(form.drinkHealingPotionBelow)}
-                            figure={ofHealth(form.drinkHealingPotionBelow)}
-                            onChange={(value) => patch({ drinkHealingPotionBelow: value })}
-                            value={form.drinkHealingPotionBelow}
-                          />
-                        </div>
-                        <div className="settings-inline">
-                          <TextField
-                            label={t('settings.health.manaPotionLabel')}
-                            name="mana-potion"
-                            onChange={(value) => patch({ manaPotionName: value })}
-                            spellCheck={false}
-                            value={form.manaPotionName}
-                          />
-                          <NumberField
-                            hint={t('settings.health.potionBelowHint')}
-                            label={t('settings.health.drinkManaBelowLabel')}
-                            name="mana-potion-below"
-                            bar={barOfMana(form.drinkManaPotionBelow)}
-                            figure={ofMana(form.drinkManaPotionBelow)}
-                            onChange={(value) => patch({ drinkManaPotionBelow: value })}
-                            value={form.drinkManaPotionBelow}
-                          />
-                        </div>
-                        <SelectField
-                          hint={t('settings.health.potionVerbHint')}
-                          label={t('settings.health.potionVerbLabel')}
-                          name="potion-verb"
-                          onChange={(value) => patch({ potionVerb: value })}
-                          options={POTION_VERBS.map((verb) => ({ value: verb, label: verb }))}
-                          value={form.potionVerb}
-                        />
-                      </fieldset>
-
-                      {/*
-                        And the rest of it: *use this item when that is true*
-                        (todo 19). Its own fieldset rather than more rows in
-                        the one above, because the two there are a pair of
-                        named slots and this is a list — and because the name
-                        field's suggestions are filtered by each row's own
-                        condition, which is a different kind of control.
-                      */}
-                      <fieldset className="settings-menus">
-                        <legend>{t('settings.health.potionRuleLegend')}</legend>
-                        <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
-                        <PotionList
-                          namePrefix="potion-rule"
-                          onChange={(potionRules) => patch({ potionRules })}
-                          potions={form.potionRules}
-                          serving={serving}
                         />
                       </fieldset>
 
@@ -3012,27 +2906,22 @@ export default function SettingsScreen({
                         )}
                       </fieldset>
 
+                      {/*
+                        *Use this item when that is true* (todo 19), and since
+                        todo 00 the only potion setting there is: two named
+                        slots stood above this with a name, a threshold and a
+                        shared verb each, and this says all of it plus the
+                        things they could not. The name field's suggestions are
+                        filtered by each row's own condition, from the realm.
+                      */}
                       <fieldset className="settings-menus">
-                        <legend>{t('settings.health.pvpLegend')}</legend>
-                        <CheckField
-                          checked={form.pvpNotifyGang}
-                          hint={t('settings.health.pvpNotifyHint')}
-                          label={t('settings.health.pvpNotifyLabel')}
-                          name="pvp-notify"
-                          onChange={(value) => patch({ pvpNotifyGang: value })}
-                        />
-                        <SelectField
-                          hint={t('settings.health.pvpActionHint')}
-                          label={t('settings.health.pvpActionLabel')}
-                          name="pvp-action"
-                          onChange={(value) =>
-                            patch({ pvpAction: value === 'retreat' ? 'retreat' : 'none' })
-                          }
-                          options={PVP_ACTIONS.map((action) => ({
-                            value: action,
-                            label: action
-                          }))}
-                          value={form.pvpAction}
+                        <legend>{t('settings.health.potionRuleLegend')}</legend>
+                        <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
+                        <PotionList
+                          namePrefix="potion-rule"
+                          onChange={(potionRules) => patch({ potionRules })}
+                          potions={form.potionRules}
+                          serving={serving}
                         />
                       </fieldset>
                     </>
@@ -3508,24 +3397,50 @@ export default function SettingsScreen({
                   )}
 
                   {section === 'talk' && (
-                    <fieldset className="settings-menus">
-                      <legend>{t('settings.talk.legend')}</legend>
-                      {/*
+                    <>
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.talk.legend')}</legend>
+                        {/*
                         The cost is stated above the switch rather than behind a
                         hover, the way the remotes warning is: this one spends a
                         command per stranger *and* tells them they were looked
                         at, which on a PvP realm is the half somebody would want
                         to know before turning it on rather than after.
                       */}
-                      <p className="settings-warn">{t('settings.talk.lookWarning')}</p>
-                      <CheckField
-                        checked={form.lookAtPlayers}
-                        hint={t('settings.talk.lookHint')}
-                        label={t('settings.talk.lookLabel')}
-                        name="talk-look"
-                        onChange={(value) => patch({ lookAtPlayers: value })}
-                      />
-                    </fieldset>
+                        <p className="settings-warn">{t('settings.talk.lookWarning')}</p>
+                        <CheckField
+                          checked={form.lookAtPlayers}
+                          hint={t('settings.talk.lookHint')}
+                          label={t('settings.talk.lookLabel')}
+                          name="talk-look"
+                          onChange={(value) => patch({ lookAtPlayers: value })}
+                        />
+                      </fieldset>
+
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.health.pvpLegend')}</legend>
+                        <CheckField
+                          checked={form.pvpNotifyGang}
+                          hint={t('settings.health.pvpNotifyHint')}
+                          label={t('settings.health.pvpNotifyLabel')}
+                          name="pvp-notify"
+                          onChange={(value) => patch({ pvpNotifyGang: value })}
+                        />
+                        <SelectField
+                          hint={t('settings.health.pvpActionHint')}
+                          label={t('settings.health.pvpActionLabel')}
+                          name="pvp-action"
+                          onChange={(value) =>
+                            patch({ pvpAction: value === 'retreat' ? 'retreat' : 'none' })
+                          }
+                          options={PVP_ACTIONS.map((action) => ({
+                            value: action,
+                            label: action
+                          }))}
+                          value={form.pvpAction}
+                        />
+                      </fieldset>
+                    </>
                   )}
 
                   {section === 'rewrites' && (
@@ -3635,19 +3550,17 @@ export default function SettingsScreen({
 
                   {section === 'movement' && (
                     <>
+                      {/*
+                        Four questions, four fieldsets (todo 00). This was one
+                        fieldset of fourteen controls under a single *Walking a
+                        Route* legend, which is a list rather than a form: doors,
+                        the shadows, light, the kit and what a condition stops
+                        are four separate decisions, and a reader looking for one
+                        of them had to read all of it. The groups are the
+                        questions, in the order a step asks them.
+                      */}
                       <fieldset className="settings-menus">
-                        <legend>{t('settings.movement.legend')}</legend>
-                        {/*
-                          A switch and the count it discloses are one row, not
-                          two — `.settings-inline` for the reason it exists,
-                          *keep these together*. It is not only shorter: a check
-                          is two columns and a count is one, so left to flow
-                          they pack three-to-a-band and a count lands under
-                          whichever switch happened to wrap above it. "Bashes
-                          per door" sitting beneath "Auto-Pick Locks" is a
-                          number attached to the wrong switch, which is worse
-                          than the height it saved.
-                        */}
+                        <legend>{t('settings.movement.doorsLegend')}</legend>
                         <div className="settings-inline">
                           <CheckField
                             checked={form.openDoors}
@@ -3705,6 +3618,10 @@ export default function SettingsScreen({
                             />
                           )}
                         </div>
+                      </fieldset>
+
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.movement.stealthLegend')}</legend>
                         <CheckField
                           checked={form.sneak}
                           hint={t('settings.movement.sneakHint')}
@@ -3712,6 +3629,10 @@ export default function SettingsScreen({
                           name="sneak"
                           onChange={(value) => patch({ sneak: value })}
                         />
+                      </fieldset>
+
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.movement.lightLegend')}</legend>
                         <CheckField
                           checked={form.provideLight}
                           hint={t('settings.movement.provideLightHint')}
@@ -3737,6 +3658,28 @@ export default function SettingsScreen({
                             />
                           </>
                         )}
+                      </fieldset>
+
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.movement.afflictionsLegend')}</legend>
+                        <CheckField
+                          checked={form.walkWhileBlind}
+                          hint={t('settings.movement.walkWhileBlindHint')}
+                          label={t('settings.movement.walkWhileBlind')}
+                          name="walk-while-blind"
+                          onChange={(value) => patch({ walkWhileBlind: value })}
+                        />
+                        <CheckField
+                          checked={form.walkWhilePoisoned}
+                          hint={t('settings.movement.walkWhilePoisonedHint')}
+                          label={t('settings.movement.walkWhilePoisoned')}
+                          name="walk-while-poisoned"
+                          onChange={(value) => patch({ walkWhilePoisoned: value })}
+                        />
+                      </fieldset>
+
+                      <fieldset className="settings-menus">
+                        <legend>{t('settings.movement.carryLegend')}</legend>
                         <CheckField
                           checked={form.recoverGear}
                           hint={t('settings.movement.recoverGearHint')}
@@ -3768,27 +3711,12 @@ export default function SettingsScreen({
                           </div>
                         )}
                         <CheckField
-                          checked={form.walkWhileBlind}
-                          hint={t('settings.movement.walkWhileBlindHint')}
-                          label={t('settings.movement.walkWhileBlind')}
-                          name="walk-while-blind"
-                          onChange={(value) => patch({ walkWhileBlind: value })}
-                        />
-                        <CheckField
-                          checked={form.walkWhilePoisoned}
-                          hint={t('settings.movement.walkWhilePoisonedHint')}
-                          label={t('settings.movement.walkWhilePoisoned')}
-                          name="walk-while-poisoned"
-                          onChange={(value) => patch({ walkWhilePoisoned: value })}
-                        />
-                        <CheckField
                           checked={form.collectKeys}
                           hint={t('settings.movement.collectKeysHint')}
                           label={t('settings.movement.collectKeys')}
                           name="collect-keys"
                           onChange={(value) => patch({ collectKeys: value })}
                         />
-                        <p className="settings-note">{t('settings.movement.note')}</p>
                       </fieldset>
 
                       {/*
@@ -3801,6 +3729,7 @@ export default function SettingsScreen({
                       */}
                       <CarrySections
                         banking={form.banking}
+                        banks={banks}
                         drop={form.drop}
                         idPrefix=""
                         loot={form.loot}
