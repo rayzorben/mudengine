@@ -22,6 +22,7 @@ import path from 'node:path';
 // Run through tsx (see the npm script) so the real classifier can be imported
 // directly. Analysing with a copy of the patterns would defeat the purpose.
 const { Classifier, foregroundCodes } = await import('../src/main/parse/Classifier.ts');
+const { loadShippedSentences } = await import('../src/main/world/ShippedSentences.ts');
 
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith('--'));
@@ -53,7 +54,17 @@ console.log(
 );
 console.log(`  ${entries.length.toLocaleString()} entries\n`);
 
-const classifier = new Classifier();
+// The shipped tables, as the client reads them: a death sentence or an emote
+// is not an unread line here either.
+const sentences = loadShippedSentences(path.resolve('resources/world'), (message) =>
+  console.error(message)
+);
+const classifier = new Classifier(
+  undefined,
+  undefined,
+  (text) => sentences.deaths.mobsOf(text),
+  (text) => sentences.actions.match(text)
+);
 const byType = new Map();
 const unknown = new Map();
 const colours = new Map();

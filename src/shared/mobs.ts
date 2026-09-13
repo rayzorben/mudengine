@@ -427,6 +427,28 @@ export function mobNameCandidates(name: string): string[] {
   return candidates;
 }
 
+/**
+ * Whether the room's spelling of a name answers to a table's name: exactly,
+ * or with the one leading word the server hangs on it dropped — and only
+ * where the realm knows the shorter name and not the longer, which is what
+ * says the word is a modifier (`MobNameModifierType.Before`) rather than the
+ * start of a different monster's name. `thin kobold` answers to `kobold`;
+ * `kobold thief`, a row of its own, does not, and its own sentence is its own.
+ * Narrower than `mobNameCandidates` on purpose: a hit here names a monster as
+ * dead, where a miss there only fails a lookup. Both names in `mobKey`
+ * spelling; `known` is the realm's monster table, exact.
+ */
+export function answersTo(
+  spelling: string,
+  key: string,
+  known: (name: string) => boolean
+): boolean {
+  if (spelling === key) return true;
+  const space = spelling.indexOf(' ');
+  if (space <= 0) return false;
+  return spelling.slice(space + 1) === key && !known(spelling) && known(key);
+}
+
 /** The realm's row for a name, allowing for a modifier on either end. */
 function lookUpMob(name: string, sources: OccupantSources): MobFacts | undefined {
   for (const candidate of mobNameCandidates(name)) {

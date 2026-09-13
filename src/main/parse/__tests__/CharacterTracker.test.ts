@@ -21,6 +21,9 @@ import {
 } from '../../../shared/lore';
 import type { Discovery } from '../../../shared/memory';
 import type { RoomOccupant } from '../../../shared/character';
+import type { ShippedSentences } from '../../../shared/sentences';
+import { ActionBook, parseActionsCsv } from '../../../shared/actions';
+import { DeathBook, parseDeathMessagesCsv } from '../../../shared/death-messages';
 import type { PlayerFacts, RealmPlayers } from '../../../shared/players';
 import { NO_BELONGINGS } from '../../../shared/belongings';
 import {
@@ -59,13 +62,44 @@ function names(occupants: readonly RoomOccupant[]): string[] {
   return occupants.map((who) => who.name);
 }
 
+/**
+ * The server's own tables, three rows of each: the emote and the two death
+ * sentences that were on the live wire on 2026-09-12, one of them shared by
+ * two monsters (`death-messages.csv`).
+ */
+function shipped(): ShippedSentences {
+  return {
+    actions: ActionBook.fromRows(
+      parseActionsCsv(
+        [
+          'action,single_to_user,single_to_room,user_to_user,user_to_other_user,monster_to_room',
+          'giggle,You giggle loudly!,%s giggles loudly!,You giggle at %s!,%s giggles loudly at you!,%s giggles loudly at %s!',
+          'wink,You wink.,%s winks.,You wink at %s!,%s winks at you!,%s winks at %s!'
+        ].join('\n')
+      )
+    ),
+    deaths: DeathBook.fromRows(
+      parseDeathMessagesCsv(
+        [
+          'mob_id,mob_name,death_msg_id,sentence',
+          '6,orc rogue,39,The orc rogue collapses with a grunt.',
+          '404,kobold,1515,The kobold falls to the ground with a shriek!',
+          '17,wild dog,8352,"The dog yelps loudly, and dies."',
+          '18,mangy dog,8352,"The dog yelps loudly, and dies."'
+        ].join('\n')
+      )
+    )
+  };
+}
+
 function play(
   steps: Step[],
   world?: WorldGraph,
   lore?: MobLore,
   fights?: FightSink,
   players?: RealmPlayers,
-  spellLore?: SpellLore
+  spellLore?: SpellLore,
+  sentences?: ShippedSentences
 ): CharacterTracker {
   const tracker = new CharacterTracker(world, lore, undefined, fights, players, spellLore);
   /*
@@ -81,8 +115,14 @@ function play(
       mob: (name) => world?.mob(name)
     },
     spellLore ? (text) => spellLore.match(text) : undefined,
-    // And how this realm's monsters die, from the same lore the tracker learns into.
-    (text) => lore?.deathOf?.(text) ?? null
+    // And how this realm's monsters die: the lore the tracker learns into
+    // first, then the shipped table, exactly as `SessionManager` orders them.
+    (text) => {
+      const learned = lore?.deathOf?.(text) ?? null;
+      return learned !== null ? [learned] : (sentences?.deaths.mobsOf(text) ?? []);
+    },
+    // And the realm's emotes, where a test ships them.
+    sentences ? (text) => sentences.actions.match(text) : undefined
   );
   let seq = 0;
   // Lines are a millisecond apart unless a step says otherwise, so a test
@@ -107,8 +147,11 @@ function play(
       plain,
       terminator: 'newline'
     };
+    const batchWas = classifier.batchType;
     const { block, batch } = classifier.classify(line);
-    tracker.apply(block);
+    // Whether a listing is collecting, exactly as `SessionManager` hands it
+    // on: a row typed `unknown` by the table is the listing's, not an event.
+    tracker.apply(block, undefined, batchWas !== null || classifier.batchType !== null);
     // Rows and all, exactly as `SessionManager` does it: an array batch that
     // arrives without its rows is a block the tracker cannot read, and a helper
     // that drops them tests something the client never does.
@@ -1822,6 +1865,152 @@ describe('the fight this character is in', () => {
         lore
       );
       expect(lore.deaths.size).toBe(0);
+    });
+
+    /*
+     * The server's own table ships the sentence now, so the kill nothing
+     * could learn — listed `thin kobold`, dying as `The kobold falls…`, the
+     * modifier never in the sentence — leaves the room on its line and asks
+     * for no sheet; and a sentence the table shares between two monsters is
+     * settled by the room, or failing that by the experience line, which
+     * teaches the realm which one it was.
+     */
+    describe('from the server’s table', () => {
+      /** `combatWorld` plus the rows the table names — and `kobold thief`, a row of its own. */
+      function tableWorld(): WorldGraph {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-deaths-'));
+        const file = path.join(dir, 'rooms.jsonl.gz');
+        const header = JSON.stringify({
+          v: 5,
+          source: 'test',
+          rooms: 0,
+          generatedAt: 'x',
+          mobs: [
+            'orc rogue',
+            'cave rat',
+            'kobold',
+            'kobold thief',
+            'thief',
+            'wild dog',
+            'mangy dog'
+          ].map((n) => ({ n, hp: 30, d: 'h' }))
+        });
+        fs.writeFileSync(file, zlib.gzipSync(header + '\n'));
+        const graph = WorldGraph.load(file);
+        fs.rmSync(dir, { recursive: true, force: true });
+        return graph;
+      }
+
+      it('takes a modified monster out of the room, learns nothing and spends no sheet', () => {
+        const lore = remembered();
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: thin kobold.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash thin kobold for 37 damage!',
+            'The kobold falls to the ground with a shriek!'
+          ],
+          tableWorld(),
+          lore,
+          undefined,
+          undefined,
+          undefined,
+          shipped()
+        );
+        expect(names(tracker.current.room.occupants)).toEqual([]);
+        expect(tracker.current.combat.target).toBeNull();
+        expect(tracker.takeSheetRequest()).toBe(false);
+        expect(lore.deaths.size).toBe(0);
+      });
+
+      it('settles a shared sentence by the room', () => {
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: mangy dog, cave rat.',
+            'Obvious exits: north',
+            'The dog yelps loudly, and dies.'
+          ],
+          tableWorld(),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          shipped()
+        );
+        expect(names(tracker.current.room.occupants)).toEqual(['cave rat']);
+      });
+
+      it('and by the experience line where the room cannot, teaching the realm which', () => {
+        const lore = remembered();
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: wild dog, mangy dog.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash the mangy dog for 20 damage!',
+            'The dog yelps loudly, and dies.',
+            'You gain 10 experience.'
+          ],
+          tableWorld(),
+          lore,
+          undefined,
+          undefined,
+          undefined,
+          shipped()
+        );
+        expect(lore.deaths.get('mangy dog')).toBe('The dog yelps loudly, and dies.');
+        expect(names(tracker.current.room.occupants)).toEqual(['wild dog']);
+      });
+
+      it('learns nothing from a sentence naming a shorter name the realm gives its own row', () => {
+        // The thief's own sentence, the kobold thief the target: `kobold thief`
+        // is a row, so its leading word is no modifier and the lesson is refused.
+        const lore = remembered();
+        play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: kobold thief.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash kobold thief for 37 damage!',
+            'The thief spews up blood before dying, his cold eyes fixed on you.',
+            'You gain 80 experience.'
+          ],
+          tableWorld(),
+          lore,
+          undefined,
+          undefined,
+          undefined,
+          shipped()
+        );
+        expect(lore.deaths.size).toBe(0);
+      });
+
+      it('still learns a sentence the table lacks, the room’s modifier admitted', () => {
+        const lore = remembered();
+        play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: thin kobold.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash thin kobold for 37 damage!',
+            'The kobold utters a sharp cry, and dies.',
+            'You gain 80 experience.'
+          ],
+          tableWorld(),
+          lore,
+          undefined,
+          undefined,
+          undefined,
+          shipped()
+        );
+        expect(lore.deaths.get('thin kobold')).toBe('The kobold utters a sharp cry, and dies.');
+      });
     });
 
     it('takes the monster out of the room on its learned sentence alone, whoever killed it', () => {
@@ -8397,6 +8586,93 @@ describe('the spell message table and what it teaches', () => {
       lore
     );
     expect(emote.takeSheetRequest()).toBe(false);
+  });
+
+  /*
+   * A line inside a listing is nobody's question either (2026-09-12). The `i`
+   * listing's keys row and the `pro` listing's last line both have the shape,
+   * both reach the tracker typed `unknown` — every line of a batch does — and
+   * both were suspected, spent one `st` between them (`src: automation` in the
+   * capture) and were written down as no lasting effect, out loud. The same
+   * sentence on its own, with nothing collecting, is still the question.
+   */
+  /*
+   * `You giggle loudly!` fits the effect shape exactly, and did cost a sheet
+   * (live, 2026-09-12). With the action table shipped it is conversation and
+   * asks for nothing; without it the sheet is still the question, which is
+   * the control.
+   */
+  it('does not take an emote for an effect, nor an aimed one for a swing', () => {
+    const lines = [
+      '[HP=34]:',
+      'You giggle loudly!',
+      'Soul giggles loudly at you!',
+      'You giggle at Soul!',
+      'Galen winks at angry chimera!'
+    ];
+    const bare = play(lines);
+    expect(bare.takeSheetRequest()).toBe(true);
+    // The aimed forms fit the miss frames: this character was fighting a
+    // *player*, and a wink put two names in the room.
+    expect(bare.current.combat.target).toBe('Soul');
+    const present = (tracker: CharacterTracker): string[] =>
+      tracker.current.room.occupants.map((who) => who.name);
+    expect(present(bare)).toEqual(['Galen', 'angry chimera']);
+
+    const read = play(lines, undefined, undefined, undefined, undefined, undefined, shipped());
+    expect(read.takeSheetRequest()).toBe(false);
+    expect(read.current.combat.target).toBeNull();
+    expect(present(read)).toEqual([]);
+  });
+
+  it('does not take a line inside a listing for an effect', () => {
+    const { lore } = table();
+    const inventory = play(
+      [
+        '[HP=34]:',
+        'You are carrying 1 runic coin, visored greathelm (Head), shimmering longsword (Weapon Hand)',
+        'You have no keys.',
+        'Wealth: 1081100 copper farthings',
+        'Encumbrance: 2525/4800 - Medium [52%]',
+        '[HP=34]:'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(inventory.takeSheetRequest()).toBe(false);
+
+    const profile = play(
+      [
+        '[HP=34]:',
+        'Player ID:           187',
+        'Location:            9,719',
+        'Recover Password:    Off',
+        'You do not have a suicide password set.',
+        'Recent Deaths:',
+        '9/9/2026 9:55 PM - Festus - 1/2372',
+        '[HP=34]:'
+      ],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(profile.takeSheetRequest()).toBe(false);
+
+    // The control: the same sentence with nothing collecting is a candidate.
+    const alone = play(
+      ['[HP=34]:', 'You do not have a suicide password set.'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(alone.takeSheetRequest()).toBe(true);
   });
 
   it('measures a duration only from an ending it recognised', () => {

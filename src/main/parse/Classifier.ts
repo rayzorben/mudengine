@@ -10,10 +10,18 @@
  */
 import { domainOf, type Block, type BlockType } from '../../shared/blocks';
 import { commandOf } from '../../shared/commands';
-import { nameAtEnd, nameInMessage, nameLeading, type NameSources } from '../../shared/mobs';
+import {
+  answersTo,
+  nameAtEnd,
+  nameInMessage,
+  nameLeading,
+  type NameSources
+} from '../../shared/mobs';
 import { BATCH_RULES, RULES, STATUS_LINE, type BatchRule, type Rule } from './patterns';
 import type { StreamLine } from '../../shared/types';
 import type { SpellMessageHit } from '../../shared/spell-messages';
+import type { ActionHit } from '../../shared/actions';
+import { mobKey } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
 /*
@@ -214,6 +222,14 @@ export interface BatchBlock extends Block {
  * Stateful across lines, because multi-line blocks exist. One instance per
  * session; `reset()` between connections.
  */
+/** The verdicts an emote can wear before the action table is asked. See `asAction`. */
+const EMOTE_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>([
+  'unknown',
+  'user-misses',
+  'mob-misses',
+  'player-misses'
+]);
+
 export class Classifier {
   private batch: {
     rule: BatchRule;
@@ -334,10 +350,19 @@ export class Classifier {
      */
     private readonly spells?: (text: string) => SpellMessageHit | null,
     /**
-     * The monster whose learned death sentence a whole line is. Per realm and
-     * learned as the session runs, so a lookup for the reason `spells` is.
+     * Every monster a whole line is the death sentence of: what this realm's
+     * wire has taught first, then the server's own table
+     * (`src/shared/death-messages.ts`), which shares one sentence between
+     * monsters often enough that the answer is a list. Empty where the line
+     * is nobody's. A lookup for the reason `spells` is.
      */
-    private readonly deaths?: (text: string) => string | null
+    private readonly deaths?: (text: string) => readonly string[],
+    /**
+     * What a whole line means as an emote — the server's action table
+     * (`src/shared/actions.ts`), fitted as templates. A lookup so a test can
+     * hand in three rows and a session the shipped sixty-four.
+     */
+    private readonly actions?: (text: string) => ActionHit | null
   ) {}
 
   /** The type of the listing being collected, or null between listings. */
@@ -459,7 +484,11 @@ export class Classifier {
     const block = this.answerSearch(
       line,
       text,
-      this.asDeathSentence(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+      this.asDeathSentence(
+        line,
+        text,
+        this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+      )
     );
 
     /*
@@ -643,18 +672,89 @@ export class Classifier {
   }
 
   /**
-   * A whole line the realm has taught is one monster's death sentence.
+   * A whole line the realm's emote table fits is somebody's action.
+   *
+   * Open to `unknown`, after the spell table, and to the three miss frames
+   * and no other: `<who> <verb> at <whom>!` is grammar, and an aimed emote is
+   * exactly that grammar — `You giggle at Soul!` read as this character
+   * missing a *player*, `Soul giggles loudly at you!` as a monster's swing
+   * with `Soul` guessed for the attacker, `Galen winks at angry chimera!` as
+   * a swing between two others that put both in the room (2026-09-12). The
+   * table is the server's own sentence, fitted whole, so where it fits it
+   * outranks the frame; a line it does not fit stands as the frame read it.
+   * `player` is the actor and is left out where this character acted, which
+   * is how the Talk card already tells `You say` from `Soul says`.
+   */
+  private asAction(line: StreamLine, text: string, block: Block): Block {
+    if (!this.actions || !EMOTE_SHAPED.has(block.type)) return block;
+    const hit = this.actions(text);
+    if (hit === null) return block;
+    return this.build(
+      line,
+      'conversation-action',
+      {
+        action: hit.action,
+        player: hit.actor ?? undefined,
+        target: hit.target ?? undefined,
+        message: hit.message
+      },
+      text,
+      tuning().parse.baseConfidence
+    );
+  }
+
+  /**
+   * A whole line the realm knows as a death sentence is one monster dying.
    *
    * Only `unknown` is open to it: the sentence is free text per monster type
    * (`MobType.DeathMessage.Line3`) and matched whole, so a line any frame or
-   * the spell table already read stands. The group is the monster as the lore
-   * keyed it, which is `mobKey`'s spelling.
+   * the spell table already read stands. The lookup answers with every monster
+   * the sentence belongs to, and **the room settles which** (2026-09-12): the
+   * server's table shares `The dog yelps loudly, and dies.` between the wild
+   * dog and the mangy dog, and prints `The kobold falls to the ground with a
+   * shriek!` for a monster the room listed as `thin kobold`, so the occupants
+   * are asked which of them answers to a candidate — `answersTo`: exactly, or
+   * with one leading word dropped where the realm knows the shorter name and
+   * not the longer, so `kobold thief` never dies on the kobold's line. One
+   * answer is `mob`, in the room's own
+   * spelling, which is the spelling `FightTracker.diedNamed` removes by; a
+   * candidate nobody in the room answers to is still `mob` when it is the
+   * only one; several left standing are kept as `mobs`, `|`-separated, and
+   * named by nothing — refused rather than guessed, and the experience line
+   * that follows this character's own kill can still say which
+   * (`CharacterTracker.deathSentenceBefore`).
    */
   private asDeathSentence(line: StreamLine, text: string, block: Block): Block {
     if (!this.deaths || block.type !== 'unknown') return block;
-    const mob = this.deaths(text);
-    if (mob === null) return block;
-    return this.build(line, 'mob-dies', { mob }, text, tuning().parse.baseConfidence);
+    const candidates = this.deaths(text);
+    if (candidates.length === 0) return block;
+    const here = this.answeringTo(candidates);
+    const confidence = tuning().parse.baseConfidence;
+    if (here.length === 1) {
+      return this.build(line, 'mob-dies', { mob: here[0] }, text, confidence);
+    }
+    if (here.length === 0 && candidates.length === 1) {
+      return this.build(line, 'mob-dies', { mob: candidates[0] }, text, confidence);
+    }
+    const left = here.length > 0 ? here : candidates;
+    return this.build(line, 'mob-dies', { mobs: left.join('|') }, text, confidence);
+  }
+
+  /**
+   * The occupants answering to any of `candidates` (in `mobKey` spelling),
+   * exactly or with the modifier the server hung on the name — `thin kobold`
+   * answers to `kobold` — each once, in the room's own spelling.
+   */
+  private answeringTo(candidates: readonly string[]): string[] {
+    const found: string[] = [];
+    const known = (name: string): boolean => this.names?.mob(name) !== undefined;
+    for (const who of this.names?.present() ?? []) {
+      const name = who.trim();
+      if (name.length === 0 || found.includes(name)) continue;
+      const spelling = mobKey(name);
+      if (candidates.some((candidate) => answersTo(spelling, candidate, known))) found.push(name);
+    }
+    return found;
   }
 
   /**

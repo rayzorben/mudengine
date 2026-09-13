@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { SpellMessageBook, spellLoreOf } from '../../../shared/spell-messages';
+import { ActionBook, parseActionsCsv } from '../../../shared/actions';
+import { DeathBook } from '../../../shared/death-messages';
 import { Classifier, foregroundCodes, looksLikeRoomName, tailAfterPrompt } from '../Classifier';
 import type { BlockType } from '../../../shared/blocks';
 import type { StreamLine } from '../../../shared/types';
@@ -429,6 +431,40 @@ describe('two listings in a row', () => {
       'who-list',
       'user-inventory'
     ]);
+  });
+
+  /*
+   * `pro` is one listing from `Player ID:` to the prompt (Paradigm, live
+   * 2026-09-12; `ProfileCommand.cs` composes it the same way). Its rows are
+   * read one at a time; what the batch says is that the sentence Paradigm
+   * closes the settings with — shaped exactly like an effect landing — is
+   * inside a listing while it is collected, which is what the tracker refuses
+   * a candidate on.
+   */
+  it('collects the profile as one listing, its last sentence inside it', () => {
+    const classifier = new Classifier();
+    const open: boolean[] = [];
+    let batch;
+    let seq = 0;
+    for (const text of [
+      'Player ID:           187',
+      'Location:            9,719',
+      'Statusline:          [HP=%h/%H,MA=%m/%M]:',
+      'Recover Password:    Off',
+      'You do not have a suicide password set.',
+      'Recent Deaths:',
+      '9/9/2026 9:55 PM - Festus - 1/2372',
+      '[HP=98/MA=50]:'
+    ]) {
+      seq += 1;
+      const out = classifier.classify({ seq, at: seq, text, plain: text, terminator: 'newline' });
+      open.push(classifier.batchType !== null);
+      if (out.batch) batch = out.batch;
+    }
+    // Collecting from the header through the tail; the prompt closes it.
+    expect(open).toEqual([true, true, true, true, true, true, true, false]);
+    expect(batch?.type).toBe('user-profile');
+    expect(batch?.groups).toEqual({ map: '9', room: '719' });
   });
 });
 
@@ -2538,15 +2574,147 @@ describe('a monster dying', () => {
 
   it('reads a sentence the realm has taught, and nothing it has not', () => {
     const taught = new Map([['mutant', 'The mutant sighs softy, and dies!']]);
-    const classifier = new Classifier(
-      NAMES,
-      undefined,
-      (text) => [...taught].find(([, sentence]) => sentence === text)?.[0] ?? null
-    );
+    const classifier = new Classifier(NAMES, undefined, (text) => {
+      const mob = [...taught].find(([, sentence]) => sentence === text)?.[0];
+      return mob === undefined ? [] : [mob];
+    });
     const learned = classifier.classify(line('The mutant sighs softy, and dies!')).block;
     expect(learned.type).toBe('mob-dies');
     expect(learned.groups['mob']).toBe('mutant');
     expect(classifier.classify(line('The mutant coughs, and dies!')).block.type).toBe('unknown');
+  });
+
+  /*
+   * The server's own table ships the sentences now (`death-messages.csv`),
+   * and it shares one between monsters often enough that the lookup answers
+   * with a list; the room settles which (2026-09-12). The kobold is the live
+   * case: listed `thin kobold`, dying as `The kobold falls…`, and unlearnable
+   * by the experience line because the sentence never carries the modifier.
+   */
+  describe('from the server’s table', () => {
+    const KOBOLD = 'The kobold falls to the ground with a shriek!';
+    const DOG = 'The dog yelps loudly, and dies.';
+    const table = (): ((text: string) => readonly string[]) => {
+      const book = new DeathBook();
+      book.add('kobold', KOBOLD);
+      book.add('wild dog', DOG);
+      book.add('mangy dog', DOG);
+      return (text) => book.mobsOf(text);
+    };
+    // The realm's own rows: `thin kobold` is not one, `kobold thief` is.
+    const ROWS = new Set(['kobold', 'kobold thief', 'wild dog', 'mangy dog', 'cave rat']);
+    const inRoom = (...present: string[]): Classifier =>
+      new Classifier(
+        {
+          present: () => present,
+          mob: (name) =>
+            ROWS.has(name)
+              ? ({ disposition: 'hostile', uncertain: false, costly: 'never' } as const)
+              : undefined
+        },
+        undefined,
+        table()
+      );
+
+    it('names the monster in the room’s own spelling, modifier and all', () => {
+      const block = inRoom('thin kobold', 'cave rat').classify(line(KOBOLD)).block;
+      expect(block.type).toBe('mob-dies');
+      expect(block.groups['mob']).toBe('thin kobold');
+    });
+
+    it('never settles a sentence onto a monster the realm gives a row of its own', () => {
+      // `kobold thief` has its own sentence; the kobold's names the kobold,
+      // which is not here, and nothing leaves the room on it.
+      const block = inRoom('kobold thief').classify(line(KOBOLD)).block;
+      expect(block.type).toBe('mob-dies');
+      expect(block.groups['mob']).toBe('kobold');
+    });
+
+    it('names the table’s one monster where nothing in the room answers to it', () => {
+      const block = inRoom().classify(line(KOBOLD)).block;
+      expect(block.type).toBe('mob-dies');
+      expect(block.groups['mob']).toBe('kobold');
+    });
+
+    it('settles a shared sentence by the room', () => {
+      const block = inRoom('mangy dog', 'cave rat').classify(line(DOG)).block;
+      expect(block.groups['mob']).toBe('mangy dog');
+    });
+
+    it('keeps the candidates, naming nobody, where the room cannot say', () => {
+      for (const classifier of [inRoom('wild dog', 'mangy dog'), inRoom()]) {
+        const block = classifier.classify(line(DOG)).block;
+        expect(block.type).toBe('mob-dies');
+        expect(block.groups['mob']).toBeUndefined();
+        expect(block.groups['mobs']).toBe('wild dog|mangy dog');
+      }
+    });
+  });
+});
+
+/*
+ * An emote is the server's action table, fitted whole (`src/shared/actions.ts`),
+ * and it is conversation: `You giggle loudly!` was read as nothing, suspected
+ * of being an effect, and cost a stat sheet (live, 2026-09-12).
+ */
+describe('an emote', () => {
+  const book = ActionBook.fromRows(
+    parseActionsCsv(
+      [
+        'action,single_to_user,single_to_room,user_to_user,user_to_other_user,user_to_room',
+        'giggle,You giggle loudly!,%s giggles loudly!,You giggle at %s!,%s giggles loudly at you!,%s giggles loudly at %s!'
+      ].join('\n')
+    )
+  );
+  const classifier = new Classifier(NAMES, undefined, undefined, (text) => book.match(text));
+  const read = (plain: string) => classifier.classify(line(plain)).block;
+
+  it('reads this character’s own, with no player named', () => {
+    const block = read('You giggle loudly!');
+    expect(block.type).toBe('conversation-action');
+    expect(block.domain).toBe('conversation');
+    expect(block.groups).toEqual({ action: 'giggle', message: 'giggle loudly!' });
+  });
+
+  it('reads another’s, naming the actor and what it was aimed at', () => {
+    expect(read('Soul giggles loudly at Yang!').groups).toEqual({
+      action: 'giggle',
+      player: 'Soul',
+      target: 'Yang',
+      message: 'giggles loudly at Yang!'
+    });
+    expect(read('Soul giggles loudly at you!').groups).toEqual({
+      action: 'giggle',
+      player: 'Soul',
+      message: 'giggles loudly at you!'
+    });
+  });
+
+  /*
+   * The three miss frames are `<who> <verb> at <whom>!`, which an aimed emote
+   * is: each of these was a swing before the table was asked, and the middle
+   * one put `Soul` forward as an attacker.
+   */
+  it('outranks the miss frames an aimed emote fits', () => {
+    expect(read('You giggle at Soul!')).toMatchObject({
+      type: 'conversation-action',
+      groups: { action: 'giggle', target: 'Soul' }
+    });
+    expect(read('Soul giggles loudly at you!')).toMatchObject({
+      type: 'conversation-action',
+      groups: { player: 'Soul' }
+    });
+    expect(read('Soul giggles loudly at Yang!')).toMatchObject({
+      type: 'conversation-action',
+      groups: { player: 'Soul', target: 'Yang' }
+    });
+    // A swing that fits no template is still a swing.
+    expect(read('Soul swings at Yang!').type).toBe('player-misses');
+  });
+
+  it('leaves a line the table does not hold as the frames read it', () => {
+    expect(read('You giggle loudly').type).toBe('unknown');
+    expect(read('You feel safe from evil!').type).toBe('spell-onset');
   });
 });
 
