@@ -196,7 +196,7 @@ export function readAdvance(text: string, from: number): Advance | null {
 
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'asked' }
+  | { kind: 'asked'; echoed: boolean }
   | { kind: 'reading'; text: string }
   | {
       kind: 'driving';
@@ -264,7 +264,9 @@ export class StatScreen {
     if (!opensStatScreen(command)) return;
     if (origin === 'automation' && this.proposed) {
       this.proposed = false;
-      this.phase = { kind: 'asked' };
+      this.phase = { kind: 'asked', echoed: false };
+      // An ask nothing answers is let go of quietly, and asked again later.
+      this.arm();
       return;
     }
     this.proposed = false;
@@ -325,13 +327,30 @@ export class StatScreen {
       return;
     }
 
-    this.proposed = this.queue.enqueue({
+    /*
+     * **Marked as proposed before it is enqueued** (todo 111). The queue sends
+     * at once when it holds a prompt's credit, and the send hook runs
+     * `noteSent` *inside* `enqueue` — so writing the return value here
+     * arrived too late: `noteSent` read `proposed === false`, filed the
+     * driver's own `train stats` as the player's, went idle, and the
+     * assignment then set `proposed` true over an idle phase. The screen
+     * stood open with the arbiter held and the driver dead for the session;
+     * measured live 2026-09-13 at the Sysop Trainer. A refused enqueue takes
+     * the flag back; an accepted one leaves whatever `noteSent` decided.
+     */
+    this.proposed = true;
+    const accepted = this.queue.enqueue({
       command: ACTION,
       priority: 'probe',
       coalesceKey: COALESCE,
       expiresAt: Date.now() + tuning().train.expiresMs,
       reason: t('automation.train.reason', { cp })
     });
+    if (!accepted) {
+      this.proposed = false;
+      // And the situation is not handled: a refused enqueue is *not now* (todo 113).
+      this.handled = null;
+    }
   }
 
   onBlock(block: Block): void {
@@ -343,8 +362,18 @@ export class StatScreen {
           this.phase = { kind: 'reading', text: block.text };
           this.arm();
           this.tryRead();
-        } else if (isPrompt(block.type)) {
-          // Answered with a prompt and no screen: the realm refused the word.
+        } else if (block.type === 'command-echo' && opensStatScreen(block.text.trim())) {
+          // The server has reached the ask; the next prompt is its answer.
+          this.phase.echoed = true;
+        } else if (isPrompt(block.type) && this.phase.echoed) {
+          /*
+           * Answered with a prompt and no screen: the realm refused the word.
+           * **Only after the echo** (todo 116): the ask goes out behind whatever
+           * is in flight, and a prompt that answers the command before it — a
+           * `sys go`, a step — arrived here and was read as the refusal, so the
+           * form that followed was nobody's and stood open for three minutes.
+           */
+          this.disarm();
           this.phase = { kind: 'idle' };
         }
         return;
@@ -565,6 +594,17 @@ export class StatScreen {
   /** The screen did not answer, or answered with something unreadable: the keyboard is the player's. */
   private letGo(): void {
     this.disarm();
+    if (this.phase.kind === 'asked') {
+      // Nothing answered the ask at all — no echo, no screen, no prompt. Not
+      // the player's keyboard to give back; asked again from the next state.
+      this.phase = { kind: 'idle' };
+      this.handled = null;
+      this.events.notice?.(
+        t('automation.train.askUnanswered', { seconds: Math.round(tuning().train.echoMs / 1000) })
+      );
+      this.decide(false, t('automation.train.whyAskUnanswered'), null);
+      return;
+    }
     const cp = this.phase.kind === 'driving' ? this.phase.cpLeft : null;
     this.events.notice?.(
       t('automation.train.lapsed', { seconds: Math.round(tuning().train.echoMs / 1000) })

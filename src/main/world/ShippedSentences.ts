@@ -1,7 +1,8 @@
 /**
- * The shipped sentence tables, read once: `resources/world/actions.csv` and
- * `death-messages.csv`, the server's own words for an emote and for a monster
- * dying (`src/shared/actions.ts`, `src/shared/death-messages.ts`).
+ * The shipped sentence tables, read once: `resources/world/actions.csv`,
+ * `death-messages.csv` and `messages.csv` — the server's own words for an
+ * emote, for a monster dying, and for everything else it composes from its
+ * message table (`src/shared/actions.ts`, `death-messages.ts`, `messages.ts`).
  *
  * Read the way `SpellMessages.ts` reads its file: once, at first use, into a
  * structure every session shares. A file that is missing or will not parse is
@@ -12,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ActionBook, parseActionsCsv } from '../../shared/actions';
 import { DeathBook, parseDeathMessagesCsv } from '../../shared/death-messages';
+import { MessageBook, parseMessagesCsv } from '../../shared/messages';
 import type { ShippedSentences } from '../../shared/sentences';
 import { t } from '../app/i18n';
 
@@ -47,5 +49,18 @@ export function loadShippedSentences(
     notify?.(t('notices.world.deathMessages.empty', { file: deathsFile }));
   }
 
-  return { actions: ActionBook.fromRows(actionRows), deaths: DeathBook.fromRows(deathRows) };
+  const messagesFile = path.join(dir, 'messages.csv');
+  const messagesText = readText(messagesFile, (message) =>
+    notify?.(t('notices.world.messages.readError', { file: messagesFile, message }))
+  );
+  const messageRows = messagesText === null ? [] : parseMessagesCsv(messagesText);
+  if (messagesText !== null && messageRows.length === 0) {
+    notify?.(t('notices.world.messages.empty', { file: messagesFile }));
+  }
+
+  return {
+    actions: ActionBook.fromRows(actionRows),
+    deaths: DeathBook.fromRows(deathRows),
+    messages: MessageBook.fromRows(messageRows)
+  };
 }

@@ -139,6 +139,33 @@ function opened(auto: StatScreen): void {
 }
 
 describe('reading the screen', () => {
+  /*
+   * Todo 111: with a prompt's credit in hand the queue sends inside `enqueue`,
+   * and the session's send hook runs `noteSent` there — before the driver had
+   * recorded its own proposal. It filed its own `train stats` as the player's,
+   * went idle, and the assignment then set `proposed` over an idle phase: the
+   * screen stood open with the arbiter held and the driver dead for the
+   * session (Vaelor at the Sysop Trainer, 2026-09-13).
+   */
+  it('owns a train stats the queue sent at once, and drives the screen that answers it', () => {
+    let auto: StatScreen | null = null;
+    queue.dispose();
+    queue = new CommandQueue(automation, {
+      send: (command) => {
+        sent.push(command);
+        auto?.noteSent(command, 'automation');
+      }
+    });
+    queue.notePrompt();
+    auto = make();
+    auto.onCharacter(atTheTrainer());
+    expect(sent).toEqual(['train stats']);
+    auto.onBlock(block('user-stats-screen', DUMP));
+    // Driving: the first Enter past the family name went out.
+    expect(wrote.length).toBeGreaterThan(0);
+    expect(notices.some((line) => /Spending/.test(line))).toBe(true);
+  });
+
   it('reads the six limits, the figures, the CP left and which field took focus off the dump', () => {
     const reading = readScreen(DUMP);
     expect(reading).toMatchObject({
@@ -179,6 +206,60 @@ describe('reading the screen', () => {
 });
 
 describe('deciding to open the screen', () => {
+  /* Todo 113: a refused enqueue is *not now*; the same points in the same room are asked about again. */
+  it('asks again after the queue refused the ask', () => {
+    queue.hold('the stat screen has the keyboard');
+    const auto = make();
+    auto.onCharacter(atTheTrainer());
+    drain();
+    expect(sent).toEqual([]);
+    queue.release();
+    auto.onCharacter(atTheTrainer());
+    drain();
+    expect(sent).toEqual(['train stats']);
+  });
+
+  /*
+   * Todo 116: the ask goes out behind whatever is in flight, and the prompt
+   * that answers the command before it (a `sys go`, a step) arrived in the
+   * `asked` phase and was read as the realm refusing the word. The form that
+   * followed was then nobody's and stood open for three minutes.
+   */
+  it('does not take a prompt for an earlier command as the refusal of its ask', () => {
+    const auto = make();
+    auto.onCharacter(atTheTrainer());
+    drain();
+    auto.noteSent('train stats', 'automation');
+    auto.onBlock(block('status-line', '[HP=452/MA=504]:'));
+    auto.onBlock(block('command-echo', 'train stats'));
+    auto.onBlock(block('user-stats-screen', DUMP));
+    expect(wrote.length).toBeGreaterThan(0);
+    expect(notices.some((line) => /Spending/.test(line))).toBe(true);
+  });
+
+  it('takes a prompt after the echo as the refusal, and asks again from the next state', () => {
+    const auto = make();
+    auto.onCharacter(atTheTrainer());
+    drain();
+    auto.noteSent('train stats', 'automation');
+    auto.onBlock(block('command-echo', 'train stats'));
+    auto.onBlock(block('status-line', '[HP=452/MA=504]:'));
+    auto.onBlock(block('user-stats-screen', DUMP));
+    expect(wrote).toEqual([]);
+  });
+
+  it('lets an unanswered ask go quietly and asks again', () => {
+    const auto = make();
+    auto.onCharacter(atTheTrainer());
+    drain();
+    auto.noteSent('train stats', 'automation');
+    vi.advanceTimersByTime(5_000);
+    expect(notices.some((line) => /nothing answered/.test(line))).toBe(true);
+    auto.onCharacter(atTheTrainer());
+    drain();
+    expect(sent).toEqual(['train stats', 'train stats']);
+  });
+
   it('proposes train stats at a trainer with points unspent and a figure wanted above the sheet', () => {
     make().onCharacter(atTheTrainer());
     drain();

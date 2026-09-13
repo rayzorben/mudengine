@@ -6,6 +6,7 @@ import { DeathBook } from '../../../shared/death-messages';
 import { Classifier, foregroundCodes, looksLikeRoomName, tailAfterPrompt } from '../Classifier';
 import type { BlockType } from '../../../shared/blocks';
 import type { StreamLine } from '../../../shared/types';
+import { MessageBook, parseMessagesCsv } from '../../../shared/messages';
 
 let seq = 0;
 /** A framed line as the tokenizer would produce it. */
@@ -520,6 +521,8 @@ describe('conversation, movement, items', () => {
     // These are the messages the pacing question in legacy-assessment 6.2 turns
     // on; recognising them is how that experiment gets its answer.
     expectType('You are typing too quickly - command ignored', 'command-ignored');
+    // Every death with a life left prints this after `You have been killed!` (Player.cs:1467).
+    expectType('But, due to a miracle, you have been saved.', 'user-saved');
     expectType("Why don't you slow down for a few seconds?", 'slow-down');
   });
 
@@ -2866,5 +2869,54 @@ describe('the spell message table', () => {
     expect(read('You stop using pressure points.').type).toBe('user-buff-expired');
     // Without the table the same line is what the frames make of it.
     expect(classify('You stop using pressure points.').type).toBe('unknown');
+  });
+});
+
+/*
+ * The server's own message table, fitted last and to `unknown` only (todo
+ * 109, 2026-09-13). The rows are `Message.cs`'s shapes for a cast — what the
+ * caster, the target and the room see — and a heal's figure.
+ */
+describe("the server's message table", () => {
+  const book = MessageBook.fromRows(
+    parseMessagesCsv(
+      [
+        'number,kind,line1,line2,line3',
+        '7,cast,"You cast %s on %s!","%s casts %s upon you!","%s casts %s on %s!"',
+        '127,other,"%s is healed of %d damage!","You are healed of %d damage!","%s is healed of %s damage!"'
+      ].join('\n')
+    )
+  );
+  const read = (plain: string) =>
+    new Classifier(NAMES, undefined, undefined, undefined, (text) => book.match(text)).classify(
+      line(plain)
+    ).block;
+
+  it("reads the caster's line as this character's cast, in the frame's own groups", () => {
+    const block = read('You cast blind on kobold thief!');
+    expect(block.type).toBe('spell-cast');
+    expect(block.groups).toMatchObject({
+      caster: 'You',
+      spell: 'blind',
+      target: 'kobold thief',
+      message: '7'
+    });
+  });
+
+  it("reads the target's line as a cast landing on this character", () => {
+    const block = read('kobold thief casts curse upon you!');
+    expect(block.type).toBe('spell-cast');
+    expect(block.groups).toMatchObject({ caster: 'kobold thief', spell: 'curse', target: 'you' });
+  });
+
+  it('explains any other row by its number and role, and decides nothing', () => {
+    const block = read('You are healed of 12 damage!');
+    expect(block.type).toBe('realm-message');
+    expect(block.groups).toMatchObject({ message: '127', role: '2', fills: '12' });
+  });
+
+  it('never overrules a frame', () => {
+    expect(read('You have been killed!').type).toBe('user-dies');
+    expect(read('[HP=74/MA=66]:').type).toBe('status-line');
   });
 });

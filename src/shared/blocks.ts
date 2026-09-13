@@ -94,6 +94,8 @@ export type BlockType =
    * per-character file. See `Expectations.died`.
    */
   | 'user-dies'
+  | 'user-saved'
+  | 'realm-message'
   /**
    * `You have 8 lives left.` — the same number the stat sheet's `Lives/CP:`
    * gives, restated by the server at the one moment it changes.
@@ -818,6 +820,8 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-encumbrance': 'status',
   'user-health': 'status',
   'user-dies': 'presence',
+  'user-saved': 'presence',
+  'realm-message': 'unknown',
   'user-lives': 'status',
   'user-disconnect-penalty': 'session',
   'user-levels': 'status',

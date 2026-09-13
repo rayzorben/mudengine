@@ -1465,3 +1465,43 @@ describe('the experience floor', () => {
     expect(runner.progress.status).toBe('running');
   });
 });
+
+/*
+ * Measured live 2026-09-13 (Vaelor, 74 HP, `restBelow: 0.6`, the Sewer circuit):
+ * a fight ended at 27 HP, `Recovery` asked for a rest, *You are now resting*
+ * came back, and 157 ms later the lap sent the next step. Twice in one run.
+ * This pins that the runner itself holds a granted rest under the floor. It
+ * did: the culprit was a session whose runner was never `configure`d and so
+ * held at the default 0.35 while `Recovery` rested at the profile's 0.6
+ * (todo 106) — the runner is the one module built without its config.
+ */
+describe('a rest that landed, and the lap that stepped into it', () => {
+  const hurt = (over: Partial<CharacterState> = {}): CharacterState =>
+    state({
+      vitals: { ...structuredClone(EMPTY_CHARACTER).vitals, hp: 27, hpMax: 74 },
+      ...over
+    });
+
+  it('does not step out of a granted rest while under the floor', () => {
+    let resting = false;
+    const { planner: p, walked } = planner({ restInFlight: () => resting });
+    const runner = new LoopRunner(p, {});
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelow: 0.6, restTo: 0 });
+    // Started mid-fight at full health: held for the fight.
+    expect(runner.start(loop, state({ inCombat: true }))).toBeNull();
+    expect(walked).toEqual([]);
+    // The fight ends at 27/74 with the rest already asked for.
+    resting = true;
+    runner.onCharacter(hurt());
+    expect(walked).toEqual([]);
+    // `(Resting)` arrives: the ask window closes and the health is still 36%.
+    resting = false;
+    runner.onCharacter(hurt({ vitals: { ...hurt().vitals, resting: true } }));
+    vi.advanceTimersByTime(5_000);
+    expect(walked).toEqual([]);
+    expect(runner.progress.hold).toBe('health');
+    // Mended: the leg goes out — the positive control.
+    runner.onCharacter(state({ vitals: { ...hurt().vitals, hp: 70, resting: false } }));
+    expect(walked).toEqual(['Arena']);
+  });
+});

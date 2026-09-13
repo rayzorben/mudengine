@@ -314,6 +314,16 @@ export const RULES: Rule[] = [
    */
   { type: 'user-dies', pattern: /^You have been killed!$/ },
   /*
+   * The line after every death with a life left. `Player.Killed` prints
+   * `You have been killed!` and this together for every death but a suicide
+   * or a reroll (`Player.cs:1467`), before `You have N lives left.` and the
+   * temple. It is not an undone death — the life is spent and the realm has
+   * moved the character — so nothing acts on it; it is read so the one line
+   * every death prints stops counting as a line the client cannot explain
+   * (todo 110; live 2026-09-13, `out/drive-hunt2.jsonl`).
+   */
+  { type: 'user-saved', pattern: /^But, due to a miracle, you have been saved\.$/ },
+  /*
    * And the line before it, read for what it *does* mean rather than for what
    * it does not (todo 20).
    *

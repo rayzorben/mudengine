@@ -101,7 +101,8 @@ for (const file of files) {
     },
     undefined,
     (text) => sentences.deaths.mobsOf(text),
-    (text) => sentences.actions.match(text)
+    (text) => sentences.actions.match(text),
+    (text) => sentences.messages.match(text)
   );
 
   let seq = 0;

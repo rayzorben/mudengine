@@ -500,6 +500,8 @@ export class Walker {
    * `start`, which has both reasons in full.
    */
   private holdWhenHurt = true;
+  /** Whether *Stealth 0, not sneaking* has been said this session. */
+  private saidNoStealth = false;
   /**
    * Whether a fight holds this walk rather than ending it.
    *
@@ -3393,6 +3395,21 @@ export class Walker {
    */
   private sneakFirst(state: CharacterState): void {
     if (!this.config.movement.sneak || state.stealth === 'sneaking') return;
+    /*
+     * **A sheet that says `Stealth: 0` is never asked to sneak** (todo 104).
+     * `SneakCommand.cs` rolls `Stealth − (players − 1 + mobs) ≥ rand(1,100)`,
+     * so a figure of zero never passes — and a Mage rerolled from a Ninja
+     * kept `movement.sneak` and spent one refused `sn` on every step of every
+     * lap. The figure is the sheet's own column; an unread sheet (null) never
+     * refuses, and a Ninja whose figure is low is still asked every step.
+     */
+    if (state.progress.stealthSkill === 0) {
+      if (!this.saidNoStealth) {
+        this.saidNoStealth = true;
+        this.events.notice?.(t('automation.walk.sneakNoSkill'));
+      }
+      return;
+    }
     if (cannotSneakHere(state)) return;
     this.queue.enqueue({
       command: 'sn',

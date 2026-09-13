@@ -552,6 +552,9 @@ tuning:
   # passed.
   train:
     echoMs: 4000
+    # Once every trainer was out of reach, how long before the routes are
+    # planned again, and only from a different room (todo 103).
+    reaskMs: 60000
     expiresMs: 8000
     # How long a sent `train` has to move the level before the errand gives up
     # on it and says so. The level moving is the confirmation -- the server

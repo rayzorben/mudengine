@@ -189,6 +189,24 @@ describe('the order the reader wants', () => {
       'deadly-rich'
     ]);
   });
+
+  /*
+   * A ceiling is a bound, not an estimate (todo 108): a single 500-point
+   * monster on a one-hour clock outranked eight rooms of sewer monsters whose
+   * rooms carry no clock. Among unknown rates, what one sweep earns decides.
+   */
+  it('orders unknown rates by what one sweep earns before the ceiling', () => {
+    const sweep = (key: string, cycle: number | null, ceiling: number | null): HuntingSpot => {
+      const s = spot(key, null, ceiling);
+      return { ...s, estimate: { ...s.estimate, expPerCycle: cycle } };
+    };
+    const ordered = [
+      sweep('troll', 500, 500),
+      sweep('sewers', 1000, null),
+      sweep('priest', 5, 5)
+    ].sort(compareSpots);
+    expect(ordered.map((s) => s.key)).toEqual(['sewers', 'troll', 'priest']);
+  });
 });
 
 /*

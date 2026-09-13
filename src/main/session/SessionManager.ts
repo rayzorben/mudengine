@@ -166,7 +166,8 @@ import {
 } from '../../shared/verdict';
 import { LairCosts } from '../world/LairCosts';
 import { attacksOnSight } from '../../shared/mobs';
-import { regeneration } from '../../shared/prowess';
+import { regeneration, type ProwessSheet } from '../../shared/prowess';
+import { castsToKill, chooseAttackSpell, type SpellChoiceInput } from '../../shared/spellchoice';
 import {
   compareSpots,
   estimateSpot,
@@ -1030,7 +1031,9 @@ export class SessionManager {
         return learned !== null ? [learned] : sentences.deaths.mobsOf(text);
       },
       // And the realm's emotes, off the server's action table.
-      (text) => sentences.actions.match(text)
+      (text) => sentences.actions.match(text),
+      // And, last, the server's own message table, fitted whole (todo 109).
+      (text) => sentences.messages.match(text)
     );
     this.world = world;
     // A different realm is a different set of corridors; the preferred ones
@@ -2009,6 +2012,16 @@ export class SessionManager {
         }
       }
     );
+    /*
+     * The one module built without its config: the runner takes a planner and
+     * events, and learned its floors only in `configure` — which the host
+     * calls after construction and a test or a harness may not. Built with
+     * `automation` and never configured, a session rested on the profile's
+     * `restBelow` and marched its lap on the default one, 457 ms apart
+     * (todo 106). Configured where it is built, so a session has one answer to
+     * *hurt* from its first status line; `configure` re-applies on reload.
+     */
+    this.loops.configure(automation.health, automation.movement, automation.walk);
 
     // Rules propose; the queue disposes. Nothing here reaches the socket.
     this.rules = new RuleEngine(this.queue, {
@@ -3479,7 +3492,14 @@ export class SessionManager {
      * both mean the same thing — there is a command line again.
      */
     if (block.type === 'user-stats-screen') this.holdForStatScreen(t('session.stats.screen'));
-    else if (isPrompt(block.type)) this.releaseStatScreen();
+    /*
+     * And the exit sentence releases it too (todo 115): `SAVE` prints the
+     * suicide-password paragraph and the room *before* the prompt, and the
+     * staleness refresh that `user-stats-assigned` triggers (`st` for the
+     * sheet the form rewrote) went to a queue still held and was dropped —
+     * the client kept the old figures for the session.
+     */
+    else if (isPrompt(block.type) || block.type === 'user-stats-assigned') this.releaseStatScreen();
     // The one thing that reads the screen, fed every block: the dump, each
     // keystroke's echo, and the sentence the server prints on SAVE alone.
     this.statScreen.onBlock(block);
@@ -3577,6 +3597,8 @@ export class SessionManager {
      * right listing, and a level-up invalidates the one on file.
      */
     this.routines.onBlock(block);
+    // The experience figure said again, which is what the next banked level waits for (todo 107).
+    this.trainLevel.onBlock(block);
     /*
      * Before `tracker.apply`, deliberately: a wear-off is about to take the
      * buff off the list, and the entry — with the caster's name on it — is
@@ -4643,6 +4665,14 @@ export class SessionManager {
 
     const player = this.menacePlayer(state);
     const weapon = wieldedWeapon(state.inventory.items);
+    /*
+     * The caster's rounds (todo 108). `verdictFor` gets a fight's length from
+     * the swing, and a Mage's swing is nothing worth counting — every spot's
+     * rate was null and a level-10 Mage was sent to a troll on a one-hour
+     * clock. Where the swing says nothing, the spell the character would cast
+     * at *this* monster, at one cast a round over the full pool, says it.
+     */
+    const casting = this.castingInput(state, sheet, family);
     const spots: HuntingSpot[] = [];
     for (const [key, group] of groups) {
       const entities =
@@ -4654,7 +4684,15 @@ export class SessionManager {
       const mobs: SpotMob[] = entities.map((entity, index) => ({
         name: entity.name,
         experience: entity.experience ?? null,
-        rounds: verdicts[index]?.rounds?.value ?? null,
+        rounds:
+          verdicts[index]?.rounds?.value ??
+          (casting === null
+            ? null
+            : (castsToKill(casting, {
+                hp: verdicts[index]?.menace?.hp ?? entity.hp ?? null,
+                magicRes: entity.magicResist ?? null,
+                abilities: entity.abilities
+              })?.rounds ?? null)),
         perRound: verdicts[index]?.menace?.perRound ?? null
       }));
       const rooms = [...group.rooms].sort((a, b) => a.steps - b.steps);
@@ -5227,7 +5265,20 @@ export class SessionManager {
          * character came in is the single thing it does know.
          */
         const printed = exits.some((exit) => exit.direction === way);
-        const known = this.world?.byId(here)?.exits.some((exit) => exit.direction === way) ?? false;
+        /*
+         * The realm's row answers only for a compass exit. A `Text:` edge in
+         * that direction is walked by its own words (`go manhole`), not by the
+         * direction — Dark Alley 1/383 is `d>1/598 [Text: go manhole]`, and
+         * `d` from it is *There is no exit in that direction!* — so the rung
+         * would spend an emergency command to be refused and fall through a
+         * third of a second later (todo 105). The escape never types a text
+         * exit (see `exits` above); the rungs below pick a printed one.
+         */
+        const known =
+          this.world
+            ?.byId(here)
+            ?.exits.some((exit) => exit.direction === way && exit.requirement?.kind !== 'text') ??
+          false;
         const saidNothing = exits.length === 0 && this.world?.byId(here) === undefined;
         if (printed || known || saidNothing) return { direction: way, how: 'retrace' };
       }
@@ -6306,11 +6357,47 @@ export class SessionManager {
     manaMax: number | null;
   } {
     const name = this.automationConfig.spells.attack.trim();
-    if (name.length === 0) return { manaPerRound: null, manaMax: null };
-    const spell = this.world?.spellNamed(name) ?? null;
+    if (name.length > 0) {
+      const spell = this.world?.spellNamed(name) ?? null;
+      return { manaPerRound: spell?.mana ?? null, manaMax: state.vitals.manaMax };
+    }
+    /*
+     * Under `autoChoose` the round spell is derived, so the survey prices the
+     * one the book would yield against an unread monster — the hardest hitter
+     * the pool can pay for (todo 108). Null where nothing casts.
+     */
+    const { combat, magery, family } = this.realmClass();
+    const casting = this.castingInput(state, prowessSheetOf(state, { combat, magery }), family);
+    if (casting === null) return { manaPerRound: null, manaMax: null };
+    const choice = chooseAttackSpell({ ...casting, target: null, excluded: new Set() });
     return {
-      manaPerRound: spell?.mana ?? null,
+      manaPerRound: choice.chosen?.cost ?? null,
       manaMax: state.vitals.manaMax
+    };
+  }
+
+  /**
+   * What `chooseAttackSpell` needs to say which spell this character would
+   * cast, or null where the character does not cast by derivation: the switch
+   * off, the book unread, or no realm to price it against (todo 108).
+   */
+  private castingInput(
+    state: CharacterState,
+    sheet: ProwessSheet,
+    family: RealmFamily | null
+  ): Omit<SpellChoiceInput, 'target' | 'excluded'> | null {
+    if (!this.automationConfig.spells.autoChoose) return null;
+    if (state.spellbook === null || this.world === undefined) return null;
+    const world = this.world;
+    return {
+      book: state.spellbook,
+      realm: (name) => world.spellNamed(name) ?? null,
+      level: state.progress.level,
+      // The full pool: the survey prices a fight begun rested, not the one in progress.
+      mana: state.vitals.manaMax ?? state.vitals.mana,
+      sheet,
+      family,
+      killConfidence: tuning().spells.killConfidence
     };
   }
 
