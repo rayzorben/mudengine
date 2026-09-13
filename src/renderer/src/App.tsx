@@ -144,7 +144,6 @@ import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import {
-  findNotices,
   linkNotices,
   mayNotice,
   noticeFor,
@@ -2115,13 +2114,6 @@ export default function App() {
             // and it is raised from the room because the line that says
             // somebody walked in does not say what they are.
             ...roomNotices(v.character, payload, t),
-            /*
-             * And what a search just turned up, when this character asked to be
-             * told about it. From the state for the reason the room's are: the
-             * sentence a find prints is the sentence a look prints, and which
-             * command it answered is a fact only the tracker has.
-             */
-            ...findNotices(v.character, payload, alertsRef.current.finds, t),
             /*
              * And somebody in the party in trouble, which is the reason the
              * roster matters: three of four characters are unattended, and the

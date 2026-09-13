@@ -45,6 +45,7 @@ import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
 import { DEFAULT_CONFIG, normalizeBands } from '../../shared/config';
+import { NOTICE_CHANNELS, type AlertRule } from '../../shared/notifications';
 import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../shared/rewrites';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { DENOMINATIONS } from '../../shared/character';
@@ -177,8 +178,7 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
-  statedTheFindAlerts(home, note, options.template);
-  statedTheDesktopAlerts(home, note, options.template);
+  alertSettingsBecameRows(home, note);
   statedTheStatusLine(home, note, options.template);
   theLineBecameARewrite(home, note, options.template);
   theRewritesBecameAList(home, note, options.template);
@@ -348,15 +348,24 @@ function statedTheLevelling(home: Home, note: (message: string) => void): void {
 
 /**
  * `ui.alerts.rules` into every file that states `alerts:` and predates it
- * (todo 29, 2026-09-12), empty.
+ * (todo 29, 2026-09-12), with the rows a fresh client ships.
  *
  * At the **head** of the block, because that is the order the client asks in:
- * a row decides before `minimum` and `mute` are consulted, and a file whose
- * reading order disagrees with the client's is one somebody reasons about
- * wrongly.
+ * a row decides before anything else does, and a file whose reading order
+ * disagrees with the client's is one somebody reasons about wrongly.
  *
- * Empty, so nothing changes for anybody: the list adds to the two settings
- * below rather than replacing them.
+ * **It wrote `[]` for four days, and an empty list has since changed meaning.**
+ * While the severity floor and the mute list still stood behind the rows an
+ * empty list meant *carry on as before*; with those gone (todo 02) it means
+ * *the player deleted every row*, which `normalizeAlerts` honours. So a file
+ * carrying the `[]` this very function wrote would have started with **no
+ * alerts at all**, silently, against a fresh install's four — and its owner
+ * would have just lost the floor as well. Nobody deleted anything: the UI to
+ * do so arrived in the same change. So an empty list **left by this migration**
+ * is filled in, and a list with anything in it is never touched.
+ *
+ * Found in review. Pre-v1 there is no legacy to keep, but there is also no
+ * excuse for changing a shape and leaving the user's own files behind it.
  */
 function statedTheAlertRules(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
@@ -365,10 +374,22 @@ function statedTheAlertRules(home: Home, note: (message: string) => void): void 
   for (const file of files) {
     edit(file, (document) => {
       const block = document.getIn(['ui', 'alerts'], true);
-      if (!isMap(block) || block.has('rules')) return false;
-      const pair = document.createPair('rules', []) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = ALERT_RULES_COMMENT;
-      block.items.unshift(pair);
+      if (!isMap(block)) return false;
+      const rules = block.get('rules', true);
+      // Anything the player has written is theirs, empty or not -- but an empty
+      // sequence is the only thing this could have left, and the only thing
+      // there is no way to have meant yet.
+      const present = block.has('rules');
+      if (present && !(isSeq(rules) && rules.items.length === 0)) return false;
+
+      const rows = DEFAULT_CONFIG.ui.alerts.rules.map((rule) => ({ ...rule }));
+      if (present) {
+        block.set('rules', document.createNode(rows));
+      } else {
+        const pair = document.createPair('rules', rows) as Pair;
+        if (isScalar(pair.key)) pair.key.commentBefore = ALERT_RULES_COMMENT;
+        block.items.unshift(pair);
+      }
       stated.push(file);
       return true;
     });
@@ -387,13 +408,13 @@ function statedTheAlertRules(home: Home, note: (message: string) => void): void 
 const ALERT_RULES_COMMENT = ` Your own alerts, tried in order.
 
  The FIRST row that matches a notice decides it -- whether it is shown, how
- loud, and whether it also raises a desktop notification. Anything no row
- matches keeps the level the client gave it and meets \`minimum\` and \`mute\`
- below. \`on\` is one of the eleven channels or one of five conditions:
+ loud, and whether it also raises a desktop notification. This list is the
+ only thing that decides: anything no row matches is shown at the level the
+ client gave it. \`on\` is one of the eleven channels or one of six conditions:
  \`health\` and \`mana\` (a figure you choose, fired on the crossing),
  \`attacked\` (a person swinging at you), \`item\` and \`player\` (matched by
- \`name\`). \`level\` empty keeps what the client decided. See the template for
- a worked example.`;
+ \`name\`), \`cash\` (a pile a search turned up, \`value\` in copper). \`level\`
+ empty keeps what the client decided. See the template for a worked example.`;
 
 /**
  * `automation.movement.recoverGearTries` and `recoverGearFloor` into every
@@ -1994,86 +2015,143 @@ function statedTheTrapRest(home: Home, note: (message: string) => void): void {
  * whatever its value, so somebody who sets `keepDark: false` keeps it.
  */
 /**
- * `ui.alerts.finds`, what a search turning something up is worth interrupting
- * for (2026-09-07, todo 04).
+ * The old alert surface becomes rows (todo 02, 2026-09-12).
  *
- * A block inside `ui.alerts:`, two levels below where `reconcileWithTemplate`
- * reaches, so a file written before today would keep an alerts block that names
- * only the floor and the mute list — and a setting absent from the file is one
- * nobody reading the file can find.
+ * `ui.alerts` carried a severity floor, a per-channel mute list, a find watch
+ * and a per-happening desktop mute beside the player's own rows. Every question
+ * those answered is a row — *never tell me about movement* is a row with
+ * `alert` off, *tell me when a gold ring is found* is an `item` row — so they
+ * were a second vocabulary for one question on another part of the same page,
+ * and somebody who set one wondered why the other still decided.
  *
- * Both halves are written **off**, which is what the client does without them,
- * so nothing changes except that the file says so.
+ * What a player actually stated is carried over rather than discarded: a muted
+ * channel becomes a row that does not alert, a watched word an `item` row, a
+ * cash figure a `cash` row, a muted happening a row that shows but does not
+ * notify — because *do not interrupt me outside the window* is not *do not tell
+ * me*, and turning it into silence would be this migration deciding something
+ * the player did not.
+ *
+ * **The floor is the one thing that cannot be carried, and it is not pretended
+ * to be.** `minimum` hid notices by *level*, and a level is a property of the
+ * line rather than of a channel — `combat` carries `info` and `critical` alike
+ * — so no set of rows says what it said. A file stating one has the key removed
+ * and is told so by name, which is the rule for a setting the client stops
+ * honouring: say it out loud rather than leave somebody believing a floor is
+ * still holding.
+ *
+ * Rows are appended after whatever the player already wrote: their own rows
+ * were always the more specific statement.
+ *
+ * Idempotent — it runs only where one of the four keys is still there, and it
+ * removes them.
  */
-function statedTheFindAlerts(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const comments = templateComments(template, 'ui');
-  let stated = false;
+function alertSettingsBecameRows(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const converted: string[] = [];
+  const floored: string[] = [];
 
-  edit(home.options, (document) => {
-    const alerts = document.getIn(['ui', 'alerts'], true);
-    if (!isMap(alerts) || alerts.has('finds')) return false;
+  for (const file of files) {
+    edit(file, (document) => {
+      const alerts = document.getIn(['ui', 'alerts'], true);
+      if (!isMap(alerts)) return false;
+      const desktop = alerts.get('desktop', true);
+      const finds = alerts.get('finds', true);
+      const hadFloor = alerts.has('minimum');
+      const hadMute = alerts.has('mute');
+      const hadFinds = isMap(finds);
+      const hadDesktopMute = isMap(desktop) && desktop.has('mute');
+      if (!hadFloor && !hadMute && !hadFinds && !hadDesktopMute) return false;
 
-    const block = document.createNode({
-      items: [...DEFAULT_CONFIG.ui.alerts.finds.items],
-      cashOverCopper: DEFAULT_CONFIG.ui.alerts.finds.cashOverCopper
+      const rows: AlertRule[] = [];
+      const row = (over: Partial<AlertRule> & Pick<AlertRule, 'on'>): AlertRule => ({
+        enabled: true,
+        level: null,
+        alert: true,
+        notify: false,
+        whileFocused: false,
+        side: 'below',
+        value: 0,
+        percent: false,
+        name: '',
+        ...over
+      });
+
+      for (const channel of lowerWords(alerts.get('mute', true))) {
+        if (!(NOTICE_CHANNELS as readonly string[]).includes(channel)) continue;
+        rows.push(row({ on: channel as AlertRule['on'], alert: false }));
+      }
+
+      if (hadFinds) {
+        for (const name of lowerWords(finds.get('items', true))) {
+          rows.push(row({ on: 'item', name, level: 'critical', notify: true }));
+        }
+        const over = Number(finds.get('cashOverCopper')) || 0;
+        if (over > 0) rows.push(row({ on: 'cash', value: over, level: 'critical', notify: true }));
+      }
+
+      if (hadDesktopMute) {
+        for (const happening of lowerWords(desktop.get('mute', true))) {
+          const channel = HAPPENING_CHANNEL[happening];
+          if (channel === undefined) continue;
+          rows.push(row({ on: channel, notify: false }));
+        }
+      }
+
+      if (rows.length > 0) {
+        const existing = alerts.get('rules', true);
+        const kept = isSeq(existing) ? (existing.toJSON() as unknown[]) : [];
+        alerts.set('rules', document.createNode([...kept, ...rows]));
+      }
+
+      alerts.delete('minimum');
+      alerts.delete('mute');
+      alerts.delete('finds');
+      if (isMap(desktop)) desktop.delete('mute');
+
+      converted.push(file);
+      if (hadFloor) floored.push(file);
+      return true;
     });
-    const pair = document.createPair('finds', block) as Pair;
-    const lead = comments.get('ui.alerts.finds');
-    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
-    alerts.items.push(pair);
-    stated = true;
-    return true;
-  });
+  }
 
-  if (!stated) return;
-  note(t('notices.migration.findAlertsStated', { file: home.options }));
+  if (converted.length > 0) {
+    note(
+      t('notices.migration.alertSurfaceConverted', {
+        count: converted.length,
+        fileList: converted.join(', ')
+      })
+    );
+  }
+  if (floored.length > 0) {
+    note(
+      t('notices.migration.alertFloorDropped', {
+        count: floored.length,
+        fileList: floored.join(', ')
+      })
+    );
+  }
 }
 
-/**
- * `ui.alerts.desktop` into an options file that predates it, on.
- *
- * A key inside an existing block, so `reconcileWithTemplate` will not bring it
- * — it copies whole top-level blocks and never reaches inside one. Written on
- * rather than off, like the shipped default and for the shipped default's
- * reason: a notification feature nobody finds is one that was never built,
- * and nothing is raised while the window is in front anyway.
- *
- * Profiles are left alone. A character's `ui.alerts` is a sparse overlay and
- * records merge by key, so one that states a floor and a mute list inherits
- * this block from the options file untouched.
- */
-function statedTheDesktopAlerts(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const comments = templateComments(template, 'ui');
-  let stated = false;
+/** Which channel a desktop happening arrives on, for the mute conversion. */
+const HAPPENING_CHANNEL: Partial<Record<string, AlertRule['on']>> = {
+  attacked: 'attacked',
+  hurt: 'vitals',
+  arrived: 'movement',
+  hungup: 'session'
+};
 
-  edit(home.options, (document) => {
-    const alerts = document.getIn(['ui', 'alerts'], true);
-    if (!isMap(alerts) || alerts.has('desktop')) return false;
-
-    const d = DEFAULT_CONFIG.ui.alerts.desktop;
-    const block = document.createNode({
-      enabled: d.enabled,
-      whileFocused: d.whileFocused,
-      mute: [...d.mute]
-    });
-    const pair = document.createPair('desktop', block) as Pair;
-    const lead = comments.get('ui.alerts.desktop');
-    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
-    alerts.items.push(pair);
-    stated = true;
-    return true;
-  });
-
-  if (!stated) return;
-  note(t('notices.migration.desktopAlertsStated', { file: home.options }));
+/** The strings in a YAML sequence, trimmed and lowercased; anything else dropped. */
+function lowerWords(node: unknown): string[] {
+  const list = isSeq(node) ? (node.toJSON() as unknown[]) : [];
+  if (!Array.isArray(list)) return [];
+  return Array.from(
+    new Set(
+      list
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim().toLowerCase())
+        .filter((entry) => entry.length > 0)
+    )
+  );
 }
 
 function statedTheDarkConsole(

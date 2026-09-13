@@ -393,6 +393,16 @@ export type LoopHold =
   | 'retreated'
   | 'errand'
   | 'offline'
+  /**
+   * A `rest` this client asked for, whose answer has not come back.
+   *
+   * The lap waits a beat rather than stepping into it. A rest and the next leg
+   * decided in the same tick were both right at the moment each was made, and
+   * the step undid the rest a millisecond later — seven times out of seven on
+   * the run that found it (todo 14). Bounded by the window itself, so it cannot
+   * deadlock: see `Recovery.restInFlight`.
+   */
+  | 'resting'
   /** Waiting out a stated affliction before the next leg — see `afflictionHolding` in `walk.ts`. */
   | 'blind'
   | 'held'

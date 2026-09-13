@@ -239,15 +239,17 @@ notices:
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the MudEngine page in settings.'
-    findAlertsStated:
-      '"ui.alerts.finds" was written into {file}, both off: what a search turning something up is
-      worth interrupting for. Words to watch for and a figure in copper — set either there or on
-      the Alerts section in settings. The Room card''s Finds face lists everything either way.'
-    desktopAlertsStated:
-      '"ui.alerts.desktop" was written into {file}, on: five happenings the operating system is
-      asked to say when this window is not in front — a player attacking you, health critically
-      low, a route arriving, leaving the realm unasked, and anything else critical. Switch any of
-      them off there or on the Alerts section in settings.'
+    alertSurfaceConverted:
+      'The alert floor, the muted channels and the find watch became rows of your own alert list,
+      in {count} file(s): every question they answered is a row, and two ways of asking one
+      question is how one of them comes to look broken. Your settings were carried over — a muted
+      channel is a row that does not alert, a watched word an item row, a muted notification a row
+      that still shows. {fileList}'
+    alertFloorDropped:
+      '"ui.alerts.minimum" was removed from {count} file(s): a level is a property of a line rather
+      than of a channel, so no row says what a floor said and none was invented for it. Everything
+      is shown again unless one of your own rows says otherwise — the Alerts section in settings is
+      where they are. {fileList}'
     darkConsoleStated:
       '"ui.console" was written into {file}, on: under a light theme the console keeps a dark
       palette, because a light one has to make the realm''s black its paper. Choose which dark
@@ -303,11 +305,11 @@ notices:
         {fileList}'
     alertRules:
       many:
-        '"ui.alerts.rules" was written into {count} files, empty: your own alert rows are tried
-        before the floor and the mute list. {fileList}'
+        '"ui.alerts.rules" was written into {count} files with the rows a fresh client ships: your
+        own alert list is the only thing that decides what is shown. {fileList}'
       one:
-        '"ui.alerts.rules" was written into {count} file, empty: your own alert rows are tried
-        before the floor and the mute list. {fileList}'
+        '"ui.alerts.rules" was written into {count} file with the rows a fresh client ships: your
+        own alert list is the only thing that decides what is shown. {fileList}'
     potionRules:
       many:
         '"automation.health.potions" was written into {count} files, empty: name an item and a
@@ -1147,14 +1149,13 @@ cards:
       playerAttacking: '{name} is attacking you — hanging up is penalised for five minutes'
     empty: Nothing yet.
     find: Find in the record
-    # The player's own named watches (todo 29): anything of this name, however
-    # it arrived, as against `finds` below which is what a search turned up.
+    # The player's own watches. `item` covers anything of that name however it
+    # arrived -- lying in the room or turned up by a search, which were two
+    # settings until todo 02 made the rows the only place alerts are set.
     watch:
       item: '{what} is here.'
       player: '{who} is here.'
-    finds:
       cash: 'Searching turned up {what}'
-      item: 'Searching turned up {what}'
     party:
       memberHealth: '{name} is at {percent}%'
     realm:
@@ -2460,35 +2461,15 @@ settings:
       on the Alerts card.
     desktopFocusedLabel: Even When In Front
     desktopLegend: Desktop Notifications
-    desktopMuteHint: Ticked raises nothing. Everything else is raised whenever this window is not in front.
-    desktopMuteLabel: Never Notify About
     desktopNote:
       One notification per character at a time, the newest. The Alerts card keeps every one of them
       whether or not it was raised here.
-    happening:
-      arrived: a route arriving
-      attacked: a player attacking you
-      critical: anything else critical
-      hungup: leaving the realm unasked
-      hurt: health critically low
-    findCashHint:
-      Cash a search turns up, in copper, worth interrupting for. Everything the client knows about
-      money is normalised into copper, so one figure covers every coin the realm prints. 0 never
-      alerts.
-    findCashLabel: Alert On Found Cash Over
-    findItemsHint:
-      Words that make a thing a search turned up worth interrupting for, separated by commas.
-      Matched anywhere in the name, so "key" catches "a rusty key". Empty never alerts.
-    findItemsLabel: Alert On Finding
-    findItemsPlaceholder: 'key, ring, scroll'
-    minimumCritical: Only critical
-    # The player's own rows (todo 29). The first enabled row that claims a
-    # notice decides it; anything no row claims still meets the floor and the
-    # mute list below.
+    # The player's own rows, and the only thing that decides (todo 02). The
+    # severity floor and the per-channel mute list stood beside them until then.
     ruleLegend: Your own alerts
     ruleNote:
-      'Rows are tried in order and the first one that matches decides: shown or not, and how loud.
-      Anything no row matches keeps the level the client gave it and meets the floor below.'
+      'Rows are tried in order and the first one that matches decides: shown or not, how loud, and
+      whether it also notifies. Anything no row matches is shown at the level the client gave it.'
     ruleAdd: Add an alert
     ruleEnabled: On
     ruleAlert: Alert
@@ -2519,17 +2500,7 @@ settings:
     watchAttacked: attacked by a player
     watchItem: an item found
     watchPlayer: a player seen
-    minimumHint:
-      The quietest alert kept. Critical is act-now, warning is something that did not work,
-      info is the record.
-    minimumInfo: Everything
-    minimumLabel: Keep
-    minimumWarning: Warnings and worse
-    muteHint: A muted channel raises nothing at all, at any level.
-    muteLabel: Never Raise
-    note:
-      A player attacking you is always critical, and a monster attacking you is never an alert at
-      all — the terminal already says both.
+    watchCash: cash found over
   autoSave:
     saveDidNotAnswer: The save did not answer.
   characters:
@@ -4008,6 +3979,7 @@ automation:
     barrierTooHurt: Too hurt to spend a bash on it.
     barrierUnknownSkill: unknown
     healthHolding: Too hurt to travel; waiting here until health is back.
+    restHolding: Waiting for the rest to land before stepping.
     healthResumed: Health is back; walking on.
     trapHolding:
       'The way into {stepName} is a trap of up to {damage} damage; resting here to {needed} HP

@@ -476,6 +476,28 @@ export class Recovery {
     this.needed = hp;
   }
 
+  /**
+   * Whether a `rest` is on the wire with its answer still to come.
+   *
+   * `askedUntil` has always existed, to stop this module asking again while the
+   * last ask is in flight; nothing outside it read the window, and that was the
+   * bug (todo 14). `rest`, `sn` and a direction went out one millisecond apart,
+   * every one of them decided correctly in the same tick from the same state,
+   * and the character sat down and stood straight back up seven times out of
+   * seven.
+   *
+   * **This is a claim, not a question.** The two guards on resting
+   * (`SessionManager.mayRest`) are asked *before* a rest and are still right;
+   * what was missing is that once the rest is asked for, nothing else may move
+   * the character until the server has said whether it landed. The window ends
+   * by itself — `(Resting)` arriving clears it, `tuning.rest.askedMs` expires —
+   * so nothing that waits on it can deadlock, and nothing in the wait depends
+   * on the walk moving.
+   */
+  get restInFlight(): boolean {
+    return Date.now() < this.askedUntil;
+  }
+
   /** The last state seen, for tests. */
   get current(): CharacterState | null {
     return this.state;

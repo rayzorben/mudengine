@@ -33,7 +33,6 @@ import {
 import { DENOMINATIONS, type Denomination } from './character';
 import {
   ALERT_WATCHES,
-  DESKTOP_ALERTS,
   NOTICE_CHANNELS,
   SEVERITIES,
   type AlertRule,
@@ -538,13 +537,12 @@ export interface ProfileDraft {
    * and the rail already remembers which cards each of them keeps.
    */
   alerts: {
-    minimum: string;
-    mute: string[];
-    /** What a `search` turning something up is worth interrupting for. */
-    finds: { items: string[]; cashOverCopper: number };
     /** What the desktop is asked to say when the window is not in front. */
-    desktop: { enabled: boolean; whileFocused: boolean; mute: string[] };
-    /** The player's own rows, tried in order. See `AlertRule`. */
+    desktop: { enabled: boolean; whileFocused: boolean };
+    /**
+     * The player's own rows, tried in order, and the only thing that decides
+     * what is alerted (todo 02). See `AlertRule`.
+     */
     rules: AlertRule[];
   };
   /**
@@ -1000,26 +998,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       invokeItems: spells['invokeItems'] === true
     },
     alerts: {
-      // Anything else is `info`, which keeps everything: starting somebody off
-      // with alerts already hidden is how a feature goes unfound.
-      minimum: ['critical', 'warning', 'info'].includes(String(alerts['minimum']))
-        ? String(alerts['minimum'])
-        : 'info',
-      mute: words(alerts['mute'], 24),
-      finds: {
-        items: words(isRecord(alerts['finds']) ? alerts['finds']['items'] : [], 24),
-        cashOverCopper: Math.max(
-          0,
-          Math.round(Number(isRecord(alerts['finds']) ? alerts['finds']['cashOverCopper'] : 0) || 0)
-        )
-      },
       desktop: {
         // On unless the file says otherwise: a notification feature nobody
-        // finds is one that was never built. `normalizeDesktopAlerts` drops a
-        // happening nothing answers to, so the form shows what the file does.
+        // finds is one that was never built.
         enabled: desktopAlerts['enabled'] !== false,
-        whileFocused: desktopAlerts['whileFocused'] === true,
-        mute: words(desktopAlerts['mute'], DESKTOP_ALERTS.length)
+        whileFocused: desktopAlerts['whileFocused'] === true
       },
       /*
        * The player's own rows, parsed at the boundary like everything else

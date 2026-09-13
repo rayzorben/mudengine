@@ -461,6 +461,41 @@ describe('having asked, before the flag has arrived', () => {
     drain();
     expect(sent).toEqual(['rest', 'rest']);
   });
+
+  /*
+   * And the window read from outside, which is what holds a walk still (todo
+   * 14). The two tests above assert it through what this module *sends*; the
+   * walker and the lap read the window itself, and the safety argument for
+   * making them wait on it is that it is bounded and self-clearing. Asserted
+   * here rather than stubbed at the consumers, whose fixtures hand in a boolean
+   * and so prove nothing about the thing they are waiting on (found in review).
+   */
+  it('is open from the moment the rest goes out, for outside readers', () => {
+    const recovery = make(health({ restBelow: 0.5 }));
+    expect(recovery.restInFlight).toBe(false);
+    recovery.onCharacter(state({ hp: 30, hpMax: 80 }));
+    drain();
+    expect(recovery.restInFlight).toBe(true);
+  });
+
+  it('and closes on its own deadline, so nothing waiting on it can deadlock', () => {
+    const recovery = make(health({ restBelow: 0.5 }));
+    recovery.onCharacter(state({ hp: 30, hpMax: 80 }));
+    drain();
+    expect(recovery.restInFlight).toBe(true);
+    // `tuning.rest.askedMs` is three seconds; a little past it is closed.
+    vi.advanceTimersByTime(4000);
+    expect(recovery.restInFlight).toBe(false);
+  });
+
+  it('and closes the instant the flag arrives, without waiting the deadline out', () => {
+    const recovery = make(health({ restBelow: 0.5 }));
+    recovery.onCharacter(state({ hp: 30, hpMax: 80 }));
+    drain();
+    expect(recovery.restInFlight).toBe(true);
+    recovery.onCharacter(state({ hp: 32, hpMax: 80, resting: true }));
+    expect(recovery.restInFlight).toBe(false);
+  });
 });
 
 describe('the resting ceiling', () => {

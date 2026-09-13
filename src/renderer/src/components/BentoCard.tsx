@@ -565,7 +565,63 @@ export default function BentoCard({
   const room = Math.max(1, visible - 1);
   const drawn = folded ? column.slice(0, room) : column;
   const rest = folded ? column.slice(room) : [];
+  /*
+   * **The kebab is a glyph and takes a slot like any other**, so a column with
+   * room for one draws close and nothing else. It used to be drawn regardless,
+   * which on the docked toolbar — one band tall, so exactly one slot — put a
+   * second kebab under the close and clipped it in half against the card's own
+   * `overflow: hidden`. A kebab clipped in half is a control that is not
+   * there, which is the failure the rolled card's two-glyph floor was written
+   * to avoid; this is the same failure on a card that is not rolled and cannot
+   * be given a floor, because a toolbar with empty space under it is not a
+   * taller toolbar.
+   *
+   * What is folded stays reachable: with no room to draw the kebab, the rest
+   * of the column goes onto the card's own right-click menu, which is on every
+   * card already. `folded` still means *some control is not in the column* —
+   * it is what the menu reads — and `showMore` is only about whether there is
+   * a glyph to open it with.
+   */
+  const showMore = folded && visible > 1;
   const [more, setMore] = useState<HTMLElement | null>(null);
+
+  /*
+   * The right-click menu's rows, with the column's own first where there is no
+   * kebab to reach them through. A card's menu otherwise offers only copy, and
+   * on a card this short *Copy card* is already one of the rows that folded —
+   * so the two lists are one list, the controls above the copies, in the order
+   * the column itself would have drawn them.
+   */
+  const menuItems =
+    copy.menu === null
+      ? []
+      : [
+          ...(showMore
+            ? []
+            : rest.map((action) => ({
+                label: action.label,
+                icon: action.icon,
+                danger: action.danger,
+                run: () => {
+                  copy.dismiss();
+                  /*
+                   * Anchored on the card itself, since there is no glyph the
+                   * row came from: a panel an action opens is measured from its
+                   * anchor, and the card is the thing this one is about.
+                   *
+                   * Read **in the callback**, never during the render that
+                   * built it: nothing measures the DOM during a render, and a
+                   * ref read there is the same class of mistake wearing a
+                   * cheaper hat. By the time a row is pressed the card is
+                   * mounted by definition — the menu is anchored to it.
+                   */
+                  const card = frame.current;
+                  if (card) action.run(card);
+                  returnFocus?.();
+                }
+              }))),
+          ...copyItems
+        ];
 
   const setBody = useCallback(
     (node: HTMLDivElement | null) => {
@@ -809,7 +865,7 @@ export default function BentoCard({
             <Icon name={action.icon} />
           </button>
         ))}
-        {folded && (
+        {showMore && (
           <button
             aria-expanded={more !== null}
             aria-haspopup="menu"
@@ -890,10 +946,10 @@ export default function BentoCard({
         />
       )}
 
-      {copy.menu !== null && copyItems.length > 0 && (
+      {copy.menu !== null && menuItems.length > 0 && (
         <PopupMenu
           at={copy.menu}
-          items={copyItems}
+          items={menuItems}
           /*
            * A menu is navigated, so it takes the caret — and hands it straight
            * back, like every other surface that does (docs/ui-design.md §3.6).

@@ -9,6 +9,7 @@ import { Walker } from '../automation/Walker';
 import type { FledRoom, WalkProgress } from '../../shared/walk';
 import { stillFled } from '../../shared/walk';
 import { holdsMovement } from '../../shared/spellcraft';
+import { splitOntoChannel } from '../../shared/talk';
 import {
   capabilitiesOf,
   CLASS_STEALTH_ABILITY,
@@ -1225,6 +1226,10 @@ export class SessionManager {
       // typed direction and a leg left over from a walk combat stopped, which
       // are the moves a route cannot see and is desynchronised by.
       pendingMoves: () => this.tracker.pendingMoves,
+      // A rest this client asked for a millisecond ago, whose answer has not
+      // come back. The same kind of fact as a move in flight, and refused for
+      // the same reason -- see `Recovery.restInFlight` and todo 14.
+      restInFlight: () => this.recovery.restInFlight,
       /*
        * A route that stood still for a fight plans again from wherever the
        * fight left the character. Answered here for the reason `holdAt` and
@@ -1927,6 +1932,9 @@ export class SessionManager {
             resumeAfterLoss: false
           }),
         moveInFlight: () => this.tracker.pendingMoves > 0,
+        // A rest this client asked for a millisecond ago. The lap waits a beat
+        // rather than stepping into it — see `Recovery.restInFlight`, todo 14.
+        restInFlight: () => this.recovery.restInFlight,
         // Some other walk is running this character — a `safe-haven` retreat,
         // in practice, which is the one walk that runs while the loop is held.
         walking: () => this.walker.walking,
@@ -2523,6 +2531,23 @@ export class SessionManager {
 
   send(data: string): void {
     /*
+     * A pasted run split onto the channel the player has already named.
+     *
+     * Typing `-` and pasting three lines put `-a`, then `b`, then `c` on the
+     * wire: one broadcast and two bare commands said out loud in the room
+     * (todo 03). The realm's input line cannot know a paste happened, and the
+     * only thing that knows a channel was named is the half-line already on
+     * it — which is `this.outbound`, kept here for the queue.
+     *
+     * Rewritten before anything else looks at `data`, so the tracker, the
+     * classifier, the capture and the queue all see the lines that actually
+     * reach the socket. `splitOntoChannel` answers `null` for a single line,
+     * a run with no channel named and a run whose extra lines are all blank,
+     * which is every ordinary keystroke.
+     */
+    const outgoing = splitOntoChannel(this.outbound, data) ?? data;
+
+    /*
      * The shadow of the server's input line. Movement is the strongest
      * room-resolution signal there is, so the tracker needs to know what was
      * typed — and the queue needs to know whether a *partial* line is on the
@@ -2534,7 +2559,7 @@ export class SessionManager {
      * that rule: a control byte the server keeps nothing of must not leave a
      * line here that stands automation down for twenty seconds.
      */
-    for (const ch of editorInput(data)) {
+    for (const ch of editorInput(outgoing)) {
       if (ch === '\x7f' || ch === '\b') this.outbound = this.outbound.slice(0, -1);
       else this.outbound += ch;
     }
@@ -2626,7 +2651,7 @@ export class SessionManager {
      * one socket keep their order, so sending the keystroke first is the
      * whole fix.
      */
-    this.client.send(data);
+    this.client.send(outgoing);
 
     if (committed) this.link.noteSent();
     // The player typing is this client sending, so the idle clock restarts.

@@ -888,19 +888,12 @@ export class SettingsEditor {
           mana: { ...config.ui.vitals.mana }
         },
         alerts: {
-          minimum: config.ui.alerts.minimum,
-          mute: [...config.ui.alerts.mute],
           // Copied per row, as every list here is: the draft is the form's and
           // the config is the file's, and the two must not share a row object.
           rules: config.ui.alerts.rules.map((rule) => ({ ...rule })),
-          finds: {
-            items: [...config.ui.alerts.finds.items],
-            cashOverCopper: config.ui.alerts.finds.cashOverCopper
-          },
           desktop: {
             enabled: config.ui.alerts.desktop.enabled,
-            whileFocused: config.ui.alerts.desktop.whileFocused,
-            mute: [...config.ui.alerts.desktop.mute]
+            whileFocused: config.ui.alerts.desktop.whileFocused
           }
         },
         rewrites: structuredClone(config.ui.rewrites)
@@ -1001,13 +994,20 @@ export class SettingsEditor {
           set(['ui', 'vitals', vital, 'caution'], draft.ui.vitals[vital].caution);
           set(['ui', 'vitals', vital, 'critical'], draft.ui.vitals[vital].critical);
         }
-        set(['ui', 'alerts', 'minimum'], draft.ui.alerts.minimum);
-        set(['ui', 'alerts', 'mute'], [...draft.ui.alerts.mute]);
-        set(['ui', 'alerts', 'finds', 'items'], [...draft.ui.alerts.finds.items]);
-        set(['ui', 'alerts', 'finds', 'cashOverCopper'], draft.ui.alerts.finds.cashOverCopper);
+        /*
+         * The player's own rows. `saveProfile` has written these since they
+         * were built and this did not, so a row typed on the Global page was
+         * read back into the draft, drawn in the form and dropped on the next
+         * save — which is what a starting point that cannot be set looks like
+         * from the outside (todo 02).
+         *
+         * Cloned whole, like `ui.rewrites` below and for its reason: a row is
+         * an object, and `setIn` would otherwise put the draft's own live
+         * objects into the document.
+         */
+        set(['ui', 'alerts', 'rules'], structuredClone(draft.ui.alerts.rules));
         set(['ui', 'alerts', 'desktop', 'enabled'], draft.ui.alerts.desktop.enabled);
         set(['ui', 'alerts', 'desktop', 'whileFocused'], draft.ui.alerts.desktop.whileFocused);
-        set(['ui', 'alerts', 'desktop', 'mute'], [...draft.ui.alerts.desktop.mute]);
         set(['ui', 'rewrites'], structuredClone(draft.ui.rewrites));
 
         set(['logging', 'enabled'], draft.logging.enabled);

@@ -137,18 +137,18 @@ describe('what is worth saying outside the window', () => {
 
   /*
    * The named four outrank the ranking: a player attacking you is critical as
-   * well, and somebody who muted `attacked` has said what they meant. Raising
-   * it again as `critical` would make the switch a lie.
+   * well, and the happening is the more specific word for it. Which of them is
+   * raised is a row's business now (todo 02), not a mute list's -- so what this
+   * holds is that the *naming* survives, and the row tests below hold the rest.
    */
-  it('lets a muted happening stay muted, however it is ranked', () => {
+  it('names the happening rather than falling back to the ranking', () => {
     const attacked = alert({ severity: 'critical', desktop: 'attacked' });
     expect(desktopAlert(attacked)).toBe('attacked');
-    expect(raisable({ enabled: true, mute: ['attacked'] }, attacked)).toBeNull();
-    expect(raisable({ enabled: true, mute: [] }, attacked)).toBe('attacked');
+    expect(raisable({ enabled: true }, attacked)).toBe('attacked');
   });
 
   it('raises nothing at all when it is switched off', () => {
-    expect(raisable({ enabled: false, mute: [] }, alert({ severity: 'critical' }))).toBeNull();
+    expect(raisable({ enabled: false }, alert({ severity: 'critical' }))).toBeNull();
   });
 });
 
@@ -609,36 +609,33 @@ describe('the alert rules', () => {
     ...over
   });
 
-  it('behaves exactly as before with no rules', () => {
+  /*
+   * The list is not an allow list (todo 02). A client with no rows shows what
+   * the ranking says, which is what it did before there were rows at all --
+   * and is why deleting every row is not the same as muting everything.
+   */
+  it('shows everything the ranking says, with no rules at all', () => {
     const notices = [said(), said({ id: 'n2', severity: 'critical', channel: 'combat' })];
-    expect(wanted({ minimum: 'info', mute: [] }, notices)).toHaveLength(2);
-    expect(wanted({ minimum: 'info', mute: ['items'] }, notices)).toHaveLength(1);
+    expect(wanted({}, notices)).toHaveLength(2);
+    expect(wanted({ rules: [] }, notices)).toHaveLength(2);
   });
 
-  it('hides what a row says not to show, whatever the floor allows', () => {
-    const kept = wanted(
-      { minimum: 'info', mute: [], rules: [rule({ on: 'items', alert: false })] },
-      [said()]
-    );
+  it('hides what a row says not to show', () => {
+    const kept = wanted({ rules: [rule({ on: 'items', alert: false })] }, [said()]);
     expect(kept).toEqual([]);
   });
 
-  /*
-   * And the other way: a row shows what the *mute list* hides, because a row
-   * is the more specific statement of the two.
-   */
-  it('shows what a row claims even where the channel is muted', () => {
-    const kept = wanted({ minimum: 'info', mute: ['items'], rules: [rule({ on: 'items' })] }, [
-      said()
+  /* A row off is silence for that channel alone; the rest carry on. */
+  it('leaves every other channel alone while one row hides its own', () => {
+    const kept = wanted({ rules: [rule({ on: 'items', alert: false })] }, [
+      said(),
+      said({ id: 'n2', channel: 'combat' })
     ]);
-    expect(kept).toHaveLength(1);
+    expect(kept.map((notice) => notice.channel)).toEqual(['combat']);
   });
 
   it('raises the level a row states, leaving the rest alone', () => {
-    const kept = wanted(
-      { minimum: 'info', mute: [], rules: [rule({ on: 'items', level: 'critical' })] },
-      [said()]
-    );
+    const kept = wanted({ rules: [rule({ on: 'items', level: 'critical' })] }, [said()]);
     expect(kept[0]?.severity).toBe('critical');
   });
 
@@ -648,25 +645,31 @@ describe('the alert rules', () => {
       rule({ on: 'items', enabled: false, alert: false }),
       rule({ on: 'items', level: 'warning' })
     ];
-    const kept = wanted({ minimum: 'info', mute: [], rules }, [said()]);
+    const kept = wanted({ rules }, [said()]);
     expect(kept[0]?.severity).toBe('warning');
   });
 
   /* A watch row claims by the watch the producer marked, not by the channel. */
   it('claims a notice by its watch as well as by its channel', () => {
-    const kept = wanted(
-      { minimum: 'critical', mute: [], rules: [rule({ on: 'attacked', level: 'info' })] },
-      [said({ channel: 'combat', severity: 'critical', watch: 'attacked' })]
-    );
+    const kept = wanted({ rules: [rule({ on: 'attacked', level: 'info' })] }, [
+      said({ channel: 'combat', severity: 'critical', watch: 'attacked' })
+    ]);
     expect(kept[0]?.severity).toBe('info');
   });
 
-  /* And the desktop half: a row decides whether it is raised at all. */
-  it('lets a row turn a notification on where the mute list turned it off', () => {
+  /*
+   * And the desktop half: a row decides whether it is raised at all, and it is
+   * the only thing that does. The per-happening mute list was the other half
+   * until todo 02 -- *never tell me about arriving* is a row with `notify`
+   * off, which is what this asserts from both directions.
+   */
+  it('lets a row decide whether a notification is raised', () => {
     const notice = said({ channel: 'combat', watch: 'attacked', desktop: 'attacked' });
-    const prefs = { enabled: true, mute: ['attacked'] };
-    expect(raisable(prefs, notice)).toBeNull();
+    const prefs = { enabled: true };
+    // Claimed by nothing: the ranking answers, which is what it always did.
+    expect(raisable(prefs, notice)).toBe('attacked');
     expect(raisable(prefs, notice, [rule({ on: 'attacked', notify: true })])).toBe('attacked');
+    expect(raisable(prefs, notice, [rule({ on: 'attacked', notify: false })])).toBeNull();
   });
 
   it('lets a row ask to be raised while the window is in front', () => {
@@ -821,6 +824,81 @@ describe('a name the player is waiting for', () => {
         withRoom({ items: [] }),
         withRoom({ items: [{ name: 'a rusty dagger' }] as never }),
         [watch({ on: 'item', name: '  ' })],
+        t
+      )
+    ).toEqual([]);
+  });
+
+  /*
+   * And what a search turned up, which was `ui.alerts.finds.items` until the
+   * rows became the only place alerts are set (todo 02). A player waiting for a
+   * gold ring does not care which of the realm's two lists it landed on.
+   */
+  it('says so when a search turns the item up', () => {
+    const raised = namedNotices(
+      withRoom({ hidden: [] }),
+      withRoom({ hidden: [{ name: 'a gold jeweled ring' }] as never }),
+      [watch({ on: 'item', name: 'jeweled ring' })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+    expect(raised[0]?.watch).toBe('item');
+  });
+
+  /* One find, not two, for a realm that lists it on both. */
+  it('says so once for an item on both lists', () => {
+    const there = [{ name: 'a gold jeweled ring' }] as never;
+    const raised = namedNotices(
+      withRoom({ items: [], hidden: [] }),
+      withRoom({ items: there, hidden: there }),
+      [watch({ on: 'item', name: 'ring' })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+  });
+
+  /* The cash watch: a figure in copper, one-sided, and only on a fresh pile. */
+  it('says so when a search turns up cash worth the figure', () => {
+    const pile = { totalCopper: 5000, rawText: '5000 copper' } as never;
+    const raised = namedNotices(
+      withRoom({ hiddenCash: null }),
+      withRoom({ hiddenCash: pile }),
+      [watch({ on: 'cash', value: 4000 })],
+      t
+    );
+    expect(raised).toHaveLength(1);
+    expect(raised[0]?.watch).toBe('cash');
+    expect(raised[0]?.channel).toBe('items');
+  });
+
+  it('stays quiet for a pile under the figure, and for the same pile again', () => {
+    const pile = { totalCopper: 500, rawText: '500 copper' } as never;
+    expect(
+      namedNotices(
+        withRoom({ hiddenCash: null }),
+        withRoom({ hiddenCash: pile }),
+        [watch({ on: 'cash', value: 4000 })],
+        t
+      )
+    ).toEqual([]);
+    const big = { totalCopper: 9000, rawText: '9000 copper' } as never;
+    expect(
+      namedNotices(
+        withRoom({ hiddenCash: big }),
+        withRoom({ hiddenCash: big }),
+        [watch({ on: 'cash', value: 4000 })],
+        t
+      )
+    ).toEqual([]);
+  });
+
+  /* A figure of nothing is a row somebody has not finished. */
+  it('does nothing for a cash row with no figure', () => {
+    expect(
+      namedNotices(
+        withRoom({ hiddenCash: null }),
+        withRoom({ hiddenCash: { totalCopper: 9000, rawText: '9000' } as never }),
+        [watch({ on: 'cash', value: 0 })],
         t
       )
     ).toEqual([]);

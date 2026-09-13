@@ -1098,6 +1098,44 @@ connection:
     expect(written['connection']['login']?.['enabled']).toBeUndefined();
   });
 
+  /*
+   * The player's own alert rows, which the Global page is where a new
+   * character's copy of comes from.
+   *
+   * Every other `ui.alerts` key was written here and this one was not, so a row
+   * typed on that page was parsed into the draft, drawn in the form, and thrown
+   * away by the next save -- indistinguishable from a list that does not work
+   * (todo 02, 2026-09-12). Read back through the draft as well as off the file,
+   * because writing a shape the parser then refuses would satisfy the first
+   * assertion alone.
+   */
+  it('writes the alert rows somebody typed, and reads them back', () => {
+    const draft = global();
+    draft.ui.alerts.rules = [
+      {
+        on: 'health',
+        enabled: true,
+        level: 'critical',
+        alert: true,
+        notify: true,
+        whileFocused: true,
+        side: 'below',
+        value: 60,
+        percent: true,
+        name: ''
+      }
+    ];
+    expect(editor.saveGlobal(draft)).toEqual({ ok: true });
+
+    const written = parse(fs.readFileSync(configPath, 'utf8'));
+    expect(written['ui']['alerts']['rules']).toHaveLength(1);
+    expect(written['ui']['alerts']['rules'][0]['on']).toBe('health');
+    expect(written['ui']['alerts']['rules'][0]['value']).toBe(60);
+    expect(global().ui.alerts.rules).toHaveLength(1);
+    expect(global().ui.alerts.rules[0]?.on).toBe('health');
+    expect(global().ui.alerts.rules[0]?.percent).toBe(true);
+  });
+
   /* The loops everybody walks are files, like every other loop. */
   it('writes the global loops beside the options file', () => {
     const draft = global();

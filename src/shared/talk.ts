@@ -369,3 +369,112 @@ export const DEFAULT_TALK_LAYOUT: TalkLayout = 'original';
 export function isTalkLayout(value: unknown): value is TalkLayout {
   return typeof value === 'string' && (TALK_LAYOUTS as readonly string[]).includes(value);
 }
+
+/**
+ * The channel prefix a partly-typed line has already established, or `null`.
+ *
+ * A player types `-` (or `gos `, `.`, `>Soul `) and pastes several lines
+ * (todo 03, 2026-09-12). The realm's input line has no idea a paste happened:
+ * it reads the whole run as `-a`, then `b`, then `c` — three lines, one of
+ * which broadcasts and two of which are bare commands that say themselves out
+ * loud in the room. What was asked for is `-a`, `-b`, `-c`, and the only thing
+ * that knows a channel was named is the half-line already on the wire.
+ *
+ * **Not `compose`.** That one answers *what does this whole line mean on the
+ * channel the picker shows* and prefixes anything unrecognised; this answers
+ * *has the player already named a channel, and what do I repeat* — so an
+ * ordinary command being pasted into (`get all` + a paste) has to come back
+ * `null` rather than being prefixed with the composer's last choice. A line
+ * that names no channel is a line where the paste is left exactly as it was.
+ *
+ * Returned verbatim, including its trailing space where the form has one:
+ * `gos ` and `-` differ there and the difference is what reaches the realm.
+ */
+export function channelPrefix(typed: string): string | null {
+  /*
+   * A sigil is the whole prefix and takes its message immediately: `-a`, `.a`.
+   * The realm's own set, minus the two that address somebody, who is named
+   * below. Anything after it is the message and is not part of the prefix.
+   *
+   * **No space requirement, unlike the command words below**, and that is not
+   * an oversight: `CommManager.CheckCommandForComm` runs *before* the command
+   * table (`src/shared/commands.ts`, `COMM_PREFIXES`), so `.get all` is already
+   * said out loud in the room rather than picking anything up. A line that
+   * begins with a sigil is speech on this engine whatever follows it, so
+   * treating it as speech here is agreeing with the server rather than guessing
+   * at it.
+   */
+  const sigil = /^([-'."])\s*/.exec(typed);
+  if (sigil) return sigil[1]!;
+
+  /*
+   * `/Soul ` and `>Soul `: the name is part of the address, so it is repeated
+   * with it. A bare `/` addresses nobody and is not a channel yet — it falls
+   * through to `null`, which leaves the paste alone rather than sending
+   * several lines to nobody.
+   */
+  const address = /^([/>])\s*([A-Za-z][\w'-]*)\s+/.exec(typed);
+  if (address) return `${address[1]}${address[2]} `;
+
+  /*
+   * `gos `, `br `, `gb `, `auc ` — a command channel, and the space after it
+   * is required: `gos` with nothing after it is a word the player may still be
+   * typing (`gossip`), and claiming it would break a pasted `gossipers` into
+   * lines of `gos `.
+   */
+  const word = /^(\S+)\s+/.exec(typed);
+  if (word) {
+    const named = commandOf(word[1]!);
+    const channel = TALK_CHANNELS.find(
+      (entry) => entry.kind === 'command' && entry.command === named
+    );
+    if (channel) return `${word[1]} `;
+  }
+
+  return null;
+}
+
+/**
+ * A pasted run split so every line goes out on the channel already named.
+ *
+ * `typed` is what is on the realm's input line *before* this run — the client's
+ * shadow of it — and `run` is what was pasted. The answer is what to send in
+ * its place, or `null` where nothing needs changing: one line, no channel
+ * named, or a run carrying no line break at all.
+ *
+ * **Blank lines are dropped rather than prefixed.** `-` on its own earns
+ * *You have to broadcast something!* and spends from the same budget walking
+ * and fighting spend from; a message with a paragraph break in it would have
+ * bought one of those per break.
+ *
+ * Pure, and tested as itself: what this decides reaches the realm as several
+ * lines of somebody's actual conversation, and getting it wrong says the wrong
+ * thing to a channel rather than failing quietly.
+ */
+export function splitOntoChannel(typed: string, run: string): string | null {
+  /*
+   * The brackets a bracketed paste would arrive in, taken off first. Nothing
+   * here asks for bracketed paste and no realm has offered it, but `xterm`'s
+   * own `paste` adds them when a server does — and they would otherwise be
+   * carried into the first line and sent as text.
+   */
+  const text = run.replace(/\x1b\[20[01]~/g, '');
+  if (!/[\r\n]/.test(text.trimEnd())) return null;
+  const prefix = channelPrefix(typed);
+  if (prefix === null) return null;
+
+  const lines = text.split(/\r\n|\r|\n/);
+  // The first line finishes the line the player has already started, so it
+  // carries no prefix of its own -- the prefix is already on the wire.
+  const [first = '', ...rest] = lines;
+  const kept = rest.map((line) => line.trim()).filter((line) => line.length > 0);
+  if (kept.length === 0) return null;
+
+  /*
+   * Every line is terminated, the first one included: the player pressing
+   * Enter after a paste is what used to send the last line, and a run that
+   * sent all but the last would leave it sitting on the input line with the
+   * others already gone.
+   */
+  return [first, ...kept.map((line) => `${prefix}${line}`)].map((line) => `${line}\r`).join('');
+}

@@ -232,88 +232,87 @@ ui:
   # is critical and which is the record is decided in the client, from what the
   # fact costs; these two settings decide who hears about it.
   alerts:
-    # Your own alerts, tried in order. The FIRST row that matches a notice
-    # decides it -- whether it is shown, how loud it is, and whether it also
-    # raises a desktop notification -- so a specific row above a blanket one is
-    # a thing you can now write. Anything no row matches keeps the level the
-    # client gave it and meets `minimum` and `mute` below.
+    # Your own alerts, tried in order, and the ONLY thing that decides.
+    #
+    # The FIRST row that matches a notice decides it -- whether it is shown, how
+    # loud it is, and whether it also raises a desktop notification -- so a
+    # specific row above a blanket one is a thing you can write. Anything no row
+    # matches is still shown, at the level the client gave it: this is not an
+    # allow list, so a channel the client gains later arrives visible, and a
+    # list you have emptied shows what the client would have shown you anyway.
+    #
+    # A severity floor and a per-channel mute list stood beside these rows until
+    # 2026-09-12. Every question they answered is a row -- "never tell me about
+    # movement" is a row with `alert: false`, "only the loud ones" is a row
+    # naming a level, "tell me when a gold ring is found" is an `item` row -- so
+    # they were a second way of asking one question and are gone. Your own
+    # settings were carried into rows when the client first ran after that.
     #
     # `on` is either one of the eleven channels (combat, vitals, room, realm,
     # party, command, movement, items, stealth, presence, session) or one of
-    # five conditions the channels cannot express:
+    # six conditions the channels cannot express:
     #
     #   health, mana        a figure you choose, in the direction you choose;
     #                       fired on the CROSSING, not on the value, so standing
     #                       at 20% does not alert once a second.
     #   attacked            a person -- not a monster -- swinging at you.
-    #   item, player        matched by `name`.
+    #   item, player        matched by `name`. An `item` row catches the thing
+    #                       lying in the room and the thing a search turned up.
+    #   cash                a pile a search turned up, `value` in COPPER --
+    #                       which is what this client normalises every purse and
+    #                       every quoted price into, so one number covers every
+    #                       coin the realm prints.
     #
     # `level` empty keeps what the client decided (what a line costs is a fact
     # about the realm); name a severity to overrule it for this row alone.
     # `whileFocused` means nothing without `notify` and is stored off there.
     #
-    #   rules:
-    #     - on: health
-    #       side: below
-    #       value: 30
-    #       percent: true
-    #       level: critical
-    #       alert: true
-    #       notify: true
-    #       whileFocused: true
-    #     - on: items
-    #       alert: false
-    rules: []
-
-    # The quietest alert kept. critical | warning | info
-    minimum: info
-
-    # Channels that raise nothing at all:
-    # combat, command, movement, room, realm, party, presence, items, stealth,
-    # vitals, session.
-    mute: []
-
-    # What a `search` turning something up is worth interrupting for.
-    #
-    # `items` are words matched anywhere in the name, case-insensitively, so
-    # "key" catches "a rusty key" and "bone keys" -- you type the word, not the
-    # realm's spelling of it. `cashOverCopper` is a figure in COPPER, which is
-    # what this client normalises every purse and every quoted price into, so
-    # one number covers every coin the realm prints.
-    #
-    # Both off. An alert on every find is an alert on every lap of a loop that
-    # searches, which is the fastest way to stop reading them. The Room card's
-    # Finds face lists everything either way; this is only about interrupting.
-    finds:
-      items: []
-      cashOverCopper: 0
+    # These four are what a fresh client ships with. Every one is removable, and
+    # a list with nothing in it is not silence -- it is the client's own ranking.
+    rules:
+      - 'on': health
+        side: below
+        value: 35
+        percent: true
+        level: critical
+        alert: true
+        notify: true
+        whileFocused: false
+      - 'on': mana
+        side: below
+        value: 20
+        percent: true
+        level: warning
+        alert: true
+        notify: false
+        whileFocused: false
+      - 'on': attacked
+        level: critical
+        alert: true
+        notify: true
+        whileFocused: true
+      - 'on': movement
+        alert: true
+        notify: true
+        whileFocused: false
 
     # What the operating system is asked to say when you are not looking at
     # this window -- which is most of an evening, because automating a
     # character is what lets you go and do something else.
     #
-    # A list of happenings rather than a level, because the two disagree:
-    # arriving where you asked to go is only the record, and it is the one
-    # thing you walked away expecting to be told about. `mute` names the ones
-    # that raise nothing:
+    # Two switches: whether to raise anything at all, and whether to do it
+    # while this window is in front. WHICH happenings are raised is a row's
+    # business -- `notify` on the row above -- since a list of muted happenings
+    # here was a second way of writing the same thing.
     #
-    #   attacked  a player attacking you
-    #   hurt      health crossing into critical
-    #   arrived   a route reaching where it was going
-    #   hungup    leaving the realm without you asking -- the link dropped, or
-    #             the low-health hang-up acted for you
-    #   critical  anything else the client ranks critical
-    #
-    # `whileFocused` raises them while this window is in front as well. Off,
-    # because what they would say is already on the Alerts card. One
-    # notification per character at a time, the newest, and each kind then
-    # rests a minute before it speaks again about that character -- being
+    # `whileFocused` off, because what they would say is already on the Alerts
+    # card. One notification per character at a time, the newest, and each kind
+    # then rests a minute before it speaks again about that character -- being
     # attacked is a fresh line several times a round. Clicking one brings the
     # window forward and shows that character.
     desktop:
       enabled: true
       whileFocused: false
-      mute: []
 
   # Show the HUD rail beside the console.
   #

@@ -136,6 +136,12 @@ export interface WalkProgress {
  * names and then steps through — `Walker.holdForTrap`. A health hold by
  * another floor, drawn as resting.
  *
+ * `resting` is a `rest` on the wire whose answer has not come back yet: the
+ * walk waits a beat rather than breaking it. A rest and a step decided in the
+ * same tick are both right at the moment they are made, and the step undid the
+ * rest a millisecond later — see `Recovery.restInFlight` and todo 14. The
+ * window is short and ends by itself, so this can never deadlock.
+ *
  * `barrier` is a shut door the ladder could not get past *this time round*:
  * every `open`, pick and bash the step was given has been spent and the way
  * is still closed. It is a hold rather than an ending because the reasons it
@@ -145,7 +151,16 @@ export interface WalkProgress {
  * hand. See `Walker.holdAtBarrier`.
  */
 export type WalkHold =
-  'health' | 'fight' | 'trap' | 'blind' | 'held' | 'poisoned' | 'barrier' | 'searching' | null;
+  | 'health'
+  | 'fight'
+  | 'trap'
+  | 'blind'
+  | 'held'
+  | 'poisoned'
+  | 'barrier'
+  | 'searching'
+  | 'resting'
+  | null;
 
 /**
  * Which stated affliction stands a walk still, or null.
