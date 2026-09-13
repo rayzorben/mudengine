@@ -59,6 +59,8 @@ import type { BelongingsSink } from '../shared/belongings';
 import { NO_LORE, type MobLore } from '../shared/lore';
 import { SpellMessageBook, spellLoreOf, type SpellLore } from '../shared/spell-messages';
 import { loadSpellMessages } from './world/SpellMessages';
+import { loadShippedSentences } from './world/ShippedSentences';
+import type { ShippedSentences } from '../shared/sentences';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
@@ -212,6 +214,8 @@ let worldBook: WorldBook | null = null;
 let lore: RealmLore | null = null;
 /** The shipped spell message table, read once on first use. See `spellLoreFor`. */
 let spellMessages: SpellMessageBook | null = null;
+/** The shipped emote and death-sentence tables, read once on first use. See `sentences`. */
+let shippedSentences: ShippedSentences | null = null;
 /**
  * What is known about the other players on every realm dialled.
  *
@@ -364,6 +368,18 @@ function spellLoreFor(id: SessionId): SpellLore {
     lore?.spellsFor(world?.info.source ?? 'none', spellMessages) ??
     spellLoreOf(spellMessages, new SpellMessageBook())
   );
+}
+
+/**
+ * The server's own words for an emote and for a monster dying, one pair for
+ * every session: neither is a fact about a realm, so neither is keyed on one.
+ * Read on first use, like the spell table, and reported the same way.
+ */
+function sentences(): ShippedSentences {
+  shippedSentences ??= loadShippedSentences(path.join(resourcesDir(), 'world'), (message) =>
+    announce('world', message)
+  );
+  return shippedSentences;
 }
 
 /**
@@ -1235,6 +1251,7 @@ function createHost(): SessionHost {
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,
+    sentences,
     memoryFor: splitMemoryFor,
     fightsFor,
     talkFor,

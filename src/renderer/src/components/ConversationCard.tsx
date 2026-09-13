@@ -88,6 +88,9 @@ const CHANNELS: Record<string, string> = {
   'conversation-auction': t('cards.talk.channels.auction'),
   'conversation-yell': t('cards.talk.channels.yell'),
   'conversation-local': t('cards.talk.channels.say'),
+  // An emote, read off the server's action table: the actor is the `who`
+  // column and `message` is the sentence with the actor taken off its front.
+  'conversation-action': t('cards.talk.channels.action'),
   /*
    * Both directions land here: `Soul says (to you) "..."` arriving, and the
    * `--- Message Directed to Soul ---` receipt for one sent from this card.
@@ -134,7 +137,13 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
   {
     id: 'local',
     label: t('cards.talk.tabs.local'),
-    types: ['conversation-yell', 'conversation-local', 'conversation-directed']
+    // An emote reaches the same ears a said line does, so it is local too.
+    types: [
+      'conversation-yell',
+      'conversation-local',
+      'conversation-directed',
+      'conversation-action'
+    ]
   },
   /*
    * Who arrived and who went, folded into one face the way `local` folds the

@@ -46,7 +46,7 @@ import {
   type ExperienceTable
 } from '../../shared/experience';
 import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/statline';
-import { attacksOnSight, classifyOccupant } from '../../shared/mobs';
+import { answersTo, attacksOnSight, classifyOccupant } from '../../shared/mobs';
 import {
   gained,
   lost,
@@ -75,6 +75,7 @@ import {
   isUnnamedEffect,
   NO_SPELL_LORE,
   spellKey,
+  splitSpells,
   unnamedEffect,
   unnamedEffectSentence,
   wordsOf,
@@ -323,14 +324,31 @@ function looksLikeDeathSentence(text: string): boolean {
 }
 
 /**
- * Whether `text` says `name` as whole words, in the monster key's spelling.
+ * Whether `text` says `name` as whole words, in the monster key's spelling —
+ * or with the room's leading modifier dropped: the room lists `thin kobold`
+ * and the realm's death sentence reads `The kobold falls to the ground with a
+ * shriek!`, because `MobNameModifierType.Before` hangs the word on the room's
+ * spelling and the message record never carries it (live, 2026-09-12; the
+ * kill went unlearned and cost a stat sheet). The drop is `answersTo`'s: one
+ * word, and only where the realm knows the shorter name and not the longer —
+ * `kobold thief` is a row of its own, and the thief's sentence would
+ * otherwise be written down as its death for good.
+ *
  * A scan rather than a pattern built from the name: `compiled-patterns.test.ts`
  * holds every runtime-built expression to module load, and a key is letters
  * a word boundary is *not a letter* around.
  */
-function namesMob(text: string, name: string): boolean {
+function namesMob(text: string, name: string, known: (name: string) => boolean): boolean {
   const key = mobKey(name);
   if (key.length === 0) return false;
+  if (saysKey(text, key)) return true;
+  const space = key.indexOf(' ');
+  if (space <= 0) return false;
+  const rest = key.slice(space + 1);
+  return answersTo(key, rest, known) && saysKey(text, rest);
+}
+
+function saysKey(text: string, key: string): boolean {
   const hay = mobKey(text);
   for (let from = 0; ;) {
     const at = hay.indexOf(key, from);
@@ -391,14 +409,6 @@ function readAbilityListing(rows: ReadonlyArray<Record<string, string>>): {
     sums[id] = (sums[id] ?? 0) + value;
   }
   return { sums, complete };
-}
-
-function splitSpells(group: string | undefined): string[] {
-  if (group === undefined) return [];
-  return group
-    .split('|')
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0);
 }
 
 /**
@@ -517,7 +527,7 @@ export class CharacterTracker {
    * fact, that the unread line before it was the target dying. Cleared by any
    * block but a prompt, as `landed` is: a line in between is somebody else's.
    */
-  private lastUnknown: { text: string; at: number } | null = null;
+  private lastUnknown: { text: string; at: number; candidates?: readonly string[] } | null = null;
   /** Learned `onset effect (lower) → spell name`, so the `st` timer can be attributed. */
   private buffEffects = new Map<string, string>();
   /**
@@ -579,6 +589,16 @@ export class CharacterTracker {
    * nobody knows, in the middle of the sentence that says it is still there.
    */
   private sheetOpen = false;
+  /**
+   * Whether the block being applied is a line of a listing the classifier is
+   * collecting — any batch, not only the sheet. Handed in per block by
+   * `SessionManager` (`apply`'s `collecting`), because the classifier is the
+   * one thing that knows, and the `unknown` case is the reader: a row of an
+   * `i` or a `pro` typed `unknown` by the single-line table is that listing's,
+   * whatever it looks like, and is neither learned nor suspected as an effect.
+   * `You have no keys.` was (2026-09-12), and cost an `st` and a notice.
+   */
+  private listingOpen = false;
   /**
    * The matcher built from what `pro` last said the prompt is, or null while
    * the tolerant pattern is the reader (`src/shared/statline.ts` builds it).
@@ -1269,7 +1289,16 @@ export class CharacterTracker {
     const last = this.lastUnknown;
     const target = s.combat.target;
     if (last === null || target === null) return 'experience';
-    if (!looksLikeDeathSentence(last.text) || !namesMob(last.text, target)) return 'experience';
+    if (!looksLikeDeathSentence(last.text)) return 'experience';
+    // A sentence the shipped table shares between monsters names the target
+    // when the target is one of them, its modifier admitted as `namesMob`
+    // admits it; any other line has to say the target's name itself.
+    const known = (name: string): boolean => this.world?.mob(name) !== undefined;
+    const named =
+      last.candidates !== undefined
+        ? last.candidates.some((candidate) => answersTo(mobKey(target), candidate, known))
+        : namesMob(last.text, target, known);
+    if (!named) return 'experience';
     this.lore.observeDeath?.(target, last.text, at);
     return 'sentence';
   }
@@ -1980,7 +2009,7 @@ export class CharacterTracker {
     return { ...state, progress: { ...state.progress, expTable: merged } };
   }
 
-  apply(block: Block, rows?: Array<Record<string, string>>): boolean {
+  apply(block: Block, rows?: Array<Record<string, string>>, collecting = false): boolean {
     const before = this.state;
     /*
      * Whether this block is a weapon's chance-on-hit, decided **before** the
@@ -2018,12 +2047,27 @@ export class CharacterTracker {
      * cleared after, so the batch that closes the sheet is still read as one.
      */
     if (PLAYER_STATUS_HEADER.test(block.text.trim())) this.sheetOpen = true;
+    // And every other listing, on the classifier's word — see `listingOpen`.
+    this.listingOpen = collecting;
     const reduced = this.reduce(block, rows, proc);
+    this.listingOpen = false;
     if (block.type === 'player-status' || block.type === 'status-line') this.sheetOpen = false;
     // After the reducer, so the experience line reads the line before it.
     if (block.type === 'unknown') {
       const text = block.text.trim();
       if (text.length > 0) this.lastUnknown = { text, at: block.at };
+    } else if (block.type === 'mob-dies' && block.groups['mob'] === undefined) {
+      /*
+       * A death sentence the realm's table shares between monsters, which the
+       * room could not settle (`Classifier.asDeathSentence`): nobody left the
+       * room on it, and it stands here as the candidate the experience line
+       * can still name — the target it names is the one that died.
+       */
+      const text = block.text.trim();
+      const candidates = splitSpells(block.groups['mobs']);
+      if (text.length > 0 && candidates.length > 0) {
+        this.lastUnknown = { text, at: block.at, candidates };
+      }
     } else if (!isProcHousekeeping(block)) {
       this.lastUnknown = null;
     }
@@ -5840,10 +5884,22 @@ export class CharacterTracker {
        * it back, see `noteContradiction`); with several it is held as a
        * pending ending and the next sheet says which. Only a sentence shaped
        * like an effect — one sentence, no figure, nobody in the room named —
-       * is considered at all, so a listing row or an emote never becomes a
-       * lesson.
+       * is considered at all, so an emote never becomes a lesson; and a line
+       * of a listing the classifier is collecting is refused before its shape
+       * is looked at, because `You have no keys.` has the shape.
        */
       case 'unknown': {
+        /*
+         * **A line inside a listing is that listing's** (2026-09-12). Every
+         * line of a batch arrives here typed by the single-line table as
+         * well, and only the sheet was exempt (`sheetOpen`, below, which
+         * still keeps a sheet line from reading as an ending). The `i`
+         * listing's keys row and the `pro` listing's last line were both
+         * taken for an effect landing, spent an `st` between them and were
+         * written down as *no lasting effect*, out loud, twice. The sheet's
+         * own lines lose nothing here: `readSheet` reads them off the batch.
+         */
+        if (this.listingOpen) return null;
         const text = block.text.trim();
         if (!looksLikeEffectSentence(text) || this.namesSomebody(s, text)) return null;
         const cast = this.lastSelfCast;

@@ -1,0 +1,65 @@
+action,single_to_user,single_to_room,user_to_user,user_to_other_user,user_to_room,monster_to_user,monster_to_room,inventory_to_user,inventory_to_room,floor_item_to_user,floor_item_to_room
+bearhug,,,You give %s a bearhug!,%s gives you a bone-crushing bearhug!,%s gives %s a bone-crushing bearhug!,,,,,,
+bleed,You bleed all over the place!,%s is bleeding all over the place!,You bleed all over %s!,%s is bleeding all over you!,%s is bleeding all over %s!,You bleed all over %s!,%s is bleeding all over %s!,You bleed all over your %s!,%s is bleeding all over %s %s!,You bleed all over the %s!,%s bleeds all over the %s!
+blink,You blink in disbelief!,%s blinks in disbelief!,You blink at %s in disbelief!,%s blinks at you in disbelief!,%s blinks at %s in disbelief!,You blink at %s in disbelief!,%s blinks at %s in disbelief!,You blink at your %s in disbelief!,%s blinks at %s %s in disbelief!,You blink at the %s in disbelief!,%s blinks at the %s in disbelief!
+blush,You blush.,%s blushes a lovely shade of red.,,,,,,,,,
+bow,You bow deeply.,%s bows deeply.,You bow to %s.,%s bows to you.,%s bows to %s.,You bow to %s.,%s bows to %s.,,,,
+burp,You burp loudly!,%s burps loudly!,You burp at %s!,%s burps loudly at you!,%s burps loudly at %s!,You burp at %s!,%s burps loudly at %s!,You burp at your %s!,%s burps loudly at %s %s!,You burp at the %s!,%s burps loudly at the %s!
+cackle,You lean your head back and cackle with insane glee!,%s leans their head back and cackkles with insane glee!,You cackle at %s insanely!,%s cackles insanely at you!,%s cackles insanely at %s!,You cackle insanely at %s!,%s cackles insanely at %s!,,,,
+caress,,,You caress %s gently.,%s caresses you gently.,%s caresses %s gently.,You caress %s gently.,%s caresses %s gently.,You caress your %s gently.,%s caresses %s %s gently.,You caress the %s.,%s caresses the %s gently.
+cheer,You cheer loudly!,%s cheers loudly!,You cheer %s on!,%s cheers you on!,%s cheers %s on!,,,,,,
+chuckle,You chuckle softly.,%s is chuckling under %s breath.,You chuckle at %s.,%s chuckles softly at you.,%s chuckles softly at %s.,You chuckle at %s.,%s chuckles softly at %s.,You chuckle at your %s.,%s chuckles softly at %s %s.,You chuckle at the %s.,%s chuckles softly at the %s.
+clap,You clap wildly!,%s claps wildly!,You clap wildly for %s!,%s is clapping wildly for you!,%s claps wildly for %s!,,,,,,
+comfort,,,You comfort %s.,%s comforts you.,%s comforts %s.,,,,,,
+cough,You cough your lungs out.,%s coughs quietly.,You cough towards %s.,%s coughs at you.,%s coughs at %s.,You cough at %s.,%s coughs at %s.,You cough at your %s.,%s coughs at %s %s.,You cough at the %s.,%s coughs at the %s.
+cuff,,,You cuff %s!,%s cuffs you!,%s cuffs %s!,You cuff %s!,%s cuffs %s!,You cuff your %s!,%s cuffs %s %s!,You cuff the %s!,%s cuffs the %s!
+curtsy,You curtsy gracefully.,%s curtsies gracefully.,You curtsy to %s.,%s curtsies to you.,%s curtsies to %s.,You curtsy to %s.,%s curtsies to %s.,,,,
+dance,You dance a little jig!,%s dances a little jig!,You dance with %s.,%s dances with you!,%s dances with %s!,You dance with %s!,%s dances with %s!,,,,
+egrin,You grin evilly.,%s grins evilly.,You grin evilly at %s!,%s grins evilly at you!,%s grins evilly at %s!,You grin evilly at %s!,%s grins evilly at %s!,You grin evilly at your %s!,%s grins evilly at %s %s!,You grin evilly at the %s!,%s grins evilly at the %s!
+elaugh,You laugh ominously.,%s laughs ominously.,You laugh ominously at %s.,%s looks at you with an evil eye and laughs ominously!,%s looks at %s with an evil eye and laughs ominously!,You give %s an evil eye and laugh ominously!,%s gives %s an evil eye and laughs ominously!,,,,
+embrace,,,You give %s a warm embrace.,%s gives you a warm embrace.,%s gives %s a warm embrace.,,,,,,
+flex,You flex your muscles proudly! You're soooo strong!,%s flexes their muscles proudly! What a panzy!,"You flex your muscles at %s! You""re soooo strong!",%s flexes their muscles at you! What a panzy!,%s flexes their muscles at %s! What a panzy!,You flex your muscles at %s!,"%s flexes their muscles at %s, shouldn""t they be attacking?",,,,
+frown,You frown darkly.,%s frowns darkly.,You frown darkly at %s.,%s frowns darkly at you.,%s frowns darkly at %s.,You frown darkly at %s.,%s frowns darkly at %s.,You frown darkly at your %s.,%s frowns darkly at %s %s.,You frown darkly at the %s.,%s frowns darkly at the %s.
+gasp,You gasp loudly!,%s is gasping with %s mouth wide open!,You gasp at %s!,%s gasps at you in amazement!,%s gasps at %s in amazement!,You gasp at %s!,%s gasps at %s in amazement!,You gasp at your %s!,%s gasps at %s %s in amazement!,You gasp at the %s!,%s gasps at the %s in amazement!
+giggle,You giggle loudly!,%s giggles loudly!,You giggle at %s!,%s giggles loudly at you!,%s giggles loudly at %s!,You giggle at %s!,%s giggles loudly at %s!,You giggle at your %s!,%s giggles loudly at %s %s!,You giggle at the %s!,%s giggles loudly at the %s!
+girn,"You girn stupidly, drooling on yourself.",%s breaks into a stupid girn.,You girn at %s stupidly.,%s girns dumbly at you.,%s girns dumbly at %s.,You dumbly girn at %s.,%s grins dumbly at %s.,You girn dumbly at your %s.,%s girns dubmly at %s %s.,You girn at the %s.,%s girns dumbly at the %s.
+glare,You glare angrily.,%s is glaring around angrily.,You glare at %s angrily.,%s glares at you angrily.,%s glares at %s angrily.,You glare at %s angrily.,%s glares at %s angrily.,You glare at your %s.,%s glares at %s %s angrily.,You glare at the %s.,%s glares at the %s angrily.
+greet,You greet everyone.,%s greets everyone.,You greet %s.,%s greets you.,%s greets %s.,,,,,,
+grin,You grin slyly.,%s breaks into a wide grin.,You grin at %s.,%s grins slyly at you.,%s grins slyly at %s.,You grin at %s.,%s grins slyly at %s.,You grin at your %s.,%s grins slyly at %s %s.,You grin at the %s.,%s grins slyly at the %s.
+groan,You groan miserably.,%s groans miserably.,,,,,,,,,
+growl,You growl.,%s growls ominously.,You growl at %s!,%s growls angrily at you!,%s growls angrily at %s!,You growl at %s!,%s growls angrily at %s!,You growl at your %s.,%s growls angrily at %s %s!,You growl at the %s.,%s growls angrily at the %s!
+grumble,You grumble unhappily.,%s grumbles unhappily.,,,,,,,,,
+handshake,,,You give %s a hearty handshake.,%s gives you a hearty handshake.,%s gives %s a hearty handshake.,,,,,,
+highfive,You leap in the air!,%s leaps in the air foolishly!,You highfive %s!,%s highfives you!,%s highfives %s!,,,,,,
+howl,You howl in utter frustration!,%s howls in frustration!,You let your inner animal out and howl at %s.,%s howls at you like an animal. What a weirdo.,%s howls at %s. Huh?,You howl at %s trying to scare them away!,%s howls at %s trying to scare them away!,,,,
+hug,,,You hug %s close!,%s hugs you close!,%s hugs %s close!,You hug %s!,%s hugs %s close!,You hug your %s!,%s hugs %s %s!,You hug the %s!,%s hugs the %s!
+hum,You hum a little tune.,%s hums a little tune.,,,,,,,,,
+jump,You jump up and down!,%s jumps up and down!,You jump on %s!,%s jumps on you!,%s jumps on %s!,,,,,,
+kiss,You pucker up looking for a kiss.,"%s is puckering up, looking for a kiss.",You kiss %s.,%s kisses you!,%s kisses %s!,You kiss %s!,%s kisses %s!,You kiss your %s!,%s kisses %s %s!,You kiss the %s!,%s kisses the %s!
+laugh,You laugh!,%s laughs!,You laugh at %s!,%s laughs at you!,%s laughs at %s!,You laugh at %s!,%s laughs at %s!,,,,
+moan,You moan softly.,%s moans softly.,You moan at %s.,%s moans at you.,%s moans at %s.,You moan at %s.,%s moans at %s.,,,,
+nod,You nod affirmatively.,%s nods affirmatively.,You nod to %s.,%s nods to you.,%s nods towards %s.,You nod to %s.,%s nods to %s.,,,,
+nudge,,,You nudge %s.,%s nudges you.,%s nudges %s.,You nudge %s.,%s nudges %s.,,,,
+pinch,,,You pinch %s.,%s pinches you!,%s pinches %s!,You pinch %s.,%s pinches %s!,You pinch your %s.,%s pinches %s %s.,You pinch the %s.,%s pinches the %s.
+pout,You pout.,%s pouts.,You pout at %s.,%s pouts at you.,%s pouts at %s.,,,,,,
+shake,You shake your head.,%s shakes %p head.,You shake your head at %s.,%s shakes %p head at you.,%s shakes %p head at %s.,You shake your head at %s.,%s shakes %p head at %s.,You shake your head at your %s.,%s shakes %p head at %s.,You shake your head at the %s.,%s shakes at the %s.
+shrug,You shrug your shoulders.,%s is shrugging %s shoulders.,You shrug at %s.,%s shrugs at you.,%s shrugs at %s.,You shrug at %s.,%s shrugs at %s.,You shrug at your %s.,%s shrugs at %s %s.,You shrug at the %s.,%s shrugs at the %s.
+sigh,You sigh wistfully.,%s sighs wistfully.,You sigh at %s.,%s sighs at you.,%s sighs at %s.,You sigh at %s.,%s sighs at %s.,You sigh at your %s.,%s sighs at %s %s.,You sigh at the %s.,%s sighs at the %s.
+slap,You slap yourself!,%s slaps %s face!,You slap %s!,%s slaps you!,%s slaps %s!,You slap %s!,%s slaps %s!,You slap your %s!,%s slaps %s %s!,You slap the %s!,%s slaps the %s!
+smack,,,You smack %s across the face!,%s smacks you across the face!,%s smacks %s across the face!,You smack %s across the face!,%s smacks %s across the face!,,,,
+smile,You smile happily!,%s smiles happily!,You smile happily at %s!,%s smiles happily at you!,%s smiles happily at %s!,You smile happily at %s!,%s smiles happily at %s!,You smile at your %s!,%s smiles at %s %s!,You smile at the %s!,%s smiles at the %s!
+smirk,You smirk wryly.,%s smirks wryly.,You smirk at %s.,%s smirks at you.,%s smirks at %s.,You smirk at %s.,%s smirks at %s.,,,,
+smooch,,,You smooch with %s!,%s smooches with you!,%s smooches with %s!,You smooch with %s!,%s smooches with %s!,You smooch your %s!,%s smooches %s %s!,You smooch the %s!,%s smooches the %s!
+sneeze,You sneeze.,%s sneezes.,You sneeze on %s.,%s sneezes on you.,%s sneezes on %s.,You sneeze on %s.,%s sneezes on %s.,You sneeze on your %s.,%s sneezes on %s %s.,You sneeze on the %s.,%s sneezes on the %s.
+snicker,You snicker.,%s snickers.,You snicker at %s.,%s snickers at you.,%s snickers at %s.,You snicker at %s.,%s snickers at %s.,You snicker at your %s.,%s snickers at %s %s.,You snicker at the %s.,%s snickers at the %s.
+sniff,You sniff the air.,%s sniffs the air.,You sniff %s.,%s sniffs you.,%s sniffs %s.,You sniff %s.,%s sniffs %s.,You sniff your %s.,%s sniffs %s %s.,You sniff the %s.,%s sniffs the %s.
+sob,You sob quietly.,%s sobs quietly.,You sob quietly at %s.,%s sobs quietly at you.,%s sobs quietly at %s.,You sob at %s.,%s sobs quietly at %s.,,,,
+spit,You spit.,%s spits.,You spit at %s!,%s spits at you!,%s spits at %s!,You spit at %s!,%s spits at %s!,You spit on your %s!,%s spits on %s %s!,You spit on the %s!,%s spits on the %s!
+squeeze,,,You squeeze %s with all your might.,%s squeezes you mightily!,%s squeezes %s mightily!,,,You squeeze your %s!,%s squeezes %s %s!,You squeeze the %s!,%s squeezes the %s!
+tease,,,You tease %s!,%s teases you!,%s teases %s!,You tease %s!,%s teases %s!,,,,
+tickle,You look around looking for someone to tickle.,"%s is looking for someone to tickle, you may be next!","You tickle %s, and they laugh hysterically!","%s tickles you, you suddenly can""t stop laughing!",%s tickles %s making them laugh hysterically!,"You tickle %s, but they don""t seem to like it.","%s tickles %s, but they don""t seem to like it.",,,,
+wave,You wave farewell!,%s waves!,You wave to %s!,%s waves to you!,%s waves to %s!,You wave to %s!,%s waves to %s!,,,,
+whimper,You whimper softly.,%s whimpers softly.,You whimper to %s.,%s whimpers to you.,%s whimpers to %s.,You whimper to %s.,%s whimpers to %s.,,,,
+whistle,You whistle a little tune.,%s whistles a little tune.,You whistle at %s appreciatively!,%s whistles at you appreciatively!,%s whistles at %s appreciatively!,You whistle at %s appreciatively!,%s whistles at %s appreciatively!,,,,
+wink,You wink.,%s winks slyly.,You wink at %s.,%s winks at you!,%s winks at %s!,You wink at %s!,%s winks at %s!,,,,
+yawn,You yawn.,%s yawns loudly.,You yawn at %s.,%s yawns at you.,%s yawns at %s.,You yawn at %s.,%s yawns at %s.,You yawn at your %s.,%s yawns at %s %s.,You yawn at the %s.,%s yawns at the %s.

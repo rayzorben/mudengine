@@ -39,6 +39,9 @@ const WITHOUT_A_PATTERN: Record<string, string> = {
   // thing that separates them, so the classifier retypes it from its own
   // search slot rather than matching a second pattern.
   'room-hidden-items': 'retyped from the command it answers',
+  // Fitted against the server's own action table (`src/shared/actions.ts`),
+  // sixty-four emotes in eleven forms each; a pattern would be a second copy.
+  'conversation-action': "fitted against the realm's action table",
   // The absence of a match is itself the answer.
   unknown: 'the fallback'
 };

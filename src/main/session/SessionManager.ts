@@ -8,6 +8,7 @@ import { Routines } from '../automation/Routines';
 import { Walker } from '../automation/Walker';
 import type { FledRoom, WalkProgress } from '../../shared/walk';
 import { stillFled } from '../../shared/walk';
+import { holdsMovement } from '../../shared/spellcraft';
 import {
   capabilitiesOf,
   CLASS_STEALTH_ABILITY,
@@ -90,6 +91,7 @@ import { preferredEdges } from '../world/loopDraft';
 const NO_EDGES: ReadonlySet<string> = new Set();
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
+import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../../shared/players';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
@@ -972,7 +974,14 @@ export class SessionManager {
      * defaulting to a realm nothing is written down for, which is what those
      * tests want.
      */
-    private readonly finds: RealmFinds = NO_FINDS
+    private readonly finds: RealmFinds = NO_FINDS,
+    /**
+     * The server's own words for an emote and for a monster dying, shipped
+     * (`resources/world/actions.csv`, `death-messages.csv`) and shared by
+     * every session. Defaulting to none, which reads exactly as the frames
+     * alone did.
+     */
+    sentences: ShippedSentences = NO_SHIPPED_SENTENCES
   ) {
     this.tracker = new CharacterTracker(
       world,
@@ -1013,8 +1022,14 @@ export class SessionManager {
       // And the spell message table, for the whole-line sentences no frame
       // reads; a lookup because what has been learned changes as the session runs.
       (text) => spellLore.match(text),
-      // And how this realm's monsters die, learned the same way (todo 04).
-      (text) => lore.deathOf?.(text) ?? null
+      // And how this realm's monsters die: what its own wire taught first
+      // (todo 04), then the server's table, which may name several.
+      (text) => {
+        const learned = lore.deathOf?.(text) ?? null;
+        return learned !== null ? [learned] : sentences.deaths.mobsOf(text);
+      },
+      // And the realm's emotes, off the server's action table.
+      (text) => sentences.actions.match(text)
     );
     this.world = world;
     // A different realm is a different set of corridors; the preferred ones
@@ -1240,6 +1255,9 @@ export class SessionManager {
       // whole: which walks engage is `whileWalking` and `looping`, and stating
       // half of that here left the two able to disagree. See `quarry`.
       holdAt: (state) => this.combat.quarry(state),
+      // Whether an onset that landed behind a step is a hold at all is the
+      // realm's to say, and the realm is here. See `spellsHold`.
+      spellsHold: (spells) => this.spellsHold(spells),
       // The beat is re-asked on a timer, by which time the state it began with
       // is a second and a half old.
       stateNow: () => this.tracker.current,
@@ -3350,8 +3368,16 @@ export class SessionManager {
         STATUS_LINE.exec(line.plain.trimStart())?.groups?.['stateB'] !== undefined;
     }
 
+    /*
+     * Whether this line is inside a listing the classifier is collecting — the
+     * header that opened one included, and the line that closed one. Every
+     * line of a batch reaches the tracker typed by the single-line table as
+     * well, and `You have no keys.` inside an `i` typed `unknown` read as an
+     * effect landing (2026-09-12). The classifier knows; the tracker is told.
+     */
+    const collecting = batchWas !== null || this.classifier.batchType !== null;
     try {
-      this.act(classified.block, classified.batch);
+      this.act(classified.block, classified.batch, collecting);
       /*
        * One framed line, several facts: the server printed a sentence after
        * the prompt without a repaint between them (`tailAfterPrompt`). They
@@ -3360,7 +3386,7 @@ export class SessionManager {
        * arriving before its own acknowledgement would be attributed to the
        * command ahead of it.
        */
-      for (const tail of classified.tails ?? []) this.act(tail, undefined);
+      for (const tail of classified.tails ?? []) this.act(tail, undefined, collecting);
     } catch (error) {
       this.reportParserFault(error);
     }
@@ -3376,7 +3402,29 @@ export class SessionManager {
   }
 
   /** Everything that happens because of what a line was. */
-  private act(block: Block, batch: ReturnType<Classifier['classify']>['batch']): void {
+  /**
+   * What the realm says the spells an onset names do to movement, three ways.
+   *
+   * `CharacterTracker.heldByOnset` reads the same rows and sets the flag where
+   * one holds; the walker's own reading of *a step, an onset, then silence*
+   * exists for the sentence the realm cannot judge, and this is what tells it
+   * which case it is in. `null` — no candidate, a spell the realm lacks, a row
+   * with no ability data — is *cannot say*, and only then does the sequence
+   * stand as evidence. A `false` is a blessing landing behind a step, which is
+   * what `c prev` did on 2026-09-12 and held the next step half a minute.
+   */
+  private spellsHold(spells: readonly string[]): boolean | null {
+    if (spells.length === 0 || !this.world) return null;
+    const rows = spells.map((name) => this.world?.spellNamed(name) ?? null);
+    if (rows.some((row) => row?.abilities === undefined)) return null;
+    return rows.some((row) => holdsMovement(row));
+  }
+
+  private act(
+    block: Block,
+    batch: ReturnType<Classifier['classify']>['batch'],
+    collecting = false
+  ): void {
     this.sink.block(block);
     if (batch) this.sink.block(batch);
     /*
@@ -3579,7 +3627,7 @@ export class SessionManager {
     // batch whenever the line that completed it also changed state — and the
     // line that completes a stat sheet is the status line, which always does.
     const roomBefore = this.tracker.current.room;
-    const lineChanged = this.tracker.apply(block);
+    const lineChanged = this.tracker.apply(block, undefined, collecting);
     const batchChanged = batch ? this.tracker.apply(batch, batch.rows) : false;
     // An escape in flight reads what the server said back (todo 06).
     if (this.escapeAwaiting !== null) this.settleEscape(block, roomBefore);

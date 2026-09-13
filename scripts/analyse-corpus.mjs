@@ -33,6 +33,14 @@ import path from 'node:path';
 const { Classifier } = await import('../src/main/parse/Classifier.ts');
 const { WorldGraph } = await import('../src/main/world/WorldGraph.ts');
 const { STATUS_LINE } = await import('../src/main/parse/patterns.ts');
+const { loadShippedSentences } = await import('../src/main/world/ShippedSentences.ts');
+
+// The server's own words for an emote and for a monster dying, read as the
+// client reads them; a corpus that ignored the shipped tables could not show
+// what they changed.
+const sentences = loadShippedSentences(path.resolve('resources/world'), (message) =>
+  console.error(message)
+);
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -86,10 +94,15 @@ for (const file of files) {
   // what the capture itself says is standing here. Cleared by a room name for
   // the same reason the tracker clears it: the list belongs to one room.
   let present = [];
-  const classifier = new Classifier({
-    present: () => present,
-    mob: (name) => world.mob(name)
-  });
+  const classifier = new Classifier(
+    {
+      present: () => present,
+      mob: (name) => world.mob(name)
+    },
+    undefined,
+    (text) => sentences.deaths.mobsOf(text),
+    (text) => sentences.actions.match(text)
+  );
 
   let seq = 0;
   let fileLines = 0;

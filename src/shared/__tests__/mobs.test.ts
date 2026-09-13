@@ -2,19 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   alignmentCost,
+  answersTo,
   attacksOnSight,
-  costsAlignment,
   classifyOccupant,
+  costsAlignment,
+  DISPOSITION_CODE,
   dispositionFromCode,
   dispositionOf,
-  mobNameCandidates,
-  DISPOSITION_CODE,
-  readOccupant,
-  worstDisposition,
   type MobDisposition,
   type MobFacts,
+  mobNameCandidates,
   nameAtEnd,
-  nameLeading
+  nameLeading,
+  readOccupant,
+  worstDisposition
 } from '../mobs';
 
 /*
@@ -375,5 +376,28 @@ describe('nameLeading', () => {
 
   it('names nobody the room has not listed', () => {
     expect(nameLeading('Forked lightning streaks out', sources(['Cercio']))).toBeNull();
+  });
+});
+
+/*
+ * A room's spelling answering to a table's name (2026-09-12): the one leading
+ * word the server hangs on a monster, admitted only where the realm's own rows
+ * say it is a modifier. `mobNameCandidates` is the lookup's breadth; this is
+ * the narrower test a death is named by.
+ */
+describe('answersTo', () => {
+  const rows = new Set(['kobold', 'kobold thief', 'giant rat']);
+  const known = (name: string): boolean => rows.has(name);
+
+  it('answers exactly, and with one leading modifier the realm does not know as a name', () => {
+    expect(answersTo('kobold', 'kobold', known)).toBe(true);
+    expect(answersTo('thin kobold', 'kobold', known)).toBe(true);
+  });
+
+  it('refuses a row of its own, a shorter name the realm lacks, and more than one word', () => {
+    expect(answersTo('kobold thief', 'thief', known)).toBe(false);
+    expect(answersTo('thin rat', 'rat', known)).toBe(false);
+    expect(answersTo('big thin kobold', 'kobold', known)).toBe(false);
+    expect(answersTo('kobold', 'thief', known)).toBe(false);
   });
 });

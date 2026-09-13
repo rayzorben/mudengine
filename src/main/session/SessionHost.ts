@@ -30,6 +30,7 @@ import type { InternalConfig } from '../../shared/internal';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
+import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
 import type { FightSink } from '../../shared/fights';
 import {
   Push,
@@ -114,6 +115,11 @@ export interface SessionHostOptions {
    * no table leaves the tracker reading buffs from the frames alone.
    */
   spellLoreFor?(id: SessionId): SpellLore;
+  /**
+   * The shipped emote and death-sentence tables, one pair for every session.
+   * Optional: a host without them leaves both to the frames and the lore.
+   */
+  sentences?(): ShippedSentences;
   /**
    * Where what *this character* learns about the realm is kept.
    *
@@ -461,7 +467,8 @@ export class SessionHost {
       this.options.fightsFor(id),
       this.options.playersFor(id),
       this.options.spellLoreFor?.(id) ?? NO_SPELL_LORE,
-      this.options.findsFor?.(id)
+      this.options.findsFor?.(id),
+      this.options.sentences?.() ?? NO_SHIPPED_SENTENCES
     );
 
     manager.configureInternal(this.options.internal());

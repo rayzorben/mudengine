@@ -1,0 +1,1043 @@
+mob_id,mob_name,death_msg_id,sentence
+1,giant rat,27,The giant rat falls to the ground with a tortured squeak.
+2,lashworm,29,The lashworm falls dead at your feet.
+3,filthbug,31,"The filthbug collapses, its legs curling tightly around it."
+4,carrion beast,33,"The carrion beast falls to the ground with a yelp, and is still."
+5,acid slime,35,The acid slime dissolves into a puddle of bluish goo.
+6,orc rogue,39,The orc rogue collapses with a grunt.
+7,kobold thief,41,The kobold thief falls to the ground with a shrill cry.
+8,cave worm,8239,The cave worm collapes with a dull thump.
+10,thug,8243,The thug collapses with a groan.
+11,skeleton,8245,The skeleton crumbles into a pile of dust.
+12,zombie,8247,The zombie collapses without a sound.
+13,guardsman,8241,"The guardsman utters a sharp cry, and collapses."
+14,guardsman,8241,"The guardsman utters a sharp cry, and collapses."
+15,shade,8262,The shade vanishes with an eerie wail.
+16,ghoul,8264,The ghoul collapses in a filthy heap.
+17,wight,8266,The wight collapses into a broken heap.
+18,orc sentry,8268,"The orc sentry eyes you evilly, and collapses."
+19,orc lieutenant,8270,"The orc lieutenant utters a low growl, and dies."
+20,mercenary,8272,The mercenary dies with an agonized moan.
+21,half-ogre bodyguard,8274,The half-ogre bodyguard falls like a hewn tree.
+22,Aiken,8465,"Aiken utters a sharp cry, and dies."
+23,Thuluk,8469,Thuluk groans loudly and collapses.
+24,Helfgrim,8471,"Helfgrim clutches his belly, and dies!"
+25,Colin,8472,"Colin eyes you hatefully, and falls."
+26,Skali,2824,Skali growls at you ferociously and dies!
+27,Gurbultis,2825,Gurbultis collapses like a stuck pig.
+28,Lady Sentara,2826,Lady Sentara wails in agony and drops to the ground!
+29,dark cultist,8282,The dark cultist collapses without a sound.
+30,grey spider,8285,"The grey spider collapses, its legs curling tightly around it."
+31,mummy,8291,"The mummy's wrapping unravels, revealing nothing but dust."
+32,bounty hunter,8314,"The bounty hunter reaches for you, then dies."
+33,dark cleric,8316,The dark cleric collapses in a heap.
+34,dark priest,8318,"The dark priest falls to the ground, and is still."
+35,dark paladin,8321,The dark paladin falls to the ground with a grunt.
+36,hellhound,8323,"The hellhound growls menacingly, and dies."
+37,tentacled abomination,8325,The tentacled abomination collapses in a wet heap.
+39,old man,2836,The old man lets out a ragged cough with his dying breath.
+40,Sheriff Lionheart,2590,The Sheriff spits up blood and dies!
+41,Giovanni,2835,Giovanni curses you with his dying breath!
+42,Meia,2864,Meia shrieks at you with her dying breath!
+48,dark goblin archer,8346,The dark goblin archer collapses with a spiteful hiss.
+49,bandit,8350,"The bandit eyes you evilly, and dies."
+50,wild dog,8352,"The dog yelps loudly, and dies."
+51,forest spider,8354,The forest spider curls up and dies.
+52,giant spider,8356,The giant spider collapses with an evil wail.
+53,dark goblin,8358,The dark goblin spits up blood and dies!
+54,kobold slave,8360,The kobold slave collapses with a sigh.
+55,black orc,8362,The black orc falls to the ground with a grunt.
+56,dire wolf,8364,"The dire wolf utters a low growl, and dies."
+57,slime beast,8366,The slime beast dissolves into a mass of reeking flesh.
+58,half-ogre warrior,8368,The half-ogre warrior falls to the ground with a loud thump.
+59,Thrag,8370,"Thrag utters a deafening moan, and collapses."
+60,minotaur champion,8409,The minotaur champion charges after you!
+63,gigantic black ooze,8413,The giant black ooze dissolves.
+64,death dog,8417,"The death dog growls softly, and dies."
+65,skeletal warrior,8419,"The skeletal warrior falters, then collapses in a heap."
+66,moaning spirit,8422,"The spirit gasps loudly, sighs, and disappears."
+67,huge tiger beetle,8426,"The huge tiger beetle drops to the ground, its shell split."
+68,guardian golem,8431,"The guardian golem collapses, shattering into a thousand shards."
+69,chest,8433,"The mimic topples to the ground, broken."
+70,warlock mercenary,8477,"The warlock mercenary attempts one last spell, but dies!"
+71,giant bat,8483,"The giant bat squeaks loudly, and falls to the ground!"
+72,gelatinous cube,8485,The gelatinous cube dissolves into a sloppy puddle.
+80,cave bear,8568,The cave bear falls to the ground with a grunt!
+82,troll,8572,"The troll spits up some black blood, and dies!"
+84,fire lizard,8578,"The salamander falls to the ground, its flame extinguished!"
+86,ogre,8581,"The ogre topples to the ground, shaking the room!"
+90,young girl,8585,"The young girl frowns, and vanishes."
+95,owlbear,8589,The owlbear falls to the ground with a heavy thump.
+99,fire elemental,8594,The fire elemental dissipates!
+100,frost serpent,8599,The frost serpent curls up and dies.
+101,two-headed hydra,8601,The two-headed hydra collapses with a bellowing groan.
+107,roc hatchling,176,"The roc hatchling lets out a squeal, and is dead."
+108,ice sorceress,190,"Her illusion shattered, the ice sorceress falls as an old hag!"
+109,giant rat,27,The giant rat falls to the ground with a tortured squeak.
+110,stone golem,238,The stone golem crumbles into a pile of broken shards!
+111,minotaur,241,The minotaur falls dead with an agonized bellow!
+112,giant snake,243,"The giant snake hisses loudly, and dies."
+113,banshee,8422,"The spirit gasps loudly, sighs, and disappears."
+114,minotaur chieftain,249,"The minotaur chieftain curses at you spitefully, and dies!"
+115,vampire rosebush,251,The vampire rosebush is destroyed in a flurry of leaves.
+116,archer bush,254,The archer bush breaks and falls apart.
+117,animated tree,257,"The animated tree cracks, falling to the ground with a deafening thump."
+118,carnivorous plant,261,The carnivorous plant falls in a ruined heap.
+119,wood golem,265,The wood golem explodes and falls into a pile of splinters.
+120,earth elemental,269,"The earth elemental quivers, and crumbles into a pile of dirt."
+121,dark druid,272,"The dark druid utters a low groan, and collapses."
+122,high druid,276,The high druid collapses with a furious cry!
+123,black orc captain,299,"The black orc captain falls, spitting up dark blood!"
+124,black orc shaman,302,The black orc shaman collapses with a guttural cry!
+125,dark goblin warlock,307,The dark goblin warlock collapses with a shrill cry!
+126,slave-master,309,The slave-master topples to the ground with an indignant cry!
+127,werewolf,312,"The werewolf growls loudly, and falls, reverting to his human form!"
+128,shadowy healer,323,The healer disappears in a flash!
+129,mad wizard,330,"The mad wizard looks confused, and dies!"
+130,Jorah,2922,Jorah lets out a mighty roar before entering a portal and vanishing!
+131,cyclops,340,"The cyclops topples to the ground, and explodes in greenish fire!"
+133,violet spore,355,The violet spore collapses in on itself.
+134,black fungus tree,357,The black tree collapses in a billowing cloud of spores!
+135,giant toad,359,"The toad croaks in agony, and collapses wetly."
+136,shambling mound,367,The shambling mound falls to pieces!
+137,winged horror,372,"The winged horror utters a shrill cry, and falls to its death!"
+138,swamp serpent,378,"The serpent hisses, and dies."
+139,giant ant,380,"The giant ant collapses, its shell cracked and oozing!"
+140,bola spider,384,"The spider screeches madly, and dies!"
+141,serpentkin hunter,387,"The serpentkin hunter eyes you evilly, and dies."
+142,dark cultist,8282,The dark cultist collapses without a sound.
+143,dark cleric,8316,The dark cleric collapses in a heap.
+144,dark priest,8318,"The dark priest falls to the ground, and is still."
+145,dark paladin,8321,The dark paladin falls to the ground with a grunt.
+146,dark warrior,390,The dark warrior dies with a moan!
+147,dark warlock,393,"The dark warlock tries to cast one last spell, but dies."
+148,dark assassin,397,The dark assassin spits up blood and dies!
+149,dark mage,401,"The dark mage tries to cast one last spell, but dies!"
+150,elite guard,403,"The elite guard clutches at you, spits up blood, and dies!"
+151,guard captain,405,"The guard captain growls at you menacingly, and collapses!"
+152,mutant,407,"The mutant sighs softy, and dies!"
+153,earth elemental,269,"The earth elemental quivers, and crumbles into a pile of dirt."
+154,winged horror,372,"The winged horror utters a shrill cry, and falls to its death!"
+155,giant rattlesnake,378,"The serpent hisses, and dies."
+156,bola spider,384,"The spider screeches madly, and dies!"
+157,giant ant,380,"The giant ant collapses, its shell cracked and oozing!"
+158,serpentkin hunter,387,"The serpentkin hunter eyes you evilly, and dies."
+159,obsidian demon,411,The obsidian demon's broken shards evaporate in a puff of smoke!
+160,magma man,413,"The magma man pulsates, and dissolves into a puddle!"
+161,flame elemental,417,"The flame elemental utters an eerie wail, and dissipates!"
+162,fire bat,418,The fire bat explodes in flame!
+163,greater hellhound,421,The greater hellhound collapses with a wail!
+164,pyro jelly,423,"The pyro jelly quivers, and dissolves!"
+165,serpentkin hunter,387,"The serpentkin hunter eyes you evilly, and dies."
+166,serpentkin warrior,424,"The serpentkin warrior hisses loudly, and dies!"
+167,serpentkin shaman,426,"The serpentkin shaman tries one last spell, but dies!"
+168,serpentkin chieftain,427,"The serpentkin chieftain hisses loudly, and dies!"
+169,serpentkin witchdoctor,428,"The serpentkin witchdoctor hisses evilly, and dies!"
+170,glowing worm,430,The glowing worm curls up and dies!
+171,crystalline spider,433,The crystal spider shatters into a thousand shards!
+172,glittering ooze,435,The glittering ooze solidifies and breaks into pieces!
+173,wounded worker,449,"The wounded worker lets out a loud cry, and dies!"
+174,dark bishop,456,"The dark bishop utters an agonized howl, and is consumed in black flame!"
+175,alchemist,459,"The alchemist spits up blood, and dies!"
+176,dark wizard,465,"The dark wizard utters a loud cry, and disintegrates!"
+177,prisoner,466,"The prisoner moans softly, and dies."
+178,master assassin,476,"The master assassin eyes you evilly, and vanishes through a wall!"
+180,Champion of Blood,486,A greater hellion bursts forth from the vortex of flames!
+181,greater hellion,495,"The hellish creature roars in fury, and explodes in a shower of flame!"
+182,baby red dragon,526,"The baby dragon squeals piercingly, and collapses!"
+183,young red dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+184,adolescent red dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+185,adult red dragon,529,"The red dragon utters a heart-wrenching roar, and flies away to safety!"
+186,aged titan,609,"The aged titan frowns darkly, and vanishes!"
+187,raven,2671,Sensing itself near death the bird flies off!
+188,bluejay,2671,Sensing itself near death the bird flies off!
+189,cardinal,2671,Sensing itself near death the bird flies off!
+191,huge gruesome creation,2705,The monster explodes showering you with severed arms and gore!
+192,giant bat,8483,"The giant bat squeaks loudly, and falls to the ground!"
+194,Kotar Bloodthorn,2706,Kotar bows in your direction and slips into the shadows.
+195,red dragon hatchling,516,"The dragon hatchling hisses loudly, and falls dead!"
+196,dark-elf courser,1298,"The dark-elf takes one last swing at you, and dies with a growl."
+198,priest,833,"With a flash of light, the holy person vanishes."
+199,priestess,833,"With a flash of light, the holy person vanishes."
+201,roc,178,"The roc lets out a high pitched scream, and falls to the floor, lifeless."
+202,nomadic tribesman,184,"The nomadic tribesman stares you down, and dies."
+203,grey wolf,180,"The grey wolf growls savagely, then dies."
+204,grey guardian wolf,182,"The grey guardian wolf utters a low growl, and dies."
+205,nomadic huntsman,186,"The nomadic hunter looks at you evilly, and dies."
+207,nomadic huntsman,186,"The nomadic hunter looks at you evilly, and dies."
+208,nomadic shaman,184,"The nomadic tribesman stares you down, and dies."
+209,large yeti,205,The large yeti collapses with a deafening howl.
+210,nomadic chieftan,619,"The nomadic chieftain utters a blood-curdling yell, and dies!"
+211,ice golem,215,The ice golem collapses and shatters into hundreds of icy shards.
+212,fire assassin,2782,The assassin swings at you one last time before vanishing.
+213,mosquito swarm,2282,The swarm disperses back into the jungle as quickly as it formed.
+214,Templar,830,The Templar falls to the ground with a groan and the clatter of platemail.
+215,Zanthus the Lich,3146,"The lich cackles at you, and takes spirit form!"
+216,Demoness Irikani,3091,"With a hideous shriek the demoness dies, turning to ash!"
+217,elite orc guard,47,"The elite orc guard spits up blood, and dies!"
+218,orc warleader,646,"The orc warleader eyes you evilly, and spits at your feet as he falls!"
+219,displacer beast,664,"The displacer beast growls loudly, and collapses!"
+220,manticore,670,"The manticore utters a deafening bellow, and dies!"
+221,gargoyle,679,"The gargoyle reaches for you, then disintegrates into dust!"
+222,gorgon,686,"The gorgon utters a low bellow, and falls to the ground!"
+223,harpy,695,"The harpy lets out a bloodcurdling screech, and plummets to the ground!"
+224,gnoll scout,697,"The gnoll scout lets out a sharp cry, and falls dead!"
+225,gnoll axeman,702,"The gnoll axeman drops his weapon, throws up blood, and collapses!"
+226,hill centaur,706,"The centaur slumps forward with a moan, and dies!"
+227,brigand,710,"The brigand gasps loudly, clutches its chest, and dies!"
+228,dark monk,714,"The dark monk bursts into black flame, and vanishes!"
+229,ankheg,725,"The ankheg curls up and dies, its body fluids leaking badly."
+230,bombardier beetle,728,The bombardier beetle dies in a cloud of reddish vapour!
+231,carrion crawler,734,"The carrion crawler collapes, spouting blackish ichor."
+232,umber hulk,737,"The umber hulk lets out a high-pitched sound, and collapses!"
+233,mermex hunter,746,"The mermex utters a piercing squeal, and breaks open!"
+234,mermex warrior,746,"The mermex utters a piercing squeal, and breaks open!"
+235,mermex worker,746,"The mermex utters a piercing squeal, and breaks open!"
+236,mermex royal guard,746,"The mermex utters a piercing squeal, and breaks open!"
+237,gnoll chieftain,757,"The gnoll chieftain utters a cry of disbelief, and falls dead!"
+238,Madame Alexia,2662,The woman shrieks for aid and falls to the ground.
+239,silvery skull,903,The silvery skull explodes in a shower of sparks!
+240,mermex queen,776,"The hideous mermex queen shrieks, and collapses in a fountain of gore!"
+241,giant pulsating cocoon,788,"The cocoon bursts with a disgusting wet pop, spraying white pus all over!"
+242,cocoon,788,"The cocoon bursts with a disgusting wet pop, spraying white pus all over!"
+245,royal soldier,802,"The royal soldier clutches his gut, and dies!"
+246,Commander Markus,804,"Commander Markus eyes you bitterly, spits up blood, and dies!"
+247,Jael,8465,"Aiken utters a sharp cry, and dies."
+248,barmaid,846,"The barmaid lets out a loud yell, and dies!"
+249,hooded traveller,8465,"Aiken utters a sharp cry, and dies."
+250,nasty-looking man,8465,"Aiken utters a sharp cry, and dies."
+252,shopkeeper,844,"The shopkeeper utters one last pathetic whine, and dies."
+253,greasy thief,845,"The thief cries a bit, then collapses in a pathetic heap."
+254,barmaid,846,"The barmaid lets out a loud yell, and dies!"
+255,greedy healer,847,"The greedy healer clutches at his purse, and collapses!"
+256,grizzled trainer,848,"The grizzled trainer laughs as if he doesn't care, then dies."
+257,huge dwarven witchunter,849,"The huge dwarven witchunter eyes you evilly, and dies!"
+258,dark monk,714,"The dark monk bursts into black flame, and vanishes!"
+259,drunken brawler,857,"The drunken brawler vomits all over himself, and collapses."
+260,cutpurse,858,"The cutpurse tries to flee, but you cut him down."
+261,depraved murderer,859,"The depraved murderer laugh maniacally, and coughs up blood!"
+262,crazed lunatic,861,"The crazed lunatic hugs his dead cat, and dies."
+263,Balthazar,8465,"Aiken utters a sharp cry, and dies."
+264,fungus lizard,906,"The lizard hisses one last time, and spits up venom!"
+265,vampire bat,907,"The vampire bat utters a heart-wrenching shriek, and falls dead!"
+266,silverfish,910,"The silverfish struggles violently for a moment, then dies."
+267,dragonfish,912,"The dragonfish begins to steam and bubble, and explodes!"
+268,water elemental,914,The water elemental dissipates in a swirling vortex.
+269,night hag,918,"The night hag utters a shrill curse, and vanishes in a puff of smoke!"
+270,quickling,930,The quickling drops to the ground clutching its wounds.
+271,imp,932,"The imp squeals loudly, and disappears in a flash of flame!"
+272,bloodbear,935,"The bloodbear utters a deafening howl, and collapses!"
+273,killer bee,939,"The killer bee falls to the ground, lifeless and oozing."
+274,huorn,941,"The huorn groans loudly, and smashes to the ground!"
+275,pixie,943,"The pixie squeaks loudly, and vanishes!"
+276,leprechaun,946,"The leprechaun chuckles softly, and vanishes."
+277,grizzly bear,948,"The grizzly bear moans in pain, and dies."
+278,ancient willow,956,The ancient willow splits open with a deafening crack!
+279,huorn,941,"The huorn groans loudly, and smashes to the ground!"
+280,huorn,941,"The huorn groans loudly, and smashes to the ground!"
+281,quickling lord,968,"The quickling lord shrieks in fury, and dies in a paroxysm of pain!"
+282,faerie,971,"The faerie utters a shrill cry, and disappears in a cloud of faerie dust!"
+283,treant,973,"The treant lets out a resounding moan, and collapses with a crash!"
+284,unicorn,975,"The unicorn whinnies loudly, and collapses!"
+285,woodelf ranger,978,The woodelf collapses with a groan.
+286,woodelf druid,980,"The woodelf utters a sharp cry, and dies."
+287,woodelf citizen,984,The woodelf dies with a sharp cry.
+288,woodelf citizen,984,The woodelf dies with a sharp cry.
+289,woodelf guard,986,"The woodelf guard yells loudly, then collapses with a clatter!"
+290,woodelf wardancer,978,The woodelf collapses with a groan.
+291,woodelf wardancer,978,The woodelf collapses with a groan.
+292,woodelf lord,992,"The woodelf lord eyes you pitiously, and dies."
+293,war dog,995,"The dog howls rabidly, and dies with a shudder."
+294,hobgoblin,998,"The hobgoblin glares at you in hate, and spits up blood."
+295,half-ogre guard,1001,"The half-ogre guard yells for aid, then dies clutching his gut!"
+296,ogre grunt,1005,"The ogre roars in pain, and topples to the ground!"
+297,ogre-mage,1008,"The ogre-mage tries to cast one more spell, but shrieks and dies!"
+298,white dragon serpent,1012,"The dragon serpent lets out a long hiss, and dies choking."
+299,black dragon serpent,1012,"The dragon serpent lets out a long hiss, and dies choking."
+300,green dragon serpent,1012,"The dragon serpent lets out a long hiss, and dies choking."
+301,blue dragon serpent,1012,"The dragon serpent lets out a long hiss, and dies choking."
+302,red dragon serpent,1012,"The dragon serpent lets out a long hiss, and dies choking."
+303,lamia,1021,"The lamia wails loudly, and falls dead!"
+304,twisted one,1023,"The twisted one seems almost to smile, and falls dead."
+305,small gibbering horror,1025,The gibbering horror's lumpy body splits open grotesquely.
+306,gibbering horror,1025,The gibbering horror's lumpy body splits open grotesquely.
+307,large gibbering horror,1025,The gibbering horror's lumpy body splits open grotesquely.
+308,ghost,1029,"The ghost sighs in relief, and vanishes."
+309,crimson mist,1037,The crimson mist suddenly solidifies and vanishes in a shower of blood!
+310,shadowraith,1043,"The shadowraith splinters, and dissolves into the shadows."
+311,Goru-Nezar,1045,"Goru-Nezar holds up his staff, shrieks, and explodes with a blast!"
+312,huge basilisk,1055,"The basilisk hisses in pain, and turns to stone."
+313,chimera,1057,"The chimera howls and hisses in pain, and slumps down bleeding."
+314,beholder,1063,The beholder suddenly swells up and explodes in a release of magic!
+315,prismatic dragon,1067,"The prismatic dragon shrieks in fury, and dies in a flare of light!"
+316,frost hydra,1071,"The frost hydra topples to the ground, its last head severed."
+317,wraithlord,1077,"The wraithlord utters a wailing screech, and vanishes!"
+318,unholy idol,1105,"The unholy idol shatters, its evil magic destroyed."
+319,cave lizard,1167,"The lizard hisses at you, and dies."
+320,mutant spider,1169,"The mutant spider utters a piercing squeal, and dies."
+321,mind flayer,1175,The mind flayer collapses into a puddle of blackish goo.
+322,dark-elf hunter,1176,"The dark-elf staggers for a moment, then collapses."
+323,drider,1179,The drider hisses evilly and its spidery legs curl up around its body.
+324,hordeling,1185,The hordeling screeches violently!
+325,nexus hunter,1188,"The nexus hunter lunges in desperation, and collapses!"
+326,planar storm,1194,The planar storm dissipates in a whirling vortex!
+327,terror beast,1196,"The terror beast plummets to the ground, dead."
+328,behemoth,1199,"The behemoth utters a resounding bellow, falling with a thundering crash!"
+329,Lord of the Hunt,1207,"The Lord of the Hunt laughs contemptuously, and vanishes in a flash!"
+330,gnome sentry,1291,"The gnome sentry grunts in pain, and keels over."
+331,gnome shaman,1294,"The gnome shaman tries one last spell, but dies!"
+332,gnome commander,1296,"The gnome commander spits up blood, and collapses."
+333,dark-elf hunter,1176,"The dark-elf staggers for a moment, then collapses."
+334,dark-elf soldier,1298,"The dark-elf takes one last swing at you, and dies with a growl."
+335,dark-elf faithkeeper,1299,"The dark-elf shouts for aid, and dies!"
+336,dark-elf citizen,1299,"The dark-elf shouts for aid, and dies!"
+337,dark-elf nobleman,1298,"The dark-elf takes one last swing at you, and dies with a growl."
+338,dark-elf servant,1299,"The dark-elf shouts for aid, and dies!"
+339,dark-elf warlock,1301,"The dark-elf warlock snarls in pain, and collapses!"
+340,dark-elf priestess,1306,"The priestess calls upon her goddess, but is forsaken!"
+341,dark-elf high priestess,1306,"The priestess calls upon her goddess, but is forsaken!"
+342,dark-elf weaponsmaster,1307,"The weaponsmaster shrieks in righteous indignation, and collapses!"
+343,dark-elf queen,1316,"The dark-elf queen shrieks in fury, and vanishes in a shimmering light!"
+344,master torturer,1318,"The master torturer laughs like a lunatic, and spits up blood!"
+345,dark-elf archmage,1321,The dark-elf archmage shrieks in fury!
+346,captain of the guard,1323,"The captain of the guard eyes you evilly, and collapses."
+347,obsidian statue,1324,The obisidan statue shatters into a thousand pieces.
+349,slime serpent,1326,The slime serpent curls up and floats to the bottom.
+350,dark-elf royal guard,1302,"The royal guard hurls his sword at you in desperation, and dies!"
+351,guardian beast,1327,"The guardian beast shrieks in rage, and collapses with a thud!"
+352,slaver,1329,The slaver falls to the ground with a groan. Good riddance.
+354,guard dog,1334,"The guard dog snarls nastily, and dies."
+355,prisoner,1335,The prisoner dies with a contented sigh.
+356,slave lord,1336,"The slaver lord hurls his blade at you, and collapses in pain!"
+357,dark-elf emissary,1176,"The dark-elf staggers for a moment, then collapses."
+358,wererat,1339,"The wererat squeals in agony, and dies!"
+359,wererat shaman,1341,"The wererat shaman shrieks a curse at you, and dies!"
+360,wererat champion,1342,"The wererat champion shrieks in rage, and dies in a bloody spasm!"
+361,wererat plague-crafter,1344,"The plague-crafter fumbles for one of its flasks, but falls dead!"
+362,plagued prisoner,1335,The prisoner dies with a contented sigh.
+364,wererat emissary,1342,"The wererat champion shrieks in rage, and dies in a bloody spasm!"
+365,dying slaver leader,1332,"The slaver leader dies easily, blood spurting from his wounds."
+366,Remik of the Ebon Blade,2837,The ninja bows to you silently before vanishing into the smoke.
+368,feline prisoner,3147,"The prisoner looks suddenly at peace, as their life escapes them."
+369,fallen angel,1358,The fallen angel bursts apart in whirlwind of fire.
+371,crimson high priest,3133,The wicked old man is consumed in a torrent of dark flame!
+372,Devil Fiend Malivek,495,"The hellish creature roars in fury, and explodes in a shower of flame!"
+373,shard creature,1445,"The shard creature squeals shrilly, and falls dead!"
+374,metallic monstrosity,1450,The alien monstrosity falls to the ground with an earth-shaking thump!
+375,aurumvorax,1456,"The aurumvorax growls in pain, and falls with a thud."
+376,wild dog,8352,"The dog yelps loudly, and dies."
+377,wild dog,8352,"The dog yelps loudly, and dies."
+378,bandit,8350,"The bandit eyes you evilly, and dies."
+379,warlock bandit,8350,"The bandit eyes you evilly, and dies."
+380,bandit leader,1457,"The bandit leader grunts in pain, and doubles over."
+381,dwarven merchant,1463,"The dwarf screams, ""You'll never get my wares!"", and blows himself up!"
+382,bodyguard,1464,"The dwarven bodyguard makes a last desperate swing, then falls dead!"
+383,wandering cleric,1466,"The cleric of Aerdwyne eyes you balefully, and collapses!"
+386,old gypsy man,1473,The gypsy falls to the ground with a curse.
+387,young gypsy,1474,The gypsy collapses with a curse.
+388,catoblepas,1494,"The catoblepas grunts loudly, and falls into the marsh with a splash."
+389,swamp leech,1497,The swamp leech dies with a squirt of vile fluid.
+390,crocodile,1498,"The crocodile grunts, rolls over in the water, and dies."
+391,giant crocodile,1498,"The crocodile grunts, rolls over in the water, and dies."
+392,swamp troll,8572,"The troll spits up some black blood, and dies!"
+393,giant two-headed troll,1500,The giant two-headed troll collapes with a thunderous roar.
+394,huge black dragon,1501,"The black dragon shrieks in rage, rears up, and collapses with a crash!"
+395,dwarven guard,1505,"The dwarven guard shouts for aid, clutches his stomach, and falls dead!"
+396,dwarven guard,1505,"The dwarven guard shouts for aid, clutches his stomach, and falls dead!"
+397,gnome villager,1507,"The gnome cries out in pain, and falls dead."
+398,gnome farmer,1507,"The gnome cries out in pain, and falls dead."
+399,gnome shopkeeper,1507,"The gnome cries out in pain, and falls dead."
+400,gnome inventor,1507,"The gnome cries out in pain, and falls dead."
+401,gnome alchemist,1507,"The gnome cries out in pain, and falls dead."
+402,gnome enchantress,1507,"The gnome cries out in pain, and falls dead."
+403,centipede,1514,"The giant centipede stops moving, black blood leaking from its corpse."
+404,kobold,1515,The kobold falls to the ground with a shriek!
+405,kobold warrior,1516,"The kobold squeals in rage, and dies!"
+406,kobold king,1517,"The king of the mountain kobolds shrieks in despair, and falls dead!"
+407,barrow wight,1519,"The barrow wight's robe falls to the ground, suddenly empty."
+408,tortured spirit,1521,"The tortured spirit vanishes quickly, a slight smile on its face."
+409,spectral knight,1522,"The spectral knight smiles wanly, and dissipates."
+410,spore zombie,1544,The spore zombie crumbles to pieces.
+411,pale mushroom,1545,The pale mushroom crumbles into bits.
+412,myconid,1546,The myconid collapses with with a puff of spores.
+413,dark-elf harvester,1547,"The dark-elf harvester falls dead, clutching his precious bag."
+415,salamander,1555,The salamander shrivels up in a burst of flame.
+416,efreeti,1558,"The efreeti roars, and disappears in a whirlwind of fire!"
+417,dwarven cleric,1561,"The dwarven cleric falls, clutching in agony."
+418,dwarven warrior,1562,"The dwarven warrior attempts one last swing, but falls dead!"
+419,dwarf,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+420,dwarven smith,1565,"The dwarven smith stumbles forward in rage, but falls dead!"
+421,dwarven shopkeeper,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+422,dwarven miner,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+423,dwarven barkeep,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+424,dwarven royal guard,1567,"The royal guard hurls his axe, and falls dead!"
+425,dwarven nobleman,1566,"The dwarven nobleman shouts for the guards, and falls!"
+426,dwarven royal guard,1567,"The royal guard hurls his axe, and falls dead!"
+427,dwarven warrior,1562,"The dwarven warrior attempts one last swing, but falls dead!"
+428,dwarven healer,1561,"The dwarven cleric falls, clutching in agony."
+429,Champion Gudruk,1562,"The dwarven warrior attempts one last swing, but falls dead!"
+430,King Kulgar,1562,"The dwarven warrior attempts one last swing, but falls dead!"
+431,Loremaster Thulgraf,1507,"The gnome cries out in pain, and falls dead."
+432,Master Smith Martok,1562,"The dwarven warrior attempts one last swing, but falls dead!"
+433,dwarven royal guard,1567,"The royal guard hurls his axe, and falls dead!"
+434,ancient sand dragon,1601,"The ancient sand dragon shrieks, defeated, and flies off over the desert!"
+435,ancient sand dragon,1599,"With a sweep of its tail, the sand dragon knocks you off of the edge!"
+436,troglodyte,1577,"The troglodyte hisses in pain, and falls dead!"
+437,troglodyte leader,1577,"The troglodyte hisses in pain, and falls dead!"
+438,rock eater,1581,"The rock eater spits up some stones, and falls dead."
+439,margoyle,1582,"The margoyle cracks into pieces, which disintegrate!"
+440,white scorpion,1584,"The scorpion shudders and falls dead, leaking black fluid."
+441,black pudding,1587,"The black pudding stops moving, its body disrupted and splattered."
+442,giant slug,1589,"The giant slug curls up, oozing disgusting slime."
+443,purple worm,1592,"The giant worm spews up its meal, and dies."
+444,dwarf,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+445,dwarven miner,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+446,dwarven warrior,1562,"The dwarven warrior attempts one last swing, but falls dead!"
+447,Kai Master,1607,"The Kai Master smiles, and leaps into a fighting stance!"
+449,quaggoth,1613,"The quaggoth shudders and roars, then falls dead!"
+450,quaggoth thonot,1613,"The quaggoth shudders and roars, then falls dead!"
+451,quaggoth jald,1619,"The quaggoth hurls its hammer in desperation, and falls dead!"
+452,huge obsidian golem,1620,The obsidian golem explodes in a shower of shards!
+453,stone elemental,1627,The stone elemental crumbles to dust.
+454,gemstone juggernaut,1628,"The gemstone juggernaut crumbles into a pile of gems, which melt away."
+455,duergar warrior,1638,"The duergar spits up blood, and falls dead!"
+456,duergar lord,1643,"The duergar lord clutches a black talisman, and vanishes in a flash!"
+457,dwarf warrior,1644,"The dwarf's head splits open grotesquely, and a small creature leaps out!"
+458,dwarf warrior,1645,The dwarf's form shifts and changes into an amorphous beast!
+459,brain eater,1646,The brain-eater splatters with the final blow.
+460,shapeshifter,1648,The shapeshifter dissolves into a pile of steaming goo.
+461,winged demon,1649,The winged insectile demon crumples to the ground with a whistling cry.
+462,rotting monstrosity,1655,"The rotting monstrosity falls dead, oozing out pus and bile."
+464,shifty dwarf,1563,"The dwarf falls to the ground, blood spilling from his wounds!"
+465,Champion Gudruk,1687,"Champion Gudruk snarls at you in fury, and dies spitting up blood!"
+466,Ghost of Trader Tull,8422,"The spirit gasps loudly, sighs, and disappears."
+467,purple slime,1705,The purple slime splits open with a chill burst of air.
+468,green slime,1706,The green slime bursts open with a rancid smell.
+469,red slime,1707,"The red slime bursts into flame, and dissipates in a cloud of steam."
+470,azure slime,1708,The azure slime pops open with the sharp smell of ozone.
+471,white jelly,1709,The white jelly splits open with a disgusting pop.
+472,zombie cat,1717,"The zombie cat coughs up a hairball, and falls lifelessly."
+473,rotworm,1718,"The rot worm pukes up black bile, and dies in writhing anguish."
+474,leprous outcast,1719,"The leprous outcast falls dead, clutching spastically at the air."
+475,dark dabbler,1722,"The dark dabbler clutches at his head in pain, and slumps down dead!"
+476,thief,1729,The thief collapses with a grunt.
+477,smuggler,1730,"The smuggler spits up blood, and falls dead!"
+478,smuggler boss,1731,"The smuggler boss lunges at you, but trips and falls dead."
+479,half-orc sentry,1735,"The half-orc sentry shouts for aid, and falls dead!"
+480,orc warrior,1736,"The orc warrior growls in hatred, and collapses."
+481,orc shaman,1737,"The orc shaman shrieks in agony, and falls dead!"
+482,black orc boss,1738,"The black orc boss roars in fury, coughs up blood, and falls dead!"
+483,worker ant,1741,"The fire ant worker collapses, fluid oozing from its carapace."
+484,soldier ant,1742,"The fire ant soldier snaps at you, stumbles, and is still!"
+485,queen ant,1746,"The queen ant chitters madly, and collapses!"
+486,Leo the Quick,1747,"The bandit lord clutches his gut, spits up blood, and falls dead!"
+487,dark apprentice,1758,"The dark apprentice is shrouded by a dark aura, and falls dead!"
+488,dark monk,714,"The dark monk bursts into black flame, and vanishes!"
+489,dark mystic,1759,"The dark mystic shrieks in agony, and bursts into shadowy flames!"
+490,dread mystic,1760,"The dread mystic chants an unholy chant, and steps into the shadows!"
+491,flesh golem,1773,"The flesh golem moans, collapses, and begins to decompose!"
+492,zombie,8247,The zombie collapses without a sound.
+493,ju-ju zombie,1774,"The ju-ju zombie falls dead, uttering a low moan."
+494,necromancer,1855,"The necromancer pleads to the Dark One for aid, and falls dead!"
+495,crazed lunatic,861,"The crazed lunatic hugs his dead cat, and dies."
+496,depraved murderer,859,"The depraved murderer laugh maniacally, and coughs up blood!"
+497,twisted guard,1798,"The twisted guard froths at the mouth, shrieks, and falls dead!"
+498,insane mage,1799,"The insane mage cackles in madness, and falls twitching!"
+499,old man,1800,"The madman breaths his last breath, and falls dead."
+500,foul creation,1801,The foul creation falls with a heavy thump.
+501,chaos demonling,1802,"The demonling screeches loudly, and falls oozing slime!"
+502,abomination,1804,"The abomination roars in agony, vomits up blood, and dies!"
+503,shadow guard,1826,The shadow guard fades into nothingness.
+506,duergar captain,1638,"The duergar spits up blood, and falls dead!"
+508,Tyrannosaur,3083,The lizard stumbles to the ground with a loud crash!
+509,tetraraptor,1167,"The lizard hisses at you, and dies."
+510,ruby guardian,2633,The guardian shatters into a thousand pieces!
+511,zapsalis,3084,The lizard falls dead to the ground.
+512,pteranodon,3084,The lizard falls dead to the ground.
+513,topaz guardian,2633,The guardian shatters into a thousand pieces!
+514,Tyrannosaur,3083,The lizard stumbles to the ground with a loud crash!
+515,deinodon,3083,The lizard stumbles to the ground with a loud crash!
+516,amber guardian,2633,The guardian shatters into a thousand pieces!
+517,horned demon,3113,The demon falls over dead with a loud thud!
+518,flaming mammoth,3113,The demon falls over dead with a loud thud!
+519,emerald guardian,2633,The guardian shatters into a thousand pieces!
+520,ankylosaur,3084,The lizard falls dead to the ground.
+521,stegosaur,3085,The lizard falls to the ground with a loud crash!
+522,sapphire guardian,2633,The guardian shatters into a thousand pieces!
+523,deinonychus,3084,The lizard falls dead to the ground.
+524,tetraraptor,1167,"The lizard hisses at you, and dies."
+525,amethyst guardian,2633,The guardian shatters into a thousand pieces!
+526,disenchanter,3098,With his dying breath the witchunter swings at you in vain.
+527,eradicator,8241,"The guardsman utters a sharp cry, and collapses."
+528,onyx guardian,2633,The guardian shatters into a thousand pieces!
+529,demonhunter,3098,With his dying breath the witchunter swings at you in vain.
+530,Crazed Inquisitor,3099,A look of peace comes over the madman's face as he dies.
+531,silver guardian,2633,The guardian shatters into a thousand pieces!
+532,Inquisitor Fulgore,1800,"The madman breaths his last breath, and falls dead."
+533,flaming zombie,3110,The zombie explodes in a flurry of body parts!
+534,gold guardian,2633,The guardian shatters into a thousand pieces!
+535,flaming waist,3111,The body parts suddenly combust in a furious explosion!
+536,flaming torso,3111,The body parts suddenly combust in a furious explosion!
+537,diamond guardian,2633,The guardian shatters into a thousand pieces!
+538,guardsman,8241,"The guardsman utters a sharp cry, and collapses."
+540,Vashti,3448,"With an ear-crushing wail, the lady of fire vanishes!"
+541,Vasili,3448,"With an ear-crushing wail, the lady of fire vanishes!"
+543,Cygani,27,The giant rat falls to the ground with a tortured squeak.
+544,platinum knight,2760,"The knight falls to the ground, now a pile of bone and metal."
+545,Old Mother Woodard,3475,The old woman calls out to her husband before dying.
+546,Farmer Woodard,2836,The old man lets out a ragged cough with his dying breath.
+547,necromancer,1855,"The necromancer pleads to the Dark One for aid, and falls dead!"
+553,nekojin traveler,1989,"The nekojin hisses in pain and fury, and collapses!"
+554,nekojin elder,1989,"The nekojin hisses in pain and fury, and collapses!"
+555,nekojin,1989,"The nekojin hisses in pain and fury, and collapses!"
+556,nekojin guardian,1989,"The nekojin hisses in pain and fury, and collapses!"
+557,stronghold guard,1991,"The stronghold guard clutches his stomach, and falls dead."
+558,guard sergeant,1994,"The sergeant of the guards yells for aid, and falls dead!"
+562,beautiful woman,1996,The illusion vanishes in a flash!
+563,handsome man,1996,The illusion vanishes in a flash!
+564,rakshasha,1998,"The rakshasha roars in fury, and vanishes in a puff of flame!"
+565,rakshasha rukh,1998,"The rakshasha roars in fury, and vanishes in a puff of flame!"
+566,rakshasha sage,1998,"The rakshasha roars in fury, and vanishes in a puff of flame!"
+567,rakshasha rajah,2001,"The rakshasha rajah screams in frustration, and vanishes!"
+569,saracen raider,2017,"The saracen howls in pain, and falls dead!"
+570,saracen leader,2017,"The saracen howls in pain, and falls dead!"
+571,giant roc,2027,"The roc, gravely wounded, screeches and flies off into the sky."
+572,black asp,378,"The serpent hisses, and dies."
+573,giant scorpion,1584,"The scorpion shudders and falls dead, leaking black fluid."
+574,sandworm,2029,"The sandworm starts whipping about in pain, then lays still."
+575,dustdevil,2031,The dustdevil shudders and vanishes into the sand.
+576,nomad,2033,"The nomad grunts in agony, spits up blood, and falls dead."
+577,saracen zealot,2036,"The zealot shrieks to his god for aid, and falls dead!"
+578,saracen high priest,2046,"The high priest shrieks to his god, and falls dead!"
+579,spiny tentacle,2051,"The spiny tentacle slumps to the ground, and snaps back into the wall."
+580,hideous abomination,2052,"The hideous abomination grunts, and draws back into its hole!"
+582,jackal-headed warrior,2058,"The animal-headed man makes a gurgling sound, and falls dead!"
+583,falcon-headed warrior,2058,"The animal-headed man makes a gurgling sound, and falls dead!"
+584,serpent-headed warrior,2058,"The animal-headed man makes a gurgling sound, and falls dead!"
+585,undead priest,2084,The undead priest explodes in a shower of dust and bone.
+586,manscorpion,2059,"The manscorpion hisses in pain, and slumps to the ground."
+587,manscorpion shaman,2059,"The manscorpion hisses in pain, and slumps to the ground."
+588,manscorpion king,2060,The manscorpion king erupts in a flash of conflicting elements!
+589,hydra,2062,The hydra falls dead with a thundrous crash!
+590,hydra head,2068,"The head slumps down, bleeding and ruined."
+591,wraith,1933,"The wraith loses its form, and vanishes into the wind!"
+592,shade,8262,The shade vanishes with an eerie wail.
+593,spectre,1934,"The spectre shrieks in fury, and fades from view!"
+594,Pharaoh Rastep,2069,"With a gasp, the pharaoh slumps to the ground, defeated!"
+595,dying pharaoh,2071,The pharaoh crumbles into dust.
+596,grey portal,2072,The swirling grey portal folds in upon itself with a groan.
+597,Dao Lord,2075,The Dao Lord explodes in a shower of energy and matter!
+599,huge fungus creature,2086,The fungus beast regenerates!
+601,saracen raider,2017,"The saracen howls in pain, and falls dead!"
+602,saracen commander,2017,"The saracen howls in pain, and falls dead!"
+604,nekojin priestess,1989,"The nekojin hisses in pain and fury, and collapses!"
+609,Argak the Grey,3101,The druid bows and disappears into an elemental rift!
+610,Choira Pyromancer,3101,The druid bows and disappears into an elemental rift!
+611,Lallim Whitemane,3101,The druid bows and disappears into an elemental rift!
+612,Sharh'Kur,3101,The druid bows and disappears into an elemental rift!
+614,tasloi villager,2131,"The tasloi villager falls to the ground, his eyes glazed over."
+615,tasloi hunter,2133,"The tasloi hunter falls backward, dead."
+616,tasloi chief,2136,"The tasloi chief topples to the ground, dead."
+617,tasloi animal master,2127,The tasloi animal master drops to his knees and falls forward.
+618,giant wasp,2125,The giant wasp's wings seize as a death spasm rips through its body.
+619,tasloi shaman,2123,"The tasloi shaman gives you an evil look, then dies."
+620,wild spider,2120,The wild spider spasms sharply and its legs curl underneath itself.
+621,trained spider,2129,The trained spider spasms sharply and its legs curl underneath itself.
+622,massive fanged spider,2118,The massive fanged spider spasms sharply and its legs curl underneath.
+623,tasloi warrior,2138,The tasloi warrior slumps to the ground.
+624,hanging cocoon,2145,The cocoon rips open!
+625,electric eel,2161,The electric eel writhes in agony!
+626,albino salamander,2158,"The albino salamander slumps to the ground, dead."
+627,giant oyster,2159,The giant oyster topples over!
+628,giant crab,2163,The giant crab topples over!
+629,river ray,2219,"The river ray collapses, folding its wing-like fins inward!"
+630,spider crab,2165,The spider crab shrieks hideously!
+631,lantern fish,2176,The lantern fish thrashes about and dies!
+632,parasite,2178,The parasite bursts open!
+633,crimson priest,3120,The crazed priest howls in agony and bursts in to flame!
+634,giant war dog,2184,The giant war dog lets out a yelp and dies!
+635,tunnel horror,2186,The tunnel horror's carapace shatters as it falls dead.
+636,tentacled mass,2188,The tentacled mass writhes in agony and dies!
+637,storm giant king,2190,The storm giant king roars and explodes into a wave of lightning!
+638,storm giant,2192,The storm giant shudders and falls lifeless to the ground!
+639,storm giant commander,2194,The storm giant commander explodes in a shower of sparks!
+640,stone giant shaman,2196,The stone giant shaman turns to rubble with the killing blow!
+641,stone giant,2198,The stone giant turns ashen as he dies!
+642,stone giant chieftain,2200,The stone giant chieftain roars in shock as he turns to stone!
+643,giant skeleton,2202,"Its light extinguished, the giant skeleton turns to dust."
+644,pyrotrice,2204,"With the killing blow, the pyrotrice squeals and turns to ash."
+645,hill giant shaman,2206,The hill giant shaman lets out a yell and falls lifeless.
+646,hill giant,2208,The hill giant falls to the ground with a crash and dies!
+647,hill giant chieftan,2210,The hill giant chieftain dies with a resounding thud!
+648,devourer,2211,"The devourer roars in pain, then dies!"
+649,aged earth dragon,2213,The aged earth dragon shrieks in rage and explodes!
+650,cockatrice,2215,The cockatrice squawks loudly then turns to stone!
+651,slimeworm,2217,The slimeworm collapses!
+652,amazon,2230,"The amazon lets out a cry, then falls lifeless."
+653,amazon warrior,2231,"The amazon warrior shrieks in disbelief, then drops to the ground!"
+654,amazon shaman,2232,The amazon shaman emits a shrill cry and falls to the ground.
+655,amazon guard,2233,"The amazon guard drops to the ground, eyes staring blankly at you."
+656,amazon battle master,2234,The amazon battle trainer vanishes into a cloud of smoke!
+657,male slave,2236,"The male slave gets a peaceful look, then dies."
+659,gorilla,2273,The gorilla lets out one final grunt and tumbles to the ground.
+660,gorilla,2273,The gorilla lets out one final grunt and tumbles to the ground.
+661,blood hawk,2276,The blood hawk crashes to the ground.
+662,leafling,2280,The leafling falls to the ground with a thud.
+663,insect swarm,2282,The swarm disperses back into the jungle as quickly as it formed.
+664,whipvine,2286,The whipvine retracts back under the ground to await an easier victim.
+665,constrictor,378,"The serpent hisses, and dies."
+666,dae asp,2291,The dae asp drops limply to the ground lifeless.
+667,shadow frog,2293,The shadow frog slumps into a lifeless heap.
+668,jeweled viper,2311,The jeweled viper shatters into millions of pieces.
+669,silver cobra,2313,The silver cobra expires with a hiss.
+670,grall,2315,The grall emits a final roar and transforms to vapor!
+671,moss zombie,2317,The mosses of the zombie explode as its soul is released.
+672,whipvine,2319,The whipvine retracts back under the ground to await an easier victim.
+673,tasloi scout,2323,"The tasloi scout falls backward, dead."
+674,hanging cocoon,2145,The cocoon rips open!
+675,hanging cocoon,2145,The cocoon rips open!
+676,magma golem,2464,The magma golem stops glowing and turns into a pile of ash!
+677,fire toad,2465,"The toad lets out a belch of fire, and collapses into a heap."
+678,pyrogoyle,2466,THe pyrogoyle screeches loudly and explodes into a cloud of sulphur!
+679,lava imp,932,"The imp squeals loudly, and disappears in a flash of flame!"
+680,greater salamander,2467,The greater salamander slumps over and bursts into flame.
+681,pyrimera,2478,"The heads of the pyrimera roar in final agony, then slump forward."
+682,flame elemental,417,"The flame elemental utters an eerie wail, and dissipates!"
+683,fire knight,2494,"The fire knight vanishes, its flame extinguished."
+685,giant efreeti,1558,"The efreeti roars, and disappears in a whirlwind of fire!"
+686,sand crab,2353,The sand crab splits open.
+687,sandworm,2029,"The sandworm starts whipping about in pain, then lays still."
+688,seagull,2359,The seagull squawks loudly and furiously as its life ends.
+689,green tortoise,2363,"The green tortoise falls slowly to the ground, and shuts its eyes."
+690,ocean hawk,2366,The ocean hawk spirals to the ground.
+691,king crab,2370,"The king crab's shell splits open, and he collapses."
+692,giant river turtle,2373,The giant river turtle's shell cracks open with a loud pop!
+693,behemoth hellhound,2496,"The behemoth hellhound lets out a monstrous wail, then dies."
+700,dark phoenix,2502,The dark phoenix lets out a death wail and bursts into flame!
+701,mamba,2402,"The mamba dies, its corpse turning to ash and disappears in seconds."
+702,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+703,ancestral guardian,2409,The ancestral guardian dissipates into the air!
+704,crane spirit,2411,A squawk erupts from the crane spirit as it leaves this world.
+705,flesh ripper,2414,A hideous howl comes from the flesh ripper as you end its life.
+706,gorilla spirit,2417,A howl erupts from the gorilla spirit as it leaves this world.
+707,monkey spirit,2419,A squeal erupts from the monkey spirit as it leaves this world.
+710,sahuagin shaman,2431,The sahuagin falls down in a bloodied heap.
+711,sahuagin,2434,The sahuagin falls down in a bloodied heap.
+712,sahuagin warrior,2434,The sahuagin falls down in a bloodied heap.
+713,coral lobster,2436,The coral lobster falls dead!
+714,brine hag,2438,A shrill scream fills the air as the brine hag falls to the ground!
+716,gnome merchant,2480,The merchant curses at you and disappears in a puff of smoke!
+717,Sylk,2488,Sylk shows a wry smile and disappears in a flash of bright light.
+719,deranged priest,2497,"The deranged priest shouts out some gibberish, falling to the ground dead."
+720,gibbering mage,2515,"The gibbering mage cries out in some unknown language, and falls dead."
+721,large red demonling,2504,The demonling lets out a horrid shriek and melts into a pile of acid!
+722,Putakwa,2541,Putakwa disappears through the bottom of his tub.
+724,orc warlord,1903,"The orc warlord roars in fury, spits up black blood, and falls dead!"
+725,orc captain,1904,"The orc captain cries out for his troops, and collapses!"
+726,ogre gladiator,1005,"The ogre roars in pain, and topples to the ground!"
+727,orc lieutenant,8270,"The orc lieutenant utters a low growl, and dies."
+728,orc warrior,1905,"The orc warrior slips in his own blood, and falls dead."
+729,orc fanatic,2571,The orc fanatic dies gurgling on its own froth.
+730,orc trainee,2572,The orc trainee falls dead holding its wounds.
+731,nanati,2573,The nanati lets out a shriek and fades away!
+732,nanati,2573,The nanati lets out a shriek and fades away!
+733,nanati sorceress,2573,The nanati lets out a shriek and fades away!
+734,nanati deathweaver,2573,The nanati lets out a shriek and fades away!
+735,nanati bladesman,2573,The nanati lets out a shriek and fades away!
+736,nanati shadow,2573,The nanati lets out a shriek and fades away!
+737,dark assassin,397,The dark assassin spits up blood and dies!
+738,dark stalker,2582,The stalker chokes on its last breath and dies!
+739,dark nightblade,2583,"As the nightblade succumbs to death, its body disappears!"
+740,master assassin,2584,"For a moment the dark mistress looks dazed, then falls to the ground."
+741,yeti,205,The large yeti collapses with a deafening howl.
+742,ice golem,215,The ice golem collapses and shatters into hundreds of icy shards.
+743,ice wraith,2588,The ice wraith lets out a frigid moan and vanishes!
+744,amazon shopkeeper,844,"The shopkeeper utters one last pathetic whine, and dies."
+745,dying master assassin,2615,The master assassin spits up blood and dies!
+746,stronghold guard,1991,"The stronghold guard clutches his stomach, and falls dead."
+747,massive white dragon,2600,"The white dragon lets out a bellow of rage, before falling dead!"
+748,mule,2814,The poor farm animal dies without a sound.
+751,lady of the dark,2617,The lady of the dark lets out a unearthly wail before vanishing!
+752,orc warrior,1905,"The orc warrior slips in his own blood, and falls dead."
+753,orc fanatic,2571,The orc fanatic dies gurgling on its own froth.
+754,orc trainee,2572,The orc trainee falls dead holding its wounds.
+755,Enigma Lord,2832,"The Enigma Lord grins at you evilly, moving to a fighting stance."
+756,frost giant,2657,The frost giant lets out a final anguished cry and crashes to the floor.
+757,elite guardsman,2658,"The guardsman utters a sharp cry, and collapses."
+758,skeleton,8245,The skeleton crumbles into a pile of dust.
+759,zombie,8247,The zombie collapses without a sound.
+760,shade,8262,The shade vanishes with an eerie wail.
+761,ghoul,8264,The ghoul collapses in a filthy heap.
+762,wight,8266,The wight collapses into a broken heap.
+763,skeletal warrior,8419,"The skeletal warrior falters, then collapses in a heap."
+764,moaning spirit,8422,"The spirit gasps loudly, sighs, and disappears."
+765,banshee,8422,"The spirit gasps loudly, sighs, and disappears."
+766,ghost,1029,"The ghost sighs in relief, and vanishes."
+767,shadowraith,1043,"The shadowraith splinters, and dissolves into the shadows."
+768,barrow wight,1519,"The barrow wight's robe falls to the ground, suddenly empty."
+769,zombie cat,1717,"The zombie cat coughs up a hairball, and falls lifelessly."
+770,undead priest,2084,The undead priest explodes in a shower of dust and bone.
+771,tortured spirit,1521,"The tortured spirit vanishes quickly, a slight smile on its face."
+772,ju-ju zombie,1774,"The ju-ju zombie falls dead, uttering a low moan."
+773,necromancer,1855,"The necromancer pleads to the Dark One for aid, and falls dead!"
+774,giant skeleton,2202,"Its light extinguished, the giant skeleton turns to dust."
+775,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+776,filthy beggar,2704,The pitiful begger lets out a hacking cough and drops dead
+777,depraved murderer,859,"The depraved murderer laugh maniacally, and coughs up blood!"
+778,mangy dog,8352,"The dog yelps loudly, and dies."
+779,dread planewalker,2661,The planewalker lets out a shriek and shatters into a thousand pieces.
+780,townsman,2663,The townsman reaches for you before falling to the ground.
+781,drunken brawler,857,"The drunken brawler vomits all over himself, and collapses."
+782,townswoman,2662,The woman shrieks for aid and falls to the ground.
+784,Mayor Godfrey,2666,The mayor dies with a shocked look on his face.
+785,troll,8572,"The troll spits up some black blood, and dies!"
+786,black cat,2668,The black cat gives you an evil eye before dying.
+787,mercenary healer,323,The healer disappears in a flash!
+788,mangy dog,8352,"The dog yelps loudly, and dies."
+790,gravedigger,2679,"The gravedigger has a look of peace as he falls, lifeless"
+791,roc,178,"The roc lets out a high pitched scream, and falls to the floor, lifeless."
+792,giant roc,2027,"The roc, gravely wounded, screeches and flies off into the sky."
+793,lonely traveler,2735,The traveler begins to change!
+794,lonely traveler,2735,The traveler begins to change!
+795,dirty farmer,2726,The farmer lets out a sigh of relief and falls lifeless.
+796,myrmidon,2727,"The myrmidon crumbles into a bloody heap, clutching at you in vain."
+797,rogue,2738,"The thief spews up blood before dying, his cold eyes fixed on you."
+798,rubicant,2739,"His magic vanquished, the warlock becomes a lifeless pile."
+799,sorcerer,2730,The magi lets out a gurgle before becoming a pile of black dust.
+800,sage,2732,The smell of winter fills your nostrils as the sage dies at your feet.
+801,ogre zombie,2733,The massive zombie releases an awful stench as it collapses.
+802,rabid dire wolf,8364,"The dire wolf utters a low growl, and dies."
+803,boneless zombie,2741,The boneless zombie falls into a wretched pile of gore.
+804,skeletal acid beast,2742,The beast collapses in a heap of broken bones.
+805,scarab swarm,2744,The scarab vanishes in search of easier pickings.
+806,weeping apparition,2745,The apparition lets out a howl before it withers into oblivion
+807,wolfman,2762,The wolfman lets out a final anguished howl before collapsing.
+808,vampire fledgling,2747,The vampire snarls at you evilly and flees!
+809,Death Shrieker,8422,"The spirit gasps loudly, sighs, and disappears."
+810,nightshade,2759,The nightshade wails as it turns to dust.
+811,Bloody Executioner,2753,With an awful cackle the madman sheds his clothes and vanishes!
+812,sdfsdfsfs,2760,"The knight falls to the ground, now a pile of bone and metal."
+813,rotting beholder,2761,The undead sphere explodes and a corrupt stench is released.
+814,skeletal steed,2764,The steed lets out a ghastly shriek and crumbles.
+815,dark treant,973,"The treant lets out a resounding moan, and collapses with a crash!"
+816,midnight unicorn,2765,The evil horse lets out one last breath of fire before dying.
+817,Banished One,2766,A cry of immense horror escapes the lips of the gypsy.
+818,hanging tree,2769,The massive tree shudders and begins to fall!
+819,black rosebush,251,The vampire rosebush is destroyed in a flurry of leaves.
+820,clawed beast man,2775,With a wounded howl the beast falls dead at your feet.
+821,groaning cloud,3034,The chilling cloud dissipates into nothing!
+822,scythe skeleton,2776,"The macabre skeleton collapses to the ground, a pile of yellow dust."
+823,bone snake,2777,The bone snake shatters into thousands of pieces.
+824,vampiric mist,2783,"Knowing certain doom, the mist flies with breakneck speed away from harm!"
+825,drooling blood ghoul,2778,"Showering you with blood, the ghoul dies in a heap of skin and bones"
+826,spirit assassin,2782,The assassin swings at you one last time before vanishing.
+827,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+828,wraith,1933,"The wraith loses its form, and vanishes into the wind!"
+829,flesh golem,1773,"The flesh golem moans, collapses, and begins to decompose!"
+830,spectre,1934,"The spectre shrieks in fury, and fades from view!"
+831,Spirit of Draka,2784,Draka's eyes fill with vengence he lets out a feral hiss and vanishes.
+832,vampire bat,907,"The vampire bat utters a heart-wrenching shriek, and falls dead!"
+833,vampire magus,2785,The vampire growls at you and turns into a mist!
+834,vampire acolyte,2785,The vampire growls at you and turns into a mist!
+835,vampire elder,2785,The vampire growls at you and turns into a mist!
+836,Ozrinom the Vampire Lord,2786,With a cackle the vampire turns into a mist and vanishes!
+837,Death Mist of Ozrinom,2783,"Knowing certain doom, the mist flies with breakneck speed away from harm!"
+838,gremlin,2812,With a horrid shriek the gremlin vanishes in a flash of acrid smoke!
+839,Scarecrow,2813,"The scarecrow's lifeforce vanquished, it turns into a pile of straw."
+840,famished cow,2814,The poor farm animal dies without a sound.
+841,starving pig,2814,The poor farm animal dies without a sound.
+842,chicken,2815,The chicken crows one last time before falling dead.
+843,death chicken,2816,The wail of the wretched bird comes forth as it dies in a heap.
+844,ancient gypsy woman,2817,Uttering a vile curse at you the gypsy falls lifeless at your feet.
+845,gypsy protector,8753,The gypsy spits at you as he falls lifeless.
+846,white hart,2818,"The white deer sprints away, vanishing from sight!"
+847,white doe,2818,"The white deer sprints away, vanishing from sight!"
+848,ivory golem,2819,The mighty creation falls into a pile of rubble at your feet.
+849,Ghost of Justice Darkbane,2821,"With a howl of divine rage, the ghost vanishes!"
+850,Dark Mage,2811,"With a final utterance, the Dark Mage completes his spell! You've failed!"
+851,colossal midnight dragon,2839,"The dragon roars in fury, promising you a thousand agonies as it dies!"
+852,Shadow Master,2837,The ninja bows to you silently before vanishing into the smoke.
+854,Mayor of Arlysia,2822,The mayor suddenly screams in agony and becomes a massive beast!
+855,townsman,2663,The townsman reaches for you before falling to the ground.
+856,townswoman,2662,The woman shrieks for aid and falls to the ground.
+857,townsman,2663,The townsman reaches for you before falling to the ground.
+858,townswoman,2662,The woman shrieks for aid and falls to the ground.
+859,arlysian guardsman,8241,"The guardsman utters a sharp cry, and collapses."
+860,Inquisitor Armandriel,2823,The elder inquisitor reaches for you one last time before death.
+861,Oik,844,"The shopkeeper utters one last pathetic whine, and dies."
+863,Pastor Lander,2983,"The pastor throws up blood, failing to heal his fatal wounds."
+866,vampire minion,2785,The vampire growls at you and turns into a mist!
+867,horned spider,8354,The forest spider curls up and dies.
+868,animated book,2889,The book abruptly turns to ash.
+869,animated book,2889,The book abruptly turns to ash.
+870,animated book,2889,The book abruptly turns to ash.
+871,giant rat,27,The giant rat falls to the ground with a tortured squeak.
+872,dirty fisherman,2915,The fisherman limply falls to the ground.
+873,tsunami squid,2891,The squid retreats to the depths of the water.
+874,pirate ghost,2892,The ghost cackles wickedly before vanishing into nothing!
+875,first mate,2893,The undead creature lets out a gurgling howl.
+876,Dread Captain,2894,The Dread Captain scowls at you before vanishing into ether.
+877,death minion,3036,In a flash of darkness the minion vanishes.
+878,animated sword,2851,"The animated blade loses its magic, and drops to the ground."
+879,darken beast,2848,The shadow beast shatters into a thousand pieces before vanishing!
+880,sea hag,2861,The sea hag cackles at you before falling back into the water.
+881,severed waist,3037,"The waist is sliced in half, splitting its legs!"
+882,dark cupid,2849,The darkling lets out a sorrowful croak!
+883,canimera,2850,The nightmare beast lets out a horrid howl and dies in a bloody heap.
+884,daggerweed,2860,The weed shrivels up somewhat and stops moving.
+885,stitched zombie,2856,The zombie splits into a seperate torso and waist!
+886,fiery skull,903,The silvery skull explodes in a shower of sparks!
+887,old man,1800,"The madman breaths his last breath, and falls dead."
+888,severed torso,3030,The torso falls apart into other pieces!
+889,severed leg,2855,"The leg suddenly drops to the ground, entirely lifeless."
+890,severed arm,2858,"The arm catches a deadly hit, and falls limply to the ground."
+891,severed head,2857,"The head, split in two, falls to pieces on the ground."
+892,giant locust,2854,The insect chirps one last time before dying.
+893,Warmonger of Blood,2859,The minion of Blood roars at you in fury as a dark portal swallows him up!
+894,gremlin witchdoctor,2812,With a horrid shriek the gremlin vanishes in a flash of acrid smoke!
+895,stranglevine,2867,"The stranglevine stops struggling, signaling its demise."
+896,skeletal parrot,3199,"The skeletal bird drops to the ground, shattering into a pile of dust!"
+897,animated knight,2895,"The suit of armour clatters to the floor, but its sword remains!"
+898,arachnigoth,2968,The undead spider gives a hellish shriek and vanishes!
+899,deformed mutant,407,"The mutant sighs softy, and dies!"
+900,blood skeleton,2897,The skeleton grins at you wickedly before crumbling into dust.
+901,dirty farmer,2735,The traveler begins to change!
+902,animated chains,2935,"The animated chains shatter, now a mass of rust and broken links."
+903,dread planestalker,8754,"Heavily wounded, the creature shrieks and darts into the shadows!"
+904,crimson mist,1037,The crimson mist suddenly solidifies and vanishes in a shower of blood!
+905,guardsman,8241,"The guardsman utters a sharp cry, and collapses."
+906,Dreadlord of Blood,2859,The minion of Blood roars at you in fury as a dark portal swallows him up!
+908,giant rat,27,The giant rat falls to the ground with a tortured squeak.
+910,Mayor Delanon,1358,The fallen angel bursts apart in whirlwind of fire.
+911,Aeriana the Pure,2951,The dwarf growls at you and dies.
+912,mammoth rot worm,1718,"The rot worm pukes up black bile, and dies in writhing anguish."
+913,barmaid,846,"The barmaid lets out a loud yell, and dies!"
+915,ivory golem,2819,The mighty creation falls into a pile of rubble at your feet.
+916,Jandare Leafdancer,8465,"Aiken utters a sharp cry, and dies."
+917,townsman,2663,The townsman reaches for you before falling to the ground.
+918,townswoman,2662,The woman shrieks for aid and falls to the ground.
+919,dirty fisherman,2915,The fisherman limply falls to the ground.
+920,dirty farmer,2726,The farmer lets out a sigh of relief and falls lifeless.
+921,Enigma Lord,3198,"The kai lord roars at you in anger, before disappearing into the shadows."
+923,giant locust,2854,The insect chirps one last time before dying.
+924,stitched zombie,8755,The abomination falls apart as a bone snake emerges from the corpse!
+925,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+926,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+927,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+928,wraith knight,2760,"The knight falls to the ground, now a pile of bone and metal."
+929,crowned spider,8354,The forest spider curls up and dies.
+930,Darken Beast Lord,3043,"With an animal roar, the beast lord falls to your feet in a bloody mess."
+931,townsman,2663,The townsman reaches for you before falling to the ground.
+932,townsman,2663,The townsman reaches for you before falling to the ground.
+933,ancient gremlin shaman,2812,With a horrid shriek the gremlin vanishes in a flash of acrid smoke!
+934,Lord Feyr,3031,"The warlord howls in rage, and falls to the ground with a crash!"
+935,stitched zombie,8755,The abomination falls apart as a bone snake emerges from the corpse!
+936,gnaj zombie,3110,The zombie explodes in a flurry of body parts!
+937,mind flayer magus,1175,The mind flayer collapses into a puddle of blackish goo.
+938,white assassin,2782,The assassin swings at you one last time before vanishing.
+939,red worm,1592,"The giant worm spews up its meal, and dies."
+940,purple worm,1592,"The giant worm spews up its meal, and dies."
+941,white worm,1592,"The giant worm spews up its meal, and dies."
+942,black worm,1592,"The giant worm spews up its meal, and dies."
+943,massive black worm,1592,"The giant worm spews up its meal, and dies."
+944,triceratops,3085,The lizard falls to the ground with a loud crash!
+945,mirror portal,2072,The swirling grey portal folds in upon itself with a groan.
+946,wraith spider,2968,The undead spider gives a hellish shriek and vanishes!
+947,gnaj golem,8258,The golem abruptly falls into a heap of flesh and steel.
+948,halfling prisoner,3174,"The prisoner howls with inhuman anger, and leaps into the air!"
+949,Gnaj the Creator,2836,The old man lets out a ragged cough with his dying breath.
+950,green demonling,2504,The demonling lets out a horrid shriek and melts into a pile of acid!
+951,green demonling,2504,The demonling lets out a horrid shriek and melts into a pile of acid!
+952,blue demonling,2504,The demonling lets out a horrid shriek and melts into a pile of acid!
+953,red demonling,2504,The demonling lets out a horrid shriek and melts into a pile of acid!
+954,flaming mammoth,3113,The demon falls over dead with a loud thud!
+955,horned demon,3113,The demon falls over dead with a loud thud!
+956,vision,1934,"The spectre shrieks in fury, and fades from view!"
+957,shadow spectre,1934,"The spectre shrieks in fury, and fades from view!"
+958,astral shade,8262,The shade vanishes with an eerie wail.
+959,spectral mage,1934,"The spectre shrieks in fury, and fades from view!"
+960,ghostly figure,1029,"The ghost sighs in relief, and vanishes."
+962,bugbear,3183,With a loud roar the bugbear falls to the ground!
+963,bugbear captain,3183,With a loud roar the bugbear falls to the ground!
+964,ogre,8581,"The ogre topples to the ground, shaking the room!"
+965,wyvern,3184,"The wyvern lets out a high pitched roar, and crashes to the floor."
+966,bugbear berserker,3183,With a loud roar the bugbear falls to the ground!
+967,dark goblin archer,8346,The dark goblin archer collapses with a spiteful hiss.
+968,dark goblin,8358,The dark goblin spits up blood and dies!
+970,dark-elf assassin,1176,"The dark-elf staggers for a moment, then collapses."
+971,dark-elf mage,3236,The dark-elf mage utters a curse at you before crumpling to the ground!
+972,dark-elf faithkeeper,1299,"The dark-elf shouts for aid, and dies!"
+973,baby black dragon,526,"The baby dragon squeals piercingly, and collapses!"
+974,young black dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+975,adolescent black dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+976,black dragon hatchling,516,"The dragon hatchling hisses loudly, and falls dead!"
+977,baby white dragon,526,"The baby dragon squeals piercingly, and collapses!"
+978,young white dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+979,adolescent white dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+980,white dragon hatchling,516,"The dragon hatchling hisses loudly, and falls dead!"
+981,drunken brawler,857,"The drunken brawler vomits all over himself, and collapses."
+982,unicorn,975,"The unicorn whinnies loudly, and collapses!"
+983,faerie,971,"The faerie utters a shrill cry, and disappears in a cloud of faerie dust!"
+984,baby blue dragon,526,"The baby dragon squeals piercingly, and collapses!"
+985,young blue dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+986,adolescent blue dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+987,blue dragon hatchling,516,"The dragon hatchling hisses loudly, and falls dead!"
+988,Ebon Blade manhunter,1176,"The dark-elf staggers for a moment, then collapses."
+989,Ebon Blade assassin,1298,"The dark-elf takes one last swing at you, and dies with a growl."
+990,baby green dragon,526,"The baby dragon squeals piercingly, and collapses!"
+991,young green dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+992,adolescent green dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+993,green dragon hatchling,516,"The dragon hatchling hisses loudly, and falls dead!"
+994,white guardsman,3253,"You hear an evil cackle, and the illusion vanishes!"
+995,black knight,3253,"You hear an evil cackle, and the illusion vanishes!"
+996,white bishop,3253,"You hear an evil cackle, and the illusion vanishes!"
+997,black marble golem,3253,"You hear an evil cackle, and the illusion vanishes!"
+998,white queen,3253,"You hear an evil cackle, and the illusion vanishes!"
+999,black king,3253,"You hear an evil cackle, and the illusion vanishes!"
+1000,hooded man,3253,"You hear an evil cackle, and the illusion vanishes!"
+1002,ancient tapestry,3201,The tapestry lets out an agonizing wail and caves in on itself!
+1003,shredded tapestry,3201,The tapestry lets out an agonizing wail and caves in on itself!
+1004,Nahr,3253,"You hear an evil cackle, and the illusion vanishes!"
+1005,Nahr,3316,"The monster shrieks in rage, and suddenly vanishes!"
+1006,Nahr,3316,"The monster shrieks in rage, and suddenly vanishes!"
+1007,bone warrior,2407,The bone warrior falls to the ground in a dismantled heap!
+1009,Nahr,3316,"The monster shrieks in rage, and suddenly vanishes!"
+1010,Nahr,3316,"The monster shrieks in rage, and suddenly vanishes!"
+1011,Nahr,3356,"Abruptly the beast howls in anger, and begins to transform!"
+1012,Angelic Hunter,3253,"You hear an evil cackle, and the illusion vanishes!"
+1013,Majestic Dragon,3253,"You hear an evil cackle, and the illusion vanishes!"
+1014,Golden Phoenix,3253,"You hear an evil cackle, and the illusion vanishes!"
+1015,Demon Lord,3253,"You hear an evil cackle, and the illusion vanishes!"
+1016,Great Hydra,2062,The hydra falls dead with a thundrous crash!
+1019,inquisitor,3253,"You hear an evil cackle, and the illusion vanishes!"
+1020,inquisitor,3253,"You hear an evil cackle, and the illusion vanishes!"
+1021,inquisitor,3253,"You hear an evil cackle, and the illusion vanishes!"
+1022,inquisitor,3253,"You hear an evil cackle, and the illusion vanishes!"
+1023,Aderem,27,The giant rat falls to the ground with a tortured squeak.
+1024,inquisitor,3253,"You hear an evil cackle, and the illusion vanishes!"
+1025,enormous blue dragon,3324,The mighty blue dragon roars in anguish before flying away in defeat!
+1026,prisoner,466,"The prisoner moans softly, and dies."
+1027,beautiful woman,3280,"The woman suddenly shrieks, and an aura of power surrounds her!"
+1028,handsome man,3282,A look of shock and amazement appears on the man's face!
+1029,massive hydra head,2068,"The head slumps down, bleeding and ruined."
+1030,Azrandimon,3298,In a howl of rage and agony the fiery man vanishes!
+1031,darken beast,2848,The shadow beast shatters into a thousand pieces before vanishing!
+1032,Lorzina,3281,"Lorzina howls in anguish, and wilts like a dead flower."
+1033,demon imp,3253,"You hear an evil cackle, and the illusion vanishes!"
+1034,ancient sand dragon,3253,"You hear an evil cackle, and the illusion vanishes!"
+1035,fallen angel,3253,"You hear an evil cackle, and the illusion vanishes!"
+1036,aged earth dragon,3253,"You hear an evil cackle, and the illusion vanishes!"
+1037,Dao Lord,3253,"You hear an evil cackle, and the illusion vanishes!"
+1038,great green dragon,3253,"You hear an evil cackle, and the illusion vanishes!"
+1039,giant roc,3253,"You hear an evil cackle, and the illusion vanishes!"
+1040,Darken Beast Lord,3253,"You hear an evil cackle, and the illusion vanishes!"
+1041,Lord of the Hunt,3253,"You hear an evil cackle, and the illusion vanishes!"
+1044,silver warrior,3253,"You hear an evil cackle, and the illusion vanishes!"
+1045,marble archer,3253,"You hear an evil cackle, and the illusion vanishes!"
+1046,golden mist,3253,"You hear an evil cackle, and the illusion vanishes!"
+1048,spiked juggernaut,3283,"The golem collapses, leaving behind chunks of metal."
+1049,Devil Fiend,3253,"You hear an evil cackle, and the illusion vanishes!"
+1050,Demoness,3253,"You hear an evil cackle, and the illusion vanishes!"
+1051,fanged demon,3253,"You hear an evil cackle, and the illusion vanishes!"
+1052,demon imp,3253,"You hear an evil cackle, and the illusion vanishes!"
+1053,Horner the Hide,3253,"You hear an evil cackle, and the illusion vanishes!"
+1054,cloaked figure,3187,"The cloaked figure steps back, standing in a stance for battle."
+1055,cloaked figure,3187,"The cloaked figure steps back, standing in a stance for battle."
+1056,cloaked figure,3187,"The cloaked figure steps back, standing in a stance for battle."
+1057,cloaked figure,3187,"The cloaked figure steps back, standing in a stance for battle."
+1058,great green dragon,3241,"The green dragon screams in agony, and takes flight to escape!"
+1059,cloaked figure,3253,"You hear an evil cackle, and the illusion vanishes!"
+1060,cloaked figure,3253,"You hear an evil cackle, and the illusion vanishes!"
+1061,cloaked figure,3253,"You hear an evil cackle, and the illusion vanishes!"
+1062,cloaked figure,3253,"You hear an evil cackle, and the illusion vanishes!"
+1064,marble knight,2819,The mighty creation falls into a pile of rubble at your feet.
+1065,white guardsman,3253,"You hear an evil cackle, and the illusion vanishes!"
+1066,white knight,3253,"You hear an evil cackle, and the illusion vanishes!"
+1067,white bishop,3253,"You hear an evil cackle, and the illusion vanishes!"
+1068,white marble golem,3253,"You hear an evil cackle, and the illusion vanishes!"
+1069,white queen,3253,"You hear an evil cackle, and the illusion vanishes!"
+1070,white king,3253,"You hear an evil cackle, and the illusion vanishes!"
+1071,black guardsman,3253,"You hear an evil cackle, and the illusion vanishes!"
+1072,black knight,3253,"You hear an evil cackle, and the illusion vanishes!"
+1073,black bishop,3253,"You hear an evil cackle, and the illusion vanishes!"
+1074,black marble golem,3253,"You hear an evil cackle, and the illusion vanishes!"
+1075,black queen,3253,"You hear an evil cackle, and the illusion vanishes!"
+1076,black king,3253,"You hear an evil cackle, and the illusion vanishes!"
+1077,disenchanter,3098,With his dying breath the witchunter swings at you in vain.
+1078,eradicator,8241,"The guardsman utters a sharp cry, and collapses."
+1079,demonhunter,3098,With his dying breath the witchunter swings at you in vain.
+1080,red sphere,3353,"The sphere suddenly falls apart, and turns into dust that is swept away."
+1081,blue sphere,3353,"The sphere suddenly falls apart, and turns into dust that is swept away."
+1082,green sphere,3353,"The sphere suddenly falls apart, and turns into dust that is swept away."
+1083,yellow sphere,3353,"The sphere suddenly falls apart, and turns into dust that is swept away."
+1084,Nahr,170,"Nahr lets out a shriek of immense pain and suffering, and then vanishes!"
+1085,black guardsman,3253,"You hear an evil cackle, and the illusion vanishes!"
+1086,cloaked figure,3253,"You hear an evil cackle, and the illusion vanishes!"
+1087,disenchanter,3098,With his dying breath the witchunter swings at you in vain.
+1088,demon imp,3253,"You hear an evil cackle, and the illusion vanishes!"
+1089,constrictor,378,"The serpent hisses, and dies."
+1090,dae asp,2291,The dae asp drops limply to the ground lifeless.
+1091,jeweled viper,2311,The jeweled viper shatters into millions of pieces.
+1092,silver cobra,2313,The silver cobra expires with a hiss.
+1093,orc warlord,1903,"The orc warlord roars in fury, spits up black blood, and falls dead!"
+1094,orc captain,1904,"The orc captain cries out for his troops, and collapses!"
+1095,ogre gladiator,1005,"The ogre roars in pain, and topples to the ground!"
+1096,orc lieutenant,8270,"The orc lieutenant utters a low growl, and dies."
+1097,orc warrior,1905,"The orc warrior slips in his own blood, and falls dead."
+1098,orc fanatic,2571,The orc fanatic dies gurgling on its own froth.
+1099,guard captain,405,"The guard captain growls at you menacingly, and collapses!"
+1100,elite guard,403,"The elite guard clutches at you, spits up blood, and dies!"
+1101,dark cleric,8316,The dark cleric collapses in a heap.
+1102,dark mage,401,"The dark mage tries to cast one last spell, but dies!"
+1103,dark assassin,397,The dark assassin spits up blood and dies!
+1104,dark warrior,390,The dark warrior dies with a moan!
+1105,adolescent red dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+1106,young red dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+1107,baby red dragon,526,"The baby dragon squeals piercingly, and collapses!"
+1108,adolescent green dragon,2707,The adolescent dragon snaps at you with its fangs before dying.
+1109,young green dragon,527,"The young dragon roars in fury, and collapses with a crash!"
+1110,baby green dragon,526,"The baby dragon squeals piercingly, and collapses!"
+1111,duergar captain,1638,"The duergar spits up blood, and falls dead!"
+1112,duergar warrior,1638,"The duergar spits up blood, and falls dead!"
+1113,giant rat 100,27,The giant rat falls to the ground with a tortured squeak.
+1114,giant rat 150,27,The giant rat falls to the ground with a tortured squeak.
+1115,giant rat 200,27,The giant rat falls to the ground with a tortured squeak.
+1117,saracen raider,2017,"The saracen howls in pain, and falls dead!"
+1118,saracen leader,2017,"The saracen howls in pain, and falls dead!"
+1119,Scot,27,The giant rat falls to the ground with a tortured squeak.
+1120,harpy queen,695,"The harpy lets out a bloodcurdling screech, and plummets to the ground!"
+1121,mercenary captain,8272,The mercenary dies with an agonized moan.
+1122,brigand chief,710,"The brigand gasps loudly, clutches its chest, and dies!"
+1123,lesser devourer,8616,"The devourer falters, then collapses in a heap."
+1124,crypt chanter,8422,"The spirit gasps loudly, sighs, and disappears."
+1125,Gurdal,8624,Gurdal groans loudly and collapses.
+1126,really giant rat,27,The giant rat falls to the ground with a tortured squeak.
+1127,Trina,8635,Trina shrieks at you with her dying breath!
+1128,skeletal warrior,8419,"The skeletal warrior falters, then collapses in a heap."
+1129,Harkul,8624,Gurdal groans loudly and collapses.
+1200,decayed guard,8705,Shield and sword clatter to the ground as the guard falls.
+1201,dried husk,8704,The dried husk crumbles into dust as its bones clatter to the ground!
+1202,sand wraith,8709,Sand falls to the ground as the wraith dissipates!
+1203,skeletal acolyte,8712,The acolyte crumbles into dust.
+1204,animated sphinx,8713,The stone construct twitches before crumbling.
+1205,hooded cobra,8716,The cobra spasms and goes still.
+1206,huge sandstone sphinx,8721,"Its humanoid visage twisted in horror, the huge stone construct shatters!"
+1207,mammoth stone scorpion,8727,The stone monstrosity shudders and explodes into a shower of stone shards!
+1209,fallen champion,8742,The ghost sighs with relief and dissipates.
+1210,dark-elf sentry,8746,The sentry insults you with his dying breath.
+1211,animated juggernaut,8747,"Its magic defeated, the animated armor and weapon clatter to the floor!"
+1212,blood skeleton,2897,The skeleton grins at you wickedly before crumbling into dust.
+1213,vampire bat,907,"The vampire bat utters a heart-wrenching shriek, and falls dead!"
+1214,rabid dire wolf,8364,"The dire wolf utters a low growl, and dies."
+1215,stitched zombie,8755,The abomination falls apart as a bone snake emerges from the corpse!
+1216,scythe skeleton,2776,"The macabre skeleton collapses to the ground, a pile of yellow dust."
+1217,floating claymore,2851,"The animated blade loses its magic, and drops to the ground."
+1218,animated defender,8760,The armor and sword clatter to the ground.
+1219,boneless zombie,2741,The boneless zombie falls into a wretched pile of gore.
+1220,stitched zombie,2856,The zombie splits into a seperate torso and waist!
+1221,dark cupid,2849,The darkling lets out a sorrowful croak!
+1222,giant locust,2854,The insect chirps one last time before dying.
+1223,darken beast,2848,The shadow beast shatters into a thousand pieces before vanishing!
+1224,canimera,2850,The nightmare beast lets out a horrid howl and dies in a bloody heap.
+1225,Harbinger of the Void,8764,"The dark titan collapses to the ground, releasing a final decree of doom."
+2099,Mayor Delanon,2666,The mayor dies with a shocked look on his face.

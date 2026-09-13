@@ -469,6 +469,13 @@ export type BlockType =
   | 'conversation-yell'
   | 'conversation-local'
   /**
+   * Somebody's emote — `You giggle loudly!`, `Soul bows to Yang.` — read off
+   * the server's own action table (`src/shared/actions.ts`), never a pattern.
+   * `player` is the actor and absent where this character acted; `target` is
+   * who or what it was aimed at; `message` is the sentence without its actor.
+   */
+  | 'conversation-action'
+  /**
    * A command this server does not know, which it therefore *said out loud*.
    * See the note beside its pattern: this is a safety signal, not chatter.
    */
@@ -877,6 +884,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'conversation-directed': 'conversation',
   'conversation-yell': 'conversation',
   'conversation-local': 'conversation',
+  'conversation-action': 'conversation',
   // Grouped with failures rather than conversation: what it reports is that a
   // command did not run, and the broadcast is the consequence.
   'command-not-understood': 'failure',

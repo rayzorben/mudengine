@@ -2088,6 +2088,35 @@ export const BATCH_RULES: BatchRule[] = [
   },
   {
     /*
+     * `pro`. Captured live on Paradigm (2026-09-12) and composed the same way
+     * by `ProfileCommand.cs`: `Player ID:` first, one `Field:   value` row a
+     * line, `Recent Deaths:` and its rows last, the prompt behind them.
+     *
+     *     Player ID:           187
+     *     Location:            9,719
+     *     …
+     *     Recover Password:    Off
+     *     You do not have a suicide password set.
+     *     Recent Deaths:
+     *     9/9/2026 9:55 PM - Festus - 1/2372
+     *
+     * The rows are read one at a time — `Location:` and `Recent Deaths:` by
+     * the single-line `user-profile`, `Statusline:` by `user-statline`. What
+     * the batch adds is that they are **one listing**: Paradigm closes the
+     * settings with a sentence GreaterMUD's source comments out, shaped
+     * exactly like an effect landing, and `CharacterTracker` refuses a line
+     * inside a collecting listing as a candidate (`listingOpen`). Forty lines
+     * is the cap behind the prompt: Paradigm prints 27 rows and GreaterMUD
+     * keeps three deaths (`Take(3)`).
+     */
+    type: 'user-profile',
+    header: /^Player ID:\s+\d+/,
+    shape: 'object',
+    maxLines: 40,
+    qualifiers: [/^Location:\s+(?<map>\d{1,3}),(?<room>\d{1,6})/]
+  },
+  {
+    /*
      * `list`, in a shop. Captured from the live server:
      *
      *     The following items are for sale here:

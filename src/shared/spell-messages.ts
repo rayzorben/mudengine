@@ -174,6 +174,21 @@ export function spellKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/**
+ * The spells a block's `spells` group names, which travel `|`-separated
+ * (`Classifier.asSpellMessage`): a group is a string, and a spell's name never
+ * holds that character. One decoder for every reader — the tracker's hold and
+ * buff cases and the walker's onset gate — so the format cannot drift between
+ * them.
+ */
+export function splitSpells(group: string | undefined): string[] {
+  if (group === undefined) return [];
+  return group
+    .split('|')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+}
+
 /** Compiled once: `wordsOf` runs on every line the classifier could not type. */
 const SPACES = /\s+/;
 
@@ -220,7 +235,11 @@ export function parseSpellMessagesCsv(text: string): SpellMessageRow[] {
   return rows;
 }
 
-function parseCsv(text: string): string[][] {
+/**
+ * RFC 4180, as above, for every shipped table: `actions.csv` and
+ * `death-messages.csv` are read with it too.
+ */
+export function parseCsv(text: string): string[][] {
   const records: string[][] = [];
   let record: string[] = [];
   let field = '';

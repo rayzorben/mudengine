@@ -74,6 +74,7 @@ import type { Block } from '../../shared/blocks';
 import { REREAD_ROOM } from '../../shared/commands';
 import { isBlinding, type CharacterState } from '../../shared/character';
 import { resumeAtHealth, type AutomationConfig } from '../../shared/config';
+import { splitSpells } from '../../shared/spell-messages';
 import { t } from '../app/i18n';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
@@ -167,6 +168,14 @@ export interface WalkerEvents {
    * walk forever.
    */
   holdAt?(state: CharacterState): boolean;
+  /**
+   * Whether the spells a `spell-onset` names hold the character in place, off
+   * the realm's own rows — `true`, `false`, or `null` where the realm cannot
+   * say: no candidate named, a name it lacks, a row with no ability data. Only
+   * `null` leaves the walk to read the sequence (see `onsetAnsweredStep`); a
+   * `true` has already reached it as the tracker's flag.
+   */
+  spellsHold?(spells: readonly string[]): boolean | null;
   /**
    * The character as it is *now*, for a question asked on a timer.
    *
@@ -557,7 +566,17 @@ export class Walker {
    * conversion lacks — the *sequence* is all that is left to read, and it is
    * enough: a step, an onset, and then silence is a step the server refused.
    *
-   * Cleared on every send, so it describes this attempt and no earlier one.
+   * **Silence is the third word of that, and the room is its opposite.** The
+   * client's own `c prev` landed its onset seven milliseconds behind a step
+   * (2026-09-12), the step's room arrived and was read through
+   * `holdBeforeSending`, and this field — armed by the onset, never cleared
+   * by the answer — held the *next* step for the whole of `heldFallbackMs`
+   * as *Held fast*. So it is cleared on every send, so it describes this
+   * attempt and no earlier one, **and** when the step lands, because a room
+   * is the answer the sequence said was not coming. And where the realm has
+   * a verdict on the sentence (`WalkerEvents.spellsHold`) it is not armed at
+   * all: a `true` is the tracker's flag already, a `false` is a benign buff,
+   * and only `null` is the case this exists for.
    */
   private onsetAnsweredStep: number | null = null;
   /**
@@ -957,6 +976,8 @@ export class Walker {
     this.fightHeldSince = null;
     this.heldSince = null;
     this.onsetAnsweredStep = null;
+    // No step of this walk is on the wire any more, whatever was when it ended.
+    this.stepSent = false;
     // An escape belongs to the walk that ran away. A fresh route is the player
     // asking again, from here, with that already taken into account.
     this.escaped = false;
@@ -1115,6 +1136,7 @@ export class Walker {
     this.fightHeldSince = null;
     this.heldSince = null;
     this.onsetAnsweredStep = null;
+    this.stepSent = false;
     this.escaped = false;
     this.quiet = false;
     this.holdWhenHurt = true;
@@ -1288,12 +1310,18 @@ export class Walker {
       case 'user-search-failed':
         this.onSearchAnswered(block);
         return;
-      case 'spell-onset':
+      case 'spell-onset': {
         // Only while this walk's own step is on the wire with nothing back —
         // see `onsetAnsweredStep`. An onset at any other moment is an effect
         // landing and refuses nothing.
-        if (this.stepSent) this.onsetAnsweredStep = block.at;
+        if (!this.stepSent) return;
+        // And only where the realm cannot say what the sentence does: a
+        // `false` off the named spells' rows is a blessing landing, not a
+        // refusal.
+        if (this.events.spellsHold?.(splitSpells(block.groups['spells'])) === false) return;
+        this.onsetAnsweredStep = block.at;
         return;
+      }
       default:
         return;
     }
@@ -2780,6 +2808,15 @@ export class Walker {
      * dropped here rather than reasoned about later.
      */
     this.forgetNudge();
+    /*
+     * The room is the step's answer, so nothing that arrived between the send
+     * and it was answering the step — least of all an onset, which would
+     * otherwise hold the *next* step as a refusal of this one (see
+     * `onsetAnsweredStep`). And the step is no longer on the wire, so an
+     * onset landing during whatever hold follows is not read against it.
+     */
+    this.stepSent = false;
+    this.onsetAnsweredStep = null;
     this.index += 1;
     this.holds = 0;
     // The door is behind the character, which is the one fact that says the

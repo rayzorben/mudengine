@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
-import { Walker } from '../Walker';
+import { Walker, type WalkerEvents } from '../Walker';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import {
   EMPTY_CHARACTER,
@@ -3413,11 +3413,12 @@ describe('waiting out a condition', () => {
     state.afflictions = { ...NO_AFFLICTIONS, ...over };
     return state;
   };
-  const walkerWith = (movement: Partial<MovementConfig>) => {
+  const walkerWith = (movement: Partial<MovementConfig>, events: Partial<WalkerEvents> = {}) => {
     let current = at(1, 1);
     const walk = new Walker({ ...config, movement: { ...config.movement, ...movement } }, queue, {
       notice: (m) => notices.push(m),
-      stateNow: () => current
+      stateNow: () => current,
+      ...events
     });
     return {
       walk,
@@ -3489,6 +3490,67 @@ describe('waiting out a condition', () => {
     expect(walk.progress.reason).toBeNull();
     // And nothing more went out for it: a hold is a wait, not a retry loop.
     expect(moves(sent)).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * The third word of that sequence is *silence*, and a room is its opposite.
+   * Live 2026-09-12: the client's own `c prev` landed `You feel safe from
+   * evil!` seven milliseconds behind a step, the step's room arrived 1.7s
+   * later, and the onset — armed by the sentence, cleared by no answer — was
+   * read as the *next* step went out: *Held fast* for half a minute, for a
+   * spell whose row holds nothing.
+   */
+  it('lets an onset go once the step it followed lands', async () => {
+    const { walk } = walkerWith({});
+    expect(walk.start(ROUTE, afflicted({}))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(moves(sent)).toEqual(['e']);
+
+    walk.onBlock(block('spell-onset', { spells: 'holy aura|protection from evil' }));
+    // The room answers the step: the sequence was step, onset, *room*.
+    walk.onCharacter(at(1, 2));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(walk.progress.hold).toBeNull();
+    expect(notices).not.toContain(t('automation.walk.holdingHeld'));
+    expect(moves(sent)).toEqual(['e', 'e']);
+
+    // And what the onset armed went with the landing: the second step's
+    // silence is the server's, stopped as such, not a hold inherited from it.
+    await vi.advanceTimersByTimeAsync(TUNING.walk.nudgeAfterMs + config.walk.stepTimeoutMs + 100);
+    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress.hold).toBeNull();
+    expect(walk.progress.reason).toBe(t('automation.walk.reasonTimeout', { command: 'e' }));
+    walk.dispose();
+  });
+
+  /*
+   * And where the realm *can* say, it is asked, and a `false` is a blessing
+   * landing rather than a refusal: the sentence stays the tracker's to judge
+   * (`heldByOnset`), and a step that then goes silent is stopped as silence,
+   * loudly, as it was before the hold existed. The two knockdown tests above
+   * are the `null` case — a realm with nothing to say — and stand.
+   */
+  it('does not read an onset the realm calls harmless as a refusal', async () => {
+    const asked: string[][] = [];
+    const { walk } = walkerWith(
+      {},
+      {
+        spellsHold: (spells) => {
+          asked.push([...spells]);
+          return false;
+        }
+      }
+    );
+    expect(walk.start(ROUTE, afflicted({}))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    walk.onBlock(block('spell-onset', { spells: 'holy aura|protection from evil' }));
+    expect(asked).toEqual([['holy aura', 'protection from evil']]);
+
+    await vi.advanceTimersByTimeAsync(TUNING.walk.nudgeAfterMs + config.walk.stepTimeoutMs + 100);
+    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress.hold).toBeNull();
+    expect(walk.progress.reason).toBe(t('automation.walk.reasonTimeout', { command: 'e' }));
     walk.dispose();
   });
 

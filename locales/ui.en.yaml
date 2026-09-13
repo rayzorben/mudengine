@@ -586,6 +586,12 @@ notices:
     spellMessages:
       readError: 'could not read the spell message table {file}: {message}'
       empty: 'the spell message table {file} holds no rows; buff endings fall back to the frames'
+    actions:
+      readError: 'could not read the action table {file}: {message}'
+      empty: 'the action table {file} holds no rows; emotes go unread'
+    deathMessages:
+      readError: 'could not read the death sentence table {file}: {message}'
+      empty: 'the death sentence table {file} holds no rows; a death is learned per realm instead'
     players:
       parseSuspended:
         '{fileName} will not parse ({message}). Nothing more about other players is kept on
@@ -2273,6 +2279,7 @@ cards:
     title: Stream
   talk:
     channels:
+      action: action
       auction: auction
       broadcast: broadcast
       direct: direct
