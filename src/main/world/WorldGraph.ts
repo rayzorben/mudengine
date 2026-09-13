@@ -44,6 +44,7 @@ import {
   type WorldExit,
   type WorldItem,
   type WorldLookup,
+  type BankChoice,
   type ShopPlace,
   type MobPlaces,
   type MobSpawn,
@@ -2134,7 +2135,7 @@ export class WorldGraph {
    *
    * Capped, and sorted by name so the same realm answers the same way twice.
    */
-  itemsServing(condition: 'hp' | 'poisoned' | 'blind' | 'diseased', limit = 60): WorldItem[] {
+  itemsServing(condition: 'hp' | 'poisoned' | 'blind' | 'diseased', limit = 400): WorldItem[] {
     const found: WorldItem[] = [];
     for (const item of this.items.values()) {
       const invocation = itemInvocation(item);
@@ -2144,7 +2145,53 @@ export class WorldGraph {
       if (!spellServes(spell.abilities)[condition]) continue;
       found.push(item);
     }
-    return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit);
+    /*
+     * Sorted the way a reader reads a list, which is not the way the default
+     * comparison sorts one (todo 00): `localeCompare` on the raw names puts
+     * `Kher grass` among the lower-case k's on some locales and ahead of every
+     * one on others, so the list looked unsorted where it was merely
+     * case-sensitive. Folded, with the raw name as the tie-break so two items
+     * differing only in case still have one stable order.
+     *
+     * The cap is a guard against a pathological realm rather than a page size
+     * — the picker scrolls now (todo 00), so a list cut at sixty was hiding
+     * items with nothing on screen to say so.
+     */
+    return found
+      .sort(
+        (a, b) =>
+          a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.name.localeCompare(b.name)
+      )
+      .slice(0, limit);
+  }
+
+  /**
+   * Every bank counter the realm places, for the settings picker (todo 00).
+   *
+   * The join `trainersTaking` makes, without the filtering: a bank takes every
+   * character and charges nothing, so there is no eligibility to work out —
+   * the question is only *which vault*, and every counter is an answer.
+   *
+   * A row placed in several rooms is several entries, all valid, and the
+   * player picks: the balance is the row's, so two rooms holding the same row
+   * are two doors onto one vault. Sorted by name then room so the same realm
+   * answers the same way twice.
+   */
+  banks(): BankChoice[] {
+    const found: BankChoice[] = [];
+    for (const room of this.rooms.values()) {
+      if (room.shop === undefined) continue;
+      const shop = this.shops.get(room.shop);
+      if (shop === undefined || shop.kind !== 'bank') continue;
+      found.push({
+        shop: room.shop,
+        name: shop.name,
+        map: room.map,
+        room: room.room,
+        roomName: room.name
+      });
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name) || a.map - b.map || a.room - b.room);
   }
 
   /**
@@ -2363,7 +2410,10 @@ export class WorldGraph {
       .map((spell) => ({
         name: spell.name,
         short: spell.short ?? null,
-        targeting: spellTargeting(spell.targets)
+        targeting: spellTargeting(spell.targets),
+        // What the realm says it serves, so the three cure fields can each
+        // offer the spells that answer their own question (todo 00).
+        serves: spellServes(spell.abilities)
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }

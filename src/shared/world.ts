@@ -673,6 +673,23 @@ export type ShopKind = 'shop' | 'temple' | 'tavern' | 'bank' | 'trainer' | 'inn'
  * trainer that refuses is a walk across two maps to be told so, and offering
  * one is offering a choice that cannot work.
  */
+/**
+ * A bank counter the realm places, for the settings picker (todo 00).
+ *
+ * The shape `TrainerChoice` has, minus the arithmetic: a bank charges nothing
+ * and takes every character, so the row and where it is are the whole answer.
+ * Keyed by the shop's own row for `trainersTaking`'s reason — two rows can
+ * share a name and be different counters, and a balance is per row.
+ */
+export interface BankChoice {
+  /** The shop's own row, which is what the setting stores. */
+  shop: number;
+  name: string;
+  map: number;
+  room: number;
+  roomName: string;
+}
+
 export interface TrainerChoice {
   /** The shop's own row, which is what the setting stores. */
   shop: number;

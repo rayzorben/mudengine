@@ -524,30 +524,33 @@ describe('the potion settings', () => {
   const health = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { health: raw } }).automation.health;
 
-  it('ships off, drinking, and asking for the plain names', () => {
-    expect(health({})).toMatchObject({
-      drinkHealingPotionBelow: 0,
-      drinkManaPotionBelow: 0,
-      potionVerb: 'drink',
-      healingPotionName: 'healing potion',
-      manaPotionName: 'mana potion'
-    });
+  it('ships with nothing in the list, like every other list that spends things', () => {
+    expect(health({}).potions).toEqual([]);
   });
 
-  it('reads the thresholds as fractions and the verb from the two the realm has', () => {
-    expect(health({ drinkHealingPotionBelow: 25, drinkManaPotionBelow: 0.15 })).toMatchObject({
-      drinkHealingPotionBelow: 0.25,
-      drinkManaPotionBelow: 0.15
-    });
-    expect(health({ potionVerb: 'use' }).potionVerb).toBe('use');
-    // A verb the realm does not have is not sent: it would be said out loud.
-    expect(health({ potionVerb: 'quaff' }).potionVerb).toBe('drink');
+  it('reads a row, trimming the name and taking the threshold as a fraction', () => {
+    expect(
+      health({ potions: [{ name: '  minor healing potion ', when: 'hp', below: 25, verb: 'use' }] })
+        .potions
+    ).toEqual([{ name: 'minor healing potion', when: 'hp', below: 0.25, verb: 'use' }]);
   });
 
-  it('trims the names and keeps what was typed', () => {
-    expect(health({ healingPotionName: '  minor healing potion ' }).healingPotionName).toBe(
-      'minor healing potion'
-    );
+  it('drops a row naming nothing, and one whose condition the table does not know', () => {
+    expect(
+      health({
+        potions: [
+          { name: '', when: 'hp', below: 0.3 },
+          { name: 'antidote', when: 'cursed', below: 0 }
+        ]
+      }).potions
+    ).toEqual([]);
+  });
+
+  it('normalises a verb the realm does not have, rather than sending it', () => {
+    // It would be said out loud in the room.
+    expect(
+      health({ potions: [{ name: 'red potion', when: 'hp', verb: 'quaff' }] }).potions
+    ).toEqual([{ name: 'red potion', when: 'hp', below: 0, verb: 'drink' }]);
   });
 });
 

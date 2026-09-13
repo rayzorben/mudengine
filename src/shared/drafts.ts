@@ -24,7 +24,6 @@ import {
   type RetreatStrategy,
   POTION_WHENS,
   type PotionRule,
-  type PotionVerb,
   type PotionWhen,
   type PvpAction,
   type EncumbranceGate,
@@ -377,21 +376,16 @@ export interface ProfileDraft {
     hideForOpener: boolean;
     engage: EngagePolicy;
     retaliate: boolean;
-    /** Open on a monster a stranger is already fighting. See `CombatConfig`. */
-    joinFights: boolean;
+    /** Leave alone a monster a stranger is already fighting. See `CombatConfig`. */
+    politeAttacks: boolean;
     maxMobs: number;
     /** Share of current health a fight may be expected to cost before it is declined. 0 never. */
     maxFightCost: number;
-    whileWalking: boolean;
     refreshRounds: number;
     avoid: string[];
-    /** Refusals about a *kind* of monster, from the realm's own columns. */
-    avoidUndead: boolean;
-    avoidDeathSpell: boolean;
     maxTargetHealth: number;
     minMobs: number;
     maxMonsterExperience: number;
-    prefer: string[];
   };
   /**
    * The three blocks a rule cannot hold, in MegaMUD's own tabs.
@@ -414,11 +408,6 @@ export interface ProfileDraft {
     restNextDoor: boolean;
     restBeforeTraps: number;
     meditateBelow: number;
-    drinkHealingPotionBelow: number;
-    drinkManaPotionBelow: number;
-    potionVerb: PotionVerb;
-    healingPotionName: string;
-    manaPotionName: string;
     /** The *use this when that* rules. See `PotionRule`. */
     potions: PotionRule[];
   };
@@ -480,7 +469,13 @@ export interface ProfileDraft {
   /** Looking for what a room did not print — `automation.search`. See `SearchConfig`. */
   search: { enabled: boolean; tries: number };
   /** Banking the purse — `automation.banking`. See `BankingConfig`. */
-  banking: { autoDeposit: boolean; depositThresholdCopper: number; keepCopper: number };
+  banking: {
+    autoDeposit: boolean;
+    depositThresholdCopper: number;
+    keepCopper: number;
+    /** The chosen counter's shop row; 0 is whichever one it is standing at. */
+    bank: number;
+  };
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -791,22 +786,18 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // The one boolean here that defaults *on*, because it is the one that
       // cannot start a fight: something is already swinging. See `CombatConfig`.
       retaliate: combat['retaliate'] !== false,
-      // Defaults on, like `retaliate`: MegaMUD's own default joins, and a blank
-      // field must not silently make a character stand aside.
-      joinFights: combat['joinFights'] !== false,
+      // Defaults off, which is MegaMUD's own `PoliteAttacks=0`: a blank field
+      // must not silently make a character stand aside.
+      politeAttacks: combat['politeAttacks'] === true,
       maxMobs: Math.min(20, Math.max(0, Math.trunc(Number(combat['maxMobs']) || 0))),
       maxFightCost: Math.min(1, Math.max(0, Number(combat['maxFightCost']) || 0)),
-      whileWalking: combat['whileWalking'] === true,
       // Capped low: every round is a fraction of a second, so a client asked to
       // look every round would spend most of a fight looking.
       refreshRounds: Math.min(20, Math.max(0, Math.trunc(Number(combat['refreshRounds']) || 0))),
       avoid: words(combat['avoid'], 64),
-      avoidUndead: combat['avoidUndead'] === true,
-      avoidDeathSpell: combat['avoidDeathSpell'] === true,
       maxTargetHealth: Math.max(0, Math.round(Number(combat['maxTargetHealth']) || 0)),
       minMobs: Math.max(0, Math.min(99, Math.round(Number(combat['minMobs']) || 0))),
-      maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0)),
-      prefer: words(combat['prefer'], 64)
+      maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0))
     },
     /*
      * Every threshold is a fraction and every one is clamped here as well as in
@@ -838,11 +829,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         DEFAULT_CONFIG.automation.health.restBeforeTraps
       ),
       meditateBelow: unit(health['meditateBelow']),
-      drinkHealingPotionBelow: unit(health['drinkHealingPotionBelow']),
-      drinkManaPotionBelow: unit(health['drinkManaPotionBelow']),
-      potionVerb: health['potionVerb'] === 'use' ? 'use' : 'drink',
-      healingPotionName: text(health['healingPotionName']).slice(0, 40),
-      manaPotionName: text(health['manaPotionName']).slice(0, 40),
       /*
        * The rules, parsed at the boundary like everything else here: a row
        * with no name is dropped (a rule naming nothing fires on nothing), a
@@ -955,7 +941,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       keepCopper: Math.max(
         0,
         Math.min(1_000_000_000, Math.round(Number(banking['keepCopper']) || 0))
-      )
+      ),
+      bank: Math.max(0, Math.min(1_000_000, Math.round(Number(banking['bank']) || 0)))
     },
     /*
      * Parsed by the same function the options file goes through, so a loop

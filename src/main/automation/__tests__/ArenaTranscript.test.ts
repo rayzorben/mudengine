@@ -65,10 +65,8 @@ function vaelorConfig(): AutomationConfig {
     engage: 'likely',
     retaliate: true,
     maxMobs: 0,
-    whileWalking: false,
     refreshRounds: 3,
-    avoid: [],
-    prefer: []
+    avoid: []
   };
   return base;
 }

@@ -935,10 +935,20 @@ automation:
   # gold crown, 10,000 to the platinum. The defaults are 500 gold and 5 gold.
   # It never deposits on an unread purse, and never in combat or while
   # resting. Off by default, like everything automated.
+  #
+  # `bank` is which counter this character's vault is at, as a `Shops` row id
+  # -- the settings screen picks it from the realm's own list. 0 is whichever
+  # counter it happens to be standing at, which is what this did before the
+  # setting existed. A balance is per counter and the realm states each
+  # separately, so a character banking wherever it walks past ends up with
+  # several figures that cannot be added up. A stated row this realm does not
+  # place deposits nowhere and says so, rather than banking somewhere nobody
+  # chose. It does not walk anywhere: which bank is the question this answers.
   banking:
     autoDeposit: false
     depositThresholdCopper: 50000
     keepCopper: 500
+    bank: 0
 
   # Answering the `@` commands another player's client sends this one --
   # MegaMUD's remote control, spoken over the game's own chat channels. This
@@ -1173,25 +1183,12 @@ automation:
     # `Your command had no effect.` in the room.
     meditateBelow: 0
 
-    # Potions -- the row MegaMUD's Health tab had beside "Heal if below", and
-    # a warrior's only way to mend mid-fight. Drunk when health (or mana) falls
-    # below the fraction, and only when the pack lists one: asking for a potion
-    # you do not carry is a command spent to be told so. 0 never drinks.
-    #
-    # `potionVerb` is `drink` or `use`; both are in the server's command table.
-    # `drink` is the default because it is the one seen consuming a potion.
-    # The names are matched the way the server matches a typed name.
-    drinkHealingPotionBelow: 0
-    drinkManaPotionBelow: 0
-    potionVerb: drink
-    healingPotionName: healing potion
-    manaPotionName: mana potion
-
-    # And anything else, with its own condition -- *use this when that is
-    # true*. The two above are health and mana, which is what MegaMUD had;
-    # this is the rest of it, and it is what lets a character drink a second
-    # healing potion at a lower depth, or an antidote the moment it is
-    # poisoned.
+    # Potions and anything else, with its own condition -- *use this when that
+    # is true*. MegaMUD's Health tab had one row beside "Heal if below" and
+    # this client had two named slots; this replaced both, because it says
+    # everything they said and the things they could not -- a second healing
+    # potion at a lower depth, an antidote the moment the character is
+    # poisoned, a scroll read rather than drunk.
     #
     # Each row is an item name, a `when` (hp, mana, poisoned, blind, diseased,
     # held), a `below` share of maximum for the two that are measured, and
@@ -1445,14 +1442,14 @@ automation:
     # every limit below.
     retaliate: true
 
-    # Open on a monster somebody outside your party is already fighting --
-    # MegaMUD's PoliteAttacks, inverted so that `true` keeps what the client
-    # did before the setting existed (MegaMUD's own default joins). `false` is
-    # polite: a monster a stranger was seen swinging at in the last minute is
-    # left to them, and the trace says whose it was. Stealing a kill is rude
-    # everywhere and on a PvP realm it is an invitation. A party member's
-    # fight is never a claim -- joining that is assisting, under `party:`.
-    joinFights: true
+    # Leave alone a monster somebody outside your party is already fighting --
+    # MegaMUD's PoliteAttacks, under its own name and in its own direction. On,
+    # a monster a stranger was seen swinging at in the last minute is left to
+    # them and the trace says whose it was: stealing a kill is rude everywhere
+    # and on a PvP realm it is an invitation. Off (MegaMUD's own default, and
+    # this client's) joins. A party member's fight is never a claim -- joining
+    # that is assisting, under `party:`.
+    politeAttacks: false
 
     # What to open a fight with, when nothing has touched you yet.
     #
@@ -1497,15 +1494,6 @@ automation:
     # on a lineage whose arithmetic the client does not have. 0 never refuses.
     maxFightCost: 0
 
-    # Open fights while walking a planned route.
-    #
-    # Off, but no longer because it would break the route: a route now waits a
-    # fight out and plans again from where it ends up, so turning this on makes
-    # the journey a lap rather than abandoning it at the first rat. What is
-    # left is the plain preference -- a route is you saying where you want to
-    # be, not what you want to fight. Hitting back is unaffected.
-    whileWalking: false
-
     # Re-read the room every this many rounds of a fight. 0 never does.
     #
     # A fight is where the room list goes stale fastest and matters most:
@@ -1548,25 +1536,14 @@ automation:
     #   avoid: [town guard, priest]
     avoid: []
 
-    # And three refusals about a *kind* of monster rather than a name, from
-    # what the realm's own columns say. Before the room's occupants carried
-    # their realm rows there was no way to say "not the skeletons" except to
-    # list every skeleton in the realm.
+    # And a refusal from the realm's own column rather than a name: decline
+    # anything it says has more health than this. 0 never refuses.
     #
-    # `avoidUndead` is `Monsters.Undead`. `avoidDeathSpell` is
-    # `Monsters.DeathSpell` -- 146 monsters cast something when they die, and
-    # nothing in the stream says so until it already has, which makes it the
-    # one fact about a monster you cannot learn by fighting it carefully.
-    # `maxTargetHealth` declines anything the realm says has more health than
-    # this; 0 never refuses.
-    #
-    # All three are silent where the realm says nothing. A monster it cannot
-    # place is already declined by `engage: hostile`, and refusing here as well
-    # would make `engage: all` do nothing at all on a realm this client has no
-    # data for. None of them touches retaliation: something already swinging is
-    # a fight that has started.
-    avoidUndead: false
-    avoidDeathSpell: false
+    # Silent where the realm says nothing. A monster it cannot place is already
+    # declined by `engage: hostile`, and refusing here as well would make
+    # `engage: all` do nothing at all on a realm this client has no data for.
+    # It does not touch retaliation: something already swinging is a fight that
+    # has started.
     maxTargetHealth: 0
 
     # And two more of MegaMUD's, off its Combat page. `minMobs` is the mirror
@@ -1582,14 +1559,6 @@ automation:
     # realm cannot place: the disposition gate already declines those.
     minMobs: 0
     maxMonsterExperience: 0
-
-    # Monsters attacked first, in this order, whatever `engage` says -- so a
-    # name here is attacked even where the realm data calls it peaceable. This
-    # is MegaMUD's per-monster attack priority, as a list rather than a flag on
-    # 1,800 rows. Still never a player.
-    #
-    #   prefer: [wererat shaman]
-    prefer: []
 
   # Following somebody: what this character does about the party it travels in.
   #

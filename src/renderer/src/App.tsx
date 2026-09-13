@@ -2785,6 +2785,7 @@ export default function App() {
       // And the trainers that will take a character, for the Train tab's
       // picker. Addressed: the bands are per level and per class.
       loadTrainers: (session: SessionId) => api.trainers(session),
+      loadBanks: (session: SessionId) => api.banks(session),
       // And what the realm says would serve each condition, for the potion
       // rule list's suggestions.
       loadServing: (session: SessionId) => api.itemsServing(session)
@@ -5653,6 +5654,7 @@ export default function App() {
         chooseRealm={settingsApi.chooseRealm}
         loadLoops={settingsApi.loadLoops}
         loadTrainers={settingsApi.loadTrainers}
+        loadBanks={settingsApi.loadBanks}
         loadServing={settingsApi.loadServing}
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}

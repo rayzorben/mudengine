@@ -37,7 +37,7 @@ import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from './session/SessionManager';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
-import { cureGates, spellTargeting } from '../shared/spellcraft';
+import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
@@ -2072,6 +2072,8 @@ function registerIpc(): void {
   handle(Invoke.trainers, (_caller, session: SessionId) => {
     return host?.get(session)?.manager?.trainers() ?? [];
   });
+  /* Every bank counter this realm places, for the settings picker (todo 00). */
+  handle(Invoke.banks, (_caller, session: SessionId) => worldFor(session)?.banks() ?? []);
   /*
    * The items the realm says would serve each condition a potion rule can
    * name. A property of the realm rather than the character, so one call
@@ -2425,11 +2427,21 @@ function registerIpc(): void {
          * offers rather than hides — a derivative realm must not empty the
          * field. See `spellTargeting`.
          */
-        spellbook: book.map((spell) => ({
-          name: spell.name,
-          short: spell.short,
-          targeting: spellTargeting(world?.spellNamed(spell.name)?.targets)
-        })),
+        spellbook: book.map((spell) => {
+          const row = world?.spellNamed(spell.name);
+          return {
+            name: spell.name,
+            short: spell.short,
+            targeting: spellTargeting(row?.targets),
+            /*
+             * What the realm says it serves, so each cure field offers the
+             * spells that answer its own question (todo 00). Left absent
+             * where the realm has no row: unknown offers everything, the
+             * same rule `targeting` keeps one line up.
+             */
+            ...(row === undefined || row === null ? {} : { serves: spellServes(row.abilities) })
+          };
+        }),
         // No realm to ask means no gates, never closed ones: unknown must
         // not disable a cure.
         cureGates:

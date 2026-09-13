@@ -1,4 +1,5 @@
 import Icon from './Icon';
+import NameCombo from './NameCombo';
 import { t } from '../lib/i18n';
 import { POTION_VERBS, POTION_WHENS, type PotionRule } from '@shared/config';
 
@@ -71,24 +72,22 @@ export default function PotionList({ potions, serving, namePrefix, onChange }: P
           {potions.map((rule, index) => (
             <li key={index}>
               <div className="blessing-line">
-                <input
-                  aria-label={t('settings.health.potionRuleNameAria', { number: index + 1 })}
-                  list={`${namePrefix}-${index}-items`}
-                  name={`${namePrefix}-${index}-name`}
-                  onChange={(event) => update(index, { name: event.target.value })}
-                  placeholder={t('settings.health.potionRuleNamePlaceholder')}
-                  spellCheck={false}
-                  value={rule.name}
-                />
                 {/* The realm's own list for this condition, as suggestions
                     rather than options: a realm the client does not hold, or
                     a derivative that ships an item the shipped data lacks,
-                    must still be nameable. */}
-                <datalist id={`${namePrefix}-${index}-items`}>
-                  {(serving[rule.when] ?? []).map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
+                    must still be nameable. Drawn by the client's own picker
+                    rather than a native `<datalist>` (todo 00), which the
+                    browser paints in its own chrome — white rows in a dark
+                    client, in the browser's font, cut off at a length the
+                    page does not choose and unscrollable past it. */}
+                <NameCombo
+                  ariaLabel={t('settings.health.potionRuleNameAria', { number: index + 1 })}
+                  name={`${namePrefix}-${index}-name`}
+                  onChange={(value) => update(index, { name: value })}
+                  options={serving[rule.when] ?? []}
+                  placeholder={t('settings.health.potionRuleNamePlaceholder')}
+                  value={rule.name}
+                />
                 <select
                   aria-label={t('settings.health.potionRuleWhenAria', { number: index + 1 })}
                   name={`${namePrefix}-${index}-when`}

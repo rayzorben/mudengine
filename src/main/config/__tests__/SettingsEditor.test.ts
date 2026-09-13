@@ -569,7 +569,7 @@ describe('what a character plays against, and what keeps it alive', () => {
           coinKinds: ['runic', 'platinum', 'gold', 'silver'],
           discardKinds: ['copper']
         },
-        banking: { autoDeposit: true, depositThresholdCopper: 100_000, keepCopper: 500 }
+        banking: { autoDeposit: true, depositThresholdCopper: 100_000, keepCopper: 500, bank: 0 }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -581,7 +581,9 @@ describe('what a character plays against, and what keeps it alive', () => {
     expect(automation['banking']).toEqual({
       autoDeposit: true,
       depositThresholdCopper: 100_000,
-      keepCopper: 500
+      keepCopper: 500,
+      // Whichever counter it stands at, which is what the draft said.
+      bank: 0
     });
     // And the two that were not touched are still stated, like every other
     // block a character owns: creating takes the copy whole.

@@ -122,7 +122,7 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
 
         The half worth having is the *refusals*: "why did it walk past those two
         thugs" is asked several times an evening, and before this the answer —
-        `whileWalking` off with no loop running — took replaying a recorded
+        auto-combat off with nothing moving — took replaying a recorded
         session through a bespoke script to find. One line per answer rather
         than per prompt; `AutoCombat` does that filtering, because it is the
         only thing that knows when the answer changed.

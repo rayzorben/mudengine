@@ -14,8 +14,14 @@ const config = (over: Partial<BankingConfig> = {}): BankingConfig => ({
   autoDeposit: true,
   depositThresholdCopper: 500_000,
   keepCopper: 5_000,
+  // Whichever counter it is standing at, which is what every file did before
+  // the setting existed.
+  bank: 0,
   ...over
 });
+
+/** The shop row the tests' bank counter is. */
+const COUNTER = 42;
 
 /** A character in the realm carrying `wealth` copper. */
 function carrying(wealth: number | null): CharacterState {
@@ -39,8 +45,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const make = (over: Partial<BankingConfig> = {}, atBank = true, enabled = true): AutoDeposit =>
-  new AutoDeposit(config(over), enabled, queue, () => atBank, {
+const make = (
+  over: Partial<BankingConfig> = {},
+  /** The counter in front of the character: a shop row, or null for no bank. */
+  here: number | null = COUNTER,
+  enabled = true
+): AutoDeposit =>
+  new AutoDeposit(config(over), enabled, queue, () => here, {
     notice: (message) => said.push(message)
   });
 const drain = (): void => void vi.advanceTimersByTime(500);
@@ -144,19 +155,19 @@ describe('banking the purse', () => {
    * composed, not only when it was asked for.
    */
   it('refuses to compose a deposit for a room the character has left', () => {
-    let atBank = true;
+    let here: number | null = COUNTER;
     const auto = new AutoDeposit(
       config({ depositThresholdCopper: 100_000 }),
       true,
       queue,
-      () => atBank,
+      () => here,
       { notice: (message) => said.push(message) }
     );
     auto.onCharacter(carrying(192_600));
     drain();
     expect(sent).toEqual(['i']);
 
-    atBank = false;
+    here = null;
     auto.onListing(carrying(192_600));
     drain();
     expect(sent).toEqual(['i']);
@@ -177,7 +188,7 @@ describe('banking the purse', () => {
    * second — the terminal talking over the realm.
    */
   it('does nothing away from a counter, however rich the purse, and says nothing', () => {
-    const auto = make({}, false);
+    const auto = make({}, null);
     for (let i = 0; i < 5; i += 1) auto.onCharacter(carrying(2_000_000));
     drain();
     expect(sent).toEqual([]);
@@ -212,7 +223,7 @@ describe('banking the purse', () => {
 
   it('is off unless asked, and silenced by the master switch', () => {
     make({ autoDeposit: false }).onCharacter(carrying(600_000));
-    make({}, true, false).onCharacter(carrying(600_000));
+    make({}, COUNTER, false).onCharacter(carrying(600_000));
     drain();
     expect(sent).toEqual([]);
   });
@@ -277,8 +288,72 @@ describe('the console’s Deposit All', () => {
    * `deposit` into a corridor, where the server says it out loud to everybody
    * standing there.
    */
+  /*
+   * Which bank, when the player has said (todo 00).
+   *
+   * A balance spread across four vaults is four figures nobody can add up, and
+   * the realm states each separately — so a character whose vault is somewhere
+   * particular must not deposit at whichever counter it walks past.
+   */
+  it('deposits at the counter the player chose', () => {
+    const auto = make({ bank: COUNTER, depositThresholdCopper: 100_000 });
+    round(auto, 192_600);
+    expect(sent).toEqual(['i', 'deposit 187600', 'bank']);
+  });
+
+  it('refuses at a counter that is not the chosen one, and says which fact stopped it', () => {
+    const auto = make({ bank: 7, depositThresholdCopper: 100_000 });
+    expect(pressed(auto, carrying(190_400))).toBe(false);
+    drain();
+    expect(sent).toEqual([]);
+    expect(said.join('\n')).toMatch(/not the bank this character banks at/i);
+  });
+
+  /* And silently on the threshold, for the reason the not-a-bank refusal is
+     silent there: it is re-derived from every status line. */
+  it('says nothing on the threshold at a counter that is not the chosen one', () => {
+    const auto = make({ bank: 7, depositThresholdCopper: 100_000 });
+    for (let i = 0; i < 5; i += 1) auto.onCharacter(carrying(2_000_000));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said).toEqual([]);
+  });
+
+  /* 0 is *whichever counter it is standing at*, which is what every file did
+     before the setting existed, so it agrees with every bank. */
+  it('banks at any counter while no bank is chosen', () => {
+    const auto = make({ bank: 0, depositThresholdCopper: 100_000 });
+    round(auto, 192_600);
+    expect(sent).toEqual(['i', 'deposit 187600', 'bank']);
+  });
+
+  /*
+   * The counter is checked again when the deposit is composed, so walking from
+   * one bank into another between the `i` and its answer refuses rather than
+   * banking at the wrong vault.
+   */
+  it('refuses to compose a deposit at a different bank than the one it asked from', () => {
+    let here: number | null = COUNTER;
+    const auto = new AutoDeposit(
+      config({ bank: COUNTER, depositThresholdCopper: 100_000 }),
+      true,
+      queue,
+      () => here,
+      { notice: (message) => said.push(message) }
+    );
+    auto.onCharacter(carrying(192_600));
+    drain();
+    expect(sent).toEqual(['i']);
+
+    here = 7;
+    auto.onListing(carrying(192_600));
+    drain();
+    expect(sent).toEqual(['i']);
+    expect(said.join('\n')).toMatch(/not the bank this character banks at/i);
+  });
+
   it('refuses away from a counter, and says why', () => {
-    const auto = make({}, false);
+    const auto = make({}, null);
     expect(pressed(auto, carrying(190_400))).toBe(false);
     drain();
     expect(sent).toEqual([]);
@@ -316,7 +391,7 @@ describe('the console’s Deposit All', () => {
       { send: (command) => sent.push(command) }
     );
     try {
-      const auto = new AutoDeposit(config(), false, off, () => true, {
+      const auto = new AutoDeposit(config(), false, off, () => COUNTER, {
         notice: (message) => said.push(message)
       });
       expect(pressed(auto, carrying(190_400))).toBe(true);

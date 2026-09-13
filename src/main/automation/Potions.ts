@@ -68,30 +68,20 @@ export class Potions {
 
   onCharacter(state: CharacterState): void {
     if (!this.enabled || state.phase !== 'in-game') return;
-    const { hp, hpMax, mana, manaMax } = state.vitals;
-
-    if (below(hp, hpMax, this.config.drinkHealingPotionBelow)) {
-      this.drink(
-        'health',
-        this.config.healingPotionName,
-        state,
-        t('automation.potion.reasonHealth')
-      );
-    }
-    // A class with no mana has no `MA=` and so a null maximum, which is unknown
-    // rather than low: nothing is proposed, the same rule `meditateBelow` keeps.
-    if (below(mana, manaMax, this.config.drinkManaPotionBelow)) {
-      this.drink('mana', this.config.manaPotionName, state, t('automation.potion.reasonMana'));
-    }
 
     /*
-     * And the player's own list: *use this item when that is true* (todo 19).
+     * The player's own list, and the only list (todo 19; the sole one since
+     * todo 00).
+     *
+     * Two named slots stood above this — a healing potion and a mana potion,
+     * each with a threshold and a shared verb. They said nothing this does not
+     * and could not say four things it can, so they went rather than being
+     * kept as a second way to ask the same question.
      *
      * Keyed by the row's place, not by its item, so two rules naming one
      * potion at two depths are two proposals rather than one silencing the
-     * other. Everything else is the two thresholds' own rules unchanged — only
-     * an item the pack lists, one proposal per key per cooldown, the vital or
-     * the condition moving is the confirmation.
+     * other: only an item the pack lists, one proposal per key per cooldown,
+     * the vital or the condition moving is the confirmation.
      */
     this.config.potions.forEach((rule, at) => {
       if (!this.fires(rule, state)) return;
@@ -125,7 +115,7 @@ export class Potions {
     name: string,
     state: CharacterState,
     reason: string,
-    verb: PotionVerb = this.config.potionVerb
+    verb: PotionVerb
   ): void {
     const wanted = bareName(name);
     if (wanted.length === 0) return;

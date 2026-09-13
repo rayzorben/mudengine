@@ -285,13 +285,23 @@ notices:
         '"ui.showDiagnostics" was removed from {count} file: the diagnostics cards are now hidden on
         every launch and "Show diagnostics" in the command palette shows them for as long as the
         window is open. {fileList}'
-    combatFloorDropped:
+    combatAndPotionSettings:
       many:
-        '"combat.minHealth" was removed from {count} files: there is no longer a health floor on
+        'Combat and potion settings changed in {count} files: "joinFights" is now "politeAttacks"
+        (MegaMUD''s own name and direction), "whileWalking" is gone — a route and a lap both fight
+        now, and turning auto-combat off during one declines it — and "avoidUndead",
+        "avoidDeathSpell" and the attack priority list have been removed. The two named potion
+        slots became rows in "potions", keeping any threshold you had set. {fileList}'
+      one: 'Combat and potion settings changed in {count} file: "joinFights" is now "politeAttacks"
+        (MegaMUD''s own name and direction), "whileWalking" is gone — a route and a lap both fight
+        now, and turning auto-combat off during one declines it — and "avoidUndead",
+        "avoidDeathSpell" and the attack priority list have been removed. The two named potion
+        slots became rows in "potions", keeping any threshold you had set. {fileList}'
+    combatFloorDropped:
+      many: '"combat.minHealth" was removed from {count} files: there is no longer a health floor on
         opening a fight. Low health is the retreat''s business and the rest''s, which act on the
         character rather than on the decision to swing back. {fileList}'
-      one:
-        '"combat.minHealth" was removed from {count} file: there is no longer a health floor on
+      one: '"combat.minHealth" was removed from {count} file: there is no longer a health floor on
         opening a fight. Low health is the retreat''s business and the rest''s, which act on the
         character rather than on the decision to swing back. {fileList}'
     recoveryBounds:
@@ -299,30 +309,25 @@ notices:
         '"recoverGearTries" and "recoverGearFloor" were written into {count} files: going back for
         the kit now stops after two journeys that did not reach it, or at two lives left.
         {fileList}'
-      one:
-        '"recoverGearTries" and "recoverGearFloor" were written into {count} file: going back for
+      one: '"recoverGearTries" and "recoverGearFloor" were written into {count} file: going back for
         the kit now stops after two journeys that did not reach it, or at two lives left.
         {fileList}'
     alertRules:
       many:
         '"ui.alerts.rules" was written into {count} files with the rows a fresh client ships: your
         own alert list is the only thing that decides what is shown. {fileList}'
-      one:
-        '"ui.alerts.rules" was written into {count} file with the rows a fresh client ships: your
+      one: '"ui.alerts.rules" was written into {count} file with the rows a fresh client ships: your
         own alert list is the only thing that decides what is shown. {fileList}'
     potionRules:
-      many:
-        '"automation.health.potions" was written into {count} files, empty: name an item and a
+      many: '"automation.health.potions" was written into {count} files, empty: name an item and a
         condition under Health to have it used. {fileList}'
-      one:
-        '"automation.health.potions" was written into {count} file, empty: name an item and a
+      one: '"automation.health.potions" was written into {count} file, empty: name an item and a
         condition under Health to have it used. {fileList}'
     levelling:
       many:
         '"automation.train.levels" and "trainer" were written into {count} files, off: the client
         will not walk a character to a trainer and level it until you turn that on. {fileList}'
-      one:
-        '"automation.train.levels" and "trainer" were written into {count} file, off: the client
+      one: '"automation.train.levels" and "trainer" were written into {count} file, off: the client
         will not walk a character to a trainer and level it until you turn that on. {fileList}'
     doorForcingStated:
       many:
@@ -803,7 +808,6 @@ toolbar:
   defendParty: Auto-Defend Party
   disconnect: Disconnect
   drop: Auto-Drop Junk
-  engageWhileWalking: Combat While Moving / Path Combat
   retreat: Auto-Retreat (Combat)
   gangpath: Allow Remotes on Gangpath
   hangUp: Auto-Hangup (Panic Disconnect)
@@ -2592,25 +2596,17 @@ settings:
     attackVerbPlaceholder: a
     attackWithPlaceholder: a
     avoidHint: Names as the realm spells them, separated by commas.
-    avoidDeathSpellHint:
-      146 monsters cast something when they die, and nothing in the stream says so until it
-      already has.
-    avoidDeathSpellLabel: Avoid Death-Spell Monsters
-    avoidKindLegend: What the Realm Says
     avoidLabel: Avoid / Ignore Monsters
-    avoidUndeadHint: From the realm's own Undead column. Retaliation is unaffected.
-    avoidUndeadLabel: Avoid Undead
-    maxMonsterExpHint:
-      Will not open on anything the realm says is worth more than this. 0 never refuses, and a
-      monster the realm cannot place is not refused by it.
+    maxMonsterExpHint: Will not attack anything worth more experience than this. 0 is off,
+      unknown monsters will be attacked.
     maxMonsterExpLabel: Max Monster Experience
     minMobsLabel: Min Monsters in Room
     minMobsHint:
       Will not open a fight in a room holding fewer than this — for a character whose value is an
-      area spell. 0 never refuses.
+      area spell. 0 is off.
     maxTargetHealthHint:
-      Will not open on anything the realm gives more health than this. 0 never refuses, and a
-      monster the realm cannot place is not refused by it.
+      Will not attack anything the realm gives more health than this. 0 is off, and a monster the
+      realm cannot place is not refused by it.
     maxTargetHealthLabel: Max Target Health
     avoidPlaceholder: town guard, priest
     engageAll: Attack All Monsters
@@ -2623,10 +2619,10 @@ settings:
     engageNone: Retaliate Only
     hitBack: Retaliate When Attacked
     hitBackHint: Swings at whatever is already swinging at this character. Cannot open a fight.
-    joinFights: Join Others' Fights
-    joinFightsHint:
-      Open on a monster somebody outside your party is already fighting. Off is MegaMUD's Polite
-      Attacks — the monster is left to them, and the trace says whose it was.
+    politeAttacks: Polite Attacks
+    politeAttacksHint:
+      MegaMUD's Polite Attacks. On, a monster somebody outside your party is already fighting is
+      left to them, and the trace says whose it was. Retaliation is unaffected.
     masterSwitch: Enable Auto-Combat
     masterSwitchHint: The master switch. With this off nothing below sends anything, whatever it says.
     maxMobsHint: Will not open a fight in a room holding more than this. 0 never refuses.
@@ -2645,17 +2641,12 @@ settings:
       route has it, so the opening backstab lands again. Only for an opener of bs.
     openingFightsWarning: Opening fights unasked can cost a character; the default only retaliates.
     openWarning: With this on, the client opens fights by itself — never on a player.
-    preferHint: In this order, whatever the setting above says. Still never a player.
-    preferLabel: Attack Priority List
-    preferPlaceholder: wererat shaman
     refreshHint: Rounds between looks, so a monster that died or walked in is noticed. 0 never looks.
     refreshLabel: Room Look Interval (Rounds)
     rulesPointerNote:
       When to cast, when to buff and when to loot are automation.rules in the options
       file — guard expressions with comments explaining why, which is what YAML is good at and this
       screen is not.
-    whileWalking: Combat Along Path
-    whileWalkingHint: A route waits a fight out and walks on, so this makes the journey a lap.
   crumbs:
     characters: Characters
     global: Global
@@ -2771,19 +2762,15 @@ settings:
     pvpNotifyHint: Says so on the gangpath (bg), once per attacker per five-minute window, with the
       room and your health riding along. It speaks to your whole gang.
     pvpNotifyLabel: Broadcast PvP Alert to Gang (bg)
-    potionBelowHint: 0 never drinks. Only when the pack lists one.
-    drinkHealingBelowLabel: 'Auto-Potion: HP Threshold %'
-    drinkManaBelowLabel: 'Auto-Potion: Mana Threshold %'
-    healingPotionLabel: Health Potion Item
-    manaPotionLabel: Mana Potion Item
-    # The player's own *use this when that* list (todo 19). The name field is
-    # filtered by the condition from the realm's own data, so a rule for
-    # poison offers the antidotes and not the healing potions.
+    # The player's own *use this when that* list (todo 19), and since todo 00
+    # the only one. The name field is filtered by the condition from the
+    # realm's own data, so a rule for poison offers the antidotes and not the
+    # healing potions.
     potionRuleLegend: When to use an item
     potionRuleNote:
-      'Beyond the two above: name an item and say what makes it worth using. The suggestions are
-      the items this realm says would serve the condition, and anything else can still be typed.
-      Only an item the pack lists is ever asked for.'
+      Name an item and say what makes it worth using. The list is what this realm says would
+      serve the condition; anything else can still be typed, and only an item the pack lists is
+      ever asked for.
     potionRuleAdd: Add a rule
     potionRuleNamePlaceholder: item, as the pack lists it
     potionRuleNameAria: 'Item for rule {number}'
@@ -2800,12 +2787,6 @@ settings:
     potionWhenBlind: blinded
     potionWhenDiseased: diseased
     potionWhenHeld: held
-    potionLegend: Potions
-    potionNote:
-      Drunk when the figure falls below the threshold and the pack lists the potion. The result
-      arrives on the next status line, like every vital.
-    potionVerbHint: Both are the realm's own commands. drink is the one seen consuming a potion.
-    potionVerbLabel: Verb
     recoverLegend: Recover
     restBelowHint: Sends rest out of combat below this, and holds a running loop still at the same
       figure. 0 never rests and never pauses a loop.
@@ -2836,7 +2817,7 @@ settings:
   login:
     addStep: Add a menu
     legend: Login Menus, This Character
-    note: 'Usually empty: the menus belong to {realmOrAddress}. Anything here replaces that script
+    note: 'Usually empty: the menus are from {realmOrAddress}. Anything here replaces that script
       rather than being added to it.'
     noteFallbackAddress: the address this character dials
     removeStepAria: Remove step {stepNumber}
@@ -2927,7 +2908,7 @@ settings:
     extinguishInLightHint:
       Removes the lit torch in a room that does not need it, while nothing is walking the character,
       so a torch lasts the sewer rather than the walk there.
-    recoverGear: Fetch the Kit After a Death
+    recoverGear: Recover Your Gear After Death
     recoverGearFloorLabel: Keep at least (lives)
     recoverGearFloorHint:
       Stop going back once this many lives are left. Lives are finite and a recovery walks a
@@ -2944,12 +2925,23 @@ settings:
       Only when the realm says an exit of the room needs it, no listing has shown it in the pack,
       and it is lying on this floor. A keyed door with no key is a wall the router plans around, so
       this is the one moment bending down is worth anything. On by default.
-    legend: Walking a Route
+    doorsLegend: Doors
+    stealthLegend: Stealth
+    lightLegend: Light
+    afflictionsLegend: Afflictions
+    carryLegend: What It Carries
     loopsNote: These belong to this character alone. Loops for everyone who plays a realm go on that
-      realm’s page; loops for every character go on the Global page. How long to wait in a room, and
-      walking a corridor there and back, are linger and bounce in the file.
+      realm’s page; loops for every character go on the Global page.
     loopsWarning: These loops name rooms in the world that ships with the client, and this character
       uses its own.
+    bankWhichLabel: Bank At
+    bankWhichHint:
+      Which counter this character's vault is at. A balance is per counter and the realm states
+      each separately, so depositing at whichever bank you walk past leaves several figures that
+      cannot be added up. Any counter deposits wherever you happen to be standing.
+    bankWhichAny: Any counter
+    bankWhichOption: '{name} — {room}'
+    bankWhichStale: This realm does not place that counter, so nothing is deposited. Pick one from the list.
     bankDepositHint:
       At a bank counter with cash on hand over the threshold, deposits everything above the
       retained amount and asks the vault its figure. Never on an unread balance.
@@ -3023,7 +3015,6 @@ settings:
       Brute force, when your strength is close to what the realm records for the door. It
       costs health, and a bashed door is open already.
     bashTries: Bashes Per Door
-    note: Where to walk is chosen from the map, not here.
     openDoors: Auto-Open Doors
     openDoorsHint: A route stops at a shut door unless this is on. A locked one costs a command per try.
     openTries: Tries Per Door
@@ -3593,21 +3584,22 @@ automation:
     refusedEngagedWith: 'already swinging at {target}, which is still here'
     refusedAvoided: '{target} is on the avoid list'
     refusedCostly: Attacking {target} causes an alignment penalty (-10 points).
-    refusedDeathSpell: 'the realm says {target} casts a spell when it dies'
     refusedEngageNone: engage is set to none, so nothing is opened unasked
     refusedTooTough: '{target} has {hp} health and maxTargetHealth is {cap}'
-    refusedUndead: 'the realm marks {target} undead'
     refusedMaxMobs: '{here} monsters here, and maxMobs is {max}'
     refusedMinMobs: 'only {here} monsters here, and minMobs is {min}'
     refusedTooRich: '{target} is worth {exp} experience and maxMonsterExperience is {cap}'
     refusedMovePending: a step is still waiting for its room
     refusedNotHostile: the realm does not say {target} attacks first
-    refusedClaimed: '{player} is already fighting {target}, and joinFights is off'
+    refusedClaimed: '{player} is already fighting {target}, and politeAttacks is on'
     refusedTooCostly: 'the fight with {target} would cost up to {cost} hp of your {hp}'
     refusedRetreating: Retreat in progress
     refusedStandDown: you typed break
     refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
-    refusedWalking: walking a route, and whileWalking is off
+    refusedDeclinedTravelling: you turned auto-combat off for this journey
+    fightingForTheRoute:
+      Auto-combat is off, but this route will fight on the way. Stop the route to stop the
+      fighting, or switch auto-combat on and off again to decline it for the rest of this journey.
     standDown: Auto-combat is standing down after break; it resumes when you move or attack.
     # An opener the class can never land -- `combat.opener` survives a reroll,
     # and a Mage was being told why its backstab was withheld (todo 28).
@@ -3630,7 +3622,6 @@ automation:
     spellIneffective: '{spell} has no effect here; casting {fallback} instead for this fight.'
     spellIneffectiveArea: '{spell} has no effect here; the combat spell carries this fight.'
     spellIneffectiveNoFallback: '{spell} has no effect here, and no fallback spell is set; the round attacks carry this fight.'
-    whyPreferred: named under prefer
     whyUnweighed: 'first of {count} here: the realm cannot weigh {target}, and unknown is not safe'
     hazardList: '; {list}'
     hazard:
@@ -3688,8 +3679,7 @@ automation:
       'A level is waiting and no trainer that takes this character at level {level} can be walked to
       from here: {skipped}. Nothing walked; asked again from another room.'
     refusalNotReached: 'Did not reach {room} to train: {why}'
-    refusalUnanswered:
-      Sent train at {trainer} and the level did not move. Train by hand, or check the trainer.
+    refusalUnanswered: Sent train at {trainer} and the level did not move. Train by hand, or check the trainer.
     nothingWanted: "Auto Train Stats: {cp} CP unspent, but every wanted figure is at or under the sheet's ({figures}). Raise a figure under Training to spend them."
     nothingAffordable: 'Auto Train Stats: {cp} CP unspent, but the cheapest wanted point ({attribute}, {cost} CP) costs more than that.'
     whyNothingWanted: every wanted figure is at or under the current one
@@ -3773,7 +3763,8 @@ automation:
   loops:
     fightingForTheLap:
       Auto-combat is off, but this lap will fight anyway — a loop is chosen for what lives on it.
-      Stop the loop to stop the fighting.
+      Stop the loop to stop the fighting, or switch auto-combat on and off again to decline it for
+      the rest of this lap.
     heldForErrand: Loop held — going shopping; it walks on from the shop.
     walkingOnAfterErrand: Walking on from the shop.
     giveUpReason: 'could not reach {stopName}: {why}'
@@ -3805,6 +3796,9 @@ automation:
     notAtCounter:
       Nothing was deposited — the realm does not call this room a bank. A deposit typed anywhere
       else is said out loud to everybody standing in it.
+    notYourBank:
+      Nothing was deposited — this counter is not the bank this character banks at. Change the
+      bank on the settings screen, or set it to the counter you are standing at.
     nothingToBank: Nothing was deposited — the listing says the purse is empty.
     reasonConfirm: 'banking: asking the vault its figure'
     reasonCount: 'banking: restating cash on hand before it is spent'
@@ -3877,10 +3871,9 @@ automation:
   search:
     reason: 'search: looking for what this room did not print'
   potion:
-    reasonHealth: 'potion: health is low'
-    # A rule from the player's own `health.potions` list (todo 19).
+    # A rule from the player's own `health.potions` list (todo 19) -- the only
+    # thing that reaches for a potion since todo 00.
     reasonRule: 'a potion rule fired'
-    reasonMana: 'potion: mana is low'
   remotes:
     followerReady: '{from} is ready.'
     followerWait: '{from} asked the party to wait.'
@@ -3963,8 +3956,7 @@ automation:
     # for poison before anything else and answers with the poison sentence
     # instead of sitting the character down. Naming the cure because a
     # character that cannot rest and has no cure set cannot recover at all.
-    restPoisoned:
-      This realm refuses to rest a poisoned character. Set a cure for poison
+    restPoisoned: This realm refuses to rest a poisoned character. Set a cure for poison
       under the spells settings, or cure it by hand.
     reasonMana: 'recovery: mana is low'
     verbRefused: The realm answered {verb} with "Your command had no effect."; not proposing it again this session.

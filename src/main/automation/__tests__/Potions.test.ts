@@ -12,10 +12,14 @@ const automation: AutomationConfig = {
 };
 const health = (over: Partial<HealthConfig> = {}): HealthConfig => ({
   ...DEFAULT_CONFIG.automation.health,
-  drinkHealingPotionBelow: 0.25,
-  drinkManaPotionBelow: 0.15,
   ...over
 });
+
+/** The two rows the two removed named slots used to be (todo 00). */
+const VITAL_RULES: HealthConfig['potions'] = [
+  { name: 'healing potion', when: 'hp', below: 0.25, verb: 'drink' },
+  { name: 'mana potion', when: 'mana', below: 0.15, verb: 'drink' }
+];
 const carried = (name: string): CarriedItem => ({
   ...wireItem(name)
 });
@@ -45,8 +49,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const drinker = (over: Partial<HealthConfig> = {}) => new Potions(health(over), true, queue);
+const drinker = (over: Partial<HealthConfig> = {}) =>
+  new Potions(health({ potions: VITAL_RULES, ...over }), true, queue);
 
+/*
+ * The two vitals, which until todo 00 were named slots of their own with a
+ * threshold and a shared verb. They are rows now, and every rule they used to
+ * state is a rule about a row.
+ */
 describe('drinking by a number', () => {
   it('drinks the healing potion below the threshold, and the mana potion below its own', () => {
     const potions = drinker();
@@ -60,9 +70,9 @@ describe('drinking by a number', () => {
   it('does nothing above the threshold, with no maximum, or when told never', () => {
     drinker().onCharacter(state({ hp: 60 }));
     drinker().onCharacter(state({ hp: 5, hpMax: null }));
-    drinker({ drinkHealingPotionBelow: 0, drinkManaPotionBelow: 0 }).onCharacter(
-      state({ hp: 5, mana: 1 })
-    );
+    drinker({
+      potions: VITAL_RULES.map((rule) => ({ ...rule, below: 0 }))
+    }).onCharacter(state({ hp: 5, mana: 1 }));
     // A class with no mana has no maximum, which is unknown rather than low.
     drinker().onCharacter(state({ mana: null, manaMax: null }));
     expect(sent).toEqual([]);
@@ -84,11 +94,17 @@ describe('drinking by a number', () => {
     expect(sent).toEqual(['drink healing potion']);
   });
 
-  it('uses the verb it was told, and says nothing with no name', () => {
-    drinker({ potionVerb: 'use' }).onCharacter(state({ hp: 5 }));
+  it('uses the verb the row states, and says nothing with no name', () => {
+    drinker({
+      potions: [{ name: 'healing potion', when: 'hp', below: 0.25, verb: 'use' }]
+    }).onCharacter(state({ hp: 5 }));
     expect(sent).toEqual(['use healing potion']);
     sent.length = 0;
-    drinker({ healingPotionName: '  ' }).onCharacter(state({ hp: 5 }));
+    // A nameless row is dropped by `normalizePotionRules` before it gets here;
+    // one that reached here anyway asks for nothing.
+    drinker({ potions: [{ name: '  ', when: 'hp', below: 0.25, verb: 'drink' }] }).onCharacter(
+      state({ hp: 5 })
+    );
     expect(sent).toEqual([]);
   });
 
@@ -105,7 +121,7 @@ describe('drinking by a number', () => {
   });
 
   it('is off with automation off, and out of the realm', () => {
-    new Potions(health(), false, queue).onCharacter(state({ hp: 5 }));
+    new Potions(health({ potions: VITAL_RULES }), false, queue).onCharacter(state({ hp: 5 }));
     drinker().onCharacter({ ...state({ hp: 5 }), phase: 'unknown' });
     expect(sent).toEqual([]);
   });
@@ -128,11 +144,7 @@ describe('the potion rules', () => {
   });
 
   const withRules = (rules: HealthConfig['potions']) =>
-    new Potions(
-      health({ drinkHealingPotionBelow: 0, drinkManaPotionBelow: 0, potions: rules }),
-      true,
-      queue
-    );
+    new Potions(health({ potions: rules }), true, queue);
 
   it('uses an item when a stated condition holds', () => {
     const base = state({ hp: 90 }, [carried('cure poison potion')]);

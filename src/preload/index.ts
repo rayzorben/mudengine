@@ -127,6 +127,7 @@ const api: IpcApi = {
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
   huntingGrounds: (session, radius) => ipcRenderer.invoke(Invoke.huntingGrounds, session, radius),
   trainers: (session) => ipcRenderer.invoke(Invoke.trainers, session),
+  banks: (session) => ipcRenderer.invoke(Invoke.banks, session),
   itemsServing: (session) => ipcRenderer.invoke(Invoke.itemsServing, session),
   draftLoop: (session, rooms) => ipcRenderer.invoke(Invoke.draftLoop, session, rooms),
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),

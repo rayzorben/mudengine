@@ -281,6 +281,153 @@ describe('the "stand up at" health thresholds', () => {
 });
 
 /*
+ * The combat and potion settings todo 00 took out, and the one it renamed.
+ *
+ * The carrying matters more than the deleting: somebody who wrote
+ * `drinkHealingPotionBelow: 0.4` asked for a behaviour, and a key that goes
+ * without becoming a row is a setting that silently stops working.
+ */
+describe('the combat and potion settings that went', () => {
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const combatOf = () =>
+    parse(fs.readFileSync(home.options, 'utf8')).automation.combat as Record<string, unknown>;
+  const healthOf = () =>
+    parse(fs.readFileSync(home.options, 'utf8')).automation.health as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-combat-went-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  /*
+   * `joinFights: false` was *be polite*, so it becomes `politeAttacks: true`
+   * and the character keeps standing aside. The negation is the whole point:
+   * carrying the value across unflipped would reverse what the file asked for.
+   */
+  it('flips a stated joinFights into politeAttacks, keeping the behaviour', () => {
+    fs.writeFileSync(home.options, 'automation:\n  combat:\n    joinFights: false\n', 'utf8');
+    migrate();
+    const combat = combatOf();
+    expect(combat['politeAttacks']).toBe(true);
+    expect(combat).not.toHaveProperty('joinFights');
+  });
+
+  /*
+   * And a file that said `joinFights: true` was asking for the *new* default,
+   * so nothing is stated: writing `politeAttacks: false` would put a setting
+   * in somebody's file that they never chose.
+   */
+  it('states nothing where the file asked for what is now the default', () => {
+    fs.writeFileSync(home.options, 'automation:\n  combat:\n    joinFights: true\n', 'utf8');
+    migrate();
+    expect(combatOf()).not.toHaveProperty('politeAttacks');
+  });
+
+  it('drops the four keys that no longer decide anything', () => {
+    fs.writeFileSync(
+      home.options,
+      [
+        'automation:',
+        '  combat:',
+        '    attack: a',
+        '    whileWalking: true',
+        '    avoidUndead: true',
+        '    avoidDeathSpell: true',
+        '    prefer: [wererat shaman]',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    migrate();
+    const combat = combatOf();
+    expect(combat['attack']).toBe('a');
+    for (const key of ['whileWalking', 'avoidUndead', 'avoidDeathSpell', 'prefer']) {
+      expect(combat).not.toHaveProperty(key);
+    }
+  });
+
+  it('carries the two named potion slots into rows, keeping their thresholds', () => {
+    fs.writeFileSync(
+      home.options,
+      [
+        'automation:',
+        '  health:',
+        '    drinkHealingPotionBelow: 0.4',
+        '    drinkManaPotionBelow: 0.2',
+        '    healingPotionName: minor healing potion',
+        '    potionVerb: use',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    migrate();
+    const health = healthOf();
+    expect(health['potions']).toEqual([
+      { name: 'minor healing potion', when: 'hp', below: 0.4, verb: 'use' },
+      // The name was never stated, so the slot's own default is what it asked for.
+      { name: 'mana potion', when: 'mana', below: 0.2, verb: 'use' }
+    ]);
+    for (const key of [
+      'drinkHealingPotionBelow',
+      'drinkManaPotionBelow',
+      'healingPotionName',
+      'potionVerb'
+    ]) {
+      expect(health).not.toHaveProperty(key);
+    }
+  });
+
+  /* A 0 threshold asked for nothing, so it carries nothing. */
+  it('carries no row for a slot that was never turned on', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  health:\n    drinkHealingPotionBelow: 0\n    potionVerb: drink\n',
+      'utf8'
+    );
+    migrate();
+    expect(healthOf()['potions'] ?? []).toEqual([]);
+  });
+
+  /* The player's own rows are theirs: a carried slot goes after them. */
+  it('appends a carried slot after rows the player wrote', () => {
+    fs.writeFileSync(
+      home.options,
+      [
+        'automation:',
+        '  health:',
+        '    drinkHealingPotionBelow: 0.3',
+        '    potions:',
+        '      - name: antidote',
+        '        when: poisoned',
+        '        below: 0',
+        '        verb: drink',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    migrate();
+    const rows = healthOf()['potions'] as Array<Record<string, unknown>>;
+    expect(rows.map((row) => row['name'])).toEqual(['antidote', 'healing potion']);
+  });
+
+  it('is safe to run again, and leaves a file that never had them alone', () => {
+    fs.writeFileSync(home.options, 'automation:\n  combat:\n    joinFights: false\n', 'utf8');
+    migrate();
+    const after = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect(said.join('\n')).not.toMatch(/politeAttacks/);
+  });
+});
+
+/*
  * The round combat macro, and the belief that produced it.
  *
  * `automation.combat.rounds` sent one verb a round for "the classes that have
@@ -311,8 +458,6 @@ describe('the round combat macro', () => {
       engage: 'hostile',
       // Written by `statedTheEntityPredicates` in the same run, after this
       // step, at the defaults that change nothing.
-      avoidUndead: false,
-      avoidDeathSpell: false,
       maxTargetHealth: 0,
       minMobs: 0,
       maxMonsterExperience: 0,
@@ -2894,6 +3039,9 @@ describe('the new automation settings', () => {
     });
     expect(automation['banking']).toEqual({
       autoDeposit: false,
+      // Added by `statedTheEntityPredicates` in the same run (todo 00), at the
+      // default that keeps what the file was already doing.
+      bank: 0,
       depositThresholdCopper: 50_000,
       keepCopper: 500
     });

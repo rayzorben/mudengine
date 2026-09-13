@@ -249,11 +249,6 @@ describe('a character', () => {
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
         meditateBelow: 0.25,
-        drinkHealingPotionBelow: 0,
-        drinkManaPotionBelow: 0,
-        potionVerb: 'drink',
-        healingPotionName: '',
-        manaPotionName: '',
         // The rules list, empty where the payload states none.
         potions: []
       });
@@ -323,11 +318,6 @@ describe('a character', () => {
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
         meditateBelow: 0,
-        drinkHealingPotionBelow: 0,
-        drinkManaPotionBelow: 0,
-        potionVerb: 'drink',
-        healingPotionName: '',
-        manaPotionName: '',
         // The rules list, empty where the payload states none.
         potions: []
       });
@@ -467,20 +457,17 @@ describe('a character', () => {
           engage: 'all',
           retaliate: false,
           maxMobs: 3,
-          whileWalking: true,
           refreshRounds: 3,
           avoid: ['town guard'],
-          prefer: ['wererat shaman']
+          politeAttacks: true
         }
       });
       expect(draft?.combat).toEqual({
         enabled: true,
         attack: 'a',
         opener: 'bs',
-        // Absent from the block above, so they take their defaults: all three
-        // are refusals, and a refusal nobody asked for is off.
-        avoidUndead: false,
-        avoidDeathSpell: false,
+        // Absent from the block above, so they take their defaults: each is a
+        // refusal, and a refusal nobody asked for is off.
         maxTargetHealth: 0,
         minMobs: 0,
         maxMonsterExperience: 0,
@@ -488,15 +475,13 @@ describe('a character', () => {
         retaliate: false,
         // Absent above, and off: it spends a command per fight.
         hideForOpener: false,
-        // Absent above too, and it defaults on: MegaMUD's own default joins.
-        joinFights: true,
+        // Stated above, and the one direction MegaMUD's own default is not.
+        politeAttacks: true,
         maxMobs: 3,
         // Absent above, so it takes its default: a refusal nobody asked for is off.
         maxFightCost: 0,
         refreshRounds: 3,
-        whileWalking: true,
-        avoid: ['town guard'],
-        prefer: ['wererat shaman']
+        avoid: ['town guard']
       });
     });
 

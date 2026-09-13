@@ -4,6 +4,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { GRADE_OPTIONS, joinNames, splitNames } from '../lib/form';
 import { DENOMINATIONS } from '@shared/character';
+import type { BankChoice } from '@shared/world';
 import type {
   BankingConfig,
   DropConfig,
@@ -41,6 +42,13 @@ export interface CarrySectionsProps {
   drop: DropConfig;
   search: SearchConfig;
   banking: BankingConfig;
+  /**
+   * The bank counters this realm places, for the *which vault* picker — null
+   * while the answer has not arrived, and on the Global page, which has no
+   * realm to ask (todo 00). Null draws no picker at all: a list of one entry
+   * reading *whichever counter* is a control that does nothing.
+   */
+  banks?: readonly BankChoice[] | null;
   /** Prefix for every control name on these four fieldsets. */
   idPrefix: string;
   /** One block at a time, merged by the caller into whatever it holds them in. */
@@ -57,6 +65,7 @@ export default function CarrySections({
   drop,
   search,
   banking,
+  banks = null,
   idPrefix,
   onChange
 }: CarrySectionsProps): React.JSX.Element {
@@ -316,6 +325,47 @@ export default function CarrySections({
             value={String(banking.keepCopper)}
           />
         </div>
+        {/*
+          Which vault, when the realm places more than one (todo 00). A
+          balance is per counter and the realm states each separately, so a
+          character that deposits at whichever bank it walks past ends up with
+          four figures nobody can add up.
+
+          Only where a realm has answered: the Global page is every realm at
+          once, and a row id means nothing across two of them.
+        */}
+        {banking.autoDeposit && banks !== null && banks.length > 0 && (
+          <>
+            <SelectField
+              hint={t('settings.movement.bankWhichHint')}
+              label={t('settings.movement.bankWhichLabel')}
+              name={id('bank-which')}
+              onChange={(value) =>
+                onChange({ banking: { ...banking, bank: Number.parseInt(value, 10) || 0 } })
+              }
+              options={[
+                { value: '0', label: t('settings.movement.bankWhichAny') },
+                ...banks.map((entry) => ({
+                  value: String(entry.shop),
+                  label: t('settings.movement.bankWhichOption', {
+                    name: entry.name,
+                    room: entry.roomName
+                  })
+                }))
+              ]}
+              value={String(banking.bank)}
+            />
+            {/*
+              A stated counter this realm does not place banks nowhere and
+              says so, rather than quietly banking at the nearest one — which
+              would be the client choosing the vault the setting exists to let
+              the player choose.
+            */}
+            {banking.bank > 0 && !banks.some((entry) => entry.shop === banking.bank) && (
+              <p className="settings-warn">{t('settings.movement.bankWhichStale')}</p>
+            )}
+          </>
+        )}
       </fieldset>
     </>
   );

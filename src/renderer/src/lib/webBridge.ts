@@ -262,6 +262,7 @@ export function createWebBridge(): IpcApi {
     roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
     huntingGrounds: (session, radius) => invoke(Invoke.huntingGrounds, session, radius),
     trainers: (session) => invoke(Invoke.trainers, session),
+    banks: (session) => invoke(Invoke.banks, session),
     itemsServing: (session) => invoke(Invoke.itemsServing, session),
     draftLoop: (session, rooms) => invoke(Invoke.draftLoop, session, rooms),
     wearer: (session) => invoke(Invoke.wearer, session),

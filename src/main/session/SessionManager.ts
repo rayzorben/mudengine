@@ -810,13 +810,15 @@ export class SessionManager {
    */
   private pausedForFollowers = false;
   /**
-   * Whether the lap was running on the previous progress push.
+   * Whether a lap, or a route, was moving on the previous progress push.
    *
    * Only so the *edge* is caught: `progress` fires on every step of every leg,
-   * and the line about a lap fighting through a switch that is off belongs at
-   * the start of the lap, not once a stop.
+   * and the line about a journey fighting through a switch that is off belongs
+   * at the start of it, not once a stop. Two flags because the two progress
+   * callbacks are two, and a route starting mid-lap is not a fresh journey.
    */
   private wasLooping = false;
+  private wasWalking = false;
   /**
    * Commands this realm does not have, so automation may not send them.
    *
@@ -1280,12 +1282,26 @@ export class SessionManager {
       progress: (progress) => {
         /*
          * Auto-combat is told whether a route is running, rather than reaching
-         * into the walker for it. A walk stops the moment combat starts, so a
-         * client that opened a fight with everything between here and the bank
-         * would turn one route into a dozen — and the walker is the only thing
-         * that knows a route is in progress.
+         * into the walker for it: the walker is the only thing that knows a
+         * route is in progress.
+         *
+         * **A route fights**, whatever the switch says (todo 00) — the player
+         * asked to go somewhere, and what lives between here and there is the
+         * realm's business. Said once at the start, for the reason the lap's
+         * line is: a client that attacks while the toolbar's own switch reads
+         * off is two surfaces disagreeing in silence.
          */
-        this.combat.noteWalking(progress.status === 'walking');
+        const walking = progress.status === 'walking';
+        if (
+          walking &&
+          !this.wasWalking &&
+          !this.wasLooping &&
+          this.combat.fightingBecauseTravelling
+        ) {
+          this.sink.notice(t('automation.combat.fightingForTheRoute'));
+        }
+        this.wasWalking = walking;
+        this.combat.noteWalking(walking);
         this.sink.walk?.(progress);
       }
     });
@@ -1657,11 +1673,17 @@ export class SessionManager {
       automation.banking,
       automation.enabled,
       this.queue,
+      /*
+       * The counter in front of the character, as the realm's own shop row —
+       * `null` where the resolved room is not a bank at all. The *row* rather
+       * than a yes, so a character standing at a counter that is not the one
+       * it banks at can be told which fact stopped it (todo 00).
+       */
       (state) => {
-        if (state.room.map === null || state.room.number === null) return false;
+        if (state.room.map === null || state.room.number === null) return null;
         const here = this.world?.byId(roomId(state.room.map, state.room.number));
-        if (!here || here.shop === undefined) return false;
-        return this.world?.shop(here.shop)?.kind === 'bank';
+        if (!here || here.shop === undefined) return null;
+        return this.world?.shop(here.shop)?.kind === 'bank' ? here.shop : null;
       },
       // A press that banks nothing has to say why, or it is indistinguishable
       // from a button that does not work — which is what it was.
@@ -1974,7 +1996,7 @@ export class SessionManager {
            * silence; it is scoped to the loop, so stopping the lap is how you
            * answer it, and nothing is written into the player's own file.
            */
-          if (running && !this.wasLooping && this.combat.fightingBecauseLooping) {
+          if (running && !this.wasLooping && this.combat.fightingBecauseTravelling) {
             this.sink.notice(t('automation.loops.fightingForTheLap'));
           }
           this.wasLooping = running;
