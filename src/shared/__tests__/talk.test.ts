@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addressedTo,
+  channelPrefix,
   compose,
   DEFAULT_TALK_LAYOUT,
   DEFAULT_TALK_STAMP,
@@ -10,6 +11,7 @@ import {
   isTalkLayout,
   isTalkStamp,
   prefixOf,
+  splitOntoChannel,
   talkChannel,
   TALK_CHANNELS,
   TALK_LAYOUTS,
@@ -312,5 +314,96 @@ describe('what the Talk card carries', () => {
     expect(isTalkBlock({ domain: 'presence', type: 'player-arrives-room' })).toBe(false);
     expect(isTalkBlock({ domain: 'combat', type: 'mob-hits' })).toBe(false);
     expect(isTalkBlock({ domain: 'room', type: 'room-name' })).toBe(false);
+  });
+});
+
+/*
+ * A multi-line paste, onto the channel the player has already named (todo 03).
+ *
+ * The realm's input line cannot know a paste happened: `-` plus three pasted
+ * lines reached it as `-a`, then `b`, then `c` -- one broadcast and two bare
+ * commands said out loud in the room. The half-line already on the wire is the
+ * only thing that knows a channel was named.
+ */
+describe('the channel a half-typed line has already named', () => {
+  it('reads a sigil, with or without a space after it', () => {
+    expect(channelPrefix('-')).toBe('-');
+    expect(channelPrefix('- ')).toBe('-');
+    expect(channelPrefix('.')).toBe('.');
+    expect(channelPrefix('"')).toBe('"');
+    expect(channelPrefix("'")).toBe("'");
+  });
+
+  it('reads a command channel, and requires the space after it', () => {
+    expect(channelPrefix('gos ')).toBe('gos ');
+    expect(channelPrefix('br hello')).toBe('br ');
+    expect(channelPrefix('gb ')).toBe('gb ');
+    expect(channelPrefix('auc ')).toBe('auc ');
+    // Still being typed: `gossipers` is not a channel, and claiming `gos`
+    // here would break a pasted word into lines of `gos `.
+    expect(channelPrefix('gos')).toBeNull();
+  });
+
+  it('keeps the name in an addressed channel, and refuses a bare sigil', () => {
+    expect(channelPrefix('>Soul ')).toBe('>Soul ');
+    expect(channelPrefix('/Soul hi')).toBe('/Soul ');
+    // Addresses nobody; the paste is left exactly as it was.
+    expect(channelPrefix('>')).toBeNull();
+    expect(channelPrefix('/')).toBeNull();
+  });
+
+  /*
+   * A sigil claims the line whatever follows it, which is the server's own
+   * reading: `CommManager.CheckCommandForComm` runs before the command table,
+   * so `.get all` is already said out loud rather than picking anything up.
+   * Agreeing with it here is not a guess (raised in review).
+   */
+  it('claims a sigil line whatever follows it, as the server does', () => {
+    expect(channelPrefix('.get all')).toBe('.');
+    expect(channelPrefix('-who')).toBe('-');
+  });
+
+  it('says nothing about an ordinary command', () => {
+    expect(channelPrefix('get all ')).toBeNull();
+    expect(channelPrefix('')).toBeNull();
+    expect(channelPrefix('who ')).toBeNull();
+  });
+});
+
+describe('a pasted run split onto that channel', () => {
+  it('puts every line on the channel, each terminated', () => {
+    expect(splitOntoChannel('-', 'a\nb\nc')).toBe('a\r-b\r-c\r');
+  });
+
+  /* The prefix is already on the wire, so the first line carries none. */
+  it('leaves the first line to finish the one already begun', () => {
+    expect(splitOntoChannel('gos ', 'hello\nthere')).toBe('hello\rgos there\r');
+  });
+
+  it('keeps the name an addressed channel needs', () => {
+    expect(splitOntoChannel('>Soul ', 'one\ntwo')).toBe('one\r>Soul two\r');
+  });
+
+  /*
+   * A paragraph break would otherwise buy `You have to broadcast something!`
+   * per blank line, out of the same budget walking and fighting spend from.
+   */
+  it('drops the blank lines rather than broadcasting nothing', () => {
+    expect(splitOntoChannel('-', 'a\n\n\nb')).toBe('a\r-b\r');
+  });
+
+  it('normalises whichever line ending the clipboard carried', () => {
+    expect(splitOntoChannel('-', 'a\r\nb')).toBe('a\r-b\r');
+    expect(splitOntoChannel('-', 'a\rb')).toBe('a\r-b\r');
+  });
+
+  /* Every ordinary keystroke, and every paste that needs nothing done to it. */
+  it('answers null where there is nothing to change', () => {
+    expect(splitOntoChannel('-', 'a')).toBeNull();
+    expect(splitOntoChannel('-', 'a\r')).toBeNull();
+    expect(splitOntoChannel('get all ', 'a\nb')).toBeNull();
+    expect(splitOntoChannel('', 'a\nb')).toBeNull();
+    // Nothing but blank lines after the first: the paste stands as it was.
+    expect(splitOntoChannel('-', 'a\n\n')).toBeNull();
   });
 });

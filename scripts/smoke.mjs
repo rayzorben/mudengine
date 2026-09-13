@@ -6716,6 +6716,38 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   );
 
   /*
+   * **And nothing is drawn that does not fit.** The docked toolbar is one band
+   * tall, so its column has room for exactly one glyph — close — and the kebab
+   * was drawn under it anyway, clipped in half by the card's own `overflow`
+   * (todo 00, 2026-09-12, with the screenshot). A control clipped in half is a
+   * control that is not there.
+   *
+   * Measured, not counted: the last glyph's own box against the card's, so
+   * this cannot pass on a column that rendered nothing. The positive control
+   * is the close glyph being one of the ones measured.
+   */
+  const toolbarColumn = await evaluate(
+    `JSON.stringify((() => {
+      const card = document.querySelector('.dock .toolbar-card');
+      if (!card) return null;
+      const box = card.getBoundingClientRect();
+      const glyphs = [...card.querySelectorAll('.card-side .card-action')];
+      return {
+        drawn: glyphs.length,
+        close: glyphs.some((b) => b.classList.contains('card-close')),
+        more: glyphs.some((b) => b.getAttribute('data-action') === 'more'),
+        over: glyphs.filter((b) => b.getBoundingClientRect().bottom > box.bottom + 0.5).length
+      };
+    })())`
+  );
+  const toolbarSide = JSON.parse(String(toolbarColumn ?? 'null'));
+  check(
+    toolbarSide !== null && toolbarSide.drawn >= 1 && toolbarSide.close && toolbarSide.over === 0,
+    'and the docked toolbar draws only the glyphs that fit inside it',
+    JSON.stringify(toolbarSide)
+  );
+
+  /*
    * What a card is set to, opened from its own gear.
    *
    * The palettes offered are the half of the registry that matches the client's
@@ -10303,24 +10335,40 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   check(await clickText('.settings-sections .crumb', 'alerts'), 'its Alerts section is reachable');
+  /*
+   * The player's own rows, which are the only place alerts are configured
+   * (todo 02). It asserted a severity floor and eleven mute checkboxes until
+   * then; every question those answered is a row, and the two surfaces were a
+   * second way of asking one question.
+   *
+   * The shipped rows are what a fresh client draws, so the count is the
+   * positive control: a list that failed to render would satisfy "no floor"
+   * perfectly.
+   */
   const alerting = await readUntil(
     () =>
       evaluate(`
     (() => {
       const box = [...document.querySelectorAll('.settings-menus')]
-        .find((f) => /^alerts$/i.test((f.querySelector('legend')?.innerText ?? '').trim()));
-      if (!box) return 'no alerts fieldset';
+        .find((f) => /your own alerts/i.test((f.querySelector('legend')?.innerText ?? '').trim()));
+      if (!box) return 'no alert rules fieldset';
+      const rows = [...box.querySelectorAll('.settings-alerts > li')];
       return JSON.stringify({
-        keep: box.querySelector('select')?.value ?? null,
-        channels: [...box.querySelectorAll('.settings-checks .settings-check')].length
+        rows: rows.length,
+        on: rows.map((row) => row.querySelector('select')?.value ?? null),
+        floor: !!document.querySelector('.settings-form [name="alert-min"]'),
+        muted: [...document.querySelectorAll('.settings-form [name^="mute-"]')].length
       });
     })()
   `),
-    (alerting) => /"keep":"info"/.test(alerting) && /"channels":1[01]/.test(alerting)
+    (alerting) => /"rows":[1-9]/.test(alerting) && /"floor":false/.test(alerting)
   );
   check(
-    /"keep":"info"/.test(alerting) && /"channels":1[01]/.test(alerting),
-    'and offers a floor and the channels to mute, rather than a box to spell one into',
+    /"rows":[1-9]/.test(alerting) &&
+      /"floor":false/.test(alerting) &&
+      /"muted":0/.test(alerting) &&
+      /"health"/.test(alerting),
+    'and offers the player\u2019s own alert rows, with no floor and no mute list beside them',
     alerting
   );
   check(await showCrumb('.settings-sections .crumb', 'character'), 'and back to Character');

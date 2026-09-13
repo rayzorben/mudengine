@@ -1072,6 +1072,47 @@ option {
   border-color: var(--ink-line);
 }
 
+/*
+ * A chip that is a **control**, in a row where any number may be held.
+ *
+ * A `.chip` is a statement, and a row of them says several things at once, so
+ * nothing in the base rule changes with `aria-pressed` -- the two coin rows in
+ * the loot settings were drawn identically whether a coin was collected or not,
+ * with all five on by default, so there was no state to see and pressing one
+ * looked like pressing nothing (todo 01, 2026-09-12). It toggled correctly the
+ * whole time; it simply never said so.
+ *
+ * Keyed on `aria-pressed` and not on a class, so the drawn state and the
+ * accessible state are one fact rather than two that can drift.
+ *
+ * The register is the Talk card's, and for its reason: a row of toggles answers
+ * *which of these are on*, with any number at once, which has to read as a
+ * pattern across the row rather than as one highlighted word. The filled pill
+ * is the loudest thing the palette has. Off is left tonal and legible -- an off
+ * coin is still a coin somebody is choosing about, so it is not struck through
+ * the way a hidden *filter* is.
+ */
+.chip.pick {
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chip.pick:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--text-hi);
+}
+
+.chip.pick[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
 .chip.warn {
   background: color-mix(in srgb, var(--pending) var(--tone), transparent);
   border-color: color-mix(in srgb, var(--pending) var(--tone-strong), transparent);

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import Advanced from './Advanced';
+import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
@@ -32,24 +33,6 @@ import {
   themesOfAppearance,
   type TerminalPalette
 } from '@shared/themes';
-import {
-  DESKTOP_ALERTS,
-  NOTICE_CHANNELS,
-  type DesktopAlert,
-  type Severity
-} from '@shared/notifications';
-
-/**
- * The word beside each desktop switch. The character form's wording wins on
- * both pages, so it is the same table drawn twice rather than two.
- */
-const HAPPENING_LABEL: Record<DesktopAlert, string> = {
-  attacked: t('settings.alerts.happening.attacked'),
-  hurt: t('settings.alerts.happening.hurt'),
-  arrived: t('settings.alerts.happening.arrived'),
-  hungup: t('settings.alerts.happening.hungup'),
-  critical: t('settings.alerts.happening.critical')
-};
 import type { StreamEncoding } from '@shared/types';
 
 /**
@@ -2071,68 +2054,21 @@ export default function GlobalSettings({
       {shown === 'alerts' && (
         <>
           {/*
-            The three words the character form shows, not the severity names
-            out of the schema. One setting named two ways on two screens is
-            how a player comes to believe there are two settings.
+            The player's own rows, and the only thing that decides what is
+            alerted (todo 02). The same fieldset the character page draws, from
+            the same component: this page is where a new character's alerts are
+            copied from, so a list that existed on one page only was a starting
+            point nobody could set.
           */}
-          <SelectField
-            hint={t('settings.alerts.minimumHint')}
-            label={t('settings.alerts.minimumLabel')}
-            name="global-alert-min"
-            onChange={(value) =>
-              patch('ui', { alerts: { ...draft.ui.alerts, minimum: value as Severity } })
-            }
-            options={[
-              { value: 'info', label: t('settings.alerts.minimumInfo') },
-              { value: 'warning', label: t('settings.alerts.minimumWarning') },
-              { value: 'critical', label: t('settings.alerts.minimumCritical') }
-            ]}
-            value={draft.ui.alerts.minimum}
-          />
-          {/*
-            What a search turning something up is worth interrupting for.
-            Here rather than on the Room card's gear, where a player would
-            first look: a card's settings are a view preference in
-            localStorage, and "tell me when a gold ring is found" is the same
-            class of decision as the floor above it. The card keeps the one
-            setting that *is* a view — how far back its face shows the log.
-          */}
-          <div className="settings-inline">
-            <TextField
-              hint={t('settings.alerts.findItemsHint')}
-              label={t('settings.alerts.findItemsLabel')}
-              name="global-alert-finds"
-              onChange={(value) =>
-                patch('ui', {
-                  alerts: {
-                    ...draft.ui.alerts,
-                    finds: { ...draft.ui.alerts.finds, items: splitNames(value) }
-                  }
-                })
-              }
-              placeholder={t('settings.alerts.findItemsPlaceholder')}
-              spellCheck={false}
-              value={joinNames(draft.ui.alerts.finds.items)}
-              wide
+          <fieldset className="settings-menus">
+            <legend>{t('settings.alerts.ruleLegend')}</legend>
+            <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
+            <AlertList
+              namePrefix="global-alert-rule"
+              onChange={(rules) => patch('ui', { alerts: { ...draft.ui.alerts, rules } })}
+              rules={draft.ui.alerts.rules}
             />
-            <NumberField
-              hint={t('settings.alerts.findCashHint')}
-              label={t('settings.alerts.findCashLabel')}
-              name="global-alert-find-cash"
-              onChange={(value) =>
-                patch('ui', {
-                  alerts: {
-                    ...draft.ui.alerts,
-                    finds: {
-                      ...draft.ui.alerts.finds,
-                      cashOverCopper: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  }
-                })
-              }
-              value={draft.ui.alerts.finds.cashOverCopper || ''}
-            />
-          </div>
+          </fieldset>
           {/*
             Beside the alerts, because both are about a player who is not
             looking: alerts are what they hear about the character, and this
@@ -2209,52 +2145,6 @@ export default function GlobalSettings({
                   })
                 }
               />
-            </div>
-            <div className="settings-checks">
-              {DESKTOP_ALERTS.map((happening) => (
-                <CheckField
-                  checked={draft.ui.alerts.desktop.mute.includes(happening)}
-                  key={happening}
-                  label={HAPPENING_LABEL[happening]}
-                  name={`global-desktop-mute-${happening}`}
-                  onChange={(value) =>
-                    patch('ui', {
-                      alerts: {
-                        ...draft.ui.alerts,
-                        desktop: {
-                          ...draft.ui.alerts.desktop,
-                          mute: value
-                            ? [...draft.ui.alerts.desktop.mute, happening]
-                            : draft.ui.alerts.desktop.mute.filter((entry) => entry !== happening)
-                        }
-                      }
-                    })
-                  }
-                />
-              ))}
-            </div>
-          </fieldset>
-          <fieldset className="settings-menus">
-            <legend>{t('settings.alerts.muteLabel')}</legend>
-            <div className="settings-checks">
-              {NOTICE_CHANNELS.map((channel) => (
-                <CheckField
-                  checked={draft.ui.alerts.mute.includes(channel)}
-                  key={channel}
-                  label={channel}
-                  name={`global-mute-${channel}`}
-                  onChange={(value) =>
-                    patch('ui', {
-                      alerts: {
-                        ...draft.ui.alerts,
-                        mute: value
-                          ? [...draft.ui.alerts.mute, channel]
-                          : draft.ui.alerts.mute.filter((entry) => entry !== channel)
-                      }
-                    })
-                  }
-                />
-              ))}
             </div>
           </fieldset>
         </>

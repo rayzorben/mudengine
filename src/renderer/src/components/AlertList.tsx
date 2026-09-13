@@ -3,11 +3,13 @@ import { t } from '../lib/i18n';
 import {
   ALERT_SIDES,
   ALERT_WATCHES,
+  alertIsCash,
   alertIsMeasured,
   alertIsNamed,
   NOTICE_CHANNELS,
   SEVERITIES,
-  type AlertRule
+  type AlertRule,
+  type NoticeChannel
 } from '@shared/notifications';
 
 export interface AlertListProps {
@@ -111,7 +113,7 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   <optgroup label={t('settings.alerts.groupChannels')}>
                     {NOTICE_CHANNELS.map((channel) => (
                       <option key={channel} value={channel}>
-                        {channel}
+                        {CHANNEL_WORD[channel]}
                       </option>
                     ))}
                   </optgroup>
@@ -157,6 +159,25 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                       <span>{t('settings.alerts.rulePercent')}</span>
                     </label>
                   </>
+                )}
+                {/*
+                  The cash watch is a figure like health, and not one: there is
+                  no maximum to be a share of and no *above* to fire on, so it
+                  takes the number alone with no side and no per-cent box. It
+                  was `ui.alerts.finds.cashOverCopper` until the rows became the
+                  only place alerts are set (todo 02).
+                */}
+                {alertIsCash(rule.on) && (
+                  <input
+                    aria-label={t('settings.alerts.ruleValueAria', { number: index + 1 })}
+                    className="number"
+                    inputMode="numeric"
+                    name={`${namePrefix}-${index}-value`}
+                    onChange={(event) =>
+                      update(index, { value: Math.max(0, Number(event.target.value) || 0) })
+                    }
+                    value={rule.value}
+                  />
                 )}
                 {alertIsNamed(rule.on) && (
                   <input
@@ -287,5 +308,28 @@ const WATCH_WORD: Record<(typeof ALERT_WATCHES)[number], () => string> = {
   mana: () => t('settings.alerts.watchMana'),
   attacked: () => t('settings.alerts.watchAttacked'),
   item: () => t('settings.alerts.watchItem'),
-  player: () => t('settings.alerts.watchPlayer')
+  player: () => t('settings.alerts.watchPlayer'),
+  cash: () => t('settings.alerts.watchCash')
+};
+
+/**
+ * The eleven channels in the dictionary's own words.
+ *
+ * It lived on the two settings screens for the mute checkboxes and moved here
+ * when they went (todo 02): the row's picker is the one place a channel is now
+ * named, and a `Record` over the union means a channel the client gains later
+ * fails to build rather than appearing untranslated.
+ */
+const CHANNEL_WORD: Record<NoticeChannel, string> = {
+  combat: t('settings.alerts.channel.combat'),
+  vitals: t('settings.alerts.channel.vitals'),
+  room: t('settings.alerts.channel.room'),
+  realm: t('settings.alerts.channel.realm'),
+  party: t('settings.alerts.channel.party'),
+  command: t('settings.alerts.channel.command'),
+  movement: t('settings.alerts.channel.movement'),
+  items: t('settings.alerts.channel.items'),
+  stealth: t('settings.alerts.channel.stealth'),
+  presence: t('settings.alerts.channel.presence'),
+  session: t('settings.alerts.channel.session')
 };

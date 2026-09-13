@@ -15,7 +15,6 @@ import FormField, {
   SelectField,
   TextField
 } from './FormField';
-import { Hint } from './Hint';
 import Advanced from './Advanced';
 import CarrySections from './CarrySections';
 import BlessingList from './BlessingList';
@@ -75,13 +74,6 @@ import {
 } from '@shared/config';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import { ACTIONABLE_REMOTES, type RemoteGrant, type RemoteName } from '@shared/remotes';
-import {
-  DESKTOP_ALERTS,
-  NOTICE_CHANNELS,
-  type DesktopAlert,
-  type NoticeChannel,
-  type Severity
-} from '@shared/notifications';
 import { errorMessage } from '@shared/values';
 
 /**
@@ -115,38 +107,6 @@ function wantedNumbers(wanted: Record<TrainedAttribute, string>): Record<Trained
   return out;
 }
 const DEFAULT_ALERTS = DEFAULT_CONFIG.ui.alerts;
-
-/**
- * The word beside each mute checkbox, keyed by the shared closed union: a
- * channel added to `NOTICE_CHANNELS` fails to compile here until it has a
- * label, where the local copy this replaced could silently fall behind.
- */
-/**
- * The word beside each desktop switch, keyed by the same closed union for the
- * same reason: a happening added to `DESKTOP_ALERTS` does not compile until
- * somebody has decided what to call it.
- */
-const HAPPENING_LABEL: Record<DesktopAlert, string> = {
-  attacked: t('settings.alerts.happening.attacked'),
-  hurt: t('settings.alerts.happening.hurt'),
-  arrived: t('settings.alerts.happening.arrived'),
-  hungup: t('settings.alerts.happening.hungup'),
-  critical: t('settings.alerts.happening.critical')
-};
-
-const CHANNEL_LABEL: Record<NoticeChannel, string> = {
-  combat: t('settings.alerts.channel.combat'),
-  vitals: t('settings.alerts.channel.vitals'),
-  room: t('settings.alerts.channel.room'),
-  realm: t('settings.alerts.channel.realm'),
-  party: t('settings.alerts.channel.party'),
-  command: t('settings.alerts.channel.command'),
-  movement: t('settings.alerts.channel.movement'),
-  items: t('settings.alerts.channel.items'),
-  stealth: t('settings.alerts.channel.stealth'),
-  presence: t('settings.alerts.channel.presence'),
-  session: t('settings.alerts.channel.session')
-};
 
 /**
  * The per-player half of `automation.remotes`, edited from a form.
@@ -625,19 +585,18 @@ interface CharacterForm {
    * that was never in it — one written by hand in its own file.
    */
   loops: Loop[];
-  /** Alerts — what this character is worth interrupting you for. */
-  alertMinimum: Severity;
-  /** The player's own rows. See `AlertList`. */
+  /**
+   * Alerts — what this character is worth interrupting you for.
+   *
+   * One list and two switches. The severity floor, the per-channel mute list
+   * and the find watch went with the old surface (todo 02): every question they
+   * answered is a row, and two vocabularies for one question is how somebody
+   * comes to believe one of them is broken. See `AlertList`.
+   */
   alertRules: AlertRule[];
-  alertMuted: string[];
-  /** Words that make a find worth interrupting for. See `FindAlertsConfig`. */
-  alertFindItems: string[];
-  /** Found cash worth interrupting for, in copper. `0` never alerts. */
-  alertFindCash: number;
   /** What the desktop is asked to say when this window is not in front. */
   alertDesktop: boolean;
   alertDesktopFocused: boolean;
-  alertDesktopMuted: string[];
   /** `automation.afk` — answering for an absent player. */
   afkEnabled: boolean;
   afkAfterMinutes: string;
@@ -780,14 +739,9 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
-    alertMinimum: entry.alerts.minimum,
     alertRules: entry.alerts.rules.map((rule) => ({ ...rule })),
-    alertMuted: entry.alerts.mute,
-    alertFindItems: entry.alerts.finds.items,
-    alertFindCash: entry.alerts.finds.cashOverCopper,
     alertDesktop: entry.alerts.desktop.enabled,
     alertDesktopFocused: entry.alerts.desktop.whileFocused,
-    alertDesktopMuted: entry.alerts.desktop.mute,
     afkEnabled: entry.afk.enabled,
     afkAfterMinutes: String(entry.afk.afterMinutes),
     afkReply: entry.afk.reply,
@@ -994,17 +948,10 @@ function draftOf(form: CharacterForm): ProfileDraft {
     banking: form.banking,
     loops: form.loops,
     alerts: {
-      minimum: form.alertMinimum,
-      mute: form.alertMuted,
       // Whole, with the name trimmed as `normalizeAlertRules` trims it: a row
       // naming nothing is inert rather than firing on everything.
       rules: form.alertRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
-      finds: { items: form.alertFindItems, cashOverCopper: form.alertFindCash },
-      desktop: {
-        enabled: form.alertDesktop,
-        whileFocused: form.alertDesktopFocused,
-        mute: form.alertDesktopMuted
-      }
+      desktop: { enabled: form.alertDesktop, whileFocused: form.alertDesktopFocused }
     },
     afk: {
       enabled: form.afkEnabled,
@@ -1273,16 +1220,9 @@ function emptyForm(
     search: { ...search },
     banking: { ...banking },
     loops: [],
-    // `ProfileDraft` types this as a plain string, since a draft is a payload
-    // parsed at the boundary; the form holds the closed union.
-    alertMinimum: (alerts.minimum as Severity) ?? DEFAULT_ALERTS.minimum,
     alertRules: (alerts.rules ?? []).map((rule) => ({ ...rule })),
-    alertMuted: [...alerts.mute],
-    alertFindItems: [...alerts.finds.items],
-    alertFindCash: alerts.finds.cashOverCopper,
     alertDesktop: alerts.desktop.enabled,
     alertDesktopFocused: alerts.desktop.whileFocused,
-    alertDesktopMuted: [...alerts.desktop.mute],
     afkEnabled: afk.enabled,
     afkAfterMinutes: String(afk.afterMinutes),
     afkReply: afk.reply,
@@ -3629,82 +3569,6 @@ export default function SettingsScreen({
                     </fieldset>
                   )}
 
-                  {section === 'alerts' && (
-                    <fieldset className="settings-menus">
-                      <legend>{t('settings.tabs.alerts')}</legend>
-                      <SelectField
-                        hint={t('settings.alerts.minimumHint')}
-                        label={t('settings.alerts.minimumLabel')}
-                        name="alert-min"
-                        onChange={(value) => patch({ alertMinimum: value as Severity })}
-                        options={[
-                          { value: 'info', label: t('settings.alerts.minimumInfo') },
-                          { value: 'warning', label: t('settings.alerts.minimumWarning') },
-                          { value: 'critical', label: t('settings.alerts.minimumCritical') }
-                        ]}
-                        value={form.alertMinimum}
-                      />
-                      {/*
-                        A comma list here, unlike the channels below: the
-                        channels are a closed set of eleven and these are the
-                        realm's own words for things, which could be anything.
-                        The character form's wording is the one that wins on
-                        both pages.
-                      */}
-                      <div className="settings-inline">
-                        <TextField
-                          hint={t('settings.alerts.findItemsHint')}
-                          label={t('settings.alerts.findItemsLabel')}
-                          name="alert-finds"
-                          onChange={(value) => patch({ alertFindItems: splitNames(value) })}
-                          placeholder={t('settings.alerts.findItemsPlaceholder')}
-                          spellCheck={false}
-                          value={joinNames(form.alertFindItems)}
-                          wide
-                        />
-                        <NumberField
-                          hint={t('settings.alerts.findCashHint')}
-                          label={t('settings.alerts.findCashLabel')}
-                          name="alert-find-cash"
-                          onChange={(value) =>
-                            patch({ alertFindCash: Math.max(0, Number.parseInt(value, 10) || 0) })
-                          }
-                          value={form.alertFindCash || ''}
-                        />
-                      </div>
-                      {/*
-                        Checkboxes rather than a comma list, unlike the monster
-                        names in Combat: those are the realm's words and could be
-                        anything, and these are a closed set of eleven. A field
-                        somebody has to spell into correctly, for a value the
-                        client already knows every legal spelling of, is a field
-                        that fails silently.
-                      */}
-                      <span className="settings-label">
-                        {t('settings.alerts.muteLabel')}
-                        <Hint id="hint-alert-mute">{t('settings.alerts.muteHint')}</Hint>
-                      </span>
-                      <div className="settings-checks">
-                        {NOTICE_CHANNELS.map((channel) => (
-                          <CheckField
-                            checked={form.alertMuted.includes(channel)}
-                            describedBy="hint-alert-mute"
-                            key={channel}
-                            label={CHANNEL_LABEL[channel]}
-                            name={`mute-${channel}`}
-                            onChange={(value) =>
-                              patch({
-                                alertMuted: value
-                                  ? [...form.alertMuted, channel]
-                                  : form.alertMuted.filter((entry) => entry !== channel)
-                              })
-                            }
-                          />
-                        ))}
-                      </div>
-                      <p className="settings-note">{t('settings.alerts.note')}</p>
-                    </fieldset>
-                  )}
                   {/*
                     A third reading of the same facts, for the state this
                     client spends most of an evening in: the window behind
@@ -3731,28 +3595,6 @@ export default function SettingsScreen({
                           name="alert-desktop-focused"
                           onChange={(value) => patch({ alertDesktopFocused: value })}
                         />
-                      </div>
-                      <span className="settings-label">
-                        {t('settings.alerts.desktopMuteLabel')}
-                        <Hint id="hint-alert-desktop">{t('settings.alerts.desktopMuteHint')}</Hint>
-                      </span>
-                      <div className="settings-checks">
-                        {DESKTOP_ALERTS.map((happening) => (
-                          <CheckField
-                            checked={form.alertDesktopMuted.includes(happening)}
-                            describedBy="hint-alert-desktop"
-                            key={happening}
-                            label={HAPPENING_LABEL[happening]}
-                            name={`desktop-mute-${happening}`}
-                            onChange={(value) =>
-                              patch({
-                                alertDesktopMuted: value
-                                  ? [...form.alertDesktopMuted, happening]
-                                  : form.alertDesktopMuted.filter((entry) => entry !== happening)
-                              })
-                            }
-                          />
-                        ))}
                       </div>
                       <p className="settings-note">{t('settings.alerts.desktopNote')}</p>
                     </fieldset>

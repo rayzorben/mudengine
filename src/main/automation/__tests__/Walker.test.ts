@@ -2640,6 +2640,79 @@ describe('a portal step', () => {
  * not, and `restBelow`/`restTo` are one pair meaning *the character does not
  * travel below this*.
  */
+/*
+ * A `rest` this client asked for, and the step that used to undo it.
+ *
+ * Moving breaks a rest. `rest`, `sn` and a direction were decided in the same
+ * tick, from the same state, and went out one millisecond apart: the character
+ * sat down and stood straight back up, seven times out of seven, and the
+ * experience rate went to zero (todo 14). The two guards on *deciding* to rest
+ * are still right — at the moment they run, nothing is moving the character.
+ * This is the claim made after: once `rest` is out, no walk starts until the
+ * server has answered.
+ */
+describe('a rest whose answer has not come back', () => {
+  const walkerWaiting = (): { walk: Walker; land: () => void } => {
+    let resting = true;
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => at(1, 1),
+      restInFlight: () => resting
+    });
+    return {
+      walk,
+      land: () => {
+        resting = false;
+      }
+    };
+  };
+
+  it('holds the step rather than breaking the rest', async () => {
+    const { walk } = walkerWaiting();
+    expect(walk.start(ROUTE, at(1, 1))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('resting');
+    // A hold, not a refusal: the walk is still on.
+    expect(walk.progress.status).toBe('walking');
+    walk.dispose();
+  });
+
+  it('says why it paused, because a route that stops looks like a broken client', () => {
+    const { walk } = walkerWaiting();
+    walk.start(ROUTE, at(1, 1));
+    expect(notices.some((notice) => /rest to land/i.test(notice))).toBe(true);
+    walk.dispose();
+  });
+
+  /*
+   * The positive control, and the half that proves it cannot deadlock: the
+   * window closes on its own -- `(Resting)` arrives, or `tuning.rest.askedMs`
+   * expires -- and the step goes out with nothing having nudged the walk. The
+   * absence above would pass just as well on a walker that never sends at all.
+   */
+  it('steps once the window has closed, with nothing to nudge it', async () => {
+    const { walk, land } = walkerWaiting();
+    walk.start(ROUTE, at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    land();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sent).toEqual(['e']);
+    expect(walk.progress.hold).toBeNull();
+    walk.dispose();
+  });
+
+  /* Nothing claimed where nobody is counting: the behaviour before this. */
+  it('does not hold at all where the session answers nothing', async () => {
+    const walk = new Walker(config, queue, { stateNow: () => at(1, 1) });
+    walk.start(ROUTE, at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+});
+
 describe('walking while hurt', () => {
   /** A character at a stated fraction of full health, standing in 1/1. */
   const hurt = (fraction: number): CharacterState => {

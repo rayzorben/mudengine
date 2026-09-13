@@ -222,6 +222,19 @@ export interface WalkerEvents {
    */
   pendingMoves?(): number;
   /**
+   * Whether a `rest` is on the wire with its answer still to come.
+   *
+   * *One step outstanding* is already a property of the wire this walker
+   * refuses to send across (`pendingMoves`); a rest outstanding is the same
+   * kind of fact and gets the same treatment (todo 14). `Recovery.restInFlight`
+   * is the window — opened when `rest` goes out, closed the instant
+   * `(Resting)` arrives or `tuning.rest.askedMs` expires.
+   *
+   * Absent, nothing is claimed and no step waits, which is the behaviour
+   * before it existed.
+   */
+  restInFlight?(): boolean;
+  /**
    * A fresh route from where the character is *now* to where it was going.
    *
    * Asked when a fight the route stood still for is over and the character is
@@ -2934,7 +2947,18 @@ export class Walker {
    * for the other outcome, where nothing bites and the walk must not stall.
    */
   private holdBeforeSending(state: CharacterState): boolean {
-    // Health first, and outside the beat's budget — see `holdForHealth`.
+    /*
+     * A rest this client has just asked for, first of all and outside the
+     * beat's budget.
+     *
+     * It is the shortest of the holds and the only one that is about something
+     * *this client* did a millisecond ago. Ahead of health because a walk that
+     * is about to stand still for health anyway must not spend its one step
+     * breaking the rest that would have fixed it, and ahead of the fight
+     * because a rest is only ever asked for with nothing swinging.
+     */
+    if (this.holdForRest(state)) return true;
+    // Health, and outside the beat's budget — see `holdForHealth`.
     if (this.holdForHealth(state)) return true;
     // Then a condition the server has stated, on the same terms.
     if (this.holdForAffliction(state)) return true;
@@ -3458,6 +3482,69 @@ export class Walker {
      * health arrives on every status line anyway, so the answer is never more
      * than one tick stale.
      */
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (this.status !== 'walking') return;
+      if (this.holdBeforeSending(this.events.stateNow?.() ?? state)) return;
+      this.sendCurrent();
+    }, tuning().walk.holdMs);
+    this.holdTimer.unref?.();
+    return true;
+  }
+
+  /**
+   * A step held for a beat because a `rest` is still waiting for its answer.
+   *
+   * **The guard is not on the decision to rest; it is on everything else that
+   * moves the character afterwards** (todo 14). `SessionManager.mayRest` asks
+   * *should I rest*, honestly, at an instant whose answer is right — the
+   * monster is not dead yet, so the lap is holding for the fight and nothing
+   * is walking. Then `rest` goes out, the monster dies, the hold lifts, and the
+   * lap steps into the rest it just authorised. No condition added to that
+   * question can help, because at the moment it runs there is nothing to
+   * report.
+   *
+   * So this is a claim made *after*: between `rest` going out and the server
+   * answering, a walk may not start. Asked after the health hold, because a
+   * rest is only ever proposed *because* health is low and `health` is the
+   * more useful of the two words; what this has to stop is a step going out,
+   * and everything that could send one is below it. It is bounded by the
+   * window itself —
+   * `(Resting)` arriving or `tuning.rest.askedMs` expiring — so the beat is
+   * taken at most once or twice and never depends on the walk to end.
+   *
+   * It does not stand down an escape: `Walker` is not what runs away, and
+   * `SessionManager.mayRest` already refuses to propose a rest while one is in
+   * flight.
+   */
+  private holdForRest(state: CharacterState): boolean {
+    if (this.events.restInFlight?.() !== true) {
+      // Only its own hold, like every other: a walk standing still for health
+      // is not one whose rest has landed.
+      if (this.hold === 'resting') {
+        this.hold = null;
+        this.publish();
+      }
+      return false;
+    }
+
+    /*
+     * Only where nothing better has the word.
+     *
+     * This runs after health, so a walk already standing still for the figure
+     * that produced the rest keeps saying so -- the more useful of the two
+     * sentences, and the one whose release is already written. This one has a
+     * word at all for the case with no other reason: a rest asked for at a
+     * trap's floor, or a `restTo` stretch above `restBelow`.
+     */
+    if (this.hold === null) {
+      this.hold = 'resting';
+      // Said, because a lap that pauses for a second should say why — the rule
+      // every other hold here follows. Once per hold, not once per beat.
+      if (!this.quiet) this.events.notice?.(t('automation.walk.restHolding'));
+      this.publish();
+    }
+
     this.holdTimer = setTimeout(() => {
       this.holdTimer = null;
       if (this.status !== 'walking') return;

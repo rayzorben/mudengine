@@ -100,6 +100,15 @@ export interface LoopPlanner {
    * is exactly the one that matters.
    */
   moveInFlight(): boolean;
+  /**
+   * Whether a `rest` is on the wire with its answer still to come.
+   *
+   * The same kind of fact as a move in flight and refused for the same reason
+   * (todo 14): a rest and the next leg were decided in the same tick, both
+   * correctly, and the step undid the rest a millisecond later. Bounded by the
+   * window itself (`Recovery.restInFlight`), so the lap waits a beat at most.
+   */
+  restInFlight(): boolean;
   /** Whether the character is standing in the stop already. */
   here(stop: { name: string; at: { map: number; room: number } | null }): boolean;
   /**
@@ -288,7 +297,20 @@ export class LoopRunner {
                   ? 'retreated'
                   : this.errand
                     ? 'errand'
-                    : null
+                    : /*
+                       * Asked of the planner rather than latched (todo 14).
+                       *
+                       * A flag would have to be cleared on every path that ends
+                       * the wait, and there are six: the timer, `onCharacter`
+                       * planning the leg the moment the rest lands, `stop`,
+                       * `skip`, `resume` and `reset` — five of which call
+                       * `clearTimer` and so kill the only thing that would have
+                       * cleared it. The window is the fact; reading it is
+                       * always true and never stale.
+                       */
+                      this.planner.restInFlight()
+                      ? 'resting'
+                      : null
         : null,
       startedAt: this.startedAt,
       lapBegunAt: this.lapBegunAt,
@@ -967,6 +989,18 @@ export class LoopRunner {
      */
     if (this.planner.moveInFlight()) return this.waitToBePlaced();
 
+    /*
+     * Nor into a rest this client asked for a millisecond ago.
+     *
+     * The lap is *running* in the tick a fight ends, and it has a hold — a
+     * fight holds the lap, and a held lap is exactly when resting is right, so
+     * `mayRest` passes honestly. Then the hold lifts and the lap advances into
+     * the rest it just authorised. Not a failure and not a lost character: the
+     * answer is arriving and it is waited for, which is `moveInFlight`'s own
+     * treatment one line up.
+     */
+    if (this.planner.restInFlight()) return this.waitForRest();
+
     const target = splitStop(stop);
     if (this.planner.here(target)) {
       // Standing on the loop already, whichever branch is taken: `first` moves
@@ -1009,6 +1043,32 @@ export class LoopRunner {
       return this.fail(refused);
     }
     this.locates = 0;
+    return null;
+  }
+
+  /**
+   * A beat, for a `rest` whose answer has not come back (todo 14).
+   *
+   * Not `waitToBePlaced` below: that one is for a character the client has
+   * *lost* and spends `maxLocates` asking the realm where it is standing.
+   * Nothing is lost here — a rest is in flight and the window is about to
+   * close on its own, either because `(Resting)` arrived or because
+   * `tuning.rest.askedMs` expired — so the lap waits a beat and asks again.
+   *
+   * The hold it reports is derived in `progress`, never latched here: the wait
+   * ends six ways and five of them call `clearTimer`.
+   */
+  private waitForRest(): null {
+    this.waiting = true;
+    this.publish();
+    this.clearTimer();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.status !== 'running' || this.fighting || this.offline || !this.waiting) return;
+      this.waiting = false;
+      this.advance(false);
+    }, tuning().walk.holdMs);
+    this.timer.unref?.();
     return null;
   }
 

@@ -575,7 +575,13 @@ function walkChip(walk: WalkProgress) {
    * — this is the client waiting for the character to be fit to travel, not
    * something the player asked for or anything having gone wrong.
    */
-  if (walk.status === 'walking' && (walk.hold === 'health' || walk.hold === 'trap')) {
+  if (
+    walk.status === 'walking' &&
+    // `resting` is a rest this client asked for a beat ago and is waiting to
+    // land, which is the same word in the same register as the other two: the
+    // client waiting for the character to be fit to travel (todo 14).
+    (walk.hold === 'health' || walk.hold === 'trap' || walk.hold === 'resting')
+  ) {
     return <span className="chip info">{t('cards.navigation.loop.statusResting')}</span>;
   }
   /*
@@ -662,7 +668,7 @@ function loopChip(loop: LoopProgress) {
   if (loop.status === 'running' && loop.hold === 'fight') {
     return <span className="chip bad">{t('cards.navigation.loop.statusFighting')}</span>;
   }
-  if (loop.status === 'running' && loop.hold === 'health') {
+  if (loop.status === 'running' && (loop.hold === 'health' || loop.hold === 'resting')) {
     return <span className="chip info">{t('cards.navigation.loop.statusResting')}</span>;
   }
   // Ran away and standing still until the fight is over and the health is

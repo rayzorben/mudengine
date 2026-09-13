@@ -102,7 +102,7 @@ export default function CarrySections({
                 return (
                   <button
                     aria-pressed={on}
-                    className="chip"
+                    className="chip pick"
                     key={coin}
                     onClick={() =>
                       setLoot({
@@ -138,7 +138,7 @@ export default function CarrySections({
                 return (
                   <button
                     aria-pressed={on}
-                    className="chip"
+                    className="chip pick"
                     key={coin}
                     onClick={() =>
                       setLoot({

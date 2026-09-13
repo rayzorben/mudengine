@@ -701,7 +701,14 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
             verdict: equipVerdict(item, SAMPLE_WEARER, t)
           })),
           keys: ['bone key'],
-          coins: { gold: 2, silver: 3, copper: 50 },
+          /*
+           * The purse and the total agree, because the preview is what the
+           * template teaches: `{wealthLong}` states the realm's own count and
+           * `{wealth}` the realm's own `Wealth:` line (todo 04), and a sample
+           * where the two disagreed would draw a purse that is not the number
+           * beside it. 23 gold, 5 silver = 2350 copper.
+           */
+          coins: { gold: 23, silver: 5 },
           wealth: 2350,
           encumbrance: 1744,
           encumbranceMax: 4128,

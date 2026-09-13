@@ -230,11 +230,29 @@ describe('the pack', () => {
     const text = drawn.map(plainOf);
     expect(text[0]).toMatch(/Item\s+Wt/);
     expect(text.at(-3)).toBe('Keys: bone key, bone key');
-    expect(text.at(-2)).toBe('Wealth: 23 gold, 5 silver  (2350 copper)');
+    /*
+     * The realm's own count, not the ladder (todo 04, 2026-09-12). The fixture
+     * states three denominations and a copper total that does not agree with
+     * them, which is exactly the case the bug was: the purse is what the server
+     * printed, and the total beside it is the server's own `Wealth:` line.
+     */
+    expect(text.at(-2)).toBe('Wealth: 2 gold, 3 silver, 50 copper  (2350 copper)');
     expect(text.at(-1)).toBe('Load: 1744/4128 Medium');
     expect(wealthLong(null, t)).toBe('?');
     expect(wealthLong(0, t)).toBe('0 copper');
+    // No count stated at all -- the status line has a total and nothing else,
+    // so the ladder is the only answer there is and is still what is drawn.
     expect(wealthLong(1_010_203, t)).toBe('1 runic, 1 platinum, 2 gold, 3 copper');
+    expect(wealthLong(1_010_203, t, {})).toBe('1 runic, 1 platinum, 2 gold, 3 copper');
+    /*
+     * The transcript from the report: the server said *98 platinum pieces, 22
+     * gold crowns, 6573 silver nobles* and `Wealth: 1047930 copper farthings`,
+     * and the rewrite drew *1 runic, 4 platinum, 79 gold, 3 silver* -- the same
+     * money arranged into coins the character does not have.
+     */
+    expect(wealthLong(1_047_930, t, { platinum: 98, gold: 22, silver: 6573 })).toBe(
+      '98 platinum, 22 gold, 6573 silver'
+    );
     expect(
       pack('{keyCount} {itemCount} {gold} {encumbrancePercent}% {me.level} {me.hp}').map(plainOf)
     ).toEqual(['2 5 2 42% 3 120']);

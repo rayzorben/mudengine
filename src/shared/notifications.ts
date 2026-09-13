@@ -25,7 +25,6 @@ import {
 import { attacksOnSight, DISPOSITION_WORD } from './mobs';
 import type { Block, BlockType } from './blocks';
 import type { UiLookup } from './i18n';
-import type { FindAlertsConfig } from './config';
 import type { WalkProgress } from './walk';
 import type { LoopProgress } from './loops';
 import { movementOf } from './movement';
@@ -133,13 +132,18 @@ export function desktopAlert(notice: Notice): DesktopAlert | null {
  * value import back the other way would close the loop.
  */
 export function raisable(
-  prefs: { enabled: boolean; mute: readonly string[] },
+  prefs: { enabled: boolean },
   notice: Notice,
   /**
-   * The player's own rows (todo 29). A row claiming this notice decides
-   * whether it is raised at all, over the mute list — the same precedence
-   * `wanted` gives it, and for the same reason: a row is the more specific
-   * statement.
+   * The player's own rows, which are now the only thing that decides this
+   * (todo 02). A row claiming the notice says whether it is raised; a notice
+   * no row claims is raised when the ranking makes it one of the named
+   * happenings, which is what the client did before there were rows at all.
+   *
+   * The per-happening mute list went with the rest of the old surface: it
+   * answered *never tell me about arriving*, which is a row with `notify` off,
+   * and two controls for one question is how somebody comes to believe one of
+   * them is broken.
    */
   rules: readonly AlertRule[] = []
 ): DesktopAlert | null {
@@ -148,7 +152,7 @@ export function raisable(
   if (alert === null) return null;
   const rule = ruleFor(rules, notice);
   if (rule !== null) return rule.notify ? alert : null;
-  return prefs.mute.some((entry) => entry.toLowerCase() === alert) ? null : alert;
+  return alert;
 }
 
 /**
@@ -344,9 +348,25 @@ export const ALERT_WATCHES = [
   /** An item found or picked up whose name matches. */
   'item',
   /** A named player seen: arriving, listed, or speaking. */
-  'player'
+  'player',
+  /**
+   * A pile of coins a search turned up, worth at least the figure on the row
+   * in copper.
+   *
+   * A number like `health`, but not `alertIsMeasured`: there is no maximum to
+   * be a share of and no *above* to fire on — money turning up is one-sided.
+   * It was `ui.alerts.finds.cashOverCopper` until the list became the only
+   * place alerts are configured (todo 02), and it is a watch rather than a
+   * channel because a figure is exactly what a channel cannot carry.
+   */
+  'cash'
 ] as const;
 export type AlertWatch = (typeof ALERT_WATCHES)[number];
+
+/** Whether a rule's `on` is the one-sided figure the cash watch carries. */
+export function alertIsCash(on: AlertRule['on']): on is 'cash' {
+  return on === 'cash';
+}
 
 /** Which side of the figure a `health` or `mana` rule fires on. */
 export const ALERT_SIDES = ['below', 'above'] as const;
@@ -419,6 +439,85 @@ export function alertIsNamed(on: AlertRule['on']): on is 'item' | 'player' {
 }
 
 /**
+ * The rows a client ships with (todo 02, 2026-09-12).
+ *
+ * The list used to be empty, which was right while a severity floor and a
+ * per-channel mute list stood behind it. With those gone the list is the only
+ * place alerts are configured, and an empty one is a settings page with nothing
+ * on it — nothing to read, nothing to copy, and no way to learn what a row can
+ * say without writing one blind.
+ *
+ * **Four rows, in the two categories the ask named**, and every one of them a
+ * thing somebody would otherwise have had to discover:
+ *
+ * - the two vitals, as the crossings a player actually watches for, with the
+ *   figures MegaMUD's own defaults use;
+ * - a person swinging, which is the single most urgent thing on this realm and
+ *   the one the channels cannot say — `combat` carries every monster's blow as
+ *   well;
+ * - arriving where you asked to go, which is `info` in the ranking and is the
+ *   reason somebody walked away from the keyboard.
+ *
+ * Kept deliberately short. Todo 29 declined a shipped list because *four rows
+ * somebody has to understand before they can turn one off* is a cost, and that
+ * is still true — it is now the smaller of two costs rather than the larger.
+ *
+ * Every row is on, and every row is removable: nothing here is special, and a
+ * client whose list is empty shows what the ranking says, which is what it did
+ * before there were rows at all.
+ */
+export const STARTER_ALERTS: readonly AlertRule[] = [
+  {
+    on: 'health',
+    enabled: true,
+    level: 'critical',
+    alert: true,
+    notify: true,
+    whileFocused: false,
+    side: 'below',
+    value: 35,
+    percent: true,
+    name: ''
+  },
+  {
+    on: 'mana',
+    enabled: true,
+    level: 'warning',
+    alert: true,
+    notify: false,
+    whileFocused: false,
+    side: 'below',
+    value: 20,
+    percent: true,
+    name: ''
+  },
+  {
+    on: 'attacked',
+    enabled: true,
+    level: 'critical',
+    alert: true,
+    notify: true,
+    whileFocused: true,
+    side: 'below',
+    value: 0,
+    percent: false,
+    name: ''
+  },
+  {
+    on: 'movement',
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: true,
+    whileFocused: false,
+    side: 'below',
+    value: 0,
+    percent: false,
+    name: ''
+  }
+];
+
+/**
  * The rule that claims a notice, or null where none does.
  *
  * A channel rule claims anything on its channel; a watch rule claims a notice
@@ -462,24 +561,27 @@ export function mayNotice(block: Block): boolean {
  * would close the loop.
  */
 export function wanted(
-  prefs: { minimum: Severity; mute: readonly string[]; rules?: readonly AlertRule[] },
+  prefs: { rules?: readonly AlertRule[] },
   notices: readonly (Notice | null | undefined)[]
 ): Notice[] {
-  const floor = SEVERITIES.indexOf(prefs.minimum);
-  const muted = new Set(prefs.mute.map((channel) => channel.toLowerCase()));
   const rules = prefs.rules ?? [];
   const kept: Notice[] = [];
   for (const notice of notices) {
     if (!notice) continue;
     /*
-     * The player's own row first, where one claims this (todo 29).
+     * The player's own rows, and nothing else (todo 02).
      *
      * A row that claims a notice decides it outright — shown or not, and at
-     * which level — because it is a more specific statement than either the
-     * floor or the mute list, which are about *everything*. The floor still
-     * applies to what no row claims, so an empty list behaves exactly as the
-     * client always did and a client that gains a channel later arrives with
-     * it visible.
+     * which level. **A notice no row claims is shown**, at the level the
+     * ranking gave it: the list is not an allow list, so a channel the client
+     * gains later arrives visible, and a player who has deleted every row sees
+     * what the client would have shown them anyway rather than nothing.
+     *
+     * The severity floor and the per-channel mute list were the other half of
+     * this until now. Both said *everything, except* — which is precisely a
+     * row with `alert` off, or a row naming a level — so they were a second
+     * way of writing what the list already writes, in a different vocabulary,
+     * on a different part of the same page.
      */
     const rule = ruleFor(rules, notice);
     if (rule !== null) {
@@ -487,10 +589,6 @@ export function wanted(
       kept.push(rule.level === null ? notice : { ...notice, severity: rule.level });
       continue;
     }
-    // `SEVERITIES` runs loudest first, so a *lower* index is louder and the
-    // floor is an upper bound on the index rather than a lower one.
-    if (SEVERITIES.indexOf(notice.severity) > floor) continue;
-    if (muted.has(notice.channel.toLowerCase())) continue;
     kept.push(notice);
   }
   return kept;
@@ -907,19 +1005,38 @@ export function namedNotices(
   const wanted = rules.filter(
     (rule) => rule.enabled && alertIsNamed(rule.on) && rule.name.trim().length > 0
   );
-  if (wanted.length === 0) return [];
+  // The cash rows carry a figure rather than a name, so they are not in
+  // `wanted` and the early return has to count them too.
+  const money = rules.filter((rule) => rule.enabled && alertIsCash(rule.on) && rule.value > 0);
+  if (wanted.length === 0 && money.length === 0) return [];
 
   const at = noticedAt(after);
   const notices: Notice[] = [];
 
   const items = wanted.filter((rule) => rule.on === 'item');
   if (items.length > 0) {
-    const had = new Set(before.room.items.map((item) => item.name.toLowerCase()));
-    for (const item of after.room.items) {
+    /*
+     * Lying in the room **and** turned up by a search, in one pass.
+     *
+     * These were two settings until the list became the only place alerts are
+     * configured (todo 02): `ui.alerts.finds.items` watched `room.hidden` and
+     * this watched `room.items`. A player waiting for a gold ring does not
+     * care which of the two lists the realm happened to put it on, and two
+     * controls asking the same question in different words is how somebody
+     * comes to believe one of them is broken. Both lists are compared against
+     * the previous state, so a ring that stays on the floor is announced once.
+     */
+    const had = new Set(
+      [...before.room.items, ...before.room.hidden].map((item) => item.name.toLowerCase())
+    );
+    const seen = new Set<string>();
+    for (const item of [...after.room.items, ...after.room.hidden]) {
       const name = item.name.toLowerCase();
-      if (had.has(name)) continue;
+      // A realm that lists one item on both lists is one find, not two.
+      if (had.has(name) || seen.has(name)) continue;
       for (const rule of items) {
         if (!name.includes(rule.name.trim().toLowerCase())) continue;
+        seen.add(name);
         notices.push({
           id: `watch-item-${at}-${name}`,
           at,
@@ -954,52 +1071,36 @@ export function namedNotices(
     }
   }
 
-  return notices;
-}
-
-export function findNotices(
-  before: CharacterState,
-  after: CharacterState,
-  alerts: FindAlertsConfig,
-  t: UiLookup
-): Notice[] {
-  if (alerts.items.length === 0 && alerts.cashOverCopper <= 0) return [];
-
-  const at = noticedAt(after);
-  const notices: Notice[] = [];
-  const had = new Set(before.room.hidden.map((item) => item.name.toLowerCase()));
-
-  for (const item of after.room.hidden) {
-    // Already on the previous state's list, so this is the same search's answer
-    // arriving again rather than a second find.
-    if (had.has(item.name.toLowerCase())) continue;
-    const name = item.name.toLowerCase();
-    if (!alerts.items.some((word) => name.includes(word))) continue;
-    notices.push({
-      id: `find-${at}-${name}`,
-      at,
-      severity: 'critical',
-      channel: 'items',
-      text: t('cards.alerts.finds.item', { what: item.name })
-    });
-  }
-
+  /*
+   * A pile of coins a search turned up, worth at least the figure on the row.
+   *
+   * Not `wanted` above -- that list is the two *named* watches, and this one
+   * carries a figure rather than a name. It was `ui.alerts.finds.cashOverCopper`
+   * until the list became the only place alerts are configured (todo 02).
+   *
+   * The same pile reported again is the same search's answer arriving again,
+   * which is the rule every producer here keeps.
+   */
   const cash = after.room.hiddenCash;
-  const before_ = before.room.hiddenCash;
   if (
+    money.length > 0 &&
     cash !== null &&
-    alerts.cashOverCopper > 0 &&
-    cash.totalCopper >= alerts.cashOverCopper &&
-    // Not the same pile the last state already reported.
-    before_?.totalCopper !== cash.totalCopper
+    before.room.hiddenCash?.totalCopper !== cash.totalCopper
   ) {
-    notices.push({
-      id: `find-cash-${at}-${cash.totalCopper}`,
-      at,
-      severity: 'critical',
-      channel: 'items',
-      text: t('cards.alerts.finds.cash', { what: cash.rawText ?? String(cash.totalCopper) })
-    });
+    for (const rule of money) {
+      if (cash.totalCopper < rule.value) continue;
+      notices.push({
+        id: `watch-cash-${at}-${cash.totalCopper}`,
+        at,
+        severity: rule.level ?? 'warning',
+        channel: 'items',
+        watch: 'cash',
+        text: t('cards.alerts.watch.cash', {
+          what: cash.rawText ?? String(cash.totalCopper)
+        })
+      });
+      break;
+    }
   }
 
   return notices;

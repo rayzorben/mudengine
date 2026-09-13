@@ -525,11 +525,30 @@ function names(entries: readonly string[] | undefined): Row[] {
   return (entries ?? []).map((name) => ({ name }));
 }
 
-/** `2 gold, 3 silver, 50 copper` — the total on the ladder, named in the dictionary's words. */
-export function wealthLong(copper: number | null, t: UiLookup): string {
-  if (copper === null) return UNKNOWN;
-  const spread = copperSpread(copper);
-  const parts = DENOMINATIONS.filter((which) => spread[which] > 0).map(
+/**
+ * `98 platinum, 22 gold, 6573 silver` — the purse, in the dictionary's words.
+ *
+ * **The realm's own count where it has stated one** (2026-09-12, todo 04). It
+ * spread the copper total across the ladder, and the ladder is not what a
+ * character carries: the server printed *98 platinum pieces, 22 gold crowns,
+ * 6573 silver nobles* and the rewrite drew *1 runic, 4 platinum, 79 gold, 3
+ * silver* — the same money, arranged into coins nobody has. A player reading
+ * it to decide what to spend is reading a conversion, not their purse.
+ *
+ * `copperSpread` is kept for the case it is right for: the status line carries
+ * a copper total and no denominations at all, so there is nothing to state and
+ * the ladder is the only answer available. Which of the two is being drawn is
+ * decided by whether anything was counted, never guessed.
+ */
+export function wealthLong(
+  copper: number | null,
+  t: UiLookup,
+  counted?: Partial<Record<Denomination, number>>
+): string {
+  const stated = counted !== undefined && DENOMINATIONS.some((which) => (counted[which] ?? 0) > 0);
+  if (!stated && copper === null) return UNKNOWN;
+  const spread = stated ? counted : copperSpread(copper ?? 0);
+  const parts = DENOMINATIONS.filter((which) => (spread[which] ?? 0) > 0).map(
     (which) => `${spread[which]} ${t(`rewrites.coins.${which}`)}`
   );
   return parts.length === 0 ? `0 ${t('rewrites.coins.copper')}` : parts.join(', ');
@@ -682,7 +701,7 @@ export function inventoryScope(facts: InventoryFacts, t: UiLookup): Row {
     keyCount: facts.keys.length,
     ...coins,
     wealth: facts.wealth,
-    wealthLong: wealthLong(facts.wealth, t),
+    wealthLong: wealthLong(facts.wealth, t, facts.coins),
     encumbrance: facts.encumbrance,
     encumbranceMax: facts.encumbranceMax,
     encumbranceWord: fact(facts.encumbranceWord),

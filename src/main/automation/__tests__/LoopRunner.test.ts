@@ -36,6 +36,7 @@ function planner(over: Partial<LoopPlanner> = {}) {
     },
     here: () => false,
     moveInFlight: () => false,
+    restInFlight: () => false,
     walking: () => false,
     // The stops of the fixture loop, so what the map would mark is testable
     // without a realm behind it.
@@ -90,6 +91,80 @@ describe('starting a loop', () => {
     expect(walked).toEqual(['Arena']);
   });
 
+  /*
+   * A `rest` this client asked for, and the leg that used to undo it.
+   *
+   * The lap is *running* in the tick a fight ends and it has a hold — a fight
+   * holds the lap, and a held lap is exactly when resting is right, so
+   * `mayRest` passes honestly. Then the hold lifts and the lap advances into
+   * the rest it just authorised: seven rests, seven broken by the client's own
+   * next command, one to a hundred milliseconds later (todo 14).
+   *
+   * The absence alone would pass on a lap that never walks at all, so the
+   * positive control is the second half: the beat expires, the window has
+   * closed, and the leg goes out.
+   */
+  it('waits a beat for a rest to land rather than stepping into it', () => {
+    let resting = true;
+    const { planner: p, walked } = planner({ restInFlight: () => resting });
+    const runner = new LoopRunner(p, {});
+    expect(runner.start(loop, state())).toBeNull();
+
+    // Nothing walked, and the card says why rather than reading `running`.
+    expect(walked).toEqual([]);
+    expect(runner.progress).toMatchObject({ status: 'running', hold: 'resting' });
+
+    // Still in flight a beat later: still nothing.
+    vi.advanceTimersByTime(1_600);
+    expect(walked).toEqual([]);
+
+    // The window closed -- `(Resting)` arrived, or the deadline expired -- and
+    // the lap walks on by itself, without anything having to nudge it.
+    resting = false;
+    vi.advanceTimersByTime(1_600);
+    expect(walked).toEqual(['Arena']);
+    expect(runner.progress.hold).toBeNull();
+  });
+
+  /*
+   * The hold is read, never latched.
+   *
+   * A flag would have to be cleared on every path that ends the wait, and there
+   * are six — the timer, `onCharacter` planning the leg the moment the rest
+   * lands, `stop`, `skip`, `resume` and `reset` — five of which call
+   * `clearTimer` and so kill the very callback that would have cleared it.
+   * Found in review; without the derived reading a lap drawn `resting` stayed
+   * that way for the session, and the tab read `recovering` beside it.
+   */
+  it('stops saying it is resting the moment the rest lands, however the wait ended', () => {
+    let resting = true;
+    const { planner: p, walked } = planner({ restInFlight: () => resting });
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, state());
+    expect(runner.progress.hold).toBe('resting');
+
+    // The rest landed and `onCharacter` planned the leg without the timer ever
+    // firing, which is the ordinary case.
+    resting = false;
+    runner.onCharacter(state());
+    expect(walked).toEqual(['Arena']);
+    expect(runner.progress.hold).toBeNull();
+  });
+
+  it('and after a stop and a play, which clear the timer out from under it', () => {
+    let resting = true;
+    const { planner: p } = planner({ restInFlight: () => resting });
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, state());
+    expect(runner.progress.hold).toBe('resting');
+
+    runner.stop('asked');
+    resting = false;
+    vi.advanceTimersByTime(3_000);
+    expect(runner.resume(state())).toBeNull();
+    expect(runner.progress.hold).toBeNull();
+  });
+
   /* The fighting guard reads the loop's own flag, and the walker reads the
      tracker; if they ever disagree, the walker's combat refusal is a fight to
      wait out — the distinction `onWalkEnded` already draws — never a stop to
@@ -106,6 +181,7 @@ describe('starting a loop', () => {
       },
       here: () => false,
       moveInFlight: () => false,
+      restInFlight: () => false,
       walking: () => false,
       roomOf: () => null
     };

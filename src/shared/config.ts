@@ -41,9 +41,9 @@ import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from '.
 import {
   ALERT_SIDES,
   ALERT_WATCHES,
-  DESKTOP_ALERTS,
   NOTICE_CHANNELS,
   SEVERITIES,
+  STARTER_ALERTS,
   type AlertRule,
   type Severity
 } from './notifications';
@@ -332,57 +332,40 @@ export interface RewritesUiConfig {
 /**
  * What is worth raising an alert about, for this character.
  *
- * Two settings, because there are two questions and they are not the same one:
- * *how loud does it have to be* and *what is it about*. The ranking itself —
- * which line is critical and which is the record — is not configuration:
- * `shared/notifications.ts` decides it once, from what the fact costs, and a
- * per-character table of severities would be four places for it to drift.
+ * **One list, and it is the only thing that decides** (todo 02, 2026-09-12).
+ * A severity floor and a per-channel mute list stood beside the rows until
+ * now, and every question they answered — *never tell me about movement*,
+ * *only the loud ones* — is a row with `alert` off or a row naming a level.
+ * Two vocabularies for one question, on two parts of one page, is how a player
+ * comes to believe one of them is broken, which is what happened.
+ *
+ * The ranking itself is still not configuration: `shared/notifications.ts`
+ * decides what a line costs, once, and a row's `level` is the player
+ * overruling that for one kind of line rather than a per-character severity
+ * table replacing it.
  *
  * Per character rather than per client, like everything in a profile: a healer
  * watching a party wants the party channel and a soloing thief does not.
  */
 export interface AlertsUiConfig {
   /**
-   * The quietest alert worth keeping. `info` keeps everything.
+   * The player's own rows, in order.
    *
-   * `warning` is the useful setting and is not the default, because starting
-   * somebody off with things already hidden is how a feature goes unfound.
-   */
-  minimum: Severity;
-  /**
-   * Channels that raise nothing at all, by name: `combat`, `command`,
-   * `movement`, `room`, `realm`, `party`, `presence`, `items`, `stealth`,
-   * `vitals`, `session`.
+   * The first enabled row that claims a notice decides it outright: shown or
+   * not, at which level, and whether it also raises a desktop notification.
+   * **A notice no row claims is still shown**, at the level the ranking gave
+   * it — the list is not an allow list, so a channel the client gains later
+   * arrives visible, and a player who has deleted every row sees what the
+   * client would have shown them anyway rather than nothing.
    *
-   * A mute list rather than an allow list, so a channel added later arrives
-   * switched on. A card nobody can find is a card that was never built, and the
-   * same is true of an alert.
-   */
-  mute: string[];
-  /** What a `search` turning something up is worth interrupting for. */
-  finds: FindAlertsConfig;
-  /** What is worth interrupting somebody who is not looking at the window. */
-  desktop: DesktopAlertsConfig;
-  /**
-   * The player's own rows, in order — what to do with a channel, or a
-   * condition the channels cannot express (todo 29, 2026-09-12).
-   *
-   * **It adds to the two settings above rather than replacing them.** The
-   * first enabled row that claims a notice decides it outright, shown or not
-   * and at which level; anything no row claims still meets `minimum` and
-   * `mute`, so an empty list behaves exactly as the client always did and a
-   * channel the client gains later arrives visible.
-   *
-   * The ranking stays the client's by default, which is the decision
-   * `AlertsUiConfig`'s own comment makes and this does not reverse: what a
-   * line costs is a fact about the realm, and a row's `level` is the player
-   * overruling that for their own reasons — a different thing from a
-   * per-character severity table replacing it.
-   *
-   * Empty by default. A shipped list would be four rows somebody has to
-   * understand before they can turn one off.
+   * Shipped with a starter list rather than empty (`STARTER_ALERTS`). Empty was
+   * right while the floor and the mute list stood behind it; with those gone,
+   * an empty list is a settings page with nothing on it and no way to learn
+   * what a row can say.
    */
   rules: AlertRule[];
+  /** What is worth interrupting somebody who is not looking at the window. */
+  desktop: DesktopAlertsConfig;
 }
 
 /**
@@ -394,11 +377,12 @@ export interface AlertsUiConfig {
  * evening, because the whole point of automating a character is that you can
  * go and do something else.
  *
- * A list of happenings rather than a severity floor, because the two do not
- * agree: arriving where you asked to go is the record and it is also the one
- * thing somebody walked away expecting to be told about. `DESKTOP_ALERTS` is
- * the list; a mute rather than an allow list, so a happening added later
- * arrives switched on.
+ * `DESKTOP_ALERTS` is the list of happenings worth raising, and the ranking
+ * answers for the rest. **Which of them to raise is a row's business** (todo
+ * 02): a per-happening mute list here said *never tell me about arriving*,
+ * which is a row with `notify` off, so it was a second vocabulary for one
+ * question. These two switches are what is left — whether to raise anything at
+ * all, and whether to do it while the window is in front.
  *
  * On by default, and not while the window has the focus. Both halves matter:
  * a notification feature nobody finds is one that was never built, and a
@@ -415,42 +399,6 @@ export interface DesktopAlertsConfig {
    * was missed. On is for a window kept small in a corner.
    */
   whileFocused: boolean;
-  /** Happenings that raise nothing, by name — one of {@link DESKTOP_ALERTS}. */
-  mute: string[];
-}
-
-/**
- * When what searching turns up is worth an alert.
- *
- * Here rather than on the Room card's gear, which is where it was first put and
- * where somebody would first look for it: a card's settings are a *view*
- * preference kept in `localStorage`, and "tell me when a gold ring is found" is
- * not a view preference — it is the same class of decision as `minimum` and
- * `mute` above it, it belongs to the character rather than to the window, and
- * it has to be readable where notices are actually raised. The card keeps the
- * one setting that *is* a view: how far back its face shows the log.
- *
- * Both halves are off by default. An alert on every find would be an alert on
- * every lap of a loop that searches, which is the fastest way to teach somebody
- * to stop reading them.
- */
-export interface FindAlertsConfig {
-  /**
-   * Words that make a found thing worth interrupting for.
-   *
-   * Matched as *contains*, case-insensitively, so `key` catches `a rusty key`
-   * and `bone keys` — somebody watching for a thing types the word, not the
-   * server's spelling of it. Empty never alerts.
-   */
-  items: string[];
-  /**
-   * Found cash worth interrupting for, in **copper**.
-   *
-   * Copper because that is what this client normalises every purse and every
-   * quoted price into (`shared/coins.ts`), so one number compares against every
-   * denomination the realm prints. `0` never alerts.
-   */
-  cashOverCopper: number;
 }
 
 /**
@@ -2404,13 +2352,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       mana: { caution: 0.5, critical: 0.25 }
     },
     alerts: {
-      minimum: 'info',
-      mute: [],
-      // Empty: a shipped list would be four rows somebody has to understand
-      // before they can turn one off.
-      rules: [],
-      finds: { items: [], cashOverCopper: 0 },
-      desktop: { enabled: true, whileFocused: false, mute: [] }
+      rules: STARTER_ALERTS.map((rule) => ({ ...rule })),
+      desktop: { enabled: true, whileFocused: false }
     },
     // Every design off; each is what a player starts designing from. The
     // bands are the HUD's own shape -- a colour from a share of maximum up.
@@ -3042,80 +2985,33 @@ function normalizeAlertRules(value: unknown): AlertRule[] {
 function normalizeAlerts(raw: unknown): AlertsUiConfig {
   const d = DEFAULT_CONFIG.ui.alerts;
   if (!isRecord(raw)) {
+    /*
+     * No `alerts:` block at all is a file that has never said anything about
+     * alerts, so it gets the shipped rows. A block that states `rules: []` is
+     * a player who has deleted every row, and that is honoured — an empty list
+     * is not silence now, it is *whatever the ranking says*, which is exactly
+     * what a client with no rows should do.
+     */
     return {
-      ...d,
-      mute: [...d.mute],
-      rules: [],
-      finds: normalizeFindAlerts(undefined),
+      rules: d.rules.map((rule) => ({ ...rule })),
       desktop: normalizeDesktopAlerts(undefined)
     };
   }
   return {
-    finds: normalizeFindAlerts(raw['finds']),
     desktop: normalizeDesktopAlerts(raw['desktop']),
-    rules: normalizeAlertRules(raw['rules']),
-    minimum: oneOf(raw['minimum'], SEVERITIES, d.minimum),
-    // Lowercased and de-duplicated: a channel name is what the notice carries,
-    // and `Combat` in the file matching nothing would be a setting that reads
-    // as though it worked.
-    mute: Array.from(
-      new Set(
-        (Array.isArray(raw['mute']) ? raw['mute'] : [])
-          .map((entry) => String(entry).trim().toLowerCase())
-          .filter((entry) => entry.length > 0)
-      )
-    )
+    rules: Array.isArray(raw['rules'])
+      ? normalizeAlertRules(raw['rules'])
+      : d.rules.map((rule) => ({ ...rule }))
   };
 }
 
-/**
- * What the desktop is asked to say, read forgivingly.
- *
- * The mute list is filtered against `DESKTOP_ALERTS` rather than merely
- * lowercased, unlike the channel list beside it: the channels are eleven words
- * a notice carries and an unknown one is harmless, while an unknown happening
- * here is a switch somebody believes they turned off. A name nothing answers
- * to is dropped so the form shows what the file actually does.
- */
+/** What the desktop is asked to say: two switches, read forgivingly. */
 function normalizeDesktopAlerts(value: unknown): DesktopAlertsConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.ui.alerts.desktop;
-  const named = new Set<string>(DESKTOP_ALERTS);
   return {
     enabled: bool(raw['enabled'], d.enabled),
-    whileFocused: bool(raw['whileFocused'], d.whileFocused),
-    mute: Array.from(
-      new Set(
-        (Array.isArray(raw['mute']) ? raw['mute'] : [])
-          .map((entry) => String(entry).trim().toLowerCase())
-          .filter((entry) => named.has(entry))
-      )
-    )
-  };
-}
-
-/**
- * The find watch list, read forgivingly.
- *
- * Every entry checked rather than the array: one hand-edited number in a list
- * of words must cost that entry, not the whole watch list — the row-level rule
- * `WorldMemory` records, one file over.
- */
-function normalizeFindAlerts(value: unknown): FindAlertsConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.ui.alerts.finds;
-  return {
-    items: Array.from(
-      new Set(
-        (Array.isArray(raw['items']) ? raw['items'] : [])
-          .filter((entry): entry is string => typeof entry === 'string')
-          .map((entry) => entry.trim().toLowerCase())
-          .filter((entry) => entry.length > 0)
-      )
-    ),
-    // No ceiling: a realm's runic coin is a million copper, and a figure
-    // somebody chose is not this client's to cap.
-    cashOverCopper: int(raw['cashOverCopper'], d.cashOverCopper, 0, Number.MAX_SAFE_INTEGER)
+    whileFocused: bool(raw['whileFocused'], d.whileFocused)
   };
 }
 

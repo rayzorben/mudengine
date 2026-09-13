@@ -546,107 +546,111 @@ describe('doors opening by default', () => {
 });
 
 /*
- * `ui.alerts.finds`, 2026-09-07 (todo 04).
+ * The old alert surface becomes rows, 2026-09-12 (todo 02).
  *
- * Two levels inside `ui:`, so `reconcileWithTemplate` reaches neither it nor
- * the block above it. Written off, which is what the client does without it.
+ * The severity floor, the per-channel mute list, the find watch and the
+ * per-happening desktop mute went; every question they answered is a row. What
+ * a player stated is carried over rather than discarded, and the one that
+ * cannot be — the floor, which hid by *level* — is removed and said out loud.
  */
-describe('what a find is worth interrupting for', () => {
+describe('the old alert settings becoming rows', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });
   });
 
   const alertsIn = (text: string): Record<string, unknown> =>
     ((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>) ?? {};
+  const rulesIn = (text: string): Record<string, unknown>[] =>
+    (alertsIn(text)['rules'] as Record<string, unknown>[]) ?? [];
 
-  it('is stated off, beside the floor and the mute list', () => {
-    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n    mute: []\n', 'utf8');
+  it('turns a muted channel into a row that does not alert', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    mute: [movement, items]\n', 'utf8');
     migrate();
-    expect(alertsIn(fs.readFileSync(home.options, 'utf8'))['finds']).toEqual({
-      items: [],
-      cashOverCopper: 0
-    });
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(alertsIn(written)['mute']).toBeUndefined();
+    expect(rulesIn(written)).toEqual([
+      expect.objectContaining({ on: 'movement', alert: false }),
+      expect.objectContaining({ on: 'items', alert: false })
+    ]);
   });
 
-  it("brings the template's own paragraph", () => {
-    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n', 'utf8');
-    migrate(true);
-    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/worth interrupting for/);
-  });
-
-  it('leaves an answered file alone, twice over', () => {
+  it('turns a watched word into an item row and a cash figure into a cash row', () => {
     fs.writeFileSync(
       home.options,
-      'ui:\n  alerts:\n    minimum: info\n    finds:\n      items: [key]\n      cashOverCopper: 500\n',
+      'ui:\n  alerts:\n    finds:\n      items: [ring]\n      cashOverCopper: 5000\n',
       'utf8'
     );
     migrate();
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(alertsIn(written)['finds']).toBeUndefined();
+    expect(rulesIn(written)).toEqual([
+      expect.objectContaining({ on: 'item', name: 'ring', notify: true }),
+      expect.objectContaining({ on: 'cash', value: 5000, notify: true })
+    ]);
+  });
+
+  /*
+   * *Do not interrupt me outside the window* is not *do not tell me*, so a
+   * muted happening becomes a row that still shows and does not notify. Turning
+   * it into silence would be the migration deciding something nobody said.
+   */
+  it('turns a muted happening into a row that shows but does not notify', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    desktop:\n      enabled: true\n      mute: [arrived]\n',
+      'utf8'
+    );
     migrate();
-    expect(alertsIn(fs.readFileSync(home.options, 'utf8'))['finds']).toEqual({
-      items: ['key'],
-      cashOverCopper: 500
-    });
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(
+      ((alertsIn(written)['desktop'] as Record<string, unknown>) ?? {})['mute']
+    ).toBeUndefined();
+    expect(rulesIn(written)).toEqual([
+      expect.objectContaining({ on: 'movement', alert: true, notify: false })
+    ]);
+  });
+
+  /*
+   * The floor hid by *level*, and a level is a property of the line rather than
+   * of a channel, so no set of rows says what it said and none is invented. It
+   * goes, and the player is told by name.
+   */
+  it('removes the floor and says so rather than inventing rows for it', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: critical\n', 'utf8');
+    migrate();
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(alertsIn(written)['minimum']).toBeUndefined();
+    // No rows are invented *for the floor*; the shipped ones arrive from
+    // `statedTheAlertRules`, which runs after this and is tested on its own.
+    expect(rulesIn(written)).toEqual(DEFAULT_CONFIG.ui.alerts.rules);
+    expect(said.join(' ')).toMatch(/ui\.alerts\.minimum/);
+    expect(said.join(' ')).toContain(home.options);
+  });
+
+  /* Their own rows were always the more specific statement, so these go after. */
+  it('appends after the rows the player already wrote', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    rules:\n      - on: health\n        value: 30\n    mute: [items]\n',
+      'utf8'
+    );
+    migrate();
+    const rows = rulesIn(fs.readFileSync(home.options, 'utf8'));
+    expect(rows.map((row) => row['on'])).toEqual(['health', 'items']);
+  });
+
+  it('leaves a converted file alone on a second run', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    mute: [movement]\n', 'utf8');
+    migrate();
+    const once = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
   });
 
   it('does nothing to a file with no alerts block to reach into', () => {
     fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
     migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('finds');
-  });
-});
-
-/*
- * `ui.alerts.desktop`, 2026-09-10 (todo 01).
- *
- * Two levels inside `ui:` like the find alerts above it, so nothing reconciles
- * it. Written **on**, unlike those: nothing is raised while the window is in
- * front, and a notification feature nobody finds is one that was never built.
- */
-describe('what the desktop is asked to say', () => {
-  beforeEach(() => {
-    fs.mkdirSync(home.globalDir, { recursive: true });
-  });
-
-  const desktopIn = (text: string): Record<string, unknown> =>
-    (((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>)?.[
-      'desktop'
-    ] as Record<string, unknown>) ?? {};
-
-  it('is stated on, with nothing muted', () => {
-    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n    mute: []\n', 'utf8');
-    migrate();
-    expect(desktopIn(fs.readFileSync(home.options, 'utf8'))).toEqual({
-      enabled: true,
-      whileFocused: false,
-      mute: []
-    });
-  });
-
-  it("brings the template's own paragraph", () => {
-    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: info\n', 'utf8');
-    migrate(true);
-    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/not looking at/);
-  });
-
-  it('leaves an answered file alone, twice over', () => {
-    fs.writeFileSync(
-      home.options,
-      'ui:\n  alerts:\n    minimum: info\n    desktop:\n      enabled: false\n      whileFocused: true\n      mute: [arrived]\n',
-      'utf8'
-    );
-    migrate();
-    migrate();
-    expect(desktopIn(fs.readFileSync(home.options, 'utf8'))).toEqual({
-      enabled: false,
-      whileFocused: true,
-      mute: ['arrived']
-    });
-  });
-
-  it('does nothing to a file with no alerts block to reach into', () => {
-    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
-    migrate();
-    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('desktop');
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('alerts');
   });
 });
 
@@ -958,18 +962,52 @@ describe('the alert rules', () => {
     fs.mkdirSync(home.globalDir, { recursive: true });
   });
 
+  const alertsIn = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown> | undefined)?.[
+      'alerts'
+    ] ?? {}) as Record<string, unknown>;
+
   it('is written into a file that states alerts and predates it', () => {
     fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: warning\n', 'utf8');
     migrate();
-    const alerts = (
-      parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown> | undefined
-    )?.['alerts'] as Record<string, unknown>;
-    expect(alerts['rules']).toEqual([]);
+    const alerts = alertsIn();
+    // The rows a fresh client ships, not an empty list -- see below.
+    expect(alerts['rules']).toEqual(DEFAULT_CONFIG.ui.alerts.rules);
     // First in the block, because that is the order the client asks in — other
     // migrations legitimately add to `alerts:` too, so only the head is
     // asserted rather than the whole list of keys.
     expect(Object.keys(alerts)[0]).toBe('rules');
     expect(said.join('\n')).toContain('ui.alerts.rules');
+  });
+
+  /*
+   * **The `[]` this very migration wrote for four days is filled in.**
+   *
+   * It wrote an empty list while the severity floor and the mute list still
+   * stood behind the rows, where empty meant *carry on as before*. With those
+   * gone (todo 02) empty means *the player deleted every row*, which the
+   * normalizer honours — so a file carrying that `[]` would have started with
+   * no alerts at all, silently, against a fresh install's four, and its owner
+   * would just have lost the floor as well. Nobody deleted anything: the UI to
+   * do so arrived in the same change. Found in review.
+   */
+  it('fills in the empty list an earlier run of itself left behind', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    rules: []\n', 'utf8');
+    migrate();
+    expect(alertsIn()['rules']).toEqual(DEFAULT_CONFIG.ui.alerts.rules);
+  });
+
+  /* And a list with anything in it is the player's, never touched. */
+  it('leaves a list somebody has written alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    rules:\n      - on: items\n        alert: false\n',
+      'utf8'
+    );
+    migrate();
+    const rules = alertsIn()['rules'] as Record<string, unknown>[];
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.['on']).toBe('items');
   });
 
   it('leaves a file with no alerts block alone', () => {
