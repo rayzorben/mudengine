@@ -73,9 +73,11 @@ describe('where a loop is decides who may walk it', () => {
   });
 
   /* A loop needs somewhere to go and somewhere to come back to. */
-  it('drops one with a single stop', () => {
+  /* One stop is a camp (todo 108): kept. None is not a loop. */
+  it('keeps one with a single stop and drops one with none', () => {
     write(home.globalLoops, 'one.yaml', 'name: Nowhere\nstops: [A]\n');
-    expect(open().globalLoops).toEqual([]);
+    write(home.globalLoops, 'none.yaml', 'name: Nothing\nstops: []\n');
+    expect(open().globalLoops.map((loop) => loop.name)).toEqual(['Nowhere']);
   });
 
   /*

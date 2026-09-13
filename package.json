@@ -23,6 +23,7 @@
     "build": "npm run typecheck && electron-vite build",
     "build:world": "node --import ./scripts/lib/register.mjs scripts/build-world.mjs",
     "build:loops": "node --import ./scripts/lib/register.mjs scripts/build-loops.mjs",
+    "build:messages": "node --import ./scripts/lib/register.mjs scripts/build-messages.mjs",
     "capture:analyse": "node --import ./scripts/lib/register.mjs scripts/analyse-capture.mjs",
     "capture:corpus": "node --import ./scripts/lib/register.mjs scripts/analyse-corpus.mjs",
     "check:reckoning": "node --import ./scripts/lib/register.mjs scripts/check-reckoning.mjs",

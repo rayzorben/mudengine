@@ -168,6 +168,20 @@ describe('going to collect the level', () => {
     expect(decisions.at(-1)?.acted).toBe(false);
   });
 
+  /* Todo 112: the purse is the fact the refusal stands on, so the purse moving asks again. */
+  it('asks again once the purse can pay, and not before', () => {
+    const base = owed();
+    const errand = make();
+    const broke = { ...base, inventory: { ...base.inventory, wealth: 3_324 } };
+    errand.onCharacter(broke);
+    errand.onCharacter(broke);
+    errand.onCharacter({ ...base, inventory: { ...base.inventory, wealth: 50_000 } });
+    expect(walked).toEqual([]);
+    expect(notices.filter((line) => /carries/.test(line))).toHaveLength(1);
+    errand.onCharacter({ ...base, inventory: { ...base.inventory, wealth: 88_450 } });
+    expect(walked).toHaveLength(1);
+  });
+
   /* An unread purse is not a poor one: the counter is the authority. */
   it('walks where the purse has not been read', () => {
     const base = owed();
@@ -186,6 +200,78 @@ describe('going to collect the level', () => {
     errand.onCharacter({ ...base, progress: { ...base.progress, level: 31, expNeeded: 12000 } });
     expect(notices.join('\n')).toContain('31');
     expect(decisions.at(-1)?.acted).toBe(true);
+  });
+
+  /*
+   * Todo 107: a character with two banked levels collected one and stood
+   * under the other for ever, because a success wrote the *new* level into
+   * `attempted`. The level moving spends the attempt; the next is asked about
+   * once the experience figure has been said again (`user-levels` leaves a
+   * stale 0 behind and the staleness table asks `exp`), or after the confirm
+   * window if nothing answers.
+   */
+  it('collects a second banked level once the experience figure is said again', () => {
+    const errand = make();
+    errand.onCharacter(owed());
+    here = '3/542';
+    errand.onWalkEnded(true, null, owed());
+    drain();
+    expect(sent).toEqual(['train']);
+    const base = owed();
+    // Welcome to level 31; `expNeeded` still reads the stale 0.
+    const levelled = { ...base, progress: { ...base.progress, level: 31, expNeeded: 0 } };
+    errand.onCharacter(levelled);
+    errand.onCharacter(levelled);
+    drain();
+    expect(sent).toEqual(['train']);
+    // The `exp` answer lands: the figure is fresh and still says a level is owed.
+    errand.onBlock({
+      seq: 1,
+      at: 0,
+      type: 'user-experience',
+      domain: 'status',
+      groups: {},
+      text: 'Exp: 1 Level: 31 Exp needed for next level: 0 (12)',
+      confidence: 1
+    });
+    errand.onCharacter(levelled);
+    drain();
+    expect(sent).toEqual(['train', 'train']);
+  });
+
+  it('asks again after the confirm window when the experience figure is never said again', () => {
+    const errand = make();
+    errand.onCharacter(owed());
+    here = '3/542';
+    errand.onWalkEnded(true, null, owed());
+    drain();
+    const base = owed();
+    const levelled = { ...base, progress: { ...base.progress, level: 31, expNeeded: 0 } };
+    errand.onCharacter(levelled);
+    vi.advanceTimersByTime(11_000);
+    errand.onCharacter(levelled);
+    drain();
+    expect(sent).toEqual(['train', 'train']);
+  });
+
+  /*
+   * Todo 113: the arbiter refuses while the stat screen has the keyboard, and
+   * the attempt was marked before the queue agreed to carry it. A refused
+   * enqueue is *not now*: the mark goes back and the next status line asks.
+   */
+  it('asks again after the queue refused the verb, rather than spending the level', () => {
+    here = '3/542';
+    const base = owed();
+    const there = { ...base, room: { ...base.room, map: 3, number: 542, name: 'Training Area' } };
+    queue.hold('the stat screen has the keyboard');
+    const errand = make();
+    errand.onCharacter(there);
+    drain();
+    expect(sent).toEqual([]);
+    queue.release();
+    errand.onCharacter(there);
+    drain();
+    expect(sent).toEqual(['train']);
   });
 
   /* Standing in the trainer's own room already: no walk, straight to the verb. */
@@ -230,7 +316,105 @@ describe('going to collect the level', () => {
     const errand = make(train(), { routeTo: () => 'no route' });
     errand.onCharacter(base);
     errand.onCharacter(base);
-    expect(notices.filter((line) => /Could not walk/i.test(line))).toHaveLength(1);
+    expect(notices.filter((line) => /Nothing walked/i.test(line))).toHaveLength(1);
+  });
+
+  /*
+   * Reach is the filter, not the tiebreak (todo 102). On the test realm the
+   * two cheapest trainers that take every level are Sysop rooms nothing a
+   * player walks can enter; the errand chose one, said *0 steps* and gave the
+   * level up. A blocked route is a reason, and the next trainer is walked.
+   */
+  const BLOCKED: Route = {
+    steps: [] as unknown as Route['steps'],
+    cost: 0,
+    blocked: true,
+    reason: 'No way there at all'
+  } as Route;
+
+  it('skips a trainer no route reaches and walks to the next, saying which it skipped', () => {
+    make(train(), { routeTo: (room) => (room === '3/542' ? BLOCKED : ROUTE) }).onCharacter(owed());
+    expect(walked).toEqual([ROUTE]);
+    const said = notices.join('\n');
+    expect(said).toMatch(/Skipping.*Titan Trainer.*No way there at all/);
+    expect(said).toContain("Elders' Council Chambers");
+    expect(said).not.toContain('0 steps');
+  });
+
+  it('refuses once when no trainer can be reached, naming every one, and plans nothing more from that room', () => {
+    let planned = 0;
+    const errand = make(train(), {
+      routeTo: () => {
+        planned += 1;
+        return BLOCKED;
+      }
+    });
+    errand.onCharacter(owed());
+    errand.onCharacter(owed());
+    errand.onCharacter(owed());
+    expect(walked).toEqual([]);
+    expect(notices.filter((line) => /no trainer .* can be walked to/i.test(line))).toHaveLength(1);
+    expect(notices.join('\n')).toMatch(/Titan Trainer.*Amazon trainer/);
+    // Two trainers, planned once each; the two later status lines planned nothing.
+    expect(planned).toBe(2);
+    expect(decisions.at(-1)?.acted).toBe(false);
+  });
+
+  /*
+   * Todo 103: the sentence names every trainer and why, and a lap changes room
+   * every three seconds. The routes are planned again only from another room
+   * once `tuning.train.reaskMs` has passed, and the same outcome is said once.
+   */
+  it('plans again only from another room after the clock, and says the same outcome once', () => {
+    let planned = 0;
+    const errand = make(train(), {
+      routeTo: () => {
+        planned += 1;
+        return BLOCKED;
+      }
+    });
+    errand.onCharacter(owed());
+    here = '1/2150';
+    errand.onCharacter(owed());
+    here = '1/2151';
+    errand.onCharacter(owed());
+    // Three rooms inside the clock: planned once, said once.
+    expect(planned).toBe(2);
+    expect(notices.filter((line) => /can be walked to/i.test(line))).toHaveLength(1);
+    here = '8/915';
+    vi.advanceTimersByTime(61_000);
+    errand.onCharacter(owed());
+    // Back in the room it was asked from, clock passed: not planned again.
+    expect(planned).toBe(2);
+    here = '1/2152';
+    errand.onCharacter(owed());
+    // Another room and the clock passed: planned again; same outcome, nothing new said.
+    expect(planned).toBe(4);
+    expect(notices.filter((line) => /can be walked to/i.test(line))).toHaveLength(1);
+  });
+
+  it('says a changed outcome, once', () => {
+    let reason = 'No way there at all';
+    const errand = make(train(), {
+      routeTo: () => ({ ...BLOCKED, reason }) as Route
+    });
+    errand.onCharacter(owed());
+    vi.advanceTimersByTime(61_000);
+    here = '1/2150';
+    reason = 'Crypt is locked — needs bone key';
+    errand.onCharacter(owed());
+    const said = notices.filter((line) => /can be walked to/i.test(line));
+    expect(said).toHaveLength(2);
+    expect(said[1]).toContain('bone key');
+  });
+
+  it('never substitutes for a chosen trainer that cannot be reached', () => {
+    make(train({ trainer: TITAN.shop }), { routeTo: () => BLOCKED }).onCharacter(owed());
+    expect(walked).toEqual([]);
+    const said = notices.join('\n');
+    expect(said).toMatch(/Could not walk to Training Area.*No way there at all/);
+    expect(said).not.toContain("Elders' Council Chambers");
+    expect(said).not.toContain('0 steps');
   });
 
   it('holds a running lap and gives it back when the errand ends', () => {

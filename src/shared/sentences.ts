@@ -8,13 +8,17 @@
  */
 import { ActionBook } from './actions';
 import { DeathBook } from './death-messages';
+import { MessageBook, NO_MESSAGES } from './messages';
 
 export interface ShippedSentences {
   readonly actions: ActionBook;
   readonly deaths: DeathBook;
+  /** The server's own message table, fitted whole (`messages.ts`, todo 109). */
+  readonly messages: MessageBook;
 }
 
 export const NO_SHIPPED_SENTENCES: ShippedSentences = {
   actions: new ActionBook(),
-  deaths: new DeathBook()
+  deaths: new DeathBook(),
+  messages: NO_MESSAGES
 };

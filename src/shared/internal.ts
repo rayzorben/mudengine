@@ -666,6 +666,13 @@ const TUNING_DEFAULTS = {
      * of it. The live form answered every key inside a quarter of a second.
      */
     echoMs: 4000,
+    /**
+     * Once every trainer was out of reach, how long before the routes are
+     * planned again — and only from a different room. A lap changes room
+     * every three seconds and six routes per room is main-thread work spent
+     * to learn nothing (todo 103).
+     */
+    reaskMs: 60000,
     /** A `train stats` still queued after this is for a moment that has passed. */
     expiresMs: 8000,
     /**

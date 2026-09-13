@@ -222,9 +222,15 @@ export function asLoops(value: unknown, limits?: LoopLimits): Loop[] {
     const record = entry as Record<string, unknown>;
     const name = typeof record['name'] === 'string' ? record['name'].trim() : '';
     const stops = asStops(record['stops'], limits?.stops);
-    // A loop with one stop is a place to stand, not a loop; the walker would
-    // arrive and have nothing to do for ever.
-    if (name.length === 0 || stops.length < 2) continue;
+    /*
+     * A loop with one stop is a **camp**: stand in the lair, fight what the
+     * clock brings, rest, and dwell again — MegaMUD's advice for every
+     * instant-regen lair, and what *Loop it* on a one-room spot means (todo
+     * 108, 2026-09-13). The runner dwells, steps to the same stop and dwells
+     * again without a command leaving; it used to be dropped here as a place
+     * the walker would arrive at and never leave, which is exactly the point.
+     */
+    if (name.length === 0 || stops.length < 1) continue;
     /*
      * The category is derived here rather than migrated into the files on
      * disk, which is what makes this a fallback and not a rewrite: every loop

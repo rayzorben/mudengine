@@ -432,15 +432,17 @@ describe('a character', () => {
     });
 
     it('drops a loop that is not one rather than refusing the save', () => {
+      // One stop is a camp and is kept (todo 108); no name or no stops is not a loop.
       const draft = asProfileDraft({
         ...good,
         loops: [
           { name: '', stops: ['A', 'B'] },
           { name: 'one stop', stops: ['A'] },
+          { name: 'none', stops: [] },
           { name: 'real', stops: ['A', 'B'] }
         ]
       });
-      expect(draft?.loops.map((loop) => loop.name)).toEqual(['real']);
+      expect(draft?.loops.map((loop) => loop.name)).toEqual(['one stop', 'real']);
     });
 
     /* The ceiling exists so a window bug cannot write an unbounded file, not to

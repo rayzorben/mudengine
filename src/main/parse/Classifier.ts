@@ -21,6 +21,7 @@ import { BATCH_RULES, RULES, STATUS_LINE, type BatchRule, type Rule } from './pa
 import type { StreamLine } from '../../shared/types';
 import type { SpellMessageHit } from '../../shared/spell-messages';
 import type { ActionHit } from '../../shared/actions';
+import type { MessageHit } from '../../shared/messages';
 import { mobKey } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
@@ -362,7 +363,15 @@ export class Classifier {
      * (`src/shared/actions.ts`), fitted as templates. A lookup so a test can
      * hand in three rows and a session the shipped sixty-four.
      */
-    private readonly actions?: (text: string) => ActionHit | null
+    private readonly actions?: (text: string) => ActionHit | null,
+    /**
+     * The server's own message table fitted whole (`src/shared/messages.ts`):
+     * what a spell prints to its caster, its target and the room, and every
+     * other sentence the realm composes from a row rather than in code. Last
+     * of the lookups and open to `unknown` only, so it fills what no frame and
+     * no other table read (todo 109).
+     */
+    private readonly messages?: (text: string) => MessageHit | null
   ) {}
 
   /** The type of the listing being collected, or null between listings. */
@@ -484,10 +493,14 @@ export class Classifier {
     const block = this.answerSearch(
       line,
       text,
-      this.asDeathSentence(
+      this.asRealmMessage(
         line,
         text,
-        this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+        this.asDeathSentence(
+          line,
+          text,
+          this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+        )
       )
     );
 
@@ -701,6 +714,66 @@ export class Classifier {
       text,
       tuning().parse.baseConfidence
     );
+  }
+
+  /**
+   * A whole line the server's message table composes (todo 109). Open to
+   * `unknown` only, and last: every frame and every other table has had its
+   * say. A row about casting — a `spell`-linked row, or one whose lines say
+   * *casts*, *sings* or *invokes* — is read as `spell-cast` in the frame's
+   * own groups, by the line's role: the caster's line fills `spell` then
+   * `target`, the target's line names the caster and lands on `you`, the
+   * room's line names caster, spell and target; a `%d` is the `amount`
+   * (`Message.cs` documents the order). Anything else is `realm-message`
+   * with the row's number and role, so the line is explained and attributed
+   * without a guess at what it means.
+   */
+  private asRealmMessage(line: StreamLine, text: string, block: Block): Block {
+    if (!this.messages || block.type !== 'unknown') return block;
+    /*
+     * Not a line the prompt is glued to: a template that opens with `%s` would
+     * take the prompt into its first name (`[HP=67]:Towser swings…`), and the
+     * tail after the prompt is classified on its own (`tailAfterPrompt`).
+     */
+    if (STATUS_LINE_START.test(text)) return block;
+    const hit = this.messages(text);
+    if (hit === null) return block;
+    const confidence = tuning().parse.baseConfidence;
+    const names = hit.fills.filter((fill, index) => hit.numeric[index] !== true && fill.length > 0);
+    const figure = hit.fills.find((_, index) => hit.numeric[index] === true);
+    const castShaped = hit.kind === 'spell' || hit.kind === 'cast';
+    if (castShaped && /\b(casts?|sings?|invokes?|cast)\b/.test(hit.template) && names.length > 0) {
+      const groups: Record<string, string> = {};
+      if (hit.role === 1) {
+        groups['caster'] = 'You';
+        groups['spell'] = names[0]!;
+        if (names[1] !== undefined) groups['target'] = names[1];
+      } else if (hit.role === 2) {
+        groups['caster'] = names[0]!;
+        if (names[1] !== undefined) groups['spell'] = names[1];
+        groups['target'] = 'you';
+      } else {
+        groups['caster'] = names[0]!;
+        if (names[1] !== undefined) groups['spell'] = names[1];
+        if (names[2] !== undefined) groups['target'] = names[2];
+      }
+      if (figure !== undefined) groups['amount'] = figure;
+      if (groups['spell'] === undefined) {
+        return this.build(line, 'realm-message', this.messageGroups(hit), text, confidence);
+      }
+      groups['message'] = String(hit.number);
+      return this.build(line, 'spell-cast', groups, text, confidence);
+    }
+    return this.build(line, 'realm-message', this.messageGroups(hit), text, confidence);
+  }
+
+  private messageGroups(hit: MessageHit): Record<string, string> {
+    return {
+      message: String(hit.number),
+      role: String(hit.role),
+      kind: hit.kind,
+      ...(hit.fills.length > 0 ? { fills: hit.fills.join('|') } : {})
+    };
   }
 
   /**

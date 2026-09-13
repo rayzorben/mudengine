@@ -47,10 +47,12 @@ describe('reading a loop out of the options file', () => {
   });
 
   it('drops a loop that is not one', () => {
-    // No name, one stop, no stops, not an object: none of these is a loop, and
-    // a loop with one stop would arrive and have nothing left to do.
+    // No name, no stops, not an object: none of these is a loop. One stop is
+    // a camp and is kept (todo 108).
     expect(asLoops([{ name: '', stops: ['A', 'B'] }])).toEqual([]);
-    expect(asLoops([{ name: 'L', stops: ['A'] }])).toEqual([]);
+    expect(asLoops([{ name: 'L', stops: ['A'] }]).map((loop) => loop.stops)).toEqual([
+      [{ room: 'A' }]
+    ]);
     expect(asLoops([{ name: 'L' }])).toEqual([]);
     expect(asLoops(['nope'])).toEqual([]);
     expect(asLoops('nope')).toEqual([]);
@@ -109,11 +111,13 @@ describe('how much of a list to keep', () => {
     expect(asLoops(long, { loops: 10, stops: 5 })[0]?.stops).toHaveLength(5);
   });
 
-  /* A loop is two stops or it is a place to stand. Truncating below that drops
-     it entirely rather than leaving something the walker would arrive at and
-     never leave. */
-  it('drops a loop the ceiling cut down to one stop', () => {
-    expect(asLoops([{ name: 'x', stops: ['A', 'B'] }], { loops: 10, stops: 1 })).toEqual([]);
+  /* One stop is a camp (todo 108); a ceiling that cuts a loop to one keeps it
+     as one, and a ceiling of none drops it. */
+  it('keeps a loop the ceiling cut down to one stop, and drops one cut to none', () => {
+    expect(
+      asLoops([{ name: 'x', stops: ['A', 'B'] }], { loops: 10, stops: 1 }).map((loop) => loop.stops)
+    ).toEqual([[{ room: 'A' }]]);
+    expect(asLoops([{ name: 'x', stops: ['A', 'B'] }], { loops: 10, stops: 0 })).toEqual([]);
   });
 });
 

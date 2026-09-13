@@ -115,6 +115,18 @@ describe('standing still in an empty room', () => {
     expect(sent).toEqual([]);
   });
 
+  /* The sheet's figure is the roll for both commands (todo 104). */
+  it('does nothing for a sheet that says Stealth 0, and says so once', () => {
+    const stealth = make();
+    const base = seen();
+    const noSkill = { ...base, progress: { ...base.progress, stealthSkill: 0 } };
+    stealth.onCharacter(noSkill);
+    stealth.onCharacter(noSkill);
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices.filter((line) => /no Stealth/.test(line))).toHaveLength(1);
+  });
+
   it('does nothing across a move in flight, an escape, or a refused opener', () => {
     make(combat(), { moveInFlight: () => true }).onCharacter(seen());
     make(combat(), { escaping: () => true }).onCharacter(seen());

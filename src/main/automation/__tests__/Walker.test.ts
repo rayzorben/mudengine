@@ -1603,6 +1603,36 @@ describe('sneaking before a route', () => {
   });
 
   /*
+   * `SneakCommand.cs` rolls the sheet's Stealth figure against 1–100, so a
+   * sheet that says `Stealth: 0` never passes — and a Mage rerolled from a
+   * Ninja kept `movement.sneak` and spent one refused `sn` on every step of
+   * every lap (todo 104). Said once; an unread figure still asks.
+   */
+  it('never asks a sheet that says Stealth 0 to sneak, and says so once', () => {
+    const walk = sneaking();
+    const base = at(1, 1);
+    const noSkill = { ...base, progress: { ...base.progress, stealthSkill: 0 } };
+    walk.start(ROUTE, noSkill);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e']);
+    expect(notices.filter((line) => /no Stealth/.test(line))).toHaveLength(1);
+    // The next step asks nothing and says nothing more.
+    walk.onCharacter({ ...noSkill, room: { ...noSkill.room, number: 2 } });
+    vi.advanceTimersByTime(200);
+    expect(notices.filter((line) => /no Stealth/.test(line))).toHaveLength(1);
+    walk.dispose();
+  });
+
+  it('still asks while the sheet has not said', () => {
+    const walk = sneaking();
+    const base = at(1, 1);
+    walk.start(ROUTE, { ...base, progress: { ...base.progress, stealthSkill: null } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn', 'e']);
+    walk.dispose();
+  });
+
+  /*
    * `SneakCommand` does everything it does inside `if (CurrentTarget == null
    * && Room.Mobs.Count == 0)`; the `else` is one line refusing. So an `sn`
    * sent from a room with a monster in it is a command spent to be refused —

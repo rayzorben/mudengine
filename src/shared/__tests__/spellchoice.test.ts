@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { chooseAttackSpell, spellElementOf, type SpellChoiceInput } from '../spellchoice';
+import {
+  castsToKill,
+  chooseAttackSpell,
+  spellElementOf,
+  type SpellChoiceInput
+} from '../spellchoice';
 import type { ProwessSheet } from '../prowess';
 import type { WorldSpell } from '../world';
 
@@ -176,5 +181,54 @@ describe('the element column', () => {
     ]);
     expect(spellElementOf(7)).toBeUndefined();
     expect(spellElementOf(null)).toBeUndefined();
+  });
+});
+
+/*
+ * The caster's rounds for the lair survey (todo 108): a Mage's swing says
+ * nothing about how long a fight lasts, so the spell the book would yield
+ * against this monster does, one cast a round.
+ */
+describe('casts to kill', () => {
+  const realm = (name: string): WorldSpell | null =>
+    name === 'lightning bolt'
+      ? {
+          id: 8,
+          name,
+          short: 'lbol',
+          level: 8,
+          mana: 3,
+          targets: 8,
+          element: 'lightning',
+          power: [12, 20]
+        }
+      : null;
+  const sheet = { level: 10, spellcasting: 65 } as unknown as ProwessSheet;
+  const input = {
+    book: [{ name: 'lightning bolt', short: 'lbol', level: 8, cost: 3 }],
+    realm,
+    level: 10,
+    mana: 66,
+    sheet,
+    family: 'greatermud' as const,
+    killConfidence: 0.9
+  };
+
+  it("counts casts against the monster's health at the expected damage, and prices each", () => {
+    const answer = castsToKill(input, { hp: 60, magicRes: null });
+    expect(answer).not.toBeNull();
+    expect(answer!.spell).toBe('lightning bolt');
+    expect(answer!.mana).toBe(3);
+    expect(answer!.rounds).toBeGreaterThanOrEqual(1);
+    // Twice the health is at least as many rounds, never fewer.
+    expect(castsToKill(input, { hp: 120, magicRes: null })!.rounds).toBeGreaterThanOrEqual(
+      answer!.rounds
+    );
+  });
+
+  it('answers nothing where the book is unread, the health unknown, or nothing casts', () => {
+    expect(castsToKill({ book: null }, { hp: 60, magicRes: null })).toBeNull();
+    expect(castsToKill(input, { hp: null, magicRes: null })).toBeNull();
+    expect(castsToKill({ ...input, book: [] }, { hp: 60, magicRes: null })).toBeNull();
   });
 });

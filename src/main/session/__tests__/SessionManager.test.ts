@@ -858,6 +858,49 @@ describe('a person at the keyboard', () => {
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
     await until(() => !manager!.automation.queue.suppressed);
   });
+
+  /*
+   * Todo 115: `SAVE` prints the suicide-password paragraph and the room
+   * **before** the prompt, and the sheet refresh that sentence triggers went to
+   * a queue still held and was dropped — the client kept the old figures for
+   * the session. The exit sentence is a release too.
+   */
+  it('lets the sheet be asked for again the moment the form has saved', async () => {
+    const { sink } = collect();
+    // The entry probe (`rm st i exp …`) is the shipped `onEnterRealm`, kept.
+    manager = new SessionManager(sink, undefined, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      rules: []
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    const seen = (): string => Buffer.concat(chunks).toString('latin1');
+    const asks = (): number => seen().split('st\r\n').length - 1;
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    // The positive control: the entry probe is really sending.
+    await until(() => seen().includes('rm\r\n'), 5000);
+
+    // The hold empties whatever the entry probe still had queued, so a later
+    // `st` is unmistakably the refresh.
+    manager.send('train stats\r');
+    expect(manager.automation.queue.suppressed).toBe(true);
+    expect(manager.automation.queue.depth).toBe(0);
+    const before = asks();
+    socket.write(
+      'To prevent accidental suicide or reroll, these commands\r\n' +
+        'have been password protected. You have not yet entered\r\n' +
+        'your suicide password, so please do so soon using the\r\n' +
+        'SET SUICIDE command.\r\n'
+    );
+    await until(() => !manager!.automation.queue.suppressed);
+    // Behind the entry probe's unanswered commands the window is full; the
+    // stall reclaim (`ackTimeoutMs`) is what lets the refresh out here.
+    await until(() => asks() > before, 8000);
+  }, 15_000);
 });
 
 describe('the decision trace', () => {
@@ -2149,13 +2192,20 @@ function haven(): WorldGraph {
   const rooms = [
     { m: 1, r: 1, n: 'Haven Hall', x: { n: { m: 1, r: 2 } } },
     { m: 1, r: 2, n: 'Middle Road', x: { s: { m: 1, r: 1 }, n: { m: 1, r: 3 } } },
-    { m: 1, r: 3, n: 'Rat Lair', x: { s: { m: 1, r: 2 } } }
+    // `d` is a text exit: walked as `go manhole`, never as `d` (todo 105).
+    {
+      m: 1,
+      r: 3,
+      n: 'Rat Lair',
+      x: { s: { m: 1, r: 2 }, d: { m: 1, r: 4, i: 'Text: go manhole, go man, enter manhole' } }
+    },
+    { m: 1, r: 4, n: 'Sewer', x: { u: { m: 1, r: 3 } } }
   ];
   fs.writeFileSync(
     file,
     zlib.gzipSync(
       [
-        JSON.stringify({ v: 1, source: 'test', rooms: 3, generatedAt: 'x' }),
+        JSON.stringify({ v: 1, source: 'test', rooms: 4, generatedAt: 'x' }),
         ...rooms.map((r) => JSON.stringify(r))
       ].join('\n') + '\n'
     )
@@ -2240,6 +2290,37 @@ describe('which way out', () => {
 
     await until(() => notices.some((notice) => /Retreating s, the way we came/.test(notice)));
     await until(() => /\bs\r\n/.test(seen()));
+  });
+
+  /*
+   * The retrace rung answers only for a compass exit. Vaelor climbed `u` out
+   * of the sewer into Dark Alley 1/383, whose `d` is `Text: go manhole`, and at
+   * 18% the escape sent `d` — *There is no exit in that direction!* — before
+   * the next rung ran `w` (2026-09-13, todo 105). The realm knew: a text edge
+   * is walked by its own words, so the direction is not an exit there.
+   */
+  it('does not retrace through a text exit, and takes the next rung at once', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, haven(), escaping());
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,4\r\nSewer\r\nObvious exits: up\r\n');
+    await until(() => manager!.character.room.number === 4);
+
+    manager.send('u\r\n');
+    socket.write('Rat Lair\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 3);
+
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+
+    await until(() => notices.some((notice) => /Running s/.test(notice)));
+    await until(() => /\bs\r\n/.test(seen()));
+    expect(seen()).not.toMatch(/\bd\r\n/);
+    expect(notices.some((notice) => /Retreating d/.test(notice))).toBe(false);
   });
 
   /*
@@ -2594,6 +2675,16 @@ describe('the lap after an escape', () => {
     // first; `retreated` is what is left of it once the fight is over.
     await until(() => manager!.loops.progress.hold === 'fight');
     socket.write('*Combat Off*\r\n[HP=40/MA=50]:' + PROMPT_REPAINT);
+    /*
+     * Two holds stand now and the card shows one word. Under the 0.7 floor
+     * `health` outranks `retreated`: it is the reason that will still be true
+     * longest. (Until todo 106 the runner here held the *default* floor,
+     * 0.35, so 40% was not hurt and this read `retreated` — a session built
+     * with a config and never configured.) The escape's own hold is what is
+     * left once the health is back, which is the positive control below.
+     */
+    await until(() => manager!.loops.progress.hold === 'health');
+    socket.write('[HP=80/MA=50]:' + PROMPT_REPAINT);
     await until(() => manager!.loops.progress.hold === 'retreated');
     // Still the same lap, on the same stop: running away is not one of the
     // three things that end one.
@@ -2963,7 +3054,7 @@ describe('typing while a route is being walked', () => {
       file,
       zlib.gzipSync(
         [
-          JSON.stringify({ v: 1, source: 'test', rooms: 3, generatedAt: 'x' }),
+          JSON.stringify({ v: 1, source: 'test', rooms: 4, generatedAt: 'x' }),
           ...rooms.map((room) => JSON.stringify(room))
         ].join('\n') + '\n'
       )

@@ -24,6 +24,7 @@ import type { RoomOccupant } from '../../../shared/character';
 import type { ShippedSentences } from '../../../shared/sentences';
 import { ActionBook, parseActionsCsv } from '../../../shared/actions';
 import { DeathBook, parseDeathMessagesCsv } from '../../../shared/death-messages';
+import { NO_MESSAGES } from '../../../shared/messages';
 import type { PlayerFacts, RealmPlayers } from '../../../shared/players';
 import { NO_BELONGINGS } from '../../../shared/belongings';
 import {
@@ -88,7 +89,8 @@ function shipped(): ShippedSentences {
           '18,mangy dog,8352,"The dog yelps loudly, and dies."'
         ].join('\n')
       )
-    )
+    ),
+    messages: NO_MESSAGES
   };
 }
 

@@ -63,7 +63,8 @@ const classifier = new Classifier(
   undefined,
   undefined,
   (text) => sentences.deaths.mobsOf(text),
-  (text) => sentences.actions.match(text)
+  (text) => sentences.actions.match(text),
+  (text) => sentences.messages.match(text)
 );
 const byType = new Map();
 const unknown = new Map();

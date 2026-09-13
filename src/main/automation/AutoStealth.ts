@@ -60,6 +60,8 @@ const WALKING_STEALTH_CEILING = 100;
 export class AutoStealth {
   /** When the shadows were last asked for, so a failed roll retries at a stated rate. */
   private askedAt = 0;
+  /** Whether *Stealth 0* has been said this session. */
+  private saidNoSkill = false;
   /** Whether the Stealth ceiling has been said this session. */
   private saidCeiling = false;
 
@@ -97,6 +99,18 @@ export class AutoStealth {
     if (this.events.escaping?.() === true) return;
     if (this.events.moveInFlight?.() === true) return;
     if (this.events.openerRefused?.() === true) return;
+    /*
+     * The sheet's `Stealth:` figure is the roll for both commands
+     * (`SneakCommand.cs`, `HideCommand.cs`); zero never passes (todo 104).
+     * Said once, and an unread sheet never refuses.
+     */
+    if (state.progress.stealthSkill === 0) {
+      if (!this.saidNoSkill) {
+        this.saidNoSkill = true;
+        this.events.notice?.(t('automation.stealth.noSkill'));
+      }
+      return;
+    }
     /*
      * The server's own precondition, transcribed: both commands sit inside
      * `CurrentTarget == null && Room.Mobs.Count == 0`, so a monster here or a

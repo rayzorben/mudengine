@@ -28,6 +28,13 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'the exact status-line matcher is generated from the template `pro` reports, which ' +
       'is only known at runtime; built once per report in `statlineMatcher`, held by ' +
       '`CharacterTracker`, and never called in a per-line path'
+  },
+  'src/shared/messages.ts': {
+    count: 1,
+    because:
+      "the server's message table is data — 3,979 rows of three templates (`%s`, `%d`) — " +
+      'so each is compiled once when the shipped table is read (`MessageBook.add`) and held; ' +
+      'the per-line path runs only the compiled ones a word index selects (todo 109)'
   }
 };
 

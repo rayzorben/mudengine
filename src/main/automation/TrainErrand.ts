@@ -17,6 +17,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
+import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
 import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
@@ -47,6 +48,9 @@ export interface TrainEvents {
   decided?(decision: SafetyDecision): void;
 }
 
+/** How to reach a trainer: standing in its room, a route, or the reason there is none. */
+type Way = { kind: 'here' } | { kind: 'route'; route: Route } | { kind: 'none'; why: string };
+
 type Phase =
   | { kind: 'idle' }
   | { kind: 'walking'; to: RoomId; trainer: TrainerChoice }
@@ -67,6 +71,31 @@ export class TrainErrand {
   private attempted: number | null = null;
   /** Whether the *nowhere to go* refusal has been said for this level. */
   private saidNowhere: number | null = null;
+  /**
+   * The level and room from which no trainer could be reached, and when, so
+   * the routes are not planned again on every status line: asked again once
+   * the room has changed **and** `tuning.train.reaskMs` has passed (todo 103 —
+   * a lap changes room every three seconds).
+   */
+  private refusedFrom: { level: number; room: RoomId | null; at: number } | null = null;
+  /** The last *none reachable* sentence said, so the same outcome is said once. */
+  private saidUnreachable: string | null = null;
+  /**
+   * A level was just collected and the experience figure has not been said
+   * again since (todo 107). `user-levels` leaves `expNeeded` as it was — a
+   * stale 0 — and the staleness table asks `exp`; until that answer lands,
+   * a second `train` would be sent on a figure a level old, and refused with
+   * a sentence the client does not read. Bounded by `tuning.train.confirmMs`
+   * so a realm that never answers cannot hold the errand for ever.
+   */
+  private expStaleSince: number | null = null;
+  /**
+   * The level and fee a poverty refusal was made at (todo 112). The purse is
+   * the fact the refusal stands on, so the purse reaching the fee asks again;
+   * it used to spend the level's one attempt, and a player who withdrew the
+   * fee and came back was told nothing.
+   */
+  private poor: { level: number; cost: number } | null = null;
 
   constructor(
     private config: TrainConfig,
@@ -128,34 +157,124 @@ export class TrainErrand {
      * Unknown is never the answer that sends a character across the realm.
      */
     if (level === null || owed === null || owed > 0) return;
+    if (this.expStaleSince !== null) {
+      if (this.now() - this.expStaleSince < tuning().train.confirmMs) return;
+      this.expStaleSince = null;
+    }
     if (level === this.attempted) return;
+    if (this.poor !== null && this.poor.level === level) {
+      const purse = state.inventory.wealth;
+      if (purse !== null && purse < this.poor.cost) return;
+      this.poor = null;
+    }
     // Never over a fight, a move, a walk or an escape — the errand yields to
     // everything, which is `Supplies`' rule and the reason a lap may hold it.
     if (state.inCombat || state.combat.attackers.length > 0) return;
     if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
 
     const taking = this.planner.trainers();
-    const chosen = this.chosen(taking);
-    if (chosen === null) {
-      /*
-       * Said once per level, not once per status line. Two ways to get here
-       * and the sentence names which: the realm offers nothing at all for
-       * this character, or the room the player *chose* no longer takes it —
-       * which is the reviewer's own rule, and the reason the choice is never
-       * silently replaced with another room.
-       */
+    if (this.config.trainer > 0) {
+      const chosen = taking.find((entry) => entry.shop === this.config.trainer) ?? null;
+      if (chosen === null) {
+        /*
+         * The reviewer's own rule: the room the player *chose* no longer takes
+         * this character, and picking another would send the character
+         * somewhere it was never told about. Said once per level, not once
+         * per status line.
+         */
+        if (this.saidNowhere !== level) {
+          this.saidNowhere = level;
+          this.refuse(t('automation.train.refusalTrainerStale', { level }));
+        }
+        return;
+      }
+      this.saidNowhere = null;
+      this.go(state, level, chosen, this.routeFor(chosen));
+      return;
+    }
+    if (taking.length === 0) {
       if (this.saidNowhere !== level) {
         this.saidNowhere = level;
-        this.refuse(
-          this.config.trainer > 0 && taking.length > 0
-            ? t('automation.train.refusalTrainerStale', { level })
-            : t('automation.train.refusalNowhere', { level })
-        );
+        this.refuse(t('automation.train.refusalNowhere', { level }));
       }
       return;
     }
     this.saidNowhere = null;
 
+    /*
+     * **Cheapest first, and reach is the filter, not the tiebreak.** A trainer
+     * no route reaches is not a cheaper trainer; it is not a trainer. The
+     * realm on the test server files two Sysop rooms (1/289, 4/1) that take
+     * every level at no markup and that nothing a player walks can enter, so
+     * the cheapest-first order alone chose them, said *0 steps* for a route
+     * with none, and gave the level up (todo 102). Each unreachable row is
+     * skipped and named, and the first the route planner can reach is walked.
+     *
+     * Asked once per room: a route is planned from where the character
+     * stands, so the answer from another room may differ — and a status line
+     * arrives every few seconds, so without the memory this would plan every
+     * trainer's route on each one.
+     */
+    const here = this.planner.here();
+    if (
+      this.refusedFrom !== null &&
+      this.refusedFrom.level === level &&
+      (this.refusedFrom.room === here || this.now() - this.refusedFrom.at < tuning().train.reaskMs)
+    )
+      return;
+    const skipped: string[] = [];
+    for (const candidate of taking) {
+      const way = this.routeFor(candidate);
+      if (way.kind !== 'none') {
+        if (skipped.length > 0) {
+          this.events.notice?.(t('automation.train.skipping', { skipped: skipped.join('; ') }));
+        }
+        this.go(state, level, candidate, way);
+        return;
+      }
+      skipped.push(
+        t('automation.train.skippedOne', {
+          trainer: candidate.name,
+          room: candidate.roomName,
+          why: way.why
+        })
+      );
+    }
+    this.refusedFrom = { level, room: here, at: this.now() };
+    /*
+     * Said once per outcome, not once per room: the sentence names every
+     * trainer and why it is out of reach, and a lap that hears it in every
+     * room it enters hears a paragraph every three seconds. A trainer becoming
+     * reachable is a walk, not a sentence; a changed reason is worth saying.
+     */
+    const sentence = t('automation.train.refusalUnreachable', {
+      level,
+      skipped: skipped.join('; ')
+    });
+    if (this.saidUnreachable === sentence) return;
+    this.saidUnreachable = sentence;
+    this.refuse(sentence);
+  }
+
+  /**
+   * A route to the trainer's room, `'here'` when already standing in it, or
+   * the reason there is none. A blocked route is a reason, not a route: the
+   * planner hands one back with no steps and `blocked` set, and reading its
+   * step count says *0 steps* about a walk that does not exist.
+   */
+  private routeFor(trainer: TrainerChoice): Way {
+    const to = roomId(trainer.map, trainer.room);
+    if (this.planner.here() === to) return { kind: 'here' };
+    const route = this.planner.routeTo(to);
+    if (typeof route === 'string') return { kind: 'none', why: route };
+    if (route.blocked) {
+      return { kind: 'none', why: route.reason ?? t('automation.walk.refusalNoRoute') };
+    }
+    return { kind: 'route', route };
+  }
+
+  /** The purse, then the walk or the verb. One level is one attempt from here on. */
+  private go(state: CharacterState, level: number, chosen: TrainerChoice, way: Way): void {
     /*
      * **The purse, before the walk.** The cost is computable from data already
      * loaded and the markups are enormous — 88,450 copper at level 30 at a
@@ -170,7 +289,8 @@ export class TrainErrand {
      */
     const purse = state.inventory.wealth;
     if (purse !== null && purse < chosen.cost) {
-      this.attempted = level;
+      // Not the level's attempt: the purse moving asks again (todo 112).
+      this.poor = { level, cost: chosen.cost };
       this.refuse(
         t('automation.train.refusalPoor', {
           cost: chosen.cost.toLocaleString(),
@@ -182,16 +302,17 @@ export class TrainErrand {
     }
 
     this.attempted = level;
-    const to = roomId(chosen.map, chosen.room);
-    if (this.planner.here() === to) {
+    if (way.kind === 'here') {
       this.send(chosen);
       return;
     }
-    const route = this.planner.routeTo(to);
-    if (typeof route === 'string') {
-      this.refuse(t('automation.train.refusalNoRoute', { room: chosen.roomName, why: route }));
+    if (way.kind === 'none') {
+      // Only a trainer the player chose reaches here unrouted: it is never
+      // silently replaced, so the refusal names it and the route's reason.
+      this.refuse(t('automation.train.refusalNoRoute', { room: chosen.roomName, why: way.why }));
       return;
     }
+    const { route } = way;
     this.events.notice?.(
       t('automation.train.going', {
         room: chosen.roomName,
@@ -205,7 +326,12 @@ export class TrainErrand {
       return;
     }
     if (this.planner.looping()) this.planner.hold();
-    this.phase = { kind: 'walking', to, trainer: chosen };
+    this.phase = { kind: 'walking', to: roomId(chosen.map, chosen.room), trainer: chosen };
+  }
+
+  /** The experience figure said again: the next banked level may be asked about. */
+  onBlock(block: Block): void {
+    if (block.type === 'user-experience') this.expStaleSince = null;
   }
 
   /** The walker's report: the errand's own leg ended, or somebody else's walk did. */
@@ -226,32 +352,26 @@ export class TrainErrand {
     this.send(trainer);
   }
 
-  /**
-   * The trainer the player chose, or the cheapest that will take this
-   * character.
-   *
-   * **A stated row that no longer takes this character is not replaced.** The
-   * list is already only the eligible ones, so a chosen row missing from it is
-   * a room that has stopped serving — every class room does at level 10, every
-   * band at its ceiling — and picking another would send the character
-   * somewhere it was never told about. The refusal names it and the player
-   * changes the setting, which is the reviewer's rule.
-   */
-  private chosen(taking: readonly TrainerChoice[]): TrainerChoice | null {
-    if (this.config.trainer > 0) {
-      return taking.find((entry) => entry.shop === this.config.trainer) ?? null;
-    }
-    return taking[0] ?? null;
-  }
-
   private send(trainer: TrainerChoice): void {
     this.phase = { kind: 'training', trainer, sentAt: this.now() };
-    this.queue.enqueue({
+    const accepted = this.queue.enqueue({
       command: 'train',
       priority: 'probe',
       coalesceKey: 'train:level',
       reason: t('automation.train.reasonLevel')
     });
+    /*
+     * *Not now* is not *never* (todo 113): the arbiter refuses while the stat
+     * screen has the keyboard, and the attempt was marked before the queue
+     * agreed to carry it — so the errand waited out `confirmMs`, reported
+     * *the level did not move*, and never asked again at this level. The
+     * mark goes back and the next status line after the hold lifts asks.
+     */
+    if (!accepted) {
+      this.phase = { kind: 'idle' };
+      this.attempted = null;
+      this.planner.release();
+    }
   }
 
   /**
@@ -269,7 +389,16 @@ export class TrainErrand {
     const level = state.progress.level;
     if (level !== null && this.attempted !== null && level > this.attempted) {
       this.phase = { kind: 'idle' };
-      this.attempted = level;
+      /*
+       * **The level moved, so the attempt is spent, not the next level**
+       * (todo 107). This used to write the *new* level here, and the guard
+       * above then refused every status line at that level until the
+       * character gained another — which it could not, since collecting
+       * levels is what it was refusing to do. A character with two banked
+       * levels collected one and stood under the other for ever.
+       */
+      this.attempted = null;
+      this.expStaleSince = this.now();
       this.planner.release();
       this.events.notice?.(t('automation.train.levelled', { level }));
       this.events.decided?.({

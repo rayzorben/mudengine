@@ -594,6 +594,9 @@ notices:
     deathMessages:
       readError: 'could not read the death sentence table {file}: {message}'
       empty: 'the death sentence table {file} holds no rows; a death is learned per realm instead'
+    messages:
+      readError: 'could not read the message table {file}: {message}'
+      empty: 'the message table {file} holds no rows; only the frames read the wire'
     players:
       parseSuspended:
         '{fileName} will not parse ({message}). Nothing more about other players is kept on
@@ -3572,6 +3575,8 @@ automation:
   stealth:
     reasonHide: 'hiding, so the next fight opens with {verb}'
     reasonSneak: 'sneaking, so the next fight opens with {verb}'
+    # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
+    noSkill: 'Not hiding or sneaking for the opener: this character has no Stealth (the sheet says 0), so the server refuses every attempt.'
     ceiling: 'Stealth {skill} is past {ceiling}: a move rolls no more than {ceiling} and sneaking
       no more than 95, while hiding rolls the whole figure — the skill past {ceiling} only pays
       standing still.'
@@ -3675,6 +3680,13 @@ automation:
       'A level is waiting and {trainer} charges {cost} copper; this character carries {purse}.
       Nothing walked.'
     refusalNoRoute: 'Could not walk to {room} to train: {why}'
+    # Reach is the filter (todo 102): a trainer no route reaches is skipped and
+    # named, and the level is asked about again from another room.
+    skipping: 'Skipping a cheaper trainer no route reaches: {skipped}.'
+    skippedOne: '{trainer} at {room} ({why})'
+    refusalUnreachable:
+      'A level is waiting and no trainer that takes this character at level {level} can be walked to
+      from here: {skipped}. Nothing walked; asked again from another room.'
     refusalNotReached: 'Did not reach {room} to train: {why}'
     refusalUnanswered:
       Sent train at {trainer} and the level did not move. Train by hand, or check the trainer.
@@ -3683,6 +3695,9 @@ automation:
     whyNothingWanted: every wanted figure is at or under the current one
     whyUnaffordable: 'the cheapest wanted point costs {cost} CP and {left} are left'
     notName: 'Not driving this stat screen: it has the name up for editing, which the client never touches. Finish it by hand — Enter through to SAVE.'
+    # Todo 116: the ask went out and nothing came back.
+    askUnanswered: 'Asked for the stat screen and nothing answered in {seconds}s; it will be asked for again.'
+    whyAskUnanswered: nothing answered the ask
     whyNotName: the screen offers the name for editing
     capped: "{attributes} wanted above the race's ceiling; aiming at the ceiling."
     leaving: 'Nothing to buy on the stat screen ({why}); leaving it unchanged.'
@@ -4031,6 +4046,8 @@ automation:
       The realm says the way to {stepName} is hidden here. Searching for it, and staying put until
       it turns up.
     reasonSneak: sneaking before the route
+    # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
+    sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the sheet says 0), so the server refuses every attempt. Sneak Before Each Step is ignored for this session.'
     reasonStepping: walking to {stepName}
     reasonTimeout: nothing came back after {command}
     reasonWrongRoom: Off path / Navigation desync ({roomName}).

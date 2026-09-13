@@ -192,3 +192,34 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
   const hardest = [...candidates].sort((a, b) => b.expected - a.expected || byCost(a, b));
   return { chosen: hardest[0]!, why: 'hardest', considered: candidates, refusal: null };
 }
+
+/**
+ * How many casts of the spell this character would choose bring a monster of
+ * `hp` hit points down, and what each cast costs — the caster's half of a
+ * fight the lair survey prices (todo 108, 2026-09-13). `verdictFor` gets a
+ * melee character's rounds from the swing; a caster has no swing worth the
+ * name, and this is the same question asked of the book: the spell
+ * `chooseAttackSpell` picks against this monster's resistances, at one cast a
+ * round, over its full pool. Null where nothing casts, nothing is affordable,
+ * everything is resisted, or the monster's health is unknown — an unknown is
+ * never a number of rounds.
+ */
+export function castsToKill(
+  input: Omit<SpellChoiceInput, 'target' | 'excluded'> | { book: null },
+  monster: { hp: number | null; magicRes: number | null; abilities?: Array<[number, number]> }
+): { rounds: number; mana: number | null; spell: string } | null {
+  if (input.book === null) return null;
+  if (monster.hp === null || monster.hp <= 0) return null;
+  const choice = chooseAttackSpell({
+    ...input,
+    target: { remaining: monster.hp, magicRes: monster.magicRes, abilities: monster.abilities },
+    excluded: new Set()
+  });
+  const chosen = choice.chosen;
+  if (chosen === null || chosen.expected <= 0) return null;
+  return {
+    rounds: Math.max(1, Math.ceil(monster.hp / chosen.expected)),
+    mana: chosen.cost,
+    spell: chosen.spell.name
+  };
+}

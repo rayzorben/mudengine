@@ -367,8 +367,23 @@ export function compareSpots(a: HuntingSpot, b: HuntingSpot): number {
   const ra = rank(a);
   const rb = rank(b);
   if (ra !== rb) return ra - rb;
-  const va = ra === 0 ? a.estimate.expPerHour! : (a.estimate.ceilingPerHour ?? -1);
-  const vb = rb === 0 ? b.estimate.expPerHour! : (b.estimate.ceilingPerHour ?? -1);
-  if (va !== vb) return vb - va;
+  if (ra === 0) {
+    const d = b.estimate.expPerHour! - a.estimate.expPerHour!;
+    if (d !== 0) return d;
+  } else {
+    /*
+     * Where no rate could be finished, what one sweep of the lair earns
+     * (`expPerCycle`, over its rooms) is the better bet, then the ceiling as a
+     * tiebreak. A ceiling is a bound, not an estimate: a single 500-point
+     * monster on a one-hour clock is *at most* 500 an hour, and it outranked
+     * eight rooms of sewer monsters three steps away only because their rooms
+     * carry no clock — the lair the same character then earned 5–8k an hour in
+     * (todo 108, 2026-09-13).
+     */
+    const sweep = (b.estimate.expPerCycle ?? -1) - (a.estimate.expPerCycle ?? -1);
+    if (sweep !== 0) return sweep;
+    const ceiling = (b.estimate.ceilingPerHour ?? -1) - (a.estimate.ceilingPerHour ?? -1);
+    if (ceiling !== 0) return ceiling;
+  }
   return a.rooms[0]!.steps - b.rooms[0]!.steps;
 }
