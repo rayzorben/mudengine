@@ -142,7 +142,9 @@ function make(
   config: CombatConfig,
   enabled = true,
   spells?: SpellsConfig,
-  realmClass?: () => { combat: number | null; magery: number | null; family: RealmFamily | null }
+  realmClass?: () => { combat: number | null; magery: number | null; family: RealmFamily | null },
+  /** Whether the class can get into the shadows; undefined is unknown (todo 28). */
+  canHide?: () => boolean | null
 ): AutoCombat {
   return new AutoCombat(
     config,
@@ -150,7 +152,8 @@ function make(
     queue,
     {
       notice: (m) => notices.push(m),
-      decided: (decision) => decisions.push(decision)
+      decided: (decision) => decisions.push(decision),
+      ...(canHide === undefined ? {} : { canHide })
     },
     spells ?? DEFAULT_CONFIG.automation.spells,
     undefined,
@@ -658,20 +661,15 @@ describe('refusing to start one', () => {
     expect(sent).toEqual(['a giant rat']);
   });
 
-  it('refuses below the health it was given', () => {
-    const auto = make(combat({ minHealth: 0.5 }));
-    auto.onCharacter(state({ room, vitals: { ...EMPTY_CHARACTER.vitals, hp: 20, hpMax: 100 } }));
-    drain();
-    expect(sent).toEqual([]);
-  });
-
   /*
-   * Unknown is not low. A maximum that has not arrived yet must never stop this
-   * — the same rule that stops an unknown maximum starting a retreat.
+   * There is no health floor on *opening* a fight (todo 13): the goal of the
+   * game is survival, and a character that will not swing at what is swinging
+   * at it is not safer. Low health is the retreat's business and the rest's,
+   * and both act on the character rather than on the decision to engage.
    */
-  it('does not treat an unknown maximum as low health', () => {
-    const auto = make(combat({ minHealth: 0.5 }));
-    auto.onCharacter(state({ room, vitals: { ...EMPTY_CHARACTER.vitals, hp: 20, hpMax: null } }));
+  it('opens a fight at low health, because the floor on opening is gone', () => {
+    const auto = make(combat({}));
+    auto.onCharacter(state({ room, vitals: { ...EMPTY_CHARACTER.vitals, hp: 20, hpMax: 100 } }));
     drain();
     expect(sent).toEqual(['a giant rat']);
   });
@@ -1039,6 +1037,31 @@ describe('what to swing with', () => {
     drain();
     expect(sent).toEqual(['a giant rat']);
     expect(notices.filter((n) => /sneaking/.test(n))).toHaveLength(1);
+  });
+
+  /*
+   * And a class that cannot get into the shadows at all never lands one
+   * (todo 28). `combat.opener` survives a reroll: a profile set up for a
+   * Ninja was still asking for `bs` as a Mage, a Priest and a Witchunter, and
+   * each was told why it was withheld *this time* — advice none of them could
+   * take. Read from the realm's class row, not from the momentary state.
+   */
+  it('drops a backstab opener the class can never use, and says why once', () => {
+    const auto = make(combat({ opener: 'bs' }), true, undefined, undefined, () => false);
+    // Sneaking, which is the state the stealth gate would let through.
+    auto.onCharacter(state({ room, stealth: 'sneaking' }));
+    auto.onCharacter(state({ room, stealth: 'sneaking' }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+    expect(notices.filter((n) => /cannot get into the shadows/i.test(n))).toHaveLength(1);
+  });
+
+  /* Unknown class never refuses, the rule every threshold here follows. */
+  it('keeps the opener while the class is unread', () => {
+    const auto = make(combat({ opener: 'bs' }), true, undefined, undefined, () => null);
+    auto.onCharacter(state({ room, stealth: 'sneaking' }));
+    drain();
+    expect(sent).toEqual(['bs giant rat']);
   });
 
   /*
@@ -2321,16 +2344,6 @@ describe('saying why it did not open a fight', () => {
     auto.onCharacter(room(mob('thug', 'hostile'), mob('nasty thug', 'hostile')));
     drain();
     expect(refusals()).toEqual(['thug — 2 monsters here, and maxMobs is 1']);
-  });
-
-  it('names the health floor', () => {
-    const auto = make(combat({ minHealth: 0.5 }));
-    auto.onCharacter({
-      ...room(mob('thug', 'hostile')),
-      vitals: { ...EMPTY_CHARACTER.vitals, hp: 30, hpMax: 100 }
-    });
-    drain();
-    expect(refusals()).toEqual(['thug — health is 30% and minHealth is 50%']);
   });
 
   it('names the policy when engage is none', () => {

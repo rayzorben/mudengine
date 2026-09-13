@@ -250,6 +250,107 @@ describe('sitting down', () => {
   });
 });
 
+/*
+ * A poisoned character cannot rest at all on GreaterMUD's engine.
+ *
+ * `RestCommand.cs:28` tests `GetAbility(Poison)` before anything else and
+ * answers `You are poisoned!` instead of sitting the character down, so every
+ * `rest` proposed there is a command spent to be told the same thing — and
+ * nothing refused, so `askedUntil` expired and it asked again, for ever
+ * (todo 17).
+ */
+describe('resting while poisoned', () => {
+  const poisoned = (): Partial<CharacterState> => ({
+    afflictions: { blind: 'no', poisoned: 'yes', diseased: 'no', held: 'no' }
+  });
+
+  const onGreaterMud = (config: HealthConfig, said: string[] = []): Recovery =>
+    new Recovery(config, true, queue, undefined, {
+      notice: (message) => void said.push(message),
+      poisonRefusesRest: () => true
+    });
+
+  it('does not spend a command on a rest the realm will refuse', () => {
+    onGreaterMud(health({ restBelow: 0.5 })).onCharacter(
+      state({ hp: 20, hpMax: 100, ...poisoned() })
+    );
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('says so once, naming the cure, and not again on every status line', () => {
+    const said: string[] = [];
+    const recovery = onGreaterMud(health({ restBelow: 0.5 }), said);
+    for (let i = 0; i < 4; i += 1) {
+      recovery.onCharacter(state({ hp: 20 - i, hpMax: 100, ...poisoned() }));
+      drain();
+    }
+    expect(said.filter((line) => /rest a poisoned/i.test(line))).toHaveLength(1);
+  });
+
+  /* The positive control: the same character, once the poison is stated gone. */
+  it('rests the moment the poison is no longer stated', () => {
+    const recovery = onGreaterMud(health({ restBelow: 0.5 }));
+    recovery.onCharacter(state({ hp: 20, hpMax: 100, ...poisoned() }));
+    drain();
+    expect(sent).toEqual([]);
+    recovery.onCharacter(
+      state({
+        hp: 20,
+        hpMax: 100,
+        afflictions: { blind: 'no', poisoned: 'no', diseased: 'no', held: 'no' }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  /*
+   * And it says it again for a second poisoning: it is a fact about the
+   * character's situation, not a lesson about the realm.
+   */
+  it('says it again after the poison has come and gone and come back', () => {
+    const said: string[] = [];
+    const recovery = onGreaterMud(health({ restBelow: 0.5 }), said);
+    recovery.onCharacter(state({ hp: 20, hpMax: 100, ...poisoned() }));
+    drain();
+    /*
+     * Cured and back to full, so nothing is proposed in between — a rest
+     * proposed here would arm `askedUntil` and the next line would return
+     * before the poison check ran, which is not the sequence under test.
+     */
+    recovery.onCharacter(
+      state({
+        hp: 100,
+        hpMax: 100,
+        afflictions: { blind: 'no', poisoned: 'no', diseased: 'no', held: 'no' }
+      })
+    );
+    drain();
+    recovery.onCharacter(state({ hp: 20, hpMax: 100, ...poisoned() }));
+    drain();
+    expect(said.filter((line) => /rest a poisoned/i.test(line))).toHaveLength(2);
+  });
+
+  /*
+   * Unknown is not poisoned, and another engine does not have the rule. Both
+   * rest: the worst case is the one command a broken rest already costs, and
+   * refusing on either would be the client inventing a refusal.
+   */
+  it('rests where the condition is unstated, and on another engine', () => {
+    onGreaterMud(health({ restBelow: 0.5 })).onCharacter(state({ hp: 20, hpMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+    sent.length = 0;
+
+    new Recovery(health({ restBelow: 0.5 }), true, queue, undefined, {
+      poisonRefusesRest: () => false
+    }).onCharacter(state({ hp: 20, hpMax: 100, ...poisoned() }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+});
+
 describe('a character that is already resting', () => {
   /*
    * The regression this whole describe exists for (2026-08-27,

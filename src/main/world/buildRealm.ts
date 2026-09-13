@@ -82,8 +82,9 @@ import {
  * | 32 | **A row's own numbers, so a name standing in a room can be resolved to one of them.** Format 31 gave a lair the row it spawns; the wire still carried only a name, so the Reference card answered *gnoll scout* with the fold of rows 224 and 2204 — `100–830 hp`, 75 AC, and a fight it priced at 2,161 hp of chewing. But a room is a very strong clue to which row is standing in it: the Gnoll Tent's own lair names 224, and the nearest room row 2204 spawns in is on another map. `BuiltMob.rw` carries every row's own health, defence, worth, regeneration, pursuit and average blow beside its number — subsuming `pr` and `pd`, which were the same per-row shape written as two parallel arrays — and `WorldGraph.resolveMobRow` picks the row by the room, saying which and how. Written only where a name holds several rows, because with one row the fold *is* the row — todo 02 |
  * | 33 | **The realm's own clocks: a lair's respawn and a placed monster's.** `Rooms.Delay` was in every room row and read by nothing, so the client could price what a lair *costs* and never what it *pays*, and it sat a character down in a room that makes monsters every twenty seconds (todos 05 and 08). `BuiltRoom.dl` carries the column as the realm states it — minutes, except an Arena room and a negative figure are seconds (`Room.GetDelayInSeconds`), and GreaterMUD's regen adds thirty seconds to the elapsed time before comparing (`RegenSlot.cs:33`), so the reading lives in `src/shared/hunting.ts` behind the family. `BuiltMobRow.rt` is `Monsters.RegenTime` in hours, the clock a *placed* monster comes back on (`MobType.Regen * 3600`) — a boss's, never a lair's — todo 05 |
  * | 34 | **A spell's element.** `Spells.AttType` was in every spell row and read by nothing, so a lightning bolt could not be told from a fireball when the monster in front of the character resisted lightning; `BuiltSpell.at` carries the column as the realm states it and `WorldSpell.element` is `Spell.GetSpellAttackType`'s reading (0 cold, 1 hot, 2 stone, 3 lightning, 4 normal, 5 water, 6 poison), so `chooseAttackSpell` can take the monster's `Rlit` off the damage the way `Spell.CheckResistance` does — todo 09 |
+ * | 35 | **Who a trainer takes, and what it charges.** `Shops.MinLVL`, `MaxLVL` and `ClassRest` were in every shop row and read by nothing, so a client that wanted to go and collect a level had no way to pick a room: the Ninja Training Room trains 1–10 and a level 30 Ninja walking to the obvious place is told *You have progressed too far*. 46 trainers in Paradigm, in bands that overlap heavily (21–50, 31–52, 41–54, 51–75), one class id per row where the row is restricted and 0 where it is not. And `markup` was written only where positive, which is right for a price and wrong for a *choice*: `Titan Trainer` (21–50) charges 6,000% and `Sixty Seven` (1–67) 1,200% for the same level, so the column decides which room to walk to — todo 18 |
  */
-export const REALM_FORMAT = 34;
+export const REALM_FORMAT = 35;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -310,6 +311,12 @@ export interface BuiltShop {
   items: number[];
   /** Percentage the shop adds to the base price, when it states one. */
   markup?: number;
+  /** `MinLVL` — the lowest level this place serves. Format 35. */
+  min?: number;
+  /** `MaxLVL` — the first level it no longer serves. Format 35. */
+  max?: number;
+  /** `ClassRest` — the one class id it is restricted to; absent means anybody. Format 35. */
+  cls?: number;
   /**
    * `ShopType`, the realm's number. Sampled: 5 temple, 6 tavern, 7 bank, 8
    * training room, 9 inn, 10 an ordinary shop; the rest are placeholders,
@@ -1405,6 +1412,26 @@ export function indexShops(source: RealmSource): BuiltShop[] {
     const markup = number(row['Markup%']);
     if (markup !== null && markup > 0) entry.markup = markup;
     if (kind !== null && kind > 0) entry.t = kind;
+    /*
+     * Who this place serves and what it charges to — format 35.
+     *
+     * `MinLVL`/`MaxLVL` are the band a training room takes and `TrainCommand`
+     * enforces both ends, so a client picking a trainer needs them or it walks
+     * to the obvious room and is refused. `ClassRest` is one class id, 0 for
+     * *anybody*, written only when it restricts — a zero here means the same
+     * as absence and carrying it would cost a field on every shop row.
+     *
+     * Written for every shop rather than for trainers alone: the columns are
+     * the row's whatever its type, the reading of them is the caller's, and a
+     * band on a shop nobody has looked at yet is a fact the file should carry
+     * rather than a question a later format has to reopen.
+     */
+    const minLevel = number(row['MinLVL']);
+    const maxLevel = number(row['MaxLVL']);
+    const classRest = number(row['ClassRest']);
+    if (minLevel !== null && minLevel > 0) entry.min = minLevel;
+    if (maxLevel !== null && maxLevel > 0) entry.max = maxLevel;
+    if (classRest !== null && classRest > 0) entry.cls = classRest;
     built.push(entry);
   }
 

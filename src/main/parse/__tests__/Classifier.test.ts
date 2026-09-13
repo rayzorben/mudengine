@@ -1270,6 +1270,39 @@ describe('combat, anchored on the frame', () => {
     expect(g['target']).toBeUndefined();
   });
 
+  /*
+   * An article is never a name (todo 30, 2026-09-12).
+   *
+   * `The short half-ogre bodyguard swings at you with their battle-hammer!`
+   * fits the no-article frame — the leading word is a name by grammar there,
+   * which is how a hidden player's opening blow gets an attacker — and the
+   * fallback took `The`. Auto-combat then sent `aa The short half-ogre
+   * bodyguard` four times, each answered `Your command had no effect.` The
+   * `both` branch has always refused an article; this one did not.
+   */
+  it('never names an article as the attacker', () => {
+    const b = withRoom([], 'The short half-ogre bodyguard swings at you with their battle-hammer!');
+    expect(b.type).toBe('mob-misses');
+    expect(b.groups?.['attacker']).toBeUndefined();
+  });
+
+  /* And with the room listed, the monster is named without its article. */
+  it('names the monster the room listed, article and all stripped', () => {
+    const b = withRoom(
+      ['short half-ogre bodyguard'],
+      'The short half-ogre bodyguard swings at you with their battle-hammer!'
+    );
+    expect(b.type).toBe('mob-misses');
+    expect(b.groups?.['attacker']).toBe('short half-ogre bodyguard');
+  });
+
+  /* A real name by grammar still stands in: that is what the fallback is for. */
+  it('still names a capitalised attacker nothing has listed', () => {
+    const b = withRoom([], 'Rend swings at you!');
+    expect(b.type).toBe('mob-misses');
+    expect(b.groups?.['attacker']).toBe('Rend');
+  });
+
   it('names a player target the room has listed', () => {
     const b = withRoom(['Thrag'], 'You fire an acid jet at Thrag for 34 damage!');
     expect(b.type).toBe('user-hits');
@@ -2375,6 +2408,17 @@ describe('the spellbook listing', () => {
         'spellbook-refused'
       )['book']
     ).toBe('spells');
+  });
+
+  /*
+   * And the empty book, which is an *answer* and not a refusal: the same
+   * command prints it as the `else` of the branch that prints the listing
+   * (`SpellsCommand.cs:40`, `PowCommand.cs:40`), so both spellings come from
+   * the server's own source rather than one being inferred from the other.
+   */
+  it('reads an empty book as an answer, naming which book answered', () => {
+    expect(expectType('You have no spells.', 'spellbook-empty')['book']).toBe('spells');
+    expect(expectType('You have no powers.', 'spellbook-empty')['book']).toBe('powers');
   });
 });
 

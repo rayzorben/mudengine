@@ -3812,3 +3812,121 @@ describe('a walkable route that crosses a wall names what the shorter way needs'
     expect(route.blocks).toBeUndefined();
   });
 });
+
+/*
+ * Which trainer will take this character, and where it stands.
+ *
+ * The rows are Paradigm's own (`Shops`, `ShopType 8`): the bands overlap, the
+ * markups span a factor of eight, and the class rooms stop at level 10 — so a
+ * level 30 Ninja walking to the Ninja Training Room is told *You have
+ * progressed too far* (todos 18 and 25). `trainersFor` is the rule; this is
+ * the join that knows the rooms.
+ */
+describe('the trainers that will take this character', () => {
+  const realm = (): WorldGraph =>
+    makeWorld(
+      [
+        { m: 1, r: 200, n: 'Ninja Training Room', s: 26 },
+        { m: 3, r: 542, n: 'Training Area', s: 74 },
+        { m: 10, r: 271, n: 'Ancient Keep, Throne Room', s: 74 },
+        { m: 16, r: 384, n: "Elders' Council Chambers", s: 135 }
+      ],
+      {
+        shops: [
+          {
+            id: 26,
+            n: 'Ninja Training Room',
+            items: [],
+            t: 8,
+            min: 1,
+            max: 10,
+            markup: 300,
+            cls: 7
+          },
+          { id: 74, n: 'Titan Trainer', items: [], t: 8, min: 21, max: 50, markup: 6000 },
+          { id: 135, n: 'Amazon trainer', items: [], t: 8, min: 31, max: 52, markup: 9999 }
+        ]
+      },
+      35
+    );
+
+  it('does not offer the class room a level 30 Ninja would walk to', () => {
+    const names = realm()
+      .trainersTaking(30, 7)
+      .map((entry) => entry.trainer.name);
+    expect(names).not.toContain('Ninja Training Room');
+  });
+
+  /* One shop row placed in two rooms is two places, both eligible. */
+  it('lists every room a trainer stands in', () => {
+    const titan = realm()
+      .trainersTaking(30, 7)
+      .filter((entry) => entry.trainer.name === 'Titan Trainer');
+    expect(titan.map((entry) => `${entry.map}/${entry.room}`)).toEqual(['3/542', '10/271']);
+  });
+
+  /* Cheapest first: Titan is 6,000% and Amazon 9,999%. */
+  it('puts the cheaper trainer first', () => {
+    expect(realm().trainersTaking(31, 7)[0]?.trainer.name).toBe('Titan Trainer');
+  });
+
+  /* `MinLVL - 1`: training is what makes the character 21. */
+  it('offers a 21-50 trainer to a level 20 character', () => {
+    expect(realm().trainersTaking(20, 7).length).toBeGreaterThan(0);
+  });
+
+  it('offers nothing where no trainer takes this character', () => {
+    // Level 5 is inside the Ninja room's band but the class is a Warrior.
+    expect(realm().trainersTaking(5, 1)).toEqual([]);
+  });
+});
+
+/*
+ * Which items would serve a condition — the potion picker's list (todo 19).
+ *
+ * A realm query and not a name match, which is the whole point: `cure poison
+ * potion` casts a spell the realm calls `violet potion`, and no reading of the
+ * two names says they are the same fact. Measured on the shipped Paradigm
+ * file: 5 items serve poison, 2 blindness, 36 healing — and no healing potion
+ * appears in the poison list.
+ */
+describe('the items that would serve a condition', () => {
+  const realm = (): WorldGraph =>
+    makeWorld(
+      [{ m: 1, r: 1, n: 'Somewhere' }],
+      {
+        items: [
+          // A potion whose spell cures poison — `CastsSp` (43) at the spell row.
+          { id: 10, n: 'cure poison potion', ab: [[43, 500]] },
+          // A healing potion, whose spell carries `Heal` (18).
+          { id: 11, n: 'minor healing potion', ab: [[43, 501]] },
+          // An item with no usable spell at all.
+          { id: 12, n: 'rusty dagger' }
+        ],
+        spells: [
+          { id: 500, n: 'violet potion', ab: [[20, 0]] },
+          { id: 501, n: 'minor healing', ab: [[18, 0]] }
+        ]
+      },
+      35
+    );
+
+  it('offers the antidote for poison and not the healing potion', () => {
+    const names = realm()
+      .itemsServing('poisoned')
+      .map((item) => item.name);
+    expect(names).toEqual(['cure poison potion']);
+  });
+
+  it('offers the healing potion for health', () => {
+    expect(
+      realm()
+        .itemsServing('hp')
+        .map((item) => item.name)
+    ).toEqual(['minor healing potion']);
+  });
+
+  it('offers nothing for a condition no item serves', () => {
+    expect(realm().itemsServing('blind')).toEqual([]);
+  });
+});

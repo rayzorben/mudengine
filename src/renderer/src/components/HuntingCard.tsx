@@ -54,7 +54,8 @@ const UNKNOWN_WORD: Record<HuntingUnknown, () => string> = {
   damage: () => t('cards.hunting.unknown.damage'),
   respawn: () => t('cards.hunting.unknown.respawn'),
   rest: () => t('cards.hunting.unknown.rest'),
-  health: () => t('cards.hunting.unknown.health')
+  health: () => t('cards.hunting.unknown.health'),
+  mana: () => t('cards.hunting.unknown.mana')
 };
 const REACH_WORD: Record<Reach, () => string> = {
   near: () => t('cards.hunting.reach.near'),
@@ -330,6 +331,13 @@ function SpotDetail({
               walk: seconds(estimate.walkSeconds),
               wait: seconds(estimate.waitSeconds)
             })}
+            {/* The caster's half, only where the character casts: `meditate 0`
+                on every melee character would be noise (todo 26). */}
+            {estimate.meditateSeconds !== null &&
+              estimate.meditateSeconds > 0 &&
+              t('cards.hunting.detail.cycleMeditate', {
+                meditate: seconds(estimate.meditateSeconds)
+              })}
           </dd>
         </dl>
       </div>

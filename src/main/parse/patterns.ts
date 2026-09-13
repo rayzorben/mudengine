@@ -107,7 +107,22 @@ export const AFFLICTION_ONSETS: ReadonlyArray<{
   {
     type: 'user-poisoned',
     condition: 'poisoned',
-    pattern: /^(?:You are dizzy and disoriented from poison|Poison burns through your veins)!$/
+    /*
+     * Three sentences, and the third is the realm's own (todo 23).
+     *
+     * `You feel ill.` is what **22 spells** in `spell-messages.csv` print when
+     * they land — every venom, bite and poison cloud on the shipped realms —
+     * paired there with `The effects of the poison wear off!`. Unlisted here
+     * it was unread, and worse than unread: the *ending* matched the generic
+     * buff-expiry frame, and `user-buff-expired`'s pairing asks this function
+     * what the stopped spell's **start** turns on. Answering null left
+     * `poisoned` at `yes` for ever, and a lap holding for it stood still at
+     * full health until the run was killed.
+     *
+     * A full stop rather than a bang, which is what the table states.
+     */
+    pattern:
+      /^(?:You are dizzy and disoriented from poison!|Poison burns through your veins!|You feel ill\.)$/
   },
   {
     type: 'user-diseased',
@@ -129,6 +144,15 @@ export const AFFLICTION_ONSETS: ReadonlyArray<{
    * message data no pattern here could enumerate, so those reach the same flag
    * through the spell message table (`CharacterTracker`'s `spell-onset` case
    * and `holdsMovement`).
+   *
+   * **Traced end to end 2026-09-12** (todo 24), because it had been reasoned
+   * and written down and never followed through: the sentence is matched
+   * against `resources/world/spell-messages.csv` by the classifier (not by the
+   * `You feel …!` frame, which it does not fit), the row names its spells, the
+   * realm's own row for each carries `HoldPerson` (74), and `holdsMovement`
+   * answers. Held by `spell-timing.test.ts` against the shipped table *and*
+   * the shipped realm, for knockdown, entangle and a net — a fixture would be
+   * testing the test, since every link here is data.
    */
   {
     type: 'user-held',
@@ -289,6 +313,25 @@ export const RULES: Rule[] = [
    * command led. See `Expectations.died`.
    */
   { type: 'user-dies', pattern: /^You have been killed!$/ },
+  /*
+   * And the line before it, read for what it *does* mean rather than for what
+   * it does not (todo 20).
+   *
+   * The comment above is right that this is not death and acting on it as one
+   * would tear down a fight about to be survived. But it says something else
+   * unconditionally: from here the server refuses everything
+   * (`Player.MortallyWounded` is the guard at the top of `RestCommand`,
+   * `TrainCommand`, `HideCommand`, `BashCommand` and the rest, and its
+   * sentence is the `command-refused` below). Unread, the arbiter went on
+   * giving orders to a body on the floor — *Retreating ne, health at -8%* —
+   * and earned the refusal twice in one run.
+   *
+   * **And the window is real.** `Misc.DeathHP` is −30, so thirty hit points
+   * separate dropping from dying: bleeding costs one a tick, `aid <name>` from
+   * another player stops it, and a character no longer bleeding regains one a
+   * tick until it stands up. Going quiet is what lets that happen.
+   */
+  { type: 'user-mortally-wounded', pattern: /^You drop to the ground!$/ },
   {
     type: 'user-lives',
     pattern: /^You have (?<lives>\d+) (?:lives|life) left\.$/
@@ -694,6 +737,20 @@ export const RULES: Rule[] = [
     type: 'spellbook-refused',
     pattern:
       /^You may not list your (?:spells|powers)\. You are (?:not )?KAI! You must list your (?<book>spells|powers)\.$/
+  },
+  /*
+   * And the book that is empty rather than the wrong one. Read from the
+   * server's own source — `SpellsCommand.cs:40` and `PowCommand.cs:40` are the
+   * `else` of the branch that prints the listing, so both spellings are
+   * attested and neither is inferred. Live on the test realm a Ninja's `sp`
+   * and `spells` both answered `You have no spells.`
+   *
+   * `book` names which listing answered, as the refusal's does, so a reader
+   * can tell an empty spellbook from an empty power list.
+   */
+  {
+    type: 'spellbook-empty',
+    pattern: /^You have no (?<book>spells|powers)\.$/
   },
   {
     type: 'spell-cast',

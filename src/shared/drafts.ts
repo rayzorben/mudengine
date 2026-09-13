@@ -22,13 +22,26 @@ import {
   type DensityPreference,
   type EngagePolicy,
   type RetreatStrategy,
+  POTION_WHENS,
+  type PotionRule,
   type PotionVerb,
+  type PotionWhen,
   type PvpAction,
   type EncumbranceGate,
   type TabsPreference
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
-import { DESKTOP_ALERTS } from './notifications';
+import {
+  ALERT_WATCHES,
+  DESKTOP_ALERTS,
+  NOTICE_CHANNELS,
+  SEVERITIES,
+  type AlertRule,
+  type Severity
+} from './notifications';
+
+/** The words an `AlertRule.on` may be — the closed union's runtime half. */
+const ALERT_KEYS = new Set<string>([...NOTICE_CHANNELS, ...ALERT_WATCHES]);
 import { asLoops, type Loop } from './loops';
 
 /**
@@ -370,7 +383,6 @@ export interface ProfileDraft {
     maxMobs: number;
     /** Share of current health a fight may be expected to cost before it is declined. 0 never. */
     maxFightCost: number;
-    minHealth: number;
     whileWalking: boolean;
     refreshRounds: number;
     avoid: string[];
@@ -408,6 +420,8 @@ export interface ProfileDraft {
     potionVerb: PotionVerb;
     healingPotionName: string;
     manaPotionName: string;
+    /** The *use this when that* rules. See `PotionRule`. */
+    potions: PotionRule[];
   };
   movement: {
     openDoors: boolean;
@@ -422,6 +436,10 @@ export interface ProfileDraft {
     extinguishInLight: boolean;
     /** Go back for the kit after a death. See `MovementConfig`. */
     recoverGear: boolean;
+    /** How many journeys in a row may fail before it stops. 0 never gives up. */
+    recoverGearTries: number;
+    /** Stop once this many lives are left. 0 never stops. */
+    recoverGearFloor: number;
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
@@ -432,6 +450,10 @@ export interface ProfileDraft {
   train: {
     stats: boolean;
     wanted: Record<TrainedAttribute, number>;
+    /** Go and collect a level when the experience is there. See `TrainConfig`. */
+    levels: boolean;
+    /** The trainer's shop row, or 0 for the cheapest that will take this character. */
+    trainer: number;
   };
   /*
    * The four blocks below are a character's as much as the ones above it
@@ -522,6 +544,8 @@ export interface ProfileDraft {
     finds: { items: string[]; cashOverCopper: number };
     /** What the desktop is asked to say when the window is not in front. */
     desktop: { enabled: boolean; whileFocused: boolean; mute: string[] };
+    /** The player's own rows, tried in order. See `AlertRule`. */
+    rules: AlertRule[];
   };
   /**
    * Whether this character answers another player's `@` commands —
@@ -774,7 +798,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       joinFights: combat['joinFights'] !== false,
       maxMobs: Math.min(20, Math.max(0, Math.trunc(Number(combat['maxMobs']) || 0))),
       maxFightCost: Math.min(1, Math.max(0, Number(combat['maxFightCost']) || 0)),
-      minHealth: Math.min(1, Math.max(0, Number(combat['minHealth']) || 0)),
       whileWalking: combat['whileWalking'] === true,
       // Capped low: every round is a fraction of a second, so a client asked to
       // look every round would spend most of a fight looking.
@@ -821,7 +844,33 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       drinkManaPotionBelow: unit(health['drinkManaPotionBelow']),
       potionVerb: health['potionVerb'] === 'use' ? 'use' : 'drink',
       healingPotionName: text(health['healingPotionName']).slice(0, 40),
-      manaPotionName: text(health['manaPotionName']).slice(0, 40)
+      manaPotionName: text(health['manaPotionName']).slice(0, 40),
+      /*
+       * The rules, parsed at the boundary like everything else here: a row
+       * with no name is dropped (a rule naming nothing fires on nothing), a
+       * `when` the table does not know is dropped — the closed union's runtime
+       * half — and a verb that is neither reads as `drink`. Bounded, because
+       * this crossed the network.
+       */
+      potions: Array.isArray(health['potions'])
+        ? health['potions'].slice(0, 32).flatMap((entry): PotionRule[] => {
+            if (typeof entry !== 'object' || entry === null) return [];
+            const row = entry as Record<string, unknown>;
+            const name = text(row['name']).slice(0, 60).trim();
+            if (name.length === 0) return [];
+            const when = text(row['when']).trim() as PotionWhen;
+            if (!POTION_WHENS.includes(when)) return [];
+            const verb = text(row['verb']).trim();
+            return [
+              {
+                name,
+                when,
+                below: Math.min(1, Math.max(0, Number(row['below']) || 0)),
+                verb: verb === 'use' ? 'use' : 'drink'
+              }
+            ];
+          })
+        : []
     },
     movement: {
       openDoors: movement['openDoors'] === true,
@@ -843,6 +892,16 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       extinguishInLight: movement['extinguishInLight'] === true,
       // Off unless said: it walks the character back to where it died.
       recoverGear: movement['recoverGear'] === true,
+      // Bounded low: a recovery that has failed five times will not work on
+      // the sixth, and the figures are lives on the other end of it.
+      recoverGearTries: Math.min(
+        20,
+        Math.max(0, Math.trunc(Number(movement['recoverGearTries']) || 0))
+      ),
+      recoverGearFloor: Math.min(
+        99,
+        Math.max(0, Math.trunc(Number(movement['recoverGearFloor']) || 0))
+      ),
       // The shipped default when the payload omits it, on the health block's
       // rule above: this one is on by default, and a form that failed to send
       // the field would silently switch it off.
@@ -961,7 +1020,38 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         enabled: desktopAlerts['enabled'] !== false,
         whileFocused: desktopAlerts['whileFocused'] === true,
         mute: words(desktopAlerts['mute'], DESKTOP_ALERTS.length)
-      }
+      },
+      /*
+       * The player's own rows, parsed at the boundary like everything else
+       * here (todo 29). A row whose `on` the client does not know is dropped
+       * rather than defaulted — the closed union's runtime half, and
+       * defaulting it would turn a misspelling into a row acting on something
+       * nobody named.
+       */
+      rules: Array.isArray(alerts['rules'])
+        ? alerts['rules'].slice(0, 64).flatMap((entry): AlertRule[] => {
+            if (!isRecord(entry)) return [];
+            const on = text(entry['on']).trim().toLowerCase();
+            if (!ALERT_KEYS.has(on)) return [];
+            const notify = entry['notify'] === true;
+            const level = text(entry['level']).trim();
+            return [
+              {
+                on: on as AlertRule['on'],
+                enabled: entry['enabled'] !== false,
+                level: SEVERITIES.includes(level as Severity) ? (level as Severity) : null,
+                alert: entry['alert'] !== false,
+                notify,
+                // Meaningless with `notify` off, so it goes with it.
+                whileFocused: notify && entry['whileFocused'] === true,
+                side: text(entry['side']).trim() === 'above' ? 'above' : 'below',
+                value: Math.max(0, Number(entry['value']) || 0),
+                percent: entry['percent'] !== false,
+                name: text(entry['name']).slice(0, 60).trim()
+              }
+            ];
+          })
+        : []
     },
     afk: {
       enabled: afk['enabled'] === true,

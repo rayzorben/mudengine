@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { BATCH_RULES, RULES } from '../patterns';
+import { AFFLICTION_ONSETS, BATCH_RULES, RULES } from '../patterns';
+import type { Afflictions } from '../../../shared/character';
 import { domainOf, type BlockType } from '../../../shared/blocks';
 import { TALK_PRESENCE_TYPES } from '../../../shared/talk';
 
@@ -230,5 +231,48 @@ describe('every fact the parser produces reaches something', () => {
     const source = consumers();
     const stale = Object.keys(DELIBERATELY_UNREAD).filter((type) => source.includes(`'${type}'`));
     expect(stale, `exempted but actually read: ${stale.join(', ')}`).toEqual([]);
+  });
+});
+
+/*
+ * An affliction that can end must be one that can begin.
+ *
+ * This is the check that was missing when `You are diseased!` went unread for
+ * as long as it was on the wire (todo 16). The *ending* matched — `The disease
+ * dies down.` — so blocks were produced, state was written, and nothing was
+ * silent. `afflictions.diseased` simply ran `unknown → no` and was never once
+ * `yes`, which looks exactly like a character that is never diseased. Nineteen
+ * onsets to five endings on the live wire, and no check anywhere asked whether
+ * the two halves of the condition were both readable.
+ *
+ * Structural, not textual: it cannot know whether a sentence is the *right*
+ * one, only that both directions of every condition have a rule at all. That
+ * is enough — a condition gains a wording, never a direction.
+ */
+describe('every condition is readable in both directions', () => {
+  const ENDINGS: Record<keyof Afflictions, BlockType> = {
+    blind: 'user-blind-ends',
+    poisoned: 'user-poison-ends',
+    diseased: 'user-disease-ends',
+    held: 'user-held-ends'
+  };
+
+  it('states an onset sentence for each of the four', () => {
+    const conditions = AFFLICTION_ONSETS.map((onset) => onset.condition).sort();
+    expect(conditions).toEqual((Object.keys(ENDINGS) as (keyof Afflictions)[]).sort());
+  });
+
+  it('puts every onset in the rule table, so the sentence is actually matched', () => {
+    const types = new Set(RULES.map((rule) => rule.type));
+    const missing = AFFLICTION_ONSETS.filter((onset) => !types.has(onset.type));
+    expect(missing.map((onset) => onset.condition)).toEqual([]);
+  });
+
+  it('has an ending rule for every condition that has an onset', () => {
+    const types = new Set(RULES.map((rule) => rule.type));
+    const missing = (Object.keys(ENDINGS) as (keyof Afflictions)[]).filter(
+      (condition) => !types.has(ENDINGS[condition])
+    );
+    expect(missing, `an affliction that can begin but not end: ${missing.join(', ')}`).toEqual([]);
   });
 });

@@ -38,7 +38,15 @@ import {
   type ThemePreference
 } from './themes';
 import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
-import { DESKTOP_ALERTS, SEVERITIES, type Severity } from './notifications';
+import {
+  ALERT_SIDES,
+  ALERT_WATCHES,
+  DESKTOP_ALERTS,
+  NOTICE_CHANNELS,
+  SEVERITIES,
+  type AlertRule,
+  type Severity
+} from './notifications';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { mobKey } from './world';
@@ -355,6 +363,26 @@ export interface AlertsUiConfig {
   finds: FindAlertsConfig;
   /** What is worth interrupting somebody who is not looking at the window. */
   desktop: DesktopAlertsConfig;
+  /**
+   * The player's own rows, in order — what to do with a channel, or a
+   * condition the channels cannot express (todo 29, 2026-09-12).
+   *
+   * **It adds to the two settings above rather than replacing them.** The
+   * first enabled row that claims a notice decides it outright, shown or not
+   * and at which level; anything no row claims still meets `minimum` and
+   * `mute`, so an empty list behaves exactly as the client always did and a
+   * channel the client gains later arrives visible.
+   *
+   * The ranking stays the client's by default, which is the decision
+   * `AlertsUiConfig`'s own comment makes and this does not reverse: what a
+   * line costs is a fact about the realm, and a row's `level` is the player
+   * overruling that for their own reasons — a different thing from a
+   * per-character severity table replacing it.
+   *
+   * Empty by default. A shipped list would be four rows somebody has to
+   * understand before they can turn one off.
+   */
+  rules: AlertRule[];
 }
 
 /**
@@ -864,14 +892,6 @@ export interface CombatConfig {
    * it ignores every other limit here.
    */
   maxFightCost: number;
-  /**
-   * Do not open a fight below this fraction of maximum health. 0 disables.
-   *
-   * A fraction, like every other threshold here, so one number holds at every
-   * level. An unknown maximum never trips it — the stat sheet may not have
-   * arrived — for the same reason an unknown maximum never paints a meter red.
-   */
-  minHealth: number;
   /**
    * Whether to open fights while walking a planned route.
    *
@@ -1533,7 +1553,54 @@ export interface HealthConfig {
   /** What to ask for, as the pack lists it. Matched the way the server matches a typed name. */
   healingPotionName: string;
   manaPotionName: string;
+  /**
+   * Any other item, and when to use it — MegaMUD's potion rows generalised
+   * (todo 19, 2026-09-12).
+   *
+   * The two thresholds above are health and mana, which is what MegaMUD had
+   * and what most characters need. This is the rest of it: *use a potion of
+   * this name when that is true*, several of them, each with its own
+   * condition. A character wanting two healing potions at different depths, or
+   * an antidote the moment it is poisoned, could not say so before.
+   *
+   * Empty by default, like `supplies.items`, and for the same reason:
+   * spending a player's consumables unasked is its own failure. What this
+   * changes is that a player who wants it can now say it.
+   */
+  potions: PotionRule[];
 }
+
+/**
+ * One *use this when that* rule — `automation.health.potions`.
+ *
+ * The name is matched against the pack the way the server matches a typed name
+ * (`nameAnswersTo`), so `healing potion` finds `minor healing potion`, and an
+ * item the pack does not list is never asked for.
+ */
+export interface PotionRule {
+  /** The item, as the pack lists it. */
+  name: string;
+  /** What makes it worth using. See `PotionWhen`. */
+  when: PotionWhen;
+  /**
+   * The share of maximum below which `hp` and `mana` fire. Ignored by the
+   * condition rules, which have no threshold — being poisoned is not a
+   * percentage.
+   */
+  below: number;
+  /** `drink` or `use`, per item: a scroll is read where a potion is drunk. */
+  verb: PotionVerb;
+}
+
+/**
+ * When a `PotionRule` fires.
+ *
+ * The four conditions are the four the wire states (`CharacterState.afflictions`),
+ * and they are three-state there: **only a stated `yes` fires**, because
+ * unknown is not afflicted — the rule every threshold in this client follows.
+ */
+export const POTION_WHENS = ['hp', 'mana', 'poisoned', 'blind', 'diseased', 'held'] as const;
+export type PotionWhen = (typeof POTION_WHENS)[number];
 
 export const POTION_VERBS = ['drink', 'use'] as const;
 export type PotionVerb = (typeof POTION_VERBS)[number];
@@ -1656,6 +1723,30 @@ export interface MovementConfig {
    */
   recoverGear: boolean;
   /**
+   * How many deaths in a row the recovery may answer before it stops trying
+   * (todo 21, 2026-09-12). 0 is *no limit*.
+   *
+   * **The bound is the point.** A recovery walks a freshly dead, stripped
+   * character back to the room that killed it; where that room is still
+   * dangerous the attempt is itself a way to die, and the client would walk
+   * back again, and again — each trip costing a life. Measured on a soak run:
+   * two deaths on one journey, fifty minutes, zero laps.
+   *
+   * Counted in a **row**: a recovery that reached the kit resets it, because a
+   * run of failures is what says the trip is not working, where one failure
+   * among successes says only that something went wrong once.
+   */
+  recoverGearTries: number;
+  /**
+   * Stop recovering once this many lives are left. 0 never stops.
+   *
+   * The other half of the bound, and the one a player actually reasons in:
+   * lives are finite and unrecoverable, and *do not spend my last two getting
+   * a cloak back* is the sentence somebody wants to write. Above the try
+   * count, since it holds whatever the counter says.
+   */
+  recoverGearFloor: number;
+  /**
    * Put a burning light out again in a room that does not need it, so a torch
    * lasts the sewer rather than the walk to it. MegaMUD does the same at every
    * step flagged as naturally lit. Only while nothing is walking the
@@ -1713,6 +1804,35 @@ export interface TrainConfig {
   /** Auto Train Stats. */
   stats: boolean;
   wanted: Record<TrainedAttribute, number>;
+  /**
+   * Go and collect a level when the experience is there (todo 18).
+   *
+   * Off, because a player banking levels for a reroll exists and a client
+   * that levelled them anyway would have spent their money and their choice.
+   *
+   * Experience past the threshold does nothing at all until a trainer is
+   * paid: no hit points, no skills, no character points. So a client left to
+   * play overnight without this comes back with a night's experience and the
+   * same character it started with — which is the one thing it is for.
+   */
+  levels: boolean;
+  /**
+   * Where to go and level: the trainer's own shop row, or 0 for *the cheapest
+   * that will take me*.
+   *
+   * **A row, not a room name.** Two rows may share a name and they are
+   * different trainers with different bands; and a row placed in several
+   * rooms is one choice, not several.
+   *
+   * The settings screen offers only the rows the realm says will take this
+   * character at this level (`trainersTaking`), because a trainer that
+   * refuses is a walk across two maps to be told so. A stated row that stops
+   * taking this character — every class room does at level 10, every band
+   * does at its ceiling — is **not** silently replaced: the errand refuses
+   * and says so, which is the reviewer's rule and the standing one about
+   * never guessing a location.
+   */
+  trainer: number;
 }
 
 /**
@@ -2026,7 +2146,7 @@ export interface PartyConfig {
    * follows (`party.following`); their target is what the server last said
    * they hit (`party.engaged`), taken only while that monster is still in the
    * room and the sighting is under a minute old. Never a player, whatever the
-   * leader is doing — the three refusals stand — and still under `minHealth`.
+   * leader is doing — the three refusals stand.
    */
   assistLeader: boolean;
   /**
@@ -2286,6 +2406,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     alerts: {
       minimum: 'info',
       mute: [],
+      // Empty: a shipped list would be four rows somebody has to understand
+      // before they can turn one off.
+      rules: [],
       finds: { items: [], cashOverCopper: 0 },
       desktop: { enabled: true, whileFocused: false, mute: [] }
     },
@@ -2406,7 +2529,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       joinFights: true,
       maxMobs: 0,
       maxFightCost: 0,
-      minHealth: 0,
       whileWalking: false,
       refreshRounds: 3,
       avoid: [],
@@ -2444,7 +2566,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       drinkManaPotionBelow: 0,
       potionVerb: 'drink',
       healingPotionName: 'healing potion',
-      manaPotionName: 'mana potion'
+      manaPotionName: 'mana potion',
+      potions: []
     },
     loot: {
       coins: false,
@@ -2495,13 +2618,17 @@ export const DEFAULT_CONFIG: AppConfig = {
       lightDimRooms: false,
       extinguishInLight: true,
       recoverGear: false,
+      recoverGearTries: 2,
+      recoverGearFloor: 2,
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       collectKeys: true
     },
     train: {
       stats: false,
-      wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 }
+      wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 },
+      levels: false,
+      trainer: 0
     },
     spells: {
       autoChoose: false,
@@ -2869,12 +2996,56 @@ function normalizeConsoleUi(value: unknown): ConsoleUiConfig {
   };
 }
 
+/**
+ * The player's alert rows — `ui.alerts.rules` (todo 29).
+ *
+ * A row whose `on` the client does not know is **dropped**, never defaulted:
+ * it is the runtime half of a closed union, and defaulting it would turn a
+ * misspelling into a row acting on something the player did not name. A row
+ * that names a figure keeps it; one that names a person or an item keeps the
+ * name trimmed, and an empty name leaves the row inert rather than firing on
+ * everything.
+ */
+function normalizeAlertRules(value: unknown): AlertRule[] {
+  const rules: AlertRule[] = [];
+  if (!Array.isArray(value)) return rules;
+  const known = new Set<string>([...NOTICE_CHANNELS, ...ALERT_WATCHES]);
+  for (const entry of value.slice(0, 64)) {
+    if (!isRecord(entry)) continue;
+    const on = str(entry['on'], '').trim().toLowerCase();
+    if (!known.has(on)) continue;
+    const notify = bool(entry['notify'], false);
+    rules.push({
+      on: on as AlertRule['on'],
+      enabled: bool(entry['enabled'], true),
+      // `null` is *keep what the client decided*, which is the default and
+      // the thing an unreadable word means too.
+      level: SEVERITIES.includes(str(entry['level'], '') as Severity)
+        ? (str(entry['level'], '') as Severity)
+        : null,
+      alert: bool(entry['alert'], true),
+      notify,
+      // Meaningless with `notify` off, and stored false there rather than
+      // kept: a flag nothing reads is one that surprises somebody later.
+      whileFocused: notify && bool(entry['whileFocused'], false),
+      side: oneOf(entry['side'], ALERT_SIDES, 'below'),
+      // A share when `percent`, a figure otherwise; both are the player's own
+      // number and neither is clamped to the other's range.
+      value: Math.max(0, Number(entry['value']) || 0),
+      percent: bool(entry['percent'], true),
+      name: str(entry['name'], '').trim().slice(0, 60)
+    });
+  }
+  return rules;
+}
+
 function normalizeAlerts(raw: unknown): AlertsUiConfig {
   const d = DEFAULT_CONFIG.ui.alerts;
   if (!isRecord(raw)) {
     return {
       ...d,
       mute: [...d.mute],
+      rules: [],
       finds: normalizeFindAlerts(undefined),
       desktop: normalizeDesktopAlerts(undefined)
     };
@@ -2882,6 +3053,7 @@ function normalizeAlerts(raw: unknown): AlertsUiConfig {
   return {
     finds: normalizeFindAlerts(raw['finds']),
     desktop: normalizeDesktopAlerts(raw['desktop']),
+    rules: normalizeAlertRules(raw['rules']),
     minimum: oneOf(raw['minimum'], SEVERITIES, d.minimum),
     // Lowercased and de-duplicated: a channel name is what the notice carries,
     // and `Combat` in the file matching nothing would be a setting that reads
@@ -3448,6 +3620,7 @@ function normalizeHealth(value: unknown): HealthConfig {
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     meditateBelow: fraction(raw['meditateBelow'], d.meditateBelow),
     drinkHealingPotionBelow: fraction(raw['drinkHealingPotionBelow'], d.drinkHealingPotionBelow),
+    potions: normalizePotionRules(raw['potions']),
     drinkManaPotionBelow: fraction(raw['drinkManaPotionBelow'], d.drinkManaPotionBelow),
     potionVerb: oneOf<PotionVerb>(raw['potionVerb'], POTION_VERBS, d.potionVerb),
     healingPotionName: str(raw['healingPotionName'], d.healingPotionName).trim(),
@@ -3646,6 +3819,10 @@ function normalizeMovement(value: unknown): MovementConfig {
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
     extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),
     recoverGear: bool(raw['recoverGear'], d.recoverGear),
+    // Bounded low: a recovery that has failed five times is not going to work
+    // on the sixth, and the figures are lives on the other end of it.
+    recoverGearTries: int(raw['recoverGearTries'], d.recoverGearTries, 0, 20),
+    recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     collectKeys: bool(raw['collectKeys'], d.collectKeys)
@@ -3661,7 +3838,14 @@ export function normalizeTrain(value: unknown): TrainConfig {
   for (const attribute of TRAINED_ATTRIBUTES) {
     figures[attribute] = int(wanted[attribute], d.wanted[attribute], 0, 999);
   }
-  return { stats: bool(raw['stats'], d.stats), wanted: figures };
+  return {
+    stats: bool(raw['stats'], d.stats),
+    wanted: figures,
+    levels: bool(raw['levels'], d.levels),
+    // A shop row number. 0 is *the cheapest that will take me*, which is also
+    // what a negative or unreadable figure means: never a guess at a room.
+    trainer: int(raw['trainer'], d.trainer, 0, 999_999)
+  };
 }
 
 /**
@@ -3674,6 +3858,36 @@ export function normalizeTrain(value: unknown): TrainConfig {
  * name was settled to, kept beside it for the reason a loop stop carries
  * coordinates: six rooms are called General Store.
  */
+/**
+ * The *use this when that* list — `automation.health.potions`.
+ *
+ * A row with no name is dropped rather than defaulted, as a supply row and a
+ * buff row are: a rule naming nothing could only ever fire on nothing, and
+ * defaulting the name would invent an item the player never asked for. A
+ * `when` the table does not know is dropped for the same reason — a closed
+ * union's runtime half — and a `verb` that is not one of the two normalises
+ * to `drink`, which is what an unreadable verb means.
+ */
+function normalizePotionRules(value: unknown): PotionRule[] {
+  const rules: PotionRule[] = [];
+  if (!Array.isArray(value)) return rules;
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const name = str(entry['name'], '').trim();
+    if (name.length === 0) continue;
+    const when = str(entry['when'], 'hp').trim() as PotionWhen;
+    if (!POTION_WHENS.includes(when)) continue;
+    const verb = str(entry['verb'], 'drink').trim() as PotionVerb;
+    rules.push({
+      name,
+      when,
+      below: fraction(entry['below'], 0),
+      verb: POTION_VERBS.includes(verb) ? verb : 'drink'
+    });
+  }
+  return rules;
+}
+
 function normalizeSupplies(value: unknown): SuppliesConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.supplies;
@@ -3835,7 +4049,6 @@ function normalizeCombat(value: unknown): CombatConfig {
     // than twenty things is not a number anybody is tuning against.
     maxMobs: int(raw['maxMobs'], d.maxMobs, 0, 20),
     maxFightCost: fraction(raw['maxFightCost'], d.maxFightCost),
-    minHealth: fraction(raw['minHealth'], d.minHealth),
     whileWalking: bool(raw['whileWalking'], d.whileWalking),
     // Capped low on purpose: every round is a fraction of a second, so a client
     // asked to look every round would spend most of a fight looking.

@@ -175,6 +175,38 @@ export function afflictionHolding(
   return null;
 }
 
+/** A room this character ran out of, and the moment it did. See `stillFled`. */
+export interface FledRoom {
+  room: RoomId;
+  at: number;
+}
+
+/**
+ * The rooms still too recently fled to run back into.
+ *
+ * **The escape must not retrace its own escape**, and the list that enforces
+ * that used to be emptied the first instant the client saw no fight. A fight
+ * against two monsters manufactures that instant for free: `*Combat Off*`
+ * names the death of the current **target**, not the end of the fight, and the
+ * dead leave the attacker list with the kill — so between one monster dying
+ * and the second swinging again, the client sees nothing fighting at all. The
+ * list emptied there, the next escape picked the room fled three seconds
+ * earlier, and the character died in it. Four reproductions across three areas
+ * and two monster families, implicated in every death recorded (todo 12).
+ *
+ * So the second test is a clock. A room fled within `forgetMs` stays forbidden
+ * through that gap whatever the combat flag momentarily says; past it, the
+ * fight it was fled from cannot still be the fight in progress.
+ *
+ * A clock rather than *the room is clear of what was hitting you* because the
+ * client cannot see the room it left: the occupant list describes the room the
+ * character is standing in now. The follower it is guarding against is in that
+ * list, not the old one.
+ */
+export function stillFled(fled: readonly FledRoom[], now: number, forgetMs: number): FledRoom[] {
+  return fled.filter((entry) => now - entry.at < forgetMs);
+}
+
 export const IDLE_WALK: WalkProgress = {
   status: 'idle',
   asked: true,

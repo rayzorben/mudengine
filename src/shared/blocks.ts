@@ -202,6 +202,36 @@ export type BlockType =
    */
   | 'spellbook-refused'
   /**
+   * `You have no spells.` / `You have no powers.` — the book is empty.
+   *
+   * The `else` of the listing above, in the server's own source
+   * (`SpellsCommand.cs:40`, `PowCommand.cs:40`): the same command that prints
+   * the book prints this when there is nothing in it. So it is an **answer**,
+   * not a refusal — the question was asked and this is what the realm counts.
+   *
+   * It has its own type because `CharacterState.spellbook` is null for *never
+   * read* and the distinction is load-bearing (`Belongings`: "absent means
+   * never read, not the realm counts none"). Without this, asking a Warrior
+   * for its spells left the client believing it had never asked (todo 15).
+   */
+  | 'spellbook-empty'
+  /**
+   * `You drop to the ground!` — this character can no longer act.
+   *
+   * **Not death, and it must never be read as one.** The server prints it at
+   * `CurHP < 1` (`Player.cs:5447`) and kills at `Misc.DeathHP`, which is
+   * **−30** — so there are thirty hit points of a state that is recoverable:
+   * bleeding loses one a tick and dying at the line, `aid <name>` from another
+   * player stops the bleeding, and a character that is not bleeding *regains*
+   * one a tick until it is up (`TimedEventManager.cs:610`).
+   *
+   * What it does mean, unconditionally, is that every command is refused —
+   * `MortallyWounded` is the guard at the top of the command classes and its
+   * sentence is `command-refused`'s. So the arbiter stands down on this, which
+   * is the whole reason it is read (todo 20).
+   */
+  | 'user-mortally-wounded'
+  /**
    * `abil` — every ability this character has, summed per source.
    *
    * GreaterMUD's own command (`Commands.cs` registers `abil` and `abilities`;
@@ -793,6 +823,8 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'player-status': 'status',
   spellbook: 'status',
   'spellbook-refused': 'status',
+  'spellbook-empty': 'status',
+  'user-mortally-wounded': 'status',
   'user-abilities': 'status',
   'user-inventory': 'status',
   'user-wealth': 'status',

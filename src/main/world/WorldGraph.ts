@@ -71,6 +71,9 @@ import {
   type ShopKind,
   shopKind
 } from '../../shared/world';
+import { trainersFor, type TrainerRow } from '../../shared/training';
+import { spellServes } from '../../shared/spellcraft';
+import { itemInvocation } from '../../shared/items';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
 import { HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
@@ -2118,6 +2121,90 @@ export class WorldGraph {
   }
 
   /**
+   * The items the realm says would serve a condition — the picker's list
+   * (todo 19).
+   *
+   * An item that carries a usable spell (`itemInvocation`, which is the
+   * `CastsSp` the server rewrites into `UseSpell` and deliberately steps over
+   * a hit-proc) whose row serves the condition asked about. So a list for
+   * *poisoned* holds the antidotes and not the healing potions, which is the
+   * reviewer's own requirement and the reason it is a realm query rather than
+   * a name match: `cure poison potion` casts `violet potion`, and no amount of
+   * reading the two names says they are the same fact.
+   *
+   * Capped, and sorted by name so the same realm answers the same way twice.
+   */
+  itemsServing(condition: 'hp' | 'poisoned' | 'blind' | 'diseased', limit = 60): WorldItem[] {
+    const found: WorldItem[] = [];
+    for (const item of this.items.values()) {
+      const invocation = itemInvocation(item);
+      if (invocation === null) continue;
+      const spell = this.spellById(invocation.spell);
+      if (spell === null) continue;
+      if (!spellServes(spell.abilities)[condition]) continue;
+      found.push(item);
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit);
+  }
+
+  /**
+   * Every trainer that will take this character, with the room it is in.
+   *
+   * The join the levelling errand and the settings screen both need: the
+   * realm states a band, a class restriction and a markup per shop row
+   * (format 35), and the rooms name the shop they hold. `trainersFor` is the
+   * rule — cheapest first, never one whose ceiling this level has reached —
+   * and this is the part that knows where the rooms are.
+   *
+   * **Keyed by the shop's row, not by its name.** `shopPlace` answers by name
+   * and reports several rooms as an ambiguity, which is right for *the shop
+   * that sells torches* and wrong here: two rows may share a name (Paradigm
+   * has `Ninja Training Room` twice) and they are different trainers with
+   * different bands. A row placed in several rooms is several entries, all
+   * eligible, and the caller picks — which for this feature is the player.
+   *
+   * Empty on a realm with no class read where a trainer restricts by class,
+   * and on one built before format 35, where no row states a band at all: a
+   * client that cannot tell which trainer takes this character must not walk
+   * to one, which is `trainsLevel`'s refusal doing exactly its job.
+   */
+  trainersTaking(
+    level: number,
+    classId: number | null
+  ): Array<{ trainer: TrainerRow; map: number; room: number; roomName: string }> {
+    const rows: TrainerRow[] = [];
+    for (const shop of this.shops.values()) {
+      if (shop.kind !== 'trainer') continue;
+      const row: TrainerRow = { id: shop.id, name: shop.name };
+      if (shop.minLevel !== undefined) row.minLevel = shop.minLevel;
+      if (shop.maxLevel !== undefined) row.maxLevel = shop.maxLevel;
+      if (shop.classOnly !== undefined) row.classOnly = shop.classOnly;
+      if (shop.markup !== undefined) row.markup = shop.markup;
+      rows.push(row);
+    }
+    const taking = trainersFor(rows, level, classId);
+    if (taking.length === 0) return [];
+
+    const wanted = new Map(taking.map((row, at) => [row.id, at]));
+    const found: Array<{ trainer: TrainerRow; map: number; room: number; roomName: string }> = [];
+    for (const room of this.rooms.values()) {
+      if (room.shop === undefined) continue;
+      const at = wanted.get(room.shop);
+      if (at === undefined) continue;
+      const trainer = taking[at];
+      if (trainer === undefined) continue;
+      found.push({ trainer, map: room.map, room: room.room, roomName: room.name });
+    }
+    // Back into the rule's order, which the room scan does not preserve.
+    return found.sort(
+      (a, b) =>
+        (wanted.get(a.trainer.id) ?? 0) - (wanted.get(b.trainer.id) ?? 0) ||
+        a.map - b.map ||
+        a.room - b.room
+    );
+  }
+
+  /**
    * The closest room satisfying `want`, by unobstructed steps, as a route.
    *
    * Breadth-first over exits with no requirement — a door, a key, a level gate
@@ -2860,6 +2947,17 @@ export class WorldGraph {
       const markup = Number(record['markup']);
       if (Number.isFinite(markup) && markup > 0) shop.markup = markup;
       if (kind !== undefined) shop.kind = kind;
+      // Who the place serves — format 35. Absent before it, and absent on a
+      // row the realm leaves open, which is what `restrictedTo` reads as
+      // *anybody*.
+      for (const [key, field] of [
+        ['min', 'minLevel'],
+        ['max', 'maxLevel'],
+        ['cls', 'classOnly']
+      ] as const) {
+        const value = Number(record[key]);
+        if (Number.isFinite(value) && value > 0) shop[field] = value;
+      }
       this.shops.set(id, shop);
     }
   }

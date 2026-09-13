@@ -110,3 +110,86 @@ describe('drinking by a number', () => {
     expect(sent).toEqual([]);
   });
 });
+
+/*
+ * *Use this item when that is true* — the player's own list (todo 19).
+ *
+ * The two thresholds above are health and mana, which is what MegaMUD had.
+ * This is the rest of it: a character wanting two healing potions at different
+ * depths, or an antidote the moment it is poisoned, could not say so before.
+ */
+describe('the potion rules', () => {
+  const afflicted = (over: Partial<CharacterState['afflictions']> = {}) => ({
+    blind: 'no' as const,
+    poisoned: 'no' as const,
+    diseased: 'no' as const,
+    held: 'no' as const,
+    ...over
+  });
+
+  const withRules = (rules: HealthConfig['potions']) =>
+    new Potions(
+      health({ drinkHealingPotionBelow: 0, drinkManaPotionBelow: 0, potions: rules }),
+      true,
+      queue
+    );
+
+  it('uses an item when a stated condition holds', () => {
+    const base = state({ hp: 90 }, [carried('cure poison potion')]);
+    withRules([
+      { name: 'cure poison potion', when: 'poisoned', below: 0, verb: 'drink' }
+    ]).onCharacter({ ...base, afflictions: afflicted({ poisoned: 'yes' }) });
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['drink cure poison potion']);
+  });
+
+  /* Unknown is not afflicted: only a stated `yes` fires. */
+  it('does not fire on an unstated condition', () => {
+    const base = state({ hp: 90 }, [carried('cure poison potion')]);
+    withRules([
+      { name: 'cure poison potion', when: 'poisoned', below: 0, verb: 'drink' }
+    ]).onCharacter({ ...base, afflictions: afflicted({ poisoned: 'unknown' }) });
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+  });
+
+  /* Two rules on one item at two depths are two proposals, not one. */
+  it('keeps two rules on the same item apart', () => {
+    const base = state({ hp: 10, hpMax: 100 }, [carried('healing potion')]);
+    withRules([
+      { name: 'healing potion', when: 'hp', below: 0.5, verb: 'drink' },
+      { name: 'healing potion', when: 'hp', below: 0.2, verb: 'drink' }
+    ]).onCharacter(base);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['drink healing potion', 'drink healing potion']);
+  });
+
+  /* The verb is the row's: a scroll is read where a potion is drunk. */
+  it('uses the verb the row states', () => {
+    const base = state({ hp: 10, hpMax: 100 }, [carried('scroll of major healing')]);
+    withRules([
+      { name: 'scroll of major healing', when: 'hp', below: 0.5, verb: 'use' }
+    ]).onCharacter(base);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['use scroll of major healing']);
+  });
+
+  /* Only an item the pack lists: a `drink` for what is not carried is a
+     command spent to be told so, in the room. */
+  it('never asks for an item the pack does not list', () => {
+    const base = state({ hp: 10, hpMax: 100 }, [carried('rusty dagger')]);
+    withRules([{ name: 'healing potion', when: 'hp', below: 0.5, verb: 'drink' }]).onCharacter(
+      base
+    );
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+  });
+
+  /* An unknown maximum is not low — the rule every threshold here follows. */
+  it('does not fire on an unknown maximum', () => {
+    const base = state({ mana: 2, manaMax: null }, [carried('mana potion')]);
+    withRules([{ name: 'mana potion', when: 'mana', below: 0.5, verb: 'drink' }]).onCharacter(base);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+  });
+});

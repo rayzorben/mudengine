@@ -890,6 +890,9 @@ export class SettingsEditor {
         alerts: {
           minimum: config.ui.alerts.minimum,
           mute: [...config.ui.alerts.mute],
+          // Copied per row, as every list here is: the draft is the form's and
+          // the config is the file's, and the two must not share a row object.
+          rules: config.ui.alerts.rules.map((rule) => ({ ...rule })),
           finds: {
             items: [...config.ui.alerts.finds.items],
             cashOverCopper: config.ui.alerts.finds.cashOverCopper

@@ -880,7 +880,10 @@ const cdp = (method, params = {}) =>
 
 async function evaluate(expression) {
   const r = await cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-  if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.text);
+  if (r.result?.exceptionDetails)
+    throw new Error(
+      `${r.result.exceptionDetails.text}: ${r.result.exceptionDetails.exception?.description ?? ''}`
+    );
   return r.result?.result?.value;
 }
 

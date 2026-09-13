@@ -125,7 +125,7 @@ function figure(value: number | null): string {
  * level every time.
  */
 function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCardProps) {
-  const { vitals, progress, phase, inCombat, stealth } = character;
+  const { vitals, progress, phase, inCombat, stealth, afflictions } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'vitals-tab', FACE_IDS, FACE_IDS[0]!);
   const elapsed =
     progress.realmEnteredAt === null ? 0 : Math.max(0, Date.now() - progress.realmEnteredAt);
@@ -155,6 +155,18 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
    * `unknown` shows nothing at all: nobody having tried to sneak is not a
    * condition, and a badge saying so would be chrome.
    */
+  /*
+   * Four literal `t()` calls rather than a lookup keyed on the field name:
+   * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic
+   * key would be an unexempted dynamic call and a key nothing is seen to read.
+   */
+  const afflicted = [
+    afflictions.blind === 'yes' ? t('cards.vitals.afflicted.blind') : null,
+    afflictions.poisoned === 'yes' ? t('cards.vitals.afflicted.poisoned') : null,
+    afflictions.diseased === 'yes' ? t('cards.vitals.afflicted.diseased') : null,
+    afflictions.held === 'yes' ? t('cards.vitals.afflicted.held') : null
+  ].filter((word): word is string => word !== null);
+
   const badge = inCombat ? (
     <span className="chip bad">{t('cards.vitals.badge.combat')}</span>
   ) : vitals.resting ? (
@@ -197,6 +209,22 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
           </dd>
           <dt>{t('cards.vitals.labels.level')}</dt>
           <dd className={progress.level === null ? 'inert' : ''}>{progress.level ?? '—'}</dd>
+          {/*
+            The conditions the wire has stated, and only those. An affliction
+            is not one of the badge's conditions above: the badge names the one
+            most urgent thing a character is *doing*, and these are several
+            things that can be true at once and at the same time as any of them.
+            Absent entirely when none is up — a row saying `none` on every
+            healthy character would be chrome, and the reason disease needs
+            drawing at all is that it is invisible everywhere else (todo 16).
+            `unknown` draws nothing: nobody having said is not `no`.
+          */}
+          {afflicted.length > 0 && (
+            <>
+              <dt>{t('cards.vitals.labels.afflicted')}</dt>
+              <dd className="bad">{afflicted.join(' · ')}</dd>
+            </>
+          )}
           {/*
             Only when it differs from the granted level, and accented when it
             does: a character standing on experience it has not trained for is
@@ -334,6 +362,12 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
         [
           `${t('cards.realm.column.name')}: ${character.name ?? '—'}`,
           `${t('cards.vitals.labels.level')}: ${progress.level ?? '—'}`,
+          // Drawn conditionally, so copied conditionally: a card copies the
+          // face on screen, and a line naming no affliction would be a fact
+          // the card is not showing.
+          afflicted.length > 0
+            ? `${t('cards.vitals.labels.afflicted')}: ${afflicted.join(' · ')}`
+            : null,
           standing !== null && standing.ahead
             ? `${t('cards.vitals.labels.earned')}: ${standing.earned}`
             : null,

@@ -929,6 +929,171 @@ describe('owning the status line', () => {
   });
 });
 
+/**
+ * `combat.minHealth` had to go with the setting itself.
+ *
+ * There is no health floor on *opening* a fight any more: the goal of the game
+ * is survival, and a character that will not swing at what is swinging at it
+ * is not safer for the refusal (todo 13). Nothing on disk changes behaviour by
+ * this — the key shipped at 0, which was already off — but a file naming a
+ * setting the client no longer reads is a value somebody edits and then waits
+ * to see work.
+ */
+/**
+ * `automation.health.potions` — the *use this when that* list (todo 19).
+ *
+ * Written only where the block already carries a potion section: a `health:`
+ * that states a threshold and nothing about potions belongs to somebody who
+ * has never asked for them, and adding an empty key to it would be a key for
+ * the sake of a key.
+ */
+/**
+ * `ui.alerts.rules` — the player's own alert rows (todo 29).
+ *
+ * At the head of the block, because that is the order the client asks in: a
+ * row decides before `minimum` and `mute` are consulted.
+ */
+describe('the alert rules', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is written into a file that states alerts and predates it', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: warning\n', 'utf8');
+    migrate();
+    const alerts = (
+      parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown> | undefined
+    )?.['alerts'] as Record<string, unknown>;
+    expect(alerts['rules']).toEqual([]);
+    // First in the block, because that is the order the client asks in — other
+    // migrations legitimately add to `alerts:` too, so only the head is
+    // asserted rather than the whole list of keys.
+    expect(Object.keys(alerts)[0]).toBe('rules');
+    expect(said.join('\n')).toContain('ui.alerts.rules');
+  });
+
+  it('leaves a file with no alerts block alone', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
+    migrate();
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    expect(ui['alerts']).toBeUndefined();
+  });
+
+  it('is safe to run again', () => {
+    fs.writeFileSync(home.options, 'ui:\n  alerts:\n    minimum: warning\n', 'utf8');
+    migrate();
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect(said.join('\n')).not.toContain('ui.alerts.rules');
+  });
+});
+
+describe('the potion rules', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is written where the file already states a potion section', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  health:\n    healingPotionName: healing potion\n',
+      'utf8'
+    );
+    migrate();
+    const health = (
+      parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown> | undefined
+    )?.['health'] as Record<string, unknown>;
+    expect(health['potions']).toEqual([]);
+    expect(said.join('\n')).toContain('automation.health.potions');
+  });
+
+  it('is left out of a health block that never mentioned potions', () => {
+    fs.writeFileSync(home.options, 'automation:\n  health:\n    restBelow: 0.5\n', 'utf8');
+    migrate();
+    const health = (
+      parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown> | undefined
+    )?.['health'] as Record<string, unknown>;
+    expect(health['potions']).toBeUndefined();
+  });
+
+  it('is safe to run again', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  health:\n    healingPotionName: healing potion\n',
+      'utf8'
+    );
+    migrate();
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect(said.join('\n')).not.toContain('automation.health.potions');
+  });
+});
+
+describe('the floor on opening a fight', () => {
+  const OPTIONS_WITH = `automation:
+  combat:
+    # Swing at what the realm says would attack anyway.
+    engage: hostile
+    minHealth: 0.35
+`;
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+    fs.writeFileSync(home.options, OPTIONS_WITH, 'utf8');
+  });
+
+  it('goes from the options file, leaving the rest of the block', () => {
+    migrate();
+    const combat = (
+      parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown> | undefined
+    )?.['combat'] as Record<string, unknown>;
+    expect(combat['minHealth']).toBeUndefined();
+    expect(combat['engage']).toBe('hostile');
+  });
+
+  /*
+   * By key, not by the block going: other migrations legitimately write into
+   * `automation.combat` (`statedTheEntityPredicates` and `statedTheHideForOpener`
+   * both do), so a character file that held only this key does not come back
+   * empty — and asserting that it did would be a tripwire on every future key
+   * rather than a claim about this one.
+   */
+  it('goes from a character that had been given one by hand', () => {
+    const scope = home.profile('main');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(scope.file, 'automation:\n  combat:\n    minHealth: 0.5\n', 'utf8');
+    migrate();
+    const combat = (
+      parse(fs.readFileSync(scope.file, 'utf8')).automation as Record<string, unknown> | undefined
+    )?.['combat'] as Record<string, unknown> | undefined;
+    expect(combat?.['minHealth']).toBeUndefined();
+  });
+
+  it('keeps the comments, which are the documentation', () => {
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toContain(
+      '# Swing at what the realm says would attack anyway.'
+    );
+  });
+
+  it('says so, naming files', () => {
+    migrate();
+    const said_ = said.join('\n');
+    expect(said_).toMatch(/minHealth/);
+    expect(said_).toContain(home.options);
+  });
+
+  it('is safe to run again', () => {
+    migrate();
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect(said.join('\n')).not.toMatch(/minHealth/);
+  });
+});
+
 describe('the diagnostics preference', () => {
   const OPTIONS_WITH = `ui:
   # Show the HUD rail beside the console.
@@ -4265,9 +4430,31 @@ describe('training is stated', () => {
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
   });
 
-  it('leaves a stated block alone', () => {
+  /*
+   * A block the file already states keeps what it says — `statedTheTraining`
+   * writes a whole block or nothing — but the keys added to it *since* are
+   * written in by `statedTheLevelling`, which is the other half of the same
+   * rule: a key added inside a block reaches nobody who already has one.
+   */
+  it('leaves what a stated block says alone, and adds the keys it predates', () => {
     fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
     migrate();
-    expect(automation()['train']).toEqual({ stats: true });
+    expect(automation()['train']).toEqual({ stats: true, levels: false, trainer: 0 });
+  });
+
+  /*
+   * And collecting the level comes first in the block, because it comes first
+   * in time: the points `stats` spends are awarded by the level `levels`
+   * collects.
+   */
+  it('puts the levelling keys at the head of the block, and says so once', () => {
+    fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
+    migrate();
+    const train = automation()['train'] as Record<string, unknown>;
+    expect(Object.keys(train)).toEqual(['levels', 'trainer', 'stats']);
+    expect(said.join('\n')).toContain('automation.train.levels');
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
   });
 });

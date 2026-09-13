@@ -6,7 +6,18 @@
 import { CommandQueue } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
 import { Walker } from '../automation/Walker';
-import type { WalkProgress } from '../../shared/walk';
+import type { FledRoom, WalkProgress } from '../../shared/walk';
+import { stillFled } from '../../shared/walk';
+import {
+  capabilitiesOf,
+  CLASS_STEALTH_ABILITY,
+  holdsAbility,
+  poisonRefusesRest,
+  restsInTheShadows,
+  type Capabilities
+} from '../../shared/abilities';
+import { trainingCost } from '../../shared/training';
+import type { TrainerChoice } from '../../shared/world';
 import type {
   AutomationSnapshot,
   EngageDecision,
@@ -25,6 +36,7 @@ import { AutoLoot } from '../automation/AutoLoot';
 import { AutoLight } from '../automation/AutoLight';
 import { AutoStealth } from '../automation/AutoStealth';
 import { GearRecovery } from '../automation/GearRecovery';
+import { TrainErrand } from '../automation/TrainErrand';
 import { StatScreen } from '../automation/StatScreen';
 import { RestAway } from '../automation/RestAway';
 import { AutoKeys, type KeyedWay } from '../automation/AutoKeys';
@@ -592,12 +604,36 @@ export class SessionManager {
    * the escape, with no `escapeSettleMs` hold to stop it and a 100%-follower
    * monster — 374 rows of the shipped realm — to make it certain.
    *
-   * Cleared when there is nothing left to run from, which is the one fact that
-   * makes a room safe to walk back into. Bounded, because a chain of escapes
-   * must avoid every room in it: running A→B→C and then back into A is the same
-   * mistake one link longer.
+   * **Each entry carries the moment it was run out of, and is forgotten on a
+   * clock rather than on an instant** (todo 12, 2026-09-12). The clear used to
+   * read *not in combat and no recorded attackers*, which a fight against two
+   * monsters manufactures for free: `*Combat Off*` names the death of the
+   * current **target**, not the end of the fight, and the dead leave
+   * `attackers` with the kill — so between one champion dying and the second
+   * swinging again, a two-monster fight is indistinguishable from no fight at
+   * all. The list emptied there, and the next escape picked the room it had
+   * fled three seconds earlier. Four reproductions, three areas, four deaths.
+   * The protection was strongest against one monster and absent against
+   * several, which is exactly backwards.
+   *
+   * So two things must hold before a room is safe to walk back into: nothing
+   * is fighting by `fightIsHere`'s standard — the one `Recovery` already
+   * applies for the same reason, a hazard that is real while momentarily
+   * unrecorded — **and** the escape is old enough that the fight it ran from
+   * cannot still be the fight in progress (`tuning.walk.ranFromForgetMs`).
+   *
+   * Bounded in length too, because a chain of escapes must avoid every room in
+   * it: running A→B→C and then back into A is the same mistake one link
+   * longer.
    */
-  private ranFrom: RoomId[] = [];
+  private ranFrom: FledRoom[] = [];
+  /**
+   * Whether the standing-down notice has been said for the stretch of being on
+   * the ground in progress. Cleared by the first state that is not, so a
+   * second knockdown says it again: it is a fact about the moment, not a
+   * lesson about the realm.
+   */
+  private saidMortallyWounded = false;
   /** A `safe-haven` walk home waiting for the fight to end; see `walkHomeIfDue`. */
   private retreat: { room: string; armedAt: number; from: string | null } | null = null;
   /**
@@ -729,6 +765,8 @@ export class SessionManager {
   private readonly stealth: AutoStealth;
   /** Going back for the kit after a death. See `GearRecovery`. */
   private readonly recoverGear: GearRecovery;
+  /** Going to collect the level when the experience is there — todo 18. */
+  private readonly trainLevel: TrainErrand;
   /** Resting next door to a lair rather than in it. See `RestAway`. */
   private readonly restAway: RestAway;
   /** Spending character points on the stat screen. See `StatScreen`. */
@@ -1119,6 +1157,7 @@ export class SessionManager {
         this.loops.onWalkEnded(arrived, reason, this.tracker.current);
         this.supplies.onWalkEnded(arrived, reason, this.tracker.current);
         this.recoverGear.onWalkEnded(arrived, reason, this.tracker.current);
+        this.trainLevel.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to) => {
         if (direction === 'portal') {
@@ -1243,7 +1282,18 @@ export class SessionManager {
         decided: (decision) => {
           this.engageLog.push(decision);
           if (this.engageLog.length > tuning().session.safetyLogLimit) this.engageLog.shift();
-        }
+        },
+        /*
+         * Whether this class can get into the shadows at all, from the realm's
+         * own class row (todo 28). `combat.opener` survives a reroll, so a
+         * profile set up for a Ninja asked for `bs` as a Mage and was told why
+         * it was withheld *this time* — which cannot be acted on.
+         *
+         * `ClassStealth` rather than `Stealth`: the class row grants the
+         * first, and a Thief carries both. Null while the realm or the class
+         * is unread, which never refuses.
+         */
+        canHide: () => holdsAbility(this.capabilities(), CLASS_STEALTH_ABILITY)
       },
       automation.spells,
       (name) => this.world?.spellNamed(name) ?? null,
@@ -1271,7 +1321,21 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       automation.party,
-      { notice: (message) => this.sink.notice(message) }
+      {
+        notice: (message) => this.sink.notice(message),
+        /*
+         * GreaterMUD's engine refuses `rest` outright while poisoned — unless
+         * the character is *immune*, which the server's own test says lifts it
+         * (`RestCommand.cs:28`) and which a Kang has from its race (todo 22).
+         * Telling a Kang it cannot rest would be the client inventing a
+         * refusal the server does not make.
+         *
+         * The family and not the loaded database: it is the server's branch,
+         * so a MajorMUD server running a converted GreaterMUD realm does not
+         * have it, and null is not `greatermud`.
+         */
+        poisonRefusesRest: () => poisonRefusesRest(this.capabilities(), this.serverFamily)
+      }
     );
     /*
      * The realm's row for a name on the floor. Read at the point of use, like
@@ -1308,7 +1372,20 @@ export class SessionManager {
       escaping: () => this.isRetreating(),
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
       moveInFlight: () => this.tracker.pendingMoves > 0,
-      openerRefused: () => this.combat.openerRefused()
+      openerRefused: () => this.combat.openerRefused(),
+      /*
+       * Whether resting and hiding undo each other for this class, read off the
+       * realm's own class row. The shipped data is the reason it is read rather
+       * than named: Paradigm grants `ShadowHome` to seven classes and
+       * MajorMUD's realm to none, so the file loaded already answers it — and
+       * the family gates the *behaviour*, which belongs to GreaterMUD's engine
+       * whatever database it is running.
+       */
+      restsHidden: () =>
+        restsInTheShadows(
+          this.world?.classNamed(this.tracker.current.className ?? '')?.abilities,
+          this.serverFamily
+        )
     });
     /*
      * And the key to the door in front of the character, which is the other
@@ -1415,6 +1492,47 @@ export class SessionManager {
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
         busy: () => this.isRetreating() || this.retreat !== null || this.escapeAwaiting !== null
+      },
+      {
+        notice: (message) => this.sink.notice(message),
+        decided: (decision) => this.noteSafety(decision)
+      }
+    );
+    /*
+     * And going to collect the level, which is the one thing an unattended
+     * client has to do (todo 18). The errand's own planner, with the same
+     * refusals and a leg's options — and the lap held rather than ended, as
+     * a supply errand holds it.
+     */
+    this.trainLevel = new TrainErrand(
+      automation.train,
+      automation.enabled,
+      this.queue,
+      {
+        here: () => {
+          const here = this.tracker.current.room;
+          return here.map === null || here.number === null ? null : roomId(here.map, here.number);
+        },
+        trainers: () => this.trainers(),
+        routeTo: (room) => this.planFromHere(room),
+        walk: (route) =>
+          this.walker.start(route, this.tracker.current, {
+            quiet: false,
+            asked: false,
+            holdWhenHurt: true,
+            resumeAfterFight: true,
+            whileFighting: false,
+            resumeAfterLoss: false
+          }),
+        moveInFlight: () => this.tracker.pendingMoves > 0,
+        walking: () => this.walker.walking,
+        busy: () => this.isRetreating() || this.retreat !== null || this.escapeAwaiting !== null,
+        looping: () => this.loops.progress.status === 'running',
+        hold: () => this.loops.noteErrand(),
+        release: () => {
+          this.loops.noteErrandOver();
+          this.walkOnAfterErrand();
+        }
       },
       {
         notice: (message) => this.sink.notice(message),
@@ -2257,6 +2375,7 @@ export class SessionManager {
     this.light.reset();
     this.stealth.reset();
     this.recoverGear.reset();
+    this.trainLevel.reset();
     this.restAway.reset();
     this.statScreen.reset();
     this.keys.reset();
@@ -2718,6 +2837,7 @@ export class SessionManager {
     this.light.reset();
     this.stealth.reset();
     this.recoverGear.reset();
+    this.trainLevel.reset();
     this.restAway.reset();
     this.statScreen.reset();
     this.keys.reset();
@@ -2737,6 +2857,13 @@ export class SessionManager {
     this.lastEscapeSent = 0;
     this.escapeAwaiting = null;
     this.retreat = null;
+    /*
+     * The rooms run out of belong to the fight they were run out of, and that
+     * fight is over: the character has left the realm. Kept per session now
+     * that the list survives a quiet tick — an entry that outlived its session
+     * would forbid a corridor to the next character for its whole clock.
+     */
+    this.ranFrom = [];
     /*
      * An edge the realm refused was refused for *this* character — a door it
      * could not open, an exit its class may not use — so the blacklist goes
@@ -2853,6 +2980,7 @@ export class SessionManager {
     this.light.configure(automation.movement, automation.enabled);
     this.stealth.configure(automation.combat, automation.enabled);
     this.recoverGear.configure(automation.movement, automation.enabled);
+    this.trainLevel.configure(automation.train, automation.enabled);
     this.restAway.configure(automation.health, automation.enabled);
     this.statScreen.configure(automation.train, automation.enabled);
     this.keys.configure(automation.movement, automation.enabled);
@@ -3622,6 +3750,34 @@ export class SessionManager {
        * decide on the leg from the same line that placed the character.
        */
       this.pickUpAfterLoss(state);
+      /*
+       * **And nothing at all while the character is on the ground** (todo 20).
+       *
+       * `You drop to the ground!` is the server saying every command from here
+       * is refused (`Player.MortallyWounded` guards the top of `RestCommand`,
+       * `HideCommand`, `BashCommand`, the cast path and the rest), and the
+       * client went on proposing: *Retreating ne, the way we came: health at
+       * -8%*, sent, refused, twice in one run. Every threshold below is a
+       * share of maximum and they all keep saying *act, urgently* the further
+       * past zero the figure goes.
+       *
+       * An early return rather than a queue hold, because the queue's hold is
+       * one slot and the stat screen owns it — two holds in one slot would
+       * release each other. This is also the smaller claim: the player's own
+       * keystrokes still go out, exactly as they do under the stat screen's
+       * hold, and the only thing standing down is the automation that would
+       * spend the budget on refusals.
+       *
+       * **Thirty hit points of this are survivable** (`Misc.DeathHP` is −30):
+       * bleeding costs one a tick, `aid <name>` from another player stops it,
+       * and a character no longer bleeding regains one a tick until it is up.
+       * Going quiet is what leaves room for all three.
+       */
+      if (state.mortallyWounded) {
+        this.sayMortallyWounded(state);
+        return;
+      }
+      this.saidMortallyWounded = false;
       this.unrefuseWhatTheRoomPrints(state);
       this.noteStatline(state);
       this.routines.onCharacter(state);
@@ -3651,6 +3807,7 @@ export class SessionManager {
       this.supplies.onCharacter(state);
       // And the kit after a death, on the same terms as the errand.
       this.recoverGear.onCharacter(state);
+      this.trainLevel.onCharacter(state);
       // And the character points, at a trainer, under the switch.
       this.statScreen.onCharacter(state);
       this.considerHangingUp(state);
@@ -4297,6 +4454,36 @@ export class SessionManager {
    * unknown rate never a high one. Nothing here is a prediction, and every
    * unknown is named on the spot rather than zeroed.
    */
+  /**
+   * The trainers that will take this character, cheapest first (todo 18).
+   *
+   * Addressed at the character because the answer is about *its* level and
+   * class, and asked on demand: the picker is the reader and a list stale the
+   * moment the character levels has no business on a push.
+   *
+   * Empty for a level the client has not read. That is the honest answer and
+   * not a shortcut: `trainsLevel` compares against a number, and guessing one
+   * would offer a room the server refuses — the walk across two maps this
+   * whole query exists to avoid.
+   */
+  trainers(): TrainerChoice[] {
+    const state = this.tracker.current;
+    const world = this.world;
+    const level = state.progress.level;
+    if (world === null || world === undefined || level === null) return [];
+    const classId = state.className ? world.classId(state.className) : null;
+    return world.trainersTaking(level, classId).map((found) => ({
+      shop: found.trainer.id,
+      name: found.trainer.name,
+      map: found.map,
+      room: found.room,
+      roomName: found.roomName,
+      cost: trainingCost(level, found.trainer.markup),
+      minLevel: found.trainer.minLevel ?? null,
+      maxLevel: found.trainer.maxLevel ?? null
+    }));
+  }
+
   huntingGrounds(radius: number): HuntingAdvice {
     const state = this.tracker.current;
     const world = this.world;
@@ -4435,7 +4622,22 @@ export class SessionManager {
             hpMax: state.vitals.hpMax,
             restingHealthPerTick: regen?.restingHealth.value ?? null,
             passiveHealthPerTick: regen?.health.value ?? null,
-            backstab
+            backstab,
+            /*
+             * The caster's half (todo 26). A round costs mana only where a
+             * round spell is configured — `automation.spells.attack`, or a
+             * derived one under `autoChoose` — so a melee character carries
+             * null here and the cycle is exactly what it was.
+             *
+             * **Meditating is not resting tripled.** `TimedEventManager`
+             * gives a resting character `HPRegen * 3` and a meditating one
+             * `GetBaseMARegen()` flat, so the mana rate is the standing rate
+             * and the health rate is not. Transcribed rather than assumed
+             * symmetric, which is what a reader would assume.
+             */
+            ...this.castingCost(state),
+            meditatingManaPerTick: regen?.mana?.value ?? null,
+            passiveManaPerTick: regen?.mana?.value ?? null
           }
         },
         c
@@ -4794,15 +4996,43 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Drop the rooms run out of long enough ago that the fight they were fled
+   * from cannot still be the fight in progress.
+   *
+   * The caller has already established that nothing is fighting. That is the
+   * first of the two tests and, on its own, the bug: it is momentarily true in
+   * the gap a two-monster fight opens between a kill and the next swing. This
+   * is the second — a room fled within `ranFromForgetMs` stays forbidden
+   * through that gap, and the escape ladder picks a different exit instead of
+   * the one it came out of.
+   *
+   * A clock rather than *the room is clear of everything that was hitting you*
+   * because the client cannot see what is in the room it left: the occupant
+   * list is the room the character is standing in now. The follower it is
+   * guarding against is by definition in that list, not the old one.
+   */
+  private forgetRanFrom(now: number): void {
+    this.ranFrom = stillFled(this.ranFrom, now, tuning().walk.ranFromForgetMs);
+  }
+
   private considerEscape(state: CharacterState): void {
     const safety = this.automationConfig.safety.retreat;
     if (!safety.enabled || !this.automationConfig.enabled) return;
     if (state.phase !== 'in-game') return;
-    // Nothing to run from. An escape out of combat is a wasted move that puts
-    // the character in a room it did not choose — and it is also the moment the
-    // rooms this character ran out of stop being rooms it must not go back to.
+    /*
+     * Nothing to run from. An escape out of combat is a wasted move that puts
+     * the character in a room it did not choose.
+     *
+     * **The same instant is not the moment the rooms run out of stop being
+     * forbidden**, which is what it used to be taken for. A fight against two
+     * monsters manufactures it between a kill and the next monster's swing, so
+     * the list emptied there and the next escape ran back in. `forgetRanFrom`
+     * applies the second test — the clock — and keeps the entries still too
+     * fresh for the fight they were fled from to be over. See `ranFrom`.
+     */
     if (!state.inCombat && state.combat.attackers.length === 0) {
-      this.ranFrom = [];
+      this.forgetRanFrom(Date.now());
       return;
     }
 
@@ -4909,7 +5139,7 @@ export class SessionManager {
       .sort((a, b) => Number(encumbered(a)) - Number(encumbered(b)));
 
     /** A room this character has just run out of is not a way out of anywhere. */
-    const forbidden = new Set(this.ranFrom);
+    const forbidden = new Set(this.ranFrom.map((entry) => entry.room));
 
     if (here !== null) {
       const back = this.tracker.wayBackFrom(here);
@@ -5025,9 +5255,15 @@ export class SessionManager {
      * The room being run out of, so nothing walks back into it while the fight
      * that emptied it is still going. See `ranFrom`.
      */
-    if (here !== null && !this.ranFrom.includes(here)) {
-      this.ranFrom.push(here);
-      if (this.ranFrom.length > tuning().walk.recentSteps) this.ranFrom.shift();
+    if (here !== null) {
+      const already = this.ranFrom.find((entry) => entry.room === here);
+      // Running out of the same room twice re-arms its clock rather than
+      // adding a second entry: what matters is how long ago it was last fled.
+      if (already !== undefined) already.at = now;
+      else {
+        this.ranFrom.push({ room: here, at: now });
+        if (this.ranFrom.length > tuning().walk.recentSteps) this.ranFrom.shift();
+      }
     }
     /*
      * And *now* a move is in flight, which is a different fact from having
@@ -5606,6 +5842,8 @@ export class SessionManager {
     // player's cue to decide what happens next, not the client's.
     this.errandOwes = null;
     this.supplies.abandon(t('session.supplies.abandonedDied'));
+    // And the walk to a trainer, on exactly the same terms (todo 21).
+    this.trainLevel.abandon();
     /*
      * And a route still owed from a lost connection — the third holder of a
      * destination, and the one with the narrowest window: dialled back into
@@ -5790,6 +6028,29 @@ export class SessionManager {
     this.sink.notice(t('session.stats.released'));
   }
 
+  /**
+   * Says the character is on the ground, once per stretch of it.
+   *
+   * A client that silently stops automating looks exactly like one that has
+   * crashed — the reason `holdForStatScreen` says so too — and this is the
+   * moment when the player's own intervention, or a party member's `aid`, is
+   * the only thing that helps. Recorded beside every other refusal, because a
+   * decision nobody can read did not happen.
+   */
+  private sayMortallyWounded(state: CharacterState): void {
+    if (this.saidMortallyWounded) return;
+    this.saidMortallyWounded = true;
+    this.sink.notice(t('session.safety.mortallyWounded'));
+    this.noteSafety({
+      at: Date.now(),
+      action: 'stand down',
+      because: t('session.safety.whyMortallyWounded', {
+        hp: state.vitals.hp ?? 0
+      }),
+      acted: true
+    });
+  }
+
   private noteSafety(decision: SafetyDecision): void {
     this.safetyLog.push(decision);
     if (this.safetyLog.length > tuning().session.safetyLogLimit) this.safetyLog.shift();
@@ -5940,6 +6201,55 @@ export class SessionManager {
    * The two can legitimately differ — see `noteFamily` — and on the shipped
    * configuration they do.
    */
+  /**
+   * What this character can do, from the realm's class and race rows.
+   *
+   * One reading for every module that asks, because the server asks one
+   * question: `GetAbility(x)` looks across every container, and a Ninja's
+   * picklocks and a Gnome's are the same fact to it. Read at the point of use
+   * like `realmClass`, since the world arrives with `useRealm` and neither
+   * word is known until a stat sheet has been read.
+   *
+   * `null` where neither row is known, which every reader treats as *unknown*
+   * rather than *no* (todo 22).
+   */
+  /**
+   * What a round costs this character in mana, for the hunting model
+   * (todo 26, 2026-09-12).
+   *
+   * **Only from a spell the player has actually configured.** A character with
+   * a blank `spells.attack` fights with `combat.attack`, which costs nothing
+   * from the pool — so null here, and the estimate is exactly the melee one.
+   * A derived spell under `autoChoose` is not read: it is chosen per target
+   * from what is in front of the character, and a hunting estimate is about a
+   * room the character is not standing in.
+   *
+   * Null too where the realm cannot price the spell, which is the standing
+   * rule: an unknown cost is never zero, and zeroing it would report a
+   * caster's cycle as free.
+   */
+  private castingCost(state: CharacterState): {
+    manaPerRound: number | null;
+    manaMax: number | null;
+  } {
+    const name = this.automationConfig.spells.attack.trim();
+    if (name.length === 0) return { manaPerRound: null, manaMax: null };
+    const spell = this.world?.spellNamed(name) ?? null;
+    return {
+      manaPerRound: spell?.mana ?? null,
+      manaMax: state.vitals.manaMax
+    };
+  }
+
+  private capabilities(): Capabilities {
+    const world = this.world;
+    const state = this.tracker.current;
+    return capabilitiesOf(
+      state.className ? (world?.classNamed(state.className)?.abilities ?? null) : null,
+      state.race ? (world?.raceAbilities(state.race) ?? null) : null
+    );
+  }
+
   private realmClass(): {
     combat: number | null;
     magery: number | null;

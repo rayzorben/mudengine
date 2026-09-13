@@ -336,6 +336,136 @@ export function abilityName(id: number, realm: 'greatermud' | 'other'): string |
 export const MIN_LEVEL_ABILITY = 135;
 
 /**
+ * What a character can *do*, from the realm's own class and race rows
+ * (todo 22, 2026-09-12).
+ *
+ * **Two sources, one answer, because the server asks one question.**
+ * `GetAbility(x)` looks across every container a character has — race, class,
+ * worn items, spell effects, granted — and automation asking *can this
+ * character pick a lock* must ask it the same way. A Ninja has
+ * `GrantPicklocks` from its class and a Gnome from its race; neither is more
+ * true than the other, and a reader that consulted only one would answer no to
+ * half the characters who can.
+ *
+ * **`null` is not `false`.** A realm with no `Classes` table, a class the file
+ * does not name, a race the sheet has not printed yet — all of those are
+ * *unknown*, and this returns null for them rather than an empty list, which
+ * is the `magery 0` distinction the conversion already keeps: a class with
+ * none states zero, and zero is an absence rather than a level. Every caller
+ * here follows the standing rule that unknown is never the reassuring answer.
+ *
+ * Only the two *rows* deliberately: worn items and spell effects are on the
+ * wire and change hourly, and a capability read off a helm would be one the
+ * character loses when it takes the helm off. What a class and a race grant is
+ * fixed for the life of the character, which is what makes it worth deciding
+ * on.
+ */
+export interface Capabilities {
+  /** Every pair from both rows, class first. Null when neither is known. */
+  abilities: ReadonlyArray<readonly [number, number]> | null;
+}
+
+export function capabilitiesOf(
+  classAbilities: ReadonlyArray<readonly [number, number]> | null | undefined,
+  raceAbilities: ReadonlyArray<readonly [number, number]> | null | undefined
+): Capabilities {
+  if (
+    (classAbilities === null || classAbilities === undefined) &&
+    (raceAbilities === null || raceAbilities === undefined)
+  ) {
+    return { abilities: null };
+  }
+  return { abilities: [...(classAbilities ?? []), ...(raceAbilities ?? [])] };
+}
+
+/**
+ * Whether a character holds an ability, from whichever row grants it.
+ *
+ * **Three-state, and the third state is the point.** `null` means the realm
+ * has not said — no class row, no race row, a realm the client could not load
+ * — and a caller that read it as `false` would decide a Gnome cannot pick
+ * locks because the stat sheet had not arrived yet. Every reader here refuses
+ * on `null` rather than acting on it.
+ */
+export function holdsAbility(capabilities: Capabilities, id: number): boolean | null {
+  if (capabilities.abilities === null) return null;
+  return capabilities.abilities.some(([which]) => which === id);
+}
+
+/** `ImmuPoison` — a Kang's, and what makes `rest` work where it otherwise would not. */
+export const IMMUNE_TO_POISON_ABILITY = 21;
+/** `GrantPicklocks` — a Ninja's and a Thief's by class, a Gnome's by race. */
+export const PICKLOCKS_ABILITY = 1003;
+/** `GrantTraps` — the same two classes, and a Gnome and a Dwarf by race. */
+export const TRAPS_ABILITY = 1002;
+/**
+ * `ClassStealth` — what the class row grants, and the test for *can this
+ * character get into the shadows at all*. A Thief carries `Stealth` (27)
+ * beside it; `RaceStealth` (102) is the race's own and several races have it,
+ * so this is deliberately the class's.
+ */
+export const CLASS_STEALTH_ABILITY = 103;
+
+/**
+ * `ShadowHome` (the server's spelling; `ShadowRest` above is this client's).
+ *
+ * Three commands read it and all three read it the same way — as an
+ * *exemption* from standing the character up:
+ *
+ * - `RestCommand.cs:31` — `rest` does not `BreakStealth()`.
+ * - `HideCommand.cs:20`, `SneakCommand.cs:28` — `hide` and `sneak` do not
+ *   clear `Resting`.
+ *
+ * So it is symmetric: with it, resting and hiding do not undo each other in
+ * either direction, and a character can sit down hidden and stay that way.
+ */
+export const SHADOW_HOME_ABILITY = 1103;
+
+/**
+ * Whether a class may rest and hide without one ending the other.
+ *
+ * **Read from the realm's own `Classes.Abil-n`, never from a class name.**
+ * The shipped data is why: Paradigm grants it to seven classes — Missionary,
+ * Ninja, Thief, Bard, Gypsy, Ranger, Mystic — and **MajorMUD's own realm
+ * grants it to nobody at all**. So the realm data is already the gate the
+ * reviewer asked for, and a check on the realm's *name* would be a second,
+ * weaker statement of the same thing that could disagree with the file loaded.
+ *
+ * The family still gates it, because the *behaviour* is GreaterMUD's engine
+ * rather than the data's: a MajorMUD server running a converted Paradigm
+ * database would carry the column and not honour it. `null` family is not
+ * `greatermud` — unknown is never the permissive answer.
+ */
+export function restsInTheShadows(
+  abilities: ReadonlyArray<readonly [number, number]> | undefined,
+  family: 'greatermud' | 'majormud' | null
+): boolean {
+  if (family !== 'greatermud') return false;
+  return (abilities ?? []).some(([id]) => id === SHADOW_HOME_ABILITY);
+}
+
+/**
+ * Whether the server will refuse `rest` because this character is poisoned.
+ *
+ * `RestCommand.cs:28` tests `GetAbility(Poison) == null || GetAbility(ImmuPoison) != null`
+ * — so the refusal is lifted by **immunity**, which a Kang has from its race
+ * (`Races.Abil-n` 21 at 100) and nothing else on the shipped realms does. A
+ * Kang poisoned rests exactly as it always did, and telling one it cannot
+ * would be the client inventing a refusal the server does not make (todo 22).
+ *
+ * `unknown` immunity does not lift the refusal: the server's test is the
+ * ability's *presence*, and a race the client has not read grants nothing it
+ * can name.
+ */
+export function poisonRefusesRest(
+  capabilities: Capabilities,
+  family: 'greatermud' | 'majormud' | null
+): boolean {
+  if (family !== 'greatermud') return false;
+  return holdsAbility(capabilities, IMMUNE_TO_POISON_ABILITY) !== true;
+}
+
+/**
  * `LearnSp`: reading this item teaches the spell whose `Spells` row id sits in
  * the value beside it. 223 items carry it on the shipped realm.
  *

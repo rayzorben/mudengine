@@ -35,11 +35,17 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { bareName } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
-import type { HealthConfig } from '../../shared/config';
+import type { HealthConfig, PotionRule, PotionVerb } from '../../shared/config';
 import { nameAnswersTo } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
-type Kind = 'health' | 'mana';
+/**
+ * What a proposal is *for*, which is what the cooldown and the coalescing key
+ * are per. The two thresholds keep their own names, and every rule in
+ * `health.potions` is keyed on its own row so two rules on one item at two
+ * depths do not silence each other.
+ */
+type Kind = string;
 
 export class Potions {
   private lastAt = new Map<Kind, number>();
@@ -77,9 +83,50 @@ export class Potions {
     if (below(mana, manaMax, this.config.drinkManaPotionBelow)) {
       this.drink('mana', this.config.manaPotionName, state, t('automation.potion.reasonMana'));
     }
+
+    /*
+     * And the player's own list: *use this item when that is true* (todo 19).
+     *
+     * Keyed by the row's place, not by its item, so two rules naming one
+     * potion at two depths are two proposals rather than one silencing the
+     * other. Everything else is the two thresholds' own rules unchanged — only
+     * an item the pack lists, one proposal per key per cooldown, the vital or
+     * the condition moving is the confirmation.
+     */
+    this.config.potions.forEach((rule, at) => {
+      if (!this.fires(rule, state)) return;
+      this.drink(`rule:${at}`, rule.name, state, t('automation.potion.reasonRule'), rule.verb);
+    });
   }
 
-  private drink(kind: Kind, name: string, state: CharacterState, reason: string): void {
+  /**
+   * Whether a rule's condition holds.
+   *
+   * `hp` and `mana` are shares of maximum, and an unknown maximum is not low —
+   * the rule every threshold here follows, and the reason a class with no mana
+   * never drinks a mana potion. The four conditions are three-state on the
+   * wire and **only a stated `yes` fires**: unknown is not afflicted, and
+   * spending a cure on a maybe is the guess this client refuses everywhere.
+   */
+  private fires(rule: PotionRule, state: CharacterState): boolean {
+    const { hp, hpMax, mana, manaMax } = state.vitals;
+    switch (rule.when) {
+      case 'hp':
+        return below(hp, hpMax, rule.below);
+      case 'mana':
+        return below(mana, manaMax, rule.below);
+      default:
+        return state.afflictions[rule.when] === 'yes';
+    }
+  }
+
+  private drink(
+    kind: Kind,
+    name: string,
+    state: CharacterState,
+    reason: string,
+    verb: PotionVerb = this.config.potionVerb
+  ): void {
     const wanted = bareName(name);
     if (wanted.length === 0) return;
     if (!state.inventory.items.some((item) => nameAnswersTo(bareName(item.name), wanted))) return;
@@ -89,7 +136,7 @@ export class Potions {
     if (last !== undefined && at - last < tuning().potions.cooldownMs) return;
     this.lastAt.set(kind, at);
     this.queue.enqueue({
-      command: `${this.config.potionVerb} ${name.trim()}`,
+      command: `${verb} ${name.trim()}`,
       priority: 'combat',
       coalesceKey: `potion:${kind}`,
       expiresAt: at + tuning().potions.expiresMs,

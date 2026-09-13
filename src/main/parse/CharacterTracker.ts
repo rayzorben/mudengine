@@ -1077,6 +1077,9 @@ export class CharacterTracker {
       phase: 'unknown',
       room: emptyRoom(),
       inCombat: false,
+      // A character on the ground in a realm it is no longer in is not a fact
+      // about anything; the next status line states it afresh.
+      mortallyWounded: false,
       // A fight cannot continue through a closed socket, and a remembered
       // target would be the first thing a rule swung at on reconnecting.
       combat: NO_COMBAT,
@@ -3271,6 +3274,16 @@ export class CharacterTracker {
            * `sneak` sets `sneaking` mid-session.
            */
           stealth: s.phase === 'in-game' ? s.stealth : 'seen',
+          /*
+           * Up again — and the status line is the proof, not a clock.
+           *
+           * A character on the ground is refusing everything until its health
+           * is back above zero, and this is the one line that states the
+           * figure. Cleared on a *stated* positive reading only: `read.hp`
+           * null is a prompt that carried no health, which says nothing about
+           * whether the character is standing (todo 20).
+           */
+          mortallyWounded: read.hp !== null && read.hp > 0 ? false : s.mortallyWounded,
           lastStatusAt: block.at,
           vitals: {
             ...s.vitals,
@@ -3341,6 +3354,18 @@ export class CharacterTracker {
        * lines away and will replace the room outright, and clearing it here
        * would blank the map for those two lines.
        */
+      /*
+       * On the ground, and the server is refusing everything until it is up.
+       *
+       * Recorded and nothing else: it is **not** death — `Misc.DeathHP` is −30
+       * and thirty hit points of this state are survivable — so none of the
+       * tearing down `user-dies` does belongs here (todo 20). The arbiter
+       * reads the flag and stands down; the flag lifts on the first status
+       * line with positive health.
+       */
+      case 'user-mortally-wounded':
+        return s.mortallyWounded ? s : { ...s, mortallyWounded: true };
+
       case 'user-dies': {
         this.expect.died();
         this.fight.forget();
@@ -3360,6 +3385,10 @@ export class CharacterTracker {
           inCombat: false,
           combat: NO_COMBAT,
           buffs: [],
+          // The death ends the state the drop began: a character in the temple
+          // is standing, and the status line two lines away will say so anyway.
+          // Cleared here so nothing is held between the two (todo 20).
+          mortallyWounded: false,
           // Where it died, kept for the kit lying there (`GearRecovery`): the
           // room the character was standing in when the sentence arrived.
           lastDeath: {
@@ -5265,6 +5294,32 @@ export class CharacterTracker {
         return {
           ...s,
           spellbook,
+          vitals: {
+            ...s.vitals,
+            manaType: book === 'powers' ? 'KAI' : book === 'spells' ? 'MA' : s.vitals.manaType
+          }
+        };
+      }
+
+      /*
+       * The same listing, answering that there is nothing in the book.
+       *
+       * An **empty listing, not an absent one**. `spellbook` is null for
+       * *never read* and the client keeps that distinction deliberately
+       * (`Belongings`: "absent means never read, not the realm counts none"),
+       * so a character that was asked and has none must end up at `[]` — else
+       * asking a Warrior for its spells leaves the state saying the question
+       * was never put (todo 15).
+       *
+       * `manaType` is read off the book that answered exactly as the listing
+       * above reads it: the server sends this from the same command, so which
+       * book was asked for is known whether or not it held anything.
+       */
+      case 'spellbook-empty': {
+        const book = g['book'];
+        return {
+          ...s,
+          spellbook: [],
           vitals: {
             ...s.vitals,
             manaType: book === 'powers' ? 'KAI' : book === 'spells' ? 'MA' : s.vitals.manaType

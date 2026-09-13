@@ -643,9 +643,49 @@ export interface WorldShop {
    * not name.
    */
   kind?: ShopKind;
+  /**
+   * `Shops.MinLVL` — the lowest level this place serves. Format 35.
+   *
+   * A training room's band, and the server enforces it at **`MinLVL - 1`**
+   * (`TrainCommand.cs:33`): a level 20 character may train at a 21–50 trainer,
+   * because training is what makes it 21. Read through `trainsLevel`, which is
+   * the one place that off-by-one is written down.
+   */
+  minLevel?: number;
+  /** `Shops.MaxLVL` — the first level it no longer serves. Format 35. */
+  maxLevel?: number;
+  /**
+   * `Shops.ClassRest` — the one class id the place is restricted to. Format 35.
+   *
+   * Absent means anybody, which is the usual case: of Paradigm's 46 trainers,
+   * the restricted ones are the low-level class rooms and two Bard trainers.
+   */
+  classOnly?: number;
 }
 
 export type ShopKind = 'shop' | 'temple' | 'tavern' | 'bank' | 'trainer' | 'inn';
+
+/**
+ * A trainer this character may use, and where it stands — the answer the
+ * settings screen's picker and the levelling errand both read (todo 18).
+ *
+ * Only places the realm says will take this character at this level: a
+ * trainer that refuses is a walk across two maps to be told so, and offering
+ * one is offering a choice that cannot work.
+ */
+export interface TrainerChoice {
+  /** The shop's own row, which is what the setting stores. */
+  shop: number;
+  name: string;
+  map: number;
+  room: number;
+  roomName: string;
+  /** What one level costs here, in copper, at the level asked about. */
+  cost: number;
+  /** The band, for a picker that says why this one and not the class room. */
+  minLevel: number | null;
+  maxLevel: number | null;
+}
 
 /**
  * Where a shop an item is *sold by* actually is.

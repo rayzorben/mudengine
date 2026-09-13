@@ -1405,6 +1405,27 @@ export interface CharacterState {
   party: Party;
   /** Whether this character is moving unseen. See `Stealth`. */
   stealth: Stealth;
+  /**
+   * Whether this character is on the ground and refusing every command
+   * (todo 20, 2026-09-12).
+   *
+   * **Not an affliction.** The four in `afflictions` are conditions a
+   * character has *while acting*, and three of them are three-state because
+   * nobody may have said. This is a floor under acting at all: the server
+   * prints `You drop to the ground!` at `CurHP < 1` and answers every command
+   * with `MortallyWounded`'s sentence until the character is up.
+   *
+   * **Recoverable, which is why it is worth holding.** `Misc.DeathHP` is −30,
+   * so thirty hit points separate dropping from dying; bleeding costs one a
+   * tick, `aid <name>` from another player stops the bleeding, and a character
+   * no longer bleeding regains one a tick. A client that goes quiet leaves
+   * room for all three; one that keeps sending spends the budget on refusals.
+   *
+   * Two-state and not three, because unlike an affliction the *absence* of
+   * evidence is decisive here: a status line with positive health is proof the
+   * character is up, and there is no window in which nobody has said.
+   */
+  mortallyWounded: boolean;
   /** What the server has said is wrong with this character. See `Affliction`. */
   afflictions: Afflictions;
   /**
@@ -1501,6 +1522,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   gangListing: null,
   banks: [],
   loadout: [],
+  mortallyWounded: false,
   lastDeath: null,
   peeked: null,
   sight: null,

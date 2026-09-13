@@ -232,6 +232,39 @@ ui:
   # is critical and which is the record is decided in the client, from what the
   # fact costs; these two settings decide who hears about it.
   alerts:
+    # Your own alerts, tried in order. The FIRST row that matches a notice
+    # decides it -- whether it is shown, how loud it is, and whether it also
+    # raises a desktop notification -- so a specific row above a blanket one is
+    # a thing you can now write. Anything no row matches keeps the level the
+    # client gave it and meets `minimum` and `mute` below.
+    #
+    # `on` is either one of the eleven channels (combat, vitals, room, realm,
+    # party, command, movement, items, stealth, presence, session) or one of
+    # five conditions the channels cannot express:
+    #
+    #   health, mana        a figure you choose, in the direction you choose;
+    #                       fired on the CROSSING, not on the value, so standing
+    #                       at 20% does not alert once a second.
+    #   attacked            a person -- not a monster -- swinging at you.
+    #   item, player        matched by `name`.
+    #
+    # `level` empty keeps what the client decided (what a line costs is a fact
+    # about the realm); name a severity to overrule it for this row alone.
+    # `whileFocused` means nothing without `notify` and is stored off there.
+    #
+    #   rules:
+    #     - on: health
+    #       side: below
+    #       value: 30
+    #       percent: true
+    #       level: critical
+    #       alert: true
+    #       notify: true
+    #       whileFocused: true
+    #     - on: items
+    #       alert: false
+    rules: []
+
     # The quietest alert kept. critical | warning | info
     minimum: info
 
@@ -710,6 +743,20 @@ automation:
     # unasked, towards whatever did the killing.
     recoverGear: false
 
+    # And the bounds on trying again, because a recovery walks a freshly dead,
+    # stripped character back to the room that killed it. Where that room is
+    # still dangerous the trip is itself a way to die, and each one costs a
+    # life -- which is finite and unrecoverable.
+    #
+    # `recoverGearFloor` stops recovering once this many lives are left, and is
+    # the one most people reason in: *do not spend my last two getting a cloak
+    # back*. `recoverGearTries` is how many journeys in a row may fail to reach
+    # the kit before it gives up, for the case where lives are plentiful and
+    # the room is simply lethal. A journey that gets there clears the run.
+    # 0 disables either.
+    recoverGearTries: 2
+    recoverGearFloor: 2
+
     # Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
     # defaults (0) wait the condition out before the script goes on. Off, a
     # route or a loop stands still while the server says the character is
@@ -1141,6 +1188,46 @@ automation:
     healingPotionName: healing potion
     manaPotionName: mana potion
 
+    # And anything else, with its own condition -- *use this when that is
+    # true*. The two above are health and mana, which is what MegaMUD had;
+    # this is the rest of it, and it is what lets a character drink a second
+    # healing potion at a lower depth, or an antidote the moment it is
+    # poisoned.
+    #
+    # Each row is an item name, a `when` (hp, mana, poisoned, blind, diseased,
+    # held), a `below` share of maximum for the two that are measured, and
+    # `drink` or `use`. Only an item the pack lists is ever asked for, and only
+    # a condition the wire has *stated* fires one: unknown is not afflicted.
+    #
+    # Empty, like `supplies.items`, and for the same reason: spending a
+    # player's consumables unasked is its own failure.
+    #
+    #   potions:
+    #     - name: cure poison potion
+    #       when: poisoned
+    #       below: 0
+    #       verb: drink
+    potions: []
+
+  # Going to collect the level, and spending the points it awards.
+  #
+  # In this game you do not level by earning the experience: you earn it, then
+  # you walk to a trainer and pay. Until you do, every point past the threshold
+  # does nothing at all -- no hit points, no skills, no character points. So a
+  # client left to play overnight with `levels` off comes back with a night's
+  # experience and the same character it started with.
+  #
+  # `levels` is off, because a player banking levels for a reroll exists and a
+  # client that levelled them anyway would have spent their money and their
+  # choice.
+  #
+  # `trainer` is the trainer's own shop row number, or 0 for the cheapest that
+  # will take this character. The settings screen offers only the rooms the
+  # realm says will take it at its level -- the class training rooms stop at
+  # level 10 and every trainer has a band, so a room stated here can stop
+  # taking this character as it grows. It is not silently replaced when that
+  # happens: the errand refuses and says so.
+  #
   # Spending character points -- the `train stats` screen.
   #
   # Every level hands out character points, and an unspent one is hit points
@@ -1159,6 +1246,8 @@ automation:
   # The price is the server's: the first ten points above the race's base
   # cost 1 CP each, the next ten 2 each, and so on.
   train:
+    levels: false
+    trainer: 0
     stats: false
     wanted:
       strength: 0
@@ -1394,10 +1483,6 @@ automation:
     #     points. Name one under `prefer` to go for it anyway.
     engage: hostile
 
-    # Do not open a fight below this fraction of your maximum health.
-    # 0 always opens. A maximum that has not arrived yet never stops it.
-    minHealth: 0
-
     # Do not open a fight when more than this many monsters are here.
     # 0 never refuses. MegaMUD calls this Max Monsters, and it is the cheapest
     # place to decline being swarmed: a health threshold notices too late.
@@ -1517,8 +1602,7 @@ automation:
   # that experiment.
   party:
     # Swing at what the leader -- whoever you follow -- was last seen hitting,
-    # while that monster is still in the room. Never a player; still under
-    # combat.minHealth.
+    # while that monster is still in the room. Never a player.
     assistLeader: false
 
     # Swing at a monster seen attacking any party member -- MegaMUD's

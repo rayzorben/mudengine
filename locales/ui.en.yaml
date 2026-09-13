@@ -283,6 +283,45 @@ notices:
         '"ui.showDiagnostics" was removed from {count} file: the diagnostics cards are now hidden on
         every launch and "Show diagnostics" in the command palette shows them for as long as the
         window is open. {fileList}'
+    combatFloorDropped:
+      many:
+        '"combat.minHealth" was removed from {count} files: there is no longer a health floor on
+        opening a fight. Low health is the retreat''s business and the rest''s, which act on the
+        character rather than on the decision to swing back. {fileList}'
+      one:
+        '"combat.minHealth" was removed from {count} file: there is no longer a health floor on
+        opening a fight. Low health is the retreat''s business and the rest''s, which act on the
+        character rather than on the decision to swing back. {fileList}'
+    recoveryBounds:
+      many:
+        '"recoverGearTries" and "recoverGearFloor" were written into {count} files: going back for
+        the kit now stops after two journeys that did not reach it, or at two lives left.
+        {fileList}'
+      one:
+        '"recoverGearTries" and "recoverGearFloor" were written into {count} file: going back for
+        the kit now stops after two journeys that did not reach it, or at two lives left.
+        {fileList}'
+    alertRules:
+      many:
+        '"ui.alerts.rules" was written into {count} files, empty: your own alert rows are tried
+        before the floor and the mute list. {fileList}'
+      one:
+        '"ui.alerts.rules" was written into {count} file, empty: your own alert rows are tried
+        before the floor and the mute list. {fileList}'
+    potionRules:
+      many:
+        '"automation.health.potions" was written into {count} files, empty: name an item and a
+        condition under Health to have it used. {fileList}'
+      one:
+        '"automation.health.potions" was written into {count} file, empty: name an item and a
+        condition under Health to have it used. {fileList}'
+    levelling:
+      many:
+        '"automation.train.levels" and "trainer" were written into {count} files, off: the client
+        will not walk a character to a trainer and level it until you turn that on. {fileList}'
+      one:
+        '"automation.train.levels" and "trainer" were written into {count} file, off: the client
+        will not walk a character to a trainer and level it until you turn that on. {fileList}'
     doorForcingStated:
       many:
         'Picking and bashing locked doors are now settings, and were written into {count} files with
@@ -1102,6 +1141,11 @@ cards:
       playerAttacking: '{name} is attacking you — hanging up is penalised for five minutes'
     empty: Nothing yet.
     find: Find in the record
+    # The player's own named watches (todo 29): anything of this name, however
+    # it arrived, as against `finds` below which is what a search turned up.
+    watch:
+      item: '{what} is here.'
+      player: '{who} is here.'
     finds:
       cash: 'Searching turned up {what}'
       item: 'Searching turned up {what}'
@@ -1126,6 +1170,10 @@ cards:
     title: Alerts
     vitals:
       crossing: '{label} {level}: {current} of {max}'
+      # The player's own numeric watches (todo 29) -- their figure, their
+      # direction, still fired on the crossing rather than on the value.
+      watchHealth: 'Health {side} {mark}: now {current}.'
+      watchMana: 'Mana {side} {mark}: now {current}.'
       manaLabel: Mana
     walk:
       arrived: 'Arrived at {destination}'
@@ -1160,6 +1208,7 @@ cards:
       respawn: the respawn clock
       rest: the rest
       health: the health bar
+      mana: the mana pool
     detail:
       rate: Expected
       rateValue: '{rate} exp/h'
@@ -1174,6 +1223,10 @@ cards:
       costValue: '{hp} hp ({share} of the bar)'
       cycle: A cycle
       cycleValue: 'fight {combat}, rest {rest}, walk {walk}, wait {wait}'
+      # A caster's cycle also sits to get its mana back, and that time is in
+      # the rate. Drawn only where the character actually casts -- `meditate 0`
+      # on every melee character would be noise (todo 26).
+      cycleMeditate: ', meditate {meditate}'
     mobFigures: '{exp} exp · {rounds} rounds · {perRound} hp/round'
     roomFigures: '{map}/{room} · {steps} steps'
     moreRooms:
@@ -2295,10 +2348,19 @@ cards:
     # Beside a figure this client worked out rather than read off the wire.
     workedOut: worked out
     labels:
+      afflicted: Afflicted
       class: Class
       earned: Earned
       level: Level
       toLevel: To level
+    # The four conditions the wire states, named where one is up. Only a
+    # stated `yes` is drawn: unknown is not a condition, and `no` is the
+    # ordinary state of a character.
+    afflicted:
+      blind: blind
+      diseased: diseased
+      held: held
+      poisoned: poisoned
     level:
       caution: low
       critical: critical
@@ -2413,6 +2475,43 @@ settings:
     findItemsLabel: Alert On Finding
     findItemsPlaceholder: 'key, ring, scroll'
     minimumCritical: Only critical
+    # The player's own rows (todo 29). The first enabled row that claims a
+    # notice decides it; anything no row claims still meets the floor and the
+    # mute list below.
+    ruleLegend: Your own alerts
+    ruleNote:
+      'Rows are tried in order and the first one that matches decides: shown or not, and how loud.
+      Anything no row matches keeps the level the client gave it and meets the floor below.'
+    ruleAdd: Add an alert
+    ruleEnabled: On
+    ruleAlert: Alert
+    ruleNotify: Notify
+    ruleWhileFocused: Even when MudEngine is in front
+    ruleLevel: Level
+    levelKeep: as decided
+    rulePercent: '%'
+    ruleNamePlaceholder: name to watch for
+    ruleShadowed: An earlier row already matches this, so this one never fires.
+    ruleRemoveTitle: Remove this alert
+    ruleUpTitle: Move up, so this is tried first
+    ruleDownTitle: Move down
+    ruleUpAria: 'Move alert {number} up'
+    ruleDownAria: 'Move alert {number} down'
+    ruleOnAria: 'What alert {number} is about'
+    ruleSideAria: 'Which side of the figure alert {number} fires on'
+    ruleValueAria: 'The figure alert {number} watches'
+    ruleNameAria: 'The name alert {number} watches for'
+    ruleLevelAria: 'How loud alert {number} is'
+    ruleRemoveAria: 'Remove alert {number}'
+    groupWatches: Conditions
+    groupChannels: Channels
+    sideBelow: below
+    sideAbove: above
+    watchHealth: health
+    watchMana: mana
+    watchAttacked: attacked by a player
+    watchItem: an item found
+    watchPlayer: a player seen
     minimumHint:
       The quietest alert kept. Critical is act-now, warning is something that did not work,
       info is the record.
@@ -2555,8 +2654,6 @@ settings:
       Will not open on a monster the fight is expected to cost more than this share of current health,
       by the same figure the Room card draws. A monster the realm cannot cost is not refused. 0 never.
     maxFightCostLabel: Max Fight Cost, % of HP
-    minHealthHint: Will not open a fight below this. 0 always opens.
-    minHealthLabel: Min Health %
     monstersLegend: Monsters
     openerHint: Sent for the first blow of a fight only. Blank for none.
     openerLabel: Opening Attack
@@ -2698,6 +2795,30 @@ settings:
     drinkManaBelowLabel: 'Auto-Potion: Mana Threshold %'
     healingPotionLabel: Health Potion Item
     manaPotionLabel: Mana Potion Item
+    # The player's own *use this when that* list (todo 19). The name field is
+    # filtered by the condition from the realm's own data, so a rule for
+    # poison offers the antidotes and not the healing potions.
+    potionRuleLegend: When to use an item
+    potionRuleNote:
+      'Beyond the two above: name an item and say what makes it worth using. The suggestions are
+      the items this realm says would serve the condition, and anything else can still be typed.
+      Only an item the pack lists is ever asked for.'
+    potionRuleAdd: Add a rule
+    potionRuleNamePlaceholder: item, as the pack lists it
+    potionRuleNameAria: 'Item for rule {number}'
+    potionRuleWhenAria: 'When rule {number} fires'
+    potionRuleBelow: below
+    potionRuleBelowAria: 'Threshold for rule {number}, as a percentage'
+    potionRuleVerbAria: 'Verb for rule {number}'
+    potionRuleRemoveAria: 'Remove rule {number}'
+    potionRuleRemoveTitle: Remove this rule
+    potionRuleDuplicate: An earlier rule already says this item at this condition and depth.
+    potionWhenHp: health below
+    potionWhenMana: mana below
+    potionWhenPoisoned: poisoned
+    potionWhenBlind: blinded
+    potionWhenDiseased: diseased
+    potionWhenHeld: held
     potionLegend: Potions
     potionNote:
       Drunk when the figure falls below the threshold and the pack lists the potion. The result
@@ -2769,6 +2890,26 @@ settings:
       anything else is typed into it. The client types only figures, only into the six stat
       fields, and saves.
     stats: Auto Train Stats
+    # Going to collect the level. Experience past the threshold does nothing
+    # at all until a trainer is paid, so a client left overnight without this
+    # comes back with a night's experience and the same character.
+    levels: Go and train levels
+    levelsHint:
+      'When the experience is there, walk to a trainer and level. Off by default: a character
+      banking levels for a reroll should not be levelled behind your back.'
+    trainerLabel: Trainer
+    trainerHint:
+      Only the trainers the realm says will take this character at this level. The class training
+      rooms stop at level 10 and every trainer has a band, so this list shrinks as the character
+      grows.
+    trainerCheapest: The cheapest that will take me
+    trainerOption: '{name} — {room} ({cost} copper)'
+    trainerNowhere:
+      The realm names no trainer that will take this character at its level. Nothing will be
+      walked to until one does.
+    trainerStale:
+      The trainer chosen here no longer takes this character. Pick another, or leave it on the
+      cheapest; nothing will be walked to meanwhile.
     statsHint:
       At a trainer with character points unspent, opens the stat screen, buys the wanted figures
       below as far as the points go — cheapest point first — and saves. Off, the client stands
@@ -2806,6 +2947,14 @@ settings:
       Removes the lit torch in a room that does not need it, while nothing is walking the character,
       so a torch lasts the sewer rather than the walk there.
     recoverGear: Fetch the Kit After a Death
+    recoverGearFloorLabel: Keep at least (lives)
+    recoverGearFloorHint:
+      Stop going back once this many lives are left. Lives are finite and a recovery walks a
+      stripped character back to whatever killed it. 0 never stops.
+    recoverGearTriesLabel: Give up after (tries)
+    recoverGearTriesHint:
+      How many journeys in a row may fail to reach the kit before it stops trying. A journey that
+      gets there clears the run. 0 never gives up.
     recoverGearHint:
       Walks back to the room the character died in, takes the kit and coins still lying there, and
       puts the kit back on. Holds when hurt and fights nothing on the way; every refusal is said.
@@ -3337,6 +3486,14 @@ session:
   safety:
     escapeDoublesBack: 'Running {direction}: {why}. It doubles back onto the way we came.'
     escapeKnown: 'Running {direction}: {why}. The realm knows where that exit goes.'
+    # On the ground: the server refuses every command until the character is
+    # up. Recoverable -- thirty hit points of it -- so the client goes quiet
+    # and says why, which is the moment a party member's `aid` is the only
+    # thing that helps.
+    mortallyWounded:
+      'Mortally wounded: the realm refuses every command until this character is up. Nothing is
+      being sent. Someone in the room can aid it.'
+    whyMortallyWounded: 'on the ground at {hp} health'
     escapeNoExit:
       'Not running: {why}, but this room has named no exit and there is nothing behind us to
       retrace. Standing and fighting.'
@@ -3460,7 +3617,6 @@ automation:
     refusedMaxMobs: '{here} monsters here, and maxMobs is {max}'
     refusedMinMobs: 'only {here} monsters here, and minMobs is {min}'
     refusedTooRich: '{target} is worth {exp} experience and maxMonsterExperience is {cap}'
-    refusedMinHealth: 'health is {percent}% and minHealth is {floor}%'
     refusedMovePending: a step is still waiting for its room
     refusedNotHostile: the realm does not say {target} attacks first
     refusedClaimed: '{player} is already fighting {target}, and joinFights is off'
@@ -3470,6 +3626,11 @@ automation:
     refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
     refusedWalking: walking a route, and whileWalking is off
     standDown: Auto-combat is standing down after break; it resumes when you move or attack.
+    # An opener the class can never land -- `combat.opener` survives a reroll,
+    # and a Mage was being told why its backstab was withheld (todo 28).
+    openerWrongClass:
+      'This class cannot get into the shadows, so {verb} will never land. Change the opener under
+      Combat; nothing else is affected.'
     openerNeedsStealth: '{verb} only lands while this character is sneaking, so fights it is seen
       opening are opened with the ordinary attack instead.'
     verbRefused: The realm refused {verb}; dropping it from this character's attacks for this session.
@@ -3518,6 +3679,27 @@ automation:
     allResisted: 'Auto Choose Best Spell: every attack spell in the book is resisted by this target; the round attacks carry the fight.'
   train:
     reason: 'spending {cp} character points at the trainer'
+    # Going to collect the level -- `TrainErrand` (todo 18). Every sentence
+    # names a figure the player can act on: the cost, the purse, the room.
+    going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
+    levelled: Welcome to level {level}.
+    reasonLevel: 'training: the experience for a level is there'
+    abandonedDied: 'A death: the walk to the trainer is dropped. The level is still owed.'
+    becauseOwed: a level was earned and not collected
+    whyStopped: the walk stopped before it arrived
+    refusalNowhere:
+      'A level is waiting and the realm names no trainer that will take this character at level
+      {level}. Nothing walked.'
+    refusalTrainerStale:
+      'A level is waiting and the trainer chosen in the settings no longer takes this character at
+      level {level}. Pick another, or leave it on the cheapest. Nothing walked.'
+    refusalPoor:
+      'A level is waiting and {trainer} charges {cost} copper; this character carries {purse}.
+      Nothing walked.'
+    refusalNoRoute: 'Could not walk to {room} to train: {why}'
+    refusalNotReached: 'Did not reach {room} to train: {why}'
+    refusalUnanswered:
+      Sent train at {trainer} and the level did not move. Train by hand, or check the trainer.
     nothingWanted: "Auto Train Stats: {cp} CP unspent, but every wanted figure is at or under the sheet's ({figures}). Raise a figure under Training to spend them."
     nothingAffordable: 'Auto Train Stats: {cp} CP unspent, but the cheapest wanted point ({attribute}, {cost} CP) costs more than that.'
     whyNothingWanted: every wanted figure is at or under the current one
@@ -3554,6 +3736,14 @@ automation:
     refusalUnplaced: 'the client does not know where the character died, and {count} items are missing'
     refusalNoRoute: 'no route back to {room}: {why}'
     refusalNotReached: 'the walk back to {room} ended early: {why}'
+    # The bounds on trying again (todo 21): a recovery walks a freshly dead,
+    # stripped character back to the room that killed it, and lives are finite.
+    refusalLives:
+      'Not going back for the kit: {lives} lives left, and the floor is {floor}. Recover it by hand,
+      or lower the floor under Movement.'
+    refusalTries:
+      'Not going back for the kit: {tries} recoveries in a row did not reach it. Recover it by
+      hand, or raise the limit under Movement.'
     refusalLeft: the character is no longer standing where it died
     refusalNothingHere: 'nothing of the kit is on this floor ({items}); somebody took it, or the realm cleaned up'
     whyStopped: the walk stopped
@@ -3695,6 +3885,8 @@ automation:
     reason: 'search: looking for what this room did not print'
   potion:
     reasonHealth: 'potion: health is low'
+    # A rule from the player's own `health.potions` list (todo 19).
+    reasonRule: 'a potion rule fired'
     reasonMana: 'potion: mana is low'
   remotes:
     followerReady: '{from} is ready.'
@@ -3774,6 +3966,13 @@ automation:
     reasonBack: stepping back after resting next door
   recovery:
     reasonHealth: 'recovery: health is low'
+    # A poisoned character cannot rest at all on GreaterMUD: the server tests
+    # for poison before anything else and answers with the poison sentence
+    # instead of sitting the character down. Naming the cure because a
+    # character that cannot rest and has no cure set cannot recover at all.
+    restPoisoned:
+      This realm refuses to rest a poisoned character. Set a cure for poison
+      under the spells settings, or cure it by hand.
     reasonMana: 'recovery: mana is low'
     verbRefused: The realm answered {verb} with "Your command had no effect."; not proposing it again this session.
   routines:

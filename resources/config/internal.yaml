@@ -553,6 +553,14 @@ tuning:
   train:
     echoMs: 4000
     expiresMs: 8000
+    # How long a sent `train` has to move the level before the errand gives up
+    # on it and says so. The level moving is the confirmation -- the server
+    # answers a paid `train` with a welcome and a refused one with a band or a
+    # price, and the figure the client already tracks says which without
+    # reading any of them. So this covers only the case where nothing at all
+    # comes back, and it is generous: the answer arrives with the next status
+    # line.
+    confirmMs: 10000
 
   # Getting back into the shadows between fights — `AutoStealth`.
   # `askEveryMs` floors the retry after a failed roll, so a low-Stealth
@@ -712,6 +720,25 @@ tuning:
 
     # Confirmed steps kept for a retreat to look back over.
     recentSteps: 5
+
+    # How long a room the character ran out of stays a room it must not run
+    # back into, once nothing is recorded fighting.
+    #
+    # The list used to be emptied by the first instant the client saw no
+    # fight, and a fight against two monsters manufactures that instant for
+    # free: *Combat Off* names the death of the current target and the dead
+    # leave the attacker list with the kill, so between one monster dying and
+    # the second swinging again there is nothing recorded at all. The next
+    # escape then picked the room fled three seconds earlier and the character
+    # died there -- four times, across three areas and two monster families.
+    #
+    # Set from the gap actually measured rather than chosen for comfort: the
+    # second champion's blow lands in the same millisecond as the *Combat Off*
+    # and again 915ms later, and the escape that killed the character fired
+    # 2,009ms after the gap opened. Ten seconds covers that with room to spare
+    # while staying far short of a walk back through a corridor minutes later
+    # being refused, which is the cost of setting it too high.
+    ranFromForgetMs: 10000
 
     # How far below a barrier's stated number the character's own skill may
     # sit and still be worth spending a command on.

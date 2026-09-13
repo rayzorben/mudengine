@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  type SpotCharacter,
   compareSpots,
   estimateSpot,
   respawnSeconds,
@@ -47,7 +48,13 @@ const singles = (over: Partial<SpotInput> = {}): SpotInput => ({
     hpMax: 289,
     restingHealthPerTick: 24,
     passiveHealthPerTick: 8,
-    backstab: false
+    backstab: false,
+    // A melee character: no round spell configured, so the cycle pays no mana
+    // and the estimate is the one it always was.
+    manaPerRound: null,
+    manaMax: null,
+    meditatingManaPerTick: null,
+    passiveManaPerTick: null
   },
   ...over
 });
@@ -155,6 +162,7 @@ describe('the order the reader wants', () => {
       cycleSeconds: null,
       combatSeconds: null,
       restSeconds: null,
+      meditateSeconds: null,
       walkSeconds: 0,
       waitSeconds: null,
       damagePerRoom: null,
@@ -180,5 +188,65 @@ describe('the order the reader wants', () => {
       'unknown-low',
       'deadly-rich'
     ]);
+  });
+});
+
+/*
+ * The caster's half of the cycle (todo 26, 2026-09-12).
+ *
+ * Todo 05 left it out and named todo 09 as the prerequisite, which has since
+ * landed. A melee cycle is bounded by the health it loses and the time to get
+ * it back; a caster's is bounded by the mana it spends and the time to
+ * meditate it back — which is the reviewer's *cluster, room-spell, then sit*
+ * play priced rather than written in.
+ */
+describe("a caster's cycle", () => {
+  const caster = (over: Partial<SpotCharacter> = {}): Partial<SpotInput> => ({
+    character: {
+      hpMax: 289,
+      restingHealthPerTick: 24,
+      passiveHealthPerTick: 8,
+      backstab: false,
+      manaPerRound: 6,
+      manaMax: 120,
+      // Meditating is NOT resting tripled: `TimedEventManager` gives a resting
+      // character `HPRegen * 3` and a meditating one `GetBaseMARegen()` flat.
+      meditatingManaPerTick: 9,
+      passiveManaPerTick: 9,
+      ...over
+    }
+  });
+
+  it('costs a melee character nothing, to the second', () => {
+    const plain = estimateSpot(singles(), C);
+    expect(plain.meditateSeconds).toBe(0);
+  });
+
+  it('pays for the mana a round spends', () => {
+    const spent = estimateSpot(singles(caster()), C);
+    expect(spent.meditateSeconds).toBeGreaterThan(0);
+  });
+
+  /* And that time is in the cycle, so the rate falls. */
+  it('is slower than the same room fought with a blade', () => {
+    const melee = estimateSpot(singles(), C);
+    const casting = estimateSpot(singles(caster()), C);
+    expect(casting.cycleSeconds ?? 0).toBeGreaterThanOrEqual(melee.cycleSeconds ?? 0);
+  });
+
+  /*
+   * What standing regains is taken off first, exactly as for health: a cheap
+   * spell in a slow room costs no sitting at all.
+   */
+  it('pays nothing where standing regains it all', () => {
+    const cheap = estimateSpot(singles(caster({ manaPerRound: 0.1 })), C);
+    expect(cheap.meditateSeconds).toBe(0);
+  });
+
+  /* An unknown rate is named, never zeroed — the standing rule. */
+  it('names the pool as unknown rather than pricing the cycle free', () => {
+    const unread = estimateSpot(singles(caster({ meditatingManaPerTick: null })), C);
+    expect(unread.unknown).toContain('mana');
+    expect(unread.expPerHour).toBeNull();
   });
 });

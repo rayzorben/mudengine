@@ -425,17 +425,19 @@ describe('automation.combat', () => {
 
   /*
    * The same coercion every other health threshold here gets: a number above 1
-   * is read as a percentage, because writing `minHealth: 30` is what somebody
+   * is read as a percentage, because writing `maxFightCost: 30` is what somebody
    * means by "thirty percent" and refusing it would be pedantry with a
    * character on the end of it.
    */
   it('reads a threshold above one as a percentage, like every other one', () => {
-    expect(combat({ minHealth: 30 }).minHealth).toBe(0.3);
-    expect(combat({ minHealth: 0.3 }).minHealth).toBe(0.3);
+    expect(combat({ maxFightCost: 30 }).maxFightCost).toBe(0.3);
+    expect(combat({ maxFightCost: 0.3 }).maxFightCost).toBe(0.3);
   });
 
   it('clamps the rest rather than refusing the file', () => {
-    expect(combat({ minHealth: -1 }).minHealth).toBe(DEFAULT_CONFIG.automation.combat.minHealth);
+    expect(combat({ maxFightCost: -1 }).maxFightCost).toBe(
+      DEFAULT_CONFIG.automation.combat.maxFightCost
+    );
     expect(combat({ maxMobs: 900 }).maxMobs).toBe(20);
     expect(combat({ maxMobs: -4 }).maxMobs).toBe(0);
   });

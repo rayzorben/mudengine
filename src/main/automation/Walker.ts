@@ -3484,10 +3484,16 @@ export class Walker {
      * client has run out of ways to find out whether it has — and saying it
      * had would be a claim nothing on the wire has made.
      */
+    /*
+     * **All three, not just `held`** (todo 23, 2026-09-12). The bound was
+     * written for `held` and the argument never turned on which condition it
+     * was: a stated affliction whose *ending* the client cannot read holds the
+     * step for ever. The step this spends to find out is the same probe in
+     * every case — the server either walks the character or prints the hold's
+     * own sentence again and re-arms the window.
+     */
     const spent =
-      reason === 'held' &&
-      this.heldSince !== null &&
-      Date.now() - this.heldSince >= tuning().walk.heldFallbackMs;
+      this.heldSince !== null && Date.now() - this.heldSince >= tuning().walk.heldFallbackMs;
     if (reason === null || spent) {
       if (this.hold === 'blind' || this.hold === 'held' || this.hold === 'poisoned') {
         this.hold = null;
@@ -3498,7 +3504,7 @@ export class Walker {
       this.onsetAnsweredStep = null;
       return false;
     }
-    if (reason === 'held') this.heldSince ??= Date.now();
+    this.heldSince ??= Date.now();
     if (this.hold !== reason) {
       this.hold = reason;
       if (!this.quiet) {

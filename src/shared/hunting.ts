@@ -44,6 +44,29 @@ export interface SpotCharacter {
   passiveHealthPerTick: number | null;
   /** Whether the opener is `bs`: the first blow out of the shadows is several swings. */
   backstab: boolean;
+  /**
+   * What a round costs in mana, for a character that fights by casting, and
+   * what the pool holds — the caster's half of the cycle (todo 26,
+   * 2026-09-12; todo 05 left it out and named todo 09 as the prerequisite,
+   * which has since landed).
+   *
+   * **Symmetric with the rest half.** A melee character's cycle is bounded by
+   * the health it loses and the time to get it back; a caster's is bounded by
+   * the mana it spends and the time to meditate it back. Priced the same way:
+   * what standing regains is taken off first, and only the remainder is paid
+   * for at the sitting rate.
+   *
+   * All four null for a character that does not cast, which is every
+   * character until `automation.spells` names a round spell — and null here
+   * costs **nothing**, never a guess, so a Warrior's estimate is exactly what
+   * it was.
+   */
+  manaPerRound: number | null;
+  manaMax: number | null;
+  /** Mana regained per meditating tick; null where the arithmetic is not known. */
+  meditatingManaPerTick: number | null;
+  /** Mana regained per standing tick; null is priced as nothing regained. */
+  passiveManaPerTick: number | null;
 }
 
 export interface SpotInput {
@@ -59,7 +82,15 @@ export interface SpotInput {
   character: SpotCharacter;
 }
 
-export type HuntingUnknown = 'experience' | 'rounds' | 'damage' | 'respawn' | 'rest' | 'health';
+export type HuntingUnknown =
+  | 'experience'
+  | 'rounds'
+  | 'damage'
+  | 'respawn'
+  | 'rest'
+  | 'health'
+  /** The pool a caster's cycle is bounded by, and the rate it comes back at. */
+  | 'mana';
 
 export interface SpotEstimate {
   /** The answer, or null while a part it needs is unknown. */
@@ -75,6 +106,12 @@ export interface SpotEstimate {
   waitSeconds: number | null;
   /** Health one room's cycle takes off the character. */
   damagePerRoom: number | null;
+  /**
+   * Seconds the cycle spends meditating the mana back, or null while the pool
+   * or its rate is unknown. **0 for a character that does not cast**, which is
+   * the ordinary case and costs the estimate nothing.
+   */
+  meditateSeconds: number | null;
   /** `damagePerRoom / hpMax`. */
   damageShare: number | null;
   /** Mean rounds per kill, the opener credited. */
@@ -186,6 +223,41 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
     }
   }
 
+  /*
+   * And the caster's half, the same shape as the rest above (todo 26).
+   *
+   * A melee cycle is bounded by the health it loses and the time to get it
+   * back; a caster's is bounded by the mana it spends and the time to
+   * meditate it back — which is the reviewer's *cluster and room-spell, then
+   * sit* play, priced rather than written in. What standing regains is taken
+   * off first, exactly as for health.
+   *
+   * **Zero for a character that does not cast**, which is every one until a
+   * round spell is configured: a null cost is not an unknown, it is nothing
+   * spent, and a Warrior's estimate is unchanged to the second.
+   */
+  let meditateSeconds: number | null = 0;
+  const manaPerRound = input.character.manaPerRound;
+  if (manaPerRound !== null && manaPerRound > 0 && roundsPerRoom !== null) {
+    const manaPerCycle = manaPerRound * roundsPerRoom * rooms;
+    const standing = (combatSeconds ?? 0) + walkSeconds;
+    const passive =
+      input.character.passiveManaPerTick === null
+        ? 0
+        : (standing / c.passiveTickSeconds) * input.character.passiveManaPerTick;
+    const need = Math.max(0, manaPerCycle - passive);
+    if (need === 0) meditateSeconds = 0;
+    else if (
+      input.character.meditatingManaPerTick === null ||
+      input.character.meditatingManaPerTick <= 0
+    ) {
+      meditateSeconds = null;
+      unknown.push('mana');
+    } else {
+      meditateSeconds = Math.ceil(need / input.character.meditatingManaPerTick) * c.restTickSeconds;
+    }
+  }
+
   const expPerCycle = experience === null ? null : experience * spawns * rooms;
   const ceilingPerHour =
     expPerCycle === null || input.respawnSeconds === null
@@ -205,11 +277,14 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
   if (
     combatSeconds !== null &&
     restSeconds !== null &&
+    meditateSeconds !== null &&
     input.respawnSeconds !== null &&
     expPerCycle !== null &&
     !deadly
   ) {
-    const active = combatSeconds + walkSeconds + restSeconds;
+    // Resting and meditating are both sitting still, so they add rather than
+    // overlapping: the server's own two commands exclude each other.
+    const active = combatSeconds + walkSeconds + restSeconds + (meditateSeconds ?? 0);
     cycleSeconds = Math.max(active, input.respawnSeconds);
     waitSeconds = cycleSeconds - active;
     expPerHour = cycleSeconds > 0 ? (expPerCycle * 3600) / cycleSeconds : null;
@@ -222,6 +297,7 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
     cycleSeconds,
     combatSeconds,
     restSeconds,
+    meditateSeconds,
     walkSeconds,
     waitSeconds,
     damagePerRoom,

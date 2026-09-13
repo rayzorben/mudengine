@@ -253,7 +253,9 @@ describe('a character', () => {
         drinkManaPotionBelow: 0,
         potionVerb: 'drink',
         healingPotionName: '',
-        manaPotionName: ''
+        manaPotionName: '',
+        // The rules list, empty where the payload states none.
+        potions: []
       });
       expect(draft?.movement).toEqual({
         openDoors: true,
@@ -270,6 +272,9 @@ describe('a character', () => {
         extinguishInLight: false,
         // Absent above, and off: it walks the character back to where it died.
         recoverGear: false,
+        // The bounds on trying again; absent in the payload, so zero.
+        recoverGearTries: 0,
+        recoverGearFloor: 0,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         // Except the one that is on by default and whose absence would switch
@@ -322,7 +327,9 @@ describe('a character', () => {
         drinkManaPotionBelow: 0,
         potionVerb: 'drink',
         healingPotionName: '',
-        manaPotionName: ''
+        manaPotionName: '',
+        // The rules list, empty where the payload states none.
+        potions: []
       });
       expect(draft?.movement).toEqual({
         openDoors: false,
@@ -337,6 +344,9 @@ describe('a character', () => {
         extinguishInLight: false,
         // Absent above, and off: it walks the character back to where it died.
         recoverGear: false,
+        // The bounds on trying again; absent in the payload, so zero.
+        recoverGearTries: 0,
+        recoverGearFloor: 0,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         // The shipped default, for the same reason `restBelow` keeps 0.35
@@ -455,7 +465,6 @@ describe('a character', () => {
           engage: 'all',
           retaliate: false,
           maxMobs: 3,
-          minHealth: 0.4,
           whileWalking: true,
           refreshRounds: 3,
           avoid: ['town guard'],
@@ -482,7 +491,6 @@ describe('a character', () => {
         maxMobs: 3,
         // Absent above, so it takes its default: a refusal nobody asked for is off.
         maxFightCost: 0,
-        minHealth: 0.4,
         refreshRounds: 3,
         whileWalking: true,
         avoid: ['town guard'],
@@ -519,13 +527,38 @@ describe('a character', () => {
       expect(draft?.combat.attack).toBe('a');
     });
 
+    /*
+     * The rule list is parsed at the boundary like everything else here: a
+     * payload that reached the network is parsed, never trusted (todo 19).
+     */
+    it('parses the potion rules, dropping the rows that name nothing usable', () => {
+      const draft = asProfileDraft({
+        ...good,
+        health: {
+          potions: [
+            { name: 'cure poison potion', when: 'poisoned', below: 0, verb: 'drink' },
+            // No name: a rule naming nothing fires on nothing.
+            { name: '   ', when: 'hp', below: 0.5, verb: 'drink' },
+            // A condition the closed union does not hold.
+            { name: 'mystery flask', when: 'cursed', below: 0.5, verb: 'drink' },
+            // An unreadable verb reads as `drink`, and the share is clamped.
+            { name: 'scroll of major healing', when: 'hp', below: 4, verb: 'chug' }
+          ]
+        }
+      });
+      expect(draft?.health.potions).toEqual([
+        { name: 'cure poison potion', when: 'poisoned', below: 0, verb: 'drink' },
+        { name: 'scroll of major healing', when: 'hp', below: 1, verb: 'drink' }
+      ]);
+    });
+
     it('clamps rather than refusing the whole save', () => {
       const draft = asProfileDraft({
         ...good,
-        combat: { maxMobs: 999, minHealth: 4, avoid: 'town guard' }
+        combat: { maxMobs: 999, maxFightCost: 4, avoid: 'town guard' }
       });
       expect(draft?.combat.maxMobs).toBe(20);
-      expect(draft?.combat.minHealth).toBe(1);
+      expect(draft?.combat.maxFightCost).toBe(1);
       // Not a list at all: nothing rather than a guess at what was meant.
       expect(draft?.combat.avoid).toEqual([]);
     });

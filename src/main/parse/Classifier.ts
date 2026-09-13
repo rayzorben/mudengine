@@ -690,10 +690,19 @@ export class Classifier {
     if (mode === 'attacker') {
       const named = this.names ? nameInMessage(middle, this.names) : null;
       if (named !== null) groups['attacker'] = named;
-      else if (rule.nameFallback && first !== undefined) {
+      else if (rule.nameFallback && first !== undefined && !ARTICLE.test(first)) {
         // A name by grammar alone. `Acid burns you for 1 damage!` has the
         // same shape as `Rend chops you for 9 damage!`, so the tracker holds
         // this to the roster and the room before it becomes an attacker.
+        //
+        // **Never an article** (todo 30, 2026-09-12), which the `both` branch
+        // below has always refused and this one did not: `The short half-ogre
+        // bodyguard swings at you with their battle-hammer!` named `The` as
+        // the attacker, and auto-combat then sent `aa The short half-ogre
+        // bodyguard` — four times, each answered `Your command had no
+        // effect.` The room lists the monster without its article, so the
+        // name is there to be had; taking the first capitalised word is the
+        // fallback for when it is *not*, and `The` is never a name.
         groups['attacker'] = first;
         groups['guessed'] = 'attacker';
       }
