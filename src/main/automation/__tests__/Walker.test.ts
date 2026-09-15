@@ -1274,6 +1274,116 @@ describe('a door in the way', () => {
 });
 
 /*
+ * The room has already said the door is shut.
+ *
+ * todo 01, reported off the wire: `Obvious exits: north, closed door south`,
+ * and the client sent `s` to be told `The door is closed!`. The step was a
+ * command spent on a fact the room block already carried — the same argument
+ * `mustSearchFirst` makes about a hidden exit the room has not printed.
+ */
+describe('a door the room has already said is shut', () => {
+  const withMovement = (over: Partial<AutomationConfig['movement']>, state: CharacterState) =>
+    new Walker({ ...config, movement: { ...config.movement, ...over } }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => state
+    });
+
+  /** Standing in 1/1 with the room's `Obvious exits:` line as given. */
+  const printing = (...exits: Array<[string, string | null]>): CharacterState =>
+    at(1, 1, {
+      room: {
+        ...structuredClone(EMPTY_CHARACTER.room),
+        map: 1,
+        number: 1,
+        exits: exits.map(([direction, note]) => wireExit(direction, note))
+      }
+    });
+
+  it('opens it instead of spending the step to be refused', () => {
+    const shut = printing(['n', null], ['e', 'closed door']);
+    const walk = withMovement({ openDoors: true, openTries: 1 }, shut);
+    walk.start(ROUTE, shut);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['open e']);
+    walk.dispose();
+  });
+
+  /* And the step goes out on the door opening, exactly as the reactive rung
+     leaves it — one command shorter. */
+  it('takes the step once the door answers', () => {
+    const shut = printing(['e', 'closed gate']);
+    const walk = withMovement({ openDoors: true, openTries: 1 }, shut);
+    walk.start(ROUTE, shut);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['open e']);
+
+    walk.onBlock(block('door-changed', { barrier: 'gate', state: 'open' }));
+    vi.advanceTimersByTime(200);
+
+    expect(sent).toEqual(['open e', 'e']);
+    expect(walk.progress.status).toBe('walking');
+    walk.dispose();
+  });
+
+  /* A door the room says is open is not opened again: `open` at one answers
+     `The door is already open.` and buys nothing. */
+  it('walks straight through a door the room says is open', () => {
+    const ajar = printing(['e', 'open door']);
+    const walk = withMovement({ openDoors: true, openTries: 1 }, ajar);
+    walk.start(ROUTE, ajar);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /* A room whose exits were never read proves nothing — a blinding room prints
+     no list at all, and the refusal is answered the way it always was. */
+  it('does not read an empty exit list as a shut door', () => {
+    const dark = printing();
+    const walk = withMovement({ openDoors: true, openTries: 1 }, dark);
+    walk.start(ROUTE, dark);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /* The switch is the switch. With `openDoors` off nothing is sent at the
+     door, pre-emptively or otherwise. */
+  it('sends the step when it was not asked to open doors', () => {
+    const shut = printing(['e', 'closed door']);
+    const walk = withMovement({ openDoors: false }, shut);
+    walk.start(ROUTE, shut);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * And a door the server has called locked is not opened again on the barrier
+   * round's retry: the room block still says `closed door`, because it does not
+   * reprint, and `open` at a lock answers the same word every time. The step
+   * falls through so `onRefusedStep` reaches the forcing rungs as before.
+   */
+  it('does not open a door it has been told is locked', () => {
+    const shut = printing(['e', 'closed door']);
+    const walk = withMovement({ openDoors: true, openTries: 1 }, shut);
+    walk.start(ROUTE, shut);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['open e']);
+
+    walk.onBlock(block('open-failed', { barrier: 'door', reason: 'locked' }));
+    vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
+
+    expect(moves(sent)).toEqual(['open e', 'e']);
+    walk.dispose();
+  });
+});
+
+/*
  * Forcing what `open` cannot get past.
  *
  * The whole ladder, in the order the sewers under Newhaven walked it: shut,
@@ -2506,6 +2616,54 @@ describe('a room the server would not describe', () => {
     expect(notices.join(' ')).not.toContain('nothing came back');
   });
 
+  /*
+   * And it waits where a light is coming, which is the ordinary case: a
+   * blinding room prints no block at all, `AutoLight` lights a torch and looks
+   * again, and the walker is asked one statement *before* it on the same state
+   * (`SessionManager.onCharacter`). Live 2026-09-15, the walk ended 1ms before
+   * `light torch` went out and 145ms before the room came back readable.
+   */
+  it('waits for a light that is coming, and walks on once the room can be read', () => {
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      lightComing: () => true
+    });
+    walk.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(50);
+    walk.onCharacter(
+      at(null, null, { room: { ...structuredClone(EMPTY_CHARACTER.room), light: 'very dark' } })
+    );
+
+    expect(walk.progress.status).toBe('walking');
+    expect(walk.progress.hold).toBe('dark');
+    expect(notices.join(' ')).toContain('waiting for a light');
+
+    // The torch is lit, the look comes back, and the room is the step's answer.
+    walk.onCharacter(at(1, 2));
+    vi.advanceTimersByTime(50);
+    expect(moves(sent)).toEqual(['e', 'e']);
+    expect(walk.progress.hold).toBeNull();
+    walk.dispose();
+  });
+
+  /* Bounded: past the window the room is dark for a reason no light fixes. */
+  it('gives up with the darkness once the window is spent', () => {
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      lightComing: () => true
+    });
+    walk.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(50);
+    walk.onCharacter(
+      at(null, null, { room: { ...structuredClone(EMPTY_CHARACTER.room), light: 'very dark' } })
+    );
+    vi.advanceTimersByTime(TUNING.walk.lightWaitMs + 50);
+
+    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress.reason).toContain('very dark');
+    walk.dispose();
+  });
+
   it('keeps walking when dead reckoning did place the character', () => {
     walker.start(ROUTE, at(1, 1));
     vi.advanceTimersByTime(50);
@@ -2523,6 +2681,83 @@ describe('a room the server would not describe', () => {
     );
     vi.advanceTimersByTime(50);
     expect(sent).toEqual(['e', 'e']);
+  });
+});
+
+/*
+ * A room script names its landing per branch — `9/1291`'s `go portal` goes to
+ * `9/1424` on `checkability 133 5` and names no room at all on the two
+ * branches below it — and the router takes the landing it has with the guard
+ * it cannot evaluate on `Requirement.unread`. So a step whose condition failed
+ * puts the character somewhere the plan never named, which is the one outcome
+ * the plan already admitted it could not predict.
+ *
+ * Live 2026-09-15: a character at rank 4 stepped into the portal, landed in
+ * the Caves of Chaos two maps away, and the journey ended *That is not where
+ * the route says you should be*.
+ */
+describe('a gate the router could not read', () => {
+  const GATED: Route = {
+    ...ROUTE,
+    steps: [
+      {
+        ...ROUTE.steps[0]!,
+        direction: 'portal',
+        command: 'go portal',
+        requirement: {
+          kind: 'text',
+          raw: 'go portal; checkability 133 5',
+          commands: ['go portal'],
+          unread: ['checkability 133 5']
+        }
+      },
+      ROUTE.steps[1]!
+    ]
+  };
+
+  it('plans again from where the gate actually put the character', () => {
+    const asked: string[] = [];
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      replan: (to) => {
+        asked.push(to);
+        return {
+          cost: 1,
+          blocked: false,
+          steps: [{ ...ROUTE.steps[1]!, from: '9/1322', to: '1/3' }]
+        };
+      }
+    });
+    walk.start(GATED, at(1, 1));
+    vi.advanceTimersByTime(50);
+    // Not `1/2`, which is where the branch the plan read would have landed.
+    walk.onCharacter(at(9, 1322));
+    vi.advanceTimersByTime(50);
+
+    expect(asked).toEqual(['1/3']);
+    expect(walk.progress.status).toBe('walking');
+    expect(moves(sent)).toEqual(['go portal', 'e']);
+    expect(notices.join(' ')).toContain('checkability 133 5');
+    walk.dispose();
+  });
+
+  /* A step with every condition read is still the plan going wrong. */
+  it('stops on the wrong room where nothing on the step was unreadable', () => {
+    const asked: string[] = [];
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      replan: (to) => {
+        asked.push(to);
+        return ROUTE;
+      }
+    });
+    walk.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(50);
+    walk.onCharacter(at(9, 1322));
+
+    expect(asked).toEqual([]);
+    expect(walk.progress.status).toBe('stopped');
+    walk.dispose();
   });
 });
 
@@ -4412,6 +4647,246 @@ describe('resting before a trap', () => {
     walk.start(ROUTE, withHp(10));
     await vi.advanceTimersByTimeAsync(50);
     expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+});
+
+describe('a step that hands the character to a draw', () => {
+  const LANDING = { spell: 596, name: 'asylum', map: 9, low: 10, high: 12 };
+
+  /**
+   * One step west that scatters, with the destination it is expected to reach.
+   *
+   * The requirement is what makes it two room blocks rather than one — see
+   * `movesTwice` — so it is on the step exactly as the router puts it there.
+   */
+  const drawn = (moves: number): Route => ({
+    cost: 1 + moves,
+    blocked: false,
+    steps: [
+      {
+        from: '1/1',
+        to: '9/99',
+        direction: 'w',
+        command: 'w',
+        requirement: {
+          kind: 'cast',
+          raw: 'Cast: pre-0, post-596',
+          castPost: 596,
+          spellEffect: 'scatters',
+          landing: LANDING
+        },
+        name: "Old Man's Cell",
+        dark: false,
+        scatter: { landing: LANDING, rooms: 3, moves }
+      }
+    ]
+  });
+
+  /*
+   * **The first block is the room the exit table names, and acting on it is
+   * the bug.** `CastExit.TryMoveThroughExit` describes that room and then
+   * casts, so the character is in it for no time at all; the walk has to wait
+   * for the second block, which is where the spell actually put them.
+   */
+  it('waits out the first of the two blocks a cast exit prints', async () => {
+    const asked: string[] = [];
+    let inFlight = 0;
+    let where = at(1, 1);
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => where,
+      pendingMoves: () => inFlight,
+      replan: (to) => {
+        asked.push(to);
+        return { steps: [], cost: 0, blocked: true, reason: 'no' };
+      }
+    });
+    walk.start(drawn(4), at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(moves(sent)).toEqual(['w']);
+
+    // The table's room, with the teleport's own block still on the wire.
+    inFlight = 1;
+    where = at(9, 10);
+    walk.onCharacter(at(9, 10));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(asked).toEqual([]);
+    expect(walk.progress.status).toBe('walking');
+    walk.dispose();
+  });
+
+  /*
+   * The realm put the character somewhere the plan never named, which on a
+   * scatter step is the step *working*. The wrong-room guard would read it as
+   * the route desynchronising and stop the journey; instead the way on is
+   * planned from where the character actually is, which is the only thing the
+   * client can do after a draw and exactly what a player does.
+   */
+  it('plans again from wherever it landed instead of stopping', async () => {
+    const asked: string[] = [];
+    const onward: Route = {
+      cost: 1,
+      blocked: false,
+      steps: [
+        {
+          from: '9/11',
+          to: '9/99',
+          direction: 'n',
+          command: 'n',
+          name: "Old Man's Cell",
+          requirement: null,
+          dark: false
+        }
+      ]
+    };
+    let inFlight = 0;
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => at(9, 11),
+      pendingMoves: () => inFlight,
+      replan: (to) => {
+        asked.push(to);
+        return onward;
+      }
+    });
+    walk.start(drawn(4), at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+
+    inFlight = 1;
+    walk.onCharacter(at(9, 10));
+    await vi.advanceTimersByTimeAsync(10);
+    // Not 9/10, which is the only room the plan could ever have named.
+    inFlight = 0;
+    walk.onCharacter(at(9, 11));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(asked).toEqual(['9/99']);
+    expect(walk.progress.status).toBe('walking');
+    expect(moves(sent)).toEqual(['w', 'n']);
+    expect(notices.some((line) => line.includes('asylum'))).toBe(true);
+    walk.dispose();
+  });
+
+  /*
+   * And one time in three the draw lands on the room the walk was for, which
+   * is an arrival and not a replan — `RouteStep.to` on a scatter step is the
+   * destination, so the ordinary path already handles it.
+   */
+  it('arrives when the draw lands on the destination', async () => {
+    let planned = 0;
+    let inFlight = 0;
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => at(9, 99),
+      pendingMoves: () => inFlight,
+      replan: () => {
+        planned += 1;
+        return 'should not be asked';
+      }
+    });
+    walk.start(drawn(4), at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    inFlight = 1;
+    walk.onCharacter(at(9, 10));
+    await vi.advanceTimersByTimeAsync(10);
+    inFlight = 0;
+    walk.onCharacter(at(9, 99));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(planned).toBe(0);
+    expect(walk.progress.status).toBe('arrived');
+    walk.dispose();
+  });
+
+  /*
+   * **Asking is only half of it; the client has to wait for the answer.**
+   *
+   * Measured on the wire 2026-09-14: the walk asked, said so, and the very
+   * next status line fell through to *I can no longer tell which room you are
+   * in* and stopped the journey — before `rm` had been answered. No signature
+   * among the asylum's twenty-four landings is held by one room, so this is
+   * every arrival there, not a corner.
+   */
+  it('waits for the rm it asked for rather than stopping on the next line', async () => {
+    let asks = 0;
+    let inFlight = 0;
+    let where = at(null, null);
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => where,
+      pendingMoves: () => inFlight,
+      locate: () => {
+        asks += 1;
+      },
+      replan: () => ({
+        steps: [
+          {
+            from: '9/11',
+            to: '9/99',
+            direction: 'n',
+            command: 'n',
+            name: "Old Man's Cell",
+            requirement: null,
+            dark: false
+          }
+        ],
+        cost: 1,
+        blocked: false
+      })
+    });
+    walk.start(drawn(4), at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+
+    // The landing: named, but four of the draw's rooms share its signature.
+    const lost = at(null, null, {
+      room: { ...structuredClone(EMPTY_CHARACTER.room), ambiguous: 4 }
+    });
+    walk.onCharacter(lost);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(asks).toBe(1);
+    expect(walk.progress.status).toBe('walking');
+
+    // A second status line before the answer used to stop the walk here.
+    walk.onCharacter(lost);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(asks).toBe(1);
+    expect(walk.progress.status).toBe('walking');
+
+    // And the answer arrives, so the journey carries on.
+    where = at(9, 11);
+    walk.onCharacter(at(9, 11));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(walk.progress.status).toBe('walking');
+    expect(moves(sent)).toEqual(['w', 'n']);
+    walk.dispose();
+  });
+
+  /*
+   * A draw that lands somewhere the destination cannot be reached from ends
+   * the walk with the router's own reason. The realm can do this — the way out
+   * of the Warped Asylum is one room of a hundred and eight — and a walk that
+   * kept stepping would be sending directions from a room it has no plan for.
+   */
+  it('stops with the router\u2019s reason when the landing leads nowhere', async () => {
+    let inFlight = 0;
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => at(9, 12),
+      pendingMoves: () => inFlight,
+      replan: () => ({ steps: [], cost: 0, blocked: true, reason: 'No way there at all' })
+    });
+    walk.start(drawn(4), at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    inFlight = 1;
+    walk.onCharacter(at(9, 10));
+    await vi.advanceTimersByTimeAsync(10);
+    inFlight = 0;
+    walk.onCharacter(at(9, 12));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(walk.progress.status).toBe('stopped');
+    expect(walk.progress.reason).toBe('No way there at all');
     walk.dispose();
   });
 });

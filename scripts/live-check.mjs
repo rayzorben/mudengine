@@ -552,10 +552,16 @@ if (plan === null) {
   console.log('   SKIP  no unobstructed route from here to walk');
 } else {
   console.log(`         walking ${plan.route.steps.map((s) => s.command).join(' → ')}`);
-  const refused = await evaluate(
+  // `walkRoute` answers with a union: walking, a refusal, or the plan drawn
+  // again because the character moved between the planning and the press.
+  const answer = await evaluate(
     `window.mudengine.walkRoute('${SESSION}', ${JSON.stringify(plan.route)})`
   );
-  check(refused === null, 'a route planned from realm data starts walking', String(refused));
+  check(
+    answer?.started === true,
+    'a route planned from realm data starts walking',
+    JSON.stringify(answer)
+  );
 
   let walk = null;
   for (let i = 0; i < 80; i += 1) {

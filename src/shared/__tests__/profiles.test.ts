@@ -240,3 +240,91 @@ describe('resolveProfile', () => {
     expect(resolveProfile('thorn', 'a string', base).error).toBeDefined();
   });
 });
+
+/*
+ * The one `automation:` list that is merged across scopes instead of being
+ * replaced by the overlay. The realm's half cannot ride on `overlay` at all —
+ * a realm's settings are not part of `config` — so this is the seam where the
+ * three lists actually meet, and the place a mistake in it would show.
+ */
+describe('the mob priority list, across global, realm and character', () => {
+  const realm = {
+    name: 'GreaterMUD (local)',
+    host: 'gmud-tgs',
+    port: 2427,
+    encoding: 'cp437',
+    mobPriority: [{ mob: 'sewer rat', priority: 'last' }]
+  };
+  const withRealm: Record<string, unknown> = {
+    servers: [realm],
+    automation: { combat: { mobPriority: [{ mob: 'red dragon', priority: 'last' }] } }
+  };
+
+  const priorities = (profile: { config: { automation: { combat: { mobPriority: unknown } } } }) =>
+    profile.config.automation.combat.mobPriority;
+
+  it('keeps a monster only the realm names', () => {
+    const profile = resolve({ name: 'Thorn', server: 'GreaterMUD (local)' }, withRealm);
+    expect(priorities(profile)).toContainEqual({ mob: 'sewer rat', priority: 'last' });
+  });
+
+  it('keeps the global rows beside the realm’s', () => {
+    const profile = resolve({ name: 'Thorn', server: 'GreaterMUD (local)' }, withRealm);
+    expect(priorities(profile)).toContainEqual({ mob: 'red dragon', priority: 'last' });
+  });
+
+  /*
+   * The case `overlay` alone gets wrong: a character stating its own list would
+   * otherwise replace the global one wholesale and lose the realm's entirely.
+   */
+  it('keeps every scope’s rows when the character states its own', () => {
+    const profile = resolve(
+      {
+        name: 'Thorn',
+        server: 'GreaterMUD (local)',
+        automation: { combat: { mobPriority: [{ mob: 'gnoll shaman', priority: 'first' }] } }
+      },
+      withRealm
+    );
+    expect(priorities(profile)).toEqual(
+      expect.arrayContaining([
+        { mob: 'gnoll shaman', priority: 'first' },
+        { mob: 'sewer rat', priority: 'last' },
+        { mob: 'red dragon', priority: 'last' }
+      ])
+    );
+  });
+
+  it('lets the character’s row win over the realm’s for one monster', () => {
+    const profile = resolve(
+      {
+        name: 'Thorn',
+        server: 'GreaterMUD (local)',
+        automation: { combat: { mobPriority: [{ mob: 'sewer rat', priority: 'first' }] } }
+      },
+      withRealm
+    );
+    expect(priorities(profile)).toContainEqual({ mob: 'sewer rat', priority: 'first' });
+    expect(priorities(profile)).not.toContainEqual({ mob: 'sewer rat', priority: 'last' });
+  });
+
+  it('lets the realm’s row win over the global one', () => {
+    const profile = resolve(
+      { name: 'Thorn', server: 'GreaterMUD (local)' },
+      {
+        servers: [{ ...realm, mobPriority: [{ mob: 'red dragon', priority: 'first' }] }],
+        automation: { combat: { mobPriority: [{ mob: 'red dragon', priority: 'last' }] } }
+      }
+    );
+    expect(priorities(profile)).toEqual([{ mob: 'red dragon', priority: 'first' }]);
+  });
+
+  /*
+   * An inline address names no realm directory, so there is no realm list to
+   * inherit and the global one must survive untouched.
+   */
+  it('keeps the global list for a character that spells its address out inline', () => {
+    const profile = resolve({ name: 'Thorn', server: { host: 'gmud-tgs', port: 2427 } }, withRealm);
+    expect(priorities(profile)).toEqual([{ mob: 'red dragon', priority: 'last' }]);
+  });
+});

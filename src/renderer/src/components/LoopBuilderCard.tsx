@@ -32,17 +32,25 @@
  *   for a step the plane cannot hold. A **teleport is a pick**, as the
  *   request stated — taking it adds the portal's room and the room it lands
  *   in, so the leg is that step and nothing else.
- * - **The picture is a window** (`MapView`, shared with the Map card): the
- *   wheel zooms about the pointer between the density slider's two ends, a
- *   drag on the background pans, and what is fetched is what the window can
- *   see. The builder opens at the densest end, as asked.
+ * - **The picture is a window** (`MapView`, the one map every surface draws):
+ *   the wheel zooms about the pointer between the density slider's two ends, a
+ *   drag on the background pans, a pointer at rest on a room opens what the
+ *   realm knows about it, and what is fetched is what the window can see. The
+ *   builder opens at the densest end, as asked.
+ *
+ * The quick view is the builder's only because it is *every* map's (todo
+ * 2026-09-14): a lair is what makes a room worth putting in a loop, and this
+ * was the one map that would not say what was in one. The **same** panel, with
+ * the same *Walk to* on it — what the builder decides is what a **click**
+ * means, and nothing else. A panel identical everywhere but for its one
+ * control is two panels.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import ClearField from './ClearField';
 import Icon from './Icon';
-import { MapLegend, type BuilderMarks } from './MapPlan';
+import { type BuilderMarks } from './MapPlan';
 import MapView from './MapView';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { loopFor, notableSteps, pickRoom, shapeOf, stopParts, suggestedName } from '../lib/builder';
@@ -62,6 +70,7 @@ import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 import type { CharacterState } from '@shared/character';
 import { LOOP_LIMITS } from '@shared/drafts';
+import { roomsWithFinds, type Find } from '@shared/finds';
 import type { Loop, LoopScope } from '@shared/loops';
 import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
 import { errorMessage } from '@shared/values';
@@ -85,6 +94,19 @@ import {
  */
 export type BuilderDestination = LoopScope;
 
+/**
+ * A loop handed to the builder ready-drawn — the Hunting card's *Create loop*
+ * (todo 00, 2026-09-13): the stops as picks, closed on the first, and the
+ * name offered. `stamp` tells one request from the next, so the same rooms
+ * asked for twice are drawn twice; the picks then belong to the card, and
+ * every edit, undo and save is the builder's own.
+ */
+export interface BuilderSeed {
+  picks: RoomId[];
+  name: string;
+  stamp: number;
+}
+
 export interface LoopBuilderCardProps extends CardChrome {
   character: CharacterState;
   /** The character's own name, for the destination chip. */
@@ -93,22 +115,44 @@ export interface LoopBuilderCardProps extends CardChrome {
   realmName: string;
   search(query: string): Promise<WorldRoom[]>;
   loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  /**
+   * The rooms this realm's find log names, marked with a dot — the Map card's
+   * own prop, taken in the same shape and drawn for the reason it is drawn
+   * there: where searching has turned something up is a fact about the realm,
+   * not about the surface it is drawn on.
+   */
+  finds: readonly Find[];
+  /**
+   * A pointer came to rest on a room, or left it. Passed straight through to
+   * the picture, exactly as the Map card passes it, and it is the Map card's
+   * own handler — one panel, drawn the same wherever a map is.
+   */
+  onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
+  onPeekEnd: (() => void) | null;
   /** The picks, planned by main against this character's realm. */
   draft(rooms: RoomId[]): Promise<LoopDraft>;
   /** Files the loop. Resolves to why it could not, or null. */
   save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  /** A loop to open on, drawn; null opens empty. */
+  seed?: BuilderSeed | null;
 }
 
 function LoopBuilderCard({
   character,
   characterName,
   realmName,
+  finds,
+  onPeek,
+  onPeekEnd,
   search,
   loadMap,
   draft,
   save,
+  seed = null,
   ...chrome
 }: LoopBuilderCardProps) {
+  /* The rooms alone, memoised on the log, exactly as the Map card takes it. */
+  const foundRooms = useMemo(() => [...roomsWithFinds(finds)], [finds]);
   const [history, setHistory] = useState<History<RoomId[]>>(() => begin([]));
   const picks = history.present;
   const [centre, setCentre] = useState<RoomId | null>(null);
@@ -147,6 +191,20 @@ function LoopBuilderCard({
   useEffect(() => {
     if (centre === null && here !== null) setCentre(here);
   }, [centre, here]);
+
+  /*
+   * A seed replaces the picks and the name outright and moves the picture to
+   * its first room — as one history step, so a second thought can take the
+   * whole loop back the way it takes any other edit back.
+   */
+  useEffect(() => {
+    if (seed === null) return;
+    setHistory(begin([...seed.picks]));
+    setTypedName(seed.name);
+    const first = seed.picks[0];
+    if (first !== undefined) setCentre(first);
+    setStatus(null);
+  }, [seed]);
 
   /*
    * The plan follows the picks, and a late answer is dropped: two clicks in
@@ -484,11 +542,15 @@ function LoopBuilderCard({
         </ul>
       )}
 
-      {/* The picture: the shared window, with the builder's own marks and controls on it. */}
+      {/* The picture: the shared window, with the builder's own marks and
+          controls on it, and its own legend under it. `onChoose` is what makes
+          a click here a pick rather than the settle every other map's click
+          is — see `MapPlanProps.onChoose`. */}
       <div className="builder-map">
         <MapView
           centre={centre}
           empty={empty}
+          finds={foundRooms}
           focus="centre"
           load={loadMap}
           marks={marks}
@@ -496,13 +558,14 @@ function LoopBuilderCard({
           onAway={takeAway}
           onChoose={choose}
           onLoaded={setMap}
+          onPeek={onPeek ?? undefined}
+          onPeekEnd={onPeekEnd ?? undefined}
           onZoom={setZoom}
           path={plan.path}
           you={here}
           zoom={zoom}
         />
       </div>
-      <MapLegend builder />
 
       <div className="scroller builder-list">
         {shape === 'empty' ? (

@@ -282,6 +282,14 @@ function attention(
     return { level: 'info', label: t('tabs.tab.markSearching') };
   }
   /*
+   * Standing in a room too dark to read while the torch is lit. `info` for the
+   * search's reason — the client is working on it — and bounded, unlike the
+   * search: a few seconds, then the walk stops and says why.
+   */
+  if (view.walk.status === 'walking' && view.walk.hold === 'dark') {
+    return { level: 'info', label: t('tabs.tab.markLighting') };
+  }
+  /*
    * Waiting out a stated affliction, on a route or between a lap's legs.
    * `warn`, unlike the holds above: a condition is something the person may
    * want to come and cure, and `walking` or `looping` here would be the tab

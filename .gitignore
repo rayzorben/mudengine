@@ -116,3 +116,7 @@ docs/
 # and `npm run test:realm` reads.
 *.mdb
 *.accdb
+
+# The gate ledger and its step logs: which checks are green at which inputs,
+# and what the last run of each printed. Local state, rebuilt by running them.
+.gate/

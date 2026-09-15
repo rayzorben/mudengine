@@ -150,7 +150,10 @@ export const MARK_ICONS = [
   'ears',
   'face',
   'readied',
-  'kit'
+  'kit',
+  /* what can be done with a thing, beside the equip gate above */
+  'drop',
+  'kept'
 ] as const;
 export type MarkIcon = (typeof MARK_ICONS)[number];
 

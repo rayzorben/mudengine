@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   asLoops,
+  dueStop,
   loopCategory,
   nextStop,
   sameLoops,
@@ -83,6 +84,118 @@ describe('where a loop goes next', () => {
     expect(nextStop(there, 2, true)).toEqual({ index: 1, forward: false });
     expect(nextStop(there, 1, false)).toEqual({ index: 0, forward: false });
     expect(nextStop(there, 0, false)).toEqual({ index: 1, forward: true });
+  });
+});
+
+/*
+ * A stop may carry the clock of the room it names, and the lap walks it only
+ * when that clock has come round (todo 15). The Hunting card already prices a
+ * slow filler as entered on some laps and not others; before this the runner
+ * walked its detour on every one, so the rate the card promised was not the
+ * rate the lap earned.
+ */
+describe('which stop is worth walking to', () => {
+  /** The user's own example: two rooms on 30 seconds, a third on 60. */
+  const clocked: Loop = {
+    name: 'r',
+    stops: [
+      { room: 'A', every: 30 },
+      { room: 'B', every: 30 },
+      { room: 'C', every: 60 }
+    ]
+  };
+  const plain: Loop = { name: 'r', stops: [{ room: 'A' }, { room: 'B' }, { room: 'C' }] };
+  const at = (seconds: number): number => seconds * 1000;
+
+  /* With nothing clocked, this is `nextStop` and nothing else: a loop written
+     by hand walks exactly as it was written. */
+  it('walks the list as written when no stop states a clock', () => {
+    expect(dueStop(plain, 0, true, new Map(), at(0))).toEqual({
+      index: 1,
+      forward: true,
+      lapped: false
+    });
+    expect(dueStop(plain, 2, true, new Map(), at(0))).toEqual({
+      index: 0,
+      forward: true,
+      lapped: true
+    });
+  });
+
+  /* A stop the client has never cleared has no elapsed time to judge by, so it
+     is walked rather than guessed at. */
+  it('walks a stop it has never cleared', () => {
+    expect(dueStop(clocked, 0, true, new Map([['A', at(0)]]), at(1)).index).toBe(1);
+  });
+
+  /* The whole of the todo: standing in B at 20s with A cleared at 0 and C at
+     20, nothing is due — so the soonest is taken (A, at 30) rather than the
+     next in the list (C, at 80), whose detour would earn nothing. */
+  it('takes the stop whose clock comes round soonest when none is due', () => {
+    const cleared = new Map([
+      ['A', at(0)],
+      ['B', at(10)],
+      ['C', at(20)]
+    ]);
+    expect(dueStop(clocked, 1, true, cleared, at(20))).toEqual({
+      index: 0,
+      forward: true,
+      lapped: true
+    });
+  });
+
+  /* And once the slow one has come round it is walked, in its own place. */
+  it('walks the slow stop once its clock has come round', () => {
+    const cleared = new Map([
+      ['A', at(60)],
+      ['B', at(70)],
+      ['C', at(20)]
+    ]);
+    expect(dueStop(clocked, 1, true, cleared, at(85)).index).toBe(2);
+  });
+
+  /* A skipped stop is not a visit, and the lap counter is answered by the scan
+     that skipped it — a loop of three rooms must not report laps it never
+     walked. */
+  it('counts the lap from the stops it passed over, not from the one it took', () => {
+    const cleared = new Map([
+      ['A', at(100)],
+      ['B', at(0)],
+      ['C', at(0)]
+    ]);
+    // Standing in C at 40s: A is not due until 130, B is due at 30.
+    const next = dueStop(clocked, 2, true, cleared, at(40));
+    expect(next.index).toBe(1);
+    expect(next.lapped).toBe(true);
+  });
+
+  /* A bounce loop still bounces: the walking order is `nextStop`'s own. */
+  it('keeps the shape of a bounce loop', () => {
+    const corridor: Loop = { ...clocked, bounce: true };
+    const cleared = new Map([
+      ['A', at(0)],
+      ['B', at(0)],
+      ['C', at(0)]
+    ]);
+    expect(dueStop(corridor, 2, true, cleared, at(45))).toEqual({
+      index: 1,
+      forward: false,
+      lapped: true
+    });
+  });
+
+  /*
+   * One stop whose clock has not come round: stay on it, and count the lap as
+   * a one-room camp already counts it. The dwell is what waits — a camp steps
+   * to the same stop and dwells again without a command leaving (todo 108).
+   */
+  it('stays on a single stop that is not due yet', () => {
+    const camp: Loop = { name: 'c', stops: [{ room: 'A', every: 60 }] };
+    expect(dueStop(camp, 0, true, new Map([['A', at(0)]]), at(10))).toEqual({
+      index: 0,
+      forward: true,
+      lapped: true
+    });
   });
 });
 

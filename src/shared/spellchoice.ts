@@ -8,10 +8,11 @@
  * `CheckResistance`). See `mudengine-automation` § *A spell the server says
  * has no effect is not cast again this fight*.
  */
+import { HAZARD_ABILITY } from './abilities';
 import { magicResistance, scaledPower } from './menace';
 import { castOdds, type ProwessSheet } from './prowess';
 import type { RealmFamily } from './realm';
-import { spellTargeting, type CastableSpell } from './spellcraft';
+import { castsOnOthers, castsOnSelf, spellTargeting, type CastableSpell } from './spellcraft';
 import type { WorldSpell } from './world';
 
 /** `Spell.GetMagicResModifierByValue`'s pivot: the resistance at which a cast lands as stated. */
@@ -191,6 +192,137 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
   }
   const hardest = [...candidates].sort((a, b) => b.expected - a.expected || byCost(a, b));
   return { chosen: hardest[0]!, why: 'hardest', considered: candidates, refusal: null };
+}
+
+/**
+ * What one cast of a heal mends, as the server rolls it.
+ *
+ * The `Heal` ability's own figure where it states one, else the spell's power
+ * scaled to this level — `Spell.RollAndApplySpellAbilities`'s
+ * `abil.Sum == 0 ? modifiedValue : abil.Sum`, which is the same reading
+ * `menace.hazardOf` takes of the same ability from the other side (there a
+ * *negative* heal is a wound). `[min, max]`, equal where the ability states a
+ * flat figure; null where the realm marks no heal on the row at all, which is
+ * every attack spell and is how a book is filtered down to the heals in it.
+ */
+export function healPower(spell: WorldSpell, level: number): [number, number] | null {
+  const stated = (spell.abilities ?? []).find(([id]) => id === HAZARD_ABILITY.heal)?.[1];
+  if (stated === undefined) return null;
+  if (stated > 0) return [stated, stated];
+  // A negative figure is damage over time (`damnation`), not a heal.
+  if (stated < 0) return null;
+  const [low, high] = scaledPower(spell, level);
+  const min = Math.max(0, low);
+  const max = Math.max(min, high);
+  return max > 0 ? [min, max] : null;
+}
+
+/** Who the cast has to reach. A heal for somebody else is a different column. */
+export type HealAim = 'self' | 'party';
+
+export interface HealChoiceInput {
+  book: ReadonlyArray<CastableSpell & { level?: number | null }>;
+  realm: (name: string) => WorldSpell | null;
+  level: number | null;
+  /** What the pool holds now: a spell it cannot pay for is not a candidate. */
+  mana: number | null;
+  /**
+   * Hit points wanted back — the ceiling the healing runs to, less what the
+   * bar holds. The figure the choice is made against, and the whole reason
+   * this is decided per cast rather than configured once.
+   */
+  deficit: number;
+  aim: HealAim;
+  sheet: ProwessSheet;
+  family: RealmFamily | null;
+}
+
+export interface HealCandidate {
+  spell: CastableSpell;
+  realm: WorldSpell;
+  /** What one cast mends, at this level. */
+  min: number;
+  max: number;
+  /** The mean, the cast's own odds folded in — a spell often fumbled mends less. */
+  expected: number;
+  cost: number | null;
+  /** Whether one cast is expected to reach the ceiling. */
+  covers: boolean;
+}
+
+export type HealChoiceRefusal = 'no-book' | 'empty-book' | 'no-heal-spells' | 'no-mana';
+
+export interface HealChoice {
+  chosen: HealCandidate | null;
+  /** Why the chosen one won: it reaches the ceiling, or it mends the most. */
+  why: 'covers' | 'most' | null;
+  considered: HealCandidate[];
+  refusal: HealChoiceRefusal | null;
+}
+
+/**
+ * Which heal to cast, now: **the cheapest whose cast is expected to reach the
+ * ceiling, else the one that mends most** (todo 01, 2026-09-13).
+ *
+ * The complaint, in the player's own figures: at 145/150 a character carrying
+ * *major healing* spends a major heal's mana to mend five points, and at
+ * 90/150 a character carrying *minor healing* spends round after round not
+ * getting ahead of the damage. One configured spell is the wrong answer at one
+ * end of the bar or the other, and which end changes every second — so the
+ * spell is chosen against the **deficit**, which is a stated figure rather
+ * than an estimate: `hp` and `hpMax` are the server's own numbers.
+ *
+ * *Expected*, not the least roll, and the reason is the pair
+ * `healBelow`/`healTo`: a cast that falls short is followed by another, so
+ * under-healing costs a round and over-healing costs mana that cannot be got
+ * back. A guarantee would buy the dearest spell every time the deficit sat
+ * above a cheap spell's floor. Where nothing is expected to reach the ceiling
+ * the biggest is right — it closes the most of the gap for the round spent.
+ *
+ * Targeting is the realm's (`castsOnSelf` / `castsOnOthers`), never a guess:
+ * `way of the swan` reaches the caster alone and `c swan <name>` is a refusal
+ * printed out loud in the room.
+ */
+export function chooseHealSpell(input: HealChoiceInput | { book: null }): HealChoice {
+  if (input.book === null) return { chosen: null, why: null, considered: [], refusal: 'no-book' };
+  if (input.book.length === 0)
+    return { chosen: null, why: null, considered: [], refusal: 'empty-book' };
+
+  const candidates: HealCandidate[] = [];
+  let heals = 0;
+  for (const spell of input.book) {
+    const realm = input.realm(spell.name);
+    if (realm === null) continue;
+    const aim = spellTargeting(realm.targets);
+    if (!(input.aim === 'self' ? castsOnSelf(aim) : castsOnOthers(aim))) continue;
+    const required = spell.level ?? realm.level ?? null;
+    const power = healPower(realm, input.level ?? required ?? 1);
+    if (power === null) continue;
+    heals += 1;
+    if (input.level !== null && required !== null && required > input.level) continue;
+    const cost = spell.cost ?? realm.mana ?? null;
+    if (input.mana !== null && cost !== null && cost > input.mana) continue;
+    const [min, max] = power;
+    const odds = castOdds(realm, input.sheet, input.family)?.chance.value ?? 1;
+    const expected = ((min + max) / 2) * odds;
+    candidates.push({ spell, realm, min, max, expected, cost, covers: expected >= input.deficit });
+  }
+
+  if (heals === 0) return { chosen: null, why: null, considered: [], refusal: 'no-heal-spells' };
+  if (candidates.length === 0)
+    return { chosen: null, why: null, considered: [], refusal: 'no-mana' };
+
+  const byCost = (a: HealCandidate, b: HealCandidate): number =>
+    (a.cost ?? Number.MAX_SAFE_INTEGER) - (b.cost ?? Number.MAX_SAFE_INTEGER);
+  // Cheapest that reaches the ceiling; two at one price, the surer of them.
+  const covering = candidates
+    .filter((candidate) => candidate.covers)
+    .sort((a, b) => byCost(a, b) || b.expected - a.expected);
+  if (covering.length > 0) {
+    return { chosen: covering[0]!, why: 'covers', considered: candidates, refusal: null };
+  }
+  const most = [...candidates].sort((a, b) => b.expected - a.expected || byCost(a, b));
+  return { chosen: most[0]!, why: 'most', considered: candidates, refusal: null };
 }
 
 /**

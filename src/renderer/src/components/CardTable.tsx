@@ -79,6 +79,14 @@ export interface Facet {
 /** Attributes a card puts on its own rows — the tint on a worn item, a level. */
 export type RowAttrs = {
   className?: string;
+  /**
+   * Why the row is drawn the way it is, as hover text over the whole of it.
+   *
+   * For a row the card has *changed the look of* and owes the reader an
+   * explanation for — the quest book's sunk rows, which are dimmed for a
+   * reason the realm states. Not a place to restate what a cell already says.
+   */
+  title?: string;
 } & Partial<Record<`data-${string}`, string>>;
 
 const NO_FACETS: readonly Facet[] = [];

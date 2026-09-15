@@ -118,6 +118,18 @@ export class TrainErrand {
   }
 
   /**
+   * Whether the errand has the character: walking to a trainer, or waiting for
+   * the level to move.
+   *
+   * Read by anything that would otherwise start a journey of its own in the
+   * gap between arriving and the server answering — `AutoHunt`, whose own
+   * `busy()` says *an escape in flight, an armed retreat, an errand*.
+   */
+  get busy(): boolean {
+    return this.phase.kind !== 'idle';
+  }
+
+  /**
    * A death: the trainer is several maps away now.
    *
    * The fifth holder of a destination, beside the retreat, the lap, the supply

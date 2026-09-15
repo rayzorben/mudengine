@@ -40,8 +40,8 @@ import {
 import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
 import {
   ALERT_SIDES,
-  ALERT_WATCHES,
-  NOTICE_CHANNELS,
+  DEFAULT_ALERT_DEBOUNCE_SECONDS,
+  isAlertEvent,
   SEVERITIES,
   STARTER_ALERTS,
   type AlertRule,
@@ -185,6 +185,20 @@ export interface Server {
    * very archive a bundled world was built from is that world.
    */
   database: string;
+  /**
+   * The realm's own ranking of its monsters, merged under every character's.
+   *
+   * **On the realm, because a monster is.** `mobPriority` names things by the
+   * name this realm's data spells them, so a ranking written for one realm
+   * means nothing on another — and every character playing here wants the same
+   * answer to *which of these is worth killing first*. Stating it per character
+   * would be the same list written out once per character, which is what
+   * `login` and `database` above are on the realm to avoid.
+   *
+   * Merged rather than replaced: see `mergeMobPriorities`. A character's own
+   * row for a monster wins, and a monster only the realm names still counts.
+   */
+  mobPriority: MobPriority[];
 }
 
 export interface FontConfig {
@@ -364,41 +378,6 @@ export interface AlertsUiConfig {
    * what a row can say.
    */
   rules: AlertRule[];
-  /** What is worth interrupting somebody who is not looking at the window. */
-  desktop: DesktopAlertsConfig;
-}
-
-/**
- * What the operating system is asked to say, for a player who is elsewhere.
- *
- * The Alerts card is a second reading of the stream for somebody who is
- * looking at it. This is the third reading, for somebody who is not looking at
- * the client at all — which is the state a MUD client is in most of an
- * evening, because the whole point of automating a character is that you can
- * go and do something else.
- *
- * `DESKTOP_ALERTS` is the list of happenings worth raising, and the ranking
- * answers for the rest. **Which of them to raise is a row's business** (todo
- * 02): a per-happening mute list here said *never tell me about arriving*,
- * which is a row with `notify` off, so it was a second vocabulary for one
- * question. These two switches are what is left — whether to raise anything at
- * all, and whether to do it while the window is in front.
- *
- * On by default, and not while the window has the focus. Both halves matter:
- * a notification feature nobody finds is one that was never built, and a
- * notification for something already on screen is the reason people turn
- * notifications off.
- */
-export interface DesktopAlertsConfig {
-  /** Raise anything at all. */
-  enabled: boolean;
-  /**
-   * Raise them while the window has the focus too.
-   *
-   * Off: the Alerts card is already on screen and the rail already counts what
-   * was missed. On is for a window kept small in a corner.
-   */
-  whileFocused: boolean;
 }
 
 /**
@@ -862,6 +841,28 @@ export interface CombatConfig {
    * The place for the thing that is technically hostile and reliably fatal.
    */
   avoid: string[];
+  /**
+   * The order monsters are attacked in, by name — MegaMUD's *Attack Priority
+   * List*, as five bands rather than one flat list.
+   *
+   * **This replaces the weighing rather than ranking against it.** Where the
+   * room holds a listed monster, the band decides and `src/shared/menace.ts`
+   * is not consulted: somebody who writes *shamans first* means first, not
+   * first unless the arithmetic disagrees, and a ranking that the realm's own
+   * numbers could overturn is one nobody can predict from reading it. Within
+   * one band the room's own listing order decides, which is the order that
+   * was there before any weighing existed.
+   *
+   * A monster no row names is in `default`, so the list is somewhere to add
+   * the one monster that matters and never a ranking of the whole realm.
+   * Every refusal — `avoid`, the evil-point cost, the health and experience
+   * caps, the disposition gate — still applies **first**: a band says which of
+   * the monsters worth attacking to attack, never that one is worth attacking.
+   *
+   * Merged across the three scopes by monster, narrowest winning, unlike
+   * every other list here — see `mergeMobPriorities`.
+   */
+  mobPriority: MobPriority[];
   /**
    * Do not open on anything the realm says has more health than this.
    * 0 never refuses.
@@ -1502,6 +1503,35 @@ export const POTION_VERBS = ['drink', 'use'] as const;
 export type PotionVerb = (typeof POTION_VERBS)[number];
 
 /**
+ * One monster, and where it sits in the order things are attacked in.
+ *
+ * The row shape of the priority list. `mob` is a `mobKey` — lowercased, the
+ * leading article stripped — because that is the one spelling the wire ever
+ * uses and the same normalisation `avoid` has always applied.
+ */
+export interface MobPriority {
+  /** The monster, keyed the way the wire spells it. */
+  mob: string;
+  /** Which band it is attacked in. See `MOB_PRIORITIES`. */
+  priority: MobPriorityBand;
+}
+
+/**
+ * The five bands, ordered exactly as they are attacked.
+ *
+ * The array's order **is** the ranking — `MOB_PRIORITIES.indexOf` is what
+ * sorts a room — so these are never reordered for readability. `default` is
+ * the middle on purpose: `high` and `low` are defined against it, and a
+ * monster nobody listed is in it, which is what makes the list something you
+ * add one row to rather than a ranking of every monster in the realm.
+ */
+export const MOB_PRIORITIES = ['first', 'high', 'default', 'low', 'last'] as const;
+export type MobPriorityBand = (typeof MOB_PRIORITIES)[number];
+
+/** Where an unlisted monster sits: the middle band, and the reason it exists. */
+export const DEFAULT_MOB_PRIORITY: MobPriorityBand = 'default';
+
+/**
  * Walking, beyond the mechanics of a route — MegaMUD's **Movement**.
  *
  * `WalkConfig` above is the *timing* of a walk and belongs to the walker;
@@ -1685,6 +1715,35 @@ export interface MovementConfig {
    * step exists to be refused at.
    */
   collectKeys: boolean;
+}
+
+/**
+ * Hunting on its own: pick the best lair the survey knows, walk there and run
+ * it (todo 05, 2026-09-13).
+ *
+ * Its own block rather than a field of `automation.walk`, because walking is
+ * how this gets there and not what it is: what it decides is *where a
+ * character should be*, which is the Hunting card's question, and todo 06
+ * hangs the keeping-it-honest half off the same block.
+ *
+ * **The survey's own exclusions are the safety** — a lair whose worst spawn
+ * would take more than `maxDamageShare` of the bar, or one too trivial to pay
+ * — and `automation.walk.minExpPerHour` is the floor below which nothing is
+ * worth walking to. Neither is restated here: two vocabularies for one
+ * question is how somebody sets one and wonders why the other still decides.
+ */
+export interface HuntingAutomationConfig {
+  /** Walk to the best hunting ground and run it, unasked. Off. */
+  enabled: boolean;
+  /**
+   * How far to look, in steps; 0 is everywhere the exits reach.
+   *
+   * The sweep is bounded by the realm rather than by a clock, and an unbounded
+   * one on a big realm is the whole map — which is the right answer for *where
+   * should this character be tonight* and the wrong one for a character that
+   * should not leave its area. A number here is that player's answer.
+   */
+  radius: number;
 }
 
 /**
@@ -2160,6 +2219,7 @@ export interface AutomationConfig {
   /** Casting, at the one moment a rule cannot express. */
   spells: SpellsConfig;
   /** Spending character points on the stat screen. */
+  hunting: HuntingAutomationConfig;
   train: TrainConfig;
 }
 
@@ -2299,10 +2359,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       hp: { caution: 0.5, critical: 0.25 },
       mana: { caution: 0.5, critical: 0.25 }
     },
-    alerts: {
-      rules: STARTER_ALERTS.map((rule) => ({ ...rule })),
-      desktop: { enabled: true, whileFocused: false }
-    },
+    alerts: { rules: STARTER_ALERTS.map((rule) => ({ ...rule })) },
     // Every design off; each is what a player starts designing from. The
     // bands are the HUD's own shape -- a colour from a share of maximum up.
     rewrites: {
@@ -2422,6 +2479,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       maxFightCost: 0,
       refreshRounds: 3,
       avoid: [],
+      mobPriority: [],
       maxTargetHealth: 0,
       minMobs: 0,
       maxMonsterExperience: 0
@@ -2505,6 +2563,10 @@ export const DEFAULT_CONFIG: AppConfig = {
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       collectKeys: true
+    },
+    hunting: {
+      enabled: false,
+      radius: 0
     },
     train: {
       stats: false,
@@ -2890,11 +2952,13 @@ function normalizeConsoleUi(value: unknown): ConsoleUiConfig {
 function normalizeAlertRules(value: unknown): AlertRule[] {
   const rules: AlertRule[] = [];
   if (!Array.isArray(value)) return rules;
-  const known = new Set<string>([...NOTICE_CHANNELS, ...ALERT_WATCHES]);
   for (const entry of value.slice(0, 64)) {
     if (!isRecord(entry)) continue;
     const on = str(entry['on'], '').trim().toLowerCase();
-    if (!known.has(on)) continue;
+    // An event this client does not know, which after todo 03 includes every
+    // channel word a file written before it named. The migration carries those
+    // across; anything left here is a misspelling, and dropped.
+    if (!isAlertEvent(on)) continue;
     const notify = bool(entry['notify'], false);
     rules.push({
       on: on as AlertRule['on'],
@@ -2914,7 +2978,14 @@ function normalizeAlertRules(value: unknown): AlertRule[] {
       // number and neither is clamped to the other's range.
       value: Math.max(0, Number(entry['value']) || 0),
       percent: bool(entry['percent'], true),
-      name: str(entry['name'], '').trim().slice(0, 60)
+      name: str(entry['name'], '').trim().slice(0, 60),
+      // How long the row stays quiet after firing. Absent means the shipped
+      // thirty seconds rather than 0: a file written before this existed gets
+      // the behaviour the setting was added for, not the one it replaced.
+      quietSeconds: Math.max(
+        0,
+        Math.round(Number(entry['quietSeconds'] ?? DEFAULT_ALERT_DEBOUNCE_SECONDS) || 0)
+      )
     });
   }
   return rules;
@@ -2930,26 +3001,12 @@ function normalizeAlerts(raw: unknown): AlertsUiConfig {
      * is not silence now, it is *whatever the ranking says*, which is exactly
      * what a client with no rows should do.
      */
-    return {
-      rules: d.rules.map((rule) => ({ ...rule })),
-      desktop: normalizeDesktopAlerts(undefined)
-    };
+    return { rules: d.rules.map((rule) => ({ ...rule })) };
   }
   return {
-    desktop: normalizeDesktopAlerts(raw['desktop']),
     rules: Array.isArray(raw['rules'])
       ? normalizeAlertRules(raw['rules'])
       : d.rules.map((rule) => ({ ...rule }))
-  };
-}
-
-/** What the desktop is asked to say: two switches, read forgivingly. */
-function normalizeDesktopAlerts(value: unknown): DesktopAlertsConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.ui.alerts.desktop;
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    whileFocused: bool(raw['whileFocused'], d.whileFocused)
   };
 }
 
@@ -3091,7 +3148,8 @@ function normalizeServer(value: unknown): Server | null {
      * realm". Whether it can be read is answered where it is opened, once, and
      * reported.
      */
-    database: str(value['database'], '')
+    database: str(value['database'], ''),
+    mobPriority: normalizeMobPriorities(value['mobPriority'])
   };
 }
 
@@ -3413,6 +3471,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     events: asEvents(raw['events']),
     movement: normalizeMovement(raw['movement']),
     spells: normalizeSpells(raw['spells']),
+    hunting: normalizeHuntingAutomation(raw['hunting']),
     train: normalizeTrain(raw['train'])
   };
 }
@@ -3661,6 +3720,16 @@ function normalizeMovement(value: unknown): MovementConfig {
   };
 }
 
+/** Steps are whole and never negative; 0 means *everywhere the exits reach*. */
+export function normalizeHuntingAutomation(value: unknown): HuntingAutomationConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.automation.hunting;
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    radius: int(raw['radius'], d.radius, 0, 9_999)
+  };
+}
+
 /** A wanted figure is a whole number; the race's ceiling is applied at the screen, not here. */
 export function normalizeTrain(value: unknown): TrainConfig {
   const raw = isRecord(value) ? value : {};
@@ -3885,6 +3954,7 @@ function normalizeCombat(value: unknown): CombatConfig {
     // asked to look every round would spend most of a fight looking.
     refreshRounds: int(raw['refreshRounds'], d.refreshRounds, 0, 20),
     avoid: mobNames(raw['avoid']),
+    mobPriority: normalizeMobPriorities(raw['mobPriority']),
     minMobs: int(raw['minMobs'], d.minMobs, 0, 99),
     maxMonsterExperience: int(raw['maxMonsterExperience'], d.maxMonsterExperience, 0, 100_000_000),
     // Capped far above any health the shipped realm states, so a typo cannot
@@ -3910,6 +3980,72 @@ function mobNames(value: unknown): string[] {
     if (seen.size >= 64) break;
   }
   return [...seen];
+}
+
+/**
+ * Priority rows, keyed and de-duplicated the way `mobNames` keys `avoid`.
+ *
+ * A row naming no monster is dropped rather than defaulted, as a potion rule
+ * and a supply row are: it could only ever match nothing. A band the table
+ * does not know is dropped too — the runtime half of a closed union — rather
+ * than falling back to `default`, which would silently turn a typo into a row
+ * that reads as deliberate and does nothing.
+ *
+ * The **first** row for a monster wins, where `mobNames` keeps the last: these
+ * rows are merged across three scopes by `mergeMobPriorities` before they get
+ * here, so by this point the narrowest scope's row is already in front and
+ * anything behind it is the broader scope it overrode.
+ */
+export function normalizeMobPriorities(value: unknown): MobPriority[] {
+  const rows: MobPriority[] = [];
+  if (!Array.isArray(value)) return rows;
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const mob = mobKey(String(entry['mob'] ?? ''));
+    if (mob.length === 0 || seen.has(mob)) continue;
+    const band = str(entry['priority'], DEFAULT_MOB_PRIORITY).trim() as MobPriorityBand;
+    if (!MOB_PRIORITIES.includes(band)) continue;
+    seen.add(mob);
+    rows.push({ mob, priority: band });
+    if (rows.length >= 64) break;
+  }
+  return rows;
+}
+
+/**
+ * One priority list from several scopes, with the narrower winning per monster.
+ *
+ * The one list in `automation:` that is merged rather than replaced, and the
+ * exception is deliberate. `overlay` replaces an array wholesale because a
+ * character that restates `automation.rules` means *those* rules — but a
+ * priority list is addressed by monster, exactly as loops are addressed by
+ * name, so the same argument that made `mergeLoops` additive applies: a
+ * character that wants the realm's ranking plus one row of its own should not
+ * have to restate the realm's, and would have no way to keep the copy in step.
+ *
+ * Removing a broader scope's row is therefore done by **overriding** it —
+ * naming the monster again at `default`, which is what "follow the game logic"
+ * already means — rather than by deleting it, which is the trade `mergeNamed`
+ * makes everywhere else it is used.
+ *
+ * Lists are given broadest first; the first row for a monster wins, so callers
+ * pass global, then realm, then character.
+ */
+export function mergeMobPriorities(...lists: readonly (readonly MobPriority[])[]): MobPriority[] {
+  const rows: MobPriority[] = [];
+  const seen = new Set<string>();
+  // Reversed: the narrowest scope is stated last and has to arrive first, so
+  // that `normalizeMobPriorities`' first-wins rule keeps it.
+  for (const list of [...lists].reverse()) {
+    for (const row of list) {
+      const mob = mobKey(row.mob);
+      if (mob.length === 0 || seen.has(mob)) continue;
+      seen.add(mob);
+      rows.push({ mob, priority: row.priority });
+    }
+  }
+  return rows;
 }
 
 function normalizeSafety(value: unknown): SafetyConfig {

@@ -46,7 +46,7 @@ import {
   type ExperienceTable
 } from '../../shared/experience';
 import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/statline';
-import { answersTo, attacksOnSight, classifyOccupant } from '../../shared/mobs';
+import { answersTo, attacksOnSight, classifyOccupant, rowNameOf } from '../../shared/mobs';
 import {
   gained,
   lost,
@@ -554,6 +554,17 @@ export class CharacterTracker {
    */
   private sheetWanted = false;
   /**
+   * The realm rows of monsters seen to die since this was last taken.
+   *
+   * Set here and taken by `SessionManager.noteQuestKilled`, the tracker's usual
+   * shape: a death is a fact and what to do about it is somebody else's. Rows
+   * rather than the room's spelling (`rowNameOf`), because what reads this is a
+   * quest step naming a monster out of the `Monsters` table, and a **set**
+   * because two of one name dying is one answer to that question — which also
+   * bounds it whatever a caller that never drains does.
+   */
+  private readonly deaths = new Set<string>();
+  /**
    * Sentences nothing recognised that may be an effect *landing*, each
    * waiting for a stat sheet to say so.
    *
@@ -715,6 +726,15 @@ export class CharacterTracker {
    */
   hintTeleport(command: string, map: number, number: number): void {
     this.expect.hintTeleport(command, map, number);
+  }
+
+  /**
+   * The walker's word that a command walks an exit whose cast moves the
+   * character — and so answers with two room blocks. See
+   * `Expectations.hintCast`.
+   */
+  hintCast(command: string, direction: Direction, rooms: readonly RoomId[]): void {
+    this.expect.hintCast(command, direction, rooms);
   }
 
   /**
@@ -964,7 +984,10 @@ export class CharacterTracker {
    * does not care who was driving, which is the whole of the difference from
    * the walker's own history.
    *
-   * Bounded by `tuning.walk.recentSteps`. Cleared by `reset()` — a new
+   * Bounded by `tuning.walk.trailSteps` — the back button walks it, so it is
+   * a session's history rather than the few steps a retreat looks over, and
+   * the escape reads its tail (`tuning.walk.recentSteps`) for that reason.
+   * A back step gives its entry up again (`retraced`). Cleared by `reset()` — a new
    * connection — and by a death, because the realm moves a dead character to
    * its area's temple along no edge and the trail out of the room it died in
    * leads back to whatever killed it.
@@ -1058,6 +1081,7 @@ export class CharacterTracker {
     this.conditionEnded.clear();
     this.recentlyStopped.clear();
     this.sheetWanted = false;
+    this.deaths.clear();
     this.statlineMatcher = null;
     this.statlineWanted = false;
     this.statlineAsked = false;
@@ -1091,6 +1115,8 @@ export class CharacterTracker {
     this.conditionEnded.clear();
     this.recentlyStopped.clear();
     this.sheetWanted = false;
+    // A kill nobody read before the socket closed can no longer be acted on.
+    this.deaths.clear();
     if (this.state.phase === 'unknown' && this.state.room.name === null) return false;
     this.state = {
       ...this.state,
@@ -1324,7 +1350,35 @@ export class CharacterTracker {
     const to = roomId(room.map, room.number);
     if (from === to) return;
     this.backtrail.push({ from, direction: moved, to });
-    if (this.backtrail.length > tuning().walk.recentSteps) this.backtrail.shift();
+    if (this.backtrail.length > tuning().walk.trailSteps) this.backtrail.shift();
+  }
+
+  /**
+   * The character has walked back over `step`: give it up, and everything the
+   * way back recorded after it.
+   *
+   * The trail is a navigation history, so **going back pops it**. Without
+   * that, one press of back records the move it made and the next press walks
+   * back over *that* — two rooms oscillating for ever, which is the naive
+   * reverse under another name.
+   *
+   * The **step**, not a length, because the way back is not always one step
+   * and the trail is bounded: at `trailSteps` every push shifts the oldest
+   * entry off, so an index taken before the walk names a different move by the
+   * time it lands. `SessionManager` marks the entry the press was made about
+   * and everything from it is given up together. Nothing is given up until the
+   * character is actually standing in the room it went back to, so a walk that
+   * stopped half way leaves the history true.
+   */
+  retraced(step: TrailStep): void {
+    for (let at = this.backtrail.length - 1; at >= 0; at -= 1) {
+      const held = this.backtrail[at];
+      if (held === undefined) continue;
+      if (held.from === step.from && held.direction === step.direction && held.to === step.to) {
+        this.backtrail.length = at;
+        return;
+      }
+    }
   }
 
   private attachRealm(room: Room): void {
@@ -1714,11 +1768,24 @@ export class CharacterTracker {
      * answer whatever the data says about it.
      */
     const promised = this.world ? this.expect.takeTeleport() : null;
+    /*
+     * A cast exit's landing is on the claim, so it went with `shift()` above
+     * and there is nothing to spend here. Where it named **one** room the
+     * answer is exact even unseen — the same standing a `sys go`'s
+     * coordinates have — and where it named several a room nobody could see
+     * states neither a name nor exits, which are the only two things a draw's
+     * rooms can be told apart by. Not knowing is then the answer, and the walk
+     * asks (`rm`).
+     */
+    const drawn = expectation.landing;
+    const exact =
+      drawn !== undefined && drawn.length === 1 ? (this.world?.byId(drawn[0]!) ?? null) : null;
     const landed = promised ? this.world?.byId(roomId(promised.map, promised.number)) : null;
     const arrived =
-      landed !== null && landed !== undefined && landed.light !== undefined && landed.light < 0
+      exact ??
+      (landed !== null && landed !== undefined && landed.light !== undefined && landed.light < 0
         ? landed
-        : null;
+        : null);
 
     this.room.discard();
     // An arrival nothing described: the looks and the unmodelled command were
@@ -1870,7 +1937,9 @@ export class CharacterTracker {
     const to = now.map !== null && now.number !== null ? roomId(now.map, now.number) : null;
 
     if (to !== null) {
-      // The data already knows this way out. Every ordinary step lands here.
+      // The data already knows this way out. Every ordinary step lands here —
+      // including the first of the two blocks an exit whose cast moves you
+      // prints, which is the room its table names and nothing else.
       if (previous.exits.some((exit) => roomId(exit.map, exit.room) === to)) return;
       // A room-script teleport is the data knowing the way out exactly as an
       // exit is — format 13 put it on the room. Without this, every walked or
@@ -2255,6 +2324,29 @@ export class CharacterTracker {
     const wanted = this.sheetWanted;
     this.sheetWanted = false;
     return wanted;
+  }
+
+  /**
+   * Which monsters have been seen to die since this was last asked, by realm
+   * row. Cleared by the taking, as the flag above is.
+   */
+  takeDeaths(): string[] {
+    if (this.deaths.size === 0) return [];
+    const dead = [...this.deaths];
+    this.deaths.clear();
+    return dead;
+  }
+
+  /**
+   * A monster died, whoever landed it: written down under the realm's own row.
+   *
+   * Whoever landed it, because the server casts a monster's death spell on
+   * everybody standing in the room (`Mob.ApplyDeathSpell`), so a quest step a
+   * death runs runs for the party and not only for the killer.
+   */
+  private noteDeath(name: string): void {
+    const row = rowNameOf(mobKey(name), (who) => this.world?.mob(who) !== undefined);
+    if (row.length > 0) this.deaths.add(row);
   }
 
   /** A prompt stopped matching what `pro` reported, so `pro` is worth asking again. Cleared by the taking. */
@@ -3528,6 +3620,10 @@ export class CharacterTracker {
         // before this one, if it named the target, was its death sentence,
         // and the realm learns it (`deathSentenceBefore`).
         const after = this.fight.died(s, block.at, this.deathSentenceBefore(s, block.at));
+        // And a quest step can be owned by a monster's death, so the name goes
+        // where `SessionManager` can read it. `after !== s` is `FightTracker`
+        // saying the target is what died.
+        if (after !== s && s.combat.target !== null) this.noteDeath(s.combat.target);
         return {
           ...after,
           progress: {
@@ -3899,7 +3995,9 @@ export class CharacterTracker {
              */
           }
         }
-        if (expectation !== null) this.expect.shift();
+        // The claim this block answers, kept: a cast exit's second block
+        // carries the landing it has to be resolved inside (`hintCast`).
+        const answered = expectation !== null ? this.expect.shift() : null;
         /*
          * Whatever was last said that this client does not model as movement,
          * taken here and cleared here: this room is the answer to it, and the
@@ -4156,11 +4254,19 @@ export class CharacterTracker {
             return { ...s, room, stealth };
           }
 
+          /*
+           * A cast exit's landing, where the claim this block answers carried
+           * one. It replaces the previous room and the direction rather than
+           * joining them — see `ResolveInput.among` — because this is the
+           * *second* of the two blocks such an exit prints and the first one
+           * was the room the table names.
+           */
           const located = resolveRoom(this.world, {
             name: room.name,
             exits: exits.map((exit) => exit.direction as Direction),
-            previous,
-            moved
+            ...(answered?.kind === 'move' && answered.landing !== undefined
+              ? { among: answered.landing }
+              : { previous, moved })
           });
 
           // What it considered, and which one it took. Bounded: a name shared
@@ -4188,7 +4294,18 @@ export class CharacterTracker {
             room.confidence = located.confidence;
           }
 
-          this.notice(s.room, room, moved ?? said, located.candidates.length);
+          /*
+           * **A teleport is not a way somebody found.** The second block an
+           * exit whose cast moves you prints is the realm doing exactly what
+           * its own data says, along no edge at all — so there is no edge to
+           * record, and recording one wrote a permanent `Discovery` of a way
+           * the realm describes in full into the character's file. 49 exits
+           * on each shipped realm, and none of them walked until the router
+           * learned where they land.
+           */
+          if (answered?.kind !== 'move' || answered.landing === undefined) {
+            this.notice(s.room, room, moved ?? said, located.candidates.length);
+          }
         }
 
         /*
@@ -4531,7 +4648,9 @@ export class CharacterTracker {
         const named = g['mob'] ?? g['attacker'] ?? g['line'] ?? '';
         if (named.length === 0) return null;
         const after = this.fight.diedNamed(s, named, block.at);
-        return after === s ? null : after;
+        if (after === s) return null;
+        this.noteDeath(named);
+        return after;
       }
 
       case 'mob-arrives-room': {

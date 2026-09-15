@@ -27,8 +27,12 @@ export interface MovementPromptProps {
  * lives on the way, with the player watching something else.
  *
  * So past `tuning.walk.resumeAskSteps` main answers play with this instead of
- * a command, and the window holds the question. **Stay is the safe answer and
- * takes the caret**, for `ResetPrompt`'s reason: a dialog that opens with the
+ * a command, and the window holds the question. **Back asks here too**
+ * (`MovementConfirm.kind`): a press of the toolbar's back button the realm
+ * cannot answer in one step is a journey the person meant as a step, which is
+ * the same failure from the other end — so it asks in its own words rather
+ * than borrowing the wander's. **Stay is the safe answer and takes the
+ * caret**, for `ResetPrompt`'s reason: a dialog that opens with the
  * acting button focused is one press from a walk the person did not mean, and
  * this one opens on a press somebody made for a different reason.
  *
@@ -67,18 +71,28 @@ export default function MovementPrompt({
         }}
         role="dialog"
       >
-        <h2 id="movement-prompt-title">{t('movement.title', { name: characterName })}</h2>
+        <h2 id="movement-prompt-title">
+          {asked.kind === 'back'
+            ? t('movement.backTitle', { name: characterName })
+            : t('movement.title', { name: characterName })}
+        </h2>
         {/*
           The figure and what it is a figure *of*, in two literal calls rather
           than one key built from `kind`: the coverage test reads the literal
-          after `t(` and a dynamic key is one it cannot see. A lap's figure is
-          the distance back to the stop it was heading for; a route's is how
-          many steps further away the character is than when it stopped.
+          after `t(` and a dynamic key is one it cannot see. Both figures are
+          the same measurement — how much further away the character is now
+          than when the movement stopped — and the keys differ only in naming
+          a lap or a destination.
         */}
         <p className="settings-warn">
-          {asked.kind === 'loop'
-            ? t('movement.wanderedFromLoop', { loopName: asked.name, stepCount: asked.steps })
-            : t('movement.wanderedFromRoute', { destination: asked.name, stepCount: asked.steps })}
+          {asked.kind === 'back'
+            ? t('movement.backNotAStep', { destination: asked.name, stepCount: asked.steps })
+            : asked.kind === 'loop'
+              ? t('movement.wanderedFromLoop', { loopName: asked.name, stepCount: asked.steps })
+              : t('movement.wanderedFromRoute', {
+                  destination: asked.name,
+                  stepCount: asked.steps
+                })}
         </p>
         <p className="settings-note">{t('movement.whatHappens')}</p>
 

@@ -625,6 +625,14 @@ function walkChip(walk: WalkProgress) {
   if (walk.status === 'walking' && walk.hold === 'searching') {
     return <span className="chip info">{t('cards.navigation.route.badgeSearching')}</span>;
   }
+  /*
+   * Too dark to read the room, while the light that fixes it is on its way.
+   * `info` with the search rather than `warn` with the door: this is the
+   * client doing something about it, and it is bounded.
+   */
+  if (walk.status === 'walking' && walk.hold === 'dark') {
+    return <span className="chip info">{t('cards.navigation.route.badgeDark')}</span>;
+  }
   if (walk.status === 'walking') {
     return (
       <span className="chip">

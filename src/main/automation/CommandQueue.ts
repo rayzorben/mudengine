@@ -44,6 +44,29 @@ export interface Intent {
   coalesceKey?: string;
   /** Dropped rather than sent late. */
   expiresAt?: number;
+  /**
+   * Whether this is still worth sending, asked immediately before the send.
+   *
+   * **Everything else about an intent is decided once, at the moment it is
+   * proposed, and the queue may hold it for a round.** That is usually right —
+   * the arbiter exists so a decision can wait its turn — but a few commands
+   * have a precondition the *server* enforces and that a single round is
+   * enough to falsify. A bare `search` is the one this was written for
+   * (todo 13, 2026-09-13): proposed on arriving in a room with nothing
+   * fighting, held behind the `aa` auto-combat proposed from the same status
+   * line, and sent into the fight that attack had just started —
+   * `You may not search while attacking!`, twice in one capture.
+   *
+   * Nothing is retried on the strength of this: a false answer **drops** the
+   * intent, and the proposer re-derives from the next status line, which is
+   * what makes *after the fight* fall out for free. A proposer holding a
+   * memory of having asked should therefore count in `onSent` rather than at
+   * the proposal, or the one it never sent spends its budget.
+   *
+   * Pure, and asked about *now*: it reads live state, never the state the
+   * proposal was made against.
+   */
+  stillWanted?: () => boolean;
   /** Free-text note, for the decision trace. */
   reason?: string;
   /**
@@ -472,6 +495,7 @@ export class CommandQueue {
      */
     if (this.typingHeld && Date.now() >= this.typingHeldUntil) this.typingHeld = false;
     this.expire();
+    this.dropUnwanted();
     this.reclaimStalled();
 
     if (this.pending.length === 0) return;
@@ -615,6 +639,27 @@ export class CommandQueue {
     for (let i = this.pending.length - 1; i >= 0; i -= 1) {
       const intent = this.pending[i]!;
       if (intent.expiresAt !== undefined && intent.expiresAt <= now) this.pending.splice(i, 1);
+    }
+  }
+
+  /**
+   * Anything whose precondition has stopped being true since it was proposed.
+   *
+   * Beside `expire` because it is the same act — taking an intent out of the
+   * queue rather than sending it — and deliberately **not** subject to the
+   * same typing hold. Expiry pauses during the player's pause so that a
+   * decision made before it survives to the Enter; this is the opposite case,
+   * where the world has moved on and the command would now be refused by the
+   * server. Waiting out somebody's half-typed line does not make a fight stop
+   * being a fight.
+   *
+   * Silent: the proposer knows its own reason and says it where it says
+   * everything else, and a line per dropped probe is the noise `unavailable`
+   * gives the same argument for.
+   */
+  private dropUnwanted(): void {
+    for (let i = this.pending.length - 1; i >= 0; i -= 1) {
+      if (this.pending[i]!.stillWanted?.() === false) this.pending.splice(i, 1);
     }
   }
 

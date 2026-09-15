@@ -652,12 +652,84 @@ const TUNING_DEFAULTS = {
      * 218 swings at 38.5.
      */
     backstabMultiplier: 4,
-    /** How many rooms a suggested loop visits at most. */
+    /** How many rooms a suggested loop visits at most, fillers included. */
     maxLoopRooms: 8,
     /** How many suggestions are handed back. */
-    maxSpots: 12,
+    maxSpots: 24,
     /** How far the loop's own low-experience stop looks for a better lair, in steps. */
-    betterSpotRadius: 80
+    betterSpotRadius: 80,
+    /**
+     * A room whose one cycle takes more than this share of the health bar is
+     * left out before the ranking: a lair that costs half the bar a visit is
+     * a lair whose rate is mostly resting, and starting there wastes the
+     * evening whatever it pays (todo 00, 2026-09-13).
+     */
+    maxDamageShare: 0.5,
+    /**
+     * And a room that could not take this share off an *unarmoured* character
+     * — every blow landing, at full damage — is beneath this level and left
+     * out too. The bar is read `trivialLevelMargin` lower for the test, which
+     * is the todo's *level minus five percent*.
+     */
+    trivialShare: 0.1,
+    trivialLevelMargin: 0.05,
+    /**
+     * How far apart a loop's own rooms are measured, in steps, by a bounded
+     * sweep from each — the ring's real length rather than the survey's
+     * out-and-back guess. Measured 0.8ms a sweep at thirty on Paradigm.
+     */
+    clusterRadius: 30,
+    /** How far off the ring a filler lair may lie, in steps, out and back. */
+    fillerRadius: 8,
+    /**
+     * How far under the best rate a smaller loop may fall and still be the
+     * one chosen. Past the clock the rate is flat but for the rounding of
+     * rest ticks, and the fewest rooms that reach it is the loop worth
+     * walking — the todo's *just enough to meet the timing requirements*.
+     */
+    sizeTolerance: 0.05,
+    /**
+     * How often automatic hunting may ask the survey — `AutoHunt`.
+     *
+     * A sweep is every room the exits reach and every lair in them priced, and
+     * a status line arrives every few seconds: without a floor, a character
+     * standing still would survey the realm two hundred times a minute. What
+     * *re-opens* a settled answer is a level, the kit, or the lap stopping for
+     * earning too little; this is only the floor under how often those may be
+     * acted on.
+     */
+    resurveyMs: 60_000,
+    /**
+     * What a lair pays while somebody else is working it — `AutoHunt`.
+     *
+     * Experience divides among everybody who hit the kill (`Mob.cs:2270`), so
+     * a second player in the lair is the plain halving this states. A price on
+     * a candidate, never on the spot being walked: once a rate has actually
+     * been *measured* there, the measurement is the figure and a model's guess
+     * at the sharing is not needed.
+     */
+    contestedShare: 0.5,
+    /**
+     * How long a lair stays priced as somebody else's after they were seen in
+     * it.
+     *
+     * A sighting is a fact with a shelf life: people leave. Without a clock a
+     * stranger walking through once would price that lair at half for the rest
+     * of the session, which is a lair the client never goes back to on the
+     * strength of a passer-by. Long enough that somebody working a lair is
+     * still working it, short enough that a passer-by is forgotten.
+     */
+    contestedForgetMs: 1_800_000,
+    /**
+     * How much better another lair must look before a hunt moves to it.
+     *
+     * A margin *and* a grace (`tuning.loop.expRateGraceMs`, the low-experience
+     * stop's own), because the alternative is a character chasing estimates
+     * round the realm: every move costs the walk there and the first cycle,
+     * and two lairs within a few per cent of each other are the same lair for
+     * this purpose.
+     */
+    moveMargin: 0.25
   },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {
@@ -813,13 +885,35 @@ const TUNING_DEFAULTS = {
      * not free. Past this many steps `SessionManager.startMoving` answers with
      * a question instead of a command.
      *
-     * Measured in the steps the resume would actually walk: for a route, how
-     * many *more* than it still owed when it stopped, so walking on down a
-     * route you were already on never asks however long it is; for a lap, the
-     * distance to the stop it was heading for, since a leg is short by
-     * construction and that distance is how far off the lap you are.
+     * Measured as how much *further* away the character is now than when the
+     * movement stopped — for a route and for a lap alike, so a movement
+     * stopped and started again from the same room never asks however far it
+     * still has to go, and a character killed and reborn two maps away does.
      */
     resumeAskSteps: 30,
+    /**
+     * How far the character may have strayed from the room a drawn plan starts
+     * in before pressing Walk asks about the plan it is redrawn as.
+     *
+     * A plan is drawn from where the character stood when it was drawn, and a
+     * lap or a party leader moves it while the panel is open — so the press
+     * used to earn *that route does not start here*, with nothing to do about
+     * it but draw the same plan again. It is redrawn from here instead, and
+     * the only question left is whether the reader is still looking at the
+     * journey they agreed to.
+     *
+     * **Counted in the router's own steps, not in map squares**: how many
+     * moves the character has actually made away from where the plan began.
+     * Ten is a lap's worth of wandering — the case this exists for — and well
+     * inside the distance at which a way somewhere else stops being the same
+     * way. Past it the new plan is put back on screen to be read.
+     *
+     * Its own figure rather than `resumeAskSteps`: that one bounds walking a
+     * *stopped* movement back across the realm, which is a journey nobody
+     * asked for, and this one bounds how far a plan may drift before it is
+     * worth a second look. 0 asks about every redrawn plan.
+     */
+    replanDriftSteps: 10,
     /**
      * How long a route waits out a fight before it gives up on the journey.
      *
@@ -837,6 +931,26 @@ const TUNING_DEFAULTS = {
      * two minutes only ever expires on one it is not.
      */
     fightHoldMs: 120_000,
+    /**
+     * How long an errand keeps offering the way it owes before giving up.
+     *
+     * The window this exists for is a move of the client's own still on the
+     * wire. Collecting is a loop, and a loop steps on without waiting for the
+     * server to confirm what was picked up — measured 2026-09-14
+     * (`logs/2026-09-14_16-00-21_festus.mudcap.jsonl`): `get black serpent
+     * key` at t=783180, the lap's `n` at t=783182, `You took black serpent
+     * key.` only at t=783262. So the instant the pack holds the thing there is
+     * a step outstanding, `Walker.start` rightly refuses to plan across it
+     * (`refusalMoveInFlight`, the room on the books is the one being left),
+     * and the errand had exactly one attempt: the key was collected and the
+     * journey it was collected for was never walked.
+     *
+     * A retry rather than a hold, because each attempt re-plans from where the
+     * character now stands — so waiting costs nothing and catches the answer
+     * whenever it lands. Seconds, not minutes: an unanswered move resolves in
+     * about one, and past this the refusal is a real one worth reporting.
+     */
+    errandHandoverMs: 15_000,
     /**
      * How long a walk stands still for a condition before spending one step
      * to find out whether it is over.
@@ -861,6 +975,24 @@ const TUNING_DEFAULTS = {
      * enough that an unreadable one costs seconds rather than an evening.
      */
     heldFallbackMs: 30_000,
+    /**
+     * How long a walk stands still in a room too dark to read, waiting for the
+     * light `AutoLight` is readying.
+     *
+     * The whole of what it is waiting for is three commands and two server
+     * answers — `light <thing>`, `You lit the torch.`, `l`, the room — and
+     * measured live on 2026-09-15 that took **145ms** end to end. What makes
+     * this seconds rather than a fifth of one is the queue: the light goes out
+     * in the `movement` band behind whatever else is in flight, and the band
+     * is paced by the prompt, so a busy corridor can put a couple of prompts
+     * between the proposal and the wire.
+     *
+     * A deadline and not a retry, unlike `heldFallbackMs`: there is nothing
+     * further to ask. Past it the room is dark for a reason no light in the
+     * pack fixes — a pearl that lifts `pitch black` only as far as `very
+     * dark` — and the walk stops with the sentence it always had.
+     */
+    lightWaitMs: 8_000,
     /**
      * How much longer than this realm's own slowest answer a step may go
      * unanswered before the walk sends one bare Enter to force a status line
@@ -898,8 +1030,26 @@ const TUNING_DEFAULTS = {
      * answer ages out instead of standing the fallback down for the evening.
      */
     nudgeSamples: 5,
-    /** Confirmed steps kept for a retreat to look back over. */
+    /**
+     * Confirmed steps a retreat looks back over.
+     *
+     * Its own figure, and deliberately a small one: the `doubles-back` rung
+     * prefers an exit leading somewhere the character has already stood, and
+     * with the whole session's history to hand that rung would claim every
+     * exit in the realm. The trail itself is far longer (`trailSteps`); the
+     * escape reads its tail.
+     */
     recentSteps: 5,
+    /**
+     * How many confirmed moves the trail keeps — the back button's history.
+     *
+     * *Where we came from*, as a list of rooms and the move that joined each
+     * pair, so going back is a route to the previous room rather than the
+     * opposite of the last direction (which for a one-way exit leads nowhere,
+     * and for a text exit is not a direction at all). Each press walks back
+     * one entry and gives it up; the forward moves push.
+     */
+    trailSteps: 500,
     /**
      * How long a room the character ran out of stays a room it must not run
      * back into, once nothing is recorded fighting.
@@ -1452,7 +1602,46 @@ const TUNING_DEFAULTS = {
      * remaining fifty thousand rooms would not change it. Bounded because the
      * question is asked from a status line.
      */
-    mobRowRooms: 20_000
+    mobRowRooms: 20_000,
+    /**
+     * How many rooms one backward sweep of the scatter solve may settle before
+     * it gives that figure up (`WorldGraph.sweepBack`).
+     *
+     * The sweep stops on its own the moment every room it was asked about is
+     * settled, and a scatter's landings sit inside the maze the scatter
+     * closes, so on both shipped realms the asylum's four sweeps settle 54 to
+     * 68 rooms and stop. This is the bound for a realm this client has never
+     * seen — a landing nothing can leave would otherwise walk the whole
+     * fifty-seven thousand. Over it the scatter is left unpriced and the
+     * router does not offer it, which refuses an option rather than inventing
+     * a way through one.
+     */
+    scatterSweepRooms: 60_000,
+    /**
+     * How many rounds the scatter expectation is iterated before it is taken
+     * as settled, and how small a round's movement has to be to stop early.
+     *
+     * The iteration contracts by `(landings − 1) / landings` a round — a
+     * ninth of the way for the padded cells, a twenty-fourth for the asylum
+     * itself — so the shipped realm stops moving by this much in about 120
+     * rounds, and the ceiling is headroom for a wider draw. What is left at
+     * that point is the tolerance over one minus the contraction: about two
+     * thousandths of a move on the asylum, against a figure the reader is
+     * shown as a whole number.
+     */
+    scatterRounds: 2_000,
+    scatterTolerance: 0.0001,
+    /**
+     * How many destinations' *move* figures are kept before the lot is thrown
+     * away (`WorldGraph.scatterMoves`).
+     *
+     * The figure a reader is shown depends on the destination alone, never on
+     * the character, so it is worth keeping across a session — and a
+     * destination is a room, of which a realm has tens of thousands. A handful
+     * covers walking into a maze, being scattered, and re-planning to the same
+     * place a dozen times over, which is the shape of every walk this is for.
+     */
+    scatterMovesKept: 32
   },
   /** The process itself. */
   app: {
@@ -1535,12 +1724,15 @@ const TUNING_DEFAULTS = {
      * minutes ago, which is the failure this card exists to prevent. So the
      * hold is a hold, not a mode, and it expires.
      *
-     * Fifteen seconds is long enough to read a few lines and short enough
-     * that nobody has moved on to something else in the meantime. Measured
-     * from the *last* scroll, so reading up through a backlog keeps extending
-     * it; landing back at the live edge resumes at once and does not wait.
+     * **Forty-five seconds** (todo 10, asked for): fifteen was measured
+     * against a reader glancing back a line or two, and the thing people
+     * actually do is read a paragraph of what somebody said while the fight
+     * carries on underneath. Measured from the *last* scroll, so reading up
+     * through a backlog keeps extending it; landing back at the live edge
+     * resumes at once and does not wait, and the *jump to latest* button is
+     * there for the whole of the hold.
      */
-    talkFollowResumeMs: 15_000,
+    talkFollowResumeMs: 45_000,
     /**
      * Lines the Talk composer remembers for its Up arrow.
      *
@@ -1663,6 +1855,14 @@ const TUNING_DEFAULTS = {
      * perfectly still.
      */
     dragSlop: 5,
+    /**
+     * How near a card in hand must come to one already over the console
+     * before releasing snaps it to that edge — and, across the edge, how much
+     * of the two must face each other for *beside* to mean beside rather than
+     * past the corner. One number for both: they are the same gesture, and a
+     * second would be a second thing to tune to make one feel right.
+     */
+    snapDistance: 24,
     /** Between a popover and its anchor, and between a popover and the edge. */
     popoverGap: 8,
     popoverMargin: 8,
@@ -1796,12 +1996,13 @@ const TUNING_DEFAULTS = {
     roomPeekDelayMs: 250,
     roomPeekLingerMs: 220,
     /**
-     * How far the Hunting card looks from where the character stands, in
-     * steps, at its usual reach; *near* is half and *far* is double. A sweep
-     * this wide over Paradigm is a few thousand rooms and prices a few dozen
-     * lairs, once per ask.
+     * How often the Hunting card asks again because the character moved. The
+     * sweep is realm-wide and costs main a few hundred milliseconds, and a
+     * lap steps every second and a quarter; the steps column is the only
+     * thing a move changes, so it is refreshed on this clock rather than on
+     * every room. *Ask again* is immediate.
      */
-    huntRadiusSteps: 80,
+    huntReaskMs: 10000,
     /**
      * The server's own combat pulse, in milliseconds.
      *
@@ -1896,7 +2097,11 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // hundred and twenty loops, and a shelf reachable only from a menu at
       // the end of a row is the "command nobody can find" failure again.
       'loop:open',
-      'move:toggle'
+      'move:toggle',
+      // And one room back the way you came, beside the transport: a walk into
+      // a room nobody meant to be in is answered by a press, not by working
+      // out which direction undoes it.
+      'move:back'
     ]
   }
 };

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 import {
+  alertQuiet,
   desktopAlert,
   namedNotices,
   linkNotices,
@@ -130,6 +131,22 @@ describe('what is worth saying outside the window', () => {
     ...over
   });
 
+  /* Its own, because the two lower describes each lean on their own defaults
+     for `percent` and `quietSeconds` and these tests care about neither. */
+  const rule = (over: Partial<AlertRule> & { on: AlertRule['on'] }): AlertRule => ({
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: false,
+    whileFocused: false,
+    side: 'below',
+    value: 0,
+    percent: true,
+    name: '',
+    quietSeconds: 0,
+    ...over
+  });
+
   it('answers critical for a ranked alert that names no happening', () => {
     expect(desktopAlert(alert({ severity: 'critical' }))).toBe('critical');
     expect(desktopAlert(alert({ severity: 'warning' }))).toBeNull();
@@ -137,18 +154,25 @@ describe('what is worth saying outside the window', () => {
 
   /*
    * The named four outrank the ranking: a player attacking you is critical as
-   * well, and the happening is the more specific word for it. Which of them is
-   * raised is a row's business now (todo 02), not a mute list's -- so what this
-   * holds is that the *naming* survives, and the row tests below hold the rest.
+   * well, and the happening is the more specific word for it. The kind is what
+   * the window rests a notification on, so the *naming* is what this holds;
+   * whether it is raised at all is the rows', below.
    */
   it('names the happening rather than falling back to the ranking', () => {
-    const attacked = alert({ severity: 'critical', desktop: 'attacked' });
+    const attacked = alert({ severity: 'critical', desktop: 'attacked', event: 'attacked' });
     expect(desktopAlert(attacked)).toBe('attacked');
-    expect(raisable({ enabled: true }, attacked)).toBe('attacked');
+    expect(raisable(attacked, [rule({ on: 'attacked', notify: true })])).toBe('attacked');
   });
 
-  it('raises nothing at all when it is switched off', () => {
-    expect(raisable({ enabled: false }, alert({ severity: 'critical' }))).toBeNull();
+  /*
+   * The one way the notification differs from the card: an unclaimed notice is
+   * still *shown* at the level the ranking gave it, and raises nothing. Being
+   * interrupted away from the keyboard is asked for, never inherited -- and
+   * with the two switches gone (2026-09-13) a row is the only place to ask.
+   */
+  it('raises nothing for a notice no row claims', () => {
+    expect(raisable(alert({ severity: 'critical' }))).toBeNull();
+    expect(raisable(alert({ severity: 'critical', event: 'attacked' }), [])).toBeNull();
   });
 });
 
@@ -597,6 +621,9 @@ describe('the alert rules', () => {
     value: 0,
     percent: true,
     name: '',
+    // Off, so these measure the ranking rather than the debounce, which has
+    // its own tests below.
+    quietSeconds: 0,
     ...over
   });
 
@@ -605,6 +632,9 @@ describe('the alert rules', () => {
     at: 1,
     severity: 'info',
     channel: 'items',
+    // A row claims by event now, not by channel (todo 03), so a notice used to
+    // exercise the rules has to be one.
+    event: 'item-found',
     text: 'something',
     ...over
   });
@@ -621,29 +651,29 @@ describe('the alert rules', () => {
   });
 
   it('hides what a row says not to show', () => {
-    const kept = wanted({ rules: [rule({ on: 'items', alert: false })] }, [said()]);
+    const kept = wanted({ rules: [rule({ on: 'item-found', alert: false })] }, [said()]);
     expect(kept).toEqual([]);
   });
 
   /* A row off is silence for that channel alone; the rest carry on. */
   it('leaves every other channel alone while one row hides its own', () => {
-    const kept = wanted({ rules: [rule({ on: 'items', alert: false })] }, [
+    const kept = wanted({ rules: [rule({ on: 'item-found', alert: false })] }, [
       said(),
-      said({ id: 'n2', channel: 'combat' })
+      said({ id: 'n2', channel: 'combat', event: 'died' })
     ]);
     expect(kept.map((notice) => notice.channel)).toEqual(['combat']);
   });
 
   it('raises the level a row states, leaving the rest alone', () => {
-    const kept = wanted({ rules: [rule({ on: 'items', level: 'critical' })] }, [said()]);
+    const kept = wanted({ rules: [rule({ on: 'item-found', level: 'critical' })] }, [said()]);
     expect(kept[0]?.severity).toBe('critical');
   });
 
   /* The first enabled row wins; a row turned off leaves the next in charge. */
   it('takes the first enabled row that claims it', () => {
     const rules = [
-      rule({ on: 'items', enabled: false, alert: false }),
-      rule({ on: 'items', level: 'warning' })
+      rule({ on: 'item-found', enabled: false, alert: false }),
+      rule({ on: 'item-found', level: 'warning' })
     ];
     const kept = wanted({ rules }, [said()]);
     expect(kept[0]?.severity).toBe('warning');
@@ -652,34 +682,47 @@ describe('the alert rules', () => {
   /* A watch row claims by the watch the producer marked, not by the channel. */
   it('claims a notice by its watch as well as by its channel', () => {
     const kept = wanted({ rules: [rule({ on: 'attacked', level: 'info' })] }, [
-      said({ channel: 'combat', severity: 'critical', watch: 'attacked' })
+      said({ channel: 'combat', severity: 'critical', watch: 'attacked', event: 'attacked' })
     ]);
     expect(kept[0]?.severity).toBe('info');
   });
 
   /*
    * And the desktop half: a row decides whether it is raised at all, and it is
-   * the only thing that does. The per-happening mute list was the other half
-   * until todo 02 -- *never tell me about arriving* is a row with `notify`
-   * off, which is what this asserts from both directions.
+   * the only thing that does. A per-happening mute list was one half of the
+   * old surface and the two `ui.alerts.desktop` switches the other; every
+   * question both asked is a row, which is what this asserts.
    */
   it('lets a row decide whether a notification is raised', () => {
-    const notice = said({ channel: 'combat', watch: 'attacked', desktop: 'attacked' });
-    const prefs = { enabled: true };
-    // Claimed by nothing: the ranking answers, which is what it always did.
-    expect(raisable(prefs, notice)).toBe('attacked');
-    expect(raisable(prefs, notice, [rule({ on: 'attacked', notify: true })])).toBe('attacked');
-    expect(raisable(prefs, notice, [rule({ on: 'attacked', notify: false })])).toBeNull();
+    const notice = said({
+      channel: 'combat',
+      watch: 'attacked',
+      event: 'attacked',
+      desktop: 'attacked'
+    });
+    // Claimed by nothing raises nothing; a row marked `notify` raises it.
+    expect(raisable(notice)).toBeNull();
+    expect(raisable(notice, [rule({ on: 'attacked', notify: true })])).toBe('attacked');
+    expect(raisable(notice, [rule({ on: 'attacked', notify: false })])).toBeNull();
+    // A row that claims it but is switched off claims nothing.
+    expect(raisable(notice, [rule({ on: 'attacked', notify: true, enabled: false })])).toBeNull();
   });
 
   it('lets a row ask to be raised while the window is in front', () => {
-    const notice = said({ channel: 'combat', watch: 'attacked', desktop: 'attacked' });
-    expect(raisableWhileFocused({ whileFocused: false }, notice)).toBe(false);
+    const notice = said({
+      channel: 'combat',
+      watch: 'attacked',
+      event: 'attacked',
+      desktop: 'attacked'
+    });
+    expect(raisableWhileFocused(notice)).toBe(false);
     expect(
-      raisableWhileFocused({ whileFocused: false }, notice, [
-        rule({ on: 'attacked', notify: true, whileFocused: true })
-      ])
+      raisableWhileFocused(notice, [rule({ on: 'attacked', notify: true, whileFocused: true })])
     ).toBe(true);
+    // `whileFocused` means nothing on a row that does not notify at all.
+    expect(
+      raisableWhileFocused(notice, [rule({ on: 'attacked', notify: false, whileFocused: true })])
+    ).toBe(false);
   });
 });
 
@@ -701,6 +744,7 @@ describe('a figure the player chose', () => {
     value: 0,
     percent: true,
     name: '',
+    quietSeconds: 0,
     ...over
   });
 
@@ -778,6 +822,7 @@ describe('a name the player is waiting for', () => {
     value: 0,
     percent: true,
     name: '',
+    quietSeconds: 0,
     ...over
   });
 
@@ -791,7 +836,7 @@ describe('a name the player is waiting for', () => {
     const raised = namedNotices(
       withRoom({ items: [] }),
       withRoom({ items: [{ name: 'a gold jeweled ring' }] as never }),
-      [watch({ on: 'item', name: 'jeweled ring' })],
+      [watch({ on: 'item-found', name: 'jeweled ring' })],
       t
     );
     expect(raised).toHaveLength(1);
@@ -802,7 +847,7 @@ describe('a name the player is waiting for', () => {
   it('does not say so again while it is still there', () => {
     const room = { items: [{ name: 'a gold jeweled ring' }] as never };
     expect(
-      namedNotices(withRoom(room), withRoom(room), [watch({ on: 'item', name: 'ring' })], t)
+      namedNotices(withRoom(room), withRoom(room), [watch({ on: 'item-found', name: 'ring' })], t)
     ).toEqual([]);
   });
 
@@ -810,7 +855,7 @@ describe('a name the player is waiting for', () => {
     const raised = namedNotices(
       withRoom({ occupants: [] }),
       withRoom({ occupants: [{ name: 'Rend' }] as never }),
-      [watch({ on: 'player', name: 'rend' })],
+      [watch({ on: 'player-seen', name: 'rend' })],
       t
     );
     expect(raised).toHaveLength(1);
@@ -823,7 +868,7 @@ describe('a name the player is waiting for', () => {
       namedNotices(
         withRoom({ items: [] }),
         withRoom({ items: [{ name: 'a rusty dagger' }] as never }),
-        [watch({ on: 'item', name: '  ' })],
+        [watch({ on: 'item-found', name: '  ' })],
         t
       )
     ).toEqual([]);
@@ -838,7 +883,7 @@ describe('a name the player is waiting for', () => {
     const raised = namedNotices(
       withRoom({ hidden: [] }),
       withRoom({ hidden: [{ name: 'a gold jeweled ring' }] as never }),
-      [watch({ on: 'item', name: 'jeweled ring' })],
+      [watch({ on: 'item-found', name: 'jeweled ring' })],
       t
     );
     expect(raised).toHaveLength(1);
@@ -851,7 +896,7 @@ describe('a name the player is waiting for', () => {
     const raised = namedNotices(
       withRoom({ items: [], hidden: [] }),
       withRoom({ items: there, hidden: there }),
-      [watch({ on: 'item', name: 'ring' })],
+      [watch({ on: 'item-found', name: 'ring' })],
       t
     );
     expect(raised).toHaveLength(1);
@@ -863,7 +908,7 @@ describe('a name the player is waiting for', () => {
     const raised = namedNotices(
       withRoom({ hiddenCash: null }),
       withRoom({ hiddenCash: pile }),
-      [watch({ on: 'cash', value: 4000 })],
+      [watch({ on: 'cash-found', value: 4000 })],
       t
     );
     expect(raised).toHaveLength(1);
@@ -877,7 +922,7 @@ describe('a name the player is waiting for', () => {
       namedNotices(
         withRoom({ hiddenCash: null }),
         withRoom({ hiddenCash: pile }),
-        [watch({ on: 'cash', value: 4000 })],
+        [watch({ on: 'cash-found', value: 4000 })],
         t
       )
     ).toEqual([]);
@@ -886,7 +931,7 @@ describe('a name the player is waiting for', () => {
       namedNotices(
         withRoom({ hiddenCash: big }),
         withRoom({ hiddenCash: big }),
-        [watch({ on: 'cash', value: 4000 })],
+        [watch({ on: 'cash-found', value: 4000 })],
         t
       )
     ).toEqual([]);
@@ -898,9 +943,131 @@ describe('a name the player is waiting for', () => {
       namedNotices(
         withRoom({ hiddenCash: null }),
         withRoom({ hiddenCash: { totalCopper: 9000, rawText: '9000' } as never }),
-        [watch({ on: 'cash', value: 0 })],
+        [watch({ on: 'cash-found', value: 0 })],
         t
       )
     ).toEqual([]);
+  });
+});
+
+/*
+ * A row stays quiet for a while after it fires (todo 03).
+ *
+ * The case is an event the realm repeats -- a refused attack every round, a
+ * search in a dead end -- where the first is the whole of the news and the
+ * next twenty are the terminal again with a border round it.
+ */
+describe('the quiet time after a row fires', () => {
+  const rule = (over: Partial<AlertRule> & { on: AlertRule['on'] }): AlertRule => ({
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: false,
+    whileFocused: false,
+    side: 'below',
+    value: 0,
+    percent: false,
+    name: '',
+    quietSeconds: 30,
+    ...over
+  });
+  const said = (at: number): Notice => ({
+    id: `n${at}`,
+    at,
+    severity: 'info',
+    channel: 'combat',
+    event: 'died',
+    text: 'you died'
+  });
+
+  it('shows the first and swallows one that follows too soon', () => {
+    const quiet = alertQuiet();
+    const rules = [rule({ on: 'died' })];
+    expect(wanted({ rules }, [said(0)], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [said(1_000)], quiet)).toHaveLength(0);
+  });
+
+  it('shows one again once the quiet time has passed', () => {
+    const quiet = alertQuiet();
+    const rules = [rule({ on: 'died' })];
+    expect(wanted({ rules }, [said(0)], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [said(30_000)], quiet)).toHaveLength(1);
+  });
+
+  /* 0 is off, which is what the client did before the setting existed. */
+  it('shows every occurrence where the row asks for no quiet time', () => {
+    const quiet = alertQuiet();
+    const rules = [rule({ on: 'died', quietSeconds: 0 })];
+    expect(wanted({ rules }, [said(0)], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [said(1)], quiet)).toHaveLength(1);
+  });
+
+  /*
+   * Two rows on one event at two figures are two clocks -- which is what makes
+   * *warn me at 35% and again at 15%* work at all.
+   *
+   * The clock is keyed on what the row **says**, not on its place in the list:
+   * `ruleFor` hands every notice for an event to the first row that claims it,
+   * so keying on position gave both rows index 0's clock and the second
+   * warning was swallowed. Driven through `watchNotices`, which is the path
+   * that actually produces these, because the bug was invisible from `wanted`
+   * alone -- a hand-built notice can name any row, and the real one cannot.
+   */
+  it('warns at both figures when two rows watch one vital', () => {
+    const quiet = alertQuiet();
+    const rules = [
+      rule({ on: 'health', value: 35, percent: true, quietSeconds: 30 }),
+      rule({ on: 'health', value: 15, percent: true, quietSeconds: 30 })
+    ];
+    // `updatedAt` is what `noticedAt` reads, and the notice's moment is what
+    // the debounce measures against.
+    const at = (hp: number, moment: number): CharacterState => ({
+      ...EMPTY_CHARACTER,
+      updatedAt: moment,
+      vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100 }
+    });
+    const first = wanted({ rules }, watchNotices(at(50, 0), at(30, 0), rules, t), quiet);
+    expect(first).toHaveLength(1);
+    // Five seconds later, well inside both rows' quiet time, and through the
+    // lower figure: a different row, so a different clock.
+    const second = wanted({ rules }, watchNotices(at(30, 5_000), at(10, 5_000), rules, t), quiet);
+    expect(second).toHaveLength(1);
+  });
+
+  /* And the same row twice really is the same clock. */
+  it('keeps one clock for one row', () => {
+    const quiet = alertQuiet();
+    const rules = [rule({ on: 'died' })];
+    expect(wanted({ rules }, [said(0)], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [said(1_000)], quiet)).toHaveLength(0);
+  });
+
+  /* Turning a row's level up is not a reason to give it a fresh clock: the
+     switches say what a row does when it fires, not what it is about. */
+  it('keeps a row’s clock when only what it does changes', () => {
+    const quiet = alertQuiet();
+    expect(wanted({ rules: [rule({ on: 'died' })] }, [said(0)], quiet)).toHaveLength(1);
+    const louder = [rule({ on: 'died', level: 'critical', notify: true })];
+    expect(wanted({ rules: louder }, [said(1_000)], quiet)).toHaveLength(0);
+  });
+
+  /*
+   * A resting row still claims: the debounce silences an event, it does not
+   * hand it to the row below, which would make a quiet row a way of promoting
+   * the next one.
+   */
+  it('does not hand a silenced notice to the row beneath it', () => {
+    const quiet = alertQuiet();
+    const rules = [rule({ on: 'died' }), rule({ on: 'died', level: 'critical' })];
+    expect(wanted({ rules }, [said(0)], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [said(1_000)], quiet)).toEqual([]);
+  });
+
+  /* No clock handed in is the old behaviour exactly, which keeps every other
+     caller and every other test in this file measuring the ranking alone. */
+  it('debounces nothing when no clock is handed in', () => {
+    const rules = [rule({ on: 'died' })];
+    expect(wanted({ rules }, [said(0)])).toHaveLength(1);
+    expect(wanted({ rules }, [said(1)])).toHaveLength(1);
   });
 });

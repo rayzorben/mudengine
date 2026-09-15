@@ -65,6 +65,7 @@ import {
   type Direction,
   type RemoteLever,
   type RoomId,
+  type Landing,
   type Route,
   type RouteStep,
   asRoomReference,
@@ -119,7 +120,19 @@ export interface WalkerEvents {
    * scripted teleport, whose arriving room is resolved by the coordinates in
    * `to` rather than by an exit — which is why the destination rides along.
    */
-  stepping?(command: string, direction: Direction | 'portal', to: RoomId): void;
+  stepping?(command: string, direction: Direction | 'portal', to: RoomId, landing?: Landing): void;
+  /**
+   * Nobody knows where the character is, and the step that lost it was a draw.
+   *
+   * `LoopEvents.locate`'s twin and for the same reason — the realm answers
+   * `rm` with exact coordinates — but it is armed by a much narrower fact.
+   * **A scatter maze can be built so that nothing but asking will do**: no
+   * signature among the Warped Asylum's twenty-four landing rooms is unique
+   * (they fall into seven groups of two to four), so name and printed exits
+   * together settle nothing, and the ladder is right to refuse. One command
+   * turns a walk that would have stopped *ambiguous* into one that carries on.
+   */
+  locate?(): void;
   /**
    * What the character has to see by, when the next step goes somewhere dark.
    *
@@ -147,6 +160,22 @@ export interface WalkerEvents {
    * recorded level, undefined for a room the realm records none for.
    */
   beforeStep?(ahead: { name: string; light: number | undefined }, state: CharacterState): void;
+  /**
+   * Whether a light would be readied for the room the character is standing in
+   * — asked before the walk gives up on a room it cannot read.
+   *
+   * A blinding room prints no block at all, so the client cannot place it and
+   * the walk used to stop there. `AutoLight` answers exactly that case one
+   * statement later (`SessionManager.onCharacter` runs the walker first), and
+   * measured live on 2026-09-15 the torch was lit 1ms after the walk had
+   * already ended and the room was readable 145ms after that. So the question
+   * is asked of the module that will do it, and the walk waits instead.
+   *
+   * Absent, or false — auto-light off, nothing usable in the pack, an escape
+   * in flight — and the walk stops exactly as it did, which is what keeps a
+   * refusal loud.
+   */
+  lightComing?(state: CharacterState): boolean;
   /**
    * The name to type for the key an exit demands, when this character is
    * carrying it — and null when it is not, or when the realm cannot name the
@@ -444,6 +473,19 @@ export class Walker {
    */
   private stepSent = false;
   /**
+   * When this step spent its one *where am I* on the realm, or null.
+   *
+   * A moment rather than a flag, because asking is only half of it: the
+   * client has to **wait** for the answer. Measured on the wire 2026-09-14 —
+   * the walk asked, said so, and the very next status line fell through to
+   * *I can no longer tell which room you are in* and stopped the journey,
+   * before `rm` had been answered. The lap's own locate has always waited
+   * (`LoopRunner.retryAfterLocate`); this had nothing.
+   *
+   * Cleared with every send, because it is a property of the step.
+   */
+  private askedWhereAt: number | null = null;
+  /**
    * When the step now outstanding reached the wire, or null.
    *
    * One end of the only measurement this walker takes — see `noteAnswered`.
@@ -484,6 +526,17 @@ export class Walker {
    * says the route still has somewhere to be when the fight ends.
    */
   private hold: WalkHold = null;
+  /**
+   * When the walk began waiting for a light, or null while it is not.
+   *
+   * **A moment, not a flag**, for `askedWhereAt`'s reason: the pack answers
+   * *there is a light to ready* before the torch is lit and *there is not* the
+   * instant after, and a hold re-derived from that would let go one line
+   * before the look it is waiting for comes back. Cleared by the room becoming
+   * readable, by the window running out, and by anything that ends or moves
+   * the walk.
+   */
+  private darkSince: number | null = null;
   /**
    * The health the step ahead wants before its trap is walked into, while
    * the walk stands still for it — `holdForTrap`. Null otherwise. Read by
@@ -990,6 +1043,8 @@ export class Walker {
     this.fightClearedAt = null;
     this.fightHeldSince = null;
     this.heldSince = null;
+    // And the window a dark room was waiting out, for the same reason.
+    this.darkSince = null;
     this.onsetAnsweredStep = null;
     // No step of this walk is on the wire any more, whatever was when it ended.
     this.stepSent = false;
@@ -1150,6 +1205,7 @@ export class Walker {
     this.fightClearedAt = null;
     this.fightHeldSince = null;
     this.heldSince = null;
+    this.darkSince = null;
     this.onsetAnsweredStep = null;
     this.stepSent = false;
     this.escaped = false;
@@ -1689,6 +1745,73 @@ export class Walker {
     if (this.found) return false;
     if (state.room.exits.length === 0) return false;
     return !state.room.exits.some((exit) => exit.direction === step.direction);
+  }
+
+  /**
+   * The barrier the room has already said stands in this step's way, or null.
+   *
+   * *"When a door is closed don't try the direction first"* (todo 01): the
+   * room the character is standing in prints the state of every door leading
+   * out of it — `Obvious exits: north, closed door south` — so the step into
+   * one is a command spent to be told `The door is closed!`, and the `open`
+   * that answers it was a fact the client already held.
+   *
+   * **`closed ` is the whole test, and it is the server's own word.**
+   * `Door.ExitName` is `(open ? "open door " : "closed door ") + direction`,
+   * `gate` for the other door type, and no other exit class qualifies itself
+   * that way — a `TollExit` and a `NormalExit` print the bare direction and a
+   * `HiddenExit` prints its own description (`secret passage south`). The
+   * corpus agrees: 251 qualified exits across the captures, every one of them
+   * `open`/`closed` + `door`/`gate`/`trap door`, never a bare `door` and never
+   * a third state. A lock is **not** one of them — a locked door prints
+   * `closed door` like any other — which is what leaves the ladder below with
+   * something to do.
+   *
+   * Returns the noun alone (`door`, `gate`), because that is what the
+   * refusal's own `barrier` group carries and the two label the same door.
+   *
+   * **A room whose exits were never read proves nothing** — `mustSearchFirst`
+   * makes the same allowance for the same reason: a blinding room prints no
+   * list at all, so the step goes out and the refusal, if it comes, is
+   * answered the way it always was.
+   */
+  private shutAhead(state: CharacterState, step: RouteStep): string | null {
+    if (state.room.exits.length === 0) return null;
+    const exit = state.room.exits.find((one) => one.direction === step.direction);
+    const note = exit?.note ?? null;
+    if (note === null) return null;
+    const shut = /^closed\s+(?<barrier>.+)$/.exec(note);
+    return shut?.groups?.['barrier'] ?? null;
+  }
+
+  /**
+   * Opens the door the room says is shut, in place of the step. Returns
+   * whether anything was sent.
+   *
+   * The ladder in `onRefusedStep` is unchanged and still answers a door the
+   * room did not warn about — a door another player shut between the room
+   * block and the step, and every realm whose exits line this client cannot
+   * read. This only spends the refusal's command before the server has to
+   * print it.
+   *
+   * **Only on a fresh send**, because the room block is the evidence and it
+   * does not reprint when the door opens: `The door is now open.` is the whole
+   * of that news (`onBarrierChanged`), so a retry reading the same stale line
+   * would ask again for a door that is already open, for ever.
+   *
+   * **And not at a door already known to be locked.** `open` at one answers
+   * the same word every time, which is `forgetLock`'s whole argument; the
+   * barrier round's retry comes through here fresh, with the budget forgotten
+   * and the lock remembered, and falls through to the step so that
+   * `onRefusedStep` reaches the forcing rungs exactly as it did before.
+   */
+  private openShutWayFirst(step: RouteStep, state: CharacterState): boolean {
+    if (this.locked || !this.config.movement.openDoors) return false;
+    if (this.opened >= this.config.movement.openTries) return false;
+    const barrier = this.shutAhead(state, step);
+    if (barrier === null) return false;
+    this.sendOpen(step, barrier);
+    return true;
   }
 
   /**
@@ -2759,6 +2882,24 @@ export class Walker {
        * in which case standing still is the one thing it must not do — see
        * `leavingAFight` in `start`.
        */
+      /*
+       * **A draw the client could not place asks before the fight holds.**
+       *
+       * One `rm` is what turns an unplaceable landing into a journey that
+       * carries on, and the fight branch returns before the arrival check
+       * where that ask lives — so a monster meeting the character on the
+       * landing buried the question until `resumeFromFight`, which has no ask
+       * of its own and gives up after `stepTimeoutMs`. The realm makes this
+       * the ordinary case rather than the corner: all nine of spell 597's
+       * padded cells hold a lair, share one name and share one exit
+       * signature, so a draw into them is unplaceable by construction and
+       * likely to be met by something.
+       *
+       * Ahead of the hold because it costs one probe-band command and changes
+       * nothing about the fight: the character stands still either way, and
+       * the answer is what the walk needs the moment the fight is over.
+       */
+      this.askWhereAfterDraw(state);
       if (!this.leavingAFight && this.answerFight()) return;
     } else {
       // Out of it. Anything that starts from here is a fight nobody asked
@@ -2780,10 +2921,32 @@ export class Walker {
     const step = this.route.steps[this.index];
     if (!step) return;
 
+    /*
+     * **An exit whose cast moves the character answers twice**, and the first
+     * answer is the room the exit table names — a room it is in for no time at
+     * all. Acting on it would replan from somewhere the spell is about to take
+     * the character out of, and on a `teleports` step it would stop the walk
+     * outright, because that room is not `step.to`.
+     *
+     * The second block is still on the wire, so the client's own move count is
+     * the test — the same one `resumeFromFight` makes about a step it has not
+     * seen answered. The step's deadline is armed underneath and stops the
+     * walk if the second block never comes.
+     */
+    if (movesTwice(step) && (this.movesInFlight() ?? 0) > 0) return;
+
     const here = locate(state);
     // Not resolved yet, or the same room the step started from: the move has
     // simply not landed. The timeout is what stops this waiting forever.
     if (here === null) {
+      /*
+       * Unless the step was a draw, in which case *the client cannot know* and
+       * one command settles it. Asked once per step: `rm` states coordinates
+       * outright, so a second ask would answer nothing a first did not, and
+       * the step's own deadline is still armed underneath — a realm with no
+       * locate word sends nothing and the walk stops as it did before.
+       */
+      if (this.askWhereAfterDraw(state)) return;
       if (state.room.ambiguous > 1) {
         this.stop(t('automation.walk.reasonAmbiguous'));
         return;
@@ -2797,13 +2960,66 @@ export class Walker {
        * `nothing came back after d` — a sentence that blames the server for a
        * silence that never happened. Plenty came back; it said the room was
        * dark.
+       *
+       * **Unless a light is coming**, which is the ordinary case and was
+       * stopping the walk a tenth of a second before the fix arrived: see
+       * `holdForLight`.
        */
       if (isBlinding(state.room.light)) {
+        if (this.holdForLight(state)) return;
         this.stop(t('automation.walk.reasonDarkUnresolved', { lightLevel: state.room.light }));
       }
       return;
     }
+    /*
+     * The room can be read again, so whatever the dark hold was waiting for
+     * has arrived. Only its own hold, as every release here is.
+     */
+    this.releaseDarkHold();
     if (here === step.from) return;
+
+    /*
+     * A draw landed. **This is the step working, not the walk going wrong.**
+     *
+     * A scatter step is the last one a plan can hold (`RouteStep.scatter`), so
+     * where the character is now is a fact nobody had until this moment — and
+     * `here !== step.to` below, which is the guard against a route quietly
+     * desynchronising, would read the realm doing exactly what the plan said
+     * it would as the plan being wrong and stop the journey one step from the
+     * old man's cell.
+     *
+     * So the journey is planned again from here, the same replan `resumeFromFight`
+     * makes after a fight moved the character, and for the same reason: the
+     * steps ahead were directions from a room the character is not in. Landing
+     * on the destination is an arrival, and is handled by the ordinary path
+     * below because `step.to` *is* the destination on a scatter step.
+     *
+     * **And a gate the router said it could not read is the same fact in the
+     * realm's other spelling** (2026-09-15). A room script states its landing
+     * per branch — `9/1291`'s `go portal` goes to `9/1424` on `checkability
+     * 133 5` and names no room at all on the two branches below it — and
+     * `linkPortals` takes the landing it has, with the guard it cannot
+     * evaluate on `Requirement.unread`. So a step whose condition failed puts
+     * the character somewhere the plan never named, which is not the route
+     * desynchronising: it is the one outcome the plan already admitted it
+     * could not predict. Live, that was the Caves of Chaos, two maps from
+     * `9/1424`, reported as *That is not where the route says you should be*.
+     */
+    if ((step.scatter !== undefined || unreadGate(step)) && here !== step.to) {
+      this.clearTimer();
+      this.noteAnswered();
+      this.forgetNudge();
+      this.stepSent = false;
+      this.onsetAnsweredStep = null;
+      this.holds = 0;
+      this.barrierRounds = 0;
+      this.forgetLock();
+      this.leverSaid = false;
+      this.leavingAFight = false;
+      this.darkSince = null;
+      this.scattered(state, step, here);
+      return;
+    }
 
     if (here !== step.to) {
       this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));
@@ -3333,6 +3549,106 @@ export class Walker {
   }
 
   /**
+   * One `rm` for a draw whose landing the client cannot place, once per step.
+   *
+   * Returns whether it asked, so the arrival check can stand down and wait for
+   * the answer. `rm` states coordinates outright, so a second ask would answer
+   * nothing a first did not, and the step's own deadline is still armed
+   * underneath — a realm with no locate word sends nothing and the walk stops
+   * exactly as it did before.
+   */
+  private askWhereAfterDraw(state: CharacterState): boolean {
+    if (this.route === null || this.events.locate === undefined) return false;
+    const step = this.route.steps[this.index];
+    if (step?.scatter === undefined) return false;
+    // Only while the landing is genuinely unplaced: a draw that resolved is a
+    // question already answered.
+    if (locate(state) !== null) return false;
+    // Already asked and still waiting, which is the whole point — the answer
+    // is one command away and stopping the walk for want of it is the failure
+    // this exists to fix. Bounded by the step's own deadline, which is still
+    // armed underneath and stops the walk if nothing ever answers.
+    if (this.askedWhereAt !== null) return true;
+    this.askedWhereAt = Date.now();
+    this.events.locate();
+    if (!this.quiet) {
+      this.events.notice?.(
+        t('automation.walk.scatteredUnplaced', { spellName: step.scatter.landing.name })
+      );
+    }
+    return true;
+  }
+
+  /**
+   * The draw landed somewhere, and the journey carries on from there.
+   *
+   * `resumeFromFight`'s replan without the waiting: there is nothing to wait
+   * for, because the room that resolved the character *is* the answer to the
+   * step and no move is outstanding behind it. What differs is only that this
+   * is expected — a scatter step is the last one the plan could hold, so a
+   * fresh plan is not a recovery here but the next instalment of the same
+   * walk, and it is said out loud once rather than reported as a stop.
+   *
+   * A replan that finds nothing ends the walk with the router's own reason,
+   * which is the honest outcome: the realm dropped the character somewhere the
+   * destination cannot be reached from.
+   */
+  private scattered(state: CharacterState, step: RouteStep, here: RoomId): void {
+    const destination = this.route?.steps.at(-1);
+    if (destination === undefined) return;
+    if (!this.quiet) {
+      const roomName = state.room.name ?? here;
+      this.events.notice?.(
+        step.scatter !== undefined
+          ? t('automation.walk.scattered', { spellName: step.scatter.landing.name, roomName })
+          : // The realm's own words for the condition, because the whole of
+            // what the client can say is that it could not read them.
+            t('automation.walk.gateMissed', {
+              condition: (step.requirement?.unread ?? []).join(', '),
+              roomName
+            })
+      );
+    }
+    const replanned = this.events.replan?.(destination.to);
+    if (replanned === undefined) {
+      this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));
+      return;
+    }
+    if (typeof replanned === 'string') {
+      this.stop(replanned);
+      return;
+    }
+    if (replanned.blocked) {
+      this.stop(replanned.reason ?? t('automation.walk.refusalNoRoute'));
+      return;
+    }
+    if (replanned.steps.length === 0) {
+      // The draw put the character in the room it was walking to. It happens
+      // one time in nine in the padded cells, and it is an arrival — so the
+      // hold goes with it, as `resumeFromFight`'s identical branch does:
+      // an arrived walk publishing a stale hold chip is the card saying the
+      // journey is waiting for something after it has finished.
+      this.hold = null;
+      this.fightClearedAt = null;
+      if (this.finishErrand(state)) return;
+      this.status = 'arrived';
+      this.reason = null;
+      if (!this.quiet) {
+        this.events.notice?.(t('automation.walk.arrived', { stepName: destination.name }));
+      }
+      this.events.ended?.(true, null);
+      this.publish();
+      return;
+    }
+    this.route = replanned;
+    this.index = 0;
+    // Through `carryOn` for `resumeFromFight`'s reason: the two gates that
+    // outrank a step — the rest below `restBelow`, and the monster standing in
+    // the room the draw chose — get their say before the next command.
+    this.carryOn(state);
+  }
+
+  /**
    * Let the fight hold go and take the next step, whatever it now is.
    *
    * Through `holdBeforeSending` rather than straight to `sendCurrent`, so the
@@ -3356,6 +3672,7 @@ export class Walker {
     // The step landed, so whatever was holding it is over and the next one
     // starts its own window — see `heldSince`.
     this.heldSince = null;
+    this.darkSince = null;
     this.holds = 0;
     this.publish();
     if (this.holdBeforeSending(state)) return;
@@ -3572,6 +3889,89 @@ export class Walker {
     return true;
   }
 
+  /**
+   * Stand still in a room too dark to read while the light that fixes it is on
+   * its way.
+   *
+   * A blinding room prints **no room block at all** — no name, no exits — so
+   * the client cannot place the character and the walk stopped with
+   * `reasonDarkUnresolved`. `AutoLight` handles exactly this case, and it is
+   * asked one statement *after* the walker on the same state
+   * (`SessionManager.onCharacter`), so the stop was decided before the torch
+   * was even proposed. Measured live 2026-09-15
+   * (`logs/2026-09-15_16-43-16_festus.mudcap.jsonl`, t=328996): the walk
+   * ended, `light torch` went out 1ms later, the `l` behind `You lit the
+   * torch.` 77ms after that, and the room — *Caves of Chaos*, uniquely placed
+   * by its own exits — came back 145ms after the journey was already over.
+   *
+   * So the question is asked of the module that will answer it (`lightComing`)
+   * and the walk waits. Bounded by `tuning.walk.lightWaitMs` from the moment
+   * it started waiting, and the bound is this hold's **own** timer rather than
+   * the step's: the step *was* answered, and `waitForPrompt`'s sentence would
+   * blame the server for a silence that never happened — which is the same
+   * argument that put the stop here in the first place.
+   *
+   * Nothing to ready, auto-light off, or an escape in flight, and this returns
+   * false with nothing said: the caller stops exactly as it did.
+   */
+  private holdForLight(state: CharacterState): boolean {
+    const spent =
+      this.darkSince !== null && Date.now() - this.darkSince >= tuning().walk.lightWaitMs;
+    if (spent) {
+      // Silently: the caller's stop is what says why, and *walking on* about a
+      // light that never came would be the opposite of what happened.
+      this.forgetDarkHold();
+      return false;
+    }
+    if (this.darkSince === null) {
+      if (this.events.lightComing?.(state) !== true) return false;
+      this.darkSince = Date.now();
+      if (!this.quiet) this.events.notice?.(t('automation.walk.holdingDark'));
+    }
+    if (this.hold !== 'dark') {
+      this.hold = 'dark';
+      this.publish();
+    }
+    /*
+     * The step is answered, so its deadline is not the bound here — and
+     * leaving it armed would end the journey with `nothing came back after go
+     * portal` about a server that answered in four milliseconds.
+     */
+    this.clearTimer();
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (this.status !== 'walking') return;
+      const now = this.events.stateNow?.() ?? state;
+      // The look landed after all: pick the arrival up from where it now is.
+      if (locate(now) !== null) {
+        this.onCharacter(now);
+        return;
+      }
+      this.forgetDarkHold();
+      this.stop(t('automation.walk.reasonDarkUnresolved', { lightLevel: now.room.light ?? '?' }));
+    }, tuning().walk.lightWaitMs);
+    this.holdTimer.unref?.();
+    return true;
+  }
+
+  /** The light arrived: lets the dark hold go, out loud, and only that one. */
+  private releaseDarkHold(): void {
+    if (this.darkSince === null) return;
+    this.darkSince = null;
+    if (this.hold !== 'dark') return;
+    this.hold = null;
+    if (!this.quiet) this.events.notice?.(t('automation.walk.lightResumed'));
+    this.publish();
+  }
+
+  /** The same, silently, where the caller is about to say something better. */
+  private forgetDarkHold(): void {
+    this.darkSince = null;
+    if (this.hold !== 'dark') return;
+    this.hold = null;
+    this.publish();
+  }
+
   /** Whether this character is below the figure it may travel at. */
   private wantsHealthHold(state: CharacterState): boolean {
     if (!this.holdWhenHurt) return false;
@@ -3772,10 +4172,28 @@ export class Walker {
     const now = this.events.stateNow?.() ?? from;
     if (fresh && now !== undefined) {
       this.events.beforeStep?.({ name: step.name, light: step.light }, now);
+      /*
+       * And the door the room has already said is shut, in place of the step
+       * — see `openShutWayFirst`. After the light, which the step behind the
+       * door still needs and which only a fresh send asks for; before the
+       * sneak, which the retry asks again for itself.
+       */
+      if (this.openShutWayFirst(step, now)) return;
     }
     if (now !== undefined) this.sneakFirst(now);
-    this.events.stepping?.(step.command, step.direction, step.to);
+    /*
+     * And where the realm's own spell will put the character, for an exit
+     * whose cast moves them — a draw *or* an address. Both answer with two
+     * room blocks (`Expectations.hintCast`), so both are handed over; the
+     * router already resolved the address half into `step.to`, and this is
+     * what lets the parse read the second block rather than the first.
+     */
+    const cast = step.requirement?.landing;
+    const moves =
+      step.requirement?.spellEffect === 'scatters' || step.requirement?.spellEffect === 'teleports';
+    this.events.stepping?.(step.command, step.direction, step.to, moves ? cast : undefined);
     this.stepSent = false;
+    this.askedWhereAt = null;
     const queued = this.queue.enqueue({
       command: step.command,
       priority: 'movement',
@@ -4139,6 +4557,38 @@ function meetsBarrier(
   if (need === undefined) return false;
   if (need <= 0) return true;
   return skill !== null && skill >= need - margin;
+}
+
+/**
+ * Whether this step's way through carries a condition the router could not
+ * evaluate — and so whether landing somewhere else is a surprise the plan
+ * already allowed for.
+ *
+ * `Requirement.unread` is written by `WorldGraph.linkPortals` alone, for a
+ * room script, which is the one place in the realm where an edge's *landing*
+ * depends on a branch: the script names a room on the branch it can and
+ * nothing on the branches it cannot, and the router takes the landing it has
+ * with the guard on `unread`. So this is not "the step failed" — a condition
+ * that stops the move outright leaves the character where it was, which the
+ * `here === step.from` line above already reads as *not landed yet*.
+ */
+function unreadGate(step: RouteStep): boolean {
+  return (step.requirement?.unread?.length ?? 0) > 0;
+}
+
+/**
+ * Whether this step's exit answers with two room blocks rather than one.
+ *
+ * `CastExit.TryMoveThroughExit` describes the room the exit table names and
+ * *then* casts, and a teleport describes the room it lands in — so both a
+ * `teleports` step and a `scatters` one print twice for one command. See
+ * `Expectations.hintCast`, which queues the pair.
+ */
+function movesTwice(step: RouteStep): boolean {
+  const effect = step.requirement?.spellEffect;
+  return (
+    (effect === 'teleports' || effect === 'scatters') && step.requirement?.landing !== undefined
+  );
 }
 
 function locate(state: CharacterState): string | null {

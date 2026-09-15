@@ -334,6 +334,67 @@ describe('naming what a monster is worth in health', () => {
     expect(mobs[0]?.rw?.map((row) => row.p)).toEqual([0, 1, 0, undefined]);
   });
 
+  /*
+   * Format 36. `rw` is written only where a name holds several rows, so a
+   * uniquely named monster — which is what a boss is — had nowhere to keep
+   * `Monsters.RegenTime`: a 1,500-point Gravedigger on an hour's clock was
+   * priced as though it came back with the skeletons around it.
+   */
+  it('keeps a monster’s own clock on the fold, where the whole name agrees', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 790, Name: 'gravedigger', HP: 130, RegenTime: 1, GameLimit: 1, 'In Game': 1 }
+        ]
+      })
+    );
+    expect(mobs[0]).toMatchObject({ n: 'gravedigger', rt: 1 });
+  });
+
+  it('states no clock where the rows of a name disagree, rather than voting', () => {
+    // `wild dog`: two lair rows on the room's own clock and one placed on an
+    // hour's. Folding to the highest would price an ordinary lair row at one
+    // an hour; folding to the lowest is the reassuring answer this fixed.
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 50, Name: 'wild dog', HP: 20, 'In Game': 1 },
+          { Number: 376, Name: 'wild dog', HP: 20, 'In Game': 1 },
+          { Number: 377, Name: 'wild dog', HP: 20, RegenTime: 1, GameLimit: 1, 'In Game': 1 }
+        ]
+      })
+    );
+    expect(mobs[0]?.rt).toBeUndefined();
+    // The rows still carry their own, so a lair naming 377 prices it exactly.
+    expect(mobs[0]?.rw?.map((row) => row.rt)).toEqual([undefined, undefined, 1]);
+  });
+
+  it('states no clock where no row has one', () => {
+    const mobs = indexMobs(
+      fake({ Monsters: [{ Number: 11, Name: 'skeleton', HP: 43, RegenTime: 0, 'In Game': 1 }] })
+    );
+    expect(mobs[0]?.rt).toBeUndefined();
+  });
+
+  /*
+   * `RegenTime` is only a clock where `GameLimit` is non-zero. `RegenSlot`
+   * consults `MobType.Regen` down that branch alone (`RegenSlot.cs:69`); with
+   * `GameLimit == 0` the slot comes back on the room's own delay and the
+   * column is never read. Stock's `minotaur` states 48 hours it does not keep,
+   * and stands in 25 lairs on a five-minute delay.
+   */
+  it('ignores a RegenTime the server never reads, for want of a GameLimit', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 111, Name: 'minotaur', HP: 200, RegenTime: 48, GameLimit: 0, 'In Game': 1 }
+        ]
+      })
+    );
+    expect(mobs[0]?.rt).toBeUndefined();
+    expect(mobs[0]?.rw).toBeUndefined();
+  });
+
   it('carries the realm’s own numbers for every row sharing a name, so a lair resolves', () => {
     const mobs = indexMobs(
       fake({

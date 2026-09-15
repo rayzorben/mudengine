@@ -23,7 +23,16 @@
  *   the realm may have changed and because a lap is the natural unit of "try
  *   again".
  * - **Search in a fight.** A command spent mid-round is one the fight paid for,
- *   and nothing found by it can be used until the fight ends.
+ *   and nothing found by it can be used until the fight ends. The server says
+ *   so outright — `You may not search while attacking!` — and says it *after*
+ *   spending the command, so this is asked twice: once when the search is
+ *   proposed, and again immediately before it goes out (`Intent.stillWanted`).
+ *   The second ask is the one that matters, because a search proposed on
+ *   arriving in a room is held behind the attack auto-combat proposed from the
+ *   same status line and lands inside the fight that attack started (todo 13,
+ *   2026-09-13). Dropped rather than held, so the next status line after the
+ *   fight proposes it again — which is *do it after attacking*, arrived at
+ *   without a second memory of having wanted to.
  * - **Search while resting**, for `AutoLoot`'s reason and with the same date on
  *   it: whether `search` breaks a rest has never been asked of the wire, and
  *   refusing costs only a delay where being wrong costs the rest. `npm run
@@ -42,6 +51,7 @@ import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { SearchConfig } from '../../shared/config';
 import { tuning } from '../app/tuning';
+import { fightIsRunning } from './Walker';
 
 /**
  * How this client addresses the room it is standing in, for the purpose of
@@ -69,7 +79,15 @@ export class AutoSearch {
   constructor(
     private config: SearchConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue
+    private readonly queue: CommandQueue,
+    /**
+     * The character as it is *now*, for the ask made at the send.
+     *
+     * The state handed to `onCharacter` is the state the proposal was made
+     * against, and the whole point of the second ask is that it is no longer
+     * true. `Walker` takes its own `stateNow` for the same reason.
+     */
+    private readonly stateNow: () => CharacterState
   ) {}
 
   configure(config: SearchConfig, enabled: boolean): void {
@@ -103,10 +121,18 @@ export class AutoSearch {
     if (!this.enabled || !this.config.enabled) return;
     // Unmeasured rather than settled, like `AutoLoot`: waiting costs the wait.
     if (state.vitals.resting || state.vitals.meditating) return;
-    if (state.inCombat) return;
+    /*
+     * **One reading of *fighting*, used here and at the send.** This asked
+     * `state.inCombat`, which is the server's flag alone; `fightIsRunning` is
+     * this codebase's own definition everywhere a walk, a rest or a retreat
+     * asks the question — the flag, something recorded swinging, or a target.
+     * Two spellings of one gate agree exactly until one of them is edited, and
+     * the send-time ask below has to be the same question as this one or the
+     * pair would disagree about the round between a kill and the next swing.
+     */
+    if (fightIsRunning(state)) return;
     if (this.tries >= this.config.tries) return;
 
-    this.tries += 1;
     this.queue.enqueue({
       /*
        * Bare, and deliberately not `search <direction>`.
@@ -127,6 +153,22 @@ export class AutoSearch {
        */
       coalesceKey: `search:${here}`,
       expiresAt: Date.now() + tuning().search.expiresMs,
+      /*
+       * The fight that started between the proposal and the send. Dropped
+       * rather than held: the next status line after the fight proposes it
+       * again, and the budget below is spent on what actually went out.
+       */
+      stillWanted: () => !fightIsRunning(this.stateNow()),
+      /*
+       * **Counted at the send, never at the proposal.** A search the guard
+       * above dropped never reached the server, and charging it to the room's
+       * budget would mean a room entered during a fight was never searched at
+       * all. Coalescing is what stops a second proposal queueing beside the
+       * first while it waits: one intent per room, whatever the status lines do.
+       */
+      onSent: () => {
+        this.tries += 1;
+      },
       reason: t('automation.search.reason')
     });
   }

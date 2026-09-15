@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { WorldGraph } from '../WorldGraph';
 import { resolveFromCoordinates, resolveRoom } from '../resolve';
-import { roomId, type WorldRoom } from '../../../shared/world';
+import { landingRooms, roomId, type WorldRoom } from '../../../shared/world';
 
 const file = path.resolve('resources/world/paradigm.jsonl.gz');
 const available = fs.existsSync(file);
@@ -39,6 +39,105 @@ describe.runIf(available)('resolveRoom', () => {
     const result = resolveRoom(graph!, { name: 'Nowhere At All', exits: [] });
     expect(result.room).toBeNull();
     expect(result.candidates).toEqual([]);
+  });
+
+  /*
+   * After a draw, where you came from is not evidence — it is a trap.
+   *
+   * Stepping west out of the Asylum Ward walks an exit whose cast rolls a room
+   * in 9/1183–1206, and the `movement` rung above checks the exit table's room
+   * by *name*: seventy-two rooms in that maze are called Warped Asylum, so it
+   * resolves 9/1183 with 0.98 confidence twenty-three times out of
+   * twenty-four, and every plan drawn from there is directions from a room the
+   * character is not in. `among` replaces the ladder rather than joining it.
+   */
+  it('resolves a scattered arrival inside the draw, never by the exit walked', () => {
+    // The four cell draws are the readable ones: `cell north` lands in nine
+    // rooms called Padded Cell, and each has exactly one exit, so the printed
+    // list separates the three that go north from the six that do not — and
+    // 9/1259, the old man's, is the one of those three the name settles.
+    const cells = landingRooms({ spell: 597, name: 'cell north', map: 9, low: 1255, high: 1263 });
+    const here = graph!.get(9, 1259)!;
+    const result = resolveRoom(graph!, {
+      name: here.name,
+      exits: here.exits.map((exit) => exit.direction),
+      among: cells
+    });
+    expect(result.method).toBe('scattered');
+    expect(result.candidates.length).toBeGreaterThan(0);
+
+    /*
+     * And the old reading, which is the contrast this exists for: the character
+     * is actually in 9/1200, and asking the ladder the way a walk used to —
+     * *previous 9/1182, moved west* — answers 9/1183 outright, because the
+     * exit table names 9/1183 and all seventy-two rooms in the maze are called
+     * Warped Asylum. Confidently wrong, and every plan after it is directions
+     * from a room the character is not in.
+     */
+    const elsewhere = graph!.get(9, 1200)!;
+    const fooled = resolveRoom(graph!, {
+      name: elsewhere.name,
+      exits: elsewhere.exits.map((exit) => exit.direction),
+      previous: roomId(9, 1182),
+      moved: 'w'
+    });
+    expect(fooled.method).toBe('movement');
+    expect(fooled.room?.room).toBe(1183);
+  });
+
+  /*
+   * And a refusal where two of the draw's rooms are still consistent, because
+   * the whole point of narrowing to the draw is that a confident answer here
+   * is worth a plan and a wrong one costs the walk. What follows is the client
+   * asking (`rm`), which after a draw is the only thing that can say.
+   */
+  it('refuses rather than picks when the draw still holds several', () => {
+    const drawn = landingRooms({ spell: 596, name: 'asylum', map: 9, low: 1183, high: 1206 });
+    const result = resolveRoom(graph!, {
+      name: 'Warped Asylum',
+      exits: ['n', 'e', 'w'],
+      among: drawn
+    });
+    expect(result.room).toBeNull();
+    expect(result.method).toBe('scattered');
+    expect(result.candidates.map((room) => room.room)).toEqual([1185, 1187, 1194, 1201]);
+  });
+
+  /*
+   * **And this maze is built so that nothing but asking will do.** The
+   * asylum's twenty-four landing rooms share one name and fall into seven
+   * exit signatures, none of them held by a single room — so the ladder can
+   * never place a scattered arrival there, however good it gets. That is the
+   * measurement behind `WalkerEvents.locate`: one `rm` after a draw, because
+   * the alternative is a walk that stops *ambiguous* every time.
+   */
+  it('cannot place any landing of the asylum draw by name and exits alone', () => {
+    const drawn = landingRooms({ spell: 596, name: 'asylum', map: 9, low: 1183, high: 1206 });
+    for (const id of drawn) {
+      const room = graph!.byId(id)!;
+      const result = resolveRoom(graph!, {
+        name: room.name,
+        exits: room.exits.map((exit) => exit.direction),
+        among: drawn
+      });
+      expect(result.room).toBeNull();
+      expect(result.candidates.length).toBeGreaterThan(1);
+    }
+  });
+
+  /*
+   * A landing the spell's own range does not cover is the realm and the realm
+   * data disagreeing. Neither the draw nor the room walked out of is evidence
+   * then, so the answer comes from the name alone.
+   */
+  it('falls back to the name when the server lands you outside the draw', () => {
+    const result = resolveRoom(graph!, {
+      name: 'Bank of Godfrey',
+      exits: ['n', 'e', 'w'],
+      among: landingRooms({ spell: 596, name: 'asylum', map: 9, low: 1183, high: 1206 })
+    });
+    expect(result.method).toBe('unique-name');
+    expect(result.room?.room).toBe(297);
   });
 
   it('resolves by movement from a known room', () => {

@@ -248,24 +248,51 @@ ui:
     # they were a second way of asking one question and are gone. Your own
     # settings were carried into rows when the client first ran after that.
     #
-    # `on` is either one of the eleven channels (combat, vitals, room, realm,
-    # party, command, movement, items, stealth, presence, session) or one of
-    # six conditions the channels cannot express:
+    # `on` names an EVENT -- one thing that happens in the realm. It used to
+    # name one of eleven channels (combat, room, session...), which are the
+    # buckets this client sorts notices into rather than things that happen:
+    # a row saying `combat` meant every monster's blow, every refused spell and
+    # your own death together. Your old rows were carried to the nearest
+    # happening when the client first ran after 2026-09-13, and it said so.
     #
-    #   health, mana        a figure you choose, in the direction you choose;
-    #                       fired on the CROSSING, not on the value, so standing
-    #                       at 20% does not alert once a second.
-    #   attacked            a person -- not a monster -- swinging at you.
-    #   item, player        matched by `name`. An `item` row catches the thing
-    #                       lying in the room and the thing a search turned up.
-    #   cash                a pile a search turned up, `value` in COPPER --
+    # The settings screen lists every event, grouped, in plain English. Five of
+    # them take something more than the event itself:
+    #
+    #   health, mana        a figure you choose, in the direction you choose
+    #                       (`side`, `value`, `percent`); fired on the CROSSING,
+    #                       not on the value, so standing at 20% does not alert
+    #                       once a second.
+    #   item-found          matched by `name`, catching the thing lying in the
+    #   player-seen         room and the thing a search turned up.
+    #   cash-found          a pile a search turned up, `value` in COPPER --
     #                       which is what this client normalises every purse and
     #                       every quoted price into, so one number covers every
-    #                       coin the realm prints.
+    #                       coin the realm prints. One-sided: there is no
+    #                       maximum to be a share of.
     #
     # `level` empty keeps what the client decided (what a line costs is a fact
     # about the realm); name a severity to overrule it for this row alone.
-    # `whileFocused` means nothing without `notify` and is stored off there.
+    #
+    # `alert` and `notify` are the two readings. `alert` puts the line on the
+    # Alerts card, for somebody watching it. `notify` raises it OUTSIDE the
+    # window, where the system shows it -- which is most of an evening, because
+    # automating a character is what lets you go and do something else; clicking
+    # one brings the window forward and shows that character. `whileFocused`
+    # raises it while this window is in front as well, and means nothing without
+    # `notify`, so it is stored off there.
+    #
+    # Two switches under `desktop:` decided both of those for everything until
+    # 2026-09-13. Every question they answered is one of the two keys above, and
+    # your settings were carried onto your rows when the client first ran after
+    # it. One notification per character at a time, the newest, and each kind
+    # then rests a minute before it speaks again about that character -- being
+    # attacked is a fresh line several times a round.
+    #
+    # `quietSeconds` is how long the row stays quiet after it fires -- 30 by
+    # default. The case is an event the realm repeats, a refused attack every
+    # round or a search in a dead end, where the first is the whole of the news.
+    # 0 means every occurrence. It is per ROW, so two rows on one event at two
+    # figures keep separate clocks.
     #
     # These four are what a fresh client ships with. Every one is removable, and
     # a list with nothing in it is not silence -- it is the client's own ranking.
@@ -278,6 +305,7 @@ ui:
         alert: true
         notify: true
         whileFocused: false
+        quietSeconds: 30
       - 'on': mana
         side: below
         value: 20
@@ -286,33 +314,18 @@ ui:
         alert: true
         notify: false
         whileFocused: false
+        quietSeconds: 30
       - 'on': attacked
         level: critical
         alert: true
         notify: true
         whileFocused: true
-      - 'on': movement
+        quietSeconds: 30
+      - 'on': arrived
         alert: true
         notify: true
         whileFocused: false
-
-    # What the operating system is asked to say when you are not looking at
-    # this window -- which is most of an evening, because automating a
-    # character is what lets you go and do something else.
-    #
-    # Two switches: whether to raise anything at all, and whether to do it
-    # while this window is in front. WHICH happenings are raised is a row's
-    # business -- `notify` on the row above -- since a list of muted happenings
-    # here was a second way of writing the same thing.
-    #
-    # `whileFocused` off, because what they would say is already on the Alerts
-    # card. One notification per character at a time, the newest, and each kind
-    # then rests a minute before it speaks again about that character -- being
-    # attacked is a fresh line several times a round. Clicking one brings the
-    # window forward and shows that character.
-    desktop:
-      enabled: true
-      whileFocused: false
+        quietSeconds: 30
 
   # Show the HUD rail beside the console.
   #
@@ -389,9 +402,9 @@ ui:
   # names, {#ff8800}, and {bg:blue} for the ground; {bold}, {dim}, {reset};
   # and a closer -- {/red}, {/colour}, {/bg}, {/bold}, {/dim} -- puts back
   # what was in effect before. Controls: {if hp/hpMax < .5}...{else if
-  # need == 0}...{else}...{/if}; {for items}...{/for} draws the middle once
-  # per row with the row's fields in scope, and {n}, {rows}, {first} and
-  # {last}; {table}...{/table} lines every figure inside up in columns,
+  # need == 0}...{else}...{/if}; {for item in items}...{/for} draws the middle
+  # once per row, with every figure of the row reachable through the name it
+  # binds ({item.weight}) and {n}, {rows}, {first} and {last} beside it; {table}...{/table} lines every figure inside up in columns,
   # numbers flush right, and {table header} names the columns on a first
   # row. A line holding only controls takes no row. Anything else, emoji
   # included, is drawn as typed. A figure the wire should have stated is
@@ -426,32 +439,51 @@ ui:
     #               arrives -- so what was drawn stays drawn in the scrollback.
     #               One line; the figures come from the template
     #               `automation.statline` sends.
+    # A list is walked with `{for <row> in <list>}`, and every figure of a row
+    # is addressed through the name it binds: `{for item in items}` and then
+    # `{item.weight}`. The settings screen's designer lists every one of them
+    # under a heading of its own, which is where to read this rather than here.
+    #
     #   inventory   The pack, in place of `You are carrying ...`, `You have
     #               ... keys`, `Wealth:` and `Encumbrance:`. {items} is one row
-    #               per carried thing: {item} {name} {count} {slot} {equipped}
-    #               {worn} {wearable} {reason} {price} {charges} {action} and
-    #               the realm's {weight} {ac} {dr} {min} {max} {damage} {stats}
-    #               {kind} {realmSlot} {speed} {strength} {accuracy}
-    #               {weaponType} {hands} {material} {uses} {minLevel} {limit}
-    #               {gettable} {id} {shops} {droppedBy} {icon}. {icon} is the
-    #               slot's picture over two cells and {action} the pack card's
-    #               own control, which equips or removes with a click and says
-    #               on hover why a thing cannot be worn. Then {itemCount},
-    #               {keys} {keyCount}, {wealth} {wealthLong} {runic} {platinum}
-    #               {gold} {silver} {copper}, {encumbrance} {encumbranceMax}
-    #               {encumbranceWord} {encumbrancePercent}.
+    #               per carried thing: {item} {item.name} {item.count}
+    #               {item.slot} {item.equipped} {item.worn} {item.wearable}
+    #               {item.reason} {item.price} {item.charges}, what can be done
+    #               with it ({item.action.toggleEquip} {item.action.drop}) and
+    #               the realm's {item.weight} {item.ac} {item.dr} {item.min}
+    #               {item.max} {item.damage} {item.stats} {item.kind}
+    #               {item.realmSlot} {item.speed} {item.strength}
+    #               {item.accuracy} {item.weaponType} {item.hands}
+    #               {item.material} {item.uses} {item.minLevel} {item.limit}
+    #               {item.gettable} {item.droppable} {item.id} {item.number}
+    #               {item.effects} {item.effectsUnread} {item.shops}
+    #               {item.droppedBy} {item.icon}. {item.icon} is the slot's
+    #               picture over two cells; each action is a control over two,
+    #               equipping, removing or putting down with a click and saying
+    #               on hover why it cannot. {item.effects} is what the realm
+    #               says the thing does -- walk it with `{for effect in
+    #               item.effects}` for {effect.name} and {effect.value}, which
+    #               is where an alignment or class restriction appears, since
+    #               the realm states those as effects and not as columns. Then
+    #               {itemCount}, {keys} {keyCount}, {wealth} {wealthLong}
+    #               {runic} {platinum} {gold} {silver} {copper},
+    #               {encumbrance} {encumbranceMax} {encumbranceWord}
+    #               {encumbrancePercent}.
     #   who         The roster `who` prints: {players} is one row per
-    #               adventurer -- {name} {title} {alignment} {gang} {flags} --
-    #               and {count}.
+    #               adventurer -- {player.name} {player.title}
+    #               {player.alignment} {player.gang} {player.flags} -- and
+    #               {count}.
     #   shop        A shop's shelf, in place of `list`: {items} is one row per
-    #               thing sold -- {item} {quantity} {price} as the counter said
-    #               it, {cost} in copper, {afford} (`short` when it is more
-    #               than the purse holds) {short} {usable} (the reason this
-    #               character may not wear it) {wearable} {note} {basePrice}
-    #               and the realm's figures as in the pack -- and {count}.
+    #               thing sold -- {item} {item.quantity} {item.price} as the
+    #               counter said it, {item.cost} in copper, {item.afford}
+    #               (`short` when it is more than the purse holds) {item.short}
+    #               {item.usable} (the reason this character may not wear it)
+    #               {item.wearable} {item.note} {item.basePrice} and the
+    #               realm's figures as in the pack -- and {count}.
     #   party       The party listing: {members} is one row per member --
-    #               {name} {class} {health} {mana} {rank} {flag} {state}
-    #               {invited} {resting} {meditating} -- and {count}.
+    #               {member.name} {member.class} {member.health} {member.mana}
+    #               {member.rank} {member.flag} {member.state} {member.invited}
+    #               {member.resting} {member.meditating} -- and {count}.
     #   experience  `You gain N experience.`, one line: {gained}, and beside
     #               it what the client tracks -- {exp} after the gain, {need}
     #               still to {nextLevel}, {level}, {expSession}.
@@ -465,8 +497,8 @@ ui:
         enabled: false
         template: |
           {table header}
-          {for items}
-          {action} {bold}{item}{/bold}  {dim}{weight}{/dim}  {stats}  {brightGreen}{equipped}{/brightGreen} {icon}
+          {for item in items}
+          {item.action.toggleEquip} {bold}{item}{/bold}  {dim}{item.weight}{/dim}  {item.stats}  {brightGreen}{item.equipped}{/brightGreen} {item.icon}
           {/for}
           {/table}
           {dim}Keys:{/dim} {keys|or:none}
@@ -478,8 +510,8 @@ ui:
         template: |
           {bold}{count} adventurers{/bold}
           {table header}
-          {for players}
-          {alignment}  {bold}{name}{/bold}  {title}  {dim}{gang}{/dim}  {flags}
+          {for player in players}
+          {player.alignment}  {bold}{player.name}{/bold}  {player.title}  {dim}{player.gang}{/dim}  {player.flags}
           {/for}
           {/table}
       - name: Shop shelf
@@ -487,8 +519,8 @@ ui:
         enabled: false
         template: |
           {table header}
-          {for items}
-          {bold}{item}{/bold}  {dim}x{quantity}{/dim}  {price}  {afford}  {usable}  {icon}
+          {for item in items}
+          {bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.price}  {item.afford}  {item.usable}  {item.icon}
           {/for}
           {/table}
       - name: Party
@@ -496,8 +528,8 @@ ui:
         enabled: false
         template: |
           {table header}
-          {for members}
-          {rank}  {bold}{name}{/bold}  {dim}{class}{/dim}  {health}%  {mana}%  {state}
+          {for member in members}
+          {member.rank}  {bold}{member.name}{/bold}  {dim}{member.class}{/dim}  {member.health}%  {member.mana}%  {member.state}
           {/for}
           {/table}
       - name: Experience
@@ -1074,12 +1106,23 @@ automation:
   # for a lair to repopulate; `bounce: true` walks a corridor there and back
   # rather than jumping from the last stop to the first.
   #
+  # `every` is the room's own clock, in seconds: the lap walks that stop only
+  # once that long has passed since it was last left cleared, and takes the
+  # next stop whose clock has come round instead. It is what stops a lair on a
+  # slow clock costing its detour on every lap -- three rooms at 30, 30 and 60
+  # seconds are walked 1, 2, 3, 1, 2, 1, 2, 3 rather than 1, 2, 3 every time.
+  # Measured on what actually happened, so a long fight or a rest moves it.
+  # A stop with no `every` is walked every lap, which is what every loop
+  # written by hand does; the Hunting card puts one on each stop of the loops
+  # it builds, from the realm's own regeneration times.
+  #
   # One file looks like this, and its name inside it is what the palette shows:
   #
   #   name: Newhaven arena
   #   stops:
   #     - 'Newhaven, Arena 1/2150'
   #     - { room: 'Dungeon, Entrance 1/2152', linger: 20 }
+  #     - { room: 'Dungeon, Deep Cell 1/2160', every: 120 }
   #
   # 420 of MegaMUD's own are shipped in resources/loops/megamud.yaml, and the
   # settings screen offers them at each of the three scopes -- that is the easy
@@ -1252,6 +1295,36 @@ automation:
       agility: 0
       health: 0
       charm: 0
+
+  # Going hunting on its own: where this character should be at all.
+  #
+  # The Hunting card ranks every lair the exits reach from where the character
+  # stands, prices each one against this character's own sheet and the realm's
+  # own respawn clock, sizes a loop to that clock and fills it from the lairs
+  # beside it. This is the same answer, walked to without a click: with
+  # `enabled` on, a character with nothing else to do -- no lap, no route, no
+  # errand, nothing swinging at it -- is walked to the best spot within reach
+  # and set looping round it.
+  #
+  # The loop is built from the survey each time and is filed nowhere, so a
+  # lair that stops being worth walking is never left on a shelf under a name
+  # that promises it is.
+  #
+  # Off, because a client that decides for itself where a character spends the
+  # night is a decision worth making on purpose.
+  #
+  # `radius` is how far to look, in steps; 0 is everywhere the exits reach,
+  # which is the right answer for "where should this character be tonight" and
+  # the wrong one for a character that should not leave its area.
+  #
+  # There is no floor here: `walk.minExpPerHour` above is the rate below which
+  # nothing is worth walking to, and the survey's own exclusions -- a lair
+  # whose worst spawn would take too much of the bar, one too trivial to pay --
+  # are the safety. Two names for one question is how somebody sets one and
+  # wonders why the other still decides.
+  hunting:
+    enabled: false
+    radius: 0
 
   # Casting -- MegaMUD's Spells tab, at its smallest useful size.
   #
@@ -1535,6 +1608,27 @@ automation:
     #
     #   avoid: [town guard, priest]
     avoid: []
+
+    # The order monsters are attacked in — MegaMUD's Attack Priority List.
+    #
+    # Five bands: first, high, default, low, last. A monster no row names is
+    # `default`, so this is somewhere to add the one that matters rather than a
+    # ranking of the realm.
+    #
+    #   mobPriority:
+    #     - { mob: gnoll shaman, priority: first }
+    #     - { mob: giant rat, priority: last }
+    #
+    # Where one of these is in the room the band decides outright and the
+    # client's own weighing is skipped — which is the point: a ranking the
+    # realm's arithmetic could overturn is one nobody can predict from reading
+    # it. `avoid` and every other refusal still apply first, so a band says
+    # which of the monsters worth attacking to attack, never that one is.
+    #
+    # A realm may state its own list in `servers/<id>/server.yaml`, and it is
+    # merged rather than replaced: a row here wins for the monster it names,
+    # and the realm's rows for every other monster still apply.
+    mobPriority: []
 
     # And a refusal from the realm's own column rather than a name: decline
     # anything it says has more health than this. 0 never refuses.

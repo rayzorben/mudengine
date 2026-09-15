@@ -41,6 +41,14 @@ const DYNAMIC_CALLS: readonly { file: string; prefix: string; reason: string }[]
   },
   {
     file: 'src/renderer/src/components/RewriteEditor.tsx',
+    prefix: 'rewrites.rows',
+    reason:
+      "The heading over each list's own figures is the list's own name (2026-09-14, todo 14): " +
+      'the lists are the closed catalogue in ENTITY_SPECS, and rewrites.test.ts asserts every ' +
+      'one is named and has a singular to address its rows by.'
+  },
+  {
+    file: 'src/renderer/src/components/RewriteEditor.tsx',
     prefix: 'rewrites.fields',
     reason:
       "The designer's sidebar describes each figure by its own name (2026-09-10, todo 99, the " +

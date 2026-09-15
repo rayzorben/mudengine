@@ -173,3 +173,59 @@ describe('an exit that wants something in the pack', () => {
     expect(chip.label).toContain('3503');
   });
 });
+
+/*
+ * A room-script portal states several conditions on one phrase and `kind`
+ * holds one of them, so the rest ride on `Requirement.unread` — and they are
+ * not all conditions: `takeitem multicoloured sceptre` and `summon 1009` are
+ * what the step *does*. 186 of Paradigm's scripted landings and 106 of stock's
+ * carry at least one, priced at the unevaluable figure, and a reader offered
+ * that way has to be able to see why.
+ */
+describe('the conditions a scripted way states and nothing can check', () => {
+  const graph = world();
+
+  it('says the realm’s own words beside the gate it could read', () => {
+    const chip = describeObstacle(
+      {
+        kind: 'level',
+        raw: 'enter portal; minlevel 65; takeitem multicoloured sceptre; summon 1009',
+        minLevel: 65,
+        commands: ['enter portal'],
+        // The realm's own order, unrearranged: the harmless one leads.
+        unread: ['roomitem nexus portal', 'takeitem multicoloured sceptre', 'summon 1009']
+      },
+      graph
+    );
+    expect(chip.kind).toBe('level');
+    // The chip stays short: the gate, the first of them, and how many are left
+    // — because `detail` is hover-only and the first is not the worst.
+    expect(chip.label).toContain('65');
+    expect(chip.label).toContain('nexus portal');
+    expect(chip.label).toContain('+2');
+    // The line has room for all of them, which is where `summon` is readable.
+    expect(chip.detail).toContain('multicoloured sceptre');
+    expect(chip.detail).toContain('summon 1009');
+  });
+
+  /* One of them needs no count, and must not read `+0 more`. */
+  it('says nothing about a count when there is only one', () => {
+    const chip = describeObstacle(
+      {
+        kind: 'text',
+        raw: 'go portal; nomonsters',
+        commands: ['go portal'],
+        unread: ['nomonsters']
+      },
+      graph
+    );
+    expect(chip.label).toBe('Say: go portal · nomonsters');
+  });
+
+  /* An edge that states nothing extra says exactly what it always said. */
+  it('adds nothing to an obstacle with none', () => {
+    const plain = describeObstacle({ kind: 'door', raw: 'Door' }, graph);
+    expect(plain.label).toBe('Door');
+    expect(plain.detail).toBe('Door');
+  });
+});

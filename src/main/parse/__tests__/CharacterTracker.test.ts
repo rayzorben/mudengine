@@ -118,10 +118,11 @@ function play(
     },
     spellLore ? (text) => spellLore.match(text) : undefined,
     // And how this realm's monsters die: the lore the tracker learns into
-    // first, then the shipped table, exactly as `SessionManager` orders them.
+    // beside the shipped table, exactly as `SessionManager` joins them.
     (text) => {
-      const learned = lore?.deathOf?.(text) ?? null;
-      return learned !== null ? [learned] : (sentences?.deaths.mobsOf(text) ?? []);
+      const learned = lore?.deathOf?.(text) ?? [];
+      const shipped = sentences?.deaths.mobsOf(text) ?? [];
+      return learned.length === 0 ? shipped : [...new Set([...learned, ...shipped])];
     },
     // And the realm's emotes, where a test ships them.
     sentences ? (text) => sentences.actions.match(text) : undefined
@@ -1827,7 +1828,7 @@ describe('the fight this character is in', () => {
       return {
         ...NO_LORE,
         deaths,
-        deathOf: (text) => [...deaths].find(([, sentence]) => sentence === text)?.[0] ?? null,
+        deathOf: (text) => [...deaths].filter(([, sentence]) => sentence === text).map(([m]) => m),
         observeDeath: (name, text) => void deaths.set(name, text)
       };
     };
@@ -2032,6 +2033,35 @@ describe('the fight this character is in', () => {
       expect(names(tracker.current.room.occupants)).toEqual(['orc rogue', 'giant rat']);
     });
 
+    /*
+     * And somebody else's kill is somebody else's: it takes their monster out
+     * of the room and leaves this character's fight exactly where it was.
+     *
+     * Clearing the target here cost the experience line behind it the one
+     * thing that can attribute a kill — `suspectDeath` has nothing to suspect
+     * without a target — so this character's own corpse stayed in the room
+     * for the rest of the session and auto-combat went on choosing it
+     * (live, 2026-09-14, four dark monks in Rhudaur Town Centre).
+     */
+    it('leaves this character’s own fight alone when another monster dies', () => {
+      const lore = remembered();
+      lore.deaths.set('giant rat', 'The giant rat squeals once, and dies.');
+      const tracker = play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue, giant rat.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'The giant rat squeals once, and dies.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(names(tracker.current.room.occupants)).toEqual(['orc rogue']);
+      expect(tracker.current.combat.target).toBe('orc rogue');
+    });
+
     /* Read from `Mob.cs:1235`, the one death sentence the server composes itself. */
     it('reads the server’s own fallback without being taught', () => {
       const tracker = play(
@@ -2073,6 +2103,82 @@ describe('the fight this character is in', () => {
         ['orc rogue', true, 'sentence'],
         ['giant rat', true, 'experience']
       ]);
+    });
+
+    /*
+     * And both readings put the name where `SessionManager.noteQuestKilled`
+     * can take it: a quest step can be owned by a monster's death (realm
+     * format 37) and there is nothing to type for one, so this slot is the
+     * only thing that can move the book. Reported 2026-09-15.
+     */
+    describe('what died, for the quest step a death runs', () => {
+      it('is taken from the room’s own death sentence', () => {
+        const lore = remembered();
+        lore.deaths.set('orc rogue', 'The orc rogue utters a low growl, and dies.');
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: orc rogue.',
+            'Obvious exits: north',
+            'The orc rogue utters a low growl, and dies.'
+          ],
+          combatWorld(),
+          lore
+        );
+        expect(tracker.takeDeaths()).toEqual(['orc rogue']);
+        // Cleared by the taking, as `takeSheetRequest` is.
+        expect(tracker.takeDeaths()).toEqual([]);
+      });
+
+      it('is taken from the experience line where no sentence was read', () => {
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: giant rat.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash the giant rat for 40 damage!',
+            'You gain 25 experience.'
+          ],
+          combatWorld()
+        );
+        expect(tracker.takeDeaths()).toEqual(['giant rat']);
+      });
+
+      /*
+       * Under the realm's **row**, never the room's spelling of one instance:
+       * a quest step names the row, and the room hangs a modifier on the name
+       * it prints. `rowNameOf`, the same rule the learned death sentence is
+       * filed under.
+       */
+      it('folds the modifier the room hung on the name', () => {
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: thin giant rat.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash the thin giant rat for 40 damage!',
+            'You gain 25 experience.'
+          ],
+          combatWorld()
+        );
+        expect(tracker.takeDeaths()).toEqual(['giant rat']);
+      });
+
+      it('says nothing about a fight nothing died in', () => {
+        const tracker = play(
+          [
+            '[HP=98/MA=50]:',
+            'Also here: giant rat.',
+            'Obvious exits: north',
+            '*Combat Engaged*',
+            'You slash the giant rat for 4 damage!'
+          ],
+          combatWorld()
+        );
+        expect(tracker.takeDeaths()).toEqual([]);
+      });
     });
   });
 
@@ -9104,6 +9210,81 @@ describe('the way back', () => {
   });
 
   /*
+   * **A way the realm describes in full is not a discovery, even when its exit
+   * table names the wrong end of it.**
+   *
+   * An exit whose cast teleports puts the character in the spell's room and
+   * never in the table's, so testing the table's room never matched and every
+   * walk through one wrote a permanent `Discovery` into the character's file.
+   * 49 exits on each shipped realm — every wrong square of the Marble Rooms —
+   * and nothing walked them until the router learned where they land, which is
+   * what made a silent leak into a leak on every route through the puzzle.
+   *
+   * The same failure `dive pool` taught the room-script branch below it, in
+   * the shape a `Cast:` exit makes it.
+   */
+  it('writes nothing down for an exit whose cast teleports', () => {
+    const found: Discovery[] = [];
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-teleport-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({
+      v: 3,
+      source: 'test',
+      rooms: 2,
+      generatedAt: 'x',
+      spells: [{ id: 900, n: 'recall', ab: [[140, 0]], pw: [11, 11] }]
+    });
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          header,
+          JSON.stringify({
+            m: 1,
+            r: 1,
+            n: 'Ward',
+            x: { w: { m: 1, r: 10, i: 'Cast: pre-0, post-900' } }
+          }),
+          JSON.stringify({ m: 1, r: 10, n: 'Cell', x: {} }),
+          JSON.stringify({ m: 1, r: 11, n: 'Hall', x: { e: { m: 1, r: 1 } } })
+        ].join('\n') + '\n'
+      )
+    );
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    const classifier = new Classifier();
+    const tracker = new CharacterTracker(graph, undefined, (d) => found.push(d));
+    let seq = 0;
+    const feed = (lines: string[]): void => {
+      for (const plain of lines) {
+        seq += 1;
+        const { block, batch } = classifier.classify({
+          seq,
+          at: 1_700_000_000_000 + seq,
+          text: plain,
+          plain,
+          terminator: 'newline'
+        });
+        tracker.apply(block);
+        if (batch) tracker.apply(batch);
+      }
+    };
+
+    feed(['Location:            1,1', 'Ward', 'Obvious exits: west']);
+    tracker.hintCast('w', 'w', ['1/11']);
+    tracker.observeCommand('w');
+    // The exit table's own room, which the realm describes before it casts.
+    feed(['Cell', 'Obvious exits: none']);
+    // And where the spell put them, which the exit table never names. One
+    // room, so the landing is an address and the answer is exact.
+    feed(['Hall', 'Obvious exits: east']);
+
+    expect(tracker.current.room).toMatchObject({ number: 11, resolvedBy: 'scattered' });
+    expect(found).toEqual([]);
+  });
+
+  /*
    * The realm puts a dead character in its area's temple, along no edge — and
    * the newest step on the trail is the one that walked into whatever did the
    * killing, which is the last direction any escape should offer.
@@ -9126,7 +9307,8 @@ describe('the way back', () => {
     expect(tracker.trail).toEqual([]);
   });
 
-  /* Bounded, like every other trace this client keeps. */
+  /* Bounded, like every other trace this client keeps — by its own figure,
+     which is the back button's history and not the retreat's short look back. */
   it('keeps only the last few steps', () => {
     const { tracker, feed, send } = session();
     for (let lap = 0; lap < 6; lap += 1) {
@@ -9135,8 +9317,29 @@ describe('the way back', () => {
       send('s');
       feed(['Western Edge', 'Obvious exits: north']);
     }
-    expect(tracker.trail.length).toBeLessThanOrEqual(TUNING.walk.recentSteps);
+    expect(tracker.trail.length).toBeLessThanOrEqual(TUNING.walk.trailSteps);
     expect(tracker.wayBackFrom('1/1')?.direction).toBe('s');
+  });
+
+  /*
+   * Going back pops it. Without that, one press of back records the move it
+   * made and the next press walks back over *that* — two rooms oscillating for
+   * ever, which is the naive reverse under another name (todo 04).
+   */
+  it('gives up the step a back press walked over, and what the walk back added', () => {
+    const { tracker, feed, send } = session();
+    send('n');
+    feed(['North-West Corner', 'Obvious exits: south, east']);
+    // The entry the press is made about, not its index: the trail is bounded,
+    // and at the cap every push shifts the oldest off.
+    const mark = tracker.trail.at(-1)!;
+    // The way back, walked: one more step on the trail, landing where it began.
+    send('s');
+    feed(['Western Edge', 'Obvious exits: north']);
+    expect(tracker.trail).toHaveLength(2);
+
+    tracker.retraced(mark);
+    expect(tracker.trail).toEqual([]);
   });
 });
 
@@ -10322,5 +10525,156 @@ describe("the realm's own poison", () => {
     expect(
       play(['[HP=34]:', 'You are dizzy and disoriented from poison!']).current.afflictions.poisoned
     ).toBe('yes');
+  });
+});
+
+describe('a step that hands the character to a draw', () => {
+  /*
+   * A maze of namesakes with one entrance, which is the Warped Asylum's shape
+   * in four rooms: the door west out of 1/1 walks an exit the table says leads
+   * to 1/10, and the spell on it rolls a room in 1/10–1/12.
+   *
+   * The names are identical on purpose. That is what makes `movement` — the
+   * strongest rung and the one a walk arms every step — answer *1/10* with
+   * 0.98 confidence wherever the draw actually put the character, and every
+   * plan after it directions from a room nobody is in.
+   */
+  const MAZE = [
+    { m: 1, r: 1, n: 'Ward', x: { w: { m: 1, r: 10, i: 'Cast: pre-0, post-900' } } },
+    { m: 1, r: 10, n: 'Cell', x: { n: { m: 1, r: 1 } } },
+    { m: 1, r: 11, n: 'Cell', x: { e: { m: 1, r: 1 } } },
+    { m: 1, r: 12, n: 'Cell', x: { s: { m: 1, r: 1 } } }
+  ];
+
+  function maze(): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-scatter-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({
+      v: 3,
+      source: 'test',
+      rooms: MAZE.length,
+      generatedAt: 'x',
+      spells: [{ id: 900, n: 'muddle', ab: [[140, 0]], pw: [10, 12] }]
+    });
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync([header, ...MAZE.map((room) => JSON.stringify(room))].join('\n') + '\n')
+    );
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return graph;
+  }
+
+  function session(): { tracker: CharacterTracker; feed: (lines: string[]) => void } {
+    const classifier = new Classifier();
+    const tracker = new CharacterTracker(maze());
+    let seq = 0;
+    const feed = (lines: string[]): void => {
+      for (const plain of lines) {
+        seq += 1;
+        const line: StreamLine = {
+          seq,
+          at: 1_700_000_000_000 + seq,
+          text: plain,
+          plain,
+          terminator: 'newline'
+        };
+        const { block, batch } = classifier.classify(line);
+        tracker.apply(block);
+        if (batch) tracker.apply(batch);
+      }
+    };
+    return { tracker, feed };
+  }
+
+  /*
+   * **Two room blocks, and the second one is where you are.**
+   *
+   * `CastExit.TryMoveThroughExit` moves the character into the room the exit
+   * table names and describes it, *then* casts — and the teleport describes
+   * the room it lands them in. Measured on the wire 2026-09-14 walking west
+   * out of the Asylum Ward: `Warped Asylum / north, south, west` (9/1183,
+   * exactly the table's room) and then `Warped Asylum / north, south, east`
+   * (9/1188, where the spell put it, confirmed by `rm`).
+   *
+   * Reading the first as the answer is what made the asylum unwalkable: the
+   * client resolved the *table's* room inside the draw's rooms, found several
+   * that matched, and reported that the name and exits could not tell them
+   * apart — about a room it knew exactly.
+   */
+  it('reads the second of the two blocks a cast exit prints', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,1', 'Ward', 'Obvious exits: west']);
+    expect(tracker.current.room.number).toBe(1);
+
+    tracker.hintCast('w', 'w', ['1/10', '1/11', '1/12']);
+    tracker.observeCommand('w');
+    // The exit table's own room, described because the character really did
+    // pass through it. Resolved as the ordinary step it is.
+    feed(['Cell', 'Obvious exits: north']);
+    expect(tracker.current.room).toMatchObject({ number: 10, resolvedBy: 'movement' });
+
+    // And then where the spell put them, resolved inside the draw.
+    feed(['Cell', 'Obvious exits: east']);
+    expect(tracker.current.room).toMatchObject({ number: 11, resolvedBy: 'scattered' });
+  });
+
+  /*
+   * And a refusal where the draw still holds several, because a confident
+   * answer here is worth a plan and a wrong one costs the walk. The asylum is
+   * built so this is every arrival — no signature among its twenty-four
+   * landing rooms is held by one room — which is why the walk then asks `rm`.
+   */
+  it('refuses rather than picks when two of the draw are still consistent', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,1', 'Ward', 'Obvious exits: west']);
+
+    tracker.hintCast('w', 'w', ['1/10', '1/11', '1/12']);
+    tracker.observeCommand('w');
+    feed(['Cell', 'Obvious exits: north']);
+    // No exit line at all on the landing, so nothing separates the three.
+    feed(['Cell', 'Obvious exits: none']);
+    expect(tracker.current.room.number).toBeNull();
+    expect(tracker.current.room.ambiguous).toBe(3);
+  });
+
+  /*
+   * Both blocks are moves, so a walk or a lap counts both — the guard that
+   * refuses to plan across an unanswered command has to see them, or the next
+   * plan is drawn from a room the character has already left.
+   */
+  it('counts both blocks as moves in flight until each is answered', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,1', 'Ward', 'Obvious exits: west']);
+
+    tracker.hintCast('w', 'w', ['1/10', '1/11', '1/12']);
+    expect(tracker.observeCommand('w')).toBe(true);
+    expect(tracker.pendingMoves).toBe(2);
+    feed(['Cell', 'Obvious exits: north']);
+    expect(tracker.pendingMoves).toBe(1);
+    feed(['Cell', 'Obvious exits: east']);
+    expect(tracker.pendingMoves).toBe(0);
+  });
+
+  /*
+   * And the landing rides on the claim, so it cannot outlive it. A refusal
+   * takes both claims off the queue with no room at all; left in a slot beside
+   * the queue, the promise would be taken by the *next* room block anywhere in
+   * the realm — and `among` replaces the ladder rather than joining it, so a
+   * stale one throws away the strongest rung for a bare name lookup.
+   */
+  it('drops the landing when the step is refused instead of answered', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,1', 'Ward', 'Obvious exits: west']);
+
+    tracker.hintCast('w', 'w', ['1/10', '1/11', '1/12']);
+    tracker.observeCommand('w');
+    // The server refused the direction, so no room is coming for it.
+    feed(['There is no exit in that direction!']);
+
+    // The next room answers an ordinary step and must be resolved as one.
+    tracker.observeCommand('w');
+    feed(['Cell', 'Obvious exits: east']);
+    expect(tracker.current.room.resolvedBy).not.toBe('scattered');
   });
 });

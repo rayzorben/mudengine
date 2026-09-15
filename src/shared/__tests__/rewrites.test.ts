@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  NO_EFFECTS,
   activeDesign,
   CHARACTER_FIELDS,
   columnKeys,
@@ -25,6 +26,7 @@ import { DENOMINATIONS } from '../character';
 import { equipVerdict, UNKNOWN_WEARER, type Wearer } from '../gear';
 import { asUiDict, flattenDict, makeT } from '../i18n';
 import { wireItem, type ItemEntity } from '../entities';
+import { readEffects } from '../abilities';
 import type { StatlineFigures } from '../statline';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
@@ -166,7 +168,11 @@ describe('the pack', () => {
     item('padded gloves', { id: 4, encumbrance: 40, realmSlot: 'Hands', armour: { ac: 1, dr: 0 } }),
     item('glass jug', { id: 5, encumbrance: 10 }),
     item('torch', {}, { count: 6 })
-  ].map((entity) => ({ item: entity, verdict: equipVerdict(entity, wearer, t) }));
+  ].map((entity) => ({
+    item: entity,
+    effects: NO_EFFECTS,
+    verdict: equipVerdict(entity, wearer, t)
+  }));
 
   const facts: RewriteFacts = {
     entity: 'inventory',
@@ -184,8 +190,77 @@ describe('the pack', () => {
   const pack = (template: string): Drawn[] =>
     renderRewrite(design('inventory', template), facts, BANDS, t);
 
+  /*
+   * What can be done with a thing is a family (todo 14): the equip gate, and
+   * putting it down. A thing the realm marks `Not Droppable` draws the
+   * statement instead of the button — the rule `TerminalMark.actions` states,
+   * never a command the server will refuse out loud in the room.
+   */
+  it('offers dropping beside the equip gate, and refuses it where the realm does', () => {
+    const drawn = pack('{for item in items}{item.action.drop}{item.name}\n{/for}');
+    const glyphs = drawn.slice(0, 3).map((line) => line.glyphs[0] ?? null);
+    expect(glyphs.map((glyph) => glyph?.icon ?? null)).toEqual(['drop', 'drop', 'drop']);
+    expect(glyphs[0]?.commands).toEqual(['drop visored greathelm']);
+
+    const kept = renderRewrite(
+      design('inventory', '{for item in items}{item.action.drop}{/for}'),
+      {
+        ...facts,
+        pack: {
+          ...facts.pack,
+          items: [
+            {
+              item: { ...wireItem('bound amulet'), notDroppable: true },
+              effects: NO_EFFECTS,
+              verdict: equipVerdict(wireItem('bound amulet'), wearer, t)
+            }
+          ]
+        }
+      },
+      BANDS,
+      t
+    );
+    expect(kept[0]?.glyphs[0]?.icon).toBe('kept');
+    expect(kept[0]?.glyphs[0]?.commands).toBeUndefined();
+  });
+
+  /* What the realm says a thing does, read once (`readEffects`) and walked
+     like any other list. */
+  it('lists the effects the realm states, by name and value', () => {
+    const drawn = renderRewrite(
+      design(
+        'inventory',
+        '{for item in items}{for effect in item.effects}{effect.name} {effect.value};{/for}{/for}'
+      ),
+      {
+        ...facts,
+        pack: {
+          ...facts.pack,
+          items: [
+            {
+              item: wireItem('shimmering longsword'),
+              effects: readEffects(
+                [
+                  [2, 3],
+                  [5, 15]
+                ],
+                { table: 'item', family: 'other' },
+                t
+              ),
+              verdict: equipVerdict(wireItem('shimmering longsword'), wearer, t)
+            }
+          ]
+        }
+      },
+      BANDS,
+      t
+    );
+    expect(plainOf(drawn[0]!)).toBe('AC +3;Resist-Fire 15%;');
+  });
+
   it("reaches the pack card's verdict for every row and draws it as the glyph", () => {
-    const drawn = pack('{for items}{action}{item}\n{/for}');
+    // `action` is a family since todo 14: the equip gate is one of its members.
+    const drawn = pack('{for item in items}{item.action.toggleEquip}{item}\n{/for}');
     const glyphs = drawn.slice(0, 5).map((line) => line.glyphs[0] ?? null);
     expect(glyphs.map((g) => g?.icon ?? null)).toEqual(['worn', 'blocked', 'wear', null, 'wear']);
     expect(glyphs[0]?.commands).toEqual(['remove visored greathelm']);
@@ -315,6 +390,7 @@ describe('the other listings', () => {
             cost: 1800,
             note: null,
             item: axe,
+            effects: NO_EFFECTS,
             verdict: equipVerdict(axe, wearer, t)
           },
           {
@@ -324,6 +400,7 @@ describe('the other listings', () => {
             cost: 5,
             note: null,
             item: wireItem('torch'),
+            effects: NO_EFFECTS,
             verdict: equipVerdict(wireItem('torch'), wearer, t)
           }
         ]
@@ -381,13 +458,17 @@ describe('the other listings', () => {
 describe('the bytes the console is fed', () => {
   it('ends every line and keys a mark to each line carrying a glyph', () => {
     const drawn = renderRewrite(
-      design('inventory', '{for items}{action}{name}\n{/for}'),
+      design('inventory', '{for item in items}{item.action.toggleEquip}{item.name}\n{/for}'),
       {
         entity: 'inventory',
         figures: FIGURES,
         pack: {
           items: [
-            { item: wireItem('torch'), verdict: equipVerdict(wireItem('torch'), UNKNOWN_WEARER, t) }
+            {
+              item: wireItem('torch'),
+              effects: NO_EFFECTS,
+              verdict: equipVerdict(wireItem('torch'), UNKNOWN_WEARER, t)
+            }
           ],
           keys: [],
           coins: {},
@@ -437,15 +518,29 @@ describe('the catalogue and the dictionary', () => {
   /** Every figure a template may name, by entity, from the catalogue. */
   const offered = (entity: RewriteDesign['entity']): Set<string> => {
     const out = new Set<string>();
-    const walk = (fields: readonly FieldSpec[], prefix: string): void => {
+    /*
+     * Two spellings reach a row's own figures and both are offered: bare
+     * inside the `{for}` that opens the list, which is what every template
+     * written before todo 14 says, and through the name `{for item in items}`
+     * binds, which is what the sidebar now teaches. A record is always reached
+     * through itself, from wherever it is reachable.
+     */
+    const walk = (fields: readonly FieldSpec[], prefixes: readonly string[]): void => {
       for (const field of fields) {
-        out.add(`${prefix}${field.key}`);
-        if (field.fields !== undefined)
-          walk(field.fields, field.kind === 'list' ? '' : `${prefix}${field.key}.`);
+        for (const prefix of prefixes) out.add(`${prefix}${field.key}`);
+        if (field.fields === undefined) continue;
+        if (field.kind === 'list') {
+          walk(field.fields, ['', ...(field.row === undefined ? [] : [`${field.row}.`])]);
+        } else {
+          walk(
+            field.fields,
+            prefixes.map((prefix) => `${prefix}${field.key}.`)
+          );
+        }
       }
     };
-    walk(ENTITY_SPECS[entity].fields, '');
-    walk(CHARACTER_FIELDS, ENTITY_SPECS[entity].self === 'top' ? '' : 'me.');
+    walk(ENTITY_SPECS[entity].fields, ['']);
+    walk(CHARACTER_FIELDS, [ENTITY_SPECS[entity].self === 'top' ? '' : 'me.']);
     for (const field of ROW_FIELDS) out.add(field.key);
     return out;
   };
@@ -461,6 +556,29 @@ describe('the catalogue and the dictionary', () => {
     }
     expect(DEFAULT_REWRITES.map((entry) => entry.entity)).toEqual([...REWRITE_ENTITIES]);
     expect(normalizeRewrites(DEFAULT_CONFIG.ui.rewrites)).toEqual(DEFAULT_CONFIG.ui.rewrites);
+  });
+
+  /*
+   * Every list is walked by name, and the name is written down rather than
+   * derived from the plural: `keys` gives `key` and `droppedBy` gives nothing
+   * a rule would find. The heading over each one in the designer's sidebar is
+   * dictionary copy keyed by the list, so both halves move together.
+   */
+  it('names one row of every list, and has a heading for it', () => {
+    const lists: FieldSpec[] = [];
+    const walk = (fields: readonly FieldSpec[]): void => {
+      for (const field of fields) {
+        if (field.kind === 'list') lists.push(field);
+        if (field.fields !== undefined) walk(field.fields);
+      }
+    };
+    for (const spec of Object.values(ENTITY_SPECS)) walk(spec.fields);
+    // The positive control: an empty list would pass every assertion below.
+    expect(lists.length).toBeGreaterThan(5);
+    for (const field of lists) {
+      expect(field.row, `${field.key} names its row`).toBeDefined();
+      expect(keys.has(`rewrites.rows.${field.key}`), `rewrites.rows.${field.key}`).toBe(true);
+    }
   });
 
   it('names every column a table can have, describes every figure, and names every coin', () => {

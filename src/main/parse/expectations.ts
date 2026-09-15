@@ -24,7 +24,7 @@
  * is a claim about the *next* thing the server says, and after a reset or a
  * disconnect the next thing the server says answers nothing this client sent.
  */
-import type { Direction } from '../../shared/world';
+import type { Direction, RoomId } from '../../shared/world';
 import { mobKey } from '../../shared/world';
 import { commandOf, movementEffect } from '../../shared/commands';
 import { tuning } from '../app/tuning';
@@ -66,7 +66,23 @@ import { tuning } from '../app/tuning';
  * in the realm.
  */
 type Expectation = (
-  { kind: 'move'; direction: Direction | null } | { kind: 'peek' } | { kind: 'reread' }
+  | {
+      kind: 'move';
+      direction: Direction | null;
+      /**
+       * Where the realm's own spell put the character, for the **second** of
+       * the two room blocks a cast exit answers with. One room is an address
+       * and several are a draw; see `hintCast`.
+       *
+       * On the claim rather than in a slot beside the queue, which is what
+       * makes it impossible to leave armed: it is created with the move it
+       * belongs to and goes wherever that move goes — answered, refused, held
+       * or written off.
+       */
+      landing?: readonly RoomId[];
+    }
+  | { kind: 'peek' }
+  | { kind: 'reread' }
 ) & {
   /**
    * The command that queued this, lower-cased, or null for a move nobody
@@ -232,6 +248,13 @@ export class Expectations {
   private teleport: { map: number; number: number } | null = null;
   /** The walker's word that a command is a scripted teleport. See `hintTeleport`. */
   private hintedTeleport: { command: string; map: number; number: number } | null = null;
+  /** The walker's word that a command walks an exit whose cast moves you. */
+  private hintedCast: {
+    command: string;
+    direction: Direction;
+    rooms: readonly RoomId[];
+    at: number;
+  } | null = null;
   /**
    * What the player last asked to look at, if it was not a direction.
    *
@@ -318,6 +341,34 @@ export class Expectations {
   }
 
   /**
+   * The walker's word that a command walks an exit whose cast **moves** the
+   * character — the Warped Asylum's one entrance, the Marble Rooms' wrong
+   * squares, the gloomy maze, the padded cells (`Requirement.landing`).
+   *
+   * **Such an exit answers with two room blocks, not one**, and reading it as
+   * one is what made the asylum unwalkable. `CastExit.TryMoveThroughExit`
+   * calls `SuccessMoveThroughExit` — which moves the character into the room
+   * the exit table names and describes it — and *then* casts, and the
+   * teleport's own `plyrTarget.EnteringRoom(...)` describes the room it lands
+   * them in. Both go down the wire, back to back, for one `w`. Measured on
+   * the wire 2026-09-14: `w` out of the Asylum Ward printed `Warped Asylum /
+   * north, south, west` (9/1183, exactly what the table says) and then
+   * `Warped Asylum / north, south, east` (9/1188, where the spell put it,
+   * confirmed by `rm`).
+   *
+   * So two claims. The first is the ordinary step, with its real direction,
+   * and it resolves against the exit table like any other — the table is
+   * **right** about it. The second carries the landing and is where the
+   * character actually is. Reading the first as the answer meant resolving
+   * the *table's* room inside the draw's rooms, which is why the client said
+   * the name and exits could not tell them apart: it was asking the wrong
+   * question about the wrong room.
+   */
+  hintCast(command: string, direction: Direction, rooms: readonly RoomId[]): void {
+    this.hintedCast = { command: command.trim().toLowerCase(), direction, rooms, at: Date.now() };
+  }
+
+  /**
    * Records an outbound command, so a room arriving next can be located.
    *
    * A *queue*, not a slot. Directions can be sent faster than the server
@@ -376,6 +427,49 @@ export class Expectations {
      * so what is on the other end is a menu.
      */
     if (expectation && context.atMenu) return false;
+
+    /*
+     * A draw, and it is asked **before** the command table rather than after.
+     *
+     * This is the one hint that has to outrank the table, and the reason is
+     * that a scatter exit's command is an ordinary direction: `w` out of the
+     * Asylum Ward is `Move` on every reading, so the two hints below — which
+     * exist for `go manhole` and `dive pool`, commands the table cannot model
+     * at all — would never be reached. Left after it, the direction is queued,
+     * the arriving room is resolved against the exit the character walked
+     * through, and the answer is one of the seventy-two rooms called Warped
+     * Asylum with 0.98 confidence.
+     *
+     * Queued as a move with no direction, for `hintTeleport`'s reason: it
+     * moves them, so the walk and loop desynchronisation guards must count it,
+     * and a direction here is exactly the thing that must not be believed.
+     * The walker arms it immediately before the send (`Walker.sendCurrent`),
+     * so the exact text is the match and nothing else can take it.
+     */
+    /*
+     * **Bounded, unlike the other two hints, and because its command is a bare
+     * direction.** The walker arms a hint immediately before `enqueue` — it
+     * has to, since the queue may send inside that call — so an enqueue the
+     * arbiter refuses leaves one armed. `go vortex` sitting there is harmless
+     * and correct if the player ever types it; a stale `w` is neither, and it
+     * would take the player's own next step and resolve it inside a draw that
+     * never happened. `staleMoveMs` is the same window the queue writes a
+     * lost move off in, which is the longest this can honestly be about.
+     */
+    const cast = this.hintedCast;
+    if (cast !== null && Date.now() - cast.at >= tuning().parse.staleMoveMs) {
+      this.hintedCast = null;
+    } else if (cast && cast.command === command.trim().toLowerCase() && !context.atMenu) {
+      this.hintedCast = null;
+      this.looking = [];
+      this.unmodelled = null;
+      // The step the exit table describes, then the room the spell moves them
+      // to. Two blocks are coming and both are this command's answer.
+      this.push({ kind: 'move', direction: cast.direction, command: cast.command });
+      this.push({ kind: 'move', direction: null, command: cast.command, landing: cast.rooms });
+      return true;
+    }
+
     if (!expectation) {
       const jump = this.hintedTeleport;
       if (jump && jump.command === command.trim().toLowerCase()) {
@@ -438,6 +532,7 @@ export class Expectations {
       // walker was about to send, the next room answers this.
       this.hinted = null;
       this.hintedTeleport = null;
+      this.hintedCast = null;
     }
     // A modelled command supersedes it: whatever was typed before, this is what
     // the next room is the answer to.
@@ -555,9 +650,51 @@ export class Expectations {
     while (this.pending[0] !== undefined && now - this.pending[0].at >= life) {
       const claim = this.pending[0];
       dropped.push({ command: claim.command ?? '', moved: claim.kind === 'move' });
+      this.spendPromise(claim);
       this.pending.shift();
     }
     return dropped;
+  }
+
+  /**
+   * `sys go`'s promise dies with the move it was armed for, however it goes.
+   *
+   * It is armed beside a directionless move and spent by the room that answers
+   * it — so every path that takes that move off the queue **without** an
+   * arrival has to spend it too, or it waits for the next room block anywhere
+   * in the realm and resolves it to somewhere nobody went. The paths are a
+   * refusal (`refused`, `shiftRefused`), a hold refusing the move
+   * (`shiftHeldMove`) and the eight-second write-off (`expire`). A `reread` at
+   * the head is not one of them: it is shifted out from in front of a move
+   * that is still coming.
+   *
+   * A cast exit's landing needs none of this — it rides on the claim
+   * (`Expectation.landing`), so it cannot outlive it. See `hintCast`.
+   */
+  private spendPromise(claim: Expectation | undefined): void {
+    if (claim?.kind !== 'move' || claim.direction !== null) return;
+    this.teleport = null;
+  }
+
+  /**
+   * A cast exit queues two claims for one command, so anything that kills the
+   * command kills both.
+   *
+   * The first is the step the exit table describes and the second is the
+   * teleport after it (`hintCast`). A refusal, a hold or a write-off means
+   * **neither** room is coming — the server never moved anybody — so leaving
+   * the second behind hands the landing to the next room block the character
+   * walks to honestly, which `among` then resolves inside a draw that never
+   * happened. An *arrival* is the one case that must not do this: the first
+   * block is the answer to the first claim and the second is still on its way.
+   */
+  private dropLandingHalf(after: Expectation | null): void {
+    if (after?.kind !== 'move') return;
+    const next = this.pending[0];
+    if (next?.kind !== 'move') return;
+    if (next.landing === undefined || next.direction !== null) return;
+    if (next.command !== after.command) return;
+    this.pending.shift();
   }
 
   /** The command the next room block answers, left in place. */
@@ -593,7 +730,10 @@ export class Expectations {
      */
     if (this.pending[ahead] === undefined) return null;
     this.pending.splice(0, ahead);
-    return this.pending.shift() ?? null;
+    const answered = this.pending.shift() ?? null;
+    this.spendPromise(answered ?? undefined);
+    this.dropLandingHalf(answered);
+    return answered;
   }
 
   /**
@@ -619,7 +759,10 @@ export class Expectations {
     let ahead = 0;
     while (this.pending[ahead]?.kind === 'reread') ahead += 1;
     if (this.pending[ahead]?.kind !== 'move') return false;
+    const held = this.pending[ahead]!;
+    this.spendPromise(held);
     this.pending.splice(0, ahead + 1);
+    this.dropLandingHalf(held);
     return true;
   }
 
@@ -679,6 +822,7 @@ export class Expectations {
     }
     if (this.hinted?.command === text) this.hinted = null;
     if (this.hintedTeleport?.command === text) this.hintedTeleport = null;
+    if (this.hintedCast?.command === text) this.hintedCast = null;
     /*
      * A re-read cannot be refused, so one queued ahead of the command this
      * names is one whose room block never arrived — the same reading
@@ -697,8 +841,10 @@ export class Expectations {
     this.pending.splice(0, ahead);
     const head = this.pending.shift();
     // A refused teleport command must disarm the coordinates it promised, or
-    // the *next* named room would be resolved to somewhere nobody went.
-    if (head?.kind === 'move' && head.direction === null) this.teleport = null;
+    // the *next* named room would be resolved to somewhere nobody went — and
+    // a refused cast exit takes the landing half of its pair with it.
+    this.spendPromise(head);
+    this.dropLandingHalf(head ?? null);
     return true;
   }
 
@@ -781,12 +927,14 @@ export class Expectations {
     this.unmodelled = null;
     this.hinted = null;
     this.hintedTeleport = null;
+    this.hintedCast = null;
   }
 
   /** A closed socket: whatever the walker was about to send, it will not. */
   dropHint(): void {
     this.hinted = null;
     this.hintedTeleport = null;
+    this.hintedCast = null;
   }
 
   /** A new session, or the realm left: nothing sent is still waiting on anything. */
@@ -798,6 +946,7 @@ export class Expectations {
     this.unmodelled = null;
     this.hinted = null;
     this.hintedTeleport = null;
+    this.hintedCast = null;
     this.aimedAt = null;
   }
 }

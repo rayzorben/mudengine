@@ -12,7 +12,8 @@
 import type { Denomination } from './character';
 import { DENOMINATIONS } from './character';
 import { copperSpread } from './coins';
-import type { ItemEntity } from './entities';
+import { entityNumber, type ItemEntity } from './entities';
+import type { ReadEffect } from './abilities';
 import type { EquipVerdict } from './gear';
 import type { UiLookup } from './i18n';
 import { countedLabel, ITEM_KIND_WORD } from './items';
@@ -47,6 +48,15 @@ export function isRewriteEntity(value: unknown): value is RewriteEntity {
   return typeof value === 'string' && (REWRITE_ENTITIES as readonly string[]).includes(value);
 }
 
+/** The pairs read into words, and how many the client could not read. */
+export interface ReadEffects {
+  shown: readonly ReadEffect[];
+  quiet: number;
+}
+
+/** Nothing read, for a row nobody has realm data for. */
+export const NO_EFFECTS: ReadEffects = { shown: [], quiet: 0 };
+
 /** One design the player keeps: what it redraws, and the template it draws. */
 export interface RewriteDesign {
   /** The player's own name for it; blank draws the entity's word. */
@@ -71,6 +81,16 @@ export interface FieldSpec {
   key: string;
   kind: FieldKind;
   fields?: readonly FieldSpec[];
+  /**
+   * What one row of a list is called, for `{for item in items}`.
+   *
+   * A list only. The singular is written down rather than derived from the
+   * plural, for the reason nothing here guesses a rule from a name: `keys`
+   * gives `key` and `droppedBy` gives nothing a rule would find. It is the
+   * name the designer writes into the template and the one every row of that
+   * list is addressed by, so the sidebar and the drawn line cannot disagree.
+   */
+  row?: string;
 }
 
 /** What an entity is: the blocks it replaces and the figures it offers. */
@@ -90,9 +110,15 @@ const text = (key: string): FieldSpec => ({ key, kind: 'text' });
 const number = (key: string): FieldSpec => ({ key, kind: 'number' });
 const flag = (key: string): FieldSpec => ({ key, kind: 'flag' });
 const glyph = (key: string): FieldSpec => ({ key, kind: 'glyph' });
-const list = (key: string, fields: readonly FieldSpec[]): FieldSpec => ({
+const list = (key: string, fields: readonly FieldSpec[], row: string): FieldSpec => ({
   key,
   kind: 'list',
+  fields,
+  row
+});
+const record = (key: string, fields: readonly FieldSpec[]): FieldSpec => ({
+  key,
+  kind: 'record',
   fields
 });
 
@@ -144,9 +170,21 @@ const REALM_ITEM_FIELDS: readonly FieldSpec[] = [
   number('minLevel'),
   number('limit'),
   flag('gettable'),
+  flag('droppable'),
   number('id'),
-  list('shops', [text('name')]),
-  list('droppedBy', [text('name')]),
+  number('number'),
+  /*
+   * What the realm says the thing *does*, read into words once
+   * (`readEffects`): the alignment gates, the resistances, the grants, the
+   * spell a weapon procs. The realm states no alignment column on an item —
+   * the four gates are ability rows — so this is where an alignment
+   * restriction appears, and inventing a field beside it would be a second
+   * reading of one fact.
+   */
+  list('effects', [text('name'), text('value')], 'effect'),
+  number('effectsUnread'),
+  list('shops', [text('name')], 'shop'),
+  list('droppedBy', [text('name')], 'dropper'),
   glyph('icon')
 ];
 
@@ -161,7 +199,7 @@ const CARRIED_FIELDS: readonly FieldSpec[] = [
   text('reason'),
   number('price'),
   number('charges'),
-  glyph('action'),
+  record('action', [glyph('toggleEquip'), glyph('drop')]),
   ...REALM_ITEM_FIELDS
 ];
 
@@ -188,9 +226,9 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
     oneLine: false,
     self: 'me',
     fields: [
-      list('items', CARRIED_FIELDS),
+      list('items', CARRIED_FIELDS, 'item'),
       number('itemCount'),
-      list('keys', [text('name')]),
+      list('keys', [text('name')], 'key'),
       number('keyCount'),
       number('wealth'),
       text('wealthLong'),
@@ -211,13 +249,11 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
     oneLine: false,
     self: 'me',
     fields: [
-      list('players', [
-        text('name'),
-        text('title'),
-        text('alignment'),
-        text('gang'),
-        text('flags')
-      ]),
+      list(
+        'players',
+        [text('name'), text('title'), text('alignment'), text('gang'), text('flags')],
+        'player'
+      ),
       number('count')
     ]
   },
@@ -226,7 +262,7 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
     blocks: ['shop-list'],
     oneLine: false,
     self: 'me',
-    fields: [list('items', SOLD_FIELDS), number('count')]
+    fields: [list('items', SOLD_FIELDS, 'item'), number('count')]
   },
   party: {
     entity: 'party',
@@ -234,18 +270,22 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
     oneLine: false,
     self: 'me',
     fields: [
-      list('members', [
-        text('name'),
-        text('class'),
-        number('health'),
-        number('mana'),
-        text('rank'),
-        text('flag'),
-        text('state'),
-        flag('invited'),
-        flag('resting'),
-        flag('meditating')
-      ]),
+      list(
+        'members',
+        [
+          text('name'),
+          text('class'),
+          number('health'),
+          number('mana'),
+          text('rank'),
+          text('flag'),
+          text('state'),
+          flag('invited'),
+          flag('resting'),
+          flag('meditating')
+        ],
+        'member'
+      ),
       number('count')
     ]
   },
@@ -280,7 +320,9 @@ export function columnKeys(): Set<string> {
     for (const field of fields) {
       if (field.fields === undefined) continue;
       for (const inner of field.fields) {
-        if (inner.kind !== 'glyph') keys.add(inner.key);
+        // A glyph is a picture and a record is a family of them: neither is a
+        // column, and neither is ever the heading over one.
+        if (inner.kind !== 'glyph' && inner.kind !== 'record') keys.add(inner.key);
         if (inner.fields !== undefined) walk([inner]);
       }
     }
@@ -326,8 +368,8 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     enabled: false,
     template: [
       '{table header}',
-      '{for items}',
-      '{action} {bold}{item}{/bold}  {dim}{weight}{/dim}  {stats}  {brightGreen}{equipped}{/brightGreen} {icon}',
+      '{for item in items}',
+      '{item.action.toggleEquip} {bold}{item}{/bold}  {dim}{item.weight}{/dim}  {item.stats}  {brightGreen}{item.equipped}{/brightGreen} {item.icon}',
       '{/for}',
       '{/table}',
       '{dim}Keys:{/dim} {keys|or:none}',
@@ -342,8 +384,8 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     template: [
       '{bold}{count} adventurers{/bold}',
       '{table header}',
-      '{for players}',
-      '{alignment}  {bold}{name}{/bold}  {title}  {dim}{gang}{/dim}  {flags}',
+      '{for player in players}',
+      '{player.alignment}  {bold}{player.name}{/bold}  {player.title}  {dim}{player.gang}{/dim}  {player.flags}',
       '{/for}',
       '{/table}'
     ].join('\n')
@@ -354,8 +396,8 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     enabled: false,
     template: [
       '{table header}',
-      '{for items}',
-      '{bold}{item}{/bold}  {dim}x{quantity}{/dim}  {price}  {afford}  {usable}  {icon}',
+      '{for item in items}',
+      '{bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.price}  {item.afford}  {item.usable}  {item.icon}',
       '{/for}',
       '{/table}'
     ].join('\n')
@@ -366,8 +408,8 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     enabled: false,
     template: [
       '{table header}',
-      '{for members}',
-      '{rank}  {bold}{name}{/bold}  {dim}{class}{/dim}  {health}%  {mana}%  {state}',
+      '{for member in members}',
+      '{member.rank}  {bold}{member.name}{/bold}  {dim}{member.class}{/dim}  {member.health}%  {member.mana}%  {member.state}',
       '{/for}',
       '{/table}'
     ].join('\n')
@@ -444,6 +486,14 @@ export function slotIcon(slot: string | null | undefined): MarkIcon | null {
 export interface InventoryRow {
   item: ItemEntity;
   verdict: EquipVerdict;
+  /**
+   * The realm's ability pairs read into words (`readEffects`).
+   *
+   * Read by main beside the verdict, and for the same reason: naming an
+   * ability needs the realm on the other end and the realm's own class table,
+   * neither of which a pure renderer has.
+   */
+  effects: ReadEffects;
 }
 
 export interface InventoryFacts {
@@ -477,6 +527,8 @@ export interface ShopRow {
   /** The realm's row for the kind, joined by main; the wire half is the shelf's. */
   item: ItemEntity;
   verdict: EquipVerdict;
+  /** What the realm says it does, read by main. See `InventoryRow.effects`. */
+  effects: ReadEffects;
 }
 
 export interface PartyRow {
@@ -600,6 +652,42 @@ export function characterScope(figures: StatlineFigures, bands: VitalBands, t: U
   };
 }
 
+/**
+ * What can be done with a thing, as glyphs the console draws over the line.
+ *
+ * A record rather than one figure (todo 14): `{action.toggleEquip}` is the
+ * equip gate that was `{action}`, and `{action.drop}` puts the thing down.
+ * They are a family because the question *what can I do with this* has more
+ * than one answer, and a template that could only ask for the first had no
+ * way to say so.
+ *
+ * Each is a **button only where the realm names the exact command**: the
+ * equip gate already decides that (`equipVerdict`), and a thing the realm
+ * marks `Not Droppable` draws a statement with the reason instead. The rule
+ * `TerminalMark.actions` states — never a button that sends a command the
+ * server will refuse out loud in the room — applies to both.
+ */
+function actionsOf(item: ItemEntity, verdict: EquipVerdict, t: UiLookup): Row {
+  const toggle = actionGlyph(verdict);
+  return {
+    toggleEquip:
+      toggle === null
+        ? { text: '' }
+        : { text: '', glyph: toggle, colour: verdict.state === 'blocked' ? 'yellow' : null },
+    drop:
+      item.notDroppable === true
+        ? { text: '', glyph: { icon: 'kept', label: t('rewrites.item.notDroppable') } }
+        : {
+            text: '',
+            glyph: {
+              icon: 'drop',
+              label: t('rewrites.item.drop', { itemName: item.name }),
+              commands: [`drop ${item.name}`]
+            }
+          }
+  };
+}
+
 /** The glyph for the equip gate, as the pack card draws it; null where there is nothing to draw. */
 function actionGlyph(verdict: EquipVerdict): Glyph | null {
   switch (verdict.state) {
@@ -628,8 +716,14 @@ function statsOf(item: ItemEntity): string {
   return '';
 }
 
-/** What the realm data says about a kind of thing; blank where it says nothing. */
-function realmFields(item: ItemEntity, slot: string | null): Row {
+/**
+ * What the realm data says about a kind of thing; blank where it says nothing.
+ *
+ * `effects` is handed in rather than read here: naming an ability needs the
+ * realm on the other end and the realm's own class table, and both are main's
+ * (`Rewriter.gather`), exactly as the equip verdict beside it is.
+ */
+function realmFields(item: ItemEntity, slot: string | null, effects: ReadEffects): Row {
   const icon = slotIcon(slot);
   return {
     weight: fact(item.encumbrance),
@@ -651,7 +745,19 @@ function realmFields(item: ItemEntity, slot: string | null): Row {
     minLevel: fact(item.minLevel),
     limit: fact(item.limit),
     gettable: item.gettable ?? null,
+    // The realm records only the refusal, so absent is droppable — the same
+    // rule `gettable` keeps, and the reason `drop` is offered on a thing the
+    // realm says nothing about.
+    droppable: item.notDroppable !== true,
     id: fact(item.id),
+    /*
+     * The row the realm would answer for *this* thing, which is not `id`: a
+     * name several rows share settles to none (`entityNumber`), and picking
+     * one would be the guess the reference list refuses to make.
+     */
+    number: fact(entityNumber(item)),
+    effects: effects.shown.map((effect) => ({ name: effect.label, value: effect.value })),
+    effectsUnread: effects.quiet,
     shops: names(item.shops),
     droppedBy: names(item.droppedBy),
     icon: icon === null ? { text: '' } : { text: '', glyph: { icon, label: slot ?? '' } }
@@ -664,10 +770,9 @@ function equippedText(item: ItemEntity): string {
   return item.charges === null ? `(${item.slot})` : `(${item.slot}/${item.charges})`;
 }
 
-export function carriedRow(row: InventoryRow): Row {
+export function carriedRow(row: InventoryRow, t: UiLookup): Row {
   const { item, verdict } = row;
   const slot = item.slot ?? item.realmSlot ?? null;
-  const action = actionGlyph(verdict);
   return {
     item: countedLabel(item),
     name: item.name,
@@ -679,11 +784,8 @@ export function carriedRow(row: InventoryRow): Row {
     reason: verdict.state === 'blocked' ? verdict.label : '',
     price: fact(item.price),
     charges: fact(item.charges),
-    action:
-      action === null
-        ? { text: '' }
-        : { text: '', glyph: action, colour: verdict.state === 'blocked' ? 'yellow' : null },
-    ...realmFields(item, slot)
+    action: actionsOf(item, verdict, t),
+    ...realmFields(item, slot, row.effects)
   };
 }
 
@@ -695,7 +797,7 @@ export function inventoryScope(facts: InventoryFacts, t: UiLookup): Row {
       ? Math.round((100 * facts.encumbrance) / facts.encumbranceMax)
       : null;
   return {
-    items: facts.items.map(carriedRow),
+    items: facts.items.map((row) => carriedRow(row, t)),
     itemCount: facts.items.length,
     keys: names(facts.keys),
     keyCount: facts.keys.length,
@@ -741,7 +843,7 @@ export function shopScope(rows: readonly ShopRow[], wealth: number | null, t: Ui
         wearable: sold.verdict.state === 'wearable' || sold.verdict.state === 'worn',
         note: fact(sold.note),
         basePrice: fact(sold.item.price),
-        ...realmFields(sold.item, sold.item.realmSlot ?? null)
+        ...realmFields(sold.item, sold.item.realmSlot ?? null, sold.effects)
       };
     }),
     count: rows.length

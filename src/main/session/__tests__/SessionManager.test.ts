@@ -29,6 +29,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
+import type { Route } from '../../../shared/world';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -1684,13 +1685,24 @@ describe('running away', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = sent(socket, /open n\r\nn\r\n/);
+    /*
+     * The move itself, on the wire — not the notice it was decided on. A
+     * server cannot refuse a command it has not been sent, and the decision is
+     * taken whole prompts before the byte leaves whenever anything else is in
+     * flight, which on a real session the entry probes always are.
+     */
+    const went = sent(socket, /\bn\r\n/);
     socket.write('Health: 100/100 [100%]\r\n');
     socket.write(ROOM);
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
     await until(() => notices.some((notice) => RAN.test(notice)));
+    await went;
     socket.write('The door is closed!\r\n');
+    // And the prompt behind it: the ladder is two commands, and the second
+    // waits on the credit the server's own answer carries.
+    socket.write('[HP=10]:\r\n');
 
     expect(await seen).toMatch(/\bn\r\nopen n\r\nn\r\n/);
     expect(notices.some((notice) => /door n is shut/.test(notice))).toBe(true);
@@ -1704,12 +1716,16 @@ describe('running away', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = sent(socket, /\bs\r\n/);
+    // The refused move on the wire, for the reason above: the refusal is the
+    // server's answer to it, and it cannot answer what it has not received.
+    const went = sent(socket, /\bn\r\n/);
     socket.write('Health: 100/100 [100%]\r\n');
     socket.write(ROOM);
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
     await until(() => notices.some((notice) => /Running n:/.test(notice)));
+    await went;
     socket.write('There is no exit in that direction!\r\n');
 
     // South, the other printed exit — inside the cooldown, not after it.
@@ -2214,6 +2230,95 @@ function haven(): WorldGraph {
   fs.rmSync(dir, { recursive: true, force: true });
   return world;
 }
+
+/*
+ * The counters the realm's own gates are written on, asked when a plan first
+ * crosses one. A room script names its landing per branch — `9/1291`'s `go
+ * portal` names `9/1424` on `checkability 133 5` and no room at all below it —
+ * so a character the gate refuses lands somewhere the plan never named. The
+ * router refuses such an edge once the counters are read; this is the ask that
+ * gets them, and it is off the **plan** rather than the way in, because a
+ * complete listing settles every counter and takes the quest book's own nodes
+ * away from the player.
+ */
+describe('asking for the quest counters', () => {
+  /** Two rooms joined by a corridor, and two joined by a gated portal. */
+  function gatedWorld(): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-gated-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      { m: 1, r: 1, n: 'Shore', x: { e: { m: 1, r: 2 } } },
+      {
+        m: 1,
+        r: 2,
+        n: 'Pool Edge',
+        x: { w: { m: 1, r: 1 } },
+        cmd: [{ say: ['go portal'], to: '2/1', need: ['checkability 133 5'] }]
+      },
+      { m: 2, r: 1, n: 'Far Cavern', x: {} }
+    ];
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: 3, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  }
+
+  const walking: AutomationConfig = {
+    ...DEFAULT_CONFIG.automation,
+    enabled: true,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+  };
+
+  /** In the realm at the Shore, with the world loaded. */
+  async function ashore(world: WorldGraph): Promise<{ socket: net.Socket; wire: () => string }> {
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, walking);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,1\r\nShore\r\nObvious exits: east\r\n');
+    await until(() => manager!.character.room.number === 1);
+    return { socket, wire: () => Buffer.concat(chunks).toString('latin1') };
+  }
+
+  /*
+   * The queue rather than the wire: the entry batch is ahead of it and this
+   * host prints one prompt, so what the arbiter has *accepted* is the claim
+   * here — that the plan raised the question. Which command reaches the socket
+   * when is `CommandQueue`'s, and it is asserted where the pacing is.
+   */
+  const asked = (): boolean =>
+    manager!.automation.queue.pending.some((intent) => intent.command === 'abil');
+
+  it('asks when a plan crosses a gate written on one', async () => {
+    const world = gatedWorld();
+    await ashore(world);
+    expect(asked()).toBe(false);
+
+    expect(manager!.walkRoute(world.route('1/1', '2/1'))).toBeNull();
+    expect(asked()).toBe(true);
+  });
+
+  /* A way with nothing on it the counters could answer asks nothing. */
+  it('asks nothing for a plain corridor', async () => {
+    const world = gatedWorld();
+    await ashore(world);
+
+    expect(manager!.walkRoute(world.route('1/1', '1/2'))).toBeNull();
+    await settled(100);
+    expect(asked()).toBe(false);
+  });
+});
 
 /*
  * Which way out, and how the client knew it.
@@ -4677,16 +4782,20 @@ describe('starting and stopping a movement', () => {
   };
 
   /** In the realm at the north end of the corridor. */
-  async function atTheNorthEnd(): Promise<{ socket: net.Socket; world: WorldGraph }> {
+  async function atTheNorthEnd(): Promise<{
+    socket: net.Socket;
+    world: WorldGraph;
+    notices: string[];
+  }> {
     const world = corridor();
-    const { sink } = collect();
+    const { sink, notices } = collect();
     manager = new SessionManager(sink, world, quiet);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
     socket.write('Location:            1,40\r\nRoom 40\r\nObvious exits: south\r\n');
     await until(() => manager!.character.room.number === 40);
-    return { socket, world };
+    return { socket, world, notices };
   }
 
   /** Puts the character somewhere else without walking it there. */
@@ -4738,6 +4847,102 @@ describe('starting and stopping a movement', () => {
 
     expect(manager!.startMoving(null, 35)).toEqual({ started: true });
     expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 37 });
+  });
+
+  /*
+   * A plan is drawn from where the character stood when it was drawn, and a
+   * lap, a party leader or a retreat moves it between the drawing and the
+   * press. `Walker.start` refuses such a plan — its first step leaves a room
+   * the character is not in — and that refusal used to be the whole answer,
+   * which left the panel's only button having just failed and no way forward
+   * but drawing the same plan again by hand. It is drawn again here instead.
+   */
+  it('redraws a plan the character strayed a few rooms from, and walks it', async () => {
+    const { socket, world, notices } = await atTheNorthEnd();
+    const plan = world.route('1/40', '1/30');
+    expect(plan.steps).toHaveLength(10);
+
+    // Five rooms down the corridor: inside the ten `replanDriftSteps` allows,
+    // and the way on from here asks for nothing the old way did not.
+    await standIn(socket, 35);
+    expect(manager!.walkPlan(plan)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 5 });
+    // Said out loud: the steps walked are not the steps that were read.
+    expect(notices.some((line) => line.includes('drawn again from here'))).toBe(true);
+  });
+
+  /*
+   * And a character that has gone a long way is asked about rather than walked:
+   * the way from twenty rooms along is another journey, and what the reader
+   * gets back is the plan itself, to read and press again.
+   */
+  it('answers with the new plan when the character has strayed a long way', async () => {
+    const { socket, world } = await atTheNorthEnd();
+    const plan = world.route('1/40', '1/30');
+    await standIn(socket, 20);
+
+    const answer = manager!.walkPlan(plan);
+    expect(answer).toMatchObject({ replanned: { wandered: 20, demands: [] } });
+    // Nothing was sent on the strength of a question.
+    expect(manager!.walker.progress.status).toBe('idle');
+
+    expect('replanned' in answer).toBe(true);
+    const redrawn = (answer as { replanned: { route: Route } }).replanned.route;
+    expect(manager!.walkPlan(redrawn)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 10 });
+  });
+
+  /* A plan drawn from where the character is standing is walked untouched. */
+  it('leaves a plan that still starts here alone', async () => {
+    const { world, notices } = await atTheNorthEnd();
+    expect(manager!.walkPlan(world.route('1/40', '1/38'))).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 2 });
+    expect(notices.some((line) => line.includes('drawn again'))).toBe(false);
+  });
+
+  /*
+   * A lap's leg is short only once the lap is being walked: the first leg of a
+   * lap across the realm is a journey. So the lap measures what the route
+   * measures — how much further away the character is than when it stopped —
+   * and a lap stopped for a breath and started again from the same room asks
+   * nothing, however far its leg still had to go (todo 03).
+   */
+  it('asks nothing about a long leg the character has not wandered off', async () => {
+    await atTheNorthEnd();
+    expect(
+      manager!.loops.start(
+        { name: 'lap', stops: [{ room: 'Room 1' }, { room: 'Room 2' }] },
+        manager!.character
+      )
+    ).toBeNull();
+    // Thirty-nine steps to the first stop, well past the thirty `resumeAskSteps`
+    // allows, and every one of them the lap's own business.
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 39 });
+
+    manager!.stopMoving();
+    expect(manager!.startMoving('lap', null)).toEqual({ started: true });
+    expect(manager!.loops.progress.status).toBe('running');
+  });
+
+  it('asks before walking a wandered character back to its lap', async () => {
+    const { socket } = await atTheNorthEnd();
+    expect(
+      manager!.loops.start(
+        { name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] },
+        manager!.character
+      )
+    ).toBeNull();
+    manager!.stopMoving();
+    // Two steps from the stop it was heading for when it stopped, thirty-seven
+    // from where the character has since been put: thirty-five further away.
+    await standIn(socket, 1);
+    expect(manager!.startMoving('lap', null)).toEqual({
+      confirm: { kind: 'loop', name: 'lap', steps: 35 }
+    });
+    expect(manager!.loops.progress.status).toBe('stopped');
+
+    expect(manager!.startMoving('lap', 35)).toEqual({ started: true });
+    expect(manager!.loops.progress.status).toBe('running');
   });
 
   /*
@@ -4876,5 +5081,166 @@ describe('starting and stopping a movement', () => {
       manager!.startLoop({ name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] })
     ).toEqual({ started: true });
     expect(manager!.loops.progress.status).toBe('running');
+  });
+});
+
+/**
+ * Back: one room the way the character came, per press.
+ *
+ * The trail is a list of rooms and the move that joined each pair, so going
+ * back is a **route to the previous room** and never the opposite of the last
+ * direction — the one-way corridor below is the whole reason. And the entry is
+ * given up when the character arrives, so the second press goes one further
+ * back rather than returning to where the first press started (todo 04).
+ */
+describe('stepping back the way the character came', () => {
+  /**
+   * Shore —n→ Cliff Path —e→ Lookout —w→ Shore: a ring walked one way only.
+   * The step out of Shore has no opposite, which is what makes going back two
+   * steps instead of one.
+   */
+  const ring = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-back-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      { m: 1, r: 1, n: 'Shore', x: { n: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Cliff Path', x: { e: { m: 1, r: 3 } } },
+      { m: 1, r: 3, n: 'Lookout', x: { w: { m: 1, r: 1 } } }
+    ];
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  /** Shore —n⇄s— Beach —n⇄s— Dunes: an ordinary corridor, walkable both ways. */
+  const beach = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-back-line-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      { m: 1, r: 1, n: 'Shore', x: { n: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Beach', x: { n: { m: 1, r: 3 }, s: { m: 1, r: 1 } } },
+      { m: 1, r: 3, n: 'Dunes', x: { s: { m: 1, r: 2 } } }
+    ];
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' }),
+          ...rooms.map((room) => JSON.stringify(room))
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  const quiet: AutomationConfig = {
+    ...DEFAULT_CONFIG.automation,
+    enabled: true,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    onEnterRealm: [],
+    rules: []
+  };
+
+  /** On the shore, in the realm, with a prompt's credit to spend. */
+  async function onTheShore(world = ring()): Promise<{
+    socket: net.Socket;
+    world: WorldGraph;
+    wire: () => string;
+  }> {
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, quiet);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,1\r\nShore\r\nObvious exits: north\r\n');
+    await until(() => manager!.character.room.number === 1);
+    return { socket, world, wire: () => Buffer.concat(chunks).toString('latin1') };
+  }
+
+  /**
+   * The step reaches the wire, and the room it lands in comes back.
+   *
+   * **Waiting for the command first is load-bearing**: the arriving room is
+   * what *answers the expectation the step queued*, and a room block written
+   * before the step is sent resolves off the map instead — which places the
+   * character correctly and records no move, so nothing reaches the trail.
+   *
+   * The block is the name and its exits with no `Location:` line, for the same
+   * reason: a stated location is a placement, and this is an arrival.
+   */
+  async function lands(
+    socket: net.Socket,
+    wire: () => string,
+    command: string,
+    name: string,
+    exits: string
+  ): Promise<void> {
+    const before = wire().length;
+    await until(() => wire().slice(before).includes(`${command}\r\n`));
+    socket.write(`${name}\r\nObvious exits: ${exits}\r\n`);
+    /*
+     * And the prompt behind it, which every room block on the wire carries.
+     * It is the credit the queue's *next* command waits on — without it a
+     * fake host of three rooms is a session where the fourth command never
+     * goes out, which is the harness's budget and not the client's.
+     */
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.room.name === name);
+  }
+
+  it('asks before a back press becomes a journey, and walks it when agreed', async () => {
+    const { socket, world, wire } = await onTheShore();
+    expect(manager!.walkRoute(world.route('1/1', '1/2'))).toBeNull();
+    await lands(socket, wire, 'n', 'Cliff Path', 'east');
+
+    // No way back west: the ring is walked round, which is two steps.
+    expect(manager!.stepBack(null)).toEqual({ confirm: { kind: 'back', name: 'Shore', steps: 2 } });
+    // Nothing was sent on the strength of a question.
+    expect(manager!.walker.progress.status).not.toBe('walking');
+
+    expect(manager!.stepBack(2)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 2 });
+  });
+
+  /*
+   * And the entry is given up on arrival. Without that, the walk back records
+   * itself and the next press walks back over *that* — two rooms oscillating
+   * for ever, which is the naive reverse under another name.
+   */
+  it('gives the step up on arrival, so the next press goes one further back', async () => {
+    const { socket, world, wire } = await onTheShore(beach());
+    expect(manager!.walkRoute(world.route('1/1', '1/3'))).toBeNull();
+    await lands(socket, wire, 'n', 'Beach', 'north, south');
+    await lands(socket, wire, 'n', 'Dunes', 'south');
+
+    // One step south, the way the trail says it came.
+    expect(manager!.stepBack(null)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({
+      status: 'walking',
+      destinationRoom: { map: 1, room: 2 }
+    });
+    await lands(socket, wire, 's', 'Beach', 'north, south');
+
+    // Not back to the Dunes it has just come from: one further back.
+    expect(manager!.stepBack(null)).toEqual({ started: true });
+    expect(manager!.walker.progress.destinationRoom).toEqual({ map: 1, room: 1 });
+  });
+
+  it('refuses a back press with nothing behind the character', async () => {
+    await onTheShore();
+    expect(manager!.stepBack(null)).toEqual({ refused: t('session.back.nothingBehind') });
   });
 });

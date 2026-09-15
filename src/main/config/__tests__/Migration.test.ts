@@ -462,7 +462,10 @@ describe('the round combat macro', () => {
       minMobs: 0,
       maxMonsterExperience: 0,
       // And by `statedTheHideForOpener`, off.
-      hideForOpener: false
+      hideForOpener: false,
+      // And by `statedTheMobPriority`, empty, which is what the client already
+      // does without the key.
+      mobPriority: []
     });
   });
 
@@ -713,9 +716,15 @@ describe('the old alert settings becoming rows', () => {
     migrate();
     const written = fs.readFileSync(home.options, 'utf8');
     expect(alertsIn(written)['mute']).toBeUndefined();
+    /*
+     * The channel words this step writes are converted to events by
+     * `alertRowsBecameEvents` in the same run (todo 03), so what lands on disk
+     * is the event each channel was carried to. Asserted here rather than in
+     * the other step's tests because this is the file the pair produces.
+     */
     expect(rulesIn(written)).toEqual([
-      expect.objectContaining({ on: 'movement', alert: false }),
-      expect.objectContaining({ on: 'items', alert: false })
+      expect.objectContaining({ on: 'arrived', alert: false }),
+      expect.objectContaining({ on: 'item-found', alert: false })
     ]);
   });
 
@@ -729,8 +738,8 @@ describe('the old alert settings becoming rows', () => {
     const written = fs.readFileSync(home.options, 'utf8');
     expect(alertsIn(written)['finds']).toBeUndefined();
     expect(rulesIn(written)).toEqual([
-      expect.objectContaining({ on: 'item', name: 'ring', notify: true }),
-      expect.objectContaining({ on: 'cash', value: 5000, notify: true })
+      expect.objectContaining({ on: 'item-found', name: 'ring', notify: true }),
+      expect.objectContaining({ on: 'cash-found', value: 5000, notify: true })
     ]);
   });
 
@@ -751,7 +760,7 @@ describe('the old alert settings becoming rows', () => {
       ((alertsIn(written)['desktop'] as Record<string, unknown>) ?? {})['mute']
     ).toBeUndefined();
     expect(rulesIn(written)).toEqual([
-      expect.objectContaining({ on: 'movement', alert: true, notify: false })
+      expect.objectContaining({ on: 'arrived', alert: true, notify: false })
     ]);
   });
 
@@ -781,7 +790,7 @@ describe('the old alert settings becoming rows', () => {
     );
     migrate();
     const rows = rulesIn(fs.readFileSync(home.options, 'utf8'));
-    expect(rows.map((row) => row['on'])).toEqual(['health', 'items']);
+    expect(rows.map((row) => row['on'])).toEqual(['health', 'item-found']);
   });
 
   it('leaves a converted file alone on a second run', () => {
@@ -796,6 +805,118 @@ describe('the old alert settings becoming rows', () => {
     fs.writeFileSync(home.options, 'ui:\n  showHud: true\n', 'utf8');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).not.toContain('alerts');
+  });
+});
+
+/*
+ * The two desktop-notification switches become the rows' own, 2026-09-13.
+ *
+ * `ui.alerts.desktop` was `enabled` and `whileFocused`, and both are questions
+ * a row already answers -- `notify`, and its own `whileFocused`. What the
+ * player stated is carried onto the rows rather than dropped, which is the two
+ * directions these hold.
+ */
+describe('the desktop switches becoming the rows\u2019 own', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  const alertsIn = (text: string): Record<string, unknown> =>
+    ((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>) ?? {};
+  const rulesIn = (text: string): Record<string, unknown>[] =>
+    (alertsIn(text)['rules'] as Record<string, unknown>[]) ?? [];
+
+  /* The shipped answer says nothing new: the rows are left exactly as written. */
+  it('removes the block and leaves the rows alone where it said the default', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    rules:\n      - on: health\n        notify: true\n' +
+        '    desktop:\n      enabled: true\n      whileFocused: false\n',
+      'utf8'
+    );
+    migrate();
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(alertsIn(written)['desktop']).toBeUndefined();
+    /*
+     * The row is untouched, `whileFocused` included: the file never stated it,
+     * and writing it here would put the migration's opinion into a list the
+     * player owns. `normalizeAlertRules` reads an absent one as off.
+     */
+    expect(rulesIn(written)).toEqual([expect.objectContaining({ on: 'health', notify: true })]);
+    expect(rulesIn(written)[0]!['whileFocused']).toBeUndefined();
+    expect(said.join(' ')).toMatch(/ui\.alerts\.desktop/);
+  });
+
+  /*
+   * `enabled: false` outranked every row, so the same silence is kept -- said
+   * where it can now be undone one row at a time, and said out loud because
+   * notifications going quiet is a thing somebody may want to put back.
+   */
+  it('turns every row\u2019s notify off where notifications were switched off', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    rules:\n      - on: health\n        notify: true\n' +
+        '        whileFocused: true\n      - on: arrived\n        notify: true\n' +
+        '    desktop:\n      enabled: false\n',
+      'utf8'
+    );
+    migrate();
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(rulesIn(written)).toEqual([
+      expect.objectContaining({ on: 'health', notify: false, whileFocused: false }),
+      expect.objectContaining({ on: 'arrived', notify: false })
+    ]);
+    expect(said.join(' ')).toMatch(/Notify/);
+  });
+
+  /* `whileFocused: true` meant it for everything raised, so every notifying
+     row gains it -- and a row that does not notify does not, because there it
+     would mean nothing. */
+  it('carries a standing while-focused onto the rows that notify, and only those', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    rules:\n      - on: health\n        notify: true\n' +
+        '      - on: arrived\n        notify: false\n' +
+        '    desktop:\n      enabled: true\n      whileFocused: true\n',
+      'utf8'
+    );
+    migrate();
+    const rows = rulesIn(fs.readFileSync(home.options, 'utf8'));
+    expect(rows).toEqual([
+      expect.objectContaining({ on: 'health', notify: true, whileFocused: true }),
+      expect.objectContaining({ on: 'arrived', notify: false })
+    ]);
+    // Not written where it would mean nothing, rather than written as false.
+    expect(rows[1]!['whileFocused']).toBeUndefined();
+  });
+
+  it('leaves a converted file alone on a second run', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  alerts:\n    rules:\n      - on: health\n        notify: true\n' +
+        '    desktop:\n      whileFocused: true\n',
+      'utf8'
+    );
+    migrate();
+    const once = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(once);
+  });
+
+  /* A character's own file carries its own rows, so it is walked too. */
+  it('reaches a character\u2019s own file', () => {
+    const profile = home.profile('thorn');
+    fs.mkdirSync(path.dirname(profile.file), { recursive: true });
+    fs.writeFileSync(
+      profile.file,
+      'name: Thorn\nserver: local\nui:\n  alerts:\n    rules:\n      - on: health\n' +
+        '        notify: true\n    desktop:\n      enabled: false\n',
+      'utf8'
+    );
+    migrate();
+    const written = fs.readFileSync(profile.file, 'utf8');
+    expect(alertsIn(written)['desktop']).toBeUndefined();
+    expect(rulesIn(written)).toEqual([expect.objectContaining({ on: 'health', notify: false })]);
   });
 });
 
@@ -1012,7 +1133,11 @@ describe('owning the status line', () => {
         [
           '{table}',
           '{for items}',
-          '{action} {item} {weight}',
+          // The two passes compose: the fold writes the older block's own
+          // template, and `theActionsBecameAFamily` then moves the one tag
+          // whose meaning changed (todo 14). A bare row field is untouched,
+          // because `{for items}` still binds the row's figures bare.
+          '{action.toggleEquip} {item} {weight}',
           '{/for}',
           '{/table}',
           'Keys: {keys|or:none}',
@@ -1151,8 +1276,10 @@ describe('the alert rules', () => {
     );
     migrate();
     const rules = alertsIn()['rules'] as Record<string, unknown>[];
+    // Still one row: the shipped rows are not added over a list somebody wrote.
+    // Its `on` is the event the `items` channel was carried to (todo 03).
     expect(rules).toHaveLength(1);
-    expect(rules[0]?.['on']).toBe('items');
+    expect(rules[0]?.['on']).toBe('item-found');
   });
 
   it('leaves a file with no alerts block alone', () => {
@@ -1566,7 +1693,9 @@ toolbar:
       // The three transport keys this row shipped with are one button now, and
       // `theTransportBecameOneButton` renames the first of them in place —
       // which is what keeps it here rather than appended past the shelf.
-      'move:toggle'
+      'move:toggle',
+      // And back goes in beside it (`theToolbarGainedBack`).
+      'move:back'
     ]);
   });
 
@@ -1599,8 +1728,9 @@ toolbar:
     fs.writeFileSync(home.internal, 'toolbar:\n  pinned:\n    - connect\n', 'utf8');
     migrate();
     // The shelf goes to the front — its own anchor, `loot`, is not on this row
-    // — and the gear button lands after `connect`, which is.
-    expect(pinned()).toEqual(['loop:open', 'connect', 'gear:restore']);
+    // — the gear button lands after `connect`, which is, and back has no
+    // `move:toggle` to sit beside so it goes on the end.
+    expect(pinned()).toEqual(['loop:open', 'connect', 'gear:restore', 'move:back']);
   });
 
   /* A deviation from the shipped row lives in `localStorage`, which this
@@ -1786,6 +1916,101 @@ describe('the bank on the way into the realm', () => {
   });
 });
 
+/*
+ * The back button, and the trail it walks (todo 04, 2026-09-13). A button
+ * added to the shipped row reaches nobody who has already run the client,
+ * because the row they draw is stated in their own copy of the file.
+ */
+/* A shipped figure the player has a copy of: the client they run would keep
+   the old hold and the change would be invisible to whoever asked for it. */
+describe("the Talk card's hold", () => {
+  const held = (): unknown =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { view: Record<string, number> } })
+      .tuning.view['talkFollowResumeMs'];
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+  });
+
+  it('carries the old default forward to the new one', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  view:\n    talkFollowResumeMs: 15000\n', 'utf8');
+    migrate();
+    expect(held()).toBe(DEFAULT_INTERNAL.tuning.view.talkFollowResumeMs);
+    expect(said.join(' ')).toContain('45 seconds');
+  });
+
+  /* A figure somebody tuned is their answer, not a stale default. */
+  it('leaves a figure the player chose alone', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  view:\n    talkFollowResumeMs: 5000\n', 'utf8');
+    migrate();
+    expect(held()).toBe(5000);
+  });
+});
+
+describe('the back button on an existing toolbar', () => {
+  const ROW = `toolbar:
+  pinned:
+    - connect
+    - combat
+    - 'move:toggle'
+    - 'loop:open'
+tuning:
+  walk:
+    maxHolds: 3
+    recentSteps: 5
+`;
+
+  const pinned = (): unknown =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
+      .pinned;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, ROW, 'utf8');
+  });
+
+  /* Beside the transport, where the shipped row puts it — not appended past
+     the shelf, which would land it wherever the row happens to end.
+     (`gear:restore` is another pass's, asserted here so the row a migrated
+     client draws is the row it draws, in order.) */
+  it('adds it after the transport, leaving the rest alone', () => {
+    migrate();
+    expect(pinned()).toEqual([
+      'connect',
+      'gear:restore',
+      'combat',
+      'move:toggle',
+      'move:back',
+      'loop:open'
+    ]);
+  });
+
+  it('does nothing on a second run', () => {
+    migrate();
+    migrate();
+    expect((pinned() as string[]).filter((id) => id === 'move:back')).toHaveLength(1);
+  });
+
+  /* The trail is what the button walks, and it was five steps long because a
+     retreat was all that read it. */
+  it('states how long a trail the button walks', () => {
+    migrate();
+    const walk = (
+      parse(fs.readFileSync(home.internal, 'utf8')) as {
+        tuning: { walk: Record<string, number> };
+      }
+    ).tuning.walk;
+    expect(walk['trailSteps']).toBe(DEFAULT_INTERNAL.tuning.walk.trailSteps);
+    expect(walk['recentSteps']).toBe(DEFAULT_INTERNAL.tuning.walk.recentSteps);
+  });
+
+  it('leaves a row that already has it alone', () => {
+    fs.writeFileSync(home.internal, "toolbar:\n  pinned:\n    - 'move:back'\n", 'utf8');
+    migrate();
+    expect((pinned() as string[]).filter((id) => id === 'move:back')).toHaveLength(1);
+  });
+});
+
 describe('the gear button on an existing toolbar', () => {
   const ROW = `toolbar:
   pinned:
@@ -1807,7 +2032,7 @@ describe('the gear button on an existing toolbar', () => {
      arriving, not while walking. */
   it('adds it beside the dial, leaving the rest alone', () => {
     migrate();
-    expect(pinned()).toEqual(['connect', 'gear:restore', 'automation', 'loop:open']);
+    expect(pinned()).toEqual(['connect', 'gear:restore', 'automation', 'loop:open', 'move:back']);
   });
 
   it('says so, because a toolbar that changed silently is one nobody trusts', () => {
@@ -1829,7 +2054,7 @@ describe('the gear button on an existing toolbar', () => {
   it('goes to the front of a row with no dial on it', () => {
     fs.writeFileSync(home.internal, 'toolbar:\n  pinned:\n    - combat\n', 'utf8');
     migrate();
-    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'combat']);
+    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'combat', 'move:back']);
   });
 
   it('leaves a file that states no toolbar alone', () => {
@@ -1867,16 +2092,24 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       // How far the character may wander before play asks rather than walking
       // it back. Beside the hold budget, where the shipped file puts it.
       'resumeAskSteps',
+      // And how far a drawn plan may drift before pressing Walk asks about the
+      // plan it is redrawn as, which is the other half of the same question.
+      'replanDriftSteps',
       'nudgeAfterMs',
       'nudgeSamples',
       'recentSteps',
+      // The back button's history, beside the retreat's own short one.
+      'trailSteps',
       // What replaced `searchTries`, added by the same pass.
       'searchRetryMs',
       'searchSayEveryMs',
       // How often a searching walk asks the server to reprint the room, which
       // is what stops it searching one whose exit it has already found.
       'searchRecheckEvery',
-      'leverTries'
+      'leverTries',
+      // How long a walk waits in a room too dark to read for the light that
+      // fixes it. Appended: this file states no `heldFallbackMs` to sit beside.
+      'lightWaitMs'
     ]);
     expect(walk()['nudgeAfterMs']).toBe(1000);
     expect(fs.readFileSync(home.internal, 'utf8')).toContain('A note the user wrote');
@@ -1925,7 +2158,10 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       searchSayEveryMs: DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs,
       searchRecheckEvery: DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery,
       leverTries: DEFAULT_INTERNAL.tuning.walk.leverTries,
-      resumeAskSteps: DEFAULT_INTERNAL.tuning.walk.resumeAskSteps
+      resumeAskSteps: DEFAULT_INTERNAL.tuning.walk.resumeAskSteps,
+      replanDriftSteps: DEFAULT_INTERNAL.tuning.walk.replanDriftSteps,
+      trailSteps: DEFAULT_INTERNAL.tuning.walk.trailSteps,
+      lightWaitMs: DEFAULT_INTERNAL.tuning.walk.lightWaitMs
     });
     expect(text).toContain("longer than this realm's own slowest answer");
     expect(text).not.toContain('so this is already the');
@@ -1961,6 +2197,59 @@ describe("the walk's nudge interval in an existing tuning file", () => {
     fs.writeFileSync(home.internal, 'terminal:\n  scrollback: 5000\n', 'utf8');
     migrate();
     expect(fs.readFileSync(home.internal, 'utf8')).toBe('terminal:\n  scrollback: 5000\n');
+  });
+});
+
+/*
+ * The dark-room wait, which is what a walk into a blinding room does instead of
+ * stopping. The figure is the only thing standing between waiting for a light
+ * and waiting for ever, so it goes in the file the player owns.
+ */
+describe('the dark-room wait in an existing tuning file', () => {
+  const WALK = `tuning:
+  walk:
+    holdMs: 1500
+    heldFallbackMs: 30000
+    nudgeAfterMs: 1000
+`;
+
+  const walk = (): Record<string, number> =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { walk: Record<string, number> } })
+      .tuning.walk;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, WALK, 'utf8');
+  });
+
+  /* Beside the other hold's bound, where the shipped file puts it. */
+  it('writes it in beside the condition wait, in the template’s words', () => {
+    migrate();
+    expect(walk()['lightWaitMs']).toBe(DEFAULT_INTERNAL.tuning.walk.lightWaitMs);
+    const text = fs.readFileSync(home.internal, 'utf8');
+    expect(text.indexOf('lightWaitMs')).toBeGreaterThan(text.indexOf('heldFallbackMs'));
+    expect(text.indexOf('lightWaitMs')).toBeLessThan(text.indexOf('nudgeAfterMs'));
+    expect(text).toContain('too dark to read');
+  });
+
+  it('says so, because a figure that governs behaviour has to be findable', () => {
+    migrate();
+    expect(said.join(' ')).toContain('tuning.walk.lightWaitMs');
+  });
+
+  /* Idempotent: the migration runs on every launch. */
+  it('does nothing on a second run', () => {
+    migrate();
+    const after = fs.readFileSync(home.internal, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.internal, 'utf8')).toBe(after);
+  });
+
+  /* A figure the user has already set is their answer, not this one's. */
+  it('leaves a stated wait alone', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  walk:\n    lightWaitMs: 2500\n', 'utf8');
+    migrate();
+    expect(walk()['lightWaitMs']).toBe(2500);
   });
 });
 
@@ -4167,6 +4456,70 @@ describe('the realm databases were zipped', () => {
 });
 
 /*
+ * The Hunting card's reach retires — todo 00, 2026-09-13.
+ *
+ * The survey sweeps everything the exits reach and distance is a column, so
+ * `tuning.view.huntRadiusSteps` reads nothing and has to go; its place is the
+ * re-ask clock, written in at its default, and the new hunting keys beside
+ * it. The suggestion cap moved with the sweep: a file still stating the old
+ * shipped twelve takes the new figure, a figure the player chose is kept.
+ */
+describe('the hunting survey’s reach', () => {
+  const withReach = `tuning:
+  view:
+    # Mine.
+    huntRadiusSteps: 120
+    clockTickMs: 1000
+  hunting:
+    maxSpots: 12
+    stepMs: 1250
+`;
+
+  const block = (group: string): Record<string, unknown> =>
+    (
+      parse(fs.readFileSync(home.internal, 'utf8')) as {
+        tuning: Record<string, Record<string, unknown>>;
+      }
+    ).tuning[group]!;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, withReach, 'utf8');
+  });
+
+  it('takes the reach out and writes the re-ask clock in at its default', () => {
+    migrate();
+    expect(block('view')['huntRadiusSteps']).toBeUndefined();
+    expect(block('view')['huntReaskMs']).toBe(DEFAULT_INTERNAL.tuning.view.huntReaskMs);
+    expect(block('view')['clockTickMs']).toBe(1000);
+  });
+
+  it('writes the survey’s new keys in beside the ones the file states', () => {
+    migrate();
+    expect(block('hunting')['maxDamageShare']).toBe(DEFAULT_INTERNAL.tuning.hunting.maxDamageShare);
+    expect(block('hunting')['trivialShare']).toBe(DEFAULT_INTERNAL.tuning.hunting.trivialShare);
+    expect(block('hunting')['fillerRadius']).toBe(DEFAULT_INTERNAL.tuning.hunting.fillerRadius);
+    expect(block('hunting')['stepMs']).toBe(1250);
+  });
+
+  it('raises a cap still at the old shipped figure, and keeps one the player chose', () => {
+    migrate();
+    expect(block('hunting')['maxSpots']).toBe(DEFAULT_INTERNAL.tuning.hunting.maxSpots);
+    fs.writeFileSync(home.internal, withReach.replace('maxSpots: 12', 'maxSpots: 7'), 'utf8');
+    migrate();
+    expect(block('hunting')['maxSpots']).toBe(7);
+  });
+
+  it('says so, and does nothing on a second run', () => {
+    migrate();
+    expect(said.join(' ')).toContain('huntRadiusSteps');
+    const after = fs.readFileSync(home.internal, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.internal, 'utf8')).toBe(after);
+  });
+});
+
+/*
  * The search count retires — todo 04, 2026-09-06.
  *
  * A `Hidden/Searchable` exit is one the realm's own data says a search reveals,
@@ -4453,6 +4806,148 @@ describe('fetching the kit after a death is stated', () => {
     fs.writeFileSync(home.options, 'automation:\n  movement:\n    recoverGear: true\n', 'utf8');
     migrate();
     expect(movement()['recoverGear']).toBe(true);
+  });
+});
+
+describe('alert rows name events rather than channels', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const rows = (): Array<Record<string, unknown>> => {
+    const ui = parse(fs.readFileSync(home.options, 'utf8')).ui as Record<string, unknown>;
+    const alerts = (ui?.['alerts'] ?? {}) as Record<string, unknown>;
+    return (alerts['rules'] ?? []) as Array<Record<string, unknown>>;
+  };
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-alert-events-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('carries a channel row to the happening a player most likely meant', () => {
+    fs.writeFileSync(
+      home.options,
+      "ui:\n  alerts:\n    rules:\n      - 'on': combat\n        alert: true\n",
+      'utf8'
+    );
+    migrate();
+    expect(rows()[0]?.['on']).toBe('died');
+    // Said out loud, and by name: the row is narrower than what was written.
+    expect(said.join('\n')).toContain('combat');
+  });
+
+  /* The watches were events in everything but the name, so they keep meaning. */
+  it('keeps a watch row meaning exactly what it meant', () => {
+    fs.writeFileSync(
+      home.options,
+      "ui:\n  alerts:\n    rules:\n      - 'on': item\n        name: gold ring\n",
+      'utf8'
+    );
+    migrate();
+    expect(rows()[0]?.['on']).toBe('item-found');
+    expect(rows()[0]?.['name']).toBe('gold ring');
+  });
+
+  it('gives every row the shipped quiet time', () => {
+    fs.writeFileSync(
+      home.options,
+      "ui:\n  alerts:\n    rules:\n      - 'on': health\n        value: 35\n",
+      'utf8'
+    );
+    migrate();
+    expect(rows()[0]?.['quietSeconds']).toBe(30);
+  });
+
+  /* A row already naming an event and stating its own quiet time is somebody's
+     own, and running twice changes nothing. */
+  it('leaves a converted list alone, and is safe to run again', () => {
+    fs.writeFileSync(
+      home.options,
+      "ui:\n  alerts:\n    rules:\n      - 'on': died\n        quietSeconds: 5\n",
+      'utf8'
+    );
+    migrate();
+    expect(rows()[0]?.['quietSeconds']).toBe(5);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+});
+
+describe('the mob priority list is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+
+  const combat = (): Record<string, unknown> =>
+    ((parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+      'combat'
+    ] ?? {}) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-mob-priority-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the empty list into a block that predates it, after avoid', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  combat:\n    enabled: true\n    avoid: [town guard]\n    engage: hostile\n',
+      'utf8'
+    );
+    migrate();
+    expect(combat()['mobPriority']).toEqual([]);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('avoid:')).toBeLessThan(text.indexOf('mobPriority:'));
+    expect(said.join('\n')).toContain('automation.combat.mobPriority');
+  });
+
+  /* The list somebody wrote by hand is theirs, and running twice changes nothing. */
+  it('leaves a stated list alone, and is safe to run again', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  combat:\n    mobPriority:\n      - { mob: gnoll shaman, priority: first }\n',
+      'utf8'
+    );
+    migrate();
+    expect(combat()['mobPriority']).toEqual([{ mob: 'gnoll shaman', priority: 'first' }]);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+
+  /* Every character's file, not only the options file. */
+  it('writes it into a character that states a combat block of its own', () => {
+    fs.writeFileSync(home.options, 'automation:\n  combat:\n    enabled: true\n', 'utf8');
+    const scope = home.profile('main');
+    fs.mkdirSync(path.dirname(scope.file), { recursive: true });
+    fs.writeFileSync(
+      scope.file,
+      'name: Main\nserver: Home\nautomation:\n  combat:\n    engage: all\n',
+      'utf8'
+    );
+    migrate();
+    const profile = parse(fs.readFileSync(scope.file, 'utf8')) as Record<string, unknown>;
+    const block = (profile['automation'] as Record<string, unknown>)['combat'] as Record<
+      string,
+      unknown
+    >;
+    expect(block['mobPriority']).toEqual([]);
   });
 });
 

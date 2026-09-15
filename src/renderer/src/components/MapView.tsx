@@ -1,6 +1,7 @@
 /**
  * A window on the realm: the neighbourhood around a room, fetched for what
- * the window can see, zoomed by the wheel and dragged by the hand.
+ * the window can see, zoomed by the wheel and dragged by the hand, with the
+ * legend under it.
  *
  * The Map card and the loop builder each carried their own copy of this —
  * measure the box, turn the size into a radius, fetch, drop a late answer —
@@ -8,6 +9,19 @@
  * about what a wheel does. This is the one place the map is *looked at*;
  * what is drawn on it stays `MapPlan`'s, and what a click on a room means
  * stays the card's.
+ *
+ * **Every surface that draws a map draws this one** (2026-09-14): the card,
+ * the loop builder, and the route panel's picture of where a route ends,
+ * which until then drew `MapPlan` on its own, fitted, with no wheel, no pan,
+ * no legend and — the report that started it — no quick view under the
+ * pointer. A surface hands in what is *its* (where the eye starts, what marks
+ * are on the rooms, what a click means) and nothing about how a map behaves.
+ *
+ * The legend belongs here for the same reason: it is the key to what this
+ * component draws, so a map drawn without one was a picture with a private
+ * vocabulary. Which keys it lists follows the marks — a builder's rings are
+ * keyed on a builder's map and nowhere else, because a key to a mark the
+ * picture never makes is a key to nothing.
  *
  * Five decisions:
  *
@@ -62,7 +76,7 @@ import {
   type ReactNode
 } from 'react';
 
-import MapPlan, { type MapPlanProps } from './MapPlan';
+import MapPlan, { MapLegend, type MapPlanProps } from './MapPlan';
 import { keepFocus } from '../lib/focus';
 import {
   dragged,
@@ -292,17 +306,29 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
   };
 
   return (
-    <div
-      className="map-view"
-      data-panning={panning ? 'true' : undefined}
-      onMouseDown={keepFocus}
-      onPointerCancel={onPointerEnd}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      ref={box}
-    >
-      {drawn ? <MapPlan {...picture} map={map} viewport={viewport} /> : empty}
+    /*
+     * The box the legend is measured *out* of: the view inside takes what the
+     * legend leaves, which is what makes a map dragged bigger show more rooms
+     * rather than the same rooms drawn larger. The surface around it places
+     * this element; it never sizes it.
+     */
+    <div className="map-box">
+      <div
+        className="map-view"
+        data-panning={panning ? 'true' : undefined}
+        onMouseDown={keepFocus}
+        onPointerCancel={onPointerEnd}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        ref={box}
+      >
+        {drawn ? <MapPlan {...picture} map={map} viewport={viewport} /> : empty}
+      </div>
+      {/* The builder's own keys where the builder's own marks are, which is
+          the one thing the legend asks of the surface — and it asks the
+          picture's props rather than the surface, so the two cannot disagree. */}
+      <MapLegend builder={picture.marks !== undefined} />
     </div>
   );
 }

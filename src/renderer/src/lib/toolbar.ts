@@ -45,7 +45,17 @@ export const TOOLBAR_ACTIONS = [
    * button, and which of the two it stops is main's to work out
    * (`SessionManager.stopMoving`).
    */
-  'move:toggle'
+  'move:toggle',
+  /**
+   * One room back the way the character came, per press.
+   *
+   * Its own button rather than a face of the transport: *go*, *stop* and *back*
+   * are three different intentions, and back is the one pressed while nothing
+   * is moving at all — after a walk into a room somebody did not mean to be in.
+   * What it walks is a route to the previous room on the trail, which main
+   * plans; see `SessionManager.stepBack`.
+   */
+  'move:back'
 ] as const;
 export type ToolbarActionId = (typeof TOOLBAR_ACTIONS)[number];
 
@@ -186,6 +196,16 @@ export interface ToolbarSubject {
   switches: AutomationSwitches;
   /** Whether the character is connected, and what pressing the dial does. */
   connected: boolean;
+  /**
+   * Whether the character is standing in the realm.
+   *
+   * Not the same question as `connected`: a socket that is up with the
+   * account menu on screen can be dialled and hung up and have its switches
+   * written, and can do nothing that needs a room. Every button that sends a
+   * command is greyed on it — greyed, because the row must not change shape
+   * under the pointer (`ToolbarButton.disabled`).
+   */
+  inRealm: boolean;
   /** Whether a dial or a hang-up is already in flight. */
   dialling: boolean;
   /** Routing, looping or stopped, and whether it is going. See `movementOf`. */
@@ -207,6 +227,8 @@ export interface ToolbarSubject {
   disconnect(): void;
   /** Play: pick back up whatever was stopped. The card's picker is not here. */
   startMoving(): void;
+  /** One room back the way the character came. See `SessionManager.stepBack`. */
+  stepBack(): void;
   /** Stop, whichever of the two is running. */
   stopMoving(): void;
   /**
@@ -241,12 +263,14 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     switches,
     connected,
     dialling,
+    inRealm,
     movement,
     setSwitch,
     connect,
     disconnect,
     startMoving,
     stopMoving,
+    stepBack,
     openLoops,
     openBuilder,
     canRestoreGear,
@@ -278,7 +302,9 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     label: t('toolbar.restoreGear'),
     icon: 'shirt',
     on: false,
-    disabled: !canRestoreGear,
+    // Dressing is a command per item, so it needs a room to be standing in as
+    // much as it needs something in the pack to put on.
+    disabled: !inRealm || !canRestoreGear,
     run: restoreGear
   };
 
@@ -343,8 +369,29 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
       label: movement.moving ? t('toolbar.stopMoving') : t('toolbar.startMoving'),
       icon: movement.moving ? 'stop' : 'play',
       on: movement.moving,
-      disabled: !movement.moving && !movement.resumable,
+      disabled: !inRealm || (!movement.moving && !movement.resumable),
       run: () => (movement.moving ? stopMoving() : startMoving())
+    },
+    {
+      /*
+       * Back, beside the transport because it is a way of moving, and after it
+       * because it is the smaller gesture.
+       *
+       * Never disabled on the trail: whether there is anything behind the
+       * character is main's to say — the trail lives there — and a button
+       * greyed off a second copy of that fact in the window is a button that
+       * disagrees with the client. A press with nothing behind it says so in
+       * the console, which is what every other refusal here does.
+       *
+       * Out of the realm is not that fact. There is no room to step out of,
+       * and the refusal would be the same one every press.
+       */
+      id: 'move:back',
+      label: t('toolbar.stepBack'),
+      icon: 'undo',
+      on: false,
+      disabled: !inRealm,
+      run: stepBack
     }
   ];
 

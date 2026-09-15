@@ -66,7 +66,7 @@ import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
-import type { MovementStart } from '../shared/movement';
+import type { MovementStart, WalkStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
@@ -1602,9 +1602,9 @@ function registerIpc(): void {
    * reviewed is the point, and re-planning here could quietly walk a different
    * one.
    */
-  handle(Invoke.walkRoute, (_caller, session: SessionId, payload: unknown) => {
+  handle(Invoke.walkRoute, (_caller, session: SessionId, payload: unknown): WalkStart => {
     const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
+    if (!slot) return { refused: t('app.session.notConnected') };
     /*
      * Parsed, not trusted. This is the one payload a window sends that turns
      * into commands on the socket, so it is the one that has to be proven at
@@ -1612,13 +1612,33 @@ function registerIpc(): void {
      * inside the walker, where nothing on the stack says where it came from.
      */
     const route = asRoute(payload);
-    if (!route) return t('app.route.invalidPayload');
+    if (!route) return { refused: t('app.route.invalidPayload') };
     /*
      * Through the manager rather than straight at the walker: a route the
      * player asked for is one of the two moments the supply list is consulted,
-     * and the shop is visited before the route is walked. See `walkRoute`.
+     * and the shop is visited before the route is walked. And it is the one
+     * route that can have gone stale while somebody read it, so it goes
+     * through `walkPlan`, which redraws it rather than refusing. See both.
      */
-    return slot.manager.walkRoute(route);
+    return slot.manager.walkPlan(route);
+  });
+  /*
+   * Collect what a door wants, then walk the way through it (todo 07).
+   *
+   * Parsed, not trusted, for `walk:start`'s reason — this turns into commands
+   * on a socket — and the item is checked as narrowly as the route: an id and
+   * a name, both of which the realm gave the window in the first place.
+   */
+  handle(Invoke.collectThenWalk, (_caller, session: SessionId, item: unknown, payload: unknown) => {
+    const slot = host?.get(session);
+    if (!slot) return t('app.session.notConnected');
+    const route = asRoute(payload);
+    if (!route) return t('app.route.invalidPayload');
+    const asked = item as { id?: unknown; name?: unknown } | null;
+    const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
+    const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
+    if (id === null || name.length === 0) return t('app.route.invalidPayload');
+    return slot.manager.collectThenWalk({ id, name }, route);
   });
   /*
    * The one play button and the one stop button.
@@ -1650,6 +1670,17 @@ function registerIpc(): void {
   );
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
+  });
+  /*
+   * Back: one room the way the character came. `confirmed` is read exactly as
+   * `move:start` reads it — the figure the window was shown, never a flag —
+   * because this asks the same question back when the way is not one step.
+   */
+  handle(Invoke.stepBack, (_caller, session: SessionId, confirmed: unknown): MovementStart => {
+    const slot = host?.get(session);
+    if (!slot) return { refused: t('app.session.notConnected') };
+    const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
+    return slot.manager.stepBack(agreed);
   });
   /*
    * A loop is named rather than passed: unlike a route, nothing has been shown
@@ -1943,6 +1974,11 @@ function registerIpc(): void {
    * happened to be the client's. A destination searched on one character's
    * realm and walked on another's is a route to a room that does not exist.
    */
+  handle(Invoke.mobNames, (_caller, session: SessionId) => {
+    const world = worldFor(session);
+    return world ? world.mobNames() : [];
+  });
+
   handle(Invoke.searchRooms, (_caller, session: SessionId, query: string) => {
     const world = worldFor(session);
     if (!world) return [];
@@ -2039,29 +2075,30 @@ function registerIpc(): void {
       return localMap(world, roomId(map, room), asked);
     }
   );
-  handle(Invoke.huntingGrounds, (_caller, session: SessionId, radius: unknown) => {
+  handle(Invoke.huntingGrounds, (_caller, session: SessionId) => {
     const manager = host?.get(session)?.manager;
-    // Parsed, never trusted: a radius is a sweep's bound on main's own thread.
-    const steps =
-      typeof radius === 'number' && Number.isFinite(radius)
-        ? Math.max(1, Math.min(400, Math.trunc(radius)))
-        : tuning().hunting.betterSpotRadius;
     if (!manager) {
       return {
         from: null,
-        radius: steps,
+        radius: null,
+        swept: 0,
         spots: [],
+        excluded: { dangerous: 0, beneath: 0 },
         assumptions: {
           family: null,
           hpMax: null,
           restingHealthPerTick: null,
           backstab: false,
+          stepMs: tuning().hunting.stepMs,
+          heal: null,
+          poisonHoldsRest: false,
           constants: tuning().hunting
         },
         refusal: t('session.hunt.noSession')
       } satisfies HuntingAdvice;
     }
-    return manager.huntingGrounds(steps);
+    // Everywhere the exits reach: distance is a column of the answer, not its bound.
+    return manager.huntingGrounds(null);
   });
   /*
    * Where this character may go and level. Addressed, and answered from the
@@ -2450,7 +2487,18 @@ function registerIpc(): void {
             : cureGates(book.map((spell) => world.spellNamed(spell.name)?.abilities))
       };
     },
-    realm: () => realms?.load('').graph.castableSpells() ?? []
+    /*
+     * The bundled world outright, never `load('')`.
+     *
+     * `load` resolves **a realm's** database, and an empty one means *this
+     * realm has not said which world it runs* — so it announces the automatic
+     * choice, as a session walking an unconfirmed map must. The Global page
+     * has no realm in the question at all: it is asking what a new character
+     * would copy. Asked through `load`, opening the settings screen printed
+     * "No world database is named and this realm has not yet said which it
+     * runs" into every terminal, about nothing (2026-09-15).
+     */
+    realm: () => realms?.shippedGraph().castableSpells() ?? []
   };
 
   const editor = (): SettingsEditor => new SettingsEditor({ home, spells: settingsSpells });

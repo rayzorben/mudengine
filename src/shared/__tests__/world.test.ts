@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   asRoomReference,
   asRoute,
+  describeBlock,
+  newDemands,
   openableHere,
   parseLair,
   lairsAlong,
   trapOn,
   trapsAlong,
+  type Route,
   type RouteStep
 } from '../world';
 import { asConnectionTarget } from '../types';
@@ -274,6 +277,79 @@ describe('trapsAlong', () => {
   it('ignores a stated damage on a step that is not a trap', () => {
     const steps = [step({ kind: 'door', raw: 'Door', damage: 99 } as never)];
     expect(trapsAlong(steps)).toEqual({ count: 0, worst: null });
+  });
+});
+
+describe('newDemands', () => {
+  const step = (requirement: RouteStep['requirement'], label?: string): RouteStep => ({
+    from: '1/1',
+    to: '1/2',
+    direction: 'n',
+    command: 'n',
+    name: 'Somewhere',
+    requirement,
+    dark: false,
+    ...(label === undefined || requirement === null
+      ? {}
+      : { obstacle: { kind: requirement.kind, label, detail: label, raw: requirement.raw } })
+  });
+  const route = (steps: RouteStep[], rest: Partial<Route> = {}): Route => ({
+    steps,
+    cost: steps.length,
+    blocked: false,
+    ...rest
+  });
+
+  /* A plan redrawn two corridors along is a different list of rooms and the
+     same walk. Different steps are not the question. */
+  it('says nothing about a longer way that asks for no more than the old one', () => {
+    const before = route([step(null)]);
+    const after = route([step(null), step(null), step(null)]);
+    expect(newDemands(before, after)).toEqual([]);
+  });
+
+  it('names a key the new way wants and the old one did not', () => {
+    const before = route([step(null)]);
+    const after = route([step({ kind: 'key', raw: 'Key: 1124' }, 'key 1124')]);
+    expect(newDemands(before, after)).toEqual(['key 1124']);
+  });
+
+  /* Keyed on the realm's instruction, not on the room it is written in: two
+     locked doors wanting one key are one errand, and a plan that goes through
+     the same door from a different room asks nothing new. */
+  it('says nothing about the same instruction met in another room', () => {
+    const gate = { kind: 'toll', raw: 'Toll: 5' } as const;
+    const before = route([step(gate, 'toll 5')]);
+    const after = route([{ ...step(gate, 'toll 5'), from: '1/9', to: '1/8' }]);
+    expect(newDemands(before, after)).toEqual([]);
+  });
+
+  /* A way that asks for *less* is the same journey made easier, and stopping
+     to ask about it would be the client arguing with a piece of luck. */
+  it('says nothing when the new way drops a requirement', () => {
+    const before = route([step({ kind: 'level', raw: 'Level: 20' }, 'level 20')]);
+    expect(newDemands(before, route([step(null)]))).toEqual([]);
+  });
+
+  /* The walls this way crosses, and the items a room's own spell wants — the
+     two halves of "requirement" that are not written on a step. */
+  it('names a wall and an item the new way needs', () => {
+    const before = route([step(null)]);
+    const after = route([step(null)], {
+      walls: [{ kind: 'unreachable' }],
+      hazards: [
+        {
+          spell: 'river damage',
+          rooms: 4,
+          share: 0.1,
+          unread: false,
+          summons: false,
+          needs: [{ id: 191, name: 'log raft' }],
+          needsSpell: []
+        }
+      ]
+    });
+    expect(newDemands(before, after)).toEqual([describeBlock({ kind: 'unreachable' }), 'log raft']);
   });
 });
 

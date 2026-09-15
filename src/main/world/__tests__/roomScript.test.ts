@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { itemsInScripts, parseRoomScript } from '../roomScript';
+import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from '../roomScript';
 
 /*
  * `Rooms.CMD` → `TBInfo.Action`, verbatim from `gmud20230902.mdb`. Every
@@ -120,12 +120,40 @@ describe('what a room answers to', () => {
   it('reads a quest hand-in as the thing it wants and gives', () => {
     const [answer] = parseRoomScript(ORFEO, named);
     expect(answer?.say).toEqual(['give minotaur horn to orfeo']);
-    expect(answer?.need).toEqual([
-      'check class',
-      'class 9',
-      'takeitem minotaur horn',
-      'giveitem orfeo token'
+    /*
+     * Without `check class`, which the server matches and returns straight
+     * away from — *filler per DC, "blocks" after this do the actual check so
+     * no need to do anything* (`TextBlockPart.cs:98`). The `class 9` beside it
+     * is the gate; the filler was on the card as a second thing the room
+     * wanted, 62 times over in Paradigm.
+     */
+    expect(answer?.need).toEqual(['class 9', 'takeitem minotaur horn', 'giveitem orfeo token']);
+  });
+
+  /* A bare number is a text block to print, not a condition. */
+  it('drops a step that is only a text block to display', () => {
+    expect(parseRoomScript('woohoo:666', named)[0]?.need).toBeUndefined();
+  });
+
+  /*
+   * Four verbs the server reads two arguments of with no message after them.
+   * `givecoins 400 G` is four hundred **gold**; shown as `givecoins 400` it is
+   * a number that could be copper, which is a ten-thousandfold difference in
+   * the one figure a reader acts on. And `testskill` is the same shape, which
+   * is what the first cut of the arity rule got wrong.
+   */
+  it('keeps the second argument of a step that has no message id', () => {
+    expect(parseRoomScript('pay toll:givecoins 400 G', named)[0]?.need).toEqual([
+      'givecoins 400 G'
     ]);
+    expect(parseRoomScript('ask elder:giveability 126 7', named)[0]?.need).toEqual([
+      'giveability 126 7'
+    ]);
+    expect(parseRoomScript('go door:testskill agility -10 601', named)[0]?.need).toEqual([
+      'testskill agility -10'
+    ]);
+    // And one that takes none at all, whose only argument is the message.
+    expect(parseRoomScript('go portal:nomonsters 503', named)[0]?.need).toEqual(['nomonsters']);
   });
 
   /* A line with no steps is not a command; a blank one is not anything. */
@@ -141,5 +169,115 @@ describe('what a room answers to', () => {
    */
   it('finds the item ids a script mentions', () => {
     expect([...itemsInScripts([PORTAL, ORFEO])].sort((a, b) => a - b)).toEqual([1359, 1422, 3389]);
+  });
+
+  /*
+   * `checkability <id> <value>` — the second argument is the rank the player
+   * is measured against and not the message id every other guard trails, so
+   * the generic two-word rule turned *be at rank five* into *have it at all*.
+   * That gate is the only way in to the Ancient Darkwood Tree.
+   */
+  it('keeps the rank an ability gate names', () => {
+    const script = 'go portal:checkability 133 5:cast 620';
+    expect(parseRoomScript(script, named)[0]?.need).toEqual(['checkability 133 5']);
+    expect(parseRoomScript('go vortex:minlevel 20 1220:teleport 681 3', named)[0]?.need).toEqual([
+      'minlevel 20'
+    ]);
+  });
+});
+
+/*
+ * Verbatim from `pmud.zip`, like every fixture above: 8/909's portcullis,
+ * 1/1104's chains, and the four pedestals that open one passage in the Great
+ * Pyramid — each pedestal in a room of its own, which is what `index` is for.
+ */
+const PORTCULLIS =
+  'lift portcullis:message 1359:testskill strength 20 708:remoteaction 909 1360 0 3\n' +
+  'move portcullis:message 1359:testskill strength 20 708:remoteaction 909 1360 0 3\n' +
+  'lift gate:message 1359:testskill strength 20 708:remoteaction 909 1360 0 3\n' +
+  'move gate:message 1359:testskill strength 20 708:remoteaction 909 1360 0 3';
+
+const CROWBAR =
+  'use crowbar:checkitem 570 657:message 54:testskill strength -10:remoteaction 1104 55 0 0\n' +
+  'snap chains:checkitem 570 657:message 54:testskill strength -10:remoteaction 1104 55 0 0';
+
+const PEDESTAL =
+  'put diamond in hole:roomitem 1917 1373:checkitem 1921 1094:takeitem 1921:message 3318:' +
+  'message 3322:remoteaction 3042 0 1 0';
+
+describe('the levers a script pulls', () => {
+  it('reads a remoteaction as the exit it opens, collapsing the spellings', () => {
+    const [lever, ...rest] = leversInScript(PORTCULLIS);
+    expect(rest).toEqual([]);
+    expect(lever?.room).toBe(909);
+    // Exit 3 is west, by the server's own numbering (`Exits.GetExitNameID`).
+    expect(lever?.direction).toBe('w');
+    expect(lever?.say).toEqual(['lift portcullis', 'move portcullis', 'lift gate', 'move gate']);
+    // Ordinal zero says nothing about the order, as a bare `Action` does.
+    expect(lever?.index).toBeUndefined();
+    expect(lever?.item).toBeUndefined();
+  });
+
+  /* `checkitem` is the pack, which is what `RequirementAction.item` means. */
+  it('takes the item the pack must hold to say it', () => {
+    expect(leversInScript(CROWBAR)[0]?.item).toBe(570);
+    expect(leversInScript(CROWBAR)[0]?.direction).toBe('n');
+  });
+
+  /* One of four, and the realm numbers it — `Needs 4 Actions, any order`. */
+  it('keeps the ordinal where the realm states one', () => {
+    expect(leversInScript(PEDESTAL)[0]).toMatchObject({ room: 3042, direction: 'n', index: 1 });
+  });
+
+  it('reads no lever out of a script that pulls none', () => {
+    expect(leversInScript(VORTEX)).toEqual([]);
+    // An exit id outside the ten names no exit, and is refused rather than
+    // folded onto north.
+    expect(leversInScript('pull lever:remoteaction 909 0 0 42')).toEqual([]);
+  });
+
+  /*
+   * And the same lever one chain further out: `Monsters.GreetTXT` is a keyword
+   * table, the shadow guard's reaches 1435, which holds **nothing but a
+   * `LinkTo`** to the block that opens the door to Morukai. A reader that
+   * treats an empty block as absent stops one short of every lever there is.
+   */
+  it('follows a monster greeting through an empty block to the lever', () => {
+    const blocks: Record<number, { action: string; linkTo: number }> = {
+      1433: { action: 'morukai:1435\norfeo:1435', linkTo: 1434 },
+      1434: { action: '', linkTo: 0 },
+      1435: { action: '', linkTo: 1436 },
+      1436: { action: 'checkability 133 4:remoteaction 1423 66 0 3:message 1841', linkTo: 0 }
+    };
+    const [lever, ...rest] = leversAsked(1433, 'shadow guard', (id) => blocks[id]);
+    expect(rest).toEqual([]);
+    expect(lever).toMatchObject({ room: 1423, direction: 'w' });
+    // The whole typed line, because that is what a lever's `say` is.
+    expect(lever?.say).toEqual(['ask shadow guard morukai', 'ask shadow guard orfeo']);
+  });
+
+  /*
+   * **A reached block's lines are steps, not phrases.** Three of the four
+   * stone sphinxes hold `remoteaction 2001 0 0 8` and nothing else, and
+   * reading the first field as a phrase skipped every one of them; the fourth
+   * passed only because `cast 687` stood where a phrase would be. Measured on
+   * both archives after the fix: five monster levers, not two.
+   */
+  it('reads a reached block as steps, not as a phrase and steps', () => {
+    const blocks: Record<number, { action: string; linkTo: number }> = {
+      1: { action: 'sun:2', linkTo: 0 },
+      2: { action: 'remoteaction 2001 0 0 8', linkTo: 0 }
+    };
+    const [lever] = leversAsked(1, 'stone sphinx', (id) => blocks[id]);
+    expect(lever).toMatchObject({ room: 2001, direction: 'u' });
+    expect(lever?.say).toEqual(['ask stone sphinx sun']);
+  });
+
+  /* A lever nothing said reaches is one nobody can pull on purpose. */
+  it('refuses a lever in the greeting itself', () => {
+    const blocks: Record<number, { action: string; linkTo: number }> = {
+      1: { action: 'pull lever:remoteaction 909 0 0 3', linkTo: 0 }
+    };
+    expect(leversAsked(1, 'shadow guard', (id) => blocks[id])).toEqual([]);
   });
 });

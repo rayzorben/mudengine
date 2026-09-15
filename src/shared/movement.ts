@@ -23,6 +23,7 @@
  */
 import type { LoopProgress } from './loops';
 import type { WalkProgress } from './walk';
+import type { Route } from './world';
 
 /** What the character is going about, when it is going about anything. */
 export type MovementKind = 'route' | 'loop';
@@ -113,11 +114,61 @@ export type MovementStart =
    */
   | { confirm: MovementConfirm };
 
+/**
+ * What is being asked about.
+ *
+ * The two movements, and **back** — a press of the toolbar's back button that
+ * the realm cannot answer in one step. It is its own word rather than `route`
+ * because the question is a different one: not *this is further than you
+ * agreed to*, but *the way back is not a step*, and a window drawing the two
+ * with one sentence would say neither.
+ */
+export type ConfirmKind = MovementKind | 'back';
+
+/**
+ * What main answers when the player presses Walk on a plan that is on screen.
+ *
+ * `MovementStart`'s three answers with a fourth, and the fourth is the one
+ * this type exists for: the plan was drawn from a room the character has
+ * since left, so it cannot be walked as written and has been drawn again from
+ * where the character now stands. The reader gets the **new plan**, not a
+ * refusal about the old one — which is what a stale plan used to earn, with
+ * nothing to press next but the same button that had just failed.
+ *
+ * Its own union rather than a fourth arm of `MovementStart`, because play and
+ * back cannot produce it: both plan from where the character is standing at
+ * the moment of the press, so a plan they hand to the walker is never stale.
+ */
+export type WalkStart = { started: true } | { refused: string } | { replanned: Replanned };
+
+/**
+ * A plan drawn again from here, and why the old one would not do.
+ *
+ * **Both halves, never one**: a character that has wandered and a way that now
+ * wants a key are two different reasons to look again, they can arrive
+ * together, and a sentence naming one hides the other.
+ */
+export interface Replanned {
+  /** The way from where the character now stands. Walkable; never blocked. */
+  route: Route;
+  /**
+   * How far the character has strayed from the room the old plan began in, in
+   * steps the router counts — null where the realm cannot price the way back,
+   * which is not zero and is asked about rather than waved through.
+   */
+  wandered: number | null;
+  /** What the new way asks that the old one did not, named. See `newDemands`. */
+  demands: string[];
+}
+
 /** What the window is asking about: which movement, what it is called, how far. */
 export interface MovementConfirm {
-  kind: MovementKind;
-  /** The lap's name, or the room the route was heading for. */
+  kind: ConfirmKind;
+  /** The lap's name, or the room the route — or the way back — is heading for. */
   name: string;
-  /** Steps — for a route, how many *more* than it still owed when it stopped. */
+  /**
+   * Steps. For a movement picked back up, how many *more* than it still owed
+   * when it stopped; for a back press, the whole way back.
+   */
   steps: number;
 }

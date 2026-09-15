@@ -80,10 +80,12 @@ export type NoticeChannel = (typeof NOTICE_CHANNELS)[number];
  * away from the keyboard in the first place.
  *
  * So four happenings are named, and `critical` catches the rest of the
- * ranking. Each is a switch, because what is worth being interrupted for is a
- * fact about the player and not about the realm.
+ * ranking.
  *
- * The order is the order the settings screens offer the switches in.
+ * **A kind, not a switch** (2026-09-13). Each was a checkbox on both settings
+ * pages until the rows took the question over; what is left is the key the
+ * window rests a notification's *kind* on, so a burst of blows cannot swallow
+ * the notice that the character then died.
  */
 export const DESKTOP_ALERTS = ['attacked', 'hurt', 'arrived', 'hungup', 'critical'] as const;
 
@@ -99,8 +101,8 @@ export interface Notice {
   text: string;
   /**
    * Which desktop notification this alert is one of, when it is one of the
-   * four named ones. Absent leaves {@link desktopAlert} to the ranking, which
-   * answers `critical` or nothing at all.
+   * four named ones. Absent means `critical`: the kind is a rest key, and a
+   * raise is decided by the row that claimed the notice.
    */
   desktop?: DesktopAlert;
   /**
@@ -109,6 +111,29 @@ export interface Notice {
    * alone account for, which is most of them.
    */
   watch?: AlertWatch;
+  /**
+   * The row that produced this, where a row did.
+   *
+   * The two numeric events are the case: several rows may watch one vital at
+   * several figures, and `watchNotices` knows which of them crossed. Without
+   * it `ruleFor` hands every health notice to the *first* health row, so a
+   * client told to warn at 35% and again at 15% reports the 35% crossing and
+   * silently drops the 15% one — a stated, critical figure swallowed.
+   *
+   * Absent on every notice nothing configurable produced, which is most of
+   * them; those are claimed by event alone.
+   */
+  from?: AlertRule;
+  /**
+   * Which event this is, which is what an `AlertRule` claims by (todo 03).
+   *
+   * Derived where the notice is built — from the block for most, from the
+   * watch for the five that are watched — so a row and the thing it claims are
+   * matched on the same word the player chose it by. Absent for a notice that
+   * is no event at all, which no row can claim and which is therefore shown at
+   * the level the ranking gave it.
+   */
+  event?: AlertEvent;
 }
 
 /**
@@ -125,53 +150,39 @@ export function desktopAlert(notice: Notice): DesktopAlert | null {
 }
 
 /**
- * The desktop notification this alert is worth raising, for these preferences.
+ * The desktop notification this alert is worth raising.
  *
- * Takes the shape rather than `DesktopAlertsConfig`, for the reason
- * {@link wanted} does: `config.ts` imports this module for its values and a
- * value import back the other way would close the loop.
+ * **The player's own rows are the only thing that decides** (2026-09-13). Two
+ * switches stood in front of this — `ui.alerts.desktop.enabled` and
+ * `whileFocused` — and every question they answered is already a row: *raise
+ * nothing* is every row with `notify` off, and *even while I am looking* is the
+ * row's own `whileFocused`. Two vocabularies for one question is how somebody
+ * sets one and wonders why the other still decides, which is the ruling the
+ * mute list and the severity floor went under.
+ *
+ * So a notice is raised when a row claims it and says `notify`. **A notice no
+ * row claims raises nothing**: a notification interrupts somebody who is not
+ * looking, and being interrupted is asked for, never inherited from a ranking.
+ * That is the one way this differs from the card, where an unclaimed notice is
+ * still shown at the level the ranking gave it.
  */
-export function raisable(
-  prefs: { enabled: boolean },
-  notice: Notice,
-  /**
-   * The player's own rows, which are now the only thing that decides this
-   * (todo 02). A row claiming the notice says whether it is raised; a notice
-   * no row claims is raised when the ranking makes it one of the named
-   * happenings, which is what the client did before there were rows at all.
-   *
-   * The per-happening mute list went with the rest of the old surface: it
-   * answered *never tell me about arriving*, which is a row with `notify` off,
-   * and two controls for one question is how somebody comes to believe one of
-   * them is broken.
-   */
-  rules: readonly AlertRule[] = []
-): DesktopAlert | null {
-  if (!prefs.enabled) return null;
-  const alert = desktopAlert(notice);
-  if (alert === null) return null;
+export function raisable(notice: Notice, rules: readonly AlertRule[] = []): DesktopAlert | null {
   const rule = ruleFor(rules, notice);
-  if (rule !== null) return rule.notify ? alert : null;
-  return alert;
+  if (rule === null || !rule.notify) return null;
+  return desktopAlert(notice) ?? 'critical';
 }
 
 /**
  * Whether this notice may be raised while the window has the focus.
  *
- * The blanket answer is `desktop.whileFocused`; a row that claims the notice
- * overrules it, which is the whole of *tell me about this one even when I am
- * looking* (todo 29). Its own function because the hook asks it at a different
- * moment from `raisable` — the focus is checked before the fresh notices are
- * even walked — and the two questions are genuinely separate.
+ * The row's own answer, and nothing else. Its own function because the hook
+ * asks it at a different moment from {@link raisable} — the focus is checked
+ * before the fresh notices are even walked — and the two questions are
+ * genuinely separate.
  */
-export function raisableWhileFocused(
-  prefs: { whileFocused: boolean },
-  notice: Notice,
-  rules: readonly AlertRule[] = []
-): boolean {
+export function raisableWhileFocused(notice: Notice, rules: readonly AlertRule[] = []): boolean {
   const rule = ruleFor(rules, notice);
-  if (rule !== null && rule.notify) return rule.whileFocused || prefs.whileFocused;
-  return prefs.whileFocused;
+  return rule !== null && rule.notify && rule.whileFocused;
 }
 
 /**
@@ -182,7 +193,7 @@ export function raisableWhileFocused(
  * here produces no notice at all — silence is the default, because a feed that
  * carries everything is the terminal again.
  */
-const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeChannel }>> = {
+export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeChannel }>> = {
   // Something is wrong with the connection or the character's standing in it.
   'login-failed': { severity: 'critical', channel: 'session' },
   /* A level, and what it bought. Rare, and the thing a rule file is edited for. */
@@ -321,6 +332,241 @@ const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: NoticeCh
    */
 };
 
+/* ---------------------------------------------------------- alert events */
+
+/**
+ * What a row can be about, in the realm's own terms rather than the client's
+ * (todo 03).
+ *
+ * The list used to offer the eleven `NOTICE_CHANNELS` — `combat`, `vitals`,
+ * `room` — which are the buckets this module sorts notices into and not things
+ * that happen in a realm. Nothing in that picker read as selectable because
+ * nothing in it was a *happening*: somebody looking for *tell me when a player
+ * attacks me* had to know that lived in `combat`, along with every monster's
+ * blow and every refused spell.
+ *
+ * So a row names an **event**, and an event is one thing the realm does. Each
+ * one carries the block types that are it, so the claim is made against the
+ * block that arrived rather than against the bucket it was filed in.
+ *
+ * **The channel survives underneath** as the category these are grouped under,
+ * and as what the Alerts card's chips still filter on. It is derived from
+ * `NOTABLE` for every event here, so the two vocabularies cannot disagree:
+ * one is what the player reads, the other is how the client sorts.
+ *
+ * A `metric` says which figure the event is measured by, where it has one; a
+ * `measure` (a comparison and a value) is offered only where that figure is a
+ * number. Both are optional and most events have neither — *gained a new
+ * level* is the whole row — which is what the settings grid's empty cells are.
+ */
+export interface AlertEventSpec {
+  /** The category it is grouped under, and the channel its notices carry. */
+  channel: NoticeChannel;
+  /**
+   * The block types that are this event. Empty for the four events that are
+   * not a block at all but a condition the client watches (`health`, `mana`,
+   * `item`, `player`, `cash`), which carry a `watch` instead.
+   */
+  types: readonly BlockType[];
+  /** The watch hook that produces it, for the events no block type is. */
+  watch?: AlertWatch;
+  /**
+   * What this event is measured by, if anything.
+   *
+   * `figure` takes a comparison and a number — *health, below, 35%*. `name`
+   * takes the name of a thing to wait for. Absent is an event that either
+   * happened or did not.
+   */
+  metric?: 'figure' | 'name';
+  /** Whether the figure can be stated as a share of a maximum as well as flat. */
+  percent?: boolean;
+  /** Whether it fires only downward, as money turning up does. */
+  oneSided?: boolean;
+}
+
+/**
+ * Every event a row can name, in the order the picker offers them.
+ *
+ * Grouped by channel, and within a group ordered by how much somebody is
+ * likely to want it — which is roughly how urgent it is. The key is what goes
+ * in the file, so it is written in the client's own spelling rather than the
+ * realm's sentence; the sentence is `locales/ui.en.yaml`'s.
+ *
+ * **Every `NOTABLE` block type appears here exactly once**, and
+ * `alert-events.test.ts` asserts both halves of that: an event naming a type
+ * the table does not rank could never fire, and a ranked type no event names
+ * is a happening the player cannot ask about. That pairing is what stops this
+ * list drifting from the one that decides what a notice costs.
+ */
+export const ALERT_EVENTS = {
+  /* The five the client watches rather than reads off one block. */
+  health: { channel: 'vitals', types: [], watch: 'health', metric: 'figure', percent: true },
+  mana: { channel: 'vitals', types: [], watch: 'mana', metric: 'figure', percent: true },
+  attacked: { channel: 'combat', types: [], watch: 'attacked' },
+  'item-found': { channel: 'items', types: [], watch: 'item', metric: 'name' },
+  'player-seen': { channel: 'presence', types: [], watch: 'player', metric: 'name' },
+  'cash-found': {
+    channel: 'items',
+    types: [],
+    watch: 'cash',
+    metric: 'figure',
+    oneSided: true
+  },
+
+  /* Combat. */
+  died: { channel: 'combat', types: ['user-dies'] },
+  blinded: { channel: 'combat', types: ['user-blinded'] },
+  poisoned: { channel: 'combat', types: ['user-poisoned'] },
+  diseased: { channel: 'combat', types: ['user-diseased'] },
+  held: { channel: 'combat', types: ['user-held'] },
+  'attack-refused': { channel: 'combat', types: ['attack-refused'] },
+  'attack-useless': { channel: 'combat', types: ['attack-ineffective'] },
+  'spell-useless': { channel: 'combat', types: ['spell-ineffective'] },
+  'spell-refused': { channel: 'combat', types: ['spell-refused'] },
+  'attack-warned': { channel: 'combat', types: ['attack-warned'] },
+
+  /* This room. */
+  'player-arrives': { channel: 'room', types: ['player-arrives-room'] },
+  'player-leaves': { channel: 'room', types: ['player-leaves-room'] },
+  'player-dies': { channel: 'room', types: ['player-dies'] },
+  'player-looks': { channel: 'room', types: ['player-looks'] },
+  searched: { channel: 'room', types: ['user-search-succeeded', 'user-search-failed'] },
+  tracked: { channel: 'room', types: ['user-tracks', 'user-tracks-failed'] },
+
+  /* Somebody near, or gone. */
+  'movement-heard': { channel: 'presence', types: ['heard-movement'] },
+  'player-disconnects': { channel: 'presence', types: ['player-disconnects'] },
+
+  /* Getting about. */
+  'way-blocked': { channel: 'movement', types: ['direction-failed', 'open-failed'] },
+  'bash-failed': { channel: 'movement', types: ['bash-failed'] },
+
+  /* The shadows. */
+  'sneak-failed': { channel: 'stealth', types: ['user-sneak-failed', 'user-cant-sneak'] },
+  'hide-failed': { channel: 'stealth', types: ['user-hide-failed', 'user-cant-hide'] },
+
+  /* Things carried. */
+  'equip-failed': { channel: 'items', types: ['user-equipped-failed'] },
+  'list-failed': { channel: 'items', types: ['user-list-failed'] },
+
+  /* The party. */
+  'party-invited': { channel: 'party', types: ['party-invited'] },
+  'party-joined': { channel: 'party', types: ['party-joined'] },
+  'party-left': { channel: 'party', types: ['party-left'] },
+
+  /* What the client said, and what the realm said back. */
+  'command-refused': {
+    channel: 'command',
+    types: ['command-not-understood', 'command-ignored']
+  },
+  throttled: { channel: 'command', types: ['slow-down', 'comms-throttled'] },
+
+  /*
+   * The six the client composes rather than reads off one block.
+   *
+   * Every one is a fact assembled from two things — a roster and a room, a
+   * route and an arrival, a party listing and the last one — so no block type
+   * is it, and before todo 03 none of them could be named by a row at all.
+   * They are the events somebody is most likely to want, which is what made
+   * the channel picker's silence about them worth fixing.
+   */
+  arrived: { channel: 'movement', types: [] },
+  'connection-lost': { channel: 'session', types: [] },
+  'hostile-arrives': { channel: 'room', types: [] },
+  'monster-arrives': { channel: 'room', types: [] },
+  'hostile-in-realm': { channel: 'realm', types: [] },
+  'party-hurt': { channel: 'party', types: [] },
+  'vitals-crossing': { channel: 'vitals', types: [] },
+
+  /* The character itself, and the connection under it. */
+  levelled: { channel: 'session', types: ['user-levels'] },
+  learned: { channel: 'session', types: ['user-learns', 'user-reads-spell'] },
+  'left-realm': { channel: 'session', types: ['user-exits-realm'] },
+  'hangup-penalty': { channel: 'session', types: ['user-disconnect-penalty'] },
+  'login-failed': { channel: 'session', types: ['login-failed'] }
+} as const satisfies Record<string, AlertEventSpec>;
+
+export type AlertEvent = keyof typeof ALERT_EVENTS;
+
+/** The event names, for a picker and for the runtime half of the union. */
+export const ALERT_EVENT_NAMES = Object.keys(ALERT_EVENTS) as AlertEvent[];
+
+/**
+ * One event's specification, widened to the interface.
+ *
+ * `as const satisfies` keeps each entry's literal type — which is what makes
+ * the table readable and the channel exact — but narrows every entry to
+ * exactly the keys it wrote, so `spec.metric` is a type error on the rows that
+ * have none. One accessor widens it back, in one place, rather than at every
+ * reader.
+ */
+export function alertEvent(on: AlertEvent): AlertEventSpec {
+  return ALERT_EVENTS[on];
+}
+
+/** Whether a word names an event this client knows. */
+export function isAlertEvent(value: unknown): value is AlertEvent {
+  return typeof value === 'string' && value in ALERT_EVENTS;
+}
+
+/**
+ * Which event a block is, or null where it is not one.
+ *
+ * Built once rather than searched per block: this runs on every notice, and
+ * the table is fixed for the life of the process.
+ */
+const EVENT_OF_TYPE = new Map<BlockType, AlertEvent>(
+  ALERT_EVENT_NAMES.flatMap((name) =>
+    alertEvent(name).types.map((type) => [type, name] as [BlockType, AlertEvent])
+  )
+);
+
+export function eventOfBlock(type: BlockType): AlertEvent | null {
+  return EVENT_OF_TYPE.get(type) ?? null;
+}
+
+/** Which event a watch produces, for the five that are watched rather than read. */
+const EVENT_OF_WATCH = new Map<AlertWatch, AlertEvent>(
+  ALERT_EVENT_NAMES.flatMap((name) => {
+    const watch = alertEvent(name).watch;
+    return watch === undefined ? [] : [[watch, name] as [AlertWatch, AlertEvent]];
+  })
+);
+
+export function eventOfWatch(watch: AlertWatch): AlertEvent | null {
+  return EVENT_OF_WATCH.get(watch) ?? null;
+}
+
+/** Whether this event takes a comparison and a number. */
+export function eventIsMeasured(on: AlertEvent): boolean {
+  return alertEvent(on).metric === 'figure';
+}
+
+/** Whether this event is matched by the name of a thing. */
+export function eventIsNamed(on: AlertEvent): boolean {
+  return alertEvent(on).metric === 'name';
+}
+
+/** Whether this event fires only one way, as money turning up does. */
+export function eventIsOneSided(on: AlertEvent): boolean {
+  return alertEvent(on).oneSided === true;
+}
+
+/** Whether its figure may be stated as a share of a maximum. */
+export function eventTakesPercent(on: AlertEvent): boolean {
+  return alertEvent(on).percent === true;
+}
+
+/**
+ * How long a row stays quiet after it has fired, in seconds.
+ *
+ * Thirty, as the ask named. The case is a row on something the realm repeats —
+ * a refused attack every round, a search in a dead end — where the first is
+ * the whole of the news and the next twenty are the terminal again with a
+ * border round it. Zero is off, and means every occurrence.
+ */
+export const DEFAULT_ALERT_DEBOUNCE_SECONDS = 30;
+
 /* ------------------------------------------------------------ alert rules */
 
 /**
@@ -363,9 +609,9 @@ export const ALERT_WATCHES = [
 ] as const;
 export type AlertWatch = (typeof ALERT_WATCHES)[number];
 
-/** Whether a rule's `on` is the one-sided figure the cash watch carries. */
-export function alertIsCash(on: AlertRule['on']): on is 'cash' {
-  return on === 'cash';
+/** Whether a rule's `on` is the one-sided figure money turning up carries. */
+export function alertIsCash(on: AlertRule['on']): boolean {
+  return eventIsOneSided(on);
 }
 
 /** Which side of the figure a `health` or `mana` rule fires on. */
@@ -383,11 +629,14 @@ export type AlertSide = (typeof ALERT_SIDES)[number];
  */
 export interface AlertRule {
   /**
-   * What this row is about: one of the eleven channels, or one of the five
-   * watches. A word the client does not know is dropped at load rather than
-   * defaulted, the closed union's runtime rule.
+   * What this row is about: one of the events in {@link ALERT_EVENTS}.
+   *
+   * It used to be one of the eleven channels or one of the five watches — a
+   * bucket the client sorts into, offered to somebody who was looking for a
+   * thing that happens (todo 03). A word the client does not know is dropped
+   * at load rather than defaulted, the closed union's runtime rule.
    */
-  on: NoticeChannel | AlertWatch;
+  on: AlertEvent;
   /** Whether the row does anything at all. Off keeps it in the list, editable. */
   enabled: boolean;
   /**
@@ -417,25 +666,47 @@ export interface AlertRule {
   value: number;
   percent: boolean;
   /**
-   * The name a `item` or `player` row waits for, matched the way the server
-   * matches a typed name. Empty matches nothing, so an unfinished row is inert
-   * rather than firing on everything.
+   * The name an `item-found` or `player-seen` row waits for, matched the way
+   * the server matches a typed name. Empty matches nothing, so an unfinished
+   * row is inert rather than firing on everything.
    */
   name: string;
+  /**
+   * How long this row stays quiet after it has fired, in seconds.
+   *
+   * Thirty by default (todo 03). The case is an event the realm repeats — a
+   * refused attack every round of a fight, a search in a dead end — where the
+   * first is the whole of the news and the next twenty are the terminal again
+   * with a border round it.
+   *
+   * **Per row, not per event**: two rows on one event at two figures are two
+   * separate clocks, which is what makes *warn me at 35% and again at 15%*
+   * work. 0 is off and means every occurrence, which is what the client did
+   * before this existed.
+   */
+  quietSeconds: number;
 }
 
 /**
- * Whether a rule's `on` is one of the numeric watches, which is what decides
- * whether the form draws a figure at all. One statement of it, because a
- * figure on a row nothing reads it for is a control that does nothing.
+ * Whether a rule's `on` takes a figure, which is what decides whether the form
+ * draws one at all. One statement of it, because a figure on a row nothing
+ * reads it for is a control that does nothing.
+ *
+ * Reads the event table rather than listing names, so an event that gains a
+ * figure later gains its control with it (todo 03).
  */
-export function alertIsMeasured(on: AlertRule['on']): on is 'health' | 'mana' {
-  return on === 'health' || on === 'mana';
+export function alertIsMeasured(on: AlertRule['on']): boolean {
+  return eventIsMeasured(on);
 }
 
 /** Whether a rule's `on` names something matched by name rather than by kind. */
-export function alertIsNamed(on: AlertRule['on']): on is 'item' | 'player' {
-  return on === 'item' || on === 'player';
+export function alertIsNamed(on: AlertRule['on']): boolean {
+  return eventIsNamed(on);
+}
+
+/** The watch hook behind an event, for the five that are watched. */
+export function watchOf(on: AlertEvent): AlertWatch | undefined {
+  return alertEvent(on).watch;
 }
 
 /**
@@ -477,7 +748,8 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     side: 'below',
     value: 35,
     percent: true,
-    name: ''
+    name: '',
+    quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   },
   {
     on: 'mana',
@@ -489,7 +761,8 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     side: 'below',
     value: 20,
     percent: true,
-    name: ''
+    name: '',
+    quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   },
   {
     on: 'attacked',
@@ -501,10 +774,11 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     side: 'below',
     value: 0,
     percent: false,
-    name: ''
+    name: '',
+    quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   },
   {
-    on: 'movement',
+    on: 'arrived',
     enabled: true,
     level: null,
     alert: true,
@@ -513,24 +787,36 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     side: 'below',
     value: 0,
     percent: false,
-    name: ''
+    name: '',
+    quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   }
 ];
 
 /**
  * The rule that claims a notice, or null where none does.
  *
- * A channel rule claims anything on its channel; a watch rule claims a notice
- * the producer marked with that watch (`Notice.watch`). Disabled rows are
+ * A row claims a notice that is its own event (todo 03). Disabled rows are
  * skipped rather than claiming and doing nothing, so a row turned off leaves
  * the one below it in charge — which is what somebody turning a row off
  * expects, and the opposite of what skipping *after* claiming would do.
+ *
+ * A notice carrying no event is claimed by nothing and shown at the level the
+ * ranking gave it: the list adds and overrides, it is never an allow list.
  */
 export function ruleFor(rules: readonly AlertRule[], notice: Notice): AlertRule | null {
+  /*
+   * A notice that names its own row is claimed by that row, if it is still
+   * enabled and still in the list. Several rows may watch one vital at several
+   * figures, and matching on the event alone would hand every one of their
+   * notices to whichever came first -- see `Notice.from`.
+   */
+  if (notice.from !== undefined) {
+    const named = rules.find((rule) => rule === notice.from);
+    if (named !== undefined) return named.enabled ? named : null;
+  }
+  if (notice.event === undefined) return null;
   for (const rule of rules) {
-    if (!rule.enabled) continue;
-    if (rule.on === notice.channel) return rule;
-    if (notice.watch !== undefined && rule.on === notice.watch) return rule;
+    if (rule.enabled && rule.on === notice.event) return rule;
   }
   return null;
 }
@@ -562,7 +848,8 @@ export function mayNotice(block: Block): boolean {
  */
 export function wanted(
   prefs: { rules?: readonly AlertRule[] },
-  notices: readonly (Notice | null | undefined)[]
+  notices: readonly (Notice | null | undefined)[],
+  quiet?: AlertQuiet
 ): Notice[] {
   const rules = prefs.rules ?? [];
   const kept: Notice[] = [];
@@ -586,12 +873,69 @@ export function wanted(
     const rule = ruleFor(rules, notice);
     if (rule !== null) {
       if (!rule.alert) continue;
+      // Quiet since it last fired (todo 03). Checked after the claim, so a
+      // row that is resting still keeps the row below it from claiming --
+      // the debounce silences an event, it does not hand it on.
+      if (quiet !== undefined && resting(quiet, rule, notice.at)) continue;
       kept.push(rule.level === null ? notice : { ...notice, severity: rule.level });
       continue;
     }
     kept.push(notice);
   }
   return kept;
+}
+
+/**
+ * When each row last fired, so a row can stay quiet for a while afterwards.
+ *
+ * The caller owns it — one per character, living as long as the session — so
+ * `wanted` stays a pure function of its arguments and the clock, which is what
+ * makes the whole ranking testable without a fake timer.
+ *
+ * Keyed by **what the row says**, not by its place in the list. Two rows on one
+ * event at two figures are two separate clocks, which is what makes *warn me at
+ * 35% and again at 15%* work — and a position cannot express that, because
+ * `ruleFor` hands every notice for an event to the first row that claims it, so
+ * every one of those rows would share index 0's clock. A position is also
+ * unstable: reordering or deleting a row would renumber the rest and hand one
+ * of them another's clock.
+ */
+export type AlertQuiet = Map<string, number>;
+
+/** A fresh clock, for a session or a test. */
+export function alertQuiet(): AlertQuiet {
+  return new Map();
+}
+
+/**
+ * A row's identity, for its own clock.
+ *
+ * Everything that makes one row a different question from another: what it is
+ * about, and the figure or name it is about it at. Not `enabled`, `level` or
+ * the three switches — those change what a row *does* when it fires, and
+ * turning a row's level up should not give it a fresh clock.
+ */
+function keyOfRule(rule: AlertRule): string {
+  return `${rule.on}|${rule.side}|${rule.value}|${rule.percent ? '%' : ''}|${rule.name.trim().toLowerCase()}`;
+}
+
+/**
+ * Whether this row is still resting, and marks it fired when it is not.
+ *
+ * `at` is the notice's own moment rather than `Date.now()`: the notices of one
+ * flush share a moment, so two occurrences arriving together are one firing
+ * and not two — which is the case the debounce exists for.
+ */
+function resting(quiet: AlertQuiet, rule: AlertRule, at: number): boolean {
+  const seconds = Math.max(0, rule.quietSeconds);
+  // Off means every occurrence, so nothing is remembered either: a clock
+  // nobody reads would still grow an entry per row.
+  if (seconds <= 0) return false;
+  const key = keyOfRule(rule);
+  const last = quiet.get(key);
+  if (last !== undefined && at - last < seconds * 1000) return true;
+  quiet.set(key, at);
+  return false;
 }
 
 /**
@@ -607,11 +951,13 @@ export function noticeFor(block: Block, t: UiLookup, state?: CharacterState): No
   if (pvp) return pvp;
   const rank = NOTABLE[block.type];
   if (!rank) return null;
+  const event = eventOfBlock(block.type);
   return {
     id: `b${block.seq}`,
     at: block.at,
     severity: rank.severity,
     channel: rank.channel,
+    ...(event === null ? {} : { event }),
     // The server's own words. A paraphrase is a second thing to keep true, and
     // the line is already the clearest statement of what happened.
     text: block.text.trim()
@@ -651,6 +997,7 @@ function pvpNotice(block: Block, state: CharacterState, t: UiLookup): Notice | n
     // The watch a player's own row claims by (todo 29): *a person swinging at
     // me*, which is a different question from *anything on the combat channel*.
     watch: 'attacked',
+    event: 'attacked',
     text: t('cards.alerts.combat.playerAttacking', { name: listed.name })
   };
 }
@@ -708,7 +1055,9 @@ export function watchNotices(
       at,
       severity: rule.level ?? 'warning',
       channel: 'vitals',
-      watch: rule.on,
+      watch: watchOf(rule.on),
+      event: rule.on,
+      from: rule,
       ...(rule.notify ? { desktop: 'hurt' as const } : {}),
       text:
         rule.on === 'health'
@@ -787,6 +1136,7 @@ export function vitalNotices(
       at,
       severity: level === 'critical' ? 'critical' : 'warning',
       channel: 'vitals',
+      event: 'vitals-crossing',
       ...(level === 'critical' && alarm !== undefined ? { desktop: alarm } : {}),
       text: t('cards.alerts.vitals.crossing', {
         label,
@@ -857,7 +1207,17 @@ export function walkNotices(
     after.destination === null
       ? t('cards.alerts.walk.arrivedSomewhere')
       : t('cards.alerts.walk.arrived', { destination: after.destination });
-  return [{ id: `walk${at}`, at, severity: 'info', channel: 'movement', desktop: 'arrived', text }];
+  return [
+    {
+      id: `walk${at}`,
+      at,
+      severity: 'info',
+      channel: 'movement',
+      desktop: 'arrived',
+      event: 'arrived',
+      text
+    }
+  ];
 }
 
 /**
@@ -886,7 +1246,15 @@ export function linkNotices(
       ? t('cards.alerts.session.hungUp')
       : t('cards.alerts.session.dropped');
   return [
-    { id: `link${at}`, at, severity: 'warning', channel: 'session', desktop: 'hungup', text }
+    {
+      id: `link${at}`,
+      at,
+      severity: 'warning',
+      channel: 'session',
+      desktop: 'hungup',
+      event: 'connection-lost' as const,
+      text
+    }
   ];
 }
 
@@ -947,6 +1315,7 @@ export function partyNotices(
       at,
       severity: level === 'critical' ? 'critical' : 'warning',
       channel: 'party',
+      event: 'party-hurt',
       text: t('cards.alerts.party.memberHealth', {
         name: member.name,
         percent: Math.round(member.health * 100)
@@ -1013,7 +1382,7 @@ export function namedNotices(
   const at = noticedAt(after);
   const notices: Notice[] = [];
 
-  const items = wanted.filter((rule) => rule.on === 'item');
+  const items = wanted.filter((rule) => rule.on === 'item-found');
   if (items.length > 0) {
     /*
      * Lying in the room **and** turned up by a search, in one pass.
@@ -1043,6 +1412,8 @@ export function namedNotices(
           severity: rule.level ?? 'warning',
           channel: 'items',
           watch: 'item',
+          event: 'item-found',
+          from: rule,
           text: t('cards.alerts.watch.item', { what: item.name })
         });
         break;
@@ -1050,7 +1421,7 @@ export function namedNotices(
     }
   }
 
-  const people = wanted.filter((rule) => rule.on === 'player');
+  const people = wanted.filter((rule) => rule.on === 'player-seen');
   if (people.length > 0) {
     const had = new Set(before.room.occupants.map((who) => who.name.toLowerCase()));
     for (const who of after.room.occupants) {
@@ -1064,6 +1435,8 @@ export function namedNotices(
           severity: rule.level ?? 'warning',
           channel: 'presence',
           watch: 'player',
+          event: 'player-seen',
+          from: rule,
           text: t('cards.alerts.watch.player', { who: who.name })
         });
         break;
@@ -1095,6 +1468,8 @@ export function namedNotices(
         severity: rule.level ?? 'warning',
         channel: 'items',
         watch: 'cash',
+        event: 'cash-found',
+        from: rule,
         text: t('cards.alerts.watch.cash', {
           what: cash.rawText ?? String(cash.totalCopper)
         })
@@ -1142,6 +1517,7 @@ export function roomNotices(before: CharacterState, after: CharacterState, t: Ui
         at,
         severity: 'warning',
         channel: 'room',
+        event: 'monster-arrives',
         text: who.uncertain ? arrived + t('cards.alerts.room.mobArrivedUncertainSuffix') : arrived
       });
       continue;
@@ -1156,6 +1532,7 @@ export function roomNotices(before: CharacterState, after: CharacterState, t: Ui
       at,
       severity: 'critical',
       channel: 'room',
+      event: 'hostile-arrives',
       text: t('cards.alerts.room.playerArrived', { name: who.name, alignment: known.alignment })
     });
   }
@@ -1183,6 +1560,7 @@ export function rosterNotices(
         at,
         severity: 'critical',
         channel: 'realm',
+        event: 'hostile-in-realm',
         text: t('cards.alerts.realm.becameHostile', {
           name: entry.name,
           alignment: entry.alignment,

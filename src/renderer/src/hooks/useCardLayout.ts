@@ -240,14 +240,9 @@ export interface FloatState {
   /**
    * How solid the card is, 0–1. One number, two alphas.
    *
-   * A floating card is **always** see-through — at its most solid the fill is
-   * only 60% and you can still read the console under it. That is the whole
-   * point of putting a card there rather than on the rail, and a slider whose
-   * top end is opaque makes the feature possible to miss entirely.
-   *
-   * The fill and the text move together but never to the same place: the text
-   * stays well ahead, because a card you can see through is useful and a
-   * *readout* you can see through is not. See `floatAlphas`.
+   * There is a **floor** and no ceiling: a card cannot be made to vanish,
+   * because one that has is one nobody can drag back, but it can be made
+   * solid. See `floatAlphas`.
    */
   solidity: number;
 }
@@ -255,19 +250,23 @@ export interface FloatState {
 /**
  * The two alphas a floating card is drawn with, from the one slider.
  *
- * Fill 25–90%, text 60–100%. The gap between them is the design: the fill is
- * always the more transparent of the two, so at any setting a *number* on the
- * card is more legible than the panel it sits on — a card you can see through
- * is useful where a readout you can see through is not.
+ * Fill 25–100%, text 60–100%. Below the top the fill is the more transparent
+ * of the two, so at every setting that shows the game a *number* on the card
+ * is more legible than the panel it sits on — a card you can see through is
+ * useful where a readout you can see through is not.
  *
- * **The top end was 60% fill and was still too transparent to read against a
- * busy console**, which is the state a floating card is most often looked at
- * in. It goes to 90%: not fully opaque, because a card that completely hides
- * the game is one the player would close rather than move, and the whole point
- * of floating it was to keep both. The bottom end is unchanged — a card that
- * can be made to vanish is one that cannot be dragged back.
+ * **The ceiling is the player's to remove and is gone** (2026-09-15, todo 04).
+ * It was 60%, then 90%, each time on the argument that a card hiding the game
+ * completely is one somebody would close rather than move — which is a reason
+ * to ship the slider low, not a reason to withhold the end of it. Whether this
+ * particular card, on this particular monitor, is worth the console behind it
+ * is the player's call, and it is made by dragging the slider; a maximum that
+ * refuses it is the client overruling a decision it asked for.
+ *
+ * **The floor stays**, and is the one end that is not a preference: a card
+ * that can be made invisible is one that cannot be found to be dragged back.
  */
-export const FLOAT_FILL = { min: 0.25, max: 0.9 } as const;
+export const FLOAT_FILL = { min: 0.25, max: 1 } as const;
 export const FLOAT_TEXT = { min: 0.6, max: 1 } as const;
 
 export function floatAlphas(solidity: number): { fill: number; text: number } {
@@ -277,6 +276,34 @@ export function floatAlphas(solidity: number): { fill: number; text: number } {
     text: FLOAT_TEXT.min + t * (FLOAT_TEXT.max - FLOAT_TEXT.min)
   };
 }
+
+/**
+ * Where on the slider a stated fill alpha sits. The inverse of `floatAlphas`.
+ *
+ * Its own arithmetic rather than `clamp`, which is declared further down the
+ * module: `DEFAULT_FLOAT` calls this while the module is still initialising,
+ * and a `const` arrow read from above its declaration throws.
+ */
+export function solidityForFill(fill: number): number {
+  const t = (fill - FLOAT_FILL.min) / (FLOAT_FILL.max - FLOAT_FILL.min);
+  return Math.min(1, Math.max(0, t));
+}
+
+/**
+ * The fill a card dropped over the console is drawn at.
+ *
+ * 90%, which was the top of the slider until the ceiling went (todo 04) and is
+ * still what a float ought to look like before anybody has touched it: solid
+ * enough to read against a busy console, and see-through enough that the point
+ * of floating it rather than railing it is visible without dragging anything.
+ *
+ * It ships **below** the top rather than at it, which it did not before. With
+ * a ceiling of 90% those were the same place; with no ceiling, shipping at the
+ * top would make every new float opaque and quietly undo the thing the slider
+ * exists to offer. The end of the slider is now somewhere the player goes, not
+ * somewhere they start.
+ */
+const DEFAULT_FLOAT_FILL = 0.9;
 
 /**
  * What a player has set on one card, for one character.
@@ -449,7 +476,11 @@ export interface CardLayout {
 export type Lane = 'rail' | 'above' | 'below';
 
 /** A card dropped over the console with no size of its own gets this one. */
-export const DEFAULT_FLOAT = { w: 0.26, h: 0.3, solidity: 1 } as const;
+export const DEFAULT_FLOAT = {
+  w: 0.26,
+  h: 0.3,
+  solidity: solidityForFill(DEFAULT_FLOAT_FILL)
+} as const;
 
 const MIN_FLOAT = { w: 0.12, h: 0.1 } as const;
 
@@ -575,6 +606,35 @@ export function docked(current: CardLayout, id: CardId, lane: Lane, index: numbe
   const list = base[lane];
   const at = clamp(index, 0, list.length);
   return { ...base, [lane]: [...list.slice(0, at), id, ...list.slice(at)] };
+}
+
+/**
+ * The float a card gets when it is lifted — from a lane, or from where it was
+ * already floating.
+ *
+ * **What is the card's own comes across**: how solid it is, and whether it is
+ * pinned into view whichever character is shown. Nothing lifted a card that
+ * was already floating until a snap did (todo 02, 2026-09-13), so a pin
+ * dropped here would have taken a card out of view on the next character
+ * switch because somebody lined it up with its neighbour. What is *not* its
+ * own — where it is, and how big — is the caller's to state, and falls back to
+ * what it had and then to what a float ships at.
+ */
+export function lifted(
+  id: CardId,
+  existing: FloatState | undefined,
+  at: { x: number; y: number },
+  size?: { w: number; h: number }
+): FloatState {
+  return {
+    id,
+    x: clamp(at.x, 0, 0.98),
+    y: clamp(at.y, 0, 0.98),
+    w: clamp(size?.w ?? existing?.w ?? DEFAULT_FLOAT.w, MIN_FLOAT.w, 1),
+    h: clamp(size?.h ?? existing?.h ?? DEFAULT_FLOAT.h, MIN_FLOAT.h, 1),
+    solidity: existing?.solidity ?? DEFAULT_FLOAT.solidity,
+    ...(existing?.pinned === true ? { pinned: true } : {})
+  };
 }
 
 /** Every operation is "take it out of wherever it was, then put it back". */
@@ -918,20 +978,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
       lift: (id, at, size) => {
         const existing = layout.floats.find((entry) => entry.id === id);
         const base = without(layout, id);
-        store({
-          ...base,
-          floats: [
-            ...base.floats,
-            {
-              id,
-              x: clamp(at.x, 0, 0.98),
-              y: clamp(at.y, 0, 0.98),
-              w: clamp(size?.w ?? existing?.w ?? DEFAULT_FLOAT.w, MIN_FLOAT.w, 1),
-              h: clamp(size?.h ?? existing?.h ?? DEFAULT_FLOAT.h, MIN_FLOAT.h, 1),
-              solidity: existing?.solidity ?? DEFAULT_FLOAT.solidity
-            }
-          ]
-        });
+        store({ ...base, floats: [...base.floats, lifted(id, existing, at, size)] });
       },
       moveFloat: (id, at) => patchFloat(id, { x: clamp(at.x, 0, 0.98), y: clamp(at.y, 0, 0.98) }),
       sizeFloat: (id, size) =>

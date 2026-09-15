@@ -135,7 +135,17 @@ export type Node =
   | { kind: 'figure'; path: string; filters: Filter[]; raw: string }
   | { kind: 'style'; tag: string }
   | { kind: 'if'; branches: Array<{ test: Expr | null; body: Node[] }> }
-  | { kind: 'for'; path: string; body: Node[] }
+  /**
+   * A list drawn once per row.
+   *
+   * `as` is the name the row is bound under — `{for item in items}` makes the
+   * row's own figures reachable as `{item.weight}`. Absent for the older
+   * spelling `{for items}`, which binds the row's fields bare and nothing
+   * else; both bindings are made where a name is given, because they are two
+   * addresses for one value rather than two answers to one question, and the
+   * bare one is what every template written before this says.
+   */
+  | { kind: 'for'; path: string; as?: string; body: Node[] }
   | { kind: 'table'; header: boolean; body: Node[] };
 
 export interface Filter {
@@ -167,6 +177,9 @@ const FILTER_SET: ReadonlySet<string> = new Set(FILTERS);
 const HEX = /^#[0-9a-f]{6}$/i;
 const TAG = /\{([^{}\n]{1,120})\}/g;
 const PATH = /^[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*$/;
+
+/** One segment of a path: what a `{for}` may bind its row under. */
+const NAME = /^[A-Za-z_]\w*$/;
 
 /** The tags that stand for a control rather than something drawn. */
 const BLOCK_OPEN = /^(if|else if|elif|else|for|table)(?:\s|$)/;
@@ -298,15 +311,19 @@ export function parseTemplate(source: string): Template {
         continue;
       }
       if (tag.startsWith('for ')) {
-        const path = tag.slice(4).trim();
-        if (!PATH.test(path)) {
+        // `{for item in items}` names the row; `{for items}` does not.
+        const said = tag.slice(4).trim();
+        const bound = /^([A-Za-z_]\w*)\s+in\s+(.+)$/.exec(said);
+        const as = bound?.[1];
+        const path = bound === null ? said : bound[2]!.trim();
+        if (!PATH.test(path) || (as !== undefined && !NAME.test(as))) {
           nodes.push({ kind: 'text', text: raw });
           continue;
         }
         const body = parseBody((next) => next === '/for');
         if (tokens[at]?.kind === 'tag') at += 1;
         else problem('unclosed', tag);
-        nodes.push({ kind: 'for', path, body });
+        nodes.push({ kind: 'for', path, ...(as === undefined ? {} : { as }), body });
         continue;
       }
       if (tag === 'table' || tag === 'table header') {
@@ -654,8 +671,11 @@ function lookupIn(chain: readonly Row[], path: string): Value | undefined {
     if (!(head! in row)) continue;
     let value: Value | undefined = row[head!];
     for (const key of rest) {
-      if (value === undefined || !isRow(value)) return undefined;
-      value = value[key];
+      // Any object with fields, a `Figure` included: a `{for}`'s bound row is
+      // both — drawn as its name, read into for the rest of the path.
+      if (value === undefined || value === null || typeof value !== 'object') return undefined;
+      if (Array.isArray(value)) return undefined;
+      value = (value as Row)[key];
     }
     return value;
   }
@@ -675,7 +695,13 @@ function textOf(value: Value | undefined): string {
   if (value === undefined || value === null) return UNKNOWN;
   if (isFigure(value)) return value.text;
   if (Array.isArray(value)) return value.map(nameOf).join(', ');
-  if (isRow(value)) return '';
+  /*
+   * A record drawn on its own is drawn by its name, the way a row of a list
+   * is when the list is drawn whole. `{for item in items}` makes `{item}` the
+   * ordinary thing to write, and a blank there would read as a figure the
+   * client does not have rather than as the author addressing the row.
+   */
+  if (isRow(value)) return nameOf(value);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   return String(value);
 }
@@ -829,7 +855,7 @@ export function renderTemplate(
           const list = lookupIn(chain, node.path);
           if (!Array.isArray(list)) {
             // Not a list: the control is drawn as typed, like any unknown tag.
-            push({ text: `{for ${node.path}}` });
+            push({ text: `{for ${node.as === undefined ? '' : `${node.as} in `}${node.path}}` });
             draw(node.body, asHeader);
             push({ text: '{/for}' });
             break;
@@ -837,12 +863,37 @@ export function renderTemplate(
           // The header is the body drawn once with the labels for cells, on
           // the first row's fields; a list with no rows names no columns.
           const first = list[0];
+          /*
+           * The row bound under its own name as well as bare, where the
+           * template gave one: `{for item in items}` reaches `{item.weight}`
+           * through the record, and `{item}` draws the row's own name. Both,
+           * because they are two addresses for one value — see `Node`.
+           */
+          const bind = (row: Value): Row => {
+            const fields = isRow(row) ? row : { name: row };
+            if (node.as === undefined) return fields;
+            /*
+             * The bound row is drawn as the row and read as a record: `{item}`
+             * is what the row would be called if the list were drawn whole,
+             * and `{item.weight}` is a figure inside it. A `text` makes it a
+             * `Figure`, which is what `textOf` draws; `lookupIn` descends
+             * into it for the rest of the path.
+             *
+             * **The name the binding takes may be a field of the row**, and in
+             * the pack it is: `item` is the listing's own counted label. The
+             * drawn text is that field where it exists, so `{item}` says the
+             * same thing under either spelling of the `{for}`.
+             */
+            const own = fields[node.as];
+            const label = own === undefined ? nameOf(fields) : textOf(own);
+            return { ...fields, [node.as]: { ...fields, text: label } };
+          };
           const head = (): Row => ({
             n: 0,
             rows: list.length,
             first: true,
             last: true,
-            ...(first === undefined ? NOTHING : isRow(first) ? first : { name: first })
+            ...(first === undefined ? NOTHING : bind(first))
           });
           if (asHeader) {
             if (first !== undefined) {
@@ -867,7 +918,7 @@ export function renderTemplate(
               rows: list.length,
               first: index === 0,
               last: index === list.length - 1,
-              ...(isRow(row) ? row : { name: row })
+              ...bind(row)
             });
             draw(node.body, false);
             chain.pop();

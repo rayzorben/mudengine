@@ -160,6 +160,8 @@ export type WalkHold =
   | 'barrier'
   | 'searching'
   | 'resting'
+  /** A room too dark to read, while the light that fixes it is on its way. */
+  | 'dark'
   | null;
 
 /**

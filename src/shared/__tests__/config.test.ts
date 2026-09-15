@@ -13,6 +13,8 @@ import {
   resolveUiFonts,
   targetFromConfig,
   toCssFontStack,
+  mergeMobPriorities,
+  normalizeMobPriorities,
   type AppConfig
 } from '../config';
 import { DENOMINATIONS } from '../character';
@@ -173,7 +175,17 @@ describe('normalizeConfig', () => {
     // Empty menus, not the shipped Paradigm script: a server states its own,
     // and a MUD reached directly rather than through a BBS has none at all.
     expect(config.servers).toEqual([
-      { name: 'Home', host: 'example.test', port: 4000, encoding: 'utf8', login: [], database: '' }
+      {
+        name: 'Home',
+        host: 'example.test',
+        port: 4000,
+        encoding: 'utf8',
+        login: [],
+        database: '',
+        // Empty for the same reason the menus are: a realm ranks nothing until
+        // somebody playing it says so.
+        mobPriority: []
+      }
     ]);
   });
 
@@ -773,5 +785,66 @@ describe('the coins collected and the coins shed', () => {
     expect(after.coinKinds).toEqual(['gold']);
     expect(after.discardKinds).toEqual(['runic']);
     for (const list of [after.coinKinds, after.discardKinds]) expect(list).not.toContain('copper');
+  });
+});
+
+describe('the priority list, merged across scopes rather than replaced', () => {
+  it('keeps a monster only one scope names', () => {
+    const merged = mergeMobPriorities(
+      [{ mob: 'rat', priority: 'low' }],
+      [{ mob: 'sewer rat', priority: 'last' }],
+      [{ mob: 'dragon', priority: 'first' }]
+    );
+    expect(merged.map((row) => row.mob).sort()).toEqual(['dragon', 'rat', 'sewer rat']);
+  });
+
+  /*
+   * The whole reason this list is merged and every other one is replaced: a
+   * character that wants the realm's ranking plus one row of its own must not
+   * have to restate the realm's.
+   */
+  it('lets the narrowest scope win for a monster two of them name', () => {
+    const merged = mergeMobPriorities(
+      [{ mob: 'rat', priority: 'low' }],
+      [{ mob: 'rat', priority: 'high' }],
+      [{ mob: 'rat', priority: 'first' }]
+    );
+    expect(merged).toEqual([{ mob: 'rat', priority: 'first' }]);
+  });
+
+  it('lets the realm win over the global list where the character is silent', () => {
+    const merged = mergeMobPriorities(
+      [{ mob: 'rat', priority: 'low' }],
+      [{ mob: 'rat', priority: 'last' }],
+      []
+    );
+    expect(merged).toEqual([{ mob: 'rat', priority: 'last' }]);
+  });
+
+  it('keys a row the way the wire spells a monster', () => {
+    const merged = mergeMobPriorities([{ mob: 'The Giant Rat', priority: 'low' }], [], []);
+    expect(merged).toEqual([{ mob: 'giant rat', priority: 'low' }]);
+  });
+
+  it('drops a row naming no monster, which could only ever match nothing', () => {
+    expect(normalizeMobPriorities([{ mob: '   ', priority: 'first' }])).toEqual([]);
+  });
+
+  /*
+   * The runtime half of a closed union. Dropped rather than defaulted to
+   * `default`: a typo that became a row reading as deliberate and doing
+   * nothing is worse than one that is visibly absent.
+   */
+  it('drops a row whose band the table does not know', () => {
+    expect(normalizeMobPriorities([{ mob: 'rat', priority: 'urgent' }])).toEqual([]);
+  });
+
+  it('keeps the first row for a monster and drops a later duplicate', () => {
+    expect(
+      normalizeMobPriorities([
+        { mob: 'rat', priority: 'first' },
+        { mob: 'the rat', priority: 'last' }
+      ])
+    ).toEqual([{ mob: 'rat', priority: 'first' }]);
   });
 });

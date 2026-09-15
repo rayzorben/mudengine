@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   castsToKill,
   chooseAttackSpell,
+  chooseHealSpell,
+  healPower,
   spellElementOf,
+  type HealChoiceInput,
   type SpellChoiceInput
 } from '../spellchoice';
 import type { ProwessSheet } from '../prowess';
@@ -230,5 +233,147 @@ describe('casts to kill', () => {
     expect(castsToKill({ book: null }, { hp: 60, magicRes: null })).toBeNull();
     expect(castsToKill(input, { hp: null, magicRes: null })).toBeNull();
     expect(castsToKill({ ...input, book: [] }, { hp: 60, magicRes: null })).toBeNull();
+  });
+});
+
+/*
+ * Choosing the heal — todo 01, 2026-09-13, in the player's own figures.
+ *
+ * A 150-point bar: at 145/150 five points are missing and *minor healing* is
+ * the answer, at 90/150 sixty are missing and *major healing* is. One
+ * configured spell is wrong at one end or the other, which is the complaint.
+ */
+const HEALS: Record<string, WorldSpell> = {
+  'minor healing': {
+    id: 30,
+    name: 'minor healing',
+    short: 'mihe',
+    level: 1,
+    mana: 2,
+    targets: 2,
+    power: [10, 20],
+    abilities: [[18, 0]]
+  },
+  'major healing': {
+    id: 31,
+    name: 'major healing',
+    short: 'mahe',
+    level: 8,
+    mana: 10,
+    targets: 2,
+    power: [40, 60],
+    abilities: [[18, 0]]
+  },
+  /* A self-only heal, so the targeting column is exercised both ways. */
+  'way of the swan': {
+    id: 32,
+    name: 'way of the swan',
+    short: 'swan',
+    level: 4,
+    mana: 3,
+    targets: 1,
+    power: [15, 25],
+    abilities: [[18, 0]]
+  },
+  /* A flat figure on the ability itself, which outranks the rolled power. */
+  mend: {
+    id: 33,
+    name: 'mend',
+    short: 'mend',
+    level: 1,
+    mana: 1,
+    targets: 2,
+    power: [99, 99],
+    abilities: [[18, 6]]
+  },
+  /* No heal marked at all: an attack spell in the same book. */
+  'magic missile': REALM['magic missile']!
+};
+
+const HEAL_BOOK = [
+  { name: 'minor healing', short: 'mihe', level: 1, cost: 2 },
+  { name: 'major healing', short: 'mahe', level: 8, cost: 10 },
+  { name: 'way of the swan', short: 'swan', level: 4, cost: 3 },
+  { name: 'magic missile', short: 'mmis', level: 1, cost: 2 }
+];
+
+const healInput = (over: Partial<HealChoiceInput> = {}): HealChoiceInput => ({
+  book: HEAL_BOOK,
+  realm: (name) => HEALS[name] ?? null,
+  level: 10,
+  mana: 50,
+  deficit: 60,
+  aim: 'self',
+  sheet: SHEET,
+  family: null,
+  ...over
+});
+
+describe('what a cast mends', () => {
+  it('reads the ability’s own figure where it states one, and the rolled power otherwise', () => {
+    expect(healPower(HEALS['minor healing']!, 10)).toEqual([10, 20]);
+    expect(healPower(HEALS['mend']!, 10)).toEqual([6, 6]);
+  });
+
+  it('answers nothing for a row the realm marks no heal on, or marks a wound on', () => {
+    expect(healPower(HEALS['magic missile']!, 10)).toBeNull();
+    expect(
+      healPower({ id: 9, name: 'damnation', power: [2, 2], abilities: [[18, -2]] }, 10)
+    ).toBeNull();
+  });
+});
+
+describe('choosing the heal', () => {
+  it('mends a scratch with the cheapest spell that covers it', () => {
+    const choice = chooseHealSpell(healInput({ deficit: 5 }));
+    expect(choice.chosen?.spell.name).toBe('minor healing');
+    expect(choice.why).toBe('covers');
+    expect(choice.chosen?.cost).toBe(2);
+  });
+
+  it('mends a real wound with the most any one cast mends', () => {
+    const choice = chooseHealSpell(healInput({ deficit: 60 }));
+    expect(choice.chosen?.spell.name).toBe('major healing');
+    expect(choice.why).toBe('most');
+  });
+
+  /*
+   * The cheapest that *covers*, not the cheapest outright: at twenty-five
+   * missing, the minor heal's fifteen leaves the character still under the
+   * ceiling and the round buys nothing that the next round does not.
+   */
+  it('steps up to the dearer spell the moment the cheap one stops reaching', () => {
+    expect(chooseHealSpell(healInput({ deficit: 14 })).chosen?.spell.name).toBe('minor healing');
+    expect(chooseHealSpell(healInput({ deficit: 25 })).chosen?.spell.name).toBe('major healing');
+  });
+
+  it('never offers a self-only spell for somebody else, and offers it for the caster', () => {
+    const forParty = chooseHealSpell(healInput({ aim: 'party', deficit: 20 }));
+    expect(forParty.considered.map((c) => c.spell.name)).not.toContain('way of the swan');
+    const forSelf = chooseHealSpell(healInput({ aim: 'self', deficit: 20 }));
+    expect(forSelf.considered.map((c) => c.spell.name)).toContain('way of the swan');
+  });
+
+  it('never offers a spell the pool cannot pay for, or the level cannot reach', () => {
+    // Nine mana does not buy the major heal, so the best left is the swan's 20.
+    const poor = chooseHealSpell(healInput({ deficit: 60, mana: 9 }));
+    expect(poor.chosen?.spell.name).toBe('way of the swan');
+    expect(poor.considered.map((c) => c.spell.name)).not.toContain('major healing');
+    // And a level-5 character cannot cast the major heal at all.
+    const young = chooseHealSpell(healInput({ deficit: 60, level: 5 }));
+    expect(young.chosen?.spell.name).toBe('way of the swan');
+    expect(young.considered.map((c) => c.spell.name)).not.toContain('major healing');
+  });
+
+  it('says which way it could not answer, and never guesses', () => {
+    expect(chooseHealSpell({ book: null }).refusal).toBe('no-book');
+    expect(chooseHealSpell(healInput({ book: [] })).refusal).toBe('empty-book');
+    // A book of attack spells holds no heal at all.
+    expect(
+      chooseHealSpell(healInput({ book: [{ name: 'magic missile', short: 'mmis', cost: 2 }] }))
+        .refusal
+    ).toBe('no-heal-spells');
+    // Heals it knows, and a pool that cannot pay for any of them.
+    expect(chooseHealSpell(healInput({ mana: 1 })).refusal).toBe('no-mana');
   });
 });

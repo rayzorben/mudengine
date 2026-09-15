@@ -29,6 +29,19 @@ import type { StreamLine } from '../../../shared/types';
  * could not see it.
  */
 
+/** The dark monk's death sentence, shipped (`death-messages.csv` row 228). */
+const MONK_DEATH = 'The dark monk bursts into black flame, and vanishes!';
+
+/**
+ * The lookup `SessionManager` hands the classifier: what the wire taught
+ * beside the server's own table. The stale `small dark monk` is a real entry
+ * from the player's `mob-lore.json` — learned under the room's spelling of
+ * whichever monk died last, before the sentence was filed under the row.
+ */
+const DEATHS: Record<string, readonly string[]> = {
+  [MONK_DEATH]: ['small dark monk', 'dark monk']
+};
+
 function arenaWorld(): WorldGraph {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-arena-'));
   const file = path.join(dir, 'rooms.jsonl.gz');
@@ -44,7 +57,9 @@ function arenaWorld(): WorldGraph {
       { n: 'kobold thief', hp: 20, d: 'h' },
       { n: 'filthbug', hp: 15, d: 'h' },
       { n: 'lashworm', hp: 8, d: 'h' },
-      { n: 'acid slime', hp: 30, d: 'h' }
+      { n: 'acid slime', hp: 30, d: 'h' },
+      // Rhudaur's monk: one row, and the room prints four of it at once.
+      { n: 'dark monk', hp: 125, d: 'h' }
     ]
   });
   fs.writeFileSync(file, zlib.gzipSync(header + '\n'));
@@ -86,10 +101,14 @@ function harness(engage: 'hostile' | 'likely' = 'likely'): Harness {
   const world = arenaWorld();
   const sent: string[] = [];
   const tracker = new CharacterTracker(world);
-  const classifier = new Classifier({
-    present: () => tracker.current.room.occupants.map((who) => who.name),
-    mob: (name) => world.mob(name)
-  });
+  const classifier = new Classifier(
+    {
+      present: () => tracker.current.room.occupants.map((who) => who.name),
+      mob: (name) => world.mob(name)
+    },
+    undefined,
+    (text) => DEATHS[text.trim()] ?? []
+  );
   const config = vaelorConfig();
   config.combat.engage = engage;
   const queue = new CommandQueue(config, {
@@ -450,6 +469,54 @@ describe('the Arena transcript', () => {
     h.feed('Also here: giant rat.');
     h.feed('Obvious exits: closed door north, up, down');
     expect(h.sent).toEqual(['pu giant rat', 'pu giant rat']);
+  });
+
+  /*
+   * Rhudaur Town Centre, from `2026-09-14_18-07-02_festus.mudcap.jsonl`
+   * (t=8939.1): four dark monks, one death sentence between the four of them.
+   *
+   * The sentence names the monster *type*, and the wire had filed it under the
+   * room's spelling of whichever monk died last — so the line resolved to one
+   * monk with no ambiguity at all. The small monk left the room on the large
+   * one's death, the target went with a kill that was not the target's, and
+   * the experience line two lines behind it then had nothing to name: the
+   * corpse stayed in the room for the rest of the session. The client attacked
+   * it (`Your command had no effect.`) and walked out past a monk still
+   * standing there.
+   */
+  it('kills one of four monsters sharing a death sentence and moves to the next', async () => {
+    const h = harness();
+    h.feed('[HP=200]:');
+    h.feed('Rhudaur Town Centre');
+    h.feed('Also here: thin dark monk, nasty dark monk, large dark monk, small dark monk.');
+    h.feed('Obvious exits: north, south, east, west');
+    h.feed('[HP=200]:');
+    const opened = h.sent[0] ?? '';
+    const target = opened.slice('pu '.length);
+    expect(target.endsWith('dark monk')).toBe(true);
+
+    h.feed('*Combat Engaged*');
+    h.feed(`You punch ${target} for 36 damage!`);
+    h.feed('[HP=200]:');
+    expect(h.tracker.current.combat.target).toBe(target);
+
+    // Any of the four could have said this, so it settles nothing on its own:
+    // nobody leaves the room and the fight is untouched.
+    h.feed(MONK_DEATH);
+    expect(h.tracker.current.room.occupants).toHaveLength(4);
+    expect(h.tracker.current.combat.target).toBe(target);
+
+    // The experience line is this character's, so the thing that died is the
+    // thing it was hitting — and that is the one the room loses.
+    h.feed('You gain 525 experience.');
+    h.feed('*Combat Off*');
+    h.feed('[HP=200]:');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.tracker.current.room.occupants.map((who) => who.name)).not.toContain(target);
+
+    const swings = h.sent.filter((command) => command.startsWith('pu '));
+    expect(swings).toHaveLength(2);
+    expect(swings[1]).not.toBe(swings[0]);
   });
 
   it('does not spend a second attack on the fight it just opened', () => {

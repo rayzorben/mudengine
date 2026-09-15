@@ -154,7 +154,16 @@ function RoomCard({
   const lair = room.lair ?? null;
   const answers = room.commands ?? [];
 
-  const face = <RoomBody character={character} inspect={inspect} shop={shop} verdict={verdict} />;
+  const face = (
+    <RoomBody
+      answers={answers}
+      ask={ask}
+      character={character}
+      inspect={inspect}
+      shop={shop}
+      verdict={verdict}
+    />
+  );
   /*
    * The counter's own listing, kept on state by the tracker for as long as the
    * character stands in this room. A room the realm data has no shop for can
@@ -469,12 +478,16 @@ function describe(who: RoomOccupant, mine: Alignment | null): string {
 }
 
 function RoomBody({
+  answers,
+  ask,
   character,
   inspect,
   shop,
   verdict
-}: Pick<RoomCardProps, 'character' | 'inspect' | 'verdict'> & {
+}: Pick<RoomCardProps, 'ask' | 'character' | 'inspect' | 'verdict'> & {
   shop: WorldShop | null;
+  /** What the realm says this room answers to. See the row below the exits. */
+  answers: RoomCommand[];
 }) {
   const { room, phase } = character;
   const mine = ownAlignment(character);
@@ -565,6 +578,44 @@ function RoomBody({
               ))
             )}
           </div>
+
+          {/*
+            What the room answers to, as controls, on the face that is on
+            screen (todo 11).
+            
+            The detail — where each phrase leads and what it wants — stays on
+            the ANSWERS face; this is the row that says *there is something to
+            do here*, because a phrase behind a crumb is a command nobody can
+            find. The room this was reported from has `Obvious exits: None` and
+            one way out, `touch gem`, which is exactly the case where the card
+            drew a dead end.
+
+            Only the first spelling of each, as the face does: a script writes
+            four ways to say one thing.
+          */}
+          {answers.length > 0 && (
+            <div className="exits room-answers">
+              {answers.map((answer, index) => {
+                const phrase = answer.say[0] ?? '';
+                return ask && phase === 'in-game' ? (
+                  <button
+                    className="chip"
+                    key={`${phrase}-${index}`}
+                    onClick={() => ask(phrase)}
+                    onMouseDown={keepFocus}
+                    title={t('cards.room.answers.sendTooltip', { phrase })}
+                    type="button"
+                  >
+                    {phrase}
+                  </button>
+                ) : (
+                  <span className="chip" key={`${phrase}-${index}`}>
+                    {phrase}
+                  </span>
+                );
+              })}
+            </div>
+          )}
 
           {/*
             One grid, not one per row -- and that is the whole reason `Here` and

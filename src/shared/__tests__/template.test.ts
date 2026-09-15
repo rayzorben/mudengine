@@ -172,6 +172,43 @@ describe('the controls', () => {
     expect(draw('{for hp}x{/for}', SCOPE)).toEqual(['{for hp}x{/for}']);
   });
 
+  /*
+   * `{for item in items}` names the row, so every figure of it is addressed
+   * through that name (todo 14). Reported as *"it has {items} but I don't even
+   * see {item} in the list — it has weight, an item attribute, and that is not
+   * in the list either"*: the figures were reachable and unnameable.
+   */
+  it('binds the row under the name the for gives it, drawn and read', () => {
+    expect(draw('{for item in items}{item} {item.weight}\n{/for}', SCOPE)).toEqual([
+      'visored greathelm 120',
+      'torch '
+    ]);
+    // The row's own fields stay bare beside it: one value, two addresses.
+    expect(draw('{for item in items}{name}={item.name}\n{/for}', SCOPE)).toEqual([
+      'visored greathelm=visored greathelm',
+      'torch=torch'
+    ]);
+    // And the row's place is still its own, never the bound record's.
+    expect(draw('{for item in items}{n}/{rows} {item.slot}\n{/for}', SCOPE)).toEqual([
+      '1/2 Head',
+      '2/2 '
+    ]);
+    // A name that is already a field of the row draws that field, so `{item}`
+    // says the same thing under either spelling of the `{for}`.
+    const counted: Scope = { things: [{ item: '6 torch', name: 'torch', weight: 20 }] };
+    expect(draw('{for item in things}{item} {item.weight}{/for}', counted)).toEqual(['6 torch 20']);
+    // An if inside it reads the bound row too.
+    expect(draw('{for item in items}{if item.weight > 100}heavy{/if}{/for}', SCOPE)).toEqual([
+      'heavy'
+    ]);
+  });
+
+  /* A binding that is not a name is not a control: drawn as typed, like any
+     other tag the grammar does not know. */
+  it('draws a malformed binding as typed', () => {
+    expect(draw('{for 2 in items}x{/for}', SCOPE)).toEqual(['{for 2 in items}x{/for}']);
+  });
+
   it('takes no row for a line holding only controls, and keeps a blank line typed inside', () => {
     const template = ['{for items}', '{name}', '{/for}', '', 'done'].join('\n');
     expect(draw(template, SCOPE)).toEqual(['visored greathelm', 'torch', '', 'done']);

@@ -449,6 +449,26 @@ export function answersTo(
   return spelling.slice(space + 1) === key && !known(spelling) && known(key);
 }
 
+/**
+ * The realm's own row name behind the spelling a room printed.
+ *
+ * `answersTo` asked the other way round: it is handed both names and says
+ * whether one wears the other's modifier. This is handed only the spelling and
+ * answers *which row that is*, which is what a caller holding a name off the
+ * wire and a table keyed by row actually has. Shared rather than written twice
+ * because what counts as a modifier is one decision — `RealmLore` files a
+ * learned death sentence under the row, and `CharacterTracker` matches a kill
+ * against the row a quest step names, and the two must agree or a quest step
+ * credits the wrong monster for the same reason a death sentence did
+ * (2026-09-14). A realm this client does not hold normalises nothing.
+ */
+export function rowNameOf(spelling: string, known: (name: string) => boolean): string {
+  const space = spelling.indexOf(' ');
+  if (space <= 0) return spelling;
+  const shorter = spelling.slice(space + 1);
+  return answersTo(spelling, shorter, known) ? shorter : spelling;
+}
+
 /** The realm's row for a name, allowing for a modifier on either end. */
 function lookUpMob(name: string, sources: OccupantSources): MobFacts | undefined {
   for (const candidate of mobNameCandidates(name)) {

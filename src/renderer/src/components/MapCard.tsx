@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
-import { MapLegend } from './MapPlan';
 import MapView from './MapView';
 import { t } from '../lib/i18n';
 import { densityFor } from '../lib/mapView';
@@ -24,8 +23,6 @@ export interface MapCardProps extends CardChrome {
    * same rooms larger.
    */
   load(map: number, room: number, radius: number): Promise<LocalMap>;
-  /** Plan a route to a room on the map. Never walks it — see below. */
-  onChoose(map: number, room: number): void;
   /**
    * Where this character is headed, so the map can draw it.
    *
@@ -73,11 +70,13 @@ export interface MapCardProps extends CardChrome {
  * rooms it could not place rather than drawing a confident picture that is
  * wrong: a MUD is not Euclidean, and two exits can lead to the same place.
  *
- * Looked at through `MapView`, which the loop builder shares: the wheel zooms
- * about the pointer, a drag on the background pans, and the neighbourhood
- * fetched is whatever the window can see. What is this card's is the centre —
- * always where the character is, so every step recentres the picture — and
- * the zoom, which it keeps as its density setting.
+ * Looked at through `MapView`, which every map in the client shares: the wheel
+ * zooms about the pointer, a drag on the background pans, a pointer at rest
+ * on a room opens what the realm knows about it, the neighbourhood fetched is
+ * whatever the window can see, and the legend under it keys what is drawn.
+ * What is this card's is the centre — always where the character is, so every
+ * step recentres the picture — and the zoom, which it keeps as its density
+ * setting.
  */
 function MapCard({
   character,
@@ -85,7 +84,6 @@ function MapCard({
   load,
   loop,
   onBuild,
-  onChoose,
   onPeek,
   onPeekEnd,
   walk,
@@ -203,36 +201,32 @@ function MapCard({
       title={t('cards.map.title')}
     >
       {/*
-       * The picture's own area, always present — including while there is
-       * nothing to draw, so the view keeps its measured size across the
-       * moment it is told where the character is. It is the picture's area
-       * rather than the card's: the legend takes a fixed strip at the bottom.
+       * The picture, always present — including while there is nothing to
+       * draw, so the view keeps its measured size across the moment it is
+       * told where the character is. Its box and the legend under it are
+       * `MapView`'s own, so this card and every other map are one picture
+       * with one key.
+       *
+       * Clicking a room opens what the realm knows about it, and the walk is
+       * a button on that panel; it does not walk one, and it does not plan one
+       * either. Showing the facts first is the whole reason walking is a
+       * separate, deliberate action — a bare map click is the easiest possible
+       * way to send a character somewhere by accident.
        */}
-      <div className="map-box">
-        {/*
-         * Clicking a room *plans* a route to it; it does not walk one. The
-         * route panel shows the steps and asks. Showing the plan first is
-         * the whole reason walking is a separate, deliberate action — a map
-         * click is the easiest possible way to send a character somewhere
-         * by accident.
-         */}
-        <MapView
-          centre={here}
-          empty={empty}
-          load={load}
-          name="map"
-          onChoose={onChoose}
-          onLoaded={setMap}
-          onPeek={onPeek ?? undefined}
-          onPeekEnd={onPeekEnd ?? undefined}
-          onZoom={onZoom}
-          finds={foundRooms}
-          path={walk.path}
-          stops={loop.remainingStops}
-          zoom={zoom}
-        />
-      </div>
-      <MapLegend />
+      <MapView
+        centre={here}
+        empty={empty}
+        load={load}
+        name="map"
+        onLoaded={setMap}
+        onPeek={onPeek ?? undefined}
+        onPeekEnd={onPeekEnd ?? undefined}
+        onZoom={onZoom}
+        finds={foundRooms}
+        path={walk.path}
+        stops={loop.remainingStops}
+        zoom={zoom}
+      />
     </BentoCard>
   );
 }

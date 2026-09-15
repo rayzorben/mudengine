@@ -2909,18 +2909,33 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * because an empty `<svg>` in a bordered box would satisfy the frame and be
    * exactly the picture that claims a place has no neighbours.
    */
+  await waitFor(
+    async () => await evaluate(`!!document.querySelector('.route-panel .route-map .map-room')`)
+  );
   const thereMap = JSON.parse(
     await evaluate(`
       JSON.stringify({
         frame: !!document.querySelector('.route-panel .route-map'),
         rooms: document.querySelectorAll('.route-panel .route-map .map-room').length,
-        label: document.querySelector('.route-panel .route-map svg')?.getAttribute('aria-label') ?? null
+        // The picture's own SVG, named: the legend beside it is svgs too, and a
+        // selector that took whichever came first would pass on a key.
+        label: document.querySelector('.route-panel .route-map .map-plan')?.getAttribute('aria-label') ?? null,
+        // Panned and zoomed like every other map, and keyed like every other
+        // map: this strip drew the picture fitted and bare until 2026-09-14.
+        // (No backticks in here -- this is inside a template literal.)
+        window: document.querySelectorAll('.route-panel .route-map .map-view').length,
+        legend: document.querySelectorAll('.route-panel .route-map .map-legend').length
       })
     `)
   );
   check(
     thereMap.frame && thereMap.rooms > 0,
     'and the panel draws the realm around the destination',
+    JSON.stringify(thereMap)
+  );
+  check(
+    thereMap.window === 1 && thereMap.legend === 1,
+    'through the same window every other map is drawn through, legend and all',
     JSON.stringify(thereMap)
   );
   /*
@@ -3007,6 +3022,78 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   check(Number(unpick) === 0, 'and clicking it again puts it back', unpick);
 
   /*
+   * Walking up to a room without entering it (todo 03).
+   *
+   * The tick beside `Walk it` drops the last step from what the press hands
+   * main: a doorway to wait in for a party, rather than the boss room itself.
+   *
+   * Asserted on the list as well as on the tick, because the tick is at the
+   * top of a list that scrolls — by the time the reader is down among the
+   * steps it is off the screen, so the step that will not be walked has to
+   * say so where the reader is, and it has to be its own row rather than
+   * folded into a run of rooms that *will* be walked. Never actually walked
+   * here: the checks below drive this same panel.
+   */
+  const stopOffer = JSON.parse(
+    await evaluate(`
+    (() => {
+      const label = document.querySelector('.route-panel .route-stop');
+      const head = document.querySelector('.route-panel .route-head strong');
+      return JSON.stringify({
+        offered: label !== null,
+        text: label === null ? '' : label.innerText.replace(/\\s+/g, ' ').trim().toLowerCase(),
+        destination: head === null ? '' : head.innerText.trim().toLowerCase(),
+        skipped: document.querySelectorAll('.route-steps li[data-skipped="true"]').length
+      });
+    })()
+  `)
+  );
+  check(
+    stopOffer.offered &&
+      stopOffer.destination.length > 0 &&
+      stopOffer.text.includes(stopOffer.destination),
+    'the route panel offers to stop before entering the room the way ends in',
+    JSON.stringify(stopOffer)
+  );
+  check(
+    stopOffer.skipped === 0,
+    'and drops nothing from the plan until it is ticked',
+    JSON.stringify(stopOffer)
+  );
+
+  await evaluate(`document.querySelector('.route-panel .route-stop input').click()`);
+  await readUntil(
+    () => evaluate(`document.querySelectorAll('.route-steps li[data-skipped="true"]').length`),
+    (count) => Number(count) === 1
+  );
+  const stopped = JSON.parse(
+    await evaluate(`
+    (() => {
+      const rows = document.querySelectorAll('.route-steps > li');
+      const last = rows.length === 0 ? null : rows[rows.length - 1];
+      return JSON.stringify({
+        skipped: document.querySelectorAll('.route-steps li[data-skipped="true"]').length,
+        lastSkipped: last === null ? null : last.getAttribute('data-skipped'),
+        lastIsStep: last === null ? null : last.classList.contains('step')
+      });
+    })()
+  `)
+  );
+  check(
+    stopped.skipped === 1 && stopped.lastSkipped === 'true' && stopped.lastIsStep === true,
+    'and ticking it drops the last step, on a row of its own rather than folded into a run',
+    JSON.stringify(stopped)
+  );
+
+  // Back off again, because what the checks below read has to be the whole plan.
+  await evaluate(`document.querySelector('.route-panel .route-stop input').click()`);
+  const unstop = await readUntil(
+    () => evaluate(`document.querySelectorAll('.route-steps li[data-skipped="true"]').length`),
+    (count) => Number(count) === 0
+  );
+  check(Number(unstop) === 0, 'and unticking it puts the step back', unstop);
+
+  /*
    * And pointing at a room on the plan says what is in it.
    *
    * *Four lairs on the way, one is expected to kill you* is a summary, and
@@ -3067,9 +3154,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   /*
    * And the map under the head is the Map card's map, quick view included.
    *
-   * There is one picture (`MapPlan`) and it is drawn in two places; a room
-   * that answered for itself on the card and stayed mute on the plan was the
-   * two drifting apart. Clicked, as on the card: a click settles the panel.
+   * There is one picture and one window (`MapView`) and they are drawn on
+   * every surface; a room that answered for itself on the card and stayed mute
+   * on the plan was them drifting apart. Clicked, as on the card: a click
+   * settles the panel.
    * The action follows the room -- the destination is the last step, so it
    * says *walk here*; a neighbour the plan does not pass through says *walk
    * to*, the card's own action, so nothing drawn is a room that cannot be
@@ -4055,6 +4143,84 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(afterAbil.chips)
   );
 
+  /*
+   * ------------------------------- a step you kill for, and its reward's name
+   *
+   * Reported live 2026-09-15 against the Phoenix chain, which is why the check
+   * names it: its second step's flag is handed over by the **dread mystic's
+   * death spell**, and until the traversal rooted at `Monsters.DeathSpell` the
+   * book drew that step as a rank and a `yellowed note` with nothing about
+   * where either came from. And `yellowed note` is an item -- with a weight, a
+   * price and a row number -- that this one card printed as plain text.
+   *
+   * Driven end to end because both halves cross a boundary the unit tests
+   * cannot: the first is the conversion reaching the card through IPC, and the
+   * second is a click opening the panel the name belongs to.
+   */
+  await findQuest('PhoenixQuest');
+  const phoenix = JSON.parse(
+    await evaluate(`
+      (() => {
+        const track = document.querySelector('.quest-card .quest-track');
+        if (!track) return JSON.stringify({ error: 'no track' });
+        const kill = track.querySelector('.quest-kill');
+        const gives = [...track.querySelectorAll('.quest-give button.lookup')];
+        return JSON.stringify({
+          killSaid: kill?.innerText.replace(/\\s+/g, ' ').trim() ?? null,
+          killIsControl: !!kill?.querySelector('button.lookup'),
+          // The place beside it, which is what makes the fight somewhere you
+          // can be sent rather than a name with no map reference.
+          killWhere: kill?.closest('.quest-step')?.querySelector('.quest-where')?.innerText.trim() ?? null,
+          rewards: gives.map((b) => b.innerText.trim())
+        });
+      })()
+    `)
+  );
+  check(
+    /dread mystic/i.test(String(phoenix.killSaid)) && phoenix.killIsControl,
+    'a step a monster’s death hands over says what to kill, and names it as a control',
+    JSON.stringify(phoenix)
+  );
+  check(
+    Array.isArray(phoenix.rewards) && phoenix.rewards.some((name) => /yellowed note/i.test(name)),
+    'and what it gives you is a name you can open, not text',
+    JSON.stringify(phoenix.rewards)
+  );
+  /*
+   * And the click actually reaches the realm. The control existing and the
+   * panel opening on it are different claims, and it is the second one the
+   * report was about.
+   */
+  await evaluate(`
+    (() => {
+      const give = [...document.querySelectorAll('.quest-give button.lookup')]
+        .find((b) => /yellowed note/i.test(b.innerText));
+      if (!give) return false;
+      give.click();
+      return true;
+    })()
+  `);
+  await shown('.reference-popover');
+  const gaveDetail = await evaluate(
+    `document.querySelector('.reference-popover')?.innerText ?? ''`
+  );
+  check(
+    /yellowed note/i.test(String(gaveDetail)),
+    'and clicking it opens the realm’s answer about that item',
+    String(gaveDetail).replace(/\s+/g, ' ').slice(0, 120)
+  );
+  // Escape, which is this panel's own way out: it has no close control, it
+  // never takes the caret, and the caret lives in the terminal.
+  for (const type of ['keyDown', 'keyUp']) {
+    await cdp('Input.dispatchKeyEvent', {
+      type,
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+  }
+  await gone('.reference-popover');
+
   await evaluate(`
     (() => {
       const el = document.querySelector('.quest-card .table-find input');
@@ -4842,15 +5008,49 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     );
 
     /*
-     * And the hold expires, `view.talkFollowResumeMs` after that scroll.
+     * And while it is held, the way back is a button (todo 10).
      *
-     * The shipped fifteen seconds, waited out rather than shortened in the
-     * home's `internal.yaml` for the run: a delay small enough to be quick is
-     * a delay the two probes above have to beat, and this check would then
-     * fail on a loaded machine rather than on the behaviour. Waited for, not
-     * slept through, with the window past the delay it is watching.
+     * The console's own affordance in the card: a reader holding the box still
+     * should never have to find the bottom of a scrollbar to catch up, and the
+     * hold is forty-five seconds long now. Drawn only once something has been
+     * said behind their back, which is what the line above just did.
      */
-    await waitFor(async () => (await evaluate(geometry))?.edge === true, 440, 50);
+    check(
+      await shown('.talk-jump'),
+      'and a line said behind the reader offers the way back to the newest'
+    );
+    await evaluate(`(document.querySelector('.talk-jump')?.click(), true)`);
+    await waitFor(async () => (await evaluate(geometry))?.edge === true, 60);
+    check(
+      (await evaluate(geometry))?.edge === true &&
+        !(await evaluate(`!!document.querySelector('.talk-jump')`)),
+      'and pressing it lands on the newest line and takes the offer away'
+    );
+
+    /*
+     * And the hold expires on its own, `view.talkFollowResumeMs` after the
+     * last scroll.
+     *
+     * The shipped figure, waited out rather than shortened in the home's
+     * `internal.yaml` for the run: a delay small enough to be quick is a delay
+     * the probes above have to beat, and this check would then fail on a
+     * loaded machine rather than on the behaviour. That figure is forty-five
+     * seconds now (todo 10), so this is the slowest single check in the file
+     * and deliberately so — the failure it covers is a card that never follows
+     * again, which is invisible until somebody has been reading one for a
+     * minute. Waited for, not slept through.
+     */
+    for (let i = 0; i < 12; i += 1) {
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseWheel',
+        x: logX,
+        y: logY,
+        deltaX: 0,
+        deltaY: -240
+      });
+    }
+    await waitFor(async () => (await evaluate(geometry))?.edge === false);
+    await waitFor(async () => (await evaluate(geometry))?.edge === true, 1200, 50);
     check(
       (await evaluate(geometry))?.edge === true,
       'and the feed goes back to following once the reader has stopped scrolling'
@@ -5725,6 +5925,37 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           typeof onState === 'number' && onState > 0,
           'and the room the character stands in carries them, with nothing asked for',
           String(onState)
+        );
+        /*
+         * **On the face that is already on screen** (todo 11). A phrase behind
+         * a crumb is a command nobody can find, and the room this was reported
+         * from prints `Obvious exits: None` with one way out — `touch gem` —
+         * so the card drew a dead end. Asserted before the crumb is clicked,
+         * which is the whole point of it.
+         */
+        const onRoomFace = await readUntil(
+          () =>
+            evaluate(`
+              (() => {
+                // The face on screen is whichever crumb was last pressed -- the
+                // shop's, a few checks above -- so the room's own face is asked
+                // for first. That it has to be is the point: this row is on the
+                // face somebody is looking at, not behind a crumb.
+                const room = [...document.querySelectorAll('.room-card .crumb')]
+                  .find((c) => c.innerText.trim().toLowerCase() === 'room');
+                if (room && room.getAttribute('aria-selected') !== 'true') room.click();
+                const row = document.querySelector('.room-card .room-answers');
+                if (!row) return '';
+                const press = row.querySelector('button');
+                return press ? press.innerText.trim() : 'no button';
+              })()
+            `),
+          (found) => found.length > 0
+        );
+        check(
+          onRoomFace === scripted.say,
+          'and the phrase is a control on the room face itself, not only behind a crumb',
+          JSON.stringify({ onRoomFace, want: scripted.say })
         );
         // Polled for the face, for the reason the shop face above is.
         const answerFace = await readUntil(
@@ -7786,6 +8017,183 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `);
     await gone('[data-card-float="stats"]');
   }
+  /*
+   * And two cards over the console line up with each other (todo 02).
+   *
+   * The whole feature is geometry nobody can see until it happens, so this
+   * drives the real gesture: two floats, one dragged until its top edge meets
+   * the other's bottom edge, the indicator read *before* the release, and the
+   * boxes read after it. The assertion that matters is the resize — a card
+   * snapped below another takes its width — because a snap that only moved
+   * the card would look right and be half the feature.
+   */
+  {
+    const floatOne = async (id) => {
+      await openPicker();
+      await waitFor(async () => await evaluate(`!!document.querySelector('.picker-menu')`));
+      await evaluate(`
+        (() => {
+          const glyph = document.querySelector('.picker-menu [data-card-float-chip=${JSON.stringify(id)}]');
+          if (glyph) glyph.click();
+          return !!glyph;
+        })()
+      `);
+      await waitFor(
+        async () =>
+          await evaluate(`!!document.querySelector('[data-card-float=${JSON.stringify(id)}]')`)
+      );
+      return await evaluate(`!!document.querySelector('[data-card-float=${JSON.stringify(id)}]')`);
+    };
+    /*
+     * A box, or nothing. Nothing rather than a throw: one missing selector
+     * used to end the whole run at this line, taking eleven hundred unrelated
+     * checks with it, and a check that fails says more than a stack does.
+     */
+    const boxOf = async (selector) =>
+      JSON.parse(
+        await evaluate(`
+        (() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return 'null';
+          const b = el.getBoundingClientRect();
+          return JSON.stringify({ x: b.left, y: b.top, w: b.width, h: b.height, bottom: b.bottom });
+        })()
+      `)
+      );
+    const NOWHERE = { x: 0, y: 0, w: 0, h: 0, bottom: 0 };
+    const press = async (x, y) =>
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x,
+        y,
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+        pointerType: 'mouse'
+      });
+    const moveTo = async (x, y) => {
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x,
+        y,
+        button: 'left',
+        buttons: 1,
+        pointerType: 'mouse'
+      });
+      await sleep(60);
+    };
+    const release = async (x, y) =>
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x,
+        y,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
+        pointerType: 'mouse'
+      });
+
+    /*
+     * Whichever two the picker is actually offering, and which actually draw:
+     * a card with nothing to say yet renders nothing at all, and naming two by
+     * hand made this check a statement about the Talk card's contents rather
+     * than about snapping.
+     */
+    await openPicker();
+    await waitFor(async () => await evaluate(`!!document.querySelector('.picker-menu')`));
+    const offered = JSON.parse(
+      await evaluate(`
+      JSON.stringify(
+        [...document.querySelectorAll('.picker-menu [data-card-float-chip]')]
+          .map((chip) => chip.dataset.cardFloatChip)
+      )
+    `)
+    );
+    const floated = [];
+    for (const id of offered) {
+      if (floated.length === 2) break;
+      if (await floatOne(id)) floated.push(id);
+    }
+    check(floated.length === 2, 'two cards can stand over the console at once');
+    const [anchorId, movingId] = [floated[0] ?? 'none', floated[1] ?? 'none'];
+
+    /*
+     * Both are lifted into the middle of the workspace, one exactly over the
+     * other, so the second is taken out from under the first before anything
+     * is aimed at either.
+     */
+    const held = (await boxOf(`[data-card-float="${movingId}"] header[data-grab]`)) ?? NOWHERE;
+    check(held.w > 0, 'and each offers its heading as the handle it is dragged by');
+    const start = { x: held.x + held.w / 2, y: held.y + held.h / 2 };
+    await press(start.x, start.y);
+    await moveTo(start.x, start.y + 130);
+    await moveTo(start.x, start.y + 260);
+    await release(start.x, start.y + 260);
+    await sleep(150);
+
+    const anchorBox = (await boxOf(`[data-card-float="${anchorId}"]`)) ?? NOWHERE;
+    const moved = (await boxOf(`[data-card-float="${movingId}"]`)) ?? NOWHERE;
+    check(
+      moved.y > anchorBox.bottom,
+      'a card over the console is dragged clear of the one it was lifted onto'
+    );
+
+    // Now back up, until its top edge is on the other's bottom edge.
+    const grip = (await boxOf(`[data-card-float="${movingId}"] header[data-grab]`)) ?? NOWHERE;
+    const from = { x: grip.x + grip.w / 2, y: grip.y + grip.h / 2 };
+    const dy = anchorBox.bottom - moved.y;
+    await press(from.x, from.y);
+    await moveTo(from.x, from.y + dy / 2);
+    await moveTo(from.x, from.y + dy);
+    const indicator = await boxOf('.snap-indicator');
+    check(
+      indicator !== null,
+      'holding one card at the edge of another shows where releasing would put it'
+    );
+    check(
+      (await evaluate(
+        `(document.querySelector('.snap-indicator')?.dataset.snapTo ?? '') + ':' +
+         (document.querySelector('.snap-indicator')?.dataset.side ?? '')`
+      )) === `${anchorId}:bottom`,
+      'and says which card it is lining up with, and which of its edges'
+    );
+    check(
+      indicator !== null && Math.abs(indicator.w - anchorBox.w) <= 2,
+      'and the indicator is the size the card will take, not a bar on the seam'
+    );
+    await release(from.x, from.y + dy);
+    await sleep(200);
+
+    const snapped = (await boxOf(`[data-card-float="${movingId}"]`)) ?? NOWHERE;
+    check(
+      Math.abs(snapped.y - anchorBox.bottom) <= 2,
+      'releasing it there snaps the card flush against that edge'
+    );
+    check(
+      Math.abs(snapped.x - anchorBox.x) <= 2,
+      'aligned with the edge it was snapped to, not left where the hand was'
+    );
+    check(
+      Math.abs(snapped.w - anchorBox.w) <= 2,
+      'and takes that card\u2019s width, which is what snapping below one means'
+    );
+    check(
+      Math.abs(snapped.h - moved.h) <= 2,
+      'and keeps its own height, which the side it was snapped to says nothing about'
+    );
+
+    for (const id of [movingId, anchorId]) {
+      await evaluate(`
+        (() => {
+          const close = document.querySelector('[data-card-float=${JSON.stringify(id)}] .card-close');
+          if (close) close.click();
+          return !!close;
+        })()
+      `);
+      await gone(`[data-card-float="${id}"]`);
+    }
+  }
+
   // Leave the rail as it was found.
   await evaluate(`
     (() => {
@@ -8763,11 +9171,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    *
    * The console has to show through the card -- that is the only reason to put
    * one there -- and the numbers on top of it have to stay legible. So the fill
-   * runs 25-60% and the text 50-90%, and the text is always well ahead. A
-   * single `opacity` on the card would fade both by exactly as much.
+   * runs 25-100% and the text 60-100%, the text stays ahead of the fill wherever
+   * the game shows through at all, and a card *dropped* over the console starts
+   * at 90% rather than at the top. A single `opacity` on the card would fade
+   * both by exactly as much.
    */
-  const alphas = JSON.parse(
-    await evaluate(`
+  const readAlphas = async () =>
+    JSON.parse(
+      await evaluate(`
       (() => {
         const card = document.querySelector('.float > .card');
         if (!card) return JSON.stringify({ error: 'no float' });
@@ -8780,11 +9191,13 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
           card: Number(getComputedStyle(card).opacity),
           fill: read(getComputedStyle(card).backgroundColor),
           text: Number(getComputedStyle(card.querySelector('.body')).opacity),
-          blur: getComputedStyle(card).backdropFilter
+          blur: getComputedStyle(card).backdropFilter,
+          slider: Number(card.querySelector('.card-alpha')?.value ?? -1)
         });
       })()
     `)
-  );
+    );
+  const alphas = await readAlphas();
   check(
     alphas.card === 1,
     'a floating card carries no blanket opacity of its own',
@@ -8792,7 +9205,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   check(
     alphas.fill < 1,
-    'the console shows through its fill even at its most solid',
+    'the console shows through a card dropped over it',
     JSON.stringify(alphas)
   );
   check(
@@ -8800,6 +9213,39 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and the readout on top of it stays well ahead of the fill',
     JSON.stringify(alphas)
   );
+  /*
+   * And the end of the slider is somewhere the player can get to (todo 04).
+   * It shipped capped at 90% fill, which is a reason to *start* a float
+   * see-through, not a reason to refuse the last of the travel: whether this
+   * card on this monitor is worth the console behind it is the player's call,
+   * and the slider is where they make it.
+   */
+  check(alphas.slider < 100, 'and the slider it ships at has travel left in it', `${alphas.slider}`);
+  // Through the prototype's own setter, or React's value tracker sees no
+  // change and the `onChange` never fires -- the idiom every other field in
+  // this harness is driven with.
+  const dragAlphaTo = (value) => evaluate(`
+    (() => {
+      const el = document.querySelector('.float > .card .card-alpha');
+      if (!el) return false;
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+      set.call(el, '${value}');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()
+  `);
+  await dragAlphaTo(100);
+  await waitFor(async () => (await readAlphas()).fill === 1);
+  const solid = await readAlphas();
+  check(
+    solid.fill === 1,
+    'dragged to the top, a floating card can be made fully opaque',
+    JSON.stringify(solid)
+  );
+  // Back where it was, so every check below measures the card the rest of this
+  // run set up rather than the one this check made.
+  await dragAlphaTo(alphas.slider);
+  await waitFor(async () => (await readAlphas()).fill < 1);
   /*
    * The glass language blurs what is behind a surface, and behind this one is
    * the game. An 18px blur turns the console into an unreadable smear, which
@@ -9026,13 +9472,35 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   };
 
   /**
-   * Picks a character or a realm out of the side list, and waits for the screen
-   * to be showing it. Same reason as `showCrumb`: the form under it is redrawn
-   * from whoever was chosen, and every one of these is followed by a read of it.
+   * Picks a character or a realm out of the rail's picker, and waits for the
+   * screen to be showing it. Same reason as `showCrumb`: the form under it is
+   * redrawn from whoever was chosen, and every one of these is followed by a
+   * read of it.
+   *
+   * Two presses now rather than one: the picker is a dropdown (todo 02), so it
+   * is opened, the row is pressed, and the *closed* control is then read for
+   * the name -- which is the assertion that matters, since that is where
+   * somebody looks to see whose settings are on screen.
    */
   const pickInList = async (text) => {
-    const clicked = await clickText('.settings-list button', text);
-    await activeText('.settings-list button', text);
+    // Opened only if it is not open already: pressing the closed control is a
+    // toggle, so a picker somebody left open would be shut by this instead.
+    await evaluate(`
+      (() => {
+        if (!document.querySelector('.settings-nav-choices')) {
+          document.querySelector('.settings-nav-chosen')?.click();
+        }
+        return true;
+      })()
+    `);
+    await waitFor(async () => evaluate(`!!document.querySelector('.settings-nav-choices button')`));
+    const clicked = await clickText('.settings-nav-choices button', text);
+    await waitFor(async () =>
+      evaluate(`
+        (document.querySelector('.settings-nav-chosen')?.innerText ?? '')
+          .trim().toLowerCase().includes(${JSON.stringify(text.toLowerCase())})
+      `)
+    );
     return clicked;
   };
 
@@ -9169,11 +9637,16 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   // The characters already on disk are listed, including the one that cannot
   // load -- the screen is where somebody can do something about that.
+  await evaluate(`document.querySelector('.settings-nav-chosen')?.click(), true`);
+  await waitFor(async () => evaluate(`!!document.querySelector('.settings-nav-choices')`));
   const listed = JSON.parse(
     await evaluate(
-      `JSON.stringify([...document.querySelectorAll('.settings-list .settings-name')].map((n) => n.innerText.trim()))`
+      `JSON.stringify([...document.querySelectorAll('.settings-nav-choices .settings-name')].map((n) => n.innerText.trim()))`
     )
   );
+  // Shut again, or the next press on the closed control would only toggle it.
+  await evaluate(`document.querySelector('.settings-nav-chosen')?.click(), true`);
+  await waitFor(async () => evaluate(`!document.querySelector('.settings-nav-choices')`));
   check(
     listed.includes('Smoke Character'),
     'it lists the characters on disk',
@@ -9181,7 +9654,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   // Make one.
-  check(await clickText('.settings-list button', 'new character'), 'it offers a new character');
+  check(await pickInList('new character'), 'it offers a new character');
   await blankForm();
   /*
    * Named by their labels, not by position. `label:nth-of-type(2)` was the
@@ -9286,7 +9759,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * the identity -- two characters under one name is not what anybody means --
    * or the password, which the screen was never told.
    */
-  check(await clickText('.settings-list button', 'new character'), 'a new character to copy into');
+  check(await pickInList('new character'), 'a new character to copy into');
   await blankForm();
   {
     const copied = await evaluate(`
@@ -9343,7 +9816,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   // A character with nowhere to play is refused where somebody can still fix it,
   // rather than written and then reported and skipped on the next read.
-  check(await clickText('.settings-list button', 'new character'), 'a second new character');
+  check(await pickInList('new character'), 'a second new character');
   await blankForm();
   await typeLabelled('file name', 'nowhere');
   // Named by its label rather than taken as the first select in the form:
@@ -9414,7 +9887,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * keyed on the label would fail the next time the copy is improved, which is
    * not what it is trying to catch.
    */
-  check(await clickText('.settings-sections .crumb', 'spells'), 'its Spells section is reachable');
+  check(await clickText('.settings-nav-section', 'spells'), 'its Spells section is reachable');
   await waitFor(
     async () =>
       (await evaluate(
@@ -9432,7 +9905,116 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and blessing from an item can be switched on there'
   );
 
-  check(await showCrumb('.settings-sections .crumb', 'health'), 'its Health section is reachable');
+  check(await showCrumb('.settings-nav-section', 'health'), 'its Health section is reachable');
+
+  /*
+   * A fieldset in the rail is an address, and pressing one moves the *form*.
+   *
+   * Two defects, one gesture. `scrollToFieldset` queried a bare
+   * `[data-fieldset]`, but the rail's own buttons carry that attribute too and
+   * come first in the document -- so the query returned the button just
+   * pressed, and the smooth scroll ran on the rail while the form stayed where
+   * it was. And a press only ever scrolled: a fieldset belonging to another
+   * section did not switch to it, and its fields are not in the DOM at all
+   * until it is shown.
+   *
+   * Asserted on `scrollTop` of the two scrollers rather than on anything
+   * visible, because "did the right element move" is the whole question. The
+   * positive control is the scroll down: if the form could not be scrolled in
+   * the first place, a later `scrollTop` of 0 would prove nothing at all.
+   */
+  {
+    const formTop = async () =>
+      evaluate(`document.querySelector('.settings-form')?.scrollTop ?? -1`);
+    const railTop = async () =>
+      evaluate(`document.querySelector('.settings-nav')?.scrollTop ?? -1`);
+
+    /*
+     * The positive control, and the reason it is a *short* form.
+     *
+     * At the smoke's own 1600x900 the whole of Health fits with 140px to
+     * spare, so every fieldset in it is on screen already and a jump that did
+     * nothing whatever would satisfy any assertion about where the fieldset
+     * ended up. Capping the form's height makes the target genuinely
+     * off-screen, which is the only state in which "it was brought into view"
+     * is a claim about the jump rather than about the window.
+     */
+    await evaluate(`
+      (() => {
+        const form = document.querySelector('.settings-form');
+        if (form) {
+          form.style.maxHeight = '240px';
+          form.scrollTop = 0;
+        }
+        return true;
+      })()
+    `);
+    const hidden = await evaluate(`
+      (() => {
+        const form = document.querySelector('.settings-form');
+        const target = form?.querySelector('fieldset[data-fieldset="health-potions"]');
+        if (!form || !target) return false;
+        return target.getBoundingClientRect().top >= form.getBoundingClientRect().bottom;
+      })()
+    `);
+    check(hidden === true, 'the potion fieldset starts off the foot of the form');
+
+    const railBefore = await railTop();
+    check(
+      await clickText('.settings-nav-fieldset', 'when to use an item'),
+      'its potion fieldset is a rail row'
+    );
+    /*
+     * What "in view" means, measured on the geometry rather than on
+     * `scrollTop`: the fieldset ends up inside the form's own box.
+     *
+     * Not "flush with the top", which `block: 'start'` promises only where
+     * there is room below to put it there. This one is the last fieldset in
+     * Health, so the scroller runs out first and leaves it part-way down --
+     * asserting 0 here measured the length of the section, not the jump.
+     *
+     * `scrollIntoView` is smooth, so this settles over several frames -- waited
+     * for, never slept on.
+     */
+    const seen = async () =>
+      evaluate(`
+        (() => {
+          const form = document.querySelector('.settings-form');
+          const target = form?.querySelector('fieldset[data-fieldset="health-potions"]');
+          if (!form || !target) return null;
+          const box = form.getBoundingClientRect();
+          const at = target.getBoundingClientRect();
+          return JSON.stringify({
+            top: Math.round(at.top - box.top),
+            within: at.top >= box.top - 4 && at.top < box.bottom
+          });
+        })()
+      `);
+    await waitFor(async () => {
+      const state = await seen();
+      return state !== null && JSON.parse(state).within === true;
+    });
+    const state = JSON.parse((await seen()) ?? '{"within":false,"top":null}');
+    check(state.within === true, `and the fieldset is brought into view (${state.top}px down)`);
+    /*
+     * And the form is what moved to do it. This is the half that fails against
+     * the old `[data-fieldset]` query: the rail's own button matched first, so
+     * the smooth scroll ran on the rail and the form never moved -- with the
+     * fieldset left wherever it happened to be, which at a tall enough window
+     * is already on screen. Hence both halves.
+     */
+    check((await formTop()) > 0, `which took scrolling the form to get to (${await formTop()}px)`);
+    check((await railTop()) === railBefore, 'and the rail itself did not scroll instead');
+
+    // The cap was this check's own instrument, not a state the screen ships in.
+    await evaluate(`
+      (() => {
+        const form = document.querySelector('.settings-form');
+        if (form) form.style.maxHeight = '';
+        return true;
+      })()
+    `);
+  }
 
   /*
    * One label column for the whole page, measured rather than eyeballed.
@@ -9703,10 +10285,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * in a grid that has one creates an implicit third and pushes the row out of
    * the dialog, which is the failure the media-query floor exists to prevent.
    */
-  check(
-    await showCrumb('.settings-sections .crumb', 'movement'),
-    'its Movement section is reachable'
-  );
+  check(await showCrumb('.settings-nav-section', 'movement'), 'its Movement section is reachable');
   const switches = JSON.parse(
     await evaluate(`
       JSON.stringify([...document.querySelectorAll('.settings-form .settings-check')].map((el) => {
@@ -9849,10 +10428,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * hangup one, and ticking the box reaches this character's own file rather
    * than only the options file everybody inherits.
    */
-  check(
-    await showCrumb('.settings-sections .crumb', 'remotes'),
-    'its Remotes section is reachable'
-  );
+  check(await showCrumb('.settings-nav-section', 'remotes'), 'its Remotes section is reachable');
   const answering = await evaluate(`
     ([...document.querySelectorAll('.settings-menus')]
       .find((f) => /answering other players/i.test(f.querySelector('legend')?.innerText ?? ''))
@@ -9972,7 +10548,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * it says what it will and will not do, because the refusals are the part
    * nobody would guess: never a player, at any setting.
    */
-  check(await clickText('.settings-sections .crumb', 'combat'), 'its Combat section is reachable');
+  check(await clickText('.settings-nav-section', 'combat'), 'its Combat section is reachable');
   const fighting = await readUntil(
     () =>
       evaluate(`
@@ -10029,6 +10605,63 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     verbs.some((legend) => /^monsters$/i.test(legend)),
     'and which monsters to leave alone'
   );
+
+  /*
+   * And the ranked list beside it (todo 01). Three assertions, because the
+   * thing that could go wrong is not the drawing: the list is merged across
+   * global, realm and character, so the form must show this character's OWN
+   * rows -- seeding it from the merged list and saving would write the realm's
+   * and the global file's rows into this character's file, pinning down a
+   * ranking it was only inheriting.
+   */
+  check(
+    verbs.some((legend) => /attack priority/i.test(legend)),
+    'and the order to attack them in',
+    JSON.stringify(verbs)
+  );
+  const ranking = await evaluate(`
+    (() => {
+      const box = [...document.querySelectorAll('.settings-menus')]
+        .find((f) => /attack priority/i.test((f.querySelector('legend')?.innerText ?? '')));
+      if (!box) return 'no priority fieldset';
+      const add = [...box.querySelectorAll('button')].find((b) => /add a monster/i.test(b.innerText));
+      if (!add) return 'no add button';
+      const before = box.querySelectorAll('.priority-line').length;
+      add.click();
+      return JSON.stringify({ before, bands: null });
+    })()
+  `);
+  check(/"before":0/.test(ranking), 'the priority list starts empty on this character', ranking);
+  const ranked = await readUntil(
+    () =>
+      evaluate(`
+    (() => {
+      const box = [...document.querySelectorAll('.settings-menus')]
+        .find((f) => /attack priority/i.test((f.querySelector('legend')?.innerText ?? '')));
+      const row = box?.querySelector('.priority-line');
+      if (!row) return 'no row';
+      const bands = [...(row.querySelector('select')?.options ?? [])].map((o) => o.value);
+      return JSON.stringify({ rows: box.querySelectorAll('.priority-line').length, bands });
+    })()
+  `),
+    (ranked) => /"rows":1/.test(ranked)
+  );
+  check(
+    /"rows":1/.test(ranked) && /"first".*"high".*"default".*"low".*"last"/.test(ranked),
+    'and a row offers the five bands in the order they are attacked',
+    ranked
+  );
+  // Taken back off, like the switch below: this run does not save, and a later
+  // assertion reads the same form.
+  await evaluate(`
+    (() => {
+      const box = [...document.querySelectorAll('.settings-menus')]
+        .find((f) => /attack priority/i.test((f.querySelector('legend')?.innerText ?? '')));
+      const remove = box?.querySelector('.priority-line button[aria-label^="Remove"]');
+      if (remove) remove.click();
+      return true;
+    })()
+  `);
   // Switched back off, so the smoke character's file is left as it was found:
   // this run does not save, but a later assertion reads the same form.
   await evaluate(`
@@ -10062,10 +10695,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * another takes it off -- because every one of those is a step where a
    * feature stops being reachable.
    */
-  check(
-    await showCrumb('.settings-sections .crumb', 'movement'),
-    'its Movement section is reachable'
-  );
+  check(await showCrumb('.settings-nav-section', 'movement'), 'its Movement section is reachable');
   {
     const legends = JSON.parse(
       await evaluate(
@@ -10161,7 +10791,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   // The realm database, which is what makes a character on a derivative able to
   // route at all -- back in Profile, where "Realm data" lives.
-  check(await showCrumb('.settings-sections .crumb', 'character'), 'back to Character');
+  check(await showCrumb('.settings-nav-section', 'character'), 'back to Character');
   /*
    * The menus on the way in, as a list rather than four named fields.
    *
@@ -10278,7 +10908,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   // The page arriving is the positive control: without it, "no world database
   // field" is equally true of a page that has not been drawn yet.
-  await waitFor(async () => evaluate(`!!document.querySelector('.settings-list')`));
+  await waitFor(async () => evaluate(`!!document.querySelector('.settings-nav')`));
   check(
     !(await evaluate(`!!document.querySelector('.settings-file input')`)),
     'and a character no longer states one of its own'
@@ -10334,7 +10964,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and no field explains itself in prose beside the value any more'
   );
 
-  check(await clickText('.settings-sections .crumb', 'alerts'), 'its Alerts section is reachable');
+  check(await clickText('.settings-nav-section', 'alerts'), 'its Alerts section is reachable');
   /*
    * The player's own rows, which are the only place alerts are configured
    * (todo 02). It asserted a severity floor and eleven mute checkboxes until
@@ -10371,7 +11001,145 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and offers the player\u2019s own alert rows, with no floor and no mute list beside them',
     alerting
   );
-  check(await showCrumb('.settings-sections .crumb', 'character'), 'and back to Character');
+
+  /*
+   * The rows line up (todo 03), and every heading stands over the control it
+   * names (2026-09-13).
+   *
+   * They were flex lines whose controls came and went per row, so no two rows
+   * put the same control in the same place. They are one grid now -- the list
+   * owns the tracks and the heading and the rows are `subgrid` -- so the
+   * assertions are the two a shared track makes true and two copies of a
+   * template do not: every row's control starts at the same x as every other
+   * row's, and the heading over each column starts there too.
+   *
+   * The heading was its own copy of `grid-template-columns` until then, which
+   * agreed with the rows only by arithmetic; this is what catches it drifting.
+   */
+  const aligned = await evaluate(`
+    (() => {
+      const rows = [...document.querySelectorAll('.settings-alerts > li:not(.alert-heading)')];
+      if (rows.length < 2) return 'fewer than two rows';
+      const heads = [...document.querySelectorAll('.settings-alerts .alert-heading span')];
+      if (heads.length < 6) return 'no heading row';
+      const left = (el) => Math.round(el.getBoundingClientRect().left);
+      const columnOf = (row, name) => {
+        const el = row.querySelector('[name$="-' + name + '"]');
+        return el ? left(el) : null;
+      };
+      const events = rows.map((row) => columnOf(row, 'on')).filter((x) => x !== null);
+      const levels = rows.map((row) => columnOf(row, 'level')).filter((x) => x !== null);
+      const same = (xs) => xs.length > 1 && new Set(xs).size === 1;
+      /*
+       * The headings, in the order they are written: enabled, event, metric,
+       * measure, level, quiet, order. A heading is over its column when it
+       * shares the left edge of the control beneath it -- within a pixel,
+       * because a select's border box and a span's are not the same box.
+       */
+      const near = (a, b) => a !== null && b !== null && Math.abs(a - b) <= 2;
+      const over = {
+        event: near(left(heads[1]), events[0] ?? null),
+        level: near(left(heads[4]), levels[0] ?? null)
+      };
+      return JSON.stringify({
+        events,
+        levels,
+        lined: same(events) && same(levels),
+        over,
+        headed: over.event && over.level
+      });
+    })()
+  `);
+  check(
+    /"lined":true/.test(aligned),
+    'and every row puts its controls in the same columns',
+    aligned
+  );
+  check(
+    /"headed":true/.test(aligned),
+    'and every column heading stands over the control it names',
+    aligned
+  );
+
+  /*
+   * The switch is a bare box under `Enabled`, not a labelled field in the row.
+   *
+   * A column heading is where a table says what a cell is; a label beside each
+   * box is the same word drawn once per row, which is what the screenshot that
+   * asked for this shows. The label survives as an `aria-label` for a reader
+   * who cannot see the column, so this asserts both halves.
+   */
+  const switched = await evaluate(`
+    (() => {
+      const box = document.querySelector('.settings-alerts [name$="-0-enabled"]');
+      if (!box) return 'no enabled switch';
+      const heads = [...document.querySelectorAll('.settings-alerts .alert-heading span')]
+        .map((s) => s.innerText.trim().toLowerCase());
+      return JSON.stringify({
+        labelled: !box.closest('label'),
+        named: (box.getAttribute('aria-label') ?? '').length > 0,
+        heads
+      });
+    })()
+  `);
+  check(
+    /"labelled":true/.test(switched) &&
+      /"named":true/.test(switched) &&
+      /"enabled"/.test(switched) &&
+      /"order"/.test(switched),
+    'and the switch is a bare box under an Enabled heading, named for a screen reader',
+    switched
+  );
+
+  /*
+   * The order arrows are trailing controls, beside the remove.
+   *
+   * Order still decides -- the first enabled row claiming a notice wins -- so
+   * they are kept; what changed is where. In front they took the first two
+   * columns and pushed every heading off the control it named.
+   */
+  const ordering = await evaluate(`
+    (() => {
+      const row = document.querySelector('.settings-alerts > li:not(.alert-heading)');
+      if (!row) return 'no row';
+      const controls = row.querySelector('.alert-controls');
+      if (!controls) return 'no controls cell';
+      const box = row.querySelector('[name$="-enabled"]');
+      const right = (el) => Math.round(el.getBoundingClientRect().left);
+      return JSON.stringify({
+        buttons: controls.querySelectorAll('button').length,
+        afterSwitch: box ? right(controls) > right(box) : null
+      });
+    })()
+  `);
+  check(
+    /"buttons":3/.test(ordering) && /"afterSwitch":true/.test(ordering),
+    'and the order arrows sit with the remove at the row\u2019s end, not in front of it',
+    ordering
+  );
+
+  /* The picker offers happenings, not the buckets the client sorts them into. */
+  const offered = await evaluate(`
+    (() => {
+      const select = document.querySelector('.settings-alerts [name$="-on"]');
+      if (!select) return 'no event picker';
+      const groups = [...select.querySelectorAll('optgroup')].map((g) => g.label);
+      const options = [...select.options].map((o) => o.text);
+      return JSON.stringify({ groups: groups.length, options: options.slice(0, 60) });
+    })()
+  `);
+  check(
+    // More than one group, however many digits that is: `[2-9]` read "11" as a
+    // single digit and failed on a picker that was right.
+    /"groups":(?:[2-9]|\d{2,})/.test(offered) &&
+      /you die/i.test(offered) &&
+      /a player attacks you/i.test(offered),
+    'and names events in plain English, grouped',
+    offered
+  );
+
+  await capture('smoke-settings-alerts.png', 'the Alerts rows, lined up in their columns');
+  check(await showCrumb('.settings-nav-section', 'character'), 'and back to Character');
 
   /*
    * The client's own settings, and the defaults a new realm or character
@@ -10389,7 +11157,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
     const sections = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-sections .crumb')].map((c) => c.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-nav-section')].map((c) => c.innerText.trim()))`
       )
     );
     /*
@@ -10533,7 +11301,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
     const defaults = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-sections .crumb')].map((c) => c.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-nav-section')].map((c) => c.innerText.trim()))`
       )
     );
     /*
@@ -10635,7 +11403,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // And the chord, which is what anybody actually presses. It stands down
     // inside a text field, where it is the field's own undo -- so this is
     // pressed with the caret nowhere in particular.
-    await evaluate(`document.querySelector('.settings-sections .crumb').focus(), true`);
+    await evaluate(`document.querySelector('.settings-nav-section').focus(), true`);
     await cdp('Input.dispatchKeyEvent', {
       type: 'rawKeyDown',
       key: 'z',
@@ -10999,7 +11767,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(await evaluate(`!!document.querySelector('.settings')`), 'and opens the settings screen');
   check(
     (await evaluate(
-      `document.querySelector('.settings-list button[data-active="true"] .settings-name')?.innerText?.trim()`
+      `document.querySelector('.settings-nav-chosen .settings-name')?.innerText?.trim()`
     )) === 'Second Character',
     'on the character whose pencil it came from'
   );
@@ -11025,14 +11793,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await evaluate(
     `(document.querySelector('.tab-rail .new-character:not(.rail-settings)').click(), true)`
   );
-  await waitFor(
-    async () =>
-      await evaluate(`!!document.querySelector('.settings-list .settings-add[data-active="true"]')`)
-  );
-  check(
-    await evaluate(`!!document.querySelector('.settings-list .settings-add[data-active="true"]')`),
-    'the + opens settings on a blank character'
-  );
+  const onBlank = `/new character/i.test(
+    document.querySelector('.settings-nav-chosen')?.innerText ?? ''
+  )`;
+  await waitFor(async () => await evaluate(onBlank));
+  check(await evaluate(onBlank), 'the + opens settings on a blank character');
   check(
     (await evaluate(`document.querySelector('.settings-form input')?.value`)) === '',
     'with nothing carried over from the character edited a moment ago'
@@ -11741,6 +12506,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         const save = card.querySelector('.builder-foot .primary');
         return {
           floating: !!card.closest('.float'),
+          // The legend comes with the window, so a map drawn without one is a
+          // picture with a private vocabulary. (No backticks: template literal.)
+          legend: card.querySelectorAll('.map-box > .map-legend').length,
           rooms: plan ? plan.querySelectorAll('.map-room').length : 0,
           start: plan ? plan.querySelectorAll('.map-start').length : 0,
           picks: plan ? plan.querySelectorAll('.map-pick').length : 0,
@@ -11801,9 +12569,122 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(state)
   );
   check(
+    state !== null && state.legend === 1,
+    'with the legend the window brings, keyed for the builder’s own marks',
+    JSON.stringify(state)
+  );
+  check(
     state !== null && state.save !== null && !state.saveEnabled,
     'and nothing to save yet',
     JSON.stringify(state)
+  );
+
+  /*
+   * And the picture in it is the picture everywhere else: a pointer at rest on
+   * a room opens the realm's answer about that room.
+   *
+   * The report that produced the parity pass (2026-09-14). The builder's map
+   * was the one map in the client that stayed mute under the pointer, and a
+   * lair is the whole reason a room is worth putting in a lap. A real mouse
+   * move, not a synthetic event: the dwell hangs off the pointer entering the
+   * room, and React synthesises `onPointerEnter` from `pointerover`.
+   *
+   * The **same** panel the Map card opens, button and all: what the builder
+   * decides is what a click means, and nothing else. It was shipped with no
+   * button for a day and that was two panels wearing one name -- asserted here
+   * so the next surface to draw a map cannot quietly grow a third.
+   */
+  const restOn = JSON.parse(
+    await evaluate(`
+      JSON.stringify((() => {
+        const view = document.querySelector('.loop-builder-card .map-view');
+        if (view === null) return null;
+        const box = view.getBoundingClientRect();
+        // A room the window is actually showing: the SVG clips at its box but
+        // the rooms outside it still have boxes, and a pointer sent to one of
+        // those would be a pointer sent nowhere.
+        const room = [...document.querySelectorAll('.loop-builder-card .map-room')].find((node) => {
+          const at = node.getBoundingClientRect();
+          return at.left >= box.left && at.right <= box.right &&
+                 at.top >= box.top && at.bottom <= box.bottom;
+        });
+        if (room === undefined) return null;
+        const at = room.getBoundingClientRect();
+        return {
+          id: room.getAttribute('data-room'),
+          x: at.left + at.width / 2,
+          y: at.top + at.height / 2
+        };
+      })())
+    `)
+  );
+  check(
+    restOn !== null,
+    'the builder’s map draws a room the window is showing',
+    JSON.stringify(restOn)
+  );
+  await cdp('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: restOn.x,
+    y: restOn.y,
+    buttons: 0,
+    pointerType: 'mouse'
+  });
+  await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+  const builderPeek = JSON.parse(
+    await evaluate(`
+      JSON.stringify((() => {
+        const panel = document.querySelector('.room-peek');
+        if (panel === null) return null;
+        return {
+          badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
+          heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
+          exits: (panel.innerText.match(/Ways out/) || []).length,
+          actions: panel.querySelectorAll('.peek-actions button').length,
+          walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
+        };
+      })())
+    `)
+  );
+  check(
+    builderPeek !== null && builderPeek.badge === restOn.id,
+    'a pointer resting on a room of the builder’s map opens the realm’s answer about it',
+    JSON.stringify(builderPeek)
+  );
+  check(
+    builderPeek !== null && builderPeek.heading.length > 0 && builderPeek.exits === 1,
+    'and states its name and the ways out of it, as it does on the Map card',
+    JSON.stringify(builderPeek)
+  );
+  check(
+    builderPeek !== null && builderPeek.actions === 1 && /walk/i.test(builderPeek.walk),
+    'and carries the same one action the Map card’s panel carries',
+    JSON.stringify(builderPeek)
+  );
+  /*
+   * And nothing else opens on the same rest. The room's `<title>` said *Route
+   * to {name}* -- a browser tooltip making a claim no click on any map makes
+   * now, drawn over the panel that answers the same question properly.
+   */
+  check(
+    (await evaluate(`document.querySelectorAll('.loop-builder-card .map-room > title').length`)) ===
+      0,
+    'and no second, smaller answer opens over it',
+    'a room still carries a <title>'
+  );
+  // Off the room again, so nothing below reads a panel this check left
+  // standing. Hovered, not settled, so the linger is what puts it away.
+  await cdp('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: 4,
+    y: 4,
+    buttons: 0,
+    pointerType: 'mouse'
+  });
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('.room-peek')`)));
+  check(
+    !(await evaluate(`!!document.querySelector('.room-peek')`)),
+    'and it goes when the pointer leaves, because nothing settled it'
   );
 
   /*
@@ -12301,7 +13182,13 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         asks: !!document.querySelector('.player-asks'),
         body: document.querySelector('.player-flyout .popover-body')?.innerText.slice(0, 60) ?? '',
         name: r ? r.toJSON() : null,
-        hit: at ? (at.className || at.tagName) : null
+        hit: at ? (at.className || at.tagName) : null,
+        // Which dialog the scrim belongs to, when one is what the press lands
+        // on: the palette, the route panel and the loops modal all draw the
+        // same scrim, and the answer is the difference between three bugs.
+        scrim: [...document.querySelectorAll('.palette-scrim')]
+          .map((el) => el.firstElementChild?.className ?? '?')
+          .join(',')
       });
     })()
   `);
@@ -15150,6 +16037,52 @@ check(
   !(await evaluate(`!!document.querySelector('.rail .vitals-card')`)),
   'and stops reporting vitals for a character that is no longer in the realm'
 );
+/*
+ * The toolbar is the one card that stays (todo 02).
+ *
+ * Every other card is a reading of a character that is no longer there; this
+ * one carries the dial that puts them back, and switches that write the
+ * character's own file whether or not anything is connected. What it must not
+ * do is go on offering commands: the transport, the step back and the dressing
+ * all want a room to send from, so they are greyed rather than taken away.
+ */
+/*
+ * Waited for rather than assumed: `disconnect` above settles for `closing` as
+ * well as `closed`, and the dial is refused while one is in flight — so a dial
+ * read a push early reads as greyed for the right reason at the wrong moment.
+ */
+await waitFor(async () => await evaluate(`!!document.querySelector('.status-rail .dot.closed')`));
+const offlineToolbar = await evaluate(`
+  (() => {
+    const card = document.querySelector('[data-card="toolbar"]');
+    if (!card) return JSON.stringify({ found: false });
+    const key = (title) =>
+      [...card.querySelectorAll('.toolbar-key')].find((b) => b.title === title) ?? null;
+    const dial = key('Connect');
+    const back = key('Step Back One Room');
+    const move = key('Start Moving / Resume') ?? key('Stop Moving');
+    return JSON.stringify({
+      found: true,
+      keys: card.querySelectorAll('.toolbar-key:not(.toolbar-more)').length,
+      dial: dial === null ? null : dial.disabled,
+      back: back === null ? null : back.disabled,
+      move: move === null ? null : move.disabled
+    });
+  })()
+`);
+const offBar = JSON.parse(String(offlineToolbar ?? 'null'));
+check(
+  offBar?.found === true && offBar.keys > 0,
+  'the toolbar stays on screen when the character leaves the realm',
+  offlineToolbar
+);
+check(offBar?.dial === false, 'with the dial still pressable', offlineToolbar);
+check(
+  offBar?.back === true && offBar?.move === true,
+  'and everything that would send a command greyed',
+  offlineToolbar
+);
+
 const railWidthOffline = await evaluate(
   `Math.round(document.querySelector('.terminal-layers').getBoundingClientRect().width)`
 );

@@ -114,6 +114,8 @@ export class Routines {
    * has said `KAI=` or `MA=` (the prompt, the stat sheet, or a listing).
    */
   private askedBook: 'spells' | 'powers' | null = null;
+  /** Whether the one `abil` of this session has gone out. See `askAbilities`. */
+  private askedAbilities = false;
   /** When the stat sheet was last asked for to settle a buff ending; null is never. */
   private sheetAskedAt: number | null = null;
   /** The wrong-book correction has run, so it can only run once. */
@@ -140,6 +142,7 @@ export class Routines {
     this.rosterUnknown = false;
     this.rosterAskedAt = 0;
     this.askedBook = null;
+    this.askedAbilities = false;
     this.bookCorrected = false;
     this.lastSent = Date.now();
     this.stopIdle();
@@ -370,6 +373,48 @@ export class Routines {
   /** *Auto Choose Best Spell* found no book read: one listing, on the same terms as entry. */
   askBook(state: CharacterState): void {
     this.askSpellbook(state);
+  }
+
+  /**
+   * The quest counters, once per session, when something needs them.
+   *
+   * `abil` is the only place on the wire a quest counter is ever stated
+   * (`AbilitySums`), and the realm gates scripted ways through on exactly
+   * those numbers: `9/1291`'s `go portal` is `checkability 133 5`, and a
+   * character below that rank is put somewhere the plan never named rather
+   * than refused. Unasked, `CharacterState.abilities` stays null for the whole
+   * session and every such gate is priced as a guess — which is what walked a
+   * character into the Caves of Chaos on 2026-09-15.
+   *
+   * **Asked when the question is live, not on the way in** (`askBook`'s shape,
+   * and `SessionManager.askCountersFor` is the caller): a plan that crosses
+   * one of those gates. A listing is not free of consequence even though the
+   * command is — a *complete* one enumerates, so it settles **every** counter,
+   * and the quest book stops offering its nodes as controls the moment one
+   * arrives. Spending that on a character who never goes near a gated way
+   * would be the client answering a question nobody asked.
+   *
+   * **No family gate here.** `Abilities` is in `GREATERMUD_ONLY`, so once a
+   * realm has said it is MajorMUD the arbiter refuses the word before it is
+   * tried and says so once; a gate here would only ask the same question
+   * twice.
+   */
+  askAbilities(state: CharacterState): void {
+    if (!this.config.enabled) return;
+    if (this.askedAbilities) return;
+    /*
+     * Somebody has already answered it — the player's own `abil`, or the
+     * listing that arrived while this was still deciding. The listing is the
+     * fact; which command produced it is not.
+     */
+    this.askedAbilities = true;
+    if (state.abilities !== null) return;
+    this.queue.enqueue({
+      command: 'abil',
+      priority: 'probe',
+      coalesceKey: 'probe:abil',
+      reason: t('automation.routines.reasonAbilities')
+    });
   }
 
   private askSpellbook(state: CharacterState): void {

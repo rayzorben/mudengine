@@ -343,6 +343,61 @@ function hazardOf(
   return { harm, kinds: [...kinds], wide };
 }
 
+/** A condition a monster can put on the character, beyond wounds. */
+export type AfflictionKind = 'poison' | 'blinded' | 'held';
+
+export interface MobAffliction {
+  kind: AfflictionKind;
+  /**
+   * Seconds the longest such spell holds — `Spells.Dur` in three-second
+   * effect ticks — or null where any spell of the kind states no duration,
+   * because a poison of unknown length is not shortened by another whose
+   * length is known.
+   */
+  seconds: number | null;
+}
+
+/**
+ * What a monster can put on the character, read off every spell it brings:
+ * the hit spells on its blows, the casts in place of a blow, the between-round
+ * casts and the one it dies with — any row, not the worst, since a hunting
+ * estimate is about every visit and not one fight. A spell that lands on the
+ * caster is not an affliction. Duration as `hazardOf` reads it.
+ */
+export function afflictionsOf(mob: MenaceSubject): MobAffliction[] {
+  const spells = mob.spells ?? {};
+  const longest = new Map<AfflictionKind, number | null>();
+  const note = (id: number | undefined): void => {
+    if (id === undefined) return;
+    const spell = spells[id];
+    if (spell === undefined || LANDS_ON_THE_CASTER.has(spell.targets ?? 0)) return;
+    const ticks = spell.duration ?? 0;
+    const seconds = ticks > 0 ? ticks * EFFECT_TICK_SECONDS : null;
+    for (const [ability] of spell.abilities ?? []) {
+      const kind: AfflictionKind | null =
+        ability === HAZARD_ABILITY.poison
+          ? 'poison'
+          : ability === HAZARD_ABILITY.blind
+            ? 'blinded'
+            : ability === HAZARD_ABILITY.holdPerson
+              ? 'held'
+              : null;
+      if (kind === null) continue;
+      const known = longest.get(kind);
+      if (known === undefined) longest.set(kind, seconds);
+      else if (known === null || seconds === null) longest.set(kind, null);
+      else longest.set(kind, Math.max(known, seconds));
+    }
+  };
+  for (const profile of mob.profiles ?? []) {
+    for (const attack of profile.attacks)
+      note(attack.kind === 'melee' ? attack.onHit : attack.spell);
+    for (const cast of profile.casts) note(cast.spell);
+  }
+  note(mob.deathSpell);
+  return [...longest].map(([kind, seconds]) => ({ kind, seconds }));
+}
+
 /**
  * How many blows a round holds — `Mob.DoCombat` grants 1,000 energy a round
  * and swings until it is spent or fifty swings are in, so the count is the

@@ -11,6 +11,8 @@ import type { RealmFamily } from './realm';
 import { DODGE_ABILITY } from './abilities';
 import type { CharacterState, RoomOccupant } from './character';
 import type { MobEntity } from './entities';
+import { DEFAULT_MOB_PRIORITY, MOB_PRIORITIES, type MobPriority } from './config';
+import { mobKey } from './world';
 
 /**
  * *Can I fight this?* — one answer, read by the card and by the engine.
@@ -370,6 +372,49 @@ export function rankByVerdict(verdicts: ReadonlyArray<Verdict>): number[] {
   return scored
     .sort((a, b) => a.tier - b.tier || b.score - a.score || a.index - b.index)
     .map((entry) => entry.index);
+}
+
+/**
+ * The order to attack a room in when a priority list has something to say.
+ *
+ * Bands first, and **instead of** the weighing rather than above it: a listed
+ * monster's band decides, and within one band the room's own listing order
+ * decides. That is the order the client used before any weighing existed, and
+ * it is the one somebody reading their own list can predict — which is the
+ * whole point of writing the list. `rankByVerdict` is not consulted here at
+ * all; see `CombatConfig.mobPriority`.
+ *
+ * `names` and `verdicts` are parallel to the candidates the caller is choosing
+ * between, and the returned indices point back into them. `verdicts` is taken
+ * only so the caller can hand the chosen one's verdict to the trace.
+ *
+ * Returns null when no row names anything in the room, which is the common
+ * case and the one where the realm's arithmetic should decide as it always
+ * has. Deciding that here keeps the caller from asking the same question
+ * twice.
+ */
+export function rankByPriority(
+  names: readonly string[],
+  rows: readonly MobPriority[]
+): number[] | null {
+  if (rows.length === 0) return null;
+  /*
+   * Both sides through `mobKey`. The normalizer keys a row on the way in, but
+   * a row still being typed on the settings screen has not been through it —
+   * and a list that quietly did nothing until the file was reloaded would be
+   * the control lying about itself while somebody watched it.
+   */
+  const bands = new Map(rows.map((row) => [mobKey(row.mob), row.priority]));
+  const middle = MOB_PRIORITIES.indexOf(DEFAULT_MOB_PRIORITY);
+  let listed = false;
+  const scored = names.map((name, index) => {
+    const band = bands.get(mobKey(name));
+    if (band !== undefined) listed = true;
+    return { index, rank: band === undefined ? middle : MOB_PRIORITIES.indexOf(band) };
+  });
+  if (!listed) return null;
+  // Ties break on the room's listing order, which `index` already is.
+  return scored.sort((a, b) => a.rank - b.rank || a.index - b.index).map((entry) => entry.index);
 }
 
 /** Re-exported so a caller that only has menaces still has one ranking to reach for. */

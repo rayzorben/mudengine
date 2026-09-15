@@ -40,6 +40,20 @@ export interface ResolveInput {
   previous?: RoomId | null;
   /** The direction just walked, if any. */
   moved?: Direction | null;
+  /**
+   * The rooms a draw could have put the character in — a scatter exit's
+   * landing (`Requirement.landing`), handed over by the walker.
+   *
+   * **It replaces the ladder rather than joining it**, because after a draw
+   * every rung above is not merely weak but actively wrong: the exit the
+   * character walked through names a room the realm never sent them to, and
+   * `movement` checks that room's *name* — which in the Warped Asylum is the
+   * name of all seventy-two of them. Measured on the shipped realm: stepping
+   * west out of the Asylum Ward, `movement` resolves 9/1183 with 0.98
+   * confidence twenty-three times out of twenty-four, and every plan drawn
+   * from there is directions from a room the character is not in.
+   */
+  among?: readonly RoomId[];
 }
 
 export type ResolveMethod =
@@ -49,6 +63,7 @@ export type ResolveMethod =
   | 'unique-name'
   | 'exit-signature'
   | 'dead-reckoning'
+  | 'scattered'
   | 'none';
 
 /**
@@ -107,6 +122,67 @@ export function resolveRoom(graph: WorldGraph, input: ResolveInput): Resolution 
   const named = graph.findByName(input.name);
 
   /*
+   * A draw, so the answer is inside the draw and nowhere else.
+   *
+   * Name first and then the printed exits, which is the ordinary ladder with
+   * the realm narrowed to the rooms the spell can produce — and a refusal
+   * where two of them are still consistent, because the whole point of the
+   * narrowing is that a confident answer here is worth a plan and a wrong one
+   * costs the walk. What follows a refusal is the client asking, which is what
+   * `rm` is for: after a draw there is nothing else that can say.
+   */
+  if (input.among !== undefined) {
+    const wanted = input.name.trim().toLowerCase();
+    const drawn = input.among
+      .map((id) => graph.byId(id))
+      .filter(
+        (room): room is WorldRoom => room !== undefined && room.name.trim().toLowerCase() === wanted
+      );
+    if (drawn.length === 1) {
+      /*
+       * A landing that names **one** room is an address, not an inference: the
+       * realm's own spell table says where the character was put, and the name
+       * agreeing is a check rather than the evidence. That is the standing a
+       * `sys go`'s coordinates have, and it matters because certainty stops
+       * the ladder re-deriving the room on the next look. Several rooms
+       * narrowed to one by name is inference, and says so.
+       */
+      const exact = input.among.length === 1;
+      return {
+        room: drawn[0]!,
+        method: 'scattered',
+        candidates: drawn,
+        confidence: exact ? 1 : 0.95
+      };
+    }
+    if (drawn.length > 1) {
+      const bySignature = drawn.filter((room) =>
+        sameExits(
+          input.exits,
+          room.exits.map((exit) => exit.direction)
+        )
+      );
+      if (bySignature.length === 1) {
+        return {
+          room: bySignature[0]!,
+          method: 'scattered',
+          candidates: bySignature,
+          confidence: 0.9
+        };
+      }
+      const left = bySignature.length > 1 ? bySignature : drawn;
+      return { room: null, method: 'scattered', candidates: left, confidence: 1 / left.length };
+    }
+    /*
+     * The server put the character somewhere the spell's own range does not
+     * cover. That is the realm data and the realm disagreeing, and neither the
+     * draw nor the room walked out of is evidence any more — so the global
+     * ladder below answers it from the name alone, with `previous` dropped.
+     */
+    return resolveRoom(graph, { name: input.name, exits: input.exits });
+  }
+
+  /*
    * Movement from a known room. Cheapest and strongest: the realm data already
    * says where that exit leads, so there is nothing to search.
    *
@@ -118,6 +194,15 @@ export function resolveRoom(graph: WorldGraph, input: ResolveInput): Resolution 
     const from = graph.byId(input.previous);
     const exit = from?.exits.find((candidate) => candidate.direction === input.moved);
     if (exit) {
+      /*
+       * **The exit table's own room, including for an exit whose cast moves
+       * you.** Such an exit answers with two room blocks and this rung reads
+       * the *first*, which is the room the table names — the character really
+       * does pass through it (`CastExit.TryMoveThroughExit` describes it
+       * before it casts). Where the spell then puts them is the second block,
+       * and it is resolved against the landing the claim carries
+       * (`ResolveInput.among`), never against an exit.
+       */
       const destination = graph.get(exit.map, exit.room);
       if (destination && destination.name.toLowerCase() === input.name.trim().toLowerCase()) {
         return {

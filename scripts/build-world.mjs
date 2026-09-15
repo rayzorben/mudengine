@@ -112,7 +112,10 @@ for (const { world, source } of jobs) {
   );
   console.log(
     `  ${built.stats.levered.toLocaleString()} rooms holding a lever, opening ` +
-      `${built.stats.openableHere.toLocaleString()} hidden exits where they stand — see parseAction`
+      `${built.stats.openableHere.toLocaleString()} hidden exits where they stand — see parseAction` +
+      (built.stats.ambiguousLevers > 0
+        ? `\n  ${built.stats.ambiguousLevers.toLocaleString()} levers dropped: several of the room's own commands answer to the phrase`
+        : '')
   );
   console.log(
     `  family ${built.header.family ?? 'unstated'}, ${built.header.build?.custom ?? '?'} ` +

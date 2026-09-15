@@ -131,6 +131,13 @@ const GRADE_RANK: Readonly<Record<string, number>> = {
 export class AutoLoot {
   /** Names already asked for in this room, lower case. */
   private attempted = new Set<string>();
+  /**
+   * Names an errand wants picked up while it runs — never the player's file.
+   *
+   * See `alsoTake`. Cleared with the session, like everything else here: a
+   * door in the last realm is not a reason to hoard anything in this one.
+   */
+  private readonly wanted = new Set<string>();
 
   /**
    * Denominations already asked to drop, with the count the ask was for.
@@ -183,6 +190,23 @@ export class AutoLoot {
     private readonly notice: (message: string) => void = () => {}
   ) {}
 
+  /**
+   * Names something else wants picked up for as long as it is asking.
+   *
+   * Session-scoped and never written to the file: `ItemErrand` adds the item a
+   * door needs while it is collecting one and takes it off again the moment
+   * the pack holds it, so nothing is left instructing a character to hoard a
+   * key it only ever wanted once.
+   */
+  alsoTake(name: string): void {
+    const bare = name.trim();
+    if (bare.length > 0) this.wanted.add(bare);
+  }
+
+  stopTaking(name: string): void {
+    this.wanted.delete(name.trim());
+  }
+
   configure(config: LootConfig, supplies: SuppliesConfig, enabled: boolean): void {
     this.config = config;
     this.supplies = supplies;
@@ -193,6 +217,7 @@ export class AutoLoot {
     this.attempted.clear();
     this.shed.clear();
     this.saidClash.clear();
+    this.wanted.clear();
   }
 
   /**
@@ -340,9 +365,12 @@ export class AutoLoot {
          * only one there.
          */
         const { name: bare } = countedName(item);
-        const named = this.config.items.find((name) =>
-          bare.toLowerCase().startsWith(name.toLowerCase())
-        );
+        const named =
+          this.config.items.find((name) => bare.toLowerCase().startsWith(name.toLowerCase())) ??
+          // And what an errand wants for as long as it runs (todo 07): the
+          // same instruction, said by a door rather than by the list, and kept
+          // in the session rather than in the player's file.
+          [...this.wanted].find((name) => bare.toLowerCase().startsWith(name.toLowerCase()));
         const worth = this.worthTaking(bare);
         if (named !== undefined) {
           // A name on the list is an instruction, and the only thing that

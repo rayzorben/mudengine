@@ -176,6 +176,55 @@ export const REQUIREMENT_KINDS = [
  */
 export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 
+/**
+ * Where a teleport puts the character, as the realm's own spell table states it.
+ *
+ * `Spell.cs`'s `TeleportRoom` case, transcribed: the ability's modifier is the
+ * room, and **a modifier of zero means the spell's rolled value is the room**
+ * (`tempTeleportRoomID = inMainValue`), which `RollAndApplySpellAbilities`
+ * draws uniformly from `MinBase`–`MaxBase`. `TeleportMap` is the map, and
+ * where the spell states none the server uses the one the character is
+ * standing on — which for an exit's cast is the map the exit table names,
+ * because `TryMoveThroughExit` moves first and casts second.
+ *
+ * So one range covers both shapes and the difference is whether it is a range:
+ * `low === high` is a portal with an address, and anything wider is a draw.
+ * Nothing here is a guess — every field is a column.
+ */
+export interface Landing {
+  /** The spell that does it, and the name to say in a sentence. */
+  spell: number;
+  name: string;
+  /** The map it lands you on. */
+  map: number;
+  /** The lowest and highest room the roll can produce; equal for a portal. */
+  low: number;
+  high: number;
+}
+
+/** Whether a landing is a draw rather than an address. */
+export function scatters(landing: Landing): boolean {
+  return landing.high > landing.low;
+}
+
+/**
+ * Every room the roll can name, in the realm's own numbering.
+ *
+ * The range as stated, **not** filtered against any realm: this file holds no
+ * realm and inventing one here would make the answer depend on which world is
+ * loaded. A caller with the data drops the numbers it has no room for — which
+ * `WorldGraph.scatterDoors` does, because the mean it takes has to be over
+ * outcomes that exist, and `resolveRoom` does, because a room the file lacks
+ * cannot be the one the server just described.
+ */
+export function landingRooms(landing: Landing): RoomId[] {
+  const rooms: RoomId[] = [];
+  for (let number = landing.low; number <= landing.high; number += 1) {
+    rooms.push(roomId(landing.map, number));
+  }
+  return rooms;
+}
+
 export interface Requirement {
   kind: RequirementKind;
   /** The instruction verbatim, for display and for anything not yet modelled. */
@@ -332,11 +381,14 @@ export interface Requirement {
    * `WorldGraph.resolveSpells` answers it while the room is being built, the
    * way `buildRealm` joins the levers.
    *
-   * - `relocates` — a spell carries `TeleportRoom`/`TeleportMap`, so the
-   *   character ends up somewhere the exit table does not name. Measured on
-   *   the shipped realm: of the 157 exits whose cast is `gloomy teleport`,
-   *   `hallway teleport` or `thievry teleport`, **not one** states a
-   *   destination inside the range its own spell teleports into.
+   * - `teleports` — a spell carries `TeleportRoom`/`TeleportMap` and the roll
+   *   it makes has one outcome, so the character ends up in **one known
+   *   room** the exit table does not name. `landing` holds it and the router
+   *   walks the edge there. 49 exits in each shipped realm: the Marble Rooms'
+   *   wrong squares, which put you back in the Grand Hallway.
+   * - `scatters` — the same abilities, but the roll spans a range, so the
+   *   character ends up in one of several rooms and nobody can say which.
+   *   `landing` holds the range. 168 exits in each shipped realm.
    * - `script` — a spell hands the character a `TextBlock`, which is a realm
    *   script this client does not convert. It may do anything, including move
    *   them; 40 of the 56 are called `pyramid 4 arch fail`.
@@ -344,7 +396,12 @@ export interface Requirement {
    *   character rather than on where it is standing, so the exit is a
    *   corridor with something cast at whoever uses it.
    */
-  spellEffect?: 'relocates' | 'script' | 'plain';
+  spellEffect?: 'teleports' | 'scatters' | 'script' | 'plain';
+  /**
+   * Where that teleport actually puts the character, read off the realm's own
+   * spell table at load. Present exactly for `teleports` and `scatters`.
+   */
+  landing?: Landing;
   /**
    * `Trap, 30 damage` — and what a spell trap is expected to cost, in the same
    * units, resolved from the realm's own spell table at load.
@@ -390,6 +447,133 @@ export interface Requirement {
    * because 25 of the 225 gated exits state no action at all.
    */
   actions?: RequirementAction[];
+  /**
+   * Conditions the realm states on this edge that this client cannot evaluate,
+   * in the realm's own words — `nomonsters`, `roomitem shimmering key`,
+   * `testskill perception 20`.
+   *
+   * A room script states *several* conditions on one phrase and `kind` holds
+   * one, so the guards that have a kind are read into the fields beside this
+   * (`minLevel`, `maxLevel`) and the rest are kept here whole. They are priced
+   * rather than obeyed: `edgePenalty` adds the unevaluable figure once on top
+   * of whatever else the edge costs, so a scripted way through is offered,
+   * never preferred, and the chip carries the instruction for a person to
+   * judge by.
+   *
+   * **Set only by `linkPortals`**, because a room script is the only place in
+   * the realm where one edge carries conditions of several kinds. Absent is an
+   * edge whose every condition is read, which is every exit out of the
+   * direction columns.
+   */
+  unread?: readonly string[];
+  /**
+   * The ability gates among `unread`, read into the comparison the server
+   * makes.
+   *
+   * `unread` keeps every condition in the realm's own words, because that is
+   * what a person reads on the chip. These are the subset the *client* can
+   * answer once `abil` has stated the counters, kept beside them rather than
+   * taken out of them: `checkability 133 5` is still worth showing whether or
+   * not this character passes it.
+   *
+   * **Read, not obeyed, until the counters arrive.** `edgePenalty` refuses an
+   * edge whose gate this character fails and prices one nobody has the
+   * counters for exactly as before — an unread listing is *nobody has said*,
+   * which is never the reassuring answer and never the alarming one either.
+   */
+  abilities?: readonly AbilityGate[];
+}
+
+/**
+ * One ability gate a scripted way through states, as the server compares it.
+ *
+ * The three verbs are one subject and three comparisons against
+ * `Player.GetAbility(id).Sum` (`TextBlockPart.Execute`, transcribed in
+ * `main/world/questScript.ts`): `checkability N [V]` is `>= V` with V
+ * defaulting to −1, `testability N V` is `<= V`, and the pair together is
+ * *exactly V* — which is how every chained quest in both databases is written.
+ * `failability N` is its own kind: not held at all.
+ *
+ * Kept as bounds rather than as the verbs, because what a reader asks is
+ * whether a number is inside them.
+ */
+export interface AbilityGate {
+  /** The realm's own ability id — a quest counter, in every case seen. */
+  id: number;
+  atLeast?: number;
+  atMost?: number;
+  /** `failability`: the sum must be nothing at all. */
+  absent?: boolean;
+}
+
+/**
+ * The ability verbs, and how many words of the step each takes.
+ *
+ * `CONDITION_WORDS` states the same figures for the same reason — a trailing
+ * message id is only trailing on a verb that takes one argument.
+ */
+const ABILITY_VERBS: ReadonlySet<string> = new Set([
+  'checkability',
+  'checkabilityexact',
+  'testability',
+  'failability'
+]);
+
+/**
+ * The ability gates one room-script condition states, or nothing.
+ *
+ * Read at load rather than at build (`WorldGraph.linkPortals`), because the
+ * strings are already in the file: a realm somebody converted before this
+ * existed answers these gates the moment they open the client, with no format
+ * bump and no rebuild.
+ */
+export function readAbilityGate(condition: string): AbilityGate | null {
+  const parts = condition.trim().split(/\s+/);
+  const verb = (parts[0] ?? '').toLowerCase();
+  if (!ABILITY_VERBS.has(verb)) return null;
+  const id = Number(parts[1]);
+  if (!Number.isInteger(id)) return null;
+  if (verb === 'failability') return { id, absent: true };
+  const value = Number(parts[2]);
+  if (verb === 'checkability') {
+    // One argument is *has it at all*, which the server spells as `>= -1`.
+    return { id, atLeast: Number.isInteger(value) ? value : -1 };
+  }
+  if (!Number.isInteger(value)) return null;
+  return verb === 'testability' ? { id, atMost: value } : { id, atLeast: value, atMost: value };
+}
+
+/**
+ * Whether the counters `abil` stated satisfy these gates — or null for nobody
+ * having said.
+ *
+ * `countersMet`'s reading, one subject across: a **complete** listing
+ * enumerates, so an id it does not name is zero; an incomplete one settles
+ * nothing about an id it is silent on, and the answer is *unknown* rather than
+ * the zero. Before any listing there is no answer at all, which is not the
+ * same as the gate passing — an edge nobody has the counters for is priced as
+ * the guess it is, never refused and never preferred.
+ */
+export function abilityGatesMet(
+  gates: readonly AbilityGate[] | undefined,
+  counters: { sums: Readonly<Record<number, number>>; complete: boolean } | null | undefined
+): boolean | null {
+  if (gates === undefined || gates.length === 0) return null;
+  if (counters === null || counters === undefined) return null;
+  let known = false;
+  for (const gate of gates) {
+    const stated = counters.sums[gate.id];
+    if (stated === undefined && !counters.complete) continue;
+    known = true;
+    const held = stated ?? 0;
+    if (gate.absent === true) {
+      if (held !== 0) return false;
+      continue;
+    }
+    if (gate.atLeast !== undefined && held < gate.atLeast) return false;
+    if (gate.atMost !== undefined && held > gate.atMost) return false;
+  }
+  return known ? true : null;
 }
 
 /**
@@ -1328,6 +1512,10 @@ export interface WorldMobRow {
    * `Monsters.RegenTime`, in hours: how long a *placed* monster stays dead
    * (`RegenSlot.Regen`: `MobType.Regen * 3600`). A lair room respawns on
    * its own `Delay` instead; this is the boss's clock (format 33, todo 05).
+   *
+   * On the fold from format 36, and only where every row of the name agrees
+   * (`BuiltMob.rt`) — before that it was declared here and set by nobody, so
+   * a uniquely named boss, having no `rw`, carried no clock at all.
    */
   regenHours?: number;
   follows?: number;
@@ -1750,8 +1938,13 @@ export interface RoomCommand {
    * type here*. So they are one list, and this is what tells them apart — the
    * Answers face says which exit a lever opens, because `pull lever` with no
    * consequence beside it is the client repeating the realm at somebody.
+   *
+   * `item` is the `Items` row the realm says must be carried to say it, where
+   * it names one — the same fact `RequirementAction.item` carries, written on
+   * both ends because the exit's own requirement is not always where the
+   * lever can be found. See `RemoteLever.item`.
    */
-  opens?: { room: RoomId; direction: string };
+  opens?: { room: RoomId; direction: string; item?: number };
 }
 
 /**
@@ -1788,6 +1981,19 @@ export interface RemoteLever {
    * everywhere else a phrase is sent — the rest are synonyms for one lever.
    */
   say: string;
+  /**
+   * The `Items` row that must be carried to say it, where the realm names one
+   * — `RequirementAction.item` on the other end of the same lever.
+   *
+   * Carried here as well because the exit's own requirement is not always
+   * where a lever can be found: `buildRealm` writes `actions` only for an exit
+   * that *states* `Needs N Actions`, and a `Door` never does. So the pricing
+   * of a door a word opens (`WorldGraph.leveredCost`) reads this index, and it
+   * has to be able to ask the same question `actionItemLacking` asks — todo
+   * 13's lesson, which was a route planned through *hold up talisman* at the
+   * cost of a free lever by a character with no talisman.
+   */
+  item?: number;
 }
 
 /** `map/room`, the key used everywhere. */
@@ -1990,6 +2196,20 @@ export interface RouteStep {
    * damage the realm states.
    */
   hazardKind?: 'unread' | 'summons';
+  /**
+   * The step that hands the character to a dice roll: after it, where they are
+   * standing is not a fact anybody has.
+   *
+   * **A plan cannot continue through one, so this is always the last step.**
+   * `to` is the room the journey is *for* rather than the room this move
+   * reaches, because that is what the rest of the plan was priced against —
+   * the arithmetic behind `moves` is `WorldGraph.scatterCosts`, and it prices
+   * exactly *and then the client carries on from wherever you land*. The
+   * walker reads it as permission to be surprised (`Walker.scattered`): an
+   * arrival anywhere in `landing` is this step working, and the answer is to
+   * plan again from there rather than to stop the walk.
+   */
+  scatter?: RouteScatter;
 }
 
 /**
@@ -2002,6 +2222,33 @@ export interface RouteStep {
  * hundred rooms of the Silver River are a corridor if you fetch a log raft
  * first, and a wall of damage if you do not.
  */
+/**
+ * A step through a scatter, and what it is expected to cost.
+ *
+ * Both halves are needed to say the one sentence worth saying about a scatter
+ * maze — *step west and expect about ten more moves before you are standing
+ * there* — and neither half says it alone: the size is what makes the walk
+ * random, and the figure is what makes it finite.
+ */
+export interface RouteScatter {
+  /** The spell and the rooms it draws from. */
+  landing: Landing;
+  /** How many of those rooms the realm actually holds. */
+  rooms: number;
+  /**
+   * Moves expected between stepping through and standing on the destination,
+   * under the best play this client can find — the re-plans included, because
+   * a re-plan is what the next move *is*. Rounded where it is said.
+   *
+   * **Moves, not what the router paid.** The search prices a draw in its own
+   * units, so a lair in the maze goes into that figure — 19.7 against a
+   * level-20 character where the walk is nine moves. The route's `cost` is
+   * where the priced number belongs, and this is the one the reader is shown
+   * (`WorldGraph.scatterMoves`).
+   */
+  moves: number;
+}
+
 export interface RouteHazard {
   /** The realm's name for it — `river damage`, `swamp poison`. */
   spell: string;
@@ -2253,6 +2500,42 @@ export type RouteBlock =
       /** What it turns away. Class and race only; a standing states no such half. */
       refuses?: string | number;
     }
+  | {
+      /**
+       * A barrier the realm lets a skill force, met by a character below every
+       * skill it names. `edgePenalty` prices it as a wall rather than pruning
+       * it, so the router walks it when nothing else leads there — which is
+       * exactly when the head of the plan has to say so, because the walker
+       * will stop at it. `keyId`/`itemName` when a key opens it as well.
+       */
+      kind: 'door';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      pickDifficulty?: number;
+      bashDifficulty?: number;
+      /** Null while the sheet is unread; never zero standing in for unknown. */
+      picklocks: number | null;
+      strength: number | null;
+      keyId?: number;
+      itemName?: string;
+      /**
+       * A word said in the room the step leaves from that opens it, where the
+       * realm names one, and the item it wants.
+       *
+       * A door's lever is not on the door — `buildRealm` writes
+       * `Requirement.actions` only for an exit that states `Needs N Actions`
+       * — so this is the lever index joined at the step
+       * (`WorldGraph.leversHere`), and it is carried here because the block is
+       * what the panel's headline is written from. Without it the head of the
+       * plan said *needs 1000 picklocks; your picklocks are not known yet*
+       * while the chip on that same row said *"use crowbar" here*: two
+       * errands for one door, which is the disagreement `openableHere` exists
+       * to prevent one kind across.
+       */
+      opensBySaying?: string;
+      opensItemName?: string;
+    }
   /** No path at all, gates ignored: the two rooms are not joined in the data. */
   | { kind: 'unreachable' };
 
@@ -2263,7 +2546,15 @@ export type RouteBlock =
  * `describeBlock` is checked against, so a kind added to the type and not
  * described is a failing test rather than a route that refuses in silence.
  */
-export const ROUTE_BLOCK_KINDS = ['key', 'level', 'toll', 'carry', 'born', 'unreachable'] as const;
+export const ROUTE_BLOCK_KINDS = [
+  'key',
+  'level',
+  'toll',
+  'carry',
+  'born',
+  'door',
+  'unreachable'
+] as const;
 
 /**
  * One block as a sentence, naming the condition and the number it wanted.
@@ -2375,8 +2666,77 @@ export function describeBlock(block: RouteBlock): string {
         ? `${block.name} has a ${block.condition} gate you do not meet, and ${mine}`
         : `${block.name} admits ${say(block.admits)} only, and ${mine}`;
     }
+    case 'door': {
+      /*
+       * What opens it, every channel the realm named, then what the character
+       * has on each — so *needs black serpent key or 81 picklocks; you have 0
+       * picklocks* is an errand with two ways to run it. A skill the sheet has
+       * not stated is said to be unknown, never printed as zero.
+       */
+      /*
+       * A word that opens it is the answer, and the skills are then only what
+       * the other way in would cost — so it leads, and the rest follows it.
+       */
+      if (block.opensBySaying !== undefined) {
+        const needs = block.opensItemName === undefined ? '' : `, carrying ${block.opensItemName}`;
+        return `${block.name} is locked — say "${block.opensBySaying}" here${needs}`;
+      }
+      const opens: string[] = [];
+      if (block.itemName !== undefined) opens.push(block.itemName);
+      else if (block.keyId !== undefined) opens.push(`key ${block.keyId}`);
+      if (block.pickDifficulty !== undefined) opens.push(`${block.pickDifficulty} picklocks`);
+      if (block.bashDifficulty !== undefined) opens.push(`${block.bashDifficulty} strength`);
+      const have: string[] = [];
+      const unread: string[] = [];
+      if (block.pickDifficulty !== undefined) {
+        if (block.picklocks === null) unread.push('picklocks');
+        else have.push(`${block.picklocks} picklocks`);
+      }
+      if (block.bashDifficulty !== undefined) {
+        if (block.strength === null) unread.push('strength');
+        else have.push(`${block.strength} strength`);
+      }
+      const mine = [
+        have.length > 0 ? `you have ${have.join(' and ')}` : null,
+        unread.length > 0
+          ? `your ${unread.join(' and ')} ${unread.length === 1 ? 'is' : 'are'} not known yet`
+          : null
+      ]
+        .filter((part) => part !== null)
+        .join(', ');
+      return `${block.name} is locked — needs ${opens.join(' or ')}; ${mine}`;
+    }
     case 'unreachable':
       return 'No way there at all — the realm data joins no path between the two';
+  }
+}
+
+/**
+ * The item a block wants in the pack, where it names one by both halves.
+ *
+ * Three of the seven kinds name an item; the rest are a level, a toll, what
+ * the character was born as, or no way at all — none of them an errand. **Both
+ * halves or nothing**: the errand looks a source up by number and counts the
+ * pack by name, so a block stating one without the other is a refusal waiting
+ * to happen rather than something to offer to go and fetch.
+ */
+export function blockItem(block: RouteBlock): { id: number; name: string } | null {
+  switch (block.kind) {
+    // A lock, and a door a key opens as well as a picklock forces.
+    case 'key':
+    case 'door':
+      return block.keyId === undefined || block.itemName === undefined
+        ? null
+        : { id: block.keyId, name: block.itemName };
+    case 'carry':
+      return block.itemId === undefined || block.itemName === undefined
+        ? null
+        : { id: block.itemId, name: block.itemName };
+    case 'level':
+    case 'toll':
+    case 'born':
+    case 'unreachable':
+      return null;
   }
 }
 
@@ -2400,6 +2760,14 @@ export interface Route {
    * through doors that will not open.
    */
   blocks?: RouteBlock[];
+  /**
+   * What this way itself crosses that the character cannot pass: a door below
+   * both skills the realm accepts, walked because nothing else leads there; on
+   * a way round, the key it wants instead of the death it avoids. Distinct
+   * from `blocks`, which on a walkable plan is what the *cheaper* way needed.
+   * The head says it before the steps, because the walker will stop there.
+   */
+  walls?: RouteBlock[];
   /**
    * What the rooms on the way do to whoever walks through them, folded per
    * spell. See {@link RouteHazard}. Absent where nothing on the route casts
@@ -2429,6 +2797,83 @@ export interface Route {
    * reader (`RouteOptions.alternatives`).
    */
   carrying?: Route;
+}
+
+/**
+ * What a route asks of whoever walks it, keyed so two plans can be compared.
+ *
+ * *The same journey* is not *the same steps*: a plan redrawn from a room two
+ * corridors along is a different list of rooms and usually the same walk, and
+ * what makes it a **different** one is what it now asks for — a key, a level,
+ * a toll, a door nobody here can force, an item a river wants. That is the
+ * question `SessionManager.walkPlan` puts to a plan the character has wandered
+ * off the start of, and a set is the honest shape for it: a route asks for
+ * several things and naming one hides the rest, which is `RouteBlock`'s own
+ * rule one layer up.
+ *
+ * Keyed on the realm's instruction verbatim rather than on the room it is
+ * written in, because two locked doors wanting the same key are one errand.
+ * The value is the chip's own words, so a sentence built from this says what
+ * the panel's steps say.
+ */
+export function demandsOf(route: Route): Map<string, string> {
+  const demands = new Map<string, string>();
+  for (const step of route.steps) {
+    const requirement = step.requirement;
+    if (requirement === null) continue;
+    demands.set(`${requirement.kind}|${requirement.raw}`, step.obstacle?.label ?? requirement.kind);
+  }
+  // A wall is a requirement this character does not meet, so it is the half of
+  // this most worth saying — and `walls` is what *this* plan crosses, never
+  // what a cheaper way needed (`blocks`), which nobody is being offered.
+  for (const wall of route.walls ?? []) {
+    demands.set(`wall|${describeBlock(wall)}`, describeBlock(wall));
+  }
+  // And what a room's own spell wants carried: the `items` half of the
+  // question, and the one thing on a plan that names an errand outright.
+  for (const hazard of route.hazards ?? []) {
+    for (const need of hazard.needs) demands.set(`needs|${need.id}`, need.name);
+  }
+  return demands;
+}
+
+/**
+ * The first item this way asks for, to go and fetch before walking it.
+ *
+ * **What this plan crosses before what its rooms cast**: a door the walker
+ * will stop dead at outranks a spell that only hurts on the way past. `walls`
+ * and never `blocks`, by `demandsOf`'s own rule — `blocks` on a walkable plan
+ * is what a *cheaper* way needed, which is a different route and so a
+ * different errand, and that way is offered as `carrying` where there is one.
+ *
+ * One rather than all of them: the errand collects one thing at a time, and a
+ * second door is a second press. The panel's own sentences name every item, so
+ * what is being fetched is never a surprise.
+ */
+export function itemWanted(route: Route): { id: number; name: string } | null {
+  for (const wall of route.walls ?? []) {
+    const item = blockItem(wall);
+    if (item !== null) return item;
+  }
+  for (const hazard of route.hazards ?? []) {
+    const item = hazard.needs[0];
+    if (item !== undefined) return { id: item.id, name: item.name };
+  }
+  return null;
+}
+
+/**
+ * What `after` asks that `before` did not, in the panel's own words.
+ *
+ * Only ever asked one way round. A redrawn plan that wants *less* than the one
+ * the reader agreed to is the same journey made easier, and stopping to ask
+ * about it would be the client arguing with a piece of luck.
+ */
+export function newDemands(before: Route, after: Route): string[] {
+  const had = demandsOf(before);
+  const words: string[] = [];
+  for (const [key, label] of demandsOf(after)) if (!had.has(key)) words.push(label);
+  return words;
 }
 
 /**

@@ -358,6 +358,67 @@ describe('arming the idle clock', () => {
 });
 
 /*
+ * The counters the realm's own gates are written on. `abil` is the only place
+ * on the wire a quest counter is ever stated, and `9/1291`'s `go portal` is
+ * `checkability 133 5`: unasked, every such gate is priced as a guess and a
+ * character below the rank is put somewhere the plan never named.
+ */
+describe('reading the quest counters', () => {
+  const commandsIn = (queue: CommandQueue): string[] =>
+    queue.snapshot.pending.map((intent) => intent.command);
+
+  /*
+   * Not on the way in: a complete listing settles *every* counter, so it takes
+   * the quest book's own nodes away from the player. The caller is a plan that
+   * crosses a gate written on one (`SessionManager.askCountersFor`).
+   */
+  it('asks nothing until something needs the counters', () => {
+    const { routines, queue } = make();
+    routines.onCharacter(inRealm);
+    expect(commandsIn(queue)).not.toContain('abil');
+  });
+
+  it('asks once when asked to, and never again', () => {
+    const { routines, queue } = make();
+    routines.askAbilities(inRealm);
+    expect(commandsIn(queue).filter((command) => command === 'abil')).toHaveLength(1);
+    routines.askAbilities(inRealm);
+    routines.askAbilities(inRealm);
+    expect(commandsIn(queue).filter((command) => command === 'abil')).toHaveLength(1);
+  });
+
+  /* The listing is the fact; which command produced it is not. */
+  it('asks nothing when a listing has already answered', () => {
+    const { routines, queue } = make();
+    routines.askAbilities({
+      ...inRealm,
+      abilities: { sums: { 133: 4 }, complete: true, at: Date.now() }
+    });
+    expect(commandsIn(queue)).not.toContain('abil');
+  });
+
+  it('asks nothing while the routines are switched off', () => {
+    const { routines, queue } = make({ enabled: false });
+    routines.askAbilities(inRealm);
+    expect(commandsIn(queue)).not.toContain('abil');
+  });
+
+  /* A new connection is a new session's counters. */
+  it('asks again after a reset, and not before one', () => {
+    const { routines, queue } = make();
+    routines.askAbilities(inRealm);
+    // Off the queue, so a second ask is a second ask rather than a coalesce.
+    queue.cancel((intent) => intent.command === 'abil');
+    routines.askAbilities(inRealm);
+    expect(commandsIn(queue)).not.toContain('abil');
+
+    routines.reset();
+    routines.askAbilities(inRealm);
+    expect(commandsIn(queue)).toContain('abil');
+  });
+});
+
+/*
  * The spellbook ask: `powers` for a character the wire calls KAI, `spells`
  * for one with mana, nothing for one the wire has said neither about — a
  * warrior's prompt simply has no mana field, and a guessed command is spoken
@@ -392,7 +453,10 @@ describe('reading the spellbook', () => {
     const commands = commandsIn(queue);
     // `rm` — the position fix — keeps the head of the probe band.
     expect(commands[0]).toBe(DEFAULT_CONFIG.automation.onEnterRealm[0]);
-    expect(commands.at(-1)).toBe('spells');
+    // Behind every one of them, which is what the ordering claim is: the
+    // counters (`abil`) queue behind the book and neither is the entry batch.
+    const batch = DEFAULT_CONFIG.automation.onEnterRealm.length;
+    expect(commands.indexOf('spells')).toBeGreaterThanOrEqual(batch);
   });
 
   it('asks the book the refusal names, once, and says so', () => {

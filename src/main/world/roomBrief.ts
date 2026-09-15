@@ -14,7 +14,6 @@
  * See `mudengine-world` › *The realm data answers before the server is asked*.
  */
 import type { RoomBrief, RoomBriefExit, RoomId } from '../../shared/world';
-import { roomId } from '../../shared/world';
 import { describeObstacle } from './obstacle';
 import type { WorldGraph } from './WorldGraph';
 
@@ -23,7 +22,15 @@ export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
   if (!room) return null;
 
   const exits: RoomBriefExit[] = room.exits.map((exit) => {
-    const to = roomId(exit.map, exit.room);
+    /*
+     * Where the exit *goes*. An exit whose cast teleports puts the character
+     * in the spell's room and never in the table's, and this list is hovered
+     * beside a route panel that walks it to the spell's — two surfaces
+     * disagreeing about one corridor. A draw keeps the table's room, and the
+     * chip beside it says it is a draw (`describeObstacle`), because there is
+     * no single room to name.
+     */
+    const to = graph.beyond(exit);
     // A destination the realm does not hold is a hole in the data: the way out
     // is still real and still worth listing, and it is listed without a name
     // rather than with a fabricated one.
@@ -32,7 +39,18 @@ export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
       direction: exit.direction,
       to,
       ...(destination === undefined ? {} : { name: destination.name }),
-      ...(exit.requirement === null ? {} : { obstacle: describeObstacle(exit.requirement, graph) })
+      ...(exit.requirement === null
+        ? {}
+        : {
+            // The word that opens it, where the room itself holds one: this is
+            // what a player reads *while standing here*, so it is the last
+            // surface that should still be saying `Door, pick/bash 1000`.
+            obstacle: describeObstacle(
+              exit.requirement,
+              graph,
+              graph.leversHere(id, exit.direction)
+            )
+          })
     };
   });
 
