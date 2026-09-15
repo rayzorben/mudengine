@@ -35,6 +35,7 @@
  *   (`noteOnline`), the same recovery a fight gets.
  */
 import {
+  dueStop,
   NO_LOOP,
   nextStop,
   splitStop,
@@ -121,6 +122,16 @@ export interface LoopPlanner {
    */
   roomOf(stop: { name: string; at: { map: number; room: number } | null }): RoomId | null;
   /**
+   * The room the character is standing in, as an address, or null while the
+   * client cannot place it.
+   *
+   * Read at the moment a lap stops, and for that alone: what `startMoving`
+   * asks before walking a lap back is how far the character has *wandered*,
+   * and the baseline that question is measured against is where it stood when
+   * the lap stopped. See `strayedFrom`.
+   */
+  hereNow(): RoomId | null;
+  /**
    * Whether some other walk is running this character right now.
    *
    * Only the `retreated` hold reads it, and only to decide when to let go: a
@@ -144,6 +155,39 @@ export class LoopRunner {
   private index = 0;
   private forward = true;
   private laps = 0;
+  /**
+   * When each stop was last **left cleared**, keyed by the stop's own room
+   * text, against the clock a stop may state (`LoopStop.every`, todo 15).
+   *
+   * Left, not entered: the room makes monsters again from the moment the last
+   * one died, so entering it is the wrong end of the visit — a fight that ran
+   * two minutes would otherwise start the clock two minutes early and send the
+   * lap back to an empty room.
+   *
+   * **A lap that found the room empty resets nothing**, so the entry stays as
+   * it was and the stop keeps coming up due. That is the cautious reading and
+   * it is deliberate: an empty visit means the clock was wrong or somebody
+   * else took the kill, and writing *now* into it would sit the character out
+   * of a lair that is standing.
+   *
+   * Kept across a stop and a resume, like the lap's place: the rooms have gone
+   * on regenerating while the player was away, and the elapsed time is exactly
+   * what says so. Cleared with the run (`reset`) and with the realm.
+   */
+  private clearedAt = new Map<string, number>();
+  /**
+   * Whether anything was in the room during this visit to the current stop.
+   *
+   * Half of *cleared*: the other half is the room being empty when the lap
+   * leaves. A room that was empty the whole time was not cleared by this
+   * character and must not reset its clock.
+   */
+  private sawMonster = false;
+  /**
+   * Whether the room was clear the last time this lap looked at the stop it is
+   * standing in. The other half of *cleared*; see `noteLeaving`.
+   */
+  private roomClear = false;
   private failures = 0;
   private status: LoopStatus = 'idle';
   private reason: string | null = null;
@@ -226,6 +270,26 @@ export class LoopRunner {
    * the hold, because a stopped loop is not waiting for anything.
    */
   private offline = false;
+  /**
+   * Where the character stood when this lap stopped, and null while it is
+   * running or the client could not place it.
+   *
+   * The baseline for `SessionManager.startMoving`'s wander question. A lap's
+   * legs are short *by construction* only once the lap is being walked: the
+   * first leg of a lap three maps away is a journey, and so is the leg to a
+   * stop the loop builder put across the realm. Measuring the absolute
+   * distance to the stop it is heading for therefore asked *this character has
+   * wandered a long way* of a character that had not moved an inch — the lap
+   * was stopped and started again from the same room, which is the ordinary
+   * way to take a breath mid-leg.
+   *
+   * So the lap measures what the route measures: how much further away the
+   * character is now than it was when the movement stopped. Recorded as the
+   * room rather than as a distance, because the distance costs a search of the
+   * realm and a stop is not always a person pressing a button — a fight giving
+   * up stops a lap too — while the press that reads it is always a person.
+   */
+  private stoppedIn: RoomId | null = null;
   private timer: NodeJS.Timeout | null = null;
   /** When this run started, and what the character's experience read then. */
   private startedAt: number | null = null;
@@ -333,6 +397,7 @@ export class LoopRunner {
     this.heldSince = null;
     this.escaped = false;
     this.offline = false;
+    this.stoppedIn = null;
     this.forward = true;
     this.reason = null;
     this.status = 'running';
@@ -386,6 +451,9 @@ export class LoopRunner {
   stop(reason: string): void {
     if (this.status !== 'running') return;
     this.clearTimer();
+    // Before anything else moves: where the character is standing *now* is the
+    // baseline the resume measures its wander against. See `stoppedIn`.
+    this.stoppedIn = this.planner.hereNow();
     this.status = 'stopped';
     this.reason = reason;
     this.errand = false;
@@ -431,6 +499,7 @@ export class LoopRunner {
     if (state.phase !== 'in-game') return t('automation.loops.refusalNotInRealm');
     this.status = 'running';
     this.reason = null;
+    this.stoppedIn = null;
     this.fighting = fightIsRunning(state);
     // The player asked for the lap back, which outranks the beat an escape takes.
     this.escaped = false;
@@ -529,6 +598,8 @@ export class LoopRunner {
     this.index = 0;
     this.laps = 0;
     this.failures = 0;
+    this.clearedAt.clear();
+    this.sawMonster = false;
     this.waiting = false;
     this.lingering = false;
     this.hurt = false;
@@ -537,6 +608,7 @@ export class LoopRunner {
     this.escaped = false;
     this.errand = false;
     this.offline = false;
+    this.stoppedIn = null;
     this.startedAt = null;
     this.lapBegunAt = null;
     this.expAtStart = null;
@@ -824,6 +896,18 @@ export class LoopRunner {
     if (this.reanchor) {
       this.reanchor = false;
       this.anchorRate(state);
+    }
+    /*
+     * What the stop under the character's feet holds, for the clock it may
+     * state (todo 15). **Only while dwelling**: during a leg the room is a
+     * corridor, and a wandering monster met in one would otherwise be read as
+     * the next stop's lair — a false clear, and a lair sat out for a full
+     * clock on the strength of it.
+     */
+    if (this.lingering) {
+      const monsters = this.monstersHere(state);
+      if (monsters) this.sawMonster = true;
+      this.roomClear = !monsters;
     }
     // A hold is a fact the card draws, so its edges are published; the value
     // itself changes once per fight, not once per status line.
@@ -1239,16 +1323,57 @@ export class LoopRunner {
   private step(): void {
     const loop = this.loop;
     if (!loop) return;
-    const was = this.index;
-    const next = nextStop(loop, this.index, this.forward);
+    // Leaving: the clock on the stop being left starts now, if this visit
+    // actually cleared it. Before the index moves, because it is about the
+    // stop under the character's feet.
+    this.noteLeaving();
+    /*
+     * Which stop to walk to is `dueStop`'s (todo 15), not `nextStop`'s: a
+     * lair on a slower clock than the ring around it is standing on only some
+     * of the laps, and walking its detour on the others earns the detour and
+     * nothing else. With no clock stated anywhere every stop is due, so this
+     * answers exactly what `nextStop` answered and a loop written by hand
+     * walks as written.
+     *
+     * The lap count comes back from the same scan, because a skipped stop
+     * must not count as a visit — a loop of three rooms would otherwise
+     * report laps it never walked.
+     */
+    const next = dueStop(loop, this.index, this.forward, this.clearedAt, this.now());
     this.index = next.index;
     this.forward = next.forward;
     // A lap is the list run through once, however it is walked.
-    if ((loop.bounce && was === loop.stops.length - 1) || (!loop.bounce && next.index === 0)) {
-      this.laps += 1;
-    }
+    if (next.lapped) this.laps += 1;
     this.publish();
     this.advance(false);
+  }
+
+  /**
+   * The stop being left: record its clock where this visit cleared it.
+   *
+   * Cleared is two facts and needs both — the room **held** something during
+   * the visit, and holds nothing now. A room that was empty throughout was not
+   * cleared by this character (see `clearedAt`), and one left with a monster
+   * still in it was not cleared at all: the lap is walking out of a fight, and
+   * starting the room's clock there would promise a lair that is still full.
+   *
+   * An occupant the client cannot place counts as a monster. Unknown is never
+   * the reassuring answer, and the reassuring answer here is *the room is
+   * clear*.
+   */
+  private noteLeaving(): void {
+    const stop = this.loop?.stops[this.index];
+    const saw = this.sawMonster;
+    this.sawMonster = false;
+    const clear = this.roomClear;
+    this.roomClear = false;
+    if (stop === undefined || stop.every === undefined || !saw || !clear) return;
+    this.clearedAt.set(stop.room, this.now());
+  }
+
+  /** Anything in the room that is not a person. See `noteLeaving`. */
+  private monstersHere(state: CharacterState): boolean {
+    return state.room.occupants.some((occupant) => occupant.kind !== 'player');
   }
 
   private clearTimer(): void {
@@ -1308,6 +1433,15 @@ export class LoopRunner {
   get heading(): RoomId | null {
     if (this.loop === null || this.status === 'idle') return null;
     return this.stopRooms[this.index] ?? null;
+  }
+
+  /**
+   * Where the character stood when this lap stopped, for the one caller that
+   * measures how far it has wandered since. Null while it is running, and
+   * where the client could not place it. See `stoppedIn`.
+   */
+  get strayedFrom(): RoomId | null {
+    return this.status === 'stopped' ? this.stoppedIn : null;
   }
 
   /** The stop the character is standing in, else the first. */

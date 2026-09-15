@@ -7,10 +7,15 @@ import { useRemembered, useRememberedRanks } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
 import {
+  questBars,
   questExperience,
   questLevel,
   questSide,
+  stepDone,
+  stepsDone,
   type Quest,
+  type QuestBar,
+  type QuestDoer,
   type QuestGate,
   type QuestReward,
   type QuestStep,
@@ -114,8 +119,9 @@ export interface QuestCardProps extends CardChrome {
    */
   counters?: AbilitySums | null;
   /**
-   * The rank each quest has been *seen* to reach, from what this character
-   * typed this session.
+   * The rank each quest has been *seen* to reach, from what this character was
+   * watched doing this session: a line typed at the asker, or the death of the
+   * monster a step is owned by.
    *
    * The third reading, and it sits between the other two. The realm's own count
    * is evidence and outranks it; a mark somebody left by hand is an assertion
@@ -133,6 +139,17 @@ export interface QuestCardProps extends CardChrome {
    * worse than fifteen unmarked routes is the wrong one picked out.
    */
   characterClass?: string | null;
+  /**
+   * And its race and level, which with the class are the three facts the realm
+   * gates a quest on that the client holds a matching one for.
+   *
+   * They decide what this character cannot do (`questBars`) and nothing else —
+   * the class alone still marks the reader's route. Null marks and bars
+   * nothing: a book that dimmed half its rows while the sheet was in flight
+   * would be reporting the client's own progress rather than the realm's.
+   */
+  characterRace?: string | null;
+  characterLevel?: number | null;
 }
 
 /**
@@ -157,6 +174,15 @@ interface Row {
   hidden: boolean;
   /** How far through it this character is, and who says so. */
   progress: Progress;
+  /**
+   * What shuts this character out of it, or empty where nothing known does.
+   *
+   * Empty is also the answer before the sheet has arrived, which is why it is
+   * read as *nothing stops them* rather than as *not checked*: a book that
+   * dimmed on connect and undimmed a second later would be reporting the
+   * client's own progress rather than the realm's.
+   */
+  bars: QuestBar[];
 }
 
 /**
@@ -174,10 +200,20 @@ interface Progress {
   /** Steps this rank leaves behind, and how many there are. */
   done: number;
   total: number;
+  /**
+   * Whether the counter is held **at all**, which the rank cannot say.
+   *
+   * A complete listing that does not name an id reads it as zero, and the
+   * realm grants a flag counter *at* zero (`giveability 186 0`) — so the two
+   * are one number and different facts. This is the other half of what the
+   * source said: the listing named the id, or the player marked a rank, or
+   * the client watched a step. See `stepDone`.
+   */
+  held: boolean;
   /** True where `abil` stated it, false where it is the player's own mark. */
   observed: boolean;
   /**
-   * True where the number came from watching what this character typed rather
+   * True where the number came from watching what this character did rather
    * than from `abil` or from a mark — the middle of the three readings. See
    * `QuestCardProps.said`.
    */
@@ -186,35 +222,14 @@ interface Progress {
   at: number | null;
 }
 
-/**
- * Whether a rank leaves this step behind.
- *
- * `to <= rank`, never *before this one in the list*: the realm writes
- * alternatives as separate steps with the same `to` — two NPCs who each
- * advance the counter from 1 to 2 — and doing either does both. Ranking by
- * position would grey one and leave its twin looking outstanding.
- */
-function stepDone(step: QuestStep, rank: number | null): boolean {
-  return rank !== null && step.to !== undefined && step.to <= rank;
-}
-
-/**
- * How many steps a rank leaves behind.
- *
- * One arithmetic, read by the row's chip and by the track's own count, so the
- * figure in the table and the greying on the chain cannot disagree about the
- * same quest.
- */
-function stepsDone(quest: Quest, rank: number | null): number {
-  return quest.steps.filter((step) => stepDone(step, rank)).length;
-}
-
 export function questCopyText(quests: readonly Quest[]): string {
   return [
     t('cards.quests.title'),
     ...quests.map((quest) => {
       const fields = {
         name: quest.name,
+        // Drawn on the row, so it goes on the clipboard with it.
+        id: quest.id,
         stepCount: quest.steps.length,
         exp: questExperience(quest).toLocaleString()
       };
@@ -234,7 +249,7 @@ export function questCopyText(quests: readonly Quest[]): string {
  */
 export function questStepsText(quest: Quest): string {
   return [
-    quest.name,
+    `${quest.name} ${t('cards.quests.counter', { id: quest.id })}`,
     ...quest.steps.map((step) => {
       const parts: Array<string | null | undefined> = [
         flagWords(step),
@@ -321,6 +336,111 @@ export function gateWords(gate: QuestGate): string {
     case 'price':
       return t('cards.quests.gate.price', { amount: gate.amount.toLocaleString() });
   }
+}
+
+/**
+ * One thing that shuts this character out, in the realm's own gate words.
+ *
+ * The same register `gateWords` writes — a lower-case fragment, the realm's
+ * own names — because that is what these *are*: the gates of the routes the
+ * character cannot take, read from the other side. A class or a race is
+ * *never*, a level is *not yet*, and the two are worded apart.
+ */
+export function barWords(bar: QuestBar): string {
+  switch (bar.kind) {
+    case 'class':
+      return t('cards.quests.bar.klass', { names: bar.names.join(', ') });
+    case 'race':
+      return t('cards.quests.bar.race', { names: bar.names.join(', ') });
+    case 'counter':
+      return t('cards.quests.bar.counter', { names: bar.names.join(', ') });
+    case 'level':
+      return t('cards.quests.bar.level', { level: bar.level });
+  }
+}
+
+/**
+ * Why a quest is drawn sunk and quiet, as the row's own hover text.
+ *
+ * Two sentences, because *not yet* and *not ever* are different statements
+ * about a character and one word for both would be wrong half the time: a
+ * level is a rung they climb, and a class, a race or a counter already spent
+ * is not. Two literal `t()` calls, as a plural pair is.
+ */
+export function barsTitle(bars: readonly QuestBar[]): string | undefined {
+  if (bars.length === 0) return undefined;
+  const reasons = bars.map(barWords).join(' · ');
+  return bars.every((bar) => bar.kind === 'level')
+    ? t('cards.quests.bar.titleYet', { reasons })
+    : t('cards.quests.bar.title', { reasons });
+}
+
+/** `#642` — this card's own stand-in for a row the realm does not name. */
+const UNNAMED = /^#\d+$/;
+
+/**
+ * A realm name, drawn as the control it is everywhere else in the client.
+ *
+ * *A name is a control everywhere it is printed* — and this card was printing
+ * five of them and making controls of two. **`yellowed note` is an item**: it
+ * has a weight, a price, a row number and a panel that states them, and the
+ * one card in the client that could not open it was the one telling the
+ * player to go and get it. Reported 2026-09-15.
+ *
+ * Two refusals, both the same rule about a control bound to nowhere. **A null
+ * `onName`** is a pinned float, where the panel belongs to the shown character
+ * and this card's realm may not be theirs — as it already did for the asker.
+ * And **`#642`** is not a name: it is this card admitting the realm gave the
+ * row none, so there is nothing to look up and it stays the text it is.
+ */
+function Name({
+  children,
+  onName
+}: {
+  children: string;
+  onName?: ((name: string, anchor: HTMLElement) => void) | null;
+}): React.JSX.Element {
+  if (!onName || UNNAMED.test(children)) return <span>{children}</span>;
+  return (
+    <button
+      className="lookup"
+      onClick={(event) => onName(children, event.currentTarget)}
+      onMouseDown={keepFocus}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * One reward, with the realm's own name in it as a control.
+ *
+ * Only the **name** is the control and never the sentence around it: a spell
+ * reward reads *teaches {name}*, and a button carrying the verb would claim
+ * the word *teaches* is something to look up. The other five kinds — exp,
+ * coins, an ability rank, lives, an alignment shift — name nothing the realm
+ * has a row for, so they stay the words `rewardWords` writes.
+ */
+function Reward({
+  reward,
+  onName
+}: {
+  reward: QuestReward;
+  onName?: ((name: string, anchor: HTMLElement) => void) | null;
+}): React.JSX.Element {
+  if (reward.kind === 'item') {
+    return <Name onName={onName}>{reward.name ?? `#${reward.id}`}</Name>;
+  }
+  if (reward.kind === 'spell') {
+    return (
+      <>
+        <span>{t('cards.quests.reward.spellVerb')} </span>
+        <Name onName={onName}>{reward.name ?? `#${reward.id}`}</Name>
+      </>
+    );
+  }
+  return <>{rewardWords(reward)}</>;
 }
 
 /** One reward, in words. */
@@ -469,10 +589,25 @@ function bringOf(step: QuestStep): Bring[] {
 
 /** The command a step is reached by, or null where the realm traced nobody. */
 function askWords(step: QuestStep): string | null {
-  // A room-rooted block carries an owner with an empty name, so `who` alone is
-  // not enough: it would draw `ask ` with a clickable nothing after it.
-  if (step.who === undefined || step.who.trim().length === 0) return null;
+  /*
+   * A step whose block a monster's **death** runs is not reached by a command
+   * at all: it is reached by killing the thing. First, because such a step has
+   * no `say` and would otherwise fall out of the bottom as *nothing to do*,
+   * which is what the book said about the Phoenix chain's two boss steps.
+   */
+  if (step.kill !== undefined) return t('cards.quests.step.kill', { who: step.kill });
   if (step.say.length === 0) return null;
+  /*
+   * A room's own script has no asker — the altar answers `touch gem` to
+   * whoever is standing on it — and the phrase is typed *there* rather than at
+   * somebody (todo 12). Two sentences for two different acts, and the place
+   * beside it is the row's own `where` control.
+   */
+  if (step.who === undefined || step.who.trim().length === 0) {
+    return step.room === undefined
+      ? null
+      : t('cards.quests.step.doHere', { word: step.say[0] ?? '' });
+  }
   return t('cards.quests.step.ask', { who: step.who, word: step.say[0] ?? '' });
 }
 
@@ -562,6 +697,8 @@ function QuestCard({
   onGoTo,
   onName,
   characterClass,
+  characterRace,
+  characterLevel,
   counters,
   said,
   ...chrome
@@ -633,9 +770,17 @@ function QuestCard({
     // Watched, then marked: an observation beats an assertion made without one.
     const watched = said?.[quest.id] ?? null;
     const rank = observed ?? watched ?? ranks.get(String(quest.id));
+    /*
+     * And whether the counter is held at all, which is the *listing naming the
+     * id* where the realm counted and *somebody having said a rank* where it
+     * did not. Zero is a rank the realm grants, so the number alone cannot
+     * carry this: see `stepDone`.
+     */
+    const held = observed !== null ? listed !== undefined : rank !== null;
     return {
       rank,
-      done: stepsDone(quest, rank),
+      held,
+      done: stepsDone(quest, rank, held),
       total: quest.steps.length,
       observed: observed !== null,
       watched: observed === null && watched !== null,
@@ -643,22 +788,49 @@ function QuestCard({
     };
   };
 
-  const rows = useMemo<Row[]>(
-    () =>
-      quests.map((quest) => ({
+  const rows = useMemo<Row[]>(() => {
+    const who: QuestDoer = {
+      className: characterClass ?? null,
+      race: characterRace ?? null,
+      level: characterLevel ?? null,
+      // The realm's exclusivity gates: the three great chains each demand you
+      // have started neither of the other two, and that is the one bar in the
+      // data that is forever.
+      counters: counters ?? null
+    };
+    const book = quests.map((quest) => {
+      /*
+       * The standing first, because the bar depends on it: what shuts this
+       * character out is a question about the step they would take **next**,
+       * and which step that is is what the progress says. Computed apart and
+       * the two never met, the row said `3/50` in its name cell and *this
+       * character cannot do it* in its own tooltip.
+       */
+      const progress = progressOf(quest);
+      return {
         quest,
         side: questSide(quest),
         level: questLevel(quest),
         exp: questExperience(quest),
         limits: limitWords(quest),
         hidden: hidden.has(String(quest.id)),
-        progress: progressOf(quest)
-      })),
-    // `progressOf` is a plain closure over exactly these two, so the pair is
-    // the whole of what it reads: the listing, and the marks kept on this
-    // machine.
-    [quests, hidden, counters, said, ranks]
-  );
+        progress,
+        bars: questBars(quest, who, progress)
+      };
+    });
+    /*
+     * And what this character cannot do goes last — **the card's own order**,
+     * which is the one a third click on a heading comes back to, and the one
+     * place a table is allowed an opinion about what matters. A book of
+     * thirty-nine quests is mostly other people's: a Paladin has no business
+     * reading past `Smash` to find the good chain, and a quest sunk here is
+     * never hidden, because *not for you* and *not interested* are different
+     * statements and only the second is the player's.
+     *
+     * Stable, so within each half the realm's own order survives.
+     */
+    return book.sort((a, b) => Number(a.bars.length > 0) - Number(b.bars.length > 0));
+  }, [quests, hidden, counters, said, ranks, characterClass, characterRace, characterLevel]);
 
   /*
    * A hidden quest is *gone*, not greyed — that is what hiding is for. The way
@@ -683,7 +855,16 @@ function QuestCard({
          */
         [
           row.quest.name,
-          ...row.quest.steps.map((step) => `${step.who ?? ''} ${step.say.join(' ')}`),
+          // Its counter's own number, which is now drawn on the row: `abil`
+          // prints `PhoenixQuest(133)` and a player reading that listing wants
+          // to type 133 here and land on the chain.
+          String(row.quest.id),
+          // The killer too: *dread mystic* is as good a way to find the
+          // Phoenix chain as its asker's name, and on the two steps it owns
+          // it is the only name the step has.
+          ...row.quest.steps.map(
+            (step) => `${step.who ?? ''} ${step.kill ?? ''} ${step.say.join(' ')}`
+          ),
           ...row.limits
         ].join(' '),
       cell: (row) => (
@@ -693,10 +874,38 @@ function QuestCard({
             className="lookup"
             onClick={() => setOpen(open === row.quest.id ? null : row.quest.id)}
             onMouseDown={keepFocus}
+            /*
+              The reason again, on the row's one focusable element. The row
+              itself carries it, but a `title` on an ancestor is shadowed by
+              any descendant that has its own — and the counter number beside
+              this name now does — so a hand resting on the most likely half of
+              a dimmed row would have been told the number's story instead of
+              why the row is dimmed.
+
+              And the name itself where nothing bars it, which is the promise
+              the cell's own rule has always made — *a shortened name is still
+              the same quest and its full text is a tooltip and a click away* —
+              and never kept. It reads `Go…` on a 280px rail, and the counter
+              number beside it costs a few more characters.
+            */
+            title={barsTitle(row.bars) ?? row.quest.name}
             type="button"
           >
             {row.quest.name}
           </button>
+          {/*
+            The counter's own ability number, in the quiet monospace figure
+            every other realm number in the client is drawn in (`.entity-id`).
+            Spelled the way the **wire** spells an ability — `(133)`, as
+            `abil` prints it — rather than the `#642` of an item or a monster
+            row: this is the one number a player reads off the server's own
+            listing, and matching what they are looking at is the whole use of
+            printing it. `EntityNumber` is not reached for, because its job is
+            refusing to guess *which row* and a quest counter has exactly one.
+          */}
+          <span className="entity-id" title={t('cards.quests.counterTooltip')}>
+            {t('cards.quests.counter', { id: row.quest.id })}
+          </span>
           {/*
             How far through it this character is, on the row, so *which chains
             am I part-way through* is answered without opening thirty-nine
@@ -855,7 +1064,15 @@ function QuestCard({
           'data-hidden': row.hidden ? 'true' : 'false',
           // The opened row is marked tonally, like the roster's selected row:
           // the track below has to say which of forty quests it belongs to.
-          'data-open': open === row.quest.id ? 'true' : 'false'
+          'data-open': open === row.quest.id ? 'true' : 'false',
+          /*
+            Sunk to the bottom and drawn quiet, with the realm's own reason as
+            the row's hover text. On the row rather than on the name, because
+            the whole row is what is dimmed and the reason has to be reachable
+            from whichever part of it the hand is over.
+          */
+          'data-barred': row.bars.length > 0 ? 'true' : 'false',
+          ...(barsTitle(row.bars) === undefined ? {} : { title: barsTitle(row.bars) })
         })}
         rows={shown}
         session={session}
@@ -907,9 +1124,9 @@ function Track({
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
 }): React.JSX.Element {
-  const { rank, observed, watched, at } = progress;
-  // `stepDone` is the whole of the rule and it is stated once, above.
-  const done = (step: QuestStep): boolean => stepDone(step, rank);
+  const { rank, held, observed, watched, at } = progress;
+  // `stepDone` is the whole of the rule and it is stated once, in `quests.ts`.
+  const done = (step: QuestStep): boolean => stepDone(step, rank, held);
   const next = quest.steps.findIndex((step) => !done(step));
   const doneCount = progress.done;
 
@@ -938,6 +1155,10 @@ function Track({
     <div className="quest-track">
       <div className="quest-track-head">
         <h4>{quest.name}</h4>
+        {/* The counter's own number, as the row above it carries. */}
+        <span className="entity-id" title={t('cards.quests.counterTooltip')}>
+          {t('cards.quests.counter', { id: quest.id })}
+        </span>
         <span className="quiet-note">
           {quest.steps.length === 1
             ? t('cards.quests.progress.done.one', { done: doneCount, total: quest.steps.length })
@@ -1091,20 +1312,34 @@ function Step({
           the track already states what the step moves and what it pays, which
           is the whole of what the realm knows about them.
         */}
-        {ask !== null && (
+        {/*
+          Three acts, three literal calls, for the three things the realm can
+          make a step out of: a step somebody answers is *ask Markus letter*, a
+          step a room answers is *do touch gem there*, and a step a **death**
+          hands over is *kill dread mystic*. The place beside each is the same
+          `where` control, which for a kill is where the thing stands.
+
+          The first two go in `.quest-ask`, which is monospace because it is the
+          line that goes in the console. The third does not: `kill` is not a
+          word this realm's command table has (`Commands.cs` names `Attack`,
+          `Bash`, `BackStab` and `Jumpkick`), so drawing it there would offer a
+          command that does not exist. It takes the `Hand over` rows' shape
+          instead — a label and a realm name — which is what it is.
+        */}
+        {step.kill !== undefined ? (
+          <p className="quest-kill">
+            <span className="quest-verb">{t('cards.quests.step.killVerb')}</span>
+            <Name onName={onName}>{step.kill}</Name>
+          </p>
+        ) : ask === null ? null : (
           <p className="quest-ask">
-            <span>{t('cards.quests.step.verb')} </span>
-            {onName ? (
-              <button
-                className="lookup"
-                onClick={(event) => onName(step.who ?? '', event.currentTarget)}
-                onMouseDown={keepFocus}
-                type="button"
-              >
-                {step.who}
-              </button>
+            {step.who === undefined || step.who.trim().length === 0 ? (
+              <span>{t('cards.quests.step.doVerb')} </span>
             ) : (
-              <span>{step.who}</span>
+              <>
+                <span>{t('cards.quests.step.verb')} </span>
+                <Name onName={onName}>{step.who}</Name>
+              </>
             )}
             <span> {step.say[0]}</span>
             {step.say.length > 1 && (
@@ -1155,18 +1390,7 @@ function Step({
                   <span className="quest-verb">
                     {item.hand ? t('cards.quests.bring.hand') : t('cards.quests.bring.carry')}
                   </span>
-                  {onName ? (
-                    <button
-                      className="lookup"
-                      onClick={(event) => onName(item.name, event.currentTarget)}
-                      onMouseDown={keepFocus}
-                      type="button"
-                    >
-                      {item.name}
-                    </button>
-                  ) : (
-                    <span>{item.name}</span>
-                  )}
+                  <Name onName={onName}>{item.name}</Name>
                   {/* Silent where the realm does not place it: naming no
                       source is the honest answer, and a guess is worse. */}
                   {source !== null && <span className="quiet-note">{source}</span>}
@@ -1187,30 +1411,40 @@ function Step({
           <div className="quest-ways">
             <span className="quest-verb">{t('cards.quests.anyOf')}</span>
             <dl>
-              {step.ways.map((way, index) => {
-                const pays = [
-                  // With the source, because main works one out for a route's
-                  // items as well as a step's and nothing was reading it —
-                  // the one route that matters to the reader is their own.
-                  ...way.takes.map((item) => {
-                    const name = item.name ?? `#${item.id}`;
-                    const from = sourceWords(step, quest, at, item.id);
-                    const said = `${t('cards.quests.bring.hand')} ${name}`;
-                    return from === null ? said : `${said} (${from})`;
-                  }),
-                  ...rewardsOf(way, quest.id).map(rewardWords)
-                ];
-                return (
-                  <Fragment key={`${index}:${way.needs.map((gate) => gate.kind).join()}`}>
-                    <dt data-mine={ownWay(way, characterClass) ? 'true' : 'false'}>
-                      {way.needs.map(routeWords).join(' · ')}
-                    </dt>
-                    <dd data-mine={ownWay(way, characterClass) ? 'true' : 'false'}>
-                      {pays.join(' · ')}
-                    </dd>
-                  </Fragment>
-                );
-              })}
+              {step.ways.map((way, index) => (
+                <Fragment key={`${index}:${way.needs.map((gate) => gate.kind).join()}`}>
+                  <dt data-mine={ownWay(way, characterClass) ? 'true' : 'false'}>
+                    {way.needs.map(routeWords).join(' · ')}
+                  </dt>
+                  {/*
+                    The names here are controls too, and they are the ones with
+                    nowhere else to be: a reward only *this* class's route pays
+                    never reaches the step's own `Gives` line, which carries
+                    what every route shares.
+                  */}
+                  <dd data-mine={ownWay(way, characterClass) ? 'true' : 'false'}>
+                    {/* With the source, because main works one out for a
+                        route's items as well as a step's and nothing was
+                        reading it — the one route that matters is the
+                        reader's own. */}
+                    {way.takes.map((item) => {
+                      const from = sourceWords(step, quest, at, item.id);
+                      return (
+                        <span className="quest-give" key={`take:${item.id}`}>
+                          {t('cards.quests.bring.hand')}{' '}
+                          <Name onName={onName}>{item.name ?? `#${item.id}`}</Name>
+                          {from !== null && <span className="quiet-note"> ({from})</span>}
+                        </span>
+                      );
+                    })}
+                    {rewardsOf(way, quest.id).map((reward, nth) => (
+                      <span className="quest-give" key={`give:${reward.kind}:${nth}`}>
+                        <Reward onName={onName} reward={reward} />
+                      </span>
+                    ))}
+                  </dd>
+                </Fragment>
+              ))}
             </dl>
           </div>
         )}
@@ -1220,7 +1454,7 @@ function Step({
             <span className="quest-verb">{t('cards.quests.gives')}</span>
             {rewards.map((reward, index) => (
               <span className="quest-give" key={`${reward.kind}:${index}`}>
-                {rewardWords(reward)}
+                <Reward onName={onName} reward={reward} />
               </span>
             ))}
           </p>

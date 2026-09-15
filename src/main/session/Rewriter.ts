@@ -17,15 +17,18 @@ import type { BatchBlock } from '../parse/Classifier';
 import type { CarriedItem, CharacterState, Denomination } from '../../shared/character';
 import { sameItem } from '../../shared/items';
 import { quotedInCopper } from '../../shared/coins';
-import { wireItem } from '../../shared/entities';
+import { wireItem, type ItemEntity } from '../../shared/entities';
 import { equipVerdict, type Wearer } from '../../shared/gear';
+import { readEffects } from '../../shared/abilities';
 import {
   activeDesign,
   ENTITY_SPECS,
+  NO_EFFECTS,
   renderRewrite,
   REWRITE_ENTITIES,
   rewriteToChunk,
   type InventoryRow,
+  type ReadEffects,
   type PartyRow,
   type RewriteDesign,
   type RewriteEntity,
@@ -136,6 +139,29 @@ export class Rewriter {
     return rewriteToChunk(lines);
   }
 
+  /**
+   * What the realm says a thing does, read into words.
+   *
+   * Here rather than in the pure renderer for the reason the equip verdict is:
+   * naming an ability needs the realm on the other end (three ids are worded
+   * differently on GreaterMUD) and the realm's own class table for a
+   * restriction. `readEffects` is the one reading, shared with the Reference
+   * card so a ring cannot say two things.
+   */
+  private effectsOf(item: ItemEntity, context: RewriteContext): ReadEffects {
+    const pairs = item.abilities;
+    if (pairs === undefined || pairs.length === 0) return NO_EFFECTS;
+    return readEffects(
+      pairs,
+      {
+        table: 'item',
+        family: context.state.realm === 'greatermud' ? 'greatermud' : 'other',
+        classNames: context.world?.namedClasses() ?? {}
+      },
+      t
+    );
+  }
+
   private gather(
     entity: RewriteEntity,
     block: Block | BatchBlock,
@@ -163,7 +189,11 @@ export class Rewriter {
                 ...(carried.rawText === undefined ? {} : { rawText: carried.rawText })
               })
             : carried;
-          return { item, verdict: equipVerdict(item, context.wearer, t) };
+          return {
+            item,
+            verdict: equipVerdict(item, context.wearer, t),
+            effects: this.effectsOf(item, context)
+          };
         });
         const coins: Partial<Record<Denomination, number>> = {};
         for (const entry of itemList(carrying)) {
@@ -207,7 +237,8 @@ export class Rewriter {
               cost: quotedInCopper(price),
               note: row['note']?.trim() || null,
               item,
-              verdict: equipVerdict(item, context.wearer, t)
+              verdict: equipVerdict(item, context.wearer, t),
+              effects: this.effectsOf(item, context)
             };
           })
           .filter((row) => row.name.length > 0);

@@ -1195,6 +1195,46 @@ describe('what to swing with', () => {
     expect(sent).toEqual(['', '']);
   });
 
+  /*
+   * And the count is rounds **between looks**, not rounds of one fight.
+   *
+   * It restarted with every `*Combat Off*` — the very event that makes the
+   * room list stale — so a room of four monsters fought one at a time, three
+   * or four rounds each, got no look at all: every fight ended before the
+   * third round was counted and took the count with it (live, 2026-09-14,
+   * Rhudaur Town Centre, 134 fights and 113 looks where the setting asks for
+   * one every three rounds).
+   */
+  it('counts the rounds between looks across the fights they fall in', () => {
+    const auto = make(combat({ engage: 'none', refreshRounds: 3 }));
+    const fighting = (inCombat: boolean) =>
+      state({
+        room,
+        inCombat,
+        combat: {
+          ...EMPTY_CHARACTER.combat,
+          engaged: inCombat,
+          target: inCombat ? 'giant rat' : null
+        }
+      });
+
+    auto.onCharacter(fighting(true));
+    for (let round = 0; round < 2; round += 1) {
+      auto.onBlock(block('mob-hits'));
+      vi.advanceTimersByTime(200);
+    }
+    drain();
+    expect(sent).toEqual([]);
+
+    // The monster dies and the next one in the room is engaged a moment later.
+    auto.onCharacter(fighting(false));
+    auto.onCharacter(fighting(true));
+    auto.onBlock(block('mob-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual(['']);
+  });
+
   it('never re-reads the room when it was not asked to', () => {
     const auto = make(combat({ engage: 'none', refreshRounds: 0 }));
     auto.onCharacter(

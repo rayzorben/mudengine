@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormE
 
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
 import { FindField } from './CardTable';
+import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import NamedText from './NamedText';
 import type { NameIndex } from '../lib/names';
@@ -773,6 +774,29 @@ function ConversationCard({
    */
   const heightRef = useRef(0);
   const resumeRef = useRef<number | undefined>(undefined);
+  /**
+   * Where this card itself last put the box.
+   *
+   * **A scroll the card caused is not the reader scrolling** (todo 10). The
+   * `scroll` event says nothing about who moved the box, and following the
+   * newest line *is* a scroll — delivered a frame later, by which time another
+   * line may have arrived and made the position the card set no longer the
+   * live edge. Read as a backscroll, every arriving line then extended a hold
+   * nobody had asked for, and a busy conversation never followed at all.
+   *
+   * So every programmatic move records where it put the box, and a `scroll`
+   * landing there is this card's own. A person's scroll lands somewhere else
+   * by definition: the wheel, the bar and the keys all move it.
+   */
+  const ownScrollRef = useRef(-1);
+  /**
+   * Whether lines have arrived while the reader is holding the box still.
+   *
+   * The one thing here that is state: it draws the *jump to latest* button, as
+   * the console's own hold draws one. False while following, so the button is
+   * absent rather than disabled — there is nothing to jump to.
+   */
+  const [behind, setBehind] = useState(false);
 
   /*
    * The faces with anything behind them, in their fixed order. The whole
@@ -857,9 +881,13 @@ function ConversationCard({
   const follow = (): void => {
     window.clearTimeout(resumeRef.current);
     resumeRef.current = undefined;
+    setBehind(false);
     const node = logRef.current;
     if (node === null) return;
     node.scrollTop = node.scrollHeight;
+    // What the card put there, so the `scroll` event this causes is known for
+    // the card's own and does not read as somebody scrolling away.
+    ownScrollRef.current = node.scrollTop;
     heightRef.current = node.scrollHeight;
   };
 
@@ -881,10 +909,17 @@ function ConversationCard({
   const noteScroll = (): void => {
     const node = logRef.current;
     if (node === null) return;
+    // The card's own move, arriving a frame late. Not a backscroll, whatever
+    // the geometry says by now — see `ownScrollRef`.
+    if (Math.abs(node.scrollTop - ownScrollRef.current) <= 1) return;
+    ownScrollRef.current = -1;
     window.clearTimeout(resumeRef.current);
-    resumeRef.current = atEdge(node, node.scrollHeight)
-      ? undefined
-      : window.setTimeout(follow, tuning().talkFollowResumeMs);
+    if (atEdge(node, node.scrollHeight)) {
+      resumeRef.current = undefined;
+      setBehind(false);
+      return;
+    }
+    resumeRef.current = window.setTimeout(follow, tuning().talkFollowResumeMs);
   };
 
   /*
@@ -912,7 +947,16 @@ function ConversationCard({
   useLayoutEffect(() => {
     const node = logRef.current;
     if (node === null) return;
-    if (atEdge(node, heightRef.current)) node.scrollTop = node.scrollHeight;
+    if (atEdge(node, heightRef.current)) {
+      node.scrollTop = node.scrollHeight;
+      ownScrollRef.current = node.scrollTop;
+    } else if (resumeRef.current !== undefined) {
+      // Held, and a line has arrived behind the reader's back: that is exactly
+      // what the button is for. Set here rather than derived from the message
+      // count, because *behind* is about this reader's box and not about how
+      // many lines the card holds.
+      setBehind(true);
+    }
     heightRef.current = node.scrollHeight;
   }, [shown]);
 
@@ -987,6 +1031,27 @@ function ConversationCard({
           ))
         )}
       </div>
+      {/*
+        Something was said while the reader was holding the box still (todo
+        10). The console's own affordance, in the console's own register: the
+        one way back to the live edge that does not require finding the bottom
+        of a scrollbar. Absent rather than disabled while following — there is
+        nothing to jump to — and it lets go of the hold, which is what a press
+        on it means.
+      */}
+      {behind && (
+        <button
+          className="jump-latest talk-jump"
+          onClick={follow}
+          // The caret stays where it was — in the composer, or in the terminal.
+          // A control clicked and never typed into does not take focus, and
+          // this one would otherwise swallow the next thing typed.
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          {t('cards.talk.jumpToLatest')}
+        </button>
+      )}
     </>
   );
 

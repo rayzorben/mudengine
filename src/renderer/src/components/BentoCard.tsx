@@ -667,8 +667,9 @@ export default function BentoCard({
        * An `opacity` here would fade the readout by exactly as much as the
        * background, and a card you can see through is useful where a *number*
        * you can see through is not. The fill and the text move together and the
-       * text stays well ahead of it: at every setting the console shows through
-       * and the figures on top of it stay legible.
+       * text stays ahead of it wherever the console shows through at all, so
+       * the figures on top of it stay legible; at the top of the slider the
+       * two meet and the card is solid, which is the player's to ask for.
        */
       style={{
         ...palette,

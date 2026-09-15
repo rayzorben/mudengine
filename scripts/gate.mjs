@@ -1,19 +1,19 @@
 /**
- * The gate, chosen by path (`mudengine-verify` § The gate is chosen by path).
+ * The gate (`mudengine-verify` § The gate is chosen by path).
  *
- *   npm run verify                  per todo: typecheck, the unit tests whose
- *                                   module graph reaches a changed file, and
- *                                   the corpus when the parser changed
- *   npm run gate [-- --since <ref>] once after the last todo: what the whole
- *                                   diff calls for, cheapest first
- *   npm run gate:all                everything, for a release
+ *   npm run verify     per todo: what the diff reaches, in test files
+ *   npm run gate       once after the last todo, whole suites and the smokes
+ *   npm run gate:all   everything, ignoring the ledger
  *
- * Changed is the working tree against HEAD (index and untracked included) or
- * against --since. Every step says whether it runs and which file decided it.
+ * A step runs when the hash of the files it reads differs from the hash it
+ * last passed at (`.gate/state.json`), so nothing is checked twice over the
+ * same bytes; `--since <ref>` moves the report, never what runs. Output
+ * goes to `.gate/logs/`; `--verbose` streams it, `--only=<step>` runs one.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -28,6 +28,11 @@ const value = (name) => {
 const NARROW = flag('--narrow');
 const ALL = flag('--all');
 const DRY = flag('--dry-run');
+const VERBOSE = flag('--verbose');
+const ONLY_GIVEN = args.some((a) => a === '--only' || a.startsWith('--only='));
+const ONLY = (value('--only') ?? args.find((a) => a.startsWith('--only='))?.slice(7) ?? '')
+  .split(',')
+  .filter(Boolean);
 const SINCE = value('--since') ?? 'HEAD';
 
 // ------------------------------------------------------------ what changed
@@ -48,7 +53,9 @@ const isTest = (file) => file.includes('/__tests__/');
 /*
  * A test runs when a changed file is in its import closure, or is a file on
  * disk that something in that closure names (`resources/`, `locales/`,
- * `captures/`, `mdb/`). The same closure decides the realm tests and the
+ * `captures/`, `mdb/`, `src/` — the guards read source as text rather than
+ * importing it, so `src/main/client.ts` in a string is a claim on that file
+ * and `src` is a claim on the tree). The same closure decides the realm tests and the
  * corpus replay. Nothing here is a guessed directory mapping.
  */
 const ALIASES = [
@@ -58,7 +65,7 @@ const ALIASES = [
 ];
 const SPECIFIER =
   /\bfrom\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm;
-const DISK = /['"]((?:resources|locales|captures|mdb)(?:\/[^'"]*)?)['"]/g;
+const DISK = /['"]((?:resources|locales|captures|mdb|src)(?:\/[^'"]*)?)['"]/g;
 const toPosix = (p) => p.split(path.sep).join('/');
 const isFile = (p) => fs.existsSync(p) && fs.statSync(p).isFile();
 
@@ -124,17 +131,6 @@ function reach(entries) {
 const under = (file, prefix) =>
   file === prefix ||
   (file.startsWith(prefix) && (prefix.endsWith('/') || file[prefix.length] === '/'));
-
-/** The changed files a closure (plus some paths outside it) explains. */
-function hits(entries, prefixes = []) {
-  const { modules, reads } = reach(entries);
-  return [...changed].filter(
-    (c) =>
-      modules.has(c) || [...reads].some((r) => under(c, r)) || prefixes.some((p) => under(c, p))
-  );
-}
-const byPath = (prefixes) =>
-  [...changed].filter((c) => !isTest(c) && prefixes.some((p) => under(c, p)));
 
 const walk = (dir, out = []) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -208,10 +204,26 @@ const WEB_SMOKE_PATHS = [
 const CORPUS_ENTRIES = [
   'src/main/parse/Classifier.ts',
   'src/main/parse/patterns.ts',
-  'src/main/world/WorldGraph.ts'
+  'src/main/world/WorldGraph.ts',
+  // The fourth of `analyse-corpus.mjs`'s dynamic imports, and the one the
+  // other three do not reach: the shipped sentence tables it classifies with.
+  'src/main/world/ShippedSentences.ts'
 ];
 const CORPUS_PATHS = ['captures/', 'resources/world/', 'scripts/analyse-corpus.mjs'];
-const REALM_PATHS = ['mdb/', 'scripts/build-world.mjs'];
+/*
+ * `buildRealm.ts` and the built worlds belong here as much as the archives do:
+ * `RealmLibrary.realm.test.ts` is the assertion that the shipped files are at
+ * `REALM_FORMAT` and were built from the archives in `mdb/`, and a format bump
+ * touches the converter and the output without touching either path that used
+ * to wake it. `buildRealm.ts` is claimed by typecheck, so it was not even
+ * printed as unclaimed; `resources/world/` woke the corpus and not this.
+ */
+const REALM_PATHS = [
+  'mdb/',
+  'scripts/build-world.mjs',
+  'src/main/world/buildRealm.ts',
+  'resources/world/'
+];
 
 for (const p of [
   ...SMOKE_PATHS,
@@ -224,77 +236,296 @@ for (const p of [
     console.error(`gate: ${p} is named here and does not exist`);
 }
 
-const typesChanged = [...changed].filter(
-  (c) => /\.(ts|tsx)$/.test(c) || c.startsWith('tsconfig') || c === 'electron.vite.config.ts'
-);
-const claimed = new Set(typesChanged);
-const unitSelected = [];
-for (const t of UNIT_TESTS) {
-  const h = hits([t]);
-  if (h.length === 0) continue;
-  unitSelected.push(t);
-  for (const c of h) claimed.add(c);
+// ------------------------------------------------------------- the ledger
+
+/*
+ * Which checks are already green, and at what inputs.
+ *
+ * A check's input set is the closure above plus the disk paths it reads; its
+ * fingerprint is a hash of every one of those files' contents and of the
+ * command itself. It runs when that differs from the fingerprint recorded the
+ * last time it passed, and is skipped when it does not — so three changes in
+ * a row under `src/main/world/` never wake a smoke and the fourth, under
+ * `src/renderer/`, does. Contents and not mtimes: a branch switch rewrites
+ * every mtime without changing a byte, and 11 MB of inputs hash in ~50ms.
+ * `--all` ignores the ledger; a failing check records nothing.
+ */
+const STATE = '.gate/state.json';
+const LOGS = '.gate/logs';
+let ledger = { version: 1, checks: {}, digests: {} };
+try {
+  const saved = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+  if (saved?.version === 1 && saved.checks) ledger = { digests: {}, ...saved };
+} catch (e) {
+  // Absent is the ordinary first run. Present and unreadable is a truncated
+  // write or an older shape, and a silent 35s `verify` looks exactly like a
+  // real one, so it is said out loud.
+  if (fs.existsSync(STATE))
+    console.error(`gate: ${STATE} unreadable (${e.message}); everything runs`);
 }
-const realmHits = hits(REALM_TESTS, REALM_PATHS);
-const corpusHits = hits(CORPUS_ENTRIES, CORPUS_PATHS);
-const smokeHits = byPath(SMOKE_PATHS);
-const webHits = byPath(WEB_SMOKE_PATHS);
-for (const c of [...realmHits, ...corpusHits, ...smokeHits, ...webHits]) claimed.add(c);
-const unclaimed = [...changed].filter((c) => !claimed.has(c));
+/*
+ * What each file hashed to when a step last passed over it: the label saying
+ * *which* input woke a step, which `git diff` cannot answer because a file
+ * changed and checked an hour ago is still in it. A label, never a decision.
+ * `format` keeps its own copy — narrowing a command to a subset has to know
+ * that step passed over them, not that some step did.
+ */
+const seen = { ...ledger.digests };
+function remember(entries, inputs) {
+  Object.assign(ledger.checks, entries);
+  for (const file of new Set(inputs)) ledger.digests[file] = digestOf(file);
+  fs.mkdirSync(path.dirname(STATE), { recursive: true });
+  // Written whole and renamed over: a run killed mid-write leaves the last
+  // good ledger rather than the half that would discard every green in it.
+  fs.writeFileSync(`${STATE}.tmp`, JSON.stringify(ledger, null, 1));
+  fs.renameSync(`${STATE}.tmp`, STATE);
+}
+
+const digests = new Map();
+function digestOf(file) {
+  let d = digests.get(file);
+  if (d === undefined) {
+    try {
+      d = crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex');
+    } catch {
+      // A named input that is not there is a state of its own, and a stable
+      // one: `captures/` absent hashes the same on every run.
+      d = 'absent';
+    }
+    digests.set(file, d);
+  }
+  return d;
+}
+function fingerprint(files, salt) {
+  const h = crypto.createHash('sha256').update(`${salt}\n`);
+  for (const f of [...new Set(files)].sort()) h.update(`${f} ${digestOf(f)}\n`);
+  return h.digest('hex').slice(0, 16);
+}
+
+/** Directories in an input list stand for the files under them. */
+function expand(paths) {
+  const out = [];
+  for (const p of paths) {
+    if (!fs.existsSync(p)) continue;
+    if (fs.statSync(p).isDirectory()) walk(p, out);
+    else out.push(toPosix(p));
+  }
+  return out;
+}
+
+const CONFIGS = [
+  'package.json',
+  'package-lock.json',
+  'electron.vite.config.ts',
+  'tsconfig.json',
+  'tsconfig.node.json',
+  'tsconfig.web.json',
+  'vitest.config.ts',
+  'vitest.realm.config.ts',
+  '.prettierrc',
+  '.prettierrc.json',
+  '.prettierrc.yaml',
+  'prettier.config.js'
+].filter(isFile);
+const TS_FILES = SRC.filter((f) => /\.tsx?$/.test(f));
+const FORMATTABLE = SRC.filter((f) => /\.(ts|tsx|css)$/.test(f));
+/** A closure's modules, the files it reads off disk, and what every run reads. */
+const inputsOf = (entries, prefixes = []) => {
+  const { modules, reads } = reach(entries);
+  return [...modules, ...expand([...reads, ...prefixes]), ...CONFIGS];
+};
+
+// ---------------------------------------------------------- what runs when
 
 const NODE = process.execPath;
 const REGISTER = ['--import', './scripts/lib/register.mjs'];
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const plan = [];
-const step = (name, cmd, because) =>
-  plan.push({ name, cmd, because, run: ALL || because.length > 0 });
-const always = ['always'];
+const now = () => new Date().toISOString();
 const named = (list) =>
   list.length === 0 ? [] : [list[0] + (list.length > 1 ? ` (+${list.length - 1})` : '')];
 
-if (NARROW) {
-  step('typecheck', [npm, 'run', 'typecheck'], named(typesChanged));
-  step('unit tests', [npx, 'vitest', 'run', ...unitSelected], named(unitSelected));
-  step('corpus', [NODE, ...REGISTER, 'scripts/analyse-corpus.mjs'], named(corpusHits));
-} else {
-  step('typecheck', [npm, 'run', 'typecheck'], always);
-  step('format', [npx, 'prettier', '--check', 'src/**/*.{ts,tsx,css}'], always);
-  step('unit tests', [npx, 'vitest', 'run'], always);
-  step(
-    'realm tests',
-    [npx, 'vitest', 'run', '--config', 'vitest.realm.config.ts'],
-    named(realmHits)
-  );
-  step('build', [npx, 'electron-vite', 'build'], always);
-  step('corpus', [NODE, ...REGISTER, 'scripts/analyse-corpus.mjs'], named(corpusHits));
-  step('smoke', [NODE, 'scripts/smoke.mjs'], named(smokeHits));
-  step('web smoke', [NODE, ...REGISTER, 'scripts/web-smoke.mjs'], named(webHits));
+const claimed = new Set();
+/** A step the ledger decides: its fingerprint against the one it passed at. */
+function gated(name, key, cmd, inputs) {
+  const set = new Set(inputs);
+  for (const c of changed) if (set.has(c)) claimed.add(c);
+  const hash = fingerprint(inputs, cmd.join(' '));
+  const was = ledger.checks[key];
+  const green = !ALL && was?.hash === hash;
+  const stale = [...set].filter((f) => seen[f] !== digestOf(f)).sort();
+  const woke = named(stale)[0] ?? named([...changed].filter((c) => set.has(c)))[0];
+  return {
+    name,
+    cmd,
+    inputs,
+    run: !green,
+    because: ALL ? 'everything' : (woke ?? (was ? 'inputs changed' : 'never run')),
+    since: was?.at,
+    record: () => ({ [key]: { hash, at: now() } })
+  };
 }
+
+/*
+ * Every unit test file is its own ledger entry, so the inner loop shrinks as
+ * it goes: the change that woke two test files stops waking them the moment
+ * they pass, where `git diff HEAD` would keep waking them for the rest of the
+ * session. `gate` still runs the whole suite as one check — the per-file
+ * entries it writes on the way through are what make the next `verify` free.
+ */
+const testKey = (t) => `unit:${t}`;
+const testHash = new Map();
+for (const t of UNIT_TESTS) testHash.set(t, fingerprint(inputsOf([t]), 'vitest run'));
+const testEntries = (files) =>
+  Object.fromEntries(files.map((t) => [testKey(t), { hash: testHash.get(t), at: now() }]));
+const staleTests = UNIT_TESTS.filter(
+  (t) => ALL || ledger.checks[testKey(t)]?.hash !== testHash.get(t)
+);
+
+const typecheck = () =>
+  gated('typecheck', 'typecheck', [npm, 'run', 'typecheck'], [...TS_FILES, ...CONFIGS]);
+const corpus = () =>
+  gated(
+    'corpus',
+    'corpus',
+    [NODE, ...REGISTER, 'scripts/analyse-corpus.mjs'],
+    inputsOf(CORPUS_ENTRIES, [...CORPUS_PATHS, 'scripts/lib'])
+  );
+
+const plan = [];
+if (NARROW) {
+  plan.push(typecheck());
+  plan.push({
+    name: 'unit tests',
+    cmd: [npx, 'vitest', 'run', ...staleTests],
+    run: staleTests.length > 0,
+    because: ALL ? 'everything' : (named(staleTests)[0] ?? 'never run'),
+    skipped: `all ${UNIT_TESTS.length} green`,
+    inputs: staleTests.flatMap((t) => inputsOf([t])),
+    record: () => testEntries(staleTests)
+  });
+  plan.push(corpus());
+} else {
+  plan.push(typecheck());
+  /*
+   * Narrowing is sound only for the files this step's own map covers: the
+   * fingerprint also holds `.prettierrc` and the lockfile, so a config bump
+   * or a deletion moves it while no source file moved. `prettier --check`
+   * with no file argument exits 0 having read nothing, which would stamp the
+   * tree green against a config nothing was checked under — so an empty
+   * narrowing is the whole tree, not an empty command.
+   */
+  const staleFormat = FORMATTABLE.filter((f) => ledger.checks.format?.files?.[f] !== digestOf(f));
+  const formatting =
+    ALL || !ledger.checks.format || staleFormat.length === 0
+      ? ['src/**/*.{ts,tsx,css}']
+      : staleFormat;
+  const format = gated(
+    'format',
+    'format',
+    [npx, 'prettier', '--check'],
+    [...FORMATTABLE, ...CONFIGS]
+  );
+  format.cmd = [npx, 'prettier', '--check', ...formatting];
+  const formatRecord = format.record;
+  format.record = () => ({
+    format: {
+      ...formatRecord().format,
+      files: Object.fromEntries(FORMATTABLE.map((f) => [f, digestOf(f)]))
+    }
+  });
+  plan.push(format);
+
+  const unit = gated('unit tests', 'unit', [npx, 'vitest', 'run'], inputsOf(UNIT_TESTS));
+  const unitRecord = unit.record;
+  unit.record = () => ({ ...unitRecord(), ...testEntries(UNIT_TESTS) });
+  plan.push(unit);
+
+  plan.push(
+    gated(
+      'realm tests',
+      'realm',
+      [npx, 'vitest', 'run', '--config', 'vitest.realm.config.ts'],
+      inputsOf(REALM_TESTS, REALM_PATHS)
+    )
+  );
+  plan.push(
+    // A test file is typechecked and formatted but never bundled: the build's
+    // entries reach the app, not `__tests__`.
+    gated(
+      'build',
+      'build',
+      [npx, 'electron-vite', 'build'],
+      [
+        ...SRC.filter((c) => !isTest(c)),
+        ...expand(['locales', 'resources/config', 'resources/servers']),
+        ...CONFIGS
+      ]
+    )
+  );
+  plan.push(corpus());
+  plan.push(
+    gated(
+      'smoke',
+      'smoke',
+      [NODE, 'scripts/smoke.mjs'],
+      [...expand([...SMOKE_PATHS, 'scripts/lib']).filter((c) => !isTest(c)), ...CONFIGS]
+    )
+  );
+  plan.push(
+    gated(
+      'web smoke',
+      'web-smoke',
+      [NODE, ...REGISTER, 'scripts/web-smoke.mjs'],
+      [...expand([...WEB_SMOKE_PATHS, 'scripts/lib']).filter((c) => !isTest(c)), ...CONFIGS]
+    )
+  );
+}
+/*
+ * What a check would read is a claim on a changed file whether or not this
+ * mode runs that check: `verify` does not run the smokes, and a changed
+ * `locales/` file is still covered by the gate that will.
+ */
+const COVERED = [...SMOKE_PATHS, ...WEB_SMOKE_PATHS, ...REALM_PATHS, ...CORPUS_PATHS];
+for (const c of changed)
+  if (isTest(c) || /\.(ts|tsx)$/.test(c) || COVERED.some((p) => under(c, p))) claimed.add(c);
+if (ONLY_GIVEN) {
+  const names = plan.map((s) => s.name);
+  const unknown = ONLY.filter((o) => !names.some((n) => n.startsWith(o)));
+  if (ONLY.length === 0 || unknown.length > 0) {
+    console.error(
+      `gate: --only ${ONLY.length === 0 ? 'needs a step name' : `names no step: ${unknown.join(', ')}`}. This run has: ${names.join(', ')}`
+    );
+    process.exit(2);
+  }
+  for (const s of plan)
+    if (!ONLY.some((o) => s.name.startsWith(o))) {
+      s.run = false;
+      s.skipped = 'not named by --only';
+    }
+}
+const unclaimed = [...changed].filter((c) => !claimed.has(c));
 
 // ------------------------------------------------------------ say it, do it
 
 const mode = NARROW ? 'verify' : 'gate';
-if (changed.size === 0 && !ALL) {
-  console.error(
-    `${mode}: nothing changed against ${SINCE}. Pass --since <ref> for a committed range, or --all.`
-  );
-  process.exit(1);
-}
+const clock = (at) => (at ? new Date(at).toTimeString().slice(0, 5) : 'never');
 console.log(
   `${mode} ${ALL ? 'of everything' : `against ${SINCE}`}: ${changed.size} file${changed.size === 1 ? '' : 's'} changed\n`
 );
 for (const s of plan) {
   console.log(
-    `  ${s.run ? 'run ' : 'skip'}  ${s.name.padEnd(12)} ${s.run ? (ALL ? 'everything' : s.because[0]) : 'nothing reaches it'}`
+    `  ${s.run ? 'run ' : 'skip'}  ${s.name.padEnd(12)} ${
+      s.run ? s.because : (s.skipped ?? `green since ${clock(s.since)}`)
+    }`
   );
 }
-if (NARROW && unitSelected.length > 0) {
+if (NARROW && staleTests.length > 0) {
   console.log(
-    `\n  ${unitSelected.length} of ${UNIT_TESTS.length} unit test files reach a changed file:`
+    `\n  ${staleTests.length} of ${UNIT_TESTS.length} unit test files changed since they last passed:`
   );
-  for (const t of unitSelected.slice(0, 12)) console.log(`    ${t}`);
-  if (unitSelected.length > 12) console.log(`    … ${unitSelected.length - 12} more`);
+  for (const t of staleTests.slice(0, 12)) console.log(`    ${t}`);
+  if (staleTests.length > 12) console.log(`    … ${staleTests.length - 12} more`);
 }
 if (unclaimed.length > 0 && !ALL) {
   console.log(
@@ -303,26 +534,55 @@ if (unclaimed.length > 0 && !ALL) {
 }
 console.log('');
 if (DRY) process.exit(0);
+if (!plan.some((s) => s.run)) {
+  console.log(
+    ONLY_GIVEN
+      ? `${mode}: nothing to run — ${ONLY.join(', ')} is green at these inputs.`
+      : `${mode}: nothing to run — every check is green at these inputs. gate:all ignores the ledger.`
+  );
+  process.exit(0);
+}
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+fs.mkdirSync(LOGS, { recursive: true });
 const took = [];
 const started = Date.now();
 const seconds = (ms) => `${(ms / 1000).toFixed(1)}s`;
 for (const s of plan) {
   if (!s.run) continue;
-  console.log(`── ${s.name}\n`);
+  const log = path.join(LOGS, `${s.name.replace(/\s+/g, '-')}.log`);
+  process.stdout.write(`── ${s.name}${VERBOSE ? '\n\n' : ' '}`);
   const t0 = Date.now();
-  const r = spawnSync(s.cmd[0], s.cmd.slice(1), { stdio: 'inherit', env });
+  let r;
+  if (VERBOSE) r = spawnSync(s.cmd[0], s.cmd.slice(1), { stdio: 'inherit', env });
+  else {
+    // A green run is one line; a failing one is its own tail and a path. The
+    // output of a passing smoke is the largest thing this script can print.
+    const fd = fs.openSync(log, 'w');
+    try {
+      r = spawnSync(s.cmd[0], s.cmd.slice(1), { stdio: ['ignore', fd, fd], env });
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
   const ms = Date.now() - t0;
   took.push(`${s.name} ${seconds(ms)}`);
-  if (r.status !== 0) {
-    console.log(
-      `\n${mode}: ${s.name} failed (exit ${r.status ?? r.signal}) after ${seconds(Date.now() - started)}`
-    );
-    console.log(`  ${took.join(' · ')}`);
-    process.exit(r.status ?? 1);
+  if (r.status === 0) {
+    remember(s.record(), s.inputs ?? []);
+    console.log(VERBOSE ? `\n── ${s.name} ${seconds(ms)}\n` : seconds(ms));
+    continue;
   }
+  console.log(VERBOSE ? '' : 'failed');
+  if (!VERBOSE) {
+    const tail = fs.readFileSync(log, 'utf8').split('\n').slice(-40).join('\n');
+    console.log(`\n${tail}\n  … ${log}\n`);
+  }
+  console.log(
+    `${mode}: ${s.name} failed (exit ${r.status ?? r.signal}) after ${seconds(Date.now() - started)}`
+  );
+  console.log(`  ${took.join(' · ')}`);
+  process.exit(r.status ?? 1);
 }
 console.log(`\n${mode}: clean in ${seconds(Date.now() - started)}`);
 if (took.length > 0) console.log(`  ${took.join(' · ')}`);

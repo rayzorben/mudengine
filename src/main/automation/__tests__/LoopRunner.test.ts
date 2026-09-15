@@ -41,6 +41,7 @@ function planner(over: Partial<LoopPlanner> = {}) {
     // The stops of the fixture loop, so what the map would mark is testable
     // without a realm behind it.
     roomOf: (stop) => (stop.name === 'Arena' ? '1/10' : stop.name === 'Road' ? '1/11' : null),
+    hereNow: () => '1/1',
     ...over
   };
   return { planner: base, walked };
@@ -183,7 +184,8 @@ describe('starting a loop', () => {
       moveInFlight: () => false,
       restInFlight: () => false,
       walking: () => false,
-      roomOf: () => null
+      roomOf: () => null,
+      hereNow: () => '1/1'
     };
     const runner = new LoopRunner(p, {});
     // The loop believed no fight was on; the walker knew better.
@@ -1503,5 +1505,108 @@ describe('a rest that landed, and the lap that stepped into it', () => {
     // Mended: the leg goes out — the positive control.
     runner.onCharacter(state({ vitals: { ...hurt().vitals, hp: 70, resting: false } }));
     expect(walked).toEqual(['Arena']);
+  });
+});
+
+/*
+ * A lair on a slower clock than the ring around it is standing on only some of
+ * the laps, and the Hunting card prices it that way — `1,2,3,1,2,1,2,3` rather
+ * than room 3 every lap. The runner walked the detour every lap regardless, so
+ * the rate the card promised was not the rate the lap earned (todo 15).
+ *
+ * `dueStop` is the decision and `loops.test.ts` holds it whole; these are the
+ * runner's own half: when a stop counts as cleared, and that a lap with no
+ * clocks anywhere walks exactly as it always did.
+ */
+describe('a stop that states its own clock', () => {
+  const clocked: Loop = {
+    name: 'Ring',
+    stops: [
+      { room: 'Arena', every: 30 },
+      { room: 'Road', every: 600 }
+    ]
+  };
+  /** A room holding one monster the realm placed. */
+  const withMonster = (): CharacterState => {
+    const base = state();
+    return {
+      ...base,
+      room: {
+        ...base.room,
+        occupants: [
+          {
+            name: 'giant rat',
+            kind: 'mob',
+            disposition: null,
+            uncertain: false,
+            costly: 'never',
+            charmed: false,
+            hidden: false,
+            free: false
+          }
+        ]
+      }
+    };
+  };
+
+  /** Walks the lap round once: arrive, clear the room, dwell out. */
+  const lap = (runner: LoopRunner, clear: boolean): void => {
+    runner.onWalkEnded(true, null, state());
+    if (clear) {
+      runner.onCharacter(withMonster());
+      runner.onCharacter(state());
+    }
+    vi.advanceTimersByTime(2_100);
+  };
+
+  it('walks the slow stop on the first lap and skips it on the next', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.start(clocked, state());
+    expect(walked).toEqual(['Arena']);
+
+    // Arena cleared, so its clock starts; Road has never been cleared, and a
+    // stop with no elapsed time is walked rather than guessed at.
+    lap(runner, true);
+    expect(walked).toEqual(['Arena', 'Road']);
+
+    // Road cleared too. Neither clock has come round, so the soonest is taken
+    // — Arena at 30 seconds, not Road's ten minutes.
+    lap(runner, true);
+    expect(walked).toEqual(['Arena', 'Road', 'Arena']);
+
+    // And again: the slow stop stays skipped for as long as its clock runs.
+    lap(runner, true);
+    expect(walked).toEqual(['Arena', 'Road', 'Arena', 'Arena']);
+  });
+
+  /*
+   * A lap that found the room empty resets nothing: the clock was wrong, or
+   * somebody else took the kill, and writing *now* into it would sit the
+   * character out of a lair that is standing.
+   */
+  it('does not start the clock on a visit that found the room empty', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.start(clocked, state());
+    lap(runner, true); // Arena cleared
+    lap(runner, false); // Road entered and empty
+    // Road was never cleared, so it is still due and is walked again rather
+    // than waiting out ten minutes for a room the client has never emptied.
+    expect(walked).toEqual(['Arena', 'Road', 'Road']);
+  });
+
+  /*
+   * The positive control for both: a loop with no clocks stated anywhere walks
+   * the list as written, which is what every loop written by hand does.
+   */
+  it('walks a loop with no clocks exactly as it did before', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, state());
+    lap(runner, true);
+    lap(runner, true);
+    lap(runner, true);
+    expect(walked).toEqual(['Arena', 'Road', 'Arena', 'Road']);
   });
 });

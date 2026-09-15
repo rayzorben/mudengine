@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
@@ -84,6 +84,24 @@ export default function SettingsNav({
   onSection,
   picker
 }: SettingsNavProps): React.JSX.Element {
+  /*
+   * Where the next press wants the form left, held until the form is drawn.
+   *
+   * The scroll cannot happen in the handler: a press may change the section,
+   * and the fields of a section that is not shown are not in the DOM at all
+   * (each is drawn behind `shown === '...'`), so there is nothing to scroll to
+   * until React has committed. The press states the destination; the layout
+   * effect below acts on it, before the browser paints.
+   */
+  const [wanted, setWanted] = useState<Destination | null>(null);
+
+  useLayoutEffect(() => {
+    if (wanted === null) return;
+    setWanted(null);
+    if (wanted.kind === 'top') scrollFormToTop();
+    else scrollToFieldset(wanted.id);
+  }, [wanted]);
+
   return (
     <nav aria-label={t('settings.nav.label')} className="settings-nav">
       {picker && <NavPicker {...picker} />}
@@ -97,7 +115,16 @@ export default function SettingsNav({
                 className="settings-nav-section"
                 data-active={active ? 'true' : 'false'}
                 data-section={entry.id}
-                onClick={() => onSection(entry.id)}
+                onClick={() => {
+                  onSection(entry.id);
+                  /*
+                    A section press lands at the top of that section. Without
+                    this, switching from a section somebody had scrolled down
+                    opens the next one part-way through -- the form is one
+                    scroller and it keeps its offset across the swap.
+                  */
+                  setWanted({ kind: 'top' });
+                }}
                 onMouseDown={keepFocus}
                 type="button"
               >
@@ -106,8 +133,13 @@ export default function SettingsNav({
               {/*
                 The fieldsets of the section being shown, and only that one.
                 Every section's expanded at once is the strip's problem again
-                in a taller shape: sixty rows in a column, most of them about a
+                in a taller shape: forty rows in a column, most of them about a
                 section nobody is looking at.
+
+                So *Health > When to use an item* is two presses, not one -- but
+                the second press is a real jump now, and it is a jump the rail
+                can make from any section, because the handler states the
+                section as well as the fieldset.
               */}
               {active && entry.fieldsets.length > 1 && (
                 <ul className="settings-nav-fieldsets">
@@ -116,7 +148,10 @@ export default function SettingsNav({
                       <button
                         className="settings-nav-fieldset"
                         data-fieldset={fieldset.id}
-                        onClick={() => scrollToFieldset(fieldset.id)}
+                        onClick={() => {
+                          onSection(entry.id);
+                          setWanted({ kind: 'fieldset', id: fieldset.id });
+                        }}
                         onMouseDown={keepFocus}
                         type="button"
                       >
@@ -243,16 +278,39 @@ function NavPicker({
 }
 
 /**
+ * Where a nav press leaves the form: at the top of the section, or at one of
+ * its fieldsets. A union rather than a nullable id with a sentinel in it, so
+ * *the top* cannot collide with a fieldset somebody names later.
+ */
+type Destination = { kind: 'top' } | { kind: 'fieldset'; id: string };
+
+/** The form's own scroller, which is what both destinations move. */
+function settingsForm(): Element | null {
+  return document.querySelector('.settings-form');
+}
+
+/** A section press lands at its first field, not part-way down the last one. */
+function scrollFormToTop(): void {
+  settingsForm()?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/**
  * Brings a fieldset into view inside the form's own scroller.
  *
  * By `data-fieldset` rather than by index: a section whose fieldsets are drawn
  * conditionally — Combat's three behind its switch — would otherwise scroll to
  * whichever fieldset happened to be third today.
  *
+ * **`fieldset[data-fieldset]`, not `[data-fieldset]`**: the rail's own buttons
+ * carry the attribute too, and they are earlier in the document, so the bare
+ * selector scrolled the *rail* to the row that had just been pressed and left
+ * the form where it was. The form and the rail agree by a written-down name,
+ * and the name is on two different elements by design.
+ *
  * A press that finds nothing does nothing, which is the right answer for a
  * fieldset the form is not drawing right now.
  */
 function scrollToFieldset(id: string): void {
-  const target = document.querySelector(`[data-fieldset="${CSS.escape(id)}"]`);
+  const target = settingsForm()?.querySelector(`fieldset[data-fieldset="${CSS.escape(id)}"]`);
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

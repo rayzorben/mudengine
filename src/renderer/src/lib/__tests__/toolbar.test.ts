@@ -11,6 +11,9 @@ import { TOOLBAR_ACTIONS, toolbarButtons, type ToolbarSubject } from '../toolbar
 const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   switches: automationSwitches(DEFAULT_CONFIG.automation),
   connected: false,
+  // Standing in the realm is the ordinary case every test below but the last
+  // group is about; out of it is stated where it is the question.
+  inRealm: true,
   dialling: false,
   movement: NOT_MOVING,
   canRestoreGear: false,
@@ -20,6 +23,7 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   disconnect: vi.fn(),
   startMoving: vi.fn(),
   stopMoving: vi.fn(),
+  stepBack: vi.fn(),
   openLoops: vi.fn(),
   openBuilder: vi.fn(),
   ...over
@@ -142,6 +146,57 @@ describe('the toolbar vocabulary', () => {
     expect(key({ kind: 'route', moving: false, resumable: false }).disabled).toBe(true);
     expect(key(stopped('route')).disabled).toBe(false);
     expect(key(going('loop')).disabled).toBe(false);
+  });
+});
+
+/*
+ * The toolbar is drawn out of the realm as well as in it (todo 02): it is the
+ * one card that is not a reading, and taking it away at the menu removes the
+ * control that puts the character back.
+ */
+describe('a toolbar drawn out of the realm', () => {
+  const out = (over: Partial<ToolbarSubject> = {}) =>
+    toolbarButtons(subject({ inRealm: false, ...over }));
+  const key = (id: string, over: Partial<ToolbarSubject> = {}) =>
+    out(over).find((button) => button.id === id)!;
+
+  it('keeps every button it has in the realm', () => {
+    expect(out().map((button) => button.id)).toEqual(
+      toolbarButtons(subject()).map((button) => button.id)
+    );
+  });
+
+  /* The dial is the point: it is what puts the character back. */
+  it('leaves the dial pressable', () => {
+    expect(key('connect').disabled).toBe(false);
+    // And still refuses it while one is already in flight.
+    expect(key('connect', { dialling: true }).disabled).toBe(true);
+  });
+
+  /* A switch writes that character's own file, which wants no connection at
+     all — turning automation off before dialling is the ordinary use. */
+  it('leaves every switch pressable, and pressing one still writes', () => {
+    const setSwitch = vi.fn();
+    for (const name of AUTOMATION_SWITCH_NAMES) {
+      expect(key(name).disabled, `${name} was greyed`).toBeUndefined();
+    }
+    key('combat', { setSwitch }).run();
+    expect(setSwitch).toHaveBeenCalledWith('combat', true);
+  });
+
+  /* The shelf and the builder are where a loop is found and drawn, neither of
+     which needs a room. */
+  it('leaves the shelf and the builder pressable', () => {
+    expect(key('loop:open').disabled).toBeUndefined();
+    expect(key('loop:build').disabled).toBeUndefined();
+  });
+
+  /* Everything that sends a command is greyed, whatever it would otherwise
+     say: there is no room to send it from. */
+  it('greys everything that would send a command', () => {
+    expect(key('move:toggle', { movement: stopped('loop') }).disabled).toBe(true);
+    expect(key('move:back').disabled).toBe(true);
+    expect(key('gear:restore', { canRestoreGear: true }).disabled).toBe(true);
   });
 });
 

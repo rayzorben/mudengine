@@ -100,5 +100,16 @@ export const MARK_GLYPH: Record<MarkIcon, string> = {
     '<path d="M12 21.5c-3.9 0-6.5-2.6-6.5-6.2 0-3.2 2.3-5.5 3.6-7.4.6 1.3 1.4 2.2 2.4 2.6.2-3 1.4-5.9 3.3-8 .5 3.2 3.7 5.4 3.7 9.3 0 3.9-2.7 7.7-6.5 9.7Z"/>'
   ),
   /* A bag: kit worn somewhere the listing calls only `Worn`. */
-  kit: svg('<path d="M5 8.5h14l-1 12H6l-1-12Z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>')
+  kit: svg('<path d="M5 8.5h14l-1 12H6l-1-12Z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>'),
+
+  /*
+   * What can be done with a thing, beside the equip gate: a downward arrow
+   * onto a floor for putting it down, and the same struck through for one the
+   * realm will not let go of (`Items.Not Droppable`), which is the equip
+   * gate's own way of saying *no*.
+   */
+  drop: svg('<path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/>'),
+  kept: svg(
+    '<path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/><path d="m3.5 3.5 17 17"/>'
+  )
 };

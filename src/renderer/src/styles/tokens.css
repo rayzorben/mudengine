@@ -225,6 +225,9 @@
   /* Glass: the card fill, and the stronger one for a surface over a surface. */
   --glass-fill: color-mix(in srgb, var(--ink-card) 74%, transparent);
   --glass-fill-strong: color-mix(in srgb, var(--ink-card) 88%, transparent);
+  /* A list over a form: near-solid, because a name read through the fields
+     under it is a name that cannot be read. */
+  --glass-fill-near: color-mix(in srgb, var(--ink-card) 96%, transparent);
 }
 
 /*

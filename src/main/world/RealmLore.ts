@@ -22,6 +22,7 @@ import {
   type MobLoreEntry,
   type SlotLoreEntry
 } from '../../shared/lore';
+import { rowNameOf } from '../../shared/mobs';
 import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
@@ -108,8 +109,16 @@ export class RealmLore {
   private readonly spellBooks = new Map<string, SpellMessageBook>();
   /** How each monster dies, per realm, per `mobKey`. See `LoreFile.deaths`. */
   private readonly deaths = new Map<string, Map<string, LearnedDeath>>();
-  /** The same, sentence → monster, which is the direction the classifier asks. */
-  private readonly deathIndex = new Map<string, Map<string, string>>();
+  /**
+   * The same, sentence → every monster it belongs to, which is the direction
+   * the classifier asks.
+   *
+   * **A list, not a slot** (2026-09-14): one record serves several monster
+   * types on this realm's own data, so a slot answered with whichever was
+   * written last — and the classifier reads a single answer as *the* monster
+   * that died. See `observeDeath`.
+   */
+  private readonly deathIndex = new Map<string, Map<string, string[]>>();
   /** What each realm worked out about unnameable effects. See `ledgerFor`. */
   private readonly effects = new Map<string, Map<string, LearnedEffect>>();
   private timer: NodeJS.Timeout | null = null;
@@ -140,15 +149,30 @@ export class RealmLore {
       slotWordsFor: (worn) => this.slotWordsFor(key, worn),
       observeSlot: (worn, word, at) => this.observeSlot(key, worn, word, at),
       deathOf: (text) => this.deathOf(key, text),
-      observeDeath: (name, text, at) => this.observeDeath(key, name, text, at)
+      /*
+       * Filed under the realm's own row, never the room's spelling of one
+       * instance: a death sentence belongs to the monster **type** and the
+       * room hangs a per-instance modifier on the name it prints. Live,
+       * 2026-09-14, the large dark monk died, the sentence resolved to `small
+       * dark monk`, the small one left the room, the corpse stayed in it and
+       * auto-combat went on attacking it. `rowNameOf` is that one rule, shared
+       * now with the kill a quest step names.
+       */
+      observeDeath: (name, text, at) =>
+        this.observeDeath(
+          key,
+          rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined),
+          text,
+          at
+        )
     };
   }
 
   /* -------------------------------------------------------------- deaths */
 
-  private deathOf(realm: string, text: string): string | null {
+  private deathOf(realm: string, text: string): readonly string[] {
     this.load();
-    return this.deathIndex.get(realm)?.get(text.trim()) ?? null;
+    return this.deathIndex.get(realm)?.get(text.trim()) ?? [];
   }
 
   /**
@@ -158,6 +182,12 @@ export class RealmLore {
    * Re-observed unchanged, nothing is written; a different sentence for the
    * same monster replaces the old one, since a name may hold several rows
    * and the latest reading is the one the wire just confirmed.
+   *
+   * **`name` is the realm's own row, never the room's spelling** — see
+   * `rowNameOf`, which the caller applies. An entry already filed under a
+   * modifier of this row carrying this same sentence is dropped with the
+   * write: it says nothing the row does not, and every one of them is a
+   * sentence the classifier could resolve to one instance of four.
    */
   private observeDeath(realm: string, name: string, text: string, at: number): void {
     const key = mobKey(name);
@@ -169,16 +199,31 @@ export class RealmLore {
       table = new Map();
       this.deaths.set(realm, table);
     }
-    if (table.get(key)?.text === sentence) return;
+    const known = table.get(key)?.text === sentence;
+    let dropped = false;
+    for (const [filed, entry] of table) {
+      if (filed === key || entry.text !== sentence) continue;
+      if (!isModifierOf(filed, key)) continue;
+      table.delete(filed);
+      dropped = true;
+    }
+    if (known && !dropped) return;
     table.set(key, { text: sentence, at });
     this.indexDeaths(realm);
     this.schedule();
+    // A stale key going is a write, not a lesson: only a sentence this realm
+    // did not already hold for this row is announced.
+    if (known) return;
     this.options.notify?.(t('notices.world.lore.deathLearned', { mob: key, text: sentence }));
   }
 
   private indexDeaths(realm: string): void {
-    const index = new Map<string, string>();
-    for (const [key, entry] of this.deaths.get(realm) ?? []) index.set(entry.text, key);
+    const index = new Map<string, string[]>();
+    for (const [key, entry] of this.deaths.get(realm) ?? []) {
+      const named = index.get(entry.text);
+      if (named === undefined) index.set(entry.text, [key]);
+      else if (!named.includes(key)) named.push(key);
+    }
     this.deathIndex.set(realm, index);
   }
 
@@ -683,6 +728,17 @@ export class RealmLore {
 }
 
 const EMPTY_ANSWER = { max: null, source: null, span: null } as const;
+
+/**
+ * Whether a key already on file is `row` wearing a modifier — the shape
+ * `rowNameOf` now folds away, left behind by every kill learned before it.
+ * Dropped only when it carries the same sentence, which is the only reading
+ * under which it says nothing the row does not.
+ */
+function isModifierOf(filed: string, row: string): boolean {
+  const space = filed.indexOf(' ');
+  return space > 0 && filed.slice(space + 1) === row;
+}
 
 /** One learned death sentence, or null when the row holds none. */
 function readDeathEntry(value: unknown): LearnedDeath | null {

@@ -6,10 +6,11 @@
  * in: minimised behind something else, because the whole point of automating a
  * character is being able to go and do something else while it plays.
  *
- * Four rules hold it to what it is for. It raises only the happenings in
- * `DESKTOP_ALERTS` that the player left switched on; it raises nothing while
- * the window has the focus, because whatever it would say is already on screen
- * and a notification for that is why people turn notifications off; it raises
+ * Four rules hold it to what it is for. It raises only what one of the
+ * player's own alert rows claimed and marked `notify`; it raises nothing while
+ * the window has the focus unless that row says otherwise, because whatever it
+ * would say is already on screen and a notification for that is why people
+ * turn notifications off; it raises
  * **one** per character per flush, the newest, because four monsters arriving
  * is one thing that happened and four notifications is a stack somebody has to
  * dismiss; and each kind then rests for `tuning.desktopAlertGapMs` before it
@@ -33,7 +34,6 @@ import {
   type DesktopAlert,
   type Notice
 } from '@shared/notifications';
-import type { DesktopAlertsConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 
 /** The part of a character's view this reads. */
@@ -47,9 +47,12 @@ export interface AlertSubject {
 export interface DesktopAlertsOptions {
   /** Every character this window is drawing, by session id. */
   subjects: Record<SessionId, AlertSubject>;
-  /** What the player asked to be told about away from the window. */
-  prefs: DesktopAlertsConfig;
-  /** The player's own alert rows, which may overrule the two flags above. */
+  /**
+   * The player's own alert rows, and the only thing that decides this
+   * (2026-09-13). A row claiming a notice and marked `notify` raises it; its
+   * own `whileFocused` says whether that holds while the window is in front.
+   * `ui.alerts.desktop` was two switches asking the same two questions.
+   */
   rules: readonly AlertRule[];
   /** Bring this window forward, then show the character the notice was about. */
   onOpen(session: SessionId): void;
@@ -78,7 +81,6 @@ function away(): boolean {
 
 export function useDesktopAlerts({
   subjects,
-  prefs,
   rules,
   onOpen,
   onRefused
@@ -99,12 +101,13 @@ export function useDesktopAlerts({
   const live = useRef(new Map<SessionId, Notification>());
 
   /*
-   * Ask once, and only once something is switched on: a client that asks for
+   * Ask once, and only once a row actually notifies: a client that asks for
    * notification permission on the first launch, before anybody has decided
    * they want any, is one that gets told no for the life of the install.
    */
+  const anyNotifies = rules.some((rule) => rule.enabled && rule.notify);
   useEffect(() => {
-    if (!prefs.enabled || standing.current !== 'absent') return;
+    if (!anyNotifies || standing.current !== 'absent') return;
     if (typeof Notification === 'undefined') {
       // Not a browser that can, or a page that is not a secure context. Said
       // out loud, like every other refusal here: silence would read as a
@@ -134,7 +137,7 @@ export function useDesktopAlerts({
       said.current = true;
       onRefused(t('notices.desktopAlerts.refused'));
     });
-  }, [prefs.enabled, onRefused]);
+  }, [anyNotifies, onRefused]);
 
   useEffect(() => {
     const marks = seen.current;
@@ -155,14 +158,13 @@ export function useDesktopAlerts({
       if (mark === undefined || mark === newest.id) continue;
       if (standing.current !== 'ready') continue;
       /*
-       * The blanket *not while I am looking*, unless a row the player wrote
-       * says otherwise for one of these notices (todo 29). Checked against the
-       * fresh ones rather than as a flat gate, because a single row asking to
-       * be told while the window is in front must not be silenced by the
-       * default that covers everything else.
+       * *Not while I am looking*, unless a row the player wrote says otherwise
+       * for one of these notices. Checked against the fresh ones rather than as
+       * a flat gate, because a single row asking to be told while the window is
+       * in front must not be silenced on behalf of all the rest.
        */
       const focusOk =
-        away() || subject.notices.some((notice) => raisableWhileFocused(prefs, notice, rules));
+        away() || subject.notices.some((notice) => raisableWhileFocused(notice, rules));
       if (!focusOk) continue;
 
       /*
@@ -183,9 +185,9 @@ export function useDesktopAlerts({
       let raise: Notice | undefined;
       let kind: DesktopAlert | undefined;
       for (const notice of [...fresh].reverse()) {
-        const named = raisable(prefs, notice, rules);
+        const named = raisable(notice, rules);
         // And the focus rule for *this* notice, not for the batch.
-        if (named !== null && !away() && !raisableWhileFocused(prefs, notice, rules)) continue;
+        if (named !== null && !away() && !raisableWhileFocused(notice, rules)) continue;
         if (named === null) continue;
         if (now - (rested.current.get(`${id}:${named}`) ?? -Infinity) < gap) continue;
         raise = notice;
@@ -219,7 +221,7 @@ export function useDesktopAlerts({
         onRefused(t('notices.desktopAlerts.unavailable'));
       }
     }
-  }, [subjects, prefs, onRefused]);
+  }, [subjects, rules, onRefused]);
 
   /*
    * Nothing this window raised outlives it. A reload leaves notifications on

@@ -27,12 +27,12 @@
  * answer. It is a **denormalised note written by the editor**, not a foreign
  * key, and 168 of its rows say `Textblock(rndm) #` and 81 name two parents.
  *
- * The authoritative columns point the other way — `Monsters.GreetTXT` and
- * `Rooms.CMD` name a block, `TBInfo.LinkTo` names the next one, and a keyword
- * table names the rest — so the walk is forwards from those roots, carrying
- * the owner and the words that reached it. What that buys is the thing a quest
- * book is for: not just *what the step wants* but **who to say it to, where
- * they stand, and the word to say**.
+ * The authoritative columns point the other way — `Monsters.GreetTXT`,
+ * `Monsters.DeathSpell` and `Rooms.CMD` name a block, `TBInfo.LinkTo` names
+ * the next one, and a keyword table names the rest — so the walk is forwards
+ * from those roots, carrying the owner and the words that reached it. What
+ * that buys is the thing a quest book is for: not just *what the step wants*
+ * but **who to say it to or kill, where they stand, and the word to say**.
  *
  * ## What is deliberately not claimed
  *
@@ -46,7 +46,7 @@
  *   step states its gates and its rewards, and inventing the rest would be the
  *   confidently-wrong answer this project refuses everywhere else.
  */
-import { ABILITY } from '../../shared/abilities';
+import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
 import type { Quest, QuestGate, QuestStep, QuestWay } from '../../shared/quests';
 import { readKeywordTable, readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
@@ -56,13 +56,84 @@ import { number, text } from './values';
 export interface QuestNaming {
   classes: ReadonlyArray<{ id: number; n: string }>;
   races: ReadonlyArray<{ id: number; n: string }>;
-  spells: ReadonlyArray<{ id: number; n: string }>;
+  /**
+   * The spell index, for names **and** for the `Abil-n` pairs a death spell's
+   * chain is followed along — `indexSpells` has already read those columns,
+   * and reading them again here would be a second opinion about one row.
+   */
+  spells: ReadonlyArray<{ id: number; n: string; ab?: Array<[number, number]> }>;
 }
+
+/**
+ * Which text blocks a spell can run, following the chain a spell hands on to.
+ *
+ * Two abilities, both the server's (`GMUDAbilities`): `TextBlock` names the
+ * block outright, and `EndCast` is the spell this one hands the character when
+ * it ends — the link every death spell in both shipped realms uses, because
+ * the corpse's spell is a one-second holder whose ending is the payload.
+ *
+ * Memoised per spell and guarded by the walk's own visited set, so a realm
+ * whose spells end in each other terminates rather than being trusted not to.
+ */
+function spellBlocks(spells: QuestNaming['spells']): (id: number) => number[] {
+  const abilities = new Map(spells.map((spell) => [spell.id, spell.ab ?? []]));
+  const answered = new Map<number, number[]>();
+
+  const walk = (id: number, seen: Set<number>): number[] => {
+    if (seen.has(id)) return [];
+    seen.add(id);
+    const found: number[] = [];
+    for (const [ability, value] of abilities.get(id) ?? []) {
+      if (value <= 0) continue;
+      if (ability === HAZARD_ABILITY.textBlock) found.push(value);
+      if (ability === HAZARD_ABILITY.endCast) found.push(...walk(value, seen));
+    }
+    return found;
+  };
+
+  return (id) => {
+    const held = answered.get(id);
+    if (held !== undefined) return held;
+    const found = walk(id, new Set());
+    answered.set(id, found);
+    return found;
+  };
+}
+
+/**
+ * What runs a block, and therefore what a player has to *do* to reach the step
+ * in it.
+ *
+ * Three roots and three different acts, which is why this is a tagged union
+ * rather than a name that may be blank: an NPC is asked, a room's script is
+ * typed at, and a **death spell** is nothing anybody says at all. Read as *a
+ * `who` that might be empty*, the third would have taken the second's branch
+ * and been handed the opcode at the head of its first line as a phrase to
+ * type — `checkability 133 1`, offered to the player as the words to say.
+ */
+type Owner =
+  | { kind: 'npc'; who: string; room?: string }
+  | { kind: 'room'; room: string }
+  | { kind: 'death'; who: string; room?: string };
 
 /** One block, as the traversal finds it. */
 interface Reached {
-  owner: { who: string; room?: string } | null;
+  owner: Owner | null;
   words: string[];
+}
+
+/**
+ * The words that reach a step, which depend on what runs the block.
+ *
+ * An **NPC**'s come from the keyword table that reached its block — the table
+ * that actually says what to ask. A **room**'s come from the step's own lines,
+ * because a room's script answers `touch gem` and the block holds one line per
+ * phrase (see `BlockStep.phrases`). A **death** has none: there is nothing to
+ * type, and the first field of its first line is an opcode.
+ */
+function sayOf(owner: Owner | null, words: string[], phrases: string[]): string[] {
+  if (owner?.kind === 'death') return [];
+  return owner?.kind === 'npc' ? words : phrases;
 }
 
 export function indexQuests(source: RealmSource, naming: QuestNaming): Quest[] {
@@ -72,7 +143,7 @@ export function indexQuests(source: RealmSource, naming: QuestNaming): Quest[] {
   const counters = chainedCounters(blocks);
   if (counters.size === 0) return [];
 
-  const reached = traverse(source, blocks);
+  const reached = traverse(source, blocks, naming.spells);
   const names = nameTables(source, naming);
 
   /** Every step of every counter, before they are grouped and ordered. */
@@ -82,12 +153,14 @@ export function indexQuests(source: RealmSource, naming: QuestNaming): Quest[] {
     const found = reached.get(id);
     const merged = stepsInBlock(block.action, counters);
     for (const step of merged) {
+      const owner = found?.owner ?? null;
       const built: QuestStep = {
         block: id,
-        say: found?.words ?? [],
+        say: sayOf(owner, found?.words ?? [], step.phrases),
         ...nameWay(step, names),
-        ...maybe('who', found?.owner?.who),
-        ...maybe('room', found?.owner?.room),
+        ...maybe('who', owner?.kind === 'npc' ? owner.who : undefined),
+        ...maybe('kill', owner?.kind === 'death' ? owner.who : undefined),
+        ...maybe('room', owner?.room),
         ...maybe('from', step.from),
         ...maybe('to', step.to),
         // A route naming pass each, so a way's own gates and rewards read the
@@ -165,18 +238,23 @@ function chainedCounters(
 }
 
 /**
- * Walk from every monster's greeting and every room's script, carrying the
- * owner and the words that reach each block.
+ * Walk from every monster's greeting, every room's script and every monster's
+ * death, carrying the owner and the words that reach each block.
  *
  * Breadth-first and visit-once: a block reached two ways keeps the first
  * owner, which is the shortest path from a root and so the most direct thing
  * a player would do. Words are unioned rather than replaced, because a keyword
  * table routinely points several synonyms at one block and the player only
  * needs whichever they remember.
+ *
+ * **The roots are queued in that order and it is load-bearing**: a block a
+ * monster both greets you with and hands over on death is a conversation, and
+ * the smuggler boss is exactly that monster.
  */
 function traverse(
   source: RealmSource,
-  blocks: Map<number, { action: string; linkTo: number | null }>
+  blocks: Map<number, { action: string; linkTo: number | null }>,
+  spells: QuestNaming['spells']
 ): Map<number, Reached> {
   const reached = new Map<number, Reached>();
   const queue: Array<{ id: number; owner: Reached['owner']; words: string[] }> = [];
@@ -186,25 +264,50 @@ function traverse(
     return at ? `${at[1]}/${at[2]}` : undefined;
   };
 
+  const deaths: Array<{ id: number; owner: Owner }> = [];
+  const runs = spellBlocks(spells);
   for (const row of source.table('Monsters')?.rows ?? []) {
-    const greet = number(row['GreetTXT']);
     const who = text(row['Name']).trim();
-    if (greet === null || greet <= 0 || who.length === 0) continue;
-    queue.push({
-      id: greet,
-      owner: { who, ...maybe('room', roomOf(text(row['Summoned By']))) },
-      words: []
-    });
+    if (who.length === 0) continue;
+    const where = maybe('room', roomOf(text(row['Summoned By'])));
+    const greet = number(row['GreetTXT']);
+    if (greet !== null && greet > 0) {
+      queue.push({ id: greet, owner: { kind: 'npc', who, ...where }, words: [] });
+    }
+    /*
+     * **A death is a root.** `Monsters.DeathSpell` is cast on the corpse and
+     * routinely ends in a text block: the dread mystic's is `dread mystic
+     * temp`, whose `EndCast` is `dread mystic text`, whose `TextBlock` is 1417
+     * — *be at Phoenix rank 1, take the yellowed note, go to rank 2*. See
+     * `mudengine-world` › *The world knowledge base* for what that was worth.
+     */
+    const death = number(row['DeathSpell']);
+    if (death === null || death <= 0) continue;
+    for (const block of runs(death)) {
+      deaths.push({ id: block, owner: { kind: 'death', who, ...where } });
+    }
   }
   for (const row of source.table('Rooms')?.rows ?? []) {
     const cmd = number(row['CMD']);
     if (cmd === null || cmd <= 0) continue;
-    const map = number(row['Map']);
-    const id = number(row['Number']);
+    /*
+     * **`Map Number` and `Room Number`**, which is what the table calls them
+     * (todo 12, 2026-09-13). `Map`/`Number` read null on every row, so every
+     * room-scripted step was built owning nothing: no place, and — because
+     * `stepSaid` anchors on the asker's name — no way to notice the player
+     * doing it either. The realm's own altar quest was in the book as two
+     * blank steps. `buildRealm` has always used these two names.
+     */
+    const map = number(row['Map Number']);
+    const id = number(row['Room Number']);
     const where = map !== null && id !== null ? `${map}/${id}` : undefined;
-    // A room is not somebody, so it owns no `who`; what it has is a place.
-    queue.push({ id: cmd, owner: where ? { who: '', room: where } : null, words: [] });
+    // A room is not somebody, so it owns no `who`; what it has is a place. Its
+    // words are each step's own, taken from the line that states it — see
+    // `BlockStep.phrases`, and why the block's phrases as a whole are wrong.
+    queue.push({ id: cmd, owner: where ? { kind: 'room', room: where } : null, words: [] });
   }
+  // Last, so that a block somebody also talks to you about stays a conversation.
+  for (const death of deaths) queue.push({ ...death, words: [] });
 
   while (queue.length > 0) {
     const next = queue.shift()!;
@@ -245,6 +348,23 @@ interface BlockStep extends BlockWay {
   to?: number;
   /** The routes that differ; absent where the block writes one. */
   ways?: BlockWay[];
+  /**
+   * The phrases the lines that make up *this* step are reached by — the first
+   * field of each line (`<phrase> : <step> : <step>`).
+   *
+   * Per step and not per block, because one block routinely states several
+   * (2026-09-13, todo 12, on review). Block 4355 at `1/163` is three quests in
+   * one room — `pledge good`, `pledge neutral`, `pledge evil` — and handing
+   * every step every phrase told an evil character to pledge good and matched
+   * whichever quest came first in the list when they typed the right one.
+   * Block 9526 is worse: a temple's price list beside a quest step, so buying
+   * a heal would have marked the Evil quest watched.
+   *
+   * Read only for a block a **room** owns. An NPC's block takes its words from
+   * the keyword table that reached it, which is the table that actually says
+   * what to ask; a line's own first field there is not a phrase anybody types.
+   */
+  phrases: string[];
 }
 
 /**
@@ -275,7 +395,7 @@ interface BlockStep extends BlockWay {
 function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
   const merged = new Map<
     string,
-    { counter: number; from?: number; to?: number; routes: BlockWay[] }
+    { counter: number; from?: number; to?: number; routes: BlockWay[]; phrases: string[] }
   >();
   for (const line of action.split('\n')) {
     const script = readQuestScript(line);
@@ -294,21 +414,29 @@ function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
       takes: [...script.takes],
       gives: [...script.gives]
     };
+    // The line's own phrase: everything before the first `:`, which is what a
+    // room's script answers to. Empty where the line states none.
+    const parts = line.split(':');
+    const phrase = parts.length > 1 ? (parts[0] ?? '').trim() : '';
     const held = merged.get(key);
     if (held === undefined) {
       merged.set(key, {
         counter: grant.id,
         routes: [route],
+        phrases: phrase.length > 0 ? [phrase] : [],
         ...maybe('from', from),
         ...maybe('to', grant.value)
       });
       continue;
     }
-    // A block that states the identical line twice states one route.
+    // A block that states the identical line twice states one route; two
+    // spellings of one act are two phrases reaching one step.
     if (!held.routes.some((seen) => same(seen, route))) held.routes.push(route);
+    if (phrase.length > 0 && !held.phrases.includes(phrase)) held.phrases.push(phrase);
   }
   return [...merged.values()].map((entry) => ({
     counter: entry.counter,
+    phrases: entry.phrases,
     ...maybe('from', entry.from),
     ...maybe('to', entry.to),
     ...shareRoutes(entry.routes)

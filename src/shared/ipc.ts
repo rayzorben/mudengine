@@ -37,6 +37,7 @@ import type {
   DropConfig,
   SearchConfig,
   BankingConfig,
+  HuntingAutomationConfig,
   TrainConfig,
   RemotesConfig,
   StatlineConfig,
@@ -60,7 +61,7 @@ import type { ProfileAccent } from './profiles';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
-import type { MovementStart } from './movement';
+import type { MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
 import type {
   LoopDraft,
@@ -221,8 +222,8 @@ export interface AttachSnapshot {
    */
   finds: Find[];
   /**
-   * The rank each quest has been seen to reach from what this character typed
-   * this session. See `Push.questSaid`.
+   * The rank each quest has been seen to reach from what this character was
+   * watched doing this session. See `Push.questSaid`.
    */
   questSaid: Record<number, number>;
   /**
@@ -407,6 +408,8 @@ export interface ProfileEditable {
   health: HealthConfig;
   /** What a route is allowed to do on the way — MegaMUD's Movement. */
   movement: MovementConfig;
+  /** Going hunting on its own — where this character should be. Resolved. */
+  hunting: HuntingAutomationConfig;
   /** Spending character points on the stat screen. Resolved, like the rest. */
   train: TrainConfig;
   /*
@@ -591,6 +594,13 @@ export const Invoke = {
   /** Walk a planned route. Returns why it could not start, or null. */
   walkRoute: 'walk:start',
   /**
+   * Collect the item a route's door needs, then walk the route (todo 07).
+   *
+   * The route panel's *collect it first*, on the alternative that needs one.
+   * Returns why it could not start, or null. See `SessionManager.collectThenWalk`.
+   */
+  collectThenWalk: 'walk:collect',
+  /**
    * Start moving: begin the loop named, or pick back up whatever was stopped.
    *
    * The one play button. A character is routing, looping or stopped
@@ -600,6 +610,15 @@ export const Invoke = {
   startMoving: 'move:start',
   /** Stop moving, whichever of the two is running. The place is kept. */
   stopMoving: 'move:stop',
+  /**
+   * One room back the way the character came, per press.
+   *
+   * A route to the previous room on the trail, never the opposite of the last
+   * direction. Answers as `move:start` does, because it asks the same kind of
+   * question back: the way back is not always one step. See
+   * `SessionManager.stepBack`.
+   */
+  stepBack: 'move:back',
   listLoops: 'loop:list',
   startLoop: 'loop:start',
   /**
@@ -813,6 +832,8 @@ export const Invoke = {
   itemsServing: 'world:serving',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
+  /** Every monster this realm names, for the priority list's picker. */
+  mobNames: 'world:mobs',
   /** How much realm data is loaded. */
   worldInfo: 'world:info',
   questBook: 'world:quests',
@@ -959,11 +980,13 @@ export const Push = {
    */
   characterReset: 'session:character-reset',
   /**
-   * The rank each quest has been *seen* to reach, from what the player typed.
+   * The rank each quest has been *seen* to reach: a line the player typed at
+   * the step's asker, or the death of the monster the step is owned by.
    *
    * Nothing on the wire announces a quest counter moving — that is what `abil`
-   * is for — so this is the player's own action and nothing more, and the card
-   * ranks it **under** the realm's own count. See `stepSaid`.
+   * is for — so this is the character's own action and nothing more, and the
+   * card ranks it **under** the realm's own count. See `stepSaid` and
+   * `stepKilled`.
    */
   questSaid: 'world:quest-said'
 } as const;
@@ -1009,8 +1032,15 @@ export interface IpcApi {
   saveDebug(session: SessionId): Promise<{ path: string } | { error: string }>;
   getCharacter(session: SessionId): Promise<CharacterState>;
   routeTo(session: SessionId, map: number, room: number): Promise<Route>;
-  /** Resolves to the reason the walk could not start, or null if it did. */
-  walkRoute(session: SessionId, route: Route): Promise<string | null>;
+  /**
+   * Walks the plan the panel is showing.
+   *
+   * Resolves to what happened: walking, a refusal, or **the plan drawn again**
+   * — the character moved between the drawing and the press, so the way from
+   * where it now stands is what comes back, for the reader to read and press
+   * again. See {@link WalkStart}.
+   */
+  walkRoute(session: SessionId, route: Route): Promise<WalkStart>;
   /**
    * Start moving. `loop` names the loop the card's picker shows — null is the
    * picker's resume entry, and the name of the lap already stopped means
@@ -1028,8 +1058,28 @@ export interface IpcApi {
     loop: string | null,
     confirmed: number | null
   ): Promise<MovementStart>;
+  /**
+   * Go and get the item this route's door needs, then walk the route.
+   *
+   * Resolves to why it could not start, or null. The item is one the route
+   * itself named (`Route.hazards[].needs`), by the realm's own id and name.
+   */
+  collectThenWalk(
+    session: SessionId,
+    item: { id: number; name: string },
+    route: Route
+  ): Promise<string | null>;
   /** Stop moving, whichever of the two is running. Keeps its place. */
   stopMoving(session: SessionId): Promise<void>;
+  /**
+   * Walk one room back the way the character came.
+   *
+   * Resolves to what happened, as {@link startMoving} does: walking, a
+   * refusal, or a question — the way back needs more than one step and the
+   * player is asked before a press becomes a journey. `confirmed` is the
+   * figure they were shown; main measures again.
+   */
+  stepBack(session: SessionId, confirmed: number | null): Promise<MovementStart>;
   /**
    * The loops this session's *resolved* config defines. Asked per session
    * because a profile overlay replaces `automation.loops` — the global file's
@@ -1164,6 +1214,16 @@ export interface IpcApi {
    * walked there, which is what puts the recent ones on top.
    */
   searchRooms(session: SessionId, query: string): Promise<Array<WorldRoom & Visited>>;
+  /**
+   * The monsters this realm names, for the priority list.
+   *
+   * Addressed like every other world query: two characters may play different
+   * realms, and a monster ranked from one realm's list means nothing on
+   * another's. Suggestions only — the field stays typable, as the potion
+   * picker's does, so a realm the client holds no data for can still be
+   * ranked by hand.
+   */
+  mobNames(session: SessionId): Promise<string[]>;
   worldInfo(session: SessionId): Promise<{ rooms: number; source: string }>;
   /**
    * Every quest this realm scripts, assembled from its own text blocks.
@@ -1186,13 +1246,14 @@ export interface IpcApi {
    */
   roomBrief(session: SessionId, map: number, room: number): Promise<RoomBrief | null>;
   /**
-   * Where this character should hunt: every lair within `radius` steps of
-   * where it stands, priced by the realm's own respawn clock and the same
-   * arithmetic the Room card prices a fight with, best first. Addressed, and
-   * asked on demand — the sweep and the pricing are work, and the answer moves
-   * with the character.
+   * Where this character should hunt: every lair the exits reach from where
+   * it stands, priced by the realm's own respawn clock and the same
+   * arithmetic the Room card prices a fight with, the loop sized to the clock
+   * and filled from the lairs beside it, best first. Addressed, and asked on
+   * demand — the sweep and the pricing are work, and the steps move with the
+   * character.
    */
-  huntingGrounds(session: SessionId, radius: number): Promise<HuntingAdvice>;
+  huntingGrounds(session: SessionId): Promise<HuntingAdvice>;
   /**
    * The trainers that will take this character, cheapest first (todo 18).
    *

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { effectValues, entryKey, flattenLookup } from '../ReferenceDetail';
+import { entryKey, flattenLookup } from '../ReferenceDetail';
+// The reading moved into `src/shared/abilities.ts` with `readEffects` when the
+// console's own rewrites wanted the same answer (todo 14); the safety decision
+// it holds is unchanged and is still asserted here.
+import { effectValues } from '@shared/abilities';
 import type { WorldLookup, WorldSpell } from '@shared/world';
 
 /*

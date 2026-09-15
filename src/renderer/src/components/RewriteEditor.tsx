@@ -25,14 +25,17 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { ItemEntity } from '@shared/entities';
 import { equipVerdict, type Wearer } from '@shared/gear';
+import { readEffects } from '@shared/abilities';
 import {
   CHARACTER_FIELDS,
   ENTITY_SPECS,
   DEFAULT_REWRITES,
+  NO_EFFECTS,
   renderRewrite,
   REWRITE_ENTITIES,
   ROW_FIELDS,
   type FieldSpec,
+  type ReadEffects,
   type RewriteDesign,
   type RewriteEntity,
   type RewriteFacts,
@@ -307,6 +310,7 @@ function Sidebar({
 }): React.JSX.Element {
   const spec = ENTITY_SPECS[entity];
   const selfPrefix = spec.self === 'top' ? '' : 'me.';
+  const lists = spec.fields.filter((field) => field.kind === 'list' && field.row !== undefined);
   return (
     <aside className="rewrite-sidebar">
       {spec.fields.length > 0 && (
@@ -316,12 +320,37 @@ function Sidebar({
           ))}
         </Category>
       )}
+      {/*
+        Every figure a row of each list holds, written out under a heading of
+        its own (todo 14).
+        
+        They were reachable only behind a chevron beside the list, and reported
+        as *"it has {items} but I don't even see {item} in the list — it has
+        weight, which is an item attribute, and that is not in the list
+        either"*. A figure nobody can find is a figure the client does not
+        offer, which is this project's own rule about a command. They are
+        addressed through the row's name because that is what the `{for}` above
+        them binds: `{for item in items}` and then `{item.weight}`.
+      */}
+      {lists.map((field) => (
+        <Category key={field.key} label={t(`rewrites.rows.${field.key}`)}>
+          <RepeatRow field={field} insert={insert} />
+          {(field.fields ?? []).map((inner) => (
+            <FieldRow
+              field={inner}
+              insert={insert}
+              key={inner.key}
+              prefix={`${field.row ?? ''}.`}
+            />
+          ))}
+        </Category>
+      ))}
       <Category label={t('settings.rewrites.editor.sidebar.character')} open={spec.self === 'top'}>
         {CHARACTER_FIELDS.map((field) => (
           <FieldRow field={field} insert={insert} key={field.key} prefix={selfPrefix} />
         ))}
       </Category>
-      {spec.fields.some((field) => field.kind === 'list') && (
+      {lists.length > 0 && (
         <Category label={t('settings.rewrites.editor.sidebar.row')}>
           {ROW_FIELDS.map((field) => (
             <FieldRow field={field} insert={insert} key={field.key} prefix="" />
@@ -331,6 +360,28 @@ function Sidebar({
       <Colours insert={insert} palette={palette} />
       <Controls insert={insert} />
     </aside>
+  );
+}
+
+/** The `{for}` that opens a list, with the row named: what every figure under it is addressed by. */
+function RepeatRow({ field, insert }: { field: FieldSpec; insert: Insert }): React.JSX.Element {
+  const open = `{for ${field.row ?? ''} in ${field.key}}`;
+  return (
+    <button
+      className="rewrite-tag"
+      onClick={() =>
+        insert((selected) => ({
+          text: `${open}\n${selected}\n{/for}`,
+          caret: `${open}\n`.length + selected.length
+        }))
+      }
+      onMouseDown={keepFocus}
+      title={t('settings.rewrites.editor.sidebar.repeatHint')}
+      type="button"
+    >
+      <code>{open}</code>
+      <span className="hint">{t('settings.rewrites.editor.sidebar.repeat')}</span>
+    </button>
   );
 }
 
@@ -410,9 +461,10 @@ function FieldRow({
               className="entry"
               onClick={() => {
                 dismiss();
+                const open = `{for ${field.row ?? ''} in ${prefix}${field.key}}`;
                 insert((selected) => ({
-                  text: `{for ${prefix}${field.key}}\n${selected}\n{/for}`,
-                  caret: `{for ${prefix}${field.key}}\n`.length + selected.length
+                  text: `${open}\n${selected}\n{/for}`,
+                  caret: `${open}\n`.length + selected.length
                 }));
               }}
               title={t('settings.rewrites.editor.sidebar.repeatHint')}
@@ -421,14 +473,19 @@ function FieldRow({
               <Icon name="loop" />
               <span>
                 {t('settings.rewrites.editor.sidebar.repeat')}{' '}
-                <code>{`{for ${prefix}${field.key}}`}</code>
+                <code>{`{for ${field.row ?? ''} in ${prefix}${field.key}}`}</code>
               </span>
             </button>
           )}
           {field.fields.map((inner) => {
-            // A row's field is bare inside its `{for}`; a record's is reached through it.
+            /*
+             * A row's field is addressed through the name its `{for}` binds —
+             * `{item.weight}` — and a record's through the record. One rule,
+             * since a bound row *is* a record: the prefix is the only thing
+             * that differs, and it is the list's own singular (`FieldSpec.row`).
+             */
             const innerTag = tagOf(
-              field.kind === 'list' ? '' : `${prefix}${field.key}.`,
+              field.kind === 'list' ? `${field.row ?? ''}.` : `${prefix}${field.key}.`,
               inner.key
             );
             return (
@@ -663,7 +720,17 @@ const SAMPLE_PACK: ItemEntity[] = [
       encumbrance: 200,
       kind: 'weapon',
       realmSlot: 'Weapon Hand',
-      weapon: { min: 4, max: 13 }
+      weapon: { min: 4, max: 13 },
+      /*
+       * Real pairs, so `{item.effects}` previews as the realm words it: `AC`
+       * and `Resist-Fire` are a magnitude and a percentage, which are the two
+       * shapes a reader meets most. Invented figures on a real vocabulary,
+       * like every other number in this sample.
+       */
+      abilities: [
+        [2, 3],
+        [5, 15]
+      ]
     },
     { slot: 'Weapon Hand', equipped: true }
   ),
@@ -685,6 +752,19 @@ const SAMPLE_PACK: ItemEntity[] = [
   sampleItem('torch', { id: 5, encumbrance: 20, kind: 'light', realmSlot: 'Readied' }, { count: 6 })
 ];
 
+/**
+ * The sample's own effects, read exactly as main reads a real pack's.
+ *
+ * Through `readEffects` rather than a written-out list, so the preview cannot
+ * word an ability differently from the console: the sidebar teaches
+ * `{item.effects}` off this.
+ */
+function sampleEffects(item: ItemEntity): ReadEffects {
+  const pairs = item.abilities;
+  if (pairs === undefined || pairs.length === 0) return NO_EFFECTS;
+  return readEffects(pairs, { table: 'item', family: 'other' }, t);
+}
+
 /** The listing a design is previewed against: the character's own figures, and a sample of the rest. */
 export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null): RewriteFacts {
   const figures = own ?? SAMPLE_FIGURES;
@@ -698,7 +778,8 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
         pack: {
           items: SAMPLE_PACK.map((item) => ({
             item,
-            verdict: equipVerdict(item, SAMPLE_WEARER, t)
+            verdict: equipVerdict(item, SAMPLE_WEARER, t),
+            effects: sampleEffects(item)
           })),
           keys: ['bone key'],
           /*
@@ -747,7 +828,8 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
           cost: quotedInCopper(price),
           note: null,
           item,
-          verdict: equipVerdict(item, SAMPLE_WEARER, t)
+          verdict: equipVerdict(item, SAMPLE_WEARER, t),
+          effects: sampleEffects(item)
         }))
       };
     }

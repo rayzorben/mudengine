@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CARDS,
+  DEFAULT_FLOAT,
   docked,
   floatAlphas,
   hidesWhenEmpty,
   HIDES_WHEN_EMPTY,
+  lifted,
   normalizeLayout,
   raised,
   RAIL_HEIGHT,
@@ -150,15 +152,26 @@ describe('a float read back off disk', () => {
 
 describe('how solid a floating card is drawn', () => {
   /*
-   * The whole point of putting a card over the console is to see both — so the
-   * *panel* never becomes opaque, however far the slider is pushed. It goes to
-   * 90% rather than the 60% it shipped with, which was still too transparent to
-   * read a card against a busy console; a card that hid the game completely is
-   * one somebody would close rather than move.
+   * The ceiling is the player's to remove and is gone (todo 04). It was 60%,
+   * then 90%, each time on the argument that a card hiding the game completely
+   * is one somebody would close rather than move — which is a reason to ship
+   * the slider low, not a reason to withhold the end of it.
    */
-  it('never lets the panel become opaque, even at its most solid', () => {
-    expect(floatAlphas(1).fill).toBeLessThan(1);
-    expect(floatAlphas(1).fill).toBeCloseTo(0.9);
+  it('lets the panel be made solid at the top of the slider', () => {
+    expect(floatAlphas(1).fill).toBeCloseTo(1);
+  });
+
+  /*
+   * But a card dropped over the console does not *start* there. With a ceiling
+   * of 90% the top of the slider and the shipped fill were the same place;
+   * with no ceiling, shipping at the top would make every new float opaque and
+   * quietly undo the thing the slider exists to offer.
+   */
+  it('ships a new float below the top, still showing the game through it', () => {
+    const { fill, text } = floatAlphas(DEFAULT_FLOAT.solidity);
+    expect(fill).toBeCloseTo(0.9);
+    expect(fill).toBeLessThan(1);
+    expect(text).toBeGreaterThan(fill);
   });
 
   /* The text may reach full strength: a number is what the card is *for*. */
@@ -166,12 +179,16 @@ describe('how solid a floating card is drawn', () => {
     expect(floatAlphas(1).text).toBeCloseTo(1);
   });
 
-  /* A card you can see through is useful; a *readout* you can see through is not. */
-  it('always keeps the text ahead of the fill', () => {
-    for (const solidity of [0, 0.25, 0.5, 0.75, 1]) {
+  /* A card you can see through is useful; a *readout* you can see through is
+     not — so wherever the console shows through at all, the text is ahead of
+     the fill. At the top the two meet, because there is nothing to show. */
+  it('keeps the text ahead of the fill wherever the game shows through', () => {
+    for (const solidity of [0, 0.25, 0.5, 0.75]) {
       const { fill, text } = floatAlphas(solidity);
       expect(text).toBeGreaterThan(fill);
     }
+    const solid = floatAlphas(1);
+    expect(solid.text).toBeGreaterThanOrEqual(solid.fill);
   });
 
   it('never lets a card disappear, because an invisible one cannot be dragged back', () => {
@@ -269,6 +286,44 @@ describe('raising a floating card', () => {
 
   it('returns the same list for a card that is not floating', () => {
     expect(raised(floats, 'room')).toBe(floats);
+  });
+});
+
+/*
+ * A card lifted over the console — off a lane, or from where it was already
+ * floating, which is what a snap does (todo 02).
+ */
+describe('lifting a card over the console', () => {
+  const where = { x: 0.4, y: 0.2 };
+
+  it('takes the size it is given, and what it had before that', () => {
+    expect(lifted('map', undefined, where)).toEqual({
+      id: 'map',
+      ...where,
+      w: DEFAULT_FLOAT.w,
+      h: DEFAULT_FLOAT.h,
+      solidity: DEFAULT_FLOAT.solidity
+    });
+    const before = { id: 'map', x: 0, y: 0, w: 0.5, h: 0.5, solidity: 0.4 } as const;
+    expect(lifted('map', before, where)).toMatchObject({ w: 0.5, h: 0.5, solidity: 0.4 });
+    expect(lifted('map', before, where, { w: 0.2, h: 0.9 })).toMatchObject({ w: 0.2, h: 0.9 });
+  });
+
+  /*
+   * Nothing lifted an already-floating card until snapping did, so the pin had
+   * never had to survive one — and losing it would take a card out of view on
+   * the next character switch because somebody lined it up with a neighbour.
+   */
+  it('keeps a pin across a lift, and invents one for nothing', () => {
+    const pinned = { id: 'map', x: 0, y: 0, w: 0.5, h: 0.5, solidity: 1, pinned: true } as const;
+    expect(lifted('map', pinned, where).pinned).toBe(true);
+    expect(lifted('map', { ...pinned, pinned: undefined }, where).pinned).toBeUndefined();
+    expect(lifted('map', undefined, where).pinned).toBeUndefined();
+  });
+
+  it('clamps a card into the workspace and off its floor', () => {
+    expect(lifted('map', undefined, { x: -1, y: 4 })).toMatchObject({ x: 0, y: 0.98 });
+    expect(lifted('map', undefined, where, { w: 0.001, h: 9 })).toMatchObject({ w: 0.12, h: 1 });
   });
 });
 

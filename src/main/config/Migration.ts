@@ -45,7 +45,11 @@ import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
 import { DEFAULT_CONFIG, normalizeBands } from '../../shared/config';
-import { NOTICE_CHANNELS, type AlertRule } from '../../shared/notifications';
+import {
+  DEFAULT_ALERT_DEBOUNCE_SECONDS,
+  NOTICE_CHANNELS,
+  type AlertRule
+} from '../../shared/notifications';
 import { DEFAULT_REWRITES, type RewriteDesign, type RewriteEntity } from '../../shared/rewrites';
 import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { DENOMINATIONS } from '../../shared/character';
@@ -198,6 +202,128 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheRecoveryBounds(home, note);
   statedTheAlertRules(home, note);
   theCombatAndPotionSettingsWent(home, note);
+  statedTheMobPriority(home, note);
+  alertRowsBecameEvents(home, note);
+  theDesktopSwitchesBecameRows(home, note);
+  theToolbarGainedBack(home, note, options.internalTemplate);
+  statedTheHunting(home, note);
+  theTalkHoldGrew(home, note);
+  statedTheReplanDrift(home, note);
+  theActionsBecameAFamily(home, note);
+  statedTheLightWait(home, note);
+}
+
+/**
+ * `view.talkFollowResumeMs` 15s → 45s (todo 10, 2026-09-13).
+ *
+ * A shipped figure the player has a copy of: leaving it alone would mean the
+ * client they run keeps the old hold and the change is invisible to exactly
+ * the person who asked for it. **Only where it still says the old default** —
+ * a figure somebody has tuned is their answer, and a migration that overwrote
+ * it would be the client arguing with them.
+ */
+function theTalkHoldGrew(home: Home, note: (message: string) => void): void {
+  let changed = false;
+  edit(home.internal, (document) => {
+    const view = document.getIn(['tuning', 'view'], true);
+    if (!isMap(view)) return false;
+    const held = view.get('talkFollowResumeMs', true);
+    if (!isScalar(held) || Number(held.value) !== 15_000) return false;
+    held.value = DEFAULT_INTERNAL.tuning.view.talkFollowResumeMs;
+    changed = true;
+    return true;
+  });
+  if (changed) note(t('notices.migration.talkHold', { file: home.internal }));
+}
+
+/**
+ * The two desktop-notification switches become the rows' own (2026-09-13).
+ *
+ * `ui.alerts.desktop` was `enabled` — raise anything at all — and
+ * `whileFocused` — raise it while the window is in front. Every row already
+ * carries both questions: `notify` says whether the row raises one, and its
+ * own `whileFocused` says whether that holds while somebody is looking. Two
+ * vocabularies for one question is how somebody sets one and wonders why the
+ * other still decides, which is the ruling the severity floor and the mute
+ * lists went under.
+ *
+ * What the player stated is carried rather than dropped:
+ *
+ * - `enabled: false` meant *raise nothing*, and it outranked every row. So
+ *   every row here has `notify` turned off — the same silence, said where it
+ *   can now be undone one row at a time.
+ * - `whileFocused: true` meant *even while I am looking*, for everything it
+ *   raised. So every row that notifies gains it.
+ *
+ * The defaults state nothing: a file saying `enabled: true, whileFocused:
+ * false` is the shipped answer, and rewriting rows to say it again would put
+ * the migration's opinion into a list the player owns.
+ *
+ * Idempotent — it runs only where the `desktop` key is still there, and it
+ * removes it.
+ */
+function theDesktopSwitchesBecameRows(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const changed: string[] = [];
+  const silenced: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const alerts = document.getIn(['ui', 'alerts'], true);
+      if (!isMap(alerts)) return false;
+      const desktop = alerts.get('desktop', true);
+      if (!isMap(desktop)) {
+        // A bare `desktop:` with no map under it still goes; it says nothing
+        // and would be read by nothing.
+        if (!alerts.has('desktop')) return false;
+        alerts.delete('desktop');
+        changed.push(file);
+        return true;
+      }
+
+      // Absent reads as the shipped answer, which is what the client did.
+      const raised = desktop.get('enabled') !== false;
+      const inFront = desktop.get('whileFocused') === true;
+      const rules = alerts.get('rules', true);
+
+      if (isSeq(rules)) {
+        for (const item of rules.items) {
+          if (!isMap(item)) continue;
+          if (!raised) {
+            if (item.get('notify') === true) item.set('notify', false);
+            // Meaningless without the one above, so it goes with it rather
+            // than being left standing on a row that no longer notifies.
+            if (item.get('whileFocused') === true) item.set('whileFocused', false);
+          } else if (inFront && item.get('notify') === true) {
+            item.set('whileFocused', true);
+          }
+        }
+      }
+
+      alerts.delete('desktop');
+      changed.push(file);
+      if (!raised) silenced.push(file);
+      return true;
+    });
+  }
+
+  if (changed.length === 0) return;
+  note(
+    t('notices.migration.desktopSwitchesBecameRows', {
+      count: changed.length,
+      fileList: changed.join(', ')
+    })
+  );
+  if (silenced.length > 0) {
+    // Said by name: notifications were switched off wholesale and are now off
+    // row by row, which is a thing somebody may want to put back.
+    note(
+      t('notices.migration.desktopSwitchesSilenced', {
+        count: silenced.length,
+        fileList: silenced.join(', ')
+      })
+    );
+  }
 }
 
 /**
@@ -264,6 +390,46 @@ function statedTheTraining(home: Home, note: (message: string) => void): void {
     return true;
   });
 }
+
+/**
+ * `automation.hunting` into the options file (todo 05, 2026-09-13).
+ *
+ * The block a switch lives in has to exist in the file the player edits, or
+ * the only way to reach it is the settings screen — and the screen writes a
+ * block, which then has no paragraph beside it saying what it does. Written
+ * after `movement` — beside the other block about where a character goes, and
+ * near enough the template's own placement, which puts it after `train` — and
+ * only where `automation:` is stated at all: a file with no `automation:` block is one the client has
+ * never written and the defaults answer for.
+ */
+function statedTheHunting(home: Home, note: (message: string) => void): void {
+  editOptions(home, (document) => {
+    const automation = document.get('automation', true);
+    if (!isMap(automation) || automation.has('hunting')) return false;
+    const pair = document.createPair('hunting', { ...DEFAULT_CONFIG.automation.hunting }) as Pair;
+    if (isScalar(pair.key)) pair.key.commentBefore = HUNTING_COMMENT;
+    const after = automation.items.findIndex((item) => keyText(item) === 'movement');
+    if (after >= 0) automation.items.splice(after + 1, 0, pair);
+    else automation.items.push(pair);
+    note(t('notices.migration.hunting', { file: home.options }));
+    return true;
+  });
+}
+
+/** The template's own words, abridged, so the two files read alike. */
+const HUNTING_COMMENT = ` Going hunting on its own: where this character should be at all.
+
+ The Hunting card ranks every lair the exits reach from where the character
+ stands, prices each against this character's own sheet and the realm's own
+ respawn clock, sizes a loop to that clock and fills it from the lairs beside
+ it. With \`enabled\` on, a character with nothing else to do -- no lap, no
+ route, no errand, nothing swinging at it -- is walked to the best spot within
+ reach and set looping round it, and the loop is built from the survey each
+ time rather than filed anywhere.
+
+ \`radius\` is how far to look, in steps; 0 is everywhere the exits reach.
+ There is no floor here: \`walk.minExpPerHour\` is the rate below which nothing
+ is worth walking to, and the survey's own exclusions are the safety.`;
 
 /** The template's own words, abridged, so the two files read alike. */
 const TRAIN_COMMENT = ` Spending character points -- the \`train stats\` screen.
@@ -800,6 +966,168 @@ function statedTheHideForOpener(home: Home, note: (message: string) => void): vo
       : t('notices.migration.hideForOpener.many', params)
   );
 }
+
+/**
+ * Alert rows named a channel or a watch; now they name an event (todo 03).
+ *
+ * `on` was one of eleven buckets this client sorts notices into — `combat`,
+ * `room`, `session` — offered to somebody looking for a thing that *happens*.
+ * A row saying `combat` meant every monster's blow, every refused spell and
+ * this character's own death together, which is why nothing in that picker
+ * read as selectable.
+ *
+ * A channel cannot be carried across as one event, because it was several. So
+ * each is carried to **the event a player most likely meant by it**, and the
+ * conversion is said out loud with the pairs named, because it is the one
+ * migration here that can change what somebody is told about: a row that said
+ * `combat` and now says *you die* is narrower than it was.
+ *
+ * The two named watches keep their meaning exactly (`item` is `item-found`,
+ * `player` is `player-seen`), as do `health`, `mana`, `attacked` and `cash`,
+ * which were already events in everything but name.
+ *
+ * Every row also gains `quietSeconds`, at the shipped thirty.
+ */
+function alertRowsBecameEvents(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const changed: string[] = [];
+  const widened: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const rules = document.getIn(['ui', 'alerts', 'rules'], true);
+      if (!isSeq(rules)) return false;
+      let touched = false;
+      for (const item of rules.items) {
+        if (!isMap(item)) continue;
+        const on = String(item.get('on') ?? '')
+          .trim()
+          .toLowerCase();
+        const replacement = EVENT_FOR_OLD_ROW[on];
+        if (replacement !== undefined && on !== replacement) {
+          item.set('on', replacement);
+          touched = true;
+          if ((NOTICE_CHANNELS as readonly string[]).includes(on))
+            widened.push(`${on} → ${replacement}`);
+        }
+        if (!item.has('quietSeconds')) {
+          item.set('quietSeconds', DEFAULT_ALERT_DEBOUNCE_SECONDS);
+          touched = true;
+        }
+      }
+      if (!touched) return false;
+      changed.push(file);
+      return true;
+    });
+  }
+
+  if (changed.length === 0) return;
+  note(
+    t('notices.migration.alertRowsBecameEvents', {
+      count: changed.length,
+      fileList: changed.join(', '),
+      // Said out loud and by name: a row that meant a whole channel now means
+      // one happening, which is narrower than what the player wrote.
+      pairs: [...new Set(widened)].join(', ') || t('notices.migration.alertRowsNoChannels')
+    })
+  );
+}
+
+/**
+ * What each old `on` word becomes.
+ *
+ * The five watches keep their meaning; the eleven channels each go to the
+ * event a player writing that word most likely wanted. `vitals` is the odd one
+ * — it was the client's own crossings rather than a figure the player chose —
+ * so it goes to `vitals-crossing`, which is exactly what it produced.
+ */
+const EVENT_FOR_OLD_ROW: Record<string, AlertRule['on']> = {
+  /* The watches, renamed only where the word was not already the event. */
+  health: 'health',
+  mana: 'mana',
+  attacked: 'attacked',
+  item: 'item-found',
+  player: 'player-seen',
+  cash: 'cash-found',
+  /* The channels, each to the happening it most often carried. */
+  combat: 'died',
+  vitals: 'vitals-crossing',
+  room: 'player-arrives',
+  realm: 'hostile-in-realm',
+  party: 'party-hurt',
+  command: 'command-refused',
+  movement: 'arrived',
+  items: 'item-found',
+  stealth: 'hide-failed',
+  presence: 'movement-heard',
+  session: 'connection-lost'
+};
+
+/**
+ * `combat.mobPriority` into a file that predates it, empty (todo 01).
+ *
+ * An empty list is exactly what the client does without the key, so nothing on
+ * disk changes behaviour by this. It is written anyway for the reason every
+ * `stated*` migration here is: a setting absent from the file is a setting
+ * nobody editing the file can find, and a key added *inside* an existing block
+ * is not something `reconcileWithTemplate` will ever bring — it copies whole
+ * top-level blocks and never reaches inside one.
+ *
+ * The options file and every character's, as `hideForOpener` did. The realm's
+ * own list lives in `servers/<id>/server.yaml` and is not written here: an
+ * absent key there already means *this realm ranks nothing*, and a realm file
+ * is short enough to read whole.
+ */
+function statedTheMobPriority(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat) || combat.has('mobPriority')) return false;
+
+      const pair = document.createPair('mobPriority', []) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = MOB_PRIORITY_COMMENT;
+      // After `avoid`, which is the other list of monster names and where the
+      // template puts it, so the two files read in the same order.
+      const at = combat.items.findIndex((item) => keyText(item) === 'avoid');
+      if (at === -1) combat.items.push(pair);
+      else combat.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.mobPriority.one', params)
+      : t('notices.migration.mobPriority.many', params)
+  );
+}
+
+/** The template's own words for the list, so the two files read alike. */
+const MOB_PRIORITY_COMMENT = ` The order monsters are attacked in -- MegaMUD's Attack Priority List.
+
+ Five bands: first, high, default, low, last. A monster no row names is
+ \`default\`, so this is somewhere to add the one that matters rather than a
+ ranking of the realm.
+
+   mobPriority:
+     - { mob: gnoll shaman, priority: first }
+     - { mob: giant rat, priority: last }
+
+ Where one of these is in the room the band decides outright and the
+ client's own weighing is skipped -- which is the point: a ranking the
+ realm's arithmetic could overturn is one nobody can predict from reading
+ it. \`avoid\` and every other refusal still apply first, so a band says
+ which of the monsters worth attacking to attack, never that one is.
+
+ A realm may state its own list in \`servers/<id>/server.yaml\`, and it is
+ merged rather than replaced: a row here wins for the monster it names,
+ and the realm's rows for every other monster still apply.`;
 
 /** The template's own words for the switch, so the two files read alike. */
 const HIDE_FOR_OPENER_COMMENT = ` Get back into the shadows between fights, so \`bs\` lands again.
@@ -2184,8 +2512,14 @@ function alertSettingsBecameRows(home: Home, note: (message: string) => void): v
       const hadDesktopMute = isMap(desktop) && desktop.has('mute');
       if (!hadFloor && !hadMute && !hadFinds && !hadDesktopMute) return false;
 
-      const rows: AlertRule[] = [];
-      const row = (over: Partial<AlertRule> & Pick<AlertRule, 'on'>): AlertRule => ({
+      /*
+       * Typed loosely on purpose: `on` here is a *channel* word, which
+       * `AlertRule` no longer accepts. `alertRowsBecameEvents` converts them
+       * in the same run -- see `HAPPENING_CHANNEL`.
+       */
+      type WrittenRow = Omit<AlertRule, 'on' | 'quietSeconds'> & { on: string };
+      const rows: WrittenRow[] = [];
+      const row = (over: Partial<WrittenRow> & Pick<WrittenRow, 'on'>): WrittenRow => ({
         enabled: true,
         level: null,
         alert: true,
@@ -2200,7 +2534,7 @@ function alertSettingsBecameRows(home: Home, note: (message: string) => void): v
 
       for (const channel of lowerWords(alerts.get('mute', true))) {
         if (!(NOTICE_CHANNELS as readonly string[]).includes(channel)) continue;
-        rows.push(row({ on: channel as AlertRule['on'], alert: false }));
+        rows.push(row({ on: channel, alert: false }));
       }
 
       if (hadFinds) {
@@ -2254,8 +2588,16 @@ function alertSettingsBecameRows(home: Home, note: (message: string) => void): v
   }
 }
 
-/** Which channel a desktop happening arrives on, for the mute conversion. */
-const HAPPENING_CHANNEL: Partial<Record<string, AlertRule['on']>> = {
+/**
+ * Which channel a desktop happening arrives on, for the mute conversion.
+ *
+ * Still the *channel* words, and deliberately: this step runs before
+ * `alertRowsBecameEvents`, which converts every channel word in the list —
+ * including the ones written here — into the events that replaced them
+ * (todo 03). Writing events here would mean keeping two tables in step for
+ * the sake of one run of the same conversion.
+ */
+const HAPPENING_CHANNEL: Partial<Record<string, string>> = {
   attacked: 'attacked',
   hurt: 'vitals',
   arrived: 'movement',
@@ -2836,6 +3178,136 @@ function statedTheStepNudge(home: Home, note: (message: string) => void): void {
 
   if (stated) note(t('notices.migration.stepNudgeStated'));
 }
+
+/**
+ * `{action}` becomes `{action.toggleEquip}` in a design the player keeps.
+ *
+ * What can be done with a thing is a family since todo 14 — the equip gate it
+ * already had, and putting the thing down — so `action` went from one glyph to
+ * a record of them. A template still naming the record draws **nothing**: it
+ * resolves, so there is no error to report, and the glyph simply stops being
+ * there. That is the silent kind of breakage this project migrates rather than
+ * explains, and the tag is unambiguous, so it is a replacement of exactly that
+ * text inside each design's own template and nothing else.
+ *
+ * Bare row fields are left alone: `{for items}{weight}{/for}` still binds the
+ * row's figures bare and always will. Only the name whose *meaning* moved is
+ * rewritten.
+ */
+function theActionsBecameAFamily(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    let changed = false;
+    edit(file, (document) => {
+      const designs = document.getIn(['ui', 'rewrites', 'designs'], true);
+      if (!isSeq(designs)) return false;
+      let touched = false;
+      for (const design of designs.items) {
+        if (!isMap(design)) continue;
+        const template = design.get('template', true);
+        if (!isScalar(template) || typeof template.value !== 'string') continue;
+        if (!template.value.includes('{action}')) continue;
+        template.value = template.value.replaceAll('{action}', '{action.toggleEquip}');
+        touched = true;
+      }
+      changed = touched;
+      return touched;
+    });
+    if (changed) note(t('notices.migration.actionsFamilied', { file }));
+  }
+}
+
+/**
+ * How far a drawn plan may drift before the press asks about the redrawn one.
+ *
+ * `statedTheStepNudge`'s gap one key along again: a key added inside an
+ * existing `walk:` block reaches nobody who has already run the client, and
+ * this one decides whether pressing Walk on a plan the character has wandered
+ * off the start of walks quietly or puts the new plan back on screen. Without
+ * it the file has no figure and the behaviour is invisible in the one place
+ * the client tells the player to look for it.
+ *
+ * Beside `resumeAskSteps`, where the shipped file puts it and where the
+ * distance it is not is already explained.
+ */
+function statedTheReplanDrift(home: Home, note: (message: string) => void): void {
+  let stated = false;
+  edit(home.internal, (document) => {
+    const block = document.getIn(['tuning', 'walk'], true);
+    if (!isMap(block) || block.has('replanDriftSteps')) return false;
+
+    // The default itself, never a copy: `statedTheStepNudge` has the argument.
+    const pair = document.createPair(
+      'replanDriftSteps',
+      DEFAULT_INTERNAL.tuning.walk.replanDriftSteps
+    ) as Pair;
+    const at = block.items.findIndex(
+      (item) => isScalar(item.key) && String(item.key.value) === 'resumeAskSteps'
+    );
+    if (at === -1) block.items.push(pair);
+    else block.items.splice(at + 1, 0, pair);
+    if (isScalar(pair.key)) pair.key.commentBefore = REPLAN_DRIFT_COMMENT;
+    stated = true;
+    return true;
+  });
+
+  if (stated) note(t('notices.migration.replanDriftStated'));
+}
+
+/**
+ * How long a walk waits in the dark for the light that fixes it.
+ *
+ * `statedTheReplanDrift`'s gap, one key along: `reconcileWithTemplate` adds an
+ * absent top-level block and never reaches inside one, so a key added under
+ * `walk:` reaches nobody who has already run the client.
+ *
+ * Worth stating rather than leaving to the default, because what it bounds is
+ * a walk that used to *stop*: a blinding room prints no room block, the client
+ * could not say where the character was standing, and the journey ended one
+ * statement before auto-light proposed the torch that fixed it. The figure is
+ * the only thing standing between waiting for a light and waiting for ever.
+ *
+ * Beside `heldFallbackMs`, where the shipped file puts it.
+ */
+function statedTheLightWait(home: Home, note: (message: string) => void): void {
+  let stated = false;
+  edit(home.internal, (document) => {
+    const block = document.getIn(['tuning', 'walk'], true);
+    if (!isMap(block) || block.has('lightWaitMs')) return false;
+
+    // The default itself, never a copy: `statedTheStepNudge` has the argument.
+    const pair = document.createPair(
+      'lightWaitMs',
+      DEFAULT_INTERNAL.tuning.walk.lightWaitMs
+    ) as Pair;
+    const at = block.items.findIndex(
+      (item) => isScalar(item.key) && String(item.key.value) === 'heldFallbackMs'
+    );
+    if (at === -1) block.items.push(pair);
+    else block.items.splice(at + 1, 0, pair);
+    if (isScalar(pair.key)) pair.key.commentBefore = LIGHT_WAIT_COMMENT;
+    stated = true;
+    return true;
+  });
+
+  if (stated) note(t('notices.migration.lightWaitStated'));
+}
+
+/** The template's own words for the key, so the two files read alike. */
+const LIGHT_WAIT_COMMENT = ` How long a walk stands still in a room too dark to read, waiting for the
+ light auto-light is readying.
+
+ A blinding room prints no room block at all, so the client cannot say where
+ the character is standing and the walk used to stop there -- one statement
+ before the torch it needed was even proposed. What it waits for is three
+ commands and two answers ("light torch", "You lit the torch.", "l", the room),
+ measured at 145ms end to end; what makes this seconds rather than a fifth of
+ one is the queue, which paces the light behind whatever else is in flight.
+
+ A deadline and not a retry: there is nothing further to ask. Past it the room
+ is dark for a reason no light in the pack fixes, and the walk stops with the
+ sentence it always had.`;
 
 /**
  * The window the walk's nudge deadline is measured over.
@@ -3592,6 +4064,18 @@ const NUDGE_SAMPLES_COMMENT = ` How many recent move answers that deadline is me
  not evidence the realm is quick. A window rather than an all-time maximum, so
  one lagged answer ages out instead of standing the fallback down for the
  evening.`;
+
+const REPLAN_DRIFT_COMMENT = ` How far the character may have strayed from the room a drawn plan
+ starts in before pressing Walk asks about the plan it is redrawn as.
+
+ A plan is drawn from where the character stood when it was drawn, and a lap or
+ a party leader moves it while the panel is open -- so the press used to earn
+ "that route does not start here", with nothing to do about it but draw the
+ same plan again. It is redrawn from here instead, and the only question left
+ is whether the reader is still looking at the journey they agreed to.
+
+ Counted in the router's own steps, not in map squares. Past this, the new plan
+ is put back on screen to be read. 0 asks every time.`;
 
 const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
 
@@ -4970,8 +5454,25 @@ function theTuningBlockGainedKeys(
     /* The wheel on a map: how much a notch zooms, and when the card writes it down. */
     addKey('view', 'mapZoomStepPercent', DEFAULT_INTERNAL.tuning.view.mapZoomStepPercent);
     addKey('view', 'mapZoomSettleMs', DEFAULT_INTERNAL.tuning.view.mapZoomSettleMs);
-    /* How far the Hunting card looks (2026-09-12, todo 05). */
-    addKey('view', 'huntRadiusSteps', DEFAULT_INTERNAL.tuning.view.huntRadiusSteps);
+    /*
+     * The Hunting card's re-ask clock (todo 00, 2026-09-13), which took the
+     * place of its reach: the sweep is realm-wide now, so a move refreshes
+     * the steps on a clock rather than re-sweeping a radius on every room.
+     */
+    addKey('view', 'huntReaskMs', DEFAULT_INTERNAL.tuning.view.huntReaskMs);
+    /* Snapping one card over the console to another (todo 02, 2026-09-13). */
+    addKey('view', 'snapDistance', DEFAULT_INTERNAL.tuning.view.snapDistance);
+    /*
+     * And what the survey leaves out and measures (the same todo): the two
+     * exclusions, the margin the beneath-this-level test reads the bar at,
+     * and the two sweeps a loop's ring and its fillers are measured with.
+     */
+    addKey('hunting', 'maxDamageShare', DEFAULT_INTERNAL.tuning.hunting.maxDamageShare);
+    addKey('hunting', 'trivialShare', DEFAULT_INTERNAL.tuning.hunting.trivialShare);
+    addKey('hunting', 'trivialLevelMargin', DEFAULT_INTERNAL.tuning.hunting.trivialLevelMargin);
+    addKey('hunting', 'clusterRadius', DEFAULT_INTERNAL.tuning.hunting.clusterRadius);
+    addKey('hunting', 'fillerRadius', DEFAULT_INTERNAL.tuning.hunting.fillerRadius);
+    addKey('hunting', 'sizeTolerance', DEFAULT_INTERNAL.tuning.hunting.sizeTolerance);
     /* A lair's clock and the look next door (2026-09-12, todo 08). */
     addKey('rest', 'lairClockMaxSeconds', DEFAULT_INTERNAL.tuning.rest.lairClockMaxSeconds);
     addKey('rest', 'peekMs', DEFAULT_INTERNAL.tuning.rest.peekMs);
@@ -5057,6 +5558,30 @@ function theTuningBlockGainedKeys(
     };
 
     dropKey('combat', 'movePendingMs');
+    /*
+     * The Hunting card's reach, retired with the reach chips (todo 00,
+     * 2026-09-13): the survey sweeps everything the exits reach, and distance
+     * is a column rather than a bound. Not carried into `huntReaskMs` — steps
+     * and milliseconds are not the same quantity.
+     */
+    dropKey('view', 'huntRadiusSteps');
+    /*
+     * The suggestion cap moved with the sweep: twelve rows out of a radius
+     * were a neighbourhood, twelve out of the realm are a keyhole. A file
+     * still stating the old shipped figure takes the new one; a figure the
+     * player chose is left alone, because only the shipped value is known to
+     * be nobody's decision.
+     */
+    const raiseKey = (group: string, key: string, from: number, to: number): void => {
+      const block = document.getIn(['tuning', group], true);
+      if (!isMap(block)) return;
+      const pair = block.items.find((item) => keyText(item) === key);
+      if (pair === undefined || !isScalar(pair.value) || pair.value.value !== from) return;
+      pair.value.value = to;
+      added.push(`tuning.${group}.${key} ${from} → ${to}`);
+      changed = true;
+    };
+    raiseKey('hunting', 'maxSpots', 12, DEFAULT_INTERNAL.tuning.hunting.maxSpots);
     /*
      * The search ceiling, retired: a `Hidden/Searchable` exit is one the realm
      * says a search reveals, and giving up after two rolls of a skill check
@@ -5157,6 +5682,102 @@ function directories(dir: string): string[] {
     return [];
   }
 }
+
+/**
+ * The toolbar gains a back button, and the trail gains the length to feed it
+ * (2026-09-13, todo 04).
+ *
+ * Two edits to `internal.yaml`, for one reason each:
+ *
+ * - **`move:back` on the row.** A button nobody can find does not exist, and
+ *   the shipped row is stated in a file the player already owns a copy of — so
+ *   a new button added to the default list reaches nobody who has run the
+ *   client before. Appended after `move:toggle` where there is one, and at the
+ *   end otherwise, so it lands beside the transport rather than in the middle
+ *   of somebody's arrangement. Never added twice, and never to a row the
+ *   player has already put it on by hand.
+ * - **`tuning.walk.trailSteps` beside `recentSteps`.** The button walks the
+ *   trail, and the trail was five steps long because a retreat was all that
+ *   read it. A key added inside an existing block reaches nobody who has
+ *   already run the client — `statedTheStepNudge`'s reason — and without it
+ *   back would work five presses and then stop.
+ *
+ * The paragraph above `toolbar:` lists every button there is by name, so it is
+ * refreshed from the shipped template while it still lacks this one.
+ */
+function theToolbarGainedBack(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  let changed = false;
+  edit(home.internal, (document) => {
+    let touched = false;
+
+    const walk = document.getIn(['tuning', 'walk'], true);
+    if (isMap(walk) && !walk.has('trailSteps')) {
+      // The default itself, never a copy: `internal.test.ts` binds the shipped
+      // template to `TUNING_DEFAULTS`.
+      const pair = document.createPair(
+        'trailSteps',
+        DEFAULT_INTERNAL.tuning.walk.trailSteps
+      ) as Pair;
+      const at = walk.items.findIndex(
+        (item) => isScalar(item.key) && String(item.key.value) === 'recentSteps'
+      );
+      if (at === -1) walk.items.push(pair);
+      else walk.items.splice(at + 1, 0, pair);
+      if (isScalar(pair.key)) pair.key.commentBefore = TRAIL_STEPS_COMMENT;
+      touched = true;
+    }
+
+    const buttons = document.getIn(['toolbar', 'pinned'], true);
+    if (
+      isSeq(buttons) &&
+      !buttons.items.some((item) => isScalar(item) && item.value === 'move:back')
+    ) {
+      const at = buttons.items.findIndex((item) => isScalar(item) && item.value === 'move:toggle');
+      const pin = document.createNode('move:back') as Scalar;
+      pin.commentBefore = BACK_BUTTON_COMMENT;
+      if (at === -1) buttons.items.push(pin);
+      else buttons.items.splice(at + 1, 0, pin);
+      touched = true;
+    }
+
+    const toolbar = document.get('toolbar', true);
+    const lead = document.contents;
+    if (isMap(toolbar) && isMap(lead)) {
+      const pair = lead.items.find((item) => keyText(item) === 'toolbar');
+      const key = pair === undefined ? null : (pair.key as Scalar);
+      const current = key === null ? undefined : key.commentBefore;
+      if (typeof current === 'string' && !current.includes('move:back')) {
+        const fresh = templateLead(template, 'toolbar');
+        if (fresh !== undefined && fresh !== current) {
+          key!.commentBefore = fresh;
+          touched = true;
+        }
+      }
+    }
+
+    changed ||= touched;
+    return touched;
+  });
+  if (changed) note(t('notices.migration.toolbarGainedBack', { file: home.internal }));
+}
+
+const BACK_BUTTON_COMMENT = ` One room back the way you came, per press. A walk into a room nobody meant
+ to be in is answered by a press rather than by working out which direction
+ undoes it -- and the way back is a route, so a one-way exit or a door that
+ shut behind you is answered too (it asks first when the way back is not a
+ single step).`;
+
+const TRAIL_STEPS_COMMENT = ` How many confirmed moves the trail keeps -- the back button's history.
+
+ Where we came from, as a list of rooms and the move that joined each pair, so
+ going back is a route to the previous room rather than the opposite of the
+ last direction: a one-way exit has no opposite, and a text exit ("go manhole")
+ is not a direction at all. Each press of back walks one entry and gives it up;
+ the forward moves push.`;
 
 /**
  * Three transport buttons become one, and the wander check gains its figure.
@@ -5294,8 +5915,7 @@ const RESUME_ASK_COMMENT = ` How far the character may have wandered from what i
  realm full of wandering monsters is not free. Past this many steps the client
  answers play with a question.
 
- Measured in the steps the resume would actually walk: for a route, how many
- *more* than it still owed when it stopped, so walking on down a route you were
- already on never asks however long it is; for a lap, the distance to the stop
- it was heading for, since a leg is short by construction and that distance is
- how far off the lap you are.`;
+ Measured as how much *further* away the character is now than when the
+ movement stopped -- for a route and for a lap alike, so a movement stopped and
+ started again from the same room never asks however far it still has to go,
+ and a character killed and reborn two maps away does.`;

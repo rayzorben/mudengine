@@ -179,7 +179,8 @@ export interface MobLore {
   /** A listing named an item the realm knows and the slot it sits in. */
   observeSlot(worn: number, word: string, at: number): void;
   /**
-   * The monster whose learned death sentence this whole line is, or null.
+   * Every monster whose learned death sentence this whole line is; empty
+   * where it is nobody's.
    *
    * `MobType.DeathMessage.Line3` is free text per monster type, typed by
    * whoever built the realm, and the shipped database has no column for it —
@@ -187,8 +188,13 @@ export interface MobLore {
    * the one announcement of a kill that names the monster and reaches
    * everybody in the room, whoever landed the blow. Optional: a lore built
    * before this existed answers nothing.
+   *
+   * **A list, as the shipped table's answer is** (2026-09-14): the realm's
+   * builders reuse one message record between monster types, so one sentence
+   * may be several monsters' — and a single answer is a guess dressed as a
+   * fact. The room settles which, or nothing does.
    */
-  deathOf?(text: string): string | null;
+  deathOf?(text: string): readonly string[];
   /** A monster's death sentence, read positionally off the wire (see `CharacterTracker`). */
   observeDeath?(name: string, text: string, at: number): void;
 }
@@ -209,7 +215,7 @@ export const NO_LORE: MobLore = {
   regenFor: () => null,
   slotWordsFor: () => [],
   observeSlot: () => {},
-  deathOf: () => null,
+  deathOf: () => [],
   observeDeath: () => {}
 };
 

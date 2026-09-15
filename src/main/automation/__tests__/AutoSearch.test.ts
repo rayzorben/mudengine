@@ -35,10 +35,28 @@ function state(
 
 let sent: string[];
 let queue: CommandQueue;
+/**
+ * The character as the send-time ask reads it (`Intent.stillWanted`).
+ *
+ * The proposal is made against the state `onCharacter` is handed and the send
+ * may happen a round later, so the two are separate here on purpose: `at`
+ * moves both together, which is the ordinary case, and a test about the gap
+ * moves this one on its own.
+ */
+let now: CharacterState;
+let queueSearch: (config?: SearchConfig, enabled?: boolean) => AutoSearch;
+/** A status line: proposed against this state, and sent against it too. */
+const at = (search: AutoSearch, said: CharacterState): void => {
+  now = said;
+  search.onCharacter(said);
+};
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  now = state();
+  queueSearch = (over = config(), enabled = true) =>
+    new AutoSearch(over, enabled, queue, () => now);
 });
 afterEach(() => {
   queue.dispose();
@@ -47,8 +65,8 @@ afterEach(() => {
 
 describe('searching a room the client arrives in', () => {
   it('sends a bare search, once', () => {
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state());
+    const search = queueSearch();
+    at(search, state());
     expect(sent).toEqual(['search']);
   });
 
@@ -59,62 +77,124 @@ describe('searching a room the client arrives in', () => {
    * would be the entire command budget.
    */
   it('does not search the same room again on the next status line', () => {
-    const search = new AutoSearch(config(), true, queue);
-    for (let i = 0; i < 20; i += 1) search.onCharacter(state());
+    const search = queueSearch();
+    for (let i = 0; i < 20; i += 1) at(search, state());
     expect(sent).toEqual(['search']);
   });
 
   it('searches the next room, and again on coming back', () => {
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state());
-    search.onCharacter(state({ number: 2151, name: 'Newhaven, Narrow Road' }));
-    search.onCharacter(state());
+    const search = queueSearch();
+    at(search, state());
+    at(search, state({ number: 2151, name: 'Newhaven, Narrow Road' }));
+    at(search, state());
     expect(sent).toEqual(['search', 'search', 'search']);
   });
 
   it('spends the configured number of tries and no more', () => {
-    const search = new AutoSearch(config({ tries: 3 }), true, queue);
-    for (let i = 0; i < 10; i += 1) search.onCharacter(state());
+    const search = queueSearch(config({ tries: 3 }));
+    for (let i = 0; i < 10; i += 1) at(search, state());
     expect(sent).toEqual(['search', 'search', 'search']);
   });
 });
 
 describe('when it will not search', () => {
   it('does nothing with the switch off', () => {
-    const search = new AutoSearch(config({ enabled: false }), true, queue);
-    search.onCharacter(state());
+    const search = queueSearch(config({ enabled: false }));
+    at(search, state());
     expect(sent).toEqual([]);
   });
 
   it('does nothing with automation off', () => {
-    const search = new AutoSearch(config(), false, queue);
-    search.onCharacter(state());
+    const search = queueSearch(config(), false);
+    at(search, state());
     expect(sent).toEqual([]);
   });
 
   /* A command spent mid-round is one the fight paid for, and nothing found by
      it can be used until the fight is over. */
   it('does not search in a fight, and searches once it ends', () => {
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state({}, { inCombat: true }));
+    const search = queueSearch();
+    at(search, state({}, { inCombat: true }));
     expect(sent).toEqual([]);
-    search.onCharacter(state());
+    at(search, state());
     expect(sent).toEqual(['search']);
+  });
+
+  /*
+   * The capture this was reported from (todo 13, 2026-09-13).
+   *
+   * Following a party leader into a room with a quickling in it: nothing was
+   * fighting when the room arrived, so a search was proposed — and auto-combat
+   * proposed `aa small quickling` from the same status line, in a louder band.
+   * The attack went out first, the fight started, and the search that had been
+   * waiting behind it landed inside it: `You may not search while attacking!`,
+   * twice in the same capture. The proposal was right when it was made; what
+   * was missing was the second ask, immediately before the send.
+   */
+  it('drops a search the fight beat to the wire, and searches once it is over', () => {
+    const search = queueSearch();
+    /*
+     * The player holding the floor stands in for the round the queue spends
+     * waiting for a prompt's credit: the intent is queued and unsent, which is
+     * the whole window this is about.
+     */
+    queue.noteTyping(true);
+    at(search, state());
+    expect(sent).toEqual([]);
+
+    // The attack landed while it waited, so the search must not go out.
+    now = state({}, { inCombat: true });
+    queue.noteTyping(false);
+    expect(sent).toEqual([]);
+
+    // And the budget was not spent on the one that never went out: the first
+    // status line after the fight searches the room it arrived in.
+    at(search, state());
+    expect(sent).toEqual(['search']);
+  });
+
+  /*
+   * The same window, with the fight over by the time the queue can send: the
+   * positive control for the assertion above, without which an intent dropped
+   * for any other reason would read as this working.
+   */
+  it('still sends one the fight did not touch', () => {
+    const search = queueSearch();
+    queue.noteTyping(true);
+    at(search, state());
+    expect(sent).toEqual([]);
+    queue.noteTyping(false);
+    expect(sent).toEqual(['search']);
+  });
+
+  /*
+   * `fightIsRunning`, not the server's flag alone: between a kill and the next
+   * monster's swing the flag is down with the beast still in `attackers`, and
+   * a search proposed in that instant is one the fight paid for.
+   */
+  it('counts something still swinging as a fight, flag or no flag', () => {
+    const base = state();
+    const search = queueSearch();
+    at(search, {
+      ...base,
+      combat: { ...base.combat, attackers: ['nasty quickling'] }
+    });
+    expect(sent).toEqual([]);
   });
 
   /* Unmeasured rather than settled, like `AutoLoot`: whether `search` breaks a
      rest has never been asked of the wire, and waiting costs only the wait. */
   it('does not search while resting or meditating', () => {
     const base = state();
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter({ ...base, vitals: { ...base.vitals, resting: true } });
-    search.onCharacter({ ...base, vitals: { ...base.vitals, meditating: true } });
+    const search = queueSearch();
+    at(search, { ...base, vitals: { ...base.vitals, resting: true } });
+    at(search, { ...base, vitals: { ...base.vitals, meditating: true } });
     expect(sent).toEqual([]);
   });
 
   it('does nothing out of the realm', () => {
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state({}, { phase: 'authenticating' }));
+    const search = queueSearch();
+    at(search, state({}, { phase: 'authenticating' }));
     expect(sent).toEqual([]);
   });
 
@@ -124,8 +204,8 @@ describe('when it will not search', () => {
    * wearing a different hat.
    */
   it('does not search a room it cannot name or place', () => {
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state({ map: null, number: null, name: null }));
+    const search = queueSearch();
+    at(search, state({ map: null, number: null, name: null }));
     expect(sent).toEqual([]);
   });
 
@@ -141,12 +221,12 @@ describe('when it will not search', () => {
       name: 'Sewer Tunnel',
       exits: [wireExit('n')]
     };
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state(unplaced));
-    search.onCharacter(state(unplaced));
+    const search = queueSearch();
+    at(search, state(unplaced));
+    at(search, state(unplaced));
     expect(sent).toEqual(['search']);
     // A differently-shaped Sewer Tunnel is a different room.
-    search.onCharacter(state({ ...unplaced, exits: [wireExit('s')] }));
+    at(search, state({ ...unplaced, exits: [wireExit('s')] }));
     expect(sent).toEqual(['search', 'search']);
   });
 });
@@ -157,20 +237,20 @@ describe('when it will not search', () => {
  */
 describe('turning it on', () => {
   it('gives the room it is turned on in its full budget', () => {
-    const search = new AutoSearch(config({ enabled: false }), true, queue);
-    search.onCharacter(state());
+    const search = queueSearch(config({ enabled: false }));
+    at(search, state());
     search.configure(config(), true);
-    search.onCharacter(state());
+    at(search, state());
     expect(sent).toEqual(['search']);
   });
 
   /* A room remembered across a closed socket would be one this character never
      searched in this life. */
   it('forgets the room on reset', () => {
-    const search = new AutoSearch(config(), true, queue);
-    search.onCharacter(state());
+    const search = queueSearch();
+    at(search, state());
     search.reset();
-    search.onCharacter(state());
+    at(search, state());
     expect(sent).toEqual(['search', 'search']);
   });
 });

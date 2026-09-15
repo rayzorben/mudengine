@@ -348,3 +348,44 @@ describe('what it stands down for', () => {
     expect(sent).toEqual(['light torch']);
   });
 });
+
+/*
+ * The walker's question, asked one statement before this module runs on the
+ * same state (`SessionManager.onCharacter`): a blinding room prints no block,
+ * the walk cannot place the character, and it used to stop there — 1ms before
+ * `light torch` went out. So it asks whether a light is coming and waits.
+ */
+describe('whether a light is coming', () => {
+  it('answers yes for an unlit light in the pack', () => {
+    expect(make().couldReady(character([torch()]))).toBe(true);
+  });
+
+  /*
+   * And no for one already lit: the room is dark *with* it, so another command
+   * changes nothing and the walk should stop and say so.
+   */
+  it('answers no when the only light is already lit', () => {
+    expect(
+      make().couldReady(character([torch({ equipped: true, slot: 'Readied', charges: 62 })]))
+    ).toBe(false);
+  });
+
+  /* A spent light is absent as far as the server is concerned. */
+  it('answers no for a spent light, and yes for a spare beside it', () => {
+    const spent = torch({ equipped: true, slot: 'Readied', charges: 0 });
+    expect(make().couldReady(character([spent]))).toBe(false);
+    expect(make().couldReady(character([spent, torch()]))).toBe(true);
+  });
+
+  it('answers no with nothing carried, and no while the feature is off', () => {
+    expect(make().couldReady(character([]))).toBe(false);
+    expect(make(movement({ provideLight: false })).couldReady(character([torch()]))).toBe(false);
+    expect(make(movement(), false).couldReady(character([torch()]))).toBe(false);
+  });
+
+  /* Nothing is lit on the way out of a lair; the walk stops instead of waiting. */
+  it('answers no while an escape is in flight', () => {
+    const auto = new AutoLight(movement(), true, queue, { escaping: () => true });
+    expect(auto.couldReady(character([torch()]))).toBe(false);
+  });
+});

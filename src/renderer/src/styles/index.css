@@ -1365,6 +1365,28 @@ kbd {
   z-index: 5;
 }
 
+/*
+ * The Talk card's own (todo 10). The console's button, placed against the
+ * card's body rather than the workspace: the card is the positioned box, and
+ * the composer sits under the log, so it rides above that rather than over it.
+ */
+.talk-jump {
+  bottom: 56px;
+  right: 16px;
+}
+
+/*
+ * And the log manages its own scrolling, so the browser must not.
+ *
+ * Scroll anchoring moves `scrollTop` to keep what is on screen still when
+ * content changes above it — which for a feed that drops its oldest line every
+ * time a new one arrives means the box quietly stops being at the live edge,
+ * and the card reads that as the reader having scrolled away (todo 10).
+ */
+.conversation-log {
+  overflow-anchor: none;
+}
+
 .jump-latest:hover:not(:disabled) {
   background: var(--marker);
   border-color: transparent;
@@ -1603,6 +1625,39 @@ kbd {
   margin-bottom: 6px;
 }
 
+/*
+ * What the room answers to, under its exits (todo 11): the same row of chips,
+ * each one a control that sends the realm's own phrase down the path a
+ * keystroke takes.
+ *
+ * **The phrase is drawn as the realm spells it** — no uppercasing, which is
+ * why this is not the `pick` register: `touch gem` is a command somebody could
+ * type, and a client that prints it as TOUCH GEM is showing them a word the
+ * server does not use.
+ */
+.room-answers .chip {
+  /*
+   * **As the realm spells it.** A chip is uppercase because a chip is a label;
+   * this one is a command somebody could type, and TOUCH GEM is a word the
+   * server does not use. Everything else about the register stays.
+   */
+  text-transform: none;
+}
+
+.room-answers button.chip {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.room-answers button.chip:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--text-hi);
+}
+
 /* ============================================================== stream log */
 
 .line-log {
@@ -1777,15 +1832,29 @@ kbd {
   border-block: var(--rule) solid var(--ink-line);
   display: flex;
   flex: 0 0 auto;
-  height: 150px;
+  flex-direction: column;
+  /*
+   * Taller than the 150px the fitted strip took, because the map here is now
+   * the map everywhere — `MapView`, with the legend under it — and the legend
+   * wraps to about two rows at this width. The picture keeps what it had.
+   */
+  height: 210px;
   margin-bottom: 6px;
   padding: 6px 0;
 }
 
+/*
+ * The sentence, every chip that qualifies the walk, the offer to fetch what
+ * the way needs, and the one press. It **wraps**: the tick is the only child
+ * that can neither shrink nor break (a named item, `nowrap`), so without this
+ * a route wearing several hazard chips pushed `Walk it` off the right edge of
+ * a 560px panel rather than taking a second line.
+ */
 .route-summary {
   align-items: center;
   color: var(--text-lo);
   display: flex;
+  flex-wrap: wrap;
   font-size: var(--font-micro);
   gap: 8px;
   justify-content: space-between;
@@ -1801,6 +1870,24 @@ kbd {
   font-size: var(--font-micro);
   margin-bottom: 6px;
   padding: 4px 8px;
+}
+
+/* The plan was drawn again from here, and why. Not the refusal's register: a
+   refusal says the press did nothing, and this says the press produced a plan
+   to read — so it wears the accent, which is what this palette says *look
+   here* with. */
+.route-redrawn {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+}
+
+.route-redrawn-why {
+  color: var(--text-lo);
+  margin-top: 2px;
 }
 
 /* ========================================================= navigation card */
@@ -2035,11 +2122,12 @@ kbd {
 }
 
 /*
- * The picture's own area.
+ * A map, whole: the picture and the legend that keys it. `MapView`'s own
+ * element, so every surface that draws a map draws this same pair.
  *
- * Its own element rather than the card's body because the legend takes a fixed
- * strip underneath: the view inside measures itself, and measuring the body
- * would count rows the map is never drawn in. It takes whatever the legend
+ * Its own element rather than the surface's because the legend takes a strip
+ * underneath: the view inside measures itself, and measuring the surface would
+ * count rows the map is never drawn in. The picture takes whatever the legend
  * leaves, which is what makes a floating map show *more rooms* when it is
  * dragged bigger rather than the same rooms drawn larger.
  */
@@ -2795,8 +2883,18 @@ button.lookup.quest-where svg {
   grid-column: 1;
 }
 
+/*
+ * A route's price and reward, laid out like the step's own `Gives` line.
+ *
+ * Flex rather than one joined string, because the names in it are controls —
+ * the same `·` separator `.quest-give` carries, and the same 4px the flow
+ * around the buttons needs so a row of them does not read as one word.
+ */
 .quest-ways dd {
   color: var(--text-lo-quiet);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 /*
@@ -2813,6 +2911,25 @@ button.lookup.quest-where svg {
 }
 
 .quest-gives {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+/*
+ * What to kill, which is deliberately not in `.quest-ask`.
+ *
+ * That register is monospace because it is the line that goes in the console,
+ * and `kill` is not a word this realm's command table has (`Commands.cs` names
+ * `Attack`, `Bash`, `BackStab`, `Jumpkick`) — so a monospace `kill dread
+ * mystic` would be the client offering a command that does not exist. A label
+ * and a realm name is what it is, which is the `Hand over` rows' shape and so
+ * `.quest-gives`' rule.
+ */
+.quest-kill {
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
@@ -2859,6 +2976,29 @@ button.lookup.quest-where svg {
 }
 
 /*
+ * A quest this character cannot do, sunk to the bottom of the book.
+ *
+ * Quieter than the ordinary row and louder than a hidden one, which is the
+ * order of the two statements: *not interested* is the player's and takes the
+ * quest off the card; *not for you* is the realm's and leaves it legible,
+ * because the level a Thief chain wants is a thing a reader goes looking for.
+ * The realm's own reason is the row's hover text, since dimming on its own
+ * says only that something is different.
+ *
+ * Nothing is struck through and nothing is hidden: the quest is not *wrong*,
+ * it belongs to somebody else — and a character that changes class or gains
+ * ten levels reads the same book with the rows back in it.
+ */
+.quest-table tr[data-barred='true'] {
+  opacity: 0.7;
+}
+
+/* Both at once is one dimming, not two multiplied into illegibility. */
+.quest-table tr[data-barred='true'][data-hidden='true'] {
+  opacity: 0.55;
+}
+
+/*
  * The row whose track is open, marked tonally on the row and never on the name.
  *
  * The same rule the roster's selection follows: the name is already carrying a
@@ -2871,15 +3011,14 @@ button.lookup.quest-where svg {
 
 /* ======================================================== hunting grounds card */
 /*
- * The head is one line: where the sweep started on the left, the reach chips
- * on the right. The detail under the table is the Room card's readout grammar
- * plus two lists (the monsters, the rooms) drawn as rows with the figure
- * quiet at the end, and the loop's controls in the Navigation card's own row.
+ * The head is one line: where the sweep started and what it left out. The
+ * detail under the table is the Room card's readout grammar plus two lists
+ * (the monsters, the rooms) drawn as rows with the figure quiet at the end,
+ * and the loop's controls in the Navigation card's own row.
  */
 .hunt-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--gap);
   padding: 0 var(--pad) var(--gap-tight, 6px);
 }
@@ -2887,13 +3026,30 @@ button.lookup.quest-where svg {
   color: var(--text-lo);
   font-size: var(--font-size-small, 0.9em);
 }
-.hunt-head .chips {
-  display: flex;
-  gap: 4px;
+.hunt-lair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.hunt-afflicts,
+.hunt-subhead {
+  color: var(--text-lo);
+  font-size: var(--font-size-small, 0.9em);
+}
+.hunt-rooms li.hunt-subhead {
+  margin-top: var(--gap-tight, 6px);
 }
 .hunt-table tr[data-open='true'] {
   background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
 }
+/*
+ * The opened lair's figures: the paned body's second moving part.
+ *
+ * It carries `scroller`, so `.card > .body.paned > .scroller` bounds it and
+ * it moves inside its share rather than pushing the row of buttons under the
+ * card's own `overflow: hidden` — which is what a lair with a dozen rooms did
+ * to every card shorter than the list.
+ */
 .hunt-detail {
   display: flex;
   flex-direction: column;
@@ -2922,8 +3078,20 @@ button.lookup.quest-where svg {
   font-size: var(--font-size-small, 0.9em);
   white-space: nowrap;
 }
+/*
+ * And the three things that can be done with it, anchored under both.
+ *
+ * `flex: 0 0 auto` is the whole of it: the two scrolling regions above absorb
+ * every pixel the card loses, and this row shrinks for nothing. It wraps
+ * rather than clips at the rail's narrow end, where three buttons do not fit
+ * on one line — a control on a second line is still a control.
+ */
 .hunt-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   justify-content: flex-start;
+  padding: var(--gap) var(--pad) 0;
+  border-top: 1px solid var(--seam);
 }
 
 /* ======================================================= loop builder card */
@@ -5939,6 +6107,228 @@ button.lookup.quest-where svg {
   width: auto;
 }
 
+/*
+ * The alert rows, as a grid (todo 03).
+ *
+ * They were flex rows whose controls came and went per row -- a figure on the
+ * two numeric ones, a name on the two named ones, nothing on the rest -- so no
+ * two rows put the same control in the same place and nothing lined up down the
+ * page. The columns are declared once here and a row with no metric leaves that
+ * cell empty, which is the whole of what makes a column a column.
+ *
+ * **The list owns the tracks and every line borrows them** (2026-09-13). The
+ * heading used to carry its own copy of `grid-template-columns`, so the two
+ * agreed only as long as nobody edited one of them -- and `auto` tracks are
+ * sized per grid, so a heading word longer than the control under it moved its
+ * own column and not the row's. The tracks are declared once on the list and
+ * both the heading and every row are `subgrid`, which is the same fix
+ * `.readout` rows take when they cannot be siblings.
+ *
+ * Seven tracks: the switch, the event, the metric, the measure, the level, the
+ * quiet seconds, and the controls done TO the row (order, remove). The measure
+ * takes the slack so a name to wait for has room to be read.
+ *
+ * The switch and the quiet tracks have floors in `ch` sized to their HEADINGS
+ * rather than to their controls: a checkbox is 13px and `Enabled` is seven
+ * characters, so an `auto` track sized to the box alone left the heading
+ * overlapping the one beside it -- a column heading that does not fit its
+ * column names the wrong column.
+ */
+.settings-alerts {
+  display: grid;
+  grid-template-columns:
+    minmax(7ch, auto) minmax(16ch, 1.4fr) minmax(7ch, auto)
+    minmax(9ch, 1fr) minmax(8ch, auto) minmax(5ch, 4.2em) minmax(5ch, auto);
+  /*
+   * The rows scroll sideways inside their own box rather than the form doing
+   * it. Seven columns of controls do not always fit a panel somebody has
+   * dragged narrow, and the alternative is the event picker squeezed to
+   * nothing -- which is the thing this grid exists to stop.
+   */
+  overflow-x: auto;
+}
+
+/*
+ * A row spans every track and lays its own children on them, so one set of
+ * tracks serves the heading and all the rows.
+ *
+ * Two lines stacked, not two things side by side: `.settings-steps li` is a
+ * flex ROW, which put the row's controls and the *what it does when it fires*
+ * sentence beside each other and pushed the sentence to the far right.
+ */
+.settings-alerts > li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  min-width: 38rem;
+}
+
+.settings-alerts .alert-line {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A cell holding two controls -- a figure and its per-cent box -- keeps them
+   on one line and lets the pair shrink together. */
+.settings-alerts .alert-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-alerts .alert-cell > input:not([type='checkbox']),
+.settings-alerts .alert-cell > select {
+  min-width: 0;
+  width: 100%;
+}
+
+/* The figure keeps a readable width beside its per-cent box rather than being
+   squeezed to the few pixels the box leaves. */
+.settings-alerts .alert-cell > input.number {
+  flex: 1 1 5ch;
+  min-width: 5ch;
+}
+
+/*
+ * The switch under its own heading: a bare box, centred on the column the word
+ * `Enabled` names. It wore that word as a label beside it, which is a field's
+ * grammar -- in a table the heading is where the column says what it is, and a
+ * label repeating it per row is the same word drawn once per row.
+ */
+.settings-alerts .alert-enabled {
+  justify-content: center;
+}
+
+/*
+ * What is done TO a row -- move it up, move it down, remove it -- kept
+ * together at its end. They led the row until 2026-09-13, where they pushed
+ * every heading a column off the control it named.
+ */
+.settings-alerts .alert-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: end;
+}
+
+.settings-alerts .alert-controls button {
+  padding: 2px 3px;
+}
+
+/* A comparison the event states rather than offers: `over` for money, `named`
+   for a row matched by name. Drawn as the text it is, in the column a select
+   would have taken, so the measure beside it still lines up. */
+.settings-alerts .alert-fixed {
+  color: var(--text-lo-quiet);
+  white-space: nowrap;
+}
+
+/* The column headings: quiet, and each one over the control it names. */
+/* Headings sit on their last line, so a two-line one (`Quiet (s)`) shares a
+   baseline with its neighbours instead of floating above them. */
+.settings-alerts .alert-heading .alert-line {
+  align-items: end;
+  padding-bottom: 2px;
+}
+
+.settings-alerts .alert-heading span {
+  color: var(--text-lo-quiet);
+  font-size: 0.78em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* Wraps inside its own track rather than widening it past the control it
+     names, and never spills over the heading beside it. */
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+/* The switch's and the controls' headings centre on what they name, as those
+   two cells do. */
+.settings-alerts .alert-heading span:first-child,
+.settings-alerts .alert-heading .alert-controls {
+  text-align: center;
+}
+
+.settings-alerts .alert-heading .alert-controls {
+  justify-self: end;
+  text-align: right;
+}
+
+/*
+ * What the row does when it fires: three switches under the row proper.
+ *
+ * A flex line spanning every track rather than three more columns, because
+ * each would be a column every other row leaves empty -- and the three read as
+ * one sentence together, which a grid would pull apart.
+ */
+.settings-alerts .alert-detail {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Inset past the switch column, so the sentence reads as belonging to the
+     row above it rather than floating loose under the whole grid. */
+  padding: 2px 0 6px 28px;
+  justify-content: flex-start;
+  font-size: 0.85em;
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * A switch in the sentence is a box and its words on ONE line.
+ *
+ * `.settings-field` is the form's two-row subgrid, and a `label` inheriting it
+ * here stacked each box above its words -- three little towers instead of a
+ * sentence. It is stated rather than left to `.blessing-check`, which only
+ * stops the words wrapping.
+ */
+.settings-alerts .alert-detail label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The warning under a shadowed row spans the tracks rather than sitting in the
+   first one. */
+.settings-alerts .blessing-duplicate {
+  grid-column: 1 / -1;
+}
+
+.settings-alerts select,
+.settings-alerts input:not([type='checkbox']) {
+  min-width: 0;
+}
+
+/*
+ * The priority rows, as a grid rather than a flex row.
+ *
+ * Every row here has the same three parts — a monster, a band, a remove — so
+ * the columns are declared once and each row fills them, and the band selects
+ * line up down the page however long the monster names are. `.blessing-line`
+ * next door is a flex row because its rows genuinely differ; a column that is
+ * the same on every row is a grid's job.
+ */
+.settings-priorities .priority-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-priorities .spell-picker {
+  min-width: 0;
+}
+
+.settings-priorities select {
+  width: auto;
+}
+
 /* A text field with the character's own book under it. */
 .spell-picker {
   position: relative;
@@ -6240,6 +6630,23 @@ button.lookup.quest-where svg {
 }
 
 /*
+ * *Collect the key first*, in the head beside the press it changes (todo 07).
+ * A label wrapping its own box, so the words are the hit area; it sits last
+ * before *Walk it*, which is the order it is read in. No auto margin: an auto
+ * margin eats the free space `space-between` distributes, so the chips beside
+ * it would pack differently depending on whether the way happens to name an
+ * item — one head drawn in two registers.
+ */
+.route-summary :is(.route-collect, .route-stop) {
+  align-items: center;
+  color: var(--text-lo);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/*
  * A folded run of rooms that read the same: one row wearing the count, and
  * the chevron that opens it. The commands of the run share the command
  * column and yield with an ellipsis rather than pushing the name out, since
@@ -6276,6 +6683,17 @@ button.lookup.quest-where svg {
 /* A step under an opened row is indented, so where the run ends is visible. */
 .route-steps li.step[data-folded='true'] {
   padding-left: 12px;
+}
+
+/*
+ * The last step, while *Stop before entering* is on: drawn but quiet, in the
+ * same register a progression uses for what is behind it (§ *What is left is
+ * the loudest thing*). Dimmed and never dropped — the reader searched for
+ * that room and the list still has to say where the way ends; what changes is
+ * that this row is no longer part of the walk, which its chip says in words.
+ */
+.route-steps li.step[data-skipped='true'] :is(.step-command, .step-name) {
+  color: var(--text-lo-quiet);
 }
 
 /* The Reference card: a field, then the answer, then the matches under it. */
@@ -7195,6 +7613,27 @@ button.lookup:focus-visible {
 
 .rail > .rail-slot {
   height: var(--slot-h, var(--card-h, 200px));
+}
+
+/*
+ * Where a released card would land beside another over the console.
+ *
+ * The landing box, not a bar on the seam: a card snapped above another takes
+ * its width and one snapped beside it takes its height, and the box is the
+ * only indicator that says so before the release. The rail's own gap
+ * (`.rail-slot`) is the same statement in the lane that has one, so it wears
+ * the same tonal dashed edge rather than a second register of its own.
+ */
+.snap-indicator {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  box-sizing: border-box;
+  pointer-events: none;
+  position: fixed;
+  /* Under the ghost, over the floats: it is where the card is going, and the
+     card in hand must stay readable on top of it. */
+  z-index: 50;
 }
 
 /* What is in flight, following the pointer. */
@@ -8138,6 +8577,14 @@ tr:hover .row-action.worn,
   text-transform: uppercase;
 }
 
+/*
+ * The rail beside the form, on every page (todo 02).
+ *
+ * It used to be the character picker's column and collapsed away on MudEngine
+ * and Global, which have one file each and so nothing to pick. The sections are
+ * what the column is for now, and every page has those -- a screen whose
+ * navigation moved from page to page would be two screens.
+ */
 .settings-body {
   display: grid;
   gap: var(--gap);
@@ -8147,67 +8594,14 @@ tr:hover .row-action.worn,
 }
 
 /*
- * MudEngine and Global have no list beside them.
- *
- * Characters and realms are chosen from one before they are edited; there is
- * exactly one options file, so a column holding a list of one would be a
- * control that never does anything -- and the form is the widest thing on this
- * screen, so it takes the space.
- */
-.settings-body[data-tab='client'],
-.settings-body[data-tab='defaults'] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.settings-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  list-style: none;
-  margin: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0;
-}
-
-.settings-list button {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: calc(var(--r-card) - 6px);
-  color: var(--text-hi);
-  cursor: pointer;
-  display: flex;
-  font: inherit;
-  gap: 8px;
-  padding: 7px 9px;
-  text-align: left;
-  transition: background var(--dur-control) var(--ease-out);
-  width: 100%;
-}
-
-.settings-list button:hover {
-  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
-}
-
-.settings-list button[data-active='true'] {
-  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
-  color: var(--accent);
-}
-
-/* A character whose file will not load is still listed, because the screen is
-   where somebody can do something about it. */
-.settings-list button[data-broken] .settings-name {
-  color: var(--danger);
-}
-
-/*
- * The two rows of a character's row: name over realm.
+ * The character/realm picker and the section list were two lists in one
+ * column; the picker became a dropdown (todo 02) and `.settings-list` with it.
+ * What survives is the shape of a *row* -- name over realm, a coloured dot --
+ * which the dropdown's rows and its closed control both still draw.
  *
  * Both ellipsise rather than wrap, because a row that grows to fit a long name
  * moves every row under it -- the same rule the rail's cards follow, applied to
- * a list somebody is clicking down.
+ * a list somebody is scanning down.
  */
 .settings-entry {
   display: flex;
@@ -8231,23 +8625,23 @@ tr:hover .row-action.worn,
   white-space: nowrap;
 }
 
-.settings-list .dot {
+.settings-nav .dot {
   border-radius: 50%;
   flex: 0 0 auto;
   height: 8px;
   width: 8px;
 }
 
-.settings-list .dot[data-accent='cyan'] {
+.settings-nav .dot[data-accent='cyan'] {
   background: var(--accent);
 }
-.settings-list .dot[data-accent='green'] {
+.settings-nav .dot[data-accent='green'] {
   background: var(--ok);
 }
-.settings-list .dot[data-accent='amber'] {
+.settings-nav .dot[data-accent='amber'] {
   background: var(--pending);
 }
-.settings-list .dot[data-accent='violet'] {
+.settings-nav .dot[data-accent='violet'] {
   background: var(--marker);
 }
 
@@ -8282,17 +8676,202 @@ tr:hover .row-action.worn,
  * it, so switching a section keeps the same reach for the mouse a card's own
  * faces do -- the control and what it changes stay in one place.
  */
-.settings-sections {
+/*
+ * The settings rail: which file, then which part of it (todo 02).
+ *
+ * The sections were a horizontal strip of pills above the fields. Twelve of
+ * them no longer fit one line -- the strip wrapped to two rows, and a fieldset
+ * inside a section had no address at all -- so the strip is on its side, in
+ * the column the character picker used to have to itself.
+ */
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap, 10px);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-nav-sections,
+.settings-nav-fieldsets,
+.settings-nav-choices {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-nav-sections {
+  gap: 1px;
+}
+
+.settings-nav-section {
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--r-card) - 6px);
+  color: var(--text-lo);
+  cursor: pointer;
+  font: inherit;
   /*
-   * The strip wraps: twelve sections at the character page's width no longer
-   * fit one line, and a strip that ran past the form's box (824px in 754,
-   * `npm run smoke`, 2026-09-12) took the whole form with it. A second row of
-   * pills is the same grammar; a horizontal scroll on a tab strip is not.
+   * The section names are the headings of this screen, so they wear the
+   * heading grammar the rail's own group labels do rather than the pill's.
    */
-  flex-wrap: wrap;
-  row-gap: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--ink-line);
+  font-size: 0.82em;
+  letter-spacing: 0.04em;
+  padding: 6px 9px;
+  text-align: left;
+  text-transform: uppercase;
+  transition:
+    background var(--dur-control) var(--ease-out),
+    color var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.settings-nav-section:hover {
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+  color: var(--text-hi);
+}
+
+/*
+ * The active section is tinted in its own hue, which is the hue its fieldsets
+ * and its form already wear -- the `--section-hue` the rules further down set
+ * from `data-section`, so the rail and the form it is pointing at agree.
+ */
+.settings-nav-section[data-active='true'] {
+  background: color-mix(in srgb, var(--section-hue, var(--accent)) var(--tone), transparent);
+  color: var(--section-hue, var(--accent));
+}
+
+/*
+ * The fieldsets of the open section, indented under it.
+ *
+ * Sentence case against the section's upper, because they are the legends
+ * written on the fieldsets themselves and a reader should be able to match the
+ * two by eye.
+ */
+.settings-nav-fieldsets {
+  gap: 1px;
+  margin: 2px 0 4px;
+  /* The rule is the indent: one line down the column the children hang from. */
+  border-left: 1px solid var(--ink-line);
+  margin-left: 9px;
+  padding-left: 4px;
+}
+
+.settings-nav-fieldset {
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--r-card) - 8px);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86em;
+  overflow: hidden;
+  padding: 4px 8px;
+  text-align: left;
+  text-overflow: ellipsis;
+  transition:
+    background var(--dur-control) var(--ease-out),
+    color var(--dur-control) var(--ease-out);
+  white-space: nowrap;
+  width: 100%;
+}
+
+.settings-nav-fieldset:hover {
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+  color: var(--text-hi);
+}
+
+/* Which character or realm is being edited: a themed dropdown, not a native
+   `select`, which cannot draw a coloured dot over two lines of text. */
+.settings-nav-picker {
+  position: relative;
+}
+
+.settings-nav-chosen {
+  align-items: center;
+  background: color-mix(in srgb, var(--text-hi) 5%, transparent);
+  border: 1px solid var(--ink-line);
+  border-radius: calc(var(--r-card) - 6px);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 7px 9px;
+  text-align: left;
+  transition: background var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.settings-nav-chosen:hover {
+  background: color-mix(in srgb, var(--text-hi) 9%, transparent);
+}
+
+.settings-nav-chosen svg {
+  flex: 0 0 auto;
+  transition: transform var(--dur-control) var(--ease-out);
+}
+
+.settings-nav-picker[data-open='true'] .settings-nav-chosen svg {
+  transform: rotate(180deg);
+}
+
+/*
+ * The open list floats over the form rather than pushing the sections down:
+ * a picker that moved everything under it would move the section somebody was
+ * about to press.
+ */
+.settings-nav-choices {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  gap: 2px;
+  padding: 4px;
+  background: var(--glass-fill-near);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+}
+
+/* The rows keep the list's own shape -- dot, name, realm under it -- which is
+   what tells one row from another. */
+.settings-nav-choices button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--r-card) - 6px);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 7px 9px;
+  text-align: left;
+  transition: background var(--dur-control) var(--ease-out);
+  width: 100%;
+}
+
+.settings-nav-choices button:hover {
+  background: color-mix(in srgb, var(--text-hi) 6%, transparent);
+}
+
+.settings-nav-choices button[data-active='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+/* A character whose file will not load is still offered, because the screen is
+   where somebody can do something about it. */
+.settings-nav-choices button[data-broken] .settings-name {
+  color: var(--danger);
 }
 
 /* The one form that is not a field grid: a sentence saying there is nothing to
@@ -8763,12 +9342,12 @@ tr:hover .row-action.worn,
 .settings-form[data-section='train'],
 .settings-form[data-section='talk'],
 .settings-form[data-section='appearance'],
-.settings-sections .crumb[data-section='profile'],
-.settings-sections .crumb[data-section='realm'],
-.settings-sections .crumb[data-section='spells'],
-.settings-sections .crumb[data-section='train'],
-.settings-sections .crumb[data-section='talk'],
-.settings-sections .crumb[data-section='appearance'] {
+.settings-nav-section[data-section='profile'],
+.settings-nav-section[data-section='realm'],
+.settings-nav-section[data-section='spells'],
+.settings-nav-section[data-section='train'],
+.settings-nav-section[data-section='talk'],
+.settings-nav-section[data-section='appearance'] {
   --section-hue: var(--section-a);
   --group-1: var(--section-a);
   --group-2: var(--section-b);
@@ -8780,10 +9359,10 @@ tr:hover .row-action.worn,
 .settings-form[data-section='party'],
 .settings-form[data-section='alerts'],
 .settings-form[data-section='records'],
-.settings-sections .crumb[data-section='login'],
-.settings-sections .crumb[data-section='party'],
-.settings-sections .crumb[data-section='alerts'],
-.settings-sections .crumb[data-section='records'] {
+.settings-nav-section[data-section='login'],
+.settings-nav-section[data-section='party'],
+.settings-nav-section[data-section='alerts'],
+.settings-nav-section[data-section='records'] {
   --section-hue: var(--section-b);
   --group-1: var(--section-b);
   --group-2: var(--section-c);
@@ -8793,8 +9372,8 @@ tr:hover .row-action.worn,
 
 .settings-form[data-section='combat'],
 .settings-form[data-section='movement'],
-.settings-sections .crumb[data-section='combat'],
-.settings-sections .crumb[data-section='movement'] {
+.settings-nav-section[data-section='combat'],
+.settings-nav-section[data-section='movement'] {
   --section-hue: var(--section-c);
   --group-1: var(--section-c);
   --group-2: var(--section-d);
@@ -8804,8 +9383,8 @@ tr:hover .row-action.worn,
 
 .settings-form[data-section='health'],
 .settings-form[data-section='remotes'],
-.settings-sections .crumb[data-section='health'],
-.settings-sections .crumb[data-section='remotes'] {
+.settings-nav-section[data-section='health'],
+.settings-nav-section[data-section='remotes'] {
   --section-hue: var(--section-d);
   --group-1: var(--section-d);
   --group-2: var(--section-a);

@@ -64,7 +64,10 @@ import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
 import HomeBrowser from './components/HomeBrowser';
 import { registerRealmPicker } from './lib/pickers';
-import LoopBuilderCard, { type BuilderDestination } from './components/LoopBuilderCard';
+import LoopBuilderCard, {
+  type BuilderDestination,
+  type BuilderSeed
+} from './components/LoopBuilderCard';
 import ToolbarCard from './components/ToolbarCard';
 import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
@@ -130,6 +133,7 @@ import { EMPTY_CHARACTER, ownGang, type CharacterState } from '@shared/character
 import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
+import type { HuntingRoom } from '@shared/hunting';
 import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
 import { movementOf, type MovementConfirm } from '@shared/movement';
 import type { CombatTally } from '@shared/tally';
@@ -138,13 +142,14 @@ import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import type { Block } from '@shared/blocks';
 import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
-import type { Find } from '@shared/finds';
+import { roomsWithFinds, type Find } from '@shared/finds';
 import type { Addressed, ResetNotice } from '@shared/ipc';
 import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import {
   linkNotices,
+  alertQuiet,
   mayNotice,
   noticeFor,
   partyNotices,
@@ -155,6 +160,7 @@ import {
   watchNotices,
   walkNotices,
   wanted,
+  type AlertQuiet,
   type Notice
 } from '@shared/notifications';
 import {
@@ -279,12 +285,13 @@ interface SessionView {
    */
   finds: Find[];
   /**
-   * The rank each quest has been *seen* to reach, from what this character
-   * typed this session.
+   * The rank each quest has been *seen* to reach, from what this character was
+   * watched doing this session.
    *
-   * Nothing on the wire announces a counter moving, so this is the player's own
-   * action and nothing more — the quest book ranks it under the realm's own
-   * count and above the mark somebody set by hand. See `stepSaid`.
+   * Nothing on the wire announces a counter moving, so this is the character's
+   * own action and nothing more — the quest book ranks it under the realm's own
+   * count and above the mark somebody set by hand. See `stepSaid` for the line
+   * typed at an asker, `stepKilled` for the monster a step is owned by.
    */
   questSaid: Record<number, number>;
 }
@@ -383,13 +390,14 @@ const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
  * `HTMLElement` for the placement arithmetic it does — so it anchors as a box
  * and the element it was measured in, the same shape a word in the console
  * takes and for the same reason: xterm paints cells, and neither has an
- * `HTMLElement` of its own. `within` is the picture's box, whichever picture —
- * the Map card's window or the route panel's plan — so a scroll of what is
- * underneath it dismisses and a scroll of anything else does not.
+ * `HTMLElement` of its own. `within` is the window the picture is drawn in —
+ * one selector, because every map in the client is drawn in a `MapView` — so a
+ * scroll of what is underneath it dismisses and a scroll of anything else does
+ * not. A route list's own row is an `HTMLElement` and never reaches here.
  */
 function roomAnchor(at: Element): PopoverAnchor {
   if (at instanceof HTMLElement) return at;
-  const within = at.closest('.map-view, .route-map');
+  const within = at.closest('.map-view');
   return {
     box: at.getBoundingClientRect(),
     within: within instanceof HTMLElement ? within : document.body
@@ -461,7 +469,7 @@ interface CardContext {
    */
   loadQuests(): ReturnType<IpcApi['questBook']>;
   /** Where to hunt from where this character stands — addressed, like the book. */
-  loadHunting(radius: number): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(): ReturnType<IpcApi['huntingGrounds']>;
   /**
    * Walks a loop the Hunting card built, filed nowhere or under this
    * character — the builder's own save, offered for the *shown* character
@@ -469,6 +477,8 @@ interface CardContext {
    * walked away while somebody watches another.
    */
   runHunt: ((loop: Loop, destination: LoopDestination) => void) | null;
+  /** Opens the builder on a loop the Hunting card drew, named; the shown character's only. */
+  createHunt: ((rooms: HuntingRoom[], name: string) => void) | null;
   /**
    * When the configuration last reloaded, so the book is asked for again.
    *
@@ -532,6 +542,8 @@ interface BuilderApi {
   loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
   draft(rooms: RoomId[]): Promise<LoopDraft>;
   save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  /** A loop to open drawn — the Hunting card's — or null for an empty map. */
+  seed: BuilderSeed | null;
 }
 
 /**
@@ -550,7 +562,7 @@ interface AddressedActions {
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
-  loadHunting(radius: number): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(): ReturnType<IpcApi['huntingGrounds']>;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
@@ -564,13 +576,6 @@ interface AddressedActions {
   setSupplies(items: SupplyItem[]): void;
   send(line: string): void;
 }
-
-/**
- * The map's answer to a click on a pinned float, where there is no route panel
- * to open. A module constant so the memoised card sees the same value every
- * render — an inline fallback was a fresh prop per render.
- */
-const NO_CHOICE = (): void => undefined;
 
 /**
  * Whether a card that *can* be empty holds its place while it is.
@@ -654,9 +659,6 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // neighbourhood — a pinned float belongs to somebody else.
           loop={view.loop}
           onBuild={ctx.openBuilder}
-          // The map's rooms stay drawn as they are on a float; with no panel to
-          // open for that character, the click is answered by nothing.
-          onChoose={ctx.chooseOnMap ?? NO_CHOICE}
           /* A pointer resting on a room opens the realm's answer about it —
              including what its lair spawns, which is the question the glyph has
              raised since the map was drawn. Null on a float, which has no realm
@@ -679,10 +681,19 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           character={character}
           characterName={ctx.builder.characterName}
           draft={ctx.builder.draft}
+          // The realm's find log, as the Map card takes it: where searching has
+          // turned something up is a reason to route a lap through a room.
+          finds={view.finds}
           loadMap={ctx.builder.loadMap}
+          /* The same quick view every other map has — the same panel, the same
+             button — so the lair a room is worth picking for says what is in
+             it, and the way there is offered where it is offered everywhere. */
+          onPeek={ctx.peekRoom}
+          onPeekEnd={ctx.endPeek}
           realmName={ctx.builder.realmName}
           save={ctx.builder.save}
           search={ctx.builder.search}
+          seed={ctx.builder.seed}
         />
       );
     case 'navigation':
@@ -843,6 +854,14 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           */
           characterClass={character.className}
           /*
+            And its race and level, so the book can sink what this character
+            cannot do. The three together are what the realm gates a quest on
+            and the client holds a matching fact for; alignment is a number in
+            the gate and a word on the roster, so it is left to the side chips.
+          */
+          characterLevel={character.progress.level}
+          characterRace={character.race}
+          /*
             The realm's own count of each quest counter, where the realm has a
             command that prints one. It outranks the marks the player has left
             on the track, which is why it is handed to the card rather than
@@ -882,6 +901,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
         <HuntingCard
           {...chrome}
           chooseOnMap={ctx.chooseOnMap}
+          createLoop={ctx.chooseOnMap === null ? null : ctx.createHunt}
           hereKey={
             character.room.map === null || character.room.number === null
               ? null
@@ -1319,6 +1339,28 @@ export default function App() {
    */
   const alertsRef = useRef(config.ui.alerts);
   alertsRef.current = config.ui.alerts;
+  /*
+   * When each character's alert rows last fired, so a row can stay quiet for
+   * a while afterwards (todo 03).
+   *
+   * A ref rather than state: nothing is drawn from it, it changes on every
+   * notice, and re-rendering the client because a row's clock moved is the
+   * churn the renderer measurements exist to keep out. One map per character,
+   * made on first use, keyed by the row's place in the list so two rows on one
+   * event keep separate clocks.
+   *
+   * Never pruned, and it does not need to be: it holds one entry per row that
+   * has fired, per character this window has seen, which is bounded by the
+   * character list and is a handful of numbers.
+   */
+  const quietRef = useRef(new Map<string, AlertQuiet>());
+  const quietFor = useCallback((id: string): AlertQuiet => {
+    const had = quietRef.current.get(id);
+    if (had) return had;
+    const fresh = alertQuiet();
+    quietRef.current.set(id, fresh);
+    return fresh;
+  }, []);
   const { density, preference, cycle } = useDensity(config.ui.density);
   /*
    * The shown character's theme, when its file states one; the options file's
@@ -2069,7 +2111,11 @@ export default function App() {
            * was not there. `endedBy` is the fact, decided in main, because the
            * alternative is comparing a translated sentence.
            */
-          const raised = wanted(alertsRef.current, linkNotices(v.state, payload, Date.now(), t));
+          const raised = wanted(
+            alertsRef.current,
+            linkNotices(v.state, payload, Date.now(), t),
+            quietFor(id)
+          );
           return {
             ...v,
             state: payload,
@@ -2094,33 +2140,37 @@ export default function App() {
            * subscription is registered once for the window's lifetime and must
            * not be torn down and rebuilt every time the options file is saved.
            */
-          const raised = wanted(alertsRef.current, [
-            ...vitalNotices(v.character, payload, vitalsRef.current, t),
-            // And the player's own numeric watches, on their own figures and
-            // in their own direction (todo 29). Beside the client's three
-            // levels rather than inside them: *above 80% mana* is a thing
-            // somebody wants and a level cannot say.
-            ...watchNotices(v.character, payload, alertsRef.current.rules, t),
-            // And the named ones: an item or a person the player is waiting
-            // for, wherever it turned up.
-            ...namedNotices(v.character, payload, alertsRef.current.rules, t),
-            // Who is in the realm is the other thing that arrives as a state
-            // change rather than as a line worth alerting on: an arrival is a
-            // name, and what the realm thinks of them lands with the next
-            // listing. Both moments are worth reporting and they are not the
-            // same moment.
-            ...rosterNotices(v.character, payload, t),
-            // A hostile in the *room* is not the same fact as one in the realm,
-            // and it is raised from the room because the line that says
-            // somebody walked in does not say what they are.
-            ...roomNotices(v.character, payload, t),
-            /*
-             * And somebody in the party in trouble, which is the reason the
-             * roster matters: three of four characters are unattended, and the
-             * one being watched is not usually the one that is dying.
-             */
-            ...partyNotices(v.character, payload, vitalsRef.current.hp, t)
-          ]);
+          const raised = wanted(
+            alertsRef.current,
+            [
+              ...vitalNotices(v.character, payload, vitalsRef.current, t),
+              // And the player's own numeric watches, on their own figures and
+              // in their own direction (todo 29). Beside the client's three
+              // levels rather than inside them: *above 80% mana* is a thing
+              // somebody wants and a level cannot say.
+              ...watchNotices(v.character, payload, alertsRef.current.rules, t),
+              // And the named ones: an item or a person the player is waiting
+              // for, wherever it turned up.
+              ...namedNotices(v.character, payload, alertsRef.current.rules, t),
+              // Who is in the realm is the other thing that arrives as a state
+              // change rather than as a line worth alerting on: an arrival is a
+              // name, and what the realm thinks of them lands with the next
+              // listing. Both moments are worth reporting and they are not the
+              // same moment.
+              ...rosterNotices(v.character, payload, t),
+              // A hostile in the *room* is not the same fact as one in the realm,
+              // and it is raised from the room because the line that says
+              // somebody walked in does not say what they are.
+              ...roomNotices(v.character, payload, t),
+              /*
+               * And somebody in the party in trouble, which is the reason the
+               * roster matters: three of four characters are unattended, and the
+               * one being watched is not usually the one that is dying.
+               */
+              ...partyNotices(v.character, payload, vitalsRef.current.hp, t)
+            ],
+            quietFor(id)
+          );
           return {
             ...v,
             character: payload,
@@ -2140,7 +2190,8 @@ export default function App() {
             alertsRef.current,
             // The lap is handed in because a lap never arrives: while it is the
             // movement, the walk underneath is its own footwork.
-            walkNotices(v.walk, payload, v.loop, Date.now(), t)
+            walkNotices(v.walk, payload, v.loop, Date.now(), t),
+            quietFor(id)
           );
           return {
             ...v,
@@ -2216,7 +2267,11 @@ export default function App() {
            * a *player* opens the five-minute window in which hanging up kills.
            * The roster that tells them apart is on the view being patched.
            */
-          const raised = wanted(alertsRef.current, [noticeFor(payload, t, v.character)]);
+          const raised = wanted(
+            alertsRef.current,
+            [noticeFor(payload, t, v.character)],
+            quietFor(id)
+          );
           return {
             ...v,
             talk: conversation ? capped(v.talk, payload, tuning().talkLimit) : v.talk,
@@ -2465,9 +2520,8 @@ export default function App() {
   );
   useDesktopAlerts({
     subjects: alertSubjects,
-    prefs: config.ui.alerts.desktop,
-    // The player's own rows, which may overrule both flags above for the one
-    // notice they claim (todo 29).
+    // The player's own rows, and the only thing that decides what is raised
+    // outside the window: a row marked `notify`, and its own `whileFocused`.
     rules: config.ui.alerts.rules,
     onOpen: openAlerted,
     onRefused: sayAboutAlerts
@@ -2788,7 +2842,9 @@ export default function App() {
       loadBanks: (session: SessionId) => api.banks(session),
       // And what the realm says would serve each condition, for the potion
       // rule list's suggestions.
-      loadServing: (session: SessionId) => api.itemsServing(session)
+      loadServing: (session: SessionId) => api.itemsServing(session),
+      // And the monsters the realm names, for the priority list's picker.
+      loadMobNames: (session: SessionId) => api.mobNames(session)
     }),
     [api, reveal]
   );
@@ -2864,6 +2920,11 @@ export default function App() {
     [api, session]
   );
   const walkRoute = useCallback((route: Route) => api.walkRoute(session, route), [api, session]);
+  /** *Collect it first*, from the route panel's alternative that needs one (todo 07). */
+  const collectThenWalk = useCallback(
+    (item: { id: number; name: string }, route: Route) => api.collectThenWalk(session, item, route),
+    [api, session]
+  );
 
   /**
    * Every room the palette's query reaches, as rows that walk there.
@@ -2919,8 +2980,15 @@ export default function App() {
               // already stood in says so. Opening it is the honest answer, and
               // it is the same surface every other room click reaches.
               if (route.blocked || route.steps.length === 0) return route;
-              const refusal = await api.walkRoute(session, route);
-              return refusal === null ? null : route;
+              /*
+               * The plan was drawn from here a moment ago, so main has nothing
+               * to redraw — but if the character moved in that moment it comes
+               * back redrawn, and the panel is where a plan is read. Opening it
+               * plans afresh from here, which is the same answer arrived at by
+               * the surface that exists to show one.
+               */
+              const answer = await api.walkRoute(session, route);
+              return 'started' in answer ? null : route;
             })
             .then((unwalked) => {
               if (unwalked === null) return;
@@ -3257,6 +3325,17 @@ export default function App() {
   );
 
   /**
+   * Where this realm's find log says something was turned up, for the route
+   * panel's picture — the mark the Map card draws from the same log.
+   *
+   * Here rather than inside the panel because the panel belongs to the
+   * character on screen and nothing else; a *card* computes its own, addressed
+   * at the character it was drawn for, which is the rule every other world
+   * fact in this file follows.
+   */
+  const foundRooms = useMemo(() => [...roomsWithFinds(view.finds)], [view.finds]);
+
+  /**
    * The map's one action on a room: plan the way there, which is what a
    * room's bare click used to do on its own. One definition, because the Map
    * card and the route panel's map are the same picture and a reader who has
@@ -3275,8 +3354,27 @@ export default function App() {
     [chooseOnMap]
   );
   /**
-   * A pointer came to rest on a room, or clicked one: open the realm's answer
-   * about it beside the room.
+   * Put the room's panel up, whoever asked for it.
+   *
+   * **One panel at a time, like the other three**: opening this puts away the
+   * realm's answer about an item, a person or a gang. Written once because
+   * three surfaces open it — the map, the route panel, the loop builder — and
+   * a fourth that forgot to put the flyout away would be two panels on screen
+   * claiming the one slot.
+   *
+   * What differs between them is the *action* on the panel and nothing else,
+   * so that is all each caller decides.
+   */
+  const openPeek = useCallback((asked: RoomAsked) => {
+    window.clearTimeout(linger.current);
+    setAsked(null);
+    setFlyout(null);
+    setGangFlyout(null);
+    setPeek(asked);
+  }, []);
+  /**
+   * A pointer came to rest on a room of a map, or clicked one: open the
+   * realm's answer about it beside the room.
    *
    * The map has drawn a lair glyph since the realm data was indexed and
    * nothing could say what was in it — the Room card's face is about the room
@@ -3284,18 +3382,21 @@ export default function App() {
    * and the way there is a button on it rather than the room's bare click,
    * which used to send a character somewhere on one mis-click.
    *
-   * One panel at a time, like the other three: opening this puts away the
-   * realm's answer about an item, a person or a gang.
+   * **The Map card's, the loop builder's, one panel with one button** (todo
+   * 2026-09-14). The builder's was given `act: null` first, on the argument
+   * that a click there is a pick and *Walk to* opens a dialog over the float
+   * being drawn on. That was wrong twice over: it left the builder's rooms
+   * with the way-there offered nowhere at all — the `<title>` still said
+   * *Route to …*, which is the affordance a button is supposed to be — and a
+   * panel that is the same panel everywhere except for its one control is two
+   * panels. Parity is the rule; the surface decides what a **click** means and
+   * nothing else.
    */
   const peekRoom = useCallback(
     (room: RoomId, at: SVGGElement, settled: boolean) => {
-      window.clearTimeout(linger.current);
-      setAsked(null);
-      setFlyout(null);
-      setGangFlyout(null);
-      setPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room) });
+      openPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room) });
     },
-    [walkTo]
+    [openPeek, walkTo]
   );
   /**
    * The pointer left the room, or the panel. A hovered panel goes after the
@@ -3329,11 +3430,7 @@ export default function App() {
    */
   const peekPlanned = useCallback(
     (room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null) => {
-      window.clearTimeout(linger.current);
-      setAsked(null);
-      setFlyout(null);
-      setGangFlyout(null);
-      setPeek({
+      openPeek({
         room,
         anchor: roomAnchor(at),
         settled,
@@ -3353,7 +3450,7 @@ export default function App() {
               }
       });
     },
-    [walkTo]
+    [openPeek, walkTo]
   );
 
   /**
@@ -3498,6 +3595,24 @@ export default function App() {
     returnFocus();
   }, [cards, returnFocus, session]);
 
+  /*
+   * A loop the Hunting card drew, handed to the builder as picks closed on
+   * the first room, with its name offered (todo 00, 2026-09-13). The seed is
+   * a request and not a state of the builder: the card takes it once, and
+   * from there the picks are its own to edit, undo and file.
+   */
+  const [builderSeed, setBuilderSeed] = useState<BuilderSeed | null>(null);
+  const createHunt = useCallback(
+    (rooms: HuntingRoom[], name: string) => {
+      const ids = rooms.map((room) => room.id);
+      const first = ids[0];
+      if (first === undefined || ids.length < 2) return;
+      setBuilderSeed({ picks: [...ids, first], name, stamp: Date.now() });
+      openBuilder();
+    },
+    [openBuilder]
+  );
+
   /**
    * The picks of a loop being built, planned on this character's realm.
    * Addressed like every world query.
@@ -3539,9 +3654,18 @@ export default function App() {
       search: searchRooms,
       loadMap,
       draft: draftLoop,
-      save: saveDraftLoop
+      save: saveDraftLoop,
+      seed: builderSeed
     }),
-    [builderCharacterName, builderRealmName, searchRooms, loadMap, draftLoop, saveDraftLoop]
+    [
+      builderCharacterName,
+      builderRealmName,
+      searchRooms,
+      loadMap,
+      draftLoop,
+      saveDraftLoop,
+      builderSeed
+    ]
   );
   /*
    * Play, for any character — the float's own as well as the shown one.
@@ -3570,6 +3694,27 @@ export default function App() {
       returnFocus();
     },
     [returnFocus, session, startMovingIn]
+  );
+  /*
+   * Back, for any character: one room the way it came.
+   *
+   * Answers like play, and for the same reason — the way back is not always
+   * one step, and a press that quietly became a fourteen-step journey round a
+   * one-way corridor would be this gesture meaning something nobody intended.
+   * The window holds that question in `wandered`, whose `kind` says which of
+   * the two presses is owed the answer.
+   */
+  const stepBackIn = useCallback(
+    (sid: SessionId, confirmed: number | null) => {
+      void api.stepBack(sid, confirmed).then((answer) => {
+        if ('confirm' in answer) {
+          setWandered({ session: sid, loop: null, ...answer.confirm });
+          return;
+        }
+        if ('refused' in answer) sayRefusal(sid)(answer.refused);
+      });
+    },
+    [api, sayRefusal]
   );
   const skipLoop = useCallback(() => {
     void api.skipLoopStop(session).then(sayRefusal(session));
@@ -4602,6 +4747,8 @@ export default function App() {
   sayRefusalRef.current = sayRefusal;
   const startMovingRef = useRef(startMovingIn);
   startMovingRef.current = startMovingIn;
+  const stepBackRef = useRef(stepBackIn);
+  stepBackRef.current = stepBackIn;
 
   /**
    * Re-base one character's Combat Stats card to its totals as they stand.
@@ -4639,7 +4786,7 @@ export default function App() {
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
-        loadHunting: (radius) => api.huntingGrounds(sid, radius),
+        loadHunting: () => api.huntingGrounds(sid),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
@@ -4755,6 +4902,7 @@ export default function App() {
         loadQuests: bound.loadQuests,
         loadHunting: bound.loadHunting,
         runHunt: shown ? runHunt : null,
+        createHunt: shown ? createHunt : null,
         realmAt: loadedAt,
         builder: shown ? builderApi : null,
         openBuilder: shown ? openBuilder : null,
@@ -4792,6 +4940,9 @@ export default function App() {
         toolbar: {
           switches: switchesFor(sid),
           connected: v.state.phase === 'connected',
+          // The same reading the rail's `inGame` makes, because the toolbar is
+          // the one card drawn on both sides of it.
+          inRealm: v.character.phase === 'in-game',
           dialling: v.state.phase === 'connecting' || v.state.phase === 'closing',
           // One reading of the two progresses, shared with the Navigation
           // card, so the button and the card cannot disagree about whether
@@ -4813,6 +4964,7 @@ export default function App() {
           // this character was last walking.
           startMoving: () => startMovingIn(sid, null, null),
           stopMoving: shown ? stopMoving : () => void api.stopMoving(sid),
+          stepBack: () => stepBackIn(sid, null),
           /*
            * The modal is the shown character's, like the route panel: it files
            * into a scope and starts a loop, and both are addressed at whoever
@@ -5005,9 +5157,20 @@ export default function App() {
         id === 'session' || id === 'link' || id === 'automation' || id === 'stream';
       if (diagnostic && !railOpen && !floating) return null;
       if (!diagnostic && !hudOpen && !floating) return null;
-      // Nothing to read until the character is actually in the realm; the
-      // standby card says so once, for the whole rail, rather than per card.
-      if (!diagnostic && !inGame) return null;
+      /*
+       * Nothing to read until the character is actually in the realm; the
+       * standby card says so once, for the whole rail, rather than per card.
+       *
+       * **The toolbar is the exception** (todo 02): it is the one card that is
+       * not a reading. It carries the dial, and every switch on it writes that
+       * character's own file — which is exactly what somebody does while a
+       * character is sitting at the menu or hung up. Taking it away at that
+       * moment removes the control that puts the character back. What it does
+       * *not* do is offer commands there: `ToolbarSubject.inRealm` greys those,
+       * because a row that changes shape under the pointer is the worse of the
+       * two complaints (`ToolbarButton.disabled`).
+       */
+      if (!diagnostic && id !== 'toolbar' && !inGame) return null;
 
       return cardElement(id, contextFor(session, view, chromeFor(id)));
     },
@@ -5422,6 +5585,30 @@ export default function App() {
           rather than a label to appear. A card already floating needs none:
           it follows the pointer itself.
         */}
+        {/*
+          Where a released card would land, beside the one it is being lined up
+          with: the landing box itself, drawn where the card will be and at the
+          size it will take. A bar along the seam would say which edge and not
+          what happens to the card, and the whole point of the gesture is that
+          the card takes its neighbour's measurement across that edge.
+        */}
+        {drag.state?.live && drag.state.target.where === 'snap' && (
+          <div
+            className="snap-indicator"
+            /* Which card, and which of its edges — the two facts the box's own
+               geometry does not state outright, for a person inspecting the
+               window and for the check that drives the gesture. */
+            data-side={drag.state.target.side}
+            data-snap-to={drag.state.target.to}
+            style={{
+              left: drag.state.target.box.x,
+              top: drag.state.target.box.y,
+              width: drag.state.target.box.w,
+              height: drag.state.target.box.h
+            }}
+          />
+        )}
+
         {drag.state?.live && !cards.floatOf(drag.state.id) && (
           <div
             className="drag-ghost"
@@ -5547,6 +5734,11 @@ export default function App() {
       */}
       <RoutePanel
         destination={routeTarget}
+        /* What the shared window draws on top of the realm here, as the Map
+           card draws it: where the realm's find log says something was turned
+           up. The loud ring on this picture is the destination's, so no
+           `you` — see the panel. */
+        finds={foundRooms}
         onClose={closeRoute}
         onLoadMap={loadMap}
         /* A room on the plan pointed at opens the same panel the map opens,
@@ -5556,6 +5748,7 @@ export default function App() {
         onPeekEnd={endPeek}
         onRoute={routeTo}
         onSearch={searchRooms}
+        onCollectThenWalk={collectThenWalk}
         onWalk={walkRoute}
         open={routeOpen}
         search={routeSearch}
@@ -5617,7 +5810,8 @@ export default function App() {
           // The figure that was on screen goes back with the answer: agreeing
           // to a journey is agreeing to *that* journey, and main asks again if
           // it has grown while the dialog stood.
-          if (asked) startMovingIn(asked.session, asked.loop, asked.steps);
+          if (asked?.kind === 'back') stepBackIn(asked.session, asked.steps);
+          else if (asked) startMovingIn(asked.session, asked.loop, asked.steps);
           returnFocus();
         }}
       />
@@ -5656,6 +5850,7 @@ export default function App() {
         loadTrainers={settingsApi.loadTrainers}
         loadBanks={settingsApi.loadBanks}
         loadServing={settingsApi.loadServing}
+        loadMobNames={settingsApi.loadMobNames}
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}
         saveGlobal={settingsApi.saveGlobal}

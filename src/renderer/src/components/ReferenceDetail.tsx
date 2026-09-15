@@ -5,15 +5,7 @@ import { t } from '../lib/i18n';
 import type { Numbered } from '@shared/entities';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
-import {
-  ABILITY_INTERNAL,
-  abilityIsClaimed,
-  abilityIsMagnitude,
-  abilityIsUnread,
-  abilityName,
-  abilityShape,
-  type AbilityTable
-} from '@shared/abilities';
+import { readEffects, type AbilityTable } from '@shared/abilities';
 import { ITEM_KIND_WORD } from '@shared/items';
 import type { RealmFamily } from '@shared/character';
 import type { Verdict } from '@shared/verdict';
@@ -690,34 +682,6 @@ function ArmourRows({ armour }: { armour: NonNullable<WorldItem['armour']> }) {
  * here understands would put a number under a heading that looks like the
  * realm's own vocabulary.
  */
-/**
- * Which of an id's collected values a card shows, given its shape.
- *
- * Several values for one id mean two different things, and the shape says
- * which. A **magnitude** stated more than once is the realm disagreeing with
- * itself — a monster name resolving to rows that differ, which the realm file
- * records whole rather than resolving (see `BuiltMob.ab`). Listing
- * `Resist-Fire -100%, -35%` asks the reader to pick, and the reassuring end is
- * the one that gets a character killed, so the **high** end is shown: the same
- * choice `hp` makes, made here because this is where the shape is known and
- * the realm file deliberately does not decide it.
- *
- * A **set** — `ClassOk`, `SpellImmu`, `MonsGuards` — is the realm stating one
- * fact per member, and every member is part of the answer. Reducing those was
- * the bug this function exists to have a name for: `dwarven warrior` states
- * `MonsGuards` three times and a maximum kept one of the three.
- *
- * Exported for its test: it is a safety decision in one expression, and the
- * component around it is not otherwise reachable from a unit test.
- */
-export function effectValues(id: number, values: number[], table: AbilityTable): number[] {
-  const shape = abilityShape(id, table);
-  if (shape === 'class' || shape === 'reference') return values;
-  return values.length === 0
-    ? values
-    : [values.reduce((high, value) => (value > high ? value : high))];
-}
-
 function EffectRows({
   pairs,
   table,
@@ -760,114 +724,25 @@ function EffectRows({
   magnitudeElsewhere?: boolean;
 }) {
   if (pairs.length === 0) return null;
-  const family = realm === 'greatermud' ? 'greatermud' : 'other';
-
   /*
-   * Collected by id, because the realm states a *set* as one pair per member.
-   *
-   * `ClassOk` is the case that showed it: `staff-sling` carries `[[59, 12],
-   * [59, 5]]`, which is "usable by Mage, and by Priest" — two rows of one fact.
-   * Listed pair-by-pair it would read as `ClassOk Mage, ClassOk Priest`, the
-   * heading repeated once per value, and MME states the same row as
-   * `ClassOK: Mage, Priest`.
-   *
-   * A `Map` keyed on the id, so the order is the realm's own — first appearance
-   * wins the position, and the values follow in the order the row states them.
+   * The reading itself is `readEffects` (`src/shared/abilities.ts`): which ids
+   * are the server talking to itself, which values are claims and which are
+   * silence, which end of a disagreement to believe, and the words each shape
+   * is drawn in. It moved there when the console's own rewrites wanted the
+   * same answer for an item in the pack (todo 14) — a second transcription
+   * would be a second set of judgements about the realm's weakest-sourced
+   * table. This component draws what it says and decides nothing.
    */
-  const collected = new Map<number, number[]>();
-  let quiet = 0;
-  for (const [id, value] of pairs) {
-    /*
-     * The server talking to itself — drawn nowhere and confessed to nowhere.
-     * See `ABILITY_INTERNAL`: counting these would put `+3 more the client
-     * cannot read` on two thirds of the realm's spells, about message ids no
-     * player acts on.
-     */
-    if (ABILITY_INTERNAL.has(id)) continue;
-    const label = abilityName(id, family);
-    if (label === null || abilityIsUnread(id, value, table)) {
-      quiet += 1;
-      continue;
-    }
-    /*
-     * A flag the realm sets to zero was **read**, and read as "no".
-     *
-     * It draws nothing — a flag has no magnitude, so `LoyalItem 0` has no row
-     * to put on the card — but it is not a fact the client failed to
-     * understand, and counting it into `quiet` made the card confess to a gap
-     * that was not there. `spiked gauntlets` is the case that showed it: its
-     * only quiet pair was `Del@Maint 0`, the realm promising the gauntlets
-     * survive maintenance, and the card answered `+1 more the client cannot
-     * read`. Silence and ignorance are different answers and the count is only
-     * for the second.
-     */
-    if (!abilityIsClaimed(id, value, table)) continue;
-    const already = collected.get(id);
-    if (already) already.push(value);
-    else collected.set(id, [value]);
-  }
-
-  const shown: Array<{ id: number; label: string; value: string }> = [];
-  for (const [id, collectedValues] of collected) {
-    const shape = abilityShape(id, table);
-    /*
-     * Several values for one id mean two different things, and which one
-     * depends on the shape.
-     *
-     * A **magnitude** stated more than once is the realm disagreeing with
-     * itself — a monster name resolving to rows that differ, which the realm
-     * file records whole rather than resolving (see `BuiltMob.ab`). Listing
-     * `Resist-Fire -100%, -35%` asks the reader to pick, and the reassuring
-     * end is the one that gets a character killed, so the card takes the
-     * **high** end: the same choice `hp` makes, made here because this is
-     * where the shape is known.
-     *
-     * A **set** — `ClassOk`, `SpellImmu`, `MonsGuards` — is the realm stating
-     * one fact per member, and every member is part of the answer.
-     */
-    const values = effectValues(id, collectedValues, table);
-    shown.push({
-      id,
-      // Non-null: an id reaches this loop only after `abilityName` named it.
-      label: abilityName(id, family)!,
-      value: values
-        .map((value) =>
-          shape === 'flag'
-            ? ''
-            : // See `magnitudeElsewhere`: the number is in the row's own
-              // columns, so drawing this zero would contradict it.
-              magnitudeElsewhere && value === 0 && abilityIsMagnitude(shape)
-              ? ''
-              : /*
-                 * A grant draws its label alone at zero and its number
-                 * otherwise: the row's presence is the fact, and `Bash +0`
-                 * would read as a class that is worse at bashing than one with
-                 * no row at all. See the `grant` shape.
-                 */
-                shape === 'grant'
-                ? value === 0
-                  ? ''
-                  : t('cards.reference.item.effectPlus', { value })
-                : shape === 'percent'
-                  ? t('cards.reference.item.effectPercent', { value })
-                  : shape === 'class'
-                    ? /*
-                       * Named where the realm's table has the row, and the bare
-                       * number where it does not — a class id the realm cannot name
-                       * is still a real restriction, and dropping it would make an
-                       * item look usable by anyone.
-                       */
-                      (classNames[value] ?? t('cards.reference.item.effectReference', { value }))
-                    : shape === 'reference'
-                      ? t('cards.reference.item.effectReference', { value })
-                      : value > 0
-                        ? t('cards.reference.item.effectPlus', { value })
-                        : String(value)
-        )
-        .filter((text) => text.length > 0)
-        .join(', ')
-    });
-  }
+  const { shown, quiet } = readEffects(
+    pairs,
+    {
+      table,
+      family: realm === 'greatermud' ? 'greatermud' : 'other',
+      classNames,
+      magnitudeElsewhere
+    },
+    t
+  );
   if (shown.length === 0 && quiet === 0) return null;
 
   return (

@@ -460,6 +460,7 @@ export interface Room {
     | 'unique-name'
     | 'exit-signature'
     | 'dead-reckoning'
+    | 'scattered'
     | null;
   confidence: number;
   /** Rooms still consistent with the evidence, when it is ambiguous. */

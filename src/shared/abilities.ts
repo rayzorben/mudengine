@@ -28,6 +28,8 @@
  * numbers, `WorldGraph` reads them back, and a card names them.
  */
 
+import type { UiLookup } from './i18n';
+
 /** What one `Abil-n` value means. */
 export interface AbilityMeaning {
   /** The stock MajorMUD name. */
@@ -1233,4 +1235,144 @@ export function abilityIsUnread(id: number, value: number, table: AbilityTable):
   if (shape === undefined) return true;
   // A yes/no column holding neither: read, not understood.
   return shape === 'flag' && value !== 0 && value !== 1;
+}
+
+/* ──────────────────────────────────────────────── the pairs, as a reading */
+
+/** One effect, named and worded: what a surface draws without deciding anything. */
+export interface ReadEffect {
+  id: number;
+  /** The realm's own word for it, from `abilityName`. */
+  label: string;
+  /** The magnitude as it is drawn — empty for a flag, whose presence is the fact. */
+  value: string;
+}
+
+/**
+ * Every `[id, value]` pair a row states, read into words — and how many it
+ * could not read.
+ *
+ * **One reading, because there are two surfaces.** The Reference card drew
+ * this and the console's own rewrites now want the same answer for an item in
+ * the pack (`{item.effects}`, todo 14), and a second transcription of these
+ * rules would be a second set of judgements about the realm's weakest-sourced
+ * table: which ids are the server talking to itself, which values are claims
+ * and which are silence, and which end of a disagreement to believe. Pure and
+ * here, so the card and the drawn line cannot differ about what a ring does.
+ *
+ * `quiet` is the count of pairs the client holds and cannot read — an id the
+ * enum has no word for on this realm, or a value its shape does not explain.
+ * Saying how many is more honest than either naming them under a heading that
+ * implies they were understood or pretending the thing has only the effects
+ * that happened to decode.
+ */
+export function readEffects(
+  pairs: ReadonlyArray<readonly [number, number]>,
+  options: {
+    table: AbilityTable;
+    /** The realm on the other end; `abilityName` words three ids differently. */
+    family: 'greatermud' | 'other';
+    /** The realm's class table, for an ability whose value is a class id. */
+    classNames?: Record<number, string>;
+    /**
+     * This row states its magnitude in columns of its own, so a zero here is
+     * not the number. Only a spell sets it. See `EffectRows`.
+     */
+    magnitudeElsewhere?: boolean;
+  },
+  t: UiLookup
+): { shown: ReadEffect[]; quiet: number } {
+  const { table, family, classNames = {}, magnitudeElsewhere = false } = options;
+  /*
+   * Collected by id, because the realm states a *set* as one pair per member:
+   * `staff-sling` carries `[[59, 12], [59, 5]]`, which is "usable by Mage, and
+   * by Priest" — two rows of one fact. A `Map`, so the order is the realm's.
+   */
+  const collected = new Map<number, number[]>();
+  let quiet = 0;
+  for (const [id, value] of pairs) {
+    // The server talking to itself, drawn nowhere and confessed to nowhere.
+    if (ABILITY_INTERNAL.has(id)) continue;
+    if (abilityName(id, family) === null || abilityIsUnread(id, value, table)) {
+      quiet += 1;
+      continue;
+    }
+    // A flag the realm set to zero was read, and read as "no": silence and
+    // ignorance are different answers and the count is only for the second.
+    if (!abilityIsClaimed(id, value, table)) continue;
+    const already = collected.get(id);
+    if (already) already.push(value);
+    else collected.set(id, [value]);
+  }
+
+  const shown: ReadEffect[] = [];
+  for (const [id, values] of collected) {
+    const shape = abilityShape(id, table);
+    shown.push({
+      id,
+      // Non-null: an id reaches this loop only after `abilityName` named it.
+      label: abilityName(id, family)!,
+      value: effectValues(id, values, table)
+        .map((value) => effectWord(value, shape, { classNames, magnitudeElsewhere }, t))
+        .filter((word) => word.length > 0)
+        .join(', ')
+    });
+  }
+  return { shown, quiet };
+}
+
+/** One value of one effect, in the words its shape calls for. */
+function effectWord(
+  value: number,
+  shape: AbilityShape | undefined,
+  context: { classNames: Record<number, string>; magnitudeElsewhere: boolean },
+  t: UiLookup
+): string {
+  // A flag has no magnitude: its label alone is the fact.
+  if (shape === 'flag') return '';
+  // The number is in the row's own columns, so drawing this zero would
+  // contradict it. See `magnitudeElsewhere`.
+  if (context.magnitudeElsewhere && value === 0 && abilityIsMagnitude(shape)) return '';
+  /*
+   * A grant draws its label alone at zero and its number otherwise: the row's
+   * presence is the fact, and `Bash +0` would read as a class that is worse at
+   * bashing than one with no row at all.
+   */
+  if (shape === 'grant') return value === 0 ? '' : t('cards.reference.item.effectPlus', { value });
+  if (shape === 'percent') return t('cards.reference.item.effectPercent', { value });
+  /*
+   * Named where the realm's table has the row, and the bare number where it
+   * does not — a class id the realm cannot name is still a real restriction,
+   * and dropping it would make an item look usable by anyone.
+   */
+  if (shape === 'class') {
+    return context.classNames[value] ?? t('cards.reference.item.effectReference', { value });
+  }
+  if (shape === 'reference') return t('cards.reference.item.effectReference', { value });
+  return value > 0 ? t('cards.reference.item.effectPlus', { value }) : String(value);
+}
+
+/**
+ * Several values for one id mean two different things, and which one depends
+ * on the shape.
+ *
+ * A **magnitude** stated more than once is the realm disagreeing with itself —
+ * a monster name resolving to rows that differ, which the realm file records
+ * whole rather than resolving (see `BuiltMob.ab`). Listing `Resist-Fire -100%,
+ * -35%` asks the reader to pick, and the reassuring end is the one that gets a
+ * character killed, so the **high** end is shown: the same choice `hp` makes,
+ * made here because this is where the shape is known and the realm file
+ * deliberately does not decide it.
+ *
+ * A **set** — `ClassOk`, `SpellImmu`, `MonsGuards` — is the realm stating one
+ * fact per member, and every member is part of the answer. Reducing those was
+ * the bug this function exists to have a name for: `dwarven warrior` states
+ * `MonsGuards` three times and a maximum kept one of the three.
+ */
+export function effectValues(id: number, values: number[], table: AbilityTable): number[] {
+  const shape = abilityShape(id, table);
+  if (shape === 'class' || shape === 'reference') return values;
+  return values.length === 0
+    ? values
+    : [values.reduce((high, value) => (value > high ? value : high))];
 }

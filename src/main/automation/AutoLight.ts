@@ -197,6 +197,29 @@ export class AutoLight {
     });
   }
 
+  /**
+   * Whether a light would be readied for the room the character is standing in
+   * — the walker's question, asked before it gives up on a room it cannot
+   * read (`Walker.holdForLight`).
+   *
+   * **The pack, not what has been proposed.** `SessionManager.onCharacter`
+   * runs the walker before this module, so on the status line that carries the
+   * dark room nothing has been enqueued yet and a reading of the queue would
+   * answer *no* every time. What is being asked is whether `provide` would
+   * find something — which for a room the realm records no level for is the
+   * strongest usable unlit light in the pack, exactly as the arrival branch
+   * chooses one.
+   *
+   * A light already lit answers **no**: the room is dark *with* it, so another
+   * command changes nothing and the walk should stop and say so. The walker
+   * arms its window on the first yes and keeps it for the window's length, so
+   * this turning false as the torch lights does not let the hold go.
+   */
+  couldReady(state: CharacterState): boolean {
+    if (!this.on(state)) return false;
+    return carriedLights(state.inventory.items).some((light) => !light.lit && lightIsUsable(light));
+  }
+
   private on(state: CharacterState): boolean {
     if (!this.enabled || !this.config.provideLight || state.phase !== 'in-game') return false;
     /*

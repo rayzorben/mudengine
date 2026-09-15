@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { insertionIndex } from '../lib/reorder';
+import { snapTarget, type SnapBox, type SnapSide } from '../lib/snap';
 import type { CardId, CardLayoutApi, Lane } from './useCardLayout';
 import { tuning } from '../lib/tuning';
 
@@ -9,9 +10,15 @@ import { tuning } from '../lib/tuning';
  *
  * A docked target carries its lane and the insertion index, so the indicator
  * can be drawn *between* two cards rather than on one of them: a drop that
- * lands somewhere the player was not shown is a drop they have to undo.
+ * lands somewhere the player was not shown is a drop they have to undo. A
+ * snap carries the box it would land in, in client pixels, for the same
+ * reason — the indicator is drawn as that box, so what is shown is the
+ * arrangement itself rather than a hint about it.
  */
-export type DropTarget = { where: 'lane'; lane: Lane; index: number } | { where: 'float' };
+export type DropTarget =
+  | { where: 'lane'; lane: Lane; index: number }
+  | { where: 'snap'; to: CardId; side: SnapSide; box: SnapBox }
+  | { where: 'float' };
 
 export interface DragState {
   id: CardId;
@@ -127,6 +134,31 @@ export function useCardDrag(
     return lanes;
   }, []);
 
+  /**
+   * Every card standing over the console, measured now, except the one in
+   * hand.
+   *
+   * Floats only: they are the one placement with geometry of its own, and a
+   * card in a lane is already lined up with its neighbours — dropping one
+   * beside another there is what docking does. A pinned float belonging to
+   * another character is measured with the rest, because it is on screen and
+   * what is on screen is what a player is aiming at; only the dragged card's
+   * own layout is written to.
+   */
+  const neighbours = useCallback((id: CardId) => {
+    const found: Array<{ id: CardId; box: SnapBox }> = [];
+    for (const element of document.querySelectorAll<HTMLElement>('[data-card-float]')) {
+      const other = element.dataset['cardFloat'];
+      if (other === undefined || other === id) continue;
+      const box = element.getBoundingClientRect();
+      found.push({
+        id: other as CardId,
+        box: { x: box.left, y: box.top, w: box.width, h: box.height }
+      });
+    }
+    return found;
+  }, []);
+
   /** Which lane and index the pointer is over, or a float if it is over none. */
   const targetFor = useCallback(
     (x: number, y: number): DropTarget => {
@@ -149,9 +181,38 @@ export function useCardDrag(
         const along = lane.vertical ? y : x;
         return { where: 'lane', lane: lane.lane, index: insertionIndex(lane.slots, along) };
       }
+      /*
+       * Then a card already over the console to line up with.
+       *
+       * Hit-tested on the dragged card's **own box** rather than on the
+       * pointer: what the player is lining up is the card's edge, and where
+       * they happen to have grabbed it decides nothing. A float has already
+       * moved under the hand by the time this runs, so the box is computed
+       * from the pointer and the hold rather than read back from the DOM —
+       * one formula for a float that is following and a ghost that is not.
+       */
+      const dragged: SnapBox = {
+        x: x - at.hold.dx,
+        y: y - at.hold.dy,
+        w: at.size.w,
+        h: at.size.h
+      };
+      /*
+       * A chip is not snapped: a put-away card's chip is a label, and its box
+       * would be copied into the card's own width or height — the same reason
+       * the rail's gap for a chip is the height a rail card ships at rather
+       * than the chip's. Dropped over the console it floats at its usual size,
+       * and can be snapped from there.
+       */
+      if (at.shape === 'card' && dragged.w > 0 && dragged.h > 0) {
+        const snap = snapTarget(dragged, neighbours(at.id), tuning().snapDistance);
+        if (snap !== null) {
+          return { where: 'snap', to: snap.id, side: snap.side, box: snap.box };
+        }
+      }
       return { where: 'float' };
     },
-    [measure]
+    [measure, neighbours]
   );
 
   const begin = useCallback(
@@ -227,9 +288,15 @@ export function useCardDrag(
       const live = far || (latest.current?.live ?? false);
       const target = targetFor(event.clientX, event.clientY);
 
-      // A card already floating follows the pointer as it is dragged; one being
-      // lifted off the rail is represented by a ghost until it is dropped.
-      if (live && at.floating && target.where === 'float') {
+      /*
+       * A card already floating follows the pointer as it is dragged; one
+       * being lifted off the rail is represented by a ghost until it is
+       * dropped. It goes on following while a snap is offered — the card
+       * stays under the hand and the indicator shows where releasing would
+       * put it, which is the whole question the indicator answers. Over a
+       * lane it stops, because there the opened gap is the indicator.
+       */
+      if (live && at.floating && target.where !== 'lane') {
         const workspace = workspaceRef.current?.getBoundingClientRect();
         if (workspace && workspace.width > 0 && workspace.height > 0) {
           const grab = at.grab ?? { dx: 0, dy: 0 };
@@ -263,12 +330,35 @@ export function useCardDrag(
         layout.dock(at.id, dragged.target.lane, dragged.target.index);
         return;
       }
+
+      const workspace = workspaceRef.current?.getBoundingClientRect();
+      if (!workspace || workspace.width === 0 || workspace.height === 0) return;
+
+      /*
+       * Snapped: the box the indicator was drawn as, in the fractions a float
+       * is stored in. `lift` is the one call that sets a position and a size
+       * together — two writes in one tick read the same stale layout, and the
+       * second would find no float to size — and it takes a card that is
+       * already floating as readily as one coming off the rail, which is what
+       * makes this the same gesture from either side.
+       */
+      if (dragged.target.where === 'snap') {
+        const { box } = dragged.target;
+        layout.lift(
+          at.id,
+          {
+            x: (box.x - workspace.left) / workspace.width,
+            y: (box.y - workspace.top) / workspace.height
+          },
+          { w: box.w / workspace.width, h: box.h / workspace.height }
+        );
+        return;
+      }
+
       // Already floating and released over the console: it has been following
       // the pointer the whole way, so there is nothing left to commit.
       if (at.floating) return;
 
-      const workspace = workspaceRef.current?.getBoundingClientRect();
-      if (!workspace || workspace.width === 0 || workspace.height === 0) return;
       layout.lift(at.id, {
         x: (event.clientX - workspace.left) / workspace.width,
         y: (event.clientY - workspace.top) / workspace.height

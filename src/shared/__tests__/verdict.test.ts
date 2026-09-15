@@ -4,6 +4,7 @@ import {
   lairPassage,
   appraiseRoom,
   prowessSheetOf,
+  rankByPriority,
   rankByVerdict,
   roomVerdictKey,
   targetOf,
@@ -14,6 +15,7 @@ import {
 import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobEntity } from '../entities';
+import type { MobPriority, MobPriorityBand } from '../config';
 import type { MobAttack } from '../world';
 import { EMPTY_CHARACTER } from '../character';
 
@@ -390,5 +392,65 @@ describe('lairPassage', () => {
     expect(lairPassage([], 1, 1, everybody)).toBeNull();
     // A lair is not made safe by one monster the arithmetic cannot see.
     expect(lairPassage([hitting(null), hitting(40)], 1, 1, everybody)).toBe(40);
+  });
+});
+
+describe('the priority list, which replaces the weighing rather than ranking against it', () => {
+  const rows = (...pairs: Array<[string, MobPriorityBand]>): MobPriority[] =>
+    pairs.map(([mob, priority]) => ({ mob, priority }));
+
+  it('leaves the weighing alone when no row names anything in the room', () => {
+    expect(rankByPriority(['gnoll', 'imp'], rows(['dragon', 'first']))).toBeNull();
+  });
+
+  it('leaves the weighing alone when there are no rows at all', () => {
+    expect(rankByPriority(['gnoll', 'imp'], [])).toBeNull();
+  });
+
+  it('puts a first-band monster ahead of everything unlisted', () => {
+    const order = rankByPriority(['rat', 'gnoll', 'dragon'], rows(['dragon', 'first']));
+    expect(order?.[0]).toBe(2);
+  });
+
+  it('puts a last-band monster behind everything unlisted', () => {
+    const order = rankByPriority(['rat', 'gnoll', 'imp'], rows(['rat', 'last']));
+    expect(order).toEqual([1, 2, 0]);
+  });
+
+  it('orders the five bands exactly as they are written', () => {
+    const order = rankByPriority(
+      ['e', 'd', 'c', 'b', 'a'],
+      rows(['a', 'first'], ['b', 'high'], ['c', 'default'], ['d', 'low'], ['e', 'last'])
+    );
+    // The names were listed worst-first, so a correct ranking reverses them.
+    expect(order).toEqual([4, 3, 2, 1, 0]);
+  });
+
+  it('breaks a tie within a band on the order the room listed them', () => {
+    const order = rankByPriority(['rat', 'gnoll'], rows(['rat', 'high'], ['gnoll', 'high']));
+    expect(order).toEqual([0, 1]);
+  });
+
+  /*
+   * The wire spells a monster four ways and the config file a fifth. A row
+   * written `The Giant Rat` has to rank the `giant rat` the room printed, or
+   * the list silently does nothing for the names people actually type.
+   */
+  it('matches a row against the name the wire spells, article and case aside', () => {
+    const order = rankByPriority(['giant rat', 'gnoll'], rows(['The Giant Rat', 'last']));
+    expect(order).toEqual([1, 0]);
+  });
+
+  /*
+   * An unlisted monster is `default` rather than last: the list is somewhere to
+   * add one row, so everything else keeps sitting in the middle where `high`
+   * and `low` are defined against it.
+   */
+  it('sits an unlisted monster between the high and low bands', () => {
+    const order = rankByPriority(
+      ['low one', 'unlisted', 'high one'],
+      rows(['low one', 'low'], ['high one', 'high'])
+    );
+    expect(order).toEqual([2, 1, 0]);
   });
 });

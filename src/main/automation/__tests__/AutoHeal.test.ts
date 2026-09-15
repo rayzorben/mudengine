@@ -4,6 +4,7 @@ import { AutoHeal } from '../AutoHeal';
 import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
+import type { WorldSpell } from '../../../shared/world';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -264,5 +265,166 @@ describe('healing in a fight', () => {
     auto.onCharacter(fighting(60));
     drain();
     expect(sent).toEqual(['c minor healing']);
+  });
+});
+
+/*
+ * Choosing the heal — todo 01, 2026-09-13, in the player's own figures.
+ *
+ * A 150-point bar: five points missing wants the minor heal, sixty wants the
+ * major one. The switch is `automation.spells.autoChoose`, the same one the
+ * round spell is derived by.
+ */
+const HEAL_ROWS: Record<string, WorldSpell> = {
+  'minor healing': {
+    id: 30,
+    name: 'minor healing',
+    short: 'mihe',
+    level: 1,
+    mana: 2,
+    targets: 2,
+    power: [10, 20],
+    abilities: [[18, 0]]
+  },
+  'major healing': {
+    id: 31,
+    name: 'major healing',
+    short: 'mahe',
+    level: 8,
+    mana: 10,
+    targets: 2,
+    power: [40, 60],
+    abilities: [[18, 0]]
+  }
+};
+const HEAL_BOOK = [
+  { name: 'minor healing', short: 'mihe', level: 1, cost: 2 },
+  { name: 'major healing', short: 'mahe', level: 8, cost: 10 }
+];
+
+describe('choosing the heal from the spellbook', () => {
+  let said: string[];
+  const chooser = (config: SpellsConfig) =>
+    new AutoHeal(config, true, queue, undefined, (name) => HEAL_ROWS[name] ?? null, {
+      notice: (message) => said.push(message)
+    });
+  const bar = (hp: number, members: PartyMember[] = []): CharacterState => {
+    const at = state({ hp, hpMax: 150, mana: 100, manaMax: 100 }, members);
+    at.spellbook = HEAL_BOOK.map((spell) => ({ ...spell, level: spell.level ?? null }));
+    at.progress = { ...at.progress, level: 20 };
+    return at;
+  };
+  beforeEach(() => {
+    said = [];
+  });
+
+  it('mends a scratch with the cheapest spell that covers it', () => {
+    chooser(spells({ autoChoose: true, heal: '', healBelow: 1 })).onCharacter(bar(145));
+    drain();
+    expect(sent).toEqual(['c mihe']);
+  });
+
+  it('mends a real wound with the most any one cast mends', () => {
+    chooser(spells({ autoChoose: true, heal: '', healBelow: 0.7 })).onCharacter(bar(90));
+    drain();
+    expect(sent).toEqual(['c mahe']);
+  });
+
+  /* The whole complaint: one configured spell is wrong at one end of the bar. */
+  it('outranks the configured spell, which is what is cast with the switch off', () => {
+    chooser(spells({ autoChoose: true, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
+      bar(90)
+    );
+    drain();
+    expect(sent).toEqual(['c mahe']);
+    sent.length = 0;
+    chooser(spells({ autoChoose: false, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
+      bar(90)
+    );
+    drain();
+    expect(sent).toEqual(['c mihe']);
+  });
+
+  /*
+   * A heal not cast is a death, where a round spell not cast is a slower
+   * fight — so a derivation that cannot answer falls back to the box.
+   */
+  it('falls back to the configured spell where the book cannot answer, and says so once', () => {
+    const unread = bar(90);
+    unread.spellbook = null;
+    const healer = chooser(spells({ autoChoose: true, heal: 'minor healing', healBelow: 0.7 }));
+    healer.onCharacter(unread);
+    drain();
+    // The realm names the short word even where this character's book is unread.
+    expect(sent).toEqual(['c mihe']);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('minor healing');
+    healer.onCharacter(unread);
+    expect(said).toHaveLength(1);
+  });
+
+  it('casts nothing where neither the book nor the box can answer', () => {
+    const unread = bar(90);
+    unread.spellbook = null;
+    chooser(spells({ autoChoose: true, heal: '', healBelow: 0.7 })).onCharacter(unread);
+    drain();
+    expect(sent).toEqual([]);
+    expect(said).toHaveLength(1);
+  });
+
+  it('says the choice when it changes, and not on every status line', () => {
+    const healer = chooser(spells({ autoChoose: true, heal: '', healBelow: 1, healTo: 1 }));
+    healer.onCharacter(bar(145));
+    drain();
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('minor healing');
+    healer.onCharacter(bar(145));
+    drain();
+    expect(said).toHaveLength(1);
+    // The deficit moves past what a minor heal reaches: a different answer.
+    vi.advanceTimersByTime(10_000);
+    healer.onCharacter(bar(80));
+    drain();
+    expect(said).toHaveLength(2);
+    expect(said[1]).toContain('major healing');
+  });
+
+  /* One member who cannot be chosen for does not stand in front of one who can. */
+  it('goes on to the next member where the first states no figures', () => {
+    const vague = member('Soul', 0.2);
+    const stated = member('Yang', 0.2);
+    stated.vitals = { hp: 30, hpMax: 150, mana: null, manaMax: null };
+    chooser(
+      spells({ autoChoose: true, heal: '', healParty: true, healPartyWith: '', healBelow: 0.5 })
+    ).onCharacter(bar(150, [vague, stated]));
+    drain();
+    expect(sent).toEqual(['c mahe Yang']);
+  });
+
+  /*
+   * The listing gives a percentage, and a percentage cannot say how many hit
+   * points a heal must cover: 30% of 4,434 and 30% of 62 are the same bar.
+   */
+  it('heals a member with the configured spell until their own client says the figures', () => {
+    const config = spells({
+      autoChoose: true,
+      heal: '',
+      healParty: true,
+      healPartyWith: 'minor healing',
+      healBelow: 0.5
+    });
+    chooser(config).onCharacter(bar(150, [member('Soul', 0.2)]));
+    drain();
+    expect(sent).toEqual(['c mihe Soul']);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('@health');
+
+    sent.length = 0;
+    const answered = member('Soul', 0.2);
+    answered.vitals = { hp: 30, hpMax: 150, mana: null, manaMax: null };
+    chooser(config).onCharacter(bar(150, [answered]));
+    drain();
+    // 120 missing: the most one cast mends.
+    expect(sent).toEqual(['c mahe Soul']);
   });
 });

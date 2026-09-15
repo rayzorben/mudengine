@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  afflictionsOf,
   expectedBlow,
   hitChance,
   magicResistance,
@@ -444,5 +445,59 @@ describe('which to hit first', () => {
         { perRound: 5, blows: 5, onDeath: 0, hp: 10, weight: 0.5, hazards: [], wide: false }
       ])
     ).toEqual([1, 2, 3, 0]);
+  });
+});
+
+/*
+ * What a monster can put on the character, read for the hunting survey
+ * (todo 00, 2026-09-13): every spell it brings, any row, with the realm's
+ * duration in three-second ticks. A spell landing on the caster is not one,
+ * and a poison of unstated length is not shortened by one whose length is.
+ */
+describe('what a monster afflicts', () => {
+  const venom: WorldSpell = {
+    id: 40,
+    name: 'venom',
+    targets: 0,
+    duration: 10,
+    power: [3, 6],
+    abilities: [[19, 0]]
+  };
+  const blind: WorldSpell = { id: 41, name: 'blind', targets: 0, abilities: [[107, 0]] };
+  const shield: WorldSpell = { id: 42, name: 'shield', targets: 1, abilities: [[74, 0]] };
+
+  it('names the hit spell, the cast, the between-round spell and the death spell', () => {
+    const snake = fighter(50, [blow({ onHit: 40 })], {
+      casts: [{ spell: 66, chance: 0.2, level: 1 }],
+      spells: { 40: venom, 66: HOLD, 41: blind },
+      deathSpell: 41
+    });
+    expect(afflictionsOf(snake)).toEqual([
+      { kind: 'poison', seconds: 30 },
+      { kind: 'held', seconds: 12 },
+      { kind: 'blinded', seconds: null }
+    ]);
+  });
+
+  it('ignores a spell the monster casts on itself, and answers nothing for the unweighable', () => {
+    const turtle = fighter(50, [blow()], {
+      casts: [{ spell: 42, chance: 1, level: 1 }],
+      spells: { 42: shield }
+    });
+    expect(afflictionsOf(turtle)).toEqual([]);
+    expect(afflictionsOf({})).toEqual([]);
+  });
+
+  it('keeps the longest stated length, and an unstated one over any stated one', () => {
+    const long: WorldSpell = { ...venom, id: 43, duration: 40 };
+    const vague: WorldSpell = { ...venom, id: 44, duration: undefined };
+    const two = fighter(50, [blow({ onHit: 40 }), blow({ onHit: 43 })], {
+      spells: { 40: venom, 43: long }
+    });
+    expect(afflictionsOf(two)).toEqual([{ kind: 'poison', seconds: 120 }]);
+    const three = fighter(50, [blow({ onHit: 40 }), blow({ onHit: 44 })], {
+      spells: { 40: venom, 44: vague }
+    });
+    expect(afflictionsOf(three)).toEqual([{ kind: 'poison', seconds: null }]);
   });
 });

@@ -74,12 +74,18 @@ import type { EngageDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import { ownAlignment, type CharacterState, type RoomOccupant } from '../../shared/character';
 import { ATTACK_COMMANDS, commandOf, REREAD_ROOM } from '../../shared/commands';
-import type { CombatConfig, PartyConfig, SpellsConfig } from '../../shared/config';
+import {
+  DEFAULT_MOB_PRIORITY,
+  type CombatConfig,
+  type PartyConfig,
+  type SpellsConfig
+} from '../../shared/config';
 import type { MobEntity } from '../../shared/entities';
 import { WEAPON_HAND } from '../../shared/items';
 import { weighRoom, type HazardKind, type Menace } from '../../shared/menace';
 import {
   prowessSheetOf,
+  rankByPriority,
   rankByVerdict,
   targetOf,
   verdictFor,
@@ -259,7 +265,18 @@ export class AutoCombat {
    * screen to say why.
    */
   private readonly refused = new Map<string, Refusal>();
-  /** Rounds counted in this fight, for `refreshRounds`. */
+  /**
+   * Rounds counted **since the last look**, for `refreshRounds`.
+   *
+   * Not since this fight started (2026-09-14). The setting is *rounds between
+   * looks* and what it corrects is a room list going stale — which is exactly
+   * what a fight ending does to it, so resetting the count there tied the
+   * backstop to the event that makes it necessary. A room of four monsters
+   * fought one at a time, three or four rounds each, got no look at all:
+   * every fight ended before the third round was counted and took the count
+   * with it. Reset when the look actually goes out, and when a room block
+   * states the occupants afresh (`onCharacter`).
+   */
   private rounds = 0;
   private roundTimer: NodeJS.Timeout | null = null;
   private state: CharacterState | null = null;
@@ -827,7 +844,12 @@ export class AutoCombat {
       // Moving on ends a break's stand-down: a fresh room is back under the
       // configured behaviour, and the thing the player broke off from is not
       // in it.
-      if (was.room.name !== state.room.name) this.standDownUntil = 0;
+      if (was.room.name !== state.room.name) {
+        this.standDownUntil = 0;
+        // A new room states its own occupants, so the look the count is
+        // heading towards has just happened for free.
+        this.rounds = 0;
+      }
       /*
        * A monster that left the room takes its pending attack with it, and
        * releases its engage cooldown. The cancel is what stops an attack
@@ -1027,6 +1049,46 @@ export class AutoCombat {
    * explained a decision by a number that did not make it, which is worse
    * than a wrong sentence: it is a right-looking one.
    */
+  /**
+   * Why the priority list picked this one.
+   *
+   * Its own sentence rather than `explain`'s, because `explain` names the
+   * figures the weighing decided on and the weighing did not decide this. A
+   * trace that borrowed those figures would be the exact failure `explain`'s
+   * own note describes: a right-looking sentence for a decision made another
+   * way. Names the band, which is the thing the player wrote down and the only
+   * fact that chose this monster.
+   */
+  private whyRanked(target: string, count: number, others: readonly string[]): string {
+    const band = this.config.mobPriority.find(
+      (row) => mobKey(row.mob) === mobKey(target)
+    )?.priority;
+    if (band !== undefined) {
+      return count <= 1
+        ? t('automation.combat.whyRankedAlone', { target, band })
+        : t('automation.combat.whyRanked', { target, band, count });
+    }
+    /*
+     * The winner is a monster no row names, which is the ordinary case: the
+     * list decides whenever *anything* here is listed, and an unlisted monster
+     * sits in the middle band. Saying it "ranks default" would report a band
+     * the player never wrote -- `explain`'s own warning, arriving by another
+     * route -- so the sentence names the listed monster that was pushed past
+     * instead, which is the fact that actually decided.
+     */
+    const demoted = others.find((name) =>
+      this.config.mobPriority.some((row) => mobKey(row.mob) === mobKey(name))
+    );
+    if (demoted === undefined) return t('automation.combat.whyInRoom');
+    const its = this.config.mobPriority.find((row) => mobKey(row.mob) === mobKey(demoted));
+    return t('automation.combat.whyRankedOver', {
+      target,
+      count,
+      other: demoted,
+      band: its?.priority ?? DEFAULT_MOB_PRIORITY
+    });
+  }
+
   private explain(
     target: string,
     verdict: Verdict | null,
@@ -1426,6 +1488,29 @@ export class AutoCombat {
       return why === null || considered === null ? null : { target: null, considered, why };
     }
     const kept = verdicts.filter((_, index) => affordable[index]);
+    /*
+     * The player's own order, where they stated one for something in this
+     * room. It replaces the weighing rather than ranking against it — see
+     * `CombatConfig.mobPriority` — so `rankByVerdict` is not consulted at
+     * all on this path, and the trace says the band rather than a menace
+     * figure that did not make the decision.
+     */
+    const ranked = rankByPriority(
+      candidates.map((who) => who.name),
+      this.config.mobPriority
+    );
+    if (ranked !== null) {
+      const index = ranked[0] ?? 0;
+      const pick = candidates[index] ?? candidates[0]!;
+      return {
+        target: pick.name,
+        because: this.whyRanked(
+          pick.name,
+          candidates.length,
+          candidates.filter((_, at) => at !== index).map((who) => who.name)
+        )
+      };
+    }
     const [first] = rankByVerdict(kept);
     const pick = candidates[first ?? 0] ?? candidates[0]!;
     return {
@@ -1744,8 +1829,8 @@ export class AutoCombat {
    */
   private refresh(): void {
     const every = this.config.refreshRounds;
-    if (every <= 0 || this.rounds % every !== 0) return;
-    this.queue.enqueue({
+    if (every <= 0 || this.rounds < every) return;
+    const asked = this.queue.enqueue({
       command: REREAD_ROOM,
       priority: 'probe',
       coalesceKey: 'combat-refresh',
@@ -1754,6 +1839,11 @@ export class AutoCombat {
       expiresAt: Date.now() + tuning().combat.roundMs * 20,
       reason: t('automation.combat.reasonRefresh')
     });
+    // Only a look the arbiter agreed to carry spends the count. Refused — the
+    // stat screen has the keyboard, the player is mid-line — the next round
+    // asks again, which is what *rounds between looks* means when one of them
+    // never went out.
+    if (asked) this.rounds = 0;
   }
 
   /**
@@ -2073,8 +2163,9 @@ export class AutoCombat {
   /**
    * The fight is over, however it ended.
    *
-   * The opener is available again and the round count restarts. Not the
-   * refusals: a class that cannot bash still cannot bash in the *next* fight,
+   * The opener is available again. **Not the round count**, which is rounds
+   * since the last look rather than rounds of this fight — see the field. Nor
+   * the refusals: a class that cannot bash still cannot bash in the *next* fight,
    * and re-learning it every fight would mean announcing it in the room every
    * fight. A new connection does clear them — see the field.
    *
@@ -2089,7 +2180,6 @@ export class AutoCombat {
    */
   private endFight(): void {
     this.openerSpent = false;
-    this.rounds = 0;
     this.lastCast = null;
     this.ineffective.clear();
     this.casts.clear();

@@ -25,9 +25,12 @@
  */
 import {
   DEFAULT_CONFIG,
+  mergeMobPriorities,
+  normalizeMobPriorities,
   normalizeConfig,
   type AppConfig,
   type LoginStep,
+  type MobPriority,
   type Server
 } from './config';
 import type { ConnectionTarget } from './types';
@@ -144,7 +147,13 @@ function byName<T extends { name: string }>(entries: T[], name: string): T | und
 function resolveServer(
   value: unknown,
   servers: Server[]
-): { target: ConnectionTarget; name: string; login: LoginStep[]; database: string } | null {
+): {
+  target: ConnectionTarget;
+  name: string;
+  login: LoginStep[];
+  database: string;
+  mobPriority: MobPriority[];
+} | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
     return found
@@ -152,7 +161,8 @@ function resolveServer(
           target: { host: found.host, port: found.port, encoding: found.encoding },
           name: found.name,
           login: found.login,
-          database: found.database
+          database: found.database,
+          mobPriority: found.mobPriority
         }
       : null;
   }
@@ -179,6 +189,10 @@ function resolveServer(
        * its map at all.
        */
       database: str(value['database'], ''),
+      // An inline address names no server directory, so there is no realm list
+      // to inherit — the character's own, over the global one, is the whole of
+      // it. Same reasoning as `login` above.
+      mobPriority: [],
       target: {
         host,
         port,
@@ -192,6 +206,67 @@ function resolveServer(
   }
 
   return null;
+}
+
+/**
+ * Folds the realm's priority list in between the global one and the character's.
+ *
+ * The one setting in `automation:` that is merged across scopes rather than
+ * replaced, and it has to be done **after** `normalizeConfig` rather than as
+ * part of the overlay, because `overlay` is the thing being worked around: by
+ * the time it has run, a character that stated its own list has already
+ * replaced the global one, and the two are no longer distinguishable inside
+ * the merged record.
+ *
+ * So the three lists are read from where each is actually written — the base
+ * file, the realm's `server.yaml`, and the character's own raw mapping — and
+ * merged broadest-first by `mergeMobPriorities`. A character's row for a
+ * monster wins over the realm's, and the realm's over the global one; a
+ * monster only one scope names is kept by all three.
+ *
+ * Read from the *raw* profile rather than the merged config for the same
+ * reason: `patch` has already flattened "stated nothing" and "stated a list"
+ * into one value, and only the raw mapping still knows which happened.
+ */
+function withRealmPriorities(
+  config: AppConfig,
+  global: MobPriority[],
+  realm: MobPriority[],
+  raw: Record<string, unknown>
+): AppConfig {
+  const own = ownMobPriority(raw);
+  /*
+   * Read from where each is actually written, not off the merged config:
+   * `overlay` has already replaced the global list with the character's where
+   * the character stated one, so by this point the merged value cannot tell
+   * the two apart. `base` is the options file as parsed, `realm` the server's
+   * own file, `own` the character's raw rows.
+   */
+  if (realm.length === 0 && own.length === 0) return config;
+  const merged = mergeMobPriorities(global, realm, own);
+  return {
+    ...config,
+    automation: {
+      ...config.automation,
+      combat: { ...config.automation.combat, mobPriority: merged }
+    }
+  };
+}
+
+/**
+ * The rows a character's own file states, before `overlay` flattened them.
+ *
+ * Exported because the settings screen needs the same distinction: it seeds
+ * its form from these rather than from the resolved list, or saving would
+ * write the realm's and the global file's rows into this character's own.
+ */
+export function ownMobPriority(raw: Record<string, unknown>): MobPriority[] {
+  const automation = raw['automation'];
+  if (!isRecord(automation)) return [];
+  const combat = automation['combat'];
+  if (!isRecord(combat)) return [];
+  const rows = combat['mobPriority'];
+  return Array.isArray(rows) ? normalizeMobPriorities(rows) : [];
 }
 
 /**
@@ -315,7 +390,12 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
-      config: normalizeConfig(overlay(baseSource, patch))
+      config: withRealmPriorities(
+        normalizeConfig(overlay(baseSource, patch)),
+        base.automation.combat.mobPriority,
+        server.mobPriority,
+        raw
+      )
     }
   };
 }

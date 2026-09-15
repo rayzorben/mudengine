@@ -49,7 +49,14 @@ describe('a saved server', () => {
     // And no loops: those are files under `servers/<id>/loops`, so a payload
     // that mentions none means this server lends its characters none.
     // An absent database is the world the client ships.
-    expect(asServerDraft(good)).toEqual({ ...good, login: [], loops: [], database: '' });
+    expect(asServerDraft(good)).toEqual({
+      ...good,
+      login: [],
+      loops: [],
+      database: '',
+      // Absent above: a realm ranks nothing until somebody playing it says so.
+      mobPriority: []
+    });
   });
 
   /*
@@ -471,6 +478,8 @@ describe('a character', () => {
         maxTargetHealth: 0,
         minMobs: 0,
         maxMonsterExperience: 0,
+        // Absent above, and empty: nothing is ranked until somebody ranks it.
+        mobPriority: [],
         engage: 'all',
         retaliate: false,
         // Absent above, and off: it spends a command per fight.

@@ -12,11 +12,14 @@
  * since the map became something to pan and zoom, those live in `MapView`,
  * which both cards share.
  *
- * Two ways of looking at the picture. Given a `viewport`, the SVG shows exactly
- * what a box of that size can hold at that zoom, centred where the eye was
- * taken — the Map card and the builder. Without one it *fits*: the whole
- * neighbourhood scaled into the box, which is what the route panel's strip
- * wants and what every map did until 2026-09-05.
+ * One way of looking at the picture: the SVG shows exactly what a box of that
+ * size can hold at that zoom, centred where the eye was taken. It is always a
+ * window, because `MapView` is the only thing that draws this and every
+ * surface draws it through `MapView`. Given no `viewport` it used to *fit*
+ * instead — the whole neighbourhood scaled into the box, which is what the
+ * route panel's strip did until 2026-09-14. Two ways of looking at one
+ * picture is two pictures, and the one that fitted was also the one that
+ * never learnt to pan.
  *
  * Drawn as vector shapes. It was character cells first, on the argument that
  * the game draws its own maps that way — but this map is not the game's. It is
@@ -39,7 +42,6 @@ import { t } from '../lib/i18n';
 import { viewBoxFor, type Box, type MapView } from '../lib/mapView';
 import {
   layoutMap,
-  MAP_CELL,
   NO_TRAIL,
   trailOf,
   type LocalMap,
@@ -52,34 +54,18 @@ import type { RoomId } from '@shared/world';
 import { tuning } from '../lib/tuning';
 
 /**
- * The smallest neighbourhood a *fitted* viewBox will ever claim to be, in map
- * units (`MAP_CELL` apart per room).
- *
- * The viewBox is what makes a wide neighbourhood draw smaller rather than
- * taller — but run that the other way, on a one-room map like the Halls of
- * the Dead, and the single room is "the whole neighbourhood" and gets scaled
- * up to fill the box. A floor on the span keeps a lone room drawn at roughly
- * the size it would be as part of a small cluster, about four rooms across,
- * instead of ballooning to the size of the card. A window has no such
- * problem: a lone room is drawn at the zoom, like any other.
- */
-const MIN_SPAN = MAP_CELL * 4;
-
-/**
  * What is drawn *on* a room, and how far past the room's own radius each one
  * reaches — its offset, and the stroke it is drawn with, because a stroke
  * straddles the path it follows and half of it lies outside.
  *
- * One table, read by the marks themselves **and** by the fitted viewBox's
- * padding. They were separately-written numbers and they disagreed: the `you`
- * ring is `radius + 2.2` with an 0.8 stroke, so it reaches `radius + 2.6`,
- * while the pad was `radius + 2`. Every ring on a room at the edge of the
- * neighbourhood was therefore drawn *outside* the viewBox, and `.map-plan`
- * carried `overflow: visible` so it could paint there — which works only for
- * as long as nothing above the SVG clips. The card's own body does (a
- * scrolling body computes `overflow-x: auto` too), so the ring on the top row
- * of rooms was sheared off flat by the heading, and reported as the heading
- * cutting into the map. A drawing has to fit inside the box it declares.
+ * One table, so that two marks at the same radius cannot be written as two
+ * different numbers: the `you` ring is `radius + 2.2` with an 0.8 stroke, and
+ * the lap's stop ring must sit exactly on it or the two read as rings of
+ * different kinds. It was also read by the fitted viewBox's padding, which
+ * was a separately-written `radius + 2` and so drew every ring on a room at
+ * the edge of the neighbourhood *outside* the box — sheared off flat by the
+ * card's heading. The window pads nothing and clips at its own edge, which is
+ * what a window is, but the numbers stay in one place.
  *
  * The room shapes themselves are not in here because they cannot be the
  * constraining ones: the widest is the lair's diamond at `radius + 0.6` with
@@ -102,30 +88,20 @@ const MARKS = {
 } as const;
 
 /**
- * The furthest anything drawn on a room reaches past that room's centre, less
- * the room's own radius — which is a tuning key and so is added where it is
- * read, never captured at module scope.
- */
-const MARK_REACH = Math.max(...Object.values(MARKS).map((mark) => mark.over + mark.stroke / 2));
-
-/**
  * The find dot's radius, in the same units the room's own radius is in.
  *
- * Not in `MARKS`: everything there is measured *over the room's radius* and
- * feeds `MARK_REACH`, and this one sits on the corner rather than around the
- * room — adding it there would widen every map's padding for a mark that
- * reaches no further than the room already does.
+ * Not in `MARKS`: everything there is measured *over the room's radius*, and
+ * this one sits on the corner rather than around the room, so it reaches no
+ * further than the room already does.
  */
 const FIND_DOT = 1.1;
 
 /**
  * How far out the off-plane controls sit, past the room's radius, the size of
  * their glyph, the stroke they wear and the hit target round each — `MARKS`'
- * shape, kept apart because they are drawn only for a builder and every other
- * map should not pay their padding.
+ * shape, kept apart because they are drawn only for a builder.
  */
 const AWAY = { over: 2.4, size: 1.5, stroke: 0.6, hit: 1.2 } as const;
-const AWAY_REACH = AWAY.over + AWAY.size + AWAY.hit + AWAY.stroke / 2;
 
 /**
  * The shape a room is drawn as.
@@ -276,10 +252,11 @@ function Vertical({ which, x, y }: { which: 'up' | 'down' | 'both'; x: number; y
 export interface MapPlanProps {
   map: LocalMap;
   /**
-   * What the picture shows, when it is a window rather than a fit: the zoom
-   * and pan the eye is at, and the box it is being drawn in. See the header.
+   * What the picture shows: the zoom and pan the eye is at, and the box it is
+   * being drawn in. Required, because this is always a window — `MapView`
+   * measures the box and holds the view, and nothing else draws this.
    */
-  viewport?: { view: MapView; box: Box };
+  viewport: { view: MapView; box: Box };
   /**
    * What the loud ring is marking, in words.
    *
@@ -299,9 +276,15 @@ export interface MapPlanProps {
    */
   you?: RoomId | null;
   /**
-   * Plan a route to a room. Absent where there is nothing to plan — and a room
-   * is then drawn as a picture rather than a control, per the rule that a
-   * control bound to nowhere is worse than none.
+   * What a **click** on a room does, where the click is the surface's own: the
+   * loop builder's pick. It outranks `onPeek`, which the click otherwise
+   * settles — one of the two owns the click and the caller says which by
+   * handing this in.
+   *
+   * Absent where there is nothing for a click to do beyond settling the panel,
+   * which is every surface but the builder. A room with neither is drawn as a
+   * picture rather than a control, per the rule that a control bound to
+   * nowhere is worse than none.
    */
   onChoose?: (map: number, room: number) => void;
   /**
@@ -341,6 +324,10 @@ export interface MapPlanProps {
   /**
    * A pointer came to rest on a room, or left it: open the room's quick view
    * beside it, and let the caller's linger start.
+   *
+   * Every map offers it — the card, the route panel's picture of where a
+   * route ends, and the builder's chooser — because *what is in that lair* is
+   * a question about the room and not about the surface it was drawn on.
    *
    * The dwell itself is here, on the room, because that is where the pointer
    * is; what the panel *is* and how long it lingers afterwards belong to the
@@ -421,28 +408,12 @@ function MapPlan({
   const found = useMemo(() => new Set(finds), [finds]);
 
   /*
-   * The viewBox: a window on the drawing where there is one, else the fit.
-   *
-   * Fitted, the box is padded around the content and then floored to
-   * MIN_SPAN — evenly, so the extra room stays centred on what is actually
-   * drawn rather than shifting it toward one corner. The pad is the room's
-   * own radius plus the furthest anything drawn on a room reaches past it
-   * (`MARK_REACH`), so the drawing is inside the box it declares whichever
-   * marks are showing. Read here rather than at module scope so an edited
-   * radius reaches an open window.
+   * The viewBox: the window, stated in map units about the centre room. The
+   * box clips at its own edge, so nothing is padded for the rings — what
+   * falls outside the window is outside the window, which is what a window is.
    */
-  let viewBox: string;
-  if (viewport !== undefined) {
-    const shown = viewBoxFor(viewport.view, viewport.box, centre ?? ORIGIN);
-    viewBox = `${shown.x} ${shown.y} ${shown.width} ${shown.height}`;
-  } else {
-    const PAD = tuning().mapRoomRadius + (onAway ? Math.max(MARK_REACH, AWAY_REACH) : MARK_REACH);
-    const spanX = Math.max(drawing.width + PAD * 2, MIN_SPAN);
-    const spanY = Math.max(drawing.height + PAD * 2, MIN_SPAN);
-    const originX = -PAD - (spanX - (drawing.width + PAD * 2)) / 2;
-    const originY = -PAD - (spanY - (drawing.height + PAD * 2)) / 2;
-    viewBox = `${originX} ${originY} ${spanX} ${spanY}`;
-  }
+  const shown = viewBoxFor(viewport.view, viewport.box, centre ?? ORIGIN);
+  const viewBox = `${shown.x} ${shown.y} ${shown.width} ${shown.height}`;
 
   return (
     <svg
@@ -635,27 +606,29 @@ const Picture = memo(function Picture({
 
       {drawing.nodes.map((node) => {
         const pick = onChoose;
+        const peekHere = onPeek;
         /*
-         * What a click on a room does.
+         * What a click on a room does, and the two are ranked rather than
+         * exclusive: **a surface that gave the click a meaning of its own
+         * keeps it, and everywhere else the click settles the quick view.**
          *
-         * **Where a room has a quick view, the click opens it and the panel
-         * carries the walk** — the room's facts are read before the way there
-         * is planned, and the plan is one button further on rather than one
-         * mis-click away. Where it has none — the loop builder, whose clicks
-         * are picks — the click is the caller's, unchanged.
+         * The builder is the one surface with its own: a click there is a
+         * pick, and the panel that opened on the hover goes on lingering
+         * beside it. Everywhere else the room's facts are read before the way
+         * there is planned, and the walk is a button on the panel rather than
+         * one mis-click away.
          *
          * Settled, not hovered: a click nails the panel down, so it survives
          * the pointer leaving on its way to the button.
          */
-        const peekHere = onPeek;
         const choose =
-          peekHere !== undefined
-            ? (at: SVGGElement): void => peekHere(node.id, at, true)
-            : pick !== undefined
-              ? (): void => {
-                  const [mapId, roomId] = node.id.split('/');
-                  pick(Number(mapId), Number(roomId));
-                }
+          pick !== undefined
+            ? (): void => {
+                const [mapId, roomId] = node.id.split('/');
+                pick(Number(mapId), Number(roomId));
+              }
+            : peekHere !== undefined
+              ? (at: SVGGElement): void => peekHere(node.id, at, true)
               : undefined;
         /*
          * A room is a control only where there is somewhere to send the click.
@@ -706,7 +679,21 @@ const Picture = memo(function Picture({
                 }
               };
         return (
+          /*
+           * **No `<title>`.** It read *Route to {name}* — written when a room's
+           * bare click planned a route, and a claim no click makes on any map
+           * now: the card's settles the quick view, the builder's is a pick.
+           * The room's own name was not the fix either, because a native
+           * tooltip and the quick view both open on a rest and the panel is
+           * the better answer to the same question, so the browser's would be
+           * a second, smaller one drawn over it.
+           *
+           * The name survives as the control's accessible name, which is all
+           * `<title>` was doing for assistive technology. Realm data, so no
+           * dictionary key: `aria-label` takes the room's own spelling.
+           */
           <g
+            aria-label={choose === undefined ? undefined : node.name}
             className="map-room"
             data-kind={node.kind}
             data-room={node.id}
@@ -714,7 +701,6 @@ const Picture = memo(function Picture({
             {...control}
             {...peek}
           >
-            <title>{t('cards.map.roomTooltip', { roomName: node.name })}</title>
             {/*
              * A room the route still has to enter. Behind the shape rather
              * than instead of it: what a room *is* — a lair, a shop, a way

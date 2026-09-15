@@ -1,36 +1,65 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
-import MapPlan from './MapPlan';
+import MapView from './MapView';
 import ClearField from './ClearField';
 import Icon from './Icon';
 import { commandsOf, runsOf, stepSignature } from '../lib/route';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { t } from '../lib/i18n';
-import { EMPTY_MAP, type LocalMap } from '@shared/map';
+import { type LocalMap } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import {
   asRoomReference,
   describeBlock,
   DIRECTION_NAME,
+  itemWanted,
   lairsAlong,
   roomId,
   trapsAlong,
   type Direction,
   type RoomId,
   type Route,
+  type RouteBlock,
   type RouteStep,
   type WorldRoom
 } from '@shared/world';
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
+import type { Replanned, WalkStart } from '@shared/movement';
+
+/**
+ * Whether an alternative steps over none of the walls the plan crosses — the
+ * test for *there is no other way*, which is said only when every route main
+ * planned beside the plan walks through the same door.
+ */
+function avoidsWalls(other: Route, walls: readonly RouteBlock[]): boolean {
+  return walls.every(
+    (wall) =>
+      wall.kind === 'unreachable' ||
+      !other.steps.some((step) => step.from === wall.at && step.to === wall.to)
+  );
+}
 
 export interface RoutePanelProps {
   open: boolean;
   onClose(): void;
   onSearch(query: string): Promise<WorldRoom[]>;
   onRoute(room: WorldRoom): Promise<Route>;
-  /** Walks the route that is on screen. Resolves to why it could not start. */
-  onWalk(route: Route): Promise<string | null>;
+  /**
+   * Walks the route that is on screen.
+   *
+   * Resolves to what happened: walking, why it could not, or **the plan drawn
+   * again** — the character moved between the drawing and the press, and the
+   * way from where it now stands comes back to be read and pressed again.
+   */
+  onWalk(route: Route): Promise<WalkStart>;
+  /**
+   * Collects what the way needs first, then walks it (todo 07).
+   *
+   * Offered on whichever way is on screen, where it names an item to go and
+   * get — a door it crosses, or a spell its rooms cast (`itemWanted`).
+   */
+  onCollectThenWalk(item: { id: number; name: string }, route: Route): Promise<string | null>;
   /**
    * A destination chosen elsewhere — clicking the map — to plan on opening.
    *
@@ -54,9 +83,13 @@ export interface RoutePanelProps {
    *
    * The same call the Map card makes, addressed at the same character —
    * `localMap` is a query about the realm, not about where anybody is
-   * standing, so centring it on the destination is the whole change.
+   * standing, so centring it on the destination is the whole change. The
+   * radius is the window's own, measured from its laid-out box, which is why
+   * the fetch belongs to `MapView` and not to this panel.
    */
-  onLoadMap(map: number, room: number): Promise<LocalMap>;
+  onLoadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  /** The rooms this realm's find log names, marked with a dot. */
+  finds: readonly RoomId[];
   /**
    * A room on the plan pointed at or clicked, and the pointer leaving it:
    * open the realm's answer about that room beside whatever named it — a row
@@ -165,9 +198,11 @@ export default function RoutePanel({
   onSearch,
   onRoute,
   onWalk,
+  onCollectThenWalk,
   destination = null,
   search = null,
   onLoadMap,
+  finds,
   onPeek,
   onPeekEnd
 }: RoutePanelProps) {
@@ -176,6 +211,16 @@ export default function RoutePanel({
   const [route, setRoute] = useState<Route | null>(null);
   const [target, setTarget] = useState<WorldRoom | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
+  /**
+   * The plan main drew again, and which plan it was drawn to replace.
+   *
+   * Held with the route it describes rather than cleared by an effect, because
+   * the answer *is* a `setRoute` and an effect keyed on the route would put the
+   * sentence away in the same commit that put the plan on screen. Drawn only
+   * while the plan on screen is still the one that came back; anything else
+   * planned since makes it stale, which is exactly when it should go.
+   */
+  const [redrawn, setRedrawn] = useState<{ route: Route; was: Replanned } | null>(null);
   /**
    * Which step of the plan on screen the reader has picked out, if any.
    *
@@ -193,6 +238,41 @@ export default function RoutePanel({
    * re-plan: the panel is a reader, and *Show it* swaps what is read.
    */
   const [chosen, setChosen] = useState<'plan' | 'round' | 'carrying'>('plan');
+  /**
+   * Whether to go and get what the way needs before walking it (todo 07).
+   *
+   * About **the way on screen**, whichever that is: it used to be drawn only
+   * on the *carrying* alternative, so a plan that itself crossed a keyed door
+   * with no alternative to offer — which is every route to a room behind a
+   * lock only one key opens — named the key and offered nothing to do about
+   * it.
+   *
+   * A tick is about *this way through this door*, so anything that changes
+   * which way is on screen drops it: both the plan and the choice among its
+   * alternatives, in the two effects below. It was guarded by holding the
+   * route it was made on and comparing by identity, which left the box drawn
+   * ticked over a fresh plan while quietly deciding nothing — a control
+   * stating the opposite of what it would do.
+   */
+  const [collectFirst, setCollectFirst] = useState(false);
+  /**
+   * Whether to stop in the room before the destination rather than enter it.
+   *
+   * Walking to a boss is walking to the doorway: the reader wants to be at the
+   * keyboard, or to have a party with them, before the last step is taken —
+   * and the last step is the one that starts the fight. The plan already lists
+   * the room before, so the whole of this is *do not send that last command*.
+   *
+   * **It belongs to the destination, not to the way**, which is the one thing
+   * it does differently from the tick beside it. *Collect it first* names an
+   * item on a particular route, so another route drops it; this says only
+   * *do not enter the room at the end*, which is as true of the way round as
+   * of the plan, and as true of a plan main redrew from where the character
+   * has wandered to. So it survives both of those and goes when the reader
+   * searches for somewhere else — a tick cleared by a redraw would have put
+   * the character in the boss room on the very press that redrew the plan.
+   */
+  const [stopShort, setStopShort] = useState(false);
   /** Whether the alternatives are unfolded under the head. */
   const [offering, setOffering] = useState(false);
   /** Folded runs of same-reading rooms that have been opened, by first step. */
@@ -206,17 +286,15 @@ export default function RoutePanel({
           ? (route.carrying ?? route)
           : route;
   /**
-   * The realm around the destination, drawn from its own point of view.
+   * How large a room is drawn in the picture of where the route ends.
    *
-   * A route is 329 lines of direction and room name and answers *how to get
-   * there* completely; what it says nothing about is **what the place is
-   * like** — whether the destination is a dead end off a corridor or the middle
-   * of a junction with four ways out, and what is shut between them. That is
-   * the question somebody asks before deciding to walk for five minutes, and
-   * the client already had the answer and drew it only for where the character
-   * was standing.
+   * Opened at the dense end and clamped up from there by the window itself
+   * (`zoomFloor`), which is the builder's rule: *as many rooms as this box can
+   * be filled with*. The strip under the head is short and wide, so that is a
+   * neighbourhood a few rooms deep and a long way across, and the wheel and
+   * the hand reach the rest.
    */
-  const [there, setThere] = useState<LocalMap>(EMPTY_MAP);
+  const [zoom, setZoom] = useState(() => tuning().mapRoomPixelsDense);
   const inputRef = useRef<HTMLInputElement>(null);
   /**
    * Which plan the panel is waiting for, so a stale one can be disowned.
@@ -291,7 +369,6 @@ export default function RoutePanel({
       setRoute(null);
       setTarget(null);
       setRefused(null);
-      setThere(EMPTY_MAP);
     }
   }, [open]);
 
@@ -310,42 +387,40 @@ export default function RoutePanel({
     setChosen('plan');
     setOffering(false);
     setUnfolded(new Set());
+    setCollectFirst(false);
   }, [route]);
-  // A pick belongs to the list it was made on, and so does an opened run.
+  // A pick belongs to the list it was made on, and so does an opened run — and
+  // a tick belongs to the door the way on screen goes through, which another
+  // way need not.
   useEffect(() => {
     setPicked(null);
     setUnfolded(new Set());
+    setCollectFirst(false);
   }, [chosen]);
-
   /*
-   * The destination's own neighbourhood, fetched when the destination changes.
-   *
-   * Cleared *before* the fetch rather than left standing, and guarded against a
-   * late answer landing after the target has moved on — the Map card's rule and
-   * for the same reason: a stale map with the loud ring on it is a picture
-   * claiming a place is somewhere it is not, which is worse than no picture.
-   * The realm having nothing for the room is an empty map, not an error; the
-   * head above already names the room either way.
+   * And the tick that says *do not enter the room at the end* belongs to that
+   * room, so it goes when the reader chooses another one — and with it when
+   * the panel closes, which nulls the target. Keyed on the destination rather
+   * than on the route, because every replan to the same room is still a walk
+   * into the same boss.
    */
   useEffect(() => {
-    if (!open || target === null) {
-      setThere(EMPTY_MAP);
-      return;
-    }
-    let live = true;
-    setThere(EMPTY_MAP);
-    void onLoadMap(target.map, target.room)
-      .then((next) => {
-        if (live) setThere(next);
-      })
-      .catch((error) => {
-        console.error(`[route] map around ${target.map}/${target.room}: ${errorMessage(error)}`);
-        if (live) setThere(EMPTY_MAP);
-      });
-    return () => {
-      live = false;
-    };
-  }, [open, target, onLoadMap]);
+    setStopShort(false);
+  }, [target]);
+
+  /*
+   * The destination's own neighbourhood: which room the window is centred on.
+   *
+   * The fetch itself — its radius, its late answers, the empty map a realm
+   * with nothing for the room comes back with — is `MapView`'s, as it is for
+   * every other map. This panel says only *look here*.
+   */
+  const centre = useMemo(
+    () => (target === null ? null : roomId(target.map, target.room)),
+    [target]
+  );
+  /* One element for as long as the reason holds, so the view's memo holds too. */
+  const empty = useMemo(() => <div className="empty">{t('cards.map.emptyNoWorldData')}</div>, []);
 
   useEffect(() => {
     if (query.trim().length < tuning().roomSearchMinChars) {
@@ -414,17 +489,74 @@ export default function RoutePanel({
 
   const walk = useCallback(
     (plan: Route): void => {
-      void onWalk(plan)
-        .then((reason) => {
-          setRefused(reason);
+      /*
+       * *Collect it first* is a different press: main goes and gets the item
+       * and walks the way that wanted it when the pack holds it. The item is
+       * the first that way asks for — the panel names them all in the sentence
+       * above, and the errand refuses out loud if it cannot reach that one.
+       *
+       * **Only about the whole way on screen**, which is what the tick was
+       * drawn from. A prefix is built by slicing the steps (`peek`, and a
+       * picked row), and a shallow copy carries the whole route's `walls` and
+       * `hazards` onto a walk that stops three rooms along — so *Walk here*
+       * would leave to go shopping for a key for a door it never reaches.
+       */
+      const needed = collectFirst && plan === shown ? itemWanted(plan) : null;
+      /*
+       * *Stop before entering* drops the last step, by the same rule: about
+       * the whole way on screen, never a prefix, because *Walk here* has
+       * already named the room it stops at and stopping one short of that is
+       * not what was asked for.
+       *
+       * The item is still read off the **untruncated** plan, deliberately.
+       * The key for the boss's door is wanted exactly as much by somebody
+       * waiting in the doorway for a party as by somebody walking straight
+       * in — the whole point of stopping there is to go in afterwards — so
+       * the two ticks compose rather than cancelling each other.
+       *
+       * A one-step plan is already standing in the room before, so there is
+       * nothing to walk and the press says so rather than sending an empty
+       * route. Only reachable this way: every other caller passes a prefix,
+       * which is not `shown`.
+       */
+      const trimmed = stopShort && plan === shown ? plan.steps.slice(0, -1) : null;
+      if (trimmed !== null && trimmed.length === 0) {
+        setRefused(t('cards.route.alreadyBefore', { roomName: plan.steps[0]!.name }));
+        return;
+      }
+      const walked: Route = trimmed === null ? plan : { ...plan, steps: trimmed };
+      /*
+       * The errand answers in the older shape: it walks to a shop and plans the
+       * way on from there itself, so a plan handed to it cannot be stale and
+       * there is nothing for it to redraw.
+       */
+      const started: Promise<WalkStart> =
+        needed === null
+          ? onWalk(walked)
+          : onCollectThenWalk(needed, walked).then((reason) =>
+              reason === null ? { started: true } : { refused: reason }
+            );
+      void started
+        .then((answer) => {
+          if ('replanned' in answer) {
+            // The new plan replaces what is on screen, and the sentence above it
+            // says what changed. The press that walks it is the next one, which
+            // is measured afresh — agreeing to a journey is agreeing to that one.
+            setRefused(null);
+            setRoute(answer.replanned.route);
+            setRedrawn({ route: answer.replanned.route, was: answer.replanned });
+            return;
+          }
+          setRedrawn(null);
+          setRefused('refused' in answer ? answer.refused : null);
           // Closing on success puts the caret back in the terminal, which is where
           // it belongs while something is walking you around: the walk stops the
           // moment you type, and you need to be able to.
-          if (reason === null) onClose();
+          if ('started' in answer) onClose();
         })
         .catch((error) => setRefused(errorMessage(error)));
     },
-    [onWalk, onClose]
+    [collectFirst, stopShort, onCollectThenWalk, onWalk, onClose, shown]
   );
 
   /**
@@ -437,7 +569,7 @@ export default function RoutePanel({
    * neighbours too — offers no prefix; the caller offers the map's own action
    * for it, rather than a button that walks somewhere arbitrary.
    *
-   * `useCallback` because `MapPlan` is memoised and takes this as a prop: an
+   * `useCallback` because `MapView` is memoised and takes this as a prop: an
    * arrow built per render would redraw the picture on every keystroke in
    * the field above it.
    */
@@ -558,6 +690,27 @@ export default function RoutePanel({
             outright has no result area of its own to say so in. */}
           {refused && <div className="route-refused">{refused}</div>}
 
+          {/* The plan was drawn again from here, and this is what changed about
+            it. Drawn only while the plan on screen is still that one: anything
+            planned since makes the sentence a claim about a route nobody is
+            looking at. Both halves are said where both are true — a character
+            that has wandered and a way that now wants a key are two different
+            reasons to look, and naming one hides the other. */}
+          {redrawn !== null && redrawn.route === route && (
+            <div className="route-redrawn">
+              <div>{t('cards.route.redrawn')}</div>
+              <div className="route-redrawn-why">
+                {redrawn.was.wandered === null
+                  ? t('cards.route.redrawnUnmeasured')
+                  : redrawn.was.wandered === 1
+                    ? t('cards.route.redrawnWandered.one')
+                    : t('cards.route.redrawnWandered.many', { steps: redrawn.was.wandered })}
+                {redrawn.was.demands.length > 0 &&
+                  ` ${t('cards.route.redrawnNeeds', { needList: redrawn.was.demands.join(', ') })}`}
+              </div>
+            </div>
+          )}
+
           {route !== null && shown !== null ? (
             <div className="route-result">
               <div className="route-head">
@@ -599,27 +752,44 @@ export default function RoutePanel({
                * it is often the *answer*, because the door that stopped it is
                * drawn on the corridor it is on.
                *
-               * **The same map as the Map card, with the same quick view**: a
-               * room pointed at or clicked answers for itself beside the
-               * picture, and the walk is a button on that panel. Never a
-               * chooser: this panel exists so a route is read before it is
-               * walked, and a click that quietly re-planned to the room next
-               * door would swap the steps under a `Walk it` button somebody is
-               * already reaching for. A room on the plan offers *walk here*,
-               * the list's action; a neighbour the plan does not pass
-               * through offers *walk to*, which re-plans in the open, by name.
+               * **The same map as the Map card, in every respect**: the same
+               * window (`MapView`), so the wheel zooms it, the hand pans it
+               * and the legend under it keys what is drawn; the same quick
+               * view, so a room pointed at or clicked answers for itself
+               * beside the picture, with the walk a button on that panel.
                *
-               * Not offered when the realm has nothing for the room — an empty
-               * frame under the head is a picture saying the place has no
-               * neighbours, which is a different claim from not knowing.
+               * Never a chooser: this panel exists so a route is read before
+               * it is walked, and a click that quietly re-planned to the room
+               * next door would swap the steps under a `Walk it` button
+               * somebody is already reaching for — so no `onChoose`, and the
+               * click settles the panel as it does on the card. A room on the
+               * plan offers *walk here*, the list's action; a neighbour the
+               * plan does not pass through offers *walk to*, which re-plans in
+               * the open, by name.
+               *
+               * Drawn as soon as there is a room to centre on. The realm
+               * having nothing for it says so inside the frame, which is a
+               * different claim from a picture of a place with no neighbours.
+               *
+               * No `you` ring: the loud ring here is the destination's, which
+               * is what this picture is of. `MapPlan` spends exactly one on a
+               * map, and a second saying *and here is where you are standing*
+               * would be two answers to the one question it is asked under
+               * pressure.
                */}
-              {there.cells.length > 0 && (
+              {centre !== null && (
                 <div className="route-map">
-                  <MapPlan
+                  <MapView
+                    centre={centre}
+                    empty={empty}
+                    finds={finds}
                     focus="destination"
-                    map={there}
+                    load={onLoadMap}
+                    name="route"
                     onPeek={onPeek === null ? undefined : peek}
                     onPeekEnd={onPeekEnd ?? undefined}
+                    onZoom={setZoom}
+                    zoom={zoom}
                   />
                 </div>
               )}
@@ -684,6 +854,25 @@ export default function RoutePanel({
                           {traps.worst === null
                             ? count
                             : `${count} · ${t('cards.route.trapDamage', { damage: traps.worst })}`}
+                        </span>
+                      );
+                    })()}
+                    {/* And the draw, where the way ends in one. Beside the
+                    button rather than only on its step, because it changes
+                    what pressing the button means: the plan stops at the
+                    scatter, the client carries on from wherever the realm
+                    puts the character, and the figure is how much walking
+                    that is expected to take. */}
+                    {(() => {
+                      const drawn = shown.steps.at(-1)?.scatter;
+                      if (drawn === undefined) return null;
+                      return (
+                        <span className="chip warn">
+                          {t('cards.route.scatter', {
+                            spellName: drawn.landing.name,
+                            roomCount: drawn.rooms,
+                            moves: Math.round(drawn.moves)
+                          })}
                         </span>
                       );
                     })()}
@@ -802,6 +991,66 @@ export default function RoutePanel({
                           .join(' · ')}
                       </span>
                     ))}
+                    {/* And the offer to go and get what this way asks for,
+                    beside the press it changes (todo 07). Wherever the need is
+                    stated — a door this plan crosses or a spell its rooms cast
+                    — because the reader's question is the same one either way,
+                    and the alternative it used to hang off is absent exactly
+                    when the plan itself is the way through the locked door.
+                    The item is named here: the sentence that names it sits
+                    below this row, and a tick that says only *it* is a tick
+                    about something the reader has to go and look for. */}
+                    {(() => {
+                      const wanted = itemWanted(shown);
+                      if (wanted === null) return null;
+                      return (
+                        <label className="route-collect">
+                          <input
+                            checked={collectFirst}
+                            onChange={(event) => setCollectFirst(event.currentTarget.checked)}
+                            onMouseDown={keepFocus}
+                            type="checkbox"
+                          />
+                          {t('cards.route.collectFirst', { itemName: wanted.name })}
+                        </label>
+                      );
+                    })()}
+                    {/* And the toggle that says *walk up to it, not into it*.
+                    Beside the press it changes, by the same rule as the tick
+                    above: walking to a boss is walking to the doorway, and
+                    the reader wants to be at the keyboard — or to have a
+                    party standing with them — before the step that starts
+                    the fight goes out. The destination is named because the
+                    row it governs is a row about this journey, and the room
+                    it will actually stop in is the tooltip: the reader can
+                    see it two rows from the bottom of the list, and a label
+                    carrying both names is a label nobody finishes reading.
+                    Offered on any walkable plan, one step included — there
+                    the answer is *you are already in the room before*, which
+                    is a fact worth having and not nothing. */}
+                    {(() => {
+                      const into = shown.steps.at(-1);
+                      if (into === undefined) return null;
+                      const before = shown.steps.at(-2);
+                      return (
+                        <label
+                          className="route-stop"
+                          title={
+                            before === undefined
+                              ? undefined
+                              : t('cards.route.stopShortTooltip', { roomName: before.name })
+                          }
+                        >
+                          <input
+                            checked={stopShort}
+                            onChange={(event) => setStopShort(event.currentTarget.checked)}
+                            onMouseDown={keepFocus}
+                            type="checkbox"
+                          />
+                          {t('cards.route.stopShort', { roomName: into.name })}
+                        </label>
+                      );
+                    })()}
                     {/* The one filled control in this panel, per §3.3: walking is
                     the action, everything else here is reading. */}
                     {/* Also the form's default action, so Enter walks it. */}
@@ -809,8 +1058,29 @@ export default function RoutePanel({
                       {t('cards.route.walkButton')}
                     </button>
                   </div>
+                  {/* What this way itself crosses that the character cannot
+                  pass: a door below both skills, walked because nothing else
+                  leads there. Said at the head, because the walker will stop
+                  at that door and somebody about to walk eighty steps to it
+                  should know first; and *there is no other way* only where
+                  the router looked and none of the routes it planned beside
+                  this one avoids the door. */}
+                  {(shown.walls ?? []).length > 0 && (
+                    <div className="route-needs">
+                      <span>{t('cards.route.crossesWalls')}</span>
+                      <ul className="route-blocked">
+                        {shown.walls!.map((block, index) => (
+                          <li key={`${block.kind}-${index}`}>{describeBlock(block)}</li>
+                        ))}
+                      </ul>
+                      {shown === route &&
+                        ![route.otherWay, route.carrying].some(
+                          (other) => other !== undefined && avoidsWalls(other, route.walls!)
+                        ) && <span>{t('cards.route.noOtherWay')}</span>}
+                    </div>
+                  )}
                   {/* A walkable route that crosses a wall carries what the
-                  shorter way needed. Said before the steps, one condition per
+                  cheaper way needed. Said before the steps, one condition per
                   line as the refusal says them, because the reader deciding
                   between four hundred steps through doors that will not open
                   and fetching a talisman needs the second half of that choice. */}
@@ -941,7 +1211,22 @@ export default function RoutePanel({
                   <ol className="route-steps">
                     {(() => {
                       const steps = shown.steps;
-                      const runs = runsOf(steps.map(stepSignature));
+                      /*
+                       * The step *Stop before entering* drops is drawn as its
+                       * own row, never folded into a run of rooms that will be
+                       * walked: a head saying ×3 cannot also say that one of
+                       * the three is skipped. The tick is at the top of a list
+                       * that scrolls, so by the time the reader is down here it
+                       * is off the screen — and a list that draws the last step
+                       * exactly like the others is a list stating the opposite
+                       * of what the press will do.
+                       */
+                      const skipped = stopShort && steps.length > 0 ? steps.length - 1 : -1;
+                      const signatures = steps.map(stepSignature);
+                      const runs =
+                        skipped < 0
+                          ? runsOf(signatures)
+                          : [...runsOf(signatures.slice(0, -1)), { start: skipped, count: 1 }];
                       const row = (
                         step: (typeof steps)[number],
                         index: number,
@@ -951,6 +1236,7 @@ export default function RoutePanel({
                           className="step"
                           data-folded={folded ? 'true' : undefined}
                           data-picked={picked === index ? 'true' : 'false'}
+                          data-skipped={index === skipped ? 'true' : undefined}
                           key={`${step.to}-${index}`}
                         >
                           <span className="step-command">{step.command}</span>
@@ -1004,6 +1290,9 @@ export default function RoutePanel({
                             >
                               {t('cards.route.walkHereButton')}
                             </button>
+                          )}
+                          {index === skipped && (
+                            <span className="chip quiet">{t('cards.route.stepSkipped')}</span>
                           )}
                           {chips(step)}
                         </li>

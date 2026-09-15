@@ -75,7 +75,13 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
     const blocked: Partial<Record<Direction, MapObstacle>> = {};
     for (const exit of room.exits) {
       if (!exit.requirement) continue;
-      blocked[exit.direction] = describeObstacle(exit.requirement, graph);
+      // With the word that opens it, where the room holds one — the map is
+      // where a player decides whether a door is worth walking to.
+      blocked[exit.direction] = describeObstacle(
+        exit.requirement,
+        graph,
+        graph.leversHere(cell.id, exit.direction)
+      );
     }
     if (Object.keys(blocked).length > 0) cell.blocked = blocked;
 
@@ -91,7 +97,9 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
     const away: MapAway[] = [];
     for (const exit of room.exits) {
       if (exit.direction !== 'u' && exit.direction !== 'd') continue;
-      const to = roomId(exit.map, exit.room);
+      // Where it goes, which for an exit whose cast teleports is the spell's
+      // room and not the table's — see `WorldGraph.beyond`.
+      const to = graph.beyond(exit);
       const destination = graph.byId(to);
       if (!destination) continue;
       away.push({
@@ -99,7 +107,15 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
         to,
         name: destination.name,
         command: exit.requirement?.commands?.[0] ?? exit.direction,
-        ...(exit.requirement ? { obstacle: describeObstacle(exit.requirement, graph) } : {})
+        ...(exit.requirement
+          ? {
+              obstacle: describeObstacle(
+                exit.requirement,
+                graph,
+                graph.leversHere(cell.id, exit.direction)
+              )
+            }
+          : {})
       });
     }
     for (const portal of graph.portalsFrom(cell.id)) {
@@ -139,8 +155,16 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
         const step = STEP[exit.direction as Direction];
         // Vertical, or a direction the realm data uses that we do not draw.
         if (!step) continue;
+        /*
+         * A draw reaches no *particular* room, so drawing the grid onwards
+         * from the one its table names would put a corridor on the picture
+         * that nobody can walk — the reading `withinSteps` refuses. The room
+         * the exit is in still shows the exit; what is beyond it is not
+         * somewhere this can place.
+         */
+        if (exit.requirement?.spellEffect === 'scatters') continue;
 
-        const id = roomId(exit.map, exit.room);
+        const id = graph.beyond(exit);
         if (seen.has(id)) continue;
 
         const destination = graph.byId(id);

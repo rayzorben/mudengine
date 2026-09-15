@@ -21,7 +21,12 @@ import { fileSlug } from '../../shared/files';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
-import { PROFILE_ACCENTS, resolveProfile, type ProfileAccent } from '../../shared/profiles';
+import {
+  ownMobPriority,
+  PROFILE_ACCENTS,
+  resolveProfile,
+  type ProfileAccent
+} from '../../shared/profiles';
 import { isThemePreference, type ThemePreference } from '../../shared/themes';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '../../shared/drafts';
 import type { ProfileEditable, SettingsSnapshot, SpellOption } from '../../shared/ipc';
@@ -361,6 +366,7 @@ export class SettingsEditor {
           [['automation', 'party'], draft.party, DEFAULT_CONFIG.automation.party],
           [['automation', 'health'], draft.health, DEFAULT_CONFIG.automation.health],
           [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
+          [['automation', 'hunting'], draft.hunting, DEFAULT_CONFIG.automation.hunting],
           [['automation', 'train'], draft.train, DEFAULT_CONFIG.automation.train],
           [['automation', 'loot'], draft.loot, DEFAULT_CONFIG.automation.loot],
           [['automation', 'drop'], draft.drop, DEFAULT_CONFIG.automation.drop],
@@ -737,6 +743,20 @@ export class SettingsEditor {
          */
         if (draft.database.length > 0) document.setIn(['database'], draft.database);
         else if (document.hasIn(['database'])) document.deleteIn(['database']);
+
+        /*
+         * And the realm's own ranking of its monsters, on the same rule: an
+         * empty list is what a realm with no key already has, so the key is
+         * removed rather than written as `[]`.
+         */
+        if (draft.mobPriority.length > 0) {
+          document.setIn(
+            ['mobPriority'],
+            draft.mobPriority.map((row) => ({ mob: row.mob, priority: row.priority }))
+          );
+        } else if (document.hasIn(['mobPriority'])) {
+          document.deleteIn(['mobPriority']);
+        }
       },
       verify: (value) => {
         const server = asServer(value, id);
@@ -890,11 +910,7 @@ export class SettingsEditor {
         alerts: {
           // Copied per row, as every list here is: the draft is the form's and
           // the config is the file's, and the two must not share a row object.
-          rules: config.ui.alerts.rules.map((rule) => ({ ...rule })),
-          desktop: {
-            enabled: config.ui.alerts.desktop.enabled,
-            whileFocused: config.ui.alerts.desktop.whileFocused
-          }
+          rules: config.ui.alerts.rules.map((rule) => ({ ...rule }))
         },
         rewrites: structuredClone(config.ui.rewrites)
       },
@@ -914,6 +930,7 @@ export class SettingsEditor {
         idle: { ...config.automation.idle },
         pacing: { ...config.automation.pacing },
         walk: { ...config.automation.walk },
+        hunting: { ...config.automation.hunting },
         hangUp: {
           enabled: config.automation.safety.hangUp.enabled,
           belowHealth: config.automation.safety.hangUp.belowHealth,
@@ -1006,8 +1023,6 @@ export class SettingsEditor {
          * objects into the document.
          */
         set(['ui', 'alerts', 'rules'], structuredClone(draft.ui.alerts.rules));
-        set(['ui', 'alerts', 'desktop', 'enabled'], draft.ui.alerts.desktop.enabled);
-        set(['ui', 'alerts', 'desktop', 'whileFocused'], draft.ui.alerts.desktop.whileFocused);
         set(['ui', 'rewrites'], structuredClone(draft.ui.rewrites));
 
         set(['logging', 'enabled'], draft.logging.enabled);
@@ -1031,6 +1046,7 @@ export class SettingsEditor {
         set(['automation', 'party'], { ...draft.automation.party });
         set(['automation', 'health'], { ...draft.automation.health });
         set(['automation', 'movement'], { ...draft.automation.movement });
+        set(['automation', 'hunting'], { ...draft.automation.hunting });
         set(['automation', 'train'], {
           ...draft.automation.train,
           wanted: { ...draft.automation.train.wanted }
@@ -1160,10 +1176,26 @@ export class SettingsEditor {
           effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
         ),
         pvp: effective?.automation.safety.pvp ?? DEFAULT_CONFIG.automation.safety.pvp,
-        combat: effective?.automation.combat ?? DEFAULT_CONFIG.automation.combat,
+        /*
+         * The resolved combat block, except for the priority list, which is
+         * the character's **own** rows from the file as written (todo 01).
+         *
+         * `mobPriority` is the one list here merged across the three scopes
+         * rather than replaced, so the resolved one holds the realm's rows and
+         * the global file's as well. Seeding the form with those and saving it
+         * back would write them into this character's own file — pinning down
+         * a ranking it was only inheriting, so that changing the realm's list
+         * afterwards would silently not reach it. The same distinction
+         * `login.steps` above keeps, for the same reason.
+         */
+        combat: {
+          ...(effective?.automation.combat ?? DEFAULT_CONFIG.automation.combat),
+          mobPriority: ownMobPriority(record)
+        },
         party: effective?.automation.party ?? DEFAULT_CONFIG.automation.party,
         health: effective?.automation.health ?? DEFAULT_CONFIG.automation.health,
         movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
+        hunting: effective?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting,
         train: effective?.automation.train ?? DEFAULT_CONFIG.automation.train,
         loot: effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot,
         drop: effective?.automation.drop ?? DEFAULT_CONFIG.automation.drop,
@@ -1320,6 +1352,7 @@ function blank(id: string): ProfileEditable {
     party: DEFAULT_CONFIG.automation.party,
     health: DEFAULT_CONFIG.automation.health,
     movement: DEFAULT_CONFIG.automation.movement,
+    hunting: DEFAULT_CONFIG.automation.hunting,
     train: DEFAULT_CONFIG.automation.train,
     loot: DEFAULT_CONFIG.automation.loot,
     drop: DEFAULT_CONFIG.automation.drop,
@@ -1342,11 +1375,12 @@ function blank(id: string): ProfileEditable {
 /**
  * One loop as it should read in a file somebody may open afterwards.
  *
- * A stop with no `linger` is written as the bare room name, which is what the
- * template shows and what anybody writing one by hand types; only a stop that
- * waits needs the mapping form. `bounce` is omitted when false rather than
- * written out, for the same reason every other default is: a key restating a
- * default is noise in a file people read.
+ * A stop with no `linger` and no clock is written as the bare room name, which
+ * is what the template shows and what anybody writing one by hand types; only
+ * a stop that waits or states its own regeneration clock (`every`, todo 15)
+ * needs the mapping form. `bounce` is omitted when false rather than written
+ * out, for the same reason every other default is: a key restating a default
+ * is noise in a file people read.
  */
 function loopNode(loop: Loop): Record<string, unknown> {
   return {
@@ -1354,9 +1388,13 @@ function loopNode(loop: Loop): Record<string, unknown> {
     ...(loop.bounce === true ? { bounce: true } : {}),
     ...(loop.prefer === true ? { prefer: true } : {}),
     stops: loop.stops.map((stop) =>
-      stop.linger === undefined
+      stop.linger === undefined && stop.every === undefined
         ? quoted(stop.room)
-        : { room: quoted(stop.room), linger: stop.linger }
+        : {
+            room: quoted(stop.room),
+            ...(stop.linger === undefined ? {} : { linger: stop.linger }),
+            ...(stop.every === undefined ? {} : { every: stop.every })
+          }
     )
   };
 }

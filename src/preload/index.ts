@@ -73,7 +73,10 @@ const api: IpcApi = {
   walkRoute: (session, route) => ipcRenderer.invoke(Invoke.walkRoute, session, route),
   startMoving: (session, loop, confirmed) =>
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
+  collectThenWalk: (session, item, route) =>
+    ipcRenderer.invoke(Invoke.collectThenWalk, session, item, route),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
+  stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),
   startLoop: (session, name) => ipcRenderer.invoke(Invoke.startLoop, session, name),
   skipLoopStop: (session) => ipcRenderer.invoke(Invoke.skipLoopStop, session),
@@ -120,12 +123,13 @@ const api: IpcApi = {
   settingsSnapshot: () => ipcRenderer.invoke(Invoke.settingsSnapshot),
   chooseRealm: () => ipcRenderer.invoke(Invoke.chooseRealm),
   searchRooms: (session, query) => ipcRenderer.invoke(Invoke.searchRooms, session, query),
+  mobNames: (session) => ipcRenderer.invoke(Invoke.mobNames, session),
   worldInfo: (session) => ipcRenderer.invoke(Invoke.worldInfo, session),
   questBook: (session) => ipcRenderer.invoke(Invoke.questBook, session),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
-  huntingGrounds: (session, radius) => ipcRenderer.invoke(Invoke.huntingGrounds, session, radius),
+  huntingGrounds: (session) => ipcRenderer.invoke(Invoke.huntingGrounds, session),
   trainers: (session) => ipcRenderer.invoke(Invoke.trainers, session),
   banks: (session) => ipcRenderer.invoke(Invoke.banks, session),
   itemsServing: (session) => ipcRenderer.invoke(Invoke.itemsServing, session),

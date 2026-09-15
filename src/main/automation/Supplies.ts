@@ -195,6 +195,32 @@ export class Supplies {
     this.finish(errand, false, reason);
   }
 
+  /**
+   * One row, asked for by name rather than found short (todo 07).
+   *
+   * A route that needs a key is the other thing that makes a counter worth
+   * walking to, and the errand's whole shape — walk, `list`, check the quote
+   * against the purse, one `buy` confirmed by `You just bought …` — is the
+   * same whether the row came from the player's list or from a door. **The
+   * row is written nowhere**: it is wanted once, and a supply list that grew a
+   * line every time a route crossed a lock would be the client editing the
+   * player's file on their behalf.
+   *
+   * Refuses while an errand is already running: there is one pack and one
+   * character, and the caller reports the refusal to whoever pressed.
+   */
+  fetch(row: SupplyItem, state: CharacterState): string | null {
+    if (!this.enabled || !this.config.enabled) {
+      return t('automation.supplies.abandonedSwitchedOff');
+    }
+    if (this.errand !== null) return t('automation.supplies.refusalBusy');
+    if (state.phase !== 'in-game') return t('automation.supplies.refusalNotInRealm');
+    this.begin(row, carriedCount(state, row.name), state);
+    // `begin` refuses by saying so and leaving no errand; its own sentence has
+    // already been said, so this only has to report that nothing started.
+    return this.errand === null ? t('automation.supplies.refusalNoErrand') : null;
+  }
+
   onCharacter(state: CharacterState): void {
     if (state.phase !== 'in-game') {
       this.abandon(t('automation.supplies.abandonedLeftRealm'));

@@ -29,6 +29,9 @@ import type { BuiltExit } from './buildRealm';
 import type { Quest, QuestSource, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
+  type AbilityGate,
+  abilityGatesMet,
+  readAbilityGate,
   asRoomReference,
   DIRECTIONS,
   DIRECTION_COMMAND,
@@ -55,6 +58,10 @@ import {
   type WorldShopItem,
   hazardAvoided,
   type RouteHazard,
+  type RouteScatter,
+  type Landing,
+  landingRooms,
+  scatters,
   type SpellHazard,
   type WorldSpell,
   type WorldRace,
@@ -182,6 +189,19 @@ export interface Traveller {
    * the realm on any ordinary configuration.
    */
   packKnown?: boolean;
+  /**
+   * What `abil` said this character's ability sums are, for a scripted way
+   * through gated on one.
+   *
+   * The counters are the only guard on a room script the client holds a
+   * matching fact for, and they are stated outright — so a portal this
+   * character fails is refused rather than discouraged (`edgePenalty`), and
+   * one nobody has read a listing for is priced exactly as it was. Null or
+   * absent is *nobody has said*: `AbilitySums` in everything but the import,
+   * which stays out of `src/shared/world.ts` so the realm types keep no
+   * dependency on the character's.
+   */
+  counters?: { sums: Readonly<Record<number, number>>; complete: boolean } | null;
   /** Picklocks, for a door the realm lets that skill open. */
   pickSkill?: number | null;
   /** Strength, for the same doors — the realm accepts either. */
@@ -277,6 +297,13 @@ export interface Traveller {
    * `Route.otherWay` is a route already planned; nothing re-plans through this.
    */
   avoid?: ReadonlySet<RoomId>;
+  /**
+   * Edges pruned on the same account, keyed `room|direction` like {@link
+   * refused}. A door this traveller cannot force is an obstacle on one edge,
+   * and pruning the room beyond it would shut every other way in as well —
+   * the way round the Massive Doors still ends in the room behind them.
+   */
+  avoidEdges?: ReadonlySet<string>;
 }
 
 /** What a caller wants beyond the plan itself. */
@@ -333,6 +360,44 @@ function leverKey(room: RoomId, direction: string): string {
 /** Handed back for an exit nothing opens, so no caller allocates to say "none". */
 const NO_LEVERS: readonly RemoteLever[] = [];
 
+/** The same, for the realm that scatters nobody. */
+const EMPTY_COSTS: ReadonlyMap<number, number> = new Map();
+
+/**
+ * Nobody in particular, for the one solve that is about the realm rather than
+ * about a character. A shared constant because `scatterCosts` caches on
+ * traveller *identity*, so a fresh `{}` a call would never hit it.
+ */
+const PLAIN_TRAVELLER: Traveller = {};
+
+/** One scattering spell: where it draws from, and every door that fires it. */
+interface ScatterSpell {
+  landing: Landing;
+  /** The rooms in the range that the realm actually holds. */
+  rooms: RoomId[];
+  doors: Array<{ at: RoomId; exit: WorldExit }>;
+}
+
+/** One move, seen from the room it arrives in. */
+interface ReverseEdge {
+  from: RoomId;
+  exit: WorldExit | PortalExit;
+}
+
+/** One A* pass: the tree where there was a way, and what it walked past. */
+interface SearchResult {
+  found: {
+    cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
+    cost: number;
+  } | null;
+  /**
+   * Whether the sweep reached a room with a scatter door. Only meaningful on a
+   * failed pass, where it means *there is a gamble to consider* — and on a
+   * failed pass with `useDraws` already on it is simply true again.
+   */
+  drawsAhead: boolean;
+}
+
 /**
  * The abilities that take hit points off whoever a spell lands on.
  *
@@ -348,6 +413,50 @@ const HURTS: ReadonlySet<number> = new Set([
   HAZARD_ABILITY.drain,
   HAZARD_ABILITY.poison
 ]);
+
+/**
+ * Where one spell's `TeleportRoom` puts the character, as the server works it out.
+ *
+ * `Spell.cs` `ApplySpellAbilities`, `GMUDAbilityType.TeleportRoom`:
+ *
+ * ```
+ * int tempTeleportRoomID = abil.Modifiers[0].Modifier;
+ * if (tempTeleportRoomID == 0) tempTeleportRoomID = inMainValue;
+ * ```
+ *
+ * `inMainValue` is `Globals.Rand.GetRandomNumber(GetSpellMin, GetSpellMax)` —
+ * the spell's own `MinBase`–`MaxBase` (`RollAndApplySpellAbilities`). So a
+ * stated modifier is an address and a zero is a draw, and the *shape* of the
+ * answer is the same either way: a range, which is a room when it is one wide.
+ *
+ * The map is `TeleportMap` where the row states one and the character's own
+ * map where it does not (`plyrTarget.Room.Map.MapID`) — which for an exit's
+ * cast is the map the exit table names, because `TryMoveThroughExit` moves
+ * first and casts second.
+ *
+ * `null` for a row this cannot turn into a room: a zero modifier with no
+ * power range is a draw between room 0 and room 0, and room 0 is not a room.
+ * That is unread rather than harmless, and the caller prices it as a script.
+ */
+function landingOf(spell: WorldSpell, stated: number, onMap: number): Landing | null {
+  const [min, max] = spell.power ?? [0, 0];
+  const low = stated > 0 ? stated : min;
+  const high = stated > 0 ? stated : max;
+  if (low <= 0 || high < low) return null;
+  const map = spell.abilities?.find(([id]) => id === HAZARD_ABILITY.teleportMap)?.[1];
+  return {
+    spell: spell.id,
+    name: spell.name,
+    map: map !== undefined && map > 0 ? map : onMap,
+    low,
+    high
+  };
+}
+
+/** Whether two readings of a chain's teleport are the same answer. */
+function sameLanding(a: Landing, b: Landing): boolean {
+  return a.map === b.map && a.low === b.low && a.high === b.high;
+}
 
 function gradedCost(skill: number | null | undefined, difficulty: number, base: number): number {
   if (difficulty <= 0) return base;
@@ -379,6 +488,24 @@ function forcedDoorCost(requirement: Requirement, traveller: Traveller, base: nu
   if (bashDifficulty !== undefined)
     costs.push(gradedCost(traveller.strength, bashDifficulty, base));
   return Math.min(...costs);
+}
+
+/**
+ * The barrier this traveller is priced *through* rather than round: a door, or
+ * a keyed lock the realm lets a skill force, with the character below every
+ * skill it names. `edgePenalty` walls it (`wallCost`) rather than pruning it,
+ * so the router still walks it when nothing else leads there — and that is
+ * exactly when the head of the plan has to say so, because the walker will
+ * stop at it. Read off the price itself, so it cannot drift from the decision
+ * that walked the door; `edgeBlock` stays the mirror of the `null`s alone.
+ */
+export function edgeWall(
+  requirement: Requirement | null,
+  traveller: Traveller
+): Requirement | null {
+  if (!requirement || (requirement.kind !== 'door' && requirement.kind !== 'key')) return null;
+  const priced = edgePenalty(requirement, traveller);
+  return priced !== null && priced >= tuning().world.wallCost ? requirement : null;
 }
 
 /**
@@ -567,7 +694,40 @@ export function dangerPenalty(share: number | null): number {
   return Math.min(wallCost, Math.round((dangerCost * share) / remaining));
 }
 
+/**
+ * What this edge costs, the conditions the client cannot read included.
+ *
+ * Two halves because an edge may carry conditions of two kinds at once, which
+ * is true of a room script and of nothing else: `go portal` states `minlevel
+ * 40` and `nomonsters` in one breath, and `Requirement.kind` holds one of
+ * them. So the kind is priced by the switch below and every guard without a
+ * kind is priced here, once, at the unevaluable figure — added rather than
+ * taken as the worse of the two, because a level gate that lets this character
+ * through does not make the rest of the script free.
+ *
+ * `null` still means impassable and nothing is added to it: a refusal is a
+ * refusal whatever else the edge says.
+ *
+ * **And a gate the counters answer is answered rather than priced** (2026-09-15).
+ * `abil` states the quest counters outright on GreaterMUD, and the three
+ * ability verbs are the only guards here the client holds a matching fact for,
+ * so an edge whose `checkability` this character *fails* is not a way through
+ * at all. Priced as merely discouraged it was still walked when it was the
+ * only way — live, `9/1291 go portal` (gated `checkability 133 5`) put a
+ * character with rank 4 into the Caves of Chaos instead of `9/1424`, two maps
+ * from where the plan believed it was. Nobody having said stays the old price:
+ * an unread listing is not a failing gate, and the discouragement is still
+ * added on top of a gate that passes, because the rest of the script — the
+ * `nomonsters` and the `takeitem` beside it — is no more readable than it was.
+ */
 export function edgePenalty(requirement: Requirement | null, traveller: Traveller): number | null {
+  const priced = statedPenalty(requirement, traveller);
+  if (priced === null || requirement?.unread === undefined) return priced;
+  if (abilityGatesMet(requirement.abilities, traveller.counters) === false) return null;
+  return priced + UNEVALUATED;
+}
+
+function statedPenalty(requirement: Requirement | null, traveller: Traveller): number | null {
   if (!requirement) return 0;
 
   switch (requirement.kind) {
@@ -756,7 +916,8 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
     case 'cast':
       /*
        * **A cast exit never refuses anybody**, and 217 of the shipped realm's
-       * 293 move the character somewhere the exit table does not name.
+       * 293 move the character somewhere the exit table does not name — 49 to
+       * one known room and 168 to one of several.
        *
        * `CastExit.CanMoveThroughExit` returns `true` unconditionally and
        * `TryMoveThroughExit` moves first and casts second (a reading of the
@@ -764,12 +925,18 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
        * wrong twice over: it priced 76 plain corridors as half-walls, and it
        * priced a scatter maze as a corridor.
        *
-       * `relocates` is a wall rather than a prune, and the reason is the
-       * character standing inside one: pruning every scattering exit makes the
-       * gloomy maze unroutable and strands whoever is in it, where a wall
-       * leaves a way out that the walker re-plans from after each unexpected
-       * arrival — which is how anybody gets out of a scatter maze. It is not a
-       * refusal, so nothing writes the corridor off.
+       * **`teleports` is an ordinary step**, because that is what it is: the
+       * spell names one room and the router walks the edge to *that* room
+       * (`WorldGraph.beyond`). It was a wall while the destination was
+       * unknown, and the wall was standing in for the unknown rather than for
+       * any cost — nothing about walking east out of a Marble Room is
+       * expensive, it simply does not go where the exit table says.
+       *
+       * **`scatters` is priced nowhere near here.** A draw is not an edge, so
+       * `search` never relaxes one as a step and this figure is what every
+       * *other* reader gets — `withinSteps`, `blocksAlong` — for which *you
+       * cannot use this to get anywhere in particular* is exactly what a wall
+       * means. What the router does with one instead is `scatterCosts`.
        *
        * `script` keeps the old discouragement, and that is the honest answer
        * rather than an unchanged one: the spell hands the character a
@@ -777,7 +944,7 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
        * `pyramid 4 arch fail`, and a script named *fail* is a gate under
        * another name.
        */
-      if (requirement.spellEffect === 'relocates') return tuning().world.wallCost;
+      if (requirement.spellEffect === 'scatters') return tuning().world.wallCost;
       if (requirement.spellEffect === 'script') return UNEVALUATED;
       return 0;
 
@@ -802,8 +969,15 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
        * costs the floor and says *there is a trap here* without inventing a
        * number.
        */
-      if (requirement.spellEffect === 'relocates') return tuning().world.wallCost;
+      if (requirement.spellEffect === 'scatters') return tuning().world.wallCost;
       if (requirement.spellEffect === 'script') return UNEVALUATED;
+      /*
+       * A trap that *teleports* is still a trap: `beyond` takes the character
+       * to the spell's room and the hurt is charged here as for any other, so
+       * this falls through rather than pricing the move at nothing. Neither
+       * shipped realm holds one, which is exactly why it must not be a
+       * special case nobody exercises.
+       */
       return 20 + (requirement.damage ?? 0);
 
     case 'item': {
@@ -973,6 +1147,25 @@ export class WorldGraph {
   private readonly levers = new Map<string, RemoteLever[]>();
   /** Lowercased name -> every room that bears it. Names are far from unique. */
   private readonly byName = new Map<string, WorldRoom[]>();
+  /**
+   * The three the scatter solve works from, all built on first use and none of
+   * them on load: a realm's rooms are read at startup and most sessions never
+   * plan through a draw, so the index that answers *what leads here* (140,000
+   * entries on Paradigm, 144ms) is owed to the first route that needs it and
+   * to no other. See `scatterDoors`, `reverse` and `scatterCosts`.
+   */
+  private draws: Map<number, ScatterSpell> | null = null;
+  private backward: Map<RoomId, ReverseEdge[]> | null = null;
+  private solved: { to: RoomId; traveller: Traveller; costs: ReadonlyMap<number, number> } | null =
+    null;
+  /**
+   * The same solve with nothing priced but the steps, keyed by destination —
+   * the figure a reader is *shown*, which has to be a count of moves and not
+   * the router's cost. See `scatterMoves`. Realm-wide truth, so it is kept
+   * across travellers and characters, and capped because a destination is a
+   * room and there are fifty thousand of them.
+   */
+  private plainDraws = new Map<RoomId, ReadonlyMap<number, number>>();
   private meta: WorldMeta = {
     version: 0,
     source: 'none',
@@ -1328,6 +1521,21 @@ export class WorldGraph {
     return this.mobs.get(mobKey(name));
   }
 
+  /**
+   * Every monster name this realm holds, alphabetically — the priority list's
+   * picker.
+   *
+   * Names alone, and the whole list in one answer rather than a query per
+   * keystroke: the shipped realm names 849 monsters, which is a list the
+   * picker can rank and cap in the renderer exactly as it does the potion
+   * items, and asking once when the section opens is what `itemsServing`
+   * already does for the same reason. A realm large enough for that to stop
+   * being true would want a query, and this is where it would go.
+   */
+  mobNames(): string[] {
+    return [...this.mobs.values()].map((mob) => mob.name).sort((a, b) => a.localeCompare(b));
+  }
+
   /** How many monsters the realm named. Zero on a realm built before v3. */
   get mobCount(): number {
     return this.mobs.size;
@@ -1478,6 +1686,7 @@ export class WorldGraph {
     if (known.magicResist !== undefined) entity.magicResist = known.magicResist;
     if (known.experience !== undefined) entity.experience = known.experience;
     if (known.regen !== undefined) entity.regen = known.regen;
+    if (known.regenHours !== undefined) entity.regenHours = known.regenHours;
     if (known.follows !== undefined) entity.follows = known.follows;
     if (known.undead !== undefined) entity.undead = known.undead;
     if (known.abilities !== undefined) entity.abilities = known.abilities;
@@ -1587,7 +1796,13 @@ export class WorldGraph {
           if (destination.light !== undefined) entity.dark = destination.light < 0;
         }
         if (match.requirement !== null) {
-          entity.obstacle = describeObstacle(match.requirement, this);
+          entity.obstacle = describeObstacle(
+            match.requirement,
+            this,
+            from === null || from === undefined
+              ? []
+              : this.leversHere(roomId(from.map, from.room), match.direction)
+          );
           const key = match.requirement.keyId;
           if (key !== undefined) {
             const item = this.item(key);
@@ -1889,7 +2104,7 @@ export class WorldGraph {
    * route the reader then asks for prices it. Bounded by `steps`, and by the
    * realm: a sweep that reaches nothing new stops.
    */
-  withinSteps(from: RoomId, steps: number): Map<RoomId, number> {
+  withinSteps(from: RoomId, steps: number, traveller?: Traveller): Map<RoomId, number> {
     const seen = new Map<RoomId, number>();
     if (!this.rooms.has(from)) return seen;
     seen.set(from, 0);
@@ -1900,8 +2115,41 @@ export class WorldGraph {
         const room = this.rooms.get(id);
         if (room === undefined) continue;
         const ways = [
-          ...room.exits.map((exit) => roomId(exit.map, exit.room)),
-          ...this.portalsFrom(id).map((portal) => roomId(portal.map, portal.room))
+          /*
+           * **A way this traveller cannot take is not a way** (todo 09,
+           * 2026-09-13). Without the traveller this sweep is the plain
+           * neighbourhood and a locked door is an exit — which is right for
+           * *what is near* and wrong for *where could this character go*: the
+           * hunting survey offered lairs behind gates it could not route
+           * through, and a loop started on one stood still. `edgePenalty`
+           * answers `null` for exactly the conditions that are impassable
+           * rather than merely expensive, which is the same test the router
+           * makes one step at a time.
+           */
+          ...room.exits
+            .filter(
+              (exit) =>
+                /*
+                 * And a draw is not a way either, whoever is asking. A scatter
+                 * reaches no *particular* room, so counting the room its exit
+                 * table names as one step away is the reading that had the
+                 * hunting survey offering lairs across the Warped Asylum as
+                 * neighbours of the ward outside it.
+                 */
+                exit.requirement?.spellEffect !== 'scatters' &&
+                (traveller === undefined ||
+                  edgePenalty(exit.requirement ?? null, traveller) !== null)
+            )
+            .map((exit) => this.beyond(exit)),
+          // And the same of a portal, which carries a `level` requirement of
+          // its own where the realm gates one (`linkPortals`).
+          ...this.portalsFrom(id)
+            .filter(
+              (portal) =>
+                traveller === undefined ||
+                edgePenalty(portal.requirement ?? null, traveller) !== null
+            )
+            .map((portal) => roomId(portal.map, portal.room))
         ];
         for (const to of ways) {
           if (seen.has(to) || !this.rooms.has(to)) continue;
@@ -2720,17 +2968,33 @@ export class WorldGraph {
   }
 
   /**
-   * Gives the router the room-script teleports it can honestly price.
+   * Gives the router every room-script teleport, priced by what it can read.
    *
    * The scripts have been on `WorldRoom.commands` since format 13, card-only,
-   * with the routing half deferred (mme.md §6). What is linked now is the
-   * tranche whose conditions the router can genuinely evaluate against the
-   * traveller: a destination the dataset holds, and guards that are nothing
-   * but `minlevel`/`maxlevel` — 60 of the shipped realm's 249 teleport
-   * commands. The rest (`nomonsters`, `roomitem`, `testskill`, …) are
-   * conditions about the moment or the pack that this client cannot read at
-   * plan time, and a route through a guess is how a character is walked
-   * somewhere it cannot get back from; they stay facts the Room card states.
+   * with the routing half deferred (mme.md §6). The first tranche linked only
+   * the commands whose every guard was `minlevel`/`maxlevel` and **dropped the
+   * edge entirely** for the rest, on the reasoning that a route through a
+   * guess walks a character somewhere it cannot get back from.
+   *
+   * That is the one place in this router that prunes an edge it cannot price,
+   * and it is the opposite of what `REQUIREMENT_KINDS` says about an
+   * instruction nothing recognises — *passable-but-suspect rather than
+   * silently dropped: an exit we do not understand is still an exit, and
+   * pruning it strands routes*. It stranded 19,108 of Paradigm's 57,511 rooms
+   * and 3,277 of stock's 26,694, measured from the Newhaven Common Room: 186
+   * of Paradigm's 255 scripted landings and 106 of stock's 165 were dropped,
+   * and with them the only way in to whole regions — Dragon's Fang Hills (766
+   * rooms), the Undermountain Caverns (336), the Ancient Darkwood Tree and
+   * Morukai behind it, which the realm reaches by `go portal` at 9/1291 under
+   * a `checkability 133 5` this client cannot evaluate on Paradigm.
+   *
+   * So every landing the dataset holds is an edge now, and the guards decide
+   * the price rather than whether it exists: `minlevel`/`maxlevel` become the
+   * `level` gate they already were, and everything else — `nomonsters`,
+   * `roomitem`, `testskill`, `checkability` — goes on `Requirement.unread`,
+   * which `edgePenalty` charges the unevaluable figure for. A guarded portal
+   * therefore costs about sixty steps of detour: taken when it is the only way
+   * there, never preferred while a corridor exists.
    */
   private linkPortals(): void {
     for (const [id, room] of this.rooms) {
@@ -2744,18 +3008,27 @@ export class WorldGraph {
 
         let minLevel: number | undefined;
         let maxLevel: number | undefined;
-        let readable = true;
+        const unread: string[] = [];
+        /*
+         * And the ability gates among them, read into the comparison the
+         * server makes. Still `unread` as well — the chip states every
+         * condition in the realm's words — because this is what the client can
+         * *answer* once `abil` has stated the counters, not a different fact.
+         */
+        const gates: AbilityGate[] = [];
         for (const entry of command.need ?? []) {
           const [verb, value] = entry.trim().split(/\s+/);
           const figure = Number(value);
           if (verb === 'minlevel' && Number.isInteger(figure)) minLevel = figure;
           else if (verb === 'maxlevel' && Number.isInteger(figure)) maxLevel = figure;
+          // The realm's own words, kept whole: the price is the same for every
+          // one of them and the chip is what a person reads to decide.
           else {
-            readable = false;
-            break;
+            unread.push(entry.trim());
+            const gate = readAbilityGate(entry);
+            if (gate !== null) gates.push(gate);
           }
         }
-        if (!readable) continue;
 
         const gated = minLevel !== undefined || maxLevel !== undefined;
         const requirement: Requirement = {
@@ -2766,7 +3039,9 @@ export class WorldGraph {
           raw: [phrase, ...(command.need ?? [])].join('; '),
           commands: [...command.say],
           ...(minLevel !== undefined ? { minLevel } : {}),
-          ...(maxLevel !== undefined ? { maxLevel } : {})
+          ...(maxLevel !== undefined ? { maxLevel } : {}),
+          ...(unread.length > 0 ? { unread } : {}),
+          ...(gates.length > 0 ? { abilities: gates } : {})
         };
         const edge: PortalExit = {
           direction: 'portal',
@@ -2811,7 +3086,12 @@ export class WorldGraph {
         const phrase = command.say[0]?.trim();
         if (!phrase) continue;
         const key = leverKey(opens.room, opens.direction);
-        const lever: RemoteLever = { at: id, roomName: room.name, say: phrase };
+        const lever: RemoteLever = {
+          at: id,
+          roomName: room.name,
+          say: phrase,
+          ...(opens.item === undefined ? {} : { item: opens.item })
+        };
         const held = this.levers.get(key);
         if (held) held.push(lever);
         else this.levers.set(key, [lever]);
@@ -2830,6 +3110,92 @@ export class WorldGraph {
    */
   leversFor(room: RoomId, direction: string): readonly RemoteLever[] {
     return this.levers.get(leverKey(room, direction)) ?? NO_LEVERS;
+  }
+
+  /**
+   * What a barrier costs when the realm names a word that opens it *here*, or
+   * null when nothing here does.
+   *
+   * One function rather than a price and a predicate beside it, because the
+   * price and the plan have to agree about what a wall is: split in two, a
+   * door the listed pack could not open after all was charged the wall by one
+   * and reported as no wall by the other.
+   *
+   * `openableHere`'s question asked of a step rather than of a requirement,
+   * because a door's levers are never on its requirement: `buildRealm` writes
+   * `Requirement.actions` only for an exit that states `Needs N Actions`, and
+   * a `Door` states nothing of the kind. So the only place the two ends are
+   * joined is the lever index, and this is the one reading of it — shared by
+   * the price (`stepCost`), the plan (`blocksAlong`) and the search for
+   * another way (`otherWay`), for the reason `openableHere` already gives:
+   * three copies of *can this be opened from here* agree exactly until one is
+   * edited.
+   *
+   * Every lever in the room the step leaves from, and the same price
+   * `edgePenalty` puts on a hidden exit in that shape, because `Walker` sends
+   * both the same way — one command per lever, then the step again. Levers
+   * somewhere else leave the wall standing: the detour is still not planned,
+   * it is made reactively by `Walker.fetchLever`.
+   */
+  /**
+   * The levers that open this step **without leaving the room**, and nothing
+   * where any of them is elsewhere.
+   *
+   * `openableHere`'s question asked of a step rather than of a requirement,
+   * because a door's levers are never on its requirement: `buildRealm` writes
+   * `Requirement.actions` only for an exit that states `Needs N Actions`, and
+   * a `Door` states nothing of the kind. Public because the *chip* has to ask
+   * it too — a plan that says `Door, pick/bash 1000` about a door the client
+   * knows opens to `use crowbar` sends a player after a skill nobody has.
+   */
+  leversHere(from: RoomId, direction: string): readonly RemoteLever[] {
+    const levers = this.leversFor(from, direction);
+    // Levers **elsewhere** leave the wall standing: this planner does not plan
+    // the detour, `Walker.fetchLever` makes it when the server refuses.
+    return levers.length > 0 && levers.every((lever) => lever.at === from) ? levers : NO_LEVERS;
+  }
+
+  /**
+   * The word that opens this step here, for the head of the plan.
+   *
+   * Asked of `leversHere` and **not** of `leverPrice`, because this is only
+   * reached when the price already said *wall* — and the most useful case of
+   * that is a lever whose item the listed pack lacks. *Say "use crowbar"
+   * here, carrying crowbar* is the errand; *needs 1000 picklocks, your
+   * picklocks are not known yet* is the same door with the answer left out.
+   */
+  private leverSaying(
+    from: RoomId,
+    direction: string
+  ): { opensBySaying?: string; opensItemName?: string } {
+    const lever = this.leversHere(from, direction)[0];
+    if (lever === undefined) return {};
+    const item = lever.item === undefined ? undefined : this.item(lever.item);
+    return {
+      opensBySaying: lever.say,
+      ...(item === undefined ? {} : { opensItemName: item.name })
+    };
+  }
+
+  private leverPrice(from: RoomId, direction: string, traveller: Traveller): number | null {
+    const levers = this.leversHere(from, direction);
+    if (levers.length === 0) return null;
+    /*
+     * And the pack decides, exactly as it does for a hidden exit's levers
+     * (`actionItemLacking`): `use crowbar` opens the warehouse door at 1/1104
+     * and the server answers *You don't have crowbar to use!* without one. A
+     * listed pack lacking it is the wall again — null, so every reader agrees
+     * this step is one — while a pack nobody has listed is *nobody has looked*
+     * and pays the unevaluated price on top. Todo 13 in a second spelling: a
+     * route was planned through *hold up talisman* at the cost of a free
+     * lever, by a character with no talisman.
+     */
+    const open = 25 + 5 * levers.length;
+    const wanted = levers
+      .map((lever) => lever.item)
+      .filter((item): item is number => item !== undefined);
+    if (wanted.length === 0 || wanted.every((item) => traveller.keys?.includes(item))) return open;
+    return traveller.packKnown === true ? null : open + UNEVALUATED;
   }
 
   /**
@@ -2880,6 +3246,9 @@ export class WorldGraph {
       mob.magicResist = positive('mr');
       mob.experience = positive('xp');
       mob.regen = positive('rgn');
+      // Format 36. Written only where every row of the name agrees, so where
+      // it is here it answers for the fold as exactly as a row would.
+      mob.regenHours = positive('rt');
       mob.follows = positive('fol');
       if (record['und'] === 1) mob.undead = true;
       const drops = Array.isArray(record['drops'])
@@ -3264,6 +3633,26 @@ export class WorldGraph {
   }
 
   /**
+   * Where the realm says an item comes from: shops that stock it by id, and
+   * monsters that drop it by name (todo 07).
+   *
+   * The public half of the two indexes the quest book already joins, for the
+   * one other caller that asks the same question — a route that crosses a
+   * keyed door and wants to go and get the key. Both directions, as
+   * `joinStep` reads them: a shop's stock list and an item's own `shops`, a
+   * monster's drop list and an item's own `mobs`.
+   */
+  sourcesOf(item: { id: number; name?: string }): { shops: string[]; mobs: string[] } {
+    const known = this.items.get(item.id);
+    const shops = new Set(known?.shops ?? []);
+    for (const shop of this.stockedBy(item.id)) shops.add(shop);
+    const mobs = new Set(known?.mobs ?? []);
+    const name = item.name ?? known?.name;
+    if (name !== undefined) for (const mob of this.dropsOf(name)) mobs.add(mob);
+    return { shops: [...shops], mobs: [...mobs] };
+  }
+
+  /**
    * Which shops are known to stock an item of this id.
    *
    * Built once beside `droppers`, out of the stock lists the shop index already
@@ -3369,7 +3758,7 @@ export class WorldGraph {
    * states zero — without menace's duration and resistance arithmetic, which
    * needs the character and belongs at the decision rather than in the graph.
    */
-  private resolveSpells(requirement: Requirement): void {
+  private resolveSpells(requirement: Requirement, onMap: number): void {
     if (requirement.kind !== 'cast' && requirement.kind !== 'spell') return;
     const named = [requirement.castPre, requirement.castPost, requirement.spellId].filter(
       (id): id is number => id !== undefined
@@ -3390,8 +3779,16 @@ export class WorldGraph {
      */
     const pending = [...named];
     const seen = new Set<number>();
-    let effect: 'relocates' | 'script' | 'plain' = 'plain';
+    let effect: 'script' | 'plain' = 'plain';
     let harm = 0;
+    /*
+     * Where the chain puts the character, and whether it says so twice over.
+     * Two different landings are two answers to one question and there is no
+     * honest way to choose between them, so an ambiguous chain is *unread* —
+     * which is what the flag this replaced could never express.
+     */
+    let landing: Landing | null = null;
+    let ambiguous = false;
     while (pending.length > 0) {
       const id = pending.pop()!;
       if (seen.has(id)) continue;
@@ -3411,8 +3808,28 @@ export class WorldGraph {
       const [low, high] = spell.power ?? [0, 0];
       const mean = Math.abs(low + high) / 2;
       for (const [ability, value] of spell.abilities ?? []) {
-        if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap) {
-          effect = 'relocates';
+        /*
+         * The map half of a teleport says nothing on its own — `landingOf`
+         * reads it off the same row when it needs it.
+         */
+        if (ability === HAZARD_ABILITY.teleportMap) continue;
+        if (ability === HAZARD_ABILITY.teleportRoom) {
+          /*
+           * **Where it puts you, not merely that it does.** This read the pair
+           * as one flag and threw the address away, so 49 exits that land in
+           * exactly one known room were priced as walls to a room the
+           * character never sees, and the 168 that draw one were walked as
+           * though the exit table's room were the answer. `landingOf` is
+           * `Spell.cs`'s own arithmetic; `null` is a row this reader cannot
+           * turn into a room, which is unread and not harmless.
+           */
+          const where = landingOf(spell, value, onMap);
+          if (where === null) {
+            if (effect === 'plain') effect = 'script';
+            continue;
+          }
+          if (landing !== null && !sameLanding(landing, where)) ambiguous = true;
+          landing = where;
           continue;
         }
         if (ability === HAZARD_ABILITY.textBlock) {
@@ -3450,7 +3867,18 @@ export class WorldGraph {
         if (magnitude > harm) harm = magnitude;
       }
     }
-    requirement.spellEffect = effect;
+    /*
+     * A landing outranks everything else the chain said — a spell that both
+     * hurts and moves you is priced by the move, because where the character
+     * is standing decides what every later step means. An ambiguous pair is
+     * the one case that falls back, and it falls back to *unread*.
+     */
+    if (landing !== null && !ambiguous) {
+      requirement.spellEffect = scatters(landing) ? 'scatters' : 'teleports';
+      requirement.landing = landing;
+    } else {
+      requirement.spellEffect = landing === null ? effect : 'script';
+    }
     if (harm > 0) requirement.damage = Math.round(harm);
   }
 
@@ -3477,7 +3905,7 @@ export class WorldGraph {
       // What the realm's spell table says a cast or trap exit does, joined here
       // for the reason the levers are joined in the build: once, where the
       // table is, and never in the A*.
-      if (requirement !== null) this.resolveSpells(requirement);
+      if (requirement !== null) this.resolveSpells(requirement, exit.m);
       exits.push({ direction, map: exit.m, room: exit.r, requirement });
     }
 
@@ -3567,6 +3995,48 @@ export class WorldGraph {
   }
 
   /**
+   * How many of a draw's rooms the realm holds — what the chip says *one of*.
+   *
+   * The range as stated is not the count: `landingRooms` cannot filter,
+   * because `src/shared` holds no realm. This is the one place that join is
+   * made for a sentence, and it is the same join `scatterDoors` makes for the
+   * arithmetic.
+   */
+  landingCount(landing: Landing): number {
+    return landingRooms(landing).filter((id) => this.rooms.has(id)).length;
+  }
+
+  /**
+   * The room an edge actually reaches, which is not always the one it names.
+   *
+   * An exit whose cast teleports puts the character in the spell's room and
+   * never in the exit table's: `TryMoveThroughExit` moves them into the room
+   * the table names and the cast moves them straight out again, so the table's
+   * room is a place they are in for no time at all and cannot act in. 49 exits
+   * in each shipped realm — every wrong square of the Marble Rooms, all of
+   * which land in the Grand Hallway (17/2982).
+   *
+   * **Public because every reader that follows an edge has to come through
+   * here**, and the first cut of this was private and several did not: the map
+   * drew `17/3082 e` to a Marble Room while the plan walked it to the Grand
+   * Hallway, the rest-next-door peek stepped through one expecting to step
+   * back, and `CharacterTracker.notice` wrote a permanent *discovery* of a way
+   * the realm describes in full, because each tested the table's room.
+   *
+   * A scatter has no answer to give and keeps the table's room — nothing may
+   * walk one, `scatterCosts` reasons about it instead, and a caller that would
+   * *follow* an edge must skip one outright rather than believe this.
+   */
+  beyond(exit: WorldExit | PortalExit): RoomId {
+    const landing = exit.requirement?.landing;
+    if (landing !== undefined && exit.requirement?.spellEffect === 'teleports') {
+      const there = roomId(landing.map, landing.low);
+      if (this.rooms.has(there)) return there;
+    }
+    return roomId(exit.map, exit.room);
+  }
+
+  /**
    * Every room, in the order the file listed them.
    *
    * A read-only sweep, beside `byId` and `findByName` because it answers the
@@ -3633,9 +4103,24 @@ export class WorldGraph {
     }
     if (from === to) return { steps: [], cost: 0, blocked: false };
 
-    const found = this.search(from, to, goal, traveller, false);
+    /*
+     * **The way that always arrives first, and only then the one that gambles.**
+     *
+     * A draw is the last resort by construction — a maze is a maze because
+     * walking out of it is not on offer — so asking for it up front would
+     * spend the solve's backward sweeps on every route in the realm to
+     * discover, almost every time, that there was a corridor all along. It is
+     * asked for exactly when there is no corridor, which is the case the old
+     * man's cell is: the Warped Asylum has one entrance and stepping through
+     * it hands you to the dice.
+     */
+    const walkable = this.search(from, to, goal, traveller, false, false);
+    const draws = walkable.found === null && walkable.drawsAhead;
+    const found = draws
+      ? this.search(from, to, goal, traveller, false, true).found
+      : walkable.found;
     if (found) {
-      const route = this.buildRoute(found.cameFrom, to, found.cost, traveller);
+      const route = this.buildRoute(found.cameFrom, to, found.cost, traveller, draws);
       /*
        * A route that crosses a wall — a door the character cannot force, a
        * deadly lair — is offered because refusing outright would hide the only
@@ -3657,20 +4142,35 @@ export class WorldGraph {
       // Both alternatives only for a route planned to be read: a loop's leg
       // and a walk home are walked, and neither reads a way round.
       const other =
-        options.alternatives === true ? this.otherWay(from, to, goal, route, traveller) : null;
+        options.alternatives === true
+          ? this.otherWay(from, to, goal, route, traveller, draws)
+          : null;
       const equipped =
-        options.alternatives === true ? this.carrying(from, to, goal, route, traveller) : null;
+        options.alternatives === true
+          ? this.carrying(from, to, goal, route, traveller, draws)
+          : null;
       const planned: Route = {
         ...route,
         ...(other === null ? {} : { otherWay: other }),
         ...(equipped === null ? {} : { carrying: equipped })
       };
       if (found.cost >= tuning().world.wallCost) {
-        const opened = this.search(from, to, goal, traveller, true);
+        /*
+         * And what the plan *itself* crosses. A door below the character's
+         * skills is priced as a wall and walked when nothing else leads
+         * there, and until this was named the plan said nothing: eighty-six
+         * steps to the Massive Doors, then the walker's *requires 81; this
+         * character has 0 picklocks*. The gates-closed path holds nothing
+         * pruned, so this names the graded walls and nothing else.
+         */
+        const walls = this.blocksAlong(found.cameFrom, to, traveller);
+        const named: Route = walls.length > 0 ? { ...planned, walls } : planned;
+        const opened = this.search(from, to, goal, traveller, true, draws).found;
         if (opened !== null && opened.cost < found.cost) {
           const blocks = this.blocksAlong(opened.cameFrom, to, traveller);
-          if (blocks.length > 0) return { ...planned, blocks };
+          if (blocks.length > 0) return { ...named, blocks };
         }
+        return named;
       }
       return planned;
     }
@@ -3689,7 +4189,7 @@ export class WorldGraph {
      * when the first has already failed, which is the case where there is
      * nothing else to spend the time on.
      */
-    const ignoring = this.search(from, to, goal, traveller, true);
+    const ignoring = this.search(from, to, goal, traveller, true, walkable.drawsAhead).found;
     const blocks = ignoring ? this.blocksAlong(ignoring.cameFrom, to, traveller) : [];
     const reasons = blocks.length > 0 ? blocks : ([{ kind: 'unreachable' }] as RouteBlock[]);
     return {
@@ -3714,9 +4214,14 @@ export class WorldGraph {
    * deserves the client to have actually looked.
    *
    * What counts as *the worst* is deliberately narrow: a room expected to kill
-   * (`deadly`), and a room whose own spell takes a real share of the bar
-   * (`otherWayShare`). A door or a toll is not — those are conditions the
-   * reader can clear, and the refusal already names them (`Route.blocks`).
+   * (`deadly`), a room whose own spell takes a real share of the bar
+   * (`otherWayShare`), and a door this character cannot force or a corridor
+   * the server refused this session — priced as walls and walked only when
+   * nothing else leads there, which is when the reader most wants the way
+   * round. A toll or a plain door is not: those are conditions the reader
+   * clears by walking. The rooms are avoided as rooms; a door is avoided as
+   * the one *edge* it stands on (`Traveller.avoidEdges`), because the room
+   * behind it is where the way round has to arrive.
    *
    * Offered only when it genuinely differs: a way that walks the same worst
    * rooms is the same way with a different corner turned, which is what the
@@ -3729,18 +4234,29 @@ export class WorldGraph {
     to: RoomId,
     goal: WorldRoom,
     route: Route,
-    traveller: Traveller
+    traveller: Traveller,
+    draws: boolean
   ): Route | null {
     const { otherWayShare } = tuning().world;
     const worst = new Set<RoomId>();
+    const walls = new Set<string>();
     for (const step of route.steps) {
       if (step.deadly === true || (step.hazard ?? 0) >= otherWayShare) worst.add(step.to);
+      const edge = `${step.from}|${step.direction}`;
+      // A door the realm names a word for is not something to search round:
+      // `stepCost` prices it as the lever it is, so this has to read it the
+      // same way or the two disagree about what the plan crosses.
+      const walled =
+        edgeWall(step.requirement, traveller) !== null &&
+        this.leverPrice(step.from, step.direction, traveller) === null;
+      if (walled || traveller.refused?.has(edge) === true) {
+        walls.add(edge);
+      }
     }
-    if (worst.size === 0) return null;
     // The destination itself is never avoidable: a route that refused to enter
     // the room it is planned to is not a route.
     worst.delete(to);
-    if (worst.size === 0) return null;
+    if (worst.size === 0 && walls.size === 0) return null;
 
     /*
      * **With the gates open**, like the search that explains a refusal. A way
@@ -3749,9 +4265,16 @@ export class WorldGraph {
      * no other way* about a route that exists and merely wants a key. What is
      * impassable is priced rather than removed, and named below.
      */
-    const round = this.search(from, to, goal, { ...traveller, avoid: worst }, true);
+    const round = this.search(
+      from,
+      to,
+      goal,
+      { ...traveller, avoid: worst, avoidEdges: walls },
+      true,
+      draws
+    ).found;
     if (round === null) return null;
-    const other = this.buildRoute(round.cameFrom, to, round.cost, traveller);
+    const other = this.buildRoute(round.cameFrom, to, round.cost, traveller, draws);
     /*
      * **A way round is expected to be dearer, so cost is not the test.** That
      * is why it was not chosen, and offering it asks the reader to make the
@@ -3772,13 +4295,14 @@ export class WorldGraph {
      * choice if the door is named.
      */
     if (other.steps.some((step) => step.deadly === true)) return null;
-    const blocks = this.blocksAlong(round.cameFrom, to, traveller);
+    const walled = this.blocksAlong(round.cameFrom, to, traveller);
     /*
      * Handed back with no `otherWay` of its own: an alternative is read and
      * chosen, never used to plan a third. `buildRoute` sets none, so this is a
      * statement about what is *not* done rather than something to strip.
+     * What it crosses is its own (`walls`), not what a cheaper way needed.
      */
-    return blocks.length > 0 ? { ...other, blocks } : other;
+    return walled.length > 0 ? { ...other, walls: walled } : other;
   }
 
   /**
@@ -3808,7 +4332,8 @@ export class WorldGraph {
     to: RoomId,
     goal: WorldRoom,
     route: Route,
-    traveller: Traveller
+    traveller: Traveller,
+    draws: boolean
   ): Route | null {
     const priced = traveller.hazard;
     if (priced === undefined) return null;
@@ -3824,9 +4349,9 @@ export class WorldGraph {
       ...traveller,
       hazard: (room) => (quietened(room) ? null : priced(room))
     };
-    const found = this.search(from, to, goal, equipped, false);
+    const found = this.search(from, to, goal, equipped, false, draws).found;
     if (found === null) return null;
-    const other = this.buildRoute(found.cameFrom, to, found.cost, equipped);
+    const other = this.buildRoute(found.cameFrom, to, found.cost, equipped, draws);
     if (route.steps.length - other.steps.length < tuning().world.alternativeMinSteps) return null;
     if (other.steps.some((step) => step.deadly === true)) return null;
     const crosses = other.steps.some((step) => {
@@ -3837,19 +4362,506 @@ export class WorldGraph {
   }
 
   /**
+   * Every scatter door in the realm, by the spell that draws — built once.
+   *
+   * Structure only, so it survives every traveller: which rooms hold a door,
+   * and what each door draws from. What a door *costs* is asked at the sweep,
+   * because that is the half a character changes.
+   */
+  private scatterDoors(): ReadonlyMap<number, ScatterSpell> {
+    if (this.draws !== null) return this.draws;
+    const found = new Map<number, ScatterSpell>();
+    for (const [at, room] of this.rooms) {
+      for (const exit of room.exits) {
+        const landing = exit.requirement?.landing;
+        if (landing === undefined || exit.requirement?.spellEffect !== 'scatters') continue;
+        let spell = found.get(landing.spell);
+        /*
+         * One spell, one draw. `landingOf` takes the map from the exit where
+         * the spell states no `TeleportMap`, so one spell fired from two maps
+         * would fold two different room sets under one id — and the mean would
+         * then be taken over one map's rooms while the chip named the other's.
+         * No spell in either shipped realm does it (`WorldGraph.test.ts` walks
+         * the survey); a realm that did would have the spell dropped rather
+         * than priced against the wrong rooms.
+         */
+        if (spell !== undefined && !sameLanding(spell.landing, landing)) {
+          found.delete(landing.spell);
+          continue;
+        }
+        if (spell === undefined) {
+          /*
+           * The rooms the roll can produce that the realm actually holds. A
+           * range is `MinBase`–`MaxBase` and nothing promises every number in
+           * it is a room — the mean has to be over the outcomes that exist, or
+           * a range with a hole in it is priced as though a draw could land
+           * the character nowhere.
+           */
+          const rooms = landingRooms(landing).filter((id) => this.rooms.has(id));
+          if (rooms.length === 0) continue;
+          found.set(landing.spell, (spell = { landing, rooms, doors: [] }));
+        }
+        spell.doors.push({ at, exit });
+      }
+    }
+    this.draws = found;
+    return found;
+  }
+
+  /**
+   * Rooms that lead to each room by a move that always arrives — built once.
+   *
+   * The scatter solve asks *what does it cost from here to the goal*, and
+   * that is a question about edges pointing the other way. Built lazily and
+   * kept: it is a pure function of the file, and a session that never routes
+   * through a draw never pays for it. A draw is left out, because it leads to
+   * no particular room and that is the whole of what makes it one.
+   */
+  private reverse(): ReadonlyMap<RoomId, ReadonlyArray<ReverseEdge>> {
+    if (this.backward !== null) return this.backward;
+    const into = new Map<RoomId, ReverseEdge[]>();
+    const add = (to: RoomId, edge: ReverseEdge): void => {
+      if (!this.rooms.has(to)) return;
+      const bucket = into.get(to);
+      if (bucket === undefined) into.set(to, [edge]);
+      else bucket.push(edge);
+    };
+    for (const [from, room] of this.rooms) {
+      for (const exit of room.exits) {
+        if (exit.requirement?.spellEffect === 'scatters') continue;
+        add(this.beyond(exit), { from, exit });
+      }
+      for (const portal of this.portalsFrom(from)) add(this.beyond(portal), { from, exit: portal });
+    }
+    this.backward = into;
+    return into;
+  }
+
+  /**
+   * What it costs each of `wanted` to reach any of `seeds`, walking backwards.
+   *
+   * Dijkstra over `reverse()`, stopped the moment every room asked about has
+   * been settled — which is what keeps it cheap: the rooms asked about are a
+   * scatter's landings, they sit inside the maze the scatter closes, and a
+   * sweep seeded from the doors of that maze settles all of them in a few
+   * rungs. A sweep that cannot settle one exhausts what it can reach and that
+   * room is left out, which reads as *there is no way from there*, which is
+   * what it is.
+   *
+   * Bounded by `tuning.world.scatterSweepRooms` as well, for a realm this
+   * client has never seen: over the bound the answer is *not known* rather
+   * than a figure, and a scatter nobody could price is one the router does not
+   * offer. An over-estimate refuses an option; it never invents a way.
+   */
+  private sweepBack(
+    seeds: ReadonlyMap<RoomId, number>,
+    wanted: ReadonlySet<RoomId>,
+    traveller: Traveller
+  ): Map<RoomId, number> {
+    const best = new Map<RoomId, number>(seeds);
+    const open = new MinHeap<RoomId>();
+    for (const [id, cost] of seeds) open.push(cost, id);
+    const outstanding = new Set(wanted);
+    for (const id of seeds.keys()) outstanding.delete(id);
+    const ceiling = tuning().world.scatterSweepRooms;
+    const settled = new Set<RoomId>();
+    const reverse = this.reverse();
+    const discount = this.discountFor(traveller);
+
+    while (open.size > 0 && outstanding.size > 0 && settled.size < ceiling) {
+      const id = open.pop()!;
+      if (settled.has(id)) continue;
+      settled.add(id);
+      outstanding.delete(id);
+      const here = this.rooms.get(id);
+      if (here === undefined) continue;
+      const cost = best.get(id)!;
+      for (const { from, exit } of reverse.get(id) ?? []) {
+        if (settled.has(from)) continue;
+        const price = this.stepCost(from, exit, here, traveller, false, discount);
+        /*
+         * **A wall is not a number of moves.** The router walks one when
+         * nothing else leads anywhere, and says so on the plan — but what this
+         * sweep feeds is an expectation the reader sees as *about ten more
+         * moves*, and `wallCost` inside that arithmetic made the gloomy maze
+         * answer 201,050. The two figures are not in the same units. So the
+         * solve declines to build a gamble on a door this character cannot
+         * open or a room expected to kill it, and the scatter is left
+         * unpriced — which the router then does not offer, so a destination
+         * reachable *only* through such a maze is reported unreachable rather
+         * than priced in the wrong units. Refusing an option, never inventing
+         * one; and the refusal cannot name the gate, because the gate is
+         * inside a maze no plan was ever going to hold the steps of.
+         *
+         * A corridor the server refused this session prices at `wallCost` too
+         * and is excluded by the same test, which is the right answer for the
+         * same reason: this session cannot walk it.
+         */
+        if (price === null || price >= tuning().world.wallCost) continue;
+        const tentative = cost + price;
+        if (tentative >= (best.get(from) ?? Infinity)) continue;
+        best.set(from, tentative);
+        open.push(tentative, from);
+      }
+    }
+    return best;
+  }
+
+  /**
+   * What stepping through each scatter is expected to cost, all the way to `to`.
+   *
+   * **The one piece of arithmetic in this file that is not a shortest path**,
+   * because a draw is not a choice: from a room with a scatter door the
+   * character picks the door and the realm picks the room. So the quantity is
+   * an expectation over an optimal policy, and it satisfies
+   *
+   * ```
+   * V(l) = min( D(l), min over spells s of [ B(s, l) + E(s) ] )
+   * E(s) = mean over l in landings(s) of V(l)
+   * ```
+   *
+   * where `D(l)` is the cost from `l` to the goal taking no draw at all and
+   * `B(s, l)` is the cost from `l` of reaching a door of `s` and stepping
+   * through it. Both are shortest paths — one sweep from the goal and one per
+   * spell from its doors — which leaves a fixed point over **as many unknowns
+   * as the realm has scattering spells**: six in each shipped realm, five of
+   * them the asylum's. Every path from a room either reaches the goal without
+   * a draw or takes a first one, so the pair above is exact rather than an
+   * estimate, and the mean is over the landings the realm holds.
+   *
+   * **Solved upward from zero, never downward from infinity.** A mean over a
+   * set holding one unreachable landing is infinite, so the pessimistic
+   * iteration never takes its first step and every scatter in the realm reads
+   * as *no way*: it is a fixed point, just not the least one. From zero the
+   * iterates rise to the true value, which is the standard reading for a
+   * stochastic shortest path and the one a Monte-Carlo control agrees with
+   * (`WorldGraph.test.ts`: 20,000 plays of the asylum, 10.007 moves against a
+   * solved 10).
+   *
+   * Cached for the last goal and traveller because one `route` runs the search
+   * twice with the same pair. Spells whose expectation did not converge to a
+   * finite figure are left out, so a door nobody could price is a door the
+   * router does not offer.
+   */
+  private scatterCosts(to: RoomId, traveller: Traveller): ReadonlyMap<number, number> {
+    const spells = this.scatterDoors();
+    if (spells.size === 0) return EMPTY_COSTS;
+    if (this.solved !== null && this.solved.to === to && this.solved.traveller === traveller) {
+      return this.solved.costs;
+    }
+
+    const landings = new Set<RoomId>();
+    for (const spell of spells.values()) for (const id of spell.rooms) landings.add(id);
+
+    // `D`: the goal, reached without ever taking a draw.
+    const plain = this.sweepBack(new Map([[to, 0]]), landings, traveller);
+
+    // `B`: the cheapest door of each spell, and what stepping through it costs.
+    const reach = new Map<number, Map<RoomId, number>>();
+    const discount = this.discountFor(traveller);
+    for (const [id, spell] of spells) {
+      const seeds = new Map<RoomId, number>();
+      for (const { at, exit } of spell.doors) {
+        const price = this.stepCost(at, exit, null, traveller, false, discount);
+        if (price === null) continue;
+        if (price < (seeds.get(at) ?? Infinity)) seeds.set(at, price);
+      }
+      if (seeds.size === 0) continue;
+      reach.set(id, this.sweepBack(seeds, landings, traveller));
+    }
+
+    /*
+     * **Can the goal happen at all from here, allowing draws.**
+     *
+     * The iteration below climbs from zero, so a scatter nothing can reach the
+     * goal through does not settle at infinity — it rises by a step a round
+     * for ever, and a round ceiling would then hand back a large number as
+     * though it were an expectation. Measured: a route from the Great Library
+     * to a marsh road on another map, which no way in the realm connects, came
+     * back as a plan that walked into the Warped Asylum and waited.
+     *
+     * So the landings are first asked the much weaker question — is there any
+     * sequence at all, plain moves and lucky draws together, that ends at the
+     * goal. That is a least fixed point and it seeds itself on the landings a
+     * plain walk already reaches, which is exactly the base case the value
+     * iteration needs and the asylum has: one of the nine padded cells *is*
+     * the old man's. A spell with a landing that cannot is left unpriced, and
+     * the router does not offer it.
+     */
+    const possible = new Set<RoomId>();
+    for (const spell of spells.values()) {
+      for (const landing of spell.rooms) {
+        if (Number.isFinite(plain.get(landing) ?? Infinity)) possible.add(landing);
+      }
+    }
+    for (let round = 0; round <= spells.size; round += 1) {
+      let grew = false;
+      for (const [id, spell] of spells) {
+        // A draw whose every outcome is a dead end leads nowhere, however
+        // easily its door is reached.
+        if (!spell.rooms.some((landing) => possible.has(landing))) continue;
+        const costs = reach.get(id);
+        if (costs === undefined) continue;
+        for (const other of spells.values()) {
+          for (const landing of other.rooms) {
+            if (possible.has(landing)) continue;
+            if (!Number.isFinite(costs.get(landing) ?? Infinity)) continue;
+            possible.add(landing);
+            grew = true;
+          }
+        }
+      }
+      if (!grew) break;
+    }
+
+    const expectation = new Map<number, number>();
+    for (const [id, spell] of spells) {
+      if (!reach.has(id)) continue;
+      if (spell.rooms.every((landing) => possible.has(landing))) expectation.set(id, 0);
+    }
+    const { scatterRounds, scatterTolerance } = tuning().world;
+    const moved = new Map<number, number>();
+    for (const id of expectation.keys()) moved.set(id, Infinity);
+    for (let round = 0; round < scatterRounds; round += 1) {
+      let worst = 0;
+      for (const [id, spell] of spells) {
+        if (!expectation.has(id)) continue;
+        let total = 0;
+        for (const landing of spell.rooms) {
+          let value = plain.get(landing) ?? Infinity;
+          for (const [other, costs] of reach) {
+            const priced = expectation.get(other);
+            if (priced === undefined) continue;
+            const door = costs.get(landing);
+            if (door === undefined) continue;
+            value = Math.min(value, door + priced);
+          }
+          total += value;
+        }
+        const next = total / spell.rooms.length;
+        /*
+         * `Infinity - Infinity` is `NaN`, and `NaN < tolerance` is false for
+         * ever — so a spell that reaches infinity (the reachability gate above
+         * admits one whose only way on is through a draw with a dead end of
+         * its own) held `worst` at `NaN` and spent every round of the ceiling
+         * on a figure that had already settled. Its own movement is recorded
+         * as settled, since it is; the filter below drops it for not being
+         * finite, which is the half actually doing the work.
+         */
+        const before = expectation.get(id)!;
+        const step = Number.isFinite(next) && Number.isFinite(before) ? Math.abs(next - before) : 0;
+        moved.set(id, step);
+        worst = Math.max(worst, step);
+        expectation.set(id, next);
+      }
+      if (worst < scatterTolerance) break;
+    }
+
+    /*
+     * **Only the figures that stopped moving.** The iteration climbs from
+     * zero, so a scatter with no way through rises by a step a round for
+     * ever and the ceiling would hand that back as though it were an
+     * expectation — a guess wearing a decimal point. Per spell rather than
+     * for the set, because they are only coupled where one maze's door is
+     * inside another's: the asylum's five settle whatever the gloomy maze on
+     * the other side of the realm is doing.
+     */
+    const costs = new Map<number, number>();
+    for (const [id, value] of expectation) {
+      if (Number.isFinite(value) && (moved.get(id) ?? Infinity) < scatterTolerance) {
+        costs.set(id, value);
+      }
+    }
+    this.solved = { to, traveller, costs };
+    return costs;
+  }
+
+  /**
+   * What a step's exit hands to the dice, where it does — the step's own half
+   * of `scatterCosts`.
+   *
+   * Absent for every ordinary step, and absent too for a scatter the solve
+   * could not price: the search never relaxes one of those, so a step wearing
+   * a landing and no figure would be a plan claiming a way nothing measured.
+   */
+  private scatterOn(
+    exit: WorldExit | PortalExit,
+    to: RoomId,
+    traveller: Traveller,
+    useDraws: boolean
+  ): { scatter?: RouteScatter } {
+    if (!useDraws || exit.requirement?.spellEffect !== 'scatters') return {};
+    const landing = exit.requirement.landing;
+    if (landing === undefined) return {};
+    // Priced, so the step is only carried where the search actually had a
+    // figure to relax the goal with — and then said in moves, which is a
+    // different number. See `scatterMoves`.
+    if (this.scatterCosts(to, traveller).get(landing.spell) === undefined) return {};
+    const moves = this.scatterMoves(to).get(landing.spell);
+    const rooms = this.scatterDoors().get(landing.spell)?.rooms.length;
+    if (moves === undefined || rooms === undefined) return {};
+    return { scatter: { landing, rooms, moves } };
+  }
+
+  /**
+   * What a draw costs in **moves**, which is not what it costs the router.
+   *
+   * `scatterCosts` solves in the A*'s own units, so a lair on the way prices
+   * into it: measured on the asylum against a level-20 traveller whose padded
+   * cells cost 40% of the bar a pass, the solve answered 19.7 where the walk
+   * is nine moves. That is the right number for choosing between routes and
+   * the wrong one to put in front of a reader under the word *moves* — the
+   * chip would have overstated the wandering twofold, and the route's own
+   * `cost` is already on the panel for the priced figure.
+   *
+   * So the reader's figure is the same solve with nothing priced but the
+   * steps. It depends on the destination alone, never on the character, which
+   * is what makes it worth keeping realm-wide; `scatterCosts`'s own cache is
+   * one slot keyed on traveller identity and would thrash against it.
+   */
+  private scatterMoves(to: RoomId): ReadonlyMap<number, number> {
+    const held = this.plainDraws.get(to);
+    if (held !== undefined) return held;
+    const solved = this.scatterCosts(to, PLAIN_TRAVELLER);
+    // Cleared rather than evicted one by one: this is a convenience, not a
+    // correctness store, and a destination asked for twice in a session is
+    // the common case where it is asked for at all.
+    if (this.plainDraws.size >= tuning().world.scatterMovesKept) this.plainDraws.clear();
+    this.plainDraws.set(to, solved);
+    return solved;
+  }
+
+  /**
+   * A step along a route the player saved costs a fraction of an ordinary one.
+   *
+   * The cross-map heuristic drops to the same fraction while any route is
+   * preferred, because the one edge it stands for may be a preferred one: a
+   * heuristic above the cheapest possible step is no longer admissible, and A*
+   * would pop the goal before the cheaper way had been relaxed.
+   */
+  private discountFor(traveller: Traveller): number {
+    return traveller.preferred !== undefined && traveller.preferred.size > 0
+      ? tuning().world.preferredStepCost
+      : 1;
+  }
+
+  /**
+   * What one move costs this traveller, or `null` where it cannot be made.
+   *
+   * **One arithmetic, three readers.** It lived inside the A*'s inner loop,
+   * and the scatter solve has to price the same moves the same way or its
+   * answer is about a different realm — a backward sweep that charged nothing
+   * for a lair the forward search walls would report a way out of the asylum
+   * that the plan then refuses to walk.
+   *
+   * `into` is `null` for a draw, whose room nobody knows: what waits in it
+   * cannot be priced, and pricing the *destination's* lair there would charge
+   * the old man's cell to every step of the maze. The rest of the price — the
+   * gate, the portal's surcharge, a corridor the server refused this session —
+   * is a fact about the move and is charged either way.
+   */
+  private stepCost(
+    from: RoomId,
+    exit: WorldExit | PortalExit,
+    into: WorldRoom | null,
+    traveller: Traveller,
+    openGates: boolean,
+    discount: number
+  ): number | null {
+    /*
+     * **A draw costs a move here, whatever it costs everywhere else.**
+     * `edgePenalty` walls one, and that is the right answer for every reader
+     * that wants to arrive in a particular room — you cannot use it to. The
+     * router is the one reader that is not asking that: it has solved what
+     * stepping through is worth (`scatterCosts`) and is pricing the *move*,
+     * which is one move like any other. Charging the wall here as well priced
+     * the way into the Warped Asylum at 275,000 steps and put the plan's cost
+     * above the figure that makes a route report itself as crossing a wall.
+     */
+    const priced =
+      exit.requirement?.spellEffect === 'scatters' ? 0 : edgePenalty(exit.requirement, traveller);
+    // A gate held open is still the worst edge on the map, so the path this
+    // finds is the one that was *nearly* walkable rather than a detour
+    // through every locked door in the realm.
+    const walled = priced === null ? (openGates ? tuning().world.wallCost : null) : priced;
+    if (walled === null) return null;
+    /*
+     * And a barrier the realm names a word for is not a barrier.
+     *
+     * 28 of Paradigm's exits and 27 of stock's are priced beyond any
+     * character's reach — `Door [1000 picklocks/strength]` — and open to
+     * anybody who says `use crowbar`, `sit throne`, `push button` or `ask
+     * shadow guard morukai` while standing in front of them. The lever was
+     * never on the exit's own requirement (`buildRealm` writes `actions` only
+     * for an exit that *states* `Needs N Actions`, which a door never does),
+     * so nothing reading the requirement could find it and `edgePenalty` —
+     * which reads nothing else — called every one of them a wall.
+     *
+     * Asked only of an edge already priced as a wall, so the hot loop pays one
+     * Map lookup on the 0.8% of exits that are walls rather than on all of
+     * them; and priced exactly as `edgePenalty` prices a hidden exit whose
+     * levers are all in reach, because it is the same rung — `Walker` pulls
+     * both, one command per lever.
+     *
+     * Read off `priced` and never off the gate `openGates` holds open: a
+     * pruned edge is impassable for a reason no lever touches — a class the
+     * character is not, a listed pack lacking the lever's own item — and that
+     * last one is a hidden exit, which certainly *does* have levers here.
+     * `leverPrice` answering null leaves the wall exactly where it was.
+     */
+    const penalty =
+      priced !== null && priced >= tuning().world.wallCost
+        ? (this.leverPrice(from, exit.direction, traveller) ?? walled)
+        : walled;
+
+    // A portal costs its penalty over a plain step, so the router prefers
+    // ordinary corridors unless the teleport genuinely shortens the way.
+    const surcharge = exit.direction === 'portal' ? tuning().world.portalPenalty : 0;
+    const wall = traveller.refused?.has(`${from}|${exit.direction}`) ? 100_000 : 0;
+    // The whole step — the door's price and the portal's with it — is
+    // discounted along a saved route: the player chose that door. A refusal is
+    // not, because the server said no this session.
+    const along =
+      into !== null &&
+      traveller.preferred?.has(`${from}|${roomId(into.map, into.room)}`) === true &&
+      discount !== 1
+        ? discount
+        : 1;
+    // And what is waiting in the room being stepped into: a lair priced
+    // against this character, or nothing where nothing can be weighed.
+    const risk =
+      into === null || traveller.danger === undefined ? 0 : dangerPenalty(traveller.danger(into));
+    /*
+     * And what the room itself does to whoever stands in it. Priced on the
+     * same slope as a lair and for the same reason — the step from
+     * *unpleasant* to *fatal* is continuous — but it is a **certainty** rather
+     * than a fight that might be walked past, which is why it is added rather
+     * than taken as the worse of the two: a poisoned lair is both.
+     */
+    const room =
+      into === null || traveller.hazard === undefined ? 0 : dangerPenalty(traveller.hazard(into));
+    return (1 + penalty + surcharge + risk + room) * along + wall;
+  }
+
+  /**
    * One A* pass. `openGates` prices the three impassable conditions instead of
    * pruning them, which is how the failed case finds a path to explain itself.
+   *
+   * `drawsAhead` on the result is what makes asking twice affordable: a failed
+   * search has already walked everything the character can reach, so it knows
+   * whether a scatter door was among it. Without that, every unroutable pair
+   * in the realm paid for the solve's sweeps to discover there had never been
+   * a draw to take — measured at a p95 of 595ms against 121ms over 40 random
+   * pairs, which is the whole of why this is reported rather than assumed.
    */
   private search(
     from: RoomId,
     to: RoomId,
     goal: WorldRoom,
     traveller: Traveller,
-    openGates: boolean
-  ): {
-    cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>;
-    cost: number;
-  } | null {
+    openGates: boolean,
+    useDraws: boolean
+  ): SearchResult {
     /*
      * A step along a preferred route costs a fraction of an ordinary one. The
      * cross-map heuristic is that same fraction while any route is preferred,
@@ -3857,18 +4869,33 @@ export class WorldGraph {
      * above the cheapest possible step is no longer admissible, and A* would
      * pop the goal before the cheaper way had been relaxed.
      */
-    const preferring = traveller.preferred !== undefined && traveller.preferred.size > 0;
-    const discount = preferring ? tuning().world.preferredStepCost : 1;
+    const discount = this.discountFor(traveller);
     const heuristic = (room: WorldRoom): number => (room.map === goal.map ? 0 : discount);
+    /*
+     * What a draw is worth from here, where there is one to take. Solved once
+     * per search rather than per expansion: it is a property of the goal and
+     * the traveller, not of the room the door is in. Empty — which is every
+     * route in the realm that never meets a scatter — costs the solve nothing,
+     * because `scatterCosts` looks for doors before it sweeps for anything.
+     */
+    let solved: ReadonlyMap<number, number> | null = null;
+    const draw = (spell: number): number | undefined => {
+      if (!useDraws) return undefined;
+      solved ??= this.scatterCosts(to, traveller);
+      return solved.get(spell);
+    };
 
     const cameFrom = new Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>();
     const best = new Map<RoomId, number>([[from, 0]]);
     const open = new MinHeap<RoomId>();
+    let drawsAhead = false;
     open.push(heuristic(this.rooms.get(from)!), from);
 
     while (open.size > 0) {
       const currentId = open.pop()!;
-      if (currentId === to) return { cameFrom, cost: best.get(to) ?? 0 };
+      if (currentId === to) {
+        return { found: { cameFrom, cost: best.get(to) ?? 0 }, drawsAhead };
+      }
 
       const current = this.rooms.get(currentId);
       if (!current) continue;
@@ -3881,7 +4908,31 @@ export class WorldGraph {
         ? [...current.exits, ...scripted]
         : current.exits;
       for (const exit of ways) {
-        const nextId = roomId(exit.map, exit.room);
+        /*
+         * A draw is not an edge, so it is never relaxed as one: relaxing it
+         * would put the exit table's room on the plan and every step after it
+         * would be directions from somewhere the character is not. What it
+         * *is* is a move to the destination with a price — the moves expected
+         * between stepping through and standing there, which is what
+         * `scatterCosts` solves — so the goal itself is what it relaxes, and
+         * the step through it is the last one the plan can hold.
+         */
+        if (exit.requirement?.spellEffect === 'scatters') {
+          const landing = exit.requirement.landing;
+          if (landing !== undefined) drawsAhead = true;
+          const expected = landing === undefined ? undefined : draw(landing.spell);
+          if (expected === undefined) continue;
+          const price = this.stepCost(currentId, exit, null, traveller, openGates, discount);
+          if (price === null) continue;
+          const tentative = currentCost + price + expected;
+          if (tentative >= (best.get(to) ?? Infinity)) continue;
+          best.set(to, tentative);
+          cameFrom.set(to, { prev: currentId, exit });
+          open.push(tentative, to);
+          continue;
+        }
+
+        const nextId = this.beyond(exit);
         const next = this.rooms.get(nextId);
         // An exit pointing outside the dataset is a hole in the data, not a
         // route; following it would produce a step that cannot be walked.
@@ -3889,36 +4940,11 @@ export class WorldGraph {
         // The one pruning this router does on the traveller's account, and
         // only while it is answering *is there another way*. See `avoid`.
         if (traveller.avoid?.has(nextId) === true) continue;
+        if (traveller.avoidEdges?.has(`${currentId}|${exit.direction}`) === true) continue;
 
-        const priced = edgePenalty(exit.requirement, traveller);
-        // A gate held open is still the worst edge on the map, so the path this
-        // finds is the one that was *nearly* walkable rather than a detour
-        // through every locked door in the realm.
-        const penalty = priced === null ? (openGates ? tuning().world.wallCost : null) : priced;
-        if (penalty === null) continue;
-
-        // A portal costs its penalty over a plain step, so the router prefers
-        // ordinary corridors unless the teleport genuinely shortens the way.
-        const surcharge = exit.direction === 'portal' ? tuning().world.portalPenalty : 0;
-        const wall = traveller.refused?.has(`${currentId}|${exit.direction}`) ? 100_000 : 0;
-        // The whole step — the door's price and the portal's with it — is
-        // discounted along a saved route: the player chose that door. A
-        // refusal is not, because the server said no this session.
-        const along =
-          preferring && traveller.preferred!.has(`${currentId}|${nextId}`) ? discount : 1;
-        // And what is waiting in the room being stepped into: a lair priced
-        // against this character, or nothing where nothing can be weighed.
-        const risk = traveller.danger === undefined ? 0 : dangerPenalty(traveller.danger(next));
-        /*
-         * And what the room itself does to whoever stands in it. Priced on the
-         * same slope as a lair and for the same reason — the step from
-         * *unpleasant* to *fatal* is continuous — but it is a **certainty**
-         * rather than a fight that might be walked past, which is why it is
-         * added rather than taken as the worse of the two: a poisoned lair is
-         * both.
-         */
-        const room = traveller.hazard === undefined ? 0 : dangerPenalty(traveller.hazard(next));
-        const tentative = currentCost + (1 + penalty + surcharge + risk + room) * along + wall;
+        const price = this.stepCost(currentId, exit, next, traveller, openGates, discount);
+        if (price === null) continue;
+        const tentative = currentCost + price;
         if (tentative >= (best.get(nextId) ?? Infinity)) continue;
 
         best.set(nextId, tentative);
@@ -3926,7 +4952,7 @@ export class WorldGraph {
         open.push(tentative + heuristic(next), nextId);
       }
     }
-    return null;
+    return { found: null, drawsAhead };
   }
 
   /** Every gate on a found path this traveller cannot pass, in walking order. */
@@ -4042,6 +5068,28 @@ export class WorldGraph {
             ...(refuses === undefined ? {} : { refuses })
           });
         }
+      } else {
+        // Not pruned, but priced as a wall: a door below both skills, which
+        // the plan itself walks when nothing else leads there.
+        const wall = edgeWall(exit.requirement, traveller);
+        // Named as a wall only where nothing here opens it, the reading
+        // `stepCost` priced it by. `Walker.pullLevers` sends the phrase.
+        if (wall !== null && this.leverPrice(prev, exit.direction, traveller) === null) {
+          const item = wall.keyId === undefined ? undefined : this.item(wall.keyId);
+          blocks.unshift({
+            kind: 'door',
+            at: prev,
+            to: cursor,
+            name: this.rooms.get(cursor)?.name ?? cursor,
+            ...(wall.pickDifficulty === undefined ? {} : { pickDifficulty: wall.pickDifficulty }),
+            ...(wall.bashDifficulty === undefined ? {} : { bashDifficulty: wall.bashDifficulty }),
+            picklocks: traveller.pickSkill ?? null,
+            strength: traveller.strength ?? null,
+            ...(wall.keyId === undefined ? {} : { keyId: wall.keyId }),
+            ...(item === undefined ? {} : { itemName: item.name }),
+            ...this.leverSaying(prev, exit.direction)
+          });
+        }
       }
       cursor = prev;
     }
@@ -4052,7 +5100,8 @@ export class WorldGraph {
     cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>,
     to: RoomId,
     cost: number,
-    traveller: Traveller
+    traveller: Traveller,
+    useDraws = false
   ): Route {
     const steps: RouteStep[] = [];
     let cursor = to;
@@ -4060,20 +5109,37 @@ export class WorldGraph {
     while (cameFrom.has(cursor)) {
       const { prev, exit } = cameFrom.get(cursor)!;
       const destination = this.rooms.get(cursor);
+      /*
+       * **Nothing about the room, where the room is a draw.**
+       *
+       * `cursor` on a scatter step is the *destination of the journey*, which
+       * is the node the search relaxed — so every fact taken off it here would
+       * describe a room the character is not walking into. `stepCost` already
+       * says so in the price: it passes `into: null` and charges nothing for
+       * what waits there, because nobody knows. Carrying the figures anyway
+       * made the price and the step disagree about one move, and three readers
+       * acted on the step: `AutoLight` was handed the goal's darkness for a
+       * room it was not entering, `holdForTrap` reserved health against the
+       * old man's own lair before a step that does not reach it, and
+       * `lairsAlong().deadly` named a room the step never enters — which
+       * `otherWay` then prunes on.
+       */
+      const drawn = this.scatterOn(exit, to, traveller, useDraws);
+      const arriving = drawn.scatter === undefined ? destination : undefined;
       // The figure the step was priced by, so the panel can say what waits
       // there rather than only what the walk costs in total.
       const danger =
-        destination === undefined || traveller.danger === undefined
+        arriving === undefined || traveller.danger === undefined
           ? null
-          : traveller.danger(destination);
+          : traveller.danger(arriving);
       const hazard =
-        destination === undefined || traveller.hazard === undefined
+        arriving === undefined || traveller.hazard === undefined
           ? null
-          : traveller.hazard(destination);
+          : traveller.hazard(arriving);
       const lairDamage =
-        destination === undefined || traveller.lairDamage === undefined
+        arriving === undefined || traveller.lairDamage === undefined
           ? null
-          : traveller.lairDamage(destination);
+          : traveller.lairDamage(arriving);
       steps.unshift({
         from: prev,
         to: cursor,
@@ -4089,23 +5155,31 @@ export class WorldGraph {
          * unread in the same object — the exact asymmetry `RouteBlock` already
          * records for a route that was refused outright.
          */
-        ...(exit.requirement ? { obstacle: describeObstacle(exit.requirement, this) } : {}),
+        ...(exit.requirement
+          ? {
+              obstacle: describeObstacle(
+                exit.requirement,
+                this,
+                // A door's lever is not on the door: the step is what knows
+                // where it is standing, so the join is made here.
+                this.leversHere(prev, exit.direction)
+              )
+            }
+          : {}),
         // Absent is not dark: `buildRealm` writes a level only when the realm
         // recorded a non-zero one.
-        dark: destination?.light !== undefined && destination.light < 0,
+        dark: arriving?.light !== undefined && arriving.light < 0,
         // And the level itself, for the light arithmetic: how dark decides
         // whether a torch is worth lighting, and `dark` alone cannot say.
-        ...(destination?.light !== undefined && destination.light < 0
-          ? { light: destination.light }
-          : {}),
+        ...(arriving?.light !== undefined && arriving.light < 0 ? { light: arriving.light } : {}),
         ...(danger !== null && danger > 0 ? { danger } : {}),
         ...(lairDamage !== null && lairDamage > 0 ? { lairDamage } : {}),
         // And what the room itself does to whoever stands in it, by the same
         // rule and from the same call the router priced the step with.
         ...(hazard !== null && hazard > 0 ? { hazard } : {}),
         // And the word, where the share is a discouragement and not a figure.
-        ...(hazard !== null && hazard > 0 && destination !== undefined
-          ? hazardWordOf(this.hazardOf(destination))
+        ...(hazard !== null && hazard > 0 && arriving !== undefined
+          ? hazardWordOf(this.hazardOf(arriving))
           : {}),
         /*
          * **Either of them reaching the wall makes the step deadly.** It was
@@ -4117,7 +5191,15 @@ export class WorldGraph {
          */
         ...(Math.max(danger ?? 0, hazard ?? 0) >= tuning().world.deadlyShare
           ? { deadly: true }
-          : {})
+          : {}),
+        /*
+         * And the one step after which the plan stops being a plan. `to` above
+         * is already the destination rather than the room this move reaches,
+         * because that is the node the search relaxed — see `RouteStep.scatter`
+         * — so this is what says the arrival is a draw and what it is expected
+         * to cost from here.
+         */
+        ...drawn
       });
       cursor = prev;
     }
@@ -4143,6 +5225,10 @@ export class WorldGraph {
   private hazardsAlong(steps: readonly RouteStep[], traveller: Traveller): RouteHazard[] {
     const folded = new Map<number, RouteHazard>();
     for (const step of steps) {
+      // A draw's `to` is the destination, not the room the step reaches, so
+      // there is no room here to read a spell off — `buildRoute` withholds
+      // every other fact about it for the same reason.
+      if (step.scatter !== undefined) continue;
       const room = this.rooms.get(step.to);
       if (room?.spell === undefined) continue;
       const spell = this.spellById(room.spell);

@@ -4,17 +4,28 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty } from '../WorldGraph';
+import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty, edgeWall } from '../WorldGraph';
 import type { Traveller } from '../WorldGraph';
-import type { Requirement, RouteBlock, WorldRoom } from '../../../shared/world';
+import type {
+  Landing,
+  Requirement,
+  RoomId,
+  Route,
+  RouteBlock,
+  WorldRoom
+} from '../../../shared/world';
 import {
   REQUIREMENT_KINDS,
   ROUTE_BLOCK_KINDS,
+  blockItem,
   describeBlock,
   hazardAvoided,
-  lairsAlong
+  itemWanted,
+  lairsAlong,
+  landingRooms
 } from '../../../shared/world';
 import { roomId } from '../../../shared/world';
+import { tuning } from '../../app/tuning';
 import { questLevel } from '../../../shared/quests';
 
 /** Writes a throwaway world file in the format `build-world.mjs` emits. */
@@ -122,6 +133,59 @@ describe('edgePenalty', () => {
 
   it('charges for a door', () => {
     expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBeGreaterThan(0);
+  });
+
+  /*
+   * The ability gates are the one guard on a room script the client holds a
+   * matching fact for — `abil` states the counters outright — so a portal this
+   * character fails is not a way through at all. Priced as merely discouraged
+   * it was still walked when it was the only way: `9/1291 go portal`
+   * (`checkability 133 5`) put a rank-4 character in the Caves of Chaos rather
+   * than in `9/1424`, two maps from where the plan believed it was.
+   */
+  describe('a room script gated on a quest counter', () => {
+    const gated = {
+      kind: 'text' as const,
+      raw: 'go portal; checkability 133 5',
+      commands: ['go portal'],
+      unread: ['checkability 133 5'],
+      abilities: [{ id: 133, atLeast: 5 }]
+    };
+
+    it('refuses the way through when the counters say this character fails it', () => {
+      expect(edgePenalty(gated, { counters: { sums: { 133: 4 }, complete: true } })).toBeNull();
+    });
+
+    it('discourages it exactly as before while nobody has read a listing', () => {
+      expect(edgePenalty(gated, {})).toBe(60);
+      expect(edgePenalty(gated, { counters: null })).toBe(60);
+    });
+
+    /*
+     * A complete listing enumerates, so an id it does not name is zero — which
+     * is a *failing* gate here, not an unknown one. An incomplete listing
+     * settles nothing about an id it is silent on.
+     */
+    it('reads an absent id as zero on a complete listing, and as nothing on a short one', () => {
+      expect(edgePenalty(gated, { counters: { sums: {}, complete: true } })).toBeNull();
+      expect(edgePenalty(gated, { counters: { sums: {}, complete: false } })).toBe(60);
+    });
+
+    /* Passing the gate does not make the rest of the script readable. */
+    it('still discourages a gate this character passes', () => {
+      expect(edgePenalty(gated, { counters: { sums: { 133: 5 }, complete: true } })).toBe(60);
+    });
+
+    /* `failability` is its own comparison: held at all is the refusal. */
+    it('refuses a failability gate the character has a rank of', () => {
+      const never = {
+        ...gated,
+        unread: ['failability 127'],
+        abilities: [{ id: 127, absent: true }]
+      };
+      expect(edgePenalty(never, { counters: { sums: { 127: 1 }, complete: true } })).toBeNull();
+      expect(edgePenalty(never, { counters: { sums: { 127: 0 }, complete: true } })).toBe(60);
+    });
   });
 
   /*
@@ -442,6 +506,125 @@ describe('routing', () => {
   });
 });
 
+describe('a cast exit that moves you', () => {
+  /*
+   * The whole of the asylum, four rooms wide, so the arithmetic is asserted
+   * against a figure worked out by hand rather than against a file.
+   *
+   * `1/1` and `1/2` both step east through a spell that rolls 10–12. `1/10` is
+   * the goal; the other two walk back to `1/2`, which is another door. So
+   *
+   *   V(10) = 0, V(11) = V(12) = 1 walk + 1 draw + E,
+   *   E = (0 + 2 + E + 2 + E) / 3  ⟹  E = 4
+   *
+   * and the way there from `1/1` is one step and four expected moves after it.
+   */
+  const maze = (spell: Record<string, unknown>): WorldGraph =>
+    makeWorld(
+      [
+        { m: 1, r: 1, n: 'Doorway', x: { e: { m: 1, r: 10, i: 'Cast: pre-0, post-900' } } },
+        { m: 1, r: 2, n: 'Landing', x: { e: { m: 1, r: 10, i: 'Cast: pre-0, post-900' } } },
+        { m: 1, r: 10, n: 'Cell', x: {} },
+        { m: 1, r: 11, n: 'Cell', x: { w: { m: 1, r: 2 } } },
+        { m: 1, r: 12, n: 'Cell', x: { w: { m: 1, r: 2 } } }
+      ],
+      { spells: [spell] },
+      3
+    );
+
+  it('plans to the draw and prices what follows it', () => {
+    const graph = maze({ id: 900, n: 'muddle', ab: [[140, 0]], pw: [10, 12] });
+    const exit = graph.get(1, 1)!.exits[0]!;
+    expect(exit.requirement?.spellEffect).toBe('scatters');
+    // No `TeleportMap`, so the map is the one the exit table names — which is
+    // what the server uses, since it moves the character before it casts.
+    expect(exit.requirement?.landing).toEqual({
+      spell: 900,
+      name: 'muddle',
+      map: 1,
+      low: 10,
+      high: 12
+    });
+
+    const route = graph.route(roomId(1, 1), roomId(1, 10), {});
+    expect(route.blocked).toBe(false);
+    expect(route.steps).toHaveLength(1);
+    expect(route.steps[0]!.scatter).toMatchObject({ rooms: 3 });
+    expect(route.steps[0]!.scatter!.moves).toBeCloseTo(4, 2);
+    expect(route.cost).toBeCloseTo(5, 2);
+  });
+
+  /*
+   * A roll with one outcome is not a gamble, it is an address — and the exit
+   * table's own room is not it. The plan walks to where the spell puts you.
+   */
+  it('walks a one-room teleport to the room the spell names', () => {
+    const graph = maze({ id: 900, n: 'recall', ab: [[140, 0]], pw: [11, 11] });
+    const exit = graph.get(1, 1)!.exits[0]!;
+    expect(exit.requirement?.spellEffect).toBe('teleports');
+    const route = graph.route(roomId(1, 1), roomId(1, 11), {});
+    expect(route.blocked).toBe(false);
+    expect(route.steps).toHaveLength(1);
+    expect(route.steps[0]!.to).toBe(roomId(1, 11));
+    expect(route.steps[0]!.scatter).toBeUndefined();
+    // And the room the table named is not reached by it: 1/10 has no way in.
+    expect(graph.route(roomId(1, 1), roomId(1, 10), {}).blocked).toBe(true);
+  });
+
+  /*
+   * A stated modifier is the room, and only a zero one is a roll
+   * (`Spell.cs`: `if (tempTeleportRoomID == 0) tempTeleportRoomID = inMainValue`).
+   * The power range beside it is then a magnitude and says nothing about where.
+   */
+  it('reads a stated room as the room, whatever the power says', () => {
+    const graph = maze({
+      id: 900,
+      n: 'summons',
+      ab: [
+        [140, 11],
+        [141, 1]
+      ],
+      pw: [1, 60]
+    });
+    expect(graph.get(1, 1)!.exits[0]!.requirement?.landing).toMatchObject({ low: 11, high: 11 });
+    expect(graph.get(1, 1)!.exits[0]!.requirement?.spellEffect).toBe('teleports');
+  });
+
+  /*
+   * A draw nothing can reach the goal through is refused, not priced. Here
+   * `1/3` is a room the maze never touches, so no sequence of walks and lucky
+   * rolls ends there — and the iteration that prices a draw climbs from zero,
+   * so left ungated it would have returned a large number instead of nothing.
+   */
+  it('refuses a draw that cannot reach the goal', () => {
+    const graph = makeWorld(
+      [
+        { m: 1, r: 1, n: 'Doorway', x: { e: { m: 1, r: 10, i: 'Cast: pre-0, post-900' } } },
+        { m: 1, r: 10, n: 'Cell', x: { w: { m: 1, r: 1 } } },
+        { m: 1, r: 11, n: 'Cell', x: { w: { m: 1, r: 1 } } },
+        { m: 1, r: 3, n: 'Elsewhere', x: {} }
+      ],
+      { spells: [{ id: 900, n: 'muddle', ab: [[140, 0]], pw: [10, 11] }] },
+      3
+    );
+    const route = graph.route(roomId(1, 1), roomId(1, 3), {});
+    expect(route.blocked).toBe(true);
+    expect(route.steps).toHaveLength(0);
+  });
+
+  /*
+   * And a roll this reader cannot turn into a room is unread rather than
+   * harmless — a zero modifier with no power range is a draw between room
+   * zero and room zero, and room zero is not a room.
+   */
+  it('calls a teleport it cannot place a script, not a corridor', () => {
+    const graph = maze({ id: 900, n: 'nowhere', ab: [[140, 0]] });
+    const requirement = graph.get(1, 1)!.exits[0]!.requirement;
+    expect(requirement?.spellEffect).toBe('script');
+    expect(requirement?.landing).toBeUndefined();
+  });
+});
+
 describe('the real realm data', () => {
   const file = path.resolve('resources/world/paradigm.jsonl.gz');
   const available = fs.existsSync(file);
@@ -569,17 +752,42 @@ describe('the real realm data', () => {
   /*
    * A cast exit never refuses anybody — and 217 of the 293 fire a teleport, so
    * the room the exit table names is not the room the character is standing in
-   * a moment later.
+   * a moment later. **Where it puts them is read**, not merely that it does:
+   * `Spell.cs` teleports to the ability's modifier, or to the spell's own
+   * rolled `MinBase`–`MaxBase` when that modifier is zero.
    *
    * `8/1797 w` is one of the 108 `gloomy teleport` exits: the table says it
-   * leads to 8/1806 and the spell rolls a room in 8/633–656. The old flat 60
-   * priced that as a corridor with a nuisance on it.
+   * leads to 8/1806 and the spell rolls a room in 8/633–656. Twenty-four
+   * outcomes, so nobody can say which — a draw.
    */
-  it.runIf(available)('tells a cast exit that moves you from one that does not', () => {
+  it.runIf(available)('reads where a cast exit puts you, and whether it can say', () => {
     const scatter = graph!.get(8, 1797)?.exits.find((exit) => exit.direction === 'w');
     expect(scatter?.requirement?.raw).toBe('Cast: pre-0, post-1257');
-    expect(scatter?.requirement?.spellEffect).toBe('relocates');
+    expect(scatter?.requirement?.spellEffect).toBe('scatters');
+    expect(scatter?.requirement?.landing).toEqual({
+      spell: 1257,
+      name: 'gloomy teleport',
+      map: 8,
+      low: 633,
+      high: 656
+    });
+    // A draw is a wall to everything that wants to *arrive* somewhere; the
+    // router prices it elsewhere (`scatterCosts`) and never as an edge.
     expect(edgePenalty(scatter!.requirement, {})).toBe(100_000);
+
+    /*
+     * And the other half: `hallway teleport` rolls 2982 to 2982, which is one
+     * room, so the Marble Rooms' wrong squares have an address — the Grand
+     * Hallway. Priced as the ordinary step it is, and walked *there*.
+     */
+    const wrong = graph!.get(17, 3082)?.exits.find((exit) => exit.direction === 'e');
+    expect(wrong?.requirement?.spellEffect).toBe('teleports');
+    expect(wrong?.requirement?.landing).toMatchObject({ map: 17, low: 2982, high: 2982 });
+    expect(edgePenalty(wrong!.requirement, {})).toBe(0);
+    const out = graph!.route(roomId(17, 3082), roomId(17, 2982), {});
+    expect(out.blocked).toBe(false);
+    expect(out.steps).toHaveLength(1);
+    expect(out.steps[0]!.name).toBe('Grand Hallway');
 
     // Every one of them, and every kind of them: the split is the realm's.
     const effects = new Map<string, number>();
@@ -592,7 +800,8 @@ describe('the real realm data', () => {
         );
       }
     }
-    expect(effects.get('relocates')).toBe(217);
+    expect(effects.get('scatters')).toBe(168);
+    expect(effects.get('teleports')).toBe(49);
     expect(effects.get('script')).toBe(61);
     expect(effects.get('plain')).toBe(14);
     // `Cast: pre-0, post-0` names no spell, and the server builds a plain exit.
@@ -636,6 +845,186 @@ describe('the real realm data', () => {
     const route = graph!.route(roomId(8, 1797), roomId(1, 1), {});
     expect(route.blocked).toBe(false);
     expect(route.steps.length).toBeGreaterThan(0);
+  });
+
+  /*
+   * **The old man in the padded cell** (todo 00).
+   *
+   * 9/1259 is behind the one entrance to the Warped Asylum, and stepping
+   * through it casts `asylum`, which rolls a room in 9/1183–1206: twenty-four
+   * outcomes, and the plan cannot continue past it because nobody knows which.
+   * So the plan ends at the scatter and carries what the rest is expected to
+   * cost, which is what `scatterCosts` solves.
+   *
+   * The figure is checked against a second implementation below rather than
+   * remembered — and both were checked against 20,000 simulated plays of the
+   * asylum under the policy they imply, which averaged 10.007 moves from the
+   * Asylum Ward against the 10 they solve (2026-09-14).
+   */
+  it.runIf(available)('plans as far as the draw, and prices the rest of it', () => {
+    const route = graph!.route(roomId(2, 2568), roomId(9, 1259), {});
+    expect(route.blocked).toBe(false);
+    // The walk to the ward is real; the step through the door is the last one.
+    expect(route.steps.at(-1)).toMatchObject({
+      from: roomId(9, 1182),
+      to: roomId(9, 1259),
+      direction: 'w'
+    });
+    const drawn = route.steps.at(-1)!.scatter;
+    expect(drawn?.landing.name).toBe('asylum');
+    expect(drawn?.rooms).toBe(24);
+    expect(route.steps.filter((step) => step.scatter !== undefined)).toHaveLength(1);
+
+    /*
+     * The control: exact value iteration over the whole asylum block, room by
+     * room, with no compression at all — where `scatterCosts` solves a fixed
+     * point over the six *spells* using one sweep each, this walks all 108
+     * rooms and every move out of each. Two different arithmetics; one answer.
+     *
+     * **Climbing from zero rather than falling from infinity**, which is the
+     * one thing both have to get right: the mean over a landing set holding
+     * one unreachable room is infinite, so a pessimistic iteration never takes
+     * its first step and reports *no way* about a maze anybody can walk out of.
+     */
+    const block: RoomId[] = [];
+    for (let number = 1182; number <= 1290; number += 1) block.push(roomId(9, number));
+    const value = new Map<RoomId, number>(block.map((id) => [id, 0]));
+    const goal = roomId(9, 1259);
+    value.set(goal, 0);
+    const landingsOf = (landing: Landing): RoomId[] =>
+      landingRooms(landing).filter((id) => graph!.byId(id) !== undefined);
+    for (let round = 0; round < 2_000; round += 1) {
+      let moved = 0;
+      for (const id of block) {
+        if (id === goal) continue;
+        let best = Infinity;
+        for (const exit of graph!.byId(id)?.exits ?? []) {
+          const landing = exit.requirement?.landing;
+          if (landing !== undefined && exit.requirement?.spellEffect === 'scatters') {
+            const drawn = landingsOf(landing);
+            const total = drawn.reduce((sum, to) => sum + (value.get(to) ?? Infinity), 0);
+            best = Math.min(best, 1 + total / drawn.length);
+            continue;
+          }
+          best = Math.min(best, 1 + (value.get(roomId(exit.map, exit.room)) ?? Infinity));
+        }
+        for (const command of graph!.byId(id)?.commands ?? []) {
+          if (command.to === undefined) continue;
+          best = Math.min(best, 1 + (value.get(command.to) ?? Infinity));
+        }
+        moved = Math.max(moved, Math.abs(best - value.get(id)!));
+        value.set(id, best);
+      }
+      if (moved < 1e-12) break;
+    }
+    /*
+     * The ward's own value is the step through the door plus what the draw is
+     * worth, which is exactly what the route costs.
+     *
+     * Two decimals because that is the precision the router claims: it stops
+     * when a round moves less than `tuning.world.scatterTolerance`, and with a
+     * twenty-four-room draw the iteration is still a twenty-fourth from its
+     * limit when it does — about two thousandths of a move, against a figure
+     * shown to the reader as a whole number. The control above runs to the
+     * float's own floor and lands on ten exactly.
+     */
+    expect(value.get(roomId(9, 1182))).toBeCloseTo(1 + drawn!.moves, 2);
+    expect(drawn!.moves).toBeCloseTo(9, 2);
+  });
+
+  /*
+   * And from inside it, where the whole question is *which door*.
+   *
+   * Component 7 of the maze can reach a `cell north` door, which lands the
+   * character in the old man's own cell one time in nine — and the `asylum`
+   * door beside it, which re-rolls the whole maze. The router takes the one
+   * with the better odds because it priced both, which is the difference
+   * between solving a maze and wandering it.
+   */
+  it.runIf(available)('walks out of the maze it is standing in', () => {
+    for (const from of [roomId(9, 1183), roomId(9, 1204), roomId(9, 1190)]) {
+      const route = graph!.route(from, roomId(9, 1259), {});
+      expect(route.blocked).toBe(false);
+      expect(route.steps.at(-1)?.scatter?.landing.spell).toBeGreaterThan(0);
+      // Ten moves from anywhere inside, because every room in it can reach a
+      // door and every door re-rolls the same draw.
+      expect(route.cost).toBeCloseTo(10, 3);
+    }
+    // And the way *out*: the only plain way is the lever in the old man's own
+    // cell, so leaving is the same gamble with more walking after it.
+    const out = graph!.route(roomId(9, 1183), roomId(2, 2568), {});
+    expect(out.blocked).toBe(false);
+    expect(out.steps.at(-1)?.scatter?.landing.name).toBe('asylum');
+  });
+
+  /*
+   * **What the reader is shown is moves; what the router paid is cost.**
+   *
+   * The solve runs in the A*'s own units, so a lair in the maze prices into
+   * it — and all nine of the padded cells hold one. Against a character they
+   * cost 40% of the bar a pass, the priced figure is 19.7 where the walk is
+   * nine moves, and the chip says *about N more moves*. Two numbers, and the
+   * step carries the one it claims to.
+   */
+  it.runIf(available)('says the draw in moves, whatever the walk was priced at', () => {
+    const plain = graph!.route(roomId(2, 2568), roomId(9, 1259), {});
+    const priced = graph!.route(roomId(2, 2568), roomId(9, 1259), {
+      danger: (room) => (room.lair === undefined ? null : 0.4),
+      lairDamage: (room) => (room.lair === undefined ? null : 42)
+    });
+    expect(priced.cost).toBeGreaterThan(plain.cost);
+    expect(priced.steps.at(-1)!.scatter!.moves).toBeCloseTo(plain.steps.at(-1)!.scatter!.moves, 2);
+    expect(priced.steps.at(-1)!.scatter!.moves).toBeCloseTo(9, 2);
+  });
+
+  /*
+   * And nothing about the room, because the room is a draw.
+   *
+   * `to` on a scatter step is the *destination of the journey*, so every fact
+   * taken off it would describe a room the character is not walking into —
+   * and `stepCost` already says so in the price, charging nothing for what
+   * waits there. `AutoLight` reads `light`, `holdForTrap` reads `lairDamage`,
+   * `lairsAlong` reads `deadly`; all three acted on the old man's own cell
+   * before a step that does not reach it.
+   */
+  it.runIf(available)('carries no fact about the room a draw has not chosen', () => {
+    const route = graph!.route(roomId(2, 2568), roomId(9, 1259), {
+      danger: (room) => (room.lair === undefined ? null : 0.4),
+      lairDamage: (room) => (room.lair === undefined ? null : 42),
+      hazard: () => 0.3
+    });
+    const drawn = route.steps.at(-1)!;
+    expect(drawn.scatter).toBeDefined();
+    // 9/1259 is a lair, is dark (light -50) and would carry every one of these.
+    expect(graph!.get(9, 1259)?.lair).toBeDefined();
+    expect(drawn.danger).toBeUndefined();
+    expect(drawn.lairDamage).toBeUndefined();
+    expect(drawn.hazard).toBeUndefined();
+    expect(drawn.deadly).toBeUndefined();
+    expect(drawn.dark).toBe(false);
+    expect(drawn.light).toBeUndefined();
+    // And the step before it, which is a real room, still carries them.
+    expect(route.steps.at(-2)!.hazard).toBeGreaterThan(0);
+  });
+
+  /*
+   * A destination nothing reaches is still nothing reached.
+   *
+   * The solve climbs from zero, so a scatter with no way through rises by a
+   * step a round for ever — and a round ceiling would hand that back as though
+   * it were an expectation. Measured before the reachability gate went in:
+   * 17/81 to 14/8543, which no way in the realm joined, came back as a plan
+   * that walked into the Warped Asylum and waited.
+   *
+   * The destination moved to a Jail Cell when format 38 gave the router the
+   * scripted teleports it had been dropping and 14/8543 became reachable: the
+   * pair is incidental, the rule is not. A cell is a room the realm *puts* a
+   * character in, which is the shape of a place nothing walks to.
+   */
+  it.runIf(available)('refuses a draw that leads nowhere rather than pricing one', () => {
+    const route = graph!.route(roomId(17, 81), roomId(1, 42), {});
+    expect(route.blocked).toBe(true);
+    expect(route.steps).toHaveLength(0);
   });
 
   /*
@@ -1637,6 +2026,216 @@ describe('the levers that open an exit', () => {
   it('answers nothing for the other direction, and for a room with no lever', () => {
     expect(world().leversFor('1/1', 'w')).toEqual([]);
     expect(world().leversFor('1/9', 'e')).toEqual([]);
+  });
+
+  /*
+   * And a door the realm names a word for is not a wall — format 38.
+   *
+   * `buildRealm` writes `Requirement.actions` only for an exit that *states*
+   * `Needs N Actions`, and a `Door` never does, so the only place the two ends
+   * meet is the lever index. 28 of Paradigm's exits and 27 of stock's are
+   * priced past any character's reach and open to anybody who says `use
+   * crowbar`, `sit throne` or `ask shadow guard morukai` standing in front of
+   * them; every one was a wall until the price asked the index.
+   */
+  describe('a barrier a word opens', () => {
+    const barred = (leverRoom: string): WorldGraph =>
+      makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Pathway',
+          x: { w: { m: 1, r: 2, i: 'Door [1000 picklocks/strength]' }, e: { m: 1, r: 9 } },
+          ...(leverRoom === '1/1'
+            ? { cmd: [{ say: ['lift portcullis'], opens: { room: '1/1', direction: 'w' } }] }
+            : {})
+        },
+        { m: 1, r: 2, n: 'Beyond', x: {} },
+        {
+          m: 1,
+          r: 9,
+          n: 'Guardroom',
+          x: { w: { m: 1, r: 1 } },
+          ...(leverRoom === '1/9'
+            ? { cmd: [{ say: ['lift portcullis'], opens: { room: '1/1', direction: 'w' } }] }
+            : {})
+        }
+      ]);
+
+    it('prices it as the lever it is, and names no wall on the plan', () => {
+      const route = barred('1/1').route('1/1', '1/2', { packKnown: true });
+      expect(route.blocked).toBe(false);
+      expect(route.cost).toBeLessThan(tuning().world.wallCost);
+      expect(route.walls ?? []).toEqual([]);
+      expect(route.blocks ?? []).toEqual([]);
+    });
+
+    /*
+     * And a hidden exit whose lever wants an item the listed pack lacks is
+     * **pruned**, not walled — no phrase said in this room fixes that, so the
+     * price is read off the stated figure and never off the wall `openGates`
+     * puts in a pruned edge's place. Getting that backwards would have made
+     * every gate held open by the explain-a-refusal search look cheap.
+     */
+    it('does not let a lever cheapen an edge that is pruned, not walled', () => {
+      const graph = makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Passage',
+          x: {
+            w: {
+              m: 1,
+              r: 2,
+              i: 'Hidden/Needs 1 Actions, any order',
+              a: [{ say: ['lift talisman'], item: 815 }]
+            }
+          },
+          cmd: [{ say: ['lift talisman'], opens: { room: '1/1', direction: 'w' } }]
+        },
+        { m: 1, r: 2, n: 'Beyond', x: {} }
+      ]);
+      // The realm states the lever's item on the exit and the pack is listed
+      // without it, so `edgePenalty` prunes — and the lever, which is right
+      // here, does not undo that.
+      const pack = { packKnown: true, keys: [] };
+      expect(graph.leversFor('1/1', 'w')).toHaveLength(1);
+      expect(edgePenalty(graph.get(1, 1)!.exits[0]!.requirement, pack)).toBeNull();
+      const route = graph.route('1/1', '1/2', pack);
+      expect(route.blocked).toBe(true);
+      // And the refusal still names the talisman, rather than the gates-open
+      // search finding the same edge cheap and reporting something else.
+      expect(route.blocks).toEqual([
+        { kind: 'carry', at: '1/1', to: '1/2', name: 'Beyond', itemId: 815 }
+      ]);
+    });
+
+    /*
+     * The positive control for the case above, and it has to be built rather
+     * than found: a **class** gate is pruned for a reason no phrase touches,
+     * and the lever beside it wants nothing carried — so this is the one shape
+     * where reading the wall `openGates` substitutes for a refusal, instead of
+     * the price the realm states, changes an answer anybody can see.
+     *
+     * Both ways to the goal are shut, so the search runs with the gates held
+     * open and `blocksAlong` names the cheaper one. Priced off `walled`, the
+     * class gate costs the lever's thirty, its five-room corridor still comes
+     * in under a wall, and the refusal reads *you are the wrong class* about a
+     * door the character could have forced.
+     */
+    it('does not let a lever cheapen a class gate when the gates are held open', () => {
+      const corridor = (from: number, to: number): Record<string, unknown> => ({
+        m: 1,
+        r: from,
+        n: `Corridor ${from}`,
+        x: { e: { m: 1, r: to } }
+      });
+      const graph = makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Fork',
+          x: {
+            w: { m: 1, r: 10, i: 'Class: 3 OK, 0 NO' },
+            e: { m: 1, r: 20, i: 'Item: 191' }
+          },
+          cmd: [{ say: ['pull lever'], opens: { room: '1/1', direction: 'w' } }]
+        },
+        corridor(10, 11),
+        corridor(11, 12),
+        corridor(12, 13),
+        corridor(13, 14),
+        corridor(14, 99),
+        { m: 1, r: 20, n: 'Beyond the Rope', x: { e: { m: 1, r: 99 } } },
+        { m: 1, r: 99, n: 'Goal', x: {} }
+      ]);
+      // A class the west exit turns away, and a listed pack with no rope for
+      // the east one: both ways are pruned, so the gates are held open and
+      // the cheaper of the two is what the refusal names.
+      const route = graph.route('1/1', '1/99', { classId: 7, packKnown: true, keys: [] });
+      expect(route.blocked).toBe(true);
+      // The rope, one step away — not the class gate five rooms away, which
+      // the lever has no bearing on at all.
+      expect(route.blocks?.map((block) => block.kind)).toEqual(['carry']);
+    });
+
+    /*
+     * And the pack decides, as it does for a hidden exit's levers: `use
+     * crowbar` opens the warehouse door at 1/1104 and the server answers *You
+     * don't have crowbar to use!* without one. 92 of Paradigm's 314 levers and
+     * 91 of stock's 296 name an item. The three answers are the three states
+     * the pack can be in, and the **price and the plan read them together** —
+     * split in two, a door a listed pack could not open was charged the wall
+     * by one and reported as no wall by the other.
+     */
+    it('lets the pack decide, when the word needs something carried', () => {
+      const withItem = (): WorldGraph =>
+        makeWorld([
+          {
+            m: 1,
+            r: 1,
+            n: 'Warehouse Door',
+            x: { w: { m: 1, r: 2, i: 'Door [1000 picklocks/strength]' } },
+            cmd: [{ say: ['use crowbar'], opens: { room: '1/1', direction: 'w', item: 570 } }]
+          },
+          { m: 1, r: 2, n: 'Warehouse', x: {} }
+        ]);
+      const wall = tuning().world.wallCost;
+
+      const carried = withItem().route('1/1', '1/2', { packKnown: true, keys: [570] });
+      expect(carried.cost).toBeLessThan(wall);
+      expect(carried.walls ?? []).toEqual([]);
+
+      // Listed and lacking it is the wall again — priced and reported as one.
+      const lacking = withItem().route('1/1', '1/2', { packKnown: true, keys: [] });
+      expect(lacking.cost).toBeGreaterThan(wall);
+      expect(lacking.walls?.length).toBe(1);
+
+      // Nobody has looked is not *not carried*: discouraged, never walled.
+      const unlisted = withItem().route('1/1', '1/2', {});
+      expect(unlisted.cost).toBeLessThan(wall);
+      expect(unlisted.cost).toBeGreaterThan(carried.cost);
+      expect(unlisted.walls ?? []).toEqual([]);
+    });
+
+    /*
+     * And the plan's **headline** knows what the chip on its own row knows.
+     *
+     * A lever whose item the listed pack lacks is still a wall, so the block
+     * is raised — and `describeBlock` composed *needs 1000 picklocks; your
+     * picklocks are not known yet* from the four skill fields alone, while the
+     * chip beside it said *"use crowbar" here*. Two errands for one door.
+     */
+    it('names the word on the block, not only on the chip', () => {
+      const graph = makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Warehouse Door',
+          x: { w: { m: 1, r: 2, i: 'Door [1000 picklocks/strength]' } },
+          cmd: [{ say: ['use crowbar'], opens: { room: '1/1', direction: 'w', item: 570 } }]
+        },
+        { m: 1, r: 2, n: 'Warehouse', x: {} }
+      ]);
+      const route = graph.route('1/1', '1/2', { packKnown: true, keys: [] });
+      const wall = route.walls?.[0];
+      expect(wall?.kind).toBe('door');
+      expect(wall).toMatchObject({ opensBySaying: 'use crowbar' });
+      expect(describeBlock(wall!)).toContain('use crowbar');
+    });
+
+    /*
+     * A lever somewhere else leaves the wall standing, which is the settled
+     * answer and not an oversight: this planner does not plan the detour —
+     * `Walker.fetchLever` makes it when the server refuses the step, so a gate
+     * found open is found open and a lap pays for the errand once.
+     */
+    it('leaves it a wall when the word is said somewhere else', () => {
+      const route = barred('1/9').route('1/1', '1/2', { packKnown: true });
+      expect(route.blocked).toBe(false);
+      expect(route.cost).toBeGreaterThan(tuning().world.wallCost);
+      expect(route.walls?.length).toBe(1);
+    });
   });
 
   /* A room-script command that moves you is a portal, not a lever, and the two
@@ -2727,12 +3326,12 @@ describe('naming what blocked a route', () => {
       { kind: 'alignment', raw: 'Alignment: ??? to ???' },
       { kind: 'ability', raw: 'Ability: 152 w/value 1 to 1', abilityId: 152 },
       { kind: 'ability', raw: 'Ability: 0 w/value 0 to 0' },
-      { kind: 'cast', raw: 'Cast: pre-0, post-1257', castPost: 1257, spellEffect: 'relocates' },
+      { kind: 'cast', raw: 'Cast: pre-0, post-1257', castPost: 1257, spellEffect: 'scatters' },
       { kind: 'cast', raw: 'Cast: pre-0, post-702', castPost: 702, spellEffect: 'script' },
       { kind: 'cast', raw: 'Cast: pre-0, post-310', castPost: 310, spellEffect: 'plain' },
       { kind: 'cast', raw: 'Cast: pre-0, post-0' },
       { kind: 'spell', raw: 'Spell Trap: 905', spellId: 905, spellEffect: 'plain', damage: 16 },
-      { kind: 'spell', raw: 'Spell Trap: 1', spellId: 1, spellEffect: 'relocates' },
+      { kind: 'spell', raw: 'Spell Trap: 1', spellId: 1, spellEffect: 'scatters' },
       { kind: 'item', raw: 'Item: 191', keyId: 191 },
       { kind: 'item', raw: 'Item: 0' },
       // A lever that wants an item is the one hidden shape that can be a
@@ -2781,6 +3380,49 @@ describe('naming what blocked a route', () => {
       }
     }
   });
+
+  /*
+   * The third reading, and the one the plan's head is drawn from: a door
+   * priced as a wall rather than pruned. Asserted against the price itself,
+   * so a change to the grading cannot leave a walked wall unnamed.
+   */
+  it('edgeWall names exactly the doors edgePenalty prices as a wall', () => {
+    const requirements: Requirement[] = [
+      { kind: 'door', raw: 'Door' },
+      {
+        kind: 'door',
+        raw: 'Door [301 picklocks/strength]',
+        pickDifficulty: 301,
+        bashDifficulty: 301
+      },
+      { kind: 'door', raw: 'Door [any picklocks/strength]', pickDifficulty: 0, bashDifficulty: 0 },
+      { kind: 'key', raw: 'Key: 1', keyId: 1 },
+      { kind: 'key', raw: 'Key: 1 [or 81 picklocks]', keyId: 1, pickDifficulty: 81 },
+      { kind: 'level', raw: 'Level: 10 to 999', minLevel: 10, maxLevel: 999 }
+    ];
+    const travellers: Traveller[] = [
+      {},
+      { pickSkill: 0, strength: 50 },
+      { pickSkill: 400 },
+      { strength: 2000 },
+      { keys: [1], packKnown: true },
+      { keys: [], packKnown: true },
+      { level: 4 }
+    ];
+    for (const requirement of requirements) {
+      for (const traveller of travellers) {
+        const priced = edgePenalty(requirement, traveller);
+        const walled =
+          priced !== null &&
+          priced >= 100_000 &&
+          (requirement.kind === 'door' || requirement.kind === 'key');
+        expect(
+          edgeWall(requirement, traveller) !== null,
+          `${requirement.raw} / ${JSON.stringify(traveller)}`
+        ).toBe(walled);
+      }
+    }
+  });
 });
 
 describe('describeBlock', () => {
@@ -2810,6 +3452,17 @@ describe('describeBlock', () => {
       mine: 'Paladin',
       admits: 'Warlock'
     },
+    door: {
+      kind: 'door',
+      at: '1/1',
+      to: '1/2',
+      name: 'Massive Doors',
+      pickDifficulty: 81,
+      picklocks: 0,
+      strength: 50,
+      keyId: 593,
+      itemName: 'black serpent key'
+    },
     unreachable: { kind: 'unreachable' }
   };
 
@@ -2818,6 +3471,26 @@ describe('describeBlock', () => {
       expect(describeBlock(sample[kind]).length).toBeGreaterThan(0);
     });
   }
+
+  it('says every channel a door yields to, and only the skills the realm named', () => {
+    // `[or 81 picklocks]` says nothing about strength, so neither does this.
+    const keyed = describeBlock(sample.door);
+    expect(keyed).toContain('black serpent key or 81 picklocks');
+    expect(keyed).toContain('you have 0 picklocks');
+    expect(keyed).not.toContain('strength');
+    const both = describeBlock({
+      kind: 'door',
+      at: '1/1',
+      to: '1/2',
+      name: 'Vault',
+      pickDifficulty: 1000,
+      bashDifficulty: 1000,
+      picklocks: null,
+      strength: 40
+    });
+    expect(both).toContain('needs 1000 picklocks or 1000 strength');
+    expect(both).toContain('you have 40 strength, your picklocks is not known yet');
+  });
 
   it('says the lock is shut when the realm does not name a key', () => {
     expect(describeBlock({ kind: 'key', at: '1/1', to: '1/2', name: 'Vault' })).toContain('locked');
@@ -2834,6 +3507,70 @@ describe('describeBlock', () => {
       minLevel: 12
     });
     expect(said).toContain('not known');
+  });
+
+  /*
+   * The other half of the union: which kinds name an errand. A kind added to
+   * `RouteBlock` and not read here is a door the panel offers nothing about,
+   * which is the failure todo 07's tick was built to end.
+   */
+  it('names the item a block wants, and only where it states both halves', () => {
+    expect(blockItem(sample.door)).toEqual({ id: 593, name: 'black serpent key' });
+    expect(blockItem(sample.carry)).toEqual({ id: 191, name: 'rope and grapple' });
+    // A key by number alone is not an errand: the pack is counted by name.
+    expect(blockItem(sample.key)).toBeNull();
+    for (const kind of ['level', 'toll', 'born', 'unreachable'] as const) {
+      expect(blockItem(sample[kind]), kind).toBeNull();
+    }
+  });
+});
+
+describe('itemWanted', () => {
+  const route = (over: Partial<Route>): Route => ({
+    steps: [],
+    cost: 0,
+    blocked: false,
+    ...over
+  });
+  const door: RouteBlock = {
+    kind: 'door',
+    at: '1/1',
+    to: '1/2',
+    name: 'Massive Doors',
+    pickDifficulty: 81,
+    picklocks: 0,
+    strength: null,
+    keyId: 593,
+    itemName: 'black serpent key'
+  };
+  const raft = {
+    spell: 'drowning',
+    rooms: 4,
+    share: 0.2,
+    unread: false,
+    summons: false,
+    needs: [{ id: 41, name: 'log raft' }],
+    needsSpell: []
+  };
+
+  it('names what a plan crossing a keyed door wants, with no alternative to hang it on', () => {
+    // The reported case: the only way to the bank is through the lock, so
+    // there is no `carrying` route and the plan itself is the errand.
+    expect(itemWanted(route({ walls: [door] }))).toEqual({ id: 593, name: 'black serpent key' });
+  });
+
+  it('puts the door the walker stops at before the spell it merely walks past', () => {
+    expect(itemWanted(route({ walls: [door], hazards: [raft] }))?.name).toBe('black serpent key');
+  });
+
+  it('reads a hazard when nothing walls the way', () => {
+    expect(itemWanted(route({ hazards: [raft] }))).toEqual({ id: 41, name: 'log raft' });
+  });
+
+  it('asks for nothing on account of what a cheaper way needed', () => {
+    // `blocks` on a walkable plan is another route's errand, and that route is
+    // offered as `carrying` where there is one.
+    expect(itemWanted(route({ blocks: [door] }))).toBeNull();
   });
 });
 
@@ -2883,9 +3620,60 @@ describe('routing through room-script teleports', () => {
     expect(refused.blocks?.some((block) => block.kind === 'level')).toBe(true);
   });
 
-  it('never routes through a script whose conditions it cannot read', () => {
+  /*
+   * Format 38. Dropping the edge stranded 19,108 of Paradigm's 57,511 rooms
+   * and 3,277 of stock's 26,694 — whole regions whose only way in is a script
+   * — so a condition nothing can evaluate is a *price* here, as it is
+   * everywhere else in this router, and the realm's own words ride along for
+   * the person reading the chip.
+   */
+  it('prices a script whose conditions it cannot read, and never prunes it', () => {
     const graph = portalWorld({ say: ['go vortex'], to: '2/1', need: ['nomonsters'] });
-    expect(graph.route('1/1', '2/1').blocked).toBe(true);
+    const route = graph.route('1/1', '2/1');
+    expect(route.blocked).toBe(false);
+    const portal = route.steps.at(-1)!;
+    expect(portal.command).toBe('go vortex');
+    expect(portal.requirement?.unread).toEqual(['nomonsters']);
+    // Discouraged, not free: an ordinary two-step walk would cost 2.
+    expect(route.cost).toBeGreaterThan(60);
+  });
+
+  /*
+   * And the two halves are priced together, because one script states both:
+   * a level gate that lets this character through does not make `nomonsters`
+   * free, and a level gate that refuses is a refusal whatever else it says.
+   */
+  it('adds the unreadable price to the gate it can read, and still refuses on it', () => {
+    const both = { say: ['go vortex'], to: '2/1', need: ['minlevel 20', 'nomonsters'] };
+    const passed = portalWorld(both).route('1/1', '2/1', { level: 25 });
+    expect(passed.blocked).toBe(false);
+    expect(passed.cost).toBeGreaterThan(60);
+    expect(portalWorld(both).route('1/1', '2/1', { level: 10 }).blocked).toBe(true);
+  });
+
+  /*
+   * And a gate the *counters* answer is read rather than priced. The realm
+   * writes the landing per branch — `9/1291` goes to `9/1424` on `checkability
+   * 133 5` and names no room on the two branches below it — so a character the
+   * gate refuses is put somewhere the plan never named. Live 2026-09-15: rank
+   * 4, the Caves of Chaos, two maps away.
+   */
+  it('refuses a scripted way through whose quest counter this character fails', () => {
+    const quest = { say: ['go portal'], to: '2/1', need: ['checkability 133 5'] };
+    const walked = portalWorld(quest).route('1/1', '2/1', {
+      counters: { sums: { 133: 5 }, complete: true }
+    });
+    expect(walked.blocked).toBe(false);
+    expect(walked.steps.at(-1)!.requirement?.abilities).toEqual([{ id: 133, atLeast: 5 }]);
+    // The realm's own words are still on the step for the chip to state.
+    expect(walked.steps.at(-1)!.requirement?.unread).toEqual(['checkability 133 5']);
+
+    const refused = portalWorld(quest).route('1/1', '2/1', {
+      counters: { sums: { 133: 4 }, complete: true }
+    });
+    expect(refused.blocked).toBe(true);
+    // And nobody having read a listing is neither: priced as it always was.
+    expect(portalWorld(quest).route('1/1', '2/1').blocked).toBe(false);
   });
 
   it('ignores a teleport pointing outside the dataset', () => {
@@ -3732,8 +4520,105 @@ describe('what a room does to whoever stands in it prices the way through it', (
       'Beyond',
       'Keep'
     ]);
-    expect(route.otherWay?.blocks?.map((block) => block.kind)).toEqual(['key']);
+    // Its own crossing, on its own head — not what a cheaper way needed.
+    expect(route.otherWay?.walls?.map((block) => block.kind)).toEqual(['key']);
+    expect(route.otherWay?.blocks).toBeUndefined();
     expect(route.otherWay?.steps.some((step) => step.deadly === true)).toBe(false);
+  });
+
+  /*
+   * Reported 2026-09-13: Dragon's Teeth Hills to the Bank of Rhudaur planned
+   * eighty-six steps through `2/176`, whose south door reads `Key: 593 [or 81
+   * picklocks]`, against a character with 0 picklocks and no key — and said
+   * nothing until the walker stopped at the door. In Paradigm's data that
+   * door is Rhudaur's only entrance, so the plan was right to walk it and
+   * wrong to be silent about it.
+   */
+  it('names a door below the character on the plan, and says when there is no other way', () => {
+    const graph = makeWorld(
+      [
+        {
+          m: 1,
+          r: 1,
+          n: 'Rocky Valley, Massive Doors',
+          x: { s: { m: 1, r: 2, i: 'Key: 593 [or 81 picklocks]' } }
+        },
+        { m: 1, r: 2, n: 'Rhudaur, Massive Doors', x: { s: { m: 1, r: 3 } } },
+        { m: 1, r: 3, n: 'Bank of Rhudaur', x: {} }
+      ],
+      { items: [{ id: 593, n: 'black serpent key' }], mobs: [] },
+      30
+    );
+    const traveller: Traveller = { pickSkill: 0, strength: 50, keys: [], packKnown: true };
+    const route = graph.route(roomId(1, 1), roomId(1, 3), traveller, { alternatives: true });
+    expect(route.blocked).toBe(false);
+    expect(route.cost).toBeGreaterThanOrEqual(100_000);
+    expect(route.walls).toEqual([
+      {
+        kind: 'door',
+        at: '1/1',
+        to: '1/2',
+        name: 'Rhudaur, Massive Doors',
+        pickDifficulty: 81,
+        picklocks: 0,
+        strength: 50,
+        keyId: 593,
+        itemName: 'black serpent key'
+      }
+    ]);
+    expect(describeBlock(route.walls![0]!)).toBe(
+      'Rhudaur, Massive Doors is locked — needs black serpent key or 81 picklocks; you have 0 picklocks'
+    );
+    // The gates-open way is this way, so nothing cheaper is claimed to exist;
+    // and the way round was looked for and not found, rather than never asked.
+    expect(route.blocks).toBeUndefined();
+    expect(route.otherWay).toBeUndefined();
+    // With the skill it is a door like any other, and nothing is said.
+    const picker = graph.route(
+      roomId(1, 1),
+      roomId(1, 3),
+      { ...traveller, pickSkill: 400 },
+      { alternatives: true }
+    );
+    expect(picker.walls).toBeUndefined();
+    expect(picker.cost).toBeLessThan(1000);
+    // An unread sheet is priced as unable to force it, and said so — never as 0.
+    const unread = graph.route(roomId(1, 1), roomId(1, 3), { keys: [], packKnown: true });
+    expect(unread.walls?.[0]).toMatchObject({ kind: 'door', picklocks: null, strength: null });
+    expect(describeBlock(unread.walls![0]!)).toContain('your picklocks is not known yet');
+  });
+
+  it('looks for a way round a door it cannot force, avoiding the door and not the room beyond', () => {
+    const graph = makeWorld(
+      [
+        {
+          m: 1,
+          r: 1,
+          n: 'Gate',
+          x: { n: { m: 1, r: 2, i: 'Door [301 picklocks/strength]' }, e: { m: 1, r: 3 } }
+        },
+        { m: 1, r: 2, n: 'Hall', x: { n: { m: 1, r: 4 } } },
+        { m: 1, r: 3, n: 'Side Passage', x: { n: { m: 1, r: 5, i: 'Key: 12' } } },
+        { m: 1, r: 5, n: 'Beyond', x: { w: { m: 1, r: 2 } } },
+        { m: 1, r: 4, n: 'Keep', x: {} }
+      ],
+      { items: [{ id: 12, n: 'brass key' }], mobs: [] },
+      30
+    );
+    const traveller: Traveller = { pickSkill: 10, strength: 40, keys: [], packKnown: true };
+    const route = graph.route(roomId(1, 1), roomId(1, 4), traveller, { alternatives: true });
+    expect(route.steps.map((step) => step.name)).toEqual(['Hall', 'Keep']);
+    expect(route.walls?.map((block) => block.kind)).toEqual(['door']);
+    // The way round arrives in the Hall too: the door was avoided, not the room.
+    expect(route.otherWay?.steps.map((step) => step.name)).toEqual([
+      'Side Passage',
+      'Beyond',
+      'Hall',
+      'Keep'
+    ]);
+    expect(route.otherWay?.walls?.map((block) => block.kind)).toEqual(['key']);
+    // A loop's leg pays for no second search.
+    expect(graph.route(roomId(1, 1), roomId(1, 4), traveller).otherWay).toBeUndefined();
   });
 
   it('refuses a way round that is expected to kill you as well', () => {

@@ -41,6 +41,27 @@ export interface LoopStop {
   room: string;
   /** Seconds to stay before moving on, for a lair that needs time to repopulate. */
   linger?: number;
+  /**
+   * Seconds this room takes to make monsters again — its own clock.
+   *
+   * **Opt-in, and absent on every loop written by hand.** A loop the player
+   * drew is a list of places to walk in the order they wrote them, and nothing
+   * here changes that; a stop stating this is one the client built from a
+   * survey that knows the room's `Rooms.Delay` or its resident's `RegenTime`
+   * (`huntLoop`, `src/shared/hunting.ts`).
+   *
+   * What it buys is the difference between the rate the Hunting card promises
+   * and the rate the lap earns. The survey prices a filler lair on a slower
+   * clock as though it is entered only on the laps it is standing —
+   * `1,2,3,1,2,1,2,3` rather than room 3 every lap — and without a clock on
+   * the stop the runner walked the detour every lap regardless (todo 15).
+   *
+   * Measured in **elapsed time, from the moment the stop was last left
+   * cleared** (`dueStop`), never from a precomputed pattern: the pattern is
+   * the survey's estimate and the runner's job is to hold to it against what
+   * really happened — a fight that ran long, a retreat, a rest.
+   */
+  every?: number;
 }
 
 export interface Loop {
@@ -301,7 +322,12 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
     if (loop.stops.length !== other.stops.length) return false;
     return loop.stops.every((stop, at) => {
       const twin = other.stops[at];
-      return !!twin && stop.room === twin.room && (stop.linger ?? 0) === (twin.linger ?? 0);
+      return (
+        !!twin &&
+        stop.room === twin.room &&
+        (stop.linger ?? 0) === (twin.linger ?? 0) &&
+        (stop.every ?? 0) === (twin.every ?? 0)
+      );
     });
   });
 }
@@ -322,10 +348,21 @@ function asStops(value: unknown, limit?: number): LoopStop[] {
     const room = typeof record['room'] === 'string' ? record['room'].trim() : '';
     if (room.length === 0) continue;
     const linger = record['linger'];
+    const every = record['every'];
     stops.push({
       room,
       ...(typeof linger === 'number' && Number.isFinite(linger) && linger > 0
         ? { linger: Math.min(600, Math.round(linger)) }
+        : {}),
+      /*
+       * No ceiling, unlike `linger`: a linger is time the character stands
+       * still and 600 seconds of that is already absurd, where a clock is a
+       * fact about the room and the realm states some in hours (a boss's
+       * `RegenTime`). A stop nobody reaches within its clock is simply one the
+       * lap walks whenever nothing else is due.
+       */
+      ...(typeof every === 'number' && Number.isFinite(every) && every > 0
+        ? { every: Math.round(every) }
         : {})
     });
   }
@@ -362,6 +399,78 @@ export function nextStop(
       : { index: index + 1, forward: true };
   }
   return index <= 0 ? { index: 1, forward: true } : { index: index - 1, forward: false };
+}
+
+/**
+ * The next stop to walk to, given what each one's clock says.
+ *
+ * `nextStop` answers *where does the list go next*; this answers *which stop
+ * is worth walking to*, and it is the whole of todo 15. A lair with a slower
+ * clock than the ring around it is standing on only some of the laps, and the
+ * Hunting card already prices it that way — `1,2,3,1,2,1,2,3` rather than
+ * room 3 every lap. Walking the detour every lap regardless earns the detour's
+ * cost and nothing else, so the rate the card promised is not the rate the lap
+ * earns.
+ *
+ * **On elapsed time, never on a pattern.** The survey's `1,2,3,1,2` is an
+ * estimate made before anything happened; a fight that ran long, a retreat or
+ * a rest moves every clock it predicted. `cleared` is when each stop was last
+ * *left cleared* — the runner's own record — and this compares it against now.
+ *
+ * Three rules, in order:
+ *
+ * 1. **The first stop in walking order whose clock has come round**, starting
+ *    after the one the character is standing at. Walking order is `nextStop`'s
+ *    own, so a bounce loop still bounces and the shape of the lap is kept.
+ *    A stop with no clock is always due, which is why a loop written by hand
+ *    walks exactly as it always did: every stop is due, so the first candidate
+ *    is the ordinary next one.
+ * 2. **A stop the client has never cleared is due**, rather than guessed at.
+ *    Unknown is never the reassuring answer, and the guess here would be
+ *    *don't go*.
+ * 3. **Otherwise the one that comes round soonest.** Nothing being due is the
+ *    ordinary case on a short ring, and the answer is not to stand still (the
+ *    dwell at the stop already absorbs arriving early) nor to walk the next
+ *    stop in the list, which is exactly the detour being avoided.
+ *
+ * `lapped` is true when the walking order wrapped on the way to the chosen
+ * stop — the lap counter's own question, answered here because a skipped stop
+ * must not count as a visit and the scan is the only thing that knows which
+ * stops were passed over.
+ */
+export function dueStop(
+  loop: Loop,
+  index: number,
+  forward: boolean,
+  cleared: ReadonlyMap<string, number>,
+  now: number
+): { index: number; forward: boolean; lapped: boolean } {
+  let at = { index, forward };
+  let lapped = false;
+  let soonest: { index: number; forward: boolean; lapped: boolean; due: number } | null = null;
+  for (let step = 0; step < loop.stops.length; step += 1) {
+    const was = at.index;
+    const next = nextStop(loop, at.index, at.forward);
+    // The lap counter's own test, made once per step of the scan rather than
+    // once on the stop that happens to be chosen.
+    if ((loop.bounce && was === loop.stops.length - 1) || (!loop.bounce && next.index === 0)) {
+      lapped = true;
+    }
+    at = next;
+    const stop = loop.stops[at.index];
+    if (stop === undefined) continue;
+    if (stop.every === undefined) return { ...at, lapped };
+    const last = cleared.get(stop.room);
+    if (last === undefined) return { ...at, lapped };
+    const due = last + stop.every * 1000;
+    if (due <= now) return { ...at, lapped };
+    if (soonest === null || due < soonest.due) soonest = { ...at, lapped, due };
+  }
+  if (soonest !== null)
+    return { index: soonest.index, forward: soonest.forward, lapped: soonest.lapped };
+  // A loop with no stops at all: there is nowhere to go and the caller's own
+  // `reasonStopMissing` is what says so. Every other shape has answered above.
+  return { index, forward, lapped: false };
 }
 
 /*

@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { RealmSource } from './RealmSource';
 import { number, text } from './values';
 import type { ArchiveIdentity, ShippedWorld } from '../../shared/worlds';
-import { itemsInScripts, parseRoomScript } from './roomScript';
+import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from './roomScript';
 import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
 import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
@@ -83,8 +83,11 @@ import {
  * | 33 | **The realm's own clocks: a lair's respawn and a placed monster's.** `Rooms.Delay` was in every room row and read by nothing, so the client could price what a lair *costs* and never what it *pays*, and it sat a character down in a room that makes monsters every twenty seconds (todos 05 and 08). `BuiltRoom.dl` carries the column as the realm states it — minutes, except an Arena room and a negative figure are seconds (`Room.GetDelayInSeconds`), and GreaterMUD's regen adds thirty seconds to the elapsed time before comparing (`RegenSlot.cs:33`), so the reading lives in `src/shared/hunting.ts` behind the family. `BuiltMobRow.rt` is `Monsters.RegenTime` in hours, the clock a *placed* monster comes back on (`MobType.Regen * 3600`) — a boss's, never a lair's — todo 05 |
  * | 34 | **A spell's element.** `Spells.AttType` was in every spell row and read by nothing, so a lightning bolt could not be told from a fireball when the monster in front of the character resisted lightning; `BuiltSpell.at` carries the column as the realm states it and `WorldSpell.element` is `Spell.GetSpellAttackType`'s reading (0 cold, 1 hot, 2 stone, 3 lightning, 4 normal, 5 water, 6 poison), so `chooseAttackSpell` can take the monster's `Rlit` off the damage the way `Spell.CheckResistance` does — todo 09 |
  * | 35 | **Who a trainer takes, and what it charges.** `Shops.MinLVL`, `MaxLVL` and `ClassRest` were in every shop row and read by nothing, so a client that wanted to go and collect a level had no way to pick a room: the Ninja Training Room trains 1–10 and a level 30 Ninja walking to the obvious place is told *You have progressed too far*. 46 trainers in Paradigm, in bands that overlap heavily (21–50, 31–52, 41–54, 51–75), one class id per row where the row is restricted and 0 where it is not. And `markup` was written only where positive, which is right for a price and wrong for a *choice*: `Titan Trainer` (21–50) charges 6,000% and `Sixty Seven` (1–67) 1,200% for the same level, so the column decides which room to walk to — todo 18 |
+ * | 36 | **A monster's own clock survives a name that holds one row.** `BuiltMobRow.rt` (format 33) was the one per-row column with no counterpart on the fold, and `rw` is written only where a name holds several rows — so for a *uniquely named* monster, which is what a boss is, `Monsters.RegenTime` reached nothing: 305 of Paradigm's 381 stated clocks and 228 of stock's 311 were dropped on the floor, `WorldMob.regenHours` was declared and set by nobody, and todo 09's cycle weighting was inert for exactly the case it was written for. The Hunting card offered a two-room Graveyard loop at 128,862 exp/h because a 1,500-point Gravedigger on an hour's regeneration was averaged in whole, one of four equally likely rows coming back every thirty seconds. `BuiltMob.rt` is written only where every row of the name agrees, a row stating none voting `0`, so a clock is never invented for a lair row whose twin is a boss — todo 15 |
+ * | 37 | **A quest step you kill for.** `traverse` rooted only at `Monsters.GreetTXT` and `Rooms.CMD`, so a block reached by neither was built owning nothing: no place to go, nobody to ask, no word to say — a rank and a reward floating on the track. 37 of Paradigm's 218 quest-step blocks and 13 of stock's 95 were in that state, and **32 and 12 of them are a monster's death**. `Monsters.DeathSpell` is cast on the corpse and chains one link — the dread mystic's `dread mystic temp` ends (`EndCast`) in `dread mystic text`, whose `TextBlock` is 1417: *be at Phoenix rank 1, take the yellowed note, go to rank 2*. They are the chains' bosses, which is the whole point of them: reported as *the flag is given in a death message from dread mystic and that isn't shown anywhere*. `QuestStep.kill` carries the monster, the room is its `Summoned By`, and the death root is queued **after** the other two so a block the smuggler boss also greets you with stays a conversation |
+ * | 38 | **A lever the room's own script pulls, and the one behind a conversation.** A lever reaches the realm two ways and the converter read one: format 23 took the direction columns (`Action [on the N exit of room 1/1331]: pull lever`) and every `remoteaction` step in a text block was dropped as an unknown verb. `TextBlockPart` reads it as `remoteaction <room> <message> <ordinal> <exit>` — the room on the map the player is standing on, the exit by the server's own numbering, a `Door` opened outright and a `HiddenExit` performing its ordinal's action. 101 steps over 30 exits in Paradigm and 82 over 25 in stock, and **one** of those exits had a lever already: 68 of Paradigm's steps open an exit reading `Hidden/Needs N Actions` that states no action at all, and 27 open a door priced at 251 to 1,000 picklocks, which is a wall to everybody. The portcullis in 8/909 is lifted by saying `lift portcullis`, and the client had the words on the Room card with nothing joining them to the west exit they raise. Five more sit behind a monster's `GreetTXT` — the shadow guard who opens the door to Morukai, four stone sphinxes — where the phrase is `ask <monster> <word>` and **a reached block's lines are steps rather than `phrase:steps`**, which is what three of the four sphinxes turn on. `RoomCommand.opens` and `RemoteLever` gained the item the realm says must be carried (92 of Paradigm's 314 levers, 91 of stock's 296), because a door's own requirement is not where its lever is written and `use crowbar` is not a free lever |
  */
-export const REALM_FORMAT = 35;
+export const REALM_FORMAT = 38;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -187,6 +190,11 @@ export interface BuiltRealm {
     scripted: number;
     /** Rooms holding a lever — a direction column that is not an exit. */
     levered: number;
+    /**
+     * Levers dropped because several of the room's own commands answer to the
+     * phrase, so which one opens the exit is not a thing the data says.
+     */
+    ambiguousLevers: number;
     /** Action-gated exits whose every lever is pulled in the room they leave. */
     openableHere: number;
     items: number;
@@ -589,6 +597,26 @@ export interface BuiltMob {
   fol?: number;
   und?: 1;
   /**
+   * `Monsters.RegenTime`, hours — format 36.
+   *
+   * The clock is the one per-row column with no fold, and `rw` is written only
+   * where a name holds several rows, so for a *uniquely named* monster — which
+   * is what a boss is — it reached nothing: 305 of Paradigm's 381 stated
+   * clocks and 228 of stock's 311 were dropped, and the survey priced a
+   * 1,500-point Gravedigger on an hour's regeneration as though it came back
+   * with the skeletons around it.
+   *
+   * Not a span collapsed to its worst end like the magnitudes above, because
+   * a clock is not a magnitude: `0` means *on the room's own clock*, so
+   * `wild dog [0,0,1]` folded to its highest would price an ordinary lair row
+   * at one an hour. Written **only where every row of the name agrees**,
+   * silence counted as a voice — the rule `SlotLoreEntry` already follows for
+   * the realm's slot words. Disagreement states nothing rather than voting,
+   * and costs nothing: a name holding several rows carries `rw`, so a lair or
+   * a resident still resolves its own row outright.
+   */
+  rt?: number;
+  /**
    * What it drops, by item name, capped — format 12.
    *
    * The reverse of `BuiltItem.mobs`, which has always been built: that answers
@@ -770,6 +798,30 @@ export function parseExit(raw: unknown): BuiltExit | null {
  * becomes a confident number.
  */
 export const BLANK_AS_NUMBER = 8224;
+
+/**
+ * A monster's own regeneration clock in hours, or null where it has none —
+ * format 36.
+ *
+ * `Monsters.RegenTime` is **not** a clock on its own: `RegenSlot.Regenerate`
+ * consults `MobType.Regen` only down the `GameLimit != 0` branch
+ * (`RegenSlot.cs:69`), where the server counts the instances of that monster
+ * alive in the world and holds a killed one for `Regen * 3600` seconds. With
+ * `GameLimit == 0` the slot respawns on the room's own `GetDelayInSeconds()`
+ * and the column is never read (`RegenSlot.cs:39-54`). Five rows in the two
+ * shipped archives state a `RegenTime` the server ignores — stock's `minotaur`
+ * (48 hours, in 25 lairs on a five-minute delay) among them — and weighting
+ * their experience by a clock nothing runs would take those lairs off the
+ * card entirely.
+ *
+ * Read from the server's own source rather than guessed: `docs/greatermud/`.
+ */
+function ownClock(row: Record<string, unknown>): number | null {
+  const limit = number(row['GameLimit']);
+  if (limit === null || limit === 0 || limit === BLANK_AS_NUMBER) return null;
+  const hours = number(row['RegenTime']);
+  return hours === null || hours <= 0 || hours === BLANK_AS_NUMBER ? null : hours;
+}
 
 /**
  * How many `Abil-n` slots a row has.
@@ -1063,11 +1115,20 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * router is deliberately not given its thousand teleports yet.
    */
   const scripts = new Map<number, string>();
+  /*
+   * And what each block runs on next, which a room's script never needs and a
+   * monster's greeting always does: a greeting is a keyword table, and the
+   * lever behind it is a block or two further down the chain (`leversAsked`).
+   */
+  const chains = new Map<number, number>();
   for (const row of source.table('TBInfo')?.rows ?? []) {
     const id = number(row['Number']);
     // A `TBInfo` action is stored with trailing NULs; they are padding, not text.
     const action = text(row['Action']).replaceAll('\u0000', '').trim();
-    if (id !== null && action.length > 0) scripts.set(id, action);
+    if (id === null) continue;
+    if (action.length > 0) scripts.set(id, action);
+    const linkTo = number(row['LinkTo']);
+    if (linkTo !== null && linkTo > 0) chains.set(id, linkTo);
   }
   // Where a script's `cast` lands, for the phrases whose only movement is a
   // spell (format 29). Read here, once, because the spell index is built
@@ -1174,7 +1235,85 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     if (delay !== null && delay !== 0 && delay !== BLANK_AS_NUMBER) room['dl'] = delay;
     if (row['Placed'] && row['Placed'] !== '') room['placed'] = row['Placed'];
 
-    drafts.push({ room, cmd: number(row['CMD']) });
+    /*
+     * And the levers this room's own script pulls — the same fact the
+     * direction columns state, in the spelling `leversInScript` reads. Read
+     * here rather than beside `parseRoomScript` below because both joins are
+     * made from this one list and neither can be made while the rows are
+     * still being read: the exit a lever opens is usually another row's.
+     *
+     * The script names the room alone and the server resolves it on the map
+     * the player is standing on, which is this room's — so the map is filled
+     * in from here and never from the script.
+     */
+    const script = number(row['CMD']);
+    for (const lever of leversInScript(script === null ? '' : (scripts.get(script) ?? ''))) {
+      levers.push({
+        in: { map, room: roomNumber },
+        at: { map, room: lever.room ?? roomNumber },
+        direction: lever.direction,
+        say: lever.say,
+        ...(lever.item === undefined ? {} : { item: lever.item }),
+        ...(lever.index === undefined ? {} : { index: lever.index })
+      });
+      if (lever.item !== undefined) neededItems.add(lever.item);
+    }
+
+    drafts.push({ room, cmd: script });
+  }
+
+  /*
+   * And the levers behind a conversation — format 38's second half.
+   *
+   * A monster's greeting reaches a script like any other and five of them
+   * (identically in both databases) end in a `remoteaction`: the shadow guard
+   * who opens the door to Morukai, and four stone sphinxes who open the way up
+   * out of the room they sit in. See `leversAsked` for why the join is safe.
+   *
+   * **Only where the realm places the monster in the very room the step
+   * names.** `remoteaction` states a room number and the server resolves it on
+   * the map the player is standing on, so the map has to come from somewhere:
+   * `Summoned By` is the realm's own list of where this monster is put, and a
+   * placement whose room number the step names is the room the asking happens
+   * in. Every placement that matches is kept, because the server's rule is
+   * literally *this number, on your map* — a monster standing at 12/1920 and
+   * 5/1920 opens whichever of the two the player is in.
+   */
+  for (const row of source.table('Monsters')?.rows ?? []) {
+    const greet = number(row['GreetTXT']);
+    const who = text(row['Name']).trim();
+    if (greet === null || greet <= 0 || who.length === 0) continue;
+    const asked = leversAsked(greet, who, (id) => {
+      const action = scripts.get(id);
+      const linkTo = chains.get(id) ?? 0;
+      /*
+       * A block with **no action at all** is still a link in the chain: 1435,
+       * between the shadow guard's keyword table and the `remoteaction` that
+       * opens the door, holds nothing but a `LinkTo`. Reading it as absent
+       * ends the walk one block short of every lever there is.
+       */
+      return action === undefined && linkTo === 0 ? undefined : { action: action ?? '', linkTo };
+    });
+    if (asked.length === 0) continue;
+
+    const places: Array<{ map: number; room: number }> = [];
+    for (const match of text(row['Summoned By']).matchAll(/(\d+)\s*\/\s*(\d+)/g)) {
+      places.push({ map: Number(match[1]), room: Number(match[2]) });
+    }
+    for (const lever of asked) {
+      for (const place of places) {
+        if (place.room !== lever.room) continue;
+        levers.push({
+          in: place,
+          at: { map: place.map, room: place.room },
+          direction: lever.direction,
+          say: lever.say,
+          ...(lever.item === undefined ? {} : { item: lever.item }),
+          ...(lever.index === undefined ? {} : { index: lever.index })
+        });
+        if (lever.item !== undefined) neededItems.add(lever.item);
+      }
+    }
   }
 
   if (placed === 0) {
@@ -1227,7 +1366,31 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    */
   const byExit = new Map<string, Lever[]>();
   const byRoom = new Map<string, Lever[]>();
+  /*
+   * **The same lever stated twice is one lever.** The realm says it in two
+   * columns (`12/2231` holds `Action#2 [on the E exit of room 12/2227]: push
+   * onyx` in both its `E` and its `D` cell) and in a column *and* the room's
+   * script (`8/560`'s `D` cell and its `turn wheel` line are the same wheel on
+   * the same north exit). Kept as two, a lever counts twice against the
+   * realm's own `Needs N Actions`, which is the test that decides whether an
+   * exit can be opened where it stands — so the duplicate would quietly shut
+   * a passage the realm says is openable.
+   *
+   * Identified by everything about it, so two levers that differ anywhere —
+   * the exit, the phrases, the item, the order — stay two.
+   */
+  const seenLevers = new Set<string>();
   for (const lever of levers) {
+    const identity = JSON.stringify([
+      lever.in,
+      lever.at,
+      lever.direction,
+      lever.say,
+      lever.item ?? null,
+      lever.index ?? null
+    ]);
+    if (seenLevers.has(identity)) continue;
+    seenLevers.add(identity);
     const exitKey = `${lever.at.map}/${lever.at.room}:${lever.direction}`;
     const roomKey = `${lever.in.map}/${lever.in.room}`;
     (byExit.get(exitKey) ?? byExit.set(exitKey, []).get(exitKey)!).push(lever);
@@ -1240,6 +1403,8 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const lines: string[] = [];
   let scripted = 0;
   let levered = 0;
+  /** Levers whose phrase several of the room's own commands answer to. */
+  let ambiguousLevers = 0;
   let openableHere = 0;
   for (const { room, cmd } of drafts) {
     const action = cmd === null ? undefined : scripts.get(cmd);
@@ -1262,10 +1427,35 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
      */
     const mine = byRoom.get(here) ?? [];
     for (const lever of mine) {
-      answers.push({
-        say: lever.say,
-        opens: { room: `${lever.at.map}/${lever.at.room}`, direction: lever.direction }
-      });
+      const opens = {
+        room: `${lever.at.map}/${lever.at.room}`,
+        direction: lever.direction,
+        ...(lever.item === undefined ? {} : { item: lever.item })
+      };
+      /*
+       * A lever out of this room's own script is already one of the words the
+       * script answers, and it is the *same* word: `parseRoomScript` has it
+       * with its guards, this has what it opens. So the two halves go on one
+       * command rather than printing `lift portcullis` twice, once with a
+       * condition and once with a destination.
+       *
+       * **Matched on every spelling, and only where exactly one command has
+       * it.** The two sides group differently — `parseRoomScript` folds lines
+       * with identical steps, this folds lines that pull the same lever — so
+       * a first phrase is not an identity, and two commands answering to one
+       * word is an ambiguity rather than a licence for the last writer to
+       * win. Neither shipped realm holds one; a player's own database is
+       * converted through this same function.
+       */
+      const sharing = answers.filter((answer) =>
+        answer.say.some((phrase) => lever.say.includes(phrase))
+      );
+      if (sharing.length === 1 && sharing[0]!.opens === undefined) sharing[0]!.opens = opens;
+      else if (sharing.length === 0) answers.push({ say: lever.say, opens });
+      // Said out loud, because a refusal is a decision and a decision nobody
+      // can read did not happen. Neither shipped realm produces one; a
+      // player's own database is converted through this same function.
+      else ambiguousLevers += 1;
     }
     if (answers.length > 0) room['cmd'] = answers;
     if (mine.length > 0) levered += 1;
@@ -1356,6 +1546,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
       withInstructions,
       scripted,
       levered,
+      ambiguousLevers,
       openableHere,
       items: items.length,
       mobs: mobs.length,
@@ -1731,6 +1922,12 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       rgn?: number;
       fol?: number;
       und?: 1;
+      /**
+       * Format 36: every clock the rows state, a row stating none counted as
+       * `0` so that silence is a voice. Gathered rather than reduced for the
+       * reason `BuiltMob.rt` gives — one value means the name agrees.
+       */
+      rts: Set<number>;
       /** Format 18: gathered rather than reduced, for the reason `ty` states. */
       types: Set<number>;
       dmg?: number;
@@ -1802,6 +1999,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       how,
       costs,
       ids: id === null ? [] : [id],
+      rts: new Set<number>(),
       types: new Set<number>(),
       casts: new Set<number>(),
       profiles: new Map<string, MobProfile>(),
@@ -1828,6 +2026,12 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
     entry.rgn = worse(entry.rgn, number(row['HPRegen']));
     entry.fol = worse(entry.fol, number(row['Follow%']));
     if (number(row['Undead']) === 1) entry.und = 1;
+    /*
+     * Format 36. Not folded through `worse`: a clock is not a magnitude, and a
+     * row that states none is on the room's own clock rather than absent from
+     * the question — so it votes `0` and a disagreeing name states nothing.
+     */
+    entry.rts.add(ownClock(row) ?? 0);
     /*
      * Format 18. `ty` is gathered because nothing reduces it — see the field.
      * `dmg` takes the worst, like `ac` and `dr`; `chl` takes the worst too,
@@ -1877,7 +2081,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       own.mr = stated('MagicRes');
       own.xp = stated('EXP');
       own.rgn = stated('HPRegen');
-      own.rt = stated('RegenTime');
+      // Only where `GameLimit` makes it one — see `ownClock`.
+      own.rt = ownClock(row) ?? undefined;
       own.fol = stated('Follow%');
       own.dmg = stated('AvgDmg');
       own.chl = stated('CharmLVL');
@@ -1936,6 +2141,12 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       if (span.rgn !== undefined) mob.rgn = span.rgn;
       if (span.fol !== undefined) mob.fol = span.fol;
       if (span.und !== undefined) mob.und = span.und;
+      // Format 36. One value is the whole name agreeing; `0` is every row
+      // saying *on the room's clock*, which is not a clock of its own.
+      if (span.rts.size === 1) {
+        const only = [...span.rts][0]!;
+        if (only > 0) mob.rt = only;
+      }
       // Format 18. Sorted so a file written twice from one database matches.
       if (span.types.size > 0) mob.ty = [...span.types].sort((a, b) => a - b);
       if (span.dmg !== undefined) mob.dmg = span.dmg;

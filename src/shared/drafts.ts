@@ -16,12 +16,15 @@ import {
   ENGAGE_POLICIES,
   RETREAT_STRATEGIES,
   normalizeRewrites,
+  normalizeHuntingAutomation,
   normalizeTrain,
   type RewritesUiConfig,
   type BlessingTarget,
   type DensityPreference,
   type EngagePolicy,
   type RetreatStrategy,
+  normalizeMobPriorities,
+  type MobPriority,
   POTION_WHENS,
   type PotionRule,
   type PotionWhen,
@@ -31,15 +34,14 @@ import {
 } from './config';
 import { DENOMINATIONS, type Denomination } from './character';
 import {
-  ALERT_WATCHES,
-  NOTICE_CHANNELS,
+  DEFAULT_ALERT_DEBOUNCE_SECONDS,
+  isAlertEvent,
   SEVERITIES,
   type AlertRule,
   type Severity
 } from './notifications';
 
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
-const ALERT_KEYS = new Set<string>([...NOTICE_CHANNELS, ...ALERT_WATCHES]);
 import { asLoops, type Loop } from './loops';
 
 /**
@@ -131,6 +133,16 @@ export interface ServerDraft {
    * `Server.database`.
    */
   database: string;
+  /**
+   * How this realm's own monsters are ranked, under every character's list.
+   *
+   * On the realm for the reason the loops are: it names monsters by the names
+   * *this realm's* data spells, so it means nothing on another one, and every
+   * character playing here wants the same answer. Merged rather than replaced
+   * — a character's row for a monster wins and the rest of this list still
+   * applies. See `Server.mobPriority` and `mergeMobPriorities`.
+   */
+  mobPriority: MobPriority[];
 }
 
 /**
@@ -210,6 +222,7 @@ export interface GlobalDraft {
     party: ProfileDraft['party'];
     health: ProfileDraft['health'];
     movement: ProfileDraft['movement'];
+    hunting: ProfileDraft['hunting'];
     train: ProfileDraft['train'];
     spells: {
       /** Derive the round spell and the cures from the book. See `SpellsConfig`. */
@@ -383,6 +396,8 @@ export interface ProfileDraft {
     maxFightCost: number;
     refreshRounds: number;
     avoid: string[];
+    /** The player's own ranking of the realm's monsters. See `CombatConfig`. */
+    mobPriority: MobPriority[];
     maxTargetHealth: number;
     minMobs: number;
     maxMonsterExperience: number;
@@ -434,6 +449,11 @@ export interface ProfileDraft {
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
     collectKeys: boolean;
   };
+  /**
+   * Going hunting on its own — `automation.hunting`. See
+   * `HuntingAutomationConfig`.
+   */
+  hunting: { enabled: boolean; radius: number };
   /** Spending character points on the stat screen — `automation.train`. See `TrainConfig`. */
   train: {
     stats: boolean;
@@ -532,11 +552,10 @@ export interface ProfileDraft {
    * and the rail already remembers which cards each of them keeps.
    */
   alerts: {
-    /** What the desktop is asked to say when the window is not in front. */
-    desktop: { enabled: boolean; whileFocused: boolean };
     /**
      * The player's own rows, tried in order, and the only thing that decides
-     * what is alerted (todo 02). See `AlertRule`.
+     * what is alerted — on the card and outside the window alike. See
+     * `AlertRule`.
      */
     rules: AlertRule[];
   };
@@ -652,7 +671,11 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     // Bounded like a character's, and for the same reason: this crossed the
     // IPC boundary, so it is parsed rather than trusted.
     loops: asLoops(value['loops'], LOOP_LIMITS),
-    database: text(value['database']).slice(0, 400)
+    database: text(value['database']).slice(0, 400),
+    // Parsed rather than trusted, like the loops: this crossed the IPC
+    // boundary. `normalizeMobPriorities` is the same coercion the config file
+    // goes through, so a row means one thing whichever door it arrived at.
+    mobPriority: normalizeMobPriorities(value['mobPriority'])
   };
 }
 
@@ -717,7 +740,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const search = isRecord(value['search']) ? value['search'] : {};
   const banking = isRecord(value['banking']) ? value['banking'] : {};
   const alerts = isRecord(value['alerts']) ? value['alerts'] : {};
-  const desktopAlerts = isRecord(alerts['desktop']) ? alerts['desktop'] : {};
   const remotes = isRecord(value['remotes']) ? value['remotes'] : {};
   const afk = isRecord(value['afk']) ? value['afk'] : {};
 
@@ -795,6 +817,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // look every round would spend most of a fight looking.
       refreshRounds: Math.min(20, Math.max(0, Math.trunc(Number(combat['refreshRounds']) || 0))),
       avoid: words(combat['avoid'], 64),
+      mobPriority: normalizeMobPriorities(combat['mobPriority']),
       maxTargetHealth: Math.max(0, Math.round(Number(combat['maxTargetHealth']) || 0)),
       minMobs: Math.max(0, Math.min(99, Math.round(Number(combat['minMobs']) || 0))),
       maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0))
@@ -894,6 +917,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
           ? DEFAULT_CONFIG.automation.movement.collectKeys
           : movement['collectKeys'] === true
     },
+    hunting: normalizeHuntingAutomation(value['hunting']),
     // The options file's own reading: a figure is a whole number, 0 to 999.
     train: normalizeTrain(value['train']),
     loot: {
@@ -985,12 +1009,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       invokeItems: spells['invokeItems'] === true
     },
     alerts: {
-      desktop: {
-        // On unless the file says otherwise: a notification feature nobody
-        // finds is one that was never built.
-        enabled: desktopAlerts['enabled'] !== false,
-        whileFocused: desktopAlerts['whileFocused'] === true
-      },
       /*
        * The player's own rows, parsed at the boundary like everything else
        * here (todo 29). A row whose `on` the client does not know is dropped
@@ -1002,7 +1020,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         ? alerts['rules'].slice(0, 64).flatMap((entry): AlertRule[] => {
             if (!isRecord(entry)) return [];
             const on = text(entry['on']).trim().toLowerCase();
-            if (!ALERT_KEYS.has(on)) return [];
+            if (!isAlertEvent(on)) return [];
             const notify = entry['notify'] === true;
             const level = text(entry['level']).trim();
             return [
@@ -1017,7 +1035,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
                 side: text(entry['side']).trim() === 'above' ? 'above' : 'below',
                 value: Math.max(0, Number(entry['value']) || 0),
                 percent: entry['percent'] !== false,
-                name: text(entry['name']).slice(0, 60).trim()
+                name: text(entry['name']).slice(0, 60).trim(),
+                quietSeconds: Math.max(
+                  0,
+                  Math.round(Number(entry['quietSeconds'] ?? DEFAULT_ALERT_DEBOUNCE_SECONDS) || 0)
+                )
               }
             ];
           })
@@ -1159,6 +1181,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       party: asIf.party,
       health: asIf.health,
       movement: asIf.movement,
+      hunting: asIf.hunting,
       train: asIf.train,
       afk: asIf.afk,
       spells: {

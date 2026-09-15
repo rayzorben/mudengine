@@ -34,7 +34,18 @@ const named = (name: string) =>
   mobNameCandidates(name)
     .map((candidate) => rows[candidate])
     .find((row) => row !== undefined);
-const world = { mobAt: named, mobAsPrinted: named } as unknown as WorldGraph;
+/*
+ * And `mob` is the exact one — no modifier undone — because it is what says a
+ * leading word *is* a modifier: `answersTo` drops it only where the realm
+ * knows the shorter name and not the longer. The classifier asks the same
+ * accessor, and a lore that filed a sentence by a rule the classifier does not
+ * share would file it where the classifier cannot read it.
+ */
+const world = {
+  mobAt: named,
+  mobAsPrinted: named,
+  mob: (name: string) => rows[name.trim().toLowerCase()]
+} as unknown as WorldGraph;
 
 let dir: string;
 let file: string;
@@ -210,8 +221,8 @@ describe('how a monster dies', () => {
     lore.observeDeath?.('mutant', 'The mutant sighs softy, and dies!', 9);
     expect(said).toHaveLength(1);
     expect(said[0]).toContain('mutant');
-    expect(lore.deathOf?.('The mutant sighs softy, and dies!')).toBe('mutant');
-    expect(lore.deathOf?.('The mutant growls.')).toBeNull();
+    expect(lore.deathOf?.('The mutant sighs softy, and dies!')).toEqual(['mutant']);
+    expect(lore.deathOf?.('The mutant growls.')).toEqual([]);
 
     realm.flush();
     const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
@@ -221,11 +232,72 @@ describe('how a monster dies', () => {
     });
 
     const again = store().forRealm('gmud.sqlite', undefined);
-    expect(again.deathOf?.('The mutant sighs softy, and dies!')).toBe('mutant');
+    expect(again.deathOf?.('The mutant sighs softy, and dies!')).toEqual(['mutant']);
     // Another realm learned nothing.
     expect(
       store().forRealm('paradigm.sqlite', undefined).deathOf?.('The mutant sighs softy, and dies!')
-    ).toBeNull();
+    ).toEqual([]);
+  });
+
+  /*
+   * The sentence is the monster **type**'s (`MobType.DeathMessage.Line3`) and
+   * the room hangs a per-instance modifier on the name it prints. Filed under
+   * that spelling, the one sentence four monsters of a row share resolved to
+   * whichever of them died last — and the classifier reads a single answer as
+   * *the* monster that died. Live, 2026-09-14: the large dark monk died, the
+   * sentence named the small one, the small one left the room and the corpse
+   * stayed in it.
+   */
+  it('files the sentence under the realm’s own row, not the room’s spelling', () => {
+    const realm = store();
+    const lore = realm.forRealm('gmud.sqlite', world);
+    lore.observeDeath?.('thin giant rat', 'The giant rat squeals, and dies.', 5);
+    expect(lore.deathOf?.('The giant rat squeals, and dies.')).toEqual(['giant rat']);
+
+    realm.flush();
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(Object.keys(saved.deaths[realmKey('gmud.sqlite')])).toEqual(['giant rat']);
+  });
+
+  /* `giant rat king` is a row of its own, so its leading words are no modifier. */
+  it('leaves a name the realm gives its own row alone', () => {
+    const lore = store().forRealm('gmud.sqlite', world);
+    lore.observeDeath?.('giant rat king', 'The rat king shrieks, and dies.', 5);
+    expect(lore.deathOf?.('The rat king shrieks, and dies.')).toEqual(['giant rat king']);
+  });
+
+  /* And what a client filed under the room's spelling before this goes with
+     the first kill that files the row — it says nothing the row does not. */
+  it('drops an entry already filed under a modifier of the row', () => {
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        v: 1,
+        realms: {},
+        deaths: {
+          [realmKey('gmud.sqlite')]: {
+            'thin giant rat': { text: 'The giant rat squeals, and dies.', at: 1 }
+          }
+        }
+      })
+    );
+    const realm = store();
+    const lore = realm.forRealm('gmud.sqlite', world);
+    lore.observeDeath?.('fat giant rat', 'The giant rat squeals, and dies.', 5);
+    expect(lore.deathOf?.('The giant rat squeals, and dies.')).toEqual(['giant rat']);
+
+    realm.flush();
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(Object.keys(saved.deaths[realmKey('gmud.sqlite')])).toEqual(['giant rat']);
+  });
+
+  /* Two rows may share one record, and an answer naming one of them is a
+     guess. The room settles which, or nothing does. */
+  it('answers with every monster a sentence was learned for', () => {
+    const lore = store().forRealm('gmud.sqlite', world);
+    lore.observeDeath?.('giant rat', 'The rodent expires.', 5);
+    lore.observeDeath?.('cocoon', 'The rodent expires.', 6);
+    expect(lore.deathOf?.('The rodent expires.')).toEqual(['giant rat', 'cocoon']);
   });
 });
 

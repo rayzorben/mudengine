@@ -22,6 +22,24 @@
  * line — is sent as configured, because the server's own refusal is a better
  * failure than a client that silently heals nobody. See `spellTargeting`.
  *
+ * ## Which spell, when the player would rather not choose
+ *
+ * One configured spell is the wrong answer at one end of the bar or the other
+ * (todo 01, 2026-09-13): at 145/150 a character carrying *major healing*
+ * spends a major heal's mana to mend five points, and at 90/150 one carrying
+ * *minor healing* never gets ahead of the damage. Under
+ * `automation.spells.autoChoose` — the same switch the round spell is derived
+ * by — the heal is chosen per cast against the **deficit**, the ceiling less
+ * what the bar holds: `chooseHealSpell`, the cheapest cast expected to reach
+ * it, else the one that mends most.
+ *
+ * **A derivation that cannot answer falls back to the configured spell**, and
+ * says so once. This is where the heal deliberately differs from the round
+ * spell, which is simply not cast when the choice refuses: a fight lost to a
+ * slower spell is a fight, and a heal not cast is a death. A member whose own
+ * client has never answered `@health` is the ordinary case of it — a
+ * percentage cannot say how many hit points a heal must cover.
+ *
  * ## The pair, not the threshold
  *
  * `healBelow` starts the healing and `healTo` stops it. One cast at 50% that
@@ -59,6 +77,9 @@ import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { castsBare, resolveSpell, spellCost, spellTargeting } from '../../shared/spellcraft';
 import { canPayFor } from './mana';
+import { chooseHealSpell, type HealAim, type HealChoice } from '../../shared/spellchoice';
+import { prowessSheetOf } from '../../shared/verdict';
+import type { RealmFamily } from '../../shared/realm';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 
@@ -77,6 +98,8 @@ export class AutoHeal {
    * strength of the last one.
    */
   private healing = new Set<string>();
+  /** What was last said about a derived choice, per aim, so a change is said once. */
+  private saidChoice = new Map<HealAim, string>();
 
   constructor(
     private config: SpellsConfig,
@@ -91,7 +114,20 @@ export class AutoHeal {
      * new question would be another callback threaded from `SessionManager`.
      * See `resolveSpell`.
      */
-    private readonly realmSpell: (name: string) => WorldSpell | null = () => null
+    private readonly realmSpell: (name: string) => WorldSpell | null = () => null,
+    /** Where a derived choice is said (todo 01). */
+    private readonly events: { notice?(message: string): void } = {},
+    /**
+     * The character's own side of the casting arithmetic, read at the point of
+     * use like `AutoCombat`'s: the world arrives with `useRealm` and the class
+     * is not known until a stat sheet has been read. It decides `castOdds`,
+     * which is how often a cast works at all.
+     */
+    private readonly realmClass: () => {
+      combat: number | null;
+      magery: number | null;
+      family: RealmFamily | null;
+    } = () => ({ combat: null, magery: null, family: null })
   ) {}
 
   configure(config: SpellsConfig, enabled: boolean): void {
@@ -102,6 +138,7 @@ export class AutoHeal {
   reset(): void {
     this.lastCastAt.clear();
     this.healing.clear();
+    this.saidChoice.clear();
   }
 
   onCharacter(state: CharacterState): void {
@@ -109,21 +146,41 @@ export class AutoHeal {
     if (state.phase !== 'in-game' || !this.hasMana(state)) return;
 
     const self = this.config.heal.trim();
-    if (self.length > 0) {
+    if (self.length > 0 || this.config.autoChoose) {
       const fraction = this.selfFraction(state);
       if (this.wants(SELF, fraction, state.inCombat)) {
-        this.cast(self, null, state, t('automation.heal.reasonSelf'));
-        return;
+        const { hp, hpMax } = state.vitals;
+        const spell = this.spellFor(state, 'self', this.deficit(hp, hpMax), self);
+        if (spell.length > 0) {
+          this.cast(spell, null, state, t('automation.heal.reasonSelf'));
+          return;
+        }
       }
     }
 
     const party = this.config.healPartyWith.trim();
-    if (!this.config.healParty || party.length === 0) return;
+    if (!this.config.healParty || (party.length === 0 && !this.config.autoChoose)) return;
     for (const member of state.party.members) {
       if (member.health === null || state.name === member.name) continue;
       if (!this.wants(member.name.toLowerCase(), member.health, state.inCombat)) continue;
+      /*
+       * The percentage is enough to decide *whether* to heal and not enough to
+       * decide *which*: 30% of 4,434 and 30% of 62 are the same bar. Only a
+       * member whose own client has answered `@health` states the pair, and
+       * without it the configured spell is cast — said once.
+       */
+      const deficit =
+        member.vitals === null ? null : this.deficit(member.vitals.hp, member.vitals.hpMax);
+      const spell = this.spellFor(state, 'party', deficit, party);
+      /*
+       * On to the next member rather than out of the loop: whether a heal can
+       * be *chosen* is per member — one whose client answered `@health` states
+       * the figures and one who has not does not — so the first that cannot be
+       * healed must not stand in front of one that can.
+       */
+      if (spell.length === 0) continue;
       this.cast(
-        party,
+        spell,
         member.name,
         state,
         t('automation.heal.reasonParty', {
@@ -133,6 +190,102 @@ export class AutoHeal {
       );
       return;
     }
+  }
+
+  /**
+   * Hit points wanted back: the ceiling the healing runs to, less what the bar
+   * holds. Null while either figure is unread, which is *unknown* and never 0.
+   *
+   * `healTo: 0` states no ceiling — it is the single cast at the threshold —
+   * so the bar's own top is what the cast aims at, which is the most any one
+   * spell could usefully mend.
+   */
+  private deficit(hp: number | null, hpMax: number | null): number | null {
+    if (hp === null || hpMax === null || hpMax <= 0) return null;
+    const { healTo } = this.config;
+    const ceiling = healTo > 0 ? Math.min(1, healTo) : 1;
+    return Math.max(0, Math.ceil(ceiling * hpMax) - hp);
+  }
+
+  /**
+   * The spell to cast: the book's own answer to this deficit under
+   * *Auto Choose Best Spell*, else what the player configured.
+   *
+   * Every way the derivation can decline ends at the configured spell rather
+   * than at nothing — see the header. A deficit nothing has stated declines
+   * for the same reason a refusal does: the choice is made *against* that
+   * figure, and without it there is no question to answer.
+   */
+  private spellFor(
+    state: CharacterState,
+    aim: HealAim,
+    deficit: number | null,
+    configured: string
+  ): string {
+    if (!this.config.autoChoose) return configured;
+    if (deficit === null) {
+      this.sayOnce(aim, 'no-figures', () =>
+        aim === 'party' ? t('automation.heal.noFiguresParty') : t('automation.heal.noFiguresSelf')
+      );
+      return configured;
+    }
+    const { combat, magery, family } = this.realmClass();
+    const choice = chooseHealSpell(
+      state.spellbook === null
+        ? { book: null }
+        : {
+            book: state.spellbook,
+            realm: this.realmSpell,
+            level: state.progress.level,
+            mana: state.vitals.mana,
+            deficit,
+            aim,
+            sheet: prowessSheetOf(state, { combat, magery }),
+            family
+          }
+    );
+    if (choice.chosen === null) {
+      this.sayOnce(aim, `refused:${choice.refusal}`, () =>
+        configured.length > 0
+          ? t('automation.heal.noChoice', { spell: configured })
+          : t('automation.heal.noChoiceNoSpell')
+      );
+      return configured;
+    }
+    this.sayChoice(aim, choice, deficit);
+    return choice.chosen.spell.name;
+  }
+
+  /** The derivation, said when it changes — the round spell's own rule. */
+  private sayChoice(aim: HealAim, choice: HealChoice, deficit: number): void {
+    const chosen = choice.chosen;
+    if (chosen === null) return;
+    this.sayOnce(aim, `${chosen.spell.name}|${choice.why}`, () => {
+      const params = {
+        spell: chosen.spell.name,
+        min: chosen.min,
+        max: chosen.max,
+        expected: Math.round(chosen.expected),
+        cost: chosen.cost ?? '?',
+        deficit
+      };
+      return choice.why === 'covers'
+        ? t('automation.heal.choseCovers', params)
+        : t('automation.heal.choseMost', params);
+    });
+  }
+
+  /**
+   * One sentence per aim per situation.
+   *
+   * The message is built only where it will be said: the deficit moves with
+   * every blow, so a *covers* line rebuilt per status line would format a
+   * string a hundred times a fight to throw it away.
+   */
+  private sayOnce(aim: HealAim, key: string, message: () => string): void {
+    if (this.saidChoice.get(aim) === key) return;
+    this.saidChoice.set(aim, key);
+    this.events.notice?.(message());
   }
 
   /** This character's health as a fraction of maximum, or null while unknown. */

@@ -596,6 +596,20 @@ export class FightTracker {
       return false;
     });
     const stillHere = occupants.some((who) => mobKey(who.name) === killed);
+    /*
+     * Whether what left is what this character is fighting.
+     *
+     * `diedNamed` exists for the kill this character did *not* land, so the
+     * two are routinely different — and clearing the target on somebody
+     * else's kill loses the only thing that can attribute this character's
+     * own. Live, 2026-09-14: one of four dark monks was taken out of the room
+     * by a sentence, the target went with it, and the experience line that
+     * followed a real kill two lines later had nothing to name — so the
+     * monster the character had actually killed stayed in the room for the
+     * rest of the session and auto-combat went on choosing its corpse.
+     */
+    const wasTarget = mobKey(s.combat.target ?? '') === killed;
+    const keepsTarget = !wasTarget || stillHere;
     return {
       ...s,
       room: { ...s.room, occupants },
@@ -612,8 +626,8 @@ export class FightTracker {
         ...s.combat,
         // A namesake still standing keeps the target and the bar: the fight
         // with it is the same fight, and `aa` switches to it by itself.
-        target: stillHere && mobKey(s.combat.target ?? '') === killed ? s.combat.target : null,
-        health: stillHere && mobKey(s.combat.target ?? '') === killed ? s.combat.health : null,
+        target: keepsTarget ? s.combat.target : null,
+        health: keepsTarget ? s.combat.health : null,
         attackers: stillHere
           ? s.combat.attackers
           : s.combat.attackers.filter((name) => mobKey(name) !== killed)
