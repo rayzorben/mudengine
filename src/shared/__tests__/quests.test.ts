@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  asksHere,
+  packHolds,
   questBars,
   questExperience,
   questLevel,
@@ -8,6 +10,7 @@ import {
   stepDone,
   stepsDone,
   type Quest,
+  type QuestDoer,
   type QuestGate,
   type QuestReward,
   type QuestStep
@@ -416,5 +419,129 @@ describe('what a character cannot do', () => {
   it('never bars on alignment, whose gate is a number and whose fact is a word', () => {
     const good = quest([step({ to: 1, needs: [{ kind: 'alignment', atMost: -51 }] })]);
     expect(questBars(good, paladin, START)).toEqual([]);
+  });
+});
+
+/*
+ * What the things standing in the room can be asked — reported as *add buttons
+ * for mobs in room, `ask Morukai phoenix`, `ask Morukai components`, if and
+ * only if the requirements are met*. Morukai answers four words across four
+ * ranks of one chain, so the counter is the gate that makes this one chip
+ * rather than a menu of three refusals.
+ */
+describe('what the room’s occupants can be asked', () => {
+  const MORUKAI: Quest = {
+    id: 133,
+    name: 'PhoenixQuest',
+    steps: [
+      {
+        block: 1440,
+        who: 'Morukai',
+        say: ['phoenix', 'prophecy', 'orfeo'],
+        needs: [{ kind: 'ability', id: 133, atLeast: 4, atMost: 4 }],
+        takes: [],
+        gives: [],
+        from: 4,
+        to: 5
+      },
+      {
+        block: 1448,
+        who: 'Morukai',
+        say: ['components'],
+        needs: [
+          { kind: 'ability', id: 133, atLeast: 5, atMost: 5 },
+          { kind: 'item', id: 966, name: 'acid gland' },
+          { kind: 'item', id: 995, name: 'cave roots' }
+        ],
+        takes: [],
+        gives: [],
+        from: 5,
+        to: 6
+      }
+    ]
+  };
+  const anybody: QuestDoer = { className: null, race: null, level: null, counters: null };
+  const at = (rank: number): QuestDoer => ({
+    ...anybody,
+    counters: { sums: { 133: rank }, complete: true, at: 1 }
+  });
+
+  it('offers only the word this rank is for', () => {
+    const asks = asksHere([MORUKAI], ['Morukai'], at(4), null, []);
+    expect(asks.map((ask) => ask.say)).toEqual(['phoenix']);
+    expect(asks[0]).toMatchObject({ who: 'Morukai', quest: 'PhoenixQuest', counter: 133, to: 5 });
+  });
+
+  it('moves on with the rank', () => {
+    expect(asksHere([MORUKAI], ['Morukai'], at(5), null, [966, 995]).map((a) => a.say)).toEqual([
+      'components'
+    ]);
+  });
+
+  it('offers nothing about a rank that is behind this character', () => {
+    expect(asksHere([MORUKAI], ['Morukai'], at(6), null, [])).toEqual([]);
+  });
+
+  /*
+   * The rule that keeps this reachable at all: a realm with no `abil` states
+   * no counter, and a client that refused on unknown would draw this on
+   * GreaterMUD after a command the player may never send, and nowhere else.
+   */
+  it('offers every word when nothing has stated the counter', () => {
+    const asks = asksHere([MORUKAI], ['Morukai'], anybody, null, null);
+    expect(asks.map((ask) => ask.say)).toEqual(['phoenix', 'components']);
+    // And says nothing about items, because nobody has listed the pack.
+    expect(asks[1]?.wants).toBeUndefined();
+  });
+
+  /* A watched ask is main's too, and stands in where no listing has been read. */
+  it('takes the rank this session watched where the realm has counted nothing', () => {
+    expect(
+      asksHere([MORUKAI], ['Morukai'], anybody, { 133: { to: 5, at: 1 } }, null).map((a) => a.say)
+    ).toEqual(['components']);
+  });
+
+  /*
+   * A blocked exit is still an exit. What a step wants is an errand — and the
+   * client holds, on that very item, where to go and get one (format 39).
+   */
+  it('names what a listed pack is missing rather than dropping the chip', () => {
+    const asks = asksHere([MORUKAI], ['Morukai'], at(5), null, [966]);
+    expect(asks[0]?.wants).toEqual(['cave roots']);
+  });
+
+  /*
+   * The other end of the same question, which the Quest card's ticks read:
+   * what a step already has. Three answers, and the third is the whole rule —
+   * a pack nobody has listed is neither carrying it nor not carrying it.
+   */
+  it('answers what a listed pack holds, and refuses to answer for an unlisted one', () => {
+    expect(packHolds([966, 995], 966)).toBe(true);
+    expect(packHolds([995], 966)).toBe(false);
+    expect(packHolds([], 966)).toBe(false);
+    expect(packHolds(null, 966)).toBeNull();
+  });
+
+  it('says nothing about a monster that is not standing here', () => {
+    expect(asksHere([MORUKAI], ['giant rat'], at(4), null, [])).toEqual([]);
+  });
+
+  /* The room's own word for the name is what the server will match. */
+  it('spells the asker the way the room listed it', () => {
+    expect(asksHere([MORUKAI], ['morukai'], at(4), null, [])[0]?.who).toBe('morukai');
+  });
+
+  /* What sinks a quest to the bottom of the Quest card keeps a chip off this one. */
+  it('offers nothing this character is shut out of', () => {
+    const gated: Quest = {
+      ...MORUKAI,
+      steps: [{ ...MORUKAI.steps[0]!, needs: [{ kind: 'class', id: 1, name: 'Warrior' }] }]
+    };
+    const mage = { ...anybody, className: 'Mage' };
+    expect(asksHere([gated], ['Morukai'], mage, null, [])).toEqual([]);
+    // And an unknown class bars nothing: unknown is never the reassuring answer.
+    expect(asksHere([gated], ['Morukai'], anybody, null, []).map((a) => a.say)).toEqual([
+      'phoenix'
+    ]);
   });
 });

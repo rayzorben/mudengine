@@ -26,7 +26,8 @@ import { t } from '../app/i18n';
 import { describeObstacle } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
-import type { Quest, QuestSource, QuestStep } from '../../shared/quests';
+import { itemsBrought } from '../../shared/quests';
+import type { Quest, QuestErrand, QuestSource, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
   type AbilityGate,
@@ -46,9 +47,13 @@ import {
   type RoomId,
   type WorldExit,
   type WorldItem,
+  type ItemHandover,
+  type ApproachGate,
+  type ApproachItem,
   type WorldLookup,
   type BankChoice,
   type ShopPlace,
+  type BuyingPlace,
   type MobPlaces,
   type MobSpawn,
   type RequirementAction,
@@ -58,6 +63,7 @@ import {
   type WorldShopItem,
   hazardAvoided,
   type RouteHazard,
+  type RouteInvocation,
   type RouteScatter,
   type Landing,
   landingRooms,
@@ -396,6 +402,20 @@ interface SearchResult {
    * failed pass with `useDraws` already on it is simply true again.
    */
   drawsAhead: boolean;
+  /**
+   * Whether a room some item teleports into was left **unreached**. Only
+   * meaningful on a failed pass, where it is the whole of whether asking again
+   * with the pack enabled could possibly help.
+   *
+   * The reasoning is the one that makes the second search affordable: a failed
+   * pass has already exhausted everything the character can reach, so if a
+   * landing room is among it then everything beyond that landing was explored
+   * too — and an edge into a room the search already settled cannot open a way
+   * to a goal it did not find. Re-asking is worth it exactly when some landing
+   * sits outside what was reached, which for a random unroutable pair is
+   * almost never and for the Catacombs is always.
+   */
+  landingsAhead: boolean;
 }
 
 /**
@@ -506,6 +526,27 @@ export function edgeWall(
   if (!requirement || (requirement.kind !== 'door' && requirement.kind !== 'key')) return null;
   const priced = edgePenalty(requirement, traveller);
   return priced !== null && priced >= tuning().world.wallCost ? requirement : null;
+}
+
+/**
+ * The one item an edge demands be carried, or null where it demands none.
+ *
+ * Two of the realm's columns state one, and from *is this thing in the pack*
+ * they are the same fact: `Key: 1124` is a lock and `Item: 191` a hidden
+ * exit's own action, which is `Requirement.keyId`'s own reading one layer up.
+ * A hidden exit states it on the action rather than on the requirement, so
+ * both are looked at, the requirement first.
+ *
+ * One, and the first: an exit wanting two items is a shape neither shipped
+ * realm writes, and inventing an answer for it is the guess this file refuses.
+ */
+function itemDemanded(requirement: Requirement | null): number | null {
+  if (requirement === null) return null;
+  if (requirement.keyId !== undefined) return requirement.keyId;
+  for (const action of requirement.actions ?? []) {
+    if (action.item !== undefined) return action.item;
+  }
+  return null;
 }
 
 /**
@@ -660,6 +701,29 @@ function actionItemMissing(requirement: Requirement, traveller: Traveller): numb
     if (act.item !== undefined && !traveller.keys?.includes(act.item)) return act.item;
   }
   return null;
+}
+
+/**
+ * What a counter is worth stopping at — lower is better, and nothing else.
+ *
+ * `detour + dearerSteps × log2(100 + markup)`: the steps of going out of the
+ * way, plus what the price is worth in steps of going out of the way.
+ *
+ * **A logarithm, because only the ratio is stated.** The realm's base figure
+ * belongs to the item and is identical at every counter that stocks it, so
+ * between two of them `(100 + markup)` *is* the price, in whatever unit the
+ * base is written in — a unit the client has settled it must not pretend is
+ * copper (`ShopFace`). Taking its logarithm makes the gap between two counters
+ * exactly the number of doublings between their prices, which is a real
+ * quantity, and stops Paradigm's 32,760% shop from being ranked three hundred
+ * maps' worth of walking behind its 100% one.
+ *
+ * The constant term that leaves in every rank is the point of writing it this
+ * way: it is the same for every candidate, so it cancels in the ordering and
+ * the figure stays independent of which counters happen to be in the list.
+ */
+function buyingRank(place: BuyingPlace, dearerSteps: number): number {
+  return place.detour + dearerSteps * Math.log2(100 + place.markup);
 }
 
 /**
@@ -1391,6 +1455,60 @@ export class WorldGraph {
   private droppers: Map<string, string[]> | null = null;
   /** Item id -> the shops that stock it, built with the first join. */
   private stockists: Map<number, string[]> | null = null;
+  /**
+   * Item id -> the **rooms** whose counter stocks it, built on the first ask.
+   *
+   * `stockists` above answers by name because that is what `WorldItem.shops`
+   * holds and what a card prints. A name is not somewhere to walk to — `Boat
+   * Launch` is one shop row standing in two rooms — so choosing where to buy
+   * needs the rooms, and re-deriving them per ask is the scan over 57,511
+   * rooms this file refuses everywhere else.
+   */
+  private stocking: Map<number, WorldRoom[]> | null = null;
+  /**
+   * Every way *into* each room, with the item it demands — `approachItems`.
+   *
+   * Backwards, because the question is *what stands between the realm and this
+   * room* and the exits are all written the other way. Built once on the first
+   * question (66ms over Paradigm's 138,771 edges) and null until then, like
+   * the two above.
+   */
+  private waysIn: Map<RoomId, Array<{ from: RoomId | null; item: number | null }>> | null = null;
+  /**
+   * The items that are themselves a way through, as edges — built once.
+   *
+   * An item that teleports is an edge from **everywhere** to one room, which
+   * is why it is a flat list rather than a map keyed by where it is used:
+   * `WorldItem.lands` is a fixed address and drinking the potion works
+   * wherever the character is standing. The exit objects are shared across
+   * every search and never mutated, like the portal table beside them.
+   */
+  private landings: ReadonlyArray<PortalExit> | null = null;
+  /**
+   * Every room any landing can reach, ignoring the traveller — built once.
+   *
+   * A **superset**, deliberately: it is asked only to rule the second search
+   * out, so it must never be smaller than the truth.
+   *
+   * `landingsAhead` alone cannot tell the Catacombs — where the landing does
+   * reach the goal — from the other stranded pockets where it never could, so
+   * without this a blocked route to any of them paid a full extra A* to
+   * discover there had never been a way. **A narrow guard, measured**: the
+   * union covers 51,994 of Paradigm's 57,511 rooms, so it rules out the ~5,500
+   * in other pockets and nothing else. Worth its one cached sweep because the
+   * search it skips is the exhaustive kind — a blocked route walks everything
+   * the character can reach — and not worth mistaking for a saving on the
+   * ordinary path, which it does not touch.
+   */
+  private landingReachable: ReadonlySet<RoomId> | null = null;
+  /**
+   * What each of those edges spends, keyed by the edge — see `buildRoute`.
+   *
+   * Everything but `at`, which is the one part that is not a property of the
+   * item: the edge is shared across every room it could be used in, and where
+   * it *was* used is the step's own fact.
+   */
+  private readonly spends = new Map<PortalExit, Omit<RouteInvocation, 'at'>>();
   /**
    * Every item name the realm has, for recognising one in a line of text.
    * Empty before v11, where the console recognised only the ~100 items some
@@ -2223,6 +2341,163 @@ export class WorldGraph {
   }
 
   /**
+   * Where to buy a thing on the way to somewhere — best first (2026-09-16).
+   *
+   * Reported: a character in the Alchemist's Hut, asked to fetch a `log raft`
+   * for the Silver River, was told *nowhere to buy log raft: 2 rooms hold a
+   * shop called Boat Launch* — while standing on a route that walks **through**
+   * one of the two. Three separate mistakes met there, and this answers all
+   * three: the client ranked shops it could only address by **name**, priced
+   * that name at infinity the moment it stood in two rooms, and then asked
+   * `shopPlace` to resolve it and was refused for the ambiguity it had created.
+   *
+   * **The detour is the quantity.** Not the distance from here, which is what
+   * this replaced: with the character's real pack, the nearest raft counter by
+   * distance is unreachable altogether and the two that are reachable sit 47
+   * and 318 steps off the way. What a person asking where to stop for petrol
+   * wants is how far off the road it is, and that is
+   * `here → counter → there` less `here → there`, priced by this traveller like
+   * every other plan main makes. Zero for a counter the route already passes.
+   *
+   * **The way on is walked carrying what was bought**, which is the whole point
+   * of the errand: the raft is being fetched *because* it quietens the river,
+   * so pricing the second leg without it would rank every counter by a journey
+   * nobody is going to take. `holding` is that traveller.
+   *
+   * **Price breaks the tie and never more than that** — see
+   * `tuning.supplies.dearerSteps`. A counter the realm places nowhere reachable
+   * is left out rather than ranked last: there is no walk to it to price.
+   *
+   * `to` is null for the supply list's own errand, which has no destination —
+   * then the trip *is* the detour and this ranks by what it costs to get there.
+   */
+  buyingPlaces(item: number, from: RoomId, to: RoomId | null, traveller: Traveller): BuyingPlace[] {
+    const candidates = this.stockRooms(item);
+    if (candidates.length === 0) return [];
+    const wanted = new Set(candidates.map((room) => roomId(room.map, room.room)));
+    const head = this.sweepTo(from, wanted, traveller);
+    /*
+     * One sweep backwards from the destination answers both halves at once:
+     * what each counter costs to leave from, and — by asking about `from` in
+     * the same sweep — the journey the detour is measured against. Two Dijkstras
+     * in total, whatever the realm holds counters for, rather than a route per
+     * candidate.
+     */
+    const back =
+      to === null
+        ? null
+        : this.sweepBack(
+            new Map([[to, 0]]),
+            new Set([...wanted, from]),
+            this.holding(traveller, item),
+            true
+          );
+    /*
+     * The journey the detour is measured against. Undefined is a destination
+     * nothing reaches from here, which is not this question's to answer and not
+     * a reason to say the thing is sold nowhere: the trip to the counter is
+     * then the whole of what stopping costs, exactly as when there is no
+     * destination at all.
+     */
+    const base = back?.get(from);
+    const places: BuyingPlace[] = [];
+    for (const room of candidates) {
+      const id = roomId(room.map, room.room);
+      const reach = head.get(id);
+      // Nothing the router can walk leads there, so there is no detour to
+      // state. Left out rather than ranked last: a figure would be a fiction.
+      if (reach === undefined) continue;
+      const shop = room.shop === undefined ? undefined : this.shops.get(room.shop);
+      if (shop === undefined) continue;
+      let detour = reach.cost;
+      if (back !== null && base !== undefined) {
+        const tail = back.get(id);
+        // Reachable, but the journey cannot go on from it. Left out for the
+        // same reason: stopping here would end the trip rather than delay it.
+        if (tail === undefined) continue;
+        detour = reach.cost + tail - base;
+      }
+      places.push({
+        map: room.map,
+        room: room.room,
+        roomName: room.name,
+        shop: shop.name,
+        markup: shop.markup ?? 0,
+        /*
+         * Never negative, and the two legs are deliberately priced on
+         * *different* graphs: the way there without the thing, the way on with
+         * it. Carrying it can only ever make a step cheaper, so the way there
+         * costs at least what it would carrying it, and that plus the way on is
+         * at least the whole journey carrying it — which is the baseline. A
+         * rounded zero is the counter the route already walks through.
+         */
+        detour: Math.max(0, Math.round(detour)),
+        moves: reach.moves
+      });
+    }
+    const dearer = tuning().supplies.dearerSteps;
+    return places.sort(
+      (a, b) =>
+        buyingRank(a, dearer) - buyingRank(b, dearer) ||
+        a.moves - b.moves ||
+        a.map - b.map ||
+        a.room - b.room
+    );
+  }
+
+  /**
+   * Item id -> the rooms whose counter stocks it, built once.
+   *
+   * By **id**, like `stockedBy` beside it and for the same reason: a shop
+   * stocks rows, and the realm repeats item names across rows.
+   */
+  private stockRooms(item: number): readonly WorldRoom[] {
+    if (this.stocking === null) {
+      const index = new Map<number, WorldRoom[]>();
+      for (const room of this.rooms.values()) {
+        if (room.shop === undefined) continue;
+        const shop = this.shops.get(room.shop);
+        if (shop === undefined) continue;
+        // A shelf may list one row twice; the room is still one place to go.
+        const seen = new Set<number>();
+        for (const line of shop.items) {
+          if (seen.has(line.id)) continue;
+          seen.add(line.id);
+          const held = index.get(line.id);
+          if (held === undefined) index.set(line.id, [room]);
+          else held.push(room);
+        }
+      }
+      this.stocking = index;
+    }
+    return this.stocking.get(item) ?? [];
+  }
+
+  /**
+   * This traveller, with one more thing in the pack.
+   *
+   * `carrying` above switches off **every** hazard an item could quieten,
+   * because it is asking what the whole kit would buy. This is the narrower
+   * question — the character is about to hold *this* row and nothing else new —
+   * so the item joins `keys`, which opens the doors it is a key to, and the
+   * hazards it stops go quiet through the same `hazardAvoided` join the router
+   * uses everywhere. Nothing else about the traveller moves.
+   */
+  private holding(traveller: Traveller, item: number): Traveller {
+    const keys = [...(traveller.keys ?? []), item];
+    const priced = traveller.hazard;
+    if (priced === undefined) return { ...traveller, keys };
+    return {
+      ...traveller,
+      keys,
+      hazard: (room) => {
+        const hazard = this.hazardOf(room);
+        return hazard !== null && hazardAvoided(hazard, keys) ? null : priced(room);
+      }
+    };
+  }
+
+  /**
    * Where the realm spawns a monster, grouped by the name of the room.
    *
    * The reverse of the two columns the world file has always carried and only
@@ -2786,7 +3061,7 @@ export class WorldGraph {
       mobs,
       items: best(
         [...this.itemsByName.values()].map((item) => [item.name.toLowerCase(), item] as const)
-      ),
+      ).map((item) => this.placingHandovers(item)),
       spells: this.searchSpells(query, limit),
       /*
        * Two closed vocabularies of thirteen and fifteen, so the same ranking
@@ -2795,6 +3070,30 @@ export class WorldGraph {
       races: best(this.races.map((race) => [race.name.toLowerCase(), race] as const)),
       classes: best(this.classes.map((entry) => [entry.name.toLowerCase(), entry] as const)),
       classNames: this.classNames()
+    };
+  }
+
+  /**
+   * An item with each of its handovers' rooms named — format 39.
+   *
+   * The join `shopPlaces` and `QuestStep.place` are: the file carries the
+   * `map/room` because that is what the realm states, and `9/146` is not
+   * somewhere anybody can picture. Made here rather than at load, because the
+   * rooms arrive line by line *after* the header the items are in.
+   *
+   * A copy, never a write into the cached row — the map holds one object per
+   * item and every lookup shares it. Untouched where the realm names no
+   * handover, which is the great majority, so this costs nothing per query.
+   */
+  private placingHandovers(item: WorldItem): WorldItem {
+    if (item.from === undefined || item.from.length === 0) return item;
+    return {
+      ...item,
+      from: item.from.map((handover) => {
+        if (handover.room === undefined || handover.place !== undefined) return handover;
+        const name = this.rooms.get(handover.room as RoomId)?.name.trim();
+        return name === undefined || name.length === 0 ? handover : { ...handover, place: name };
+      })
     };
   }
 
@@ -2891,6 +3190,24 @@ export class WorldGraph {
           const item: WorldItem = { id, name: String(record['n'] ?? '') };
           if (Array.isArray(record['shops'])) item.shops = record['shops'].map(String);
           if (Array.isArray(record['mobs'])) item.mobs = record['mobs'].map(String);
+          // Format 39. Absent before it, and absent for the great majority
+          // after — a script hands over 46 of the stock realm's items.
+          const from = readHandovers(record['from']);
+          if (from.length > 0) item.from = from;
+          // Where using it puts you — format 40, and a way into somewhere for
+          // `approachItems`. A handful of items per realm.
+          const lands = String(record['lands'] ?? '').trim();
+          if (lands.length > 0) item.lands = lands as RoomId;
+          // And where using it works — format 41. Absent is *wherever you
+          // stand*; a pre-41 file says nothing, which reads the same and is
+          // the shape format 40 shipped.
+          const landsFrom = record['landsFrom'];
+          if (Array.isArray(landsFrom)) {
+            const where = landsFrom
+              .filter((at): at is string => typeof at === 'string' && at.length > 0)
+              .map((at) => at as RoomId);
+            if (where.length > 0) item.usableIn = where;
+          }
           const price = Number(record['price']);
           if (Number.isFinite(price) && price > 0) item.price = price;
           const encumbrance = Number(record['enc']);
@@ -2963,6 +3280,7 @@ export class WorldGraph {
     }
 
     graph.linkPortals();
+    graph.linkItemLandings();
     graph.linkLevers();
     return graph;
   }
@@ -2996,6 +3314,56 @@ export class WorldGraph {
    * therefore costs about sixty steps of detour: taken when it is the only way
    * there, never preferred while a corridor exists.
    */
+  /**
+   * An item that teleports **from a particular room** is a portal out of it.
+   *
+   * Which is all it ever was: the realm gates the potion of levitation's block
+   * on `roomitem 993`, item 993 is the `waterfall` standing in `3/1`, and
+   * using it anywhere else runs a block that fails on its first step. So the
+   * way into the Catacombs is *walk to the pool under the waterfall and drink
+   * it there* — one edge out of one room, which every reader that already
+   * understands a portal understands for free: the map draws it, `withinSteps`
+   * counts the landing as one move from `3/1` (true, unlike *one move from
+   * anywhere*), and the router walks to the room and uses it.
+   *
+   * The requirement is `item`, so `edgePenalty`'s own rung decides the pack —
+   * carried free, listed and lacking a wall, never listed discouraged — and
+   * the same `spends` entry carries what using it costs.
+   */
+  private linkItemLandings(): void {
+    for (const item of this.items.values()) {
+      if (item.lands === undefined || item.usableIn === undefined) continue;
+      if (item.name.length === 0) continue;
+      const target = this.rooms.get(item.lands);
+      if (target === undefined) continue;
+      const command = `use ${item.name}`;
+      for (const at of item.usableIn) {
+        // A guard room outside the dataset is a hole in the data, not a way.
+        if (!this.rooms.has(at)) continue;
+        const edge: PortalExit = {
+          direction: 'portal',
+          map: target.map,
+          room: target.room,
+          requirement: {
+            kind: 'item',
+            raw: `Item: ${item.id}`,
+            keyId: item.id,
+            commands: [command]
+          }
+        };
+        this.spends.set(edge, {
+          id: item.id,
+          name: item.name,
+          command,
+          uses: item.uses === undefined || item.uses < 0 ? null : item.uses
+        });
+        const held = this.portals.get(at);
+        if (held) held.push(edge);
+        else this.portals.set(at, [edge]);
+      }
+    }
+  }
+
   private linkPortals(): void {
     for (const [id, room] of this.rooms) {
       for (const command of room.commands ?? []) {
@@ -3570,6 +3938,11 @@ export class WorldGraph {
       // A room the realm no longer has keeps its address and gains no name,
       // rather than being dropped: the address is still what the realm said.
       if (name !== undefined && name.length > 0) joined.place = name;
+      // And what the way there wants carried, where the realm encloses it: a
+      // step is *go there and say this*, and the there is routinely behind a
+      // door the step says nothing about. See `approachItems`.
+      const approach = this.approachItems(step.room);
+      if (approach.length > 0) joined.approach = approach;
     }
     const sources: QuestSource[] = [];
     for (const [id, name] of this.itemsDemanded(step)) {
@@ -3592,14 +3965,41 @@ export class WorldGraph {
        */
       const mobs = new Set(known?.mobs ?? []);
       if (name !== undefined) for (const mob of this.dropsOf(name)) mobs.add(mob);
-      if (shops.size === 0 && mobs.size === 0) continue;
+      /*
+       * And the third answer — format 39, the one the two indexes above could
+       * not give. A quest component is handed over by a script, not stocked
+       * and not on a drop list, so `acid gland`, `unfertilized eggs` and
+       * `double-terminated quartz` were three of the four things PhoenixQuest
+       * asks for with nothing at all said about where to get them.
+       */
+      const from = (known === undefined ? [] : (this.placingHandovers(known).from ?? [])).map(
+        // Per handover, not per item: two handovers of one thing are two
+        // places, and the way into each is its own question.
+        (handover) => this.approaching(handover)
+      );
+      if (shops.size === 0 && mobs.size === 0 && from.length === 0) continue;
       const source: QuestSource = { id };
       if (shops.size > 0) source.shops = [...shops];
       if (mobs.size > 0) source.mobs = [...mobs];
+      if (from.length > 0) source.from = from;
       sources.push(source);
     }
     if (sources.length > 0) joined.sources = sources;
     return joined;
+  }
+
+  /**
+   * One handover, with what the way to where it happens demands carried.
+   *
+   * The quest book's own join and nobody else's — see `ItemHandover.approach`
+   * for why the Reference card does not pay for it. A copy, like
+   * `placingHandovers` beside it, because the item index holds one object per
+   * item and every lookup shares it.
+   */
+  private approaching(handover: ItemHandover): ItemHandover {
+    if (handover.room === undefined) return handover;
+    const approach = this.approachItems(handover.room as RoomId);
+    return approach.length === 0 ? handover : { ...handover, approach };
   }
 
   /**
@@ -3633,6 +4033,263 @@ export class WorldGraph {
   }
 
   /**
+   * The order a step's several items are best fetched in — todo 01.
+   *
+   * A step that demands four things states them in the order its own opcodes
+   * happen to run, and that is nobody's walk: PhoenixQuest asks for an acid
+   * gland, unfertilized eggs, a double-terminated quartz and cave roots, and
+   * the realm puts them in four rooms with nothing to do with that list. So
+   * this answers the question the list was standing in for — *where do I go
+   * first* — as the shortest walk from where the character is standing,
+   * through one place for each item, and back to the step's own room.
+   *
+   * **Exact, not greedy.** Nearest-first is wrong in the ordinary case and
+   * wrong in a way nobody can see: it takes the near thing whose neighbour is
+   * a long way back. So every order of the items is weighed, over every place
+   * each can be got (`errandPlaces`), which is a travelling salesman's path
+   * and is solved as one — a subset-and-last table, exponential in the items
+   * and bounded by `errandItems` at twice the largest step either shipped
+   * world holds.
+   *
+   * **Chosen in the router's units and reported in moves**, which is
+   * `scatterMoves`' rule one card across: the order has to price the lair, the
+   * hazard and the door this character cannot force, or it would send somebody
+   * through the short way that kills them; the reader wants the number of
+   * times they press a direction. The two sweeps carry both.
+   *
+   * **A plan, not a reading.** It is solved from where the character stood
+   * when the card asked, and `QuestErrand.from` says which room that was: it
+   * is not re-solved on every step, because the sweeps cost tens of
+   * milliseconds each on the thread the socket is on.
+   */
+  errand(step: QuestStep, from: RoomId, traveller: Traveller): QuestErrand | null {
+    const here = this.rooms.get(from);
+    if (here === undefined) return null;
+    const brought = itemsBrought(step);
+    // One thing to fetch is a list and not a walk, and the card draws it the
+    // way it always did: there is nothing here for this to add.
+    if (brought.length < 2) return null;
+
+    const answer: QuestErrand = {
+      block: step.block,
+      from,
+      ...(here.name.trim().length > 0 ? { fromPlace: here.name } : {}),
+      legs: [],
+      moves: 0,
+      left: []
+    };
+    const { errandItems, errandPlaces } = tuning().world;
+
+    /*
+     * Where each of them can be got, as rooms rather than as the names the
+     * card prints. An item the realm places nowhere is not a leg of anything
+     * and is never given a position in the walk — the same refusal the card
+     * already makes about where it comes from, carried through to the order.
+     */
+    const placed: Array<{ id: number; name?: string; rooms: RoomId[] }> = [];
+    for (const item of brought) {
+      const rooms = this.errandRooms(step, item.id);
+      const named = item.name === undefined ? {} : { name: item.name };
+      if (rooms.length === 0) answer.left.push({ id: item.id, ...named, why: 'unplaced' });
+      else placed.push({ id: item.id, ...named, rooms });
+    }
+    // Fewer than two places to go is not an order, and saying so would be
+    // noise on a card that already names where the one of them is.
+    if (placed.length < 2) return null;
+    if (placed.length > errandItems) {
+      return { ...answer, refusal: t('cards.quests.errand.tooMany', { items: placed.length }) };
+    }
+
+    const end =
+      step.room !== undefined && this.rooms.has(step.room as RoomId) ? (step.room as RoomId) : null;
+    const asked = new Set<RoomId>(placed.flatMap((item) => item.rooms));
+    if (end !== null) asked.add(end);
+    const reach = this.sweepTo(from, asked, traveller);
+
+    /*
+     * The nearest few places for each, because a monster that drops one of
+     * these spawns in up to sixteen rooms and every one of them is a sweep.
+     * Nearest **to the start**, which is the one distance already in hand — a
+     * place further off than three others is not where the shortest walk goes
+     * unless it was going that way anyway, and the ones kept are then weighed
+     * against the whole walk rather than picked by this distance.
+     */
+    const nodes: Array<{ item: number; room: RoomId }> = [];
+    const wanted: Array<{ id: number; name?: string }> = [];
+    for (const item of placed) {
+      const named = item.name === undefined ? {} : { name: item.name };
+      const reachable = item.rooms
+        .filter((room) => reach.has(room))
+        .sort((a, b) => reach.get(a)!.cost - reach.get(b)!.cost)
+        .slice(0, errandPlaces);
+      if (reachable.length === 0) {
+        answer.left.push({ id: item.id, ...named, why: 'unreachable' });
+        continue;
+      }
+      const at = wanted.length;
+      wanted.push({ id: item.id, ...named });
+      for (const room of reachable) nodes.push({ item: at, room });
+    }
+    if (wanted.length === 0) return { ...answer, refusal: t('cards.quests.errand.noWay') };
+
+    const kept = new Set<RoomId>(nodes.map((node) => node.room));
+    if (end !== null) kept.add(end);
+    const between = new Map<RoomId, Map<RoomId, { cost: number; moves: number }>>();
+    for (const room of kept) {
+      if (room === end && !nodes.some((node) => node.room === end)) continue;
+      between.set(room, this.sweepTo(room, kept, traveller));
+    }
+
+    const order = this.bestOrder(nodes, reach, between, end);
+    if (order === null) return { ...answer, refusal: t('cards.quests.errand.noWay') };
+
+    let previous: RoomId | null = null;
+    for (const index of order) {
+      const node = nodes[index]!;
+      const measured = (previous === null ? reach : between.get(previous)!).get(node.room)!;
+      answer.legs.push({
+        item: wanted[node.item]!,
+        ...this.errandLeg(node.room),
+        moves: measured.moves
+      });
+      previous = node.room;
+    }
+    /*
+     * And the way back, where the step names a room and the walk can close on
+     * it. A one-way exit is a real thing in this realm — the Rancid Sewer's
+     * outflow is one — so the last leg is simply absent where the errand
+     * cannot get home from the last thing it picks up, which is what the card
+     * reads to decide whether to draw it.
+     */
+    if (end !== null && previous !== null) {
+      const home = between.get(previous)!.get(end);
+      if (home !== undefined) answer.legs.push({ ...this.errandLeg(end), moves: home.moves });
+    }
+    answer.moves = answer.legs.reduce((total, leg) => total + leg.moves, 0);
+    return answer;
+  }
+
+  /** One leg's address, with the room's own name where the realm has one. */
+  private errandLeg(room: RoomId): { room: string; place?: string } {
+    const name = this.rooms.get(room)?.name.trim() ?? '';
+    return { room, ...(name.length > 0 ? { place: name } : {}) };
+  }
+
+  /**
+   * The cheapest order to visit one place for each item in, ending at `end`.
+   *
+   * Held and Karp's table — the cheapest way to have collected each *subset*
+   * of the items and be standing at each place — which is what makes this
+   * exact rather than a nearest-first walk. The subset is over **items**
+   * while the position is over **places**, so a thing that can be got in
+   * three rooms costs three columns and not three items' worth of table.
+   *
+   * `null` where no order reaches every item: a pair the realm's one-way
+   * exits keep apart is a walk nobody can take, and the refusal above says so
+   * rather than dropping an item out of a list presented as complete.
+   */
+  private bestOrder(
+    nodes: ReadonlyArray<{ item: number; room: RoomId }>,
+    reach: ReadonlyMap<RoomId, { cost: number; moves: number }>,
+    between: ReadonlyMap<RoomId, ReadonlyMap<RoomId, { cost: number; moves: number }>>,
+    end: RoomId | null
+  ): number[] | null {
+    const items = new Set(nodes.map((node) => node.item)).size;
+    const full = (1 << items) - 1;
+    const width = nodes.length;
+    const best = new Float64Array((full + 1) * width).fill(Number.POSITIVE_INFINITY);
+    const came = new Int32Array((full + 1) * width).fill(-1);
+
+    for (let at = 0; at < width; at += 1) {
+      const first = reach.get(nodes[at]!.room);
+      if (first !== undefined) best[(1 << nodes[at]!.item) * width + at] = first.cost;
+    }
+    for (let mask = 1; mask <= full; mask += 1) {
+      for (let at = 0; at < width; at += 1) {
+        const cost = best[mask * width + at]!;
+        if (!Number.isFinite(cost)) continue;
+        const onward = between.get(nodes[at]!.room);
+        if (onward === undefined) continue;
+        for (let next = 0; next < width; next += 1) {
+          const bit = 1 << nodes[next]!.item;
+          if ((mask & bit) !== 0) continue;
+          const leg = onward.get(nodes[next]!.room);
+          if (leg === undefined) continue;
+          const total = cost + leg.cost;
+          const slot = (mask | bit) * width + next;
+          if (total >= best[slot]!) continue;
+          best[slot] = total;
+          came[slot] = at;
+        }
+      }
+    }
+
+    let cheapest = Number.POSITIVE_INFINITY;
+    let last = -1;
+    for (let at = 0; at < width; at += 1) {
+      const cost = best[full * width + at]!;
+      if (!Number.isFinite(cost)) continue;
+      /*
+       * The way home is part of the order and not a figure added after it: the
+       * nearest four things to fetch in the wrong order end a long way from
+       * the asker. Where the walk cannot close at all — a one-way exit out of
+       * the last room — the order is still the right one for the pickups, so
+       * the return leg costs nothing here and is left off the plan above.
+       */
+      const home = end === null ? 0 : (between.get(nodes[at]!.room)?.get(end)?.cost ?? null);
+      const total = cost + (home ?? 0);
+      if (total >= cheapest) continue;
+      cheapest = total;
+      last = at;
+    }
+    if (last === -1) return null;
+
+    const walk: number[] = [];
+    let mask = full;
+    let cursor = last;
+    while (cursor !== -1) {
+      walk.unshift(cursor);
+      const before = came[mask * width + cursor]!;
+      mask &= ~(1 << nodes[cursor]!.item);
+      cursor = before;
+    }
+    return walk;
+  }
+
+  /**
+   * Every room the realm places one of a step's items in, as addresses.
+   *
+   * The three answers `QuestSource` already carries, turned from names into
+   * places: a handover states its own room, a monster's is `mobPlaces` and a
+   * shop's is `shopPlace` — including a shop name in fourteen rooms, because
+   * every one of them sells the thing and the walk is free to pick whichever
+   * it passes. A room the realm no longer holds is dropped rather than
+   * planned to.
+   */
+  private errandRooms(step: QuestStep, id: number): RoomId[] {
+    const source = step.sources?.find((known) => known.id === id);
+    if (source === undefined) return [];
+    const rooms = new Set<RoomId>();
+    for (const handover of source.from ?? []) {
+      if (handover.room !== undefined) rooms.add(handover.room as RoomId);
+    }
+    for (const who of source.mobs ?? []) {
+      const mob = this.mob(who);
+      if (mob === undefined) continue;
+      for (const spawn of this.mobPlaces(mob)?.spawns ?? []) {
+        for (const at of spawn.rooms) rooms.add(roomId(at.map, at.room));
+      }
+    }
+    for (const name of source.shops ?? []) {
+      const place = this.shopPlace(name);
+      if (place === undefined) continue;
+      if (place.at === 'one') rooms.add(roomId(place.map, place.room));
+      else for (const at of place.rooms) rooms.add(roomId(at.map, at.room));
+    }
+    return [...rooms].filter((room) => this.rooms.has(room));
+  }
+
+  /**
    * Where the realm says an item comes from: shops that stock it by id, and
    * monsters that drop it by name (todo 07).
    *
@@ -3650,6 +4307,420 @@ export class WorldGraph {
     const name = item.name ?? known?.name;
     if (name !== undefined) for (const mob of this.dropsOf(name)) mobs.add(mob);
     return { shops: [...shops], mobs: [...mobs] };
+  }
+
+  /**
+   * What the way into a room demands be carried, or nothing where it is open.
+   *
+   * Reported 2026-09-15 (todo 02): the quest book said *golden egg — kill
+   * necromancer in Amethyst Cave* and stopped. Reaching that cave takes a
+   * potion of levitation, a titanium fork and a magical quartz rod; the realm
+   * states all three and nothing was reading any of them.
+   *
+   * **Two halves, because *what encloses this place* and *what opens it* are
+   * different questions.** `enclosing` sweeps backwards over every way in that
+   * demands no item and gives the question up the moment it reaches the open
+   * realm — so what it returns is a pocket with no free entrance, or nothing
+   * at all. Inside that pocket the question is then answered **forwards and by
+   * trial**: `opensInto` floods from whichever doors the items in hand unlock,
+   * which is what the server actually does, and a set of items is *required*
+   * when taking any one of them away puts the room out of reach.
+   *
+   * The trial matters, and the first attempt at this got it wrong by reasoning
+   * about frontiers in order instead. The Catacombs' fork doors are all
+   * *inside* the pocket, so the frontier chain read the fork as needed at the
+   * near gates and then dismissed the potion at the far one as a door the fork
+   * already opens — which is exactly backwards: the fork opens nothing from
+   * the mainland, and the potion is the only entrance there is. Measured
+   * forwards from Town Gates: nothing reaches 44,803 rooms, the fork alone
+   * adds none, the potion adds 26, the potion and the fork add 143 more, and
+   * only all three reach the Amethyst Cave.
+   *
+   * **Every item reported is necessary given the others** — that is what the
+   * minimisation leaves — and an item that could stand in for one of them is
+   * named beside it (`ApproachGate.anyOf`) rather than being picked between.
+   * Ordered by when the flood can first use each, which is the order they are
+   * fetched in. Where the items to hand do not reach the room at all the
+   * answer is nothing: an account the client cannot complete is not one to
+   * send somebody out on. Stock's Fine Mansion study is what the trial buys
+   * over counting frontiers twice: a skeleton key opens a door into that
+   * pocket and the study is not behind it, so the honest answer is the black
+   * serpent key alone, and the frontier count said *either*.
+   */
+  /**
+   * Every item that is a way through, as an edge the router can relax.
+   *
+   * **`WorldItem.lands` was read in one direction only** and that was the
+   * whole bug: `waysIn` below feeds `approachItems`, which walks *backwards*
+   * to answer what the way into a place wants, so the client could tell a
+   * player the Amethyst Cave needs a potion of levitation, a titanium fork and
+   * a magical quartz rod and then answer *the realm data joins no path*
+   * when asked to walk there. No exit or portal in either database enters the
+   * 173 rooms behind the potion — measured both ways, the cave reaches Town
+   * Gates and nothing reaches the cave — so for the router those rooms did not
+   * exist at all.
+   *
+   * Modelled as a `PortalExit` because that is what it is: the realm moves the
+   * character by coordinates, no compass reasoning applies, and everything
+   * downstream that already treats a portal as its own thing is correct about
+   * this without being told. The requirement is `item`, which is not a
+   * decoration — `edgePenalty`'s `item` rung is exactly the three answers the
+   * pack can give, so *carried is free, listed and lacking is a wall, never
+   * listed is discouraged* comes out right without a second implementation of
+   * a rule this file already states once.
+   */
+  private itemLandings(): ReadonlyArray<PortalExit> {
+    if (this.landings !== null) return this.landings;
+    const built: PortalExit[] = [];
+    for (const item of this.items.values()) {
+      if (item.lands === undefined) continue;
+      /*
+       * **A landing bound to a room is not one of these.** It is an ordinary
+       * way out of that room and `linkItemLandings` has already made it a
+       * portal there, so relaxing it from wherever the character stands as
+       * well would put the bug back: the potion of levitation used in the
+       * Alchemist's Hut is a block that fails on its first step and a server
+       * that answers nothing at all.
+       */
+      if (item.usableIn !== undefined) continue;
+      const target = this.rooms.get(item.lands);
+      // A landing outside the dataset is a hole in the data, not a way, by the
+      // same rule the exit loop applies to an exit pointing nowhere.
+      if (target === undefined || item.name.length === 0) continue;
+      const command = `use ${item.name}`;
+      const exit: PortalExit = {
+        direction: 'portal',
+        map: target.map,
+        room: target.room,
+        requirement: {
+          kind: 'item',
+          raw: `Item: ${item.id}`,
+          keyId: item.id,
+          commands: [command]
+        }
+      };
+      built.push(exit);
+      this.spends.set(exit, {
+        id: item.id,
+        name: item.name,
+        command,
+        // `-1` is the realm's word for *for ever* and absent is the same
+        // silence format 25 exists to tell apart from it; both are null here,
+        // because this field answers *how many* and neither states a number.
+        uses: item.uses === undefined || item.uses < 0 ? null : item.uses
+      });
+    }
+    this.landings = built;
+    return built;
+  }
+
+  /**
+   * Everything the landings can reach between them, requirements ignored.
+   *
+   * One multi-source sweep rather than one per item, because the question is
+   * *could any of them help* and the union answers it. Gates are ignored so
+   * the answer stays a superset of what any traveller could do with them: it
+   * may say yes where the real answer is no, which costs one search, and it
+   * must never say no where the real answer is yes, which would lose a route.
+   */
+  private landingsReach(): ReadonlySet<RoomId> {
+    if (this.landingReachable !== null) return this.landingReachable;
+    const seen = new Set<RoomId>();
+    let frontier: RoomId[] = [];
+    for (const exit of this.itemLandings()) {
+      const id = roomId(exit.map, exit.room);
+      if (this.rooms.has(id) && !seen.has(id)) {
+        seen.add(id);
+        frontier.push(id);
+      }
+    }
+    while (frontier.length > 0) {
+      const next: RoomId[] = [];
+      for (const id of frontier) {
+        const room = this.rooms.get(id);
+        if (room === undefined) continue;
+        for (const exit of room.exits) {
+          if (exit.requirement?.spellEffect === 'scatters') continue;
+          const to = this.beyond(exit);
+          if (!seen.has(to) && this.rooms.has(to)) {
+            seen.add(to);
+            next.push(to);
+          }
+        }
+        for (const portal of this.portalsFrom(id)) {
+          const to = roomId(portal.map, portal.room);
+          if (!seen.has(to) && this.rooms.has(to)) {
+            seen.add(to);
+            next.push(to);
+          }
+        }
+      }
+      frontier = next;
+    }
+    this.landingReachable = seen;
+    return seen;
+  }
+
+  approachItems(room: RoomId): ApproachGate[] {
+    const inside = this.enclosing(room);
+    if (inside === null) return [];
+
+    const candidates = this.gatesWithin(inside);
+    if (candidates.length === 0) return [];
+    const opens = (held: ReadonlySet<number>): boolean =>
+      this.opensInto(room, inside, held).has(room);
+    // Everything the realm offers, and it still does not get there: the client
+    // cannot account for this room and says so by saying nothing.
+    if (!opens(new Set(candidates))) return [];
+
+    // Minimised one at a time, so what is left is a set no member of which can
+    // be dropped — every row the card draws is an errand the realm insists on.
+    const kept = [...candidates];
+    for (const item of candidates) {
+      const without = new Set(kept.filter((held) => held !== item));
+      if (!opens(without)) continue;
+      kept.splice(kept.indexOf(item), 1);
+    }
+    if (kept.length === 0) return [];
+
+    return this.orderApproach(room, inside, kept, candidates);
+  }
+
+  /**
+   * The order the items are used in, each with whatever could stand in for it.
+   *
+   * The flood is run again, adding at each stage the kept items it can now
+   * reach a door for: that is the order somebody fetches them in, and it is
+   * the realm's own rather than the id order the minimisation happened to
+   * leave. A stand-in is an item *outside* the kept set that the room is still
+   * reachable with in place of this one — the alternative the minimisation had
+   * to choose between and must not hide.
+   */
+  private orderApproach(
+    room: RoomId,
+    inside: ReadonlySet<RoomId>,
+    kept: readonly number[],
+    candidates: readonly number[]
+  ): ApproachGate[] {
+    const order: number[] = [];
+    const held = new Set<number>();
+    while (order.length < kept.length) {
+      const next = kept.filter(
+        (item) =>
+          !held.has(item) &&
+          this.opensInto(null, inside, new Set([...held, item])).size >
+            this.opensInto(null, inside, held).size
+      );
+      // Nothing opens anything further on its own — the rest are wanted
+      // together, and the id order they are in is as good as any.
+      const stage = next.length > 0 ? next : kept.filter((item) => !held.has(item));
+      for (const item of stage) {
+        order.push(item);
+        held.add(item);
+      }
+    }
+
+    const others = candidates.filter((item) => !kept.includes(item));
+    return order.map((item) => {
+      const rest = order.filter((held) => held !== item);
+      const instead = others.filter((other) =>
+        this.opensInto(room, inside, new Set([...rest, other])).has(room)
+      );
+      return { anyOf: [item, ...instead].map((id) => this.approachItem(id)) };
+    });
+  }
+
+  /**
+   * The pocket a room sits in, or null where the realm leaves it open.
+   *
+   * Backwards over every way in that demands no item, so what it collects is
+   * closed under un-gated entry: every remaining way in wants something. That
+   * reasoning holds only while the region stays a pocket — out in the open
+   * realm the gates it meets are other pockets' doors, and unbounded it
+   * answered an ordinary street with every key in the realm — so it gives the
+   * question up past `tuning.world.approachRooms`.
+   *
+   * **It grows *through* a gate and falls back when that escapes.** The rooms
+   * a door is crossed from are taken in too, because the Catacombs' own doors
+   * are inside the pocket and a region stopping at the first of them would
+   * name one gate and miss the two behind it. When taking a door in lets the
+   * open realm flood through, the answer is the **last state that was still a
+   * pocket** — which is what keeps the Lake of Fire, whose one door opens onto
+   * the mainland, answering *basalt key* instead of saying nothing. Null is
+   * the room that was never enclosed at all.
+   */
+  private enclosing(room: RoomId): Set<RoomId> | null {
+    const ways = this.waysInto();
+    const cap = tuning().world.approachRooms;
+    const inside = new Set<RoomId>([room]);
+    let frontier: RoomId[] = [room];
+    // Closed under un-gated entry, and so a pocket every remaining way into
+    // which wants something. Null until the first closure has run.
+    let settled: Set<RoomId> | null = null;
+
+    while (frontier.length > 0) {
+      const queue = [...frontier];
+      const gated: RoomId[] = [];
+      while (queue.length > 0) {
+        const at = queue.pop() as RoomId;
+        for (const way of ways.get(at) ?? []) {
+          // An item that is itself a door comes from nowhere: there is no room
+          // to take in, and the item is found again by `gatesWithin`.
+          if (way.from === null || inside.has(way.from)) continue;
+          if (way.item !== null) {
+            gated.push(way.from);
+            continue;
+          }
+          inside.add(way.from);
+          if (inside.size > cap) return settled;
+          queue.push(way.from);
+        }
+      }
+      settled = new Set(inside);
+      frontier = [];
+      for (const at of gated) {
+        if (inside.has(at)) continue;
+        inside.add(at);
+        if (inside.size > cap) return settled;
+        frontier.push(at);
+      }
+    }
+    return settled;
+  }
+
+  /**
+   * Every item a way into or within the pocket demands, once each.
+   *
+   * Both kinds, because both have to be crossed: a door from outside is how
+   * you get in and a door between two of its rooms is how you get on. Which
+   * of them are actually *needed* is not decided here — that is what the
+   * flood and the minimisation are for.
+   */
+  private gatesWithin(inside: ReadonlySet<RoomId>): number[] {
+    const ways = this.waysInto();
+    const items = new Set<number>();
+    for (const at of inside) {
+      for (const way of ways.get(at) ?? []) {
+        if (way.item !== null) items.add(way.item);
+      }
+    }
+    return [...items];
+  }
+
+  /**
+   * Where a pack of these items can get to inside the pocket — the server's
+   * own arithmetic, forwards.
+   *
+   * Seeded from every room outside the pocket that touches it (you are
+   * standing in the open realm) and from the landing of every item in hand
+   * that is itself a door. A `room` asks a yes/no question and short-circuits;
+   * `null` asks how far it got, which is what the ordering compares.
+   */
+  private opensInto(
+    room: RoomId | null,
+    inside: ReadonlySet<RoomId>,
+    held: ReadonlySet<number>
+  ): ReadonlySet<RoomId> {
+    const ways = this.waysInto();
+    const reached = new Set<RoomId>();
+    const queue: RoomId[] = [];
+    const arrive = (at: RoomId): void => {
+      if (reached.has(at)) return;
+      reached.add(at);
+      queue.push(at);
+    };
+
+    // Every door from outside, and every item that is a door of its own.
+    for (const at of inside) {
+      for (const way of ways.get(at) ?? []) {
+        if (way.from !== null && inside.has(way.from)) continue;
+        if (way.item !== null && !held.has(way.item)) continue;
+        arrive(at);
+      }
+    }
+
+    while (queue.length > 0) {
+      const at = queue.pop() as RoomId;
+      if (room !== null && at === room) return reached;
+      for (const exit of this.rooms.get(at)?.exits ?? []) {
+        const to = roomId(exit.map, exit.room);
+        if (!inside.has(to)) continue;
+        const item = itemDemanded(exit.requirement);
+        if (item !== null && !held.has(item)) continue;
+        arrive(to);
+      }
+      for (const command of this.rooms.get(at)?.commands ?? []) {
+        if (command.to === undefined || !inside.has(command.to)) continue;
+        const item = command.opens?.item;
+        if (item !== undefined && !held.has(item)) continue;
+        arrive(command.to);
+      }
+    }
+    return reached;
+  }
+
+  /** One wanted item, with the same three answers a quest source carries. */
+  private approachItem(id: number): ApproachItem {
+    const known = this.items.get(id);
+    const name = known?.name.trim();
+    const { shops, mobs } = this.sourcesOf(name === undefined ? { id } : { id, name });
+    const from = known === undefined ? [] : (this.placingHandovers(known).from ?? []);
+    return {
+      id,
+      // The realm names every row an exit refers to; `#983` is this admitting
+      // it did not, which is what the card refuses to make a control of.
+      name: name === undefined || name.length === 0 ? `#${id}` : name,
+      ...(shops.length > 0 ? { shops } : {}),
+      ...(mobs.length > 0 ? { mobs } : {}),
+      ...(from.length > 0 ? { from } : {})
+    };
+  }
+
+  /**
+   * Every way into every room, with the one item it demands where it does.
+   *
+   * Three columns of the realm state the same thing and all three are read:
+   * an exit's `Key:` (a lock, which a skill may also open), the item a hidden
+   * exit's own action wants (`RequirementAction.item`), and the item a room
+   * script's lever wants (`RoomCommand.opens.item`). A portal command's
+   * landing is an edge like any other and is walked with them.
+   *
+   * **And an item that is itself a door** — format 40. `WorldItem.lands` is
+   * where *using* the thing puts you, and that is a way in from **nowhere**:
+   * drinking the potion of levitation works wherever you are standing, and it
+   * drops you into the Catacombs, which no corridor reaches at all. So the
+   * edge carries a `null` source. Without it the Catacombs are a sealed pocket
+   * and the client's answer to *how do I get to the necromancer* leaves out
+   * the one thing that gets you anywhere near him.
+   *
+   * A `Key:` names a **wall** only for a character who cannot pick or force
+   * it, which is a question about a character and not about a room — so this
+   * reads the item and leaves the skill substitute to the router. What the
+   * card says is what the way *wants*, never that there is no other way in.
+   */
+  private waysInto(): Map<RoomId, Array<{ from: RoomId | null; item: number | null }>> {
+    if (this.waysIn !== null) return this.waysIn;
+    const index = new Map<RoomId, Array<{ from: RoomId | null; item: number | null }>>();
+    const add = (into: RoomId, from: RoomId | null, item: number | null): void => {
+      const held = index.get(into);
+      if (held === undefined) index.set(into, [{ from, item }]);
+      else held.push({ from, item });
+    };
+    for (const [key, room] of this.rooms) {
+      for (const exit of room.exits) {
+        add(roomId(exit.map, exit.room), key, itemDemanded(exit.requirement));
+      }
+      for (const command of room.commands ?? []) {
+        if (command.to === undefined) continue;
+        add(command.to, key, command.opens?.item ?? null);
+      }
+    }
+    for (const item of new Set(this.items.values())) {
+      if (item.lands === undefined || !this.rooms.has(item.lands)) continue;
+      add(item.lands, null, item.id);
+    }
+    this.waysIn = index;
+    return index;
   }
 
   /**
@@ -4116,9 +5187,29 @@ export class WorldGraph {
      */
     const walkable = this.search(from, to, goal, traveller, false, false);
     const draws = walkable.found === null && walkable.drawsAhead;
-    const found = draws
+    const drawn = draws
       ? this.search(from, to, goal, traveller, false, true).found
       : walkable.found;
+    /*
+     * **And after the dice, the pack.**
+     *
+     * The same last-resort rule the draw above follows, for the same reason
+     * and one rung further down: an item that teleports spends a charge, so it
+     * is not something to take on the way to somewhere a corridor already
+     * reaches. Asked only when nothing else arrives at all — which is exactly
+     * the Catacombs, whose 173 rooms no exit in either database enters, and
+     * which is why this is not gated on `RouteOptions.alternatives` the way
+     * the shortcut below is. A way that does not otherwise exist is not an
+     * alternative; it is the route.
+     *
+     * Costs nothing where the realm holds no such item, which is every realm
+     * but these two and most pairs of rooms in both.
+     */
+    const landed =
+      drawn === null && walkable.landingsAhead && this.landingsReach().has(to)
+        ? this.search(from, to, goal, traveller, false, draws, true).found
+        : null;
+    const found = drawn ?? landed;
     if (found) {
       const route = this.buildRoute(found.cameFrom, to, found.cost, traveller, draws);
       /*
@@ -4149,10 +5240,17 @@ export class WorldGraph {
         options.alternatives === true
           ? this.carrying(from, to, goal, route, traveller, draws)
           : null;
+      // And the way that spends a charge to skip the walk — offered, never
+      // planned. See `Route.viaItem`.
+      const invoked =
+        options.alternatives === true
+          ? this.viaItem(from, to, goal, route, traveller, draws)
+          : null;
       const planned: Route = {
         ...route,
         ...(other === null ? {} : { otherWay: other }),
-        ...(equipped === null ? {} : { carrying: equipped })
+        ...(equipped === null ? {} : { carrying: equipped }),
+        ...(invoked === null ? {} : { viaItem: invoked })
       };
       if (found.cost >= tuning().world.wallCost) {
         /*
@@ -4189,7 +5287,16 @@ export class WorldGraph {
      * when the first has already failed, which is the case where there is
      * nothing else to spend the time on.
      */
-    const ignoring = this.search(from, to, goal, traveller, true, walkable.drawsAhead).found;
+    /*
+     * **And the explanation looks through the pack too.** With the gates held
+     * open an item landing is passable like any other gate, so `blocksAlong`
+     * reports the item it wants — which turns *the realm data joins no path*,
+     * about a cave the realm does have a way into, back into *needs potion of
+     * levitation*. That first sentence is what this whole change began as a
+     * report of, and leaving it on the refusal would have fixed the route and
+     * kept the lie for anybody who had not fetched the potion yet.
+     */
+    const ignoring = this.search(from, to, goal, traveller, true, walkable.drawsAhead, true).found;
     const blocks = ignoring ? this.blocksAlong(ignoring.cameFrom, to, traveller) : [];
     const reasons = blocks.length > 0 ? blocks : ([{ kind: 'unreachable' }] as RouteBlock[]);
     return {
@@ -4327,6 +5434,54 @@ export class WorldGraph {
    * A* per route, and only when asked for (`RouteOptions.alternatives`): a
    * loop's leg is walked, not read.
    */
+  /**
+   * The way that uses an item to teleport, where it is materially shorter.
+   *
+   * **Off by default, which is the whole of what separates the two kinds of
+   * landing the shipped realms hold.** The potion of levitation is the only
+   * entrance the Catacombs have, so `route` walks it above as the last resort
+   * it is. Paradigm's seven tokens land on rooms — the Pier, Harbor Square,
+   * Rhudaur's doors — that the character could perfectly well walk to, so
+   * taking one is a *choice* that costs one of five charges, and a router that
+   * spent one unasked would quietly burn a player's recalls to save a stroll.
+   * So it is offered beside the plan with what it spends named on the step,
+   * and the reader decides.
+   *
+   * Null where the plan already uses one: that is the route, not an
+   * alternative to it. And null unless the way found actually invokes
+   * something, because a landings-enabled search that took no landing has
+   * simply re-found the plan.
+   */
+  private viaItem(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    route: Route,
+    traveller: Traveller,
+    draws: boolean
+  ): Route | null {
+    if (this.itemLandings().length === 0) return null;
+    if (route.steps.some((step) => step.invoke !== undefined)) return null;
+    /*
+     * A landing route is at least one step, so the most this could ever save
+     * is one short of the plan's own length — and below `alternativeMinSteps`
+     * that is refused at the bottom of this function anyway. Checked *before*
+     * the search rather than after it, because the panel asks for alternatives
+     * on every route it draws and most routes are short: without this, every
+     * one of them paid a full extra A* to be told what its step count already
+     * settled.
+     */
+    if (route.steps.length - 1 < tuning().world.alternativeMinSteps) return null;
+    const found = this.search(from, to, goal, traveller, false, draws, true).found;
+    if (found === null) return null;
+    const other = this.buildRoute(found.cameFrom, to, found.cost, traveller, draws);
+    if (!other.steps.some((step) => step.invoke !== undefined)) return null;
+    if (route.steps.length - other.steps.length < tuning().world.alternativeMinSteps) return null;
+    // By `carrying`'s own rule: a shorter way through a room that is expected
+    // to kill the character is not an offer.
+    return other.steps.some((step) => step.deadly === true) ? null : other;
+  }
+
   private carrying(
     from: RoomId,
     to: RoomId,
@@ -4438,6 +5593,82 @@ export class WorldGraph {
   }
 
   /**
+   * What it costs to reach each of `wanted` from one room, and in how many
+   * moves — `sweepBack` walked forwards, for the errand solver (todo 01).
+   *
+   * Dijkstra rather than the A* beside it, because the question has many
+   * destinations and one origin: the errand wants a whole row of the distance
+   * table and a heuristic aimed at one goal cannot settle the others on the
+   * way. It stops the moment every room asked about is settled, which is what
+   * keeps it to roughly the price of one route to the furthest of them.
+   *
+   * **Two figures per room, and they are not the same figure.** The cost is
+   * the router's own — the lair, the room's spell, the door graded against
+   * this character — and is what the order is chosen by; the moves are how
+   * many times a player presses a direction along that same cheapest way, and
+   * are what the card prints. `scatterMoves` draws exactly this distinction
+   * for exactly this reason.
+   *
+   * **A wall is walked here, unlike in `sweepBack`**, and the difference is
+   * what the figure is for. That sweep feeds an expectation of moves, and a
+   * hundred thousand inside that arithmetic is not a number of moves. This
+   * feeds a plan — the same plan `route` makes, which walks a door it cannot
+   * force when there is no other way and says so on the panel. Excluding them
+   * was tried first and took four of Paradigm's eleven multi-item steps'
+   * orders away with it, PhoenixQuest's own included: the quartz is behind the
+   * keep's three doors and the cave roots behind the iron door, both of them
+   * *routable* and both reported as no way there. So a wall is priced, which
+   * orders a walk crossing two of them behind one crossing none, and what the
+   * way itself wants is already drawn under the item (`QuestStep.approach`).
+   */
+  private sweepTo(
+    from: RoomId,
+    wanted: ReadonlySet<RoomId>,
+    traveller: Traveller
+  ): Map<RoomId, { cost: number; moves: number }> {
+    const found = new Map<RoomId, { cost: number; moves: number }>();
+    const best = new Map<RoomId, number>([[from, 0]]);
+    const moves = new Map<RoomId, number>([[from, 0]]);
+    const settled = new Set<RoomId>();
+    const outstanding = new Set(wanted);
+    const open = new MinHeap<RoomId>();
+    open.push(0, from);
+    const ceiling = tuning().world.errandSweepRooms;
+    const discount = this.discountFor(traveller);
+
+    while (open.size > 0 && outstanding.size > 0 && settled.size < ceiling) {
+      const id = open.pop()!;
+      if (settled.has(id)) continue;
+      settled.add(id);
+      if (outstanding.delete(id)) found.set(id, { cost: best.get(id)!, moves: moves.get(id)! });
+      const here = this.rooms.get(id);
+      if (here === undefined) continue;
+      const cost = best.get(id)!;
+      const step = moves.get(id)!;
+      for (const exit of [...here.exits, ...this.portalsFrom(id)]) {
+        /*
+         * A draw is not an edge — the character picks the door and the realm
+         * picks the room — and an errand is a walk somebody follows with a
+         * list in front of them. `scatterCosts` is the reader that reasons
+         * about one; this is not it.
+         */
+        if (exit.requirement?.spellEffect === 'scatters') continue;
+        const nextId = this.beyond(exit);
+        const next = this.rooms.get(nextId);
+        if (next === undefined || settled.has(nextId)) continue;
+        const price = this.stepCost(id, exit, next, traveller, false, discount);
+        if (price === null) continue;
+        const tentative = cost + price;
+        if (tentative >= (best.get(nextId) ?? Infinity)) continue;
+        best.set(nextId, tentative);
+        moves.set(nextId, step + 1);
+        open.push(tentative, nextId);
+      }
+    }
+    return found;
+  }
+
+  /**
    * What it costs each of `wanted` to reach any of `seeds`, walking backwards.
    *
    * Dijkstra over `reverse()`, stopped the moment every room asked about has
@@ -4456,7 +5687,19 @@ export class WorldGraph {
   private sweepBack(
     seeds: ReadonlyMap<RoomId, number>,
     wanted: ReadonlySet<RoomId>,
-    traveller: Traveller
+    traveller: Traveller,
+    /**
+     * Whether a wall is a number to add or a way that is not there.
+     *
+     * The distinction `sweepTo` draws, in the other direction and for the same
+     * reason: what the figure is *for* decides. A scatter's expectation is a
+     * count of moves and `wallCost` inside it is not one, so that reader leaves
+     * the room unpriced. A detour is a plan — the same plan `route` makes,
+     * which walks a door it cannot force when there is no other way and says so
+     * — so this reader prices it, and a counter whose way onward crosses one is
+     * ranked behind the others rather than reported as nowhere.
+     */
+    priceWalls = false
   ): Map<RoomId, number> {
     const best = new Map<RoomId, number>(seeds);
     const open = new MinHeap<RoomId>();
@@ -4497,7 +5740,7 @@ export class WorldGraph {
          * and is excluded by the same test, which is the right answer for the
          * same reason: this session cannot walk it.
          */
-        if (price === null || price >= tuning().world.wallCost) continue;
+        if (price === null || (!priceWalls && price >= tuning().world.wallCost)) continue;
         const tentative = cost + price;
         if (tentative >= (best.get(from) ?? Infinity)) continue;
         best.set(from, tentative);
@@ -4766,7 +6009,16 @@ export class WorldGraph {
     into: WorldRoom | null,
     traveller: Traveller,
     openGates: boolean,
-    discount: number
+    discount: number,
+    /**
+     * Whether this step is an item being used rather than a move being made,
+     * in which case it pays `itemLandingCost` **instead of** the portal's own
+     * surcharge. A room script's teleport is scenery anybody may walk through
+     * as often as they like; this spends a charge somebody has to replace, and
+     * pricing the two the same would have the router burn a recall token to
+     * save four rooms of walking.
+     */
+    invoked = false
   ): number | null {
     /*
      * **A draw costs a move here, whatever it costs everywhere else.**
@@ -4816,7 +6068,11 @@ export class WorldGraph {
 
     // A portal costs its penalty over a plain step, so the router prefers
     // ordinary corridors unless the teleport genuinely shortens the way.
-    const surcharge = exit.direction === 'portal' ? tuning().world.portalPenalty : 0;
+    const surcharge = invoked
+      ? tuning().world.itemLandingCost
+      : exit.direction === 'portal'
+        ? tuning().world.portalPenalty
+        : 0;
     const wall = traveller.refused?.has(`${from}|${exit.direction}`) ? 100_000 : 0;
     // The whole step — the door's price and the portal's with it — is
     // discounted along a saved route: the player chose that door. A refusal is
@@ -4860,7 +6116,8 @@ export class WorldGraph {
     goal: WorldRoom,
     traveller: Traveller,
     openGates: boolean,
-    useDraws: boolean
+    useDraws: boolean,
+    useLandings = false
   ): SearchResult {
     /*
      * A step along a preferred route costs a fraction of an ordinary one. The
@@ -4891,10 +6148,49 @@ export class WorldGraph {
     let drawsAhead = false;
     open.push(heuristic(this.rooms.get(from)!), from);
 
+    /*
+     * **An item that works wherever you stand is relaxed once, from where the
+     * character is standing** — and that is optimal rather than a shortcut
+     * taken for speed. Its landing is a fixed address, so using it at the
+     * start costs the invocation and nothing else, and using it later costs
+     * the invocation *plus* the walk to wherever you used it: the first
+     * dominates every other room this search could expand it from.
+     *
+     * **Only the unbound ones reach here.** An item the realm gates on
+     * `roomitem` works in one room and is a portal out of it
+     * (`linkItemLandings`), found by the ordinary search like any other edge —
+     * which is the whole of the fix for *it is planning it from a spot I am
+     * not in*. `itemLandings()` withholds those, so this cannot put the
+     * assumption back.
+     *
+     * The corollary is the reason `withinSteps` does not do this at all: the
+     * hunting survey and the map ask *what is near*, and a room the whole
+     * realm is one token away from is not a neighbour of anywhere. A bound
+     * landing **is** counted there, correctly, because one move from `3/1`
+     * really is one move.
+     */
+    if (useLandings) {
+      for (const exit of this.itemLandings()) {
+        const nextId = roomId(exit.map, exit.room);
+        const next = this.rooms.get(nextId);
+        if (next === undefined || nextId === from) continue;
+        if (traveller.avoid?.has(nextId) === true) continue;
+        const price = this.stepCost(from, exit, next, traveller, openGates, discount, true);
+        if (price === null) continue;
+        if (price >= (best.get(nextId) ?? Infinity)) continue;
+        best.set(nextId, price);
+        cameFrom.set(nextId, { prev: from, exit });
+        open.push(price + heuristic(next), nextId);
+      }
+    }
+
     while (open.size > 0) {
       const currentId = open.pop()!;
       if (currentId === to) {
-        return { found: { cameFrom, cost: best.get(to) ?? 0 }, drawsAhead };
+        // A pass that arrived asks nothing further: the flag is read only on
+        // the failure path, and computing it here would price eight lookups
+        // onto every successful route in the realm.
+        return { found: { cameFrom, cost: best.get(to) ?? 0 }, drawsAhead, landingsAhead: false };
       }
 
       const current = this.rooms.get(currentId);
@@ -4952,7 +6248,11 @@ export class WorldGraph {
         open.push(tentative + heuristic(next), nextId);
       }
     }
-    return { found: null, drawsAhead };
+    return {
+      found: null,
+      drawsAhead,
+      landingsAhead: this.itemLandings().some((exit) => !best.has(roomId(exit.map, exit.room)))
+    };
   }
 
   /** Every gate on a found path this traveller cannot pass, in walking order. */
@@ -5191,6 +6491,23 @@ export class WorldGraph {
          */
         ...(Math.max(danger ?? 0, hazard ?? 0) >= tuning().world.deadlyShare
           ? { deadly: true }
+          : {}),
+        /*
+         * And what the step spends, where the step is an item being used
+         * rather than a move being made. Keyed on the exit object, which is
+         * shared and never rebuilt, so this is a lookup and not a second
+         * reading of the item table.
+         */
+        ...(this.spends.has(exit as PortalExit)
+          ? {
+              invoke: {
+                ...this.spends.get(exit as PortalExit)!,
+                // Where it is used, which is the room the step leaves from —
+                // the one fact a teleport's row cannot get from its position
+                // in the list.
+                at: { room: prev, name: this.rooms.get(prev)?.name ?? '' }
+              }
+            }
           : {}),
         /*
          * And the one step after which the plan stops being a plan. `to` above
@@ -5646,6 +6963,46 @@ function rowNamed<T extends { name: string }>(rows: readonly T[], name: string):
 /** The row id of the entry with this name, or null. Shared by races and classes. */
 function idNamed(rows: readonly { id: number; name: string }[], name: string): number | null {
   return rowNamed(rows, name)?.id ?? null;
+}
+
+/**
+ * `BuiltItem.from` as the reader's own words — format 39.
+ *
+ * The converter writes the owner's kind (`npc`, `room`, `death`, which is what
+ * the traversal calls them) and this turns each into the **act**: a word said
+ * to a monster, a word said in a room, a monster killed. Parsed rather than
+ * trusted, like every other boundary here — a kind the union does not name is
+ * dropped, because a handover the client cannot describe is worse than one it
+ * does not mention.
+ *
+ * The room *name* is not read here: it is a join against the room index, made
+ * where the lookup is answered (`handoversOf`).
+ */
+function readHandovers(raw: unknown): ItemHandover[] {
+  const KINDS: Record<string, ItemHandover['kind']> = {
+    npc: 'asked',
+    room: 'said',
+    death: 'killed'
+  };
+  const found: ItemHandover[] = [];
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    const kind = KINDS[String(record['k'])];
+    if (kind === undefined) continue;
+    const who = String(record['w'] ?? '').trim();
+    const room = String(record['at'] ?? '').trim();
+    const say = (Array.isArray(record['say']) ? record['say'] : [])
+      .map((word) => String(word).trim())
+      .filter((word) => word.length > 0);
+    found.push({
+      kind,
+      ...(who.length > 0 ? { who } : {}),
+      ...(/^\d+\/\d+$/.test(room) ? { room } : {}),
+      ...(say.length > 0 ? { say } : {})
+    });
+  }
+  return found;
 }
 
 function readItemKind(record: Record<string, unknown>, item: WorldItem): void {

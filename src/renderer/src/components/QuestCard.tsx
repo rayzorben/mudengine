@@ -7,21 +7,28 @@ import { useRemembered, useRememberedRanks } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
 import {
+  packHolds,
   questBars,
   questExperience,
   questLevel,
+  questReading,
   questSide,
+  itemsBrought,
   stepDone,
   stepsDone,
   type Quest,
   type QuestBar,
   type QuestDoer,
+  type QuestErrand,
   type QuestGate,
   type QuestReward,
+  type QuestSource,
   type QuestStep,
+  type QuestWatched,
   type QuestWay
 } from '@shared/quests';
 import type { AbilitySums } from '@shared/character';
+import type { ApproachGate, ItemHandover } from '@shared/world';
 import type { SessionId } from '@shared/ipc';
 
 /**
@@ -89,6 +96,21 @@ export interface QuestCardProps extends CardChrome {
    * for exactly this reason.
    */
   loadQuests(): Promise<Quest[]>;
+  /**
+   * Asks main for the order the step this character is **on** fetches its
+   * items in — todo 01.
+   *
+   * Addressed like the book, and for one more reason: the walk starts where
+   * this character is standing and is priced against the doors and lairs it
+   * can get through, so it is this session's question and nobody else's.
+   *
+   * Asked for the one step and not the whole track: it is a sweep of the realm
+   * graph per place, on the thread the socket is on (186ms median on Paradigm,
+   * 298ms at the worst of the shipped steps), and the step somebody is running
+   * is the one an order is worth that. Null is allowed, like `onGoTo`'s, for a
+   * surface that cannot bind it.
+   */
+  loadErrand?: ((block: number) => Promise<QuestErrand | null>) | null;
   /** When the configuration last reloaded — a character can be re-pointed. */
   realmAt: number;
   /** Opens the route panel on a room, so a quest's NPC can be walked to. */
@@ -123,13 +145,16 @@ export interface QuestCardProps extends CardChrome {
    * watched doing this session: a line typed at the asker, or the death of the
    * monster a step is owned by.
    *
-   * The third reading, and it sits between the other two. The realm's own count
-   * is evidence and outranks it; a mark somebody left by hand is an assertion
-   * made in the absence of evidence, and this is an observation, so it outranks
-   * that. Nothing on the wire announces a counter moving — see `stepSaid` for
-   * why this is the player's action rather than a claim the ask succeeded.
+   * The third reading, and it sits between the other two — except in time. The
+   * realm's own count is evidence and outranks it *as of the moment it was
+   * read*; a mark somebody left by hand is an assertion made in the absence of
+   * evidence, and this is an observation, so it outranks that outright.
+   * Nothing on the wire announces a counter moving — see `stepSaid` for why
+   * this is the player's action rather than a claim the ask succeeded, and
+   * `questReading` for the ranking, which is written once and read here and in
+   * main.
    */
-  said?: Readonly<Record<number, number>>;
+  said?: QuestWatched;
   /**
    * What class this character is, so its own route through a step is marked.
    *
@@ -150,6 +175,22 @@ export interface QuestCardProps extends CardChrome {
    */
   characterRace?: string | null;
   characterLevel?: number | null;
+  /**
+   * The realm rows this character's **listed** pack holds, or null where
+   * nobody has listed it (`packRows`).
+   *
+   * What it is for is the one question a quest book cannot answer from the
+   * realm alone: *have I got this yet*. A step naming four sundries to hand
+   * over is a shopping list, and a list you cannot tick is one the player
+   * keeps in their head beside the card.
+   *
+   * Null ticks nothing and crosses nothing off. An `i` is in the default
+   * `onEnterRealm`, so this is an answer within a second of entering the realm
+   * on any ordinary configuration — but the probe list is the player's, and a
+   * character told never to ask must not have its empty pack drawn as a
+   * statement that it is carrying none of them.
+   */
+  carrying?: readonly number[] | null;
 }
 
 /**
@@ -569,22 +610,18 @@ interface Bring {
  * so drawing the two lists separately said each item twice and made a four-item
  * step eight lines long. `takes` wins the merge, because *hand over* is the
  * stronger and more useful statement of the two.
+ *
+ * The merge itself is `itemsBrought` in `quests.ts`, because the errand solver
+ * in main orders exactly this list and a walk naming a fifth thing these rows
+ * do not would be two readings of one fact. All this adds is the name a row
+ * without one is drawn under, which is the card's business and nobody else's.
  */
 function bringOf(step: QuestStep): Bring[] {
-  const wanted = new Map<number, Bring>();
-  for (const gate of step.needs) {
-    if (gate.kind !== 'item') continue;
-    wanted.set(gate.id, { id: gate.id, name: gate.name ?? `#${gate.id}`, hand: false });
-  }
-  for (const item of step.takes) {
-    const held = wanted.get(item.id);
-    wanted.set(item.id, {
-      id: item.id,
-      name: item.name ?? held?.name ?? `#${item.id}`,
-      hand: true
-    });
-  }
-  return [...wanted.values()];
+  return itemsBrought(step).map((item) => ({
+    id: item.id,
+    name: item.name ?? `#${item.id}`,
+    hand: item.hand
+  }));
 }
 
 /** The command a step is reached by, or null where the realm traced nobody. */
@@ -622,44 +659,265 @@ function flagWords(step: QuestStep): string | null {
 }
 
 /**
- * Where an item can be got, in one line, or null where the realm does not say.
+ * The rank of an earlier step of this same quest that hands the item over.
  *
- * Three answers, in the order they are worth having: a **shop** is a place you
- * can walk to and buy the thing; an **earlier step of this same quest** is one
- * you are already doing; a **monster** is a fight you have to find. The realm
- * places 29 of its 79 item requirements and the chain answers 14 more; the rest
- * have none of the three, and those say the name and stop — the same refusal
- * `localMap` makes about a key with no known source, because a guess about
- * where to find a quest item is worse than an admission.
+ * The realm never says so and it is one of the four answers: a later step's
+ * `takeitem` is routinely an earlier step's `giveitem`, and 18 of the shipped
+ * realm's 82 item requirements are answered by nothing but this. Read off the
+ * quest already on screen rather than joined in main, because it is a fact
+ * about *these steps* and main would have to re-derive them.
+ *
+ * Every route of an earlier step, not only what all of them share: an item one
+ * class's route hands out is still an item that route can be taken for.
  */
-function sourceWords(step: QuestStep, quest: Quest, at: number, id: number): string | null {
-  const parts: string[] = [];
-  const known = step.sources?.find((source) => source.id === id);
-  if (known?.shops !== undefined && known.shops.length > 0) {
-    parts.push(t('cards.quests.source.shops', { names: known.shops.slice(0, 2).join(', ') }));
-  }
-  /*
-   * The quest's own chain is a source and the realm never says so: a later
-   * step's `takeitem` is routinely an earlier step's `giveitem`, and 18 of the
-   * shipped realm's 82 item requirements are answered by nothing but this.
-   * Read off the quest already on screen rather than joined in main, because it
-   * is a fact about *these steps* and main would have to re-derive them.
-   */
-  // Every route of an earlier step, not only what all of them share: an item
-  // one class's route hands out is still an item that route can be taken for.
-  const earlier = quest.steps.findIndex((other) =>
+function earlierStep(quest: Quest, at: number, id: number): number | null {
+  const found = quest.steps.findIndex((other) =>
     [other, ...(other.ways ?? [])].some((way) =>
       way.gives.some((reward) => reward.kind === 'item' && reward.id === id)
     )
   );
-  if (earlier !== -1 && earlier < at) {
-    const rank = quest.steps[earlier]?.to;
-    if (rank !== undefined) parts.push(t('cards.quests.source.step', { rank }));
+  if (found === -1 || found >= at) return null;
+  return quest.steps[found]?.to ?? null;
+}
+
+/**
+ * Where an item can be got, or nothing where the realm does not say.
+ *
+ * Four answers, in the order they are worth having: a **shop** is a place you
+ * can walk to and buy the thing; an **earlier step of this same quest** is one
+ * you are already doing; a **monster** is a fight you have to find; and a
+ * **script** is the realm handing it over for an act — the last, because it is
+ * the one that names a thing to do rather than a place to go, and it is what
+ * answers the quest components nothing else places. The realm places 29 of its
+ * 79 item requirements, the chain answers 14 more and the scripts the rest;
+ * where all four say nothing the name stands alone — the same refusal
+ * `localMap` makes about a key with no known source, because a guess about
+ * where to find a quest item is worse than an admission.
+ *
+ * **Nodes, not a sentence**, since 2026-09-15 (todo 02): *kill necromancer in
+ * Amethyst Cave* names a monster the client has a card for and a room it can
+ * walk to, and both were plain text on the one card telling the player to go
+ * there. So the verbs and the joining words are drawn apart from the names,
+ * `Name` and `Where` carry them, and the words that are nobody's name — a shop
+ * (the client has no panel for one) and an earlier step's rank — stay text.
+ */
+function sourceNodes(
+  source: SourceFacts | undefined,
+  fromStep: number | null,
+  onName?: ((name: string, anchor: HTMLElement) => void) | null,
+  onGoTo?: ((room: string) => void) | null
+): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  if (source?.shops !== undefined && source.shops.length > 0) {
+    parts.push(t('cards.quests.source.shops', { names: source.shops.slice(0, 2).join(', ') }));
   }
-  if (known?.mobs !== undefined && known.mobs.length > 0) {
-    parts.push(t('cards.quests.source.mobs', { names: known.mobs.slice(0, 2).join(', ') }));
+  if (fromStep !== null) parts.push(t('cards.quests.source.step', { rank: fromStep }));
+  if (source?.mobs !== undefined && source.mobs.length > 0) {
+    parts.push(
+      <>
+        {t('cards.quests.source.mobsVerb')}{' '}
+        {source.mobs.slice(0, 2).map((who, nth) => (
+          <Fragment key={who}>
+            {nth > 0 && ', '}
+            <Name onName={onName}>{who}</Name>
+          </Fragment>
+        ))}
+      </>
+    );
   }
-  return parts.length === 0 ? null : parts.join(' · ');
+  for (const handover of source?.from?.slice(0, 2) ?? []) {
+    const words = handoverNodes(handover, onName, onGoTo);
+    if (words !== null) parts.push(words);
+  }
+  return parts;
+}
+
+/** What `sourceNodes` reads: the three answers, wherever they are carried. */
+type SourceFacts = Partial<Pick<QuestSource, 'shops' | 'mobs' | 'from'>>;
+
+/**
+ * One handover as the act it is — format 39.
+ *
+ * A sentence rather than a list, because that is what the realm states: kill
+ * this, say that there, ask them for it. The place is named where the realm
+ * places the owner and left out where it does not, which is the same silence
+ * the other three answers keep.
+ *
+ * The detail — the other spellings of the phrase, the walk — is on the item's
+ * own panel, which every name on this card opens. This line is the lead.
+ */
+function handoverNodes(
+  handover: ItemHandover,
+  onName?: ((name: string, anchor: HTMLElement) => void) | null,
+  onGoTo?: ((room: string) => void) | null
+): React.ReactNode | null {
+  const word = handover.say?.[0];
+  const where = <Where onGoTo={onGoTo} place={handover.place} room={handover.room} />;
+  if (handover.kind === 'killed') {
+    if (handover.who === undefined) return null;
+    return (
+      <>
+        {t('cards.quests.source.killVerb')} <Name onName={onName}>{handover.who}</Name>
+        {where}
+      </>
+    );
+  }
+  if (handover.kind === 'asked') {
+    if (handover.who === undefined || word === undefined) return null;
+    return (
+      <>
+        {t('cards.quests.source.askVerb')} <Name onName={onName}>{handover.who}</Name>{' '}
+        {t('cards.quests.source.forWord', { word })}
+      </>
+    );
+  }
+  if (word === undefined) return null;
+  return (
+    <>
+      {t('cards.quests.source.sayWord', { word })}
+      {where}
+    </>
+  );
+}
+
+/**
+ * A room, as the control that plans the walk to it — or as nothing.
+ *
+ * The step's own place and the place a thing is handed over are one kind of
+ * fact and get one control, so `.quest-where` is written once. Silent where
+ * the realm names no room, text where the card cannot act (a pinned float's
+ * null `onGoTo`, whose realm may not be the shown character's), and text where
+ * the realm has a name and no address to walk to.
+ */
+function Where({
+  place,
+  room,
+  onGoTo,
+  lead = false
+}: {
+  place?: string;
+  room?: string;
+  onGoTo?: ((room: string) => void) | null;
+  /** True where the room leads its own line, so no joining word is drawn. */
+  lead?: boolean;
+}): React.JSX.Element | null {
+  const name = place ?? room;
+  if (name === undefined) return null;
+  const joined = lead ? null : <span>{t('cards.quests.source.inWord')} </span>;
+  if (!onGoTo || room === undefined) {
+    return (
+      <>
+        {!lead && ' '}
+        {joined}
+        <span className="quiet-note">{name}</span>
+      </>
+    );
+  }
+  return (
+    <>
+      {!lead && ' '}
+      {joined}
+      <button
+        className="lookup quest-where"
+        onClick={() => onGoTo(room)}
+        onMouseDown={keepFocus}
+        title={t('cards.quests.step.walkTo', { place: name, room })}
+        type="button"
+      >
+        <Icon name="route" />
+        {name}
+      </button>
+    </>
+  );
+}
+
+/**
+ * What every way into a place demands be carried — realm format unchanged,
+ * derived (`WorldGraph.approachItems`).
+ *
+ * Reported 2026-09-15 (todo 02): the book said *golden egg — kill necromancer
+ * in Amethyst Cave* and stopped, and the Amethyst Cave is behind a titanium
+ * fork and a magical quartz rod, which the realm states and nothing read. One
+ * row per frontier, outermost first, which is the order they are fetched in; a
+ * frontier with two doors is drawn `or`, because either opens it.
+ *
+ * Ticked against the pack like the step's own items and by the same three-
+ * valued rule, and each wanted item carries where *it* comes from — the rod is
+ * `ask Morukai return`, which is this quest's own step 7. That is one level
+ * down and no further: the errand after the errand after the errand is a
+ * walkthrough written out of guesses.
+ */
+function Approach({
+  gates,
+  carrying,
+  onName,
+  onGoTo
+}: {
+  gates: readonly ApproachGate[];
+  carrying: readonly number[] | null;
+  onName?: ((name: string, anchor: HTMLElement) => void) | null;
+  onGoTo?: ((room: string) => void) | null;
+}): React.JSX.Element | null {
+  if (gates.length === 0) return null;
+  return (
+    <ul className="quest-items quest-approach">
+      {gates.map((gate, index) => {
+        /*
+          Held at the **frontier**, because any one of its items opens it: the
+          row is ticked once, in the marker column the step's own items use, so
+          a list of errands reads the same whichever line it is on. Which of
+          two it is is the name's own tooltip.
+        */
+        const answers = gate.anyOf.map((item) => packHolds(carrying, item.id));
+        const open = answers.some((held) => held === true)
+          ? true
+          : answers.every((held) => held === false)
+            ? false
+            : null;
+        return (
+          <li
+            data-held={open === null ? undefined : open ? 'true' : 'false'}
+            key={gate.anyOf.map((item) => item.id).join(':') || index}
+          >
+            <span className="quest-verb" title={t('cards.quests.approach.title')}>
+              {t('cards.quests.approach.verb')}
+            </span>
+            {gate.anyOf.map((item, nth) => {
+              const has = packHolds(carrying, item.id);
+              const where = sourceNodes(item, null, onName, onGoTo);
+              return (
+                <Fragment key={item.id}>
+                  {nth > 0 && <span className="quiet-note">{t('cards.quests.approach.or')}</span>}
+                  <span
+                    title={
+                      has === null
+                        ? undefined
+                        : has
+                          ? t('cards.quests.bring.held')
+                          : t('cards.quests.bring.missing')
+                    }
+                  >
+                    <Name onName={onName}>{item.name}</Name>
+                  </span>
+                  {where.length > 0 && <span className="quiet-note">{joinDot(where)}</span>}
+                </Fragment>
+              );
+            })}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Several answers on one line, in the separator `.quest-give` already uses. */
+function joinDot(parts: readonly React.ReactNode[]): React.ReactNode {
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 && ' · '}
+      {part}
+    </Fragment>
+  ));
 }
 
 /**
@@ -693,12 +951,14 @@ const NO_QUESTS: readonly Quest[] = [];
 function QuestCard({
   session,
   loadQuests,
+  loadErrand,
   realmAt,
   onGoTo,
   onName,
   characterClass,
   characterRace,
   characterLevel,
+  carrying,
   counters,
   said,
   ...chrome
@@ -748,43 +1008,19 @@ function QuestCard({
   /*
    * How far through each quest this character is.
    *
-   * **The realm's own count wins where there is one.** `abil` states every
-   * counter and the listing enumerates, so a quest the listing does not name
-   * is a quest at zero — not an unknown. The remembered mark answers only
-   * where no listing has been read: a character on Paradigm, or one on
-   * GreaterMUD before the first `abil`. Neither is written over the other; the
-   * mark is a preference on this machine and the count is a fact about the
-   * realm, and the card says which it is drawing.
+   * The ranking of the three readings is `questReading`, in `quests.ts`, which
+   * main reads too: the realm's own count where it is the freshest thing said,
+   * an act the client watched after it where there is one, and the remembered
+   * mark only where neither has spoken. All this adds is the mark, which is a
+   * preference in this window's own storage and no business of main's.
    */
   const progressOf = (quest: Quest): Progress => {
-    /*
-     * An id a **complete** listing does not name is a counter at zero — the
-     * containers are printed whole, so absence is the server holding no
-     * modifier. An id an **incomplete** one does not name is merely unknown,
-     * and falls through to the mark, which is why this is decided per quest
-     * rather than per card: half a listing still settles every counter it
-     * printed, and settles nothing about the rest.
-     */
-    const listed = counters ? counters.sums[quest.id] : undefined;
-    const observed = listed ?? (counters?.complete === true ? 0 : null);
-    // Watched, then marked: an observation beats an assertion made without one.
-    const watched = said?.[quest.id] ?? null;
-    const rank = observed ?? watched ?? ranks.get(String(quest.id));
-    /*
-     * And whether the counter is held at all, which is the *listing naming the
-     * id* where the realm counted and *somebody having said a rank* where it
-     * did not. Zero is a rank the realm grants, so the number alone cannot
-     * carry this: see `stepDone`.
-     */
-    const held = observed !== null ? listed !== undefined : rank !== null;
+    const marked = ranks.get(String(quest.id)) ?? null;
+    const reading = questReading(quest.id, counters ?? null, said ?? null, marked);
     return {
-      rank,
-      held,
-      done: stepsDone(quest, rank, held),
-      total: quest.steps.length,
-      observed: observed !== null,
-      watched: observed === null && watched !== null,
-      at: observed !== null ? (counters?.at ?? null) : null
+      ...reading,
+      done: stepsDone(quest, reading.rank, reading.held),
+      total: quest.steps.length
     };
   };
 
@@ -1079,7 +1315,9 @@ function QuestCard({
       />
       {opened === null ? null : (
         <Track
+          carrying={carrying ?? null}
           characterClass={characterClass}
+          loadErrand={loadErrand}
           onGoTo={onGoTo}
           onName={onName}
           onRank={(rank) => ranks.set(String(opened.id), rank)}
@@ -1104,7 +1342,9 @@ function Track({
   onRank,
   onGoTo,
   onName,
-  characterClass
+  characterClass,
+  carrying,
+  loadErrand
 }: {
   quest: Quest;
   /**
@@ -1123,12 +1363,16 @@ function Track({
   onGoTo?: ((room: string) => void) | null;
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
+  /** What the pack holds, as realm rows, or null where nobody has listed it. */
+  carrying: readonly number[] | null;
+  loadErrand?: ((block: number) => Promise<QuestErrand | null>) | null;
 }): React.JSX.Element {
   const { rank, held, observed, watched, at } = progress;
   // `stepDone` is the whole of the rule and it is stated once, in `quests.ts`.
   const done = (step: QuestStep): boolean => stepDone(step, rank, held);
   const next = quest.steps.findIndex((step) => !done(step));
   const doneCount = progress.done;
+  const { errand, again } = useErrand(loadErrand, quest.steps[next]);
 
   /**
    * What clicking a node means: this step is done, or it is not.
@@ -1209,10 +1453,19 @@ function Track({
         {quest.steps.map((step, at) => (
           <Step
             at={at}
+            carrying={carrying}
             characterClass={characterClass}
             key={`${step.block}:${step.from ?? ''}:${step.to ?? ''}`}
             onGoTo={onGoTo}
             onName={onName}
+            /*
+              Only on the step being run. An order is a walk from where the
+              character is standing *now*, which is an answer about the step
+              they are on and a fiction about one four ranks ahead — and each
+              one costs main a sweep of the realm graph per place.
+            */
+            errand={at === next ? errand : null}
+            onErrandAgain={at === next ? again : null}
             onRank={observed ? null : () => onRank(toggle(step))}
             quest={quest}
             state={done(step) ? 'done' : at === next ? 'next' : 'later'}
@@ -1222,6 +1475,197 @@ function Track({
       </ol>
     </div>
   );
+}
+
+/**
+ * The solved walk, keyed the way the rows are drawn.
+ *
+ * `QuestErrand` is a list of legs in walking order, which is what main solved;
+ * the rows are a list of items, which is what the reader is reading. This is
+ * the join, made once per render rather than once per row.
+ */
+interface Walk {
+  errand: QuestErrand;
+  /** Each ordered item's position in the walk, and the leg that reaches it. */
+  stops: Map<number, { position: number; moves: number; place: string }>;
+  /** Why each item the walk could not hold was left out of it. */
+  left: Map<number, 'unplaced' | 'unreachable'>;
+  /**
+   * The last leg, where the walk closes on the step's own room.
+   *
+   * A leg with no item is that leg and there is at most one, last. Absent
+   * where the step names no room, and where the realm's one-way exits leave
+   * no way back from the last thing the walk picks up — which is why the card
+   * reads the leg rather than assuming the walk closes.
+   */
+  home: { moves: number; room: string; place?: string } | null;
+}
+
+/** The walk as the rows need it, or null where main solved none. */
+function errandOf(errand: QuestErrand | null): Walk | null {
+  if (errand === null) return null;
+  const stops = new Map<number, { position: number; moves: number; place: string }>();
+  let home: Walk['home'] = null;
+  for (const leg of errand.legs) {
+    if (leg.item === undefined) {
+      home = {
+        moves: leg.moves,
+        room: leg.room,
+        ...(leg.place === undefined ? {} : { place: leg.place })
+      };
+      continue;
+    }
+    stops.set(leg.item.id, {
+      position: stops.size + 1,
+      moves: leg.moves,
+      place: leg.place ?? leg.room
+    });
+  }
+  return { errand, stops, left: new Map(errand.left.map((item) => [item.id, item.why])), home };
+}
+
+/**
+ * The step's items in walking order, with what the walk could not place last.
+ *
+ * The realm's own order is kept underneath: an item nobody could find a place
+ * for has no position in a walk, and putting it at a number would be the walk
+ * claiming to know something it has just said it does not.
+ */
+function walkOrder(bring: Bring[], walk: Walk | null): Bring[] {
+  if (walk === null) return bring;
+  const position = (item: Bring): number => walk.stops.get(item.id)?.position ?? Infinity;
+  return [...bring].sort((a, b) => position(a) - position(b));
+}
+
+/** One leg's length, in the moves a player actually presses. */
+function legWords(moves: number): string {
+  // Two literal calls, which is how this dictionary states a plural.
+  return moves === 1
+    ? t('cards.quests.errand.leg.one', { moves })
+    : t('cards.quests.errand.leg.many', { moves });
+}
+
+/**
+ * The walk's own line: where it starts, what it costs, and the way to re-ask.
+ *
+ * Silent where main solved none, which is every step but the one being run and
+ * every step with fewer than two things the realm places. A refusal is drawn
+ * instead of a total, because *why there is no order* is the half the reader
+ * needs — `HuntingAdvice.refusal` on the card beside this one.
+ */
+function ErrandHead({
+  walk,
+  onAgain
+}: {
+  walk: Walk | null;
+  onAgain?: (() => void) | null;
+}): React.JSX.Element | null {
+  if (walk === null) return null;
+  const { errand } = walk;
+  const from = errand.fromPlace ?? errand.from;
+  return (
+    <p className="quest-errand">
+      <span className="quest-verb" title={t('cards.quests.errand.title')}>
+        <Icon name="route" />
+        {t('cards.quests.errand.head', { place: from })}
+      </span>
+      {errand.refusal === undefined ? (
+        <span className="chip quiet">
+          {errand.moves === 1
+            ? t('cards.quests.errand.total.one', { moves: errand.moves })
+            : t('cards.quests.errand.total.many', { moves: errand.moves })}
+        </span>
+      ) : (
+        <span className="quiet-note">{errand.refusal}</span>
+      )}
+      {onAgain && (
+        <button
+          className="quiet"
+          onClick={onAgain}
+          onMouseDown={keepFocus}
+          title={t('cards.quests.errand.againTitle')}
+          type="button"
+        >
+          {t('cards.quests.errand.again')}
+        </button>
+      )}
+    </p>
+  );
+}
+
+/**
+ * One item's place in the walk — its number and the legs it takes to get there.
+ *
+ * An item the walk could not hold keeps its row and gets the reason in the
+ * number's place: *the realm places it nowhere* and *no way there from here*
+ * are two different admissions and the reader can act on the second.
+ */
+function ErrandStop({ walk, item }: { walk: Walk | null; item: number }): React.JSX.Element | null {
+  if (walk === null) return null;
+  const stop = walk.stops.get(item);
+  if (stop !== undefined) {
+    return (
+      <span
+        className="quest-stop"
+        title={t('cards.quests.errand.stop', { place: stop.place, moves: stop.moves })}
+      >
+        {stop.position}
+      </span>
+    );
+  }
+  const why = walk.left.get(item);
+  if (why === undefined) return null;
+  // Two literal calls, not one interpolated key: the dictionary and its
+  // readers are a closed pair and `i18n-coverage.test.ts` reads the calls.
+  const said =
+    why === 'unplaced' ? t('cards.quests.errand.unplaced') : t('cards.quests.errand.unreachable');
+  return (
+    <span className="quest-stop quest-stop-none" title={said}>
+      {t('cards.quests.errand.noStop')}
+    </span>
+  );
+}
+
+/**
+ * The order the step being run fetches its items in, and the way to ask again.
+ *
+ * **Asked once, not on every move.** The order is solved from where the
+ * character was standing, and re-solving it as they walk would put a sweep of
+ * the realm graph per place on the socket's thread every time they pressed a
+ * direction — 186ms median on Paradigm and 298ms at the worst of the shipped
+ * steps. So the plan names the room it was solved from (`QuestErrand.from`)
+ * and `again` is the control that re-solves it from here. A plan that quietly
+ * described somewhere else is exactly the confidently-wrong answer this
+ * project refuses; a plan that says where it starts is a plan.
+ *
+ * A step with fewer than two items to fetch asks nothing at all — main would
+ * answer null, and the round trip is spent on every quest opened.
+ */
+function useErrand(
+  loadErrand: ((block: number) => Promise<QuestErrand | null>) | null | undefined,
+  step: QuestStep | undefined
+): { errand: QuestErrand | null; again: (() => void) | null } {
+  const [errand, setErrand] = useState<QuestErrand | null>(null);
+  /** Bumped by the control, which is the whole of what re-asking means. */
+  const [asked, setAsked] = useState(0);
+  const block = step !== undefined && itemsBrought(step).length >= 2 ? step.block : null;
+
+  useEffect(() => {
+    // Cleared first: a late answer for the step before this one drawn against
+    // this one's rows would name places that belong to neither.
+    setErrand(null);
+    if (block === null || !loadErrand) return;
+    let stale = false;
+    void loadErrand(block).then((answer) => {
+      if (!stale) setErrand(answer);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [block, loadErrand, asked]);
+
+  const again = useCallback(() => setAsked((count) => count + 1), []);
+  return { errand, again: block === null || !loadErrand ? null : again };
 }
 
 /** Where a step sits against what the player says they have done. */
@@ -1235,7 +1679,10 @@ function Step({
   onRank,
   onGoTo,
   onName,
-  characterClass
+  characterClass,
+  carrying,
+  errand,
+  onErrandAgain
 }: {
   step: QuestStep;
   quest: Quest;
@@ -1252,11 +1699,24 @@ function Step({
   onGoTo?: ((room: string) => void) | null;
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   characterClass?: string | null;
+  /** What the pack holds, as realm rows, or null where nobody has listed it. */
+  carrying: readonly number[] | null;
+  /**
+   * The walk this step's several items add up to, where main solved one.
+   *
+   * Null on every step but the one being run, and on a step with fewer than
+   * two things the realm places anywhere — which is where the realm's own
+   * order is as good as any and the rows read exactly as they always did.
+   */
+  errand?: QuestErrand | null;
+  /** Re-solves it from where the character is standing now. */
+  onErrandAgain?: (() => void) | null;
 }): React.JSX.Element {
   const ask = askWords(step);
   const flag = flagWords(step);
   const gates = gatesOf(step, quest.id);
-  const bring = bringOf(step);
+  const walk = errandOf(errand ?? null);
+  const bring = walkOrder(bringOf(step), walk);
   const rewards = rewardsOf(step, quest.id);
   const place = step.place ?? step.room;
 
@@ -1351,53 +1811,147 @@ function Step({
           </p>
         )}
 
-        <p className="quest-meta">
-          {flag !== null && (
+        {/*
+          **The realm's own order**, reported 2026-09-15 (todo 02): the block
+          reads `checkability 133 7 : checkitem 998 : giveability 133 8 :
+          giveitem 987`, and the card drew the counter move first and the item
+          it demands two rows below it. So: where to go and what it wants of
+          you, then what the counter does, then what it pays. The flag chip is
+          the one line that cannot sit in the realm's order, because it merges
+          the `check` and the `give` into one arrow — between the demands and
+          the rewards is the only honest place for it.
+        */}
+        {(place !== undefined || gates.length > 0) && (
+          <p className="quest-meta">
+            <Where lead onGoTo={onGoTo} place={place} room={step.room} />
+            {gates.map((gate, index) => (
+              <span className="chip quiet" key={`${gate.kind}:${index}`}>
+                {gateWords(gate)}
+              </span>
+            ))}
+          </p>
+        )}
+
+        {/* What the way *there* wants, where the realm walls the place in. */}
+        <Approach carrying={carrying} gates={step.approach ?? []} onGoTo={onGoTo} onName={onName} />
+
+        {/*
+          The walk the several items add up to — todo 01.
+
+          Above the rows and not below them, because it is what the rows are
+          now sorted by: a numbered list under an unexplained heading reads as
+          the realm's order with decoration on it. It names the room it was
+          solved from for the reason `QuestErrand` exists to carry it — the
+          plan is from *there*, and it stays true only until the character
+          walks — and the control beside it re-solves from here.
+        */}
+        <ErrandHead onAgain={onErrandAgain} walk={walk} />
+
+        {bring.length > 0 && (
+          <ul className="quest-items" data-ordered={walk === null ? undefined : 'true'}>
+            {bring.map((item) => {
+              const source = sourceNodes(
+                step.sources?.find((known) => known.id === item.id),
+                earlierStep(quest, at, item.id),
+                onName,
+                onGoTo
+              );
+              /*
+                Whether it is already in the pack: the one thing on this card
+                the realm cannot say and the reader most wants to know. Three
+                answers, and the third is *nobody has listed the pack* — which
+                marks the row neither way, because an empty pack drawn as a
+                statement would cross off a list that had never been read.
+
+                The tick is drawn by the row's own marker column and the row
+                goes quiet with it, which is the progression's grammar: what is
+                done is the quietest thing in a list and what is left is not.
+              */
+              const has = packHolds(carrying, item.id);
+
+              return (
+                <li
+                  data-held={has === null ? undefined : has ? 'true' : 'false'}
+                  key={item.id}
+                  title={
+                    has === null
+                      ? undefined
+                      : has
+                        ? t('cards.quests.bring.held')
+                        : t('cards.quests.bring.missing')
+                  }
+                >
+                  {/*
+                    The realm's own distinction, and it reads as a slip without
+                    a word about it: `checkitem` wants the thing on you and
+                    gives it back, `takeitem` keeps it. Reported 2026-09-15 as
+                    *it shows carry golden egg instead of hand over like the
+                    other required items* — and the card was right: the golden
+                    egg is checked at step 8 and taken at step 9.
+                  */}
+                  {/*
+                    Where this one comes in the walk. A number and not an
+                    arrow: the reader is going to do these one after another
+                    and *third* is the thing they need to hold in their head.
+                    Silent on a step nobody solved a walk for, and on an item
+                    the walk could not place — which keeps its row and gets the
+                    reason instead, because a position it has not got would be
+                    the list inventing one.
+                  */}
+                  <ErrandStop item={item.id} walk={walk} />
+                  {item.hand ? (
+                    <span className="quest-verb" title={t('cards.quests.bring.handTitle')}>
+                      {t('cards.quests.bring.hand')}
+                    </span>
+                  ) : (
+                    <span className="quest-verb" title={t('cards.quests.bring.carryTitle')}>
+                      {t('cards.quests.bring.carry')}
+                    </span>
+                  )}
+                  <Name onName={onName}>{item.name}</Name>
+                  {/* Silent where the realm does not place it: naming no
+                      source is the honest answer, and a guess is worse. */}
+                  {source.length > 0 && <span className="quiet-note">{joinDot(source)}</span>}
+                  {/* And what the way to where it is got wants carried, per
+                      place: two handovers of one item are two journeys. */}
+                  {(step.sources?.find((known) => known.id === item.id)?.from ?? []).map(
+                    (handover, nth) => (
+                      <Approach
+                        carrying={carrying}
+                        gates={handover.approach ?? []}
+                        key={`${handover.room ?? ''}:${nth}`}
+                        onGoTo={onGoTo}
+                        onName={onName}
+                      />
+                    )
+                  )}
+                </li>
+              );
+            })}
+            {/*
+              And the way back, as a row of the same list: it is the last leg
+              of the same walk and the reader counts it with the others. Drawn
+              only where the walk closes — the realm's one-way exits mean a
+              last pickup you cannot get home from, and a row asserting
+              otherwise would be a plan nobody can follow.
+            */}
+            {walk?.home != null && (
+              <li className="quest-home">
+                <span className="quest-verb">{t('cards.quests.errand.home')}</span>
+                <Where lead onGoTo={onGoTo} place={walk.home.place} room={walk.home.room} />
+                <span className="quiet-note">{legWords(walk.home.moves)}</span>
+              </li>
+            )}
+          </ul>
+        )}
+
+        {flag !== null && (
+          <p className="quest-meta">
             <span className="chip quest-flag" title={t('cards.quests.flag.title')}>
               <Icon name="flag" />
               {flag}
             </span>
-          )}
-          {place !== undefined &&
-            (onGoTo && step.room !== undefined ? (
-              <button
-                className="lookup quest-where"
-                onClick={() => onGoTo(step.room ?? '')}
-                onMouseDown={keepFocus}
-                title={t('cards.quests.step.walkTo', { place, room: step.room })}
-                type="button"
-              >
-                <Icon name="route" />
-                {place}
-              </button>
-            ) : (
-              <span className="quiet-note">{place}</span>
-            ))}
-          {gates.map((gate, index) => (
-            <span className="chip quiet" key={`${gate.kind}:${index}`}>
-              {gateWords(gate)}
-            </span>
-          ))}
-        </p>
-
-        {bring.length > 0 && (
-          <ul className="quest-items">
-            {bring.map((item) => {
-              const source = sourceWords(step, quest, at, item.id);
-
-              return (
-                <li key={item.id}>
-                  <span className="quest-verb">
-                    {item.hand ? t('cards.quests.bring.hand') : t('cards.quests.bring.carry')}
-                  </span>
-                  <Name onName={onName}>{item.name}</Name>
-                  {/* Silent where the realm does not place it: naming no
-                      source is the honest answer, and a guess is worse. */}
-                  {source !== null && <span className="quiet-note">{source}</span>}
-                </li>
-              );
-            })}
-          </ul>
+          </p>
         )}
 
         {/*
@@ -1428,12 +1982,34 @@ function Step({
                         reading it — the one route that matters is the
                         reader's own. */}
                     {way.takes.map((item) => {
-                      const from = sourceWords(step, quest, at, item.id);
+                      const from = sourceNodes(
+                        step.sources?.find((known) => known.id === item.id),
+                        earlierStep(quest, at, item.id),
+                        onName,
+                        onGoTo
+                      );
+                      /* Ticked like the step's own items: a route's price is
+                         the same errand, and an answer drawn on one row of a
+                         card and withheld on another reads as two facts. */
+                      const has = packHolds(carrying, item.id);
                       return (
-                        <span className="quest-give" key={`take:${item.id}`}>
+                        <span
+                          className="quest-give"
+                          data-held={has === null ? undefined : has ? 'true' : 'false'}
+                          key={`take:${item.id}`}
+                          title={
+                            has === null
+                              ? undefined
+                              : has
+                                ? t('cards.quests.bring.held')
+                                : t('cards.quests.bring.missing')
+                          }
+                        >
                           {t('cards.quests.bring.hand')}{' '}
                           <Name onName={onName}>{item.name ?? `#${item.id}`}</Name>
-                          {from !== null && <span className="quiet-note"> ({from})</span>}
+                          {from.length > 0 && (
+                            <span className="quiet-note"> ({joinDot(from)})</span>
+                          )}
                         </span>
                       );
                     })}

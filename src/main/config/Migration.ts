@@ -5545,6 +5545,18 @@ function theTuningBlockGainedKeys(
      * cannot be made bearable.
      */
     addKey('view', 'desktopAlertGapMs', DEFAULT_INTERNAL.tuning.view.desktopAlertGapMs);
+    /*
+     * What the quest book's errand solver will weigh (2026-09-15, todo 01):
+     * how many of a step's items it puts in order, how many places for each,
+     * and how far one of its sweeps may go. The first two are the exponent
+     * and the base of an exact solve, so they are the two numbers somebody
+     * whose realm holds a step bigger than either shipped world's would reach
+     * for — and a file that cannot state them is a file in which the order
+     * cannot be made to cover their realm.
+     */
+    addKey('world', 'errandItems', DEFAULT_INTERNAL.tuning.world.errandItems);
+    addKey('world', 'errandPlaces', DEFAULT_INTERNAL.tuning.world.errandPlaces);
+    addKey('world', 'errandSweepRooms', DEFAULT_INTERNAL.tuning.world.errandSweepRooms);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

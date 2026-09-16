@@ -77,8 +77,10 @@ for (const { world, source } of jobs) {
 
   console.log(`  ${built.stats.rooms.toLocaleString()} rooms`);
   console.log(
-    `  ${built.stats.items} items named — what an exit demands and what a shop stocks, ` +
-      `${built.header.items.filter((item) => item.shops || item.mobs).length} with a known source`
+    `  ${built.stats.items} items named — what an exit demands, what a shop stocks and what a ` +
+      `script hands over, ` +
+      `${built.header.items.filter((item) => item.shops || item.mobs || item.from).length} ` +
+      `with a known source`
   );
   console.log(
     `  ${built.stats.shops} shops with stock, ` +

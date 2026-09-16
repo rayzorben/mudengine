@@ -416,6 +416,7 @@ export class SessionHost {
         },
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
+        asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.

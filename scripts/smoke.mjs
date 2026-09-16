@@ -429,8 +429,14 @@ const server = net.createServer((socket) => {
          * honestly does not know where. Annotating both left the second with
          * nothing to test.
          */
+        /*
+         * And one **quest** sundry, which is what the Quest card's ticks are
+         * read off: PhoenixQuest's sixth step asks for four things and this is
+         * one of them, so the track has a row that is held and three that are
+         * not — the positive control for an assertion about a tick.
+         */
         Buffer.from(
-          '(Hands), padded pants (Legs), padded boots (Feet), quarterstaff\r\n',
+          '(Hands), padded pants (Legs), padded boots (Feet), quarterstaff, cave roots\r\n',
           'latin1'
         ),
         Buffer.from('You have no keys.\r\n', 'latin1'),
@@ -4221,6 +4227,132 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
   await gone('.reference-popover');
 
+  /*
+   * ------------------------------- and what the way to the thing itself wants
+   *
+   * Reported 2026-09-15 (todo 02): the book said *golden egg -- kill
+   * necromancer in Amethyst Cave* and stopped, and the Amethyst Cave is behind
+   * a titanium fork and then a magical quartz rod, which the realm states on
+   * its own corridors and nothing read. Driven here because the sweep
+   * (`WorldGraph.approachItems`), the join onto the handover and the nested
+   * row are three layers and only the last is visible.
+   *
+   * Two more halves of the same report in one read: the monster and the room
+   * in that line are an entity and a place, and both were plain text on the
+   * card sending the player to them; and the step's own demands now sit
+   * **above** the counter's arrow rather than below it, which is the realm's
+   * own order (`checkability` before `giveability`).
+   */
+  const wayIn = JSON.parse(
+    await evaluate(`
+      (() => {
+        const track = document.querySelector('.quest-card .quest-track');
+        if (!track) return JSON.stringify({ error: 'no track' });
+        const egg = [...track.querySelectorAll('.quest-items > li')]
+          .find((li) => /golden egg/i.test(li.innerText));
+        if (!egg) return JSON.stringify({ error: 'no golden egg row' });
+        const step = egg.closest('.quest-step');
+        // By containment, not by class: the nested way-in list wears the
+        // same class, and this asks where this item's own row sits.
+        const order = [...step.querySelector('.quest-what').children];
+        const items = order.findIndex((el) => el.contains(egg));
+        const flag = order.findIndex((el) => el.querySelector('.quest-flag'));
+        return JSON.stringify({
+          wants: [...egg.querySelectorAll('.quest-approach > li')].map((li) =>
+            li.innerText.replace(/\s+/g, ' ').trim()
+          ),
+          // The two controls in the source line, which were text.
+          killer: [...egg.querySelectorAll('button.lookup')].map((b) => b.innerText.trim()),
+          where: [...egg.querySelectorAll('button.quest-where')].map((b) => b.innerText.trim()),
+          itemsAt: items,
+          flagAt: flag
+        });
+      })()
+    `)
+  );
+  check(
+    Array.isArray(wayIn.wants) &&
+      wayIn.wants.some((line) => /potion of levitation/i.test(line)) &&
+      wayIn.wants.some((line) => /titanium fork/i.test(line)) &&
+      wayIn.wants.some((line) => /magical quartz rod/i.test(line)),
+    'the way into the place a quest item comes from names what it wants carried',
+    JSON.stringify(wayIn.wants)
+  );
+  /*
+   * And each of those says where *it* comes from, which is the other half of
+   * the report: the titanium fork is `ask gnome inventor fork`, and the card
+   * telling the player to fetch it said nothing about who has one.
+   */
+  check(
+    Array.isArray(wayIn.wants) &&
+      wayIn.wants.some((line) => /titanium fork/i.test(line) && /gnome inventor/i.test(line)),
+    'and each of them says who hands it over',
+    JSON.stringify(wayIn.wants)
+  );
+  check(
+    Array.isArray(wayIn.killer) && wayIn.killer.some((name) => /necromancer/i.test(name)),
+    'and the monster it is taken off is a control, not text',
+    JSON.stringify(wayIn.killer)
+  );
+  check(
+    Array.isArray(wayIn.where) && wayIn.where.some((name) => /amethyst cave/i.test(name)),
+    'and the room it is in is a walk, not text',
+    JSON.stringify(wayIn.where)
+  );
+  check(
+    wayIn.itemsAt >= 0 && wayIn.flagAt >= 0 && wayIn.itemsAt < wayIn.flagAt,
+    'and what the step demands is drawn before what it moves the counter to',
+    JSON.stringify({ itemsAt: wayIn.itemsAt, flagAt: wayIn.flagAt })
+  );
+
+  /*
+   * ------------------------------------------- what is already in the pack
+   *
+   * The one thing a quest book cannot answer from the realm alone, driven end
+   * to end because every link in it is a boundary: the `i` listing above, the
+   * name-to-row join the tracker makes, `Inventory.rows` over IPC, and the
+   * row's own tick. The pack holds `cave roots` and none of the other three
+   * sundries the components step asks for, so the check has its own control —
+   * a card that ticked everything or nothing would fail one half of it.
+   */
+  const ticks = JSON.parse(
+    await evaluate(`
+      (() => {
+        const rows = [...document.querySelectorAll('.quest-card .quest-items li')];
+        return JSON.stringify({
+          rows: rows.length,
+          held: rows
+            .filter((li) => li.dataset.held === 'true')
+            .map((li) => li.innerText.replace(/\\s+/g, ' ').trim()),
+          missing: rows.filter((li) => li.dataset.held === 'false').length,
+          unanswered: rows.filter((li) => li.dataset.held === undefined).length
+        });
+      })()
+    `)
+  );
+  check(
+    ticks.held.some((name) => /cave roots/i.test(String(name))) &&
+      ticks.missing > 0 &&
+      ticks.unanswered === 0,
+    'the quest book ticks what the pack already holds, and only that',
+    JSON.stringify(ticks)
+  );
+
+  /*
+   * And the picture of it, with the ticked row scrolled to: the assertion
+   * above is about the DOM, and a tick that is drawn in the wrong column or
+   * under the fold passes it either way.
+   */
+  await evaluate(`
+    (() => {
+      const row = document.querySelector('.quest-card .quest-items li[data-held="true"]');
+      if (row) row.scrollIntoView({ block: 'center' });
+      return !!row;
+    })()
+  `);
+  await painted();
+  await capture('smoke-quest-items.png', 'a step’s items, ticked against the pack');
+
   await evaluate(`
     (() => {
       const el = document.querySelector('.quest-card .table-find input');
@@ -5985,6 +6117,89 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           JSON.stringify({ said: said.slice(0, 160), want: scripted })
         );
         await capture('smoke-room-answers.png', 'the words a room answers');
+      }
+
+      /*
+       * And the words the things *standing* in the room answer (todo 01).
+       *
+       * **The rank is what makes this one chip rather than a menu.** This
+       * host's own `abil` answer states `GoodQuest(126) 4`, and the realm's
+       * GoodQuest is eleven steps asked of six different people — so the
+       * client must offer the word rank four opens and none of the three
+       * behind it. The rank comes from the fixture above, the words come out
+       * of the realm's own book, and neither is typed into this check.
+       *
+       * That is the whole of *if and only if the requirements are met*: a
+       * client that drew every word a monster answers would put three dead
+       * asks in front of the player, and one that gated on a listing it had
+       * not read would draw nothing at all.
+       */
+      const askable = await evaluate(`
+        (async () => {
+          const book = await window.mudengine.questBook('${SESSION}');
+          const quest = book.find((entry) => entry.id === 126);
+          if (!quest) return null;
+          const asked = (step) => step.who && step.say && step.say.length > 0;
+          const open = quest.steps.find((step) => step.from === 4 && asked(step));
+          if (!open) return null;
+          // The ranks already behind this character, which must not be offered.
+          const behind = quest.steps
+            .filter((step) => asked(step) && step.to !== undefined && step.to <= 4)
+            .map((step) => step.say[0]);
+          return { who: open.who, say: open.say[0], behind };
+        })()
+      `);
+      check(
+        askable !== null && !!askable.who && !!askable.say && askable.behind.length > 0,
+        'the shipped realm has a monster that answers a word, with earlier ranks behind it',
+        JSON.stringify(askable)
+      );
+      if (askable) {
+        await hostSays(
+          () =>
+            liveSockets[0]?.write(
+              enter(
+                'Newhaven, Village Entrance',
+                ['n', 's'],
+                // Magenta, which is what `room-also-here` expects: the rule
+                // states `expectColour: [35]`, and an uncoloured line is not
+                // the sentence the server sends.
+                `\x1b[0;35mAlso here: ${askable.who}.\x1b[0m\r\n`
+              )
+            ),
+          new RegExp(`Also here: ${askable.who.replace(/[.*+?^$()[\]{}|\\]/g, '\\$&')}`),
+          { prompt: true }
+        );
+        /*
+         * Polled, and on the room face, for the reasons the row above is. The
+         * chip carries the realm's own verb and argument order, which is what
+         * goes in the console: `ask <who> <word>`.
+         */
+        const offered = await readUntil(
+          () =>
+            evaluate(`
+              (() => {
+                const room = [...document.querySelectorAll('.room-card .crumb')]
+                  .find((c) => c.innerText.trim().toLowerCase() === 'room');
+                if (room && room.getAttribute('aria-selected') !== 'true') room.click();
+                const row = document.querySelector('.room-card .room-asks');
+                if (!row) return '';
+                return [...row.querySelectorAll('button')].map((b) => b.innerText.trim()).join(' | ');
+              })()
+            `),
+          (found) => found.length > 0
+        );
+        check(
+          offered === `ask ${askable.who} ${askable.say}`,
+          'and a monster standing in the room offers what it can be asked, as a control',
+          JSON.stringify({ offered, want: `ask ${askable.who} ${askable.say}` })
+        );
+        check(
+          askable.behind.every((word) => !offered.includes(word)),
+          'and only the word this rank is for, not the ones already behind it',
+          JSON.stringify({ offered, behind: askable.behind })
+        );
+        await capture('smoke-room-asks.png', 'what the things standing here answer');
       }
 
       /*
@@ -9220,11 +9435,16 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * card on this monitor is worth the console behind it is the player's call,
    * and the slider is where they make it.
    */
-  check(alphas.slider < 100, 'and the slider it ships at has travel left in it', `${alphas.slider}`);
+  check(
+    alphas.slider < 100,
+    'and the slider it ships at has travel left in it',
+    `${alphas.slider}`
+  );
   // Through the prototype's own setter, or React's value tracker sees no
   // change and the `onChange` never fires -- the idiom every other field in
   // this harness is driven with.
-  const dragAlphaTo = (value) => evaluate(`
+  const dragAlphaTo = (value) =>
+    evaluate(`
     (() => {
       const el = document.querySelector('.float > .card .card-alpha');
       if (!el) return false;

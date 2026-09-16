@@ -674,6 +674,43 @@ export interface WorldItem {
   shops?: string[];
   /** Monsters known to drop it. */
   mobs?: string[];
+  /**
+   * Where one of the realm's own scripts hands it over — format 39.
+   *
+   * The third answer to *where does this come from*, and the only one that is
+   * not a column: a realm hands its quest components over in a text block.
+   * Capped like the other two. See `ItemHandover`.
+   */
+  from?: ItemHandover[];
+  /**
+   * Where **using one** puts the character, as `map/room` — format 40.
+   *
+   * An item can be a door. The potion of levitation casts a spell whose text
+   * block is `teleport 1009 9`, and that is the only entrance the Catacombs
+   * have — the exit table says nothing about it, so a client reading only
+   * corridors calls half the map unreachable. Derived at build time, because
+   * the chain runs through `TBInfo`, which does not ship (`landingsOfItems`).
+   * Read by `WorldGraph.approachItems`, which treats a landing inside an
+   * enclosed region as a way into it.
+   */
+  lands?: RoomId;
+  /**
+   * The rooms using it actually works in — format 41.
+   *
+   * **A teleport is not an *anywhere*, and reading one as though it were is
+   * what made format 40 wrong.** The potion of levitation's block opens
+   * `roomitem 993`, which `TextBlockPart.cs` answers by failing the whole
+   * block when the room lacks item 993 — the `waterfall`, which stands in
+   * `3/1` and nowhere else. Used in the Alchemist's Hut the server does
+   * precisely nothing, which is what a failed block looks like from outside.
+   *
+   * Absent means the chain carries no place-binding guard and it works
+   * wherever you stand: Paradigm's seven recall tokens, whose guards are about
+   * the moment (`nomonsters`, `failroomitem`) and not the place. Never empty —
+   * a guard the realm places nowhere withholds `lands` as well, because a way
+   * the converter cannot describe is not one to offer.
+   */
+  usableIn?: RoomId[];
   /** What the realm charges, before a shop's markup. Absent when it says none. */
   price?: number;
   /** What it weighs, in the units the status line counts encumbrance in. */
@@ -889,6 +926,87 @@ export interface TrainerChoice {
 }
 
 /**
+ * One place a script hands an item over, and what a player does to make it.
+ *
+ * The realm states three ways and they are three different acts, which is why
+ * this is a tagged union rather than a name that might be blank: `asked` is a
+ * word said to a monster, `said` is a word said in a room, and `killed` is a
+ * monster's death spell running its text block over the corpse. Read off
+ * `BuiltItemFrom` (the converter's `npc`/`room`/`death`) into the reader's own
+ * words, because what the card needs to say is the *act*.
+ *
+ * `room` is the address the realm places the owner at and `place` its name,
+ * joined in main from the room index the way `QuestStep.place` is — so an item
+ * is one click from the monster's card and one from the walk.
+ *
+ * Absence is ordinary: three of the four Phoenix sundries name a monster whose
+ * `Summoned By` places it, and a monster the realm summons from a spell or a
+ * text block has no room to state.
+ */
+export type ItemHandover = {
+  kind: 'asked' | 'said' | 'killed';
+  /** The monster, for `asked` and `killed`. */
+  who?: string;
+  /** Where, as `map/room`. */
+  room?: string;
+  /** That room's own name, joined in main. */
+  place?: string;
+  /** The words that reach it. A death has none: nothing is said. */
+  say?: string[];
+  /**
+   * What the way to that room demands be carried, outermost frontier first.
+   *
+   * Joined by the **quest book** alone (`WorldGraph.joinStep`), which is the
+   * one reader: the Reference card's `Given by` row is a lead and this is an
+   * errand list, and a sweep per handover on every lookup would be paid for by
+   * nobody. Absent where the realm leaves the place open, and where no room is
+   * named to ask about.
+   */
+  approach?: ApproachGate[];
+};
+
+/**
+ * One item the way somewhere demands, and where the realm says to get it.
+ *
+ * The same three answers `QuestSource` carries, one level down and no further:
+ * *the golden egg is off the necromancer in the Amethyst Cave, and the way
+ * into the Amethyst Cave wants a magical quartz rod, which Morukai hands over
+ * for `ask Morukai return`.* Recursing again would be a walkthrough written
+ * out of guesses about which of several ways somebody will take.
+ */
+export interface ApproachItem {
+  id: number;
+  name: string;
+  /** Shops known to stock it, by name. */
+  shops?: string[];
+  /** Monsters known to drop it, by name. */
+  mobs?: string[];
+  /** Where one of the realm's own scripts hands it over. See `QuestSource.from`. */
+  from?: ItemHandover[];
+}
+
+/**
+ * One frontier on the way somewhere: **any one** of these items gets through.
+ *
+ * `anyOf` and not a bare item, because a realm may write two doors into one
+ * place. Naming one of them would send somebody for the wrong errand, and
+ * unioning them into one list would say both are needed — the *step's routes*
+ * lesson in a second place. **Neither shipped world holds one**: the pairs
+ * that looked like alternatives turn out to open onto different places, which
+ * is what the flood in `approachItems` is for and a frontier count could not
+ * see. It is carried because the shape is real, cheap and derived rather than
+ * assumed; `WorldGraph.test.ts` holds it against a realm written for it.
+ *
+ * Several of these in a row **are** a conjunction: every one has to be crossed,
+ * in the order given, which is the order they are fetched in. See
+ * `WorldGraph.approachItems` for how the realm is asked, and
+ * `tuning.world.approachRooms` for when it refuses to answer.
+ */
+export interface ApproachGate {
+  anyOf: ApproachItem[];
+}
+
+/**
  * Where a shop an item is *sold by* actually is.
  *
  * `WorldItem.shops` is a list of shop **names** — enough to read and not enough
@@ -920,6 +1038,47 @@ export type ShopPlace =
        */
       rooms: Array<{ map: number; room: number; roomName: string }>;
     };
+
+/**
+ * One counter that stocks a thing, and what stopping at it costs the journey.
+ *
+ * `ShopPlace` above answers *where is the shop the player named* and refuses to
+ * pick between rooms, which is right: the player typed a name and the item
+ * panel lets them choose. This answers a different question — *where should I
+ * buy this, on my way to there* — and it is one the client is equipped to
+ * settle, because it holds a position, a destination and the realm's own
+ * prices. Nothing here is a guess between equals.
+ *
+ * **The detour is the quantity, not the distance.** A counter two hundred moves
+ * away that the route already walks through costs nothing to stop at; one sixty
+ * moves away in the wrong direction costs a hundred and twenty. Ranking by
+ * nearness sent a character to the second (`Boat Launch` at the Pier against
+ * `Albion Docks`, measured 2026-09-16). In plain steps, so it reads as moves —
+ * it is the router's own cost, where an ordinary corridor is 1.
+ */
+export interface BuyingPlace {
+  map: number;
+  room: number;
+  roomName: string;
+  /** The shop's name, as the realm spells it. */
+  shop: string;
+  /**
+   * `Shops.Markup%` — the whole of the price difference between two counters
+   * selling the same thing.
+   *
+   * The realm's base figure is the **item's**, not the shop's: 0 of the 1,539
+   * stocked rows in Paradigm carry a different base at a different counter
+   * (measured 2026-09-16). So the markup is the entire ratio, exactly, and no
+   * copper has to be invented to compare two of them — which matters, because
+   * the base figure is not copper and the client has settled that it must not
+   * be multiplied into one (`ShopFace`).
+   */
+  markup: number;
+  /** What stopping here adds to the journey, in plain steps. */
+  detour: number;
+  /** How many moves away the counter is, for the sentence. */
+  moves: number;
+}
 
 /** `Shops.ShopType` as words, sampled name by name (see `buildRealm.ts`). */
 export function shopKind(type: number): ShopKind | undefined {
@@ -2210,6 +2369,16 @@ export interface RouteStep {
    * plan again from there rather than to stop the walk.
    */
   scatter?: RouteScatter;
+  /**
+   * The item this step uses instead of moving, where the step is one.
+   *
+   * Present exactly on a step the router took through `WorldItem.lands`, whose
+   * `direction` is `'portal'` for the reason every scripted teleport's is —
+   * the realm moves the character by coordinates and no compass reasoning
+   * applies. What this adds over a portal is **what it spends**: a corridor
+   * costs nothing to walk twice and a potion is gone.
+   */
+  invoke?: RouteInvocation;
 }
 
 /**
@@ -2247,6 +2416,55 @@ export interface RouteScatter {
    * (`WorldGraph.scatterMoves`).
    */
   moves: number;
+}
+
+/**
+ * An item used to travel, and what using it spends.
+ *
+ * **An item can be a door** (`WorldItem.lands`, format 40) and until now only
+ * `approachItems` read it: the potion of levitation casts a spell whose text
+ * block is `teleport 1009 9`, no exit in either database enters the 173 rooms
+ * behind it, and the router answered *the realm data joins no path* about a
+ * quest the same client had just told the player how to finish. So a plan can
+ * hold a step that is not a move at all — and the thing a reader has to know
+ * before walking one is what it costs them **permanently**, because a charge
+ * spent is not a charge the walk back has.
+ *
+ * `uses` is `Items.UseCount` as the realm states it, which is the column
+ * format 25 exists to keep honest: the potion is 1 and every one of Paradigm's
+ * seven tokens is 5.
+ */
+export interface RouteInvocation {
+  /** The `Items` row, and the name to say. */
+  id: number;
+  name: string;
+  /** What to type — `use potion of levitation`, the realm's own verb. */
+  command: string;
+  /**
+   * **The room it is used in** — which is where the character is standing, and
+   * the half of this step a plan otherwise never states.
+   *
+   * Every other row of a route reads *direction, then the room it reaches*, so
+   * the destination alone is enough: the reader knows they are walking from
+   * wherever the row above left them. A teleport breaks that reading — its
+   * destination is on the row and its origin is nowhere, so the first thing on
+   * a plan is a room the character is not in, and the plan looks like it
+   * begins somewhere else. Reported exactly that way: *it is planning it from
+   * a spot I am not in, where is the route TO that first step*. There is no
+   * route to it; that is the point of it, and the plan has to say so.
+   */
+  at: { room: RoomId; name: string };
+  /**
+   * How many times it may be used in total, or null where the realm says *for
+   * ever* (`UseCount: -1`).
+   *
+   * **The item's capacity, never the character's remainder.** The realm states
+   * the first and only the pack listing states the second, so a reader is told
+   * what a fresh one is worth and what is left comes off the wire — one is a
+   * fact about the world and the other a fact about this character, and the
+   * whole of `WorldItem` is the first kind.
+   */
+  uses: number | null;
 }
 
 export interface RouteHazard {
@@ -2797,6 +3015,26 @@ export interface Route {
    * reader (`RouteOptions.alternatives`).
    */
   carrying?: Route;
+  /**
+   * The way this character would take by **using an item that teleports**,
+   * where that is materially shorter than walking.
+   *
+   * Off by default and offered rather than planned, which is the difference
+   * between the two kinds of landing the realms actually hold. The potion of
+   * levitation is the only entrance the Catacombs have, so a route there is
+   * simply impossible without it and the plain search walks it as the last
+   * resort it is — the same rung `RouteOptions.alternatives` does not gate,
+   * because a way that does not exist is not an alternative. Paradigm's seven
+   * tokens are the other kind: every one of them lands on a room the character
+   * could walk to, so taking one is a *choice* that costs a charge, and a
+   * router that spent one unasked would quietly burn five recalls on a walk
+   * the player would have made on foot.
+   *
+   * Its steps' `invoke` names what would be spent. Absent where no landing
+   * shortens the way by `tuning.world.alternativeMinSteps`, where the plan
+   * already uses one, and on any route not planned for a reader.
+   */
+  viaItem?: Route;
 }
 
 /**

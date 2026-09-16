@@ -9,8 +9,9 @@ import { readEffects, type AbilityTable } from '@shared/abilities';
 import { ITEM_KIND_WORD } from '@shared/items';
 import type { RealmFamily } from '@shared/character';
 import type { Verdict } from '@shared/verdict';
-import { roomId } from '@shared/world';
+import { asRoomReference, roomId } from '@shared/world';
 import type {
+  ItemHandover,
   MobPlaces,
   MobSpawn,
   ShopPlace,
@@ -877,6 +878,93 @@ function DroppedBy({
   );
 }
 
+/**
+ * Where the realm's own scripts hand this over — format 39.
+ *
+ * The third answer beside `Sold by` and `Dropped by`, and the one the realm
+ * states as an **act** rather than as a list: a monster to kill, a word to say
+ * in a room, a word to ask somebody for. Each one is drawn as the two controls
+ * the act is made of — the monster opens beside the name like every other
+ * realm name here, and the room opens the route panel like a shop's does — so
+ * *what is this* and *how do I get one* are one panel and two clicks.
+ *
+ * The words are monospace, because they are the line that goes in the console:
+ * the same register `.quest-ask` uses, and for the same reason. A monster's
+ * death has none — nothing is typed to make it happen.
+ *
+ * Where the realm places nobody there is nothing to click: the name and the
+ * words are still what it said, and a control bound to nowhere is the thing
+ * this card refuses everywhere else.
+ */
+function GivenBy({
+  from,
+  onRoom,
+  onName
+}: {
+  from: readonly ItemHandover[];
+  onRoom: ((map: number, room: number) => void) | null;
+  onName: ((name: string, anchor: HTMLElement) => void) | null;
+}) {
+  return (
+    <dd className="item-given">
+      {from.map((handover, index) => {
+        const at = handover.room === undefined ? null : asRoomReference(handover.room);
+        const place = handover.place ?? handover.room;
+        const who =
+          handover.who === undefined ? null : onName === null ? (
+            <span>{handover.who}</span>
+          ) : (
+            <button
+              className="lookup"
+              onClick={(event) => onName(handover.who ?? '', event.currentTarget)}
+              type="button"
+            >
+              {handover.who}
+            </button>
+          );
+        return (
+          <span className="handover" key={`${handover.kind}-${handover.who ?? ''}-${index}`}>
+            {handover.kind === 'killed' && <>{t('cards.reference.item.givenKilling')} </>}
+            {handover.kind === 'asked' && <>{t('cards.reference.item.givenAsking')} </>}
+            {handover.kind === 'said' && <>{t('cards.reference.item.givenSaying')} </>}
+            {who}
+            {handover.say !== undefined && handover.say.length > 0 && (
+              <>
+                {handover.kind === 'asked' && <> {t('cards.reference.item.givenAskingFor')}</>}{' '}
+                <code className="handover-say">{handover.say[0]}</code>
+                {handover.say.length > 1 && (
+                  <span
+                    className="quiet"
+                    title={handover.say.slice(1).join(', ')}
+                  >{` ${t('cards.reference.item.givenMoreWords', { count: handover.say.length - 1 })}`}</span>
+                )}
+              </>
+            )}
+            {place !== undefined && (
+              <>
+                {' '}
+                {t('cards.reference.item.givenIn')}{' '}
+                {at !== null && onRoom !== null ? (
+                  <button
+                    className="lookup"
+                    onClick={() => onRoom(at.map, at.room)}
+                    title={t('cards.reference.item.shopRouteTitle', { room: place })}
+                    type="button"
+                  >
+                    {place}
+                  </button>
+                ) : (
+                  place
+                )}
+              </>
+            )}
+          </span>
+        );
+      })}
+    </dd>
+  );
+}
+
 function ItemDetail({
   item,
   realm,
@@ -903,6 +991,7 @@ function ItemDetail({
     item.encumbrance === undefined &&
     !item.shops?.length &&
     !item.mobs?.length &&
+    !item.from?.length &&
     !item.abilities?.length;
   if (nothing && supplies === null) {
     return <div className="empty">{t('cards.reference.item.noDetail')}</div>;
@@ -975,6 +1064,12 @@ function ItemDetail({
         <>
           <dt>{t('cards.reference.item.droppedByLabel')}</dt>
           <DroppedBy mobs={item.mobs} onName={onName} />
+        </>
+      )}
+      {item.from && item.from.length > 0 && (
+        <>
+          <dt>{t('cards.reference.item.givenByLabel')}</dt>
+          <GivenBy from={item.from} onName={onName} onRoom={onRoom} />
         </>
       )}
     </dl>

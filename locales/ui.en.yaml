@@ -1341,6 +1341,13 @@ cards:
     copyRow: '{mobs}: {rate} exp/h, {rooms} rooms, {steps} steps'
   quests:
     anyOf: Any one of
+    # What every way into the place a step happens, or a thing is got, demands
+    # be carried — the realm's own item gates on the corridors in. A frontier
+    # with two doors is drawn `or`, because either one opens it.
+    approach:
+      or: or
+      title: What every way into this place demands you carry
+      verb: Way in wants
     badge:
       many: '{count} quests'
       one: '{count} quest'
@@ -1357,7 +1364,17 @@ cards:
       titleYet: 'Nothing to do here yet: {reasons}'
     bring:
       carry: Carry
+      # Why one row says Carry and the next Hand over, which is the realm's own
+      # distinction and reads as an inconsistency without it: `checkitem` wants
+      # the thing on you and gives it back, `takeitem` keeps it.
+      carryTitle: Carried, and kept — the step checks for it and does not take it
       hand: Hand over
+      handTitle: Given up — the step takes it from you
+      # Whether the thing is already in the pack. Drawn only where a listing
+      # has been read: an unlisted pack is not an empty one, so a row nobody
+      # has looked at says neither.
+      held: In your pack
+      missing: Not in your pack
     caption: The realm’s quests
     columns:
       exp: Exp
@@ -1372,6 +1389,33 @@ cards:
     # is drawn with. It is the number the server's own listing prints.
     counter: '({id})'
     counterTooltip: The ability number the realm counts this quest with, as abil prints it
+    # The walk a step's several items add up to, solved by main from where the
+    # character is standing (todo 01). The realm states a step's items in the
+    # order its own opcodes run, which is nobody's walk.
+    errand:
+      again: Again from here
+      againTitle: Work the order out again from where this character is standing now
+      head: 'Best order from {place}'
+      # The last leg. "Then back to" and not "return": the step is somewhere you
+      # go, and two of them are places you have never been before.
+      home: then back to
+      leg:
+        many: '{moves} moves'
+        one: '{moves} move'
+      # A step that wants more things at once than the solver will weigh. The
+      # order is exact rather than greedy, so the work is exponential in them.
+      noStop: '—'
+      noWay: The realm places none of these anywhere this character can walk to.
+      stop: '{place} — {moves} moves from the stop before it'
+      title: The shortest walk through one place for each of these and back, priced for this character
+      tooMany: 'This step wants {items} things at once, which is more than the order can be worked out for.'
+      total:
+        many: '{moves} moves'
+        one: '{moves} move'
+      # The two admissions a row can carry instead of a number. They are
+      # different and the second is the one somebody can act on.
+      unplaced: The realm does not say where this one is
+      unreachable: There is no way from here to where this one is
     find: Find a quest, a person, a word to say
     flag:
       needs: at {rank}
@@ -1439,7 +1483,16 @@ cards:
       good: Good
       neutral: Neutral
     source:
-      mobs: dropped by {names}
+      # The three acts a script hands a thing over for. The verb, the place
+      # word and the words to say are drawn apart from the names because a
+      # name is a lookup control and a room is a walk, and `kill` and `in` are
+      # neither. An ask names no place: the asker is the place.
+      askVerb: ask
+      forWord: for {word}
+      inWord: in
+      killVerb: kill
+      mobsVerb: dropped by
+      sayWord: '“{word}”'
       shops: sold at {names}
       step: from step {rank}
     step:
@@ -1930,6 +1983,16 @@ cards:
         many: '+{count} more the client cannot read'
         one: '+1 more the client cannot read'
       droppedByLabel: Dropped by
+      # Where one of the realm's own scripts hands the thing over. Three acts,
+      # three words, each drawn in front of the name it governs so the name
+      # stays a control: `Killing white jelly in Slimy Sewer Tunnel`.
+      givenByLabel: Given by
+      givenAsking: Asking
+      givenAskingFor: for
+      givenIn: in
+      givenKilling: Killing
+      givenMoreWords: '+{count} more'
+      givenSaying: Saying
       noDetail: Named in the world data, with no further detail.
       priceNote: 'Base Value: {price} (pre-markup)'
       shopPlaces: (in {count} places)
@@ -2049,6 +2112,14 @@ cards:
       opensExit: opens the {direction} exit
       opensExitElsewhere: opens the {direction} exit of {roomRef}
       sendTooltip: Send “{phrase}” — the realm’s own word for it
+    # What the things standing in the room answer to, beside what the room
+    # itself does. `command` is the realm's own verb and argument order, so it
+    # is the line that goes in the console and is drawn as one.
+    asks:
+      command: ask {who} {word}
+      sendTooltip: 'Send “{line}” — {quest}'
+      wants: needs {items}
+      wantsTooltip: '{quest} — this asks for {items}, which you are not carrying'
     bank:
       copper: '{copper} copper coins (cc)'
       onDeposit: On deposit
@@ -2225,9 +2296,15 @@ cards:
       plan: 'The planned way, {stepCount} steps'
       round: 'A way round the worst of it, {stepCount} steps'
       carrying: 'Carrying {itemList}, {stepCount} steps'
+      viaItem: 'Using {itemList}, {stepCount} steps — saves {savedCount}'
     showing:
       round: the way round
       carrying: the way with the items
+      viaItem: the way using an item
+    usedHere: 'here, in {roomName}'
+    spendsOnce: single use
+    spendsUses: '{useCount} uses'
+    spendsForever: unlimited uses
     collectFirst: Collect {itemName} first
     stopShort: Stop before entering {roomName}
     stopShortTooltip: Walk as far as {roomName} and stop there
@@ -3801,7 +3878,8 @@ automation:
   collect:
     abandoned: 'Gave up collecting {item}: {why}'
     becauseDoor: 'the way needs {item}'
-    buying: 'Going to buy {item} at {shop} first.'
+    buying: 'Going to buy {item} at {shop} in {room} first — {detour} steps off the way.'
+    buyingOnTheWay: 'Going to buy {item} at {shop} in {room} first; the way there goes past it.'
     gotAndKept: '{item} is in the pack, and it is on the keep list, so it stays.'
     gotForTheDoor: '{item} is in the pack — collected for this door, not kept.'
     hunting: 'Looking for {item}: {mob} drops it, starting at {room}.'

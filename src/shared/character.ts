@@ -651,6 +651,35 @@ export interface Inventory {
    * character that cannot route.
    */
   listedAt: number | null;
+  /**
+   * The `Items` rows the pack holds, joined from both halves of the listing.
+   *
+   * By *name*, because a name is all the wire ever gives, and refused where
+   * the name is shared: `iron key` is three rows and saying which one is in
+   * the pack would be the coin toss the router declines everywhere else
+   * (`WorldGraph.itemIdsCarried`). Joined at the one place a state is
+   * committed, the way `sight` and `loadout` are, so a thing picked up counts
+   * from the sentence that announced it rather than from the next `i`.
+   *
+   * **Not an answer on its own**: empty is as true of a character carrying
+   * nothing as of one nobody has listed, and `listedAt` is what tells the two
+   * apart. `packRows` is the pairing; read that rather than this wherever an
+   * absence would be taken as *not carried*.
+   */
+  rows: number[];
+}
+
+/**
+ * The realm rows a **listed** pack holds, or null where nobody has listed it.
+ *
+ * The one place `Inventory.rows` and `Inventory.listedAt` are read together,
+ * because every reader that asks *is this in the pack* has to know the
+ * difference between no and nobody has looked: a keyed door is a wall only for
+ * a pack that has been read, a room's ask says *you are not carrying this*
+ * only then, and the quest book ticks an item only then. Null is that silence.
+ */
+export function packRows(inventory: Inventory): number[] | null {
+  return inventory.listedAt === null ? null : inventory.rows;
 }
 
 /**
@@ -1516,7 +1545,8 @@ export const EMPTY_CHARACTER: CharacterState = {
     encumbrance: null,
     encumbranceMax: null,
     encumbranceWord: null,
-    listedAt: null
+    listedAt: null,
+    rows: []
   },
   online: [],
   shopListing: null,

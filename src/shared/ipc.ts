@@ -23,7 +23,7 @@ import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
-import type { Quest } from './quests';
+import type { Quest, QuestErrand, QuestWatched, RoomAsk } from './quests';
 import type { HuntingAdvice } from './hunting';
 import type {
   AlertsUiConfig,
@@ -206,6 +206,8 @@ export interface AttachSnapshot {
   automation: AutomationSnapshot;
   /** The room as appraised when the window attached; `Push.verdict` carries every change after. */
   verdict: RoomVerdict;
+  /** What the occupants answer to when the window attached; `Push.asks` carries every change. */
+  asks: RoomAsk[];
   /** Negotiation history, for the traffic card. */
   telnet: TelnetEvent[];
   /**
@@ -223,9 +225,9 @@ export interface AttachSnapshot {
   finds: Find[];
   /**
    * The rank each quest has been seen to reach from what this character was
-   * watched doing this session. See `Push.questSaid`.
+   * watched doing this session, and when each was seen. See `Push.questSaid`.
    */
-  questSaid: Record<number, number>;
+  questSaid: QuestWatched;
   /**
    * The Talk card's history — the conversation log's tail, oldest first, so a
    * restart restores the conversation instead of starting the card empty.
@@ -837,6 +839,8 @@ export const Invoke = {
   /** How much realm data is loaded. */
   worldInfo: 'world:info',
   questBook: 'world:quests',
+  /** The order one quest step's several items are best fetched in. */
+  questErrand: 'world:quest-errand',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
   /** Everything the realm knows about one room, for a room nobody is in. */
@@ -950,6 +954,13 @@ export const Push = {
    * holds. See `RoomVerdict`.
    */
   verdict: 'session:verdict',
+  /**
+   * What the things standing in this room can be asked, for this character as
+   * it stands — on change, beside the verdict and for the same reason. The
+   * quest book, the counters `abil` stated, the asks this session watched and
+   * the listed pack are all main's. See `asksHere`.
+   */
+  asks: 'session:asks',
   /** A session was loaded or unloaded. */
   sessions: 'sessions:changed',
   /** The set of characters on disk changed. */
@@ -1234,6 +1245,17 @@ export interface IpcApi {
    * fight. The same reasoning the loop catalogue's own query records.
    */
   questBook(session: SessionId): Promise<Quest[]>;
+  /**
+   * The order one step's several items are best fetched in, from where this
+   * character is standing now (todo 01).
+   *
+   * Addressed and asked on demand, for `huntingGrounds`' reasons and one more:
+   * it is a travelling salesman's path over the realm's own graph, it costs a
+   * sweep per place, and it is only worth asking about the step the character
+   * is actually on. Null where the step demands fewer than two things the
+   * realm places anywhere, which is where there is no walk to order.
+   */
+  questErrand(session: SessionId, block: number): Promise<QuestErrand | null>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
@@ -1348,13 +1370,14 @@ export interface IpcApi {
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;
   onVerdict(handler: (message: Addressed<RoomVerdict>) => void): () => void;
+  onAsks(handler: (message: Addressed<RoomAsk[]>) => void): () => void;
   onNotice(handler: (notice: Notice) => void): () => void;
   onSessions(handler: (sessions: SessionSummary[]) => void): () => void;
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;
   onLearned(handler: (message: Addressed<Discovery[]>) => void): () => void;
   onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
   onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;
-  onQuestSaid(handler: (message: Addressed<Record<number, number>>) => void): () => void;
+  onQuestSaid(handler: (message: Addressed<QuestWatched>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
 }

@@ -1192,6 +1192,14 @@ function opensRecord(text: string): boolean {
  * Two lines are never folded. A line before anything has matched has nothing to
  * continue, and the status line is the *terminator* — appending it would put
  * `[HP=34]:` on the end of whichever field happened to come last.
+ *
+ * **Opening a field and completing one are two questions**, and a qualifier
+ * answers both only while the fold cannot land inside the field. Where it can,
+ * the rule says so with `opens`: the key list of an `i` arrives with its full
+ * stop on the *next* line, so its qualifier — which ends at that full stop, and
+ * has to, since that terminator is what confines a mis-folded tail — cannot be
+ * the test for whether the line began a field. `opens` is consulted as well as
+ * the qualifiers, so every other field still opens on its own.
  */
 function foldWraps(rule: BatchRule, lines: string[]): string[] {
   if (rule.wraps === 'assemble') return assembleWraps(rule, lines);
@@ -1209,7 +1217,9 @@ function foldWraps(rule: BatchRule, lines: string[]): string[] {
   const folded: string[] = [];
   let open = false;
   for (const line of lines) {
-    const starts = rule.qualifiers.some((qualifier) => qualifier.test(line));
+    const starts =
+      rule.qualifiers.some((qualifier) => qualifier.test(line)) ||
+      (rule.opens?.some((opener) => opener.test(line)) ?? false);
     if (!starts && open && line.length > 0 && !STATUS_LINE_START.test(line)) {
       folded[folded.length - 1] = `${folded[folded.length - 1]} ${line}`;
       continue;

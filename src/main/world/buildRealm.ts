@@ -10,7 +10,8 @@ import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
 import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
 import type { Quest } from '../../shared/quests';
-import { indexQuests } from './indexQuests';
+import { blocksInReach, indexQuests, itemsInReach, landingsOfItems } from './indexQuests';
+import type { BuiltItemFrom, ItemLanding } from './indexQuests';
 import { indexSpellHazards } from './spellHazard';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
@@ -86,8 +87,11 @@ import {
  * | 36 | **A monster's own clock survives a name that holds one row.** `BuiltMobRow.rt` (format 33) was the one per-row column with no counterpart on the fold, and `rw` is written only where a name holds several rows — so for a *uniquely named* monster, which is what a boss is, `Monsters.RegenTime` reached nothing: 305 of Paradigm's 381 stated clocks and 228 of stock's 311 were dropped on the floor, `WorldMob.regenHours` was declared and set by nobody, and todo 09's cycle weighting was inert for exactly the case it was written for. The Hunting card offered a two-room Graveyard loop at 128,862 exp/h because a 1,500-point Gravedigger on an hour's regeneration was averaged in whole, one of four equally likely rows coming back every thirty seconds. `BuiltMob.rt` is written only where every row of the name agrees, a row stating none voting `0`, so a clock is never invented for a lair row whose twin is a boss — todo 15 |
  * | 37 | **A quest step you kill for.** `traverse` rooted only at `Monsters.GreetTXT` and `Rooms.CMD`, so a block reached by neither was built owning nothing: no place to go, nobody to ask, no word to say — a rank and a reward floating on the track. 37 of Paradigm's 218 quest-step blocks and 13 of stock's 95 were in that state, and **32 and 12 of them are a monster's death**. `Monsters.DeathSpell` is cast on the corpse and chains one link — the dread mystic's `dread mystic temp` ends (`EndCast`) in `dread mystic text`, whose `TextBlock` is 1417: *be at Phoenix rank 1, take the yellowed note, go to rank 2*. They are the chains' bosses, which is the whole point of them: reported as *the flag is given in a death message from dread mystic and that isn't shown anywhere*. `QuestStep.kill` carries the monster, the room is its `Summoned By`, and the death root is queued **after** the other two so a block the smuggler boss also greets you with stays a conversation |
  * | 38 | **A lever the room's own script pulls, and the one behind a conversation.** A lever reaches the realm two ways and the converter read one: format 23 took the direction columns (`Action [on the N exit of room 1/1331]: pull lever`) and every `remoteaction` step in a text block was dropped as an unknown verb. `TextBlockPart` reads it as `remoteaction <room> <message> <ordinal> <exit>` — the room on the map the player is standing on, the exit by the server's own numbering, a `Door` opened outright and a `HiddenExit` performing its ordinal's action. 101 steps over 30 exits in Paradigm and 82 over 25 in stock, and **one** of those exits had a lever already: 68 of Paradigm's steps open an exit reading `Hidden/Needs N Actions` that states no action at all, and 27 open a door priced at 251 to 1,000 picklocks, which is a wall to everybody. The portcullis in 8/909 is lifted by saying `lift portcullis`, and the client had the words on the Room card with nothing joining them to the west exit they raise. Five more sit behind a monster's `GreetTXT` — the shadow guard who opens the door to Morukai, four stone sphinxes — where the phrase is `ask <monster> <word>` and **a reached block's lines are steps rather than `phrase:steps`**, which is what three of the four sphinxes turn on. `RoomCommand.opens` and `RemoteLever` gained the item the realm says must be carried (92 of Paradigm's 314 levers, 91 of stock's 296), because a door's own requirement is not where its lever is written and `use crowbar` is not a free lever |
+ * | 39 | **Where a script hands an item over.** `neededItems` was fed by exits, levers, shops, monster drop lists and **room-owned** scripts, so an item the realm hands over in a text block no room owns had no row at all: `acid gland`, `unfertilized eggs` and `double-terminated quartz` are `giveitem` in three blocks run by a monster's **death** (a white jelly's, a queen ant's, Leo the Quick's), and the Reference card answered *Named in the world data, with no further detail* about three of the four things the Phoenix quest sends a player to fetch — reported as *these are real sundry items and are dropped through the textblocks of monsters or rooms*. `itemsInReach` reads the quest traversal — every block a greeting, a room's script or a death spell can run — for items rather than for counters. That closes the naming half (1,226 → 1,296 rows in stock, 1,942 → 2,056 in Paradigm; items with no source at all fall from 109 to 33 and from 128 to 23) and answers the other one: `BuiltItem.from` carries the owner's kind, its name, the `map/room` the realm places it in and the words that reach the line, so an item is a monster to look up and a room to walk to. 221 of stock's items carry one and 389 of Paradigm's |
+ * | 40 | **An item can be a door, and a block whose line is one step places nothing.** Two halves of one report — *it is showing the titanium fork but it is not showing the potion of levitation*, and *when I click the fork there is no way to figure out how to get it*. The first: the only entrance the Catacombs have is the **potion of levitation**, which the corridor table says nothing about at all — the realm states it as `Items.Abil-n = CastsSp 607`, that spell's `TextBlock 1421`, and `teleport 1009 9` inside it, so an item is a *way in* exactly as a key on a door is. `landingsOfItems` follows the three hops at build time (the middle one is `TBInfo`, which does not ship) into `BuiltItem.lands`, and `WorldGraph.approachItems` treats a landing inside an enclosed region as a way into it: 4 items in Paradigm and 4 in stock. The second: `itemsGivenInLine` read a line as `phrase:steps` and dropped the first field, which is true of a **room**'s script and of nothing else — so a block whose whole action is `giveitem 983` placed nothing, and the fork the Catacombs are locked behind came from nobody. 26 items in Paradigm and 15 in stock get their only source back, the gnome inventor's fork among them |
+ * | 41 | **And where that item may be used, because a teleport is not an *anywhere*.** Format 40 read the `teleport` step out of an item's text block and dropped every other step in it, so a conditional effect was recorded as an unconditional one — the client planned `use potion of levitation` in the Alchemist's Hut, the server answered with nothing at all, and the walk stopped on its own eight-second timeout. `TBInfo 1421` is `roomitem 993 1834:message 1835:teleport 1009 9:message 1836`, and `roomitem` is a **guard**: `TextBlockPart.cs` returns `Failed` when the room lacks the item, its own comment on the branch reading *used for potion of levitation for example*, so the block stops on step one and the teleport never runs. Item 993 is `waterfall`, which `Items."Obtained From"` places in `Room 3/1` — the pool under the waterfall, reached by boat up the Silvermere from the Pier (`BOATMOST.mp` wants a `wooden skiff`), and the one room MegaMUD's own 4,501 path files ever use the potion in. `BuiltItem.landsFrom` carries those rooms and `linkPortals` makes the landing an ordinary portal out of each of them, so the router walks to the waterfall and uses it there. Paradigm's seven recall tokens carry `nomonsters 3509` and `failroomitem 3391` instead — conditions on the moment and not on the place — and stay usable anywhere, which is why no path file paths one. A `roomitem` whose item the realm places nowhere **withholds the landing**, rather than claiming it works everywhere |
  */
-export const REALM_FORMAT = 38;
+export const REALM_FORMAT = 41;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -214,6 +218,37 @@ export interface BuiltItem {
   n: string;
   shops?: string[];
   mobs?: string[];
+  /**
+   * Where a script hands one over — format 39. See `itemsInReach`.
+   *
+   * The third answer to *where does this come from*, beside the shop that
+   * stocks it and the monster whose `DropItem-n` names it, and the only one
+   * that is not a column: a realm hands its quest components over in a text
+   * block, run by a word said to an NPC, a word said in a room, or a monster's
+   * death. Absent for the great majority; written for 46 of the stock realm's
+   * items and 47 of Paradigm's.
+   */
+  from?: BuiltItemFrom[];
+  /**
+   * Where **using one** puts the character, as `map/room` — format 40.
+   *
+   * Not a column: `Items.Abil-n = CastsSp <spell>`, that spell's `TextBlock`,
+   * and a `teleport <room> <map>` step inside it. Derived at build time
+   * because the middle hop is `TBInfo`, which does not ship
+   * (`landingsOfItems`). Written for the handful of items that are doors —
+   * the potion of levitation is the only entrance the Catacombs have, and the
+   * exit table says nothing about it.
+   */
+  lands?: string;
+  /**
+   * The rooms using it works in, as `map/room` — format 41.
+   *
+   * Absent where the chain carries no `roomitem` guard, which means *wherever
+   * you stand* (the recall tokens). Never empty: a guard the realm places
+   * nowhere drops `lands` with it, because a way this converter cannot
+   * describe is not one to offer. See `landingsOfItems`.
+   */
+  landsFrom?: string[];
   /**
    * What the realm charges for one, before a shop's markup.
    *
@@ -1347,7 +1382,48 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     }
   }
 
-  const items = indexItems(source, neededItems);
+  /*
+   * And what the realm's own scripts hand over — format 39.
+   *
+   * `indexSpells` is read here rather than beside the other tables below
+   * because the walk needs it: a monster's `DeathSpell` reaches its text block
+   * through the spell rows' `Abil-n` pairs, and re-reading `Spells` for them
+   * would be a second opinion about the same columns.
+   *
+   * The walk is the realm's own reachability — every block a greeting, a room's
+   * script or a death spell can run — and it answers two questions the item
+   * index was getting wrong. `neededItems` was fed by exits, levers, shops,
+   * monster drops and **room-owned** scripts, so `acid gland` (a white jelly's
+   * death), `unfertilized eggs` (a queen ant's) and `double-terminated quartz`
+   * (Leo the Quick's) were names with no row: no weight, no kind, and nothing
+   * saying where to go. See `itemsInReach`.
+   */
+  const spells = indexSpells(source);
+  const blocks = blocksInReach(source, spells);
+  const fromScripts = itemsInReach(blocks);
+  /*
+   * And which items are *doors* — format 40. An item that casts a spell whose
+   * text block teleports you is a way into somewhere, exactly as a key on a
+   * corridor is, and no column says so. See `landingsOfItems`.
+   */
+  const itemLandings = landingsOfItems(source, spells, blocks);
+  for (const id of fromScripts.named) neededItems.add(id);
+
+  /*
+   * What each room spell does to whoever stands in the room — format 30.
+   *
+   * Folded onto the spell rows rather than onto the 13,603 rooms that name
+   * one: 159 distinct spells cover them, and repeating the same answer eight
+   * hundred and forty-five times down the Silver River is a megabyte for
+   * nothing. The rooms already carry the id.
+   */
+  const hazards = indexSpellHazards(source);
+  for (const spell of spells) {
+    const hazard = hazards.get(spell.id);
+    if (hazard !== undefined) spell.hz = hazard;
+  }
+
+  const items = indexItems(source, neededItems, fromScripts.from, itemLandings);
   const named = new Map(items.map((item) => [item.id, item.n]));
   const mobs = indexMobs(source, named);
 
@@ -1490,20 +1566,6 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     lines.push(JSON.stringify(room));
   }
 
-  const spells = indexSpells(source);
-  /*
-   * What each room spell does to whoever stands in the room — format 30.
-   *
-   * Folded onto the spell rows rather than onto the 13,603 rooms that name
-   * one: 159 distinct spells cover them, and repeating the same answer eight
-   * hundred and forty-five times down the Silver River is a megabyte for
-   * nothing. The rooms already carry the id.
-   */
-  const hazards = indexSpellHazards(source);
-  for (const spell of spells) {
-    const hazard = hazards.get(spell.id);
-    if (hazard !== undefined) spell.hz = hazard;
-  }
   const races = indexRaces(source);
   const classes = indexClasses(source);
   const itemNames = indexItemNames(source);
@@ -1514,11 +1576,12 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * Quests table and never had one. See `indexQuests.ts` for the derivation,
    * and why the counters are found rather than listed.
    *
-   * Last, because it wants the class, race and spell indexes to name what a
+   * Late, because it wants the class, race and spell indexes to name what a
    * step demands and pays, and re-reading those tables for a name would be a
-   * second opinion about the same rows.
+   * second opinion about the same rows. The walk itself was made before the
+   * item index, which needs it too — see `blocks` above.
    */
-  const quests = indexQuests(source, { classes, races, spells });
+  const quests = indexQuests(source, { classes, races, spells }, blocks);
 
   return {
     lines,
@@ -2228,18 +2291,26 @@ export function indexItemNames(source: RealmSource): string[] {
 }
 
 /**
- * Which items the exits actually need, and where a player might get one.
+ * Which items somebody could actually be holding, and where a player might get
+ * one.
  *
- * A locked door says `Key: 1124`, which tells nobody anything. Only the items
- * some exit references are indexed — about a hundred of them — so this costs a
- * few kilobytes rather than carrying the whole item table.
+ * A locked door says `Key: 1124`, which tells nobody anything. The index is
+ * kept to the items something in the realm refers to — an exit's key, a shop's
+ * stock, a monster's drop list, a script's `giveitem` — so this costs a few
+ * tens of kilobytes rather than carrying the whole item table.
  *
  * Provenance is best-effort and says so. Roughly half of these keys are dropped
  * by a monster and a handful are sold in a shop; the rest are not answerable
  * from this database at all, and an entry with neither is more honest than a
- * guess.
+ * guess. `from` is the third answer and the only one that is not a column —
+ * see `itemsInReach`.
  */
-export function indexItems(source: RealmSource, needed: Set<number>): BuiltItem[] {
+export function indexItems(
+  source: RealmSource,
+  needed: Set<number>,
+  from: Map<number, BuiltItemFrom[]> = new Map(),
+  lands: Map<number, ItemLanding> = new Map()
+): BuiltItem[] {
   if (needed.size === 0) return [];
 
   const rowsOf = (name: string): Record<string, unknown>[] => source.table(name)?.rows ?? [];
@@ -2408,6 +2479,16 @@ export function indexItems(source: RealmSource, needed: Set<number>): BuiltItem[
       const dropped = [...(droppedBy.get(id) ?? [])].filter(Boolean).slice(0, 6);
       if (sold.length > 0) entry.shops = sold;
       if (dropped.length > 0) entry.mobs = dropped;
+      // Capped on the same rule and for the same reason as the two above.
+      const scripts = from.get(id)?.slice(0, 6) ?? [];
+      if (scripts.length > 0) entry.from = scripts;
+      // Where using it puts you, and where it may be used — formats 40 and
+      // 41. See `landingsOfItems`.
+      const landing = lands.get(id);
+      if (landing !== undefined) {
+        entry.lands = landing.to;
+        if (landing.usableIn !== undefined) entry.landsFrom = [...landing.usableIn];
+      }
       const effects = abilities.get(id);
       if (effects !== undefined) entry.ab = effects;
       /*

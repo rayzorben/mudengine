@@ -7,6 +7,7 @@ import zlib from 'node:zlib';
 import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty, edgeWall } from '../WorldGraph';
 import type { Traveller } from '../WorldGraph';
 import type {
+  Direction,
   Landing,
   Requirement,
   RoomId,
@@ -27,6 +28,7 @@ import {
 import { roomId } from '../../../shared/world';
 import { tuning } from '../../app/tuning';
 import { questLevel } from '../../../shared/quests';
+import type { QuestStep } from '../../../shared/quests';
 
 /** Writes a throwaway world file in the format `build-world.mjs` emits. */
 function makeWorld(
@@ -1196,6 +1198,170 @@ describe('the real realm data', () => {
   });
 });
 
+/**
+ * Choosing where to buy a thing, on the way to somewhere — `buyingPlaces`.
+ *
+ * Reported 2026-09-16: *nowhere to buy log raft: 2 rooms hold a shop called
+ * Boat Launch*, said to a character standing on a route that walks through one
+ * of the two. Three mistakes met there — the client could only address a
+ * counter by **name**, it priced a name standing in several rooms at infinity,
+ * and it then asked `shopPlace` to resolve the name it had chosen and was
+ * refused for the ambiguity. What a person wants is the question this answers:
+ * how far off the road is the stop, and is the cheaper one worth the extra.
+ */
+describe('where to buy a thing, on the way to somewhere', () => {
+  /**
+   * A twenty-one room corridor east, with counters hung off it.
+   *
+   * `onRoute` and `alsoOnRoute` sit in the corridor itself, so a journey from
+   * one end to the other walks through both and stopping at either costs
+   * nothing — which is what makes them a real tie for the price to break.
+   * `spur` is **nearer to the start** and off to one side, which is the
+   * disagreement the whole feature turns on: ranking by nearness picks it,
+   * ranking by detour does not. `far` is a counter at the end of a corridor of
+   * `off` rooms, and `sealed` is a room nothing leads to.
+   */
+  const market = (
+    off: number,
+    markups: { onRoute: number; alsoOnRoute?: number; spur: number; far: number }
+  ): WorldGraph => {
+    const link = (m: number, r: number, to: Array<[Direction, number, number]>) => ({
+      m,
+      r,
+      n: `Room ${m}/${r}`,
+      x: Object.fromEntries(to.map(([dir, tm, tr]) => [dir, { m: tm, r: tr }]))
+    });
+    const rooms: Array<Record<string, unknown>> = [];
+    for (let i = 1; i <= 21; i += 1) {
+      const to: Array<[Direction, number, number]> = [];
+      if (i < 21) to.push(['e', 1, i + 1]);
+      if (i > 1) to.push(['w', 1, i - 1]);
+      if (i === 3) to.push(['n', 1, 50], ['s', 1, 100]);
+      const counter = i === 11 ? { s: 1 } : i === 15 ? { s: 5 } : {};
+      rooms.push({ ...link(1, i, to), ...counter });
+    }
+    // The spur: two rooms north of room 3, so its counter is four moves from
+    // the start where the corridor's is ten.
+    rooms.push(
+      link(1, 50, [
+        ['n', 1, 51],
+        ['s', 1, 3]
+      ])
+    );
+    rooms.push({ ...link(1, 51, [['s', 1, 50]]), s: 2 });
+    // The cheap counter, `off` rooms south of room 3.
+    for (let i = 0; i < off; i += 1) {
+      const to: Array<[Direction, number, number]> = [['n', 1, i === 0 ? 3 : 100 + i - 1]];
+      if (i < off - 1) to.push(['s', 1, 100 + i + 1]);
+      rooms.push({ ...link(1, 100 + i, to), ...(i === off - 1 ? { s: 3 } : {}) });
+    }
+    // And one nothing leads to at all.
+    rooms.push({ ...link(9, 1, []), s: 4 });
+    return makeWorld(rooms, {
+      items: [{ id: 12, n: 'lantern' }],
+      shops: [
+        { id: 1, n: 'Corner Shop', items: [12], markup: markups.onRoute },
+        { id: 2, n: 'Side Street', items: [12], markup: markups.spur },
+        { id: 3, n: 'Far Bazaar', items: [12], markup: markups.far },
+        { id: 4, n: 'Sealed Vault', items: [12] },
+        { id: 5, n: 'High Street', items: [12], markup: markups.alsoOnRoute ?? markups.onRoute }
+      ]
+    });
+  };
+
+  const walker: Traveller = {};
+  const ends = { from: roomId(1, 1), to: roomId(1, 21) };
+
+  /*
+   * **The headline.** Every counter priced the same, so only the geometry
+   * decides: the one in the corridor is ten moves away and costs nothing to
+   * stop at, the one on the spur is four moves away and costs four. Ranking by
+   * how near a shop is picked the second, which is how a character standing
+   * outside the Alchemist's Hut came to be offered Albion Docks.
+   */
+  it('prefers the counter the way already passes over a nearer one off it', () => {
+    const places = market(30, { onRoute: 100, spur: 100, far: 100 }).buyingPlaces(
+      12,
+      ends.from,
+      ends.to,
+      walker
+    );
+    // Both corridor counters cost nothing to stop at and are ordered by how
+    // soon they come up; the spur is nearer than either and still behind them.
+    expect(places.map((place) => [place.shop, place.detour, place.moves])).toEqual([
+      ['Corner Shop', 0, 10],
+      ['High Street', 0, 14],
+      ['Side Street', 4, 4],
+      ['Far Bazaar', 60, 32]
+    ]);
+  });
+
+  /* And a counter nothing leads to is left out, not ranked last: there is no
+     walk to it, so any figure beside it would be a fiction. */
+  it('leaves out a counter nothing can reach', () => {
+    const places = market(30, { onRoute: 100, spur: 100, far: 100 }).buyingPlaces(
+      12,
+      ends.from,
+      ends.to,
+      walker
+    );
+    expect(places.map((place) => place.shop)).not.toContain('Sealed Vault');
+  });
+
+  /* Two counters equally out of the way — both in the corridor — so the price
+     decides, and the markup is the whole of the difference because the base
+     figure belongs to the item and is the same wherever it is sold. */
+  it('takes the cheaper of two counters that cost the same to stop at', () => {
+    const places = market(30, {
+      onRoute: 300,
+      alsoOnRoute: 100,
+      spur: 100,
+      far: 100
+    }).buyingPlaces(12, ends.from, ends.to, walker);
+    /*
+     * And the ordering behind it says the same thing the other way round:
+     * `Corner Shop` costs nothing to stop at and is the dearest, and four steps
+     * of going out of the way to `Side Street` is worth less than the doubling
+     * it saves — so the dear counter on the road comes last of the three.
+     */
+    expect(places.slice(0, 3).map((place) => [place.shop, place.detour])).toEqual([
+      ['High Street', 0],
+      ['Side Street', 4],
+      ['Corner Shop', 0]
+    ]);
+  });
+
+  /*
+   * **And price never outruns the walk.** `dearerSteps` is what one doubling is
+   * worth in steps of going out of the way, and 100% markup against none is
+   * exactly one doubling — `(100 + markup)` is the price in the item's own
+   * unit. So the cheap counter wins while the extra walk is under that figure
+   * and loses the moment it is over, which is the petrol-station rule the
+   * report asked for: 4.01 two minutes off the road beats 3.99 twenty-five.
+   */
+  it('trades a dearer counter against a shorter walk, one doubling at a time', () => {
+    const worth = tuning().supplies.dearerSteps;
+    const prices = { onRoute: 100, spur: 100, far: 0 };
+    // The spur is walked out and back, so its rooms cost twice over.
+    const nearer = market(Math.floor((worth - 6) / 2), prices);
+    expect(nearer.buyingPlaces(12, ends.from, ends.to, walker)[0]?.shop).toBe('Far Bazaar');
+    const further = market(Math.ceil((worth + 6) / 2), prices);
+    expect(further.buyingPlaces(12, ends.from, ends.to, walker)[0]?.shop).toBe('Corner Shop');
+  });
+
+  /* No destination is the supply list's own errand: the trip *is* the detour,
+     so this is the plain nearest-and-cheapest question. */
+  it('ranks by what the trip costs where there is nowhere to go on to', () => {
+    const places = market(30, { onRoute: 100, spur: 100, far: 100 }).buyingPlaces(
+      12,
+      ends.from,
+      null,
+      walker
+    );
+    expect(places[0]).toMatchObject({ shop: 'Side Street', detour: 4, moves: 4 });
+  });
+});
+
 describe('the shipped realm data', () => {
   /*
    * The tests above build synthetic worlds, which is right for the algorithm
@@ -1209,6 +1375,36 @@ describe('the shipped realm data', () => {
 
   it.runIf(has)('loads every room', () => {
     expect(realm!.size).toBeGreaterThan(50_000);
+  });
+
+  /*
+   * The reported case, end to end (2026-09-16): a character in the Alchemist's
+   * Hut, asked to fetch a `log raft` for the Silver River on the way to the
+   * Amethyst Cave, was told *nowhere to buy log raft: 2 rooms hold a shop
+   * called Boat Launch*.
+   *
+   * Every part of the old answer is wrong and this holds all of it. Eleven
+   * rooms in the realm stock a raft; with this pack **nine are unreachable**,
+   * so the counter that is nearest by distance is one the character could
+   * never have walked to. The two that are left belong to one shop row, which
+   * is the ambiguity `shopPlace` refuses — correctly, for a name a person
+   * typed, and uselessly for a choice the router can make.
+   */
+  it.runIf(has)('picks the counter on the way, out of a shop name that names two', () => {
+    // The fork, the potion and the rod, as the report's listing showed them.
+    const carried: Traveller = {
+      level: 30,
+      wealth: 82_740,
+      keys: [983, 992, 996],
+      packKnown: true
+    };
+    const places = realm!.buyingPlaces(690, roomId(6, 645), roomId(9, 1431), carried);
+    expect(places).toHaveLength(2);
+    expect(places[0]).toMatchObject({ map: 1, room: 1813, roomName: 'Pier', shop: 'Boat Launch' });
+    // And it wins on the detour, not on being near: it is a hundred moves
+    // *further* away than the nine this pack cannot reach at all.
+    expect(places[0]!.detour).toBeLessThan(places[1]!.detour);
+    expect(realm!.shopPlace('Boat Launch')).toMatchObject({ at: 'several', count: 2 });
   });
 
   /*
@@ -4036,22 +4232,76 @@ describe('the quest book’s item and room joins', () => {
       let placed = 0;
       for (const quest of realm!.quests()) {
         for (const step of quest.steps) {
-          const ids = new Set([
-            ...step.needs.flatMap((gate) => (gate.kind === 'item' ? [gate.id] : [])),
-            ...step.takes.map((item) => item.id)
-          ]);
+          /*
+           * Counted the way `itemsDemanded` counts — every route's, and
+           * `item-absent` with the rest. Reading the step's own `needs` for
+           * `item` alone counted 73 against 82 sources, which is two different
+           * sets compared as one: the ceiling below is an arithmetic check on
+           * the join, and it can only hold while both sides ask one question.
+           */
+          const ids = new Set<number>();
+          for (const way of [step, ...(step.ways ?? [])]) {
+            for (const gate of way.needs) {
+              if (gate.kind === 'item' || gate.kind === 'item-absent') ids.add(gate.id);
+            }
+            for (const item of way.takes) ids.add(item.id);
+          }
           wanted += ids.size;
           placed += step.sources?.length ?? 0;
         }
       }
       /*
        * A figure, not a ratio: the point is that the join answers a real share
-       * of the question and that the rest is silence. It was 32 of 86 before
-       * the monsters' own drop lists were read from the other direction.
+       * of the question and never more of it than was asked. It was 32 of 86
+       * before the monsters' own drop lists were read from the other
+       * direction, and it is 82 of 87 since format 39 added what a *script*
+       * hands over — the five left are the silence, and on the stock realm
+       * there is none left at all.
        */
       expect(wanted).toBeGreaterThan(50);
-      expect(placed).toBeGreaterThan(wanted / 4);
-      expect(placed).toBeLessThan(wanted);
+      expect(placed).toBeGreaterThan(wanted / 2);
+      expect(placed).toBeLessThanOrEqual(wanted);
+    });
+
+    /*
+     * The four the report named — format 39. Three are `giveitem` in a block a
+     * monster's **death** runs and the fourth in one a cave answers, so until
+     * the traversal was read for items the index held none of the first three
+     * at all and placed none of the four: the Reference card said *Named in
+     * the world data, with no further detail* about the things the quest had
+     * just told the player to go and fetch.
+     *
+     * Against the realm that ships rather than a fixture, because the whole
+     * failure was a conversion that dropped them: a fixture proves the reader
+     * and this proves the file.
+     */
+    it.runIf(has)('names the Phoenix components and says where each is got', () => {
+      const found = Object.fromEntries(
+        (
+          ['acid gland', 'unfertilized eggs', 'double-terminated quartz', 'cave roots'] as const
+        ).map((name) => [name, realm!.lookup(name, 4).items.find((item) => item.name === name)])
+      );
+      // Named, with the realm's own weight — the half that read as missing.
+      for (const [name, item] of Object.entries(found)) {
+        expect(item, name).toBeDefined();
+        expect(item!.encumbrance, name).toBeGreaterThan(0);
+      }
+      expect(found['acid gland']!.from).toEqual([
+        {
+          kind: 'killed',
+          who: 'white jelly',
+          room: '9/146',
+          place: 'Slimy Sewer Tunnel, Drainage Pipe'
+        }
+      ]);
+      expect(found['unfertilized eggs']!.from?.[0]?.who).toBe('queen ant');
+      expect(found['double-terminated quartz']!.from?.[0]?.who).toBe('Leo the Quick');
+      // The cave is the odd one: a word said in a room, and five spellings of it.
+      const roots = found['cave roots']!.from?.[0];
+      expect(roots?.kind).toBe('said');
+      expect(roots?.room).toBe('9/500');
+      expect(roots?.place).toBe('Earthy Cave');
+      expect(roots?.say).toContain('get roots');
     });
 
     /*
@@ -4126,6 +4376,164 @@ describe('the quest book’s item and room joins', () => {
  * the passage costs what a lever costs; unlisted, it is an unevaluated gate
  * like a keyed door nobody has looked in the pack for (todo 13).
  */
+/**
+ * The order a step's several items are best fetched in — todo 01.
+ *
+ * The corridor is seven rooms, the asker is at one end, and the two things the
+ * step wants sit either side of where the character is standing. Chosen so
+ * that **nearest-first is wrong**: the near shop is one move away and taking
+ * it first costs eleven moves in all, while walking past it to the far one
+ * costs nine. A greedy solver passes every other assertion here and fails this
+ * one, which is why the fixture is not symmetric.
+ */
+describe('the order a step fetches its items in', () => {
+  /** `count` rooms on map 1, linked east and west, so a walk can turn round. */
+  function street(count: number): Array<Record<string, unknown>> {
+    return Array.from({ length: count }, (_, i) => ({
+      m: 1,
+      r: i + 1,
+      n: `Room ${i + 1}`,
+      x: {
+        ...(i + 1 < count ? { e: { m: 1, r: i + 2 } } : {}),
+        ...(i > 0 ? { w: { m: 1, r: i } } : {})
+      }
+    }));
+  }
+
+  /** The street, with a shop in room 3 and another in room 7. */
+  function errandWorld(step: Record<string, unknown>): WorldGraph {
+    const rooms = street(7).map((room) =>
+      room['r'] === 3 ? { ...room, s: 1 } : room['r'] === 7 ? { ...room, s: 2 } : room
+    );
+    return makeWorld(
+      rooms,
+      {
+        items: [
+          { id: 10, n: 'near thing' },
+          { id: 11, n: 'far thing' },
+          { id: 12, n: 'thing from nowhere' }
+        ],
+        shops: [
+          { id: 1, n: 'Near Shop', items: [10], t: 0 },
+          { id: 2, n: 'Far Shop', items: [11], t: 0 }
+        ],
+        quests: [{ id: 131, name: 'ErrandQuest', steps: [step] }]
+      },
+      25
+    );
+  }
+
+  const both = {
+    block: 1,
+    say: [],
+    needs: [
+      { kind: 'item', id: 10, name: 'near thing' },
+      { kind: 'item', id: 11, name: 'far thing' }
+    ],
+    takes: [],
+    gives: [],
+    who: 'Morukai',
+    room: '1/1'
+  };
+
+  const stepOf = (graph: WorldGraph): QuestStep => graph.quests()[0]!.steps[0]!;
+
+  it('walks past the near thing to the far one, because the whole walk is shorter', () => {
+    const graph = errandWorld(both);
+    const errand = graph.errand(stepOf(graph), '1/4', {});
+    expect(errand?.legs.map((leg) => leg.item?.name ?? leg.place)).toEqual([
+      'far thing',
+      'near thing',
+      'Room 1'
+    ]);
+    // Three there, four back past where it started, two to the asker. The
+    // nearest-first walk is eleven, which is what makes this worth solving.
+    expect(errand?.legs.map((leg) => leg.moves)).toEqual([3, 4, 2]);
+    expect(errand?.moves).toBe(9);
+  });
+
+  it('says which room it was solved from, because it is true only from there', () => {
+    const graph = errandWorld(both);
+    const errand = graph.errand(stepOf(graph), '1/4', {});
+    expect(errand?.from).toBe('1/4');
+    expect(errand?.fromPlace).toBe('Room 4');
+    expect(errand?.block).toBe(1);
+  });
+
+  it('ends at the step’s own room, as a leg with no item on it', () => {
+    const graph = errandWorld(both);
+    const errand = graph.errand(stepOf(graph), '1/4', {});
+    const last = errand?.legs.at(-1);
+    expect(last?.item).toBeUndefined();
+    expect(last?.room).toBe('1/1');
+  });
+
+  it('leaves a thing the realm places nowhere out of the walk and says so', () => {
+    const graph = errandWorld({
+      ...both,
+      needs: [...both.needs, { kind: 'item', id: 12, name: 'thing from nowhere' }]
+    });
+    const errand = graph.errand(stepOf(graph), '1/4', {});
+    expect(errand?.left).toEqual([{ id: 12, name: 'thing from nowhere', why: 'unplaced' }]);
+    // And it is not silently given a position: the walk is the two that have one.
+    expect(errand?.legs.filter((leg) => leg.item !== undefined)).toHaveLength(2);
+  });
+
+  it('answers nothing at all for a step with one thing to fetch', () => {
+    // One place to go is a list and not a walk, and the card draws it as it
+    // always did rather than being handed an order of one.
+    const graph = errandWorld({ ...both, needs: [both.needs[0]!] });
+    expect(graph.errand(stepOf(graph), '1/4', {})).toBeNull();
+  });
+
+  it('refuses rather than ordering what it cannot get to', () => {
+    /*
+     * The shops are on an island the corridor never joins, which is a real
+     * thing in the shipped realm — Paradigm's Conquest2 wants two giant
+     * chieftains' hands from a map nothing reaches. A refusal names why; an
+     * order of the reachable half presented as the walk would not.
+     */
+    const graph = makeWorld(
+      [
+        { m: 1, r: 1, n: 'Room 1', x: {} },
+        { m: 2, r: 3, n: 'Island Shop', s: 1, x: {} },
+        { m: 2, r: 7, n: 'Other Island', s: 2, x: {} }
+      ],
+      {
+        items: [
+          { id: 10, n: 'near thing' },
+          { id: 11, n: 'far thing' }
+        ],
+        shops: [
+          { id: 1, n: 'Near Shop', items: [10], t: 0 },
+          { id: 2, n: 'Far Shop', items: [11], t: 0 }
+        ],
+        quests: [{ id: 131, name: 'ErrandQuest', steps: [both] }]
+      },
+      25
+    );
+    const errand = graph.errand(stepOf(graph), '1/1', {});
+    expect(errand?.legs).toEqual([]);
+    expect(errand?.refusal).not.toBeUndefined();
+    expect(errand?.left.map((item) => item.why)).toEqual(['unreachable', 'unreachable']);
+  });
+
+  it('does not walk to a room the realm no longer holds', () => {
+    const graph = errandWorld({ ...both, room: '9/9999' });
+    const errand = graph.errand(stepOf(graph), '1/4', {});
+    /*
+     * The pickups are still ordered and the walk simply does not close on a
+     * room that is not there, which is what an absent last leg says. And the
+     * order **changes** with the way home gone, which is the point: five moves
+     * near-then-far beats seven the other way round, and it was the two back
+     * to the asker that made walking past the near shop worth it.
+     */
+    expect(errand?.legs.map((leg) => leg.item?.name)).toEqual(['near thing', 'far thing']);
+    expect(errand?.legs.at(-1)?.item).not.toBeUndefined();
+    expect(errand?.moves).toBe(5);
+  });
+});
+
 describe('a lever that needs an item', () => {
   const passage = (): Array<Record<string, unknown>> => [
     {
@@ -4813,5 +5221,379 @@ describe('the items that would serve a condition', () => {
 
   it('offers nothing for a condition no item serves', () => {
     expect(realm().itemsServing('blind')).toEqual([]);
+  });
+});
+
+/**
+ * What every way into a place demands be carried.
+ *
+ * Reported 2026-09-15 (todo 02): the quest book said *golden egg — kill
+ * necromancer in Amethyst Cave* and stopped, and reaching that cave takes a
+ * potion of levitation, a titanium fork and a magical quartz rod.
+ */
+describe('approachItems', () => {
+  /**
+   * A pocket behind `gates`, reached from an **open realm** big enough that
+   * the sweep gives up on it — which is the ordinary shape and the one a
+   * three-room fixture cannot produce. Map 2 is the open realm; map 1 holds
+   * the doorsteps and the pocket.
+   */
+  const realm = (
+    rooms: Array<Record<string, unknown>>,
+    items: Array<Record<string, unknown>>
+  ): WorldGraph => {
+    const open = tuning().world.approachRooms + 50;
+    return makeWorld(
+      [
+        ...rooms,
+        // One long open corridor running east into `1/1`, the doorstep.
+        ...Array.from({ length: open }, (_, i) => ({
+          m: 2,
+          r: i + 1,
+          n: `Open ${i + 1}`,
+          x: { e: i === 0 ? { m: 1, r: 1 } : { m: 2, r: i } }
+        }))
+      ],
+      { items },
+      6
+    );
+  };
+
+  const named = (graph: WorldGraph, room: string): string[][] =>
+    graph.approachItems(room as RoomId).map((gate) => gate.anyOf.map((item) => item.name));
+
+  it('names every item the way in wants, in the order they are used', () => {
+    // Doorstep 1/1, then a brass door, then an iron one: both have to be
+    // crossed, and the brass one first.
+    const graph = realm(
+      [
+        { m: 1, r: 1, n: 'Doorstep', x: { e: { m: 1, r: 2, i: 'Key: 7', k: 7 } } },
+        { m: 1, r: 2, n: 'Hall', x: { e: { m: 1, r: 3, i: 'Key: 9', k: 9 } } },
+        { m: 1, r: 3, n: 'Vault', x: {} }
+      ],
+      [
+        { id: 7, n: 'brass key' },
+        { id: 9, n: 'iron key' }
+      ]
+    );
+    expect(named(graph, '1/3')).toEqual([['brass key'], ['iron key']]);
+    // And the room in front of the second door wants only the first.
+    expect(named(graph, '1/2')).toEqual([['brass key']]);
+  });
+
+  it('says nothing about a room the realm leaves open', () => {
+    const graph = realm([{ m: 1, r: 1, n: 'Doorstep', x: {} }], []);
+    expect(named(graph, '1/1')).toEqual([]);
+    expect(named(graph, '2/5')).toEqual([]);
+  });
+
+  it('drops a door the way there never passes', () => {
+    // A skeleton key opens a room in the same pocket that the vault is not
+    // behind — stock's Fine Mansion study, which a count of frontiers read as
+    // *either key* and the flood reads as the one that actually gets there.
+    const graph = realm(
+      [
+        {
+          m: 1,
+          r: 1,
+          n: 'Doorstep',
+          x: { e: { m: 1, r: 2, i: 'Key: 7', k: 7 }, n: { m: 1, r: 4, i: 'Key: 9', k: 9 } }
+        },
+        { m: 1, r: 2, n: 'Vault', x: {} },
+        { m: 1, r: 4, n: 'Larder', x: {} }
+      ],
+      [
+        { id: 7, n: 'brass key' },
+        { id: 9, n: 'iron key' }
+      ]
+    );
+    expect(named(graph, '1/2')).toEqual([['brass key']]);
+    expect(named(graph, '1/4')).toEqual([['iron key']]);
+  });
+
+  it('names two doors into one place as alternatives, never as a pair', () => {
+    // Either key opens the way in, so naming both as needed would send
+    // somebody on an errand the realm does not ask for, and naming one would
+    // send them on the wrong one.
+    const graph = realm(
+      [
+        {
+          m: 1,
+          r: 1,
+          n: 'Doorstep',
+          x: { e: { m: 1, r: 2, i: 'Key: 7', k: 7 }, n: { m: 1, r: 2, i: 'Key: 9', k: 9 } }
+        },
+        { m: 1, r: 2, n: 'Vault', x: {} }
+      ],
+      [
+        { id: 7, n: 'brass key' },
+        { id: 9, n: 'iron key' }
+      ]
+    );
+    const wanted = named(graph, '1/2');
+    expect(wanted).toHaveLength(1);
+    expect([...(wanted[0] ?? [])].sort()).toEqual(['brass key', 'iron key']);
+  });
+
+  it('reads the item a hidden exit action wants, not only a lock', () => {
+    const graph = realm(
+      [
+        {
+          m: 1,
+          r: 1,
+          n: 'Doorstep',
+          x: {
+            e: {
+              m: 1,
+              r: 2,
+              i: 'Hidden/Needs 1 Actions, any order',
+              a: [{ say: ['use fork east'], item: 7 }]
+            }
+          }
+        },
+        { m: 1, r: 2, n: 'Cave', x: {} }
+      ],
+      [{ id: 7, n: 'titanium fork' }]
+    );
+    expect(named(graph, '1/2')).toEqual([['titanium fork']]);
+  });
+
+  /*
+   * An item can be a door — format 40. The potion of levitation is the only
+   * entrance the Catacombs have, and no corridor mentions it at all: a client
+   * reading only exits calls the whole region unreachable and says nothing
+   * about how to get there.
+   */
+  it('names an item that is itself the way in', () => {
+    const graph = realm(
+      [
+        { m: 1, r: 1, n: 'Doorstep', x: {} },
+        // Sealed: nothing leads in, and the potion lands you at 1/2.
+        { m: 1, r: 2, n: 'Waterfall', x: { e: { m: 1, r: 3, i: 'Key: 9', k: 9 } } },
+        { m: 1, r: 3, n: 'Cave', x: {} }
+      ],
+      [
+        { id: 7, n: 'potion of levitation', lands: '1/2' },
+        { id: 9, n: 'iron key' }
+      ]
+    );
+    expect(named(graph, '1/3')).toEqual([['potion of levitation'], ['iron key']]);
+    expect(named(graph, '1/2')).toEqual([['potion of levitation']]);
+  });
+
+  it('says nothing where what the realm offers does not get there', () => {
+    // A sealed room with no way in at all. An account the client cannot
+    // complete is not one to send somebody out on.
+    const graph = realm(
+      [
+        { m: 1, r: 1, n: 'Doorstep', x: {} },
+        { m: 1, r: 2, n: 'Sealed Vault', x: {} }
+      ],
+      []
+    );
+    expect(named(graph, '1/2')).toEqual([]);
+  });
+
+  /*
+   * And the shipped realm, end to end: the report this was written for. The
+   * fixtures above hold each rule; this holds that the rules add up to the
+   * realm's own answer.
+   */
+  it('answers the Amethyst Cave with the three things the realm wants', () => {
+    const graph = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    expect(named(graph, '9/1431')).toEqual([
+      ['potion of levitation'],
+      ['titanium fork'],
+      ['magical quartz rod']
+    ]);
+  });
+});
+
+/*
+ * And the other direction, which is the half that was missing: `lands` fed the
+ * backwards sweep above and nothing else, so the client could say what the way
+ * into the Catacombs wanted and then refuse to walk there.
+ */
+describe('an item that teleports is an edge the router may walk', () => {
+  /*
+   * A sealed room with one way in — an item — and a corridor of ten rooms
+   * beside it that goes somewhere else. The shape of both shipped realms'
+   * potion of levitation, at a size a failure can be read off.
+   */
+  const sealed = (uses: number): WorldGraph =>
+    makeWorld(
+      [
+        { m: 1, r: 1, n: 'Doorstep', x: { e: { m: 1, r: 2 } } },
+        ...Array.from({ length: 9 }, (_, i) => ({
+          m: 1,
+          r: i + 2,
+          n: `Corridor ${i + 1}`,
+          x: i + 2 < 10 ? { e: { m: 1, r: i + 3 } } : {}
+        })),
+        { m: 2, r: 1, n: 'Sealed Cave', x: {} }
+      ],
+      { items: [{ id: 7, n: 'potion of levitation', type: 0, lands: '2/1', uses }] },
+      40
+    );
+
+  it('walks the only way in, and says on the step what it spends', () => {
+    const route = sealed(1).route(roomId(1, 1), roomId(2, 1), {
+      keys: [7],
+      packKnown: true
+    });
+    expect(route.blocked).toBe(false);
+    expect(route.steps).toHaveLength(1);
+    const step = route.steps[0]!;
+    expect(step.command).toBe('use potion of levitation');
+    // A teleport, so no compass reasoning applies — the portal's own word.
+    expect(step.direction).toBe('portal');
+    expect(step.invoke).toEqual({
+      id: 7,
+      name: 'potion of levitation',
+      command: 'use potion of levitation',
+      uses: 1,
+      // Where it is used: the room the character is standing in. A teleport's
+      // row has no row above it to take its origin from, so the plan has to
+      // say so or it reads as beginning somewhere the reader is not.
+      at: { room: roomId(1, 1), name: 'Doorstep' }
+    });
+  });
+
+  it('refuses it for a listed pack that does not hold it, and names it', () => {
+    // The server refuses outright, and the whole point of `packKnown` is that
+    // a listed pack is an answer rather than a silence. **And the refusal says
+    // which item**: *the realm data joins no path* about a room the realm does
+    // have a way into is the sentence this whole change began as a report of,
+    // so the explanation search looks through the pack as well.
+    const route = sealed(1).route(roomId(1, 1), roomId(2, 1), { keys: [], packKnown: true });
+    expect(route.blocked).toBe(true);
+    expect(route.blocks).toEqual([
+      expect.objectContaining({ kind: 'carry', itemId: 7, itemName: 'potion of levitation' })
+    ]);
+    expect(route.reason).toContain('potion of levitation');
+  });
+
+  it('offers it to a pack nobody has listed rather than pruning it', () => {
+    const route = sealed(1).route(roomId(1, 1), roomId(2, 1), {});
+    expect(route.blocked).toBe(false);
+    expect(route.steps[0]?.invoke?.id).toBe(7);
+  });
+
+  it("reads the realm's `-1` as *for ever* rather than as a count", () => {
+    const route = sealed(-1).route(roomId(1, 1), roomId(2, 1), { keys: [7], packKnown: true });
+    expect(route.steps[0]?.invoke?.uses).toBeNull();
+  });
+
+  /*
+   * The other kind of landing, which is why this is two behaviours and not
+   * one: a token that lands somewhere the character could have walked to.
+   */
+  const shortcut = (): WorldGraph =>
+    makeWorld(
+      [
+        ...Array.from({ length: 60 }, (_, i) => ({
+          m: 1,
+          r: i + 1,
+          n: `Road ${i + 1}`,
+          x: i + 1 < 60 ? { e: { m: 1, r: i + 2 } } : {}
+        }))
+      ],
+      { items: [{ id: 8, n: 'token of Kingsport', type: 0, lands: '1/60', uses: 5 }] },
+      40
+    );
+
+  it('does not spend a charge on a way the character can simply walk', () => {
+    const route = shortcut().route(roomId(1, 1), roomId(1, 60), {
+      keys: [8],
+      packKnown: true
+    });
+    expect(route.steps).toHaveLength(59);
+    expect(route.steps.some((step) => step.invoke !== undefined)).toBe(false);
+  });
+
+  it('offers it instead, with what it spends, when the reader asked for alternatives', () => {
+    const route = shortcut().route(
+      roomId(1, 1),
+      roomId(1, 60),
+      { keys: [8], packKnown: true },
+      { alternatives: true }
+    );
+    expect(route.viaItem?.steps).toHaveLength(1);
+    expect(route.viaItem?.steps[0]?.invoke?.name).toBe('token of Kingsport');
+    expect(route.viaItem?.steps[0]?.invoke?.uses).toBe(5);
+  });
+
+  it('offers nothing to a walk that is not worth a charge', () => {
+    // Four rooms apart, which is both under `alternativeMinSteps` and cheaper
+    // than the charge: the same rule `carrying` applies, and for the same
+    // reason.
+    const route = shortcut().route(
+      roomId(1, 56),
+      roomId(1, 60),
+      { keys: [8], packKnown: true },
+      { alternatives: true }
+    );
+    expect(route.viaItem).toBeUndefined();
+  });
+
+  it('offers nothing where the plan is itself the item', () => {
+    // `route` already is the way in; an alternative to it would be the same
+    // route listed twice.
+    const route = sealed(1).route(
+      roomId(1, 1),
+      roomId(2, 1),
+      { keys: [7], packKnown: true },
+      { alternatives: true }
+    );
+    expect(route.viaItem).toBeUndefined();
+  });
+
+  /*
+   * And the shipped realm, end to end: the report this was written for —
+   * *there is no route from 6, 644 to 9, 1431 but I have the titanium fork and
+   * the levitation potion*. No exit or portal in either database enters the
+   * 173 rooms behind the potion, so before this the answer was *the realm data
+   * joins no path* about a cave the same client had just named three items for.
+   */
+  it('walks to the room the potion works in, and uses it there', () => {
+    /*
+     * The report this was written for, twice over. First *there is no route
+     * from 6,644 to 9,1431 but I have the fork and the potion*, and then —
+     * once the landing was an edge — *it is planning it from a spot I am not
+     * in, where is the route TO that first step*. Both come out of the same
+     * mistake: `TBInfo 1421` opens `roomitem 993`, a guard that fails the
+     * whole block unless the room holds the `waterfall`, so reading only its
+     * `teleport` step recorded a conditional effect as an unconditional one.
+     * Used in the Alchemist's Hut the server answered with nothing at all.
+     */
+    const graph = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    const carried = ['potion of levitation', 'titanium fork', 'magical quartz rod'].map((name) =>
+      graph.itemIdNamed(name)!
+    );
+    const route = graph.route(roomId(6, 645), roomId(9, 1431), {
+      keys: carried,
+      packKnown: true,
+      level: 30
+    });
+    expect(route.blocked).toBe(false);
+    const used = route.steps.filter((step) => step.invoke !== undefined);
+    expect(used).toHaveLength(1);
+    // Used in 3/1, the pool under the waterfall — never in the room the walk
+    // started in, and the one room MegaMUD's own 4,501 path files use it in.
+    expect(used[0]?.invoke?.name).toBe('potion of levitation');
+    expect(used[0]?.from).toBe(roomId(3, 1));
+    expect(used[0]?.to).toBe(roomId(9, 1009));
+    // And it is walked to rather than assumed.
+    expect(route.steps.indexOf(used[0]!)).toBeGreaterThan(0);
+    expect(route.steps.at(-1)?.to).toBe(roomId(9, 1431));
+  });
+
+  it('reads the realm as saying where it may be used, and where it may not', () => {
+    const graph = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    // `roomitem 993` -> the waterfall -> Room 3/1.
+    expect(graph.item(graph.itemIdNamed('potion of levitation')!)?.usableIn).toEqual(['3/1']);
+    // A recall token's guards are `nomonsters` and `failroomitem`: conditions
+    // on the moment, not on the place, so it stays usable anywhere.
+    expect(graph.item(graph.itemIdNamed('token of Kingsport')!)?.usableIn).toBeUndefined();
   });
 });

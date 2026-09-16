@@ -2239,6 +2239,24 @@ export class CharacterTracker {
     if (this.state.inventory.items !== before.inventory.items || this.state.race !== before.race) {
       this.rememberSight();
     }
+    /*
+     * And the realm's row for each thing in it, from the same commit point and
+     * for the same reason: five things ask whether the pack holds a row — the
+     * router, `AutoKeys`, a room's hazard, what the things standing here can be
+     * asked, and the quest book's ticks — and each of them working it out for
+     * itself is the "two halves of one gate in two files" failure with a door
+     * on the end of it.
+     *
+     * Both halves of the listing, because the server prints belongings as two
+     * (`You are carrying …` and `You have the following keys: …`) and the
+     * question is asked of both at once.
+     */
+    if (
+      this.state.inventory.items !== before.inventory.items ||
+      this.state.inventory.keys !== before.inventory.keys
+    ) {
+      this.rememberPackRows();
+    }
     // And what the race's attributes run between, which moves only with the
     // race itself — the sheet reads a number against it (`AttributeSpans`).
     if (this.state.race !== before.race) this.rememberSpans();
@@ -2917,6 +2935,33 @@ export class CharacterTracker {
     const sight = sightOf(vision, carriedLights(s.inventory.items), race !== null);
     if (sameSight(s.sight, sight)) return;
     this.state = { ...s, sight };
+  }
+
+  /**
+   * The realm's rows for what is in the pack. See `Inventory.rows`.
+   *
+   * The join is `itemIdsCarried`'s, which is the rule that refuses a shared
+   * name — so this states rows the pack can only be holding, and says nothing
+   * about the rest. A realm with no data joins nothing, which reads exactly as
+   * a pack of things the realm has never heard of.
+   *
+   * The equality check is what keeps the state stable: `replayPack` rebuilds
+   * the array on every listing and a fresh `rows` beside an unchanged pack
+   * would be a new state pushed to every window for nothing.
+   */
+  private rememberPackRows(): void {
+    const s = this.state;
+    const world = this.world;
+    const rows =
+      world === undefined
+        ? []
+        : world.itemIdsCarried([
+            ...s.inventory.items,
+            ...s.inventory.keys.map((name) => ({ name }))
+          ]);
+    const held = s.inventory.rows;
+    if (rows.length === held.length && rows.every((id, at) => id === held[at])) return;
+    this.state = { ...s, inventory: { ...s.inventory, rows } };
   }
 
   /**
@@ -5082,7 +5127,10 @@ export class CharacterTracker {
             encumbranceWord: g['encumbranceWord']?.trim() || null,
             // The listing landed: from here the pack is a fact rather than a
             // silence, and an exit that wants something in it can be judged.
-            listedAt: block.at
+            listedAt: block.at,
+            // Re-joined at the commit point, like the gear and the sight: the
+            // rows this listing's own names resolve to are not known here.
+            rows: s.inventory.rows
           }
         };
       }

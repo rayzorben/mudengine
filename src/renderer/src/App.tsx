@@ -129,7 +129,7 @@ import {
   type SupplyItem
 } from '@shared/config';
 import type { RemoteName } from '@shared/remotes';
-import { EMPTY_CHARACTER, ownGang, type CharacterState } from '@shared/character';
+import { EMPTY_CHARACTER, ownGang, packRows, type CharacterState } from '@shared/character';
 import { figuresOf, type StatlineFigures } from '@shared/statline';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
@@ -139,6 +139,7 @@ import { movementOf, type MovementConfirm } from '@shared/movement';
 import type { CombatTally } from '@shared/tally';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
+import type { QuestWatched, RoomAsk } from '@shared/quests';
 import type { Block } from '@shared/blocks';
 import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
@@ -223,6 +224,8 @@ interface SessionView {
   automation: AutomationSnapshot;
   /** The room appraised — *can I fight this?* — beside the character it is about. */
   verdict: RoomVerdict;
+  /** What the things standing in the room answer to, for this character. See `asksHere`. */
+  asks: RoomAsk[];
   /**
    * The Combat Stats card's baseline: the totals every figure on it is a
    * difference from, or null for the whole session.
@@ -290,10 +293,11 @@ interface SessionView {
    *
    * Nothing on the wire announces a counter moving, so this is the character's
    * own action and nothing more — the quest book ranks it under the realm's own
-   * count and above the mark somebody set by hand. See `stepSaid` for the line
+   * count *as of when that was read* and above the mark somebody set by hand.
+   * See `questReading` for how the three are ranked, `stepSaid` for the line
    * typed at an asker, `stepKilled` for the monster a step is owned by.
    */
-  questSaid: Record<number, number>;
+  questSaid: QuestWatched;
 }
 
 /**
@@ -344,6 +348,7 @@ const EMPTY_VIEW: SessionView = {
   loop: NO_LOOP,
   automation: EMPTY_AUTOMATION,
   verdict: EMPTY_ROOM_VERDICT,
+  asks: [],
   statsBase: null,
   lines: [],
   telnet: [],
@@ -468,6 +473,12 @@ interface CardContext {
    * bound call for exactly that reason.
    */
   loadQuests(): ReturnType<IpcApi['questBook']>;
+  /**
+   * The order the step this character is on fetches its items in — addressed
+   * for the book's own reason, and because the walk starts where *this*
+   * character is standing and is priced against what it can get through.
+   */
+  loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
   /** Where to hunt from where this character stands — addressed, like the book. */
   loadHunting(): ReturnType<IpcApi['huntingGrounds']>;
   /**
@@ -562,6 +573,7 @@ interface AddressedActions {
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
+  loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
   loadHunting(): ReturnType<IpcApi['huntingGrounds']>;
   startMoving(loop: string | null): void;
   stopMoving(): void;
@@ -643,6 +655,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           forgetFind={ctx.forgetFind}
           verdict={view.verdict}
+          asks={view.asks}
         />
       );
     case 'map':
@@ -862,6 +875,13 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           characterLevel={character.progress.level}
           characterRace={character.race}
           /*
+            And what is in its pack, so a step's shopping list can be ticked.
+            `packRows` and not the items themselves: the realm's row is what a
+            step names, the join is main's, and null is *nobody has listed the
+            pack* — which ticks nothing rather than crossing everything off.
+          */
+          carrying={packRows(character.inventory)}
+          /*
             The realm's own count of each quest counter, where the realm has a
             command that prints one. It outranks the marks the player has left
             on the track, which is why it is handed to the card rather than
@@ -884,6 +904,13 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             the name would be resolved against the wrong realm, so it stays
             text there — a control bound to nowhere is worse than none.
           */
+          /*
+            And the order the step it is on fetches its items in, solved from
+            where this character is standing. Addressed for the book's reason
+            and priced for this character's — a walk chosen for somebody else
+            is one this character may not be able to take.
+          */
+          loadErrand={ctx.loadErrand}
           loadQuests={ctx.loadQuests}
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
           realmAt={ctx.realmAt}
@@ -1955,6 +1982,7 @@ export default function App() {
         loop: snapshot.loop,
         automation: snapshot.automation,
         verdict: snapshot.verdict,
+        asks: snapshot.asks,
         /*
          * Carried, not reset. A snapshot is this window attaching to a session
          * that was already running, and main's totals are the same monotonic
@@ -2246,6 +2274,7 @@ export default function App() {
       api.onVerdict(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, verdict: payload }))
       ),
+      api.onAsks(({ session: id, payload }) => patchView(id, (v) => ({ ...v, asks: payload }))),
       api.onTelnet(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, telnet: capped(v.telnet, payload, tuning().telnetLogLimit) }))
       ),
@@ -4786,6 +4815,7 @@ export default function App() {
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
+        loadErrand: (block) => api.questErrand(sid, block),
         loadHunting: () => api.huntingGrounds(sid),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
@@ -4900,6 +4930,7 @@ export default function App() {
         endPeek: shown ? endPeek : null,
         goToRoom,
         loadQuests: bound.loadQuests,
+        loadErrand: bound.loadErrand,
         loadHunting: bound.loadHunting,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
