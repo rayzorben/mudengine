@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { indexQuests } from '../indexQuests';
+import { blocksInReach, indexQuests, itemsInReach } from '../indexQuests';
 import type { RealmSource, RealmTable } from '../RealmSource';
 
 /** A realm database made of literals, as `buildRealm.test.ts` builds one. */
@@ -235,5 +235,97 @@ describe('a quest step a monster’s death hands over', () => {
     const step = quests.find((quest) => quest.id === 133)?.steps[0];
     expect(step?.kill).toBeUndefined();
     expect(step?.room).toBeUndefined();
+  });
+});
+
+/*
+ * The four Phoenix components, as the shipped realm hands them over. Reported
+ * live: *sundry items are missing, it says the realm data does not name it* —
+ * `acid gland`, `unfertilized eggs`, `double-terminated quartz` and `cave
+ * roots` are `giveitem` in blocks reached by a monster's death or a cave's own
+ * word, so `neededItems` (exits, levers, shops, drop lists and *room-owned*
+ * scripts) held none of the first three and the Reference card said *Named in
+ * the world data, with no further detail*.
+ */
+describe('where a script hands an item over', () => {
+  const COMPONENTS = {
+    Monsters: [
+      {
+        Number: 471,
+        Name: 'white jelly',
+        GreetTXT: 0,
+        DeathSpell: 608,
+        'Summoned By': 'Room 9/146'
+      },
+      {
+        Number: 500,
+        Name: 'Morukai',
+        GreetTXT: 1437,
+        DeathSpell: 0,
+        'Summoned By': 'Room 9/1425'
+      }
+    ],
+    Rooms: [{ 'Map Number': 9, 'Room Number': 500, Name: 'Earthy Cave', CMD: 1446 }],
+    TBInfo: [
+      // A death's block: no phrase, because nothing is typed at a corpse.
+      {
+        Number: 1443,
+        Action: 'failitem 966:testability 133 5:checkability 133 5:giveitem 966',
+        LinkTo: 0
+      },
+      // A room's: one line per spelling, all handing over the same thing.
+      {
+        Number: 1446,
+        Action: [
+          'get roots:failitem 995:checkability 133 5:giveitem 995',
+          'pick roots:failitem 995:checkability 133 5:giveitem 995'
+        ].join('\n'),
+        LinkTo: 0
+      },
+      // And an asker's keyword table, two words onto one block.
+      { Number: 1437, Action: 'components:1447\nbarrier:1447', LinkTo: 0 },
+      { Number: 1447, Action: 'checkability 133 5:giveitem 996:giveability 133 6', LinkTo: 0 },
+      // An orphan: reachable from nothing, so it places nothing.
+      { Number: 9999, Action: 'giveitem 4242', LinkTo: 0 }
+    ]
+  };
+  const JELLY = [
+    { id: 608, n: 'white jelly temp', ab: [[151, 609]] as Array<[number, number]> },
+    { id: 609, n: 'white jelly text', ab: [[148, 1443]] as Array<[number, number]> }
+  ];
+  const read = (): ReturnType<typeof itemsInReach> =>
+    itemsInReach(blocksInReach(fake(COMPONENTS), JELLY));
+
+  it('names every item a reached block refers to', () => {
+    // 966 and 995 are `giveitem`, and each is `failitem` on the same line —
+    // both verbs are the realm referring to a thing somebody will be holding.
+    expect([...read().named].sort((a, b) => a - b)).toEqual([966, 995, 996]);
+  });
+
+  it('places a death’s item on the monster, in the room the realm summons it to', () => {
+    expect(read().from.get(966)).toEqual([{ k: 'death', w: 'white jelly', at: '9/146' }]);
+  });
+
+  it('gathers a room’s spellings into one place rather than one place each', () => {
+    expect(read().from.get(995)).toEqual([
+      { k: 'room', at: '9/500', say: ['get roots', 'pick roots'] }
+    ]);
+  });
+
+  it('gives an asker’s item the words the keyword table reached it with', () => {
+    expect(read().from.get(996)).toEqual([
+      { k: 'npc', w: 'Morukai', at: '9/1425', say: ['components', 'barrier'] }
+    ]);
+  });
+
+  /*
+   * A block nothing can run is not a place to go. The realm keeps blocks its
+   * own editor orphaned, and offering one as an errand would be the client
+   * inventing a way to get something.
+   */
+  it('places nothing for a block the realm can never run', () => {
+    const answer = read();
+    expect(answer.from.has(4242)).toBe(false);
+    expect(answer.named.has(4242)).toBe(false);
   });
 });

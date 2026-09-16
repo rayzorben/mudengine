@@ -1626,16 +1626,18 @@ kbd {
 }
 
 /*
- * What the room answers to, under its exits (todo 11): the same row of chips,
- * each one a control that sends the realm's own phrase down the path a
- * keystroke takes.
+ * What the room answers to, under its exits (todo 11) — and what the things
+ * *standing* in it answer to, under that (`.room-asks`, todo 01): one row of
+ * chips each, every one a control that sends the realm's own phrase down the
+ * path a keystroke takes.
  *
  * **The phrase is drawn as the realm spells it** — no uppercasing, which is
  * why this is not the `pick` register: `touch gem` is a command somebody could
  * type, and a client that prints it as TOUCH GEM is showing them a word the
  * server does not use.
  */
-.room-answers .chip {
+.room-answers .chip,
+.room-asks .chip {
   /*
    * **As the realm spells it.** A chip is uppercase because a chip is a label;
    * this one is a command somebody could type, and TOUCH GEM is a word the
@@ -1644,7 +1646,8 @@ kbd {
   text-transform: none;
 }
 
-.room-answers button.chip {
+.room-answers button.chip,
+.room-asks button.chip {
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--font-micro);
@@ -1652,7 +1655,8 @@ kbd {
   letter-spacing: 0.04em;
 }
 
-.room-answers button.chip:hover {
+.room-answers button.chip:hover,
+.room-asks button.chip:hover {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border-color: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--text-hi);
@@ -2078,6 +2082,20 @@ kbd {
   font-size: var(--font-micro);
   font-weight: 600;
   min-width: 10ch;
+}
+
+/*
+ * Where a teleport is used, beside the command that uses it.
+ *
+ * Quiet, because it states the room the reader is already standing in -- what
+ * it is there to stop is the destination reading as the place the plan starts
+ * from. Not a chip: chips on this row are what a step *costs*, and this is
+ * part of the sentence.
+ */
+.route-steps .step-here {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
 }
 
 /* ================================================================ map card */
@@ -2845,6 +2863,118 @@ button.lookup.quest-where svg {
   flex-wrap: wrap;
   gap: 4px;
   font-size: var(--font-micro);
+}
+
+/*
+ * Whether it is already in the pack, in the progression's own grammar
+ * (§ *What is left is the loudest thing*): a tick in a marker column and the
+ * row gone quiet for what is done, ordinary ink for what is still owed.
+ *
+ * The column is drawn for **both** answers, so the rows of a step line up
+ * whether or not each is held — the same reason `.progression > li::before`
+ * keeps its width at every state. It is drawn for neither where the pack has
+ * not been listed at all, which is every row of the card at once and so
+ * shuffles nothing: a row nobody has read the pack for is marked neither way,
+ * because an empty pack drawn as a statement would cross off a list that has
+ * never been read.
+ */
+.quest-items li[data-held]::before {
+  color: var(--text-lo-quiet);
+  content: '';
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  width: 1ch;
+}
+
+.quest-items li[data-held='true'] {
+  color: var(--text-lo-quiet);
+}
+
+.quest-items li[data-held='true']::before {
+  content: '✓';
+}
+
+/*
+ * The walk the several items add up to — the head line and the stop numbers.
+ *
+ * `.quest-meta`'s row, because it is the same kind of line: a verb, a chip and
+ * a control, wrapping where the rail is narrow. It sits *above* the rows it
+ * orders rather than under them — a numbered list beneath an unexplained
+ * heading reads as the realm's own order with decoration on it.
+ */
+.quest-errand {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+
+/*
+ * Where one item comes in that walk.
+ *
+ * A quiet monospace figure in a column of its own, never the `.quest-node`
+ * ring: that ring is the rank and it is a control, and a second ring on the
+ * same step would read as a second track. Fixed at `2ch` so the names line up
+ * whether the walk has three stops or ten, which is the same reason the tick
+ * column beside it keeps its width at every state.
+ */
+.quest-stop {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  text-align: right;
+  width: 2ch;
+}
+
+/*
+ * And an item the walk could not place: a dash, not a blank.
+ *
+ * The row keeps its column, because losing it would shuffle the names of a
+ * list whose whole point is that it is in an order. What the dash means is on
+ * its own tooltip, and the two reasons are different — the realm says nowhere,
+ * or there is no way there from here.
+ */
+.quest-stop-none {
+  color: var(--text-lo-quiet);
+  opacity: 0.6;
+}
+
+/*
+ * The last leg, where the walk closes on the step's own room.
+ *
+ * A row of the same list and not a line under it: the reader counts it with
+ * the others, and the step's room is where the four things are handed over.
+ * It carries no tick column of its own — there is nothing to be holding — so
+ * it is indented to where the names start instead.
+ */
+.quest-home {
+  padding-left: 1ch;
+}
+
+/*
+ * What the way into a place demands be carried, under the line it is about.
+ *
+ * `.quest-items`' own list, indented: it is subordinate to the step's place or
+ * to the item above it, and an errand list that sat flush with the thing it is
+ * an errand *for* would read as a second demand of the step. One frontier per
+ * row, so two doors into one place stay one row joined by `or` and two doors
+ * in a row stay two.
+ */
+.quest-approach {
+  padding-left: 12px;
+}
+
+/*
+ * The same answer on a route's own hand-over row, where the names run inline:
+ * a tick after the name rather than a column, because these sit in a flowing
+ * row and a fixed column would open a gap in the middle of a sentence.
+ */
+.quest-ways dd [data-held='true']::after {
+  color: var(--text-lo-quiet);
+  content: ' ✓';
 }
 
 /*
@@ -6826,6 +6956,32 @@ button.lookup.quest-where svg {
   gap: 2px 8px;
   margin: 2px 0 4px;
   font-family: var(--font-mono);
+}
+
+/*
+ * Where a script hands an item over: one act per line, not a run of names.
+ *
+ * `Sold by` and `Dropped by` are lists and read as one comma-separated
+ * sentence; this is a *sentence per entry* — a verb, a monster, the words, a
+ * room — so two of them run together would read as one act with two places in
+ * it. A block per handover, and the whole thing wraps, on the panel's measured
+ * width.
+ */
+.reference-detail .item-given {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.5;
+}
+
+/*
+ * What to type, drawn as the line that goes in the console — the same register
+ * and the same reason as `.quest-ask`.
+ */
+.reference-detail .handover-say {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
 }
 
 /*

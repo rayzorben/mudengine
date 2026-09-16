@@ -6,7 +6,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { SafetyDecision } from '../../../shared/automation';
 import type { SupplyItem } from '../../../shared/config';
 import type { Loop } from '../../../shared/loops';
-import type { Route } from '../../../shared/world';
+import type { BuyingPlace, Route } from '../../../shared/world';
 
 const KEY = { id: 4211, name: 'black star key' };
 
@@ -98,6 +98,23 @@ beforeEach(() => {
   sources = { shops: [], lairs: [] };
 });
 
+/**
+ * One counter, as `WorldGraph.buyingPlaces` hands it over: a room, not a name.
+ * `detour` is what stopping there adds to the journey, in plain steps.
+ */
+function counter(over: Partial<BuyingPlace> = {}): BuyingPlace {
+  return {
+    map: 1,
+    room: 42,
+    roomName: 'Locksmith Row',
+    shop: 'Locksmith',
+    markup: 100,
+    detour: 6,
+    moves: 12,
+    ...over
+  };
+}
+
 describe('collecting what a route needs', () => {
   /* The commonest case for a key: it was collected on an earlier trip. */
   it('walks straight off when the pack already holds it', () => {
@@ -114,11 +131,16 @@ describe('collecting what a route needs', () => {
    * floor of one and is written nowhere.
    */
   it('buys it where the realm names a shop', () => {
-    sources = { shops: ['Locksmith'], lairs: [] };
+    sources = { shops: [counter()], lairs: [] };
     const auto = errand();
     expect(auto.collect(KEY, OWED, ready())).toBeNull();
+    /*
+     * **Addressed by room.** `at` is what `shopRoom` resolves without asking
+     * anything further; a bare `shop` name sends it back through `shopPlace`,
+     * which refuses a name standing in several rooms.
+     */
     expect(bought).toEqual([
-      { name: 'black star key', min: 1, max: 1, shop: 'Locksmith', at: null }
+      { name: 'black star key', min: 1, max: 1, shop: 'Locksmith', at: { map: 1, room: 42 } }
     ]);
     expect(walked).toHaveLength(0);
 
@@ -158,7 +180,7 @@ describe('collecting what a route needs', () => {
    * not, and which happened is said.
    */
   it('says whether what it collected stays in the pack', () => {
-    sources = { shops: ['Locksmith'], lairs: [] };
+    sources = { shops: [counter()], lairs: [] };
     keptNames = ['black star key'];
     const auto = errand();
     auto.collect(KEY, OWED, ready());
@@ -176,7 +198,7 @@ describe('collecting what a route needs', () => {
 
   /* The shopping errand gave up: the route is not walked, and it says so. */
   it('does not walk the route when the errand ends without the item', () => {
-    sources = { shops: ['Locksmith'], lairs: [] };
+    sources = { shops: [counter()], lairs: [] };
     const auto = errand();
     auto.collect(KEY, OWED, ready());
     buying = false;

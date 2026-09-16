@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { stepKilled, stepSaid, type Quest } from '../quests';
+import { countersNow, questReading, stepKilled, stepSaid, type Quest } from '../quests';
+import type { AbilitySums } from '../character';
 
 /**
  * The book moving as the character plays.
@@ -421,5 +422,88 @@ describe('a step a monster’s death hands over', () => {
     };
     expect(stepKilled([killed(), elsewhere], 'dread mystic', '3/17')?.quest.id).toBe(152);
     expect(stepKilled([killed(), elsewhere], 'dread mystic', '9/930')?.quest.id).toBe(133);
+  });
+});
+
+/**
+ * Which of the three readings the book draws, and when.
+ *
+ * Reported 2026-09-15: a listing from 8:44 said rank 5, the player asked
+ * Morukai for the components at 8:50 and the mage took all four, and the book
+ * went on saying *5 of 9* until another `abil`. A listing is exact at the
+ * moment it is read and no later.
+ */
+describe('where a character stands in one quest', () => {
+  const listing = (rank: number, at: number): AbilitySums => ({
+    sums: { 133: rank },
+    complete: true,
+    at
+  });
+
+  it('draws the realm count where nothing has been watched since', () => {
+    const read = questReading(133, listing(5, 100), { 133: { to: 5, at: 50 } });
+    expect(read).toMatchObject({ rank: 5, held: true, observed: true, watched: false, at: 100 });
+  });
+
+  it('draws the act watched after the listing', () => {
+    const read = questReading(133, listing(5, 100), { 133: { to: 6, at: 150 } });
+    expect(read).toMatchObject({ rank: 6, held: true, observed: false, watched: true, at: null });
+  });
+
+  it('never walks the book back below the listing', () => {
+    // A keyword answered again at a rank already behind is not a step back,
+    // and neither is a listing that arrives after it saying more.
+    expect(questReading(133, listing(7, 100), { 133: { to: 4, at: 150 } }).rank).toBe(7);
+    expect(questReading(133, listing(7, 200), { 133: { to: 6, at: 150 } }).rank).toBe(7);
+  });
+
+  it('answers from the act where the realm has counted nothing', () => {
+    const read = questReading(133, null, { 133: { to: 3, at: 10 } });
+    expect(read).toMatchObject({ rank: 3, held: true, observed: false, watched: true });
+  });
+
+  it('falls to the mark only where neither has spoken', () => {
+    expect(questReading(133, null, null, 2)).toMatchObject({
+      rank: 2,
+      held: true,
+      observed: false,
+      watched: false
+    });
+    expect(questReading(133, null, null, null)).toMatchObject({ rank: null, held: false });
+  });
+
+  it('keeps a granted zero apart from an absent counter', () => {
+    // `giveability 186 0` is the realm's spelling of a flag: a complete
+    // listing reads an id it does not name as zero, and only naming it says
+    // the counter is held at all. See `stepDone`.
+    expect(questReading(186, { sums: {}, complete: true, at: 1 }, null).held).toBe(false);
+    expect(questReading(186, { sums: { 186: 0 }, complete: true, at: 1 }, null).held).toBe(true);
+  });
+
+  it('settles nothing from an incomplete listing that never named the id', () => {
+    const half: AbilitySums = { sums: { 127: 3 }, complete: false, at: 100 };
+    expect(questReading(133, half, { 133: { to: 2, at: 50 } })).toMatchObject({
+      rank: 2,
+      watched: true
+    });
+  });
+});
+
+/** The listing walked forward by what has been watched since it was read. */
+describe('the counters as they stand', () => {
+  const listing: AbilitySums = { sums: { 133: 5, 127: 2 }, complete: true, at: 100 };
+
+  it('raises a counter an act moved after the listing', () => {
+    expect(countersNow(listing, { 133: { to: 6, at: 150 } })?.sums).toEqual({ 133: 6, 127: 2 });
+  });
+
+  it('leaves the listing alone where the act came first or says less', () => {
+    expect(countersNow(listing, { 133: { to: 6, at: 50 } })).toBe(listing);
+    expect(countersNow(listing, { 133: { to: 4, at: 150 } })).toBe(listing);
+    expect(countersNow(null, { 133: { to: 6, at: 150 } })).toBeNull();
+  });
+
+  it('keeps the clock of the listing, which is what says how fresh it is', () => {
+    expect(countersNow(listing, { 133: { to: 6, at: 150 } })?.at).toBe(100);
   });
 });

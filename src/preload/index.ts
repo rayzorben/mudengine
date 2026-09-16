@@ -35,6 +35,7 @@ import type { LoopProgress } from '../shared/loops';
 import type { WalkProgress } from '../shared/walk';
 import type { AutomationSnapshot } from '../shared/automation';
 import type { RoomVerdict } from '../shared/verdict';
+import type { QuestWatched, RoomAsk } from '../shared/quests';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -126,6 +127,7 @@ const api: IpcApi = {
   mobNames: (session) => ipcRenderer.invoke(Invoke.mobNames, session),
   worldInfo: (session) => ipcRenderer.invoke(Invoke.worldInfo, session),
   questBook: (session) => ipcRenderer.invoke(Invoke.questBook, session),
+  questErrand: (session, block) => ipcRenderer.invoke(Invoke.questErrand, session, block),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
@@ -156,13 +158,14 @@ const api: IpcApi = {
   onLoop: (handler) => subscribe<Addressed<LoopProgress>>(Push.loop, handler),
   onAutomation: (handler) => subscribe<Addressed<AutomationSnapshot>>(Push.automation, handler),
   onVerdict: (handler) => subscribe<Addressed<RoomVerdict>>(Push.verdict, handler),
+  onAsks: (handler) => subscribe<Addressed<RoomAsk[]>>(Push.asks, handler),
   onNotice: (handler) => subscribe<Notice>(Push.notice, handler),
   onSessions: (handler) => subscribe<SessionSummary[]>(Push.sessions, handler),
   onProfiles: (handler) => subscribe<ProfileSummary[]>(Push.profiles, handler),
   onLearned: (handler) => subscribe<Addressed<Discovery[]>>(Push.learned, handler),
   onFinds: (handler) => subscribe<Addressed<Find[]>>(Push.finds, handler),
   onCharacterReset: (handler) => subscribe<Addressed<ResetNotice>>(Push.characterReset, handler),
-  onQuestSaid: (handler) => subscribe<Addressed<Record<number, number>>>(Push.questSaid, handler),
+  onQuestSaid: (handler) => subscribe<Addressed<QuestWatched>>(Push.questSaid, handler),
   onConfig: (handler) => subscribe<ConfigSnapshot>(Push.config, handler),
   onInternal: (handler) => subscribe<InternalConfig>(Push.internal, handler)
 };

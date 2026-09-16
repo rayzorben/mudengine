@@ -92,6 +92,8 @@ import { isPrompt, type Block } from '../../shared/blocks';
 import {
   bankKey,
   ownAlignment,
+  packRows,
+  type AbilitySums,
   type CharacterState,
   type RealmFamily as RealmWord,
   type SessionPhase
@@ -111,7 +113,19 @@ import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { describeDiscovery, discoveryKey, type Discovery } from '../../shared/memory';
 import { findKey, type Find } from '../../shared/finds';
-import { stepKilled, stepSaid, type Quest, type QuestStep } from '../../shared/quests';
+import {
+  asksHere,
+  countersNow,
+  countersRefuse,
+  stepKilled,
+  stepSaid,
+  type Quest,
+  type QuestErrand,
+  type QuestSeen,
+  type QuestStep,
+  type QuestWatched,
+  type RoomAsk
+} from '../../shared/quests';
 import {
   identityOf,
   resetSignals,
@@ -454,7 +468,7 @@ export interface SessionSink {
    * The rank each quest has been seen to reach from what the player typed.
    * The whole map, for the reason `learned` sends the whole record.
    */
-  questSaid?(progress: Record<number, number>): void;
+  questSaid?(progress: QuestWatched): void;
   /**
    * A command the client committed to the wire, reassembled from keystrokes.
    * One place does this, so a capture and the tracker cannot disagree.
@@ -486,6 +500,11 @@ export interface SessionSink {
    * is expected to cost — on change. The same `Verdict` auto-combat ranks on.
    */
   verdict?(appraisal: RoomVerdict): void;
+  /**
+   * What the things standing in this room can be asked, for this character as
+   * it stands — on change, and keyed like the verdict. See `asksHere`.
+   */
+  asks?(offers: readonly RoomAsk[]): void;
   /**
    * The realm named its own data — `[MAJORMUD]:`, `[PARADIGM]:` at its menu —
    * once per connection. A hook rather than a store, like `destination`: which
@@ -553,6 +572,7 @@ export class SessionManager {
   private serverFamily: RealmFamily | null = null;
   /** What the last pushed appraisal drew as, so a status line that moves no figure pushes nothing. */
   private lastVerdictKey = '';
+  private lastAsksKey = '';
   /** So the disagreement is stated once a session and not once a block. */
   private familyStated = false;
   /** The realm's own word for its data, once the menu has said it. See `noteRealmWord`. */
@@ -1020,11 +1040,14 @@ export class SessionManager {
    */
   private askedAboutReset = false;
   /**
-   * The rank each quest's counter has been *seen* to reach, from what the
-   * player typed. Per session: it is a record of this sitting's actions, and
-   * the realm's own count replaces it whenever one arrives.
+   * The rank each quest's counter has been *seen* to reach, and **when**.
+   *
+   * Per session: it is a record of this sitting's actions. The clock is what
+   * lets it be ranked against the realm's own count rather than simply losing
+   * to it — a listing read before the act is older evidence than the act. See
+   * `questReading`.
    */
-  private questSaid: Record<number, number> = {};
+  private questSaid: Record<number, QuestSeen> = {};
   /**
    * Whether the far end is still answering. See `LinkWatch`.
    *
@@ -1786,7 +1809,7 @@ export class SessionManager {
     this.itemErrand = new ItemErrand(
       {
         here: () => roomAddress(this.tracker.current.room),
-        sourcesOf: (item) => this.itemSources(item),
+        sourcesOf: (item, to) => this.itemSources(item, to),
         buy: (row) => this.supplies.fetch(row, this.tracker.current),
         buying: () => this.supplies.current !== null,
         runLoop: (loop) => {
@@ -2678,12 +2701,7 @@ export class SessionManager {
     // Where the character is standing, for a step the realm scripts onto a room
     // rather than onto somebody: the room is that step's anchor (todo 12).
     this.noteQuestReached(
-      stepSaid(
-        quests,
-        command,
-        roomAddress(this.tracker.current.room),
-        this.tracker.current.abilities
-      )
+      stepSaid(quests, command, roomAddress(this.tracker.current.room), this.countersNow())
     );
   }
 
@@ -2708,13 +2726,17 @@ export class SessionManager {
     const quests = this.world?.quests();
     if (quests === undefined || quests.length === 0) return;
     this.noteQuestReached(
-      stepKilled(
-        quests,
-        name,
-        roomAddress(this.tracker.current.room),
-        this.tracker.current.abilities
-      )
+      stepKilled(quests, name, roomAddress(this.tracker.current.room), this.countersNow())
     );
+  }
+
+  /**
+   * The counters as they stand: what `abil` last listed, walked forward by
+   * what has been watched since. See `countersNow` for why the listing alone
+   * is a photograph, and every reader of a counter here takes this one.
+   */
+  private countersNow(): AbilitySums | null {
+    return countersNow(this.tracker.current.abilities, this.questSaid);
   }
 
   /**
@@ -2723,17 +2745,27 @@ export class SessionManager {
    * **Only ever forward.** A keyword answered again at a later rank, or a boss
    * killed a second time, must not walk the book backwards — and `giveability`
    * is upward-only on the server too, so forward is what the counter does.
+   *
+   * **And a step the counters refuse did not run.** Neither reading claims the
+   * ask succeeded, and until 2026-09-15 that risk was contained by the listing
+   * always outranking them; now that a later observation can raise the book
+   * above a listing, the listing is put to the one use it is exact for — a
+   * *complete* one that fails this step's own counter gates says the server
+   * cannot have run it, whatever the player typed. Unknown refuses nothing, as
+   * everywhere: no listing, or half of one, and the act is taken as before.
    */
   private noteQuestReached(found: { quest: Quest; step: QuestStep } | null): void {
     if (found === null || found.step.to === undefined) return;
     const known = this.questSaid[found.quest.id];
-    if (known !== undefined && known >= found.step.to) return;
-    this.questSaid = { ...this.questSaid, [found.quest.id]: found.step.to };
+    if (known !== undefined && known.to >= found.step.to) return;
+    if (countersRefuse(found.step, this.countersNow())) return;
+    const seen: QuestSeen = { to: found.step.to, at: Date.now() };
+    this.questSaid = { ...this.questSaid, [found.quest.id]: seen };
     this.sink.questSaid?.(this.questSaid);
   }
 
   /** What this character has been seen to do about each quest. See `noteQuestReached`. */
-  get questProgress(): Readonly<Record<number, number>> {
+  get questProgress(): QuestWatched {
     return this.questSaid;
   }
 
@@ -4984,9 +5016,49 @@ export class SessionManager {
   }
 
   /**
+   * The order one quest step's several items are best fetched in (todo 01).
+   *
+   * The card's own question, addressed and asked on demand: the realm states
+   * a step's items in the order its opcodes run, which is nobody's walk, and
+   * `WorldGraph.errand` answers with the shortest one from where this
+   * character is standing through a place for each of them and back to the
+   * asker. Priced by **this** traveller, like every other plan main makes —
+   * the lair, the room's own spell and the door that wants a strength this
+   * character has not got all decide the order, and a walk chosen for
+   * somebody else is a walk this one cannot take.
+   *
+   * Null for a step the realm does not hold, a character the client cannot
+   * place, and a step with fewer than two things to go and get: all three are
+   * *there is no walk to order here*, and the card then draws the item list
+   * exactly as it did before.
+   */
+  questErrand(block: number): QuestErrand | null {
+    const world = this.world;
+    if (world === undefined) return null;
+    const step = world
+      .quests()
+      .flatMap((quest) => quest.steps)
+      .find((other) => other.block === block);
+    if (step === undefined) return null;
+    const here = roomAddress(this.tracker.current.room);
+    if (here === null) return null;
+    return world.errand(step, here, this.travellerNow(this.tracker.current));
+  }
+
+  /**
    * Where the realm says an item comes from, from where the character stands
-   * (todo 07): the shops that stock it, and the rooms within reach whose lair
+   * and on the way to `to` (todo 07; re-ranked 2026-09-16): the counters that
+   * stock it, least out of the way first, and the rooms within reach whose lair
    * or resident is a monster that drops it, nearest first.
+   *
+   * **The counters are `WorldGraph.buyingPlaces`' answer, taken whole.** This
+   * used to rank the realm's shop **names** by how near each one's room was,
+   * and it had two ways of being wrong at once: a name standing in several
+   * rooms was priced at infinity and sank to the bottom of the list whatever
+   * was in it, and the winner was then handed on as a name for the shopping
+   * errand to resolve — which refused it for the ambiguity this had just
+   * created. Nearness was the wrong question besides: what matters is how far
+   * off the road the stop is, and the router answers that.
    *
    * The lairs are swept the way `huntingGrounds` sweeps them and **not**
    * through the survey itself: the survey ranks by what a lair *pays* and
@@ -4994,31 +5066,15 @@ export class SessionManager {
    * of monster that carries a key. What is wanted here is where the thing is,
    * not whether the fight is worth having.
    */
-  private itemSources(item: { id: number; name: string }): ItemSources {
+  private itemSources(item: { id: number; name: string }, to: RoomId | null): ItemSources {
     const world = this.world;
     const here = roomAddress(this.tracker.current.room);
     if (world === undefined || here === null) return { shops: [], lairs: [] };
-    const { shops, mobs } = world.sourcesOf(item);
-    const reach = world.withinSteps(
-      here,
-      tuning().hunting.betterSpotRadius,
-      this.travellerNow(this.tracker.current)
-    );
-    /*
-     * **Nearest first**, which is what the lairs below are sorted by and what
-     * the errand then walks to. The realm's own list is in no order at all: a
-     * character standing outside one locksmith was as likely to be walked to
-     * another two maps away (on review). A shop the sweep does not reach keeps
-     * its place at the end rather than being dropped — the errand resolves the
-     * room itself and says why it cannot.
-     */
-    const nearest = (shop: string): number => {
-      const place = world.shopPlace(shop);
-      if (place === undefined || place.at === 'several') return Number.POSITIVE_INFINITY;
-      return reach.get(roomId(place.map, place.room)) ?? Number.POSITIVE_INFINITY;
-    };
-    const ordered = [...shops].sort((a, b) => nearest(a) - nearest(b));
+    const traveller = this.travellerNow(this.tracker.current);
+    const ordered = world.buyingPlaces(item.id, here, to, traveller);
+    const { mobs } = world.sourcesOf(item);
     if (mobs.length === 0) return { shops: ordered, lairs: [] };
+    const reach = world.withinSteps(here, tuning().hunting.betterSpotRadius, traveller);
     const wanted = new Set(mobs.map((name) => mobKey(name)));
     const lairs: Array<{ id: RoomId; name: string; mob: string; steps: number }> = [];
     for (const [id, steps] of reach) {
@@ -5555,6 +5611,12 @@ export class SessionManager {
    * listing (`replayPack`), so this is as current as the last `i` plus
    * every pick-up since.
    *
+   * **The join itself moved onto the state** (2026-09-15): `Inventory.rows` is
+   * made at the tracker's one commit point, so the quest book can tick what is
+   * carried without a second reading of the same question in the window — and
+   * the A* stopped re-walking the whole pack for every room it expands that
+   * casts something.
+   *
    * `packKnown` says whether that list is an answer or a silence. `i` is in
    * the default `onEnterRealm`, so it is true within a second of entering the
    * realm on any ordinary configuration — but the probe list is the player's,
@@ -5593,15 +5655,7 @@ export class SessionManager {
   }
 
   private packContents(state: CharacterState): { keys: number[]; packKnown: boolean } {
-    return {
-      keys: this.world
-        ? this.world.itemIdsCarried([
-            ...state.inventory.items,
-            ...state.inventory.keys.map((name) => ({ name }))
-          ])
-        : [],
-      packKnown: state.inventory.listedAt !== null
-    };
+    return { keys: state.inventory.rows, packKnown: state.inventory.listedAt !== null };
   }
 
   /**
@@ -7235,6 +7289,7 @@ export class SessionManager {
   private publishCharacter(): void {
     this.sink.character(this.tracker.current);
     this.publishVerdict();
+    this.publishAsks();
     this.watchForReset();
   }
 
@@ -7426,6 +7481,57 @@ export class SessionManager {
     if (key === this.lastVerdictKey) return;
     this.lastVerdictKey = key;
     this.sink.verdict?.(appraisal);
+  }
+
+  /**
+   * *What can I ask the things standing here?* — pushed beside the verdict,
+   * on change, and keyed the same way.
+   *
+   * Computed here for the reason the verdict is: the quest book, the counters
+   * `abil` stated, the asks this session watched and the listed pack are four
+   * facts that live only in main, and three of them move without the room
+   * moving. A join made in the card would need the book over IPC on every
+   * room, and would still be looking at the rank from before the `abil` the
+   * player just sent.
+   */
+  private publishAsks(): void {
+    const offers = this.asks;
+    const key = offers
+      .map((ask) => `${ask.who}:${ask.say}:${ask.wants?.join(',') ?? ''}`)
+      .join('|');
+    if (key === this.lastAsksKey) return;
+    this.lastAsksKey = key;
+    this.sink.asks?.(offers);
+  }
+
+  /**
+   * What this room's occupants answer to, for this character. See `asksHere`.
+   *
+   * The occupants are read **first**, and an empty room leaves before the book
+   * is joined or the pack is walked: this runs on every status line, like the
+   * verdict beside it, and most rooms have nobody in them.
+   */
+  get asks(): readonly RoomAsk[] {
+    const state = this.tracker.current;
+    if (state.phase !== 'in-game') return [];
+    const here = state.room.occupants.filter((who) => who.kind !== 'player').map((who) => who.name);
+    if (here.length === 0) return [];
+    const book = this.world?.quests();
+    if (book === undefined || book.length === 0) return [];
+    return asksHere(
+      book,
+      here,
+      {
+        className: state.className ?? null,
+        race: state.race ?? null,
+        level: state.progress.level ?? null,
+        counters: state.abilities ?? null
+      },
+      this.questSaid,
+      // The pack as an answer or as a silence — never as an empty pack, which
+      // would say *you are not carrying this* about a pack nobody has read.
+      packRows(state.inventory)
+    );
   }
 
   /** The room as it stands, appraised against the character as it stands. See `appraiseRoom`. */

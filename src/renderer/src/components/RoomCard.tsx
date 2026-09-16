@@ -22,6 +22,7 @@ import type { Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
 import type { Alignment, CharacterState, RoomExit, RoomOccupant } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
+import type { RoomAsk } from '@shared/quests';
 import { attacksOnSight, DISPOSITION_WORD } from '@shared/mobs';
 import { countedLabel } from '@shared/items';
 
@@ -78,6 +79,15 @@ export interface RoomCardProps extends CardChrome {
    * occupants it prices are one moment.
    */
   verdict: RoomVerdict;
+  /**
+   * What the things standing in the room answer to, for this character as it
+   * stands — one chip each, beside the words the *room* answers to.
+   *
+   * Decided in main, where the quest book, the counters `abil` stated and the
+   * listed pack all live, and pushed beside the verdict for the same reason:
+   * three of its four inputs move without the room moving. See `asksHere`.
+   */
+  asks: readonly RoomAsk[];
 }
 
 /** Compass order, so exits always read in the same sequence regardless of the
@@ -105,6 +115,7 @@ function RoomCard({
   inspect,
   forget,
   ask,
+  asks,
   learned,
   finds,
   goToRoom,
@@ -158,6 +169,7 @@ function RoomCard({
     <RoomBody
       answers={answers}
       ask={ask}
+      asks={asks}
       character={character}
       inspect={inspect}
       shop={shop}
@@ -480,11 +492,12 @@ function describe(who: RoomOccupant, mine: Alignment | null): string {
 function RoomBody({
   answers,
   ask,
+  asks,
   character,
   inspect,
   shop,
   verdict
-}: Pick<RoomCardProps, 'ask' | 'character' | 'inspect' | 'verdict'> & {
+}: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict'> & {
   shop: WorldShop | null;
   /** What the realm says this room answers to. See the row below the exits. */
   answers: RoomCommand[];
@@ -611,6 +624,66 @@ function RoomBody({
                 ) : (
                   <span className="chip" key={`${phrase}-${index}`}>
                     {phrase}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {/*
+            And what the things *standing* here answer to (todo 01).
+
+            The same row and the same grammar as the room's own words, because
+            it is the same fact about a different subject: the realm scripts
+            `ask Morukai phoenix` exactly as it scripts `go manhole`, and until
+            now the first was in the quest book, on a card in another tab,
+            behind a row the player had to know to open. A chip is drawn only
+            where every gate the client has read is met — the counter's rank
+            above all, which is what makes this one chip on Morukai rather than
+            the four words he answers across four ranks.
+
+            A step that still wants something is drawn and marked, never
+            removed: the exits row above does exactly that with a blocked exit,
+            and what it wants is an errand the client can say where to run.
+          */}
+          {asks.length > 0 && (
+            <div className="exits room-asks">
+              {asks.map((offer, index) => {
+                const line = t('cards.room.asks.command', { who: offer.who, word: offer.say });
+                const wants = offer.wants?.join(', ');
+                const title =
+                  wants === undefined
+                    ? t('cards.room.asks.sendTooltip', { quest: offer.quest, line })
+                    : t('cards.room.asks.wantsTooltip', { quest: offer.quest, items: wants });
+                const body = (
+                  <>
+                    {line}
+                    {wants !== undefined && (
+                      <span className="exit-note">
+                        {' '}
+                        {t('cards.room.asks.wants', { items: wants })}
+                      </span>
+                    )}
+                  </>
+                );
+                return ask && phase === 'in-game' ? (
+                  <button
+                    className={`chip${wants === undefined ? '' : ' warn'}`}
+                    key={`${offer.who}-${offer.say}-${index}`}
+                    onClick={() => ask(line)}
+                    onMouseDown={keepFocus}
+                    title={title}
+                    type="button"
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <span
+                    className={`chip${wants === undefined ? '' : ' warn'}`}
+                    key={`${offer.who}-${offer.say}-${index}`}
+                    title={title}
+                  >
+                    {body}
                   </span>
                 );
               })}

@@ -46,11 +46,16 @@
  * card's filters and never a claim about the wire. Hiding a quest is the same
  * kind of statement and has no wire answer at all.
  *
- * The two are never merged. A statement from the server outranks a statement
- * from the player about the same fact, and the card says which it is drawing.
+ * The three are never averaged, and which one answered is always said. A
+ * statement from the server outranks a statement from the player about the
+ * same fact — but only about the moment it was made: an `abil` is a
+ * photograph, and a step the client watched run **after** it is the newer
+ * evidence about a counter the server only moves upward. `questReading` is
+ * that rule, in one place, for the card and for main alike.
  */
 // Type-only, so no value cycle: see `module-cycle.test.ts`.
 import type { AbilitySums, Denomination } from './character';
+import type { ApproachGate, ItemHandover } from './world';
 
 /**
  * One thing a step demands before the server will run it.
@@ -121,6 +126,19 @@ export interface QuestSource {
   shops?: string[];
   /** Monsters known to drop it, by name. */
   mobs?: string[];
+  /**
+   * Where one of the realm's own scripts hands it over — format 39.
+   *
+   * The third answer, and the one the two indexes above could never give: a
+   * quest component is not stocked and not on a drop list, it is `giveitem` in
+   * the block a monster's death or a cave's own word runs. Three of the four
+   * things PhoenixQuest sends a player to fetch were placed by nothing at all
+   * until this. Carried from `WorldItem.from`, which the converter wrote.
+   *
+   * Each handover carries its own `approach`, because two handovers of one
+   * item are two places and the way into each is its own question.
+   */
+  from?: ItemHandover[];
 }
 
 /**
@@ -199,6 +217,117 @@ export interface QuestStep {
    * item list wherever the realm does not say.
    */
   sources?: QuestSource[];
+  /**
+   * What the way to **this step's own room** demands be carried, where the
+   * realm encloses it — `ApproachGate`, outermost frontier first.
+   *
+   * A step is *go there and say this*, and the realm routinely puts the there
+   * behind a door: PhoenixQuest's last step is thrown into the Lake of Fire,
+   * whose one entrance wants the basalt key the step before it hands over. 24
+   * of each shipped world's steps are behind something, and the book named
+   * none of it. Joined in main like `place` and `sources`, and absent for the
+   * ordinary step in an open part of the realm.
+   */
+  approach?: ApproachGate[];
+}
+
+/**
+ * One leg of the walk a step's several items add up to.
+ *
+ * `moves` is the walk from the **previous** leg's room, so the first is from
+ * where the character was standing when the order was solved. Moves and not
+ * the router's own figure: the order is chosen in the router's units — where a
+ * lair, a hazard and a door this character cannot force are all priced — and
+ * what the reader is shown is the number of times they press a direction,
+ * which is `scatterMoves`' rule one card across.
+ */
+export interface ErrandLeg {
+  /** What this leg fetches. Absent on the last, which is the step itself. */
+  item?: { id: number; name?: string };
+  /** Where it ends, as `map/room`, and that room's own name where it has one. */
+  room: string;
+  place?: string;
+  moves: number;
+}
+
+/**
+ * The order a step's several items are best fetched in — todo 01.
+ *
+ * A step that demands four things states them in the order its own opcodes
+ * happen to run, which is nobody's walk: PhoenixQuest's four sundries are an
+ * acid gland, unfertilized eggs, a double-terminated quartz and cave roots,
+ * and the realm places them in four rooms that have nothing to do with that
+ * list. So the card asks main to solve the errand instead — the shortest walk
+ * from where the character is standing, through one place for each item, and
+ * back to the step's own room.
+ *
+ * **It is a plan, not a reading**, and it goes stale the moment the character
+ * moves: `from` is where it was solved from and the card says so, because a
+ * figure that silently described somewhere else is the confidently-wrong
+ * answer this project refuses everywhere.
+ */
+export interface QuestErrand {
+  /** The step this orders, by the block that is its identity. */
+  block: number;
+  /** Where the walk starts, as `map/room`, and that room's own name. */
+  from: string;
+  fromPlace?: string;
+  /**
+   * The legs in walking order, the step's own room last where it has one.
+   *
+   * Short of the step's item list wherever the realm places a thing nowhere,
+   * or nowhere this character can get to: `left` carries those, and they are
+   * never given a position in a walk nobody could plan.
+   */
+  legs: ErrandLeg[];
+  /** The whole walk, in moves — the legs' own figures summed. */
+  moves: number;
+  /** What could not be ordered, in the realm's own order, and why. */
+  left: Array<{ id: number; name?: string; why: 'unplaced' | 'unreachable' }>;
+  /**
+   * Said instead of an order, where none could be solved at all.
+   *
+   * `HuntingAdvice.refusal`'s shape and for its reason: a card drawing nothing
+   * cannot be told from a card that was never asked, and *why* is the half the
+   * reader needs — the realm places none of these, or this character cannot
+   * reach any of them from here.
+   */
+  refusal?: string;
+}
+
+/**
+ * The items a step wants in the pack, and whether it keeps each.
+ *
+ * Here rather than on the card because the errand solver orders exactly this
+ * list and the card draws exactly this list, and a step whose walk names a
+ * fifth thing the rows above it do not is two readings of one fact.
+ *
+ * **The step's own, never a route's.** `WorldGraph.itemsDemanded` merges every
+ * class's route, which is the right answer for *where does this come from* —
+ * an item on one route is still an item somebody has to find. It is the wrong
+ * answer for a walk: a Warrior does not fetch the Mage's component, and a
+ * route's own items are drawn under the route that wants them. `item-absent`
+ * is out for the plainer reason that there is nowhere to go for a thing the
+ * step wants you **not** to be carrying.
+ */
+export function itemsBrought(step: QuestStep): Array<{ id: number; name?: string; hand: boolean }> {
+  const wanted = new Map<number, { id: number; name?: string; hand: boolean }>();
+  for (const gate of step.needs) {
+    if (gate.kind !== 'item') continue;
+    wanted.set(gate.id, {
+      id: gate.id,
+      ...(gate.name === undefined ? {} : { name: gate.name }),
+      hand: false
+    });
+  }
+  // `takeitem` keeps it and `checkitem` gives it back, so a thing stated by
+  // both is handed over: the stronger claim wins, as it does on the card.
+  for (const item of step.takes) {
+    const held = wanted.get(item.id);
+    const name = item.name ?? held?.name;
+    wanted.set(item.id, { id: item.id, ...(name === undefined ? {} : { name }), hand: true });
+  }
+  return [...wanted.values()];
 }
 
 /**
@@ -435,6 +564,28 @@ function countersMet(step: QuestStep, abilities: AbilitySums): boolean {
   return true;
 }
 
+/**
+ * A rank this character was watched reaching, and **when** it was watched.
+ *
+ * The clock is the whole of why this is a record and not a number. Reported
+ * 2026-09-15: a player with an `abil` from 8:44 in hand asked Morukai for the
+ * components at 8:50, the mage took all four, and the book went on saying
+ * *5 of 9* — because the listing outranked the observation unconditionally,
+ * and an unconditional rank is a claim about *now* made out of a fact about
+ * *then*. A listing is exact at the moment it is read and no later; an act
+ * watched after it is the newer evidence about a counter the server only ever
+ * moves upward. See `questReading`.
+ */
+export interface QuestSeen {
+  /** The rank the watched step advances the counter to. */
+  to: number;
+  /** Epoch ms of the act — the line typed, or the death seen. */
+  at: number;
+}
+
+/** What this character has been watched doing about each quest, by counter id. */
+export type QuestWatched = Readonly<Record<number, QuestSeen>>;
+
 /** A quest: one counter, and the steps that advance it, in order. */
 export interface Quest {
   /** The ability id the realm counts this quest with. */
@@ -600,6 +751,109 @@ export interface QuestStanding {
   rank: number | null;
   /** Whether the counter is held at all. See `stepDone`. */
   held: boolean;
+}
+
+/** Where the character stands, and **which** of the three readings said so. */
+export interface QuestReading extends QuestStanding {
+  /** True where the rank is the realm's own listing. */
+  observed: boolean;
+  /** True where it is what this character was watched doing. */
+  watched: boolean;
+  /** When the realm said so. Null where the number is not the realm's. */
+  at: number | null;
+}
+
+/**
+ * How far through one quest a character is, out of the three things that say.
+ *
+ * **The listing is exact at the moment it was read, and only then.** Nothing
+ * on the wire announces a counter moving, so `abil` is a photograph: it
+ * outranks a guess, it outranks a note the player left themselves, and it does
+ * **not** outrank the client watching the very next step happen. Read as
+ * permanently authoritative it gave the failure this function exists for — a
+ * listing at rank 5, an ask that took the four components, and a book that
+ * went on saying *5 of 9* until somebody typed `abil` again.
+ *
+ * So an observation wins on two conditions and both are structural: it was
+ * made **after** the listing, and it is **higher** than it, because
+ * `giveability` is a set that only climbs and a step already behind the
+ * listing is a step the listing has already counted. A newer listing puts the
+ * realm's own number back, which is the correction path — the observation
+ * says the player acted, never that the server agreed.
+ *
+ * The remembered mark is last and unchanged: it answers only where neither of
+ * the other two has, which is a realm with no such command, or one before the
+ * first listing. Written here rather than in the card because main asks the
+ * same question of the same three facts (`asksHere`), and a book and a chip
+ * that disagreed about one quest would be two readings of one counter.
+ */
+export function questReading(
+  quest: number,
+  counters: AbilitySums | null,
+  watched: QuestWatched | null,
+  marked: number | null = null
+): QuestReading {
+  /*
+   * An id a **complete** listing does not name is a counter at zero — the
+   * containers are printed whole, so absence is the server holding no
+   * modifier. An id an **incomplete** one does not name is merely unknown, and
+   * falls through, which is why this is decided per quest rather than per
+   * listing: half a listing still settles every counter it printed.
+   */
+  const listed = counters === null ? undefined : counters.sums[quest];
+  const stated = listed ?? (counters?.complete === true ? 0 : null);
+  const seen = watched?.[quest];
+  const fresher =
+    seen !== undefined && (stated === null || (seen.at > (counters?.at ?? 0) && seen.to > stated));
+
+  if (fresher) {
+    // Watching a step run is watching the counter be granted, so it is held
+    // whatever the listing did or did not name.
+    return { rank: seen.to, held: true, observed: false, watched: true, at: null };
+  }
+  if (stated !== null) {
+    return {
+      rank: stated,
+      // Zero is a rank the realm grants, so the number alone cannot say this:
+      // the listing naming the id is what does. See `stepDone`.
+      held: listed !== undefined,
+      observed: true,
+      watched: false,
+      at: counters?.at ?? null
+    };
+  }
+  const rank = seen?.to ?? marked ?? null;
+  return { rank, held: rank !== null, observed: false, watched: seen !== undefined, at: null };
+}
+
+/**
+ * The listing, brought up to date by what has been watched since it was read.
+ *
+ * The counters are what every *other* reading of a step is narrowed and
+ * refused by (`countersMet`, `countersRefuse`, `theOneReached`), and those
+ * readings happen while the player plays — so handing them the raw listing
+ * asks them a question about a photograph. A chain answered three keywords in
+ * a row moves its counter three times and `abil` says none of it.
+ *
+ * Only forward and only past what the listing said, exactly as `questReading`
+ * decides the same thing for the card, and the listing's own clock is kept:
+ * this is the same reading with the same freshness, not a new statement.
+ */
+export function countersNow(
+  counters: AbilitySums | null,
+  watched: QuestWatched | null
+): AbilitySums | null {
+  if (counters === null || watched === null) return counters;
+  let sums: Record<number, number> | null = null;
+  for (const [key, seen] of Object.entries(watched)) {
+    const id = Number(key);
+    if (!Number.isInteger(id) || seen.at <= counters.at) continue;
+    const held = counters.sums[id] ?? (counters.complete ? 0 : undefined);
+    if (held !== undefined && seen.to <= held) continue;
+    sums ??= { ...counters.sums };
+    sums[id] = seen.to;
+  }
+  return sums === null ? counters : { ...counters, sums };
 }
 
 /**
@@ -817,4 +1071,178 @@ export function questBars(quest: Quest, who: QuestDoer, standing: QuestStanding)
     return softest(bars.flat());
   }
   return [];
+}
+
+/**
+ * One thing somebody standing in this room can be asked, as the realm scripts
+ * it.
+ *
+ * The Room card already draws what the **room** answers (`RoomCommand`), and
+ * `ask Morukai phoenix` is the same kind of fact about the monster standing
+ * beside you — a word the realm scripts, that does something, and that the
+ * client held in the quest book and drew only on a card in another tab.
+ *
+ * The step is not carried, only what a chip needs to be read and pressed: the
+ * name goes after `ask` in the realm's own verb order, so `who` is spelled the
+ * way the **room listed it**, not the way the quest book did — the two agree on
+ * a monster the realm places, and it is the room's word the server will match.
+ */
+export interface RoomAsk {
+  who: string;
+  /** The word to say — the first spelling the step states, as the room's own chips draw. */
+  say: string;
+  /** The quest it advances, named, for the tooltip. */
+  quest: string;
+  /** The counter's own ability id, spelled the way `abil` spells one. */
+  counter: number;
+  /** The rank it moves the counter to, where the step states one. */
+  to?: number;
+  /**
+   * What the step demands that this character's **listed** pack does not hold.
+   *
+   * Named rather than hidden, on the Room card's own rule about a blocked
+   * exit: a blocked thing is still a thing, and saying why beats leaving a
+   * player to wonder where the chip went. Absent where the step wants nothing,
+   * and absent where nobody has listed the pack — an unlisted pack is not an
+   * empty one, which is the refusal the router already makes about a key.
+   */
+  wants?: string[];
+}
+
+/**
+ * Whether a **complete** listing says one of this step's counter gates fails.
+ *
+ * `countersMet` is the narrowing rule — it answers *false* on an incomplete
+ * listing, because an id it omits settles nothing and a quest counter walked
+ * forward wrongly never walks back. This is the opposite question asked for
+ * the opposite purpose: an **offer** must not be withheld on a gate nobody has
+ * read, so unknown refuses nothing and only a listing that enumerates can say
+ * no.
+ */
+export function countersRefuse(step: QuestStep, abilities: AbilitySums | null): boolean {
+  if (abilities === null || !abilities.complete) return false;
+  return !countersMet(step, abilities);
+}
+
+/**
+ * What the occupants of this room can be asked, for this character, now.
+ *
+ * Reported as *add buttons for mobs in room — `ask Morukai phoenix`, `ask
+ * Morukai components`, if and only if the requirements are met*. Three gates
+ * decide, and each is a fact the client has actually read:
+ *
+ * - **The counter.** Morukai answers four words across four ranks of one
+ *   chain, so with a listing in hand exactly one of them is the thing to say
+ *   and the other three are refusals waiting to happen.
+ * - **What the character is** — class, race, level, a counter already spent —
+ *   through `stepBars`, which is the Quest card's own reading of the same
+ *   gates. What sinks a quest to the bottom of that card is what keeps a chip
+ *   off this one.
+ * - **Being past it.** `stepDone` already answers *this rank is behind you*.
+ *
+ * **Unknown refuses nothing**, which is the rule that keeps this reachable: a
+ * realm with no `abil` states no counter, and a character whose sheet has not
+ * arrived has no class — on either, every word the monster answers is offered
+ * and the player decides. The alternative is a feature that appears only on
+ * GreaterMUD after a command the player may never send.
+ *
+ * `carrying` is item ids, or **null for a pack nobody has listed** — the same
+ * distinction `Inventory.listedAt` exists for. A listed pack that lacks what a
+ * step wants marks the chip rather than removing it: the item is an errand,
+ * and the client holds, on that very item, where to go and get one.
+ */
+export function asksHere(
+  quests: readonly Quest[],
+  here: readonly string[],
+  who: QuestDoer,
+  watched: QuestWatched | null,
+  carrying: readonly number[] | null
+): RoomAsk[] {
+  // The room's own spelling, keyed the way every other name lookup is keyed.
+  const present = new Map<string, string>();
+  for (const name of here) {
+    const word = name.trim();
+    if (word.length > 0) present.set(word.toLowerCase(), word);
+  }
+  if (present.size === 0) return [];
+
+  /*
+   * The counters as they stand *now*, not as the last listing photographed
+   * them: a chain answered two keywords ago has moved twice and `abil` says
+   * neither. Everything below that reads a counter reads this one — the
+   * refusal, and the bars, which is where a chain's `failability` on its
+   * siblings is answered.
+   */
+  const asked: QuestDoer = { ...who, counters: countersNow(who.counters, watched) };
+
+  const found: RoomAsk[] = [];
+  for (const quest of quests) {
+    /*
+     * The Quest card's own reading of where this character stands, less the
+     * remembered mark: that is a preference in the window's own storage and
+     * this is computed in main. An observation and a watched ask are both
+     * main's, and where there is neither the rank is unknown — which, by the
+     * rule above, refuses nothing.
+     */
+    const { rank, held } = questReading(quest.id, who.counters, watched);
+
+    for (const step of quest.steps) {
+      const spelled =
+        step.who === undefined ? undefined : present.get(step.who.trim().toLowerCase());
+      if (spelled === undefined) continue;
+      const say = step.say[0];
+      if (say === undefined || say.length === 0) continue;
+      if (stepDone(step, rank, held)) continue;
+      if (countersRefuse(step, asked.counters)) continue;
+      if (stepBars(step, asked, quest.id).length > 0) continue;
+      found.push({
+        who: spelled,
+        say,
+        quest: quest.name,
+        counter: quest.id,
+        ...(step.to === undefined ? {} : { to: step.to }),
+        ...maybeWants(step, carrying)
+      });
+    }
+  }
+  return found;
+}
+
+/**
+ * Whether a pack holds this row — **null where nobody has listed it**.
+ *
+ * Three-valued on purpose, and the third value is the whole of the rule: an
+ * unlisted pack is not an empty one, so *no* and *nobody has looked* are
+ * different answers and the second may never be drawn as the first. A chip
+ * says *you are not carrying this* only on a real no, and the quest book ticks
+ * an item only on a real yes — between them the row is left alone.
+ *
+ * One function because the two readings are one question asked from opposite
+ * ends: what a step still wants (`maybeWants`) and what it already has
+ * (`QuestCard`). `packRows` is where the list itself comes from.
+ */
+export function packHolds(carrying: readonly number[] | null, id: number): boolean | null {
+  return carrying === null ? null : carrying.includes(id);
+}
+
+/**
+ * The items a step demands that a listed pack does not hold, by name.
+ *
+ * Only `item` gates, never `item-absent`: *not carrying this* is not an errand
+ * and drawing it as one would send somebody to fetch the thing that stops the
+ * step. Only the gates every route shares, for the same reason the Quest card
+ * keeps a route's own demands on the route: a chip is one line and a class's
+ * own price is not this character's until the realm says which class it is.
+ */
+function maybeWants(
+  step: QuestStep,
+  carrying: readonly number[] | null
+): { wants?: string[] } | object {
+  if (carrying === null) return {};
+  const missing: string[] = [];
+  for (const gate of step.needs) {
+    if (gate.kind !== 'item' || packHolds(carrying, gate.id) !== false) continue;
+    missing.push(gate.name ?? String(gate.id));
+  }
+  return missing.length === 0 ? {} : { wants: missing };
 }

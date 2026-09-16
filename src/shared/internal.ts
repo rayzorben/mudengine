@@ -801,7 +801,30 @@ const TUNING_DEFAULTS = {
      * to wake it. Generous: a shop several maps away, walked through fights
      * and rests, is a legitimate few minutes.
      */
-    errandTimeoutMs: 300_000
+    errandTimeoutMs: 300_000,
+    /**
+     * What one **doubling** of a counter's price is worth in steps of detour,
+     * when the client is choosing which of several to stop at.
+     *
+     * Detour decides and this breaks the tie, which is the ordering a person
+     * asking for petrol already has: 4.01 two minutes off the road beats 3.99
+     * twenty-five minutes off it. The realm's markups run from 100% to 32,760%
+     * over Paradigm's 242 shops, so the choice is real — but a torch is a
+     * torch, and no price on one is worth crossing a map for.
+     *
+     * **A doubling rather than a percentage**, because the ratio is the part
+     * the data states exactly: the base figure belongs to the *item* and is the
+     * same at every counter that stocks it (0 of 1,539 rows differ), so between
+     * two of them the markup is the whole difference and `(100 + markup)` is
+     * the price in the item's own unknown unit. Ranking on its logarithm makes
+     * the gap between two counters exactly the number of doublings, and stops a
+     * sixtyfold markup from buying sixty times the walking.
+     *
+     * At twenty: twice the price is worth twenty moves of going out of the way,
+     * and the whole realm's span of markups is worth about a hundred and
+     * seventy. Zero makes the price count for nothing and detour decide alone.
+     */
+    dearerSteps: 20
   },
   /** Shedding named junk — `AutoDrop`. */
   drop: {
@@ -1502,6 +1525,21 @@ const TUNING_DEFAULTS = {
      */
     portalPenalty: 3,
     /**
+     * What using an item that teleports costs over an ordinary step
+     * (`WorldItem.lands`).
+     *
+     * Dearer than a portal by a wide margin, and deliberately: a room script's
+     * teleport is scenery the realm lets anybody walk through as often as they
+     * like, and this **spends a charge somebody has to go and replace** — one
+     * of a potion's one, one of a token's five. So the figure is not what the
+     * move is worth in moves, it is the price at which the router stops
+     * preferring a shortcut to a walk: at forty, a token is taken only where
+     * it saves more than forty rooms of walking, and the potion of levitation
+     * is still taken at any price at all because the Catacombs have no other
+     * entrance and every alternative is `wallCost`.
+     */
+    itemLandingCost: 40,
+    /**
      * What a step along a route the player saved costs, as a fraction of an
      * ordinary one.
      *
@@ -1603,6 +1641,60 @@ const TUNING_DEFAULTS = {
      * question is asked from a status line.
      */
     mobRowRooms: 20_000,
+    /**
+     * How enclosed a place has to be before the client will say what the way
+     * into it wants (`WorldGraph.approachItems`).
+     *
+     * The sweep runs backwards from a room over every way in that demands no
+     * item, so what it collects is a region with **no ungated entrance at
+     * all** — and every item-gated edge into that region is therefore a
+     * genuine way in. That reasoning holds only while the region stays a
+     * pocket: let it out into the open realm and the gates it then meets are
+     * other pockets' doors, which this room's way in has nothing to do with.
+     * So the sweep gives the question up the moment it has walked this many
+     * rooms, and the answer is silence rather than a list of every key in the
+     * realm. Three hundred is an order of magnitude above the largest pocket
+     * either shipped world holds behind a gate (the Catacombs, at 98 rooms
+     * across two of them) and two orders below the open component.
+     */
+    approachRooms: 300,
+    /**
+     * How many of a quest step's items the errand solver will put in order
+     * (`WorldGraph.errand`).
+     *
+     * The order is exact rather than greedy — every permutation, over every
+     * place each item can be got — so the work is exponential in this figure
+     * and the bound is what keeps it honest rather than approximate. Eight is
+     * twice the largest step either shipped world holds (four, on
+     * PhoenixQuest and Conquest1) and still solves in well under a
+     * millisecond; a step above it gets no order at all and says so, which is
+     * this project's refusal rather than a walk somebody guessed at.
+     */
+    errandItems: 8,
+    /**
+     * How many of the places one item can be got the solver will weigh.
+     *
+     * A quest component is usually handed over in exactly one room, but a
+     * monster that drops one spawns in up to sixteen and a shop that stocks
+     * one may be in fourteen — and every one of them is a sweep. The nearest
+     * few to where the character is standing are kept, because a place further
+     * off than three others is not the one the shortest walk goes to unless
+     * the walk was going that way anyway, and the places kept are re-weighed
+     * against the *whole* walk rather than picked by distance alone.
+     */
+    errandPlaces: 3,
+    /**
+     * How many rooms one of the errand solver's sweeps may settle before it
+     * gives that origin up (`WorldGraph.sweepTo`).
+     *
+     * `scatterSweepRooms`' bound, one solve across, and for its reason: the
+     * sweep stops on its own the moment every room it was asked about is
+     * settled, so this is only ever reached by an errand whose places cannot
+     * be walked to — where exhausting the component is exactly what the
+     * answer *no way there* costs. Measured on Paradigm at 33,000 rooms
+     * settled for the worst of the shipped errands.
+     */
+    errandSweepRooms: 60_000,
     /**
      * How many rooms one backward sweep of the scatter solve may settle before
      * it gives that figure up (`WorldGraph.sweepBack`).

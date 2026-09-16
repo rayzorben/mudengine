@@ -27,12 +27,21 @@ import type { CharacterState } from '../../shared/character';
 import type { SupplyItem } from '../../shared/config';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
-import type { RoomId, Route } from '../../shared/world';
+import type { BuyingPlace, RoomId, Route } from '../../shared/world';
 
 /** One place the realm says an item comes from. */
 export interface ItemSources {
-  /** Shop names that stock it, as the realm spells them, nearest first. */
-  shops: readonly string[];
+  /**
+   * The counters that stock it, least out of the way first.
+   *
+   * **Rooms, not names.** A shop name is what the item index holds and what a
+   * card prints; it is not somewhere to walk to, because one shop row stands in
+   * several rooms — and handing a name to the shopping errand meant it asked
+   * `shopPlace` to resolve it and was refused for the ambiguity (reported
+   * 2026-09-16: *2 rooms hold a shop called Boat Launch*, said to a character
+   * whose route walked through one of them).
+   */
+  shops: readonly BuyingPlace[];
   /** Rooms the monsters that drop it live in, nearest first. */
   lairs: ReadonlyArray<{ id: RoomId; name: string; mob: string; steps: number }>;
 }
@@ -40,10 +49,11 @@ export interface ItemSources {
 export interface ItemPlanner {
   here(): RoomId | null;
   /**
-   * Where the realm says this item comes from, from where the character
-   * stands — shops and lairs alike **nearest first**.
+   * Where the realm says this item comes from, from where the character stands
+   * on the way to `to` — the counters by what stopping at each would add to
+   * that journey, the lairs nearest first.
    */
-  sourcesOf(item: { id: number; name: string }): ItemSources;
+  sourcesOf(item: { id: number; name: string }, to: RoomId | null): ItemSources;
   /**
    * Hand a one-off supply row to the shopping errand. Returns its refusal, or
    * null once it is walking. The row is never written to the player's file.
@@ -126,26 +136,56 @@ export class ItemErrand {
       const refused = this.planner.walk(owes);
       return refused ?? null;
     }
-    const sources = this.planner.sourcesOf(item);
+    // Where the errand is taking this character afterwards, so the counter is
+    // chosen by how far off *that* road it is rather than by how near it is to
+    // where the character happens to be standing.
+    const sources = this.planner.sourcesOf(item, owes.steps.at(-1)?.to ?? null);
     /*
      * **Bought before found**, where both are known: a counter is a fixed
      * price and a walk, and a drop is a fight and a chance. The player's own
      * supply list is what makes a found item worth keeping afterwards, which
      * is the other half of this decision.
      */
-    if (sources.shops.length > 0) {
+    const counter = sources.shops[0];
+    if (counter !== undefined) {
+      /*
+       * **Addressed by room, never by name.** `at` is the field the item
+       * panel's own shop picker writes and the one `shopRoom` resolves without
+       * asking anything further; a `shop` with no `at` sends the errand back
+       * through `shopPlace`, which refuses a name standing in several rooms —
+       * correctly, for a name a *person* typed, and uselessly here, where the
+       * room is the thing that was just chosen. The name rides along for the
+       * sentence the errand says.
+       */
       const row: SupplyItem = {
         name: item.name,
         min: 1,
         max: 1,
-        shop: sources.shops[0]!,
-        at: null
+        shop: counter.shop,
+        at: { map: counter.map, room: counter.room }
       };
       const refused = this.planner.buy(row);
       if (refused !== null) return this.refuse(item, refused);
       this.phase = { kind: 'buying', item, owes };
+      /*
+       * Two literal calls rather than one sentence with a figure that is
+       * sometimes zero: *0 steps off the way* is a number where the reader
+       * wants a fact, and a counter the route already walks through is the
+       * whole point of choosing by the detour.
+       */
       this.events.notice?.(
-        t('automation.collect.buying', { item: item.name, shop: sources.shops[0]! })
+        counter.detour === 0
+          ? t('automation.collect.buyingOnTheWay', {
+              item: item.name,
+              shop: counter.shop,
+              room: counter.roomName
+            })
+          : t('automation.collect.buying', {
+              item: item.name,
+              shop: counter.shop,
+              room: counter.roomName,
+              detour: counter.detour
+            })
       );
       return null;
     }

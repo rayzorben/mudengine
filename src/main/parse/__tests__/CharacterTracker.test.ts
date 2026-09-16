@@ -3147,6 +3147,71 @@ describe('what is carried, between listings', () => {
   });
 
   /*
+   * The reported failure, 2026-09-15: a character carrying four keys was shown
+   * `Keys: none`, three of the keys as carried items, and the fourth glued to
+   * the end of the last real item's name.
+   *
+   * `InventoryCommand.Execute` builds the whole block into one string and
+   * hands it to `SendWordWrap`, so the server's fold falls wherever the width
+   * does — including inside the key sentence, before the `.` that ended it.
+   * The qualifier demanded that period, so the opening line of a long key list
+   * matched nothing, `foldWraps` read it as the carried list's tail, and the
+   * keys arrived as items. captures/065:193 and captures/111 both state it.
+   */
+  it('reads a key list the server folded before its full stop', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=709]:');
+    feed('You are carrying 12 platinum pieces, sunstone wristband (Wrist),');
+    feed('rope and grapple, magma amulet, vorpal sword, severed head of Irikani');
+    feed('You have the following keys: golden idol, rusty iron key, black serpent key,');
+    feed('ancient obsidian key, black star key.');
+    feed('Wealth: 120000 copper farthings');
+    // The capture's own spelling of the terminator, which is the other half.
+    feed('Encumberance: 3304/4800 - Heavy');
+    feed('[HP=709]:');
+
+    expect(tracker.current.inventory.keys).toEqual([
+      'golden idol',
+      'rusty iron key',
+      'black serpent key',
+      'ancient obsidian key',
+      'black star key'
+    ]);
+    // None of them reached the pack, and nothing was glued to the last item.
+    // The coins stay out of it, as they do in every listing.
+    expect(held(tracker)).toEqual([
+      'sunstone wristband',
+      'rope and grapple',
+      'magma amulet',
+      'vorpal sword',
+      'severed head of Irikani'
+    ]);
+    expect(tracker.current.inventory.coins.platinum).toBe(12);
+    expect(tracker.current.inventory.encumbrance).toBe(3304);
+  });
+
+  /*
+   * The other half of `opens`: the qualifier still ends at the key list's own
+   * full stop, because that terminator is what confines a field the table
+   * failed to claim. Widening it to match the opening line as well — one
+   * pattern doing both jobs — put the stray line on the end of the last key,
+   * which is the failure `parseKeyEntries` exists to prevent: a key the realm
+   * cannot be asked about is a door the character holds the key to and cannot
+   * open. `Wealth:` names its denomination, so a realm that renamed one is the
+   * way in.
+   */
+  it('confines a field the table failed to claim, rather than gluing it to a key', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=709]:');
+    feed('You are carrying rope and grapple');
+    feed('You have the following keys: golden idol, black star key.');
+    feed('Wealth: 500 bronze bits');
+    feed('Encumbrance: 100/4800 - None [2%]');
+    feed('[HP=709]:');
+    expect(tracker.current.inventory.keys).toEqual(['golden idol', 'black star key']);
+  });
+
+  /*
    * The other half of moving the count off the name: the broadcasts maintain
    * the floor, and with the name now matching a counted entry a bare filter
    * would have one `get` erase the sixty-five keys the server still prints.
@@ -3303,6 +3368,82 @@ describe('what is carried, between listings', () => {
     feed('Wealth: 40 copper farthings');
     feed('[HP=33]:');
     expect(held(tracker)).toEqual(['a shield']);
+  });
+});
+
+/*
+ * And which realm rows those names are, which is the question a keyed door, a
+ * room's hazard, what the things standing here answer to and the quest book's
+ * ticks all ask. One join, made where the state is committed, so no two of
+ * them can disagree about whether the key is already in hand.
+ */
+describe.runIf(realm !== null && realm.size > 0)('the pack, as realm rows', () => {
+  const feeder = (): { tracker: CharacterTracker; feed: (text: string) => void } => {
+    const classifier = new Classifier();
+    const tracker = new CharacterTracker(realm ?? undefined);
+    let seq = 0;
+    const feed = (text: string): void => {
+      seq += 1;
+      const { block, batch } = classifier.classify({
+        seq,
+        at: 1_700_000_000_000 + seq,
+        text,
+        plain: text,
+        terminator: 'newline'
+      });
+      tracker.apply(block);
+      if (batch) tracker.apply(batch, batch.rows);
+    };
+    return { tracker, feed };
+  };
+
+  it('names the row for each thing a listing states, from both halves of it', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=208/MA=30]:');
+    feed('You are carrying acid gland, cave roots');
+    feed('You have the following keys: bone key.');
+    feed('Wealth: 0 copper farthings');
+    feed('[HP=208/MA=30]:');
+    // 966 and 995 are what PhoenixQuest's sixth step asks for; 177 is the key.
+    expect(tracker.current.inventory.rows).toEqual([966, 995, 177]);
+    expect(tracker.current.inventory.listedAt).not.toBeNull();
+  });
+
+  /*
+   * From the sentence that announced it rather than from the next `i`, which
+   * on an ordinary configuration is not sent again all session: the broadcasts
+   * maintain the listing, and the rows have to be maintained with it or the
+   * quest book ticks a thing the player picked up an hour ago.
+   */
+  it('counts a thing picked up from the sentence that announced it', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=208/MA=30]:');
+    feed('You are carrying cave roots');
+    feed('You have no keys.');
+    feed('Wealth: 0 copper farthings');
+    feed('[HP=208/MA=30]:');
+    expect(tracker.current.inventory.rows).toEqual([995]);
+    feed('You took acid gland.');
+    expect(tracker.current.inventory.rows).toEqual([995, 966]);
+    feed('You dropped acid gland.');
+    expect(tracker.current.inventory.rows).toEqual([995]);
+  });
+
+  /* An empty pack and a pack nobody has read are the same list and different
+     facts; `listedAt` is the one that tells them apart. */
+  it('states rows before any listing and still says nobody has looked', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=208/MA=30]:');
+    feed('You took acid gland.');
+    expect(tracker.current.inventory.rows).toEqual([966]);
+    expect(tracker.current.inventory.listedAt).toBeNull();
+  });
+
+  /* The refusal the whole join is built on: a name several rows share says
+     which *kind* of thing is carried, never which row. */
+  it('says nothing about a name the realm places more than once', () => {
+    const shared = realm!.itemIdsCarried([{ name: 'iron key' }]);
+    expect(shared).toEqual([]);
   });
 });
 
@@ -6833,6 +6974,33 @@ describe('lives, and the word for the load', () => {
     });
     const bare = play(['[HP=98/MA=50]:', 'Encumbrance: 500/3360 - Light [14%]']);
     expect(bare.current.inventory.encumbranceWord).toBe('Light');
+  });
+
+  /*
+   * GreaterMUD writes `Encumbrance:` (`InventoryCommand.cs`) and MajorMUD
+   * writes `Encumberance:` — 16 readable lines of the corpus against 5
+   * (captures/004, /009, /010, /012, /024, /065, /111; /044 prints the word
+   * three times as a bare label with no figures behind it, which the anchored
+   * rule rightly refuses). Reading only the first spelling
+   * cost a MajorMUD character the figure twice over: the bare line said
+   * nothing, and inside the `i` listing the line matched no qualifier at all,
+   * so it folded onto the end of `Wealth:` instead of terminating the block.
+   */
+  it("reads MajorMUD's own spelling of the word", () => {
+    const listed = play([
+      'You are carrying a torch',
+      'You have no keys.',
+      'Wealth: 40 copper farthings',
+      'Encumberance: 609/3504 - Light',
+      '[HP=98/MA=50]:'
+    ]);
+    expect(listed.current.inventory).toMatchObject({
+      encumbrance: 609,
+      encumbranceMax: 3504,
+      encumbranceWord: 'Light'
+    });
+    const bare = play(['[HP=98/MA=50]:', 'Encumberance: 489/3504 - None']);
+    expect(bare.current.inventory.encumbrance).toBe(489);
   });
 });
 

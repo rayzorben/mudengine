@@ -34,22 +34,38 @@
  * that buys is the thing a quest book is for: not just *what the step wants*
  * but **who to say it to or kill, where they stand, and the word to say**.
  *
+ * ## The walk answers a second question, which is where a thing comes from
+ *
+ * A quest step is a block that *advances a counter*, and that is a narrow
+ * slice of what the roots reach. The block beside it — gated on the same
+ * counter, paying an item and advancing nothing — is how the realm hands over
+ * a quest component, and nothing else in the database says where it comes
+ * from: the four Phoenix sundries are `giveitem` in four blocks, three of them
+ * run by a monster's death and the fourth by a word said in a cave. So
+ * `itemsInReach` reads the same traversal for items rather than for counters,
+ * and `buildRealm` uses it twice over — once to name the things at all, once
+ * to say where they are got (`BuiltItem.from`).
+ *
  * ## What is deliberately not claimed
  *
  * - **No progress.** The counters are server-side abilities, no command prints
  *   one and no sentence reports one, so which step a character is on is not
  *   knowable *here*. The card lets a player hide a quest and state the rank
  *   they have reached; nothing in this file ever says *done*.
- * - **No provenance.** Where an item comes from is a join between two other
- *   indexes and is made in `WorldGraph.quests()`, not written into the file.
+ * - **No provenance a join already makes.** Which shops stock an id and which
+ *   monsters drop a name are both indexes of their own, so `QuestStep.sources`
+ *   is assembled in `WorldGraph.quests()` and not written down. What a *script*
+ *   hands over is not that: the block-to-owner walk exists nowhere but here.
  * - **No flavour.** The story lives in a message table this does not read. A
  *   step states its gates and its rewards, and inventing the rest would be the
  *   confidently-wrong answer this project refuses everywhere else.
  */
 import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
 import type { Quest, QuestGate, QuestStep, QuestWay } from '../../shared/quests';
+import { abilityPairs } from './buildRealm';
 import { readKeywordTable, readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
+import { itemsInScripts } from './roomScript';
 import { number, text } from './values';
 
 /** What the caller already has, so nothing here re-reads a table for a name. */
@@ -111,15 +127,341 @@ function spellBlocks(spells: QuestNaming['spells']): (id: number) => number[] {
  * and been handed the opcode at the head of its first line as a phrase to
  * type — `checkability 133 1`, offered to the player as the words to say.
  */
-type Owner =
+export type Owner =
   | { kind: 'npc'; who: string; room?: string }
   | { kind: 'room'; room: string }
   | { kind: 'death'; who: string; room?: string };
 
 /** One block, as the traversal finds it. */
-interface Reached {
+export interface Reached {
   owner: Owner | null;
   words: string[];
+}
+
+/**
+ * Every block the realm's own roots reach, and what runs each one.
+ *
+ * Read once and handed to both readers below, because the walk is the
+ * expensive half and running it twice would be the same answer paid for
+ * twice. `buildRealm` holds it across the item index and the quest index.
+ */
+export interface BlocksInReach {
+  blocks: Map<number, { action: string; linkTo: number | null }>;
+  reached: Map<number, Reached>;
+}
+
+export function blocksInReach(source: RealmSource, spells: QuestNaming['spells']): BlocksInReach {
+  const blocks = readBlocks(source);
+  return { blocks, reached: traverse(source, blocks, spells) };
+}
+
+/**
+ * Where a script hands an item over, as the traversal already knows it.
+ *
+ * `k` is the owner's own kind, unabbreviated from `Owner` so the two cannot
+ * drift: `npc` is asked, `room` is said at, `death` is killed. `at` is the
+ * `map/room` the realm places the owner in and `say` the words that reach the
+ * line — a death has none, which is the whole point of it.
+ */
+export interface BuiltItemFrom {
+  k: Owner['kind'];
+  /** The monster, for `npc` and `death`. Absent for a room. */
+  w?: string;
+  at?: string;
+  say?: string[];
+}
+
+/**
+ * Every item the reached blocks name, and where the ones they hand over come
+ * from.
+ *
+ * Two answers off one walk, because they are the two halves of one failure.
+ * `acid gland`, `unfertilized eggs` and `double-terminated quartz` are
+ * `giveitem` in three blocks run by a monster's **death**, and `cave roots` is
+ * `giveitem` in a block a **cave** answers — so the item index, which was fed
+ * by exits, shops, drops and *room-owned* scripts alone, held none of the
+ * four. They were names with no detail and no place: the client could not say
+ * what one weighed, and could not say where to go and get it.
+ *
+ * - **`named`** is what `itemsInScripts` reads, over the reached blocks rather
+ *   than the room-owned ones: an item a script checks for, takes, clears or
+ *   hands over is an item a player will hold and ask about.
+ * - **`from`** is the handing-over alone — `giveitem`, and `roomitem` which
+ *   puts one on the floor instead of in the pack. A `checkitem` is a demand
+ *   and says nothing about where the thing is.
+ *
+ * Only **reached** blocks, because an orphan block is a script the realm has
+ * no way to run: three of the stock database's `TBInfo` rows give an item and
+ * are reachable from nothing, and offering them as places to go would be the
+ * client inventing an errand.
+ */
+export function itemsInReach(read: BlocksInReach): {
+  named: Set<number>;
+  from: Map<number, BuiltItemFrom[]>;
+} {
+  const reachedActions: string[] = [];
+  const from = new Map<number, BuiltItemFrom[]>();
+
+  // Sorted by block, so a realm converted at runtime and one built by the
+  // script produce byte-identical output — the traversal's map is in queue
+  // order, which is the row order of three different tables.
+  for (const id of [...read.reached.keys()].sort((a, b) => a - b)) {
+    const action = read.blocks.get(id)?.action ?? '';
+    if (action.length === 0) continue;
+    reachedActions.push(action);
+
+    const found = read.reached.get(id)!;
+    const owner = found.owner;
+    if (owner === null) continue;
+    for (const line of action.split('\n')) {
+      const given = itemsGivenInLine(line);
+      if (given.length === 0) continue;
+      /*
+       * The words, on the rule `sayOf` states: an NPC's come from the keyword
+       * table that reached the block, a room's from this line's own first
+       * field, and a death has none.
+       */
+      const parts = line.split(':');
+      const phrase = parts.length > 1 ? (parts[0] ?? '').trim() : '';
+      const say =
+        owner.kind === 'npc'
+          ? found.words
+          : owner.kind === 'room' && phrase.length > 0
+            ? [phrase]
+            : [];
+      const place: BuiltItemFrom = {
+        k: owner.kind,
+        ...maybe('w', owner.kind === 'room' ? undefined : owner.who),
+        ...maybe('at', owner.room),
+        ...maybe('say', say.length > 0 ? say : undefined)
+      };
+      for (const item of given) {
+        const held = from.get(item);
+        if (held === undefined) {
+          from.set(item, [place]);
+          continue;
+        }
+        // One owner is one place, however many of its lines hand the thing
+        // over: block 1446 says `get roots`, `pick roots`, `pull roots`, `cut
+        // roots` and `grab roots`, and they are one errand with five spellings.
+        const twin = held.find(
+          (entry) => entry.k === place.k && entry.w === place.w && entry.at === place.at
+        );
+        if (twin === undefined) {
+          held.push(place);
+          continue;
+        }
+        for (const word of say) {
+          if (twin.say === undefined) twin.say = [word];
+          else if (!twin.say.includes(word)) twin.say.push(word);
+        }
+      }
+    }
+  }
+  return { named: itemsInScripts(reachedActions), from };
+}
+
+/**
+ * Where **using an item** puts the character, where the realm's chain says so.
+ *
+ * Reported 2026-09-15 (todo 02): the way into the Catacombs — and so to the
+ * necromancer the Phoenix quest's golden egg is taken off — is the *potion of
+ * levitation*, and the client could not see it. The realm states it in three
+ * hops and no column: `Items.Abil-n = CastsSp 607`, `Spells 607.Abil-0 =
+ * TextBlock 1421`, and block 1421 is `roomitem 993 : message : teleport 1009
+ * 9 : message`. So an item can be a *way in*, exactly as a key on a door is,
+ * and the corridor table says nothing at all about it.
+ *
+ * Read at build time because the middle hop is `TBInfo`, which does not ship.
+ * The spell half is `spellBlocks`, which already follows `TextBlock` and
+ * `EndCast` for a monster's death; the block half follows `LinkTo` too, since
+ * a realm routinely answers with an empty block that links to the one that
+ * acts. `teleport <room> <map>` is the realm's own order (`roomScript.ts`).
+ *
+ * One landing per item, and the first: an item that puts you in two places is
+ * a shape neither shipped realm writes, and inventing an answer for it is the
+ * guess this file refuses everywhere else.
+ */
+/**
+ * Where an item that teleports puts you, **and where it may be used**.
+ *
+ * The second half is not a refinement, it is the whole of whether the first is
+ * true anywhere. Reported live: the client planned *use potion of levitation*
+ * in the Alchemist's Hut, the server answered with nothing at all, and the walk
+ * stopped on its own timeout — because `TBInfo 1421` is
+ * `roomitem 993 1834:message 1835:teleport 1009 9:message 1836` and the block
+ * **fails on its first step** unless the room holds item 993. This reader took
+ * the `teleport` and dropped every other step, so a conditional effect was
+ * recorded as an unconditional one.
+ *
+ * `roomitem` is a guard and not a placement — `TextBlockPart.cs` returns
+ * `TextBlockStatus.Failed` when the room lacks the item, and the server's own
+ * comment on the branch reads *used for potion of levitation for example*. So
+ * an item whose chain carries one is usable only where that item is, which the
+ * realm states as `Items."Obtained From"` (`Room <map>/<room>`, a comma-joined
+ * source list in both shipped databases). The potion's guard resolves to
+ * `waterfall @ Room 3/1` — the pool under the waterfall, which is exactly the
+ * one room MegaMUD's own 4,501 path files ever use the potion in.
+ *
+ * Paradigm's seven recall tokens carry `nomonsters 3509` and
+ * `failroomitem 3391` instead: conditions on the moment, not on the place, and
+ * no `roomitem` at all — so they stay usable anywhere, which is why no path
+ * file paths them.
+ *
+ * **A guard nobody can resolve withholds the landing.** A chain that names a
+ * `roomitem` whose item the realm places nowhere is a way this reader cannot
+ * describe, and offering it as usable anywhere is the confident wrong answer
+ * that produced the report.
+ */
+export interface ItemLanding {
+  /** Where using it puts you, as `map/room`. */
+  to: string;
+  /**
+   * The rooms it may be used in, as `map/room`, or **undefined** where the
+   * chain carries no place-binding guard and it works wherever you stand.
+   * Never empty: an unresolvable guard drops the landing instead.
+   */
+  usableIn?: string[];
+}
+
+export function landingsOfItems(
+  source: RealmSource,
+  spells: QuestNaming['spells'],
+  read: BlocksInReach
+): Map<number, ItemLanding> {
+  const runs = spellBlocks(spells);
+  const landings = new Map<number, ItemLanding>();
+  const rooms = roomsHoldingItems(source);
+
+  for (const row of source.table('Items')?.rows ?? []) {
+    const id = number(row['Number']);
+    if (id === null || id <= 0) continue;
+    for (const [ability, value] of abilityPairs(row)) {
+      if (ability !== HAZARD_ABILITY.castsSpell || value <= 0) continue;
+      for (const start of runs(value)) {
+        const found = teleportInChain(read, start);
+        if (found === null) continue;
+        if (found.needsItems.length === 0) {
+          if (!landings.has(id)) landings.set(id, { to: found.to });
+          break;
+        }
+        // Every `roomitem` on the way has to be satisfied at once, so the
+        // rooms it may be used in are the rooms holding *all* of them.
+        let where: string[] | null = null;
+        for (const wanted of found.needsItems) {
+          const held = rooms.get(wanted);
+          if (held === undefined || held.length === 0) {
+            where = null;
+            break;
+          }
+          where = where === null ? [...held] : where.filter((at) => held.includes(at));
+        }
+        // Unresolvable, or no room satisfies all of them: say nothing rather
+        // than claim it works everywhere.
+        if (where === null || where.length === 0) break;
+        if (!landings.has(id)) landings.set(id, { to: found.to, usableIn: where });
+        break;
+      }
+      if (landings.has(id)) break;
+    }
+  }
+  return landings;
+}
+
+/**
+ * Which rooms hold each item, from `Items."Obtained From"`.
+ *
+ * The column is a comma-joined list of where a thing comes from — `Room 8/436,
+ * Shop #10`, `Monster #204(15%)`, `Textblock #1421` — present and populated in
+ * both shipped databases (252 items name a room in stock, 408 in Paradigm) and
+ * the only statement either makes about where a *scenery* item stands.
+ * `Rooms.Placed` is the visible placement and is empty for every one of them:
+ * the waterfall is a hidden placed item, which is the branch `TextBlockPart`
+ * falls through to.
+ */
+function roomsHoldingItems(source: RealmSource): Map<number, string[]> {
+  const rooms = new Map<number, string[]>();
+  for (const row of source.table('Items')?.rows ?? []) {
+    const id = number(row['Number']);
+    if (id === null || id <= 0) continue;
+    const where: string[] = [];
+    for (const match of String(row['Obtained From'] ?? '').matchAll(/Room\s+(\d+)\/(\d+)/gi)) {
+      where.push(`${match[1]}/${match[2]}`);
+    }
+    if (where.length > 0) rooms.set(id, where);
+  }
+  return rooms;
+}
+
+/** How far a `LinkTo` chain is followed before it is given up as a loop. */
+const LINK_DEPTH = 8;
+
+/**
+ * The first `teleport <room> <map>` in a block or the blocks it links to, and
+ * **every `roomitem` guard standing between the start and it**.
+ *
+ * The guards are the half this used to drop. A block runs its steps in order
+ * and stops at the first that fails, so a `roomitem` *before* the teleport
+ * decides whether the teleport happens at all; one after it cannot stop the
+ * move and is not collected.
+ */
+function teleportInChain(
+  read: BlocksInReach,
+  start: number
+): { to: string; needsItems: number[] } | null {
+  let at: number | null = start;
+  const needsItems: number[] = [];
+  for (let depth = 0; depth < LINK_DEPTH && at !== null && at > 0; depth += 1) {
+    const block: { action: string; linkTo: number | null } | undefined = read.blocks.get(at);
+    if (block === undefined) return null;
+    for (const line of block.action.split('\n')) {
+      for (const step of line.split(':')) {
+        const [verb, first, second] = step.trim().split(/\s+/);
+        if (verb === 'roomitem') {
+          const wanted = number(first);
+          if (wanted !== null && wanted > 0) needsItems.push(wanted);
+          continue;
+        }
+        if (verb !== 'teleport') continue;
+        const room = number(first);
+        const map = number(second);
+        if (room !== null && map !== null && room > 0) return { to: `${map}/${room}`, needsItems };
+      }
+    }
+    at = block.linkTo;
+  }
+  return null;
+}
+
+/**
+ * The items one script line **hands over**: `giveitem` into the pack,
+ * `roomitem` onto the floor.
+ *
+ * Read here rather than off `readQuestScript`, which knows `giveitem` and not
+ * `roomitem`: that reader answers *what does this step pay a player*, and an
+ * item dropped in the room is not paid to anybody. Both are places to get the
+ * thing, which is the question this file's second half asks.
+ *
+ * **Every field, including the first** (2026-09-15, todo 02). A line was read
+ * as `phrase:steps` and its first field dropped, which is true of a *room*'s
+ * script and of nothing else — `readQuestScript` beside this reads the whole
+ * line and lets a phrase fall out as an unknown verb, and that is the rule.
+ * The cost was every block whose line is one step: the gnome inventor answers
+ * `ask inventor fork` with block 1427, which links to 1428, whose entire
+ * action is `giveitem 983` — so the titanium fork the Catacombs are locked
+ * behind was placed by nothing at all, and the Reference card said *Named in
+ * the world data, with no further detail*. 26 items in Paradigm and 15 in
+ * stock were losing their only source this way.
+ */
+function itemsGivenInLine(line: string): number[] {
+  const given: number[] = [];
+  for (const step of line.split(':')) {
+    const [verb, first] = step.trim().split(/\s+/);
+    if (verb !== 'giveitem' && verb !== 'roomitem') continue;
+    const id = number(first);
+    if (id !== null && id > 0) given.push(id);
+  }
+  return given;
 }
 
 /**
@@ -136,14 +478,17 @@ function sayOf(owner: Owner | null, words: string[], phrases: string[]): string[
   return owner?.kind === 'npc' ? words : phrases;
 }
 
-export function indexQuests(source: RealmSource, naming: QuestNaming): Quest[] {
-  const blocks = readBlocks(source);
+export function indexQuests(
+  source: RealmSource,
+  naming: QuestNaming,
+  read: BlocksInReach = blocksInReach(source, naming.spells)
+): Quest[] {
+  const { blocks, reached } = read;
   if (blocks.size === 0) return [];
 
   const counters = chainedCounters(blocks);
   if (counters.size === 0) return [];
 
-  const reached = traverse(source, blocks, naming.spells);
   const names = nameTables(source, naming);
 
   /** Every step of every counter, before they are grouped and ordered. */

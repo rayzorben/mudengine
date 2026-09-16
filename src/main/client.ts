@@ -1906,6 +1906,7 @@ function registerIpc(): void {
       loop: manager?.loops.progress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
       verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
+      asks: [...(manager?.asks ?? [])],
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
       finds: manager?.foundHere ?? [],
@@ -2053,6 +2054,16 @@ function registerIpc(): void {
     // A realm with no world loaded, and one converted before quests were
     // indexed, both answer with none — which the card says out loud.
     return worldFor(session)?.quests() ?? [];
+  });
+  handle(Invoke.questErrand, (_caller, session: SessionId, block: unknown) => {
+    /*
+     * Parsed, not trusted. The block is a text-block id off a card that read
+     * it out of the book, and what it selects here is a travelling salesman's
+     * path costing a graph sweep per place — so a payload that is not one of
+     * the realm's own blocks answers null rather than being looked up.
+     */
+    if (typeof block !== 'number' || !Number.isInteger(block)) return null;
+    return host?.get(session)?.manager?.questErrand(block) ?? null;
   });
   handle(
     Invoke.localMap,

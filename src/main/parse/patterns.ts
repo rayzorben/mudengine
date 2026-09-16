@@ -270,9 +270,11 @@ export const RULES: Rule[] = [
     pattern: /^Statusline:\s+(?<statline>\S.*?)\s*$/
   },
   {
+    // MajorMUD's own spelling of the word is `Encumberance:`; see the
+    // `user-inventory` batch, which reads the same line inside the listing.
     type: 'user-encumbrance',
     pattern:
-      /^Encumbrance:\s+(?<carried>\d+)\/(?<max>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
+      /^Encumbe?rance:\s+(?<carried>\d+)\/(?<max>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
   },
   /*
    * `train` at the guild, captured live (`npm run probe:play`, 2026-08-26):
@@ -1820,6 +1822,21 @@ export interface BatchRule {
   shape: 'array' | 'object';
   qualifiers: RegExp[];
   /**
+   * Whether a line *opens* a field, where that is not the same question as
+   * whether it completes one.
+   *
+   * `foldWraps` asks a qualifier both, and for most fields one answer does for
+   * both. Where the server's fold can land inside a field they come apart: the
+   * opening line wants no right-hand anchor and the extraction wants one, and
+   * one pattern cannot have it both ways. A qualifier ending at its field's own
+   * terminator is what *confines* a line the table failed to claim, so widening
+   * it to match the opening line would spend that guard.
+   *
+   * Consulted in addition to the qualifiers, never instead of them: the other
+   * fields of the same block still open on their own.
+   */
+  opens?: RegExp[];
+  /**
    * Whether a line that matches nothing continues the one before it.
    *
    * The server wraps its own output at a fixed width — it never negotiates
@@ -2083,17 +2100,42 @@ export const BATCH_RULES: BatchRule[] = [
      * first one begins `You are carrying`. Without `wraps` the tail was thrown
      * away silently: the Carrying card listed everything up to the fold and
      * stopped, which reads exactly like a character wearing half its kit.
+     *
+     * **The key sentence is the one field the fold lands inside, so it needs
+     * `opens` as well as its qualifier.** `InventoryCommand.Execute` builds
+     * all four fields into one string and hands the lot to `SendWordWrap`, so
+     * the width breaks lines wherever it likes — including before the `.` the
+     * key qualifier ends at (captures/065:193, captures/111). Matching
+     * nothing, the opening key line was read as the carried list's tail, and
+     * the keys arrived as carried items with the first glued onto the last
+     * real item's name while `Keys:` read `none`.
+     *
+     * The qualifier still ends at that full stop, because the terminator is a
+     * guard: it confines whatever a missed field folds in behind it. Widening
+     * it to match the opening line instead would have put a stray `Wealth:`
+     * line on the end of the last key.
+     *
+     * **The two realms spell the last field differently**: GreaterMUD writes
+     * `Encumbrance:` (`InventoryCommand.cs`), MajorMUD writes `Encumberance:`
+     * — 16 readable lines of the corpus against 5 (captures/004, /009, /010,
+     * /012, /024, /065, /111; /044's three are a bare label carrying no
+     * figures, which the anchor rightly refuses). Unread it was worse than
+     * absent: matching no qualifier, it folded onto the end of `Wealth:`, so a
+     * MajorMUD character's Load was never stated and never could be.
      */
     type: 'user-inventory',
     header: /^You are carrying/,
     shape: 'object',
     wraps: true,
     maxLines: 20,
+    // The fold lands inside the key list, and nowhere else in this block: the
+    // `.` cannot survive on that field's first physical line.
+    opens: [/^You have the following keys:/],
     qualifiers: [
       /^You are carrying (?<items>.+?)\.?$/,
       /^You have (?:the following keys: (?<keys>.+?)\.|no keys\.)/,
       /^Wealth:\s+(?<wealth>[\d,]+) copper farthings/,
-      /^Encumbrance:\s+(?<encumbrance>\d+)\/(?<encumbranceMax>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
+      /^Encumbe?rance:\s+(?<encumbrance>\d+)\/(?<encumbranceMax>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
     ]
   },
   {

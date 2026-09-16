@@ -560,7 +560,17 @@ export const HAZARD_ABILITY = {
    * for that reason: `holding breath` carries nothing but this, and what it
    * ends in is `drowning`.
    */
-  endCast: 151
+  endCast: 151,
+  /**
+   * The spell an **item** casts when it is used.
+   *
+   * The other odd one out beside `textBlock`: it is on `Items.Abil-n` rather
+   * than on a spell's, and it is the first hop of the chain that says an item
+   * can be a *way into* somewhere — a potion of levitation casts spell 607,
+   * whose text block is `teleport 1009 9`, which is the only entrance the
+   * Catacombs have. See `landingsOfItems`.
+   */
+  castsSpell: 43
 } as const;
 
 /**

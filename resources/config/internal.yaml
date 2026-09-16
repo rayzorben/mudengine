@@ -637,6 +637,11 @@ tuning:
     # The whole errand's deadline, after which it gives the lap back — a leg
     # superseded by another walk raises no ending of its own.
     errandTimeoutMs: 300000
+    # Choosing which of several counters to stop at: the detour decides and
+    # the price breaks the tie. This is what one doubling of the price is
+    # worth in steps of going out of the way — 4.01 two minutes off the road
+    # beats 3.99 twenty-five minutes off it. Zero lets the detour decide alone.
+    dearerSteps: 20
 
   # Shedding named junk — `AutoDrop`.
   drop:
@@ -1186,6 +1191,16 @@ tuning:
     # usually across maps, which is what most of them are for.
     portalPenalty: 3
 
+    # What using an item that teleports costs over an ordinary step — the
+    # potion of levitation, Paradigm's seven tokens. Dearer than a portal by a
+    # wide margin, and deliberately: a room script's teleport is scenery you
+    # may walk through as often as you like, and this spends a charge you have
+    # to go and replace. So the figure is the price at which the router stops
+    # preferring a shortcut to a walk: at forty, a token is taken only where it
+    # saves more than forty rooms of walking. An item that is the *only* way in
+    # is taken at any price, because every alternative is a wall.
+    itemLandingCost: 40
+
     # What a step along a route you saved costs, as a fraction of an ordinary
     # one. A route drawn on the loop builder and saved (`prefer: true` in its
     # file) is you saying *this is the way*: every step on it is priced at this
@@ -1259,6 +1274,43 @@ tuning:
     # is only reached by a name whose rows all spawn a long way off — where the
     # honest answer is "this room says nothing".
     mobRowRooms: 20000
+
+    # How enclosed a place has to be before the client will say what the way
+    # into it wants — the quest book's "the way in wants a titanium fork".
+    #
+    # The sweep runs backwards from a room over every way in that demands no
+    # item, so what it collects is a region with no ungated entrance at all,
+    # and every item-gated edge into it is therefore a real way in. That holds
+    # only while the region stays a pocket: out in the open realm the gates it
+    # meets are other pockets' doors and nothing to do with this room. So it
+    # gives up after this many rooms and says nothing, rather than listing
+    # every key in the realm. The biggest gated pocket either shipped world
+    # holds is 98 rooms.
+    approachRooms: 300
+
+    # How many of a quest step's items the errand solver will put in order.
+    #
+    # The order is exact rather than greedy — every permutation, over every
+    # place each item can be got — so the work is exponential in this figure.
+    # Eight is twice the largest step either shipped world holds; a step above
+    # it gets no order at all and says so.
+    errandItems: 8
+
+    # How many of the places one item can be got the solver will weigh.
+    #
+    # A quest component is usually handed over in one room, but a monster that
+    # drops one spawns in up to sixteen and a shop may be in fourteen — and
+    # every one of them is a sweep. The nearest few to where the character is
+    # standing are kept, then re-weighed against the whole walk.
+    errandPlaces: 3
+
+    # How many rooms one of the errand solver's sweeps may settle before it
+    # gives that origin up.
+    #
+    # The sweep stops on its own the moment every room it was asked about is
+    # settled, so this is only reached by an errand whose places cannot be
+    # walked to — where exhausting the component is what "no way there" costs.
+    errandSweepRooms: 60000
 
     # How many rooms one backward sweep of the scatter solve may settle before
     # it gives that figure up.

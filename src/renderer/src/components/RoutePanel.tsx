@@ -127,12 +127,29 @@ function chips(step: RouteStep) {
       the pending one: a door is opened and a toll is paid, and a trap is
       walked through and taken — the same split the map draws as a bar
       against a hazard triangle. */}
-      {step.requirement && (
+      {step.requirement && step.invoke === undefined && (
         <span
           className={step.requirement.kind === 'trap' ? 'chip bad' : 'chip warn'}
           title={step.obstacle?.detail ?? step.requirement.raw}
         >
           {step.obstacle?.label ?? step.requirement.kind}
+        </span>
+      )}
+      {/* And what the step **spends**, where it uses an item rather than
+      making a move. This is the one thing on a plan that is not undone by
+      walking back: a corridor costs nothing to re-walk and a potion is gone,
+      so the count the realm states is on the row beside the command that
+      spends it. It replaces the gate chip rather than sitting beside it —
+      that requirement is the item itself (`edgePenalty`'s `item` rung is what
+      prices the pack), so both drawn would say *needs potion of levitation*
+      next to *single use* about one thing. */}
+      {step.invoke !== undefined && (
+        <span className="chip warn" title={step.invoke.command}>
+          {step.invoke.uses === null
+            ? t('cards.route.spendsForever')
+            : step.invoke.uses === 1
+              ? t('cards.route.spendsOnce')
+              : t('cards.route.spendsUses', { useCount: step.invoke.uses })}
         </span>
       )}
       {/* And what the room itself does to whoever stands in it. A chip
@@ -233,11 +250,12 @@ export default function RoutePanel({
   const [picked, setPicked] = useState<number | null>(null);
   /**
    * Which of the plan's routes is on screen: the plan itself, the way round
-   * the worst of it (`Route.otherWay`), or the way with the right items
-   * (`Route.carrying`). A choice among routes main already planned, never a
+   * the worst of it (`Route.otherWay`), the way with the right items
+   * (`Route.carrying`), or the way that spends a charge to skip the walk
+   * (`Route.viaItem`). A choice among routes main already planned, never a
    * re-plan: the panel is a reader, and *Show it* swaps what is read.
    */
-  const [chosen, setChosen] = useState<'plan' | 'round' | 'carrying'>('plan');
+  const [chosen, setChosen] = useState<'plan' | 'round' | 'carrying' | 'viaItem'>('plan');
   /**
    * Whether to go and get what the way needs before walking it (todo 07).
    *
@@ -284,7 +302,9 @@ export default function RoutePanel({
         ? (route.otherWay ?? route)
         : chosen === 'carrying'
           ? (route.carrying ?? route)
-          : route;
+          : chosen === 'viaItem'
+            ? (route.viaItem ?? route)
+            : route;
   /**
    * How large a room is drawn in the picture of where the route ends.
    *
@@ -831,7 +851,9 @@ export default function RoutePanel({
                       <span className="chip off">
                         {chosen === 'round'
                           ? t('cards.route.showing.round')
-                          : t('cards.route.showing.carrying')}
+                          : chosen === 'viaItem'
+                            ? t('cards.route.showing.viaItem')
+                            : t('cards.route.showing.carrying')}
                       </span>
                     )}
                     {/* The traps, counted at the head of the list where the
@@ -912,7 +934,7 @@ export default function RoutePanel({
                       const deadly = lairs.deadly;
                       const avoided =
                         deadly !== null &&
-                        [route.otherWay, route.carrying].some(
+                        [route.otherWay, route.carrying, route.viaItem].some(
                           (other) =>
                             other !== undefined &&
                             other !== shown &&
@@ -1074,7 +1096,7 @@ export default function RoutePanel({
                         ))}
                       </ul>
                       {shown === route &&
-                        ![route.otherWay, route.carrying].some(
+                        ![route.otherWay, route.carrying, route.viaItem].some(
                           (other) => other !== undefined && avoidsWalls(other, route.walls!)
                         ) && <span>{t('cards.route.noOtherWay')}</span>}
                     </div>
@@ -1129,7 +1151,7 @@ export default function RoutePanel({
                   is on screen, so there is always a way back. */}
                   {(() => {
                     const items: Array<{
-                      key: 'plan' | 'round' | 'carrying';
+                      key: 'plan' | 'round' | 'carrying' | 'viaItem';
                       sentence: string;
                     }> = [];
                     if (chosen !== 'plan') {
@@ -1158,6 +1180,30 @@ export default function RoutePanel({
                         sentence: t('cards.route.alternative.carrying', {
                           itemList: [...named.values()].join(', '),
                           stepCount: route.carrying.steps.length
+                        })
+                      });
+                    }
+                    /*
+                     * And the way that spends a charge instead of walking.
+                     * **Named with what it saves**, because that is the whole
+                     * of the choice: Paradigm's seven tokens each land on a
+                     * room the character could walk to, so the question is
+                     * never *can I get there* but *is a hundred and seventy
+                     * rooms of walking worth one of five charges*. A route
+                     * that is the only way in is not offered here at all —
+                     * `route` already is it.
+                     */
+                    if (route.viaItem !== undefined && chosen !== 'viaItem') {
+                      const spent = new Map<number, string>();
+                      for (const step of route.viaItem.steps) {
+                        if (step.invoke !== undefined) spent.set(step.invoke.id, step.invoke.name);
+                      }
+                      items.push({
+                        key: 'viaItem',
+                        sentence: t('cards.route.alternative.viaItem', {
+                          itemList: [...spent.values()].join(', '),
+                          stepCount: route.viaItem.steps.length,
+                          savedCount: route.steps.length - route.viaItem.steps.length
                         })
                       });
                     }
@@ -1240,6 +1286,19 @@ export default function RoutePanel({
                           key={`${step.to}-${index}`}
                         >
                           <span className="step-command">{step.command}</span>
+                          {/* **Where a teleport is used**, which is the room
+                          the character is standing in. Every other row reads
+                          *direction, then the room it reaches*, so its origin
+                          is the row above and needs no saying; a teleport has
+                          no row above, so the destination sat at the top of
+                          the plan and the whole thing read as though it began
+                          in a room the reader was not in. Drawn before the
+                          destination, in the order the step happens. */}
+                          {step.invoke !== undefined && (
+                            <span className="step-here">
+                              {t('cards.route.usedHere', { roomName: step.invoke.at.name })}
+                            </span>
+                          )}
                           {/*
                             The room, and the way to stop short at it.
 
