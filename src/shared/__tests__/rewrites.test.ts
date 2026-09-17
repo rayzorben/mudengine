@@ -343,6 +343,53 @@ describe('the pack', () => {
     expect(drawn.map(plainOf)).toEqual(['Keys: none']);
     expect(pack('')).toEqual([]);
   });
+
+  it('supports grouping item categories and displaying them on their own line', () => {
+    const customFacts: RewriteFacts = {
+      ...facts,
+      pack: {
+        ...facts.pack,
+        items: [
+          {
+            item: wireItem('visored greathelm'),
+            verdict: equipVerdict(wireItem('visored greathelm'), wearer, t),
+            effects: NO_EFFECTS
+          },
+          {
+            item: wireItem('token of Silvermere'),
+            verdict: equipVerdict(wireItem('token of Silvermere'), wearer, t),
+            effects: NO_EFFECTS
+          },
+          {
+            item: wireItem('throwing hammers'),
+            verdict: equipVerdict(wireItem('throwing hammers'), wearer, t),
+            effects: NO_EFFECTS
+          },
+          {
+            item: wireItem('token of Rhudaur'),
+            verdict: equipVerdict(wireItem('token of Rhudaur'), wearer, t),
+            effects: NO_EFFECTS
+          }
+        ]
+      }
+    };
+    const template = [
+      '{group items matching "^token of " as tokens}',
+      '{table header}',
+      '{for item in items}',
+      '{item.name}',
+      '{/for}',
+      '{/table}',
+      'Tokens: {tokens}'
+    ].join('\n');
+    const drawn = renderRewrite(design('inventory', template), customFacts, BANDS, t);
+    expect(drawn.map(plainOf)).toEqual([
+      'Name             ',
+      'visored greathelm',
+      'throwing hammers ',
+      'Tokens: token of Silvermere, token of Rhudaur'
+    ]);
+  });
 });
 
 describe('the other listings', () => {

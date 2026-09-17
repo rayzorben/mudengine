@@ -631,6 +631,20 @@ function Controls({ insert }: { insert: Insert }): React.JSX.Element {
       </button>
       <button
         className="rewrite-tag"
+        onClick={() =>
+          insert({
+            text: '{group items matching "^token of " as tokens}\n',
+            caret: '{group items matching "^'.length
+          })
+        }
+        onMouseDown={keepFocus}
+        title={t('settings.rewrites.editor.sidebar.groupHint')}
+        type="button"
+      >
+        <code>{'{group …}'}</code>
+      </button>
+      <button
+        className="rewrite-tag"
         onClick={() => wrap('{table}\n', '\n{/table}', '{table}\n'.length)}
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.tableHint')}
@@ -749,7 +763,12 @@ const SAMPLE_PACK: ItemEntity[] = [
     realmSlot: 'Hands',
     armour: { ac: 1, dr: 0 }
   }),
-  sampleItem('torch', { id: 5, encumbrance: 20, kind: 'light', realmSlot: 'Readied' }, { count: 6 })
+  sampleItem(
+    'torch',
+    { id: 5, encumbrance: 20, kind: 'light', realmSlot: 'Readied' },
+    { count: 6 }
+  ),
+  sampleItem('token of Silvermere', { encumbrance: 0, notDroppable: false })
 ];
 
 /**
