@@ -3628,6 +3628,7 @@ settings:
         ifHint: Draws the middle only when the test holds; else if and else take the other cases.
         forHint: Draws the middle once per row, with the row's fields in scope.
         tableHint: Lines every figure inside up in columns; header names them on a first row.
+        groupHint: 'Breaks off matching items into a new list: {group items matching "^token of " as tokens}'
         filtersHint: 'After a figure: |upper |lower |left |right |center |width:12 |or:text for a blank.'
         kindText: text
         kindNumber: number

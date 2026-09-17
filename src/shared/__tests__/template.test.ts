@@ -283,6 +283,88 @@ describe('the controls', () => {
       'hp',
       'me.level'
     ]);
+    expect(
+      pathsIn(
+        '{group items matching "^token of " as tokens}{for token in tokens}{token.name}{/for}'
+      )
+    ).toEqual(['items', 'tokens', 'tokens', 'token.name']);
+  });
+
+  it('partitions a list into a group and removes matching items from source', () => {
+    const scope: Scope = {
+      items: [
+        { name: 'visored greathelm', weight: 500 },
+        { name: 'token of Silvermere', weight: 0 },
+        { name: 'torch', weight: 20 },
+        { name: 'token of Rhudaur', weight: 0 }
+      ]
+    };
+    const template = [
+      '{group items matching "^token of " as tokens}',
+      '{group items matching "^nonexistent" as empty}',
+      '{for item in items}{item.name}, {/for}',
+      'Tokens: {tokens}',
+      'Empty: {empty|or:none}'
+    ].join('\n');
+    expect(draw(template, scope)).toEqual([
+      'visored greathelm, torch, ',
+      'Tokens: token of Silvermere, token of Rhudaur',
+      'Empty: none'
+    ]);
+  });
+
+  it('supports grouping with user sketch syntax, where expression, and keep option', () => {
+    const scope: Scope = {
+      items: [
+        { name: 'visored greathelm', weight: 500, worn: true },
+        { name: 'token of Silvermere', weight: 0, worn: false },
+        { name: 'torch', weight: 20, worn: false }
+      ]
+    };
+    // Sketch syntax: {group ^token of (.*)$ tokens}
+    expect(draw('{group ^token of (.*)$ tokens}items:{items} tokens:{tokens}', scope)).toEqual([
+      'items:visored greathelm, torch tokens:token of Silvermere'
+    ]);
+
+    // Where expression grouping
+    expect(
+      draw('{group items where weight == 0 as weightless}items:{items} zero:{weightless}', scope)
+    ).toEqual(['items:visored greathelm, torch zero:token of Silvermere']);
+
+    // Keep option: copies into target without removing from source
+    expect(
+      draw('{group items matching "^token" as tokens keep}items:{items} tokens:{tokens}', scope)
+    ).toEqual(['items:visored greathelm, token of Silvermere, torch tokens:token of Silvermere']);
+
+    // Length and count properties
+    expect(
+      draw('{group items matching "^token" as tokens}{tokens.length} {tokens.count}', scope)
+    ).toEqual(['1 1']);
+  });
+
+  it('filters a for loop inline with where', () => {
+    const scope: Scope = {
+      items: [
+        { name: 'visored greathelm', weight: 500, worn: true },
+        { name: 'token of Silvermere', weight: 0, worn: false },
+        { name: 'torch', weight: 20, worn: false }
+      ]
+    };
+    const template = [
+      '{table header}',
+      '{for item in items where not item.worn}',
+      '{n} {item.name} {item.weight}',
+      '{/for}',
+      '{/table}'
+    ].join('\n');
+    const lines = renderTemplate(template, scope, {
+      label: (path) => ({ 'item.name': 'Name', 'item.weight': 'Wt', n: '#' })[path] ?? path
+    });
+    expect(lines.map((l) => plainOf(l))).toEqual([
+      '# Name                Wt',
+      '1 token of Silvermere  0',
+      '2 torch               20'
+    ]);
   });
 });
 
@@ -305,6 +387,17 @@ describe('an expression', () => {
     expect(value("me.class == 'Mystic'")).toBe(true);
     expect(value('room == null')).toBe(true);
     expect(value('items')).toBe(2);
+  });
+
+  it('matches regexes with =~, !~ and matches', () => {
+    const value = (source: string) => evaluate(parseExpr(source)!, lookup);
+    expect(value("me.class =~ '^mys'")).toBe(true);
+    expect(value("me.class =~ '^war'")).toBe(false);
+    expect(value("me.class matches 'TIC$'")).toBe(true);
+    expect(value("me.class !~ '^war'")).toBe(true);
+    expect(value("me.class !~ '^mys'")).toBe(false);
+    // Invalid regex evaluates safely to false
+    expect(value("me.class =~ '[unclosed'")).toBe(false);
   });
 
   it('is null, never a number, for arithmetic on an unknown or a division by zero', () => {

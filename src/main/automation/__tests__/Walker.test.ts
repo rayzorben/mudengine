@@ -2455,7 +2455,44 @@ describe('a hidden exit a lever opens', () => {
     ]
   });
 
-  it('pulls the lever and sends the step again', () => {
+  /** Standing in 1/1 with the room's `Obvious exits:` line as given. */
+  const printing = (...exits: Array<[string, string | null]>): CharacterState =>
+    at(1, 1, {
+      room: {
+        ...structuredClone(EMPTY_CHARACTER.room),
+        map: 1,
+        number: 1,
+        exits: exits.map(([direction, note]) => wireExit(direction, note))
+      }
+    });
+
+  it('pulls the lever before the step when the room has not printed the exit', () => {
+    const unrevealed = printing(['n', null]);
+    walker.start(levered([{ say: ['pull lever', 'move lever'] }]), unrevealed);
+    vi.advanceTimersByTime(50);
+
+    // The lever is pulled first, and the step queued behind it: no initial 'e' into the wall.
+    expect(sent).toEqual(['pull lever', 'e']);
+    expect(walker.progress.status).toBe('walking');
+  });
+
+  it('pulls several in order before the step when the exit is not printed', () => {
+    const unrevealed = printing(['n', null]);
+    walker.start(levered([{ say: ['twist knot'] }, { say: ['push knot'] }]), unrevealed);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['twist knot', 'push knot', 'e']);
+  });
+
+  it('sends the step straight away without pulling the lever when the exit is already printed', () => {
+    const revealed = printing(['n', null], ['e', 'secret passage']);
+    walker.start(levered([{ say: ['pull lever'] }]), revealed);
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['e']);
+  });
+
+  it('pulls the lever reactively when the room exit list was empty', () => {
     walker.start(levered([{ say: ['pull lever', 'move lever'] }]), at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onBlock(block('direction-failed'));

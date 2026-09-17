@@ -35,6 +35,13 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       "the server's message table is data — 3,979 rows of three templates (`%s`, `%d`) — " +
       'so each is compiled once when the shipped table is read (`MessageBook.add`) and held; ' +
       'the per-line path runs only the compiled ones a word index selects (todo 109)'
+  },
+  'src/shared/template.ts': {
+    count: 2,
+    because:
+      'user-authored templates may specify regex patterns for grouping and filtering ' +
+      '({group ...}, `=~`), which are user input unknown at compile time; compiled on demand ' +
+      'and cached by string in `compileRegex`'
   }
 };
 

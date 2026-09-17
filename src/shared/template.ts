@@ -145,8 +145,22 @@ export type Node =
    * addresses for one value rather than two answers to one question, and the
    * bare one is what every template written before this says.
    */
-  | { kind: 'for'; path: string; as?: string; body: Node[] }
-  | { kind: 'table'; header: boolean; body: Node[] };
+  | { kind: 'for'; path: string; as?: string; where?: Expr; body: Node[] }
+  | { kind: 'table'; header: boolean; body: Node[] }
+  /**
+   * Partitions a list in scope into matching entries and remaining entries.
+   *
+   * Matching entries are placed into `target` in scope, and removed from
+   * `source` unless `keep` is true.
+   */
+  | {
+      kind: 'group';
+      source: string;
+      target: string;
+      pattern?: string;
+      where?: Expr;
+      keep?: boolean;
+    };
 
 export interface Filter {
   name: string;
@@ -182,7 +196,7 @@ const PATH = /^[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*$/;
 const NAME = /^[A-Za-z_]\w*$/;
 
 /** The tags that stand for a control rather than something drawn. */
-const BLOCK_OPEN = /^(if|else if|elif|else|for|table)(?:\s|$)/;
+const BLOCK_OPEN = /^(if|else if|elif|else|for|table|group)(?:\s|$)/;
 const BLOCK_CLOSE = /^\/(if|for|table)$/;
 
 function isStyleTag(tag: string): boolean {
@@ -310,12 +324,31 @@ export function parseTemplate(source: string): Template {
         nodes.push(parseIf(tag));
         continue;
       }
+      if (tag.startsWith('group ')) {
+        const groupNode = parseGroup(tag);
+        if (groupNode === null) {
+          problem('badTest', tag);
+          nodes.push({ kind: 'text', text: raw });
+        } else {
+          nodes.push(groupNode);
+        }
+        continue;
+      }
       if (tag.startsWith('for ')) {
         // `{for item in items}` names the row; `{for items}` does not.
+        // Also supports inline filter: `{for item in items where ...}`.
         const said = tag.slice(4).trim();
-        const bound = /^([A-Za-z_]\w*)\s+in\s+(.+)$/.exec(said);
+        const whereMatch = /\s+where\s+(.+)$/.exec(said);
+        let forPart = said;
+        let whereExpr: Expr | undefined;
+        if (whereMatch) {
+          forPart = said.slice(0, whereMatch.index).trim();
+          whereExpr = parseExpr(whereMatch[1]!.trim());
+          if (whereExpr === undefined) problem('badTest', tag);
+        }
+        const bound = /^([A-Za-z_]\w*)\s+in\s+(.+)$/.exec(forPart);
         const as = bound?.[1];
-        const path = bound === null ? said : bound[2]!.trim();
+        const path = bound === null ? forPart : bound[2]!.trim();
         if (!PATH.test(path) || (as !== undefined && !NAME.test(as))) {
           nodes.push({ kind: 'text', text: raw });
           continue;
@@ -323,7 +356,13 @@ export function parseTemplate(source: string): Template {
         const body = parseBody((next) => next === '/for');
         if (tokens[at]?.kind === 'tag') at += 1;
         else problem('unclosed', tag);
-        nodes.push({ kind: 'for', path, ...(as === undefined ? {} : { as }), body });
+        nodes.push({
+          kind: 'for',
+          path,
+          ...(as === undefined ? {} : { as }),
+          ...(whereExpr === undefined ? {} : { where: whereExpr }),
+          body
+        });
         continue;
       }
       if (tag === 'table' || tag === 'table header') {
@@ -347,6 +386,76 @@ export function parseTemplate(source: string): Template {
       nodes.push(figure ?? { kind: 'text', text: raw });
     }
     return nodes;
+  };
+
+  const parseGroup = (tag: string): Node | null => {
+    let said = tag.slice(6).trim();
+    let keep = false;
+    if (/\s+keep$/i.test(said)) {
+      keep = true;
+      said = said.replace(/\s+keep$/i, '').trim();
+    }
+    let rest = '';
+    let target = '';
+    const asMatch = /^(.*?)\s+as\s+([A-Za-z_]\w*)$/i.exec(said);
+    if (asMatch) {
+      rest = asMatch[1]!.trim();
+      target = asMatch[2]!;
+    } else {
+      const lastWordMatch = /^(.*?)\s+([A-Za-z_]\w*)$/.exec(said);
+      if (lastWordMatch) {
+        rest = lastWordMatch[1]!.trim();
+        target = lastWordMatch[2]!;
+      } else {
+        return null;
+      }
+    }
+    if (!NAME.test(target) || rest.length === 0) return null;
+
+    let source = 'items';
+    let condition = rest;
+    const sourceMatch = /^([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\s+(.*)$/.exec(rest);
+    if (sourceMatch) {
+      const first = sourceMatch[1]!;
+      const remainder = sourceMatch[2]!;
+      if (
+        remainder.startsWith('where ') ||
+        remainder.startsWith('matching ') ||
+        /^["']/.test(remainder) ||
+        first === 'items' ||
+        first === 'players' ||
+        first === 'members' ||
+        first === 'keys'
+      ) {
+        source = first;
+        condition = remainder;
+      }
+    }
+
+    if (condition.startsWith('where ')) {
+      const expr = parseExpr(condition.slice(6).trim());
+      if (expr === undefined) return null;
+      return { kind: 'group', source, target, where: expr, ...(keep ? { keep: true } : {}) };
+    }
+    if (condition.startsWith('matching ')) {
+      let pattern = condition.slice(9).trim();
+      if (
+        (pattern.startsWith('"') && pattern.endsWith('"')) ||
+        (pattern.startsWith("'") && pattern.endsWith("'"))
+      ) {
+        pattern = pattern.slice(1, -1);
+      }
+      if (pattern.length === 0) return null;
+      return { kind: 'group', source, target, pattern, ...(keep ? { keep: true } : {}) };
+    }
+    if (
+      (condition.startsWith('"') && condition.endsWith('"')) ||
+      (condition.startsWith("'") && condition.endsWith("'"))
+    ) {
+      const pattern = condition.slice(1, -1);
+      return { kind: 'group', source, target, pattern, ...(keep ? { keep: true } : {}) };
+    }
+    return { kind: 'group', source, target, pattern: condition, ...(keep ? { keep: true } : {}) };
   };
 
   const isElse = (tag: string): boolean =>
@@ -398,10 +507,50 @@ export type Expr =
   | { kind: 'neg'; operand: Expr }
   | { kind: 'binary'; op: BinaryOp; left: Expr; right: Expr };
 
-type BinaryOp = 'or' | 'and' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '+' | '-' | '*' | '/' | '%';
+type BinaryOp =
+  | 'or'
+  | 'and'
+  | '=='
+  | '!='
+  | '=~'
+  | '!~'
+  | 'matches'
+  | '<'
+  | '<='
+  | '>'
+  | '>='
+  | '+'
+  | '-'
+  | '*'
+  | '/'
+  | '%';
 
 const EXPR_TOKEN =
-  /\s*(?:(\d+(?:\.\d+)?|\.\d+)|("[^"]*"|'[^']*')|(==|!=|<=|>=|<|>|\+|-|\*|\/|%|\(|\))|([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*))/y;
+  /\s*(?:(\d+(?:\.\d+)?|\.\d+)|("[^"]*"|'[^']*')|(=~|!~|==|!=|<=|>=|<|>|\+|-|\*|\/|%|\(|\))|([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*))/y;
+
+const REGEX_CACHE = new Map<string, RegExp | null>();
+
+/**
+ * Compiles a string into a regular expression.
+ *
+ * If the string is enclosed in slashes (e.g. `/^pattern/i`), the slashes and
+ * flags are respected. Otherwise, the pattern is compiled with the `'i'` flag
+ * (case-insensitive) by default. If the pattern is invalid, null is returned.
+ * Compiled patterns are cached so rows in a loop do not recompile.
+ */
+export function compileRegex(pattern: string): RegExp | null {
+  const cached = REGEX_CACHE.get(pattern);
+  if (cached !== undefined) return cached;
+  let rx: RegExp | null = null;
+  try {
+    const slashMatch = /^\/(.+)\/([gimsuy]*)$/.exec(pattern);
+    rx = slashMatch ? new RegExp(slashMatch[1]!, slashMatch[2]) : new RegExp(pattern, 'i');
+  } catch {
+    rx = null;
+  }
+  REGEX_CACHE.set(pattern, rx);
+  return rx;
+}
 
 type ExprToken =
   | { kind: 'number'; value: number }
@@ -494,7 +643,7 @@ export function parseExpr(source: string): Expr | undefined {
 
   const term = level(primary, ['*', '/', '%']);
   const sum = level(term, ['+', '-']);
-  const cmp = level(sum, ['==', '!=', '<=', '>=', '<', '>']);
+  const cmp = level(sum, ['==', '!=', '=~', '!~', 'matches', '<=', '>=', '<', '>']);
   const and = level(cmp, ['and']);
   const expr = level(and, ['or']);
 
@@ -547,6 +696,17 @@ export function evaluate(expr: Expr, lookup: (path: string) => Value | undefined
           return left === right;
         case '!=':
           return left !== right;
+        case '=~':
+        case 'matches': {
+          if (left === null || right === null || typeof right !== 'string') return false;
+          const rx = compileRegex(right);
+          return rx !== null && rx.test(String(left));
+        }
+        case '!~': {
+          if (left === null || right === null || typeof right !== 'string') return false;
+          const rx = compileRegex(right);
+          return rx !== null && !rx.test(String(left));
+        }
         case '<':
         case '<=':
         case '>':
@@ -674,7 +834,13 @@ function lookupIn(chain: readonly Row[], path: string): Value | undefined {
       // Any object with fields, a `Figure` included: a `{for}`'s bound row is
       // both — drawn as its name, read into for the rest of the path.
       if (value === undefined || value === null || typeof value !== 'object') return undefined;
-      if (Array.isArray(value)) return undefined;
+      if (Array.isArray(value)) {
+        if (key === 'length' || key === 'count') {
+          value = value.length;
+          continue;
+        }
+        return undefined;
+      }
       value = (value as Row)[key];
     }
     return value;
@@ -756,7 +922,7 @@ export function renderTemplate(
   const label = options.label ?? ((path: string) => path.split('.').pop() ?? path);
 
   const style: Style = { fg: [], bg: [], bold: 0, dim: 0 };
-  const chain: Row[] = [scope];
+  const chain: Row[] = [{ ...scope }];
   const lines: Piece[][] = [[]];
   /** The lines a table is collecting, or null outside one. */
   let table: { lines: Piece[][]; header: boolean } | null = null;
@@ -839,6 +1005,60 @@ export function renderTemplate(
         case 'figure':
           drawFigure(node, asHeader);
           break;
+        case 'group': {
+          const list = lookupIn(chain, node.source);
+          if (!Array.isArray(list)) {
+            const curr = chain[chain.length - 1] as Record<string, Value>;
+            curr[node.target] = [];
+            curr[`${node.target}Count`] = 0;
+            break;
+          }
+          const matched: Value[] = [];
+          const remaining: Value[] = [];
+          const rx = node.pattern !== undefined ? compileRegex(node.pattern) : null;
+
+          for (const entry of list) {
+            let isMatch = false;
+            if (node.where !== undefined) {
+              const fields = isRow(entry) ? entry : { name: entry };
+              const rowScope: Row = {
+                ...fields,
+                ...(node.source === 'items' && !('item' in fields) ? { item: fields } : {})
+              };
+              chain.push(rowScope);
+              isMatch = truthy(evaluate(node.where, (p) => lookupIn(chain, p)));
+              chain.pop();
+            } else if (rx !== null) {
+              const nameStr = isRow(entry)
+                ? String(entry['name'] ?? entry['item'] ?? '')
+                : String(entry);
+              const itemStr =
+                isRow(entry) && entry['item'] !== undefined ? String(entry['item']) : nameStr;
+              isMatch = rx.test(nameStr) || rx.test(itemStr);
+            }
+            if (isMatch) matched.push(entry);
+            else remaining.push(entry);
+          }
+
+          if (!node.keep) {
+            for (let i = chain.length - 1; i >= 0; i -= 1) {
+              if (node.source in chain[i]!) {
+                (chain[i] as Record<string, Value>)[node.source] = remaining;
+                if (`${node.source}Count` in chain[i]!) {
+                  (chain[i] as Record<string, Value>)[`${node.source}Count`] = remaining.length;
+                } else if (node.source === 'items' && 'itemCount' in chain[i]!) {
+                  (chain[i] as Record<string, Value>)['itemCount'] = remaining.length;
+                }
+                break;
+              }
+            }
+          }
+
+          const curr = chain[chain.length - 1] as Record<string, Value>;
+          curr[node.target] = matched;
+          curr[`${node.target}Count`] = matched.length;
+          break;
+        }
         case 'if': {
           for (const branch of node.branches) {
             const taken =
@@ -852,17 +1072,14 @@ export function renderTemplate(
           break;
         }
         case 'for': {
-          const list = lookupIn(chain, node.path);
-          if (!Array.isArray(list)) {
+          const rawList = lookupIn(chain, node.path);
+          if (!Array.isArray(rawList)) {
             // Not a list: the control is drawn as typed, like any unknown tag.
             push({ text: `{for ${node.as === undefined ? '' : `${node.as} in `}${node.path}}` });
             draw(node.body, asHeader);
             push({ text: '{/for}' });
             break;
           }
-          // The header is the body drawn once with the labels for cells, on
-          // the first row's fields; a list with no rows names no columns.
-          const first = list[0];
           /*
            * The row bound under its own name as well as bare, where the
            * template gave one: `{for item in items}` reaches `{item.weight}`
@@ -888,6 +1105,20 @@ export function renderTemplate(
             const label = own === undefined ? nameOf(fields) : textOf(own);
             return { ...fields, [node.as]: { ...fields, text: label } };
           };
+
+          const list =
+            node.where === undefined
+              ? rawList
+              : rawList.filter((row) => {
+                  chain.push(bind(row));
+                  const ok = truthy(evaluate(node.where!, (path) => lookupIn(chain, path)));
+                  chain.pop();
+                  return ok;
+                });
+
+          // The header is the body drawn once with the labels for cells, on
+          // the first row's fields; a list with no rows names no columns.
+          const first = list[0];
           const head = (): Row => ({
             n: 0,
             rows: list.length,
@@ -1119,8 +1350,13 @@ export function pathsIn(template: Template | string): string[] {
           if (branch.test !== null) tested(branch.test);
           walk(branch.body);
         }
+      } else if (node.kind === 'group') {
+        out.push(node.source);
+        if (node.where !== undefined) tested(node.where);
+        out.push(node.target);
       } else if (node.kind === 'for') {
         out.push(node.path);
+        if (node.where !== undefined) tested(node.where);
         walk(node.body);
       } else if (node.kind === 'table') walk(node.body);
     }

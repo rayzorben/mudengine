@@ -1815,6 +1815,30 @@ export class Walker {
   }
 
   /**
+   * Pulls the levers that open this hidden exit before sending the step, when
+   * the room's obvious exits show that the way is not yet open.
+   *
+   * *"If exit doesn't exist and there is a command, don't try first"* (todo 03,
+   * 2026-09-16). A hidden exit that needs an action (like `use fork south` in the
+   * Catacombs) does not appear in `Obvious exits:` until it has been opened.
+   * Sending the bare direction first spends a command just to be told `There is
+   * no exit in that direction!`.
+   *
+   * Once the exit has been opened and joins `Obvious exits:`, this leaves it
+   * alone and lets the step go out directly without wasting another action.
+   *
+   * A room whose exits were never read (`exits.length === 0`) proves nothing —
+   * exactly as in `mustSearchFirst` and `shutAhead`.
+   */
+  private pullLeversFirst(step: RouteStep, state: CharacterState): boolean {
+    if (step.direction === 'portal') return false;
+    if (!openableHere(step.requirement)) return false;
+    if (state.room.exits.length === 0) return false;
+    if (state.room.exits.some((exit) => exit.direction === step.direction)) return false;
+    return this.pullLevers(step);
+  }
+
+  /**
    * Pulls the levers the realm says open this exit. Returns whether anything
    * was sent.
    *
@@ -4179,6 +4203,13 @@ export class Walker {
        * sneak, which the retry asks again for itself.
        */
       if (this.openShutWayFirst(step, now)) return;
+      /*
+       * And a hidden exit whose action has not yet opened it — see
+       * `pullLeversFirst`. If the room's exits show the way is not there,
+       * pulling the lever or using the item takes the step's place instead
+       * of walking into the wall to be refused.
+       */
+      if (this.pullLeversFirst(step, now)) return;
     }
     if (now !== undefined) this.sneakFirst(now);
     /*
