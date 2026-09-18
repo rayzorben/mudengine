@@ -115,10 +115,25 @@ for (const id of fs.existsSync(home.serversDir)
 const byName = (list, name) =>
   list.find((e) => String(e?.name ?? '').toLowerCase() === String(name).trim().toLowerCase());
 
+/*
+ * `--as <id>` names the character, as the probes take it. The first local one
+ * alphabetically may be the one somebody is playing, and a second login on its
+ * account drops the session they are in. A name that is not a local character
+ * fails the run: never a fallback to the first.
+ */
+const asAt = process.argv.indexOf('--as');
+const asId =
+  asAt >= 0
+    ? String(process.argv[asAt + 1] ?? '')
+        .trim()
+        .toLowerCase()
+    : null;
+
 let who = null;
 /** Characters passed over because they play somewhere this check may not log in to. */
 const elsewhere = [];
 for (const id of profileIds) {
+  if (asId !== null && id.toLowerCase() !== asId) continue;
   let raw;
   try {
     raw = YAML.parse(fs.readFileSync(home.profile(id).file, 'utf8'));
@@ -150,6 +165,10 @@ for (const id of profileIds) {
   break;
 }
 
+if (!who && asId !== null) {
+  console.error(`\nno character "${asId}" in ${profilesDir} plays on ${HOST}.\n`);
+  process.exit(1);
+}
 if (!who) {
   console.log(
     elsewhere.length > 0
@@ -234,13 +253,21 @@ try {
   fs.rmSync(RUN_DIR, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(RUN_CONFIG), { recursive: true });
   fs.writeFileSync(RUN_CONFIG, YAML.stringify(parsed), 'utf8');
-  // The whole tree, not just the characters: a server is a directory now, and
-  // a copy without them is a copy in which no character can name where it
-  // plays.
-  for (const name of ['profiles', 'servers']) {
-    const from = path.join(home.root, name);
-    if (fs.existsSync(from)) fs.cpSync(from, path.join(RUN_DIR, name), { recursive: true });
+  // The servers whole, since a character names where it plays by directory.
+  if (fs.existsSync(home.serversDir)) {
+    fs.cpSync(home.serversDir, path.join(RUN_DIR, 'servers'), { recursive: true });
   }
+  /*
+   * And **only the character this run drives**. The whole `profiles/` tree was
+   * copied, and the app launched on it connects every character whose file
+   * says `autoConnect: true`: on 2026-09-18 a run logged in four of the
+   * player's characters beside the one it drove — ending the sessions they
+   * were playing on orohost, and sending their accounts to bearfather and
+   * Paradigm, which this project may never log in to.
+   */
+  fs.cpSync(path.join(profilesDir, who.id), path.join(RUN_DIR, 'profiles', who.id), {
+    recursive: true
+  });
   if (fs.existsSync(home.globalLoops)) {
     fs.cpSync(home.globalLoops, path.join(RUN_DIR, 'global', 'loops'), { recursive: true });
   }

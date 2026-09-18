@@ -5,7 +5,10 @@ import { NO_REALM_PLAYERS } from '../../../shared/players';
 import { NO_BELONGINGS } from '../../../shared/belongings';
 import { NO_LORE } from '../../../shared/lore';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 
 import { SessionHost } from '../SessionHost';
 import { Push, type Addressed, type Notice, type SessionId } from '../../../shared/ipc';
@@ -53,8 +56,11 @@ let notices: Notice[] = [];
 let dialledRealms: ConnectionTarget[] = [];
 /** Whether these sessions want a lost connection dialled back. See `Reconnect`. */
 let autoReconnect = false;
+/** Where each session's backscroll is written, fresh per test. */
+let backscrollDir = '';
 
 beforeEach(async () => {
+  backscrollDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-host-'));
   accepted = [];
   received = [];
   attachedSends = [];
@@ -84,6 +90,7 @@ beforeEach(async () => {
     memoryFor: () => undefined,
     fightsFor: () => NO_FIGHTS,
     talkFor: () => NO_TALK,
+    backscrollFor: (id) => path.join(backscrollDir, `${id}.log`),
     playersFor: () => NO_REALM_PLAYERS,
     destinationsFor: () => ({ remember: () => {}, matching: () => [] }),
     playersAt: (target) => {
@@ -116,6 +123,7 @@ beforeEach(async () => {
 afterEach(async () => {
   host?.disposeAll();
   host = null;
+  fs.rmSync(backscrollDir, { recursive: true, force: true });
   for (const socket of accepted) socket.destroy();
   accepted = [];
   await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -142,6 +150,30 @@ function textFor(session: SessionId): string {
 }
 
 describe('SessionHost', () => {
+  /*
+   * The backscroll outlives the process (todo 06, 2026-09-17): what the
+   * console showed is written down per character, and the next launch's
+   * first attach replays it ahead of anything new.
+   */
+  it('opens a session on the backscroll the last launch wrote, and writes on from it', async () => {
+    const file = path.join(backscrollDir, 'thorn.log');
+    fs.writeFileSync(file, 'yesterday\r\n', 'utf8');
+    expect(host!.ensure('thorn').backscroll.text).toBe('yesterday\r\n');
+
+    await host!.connect('thorn', target());
+    await until(() => accepted.length === 1);
+    accepted[0]!.write('today\r\n');
+    await until(() => textFor('thorn').includes('today'));
+    expect(host!.ensure('thorn').backscroll.text.startsWith('yesterday\r\n')).toBe(true);
+    expect(host!.ensure('thorn').backscroll.text).toContain('today\r\n');
+
+    // The write is deferred; removing the session is the flush quitting makes.
+    host!.remove('thorn');
+    const written = fs.readFileSync(file, 'utf8');
+    expect(written.startsWith('yesterday\r\n')).toBe(true);
+    expect(written).toContain('today\r\n');
+  });
+
   it('gives each session its own output, and never the other one', async () => {
     await host!.connect('thorn', target());
     await host!.connect('mara', target());

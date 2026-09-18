@@ -14,6 +14,7 @@ import {
   mergeServers,
   normalizeConfig,
   type AutomationSwitch,
+  type LoginStep,
   type RetreatConfig,
   type SupplyItem
 } from '../../shared/config';
@@ -280,10 +281,7 @@ export class SettingsEditor {
          * be noise in a file people read besides.
          */
         if (draft.login.length > 0) {
-          document.setIn(
-            ['login', 'steps'],
-            draft.login.map((step) => ({ when: step.when, send: step.send }))
-          );
+          document.setIn(['login', 'steps'], draft.login.map(loginRow));
         } else if (document.hasIn(['login'])) {
           document.deleteIn(['login']);
         }
@@ -727,10 +725,7 @@ export class SettingsEditor {
          * reads as a script somebody meant to fill in.
          */
         if (draft.login.length > 0) {
-          document.setIn(
-            ['login'],
-            draft.login.map((step) => ({ when: step.when, send: step.send }))
-          );
+          document.setIn(['login'], draft.login.map(loginRow));
         } else if (document.hasIn(['login'])) {
           document.deleteIn(['login']);
         }
@@ -987,10 +982,7 @@ export class SettingsEditor {
         set(['connection', 'encoding'], draft.connection.encoding);
         // No account and no autoconnect here: both belong to a character, and
         // `dropAnonymousConnection` has already taken any old ones out.
-        set(
-          ['connection', 'login', 'steps'],
-          draft.connection.login.steps.map((step) => ({ when: step.when, send: step.send }))
-        );
+        set(['connection', 'login', 'steps'], draft.connection.login.steps.map(loginRow));
 
         set(['terminal', 'font', 'family'], splitNames(draft.terminal.fontFamily));
         set(['terminal', 'font', 'size'], draft.terminal.fontSize);
@@ -1162,7 +1154,11 @@ export class SettingsEditor {
         login: Array.isArray(login['steps'])
           ? login['steps']
               .filter(isRecord)
-              .map((step) => ({ when: text(step['when']), send: text(step['send']) }))
+              .map((step) => ({
+                when: text(step['when']),
+                send: text(step['send']),
+                ...(step['repeat'] === true ? { repeat: true } : {})
+              }))
               .filter((step) => step.when.length > 0)
           : [],
         /*
@@ -1295,6 +1291,18 @@ function inheritedLoops(
     ...fromServer.map((loop) => ({ loop, scope: 'server' as const, owner: serverName ?? '' })),
     ...tree.loops.globalLoops.map((loop) => ({ loop, scope: 'global' as const }))
   ];
+}
+
+/**
+ * One login row as it is written to disk.
+ *
+ * Projected field by field rather than spread, so a field the draft happens to
+ * carry cannot leak into the player's file. `repeat` is written only when it is
+ * on: an ordinary menu row stays the two keys it has always been, and a file
+ * somebody reads is not full of `repeat: false`.
+ */
+function loginRow(step: LoginStep): Record<string, unknown> {
+  return { when: step.when, send: step.send, ...(step.repeat ? { repeat: true } : {}) };
 }
 
 function text(value: unknown): string {

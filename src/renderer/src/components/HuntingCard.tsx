@@ -6,6 +6,7 @@ import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
 import {
+  fightUnpriced,
   huntLoop,
   loopNameOf,
   type HuntingAdvice,
@@ -38,8 +39,10 @@ import type { LoopDestination } from '../lib/loops';
  * Nothing here is a prediction. What was left out before the ranking — too
  * dangerous, or beneath this level — is counted in the head; a spot whose
  * rate could not be finished says which part was unknown and ranks below
- * every known rate; a deadly spot is last. A move re-asks on
- * `huntReaskMs`, since only the steps column moves with the character.
+ * every known rate; one whose fight itself could not be priced ranks below
+ * those, nearest first and never by what it pays, and the head says how many;
+ * a deadly spot is last. A move re-asks on `huntReaskMs`, since only the
+ * steps column moves with the character.
  */
 export interface HuntingCardProps extends CardChrome {
   session: SessionId;
@@ -79,6 +82,9 @@ const hours = (rate: number | null): string =>
 const seconds = (value: number | null): string => (value === null ? '?' : `${Math.round(value)}s`);
 const percent = (share: number | null): string =>
   share === null ? '?' : `${Math.round(share * 100)}%`;
+/** A floor, marked as one: the least the room can cost where a spawn's rounds are unknown. */
+const atLeast = (share: number | null): string =>
+  share === null ? '?' : `\u2265 ${percent(share)}`;
 
 function mobsOf(spot: HuntingSpot): string {
   return spot.mobs.map((mob) => mob.name).join(', ');
@@ -217,10 +223,18 @@ function HuntingCard({
         label: t('cards.hunting.columns.cost'),
         numeric: true,
         // The worst the room can spawn, which is what the exclusions read and
-        // what a person deciding whether to start there wants to know.
-        value: (spot) =>
-          spot.estimate.worstShare === null ? null : Math.round(spot.estimate.worstShare * 100),
-        cell: (spot) => percent(spot.estimate.worstShare)
+        // what a person deciding whether to start there wants to know — and
+        // the floor under it, marked as a floor, where a spawn's rounds are
+        // unknown: a room that costs *at least* half the bar is not a room
+        // whose cost is unknown.
+        value: (spot) => {
+          const share = spot.estimate.worstShare ?? spot.estimate.worstShareAtLeast;
+          return share === null ? null : Math.round(share * 100);
+        },
+        cell: (spot) =>
+          spot.estimate.worstShare === null
+            ? atLeast(spot.estimate.worstShareAtLeast)
+            : percent(spot.estimate.worstShare)
       }
     ],
     [open]
@@ -243,6 +257,18 @@ function HuntingCard({
           beneath: advice.excluded.beneath
         })
       : '';
+  /*
+   * A fight nobody could price is listed nearest first rather than by what it
+   * pays, and the head says so — on a realm whose kill arithmetic is not this
+   * family's, that is every row, and a list that looked ranked was the bug.
+   */
+  const unpricedCount = advice?.spots.filter((spot) => fightUnpriced(spot.estimate)).length ?? 0;
+  const unpriced =
+    unpricedCount === 0
+      ? ''
+      : unpricedCount === 1
+        ? t('cards.hunting.unpricedOne')
+        : t('cards.hunting.unpricedMany', { count: unpricedCount });
 
   return (
     <BentoCard
@@ -260,11 +286,17 @@ function HuntingCard({
               ? t('cards.hunting.loading')
               : advice === null
                 ? ''
-                : `${t('cards.hunting.from', {
-                    room: advice.from?.name ?? '',
-                    count: advice.spots.length,
-                    swept: advice.swept.toLocaleString()
-                  })} ${leftOut}`.trim()}
+                : [
+                    t('cards.hunting.from', {
+                      room: advice.from?.name ?? '',
+                      count: advice.spots.length,
+                      swept: advice.swept.toLocaleString()
+                    }),
+                    leftOut,
+                    unpriced
+                  ]
+                    .filter((sentence) => sentence !== '')
+                    .join(' ')}
         </span>
       </div>
       <CardTable
@@ -363,14 +395,19 @@ function SpotDetail({
           </dd>
           <dt>{t('cards.hunting.detail.cost')}</dt>
           <dd>
-            {estimate.damagePerRoom === null || estimate.worstDamagePerRoom === null
-              ? '?'
-              : t('cards.hunting.detail.costValue', {
+            {estimate.damagePerRoom !== null && estimate.worstDamagePerRoom !== null
+              ? t('cards.hunting.detail.costValue', {
                   hp: Math.round(estimate.damagePerRoom),
                   share: percent(estimate.damageShare),
                   worst: Math.round(estimate.worstDamagePerRoom),
                   worstShare: percent(estimate.worstShare)
-                })}
+                })
+              : estimate.worstDamageAtLeast === null
+                ? '?'
+                : t('cards.hunting.detail.costAtLeast', {
+                    worst: Math.round(estimate.worstDamageAtLeast),
+                    worstShare: percent(estimate.worstShareAtLeast)
+                  })}
           </dd>
           <dt>{t('cards.hunting.detail.walk')}</dt>
           <dd>

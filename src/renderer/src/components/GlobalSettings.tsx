@@ -658,6 +658,23 @@ export default function GlobalSettings({
                           placeholder={t('settings.global.realm.loginMenuSendPlaceholder')}
                           value={step.send}
                         />
+                        <input
+                          aria-label={t('settings.login.stepRepeatAria', { stepNumber: index + 1 })}
+                          checked={step.repeat ?? false}
+                          className="repeat"
+                          onChange={(event) =>
+                            patch('connection', {
+                              login: {
+                                ...draft.connection.login,
+                                steps: draft.connection.login.steps.map((entry, at) =>
+                                  at === index ? { ...entry, repeat: event.target.checked } : entry
+                                )
+                              }
+                            })
+                          }
+                          title={t('settings.login.stepRepeatTitle')}
+                          type="checkbox"
+                        />
                         <button
                           aria-label={t('settings.login.removeStepAria', { stepNumber: index + 1 })}
                           className="quiet"
@@ -1421,6 +1438,15 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="spells-blessings">
               <legend>{t('settings.spells.blessingsLegend')}</legend>
               <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
+              <CheckField
+                checked={draft.automation.spells.autoBless}
+                hint={t('settings.spells.autoBlessHint')}
+                label={t('settings.spells.autoBlessLabel')}
+                name="global-auto-bless"
+                onChange={(value) =>
+                  automation({ spells: { ...draft.automation.spells, autoBless: value } })
+                }
+              />
               <BlessingList
                 blessings={draft.automation.spells.blessings}
                 namePrefix="global-blessing"
@@ -1684,6 +1710,15 @@ export default function GlobalSettings({
                   automation({
                     movement: { ...draft.automation.movement, walkWhilePoisoned: value }
                   })
+                }
+              />
+              <CheckField
+                checked={draft.automation.movement.fightOnArrival}
+                hint={t('settings.movement.fightOnArrivalHint')}
+                label={t('settings.movement.fightOnArrival')}
+                name="global-fight-on-arrival"
+                onChange={(value) =>
+                  automation({ movement: { ...draft.automation.movement, fightOnArrival: value } })
                 }
               />
             </fieldset>

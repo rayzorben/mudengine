@@ -41,6 +41,7 @@ import {
 
 import { fileSlug } from '../../shared/files';
 import { isRecord } from '../../shared/values';
+import { credentialsNamed } from '../../shared/login';
 import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
@@ -211,7 +212,172 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheReplanDrift(home, note);
   theActionsBecameAFamily(home, note);
   statedTheLightWait(home, note);
+  pinTheBlessSwitch(home, note);
+  theAccountJoinedTheScript(home, note);
+  thePagerRepeats(home, note);
 }
+
+/**
+ * The account's two prompts become rows in the login script (2026-09-17).
+ *
+ * They were answered from the *block vocabulary* — `prompt-username` and
+ * `prompt-password`, which are two regexes over this realm family's own
+ * wording. Every other prompt on the way in was already described by the
+ * realm's own script, so a BBS that asks `Enter your ID:` had a client that
+ * could answer its menus and not its login, and no way for the player to say
+ * so. The rows now say it: `{user}` and `{password}` stand in for the values,
+ * which stay on the character's file.
+ *
+ * Which means a script somebody already has answers one prompt fewer than it
+ * used to, so every file that states one gets the pair written in — at the
+ * front, because that is where a BBS asks.
+ *
+ * Three things this will not do:
+ *
+ * - **Never twice.** A list already naming a credential anywhere is one
+ *   somebody has written rows for; a second pair would answer the same prompt
+ *   twice and the second answer would land at whatever came next. That is what
+ *   makes this idempotent, which a list entry is not for free.
+ * - **Never into an empty list.** A stated but empty `login:` means *this realm
+ *   has no menus*, and on a realm file it also means the options file's script
+ *   is what a character there inherits (`resolveProfile`). Writing two rows in
+ *   would turn that inheritance off and take the menus with it.
+ * - **Never into a file that states no script at all.** It inherits one, and
+ *   the file it inherits from is in this same list.
+ */
+function theAccountJoinedTheScript(home: Home, note: (message: string) => void): void {
+  const targets: Array<{ file: string; at: string[] }> = [
+    { file: home.options, at: ['connection', 'login', 'steps'] },
+    // The realm's own script, which is where a script belongs and so where
+    // almost every one of these will be.
+    ...directories(home.serversDir).map((id) => ({ file: home.server(id).file, at: ['login'] })),
+    // And a character that states its own to differ — a second character in a
+    // different slot, which replaces the realm's list rather than adding to it.
+    ...directories(home.profilesDir).map((id) => ({
+      file: home.profile(id).file,
+      at: ['login', 'steps']
+    }))
+  ];
+
+  const stated: string[] = [];
+  for (const { file, at } of targets) {
+    edit(file, (document) => {
+      const steps = document.getIn(at, true);
+      if (!isSeq(steps) || steps.items.length === 0) return false;
+      if (steps.items.some(namesAnAccount)) return false;
+
+      const user = document.createNode({ when: 'Please enter your username', send: '{user}' });
+      const password = document.createNode({
+        when: 'Please enter your password',
+        send: '{password}'
+      });
+      (user as YAMLMap<unknown, unknown>).commentBefore = ACCOUNT_STEPS_COMMENT;
+      steps.items.unshift(user, password);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.accountJoinedTheScript.one', params)
+      : t('notices.migration.accountJoinedTheScript.many', params)
+  );
+}
+
+/**
+ * A pager row answers every screenful (2026-09-17).
+ *
+ * `(N)onstop, (Q)uit, or (C)ontinue?` is not a menu. A menu is asked once and
+ * answering it moves on, which is why every row is spent when it is used; a
+ * pager is asked once per screenful, so the answer *working* is exactly what
+ * brings it back. Measured on bearfather: the script's `Q` stopped the first
+ * pageful, the BBS printed the text that follows it — registry notice, credits,
+ * three `Fantasy awaits you` banners — paged that too, asked again, and the
+ * sequence sat at the second prompt for the rest of the connection with the row
+ * already spent.
+ *
+ * Only rows whose wording is a pager's, and only where the flag is not already
+ * stated. The three below are the ones this client has seen on the wire;
+ * anything else is the player's to tick, which is what the checkbox beside each
+ * row is for. A `when` is matched case-insensitively, as the automator matches
+ * it.
+ *
+ * **Never a row that sends a credential**, however it is worded: the account's
+ * once-per-connection is what stops a password being retried into a lockout.
+ */
+function thePagerRepeats(home: Home, note: (message: string) => void): void {
+  const targets: Array<{ file: string; at: string[] }> = [
+    { file: home.options, at: ['connection', 'login', 'steps'] },
+    ...directories(home.serversDir).map((id) => ({ file: home.server(id).file, at: ['login'] })),
+    ...directories(home.profilesDir).map((id) => ({
+      file: home.profile(id).file,
+      at: ['login', 'steps']
+    }))
+  ];
+
+  const stated: string[] = [];
+  for (const { file, at } of targets) {
+    edit(file, (document) => {
+      const steps = document.getIn(at, true);
+      if (!isSeq(steps)) return false;
+      let changed = false;
+      for (const item of steps.items) {
+        if (!isMap(item)) continue;
+        if (item.get('repeat') !== undefined) continue;
+        if (namesAnAccount(item)) continue;
+        const when = item.get('when');
+        if (typeof when !== 'string' || !isPagerPrompt(when)) continue;
+        item.set('repeat', true);
+        changed = true;
+      }
+      if (changed) stated.push(file);
+      return changed;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.pagerRepeats.one', params)
+      : t('notices.migration.pagerRepeats.many', params)
+  );
+}
+
+/**
+ * Whether a row's `when` is a pager's question rather than a menu's.
+ *
+ * The wordings this client has met, not a guess at the shape: a prompt ending
+ * in a question mark is most menus too. Each is the distinctive middle of the
+ * sentence, so the surrounding punctuation and the `[More]` decoration a given
+ * BBS puts round it do not matter.
+ */
+function isPagerPrompt(when: string): boolean {
+  const text = when.toLowerCase();
+  return [
+    // Worldgroup / Major BBS, which is what MajorMUD sits behind.
+    'or (c)ontinue',
+    // The same pager without the quit option, and Synchronet's.
+    '(c)ontinue, (n)onstop',
+    'more [y/n]'
+  ].some((wording) => text.includes(wording));
+}
+
+/** Whether one `{ when, send }` row already asks for a credential. */
+function namesAnAccount(item: unknown): boolean {
+  if (!isMap(item)) return false;
+  const send = item.get('send');
+  return typeof send === 'string' && credentialsNamed(send).length > 0;
+}
+
+/** The template's own words, so a migrated file reads like a shipped one. */
+const ACCOUNT_STEPS_COMMENT = ` The account. \`{user}\` and \`{password}\` send this character's own, from
+ \`profiles/<id>/profile.yaml\` -- the values are never written here. Every BBS
+ words these two prompts differently, which is why they are rows like any
+ other rather than something the client recognises on your behalf.`;
 
 /**
  * `view.talkFollowResumeMs` 15s → 45s (todo 10, 2026-09-13).
@@ -3147,6 +3313,33 @@ function pinTheGearButton(home: Home, note: (message: string) => void): void {
  * reads as a fresh one. Falls back to appending when the block has been
  * rearranged by hand.
  */
+/**
+ * The Auto-Bless switch onto the toolbar, beside retaliate (todo 04).
+ *
+ * `pinTheGearButton`'s shape and its caveat: a list entry cannot say it was
+ * removed on purpose, so a player who unpins it finds it back next launch,
+ * and this says so in place.
+ */
+function pinTheBlessSwitch(home: Home, note: (message: string) => void): void {
+  let pinned = false;
+  edit(home.internal, (document) => {
+    const list = document.getIn(['toolbar', 'pinned'], true);
+    if (!isSeq(list)) return false;
+    const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
+    if (ids.includes('autoBless')) return false;
+    // Beside retaliate as the shipped row has it; on a curated row missing
+    // it, after the nearest of the switches that precede it there, else the
+    // front — the order a fresh client draws, as far as the row allows.
+    const after = ['retaliate', 'combat', 'automation']
+      .map((id) => ids.indexOf(id))
+      .find((at) => at >= 0);
+    list.items.splice(after === undefined ? 0 : after + 1, 0, new Scalar('autoBless'));
+    pinned = true;
+    return true;
+  });
+  if (pinned) note(t('notices.migration.blessSwitchPinned'));
+}
+
 function statedTheStepNudge(home: Home, note: (message: string) => void): void {
   let stated = false;
   edit(home.internal, (document) => {
@@ -3702,6 +3895,19 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
       ) {
         changed = true;
       }
+      if (addKeys(document, ['automation', 'spells'], [['autoBless', true]], AUTO_BLESS_COMMENT)) {
+        changed = true;
+      }
+      if (
+        addKeys(
+          document,
+          ['automation', 'movement'],
+          [['fightOnArrival', true]],
+          FIGHT_ON_ARRIVAL_COMMENT
+        )
+      ) {
+        changed = true;
+      }
       if (changed) stated.push(file);
       return changed;
     });
@@ -3989,6 +4195,14 @@ const NOTIFY_WEAR_OFF_COMMENT = ` Tell the party member who blessed you when the
  \`/<caster> @bless-expired <spell>\` -- so their client recasts on the event
  instead of its clock. Both ends must run mudengine. Off: it speaks on
  somebody's telepath channel unasked.`;
+
+const FIGHT_ON_ARRIVAL_COMMENT = ` Turn auto-combat back on when a route you asked for arrives: walking
+ with it off is how you get somewhere without fighting on the way, and on
+ arrival that reason is gone. Flips the switch in this file.`;
+
+const AUTO_BLESS_COMMENT = ` Whether the blessings above are cast unasked at all. The toolbar's
+ Auto-Bless switch: off keeps the mana for healing through a fight without
+ emptying the list; the cures and the heal are untouched.`;
 
 const DROP_DEFAULT = { enabled: false, items: [], whenEncumbered: false };
 /** The template's own words, abridged, so the two files read alike. */
@@ -5515,6 +5729,10 @@ function theTuningBlockGainedKeys(
     addKey('session', 'resetExpDropShare', DEFAULT_INTERNAL.tuning.session.resetExpDropShare);
     /* A prompt the server writes in two pieces (2026-09-10, todo 01): how long the second may take. */
     addKey('session', 'promptHoldMs', DEFAULT_INTERNAL.tuning.session.promptHoldMs);
+    /* And how long a tail that is not a prompt waits for the rest of itself
+       (2026-09-17): the quiet period is a prompt's, and 150ms of internet is
+       not an ended sentence. In the template's own order, beside it. */
+    addKey('session', 'sentenceHoldMs', DEFAULT_INTERNAL.tuning.session.sentenceHoldMs);
     /* How long a listing the client redraws waits for its prompt (2026-09-10, todo 99). */
     addKey('session', 'rewriteHoldMs', DEFAULT_INTERNAL.tuning.session.rewriteHoldMs);
     /* The look queue's floor and its shelf life (2026-09-07, todo 10). */

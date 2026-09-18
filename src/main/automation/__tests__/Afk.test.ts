@@ -39,6 +39,7 @@ function telepath(player: string, message?: string): Block {
   return {
     seq: 1,
     at: clock,
+    terminator: 'newline',
     type: 'conversation-telepath',
     domain: 'conversation',
     groups: message === undefined ? { player } : { player, message },

@@ -1,8 +1,10 @@
 import type { RoomId } from '../../shared/world';
+import type { LairPass } from '../../shared/verdict';
 
 /**
- * What one pass through each room's lair takes from one character, in hit
- * points, remembered until the character changes.
+ * What one pass through each room's lair takes from one character — the hit
+ * points and whether the wire settles that it happens (`LairPass`) —
+ * remembered until the character changes.
  *
  * The router asks about every room it expands, and weighing a lair means
  * building its monsters' entities and running the combat arithmetic against
@@ -21,12 +23,12 @@ import type { RoomId } from '../../shared/world';
  */
 export class LairCosts {
   private fitness = '';
-  private readonly rooms = new Map<RoomId, number | null>();
+  private readonly rooms = new Map<RoomId, LairPass | null>();
 
-  constructor(private readonly weigh: (room: RoomId) => number | null) {}
+  constructor(private readonly weigh: (room: RoomId) => LairPass | null) {}
 
-  /** The damage for one room under the character described by `fitness`. */
-  at(fitness: string, room: RoomId): number | null {
+  /** The pass for one room under the character described by `fitness`. */
+  at(fitness: string, room: RoomId): LairPass | null {
     if (fitness !== this.fitness) {
       this.fitness = fitness;
       this.rooms.clear();

@@ -77,6 +77,26 @@ export interface LoginStep {
   when: string;
   /** What to send. May be empty, for a bare Enter. */
   send: string;
+  /**
+   * Whether this row answers its prompt every time it arrives.
+   *
+   * Off by default, because *once per connection* is what a menu wants: a menu
+   * that comes back means the answer was refused, and answering again loops.
+   *
+   * A **pager** is the other kind of prompt, and the rule above reads it
+   * wrongly. `(N)onstop, (Q)uit, or (C)ontinue?` is asked once per screenful,
+   * so a BBS printing three screens asks three times and every answer works;
+   * `Q` stopped the pager the first time and the sequence then sat at the
+   * second one for ever, because the row was spent. The two are not
+   * distinguishable from the prompt's own text -- both are a line ending in a
+   * question -- so the realm's script is where it is said.
+   *
+   * **Never on a row that sends a credential.** The account's *once per
+   * connection* is what stops an automated client retrying a password into a
+   * lockout, and it is keyed on the credential rather than on the row for
+   * exactly that reason. `LoginAutomator` ignores this flag there.
+   */
+  repeat?: boolean;
 }
 
 /**
@@ -1692,6 +1712,15 @@ export interface MovementConfig {
    */
   walkWhileBlind: boolean;
   /**
+   * Turn auto-combat back on when a route the player asked for arrives (todo
+   * 11). The ordinary reason to walk with it off is to get somewhere without
+   * fighting on the way; on arrival the reason is gone. Only a route the
+   * player asked for — a loop's leg and an errand are not journeys with an
+   * arrival in them. The switch flips the character's own file, so the
+   * toolbar shows it.
+   */
+  fightOnArrival: boolean;
+  /**
    * Walk on while poisoned. Off, the walk waits the poison out — MegaMUD's
    * `IgnorePoison` default. A cure under `spells.cures` ends the wait sooner.
    * Disease is not a movement matter and has no switch.
@@ -1818,19 +1847,20 @@ export interface SpellsConfig {
   /**
    * The spell to attack with. Blank casts nothing.
    *
-   * Sent as `c <short> <target>` — the realm's own `Cast` command, which
-   * answers to `c`, `ca`, `cas` and `cast`, reads exactly **one word** as the
-   * spell, and that word is the listing's short name, not a prefix of the
-   * name (measured 2026-09-01: `c pressure points` answers `You do not know
-   * how to cast pressure.`). The configured value stays the readable whole
-   * name, or an abbreviation; `castWord` resolves it when the cast goes out.
+   * Sent as `<short> <target>` — the listing's short name is itself the
+   * command (`swan`, `mihe giant rat` on the wire: captures/083, 092) and
+   * never goes behind `c`, since a mystic's kai powers have no `c` form
+   * (2026-09-17). Nor is it a prefix of the name (measured 2026-09-01:
+   * `c pressure points` answers `You do not know how to cast pressure.`).
+   * The configured value stays the readable whole name, or an
+   * abbreviation; `castWord` resolves it when the cast goes out.
    */
   attack: string;
   /**
    * The spell to attack the whole room with, when the fight is crowded enough
    * — MegaMUD's MultAttack. Blank casts nothing.
    *
-   * Cast bare (`c <spell>`, no target): the wire shows an area spell cast
+   * Cast bare (`<spell>`, no target): the wire shows an area spell cast
    * with no target answering `You cast poison cloud on the room!`
    * (captures/131, `pclo` typed at the prompt). A named target on a room
    * spell has never been seen on the wire, so it is not sent.
@@ -2003,6 +2033,15 @@ export interface SpellsConfig {
    * speaks on another player's telepath channel unasked.
    */
   notifyPartyOnWearOff: boolean;
+  /**
+   * Whether the blessings below are cast unasked at all.
+   *
+   * The toolbar's *Auto-Bless* switch (todo 04): somebody who wants the
+   * mana for healing turns it off for the fight and back on after, without
+   * emptying the list. Off, `Blessings` proposes nothing; the list, the
+   * cures and the heal are untouched.
+   */
+  autoBless: boolean;
 }
 
 /** Whom a blessing is cast on: this character, or every listed party member. */
@@ -2314,14 +2353,23 @@ export const DEFAULT_CONFIG: AppConfig = {
        * What Paradigm asks, in the order it asks it. Anything else is a BBS
        * somebody adds rows for — matched rather than sequenced, so a row that
        * never matches costs nothing.
+       *
+       * The account is two rows like any other, filled in from the character's
+       * own file (`src/shared/login.ts`). Every BBS asks for it and every BBS
+       * words the question differently, which is the whole reason it is here
+       * rather than keyed on a block type the classifier has to recognise.
        */
       steps: [
+        { when: 'Please enter your username', send: '{user}' },
+        { when: 'Please enter your password', send: '{password}' },
         { when: 'Please enter your selection', send: 'P' },
         { when: 'Please select a realm', send: '1' },
         { when: 'Please select a character', send: '1' },
         { when: '[PARADIGM]', send: 'E' },
         { when: 'Accept these realm rules to continue', send: '1' },
-        { when: '(N)onstop, (Q)uit, or (C)ontinue?', send: '' }
+        // A pager, asked once per screenful: see `LoginStep.repeat`. Without
+        // the flag the first one is answered and the login sits at the second.
+        { when: '(N)onstop, (Q)uit, or (C)ontinue?', send: '', repeat: true }
       ]
     }
   },
@@ -2562,6 +2610,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       recoverGearFloor: 2,
       walkWhileBlind: false,
       walkWhilePoisoned: false,
+      fightOnArrival: true,
       collectKeys: true
     },
     hunting: {
@@ -2593,7 +2642,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       minMana: 0.15,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoBless: true
     }
   }
 };
@@ -2629,6 +2679,7 @@ export const AUTOMATION_SWITCHES = {
   automation: ['enabled'],
   combat: ['combat', 'enabled'],
   retaliate: ['combat', 'retaliate'],
+  autoBless: ['spells', 'autoBless'],
   retreat: ['safety', 'retreat', 'enabled'],
   hangUp: ['safety', 'hangUp', 'enabled'],
   loot: ['loot', 'coins'],
@@ -3086,7 +3137,12 @@ function readLoginSteps(value: unknown): LoginStep[] | null {
     const when = str(entry['when'], '');
     if (when.length === 0) continue;
     // `send` may legitimately be empty: several menus want a bare Enter.
-    steps.push({ when, send: typeof entry['send'] === 'string' ? entry['send'] : '' });
+    // `repeat` is written only when stated, so an ordinary row stays two keys.
+    steps.push({
+      when,
+      send: typeof entry['send'] === 'string' ? entry['send'] : '',
+      ...(entry['repeat'] === true ? { repeat: true } : {})
+    });
   }
   return steps;
 }
@@ -3716,6 +3772,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
+    fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
     collectKeys: bool(raw['collectKeys'], d.collectKeys)
   };
 }
@@ -3853,7 +3910,8 @@ function normalizeSpells(value: unknown): SpellsConfig {
     minMana: fraction(raw['minMana'], d.minMana),
     cures: normalizeCures(raw['cures']),
     blessings: normalizeBlessings(raw['blessings']),
-    notifyPartyOnWearOff: bool(raw['notifyPartyOnWearOff'], d.notifyPartyOnWearOff)
+    notifyPartyOnWearOff: bool(raw['notifyPartyOnWearOff'], d.notifyPartyOnWearOff),
+    autoBless: bool(raw['autoBless'], d.autoBless)
   };
 }
 

@@ -15,6 +15,12 @@ port: 2324
 encoding: cp437
 
 login:
+  # The account. The values live on the character, in
+  # `profiles/<id>/profile.yaml`; only the prompts are here.
+  - when: 'Please enter your username'
+    send: '{user}'
+  - when: 'Please enter your password'
+    send: '{password}'
   - when: 'Please enter your selection'
     send: P
   # Which realm on this server.

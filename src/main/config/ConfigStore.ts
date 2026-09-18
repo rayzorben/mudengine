@@ -331,7 +331,14 @@ function sameServers(a: readonly Server[], b: readonly Server[]): boolean {
       server.login.length === other.login.length &&
       server.login.every((step, at) => {
         const twin = other.login[at];
-        return !!twin && step.when === twin.when && step.send === twin.send;
+        return (
+          !!twin &&
+          step.when === twin.when &&
+          step.send === twin.send &&
+          // The pager flag counts: a realm file edited to tick only that box is
+          // a change, and swallowed here it would not reach the automator.
+          (step.repeat ?? false) === (twin.repeat ?? false)
+        );
       })
     );
   });

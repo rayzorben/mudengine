@@ -1688,6 +1688,8 @@ toolbar:
       'automation',
       'combat',
       'retaliate',
+      // And the bless switch beside retaliate (`pinTheBlessSwitch`).
+      'autoBless',
       'loot',
       'loop:open',
       // The three transport keys this row shipped with are one button now, and
@@ -1729,8 +1731,9 @@ toolbar:
     migrate();
     // The shelf goes to the front — its own anchor, `loot`, is not on this row
     // — the gear button lands after `connect`, which is, and back has no
-    // `move:toggle` to sit beside so it goes on the end.
-    expect(pinned()).toEqual(['loop:open', 'connect', 'gear:restore', 'move:back']);
+    // `move:toggle` to sit beside so it goes on the end. The bless switch has
+    // none of its neighbours here either, and runs last, so it takes the front.
+    expect(pinned()).toEqual(['autoBless', 'loop:open', 'connect', 'gear:restore', 'move:back']);
   });
 
   /* A deviation from the shipped row lives in `localStorage`, which this
@@ -1979,6 +1982,8 @@ tuning:
       'connect',
       'gear:restore',
       'combat',
+      // Beside combat, the nearest of its shipped neighbours on this row.
+      'autoBless',
       'move:toggle',
       'move:back',
       'loop:open'
@@ -2032,7 +2037,14 @@ describe('the gear button on an existing toolbar', () => {
      arriving, not while walking. */
   it('adds it beside the dial, leaving the rest alone', () => {
     migrate();
-    expect(pinned()).toEqual(['connect', 'gear:restore', 'automation', 'loop:open', 'move:back']);
+    expect(pinned()).toEqual([
+      'connect',
+      'gear:restore',
+      'automation',
+      'autoBless',
+      'loop:open',
+      'move:back'
+    ]);
   });
 
   it('says so, because a toolbar that changed silently is one nobody trusts', () => {
@@ -2054,13 +2066,73 @@ describe('the gear button on an existing toolbar', () => {
   it('goes to the front of a row with no dial on it', () => {
     fs.writeFileSync(home.internal, 'toolbar:\n  pinned:\n    - combat\n', 'utf8');
     migrate();
-    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'combat', 'move:back']);
+    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'combat', 'autoBless', 'move:back']);
   });
 
   it('leaves a file that states no toolbar alone', () => {
     fs.writeFileSync(home.internal, 'terminal:\n  scrollback: 5000\n', 'utf8');
     migrate();
     expect(fs.readFileSync(home.internal, 'utf8')).toBe('terminal:\n  scrollback: 5000\n');
+  });
+});
+
+describe('the bless switch on an existing toolbar', () => {
+  const ROW = `toolbar:
+  pinned:
+    - connect
+    - 'gear:restore'
+    - automation
+    - combat
+    - retaliate
+    - loot
+    - 'loop:open'
+    - 'move:toggle'
+    - 'move:back'
+`;
+
+  const pinned = (): unknown =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
+      .pinned;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, ROW, 'utf8');
+  });
+
+  /* Beside retaliate, where the shipped row puts it (todo 04). */
+  it('adds it beside retaliate, leaving the rest alone', () => {
+    migrate();
+    expect(pinned()).toEqual([
+      'connect',
+      'gear:restore',
+      'automation',
+      'combat',
+      'retaliate',
+      'autoBless',
+      'loot',
+      'loop:open',
+      'move:toggle',
+      'move:back'
+    ]);
+  });
+
+  it('says so', () => {
+    migrate();
+    expect(said.join(' ')).toContain('Auto-Bless');
+  });
+
+  it('does nothing on a second run', () => {
+    migrate();
+    migrate();
+    expect((pinned() as string[]).filter((id) => id === 'autoBless')).toHaveLength(1);
+  });
+
+  /* A curated row keeps its own order: the switch lands after the nearest of
+     the neighbours the shipped row gives it, else at the front. */
+  it('goes to the front of a row with none of its neighbours on it', () => {
+    fs.writeFileSync(home.internal, "toolbar:\n  pinned:\n    - 'loop:open'\n", 'utf8');
+    migrate();
+    expect((pinned() as string[])[0]).toBe('autoBless');
   });
 });
 
@@ -2738,7 +2810,17 @@ describe('the anonymous connection', () => {
     expect(written.connection).toEqual({
       host: 'orohost',
       port: 2427,
-      login: { steps: [{ when: 'Please enter your selection', send: 'P' }] }
+      login: {
+        steps: [
+          // The two `theAccountJoinedTheScript` writes in. Which is the same
+          // decision read from the other end: the *values* never belonged in
+          // this file, and the *prompts* that ask for them are menus like any
+          // other, so the account leaves and the rows naming it arrive.
+          { when: 'Please enter your username', send: '{user}' },
+          { when: 'Please enter your password', send: '{password}' },
+          { when: 'Please enter your selection', send: 'P' }
+        ]
+      }
     });
   });
 
@@ -5137,5 +5219,196 @@ describe('training is stated', () => {
     const after = fs.readFileSync(home.options, 'utf8');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+});
+
+/**
+ * The account's two prompts become rows in the login script.
+ *
+ * They were answered off the block type — two regexes over this realm family's
+ * own wording — so a BBS that asks `Login ID:` had a client that could answer
+ * its menus and not its login. Every script somebody already has therefore
+ * answers one prompt fewer than it used to, and gets the pair written in.
+ */
+describe('the account joins the login script', () => {
+  const server = (): Record<string, unknown> =>
+    parse(fs.readFileSync(home.server('para').file, 'utf8')) as Record<string, unknown>;
+
+  function realm(login: string): void {
+    const scope = home.server('para');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(
+      scope.file,
+      `name: Paradigm\nhost: paramud.mudinfo.net\nport: 2323\n${login}`,
+      'utf8'
+    );
+  }
+
+  it('writes both rows at the front of a realm that states a script', () => {
+    // At the front because that is where a BBS asks: the account comes before
+    // the menus that depend on having one.
+    realm("login:\n  - when: 'Please enter your selection'\n    send: P\n");
+    migrate();
+    expect(server()['login']).toEqual([
+      { when: 'Please enter your username', send: '{user}' },
+      { when: 'Please enter your password', send: '{password}' },
+      { when: 'Please enter your selection', send: 'P' }
+    ]);
+    expect(said.join('\n')).toContain(home.server('para').file);
+  });
+
+  it('writes them into the options file and a character that states its own', () => {
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+    fs.writeFileSync(
+      home.options,
+      "connection:\n  login:\n    steps:\n      - when: 'Please select a character'\n        send: '1'\n",
+      'utf8'
+    );
+    const scope = home.profile('soul');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(
+      scope.file,
+      "server: Paradigm\nlogin:\n  steps:\n    - when: 'Please select a character'\n      send: '2'\n",
+      'utf8'
+    );
+    migrate();
+
+    const options = parse(fs.readFileSync(home.options, 'utf8')) as {
+      connection: { login: { steps: unknown[] } };
+    };
+    expect(options.connection.login.steps[0]).toEqual({
+      when: 'Please enter your username',
+      send: '{user}'
+    });
+    const profile = parse(fs.readFileSync(scope.file, 'utf8')) as { login: { steps: unknown[] } };
+    expect(profile.login.steps).toHaveLength(3);
+    expect(profile.login.steps[1]).toEqual({
+      when: 'Please enter your password',
+      send: '{password}'
+    });
+  });
+
+  /*
+   * A list already naming a credential is one somebody has written rows for,
+   * and a second pair would answer the same prompt twice — the second answer
+   * landing at whatever came next. This is what makes it idempotent, which a
+   * list entry is not for free.
+   */
+  it('leaves a script that already asks for the account alone, and runs twice safely', () => {
+    realm(
+      "login:\n  - when: 'Login ID'\n    send: '{user}'\n  - when: 'Password'\n    send: '{password}'\n"
+    );
+    migrate();
+    expect(said.join('\n')).not.toMatch(/username and password prompts/i);
+
+    realm("login:\n  - when: 'Please enter your selection'\n    send: P\n");
+    migrate();
+    const after = fs.readFileSync(home.server('para').file, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.server('para').file, 'utf8')).toBe(after);
+  });
+
+  /*
+   * A stated but empty `login:` means *this realm has no menus* — and on a
+   * realm file it is also what makes a character there inherit the options
+   * file's script. Two rows would turn that inheritance off and take the menus
+   * with it.
+   */
+  it('writes nothing into an empty list or a file that states no script', () => {
+    realm('login: []\n');
+    migrate();
+    expect(server()['login']).toEqual([]);
+
+    realm('');
+    migrate();
+    expect(server()['login']).toBeUndefined();
+    expect(said.join('\n')).not.toMatch(/username and password prompts/i);
+  });
+
+  it('keeps the comments, and never writes a credential down', () => {
+    realm("# The user's own note.\nlogin:\n  - when: 'Please enter your selection'\n    send: P\n");
+    migrate();
+    const text = fs.readFileSync(home.server('para').file, 'utf8');
+    expect(text).toContain("# The user's own note.");
+    expect(text).toContain('{user}');
+    // Every message names a path and a count; these files hold passwords.
+    expect(said.join('\n')).not.toContain('{password}');
+  });
+});
+
+/**
+ * A pager row is marked to answer every screenful.
+ *
+ * `(N)onstop, (Q)uit, or (C)ontinue?` is asked once per screenful, so the
+ * prompt coming back is the answer working — the opposite of a menu, which the
+ * script's once-per-row rule was written for. Measured on bearfather: the
+ * script's `Q` stopped the first pageful and the login then sat at the second
+ * prompt for the rest of the connection.
+ */
+describe('a pager answers every screenful', () => {
+  const server = (): Record<string, unknown> =>
+    parse(fs.readFileSync(home.server('bf').file, 'utf8')) as Record<string, unknown>;
+
+  function realm(login: string): void {
+    const scope = home.server('bf');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(
+      scope.file,
+      `name: Bearfather
+host: bbs.bearfather.net
+port: 23
+${login}`,
+      'utf8'
+    );
+  }
+
+  it('ticks the pager row and leaves the menus once-only', () => {
+    realm(
+      "login:\n  - when: 'Login ID'\n    send: '{user}'\n" +
+        "  - when: '(N)onstop, (Q)uit, or (C)ontinue?'\n    send: Q\n" +
+        "  - when: 'Make Your Selection'\n    send: M\n"
+    );
+    migrate();
+    expect(server()['login']).toEqual([
+      { when: 'Login ID', send: '{user}' },
+      { when: '(N)onstop, (Q)uit, or (C)ontinue?', send: 'Q', repeat: true },
+      { when: 'Make Your Selection', send: 'M' }
+    ]);
+    expect(said.join('\n')).toContain(home.server('bf').file);
+  });
+
+  it('leaves a stated flag alone, and runs twice safely', () => {
+    // Somebody who has turned it off has answered the question; a migration
+    // that overwrote that would be the client arguing with them.
+    //
+    // The account row is there so `theAccountJoinedTheScript`, which runs
+    // first, leaves this script alone: what is under test is the pager flag.
+    realm(
+      "login:\n  - when: 'Login ID'\n    send: '{user}'\n" +
+        "  - when: 'or (C)ontinue'\n    send: Q\n    repeat: false\n"
+    );
+    migrate();
+    expect(server()['login']).toEqual([
+      { when: 'Login ID', send: '{user}' },
+      { when: 'or (C)ontinue', send: 'Q', repeat: false }
+    ]);
+    expect(said.join('\n')).not.toMatch(/pager/i);
+
+    realm(
+      "login:\n  - when: 'Login ID'\n    send: '{user}'\n" +
+        "  - when: '(N)onstop, (Q)uit, or (C)ontinue?'\n    send: Q\n"
+    );
+    migrate();
+    const after = fs.readFileSync(home.server('bf').file, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.server('bf').file, 'utf8')).toBe(after);
+  });
+
+  it('never ticks a row that sends a credential', () => {
+    // Whatever it is worded like: the account's once-per-connection is what
+    // stops a password being retried into a lockout.
+    realm("login:\n  - when: 'or (C)ontinue'\n    send: '{password}'\n");
+    migrate();
+    expect(server()['login']).toEqual([{ when: 'or (C)ontinue', send: '{password}' }]);
   });
 });

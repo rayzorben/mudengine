@@ -63,6 +63,7 @@ function block(type: BlockType, text = ''): Block {
     domain: domainOf(type),
     groups: {},
     text,
+    terminator: 'newline',
     confidence: 0.8
   };
 }

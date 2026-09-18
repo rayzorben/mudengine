@@ -229,6 +229,39 @@ describe('when it will not search', () => {
     at(search, state({ ...unplaced, exits: [wireExit('s')] }));
     expect(sent).toEqual(['search', 'search']);
   });
+
+  /*
+   * A maze repeats its addresses on purpose: three rooms called `Secret
+   * Passage` printing `east, west` in a row, walked one after another on
+   * bearfather (2026-09-17). The name and the exits say one room; the arrival
+   * says three, and the arrival is the only thing that can.
+   */
+  it('searches each room of a corridor of namesakes', () => {
+    const passage = {
+      map: null,
+      number: null,
+      name: 'Secret Passage',
+      exits: [wireExit('e'), wireExit('w')]
+    };
+    const search = queueSearch();
+    at(search, state({ ...passage, arrival: 4 }));
+    at(search, state({ ...passage, arrival: 5 }));
+    at(search, state({ ...passage, arrival: 6 }));
+    expect(sent).toEqual(['search', 'search', 'search']);
+  });
+
+  /*
+   * And the other half of the same fact: a room merely printed again — a
+   * `look`, the courtesy reprint after a fight, the idle Enter — is the room
+   * the character is already standing in, whatever else changed about it.
+   */
+  it('does not search a room the server simply printed again', () => {
+    const search = queueSearch();
+    at(search, state({ arrival: 7 }));
+    at(search, state({ arrival: 7, occupants: [] }));
+    at(search, state({ arrival: 7 }));
+    expect(sent).toEqual(['search']);
+  });
 });
 
 /*

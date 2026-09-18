@@ -63,11 +63,11 @@
  *   status line arrives several times a second under pressure and a `party`
  *   listing repeats.
  *
- * Proposes `c <short>` bare for this character — a targetless cast lands on the
- * caster (the todo's own transcript, 2026-09-01) — and `c <short> <name>` for a
+ * Proposes `<short>` bare for this character — a targetless cast lands on the
+ * caster (the todo's own transcript, 2026-09-01) — and `<short> <name>` for a
  * member, except where the realm calls the spell party-wide (`healing rain`),
  * which reaches everybody friendly and takes no name. The word is the realm's
- * short name because the `Cast` command reads exactly one word as the spell
+ * short name, which is itself the command and never goes behind `c`
  * (`castWord`). In the `combat` band: a heal that arrives after the round has
  * been lost has lost it, unlike a rest.
  */
@@ -366,7 +366,7 @@ export class AutoHeal {
      */
     const bare = target === null || castsBare(spellTargeting(found.realm?.targets));
     this.queue.enqueue({
-      command: bare ? `c ${word}` : `c ${word} ${target}`,
+      command: bare ? word : `${word} ${target}`,
       priority: 'combat',
       coalesceKey: `heal:${key}`,
       expiresAt: at + tuning().spells.healExpiresMs,

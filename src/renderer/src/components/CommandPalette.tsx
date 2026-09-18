@@ -5,6 +5,7 @@ import ClearField from './ClearField';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { chord } from '../lib/platform';
+import type { PopoverAnchor } from '../lib/popover';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { tuning } from '../lib/tuning';
 
@@ -83,7 +84,24 @@ export interface Command {
    * automatic return would immediately undo the command's own focus move.
    */
   movesFocus?: boolean;
-  run(): void;
+  /**
+   * @param from Where the row was chosen, for a command that opens a panel
+   *   beside it. The palette hands over the box it stood in — the dialog is
+   *   gone by the time the panel is placed — and a hotkey or a menu hands
+   *   over nothing.
+   */
+  run(from?: PopoverAnchor): void;
+}
+
+/**
+ * A run of rows the query reached past the client's own vocabulary, under its
+ * own heading: the rooms it could walk to, the things the realm knows by that
+ * name. Every row in it is `transient`.
+ */
+export interface Found {
+  key: string;
+  label: string;
+  items: Command[];
 }
 
 export interface CommandPaletteProps {
@@ -109,8 +127,13 @@ export interface CommandPaletteProps {
    * knows how to draw, navigate and run one, so a second kind of row would be
    * a second set of keys to keep in step with the first — the failure
    * `useListNavigation` exists because of. Every row it returns is `transient`.
+   *
+   * Answered in blocks because the two kinds of answer do different things:
+   * Enter on a room walks a character somewhere, Enter on a monster opens a
+   * panel to read, and one heading over both would make the second look like
+   * the first. Rooms come first, so Enter on a room query means what it did.
    */
-  find?(query: string): Promise<Command[]>;
+  find?(query: string): Promise<Found[]>;
   /**
    * @param movesFocus Whether the action that closed the palette is taking
    *   focus somewhere itself. When false — every dismissal, and most commands —
@@ -159,8 +182,9 @@ export default function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<CommandGroup>>(new Set());
-  const [searched, setSearched] = useState<Command[]>([]);
+  const [searched, setSearched] = useState<Found[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -199,8 +223,8 @@ export default function CommandPalette({
     let live = true;
     const timer = window.setTimeout(() => {
       void find(needle)
-        .then((rows) => {
-          if (live) setSearched(rows);
+        .then((blocks) => {
+          if (live) setSearched(blocks.filter((block) => block.items.length > 0));
         })
         .catch(() => {
           if (live) setSearched([]);
@@ -278,13 +302,13 @@ export default function CommandPalette({
        * command at all, so these are usually the only rows there are — which
        * is what makes Enter on them the obvious next thing.
        */
-      if (searched.length > 0)
+      for (const found of searched)
         out.push({
-          key: 'found',
-          label: t('palette.groups.found'),
+          key: `found:${found.key}`,
+          label: found.label,
           toggles: null,
           boxed: true,
-          items: searched
+          items: found.items
         });
     }
 
@@ -307,9 +331,18 @@ export default function CommandPalette({
     });
   };
 
+  /*
+   * Where the palette stood, measured before it goes: a command that opens a
+   * panel places it beside this box, and the dialog itself is unmounted by
+   * the time that panel is laid out. `within` is the body because nothing
+   * that scrolls encloses a fixed dialog, so no scroll dismisses the panel.
+   */
   const choose = (command: Command): void => {
+    const dialog = dialogRef.current;
+    const from: PopoverAnchor | undefined =
+      dialog === null ? undefined : { box: dialog.getBoundingClientRect(), within: document.body };
     onClose(command.movesFocus ?? false);
-    command.run();
+    command.run(from);
   };
 
   // Shared with every other filtered list, so they cannot drift apart again.
@@ -341,6 +374,7 @@ export default function CommandPalette({
         aria-modal="true"
         className="surface palette"
         onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
       >
         <ClearField label={t('palette.filterLabel')} onClear={() => setQuery('')} query={query}>

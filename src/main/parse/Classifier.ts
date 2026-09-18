@@ -18,7 +18,7 @@ import {
   type NameSources
 } from '../../shared/mobs';
 import { BATCH_RULES, RULES, STATUS_LINE, type BatchRule, type Rule } from './patterns';
-import type { StreamLine } from '../../shared/types';
+import type { LineTerminator, StreamLine } from '../../shared/types';
 import type { SpellMessageHit } from '../../shared/spell-messages';
 import type { ActionHit } from '../../shared/actions';
 import type { MessageHit } from '../../shared/messages';
@@ -237,6 +237,8 @@ export class Classifier {
     lines: string[];
     startedAt: number;
     seq: number;
+    /** How the most recent line of the batch ended — see `build`. */
+    terminator: LineTerminator;
     /** What the header line itself captured — see `feedBatch`. */
     head: Record<string, string>;
   } | null = null;
@@ -371,7 +373,14 @@ export class Classifier {
      * of the lookups and open to `unknown` only, so it fills what no frame and
      * no other table read (todo 109).
      */
-    private readonly messages?: (text: string) => MessageHit | null
+    private readonly messages?: (text: string) => MessageHit | null,
+    /**
+     * Whether a message row is one a confusing spell prints on a fumble —
+     * `ConfuseMsg`'s targets across this realm's spells (todo 05). The row
+     * is what makes `You retch uncontrollably!` a thrown-away command rather
+     * than a line the table merely explains.
+     */
+    private readonly fumbles?: (row: number) => boolean
   ) {}
 
   /** The type of the listing being collected, or null between listings. */
@@ -739,6 +748,15 @@ export class Classifier {
     const hit = this.messages(text);
     if (hit === null) return block;
     const confidence = tuning().parse.baseConfidence;
+    /*
+     * The character's own line of a confusion row (`You retch
+     * uncontrollably!`) is the fumble `You fumble in confusion!` is: the
+     * command was thrown away before the server read it. The room's line
+     * (`%s retches uncontrollably!`) is somebody else's and stays explained.
+     */
+    if (hit.role === 1 && this.fumbles?.(hit.number) === true) {
+      return this.build(line, 'command-fumbled', this.messageGroups(hit), text, confidence);
+    }
     const names = hit.fills.filter((fill, index) => hit.numeric[index] !== true && fill.length > 0);
     const figure = hit.fills.find((_, index) => hit.numeric[index] === true);
     const castShaped = hit.kind === 'spell' || hit.kind === 'cast';
@@ -1016,6 +1034,9 @@ export class Classifier {
       domain: domainOf(type),
       groups: clean,
       text,
+      // Carried, never re-derived: `flush` is what makes a line a prompt, and
+      // it is a fact about the framing that nothing downstream can recover.
+      terminator: line.terminator,
       confidence
     };
   }
@@ -1051,11 +1072,19 @@ export class Classifier {
           if (value !== undefined) head[key] = value;
         }
       }
-      this.batch = { rule, lines: [text], startedAt: line.at, seq: line.seq, head };
+      this.batch = {
+        rule,
+        lines: [text],
+        startedAt: line.at,
+        seq: line.seq,
+        terminator: line.terminator,
+        head
+      };
       return undefined;
     }
 
     this.batch.lines.push(text);
+    this.batch.terminator = line.terminator;
     const { rule, lines } = this.batch;
 
     /*
@@ -1127,6 +1156,9 @@ export class Classifier {
     const seq = this.batch.seq;
     const at = this.batch.startedAt;
     const head = this.batch.head;
+    // The line that closed the listing, which is the one that ended it: a
+    // batch is several lines and only the last one has a terminator to carry.
+    const terminator = this.batch.terminator;
     this.batch = null;
 
     if (rule.shape === 'object' && Object.keys(merged).length === 0) return undefined;
@@ -1142,6 +1174,7 @@ export class Classifier {
       groups: rule.shape === 'object' ? { ...head, ...merged } : head,
       rows: rule.shape === 'object' ? [merged] : rows,
       text: lines.join('\n'),
+      terminator,
       confidence: tuning().parse.baseConfidence
     };
   }

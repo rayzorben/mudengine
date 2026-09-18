@@ -140,6 +140,7 @@ describe('the potion rules', () => {
     poisoned: 'no' as const,
     diseased: 'no' as const,
     held: 'no' as const,
+    confused: 'no' as const,
     ...over
   });
 

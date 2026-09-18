@@ -262,6 +262,16 @@ export function holdsMovement(spell: Pick<WorldSpell, 'abilities'> | null | unde
 }
 
 /**
+ * Whether a spell confuses — `ActionFigure.CheckConfusion` tests one
+ * ability, `Confusion` (71), on every effect up, and a hit throws the
+ * command away. `holdsMovement`'s shape, for the same reason: the sentences
+ * are message data, the ability is the realm's own word (todo 05).
+ */
+export function confuses(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
+  return (spell?.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.confusion);
+}
+
+/**
  * Who a spell may be cast on, from `Spells.Targets`.
  *
  * The realm records this in a column the database documents nowhere, so the

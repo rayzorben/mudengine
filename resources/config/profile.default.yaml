@@ -61,6 +61,12 @@ server: Paradigm Game 1 PVE
 #
 # login:
 #   steps:
+#     # The account prompts, filled in from `account:` above. A realm that words
+#     # them differently is described here the same way any other menu is.
+#     - when: 'Please enter your username'
+#       send: '{user}'
+#     - when: 'Please enter your password'
+#       send: '{password}'
 #     - when: 'Please enter your selection'
 #       send: P
 #     - when: 'Please select a realm'

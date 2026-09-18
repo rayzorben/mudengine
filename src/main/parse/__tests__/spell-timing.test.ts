@@ -267,7 +267,7 @@ describe('the kai powers, replayed through the real tracker and Blessings', () =
       feed('[HP=334/KAI=9]:', 'flush');
       expect(tracker.current.phase).toBe('in-game');
       blessings.onCharacter(tracker.current);
-      expect(sent).toEqual(['c pressure points']);
+      expect(sent).toEqual(['pressure points']);
 
       expect(feed('You use your knowledge of pressure points!')).toBe('spell-cast');
       // The table's own sentence for the power landing, read as one.
@@ -276,7 +276,7 @@ describe('the kai powers, replayed through the real tracker and Blessings', () =
       blessings.onCharacter(tracker.current);
       // One cast a round: the second power waits out the proposal cooldown.
       vi.advanceTimersByTime(7_000);
-      expect(sent).toEqual(['c pressure points', 'c way of the tiger']);
+      expect(sent).toEqual(['pressure points', 'way of the tiger']);
 
       expect(feed('You invoke the way of the tiger.')).toBe('spell-cast');
       expect(feed('You feel ferocious!')).toBe('spell-onset');
@@ -295,7 +295,7 @@ describe('the kai powers, replayed through the real tracker and Blessings', () =
       // The positive control — the wire ends one, and only that one is recast.
       expect(feed('You stop using pressure points.')).toBe('user-buff-expired');
       blessings.onCharacter(tracker.current);
-      expect(sent).toEqual(['c pressure points', 'c way of the tiger', 'c pressure points']);
+      expect(sent).toEqual(['pressure points', 'way of the tiger', 'pressure points']);
       vi.advanceTimersByTime(10_000);
       expect(sent).toHaveLength(3);
     } finally {

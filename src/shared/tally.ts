@@ -27,11 +27,13 @@
  *   renders an unmeasured average as `0.0` is the same lie a vital painted red
  *   for want of a number is.
  *
- * The tally main keeps is **monotonic** for the life of a realm session. The
- * Reset control is a *baseline* the reader subtracts (`sinceBaseline`), which
- * is what lets one published figure serve both "since I arrived" and "since I
- * pressed the button" without main holding a second copy of everything or a
- * round trip to clear it.
+ * The tally main keeps is **monotonic** for as long as the character is the
+ * same character: it outlives the socket and the launch (`Belongings` keeps
+ * it, `settleClocks` closes what a gap left open), and only a reset noticed
+ * and confirmed empties it. The Reset control is a *baseline* the reader
+ * subtracts (`sinceBaseline`), which is what lets one published figure serve
+ * both "since I arrived" and "since I pressed the button" without main holding
+ * a second copy of everything or a round trip to clear it.
  *
  * Dependency-free like everything in `shared/`.
  */
@@ -68,11 +70,49 @@ export interface BlowTally {
 
 export const NO_BLOWS: BlowTally = { hits: 0, damage: 0, least: null, most: null };
 
+/** Cumulative experience at a moment, for the rate over a window (todo 08). */
+export interface ExperienceSample {
+  at: number;
+  experience: number;
+}
+
+/** The windows the Combat Stats card's rate graph may cover, in hours. */
+export const STATS_WINDOW_HOURS = [1, 2, 4, 8, 24] as const;
+export const DEFAULT_STATS_HOURS = 2;
+export const STATS_GRAPHS = ['bars', 'line'] as const;
+export type StatsGraph = (typeof STATS_GRAPHS)[number];
+export const DEFAULT_STATS_GRAPH: StatsGraph = 'bars';
+
+export function isStatsGraph(value: unknown): value is StatsGraph {
+  return typeof value === 'string' && (STATS_GRAPHS as readonly string[]).includes(value);
+}
+
+/** A stretch spent off the realm: from leaving it to arriving again. */
+export interface AwaySpell {
+  from: number;
+  to: number;
+}
+
 export interface CombatTally {
-  /** Epoch ms this tally started counting, or null before anything happened. */
+  /**
+   * Epoch ms the scope began — the first thing counted, or the first arrival
+   * in the realm — or null before either. Set once per series: a baseline
+   * whose `since` differs is from another record (another realm, or one
+   * thrown away) and cannot be subtracted from this one.
+   */
   since: number | null;
-  /** Epoch ms of the most recent thing counted. */
+  /**
+   * Epoch ms the tally last moved: a blow, a coin, a fight or a visit
+   * beginning or ending. The moment a baseline dates the scope from.
+   */
   at: number | null;
+  /**
+   * Cumulative experience, sampled as it moves (`withSample`): one sample per
+   * `parse.statsSampleMs`, the newest updated in place until its slot is
+   * spent, `parse.statsSamplesKept` kept. What the rate graph is drawn from;
+   * everything else on the card is a running total.
+   */
+  samples: readonly ExperienceSample[];
   /** What landed on something else, by kind. */
   dealt: Record<BlowKind, BlowTally>;
   /**
@@ -148,11 +188,31 @@ export interface CombatTally {
   engagedMs: number;
   /** When the fight now running began, or null when none is. */
   engagedSince: number | null;
+  /**
+   * Milliseconds this character has stood in the realm, over the visits that
+   * have **ended** — the rates' denominator, and what makes a tally that
+   * outlives the socket honest: a night spent disconnected is not an hour
+   * the character earned nothing in. Opened when the phase reaches `in-game`,
+   * closed when it leaves, and by `settleClocks` when the socket does.
+   */
+  onlineMs: number;
+  /** When the visit now running began, or null while not in the realm. */
+  onlineSince: number | null;
+  /**
+   * The stretches spent off the realm inside the samples' window, oldest
+   * first, so the rate graph leaves a night offline blank rather than draw
+   * it as an hour at nothing — the rule the rates keep through `onlineMs`,
+   * applied to the series. `withArrival` closes one; `rateSeries` reads them.
+   */
+  away: readonly AwaySpell[];
+  /** When the character left the realm, or null while in it and before the first visit. */
+  leftAt: number | null;
 }
 
 export const NO_TALLY: CombatTally = {
   since: null,
   at: null,
+  samples: [],
   dealt: {
     melee: NO_BLOWS,
     critical: NO_BLOWS,
@@ -170,7 +230,11 @@ export const NO_TALLY: CombatTally = {
   kills: 0,
   experience: 0,
   engagedMs: 0,
-  engagedSince: null
+  engagedSince: null,
+  onlineMs: 0,
+  onlineSince: null,
+  away: [],
+  leftAt: null
 };
 
 /**
@@ -239,9 +303,31 @@ function blowsBetween(now: BlowTally, then: BlowTally): BlowTally {
  */
 export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): CombatTally {
   if (baseline === null) return now;
+  const since = baseline.at ?? baseline.since;
+  const engaged = clockSince(
+    { settled: now.engagedMs, since: now.engagedSince },
+    { settled: baseline.engagedMs, since: baseline.engagedSince },
+    since
+  );
+  const online = clockSince(
+    { settled: now.onlineMs, since: now.onlineSince },
+    { settled: baseline.onlineMs, since: baseline.onlineSince },
+    since
+  );
   return {
-    since: baseline.at ?? baseline.since,
+    since,
     at: now.at,
+    /*
+     * Relative to the baseline, like every figure below: the reset moment
+     * becomes the first sample at nothing, and what was sampled before it is
+     * not this scope's to draw.
+     */
+    samples: [
+      ...(since === null ? [] : [{ at: since, experience: 0 }]),
+      ...now.samples
+        .filter((sample) => baseline.at === null || sample.at > baseline.at)
+        .map((sample) => ({ at: sample.at, experience: sample.experience - baseline.experience }))
+    ],
     dealt: {
       melee: blowsBetween(now.dealt.melee, baseline.dealt.melee),
       critical: blowsBetween(now.dealt.critical, baseline.dealt.critical),
@@ -258,15 +344,45 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
     coins: now.coins - baseline.coins,
     kills: now.kills - baseline.kills,
     experience: now.experience - baseline.experience,
-    engagedMs: now.engagedMs - baseline.engagedMs,
-    /*
-     * Clamped to the reset, so a fight that was already running when the
-     * button was pressed contributes only the part after it. Without the
-     * clamp the first reading after a reset during a long fight would report
-     * more engaged time than the scope has existed for.
-     */
-    engagedSince:
-      now.engagedSince === null ? null : Math.max(now.engagedSince, baseline.at ?? now.engagedSince)
+    engagedMs: engaged.settled,
+    engagedSince: engaged.since,
+    onlineMs: online.settled,
+    onlineSince: online.since,
+    // The stretches away that reach into the scope, cut at the reset.
+    away:
+      since === null
+        ? now.away
+        : now.away
+            .filter((spell) => spell.to > since)
+            .map((spell) => ({ from: Math.max(spell.from, since), to: spell.to })),
+    leftAt: now.leftAt
+  };
+}
+
+/** A running total of intervals: the settled ones, and when the open one began. */
+interface Clock {
+  settled: number;
+  since: number | null;
+}
+
+/**
+ * A clock read from a baseline.
+ *
+ * The settled figure cannot simply be subtracted: an interval open when the
+ * baseline was taken and closed since carries its whole length into the
+ * settled total, and the part before the reset was not this scope's, so the
+ * baseline's own open part comes off too. An interval still open is clamped
+ * to the reset, or the first reading after a reset during a long fight would
+ * report more engaged time than the scope has existed for.
+ */
+function clockSince(now: Clock, baseline: Clock, resetAt: number | null): Clock {
+  const openAtBaseline =
+    baseline.since !== null && baseline.since !== now.since && resetAt !== null
+      ? Math.max(0, resetAt - baseline.since)
+      : 0;
+  return {
+    settled: now.settled - baseline.settled - openAtBaseline,
+    since: now.since === null ? null : Math.max(now.since, resetAt ?? now.since)
   };
 }
 
@@ -278,19 +394,199 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
  * reader wants both halves, and adding them at the point of reading is what
  * keeps the stored figure a sum of settled facts.
  */
+/**
+ * The tally with its experience sampled at `at`.
+ *
+ * The newest sample is updated in place while it is younger than `everyMs`,
+ * so the series is one point per slot however many kills land in it, and the
+ * oldest goes when `keep` is reached. Called on every experience line, so the
+ * last point is always current.
+ */
+export function withSample(
+  tally: CombatTally,
+  at: number,
+  everyMs: number,
+  keep: number
+): CombatTally {
+  const last = tally.samples.at(-1);
+  const point = { at, experience: tally.experience };
+  let samples: ExperienceSample[];
+  if (last !== undefined && at - last.at < Math.max(1, everyMs)) {
+    samples = [...tally.samples.slice(0, -1), { at: last.at, experience: tally.experience }];
+  } else {
+    samples = [...tally.samples, point];
+  }
+  const cap = Math.max(1, Math.trunc(keep));
+  if (samples.length > cap) samples = samples.slice(samples.length - cap);
+  return { ...tally, samples };
+}
+
+/** The cumulative experience the samples state for a moment: the last one at or before it, or null before the first. */
+export function experienceAt(samples: readonly ExperienceSample[], at: number): number | null {
+  let found: number | null = null;
+  for (const sample of samples) {
+    if (sample.at > at) break;
+    found = sample.experience;
+  }
+  return found;
+}
+
+/**
+ * Experience an hour, per bin, across `[from, to)`: the difference the
+ * samples state across each bin over the part of it spent in the realm.
+ * Null for a bin the samples cannot speak for — before the first one — and
+ * for one spent wholly away, so neither an empty hour before the fight began
+ * nor a night offline is drawn as a rate of nothing.
+ */
+export function rateSeries(
+  samples: readonly ExperienceSample[],
+  from: number,
+  to: number,
+  bins: number,
+  away: readonly AwaySpell[] = []
+): Array<number | null> {
+  const count = Math.max(1, Math.trunc(bins));
+  if (to <= from) return new Array<number | null>(count).fill(null);
+  const width = (to - from) / count;
+  const out: Array<number | null> = [];
+  for (let index = 0; index < count; index += 1) {
+    const start = from + index * width;
+    const end = start + width;
+    const before = experienceAt(samples, start);
+    const after = experienceAt(samples, end);
+    const present = width - awayWithin(away, start, end);
+    if (before === null || after === null || present <= 0) {
+      out.push(null);
+      continue;
+    }
+    out.push(((after - before) / present) * 3_600_000);
+  }
+  return out;
+}
+
+/** How much of `[start, end)` the spells cover. */
+function awayWithin(away: readonly AwaySpell[], start: number, end: number): number {
+  let covered = 0;
+  for (const spell of away) {
+    covered += Math.max(0, Math.min(spell.to, end) - Math.max(spell.from, start));
+  }
+  return covered;
+}
+
+/**
+ * The tally on arriving in the realm: the stretch away since `leftAt` closed
+ * and kept while it reaches into the last `keepMs` — the samples' own window,
+ * since the spells exist to be read beside them.
+ */
+export function withArrival(tally: CombatTally, at: number, keepMs: number): CombatTally {
+  const spells =
+    tally.leftAt === null || tally.leftAt >= at
+      ? tally.away
+      : [...tally.away, { from: tally.leftAt, to: at }];
+  return { ...tally, away: spells.filter((spell) => spell.to >= at - keepMs), leftAt: null };
+}
+
 export function engagedFor(tally: CombatTally, now: number): number {
   const open = tally.engagedSince === null ? 0 : Math.max(0, now - tally.engagedSince);
   return tally.engagedMs + open;
 }
 
+/** Time in the realm including the visit still running — `engagedFor`'s shape. */
+export function onlineFor(tally: CombatTally, now: number): number {
+  const open = tally.onlineSince === null ? 0 : Math.max(0, now - tally.onlineSince);
+  return tally.onlineMs + open;
+}
+
+/**
+ * Every open interval closed at `at`, for a moment nothing on the wire will
+ * describe: the socket closing, or a record read back from a launch that
+ * ended without one. A clock left running across the gap would count the
+ * hours the client sat disconnected as time in the realm, or in a fight.
+ */
+export function settleClocks(tally: CombatTally, at: number): CombatTally {
+  if (tally.engagedSince === null && tally.onlineSince === null) return tally;
+  return {
+    ...tally,
+    engagedMs:
+      tally.engagedMs + (tally.engagedSince === null ? 0 : Math.max(0, at - tally.engagedSince)),
+    engagedSince: null,
+    onlineMs:
+      tally.onlineMs + (tally.onlineSince === null ? 0 : Math.max(0, at - tally.onlineSince)),
+    onlineSince: null,
+    // And the stretch away begins, if a visit just ended.
+    leftAt: tally.onlineSince === null ? tally.leftAt : at
+  };
+}
+
+const COUNTS = [
+  'missed',
+  'turned',
+  'dodged',
+  'sneakTried',
+  'sneakFailed',
+  'coins',
+  'kills',
+  'experience',
+  'engagedMs',
+  'onlineMs'
+] as const;
+
+/** Parsed, not trusted: a tally read back from disk, where anything may have edited it. */
+export function isCombatTally(value: unknown): value is CombatTally {
+  if (typeof value !== 'object' || value === null) return false;
+  const tally = value as Record<string, unknown>;
+  const moment = (entry: unknown): boolean => entry === null || isCount(entry);
+  if (!moment(tally['since']) || !moment(tally['at'])) return false;
+  if (!moment(tally['engagedSince']) || !moment(tally['onlineSince'])) return false;
+  if (!moment(tally['leftAt'])) return false;
+  if (!COUNTS.every((key) => isCount(tally[key]))) return false;
+  if (!Array.isArray(tally['samples']) || !tally['samples'].every(isSample)) return false;
+  if (!Array.isArray(tally['away']) || !tally['away'].every(isAwaySpell)) return false;
+  if (!isBlowTally(tally['taken'])) return false;
+  const dealt = tally['dealt'];
+  if (typeof dealt !== 'object' || dealt === null) return false;
+  return BLOW_KINDS.every((kind) => isBlowTally((dealt as Record<string, unknown>)[kind]));
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isAwaySpell(value: unknown): value is AwaySpell {
+  if (typeof value !== 'object' || value === null) return false;
+  const spell = value as Partial<AwaySpell>;
+  return isCount(spell.from) && isCount(spell.to);
+}
+
+function isSample(value: unknown): value is ExperienceSample {
+  if (typeof value !== 'object' || value === null) return false;
+  const sample = value as Partial<ExperienceSample>;
+  return isCount(sample.at) && isCount(sample.experience);
+}
+
+function isBlowTally(value: unknown): value is BlowTally {
+  if (typeof value !== 'object' || value === null) return false;
+  const blows = value as Partial<BlowTally>;
+  return (
+    isCount(blows.hits) &&
+    isCount(blows.damage) &&
+    (blows.least === null || isCount(blows.least)) &&
+    (blows.most === null || isCount(blows.most))
+  );
+}
+
 /**
  * The rate per hour of a total, over the scope that produced it.
  *
- * **The denominator is the scope's own clock** — `since` to now, the same
- * stretch the card's duration badge draws — so a rate is answerable from the
- * first second and a reader can check it against the two figures above it.
- * Pressing Reset moves `since`, which is how *since I started* becomes *since
- * I pressed the button* without a second mechanism.
+ * **The denominator is the scope's own clock** — the time this character has
+ * stood in the realm since the scope began (`onlineFor`), the same stretch
+ * the card's duration badge draws — so a rate is answerable from the first
+ * second and a reader can check it against the two figures above it. Pressing
+ * Reset re-bases that clock, which is how *since I started* becomes *since I
+ * pressed the button* without a second mechanism. Wall-clock time since
+ * `since` was the denominator until the tally outlived the socket (2026-09-17,
+ * todo 06): a night spent disconnected is not an hour the character earned
+ * nothing in.
  *
  * It replaced a rolling sixteen-minute window of readings, which was the
  * better idea and the broken implementation. Marks were taken at most once a
@@ -316,16 +612,9 @@ export function engagedFor(tally: CombatTally, now: number): number {
  * Null below that, and where there is no scope at all: an hourly figure
  * extrapolated from nothing is not a small error, it is a made-up number.
  */
-export function ratePerHour(
-  total: number,
-  since: number | null,
-  now: number,
-  floorMs = 0
-): number | null {
-  if (since === null) return null;
-  const ms = now - since;
-  if (ms <= 0 || ms < floorMs) return null;
-  return (total / ms) * 3_600_000;
+export function ratePerHour(total: number, elapsedMs: number, floorMs = 0): number | null {
+  if (elapsedMs <= 0 || elapsedMs < floorMs) return null;
+  return (total / elapsedMs) * 3_600_000;
 }
 
 /** Every swing this character made, landed or not — the denominator MegaMUD used. */
@@ -379,7 +668,7 @@ export function hitsDealt(tally: CombatTally): number {
 }
 
 /**
- * How much of the scope was spent in a fight.
+ * How much of the time in the realm was spent in a fight.
  *
  * The only slice of MegaMUD's time analysis this client can state: the server
  * announces engagement and announces nothing about resting, walking or idling
@@ -388,8 +677,7 @@ export function hitsDealt(tally: CombatTally): number {
  * accounted as rather than splitting it.
  */
 export function engagedShare(tally: CombatTally, now: number): number | null {
-  if (tally.since === null) return null;
-  const elapsed = now - tally.since;
+  const elapsed = onlineFor(tally, now);
   if (elapsed <= 0) return null;
   return Math.min(1, engagedFor(tally, now) / elapsed);
 }

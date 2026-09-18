@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionId } from '@shared/ipc';
 import { isThemeId, type Appearance, type ThemeId } from '@shared/themes';
 import { isTalkLayout, isTalkStamp, type TalkLayout, type TalkStamp } from '@shared/talk';
+import { isStatsGraph, STATS_WINDOW_HOURS, type StatsGraph } from '@shared/tally';
 
 import { t } from '../lib/i18n';
 import { reordered } from '../lib/reorder';
@@ -384,6 +385,9 @@ export interface CardSettings {
    * a destructive one, and the reason a view preference is allowed to own it.
    */
   findDays?: number;
+  /** The Combat Stats card's rate graph: hours it covers, and bars or a line (todo 08). */
+  statsHours?: number;
+  statsGraph?: StatsGraph;
 }
 
 /** What a card is set to when nothing has been set on it. */
@@ -780,7 +784,11 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
       ...(typeof found['mapDensity'] === 'number' && Number.isFinite(found['mapDensity'])
         ? { mapDensity: Math.max(0, Math.min(1, found['mapDensity'])) }
         : {}),
-      ...(isCount(found['findDays']) ? { findDays: found['findDays'] } : {})
+      ...(isCount(found['findDays']) ? { findDays: found['findDays'] } : {}),
+      ...((STATS_WINDOW_HOURS as readonly number[]).includes(found['statsHours'] as number)
+        ? { statsHours: found['statsHours'] as number }
+        : {}),
+      ...(isStatsGraph(found['statsGraph']) ? { statsGraph: found['statsGraph'] } : {})
     };
     // A card whose whole block parsed to nothing is a card with nothing set.
     if (Object.keys(settings).length > 0) out[id] = settings;

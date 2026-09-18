@@ -176,7 +176,7 @@ describe('what costs a character its stealth', () => {
   });
 
   it('is a cast, an item’s spell, and the sitting down that follows', () => {
-    for (const command of ['c mm rat', 'cast bless', 'use wand', 'rest', 'med']) {
+    for (const command of ['mm rat', 'c mm rat', 'cast bless', 'use wand', 'rest', 'med']) {
       expect(breaksStealth(command), command).toBe(true);
     }
   });

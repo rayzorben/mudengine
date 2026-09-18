@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  lairPass,
+  passShare,
   lairPassage,
   appraiseRoom,
   prowessSheetOf,
@@ -392,6 +394,67 @@ describe('lairPassage', () => {
     expect(lairPassage([], 1, 1, everybody)).toBeNull();
     // A lair is not made safe by one monster the arithmetic cannot see.
     expect(lairPassage([hitting(null), hitting(40)], 1, 1, everybody)).toBe(40);
+  });
+
+  /*
+   * The second fact the router needs from the same pass: counting an unread
+   * disposition in is right, and *pricing it as a certainty* is what closed a
+   * corridor on a fact nobody had read.
+   */
+  describe('and whether the wire settles that it happens', () => {
+    const only = (attacks: Array<boolean | null>) => (index: number) => attacks[index] ?? null;
+
+    it('is sure when the worst monster is one the wire settles', () => {
+      expect(lairPass([hitting(90), hitting(30)], 1, 1, only([true, null]))).toEqual({
+        damage: 90,
+        sure: true
+      });
+      // A passive one is not in the pass at all, so it cannot make it unsure.
+      expect(lairPass([hitting(30), hitting(90)], 1, 1, only([true, false]))).toEqual({
+        damage: 30,
+        sure: true
+      });
+    });
+
+    it('is unsure when the worst monster is one nobody can say will open', () => {
+      expect(lairPass([hitting(90), hitting(30)], 1, 1, only([null, true]))).toEqual({
+        damage: 90,
+        sure: false
+      });
+      // Nothing certain at all is still a pass, and still unevidenced.
+      expect(lairPass([hitting(90)], 1, 1, only([null]))).toEqual({ damage: 90, sure: false });
+    });
+
+    it('is null when the pass itself is', () => {
+      expect(lairPass([hitting(90)], 1, 1, only([false]))).toBeNull();
+      expect(lairPass([], 1, 1, everybody)).toBeNull();
+    });
+  });
+});
+
+/*
+ * The cap that keeps *nobody has read this character's standing* from walling
+ * a corridor — `edgePenalty`'s answer for a gate it cannot evaluate, one layer
+ * down. A settled pass is priced at what it is, however bad.
+ */
+describe('passShare', () => {
+  it('takes a settled pass against the health the character has now', () => {
+    expect(passShare({ damage: 30, sure: true }, 60, 0.1)).toBe(0.5);
+    // Uncapped upwards: a settled pass that takes the bar is a wall, and should be.
+    expect(passShare({ damage: 120, sure: true }, 60, 0.1)).toBe(2);
+  });
+
+  it('caps an unevidenced pass, and leaves a mild one alone', () => {
+    expect(passShare({ damage: 120, sure: false }, 60, 0.1)).toBe(0.1);
+    // Below the cap the real share stands: the slope is kept, only the wall goes.
+    expect(passShare({ damage: 3, sure: false }, 60, 0.1)).toBe(0.05);
+  });
+
+  it('prices nothing where nothing can be weighed', () => {
+    expect(passShare(null, 60, 0.1)).toBeNull();
+    // Unread health is not zero health, and a dead bar is not a divisor.
+    expect(passShare({ damage: 30, sure: true }, null, 0.1)).toBeNull();
+    expect(passShare({ damage: 30, sure: true }, 0, 0.1)).toBeNull();
   });
 });
 

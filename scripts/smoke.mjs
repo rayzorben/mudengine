@@ -18,6 +18,9 @@ import fs from 'node:fs';
 import zlib from 'node:zlib';
 import path from 'node:path';
 import { execSync, spawn, spawnSync } from 'node:child_process';
+import { parseDocument } from 'yaml';
+
+import { judgeFailures } from './lib/smoke-baseline.mjs';
 
 /** This repository's own version, which is the one a bug report must name. */
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -64,6 +67,26 @@ const keepOpen = process.argv.includes('--keep-open');
 const HOME = path.resolve('out/smoke-home');
 fs.rmSync(HOME, { recursive: true, force: true });
 const CONFIG = path.join(HOME, 'global', 'default.yaml');
+
+/*
+ * No dead-link hang-up in this run. The fixture below answers four commands
+ * and keeps silent after every other, which no realm does -- it answers each
+ * line with at least its status line. `LinkWatch` reads fifteen seconds of
+ * that silence after a line as a dead link, correctly, hangs up and dials
+ * back, and a run then holds a socket per redial: two log files, a second
+ * character counted as the third socket, and a remount checked mid-dial.
+ * `LinkWatch.test.ts` owns that behaviour; the fixture cannot honestly
+ * exercise it. The shipped template otherwise, comments and all.
+ */
+{
+  const internal = parseDocument(fs.readFileSync('resources/config/internal.yaml', 'utf8'));
+  if (!internal.hasIn(['tuning', 'reconnect', 'silentForMs'])) {
+    throw new Error('internal.yaml has no tuning.reconnect.silentForMs to switch off');
+  }
+  internal.setIn(['tuning', 'reconnect', 'silentForMs'], 0);
+  fs.mkdirSync(HOME, { recursive: true });
+  fs.writeFileSync(path.join(HOME, 'internal.yaml'), internal.toString(), 'utf8');
+}
 const SMOKE_FONT = 'LucidaProgrammer Nerd Font Mono';
 const SMOKE_FONT_SIZE = 15;
 fs.mkdirSync(path.dirname(CONFIG), { recursive: true });
@@ -253,13 +276,16 @@ const writeProfiles = () => {
 fs.rmSync(LOG_DIR, { recursive: true, force: true });
 
 let failures = 0;
+/** Each failed check by name, which is what the baseline compares. */
+const failedNames = [];
 const log = (...a) => console.log('  ', ...a);
 const pass = (m) => log('PASS ', m);
-const fail = (m) => {
+const fail = (m, name = m) => {
   failures += 1;
+  failedNames.push(name);
   log('FAIL ', m);
 };
-const check = (ok, m, detail) => (ok ? pass(m) : fail(`${m}${detail ? ` -- ${detail}` : ''}`));
+const check = (ok, m, detail) => (ok ? pass(m) : fail(`${m}${detail ? ` -- ${detail}` : ''}`, m));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Rough sRGB luminance of a #rrggbb string, for light/dark assertions. */
@@ -11060,16 +11086,21 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     );
     check(after === before + 1, 'which adds a row', `${before} -> ${after}`);
 
-    // Two fields per row -- when this arrives, send that -- and nothing else.
-    // Enter is always sent, so a blank answer is a bare Enter.
+    // Two fields per row -- when this arrives, send that -- and one box for a
+    // pager, which is answered every time it arrives rather than once
+    // (`LoginStep.repeat`). Enter is always sent, so a blank answer is a bare
+    // Enter.
     check(
       await evaluate(`
         (() => {
           const row = document.querySelector('.settings-steps li');
-          return row ? row.querySelectorAll('input').length === 2 : false;
+          if (!row) return false;
+          const fields = row.querySelectorAll('input:not([type=checkbox])').length;
+          const boxes = row.querySelectorAll('input[type=checkbox]').length;
+          return fields === 2 && boxes === 1;
         })()
       `),
-      'each row is a prompt and the answer to it'
+      'each row is a prompt, the answer to it, and whether it is answered every time'
     );
 
     // And taken away again, so this leaves the form as it found it.
@@ -13250,10 +13281,21 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and the palette has no command per person: who to ask is an argument, not a command',
     perPerson
   );
-  await evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', {
-    key: 'Escape', bubbles: true
-  })), true)`);
-  await waitFor(async () => !(await evaluate(`!!document.querySelector('.palette')`)));
+  /*
+   * Put away with a real key. The palette's Escape is its field's own
+   * `onKeyDown`, and a `KeyboardEvent` dispatched on `window` never reaches a
+   * field: the palette stays open, its scrim takes the Realm-card press below,
+   * and every flyout check after it fails with the fault here.
+   */
+  for (const type of ['keyDown', 'keyUp']) {
+    await cdp('Input.dispatchKeyEvent', {
+      type,
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+  }
+  check(await gone('.palette'), 'and Escape puts the palette away before anything else is pressed');
 
   /*
    * Somebody who only ever *spoke* is in it. That is the whole point of the
@@ -13390,29 +13432,31 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   const fromRealm = grimjaw?.who ?? null;
   check(fromRealm === 'Grimjaw', 'a name on the Realm card is there to press', String(fromRealm));
-  const hitTest = await evaluate(`
-    (() => {
-      const panel = document.querySelector('.player-flyout');
-      const name = [...document.querySelectorAll('.realm-card button.realm-name')]
-        .find((b) => b.innerText.trim() === 'Grimjaw');
-      const r = name ? name.getBoundingClientRect() : null;
-      const at = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
-      return JSON.stringify({
-        panel: panel ? panel.getBoundingClientRect().toJSON() : null,
-        asks: !!document.querySelector('.player-asks'),
-        body: document.querySelector('.player-flyout .popover-body')?.innerText.slice(0, 60) ?? '',
-        name: r ? r.toJSON() : null,
-        hit: at ? (at.className || at.tagName) : null,
-        // Which dialog the scrim belongs to, when one is what the press lands
-        // on: the palette, the route panel and the loops modal all draw the
-        // same scrim, and the answer is the difference between three bugs.
-        scrim: [...document.querySelectorAll('.palette-scrim')]
-          .map((el) => el.firstElementChild?.className ?? '?')
-          .join(',')
-      });
-    })()
-  `);
-  check(false, 'DIAGNOSTIC before the Realm-card press', hitTest);
+  /*
+   * The press lands on the name, not on something drawn over it. A real
+   * pointer goes to whatever is on top, so a dialog left open above the card
+   * takes the press and every check below fails far from the cause; this one
+   * names what is in the way. Which dialog owns a scrim is said too: the
+   * palette, the route panel and the loops modal all draw the same one.
+   */
+  const hitTest = JSON.parse(
+    await evaluate(`
+      (() => {
+        const name = [...document.querySelectorAll('.realm-card button.realm-name')]
+          .find((b) => b.innerText.trim() === 'Grimjaw');
+        const r = name ? name.getBoundingClientRect() : null;
+        const at = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+        return JSON.stringify({
+          onName: !!(name && at && name.contains(at)),
+          hit: at ? (at.className || at.tagName) : null,
+          scrim: [...document.querySelectorAll('.palette-scrim')]
+            .map((el) => el.firstElementChild?.className ?? '?')
+            .join(',')
+        });
+      })()
+    `)
+  );
+  check(hitTest.onName, 'and nothing is drawn over it', JSON.stringify(hitTest));
   await evaluate(`window.__flyoutGone = false; new MutationObserver(() => {
     if (!document.querySelector('.player-flyout')) window.__flyoutGone = true;
   }).observe(document.body, { childList: true }); true`);
@@ -16438,7 +16482,12 @@ if (!keepOpen) {
 
 // ---------------------------------------------------------------------- finish
 
-console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) failed.`}\n`);
+if (failures > 0) console.log(`\n${failures} check(s) failed.`);
+const verdict = judgeFailures(failedNames, {
+  file: 'scripts/smoke-baseline.json',
+  accept: process.argv.includes('--accept'),
+  command: 'npm run smoke -- --accept'
+});
 
 if (!keepOpen) {
   clientSocket?.destroy();
@@ -16447,6 +16496,6 @@ if (!keepOpen) {
     // Whatever ignored the polite request goes now; the `exit` handler above
     // catches anything this misses.
     killApp('SIGKILL');
-    process.exit(failures === 0 ? 0 : 1);
+    process.exit(verdict);
   }, 400);
 }

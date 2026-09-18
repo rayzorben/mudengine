@@ -599,6 +599,7 @@ interface CharacterForm {
   spellCures: CuresDraft;
   spellBlessings: BlessingDraft[];
   spellNotifyWearOff: boolean;
+  spellAutoBless: boolean;
   spellInvokeItems: boolean;
   /** Movement — what a route may do on the way. */
   openDoors: boolean;
@@ -618,6 +619,7 @@ interface CharacterForm {
   /** Conditions as waits, inverted: off waits blindness / poison out. */
   walkWhileBlind: boolean;
   walkWhilePoisoned: boolean;
+  fightOnArrival: boolean;
   /** Bend down for a key an exit of this room needs. */
   collectKeys: boolean;
   /** Going hunting on its own — `automation.hunting`. */
@@ -767,6 +769,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     spellCures: { ...entry.spells.cures },
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: entry.spells.notifyPartyOnWearOff,
+    spellAutoBless: entry.spells.autoBless,
     spellInvokeItems: entry.spells.invokeItems,
     openDoors: entry.movement.openDoors,
     openTries: String(entry.movement.openTries),
@@ -783,6 +786,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     extinguishInLight: entry.movement.extinguishInLight,
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
+    fightOnArrival: entry.movement.fightOnArrival,
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
@@ -962,6 +966,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
         spell: blessing.spell.trim()
       })),
       notifyPartyOnWearOff: form.spellNotifyWearOff,
+      autoBless: form.spellAutoBless,
       invokeItems: form.spellInvokeItems
     },
     movement: {
@@ -980,6 +985,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       extinguishInLight: form.extinguishInLight,
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
+      fightOnArrival: form.fightOnArrival,
       collectKeys: form.collectKeys
     },
     hunting: {
@@ -1243,6 +1249,7 @@ function emptyForm(
     spellCures: { ...spells.cures },
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: spells.notifyPartyOnWearOff,
+    spellAutoBless: spells.autoBless,
     spellInvokeItems: spells.invokeItems,
     openDoors: movement.openDoors,
     openTries: String(movement.openTries),
@@ -1259,6 +1266,7 @@ function emptyForm(
     extinguishInLight: movement.extinguishInLight,
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
+    fightOnArrival: movement.fightOnArrival,
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
@@ -2582,7 +2590,18 @@ export default function SettingsScreen({
                           realmOrAddress:
                             form.serverName === null
                               ? t('settings.login.noteFallbackAddress')
-                              : form.serverName
+                              : form.serverName,
+                          /*
+                            The placeholders, passed as values so they survive.
+                            This is the one login string whose call site has
+                            params, and `makeT` interpolates every `{name}` in
+                            a string it is given any -- so a literal `{user}`
+                            written in the copy would be reported as a value
+                            nobody supplied. A replacement is not re-scanned,
+                            so handing them in prints them.
+                          */
+                          user: '{user}',
+                          password: '{password}'
                         })}
                       </p>
 
@@ -2622,6 +2641,24 @@ export default function SettingsScreen({
                                 placeholder={t('settings.login.stepSendPlaceholder')}
                                 value={step.send}
                               />
+                              <input
+                                aria-label={t('settings.login.stepRepeatAria', {
+                                  stepNumber: index + 1
+                                })}
+                                checked={step.repeat ?? false}
+                                className="repeat"
+                                onChange={(event) =>
+                                  patch({
+                                    login: form.login.map((entry, at) =>
+                                      at === index
+                                        ? { ...entry, repeat: event.target.checked }
+                                        : entry
+                                    )
+                                  })
+                                }
+                                title={t('settings.login.stepRepeatTitle')}
+                                type="checkbox"
+                              />
                               <button
                                 aria-label={t('settings.login.removeStepAria', {
                                   stepNumber: index + 1
@@ -2640,9 +2677,33 @@ export default function SettingsScreen({
                         </ul>
                       )}
 
+                      {/*
+                        The first row on an empty list copies the realm's
+                        script, then adds the blank one.
+
+                        A character's list **replaces** the realm's, so adding
+                        one row to change a character slot used to leave a
+                        script of exactly that row -- and with the account now
+                        two rows of the script rather than two fields beside
+                        it, that silently took the login with it. Copying is
+                        what the player meant: the realm's menus plus my one
+                        change. The realm's own rows are the right source
+                        rather than a guessed pair, since a realm that words
+                        its username prompt differently says so there.
+                      */}
                       <button
                         className="quiet add-step"
-                        onClick={() => patch({ login: [...form.login, { when: '', send: '' }] })}
+                        onClick={() =>
+                          patch({
+                            login: [
+                              ...(form.login.length === 0
+                                ? (servers.find((entry) => entry.name === form.serverName)?.login ??
+                                  [])
+                                : form.login),
+                              { when: '', send: '' }
+                            ]
+                          })
+                        }
                         type="button"
                       >
                         <Icon name="plus" />
@@ -3167,6 +3228,13 @@ export default function SettingsScreen({
                       <fieldset className="settings-menus" data-fieldset="spells-blessings">
                         <legend>{t('settings.spells.blessingsLegend')}</legend>
                         <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
+                        <CheckField
+                          checked={form.spellAutoBless}
+                          hint={t('settings.spells.autoBlessHint')}
+                          label={t('settings.spells.autoBlessLabel')}
+                          name="auto-bless"
+                          onChange={(value) => patch({ spellAutoBless: value })}
+                        />
                         <BlessingList
                           blessings={form.spellBlessings}
                           namePrefix="blessing"
@@ -3726,6 +3794,13 @@ export default function SettingsScreen({
                           name="walk-while-poisoned"
                           onChange={(value) => patch({ walkWhilePoisoned: value })}
                         />
+                        <CheckField
+                          checked={form.fightOnArrival}
+                          hint={t('settings.movement.fightOnArrivalHint')}
+                          label={t('settings.movement.fightOnArrival')}
+                          name="fight-on-arrival"
+                          onChange={(value) => patch({ fightOnArrival: value })}
+                        />
                       </fieldset>
 
                       <fieldset className="settings-menus" data-fieldset="movement-carry">
@@ -4110,6 +4185,25 @@ export default function SettingsScreen({
                               }
                               placeholder={t('settings.realms.stepSendPlaceholder')}
                               value={step.send}
+                            />
+                            <input
+                              aria-label={t('settings.login.stepRepeatAria', {
+                                stepNumber: index + 1
+                              })}
+                              checked={step.repeat ?? false}
+                              className="repeat"
+                              onChange={(event) =>
+                                setServerForm({
+                                  ...serverForm,
+                                  login: serverForm.login.map((entry, at) =>
+                                    at === index
+                                      ? { ...entry, repeat: event.target.checked }
+                                      : entry
+                                  )
+                                })
+                              }
+                              title={t('settings.login.stepRepeatTitle')}
+                              type="checkbox"
                             />
                             <button
                               aria-label={t('settings.login.removeStepAria', {

@@ -346,6 +346,18 @@ const TUNING_DEFAULTS = {
      */
     staleMoveMs: 8000,
     /**
+     * A step unanswered this long is probed: `rm` goes out behind it, and its
+     * answer is an ordered one — the server answers in the order it was
+     * asked — so a `Location:` arriving with the step still unanswered proves
+     * the step produced nothing and it is dropped at once, while a probe
+     * still unanswered proves the server is slow and the step waits, up to
+     * `staleMoveMaxMs` (todo 10: a `n` answered after nine seconds cost a
+     * loop its place). Three seconds is two movement rounds; thirty is a
+     * link that has gone, not a server that is slow.
+     */
+    staleProbeMs: 3000,
+    staleMoveMaxMs: 30_000,
+    /**
      * Pack changes held against a listing that has not finished arriving. A
      * listing takes about a second; this covers what a person or a fight can
      * do in one, and no more.
@@ -353,6 +365,14 @@ const TUNING_DEFAULTS = {
     maxPackChanges: 16,
     /** Possible rooms kept for the resolution trace. */
     maxRoomCandidates: 8,
+    /**
+     * How often the experience total is sampled for the Combat Stats card's
+     * rate graph, and how many samples are kept: a minute, and a day of them.
+     * The newest sample is updated in place until its minute is spent, so a
+     * burst of kills is one point.
+     */
+    statsSampleMs: 60_000,
+    statsSamplesKept: 1440,
     /**
      * The band a line has to be inside to be read as a room's name.
      *
@@ -516,7 +536,18 @@ const TUNING_DEFAULTS = {
      * counts towards the order — taken early, at full health — without
      * outweighing every round of blows before it.
      */
-    deathOverRounds: 5
+    deathOverRounds: 5,
+    /**
+     * The room's fight, run (`simulateFight`): how many times, how long a
+     * fight may run before it is called, and the shares of fights survived
+     * that read as safe and as merely risky — under `riskyAbove` is deadly.
+     * Three hundred runs of a long fight are a millisecond or two on the
+     * socket's thread; the figures move by a point or two between seeds.
+     */
+    survivalTrials: 300,
+    survivalRoundCap: 120,
+    survivalSafeAbove: 0.95,
+    survivalRiskyAbove: 0.6
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
@@ -1332,6 +1363,24 @@ const TUNING_DEFAULTS = {
      */
     promptHoldMs: 1000,
     /**
+     * How long a tail that is *not* a prompt may keep arriving before the
+     * client frames it anyway.
+     *
+     * The quiet period that releases a prompt is 150ms, and over the internet
+     * that is not long enough to mean a sentence ended: bearfather's BBS
+     * paused 178ms in the middle of `Intersection of River St. & Mystic
+     * Alley`, and the half in hand was framed as a line, read as a room name,
+     * and written into the character's memory as a place that does not exist.
+     * Measured over 670 captured sessions, 25 server sentences were cut in
+     * half this way — room exits, a monster's arrival, and `who` roster rows
+     * split mid-name; 700ms covers 22 of them. The three left are two BBS
+     * banner lines nothing parses and one 33-second stall, where waiting
+     * would be worse than splitting. Nothing waits on this deadline but text
+     * the server appended after a prompt, which is why it is not longer.
+     * `mudengine-wire` § Line framing is not CRLF.
+     */
+    sentenceHoldMs: 700,
+    /**
      * How long the lines of a listing the client redraws (`ui.rewrites`) are
      * withheld while the rest of it arrives, before they are painted as sent.
      *
@@ -1440,8 +1489,23 @@ const TUNING_DEFAULTS = {
     talkFlushMs: 2000,
     /** How many it holds if a flush never happens. */
     talkHeld: 500,
+    /** How long painted console output waits before it is written down. */
+    backscrollFlushMs: 2000,
+    /**
+     * Rewrite the backscroll file once it holds this many times what is kept,
+     * rather than appending for ever: it is read whole at launch, and a cap
+     * on the lines kept is not a cap on a file that only grows.
+     */
+    backscrollRewriteAt: 2,
     /** How long a balance change waits before it is written. */
     belongingsWriteDelayMs: 2000,
+    /**
+     * How long the running totals wait before the record is written. Longer
+     * than a balance, because they move on every blow and the record is
+     * rewritten whole; a crash costs at most this much of them, and a quit
+     * writes them exactly.
+     */
+    statsWriteDelayMs: 30_000,
     /**
      * Vaults kept for one character. The shipped realm has seven banks; a file
      * past this is one being fed something that is not a bank name.
@@ -1574,6 +1638,25 @@ const TUNING_DEFAULTS = {
      * die there*.
      */
     deadlyShare: 1,
+    /**
+     * The most of the bar a pass **nobody can say will happen** may be priced
+     * at, however bad it would be if it did.
+     *
+     * A monster's disposition can be conditional — `hates-evil` opens on an
+     * Outlaw and leaves a Saint alone — so a character whose standing the
+     * client has not read meets *nobody can say*, and `lairPassage` counts
+     * such a monster **in** rather than out, because unknown is never the
+     * reassuring answer. Counted in at its full share it reaches
+     * `deadlyShare`, and a fact nobody has read then **walls** a corridor —
+     * which is the one thing `edgePenalty` was fixed not to do for a gate it
+     * cannot evaluate, and which sent a route 46 steps around a town square
+     * it could have crossed (bearfather, 2026-09-17). So the share is capped
+     * rather than the monster dropped: a tenth of the bar is about twenty
+     * plain steps, enough to prefer a way round that exists and never enough
+     * to justify a map. `deadlyShare` or above restores the wall; zero says
+     * *safe*, which is the other way to be wrong.
+     */
+    unsureShare: 0.1,
     /**
      * What one pass through a room whose spell this client **cannot read** is
      * priced at, as a share of the bar.
@@ -2076,6 +2159,22 @@ const TUNING_DEFAULTS = {
     roomSearchDebounceMs: 150,
     roomSearchMinChars: 2,
     /**
+     * How many of the realm's own things — monsters, items, spells — a palette
+     * query lists beneath the rooms it found.
+     *
+     * The lookup answers a dozen per kind with the name-prefix matches first,
+     * so the cap trims the substring tail rather than the answer somebody
+     * typed for; typing one more letter is how the list narrows, not
+     * scrolling.
+     */
+    paletteFoundRows: 12,
+    /**
+     * How many bars or points the Combat Stats card's rate graph draws across
+     * its window, whatever the window is. Two dozen is what its width holds
+     * on the rail at the shipped density.
+     */
+    statsGraphBins: 24,
+    /**
      * How long a pointer rests on a room before its quick view opens, and how
      * long the panel stays after the pointer has left both it and the room.
      *
@@ -2174,6 +2273,9 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       'automation',
       'combat',
       'retaliate',
+      // Keeping the blessings up, on the row: the switch somebody flips for
+      // one fight to keep the mana for healing, and back after.
+      'autoBless',
       'loot',
       /*
        * Searching every room, on the row rather than in the kebab.
@@ -2199,6 +2301,16 @@ export const DEFAULT_INTERNAL: InternalConfig = {
 };
 
 /**
+ * The durations whose template says `0` switches them off, as `group.key`.
+ *
+ * Floored at 1 like every other duration, `reconnect.silentForMs: 0` became a
+ * one-millisecond deadline: the client called every connection dead a
+ * millisecond after its first command and dialled again for ever. Its reader
+ * (`LinkWatch.noteSent`) arms no timer at 0, so nothing spins.
+ */
+const OFF_AT_ZERO: ReadonlySet<string> = new Set(['reconnect.silentForMs']);
+
+/**
  * One number out of the file, bounded by the shape of its default.
  *
  * Two rules, both mechanical so that a key added to `TUNING_DEFAULTS` needs no
@@ -2207,7 +2319,8 @@ export const DEFAULT_INTERNAL: InternalConfig = {
  * - **A fractional default means a fraction**, clamped to 0–1. Every one of
  *   them is a confidence, a threshold or a tolerance.
  * - **A key ending `Ms` is a duration and floors at 1.** A zero-millisecond
- *   timer spins a core, and this file is one somebody edits by hand.
+ *   timer spins a core, and this file is one somebody edits by hand — except
+ *   a key in `OFF_AT_ZERO`, whose reader tests for 0 and arms nothing.
  *
  * Anything unreadable takes the default rather than throwing, for the reason
  * the whole file works that way: a bad edit must never take the client down.
@@ -2216,7 +2329,8 @@ function tunedNumber(key: string, value: unknown, fallback: number): number {
   const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''));
   if (!Number.isFinite(n)) return fallback;
   if (!Number.isInteger(fallback)) return Math.min(1, Math.max(0, n));
-  return Math.min(1_000_000_000, Math.max(key.endsWith('Ms') ? 1 : 0, Math.round(n)));
+  const floor = key.endsWith('Ms') && !OFF_AT_ZERO.has(key) ? 1 : 0;
+  return Math.min(1_000_000_000, Math.max(floor, Math.round(n)));
 }
 
 /**
@@ -2235,7 +2349,7 @@ function normalizeTuning(raw: unknown): TuningConfig {
   for (const [group, fields] of Object.entries(out)) {
     const stated = isRecord(root[group]) ? (root[group] as Record<string, unknown>) : {};
     for (const key of Object.keys(fields)) {
-      fields[key] = tunedNumber(key, stated[key], fields[key] as number);
+      fields[key] = tunedNumber(`${group}.${key}`, stated[key], fields[key] as number);
     }
   }
   return out as TuningConfig;

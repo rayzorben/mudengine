@@ -36,6 +36,7 @@ import path from 'node:path';
 
 import { localProfile, skip } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
+import { judgeFailures } from './lib/smoke-baseline.mjs';
 
 const IAC = 255,
   WILL = 251,
@@ -62,9 +63,12 @@ let SESSION = 'web';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let failures = 0;
+/** Each failed check by name, which is what the baseline compares. */
+const failedNames = [];
 const pass = (message) => console.log(`   PASS  ${message}`);
 const fail = (message, detail) => {
   failures += 1;
+  failedNames.push(message);
   console.log(`   FAIL  ${message}${detail ? ` -- ${detail}` : ''}`);
 };
 const check = (ok, message, detail) => (ok ? pass(message) : fail(message, detail));
@@ -901,8 +905,16 @@ await Promise.race([exited2, sleep(8000)]);
 
 // ---------------------------------------------------------------- finish
 
-console.log(`\n${failures === 0 ? 'All web checks passed.' : `${failures} check(s) failed.`}\n`);
+if (failures > 0) console.log(`\n${failures} check(s) failed.`);
+// The baseline is the fixture's: the live realm fails what it fails today.
+const verdict = live
+  ? Number(failures > 0)
+  : judgeFailures(failedNames, {
+      file: 'scripts/web-smoke-baseline.json',
+      accept: process.argv.includes('--accept'),
+      command: 'npm run smoke:web -- --accept'
+    });
 first.ws.close();
 second.ws.close();
 cleanup();
-setTimeout(() => process.exit(failures === 0 ? 0 : 1), 300);
+setTimeout(() => process.exit(verdict), 300);

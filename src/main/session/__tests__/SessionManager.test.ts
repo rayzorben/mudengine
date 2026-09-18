@@ -304,7 +304,12 @@ describe('SessionManager line framing', () => {
     manager = new SessionManager(sink);
     setTuning({
       ...DEFAULT_INTERNAL.tuning,
-      session: { ...DEFAULT_INTERNAL.tuning.session, promptHoldMs: IDLE_FLUSH_MS * 20 }
+      session: {
+        ...DEFAULT_INTERNAL.tuning.session,
+        promptHoldMs: IDLE_FLUSH_MS * 20,
+        // Not a prompt either, so it is the sentence hold it must beat.
+        sentenceHoldMs: IDLE_FLUSH_MS * 2
+      }
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
 
@@ -329,6 +334,57 @@ describe('SessionManager line framing', () => {
     socket.write('[HP=4');
     await until(() => lines.length >= 1, IDLE_FLUSH_MS * 4);
     expect(lines[0]?.plain).toBe('[HP=4');
+    expect(lines[0]?.terminator).toBe('flush');
+  });
+
+  it('waits for the rest of a sentence the wire cut in half', async () => {
+    /*
+     * bearfather relays a MajorMUD door over the internet and paused 178ms in
+     * the middle of a room name (2026-09-17, `Intersection of River St. &
+     * Mystic Alle` then `y`). The quiet period framed the half as a line, the
+     * room-name rule accepted it, `Also here:` was destroyed with it, and the
+     * fragment was written into the character's memory as a place that does
+     * not exist; the walk then stopped, unable to say where it was. Measured
+     * over 670 sessions, 25 server sentences were cut this way — room exits, a
+     * monster's arrival, `who` rows split mid-name. The quiet period is a
+     * prompt's, and this tail is not one.
+     */
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    socket.write('\x1b[1;36mIntersection of River St. & Mystic Alle');
+    await new Promise((resolve) => setTimeout(resolve, IDLE_FLUSH_MS * 1.5));
+    expect(lines).toHaveLength(0);
+
+    // The positive control the absence above needs: the rest arrives and the
+    // whole name is framed once, on its own terminator rather than the clock.
+    socket.write('y\r\n');
+    await until(() => lines.length >= 1);
+    expect(lines[0]?.plain).toBe('Intersection of River St. & Mystic Alley');
+    expect(lines[0]?.terminator).toBe('newline');
+  });
+
+  it('still releases a prompt at the quiet period, however long a sentence waits', async () => {
+    /*
+     * The hold is for tails that are not prompts, and login is the reason the
+     * flush exists at all: every prompt these realms have asked ends at `:` or
+     * `?` — bearfather's `(N)onstop, (Q)uit, or (C)ontinue?` among them. The
+     * sentence hold is left long so that answering quickly is the assertion.
+     */
+    const { sink, lines } = collect();
+    manager = new SessionManager(sink);
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      session: { ...DEFAULT_INTERNAL.tuning.session, sentenceHoldMs: IDLE_FLUSH_MS * 20 }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    socket.write('(N)onstop, (Q)uit, or (C)ontinue?');
+    await until(() => lines.length >= 1, IDLE_FLUSH_MS * 4);
+    expect(lines[0]?.plain).toBe('(N)onstop, (Q)uit, or (C)ontinue?');
     expect(lines[0]?.terminator).toBe('flush');
   });
 
@@ -491,14 +547,36 @@ describe('telling a lost socket from one that was closed', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
 
     const socket = await client();
+    // MajorMUD's completed exit, as bearfather writes it (2026-09-17).
     socket.write('You will exit after a period of silent meditation.\r\n');
+    socket.write(
+      'Your character has been saved. If you have any comments or suggestions, please\r\n'
+    );
     // The block has to be classified before the socket goes, or the latch this
     // reads has not been set — which is the ordering the real stream has too.
-    await until(() => manager!.lines.some((line) => /silent meditation/.test(line.plain)));
+    await until(() => manager!.lines.some((line) => /has been saved/.test(line.plain)));
     socket.destroy();
 
     await until(() => drops.length > 0);
     expect(drops).toEqual(['left-realm']);
+  });
+
+  /*
+   * The request is not the leaving: the realm refuses exits and interrupts
+   * them. A link lost before one completes is a loss, and is dialled back.
+   */
+  it('carries no reason for an exit the realm never completed', async () => {
+    const { sink, drops } = collect();
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    socket.write('You will exit after a period of silent meditation.\r\n');
+    await until(() => manager!.lines.some((line) => /silent meditation/.test(line.plain)));
+    socket.destroy();
+
+    await until(() => drops.length > 0);
+    expect(drops).toEqual([null]);
   });
 
   it('carries the reason when the realm refused the login', async () => {
@@ -560,6 +638,10 @@ describe('answering the login', () => {
         username: 'vaelor',
         password: 'secret',
         steps: [
+          // The account is two rows of the script like any other now: every
+          // BBS asks for it and every BBS words the question differently.
+          { when: 'Please enter your username', send: '{user}' },
+          { when: 'Please enter your password', send: '{password}' },
           { when: 'Please enter your selection', send: 'P' },
           { when: 'Please select a realm', send: '1' },
           { when: 'Please select a character', send: '1' },
@@ -1034,6 +1116,10 @@ describe('credentials in the record', () => {
         username: 'vaelor',
         password: 'secret',
         steps: [
+          // The account is two rows of the script like any other now: every
+          // BBS asks for it and every BBS words the question differently.
+          { when: 'Please enter your username', send: '{user}' },
+          { when: 'Please enter your password', send: '{password}' },
           { when: 'Please enter your selection', send: 'P' },
           { when: 'Please select a realm', send: '1' },
           { when: 'Please select a character', send: '1' },
@@ -1087,6 +1173,44 @@ describe('credentials in the record', () => {
     expect(commands[0]).toMatch(/^•+$/);
     expect(commands[1]).toBe('look');
     expect(commands.join(' ')).not.toContain('hunter2');
+  });
+
+  /*
+   * The case neither of the other two arms reaches.
+   *
+   * An unrecognised BBS asks for both on one line, so the script answers with
+   * `login {user} {password}`: the classifier types nothing, and the command is
+   * not *equal* to the configured password. `Intent.secret` is the third arm,
+   * set where the automator fills the placeholder in and carried on the intent
+   * so the queue holding it cannot spend the mask on somebody else's line.
+   */
+  it('redacts a filled template at a prompt the classifier did not read', async () => {
+    const commands: string[] = [];
+    const { sink } = collect();
+    manager = new SessionManager(
+      { ...sink, command: (command) => commands.push(command) },
+      undefined,
+      DEFAULT_CONFIG.automation,
+      {
+        ...DEFAULT_CONFIG.connection.login,
+        enabled: true,
+        username: 'vaelor',
+        password: 'hunter2',
+        steps: [{ when: 'Account', send: 'login {user} {password}' }]
+      }
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+
+    const socket = await client();
+    // No newline: the idle flush releases it, which is what makes it a prompt.
+    socket.write('Account: ');
+    await until(() => commands.length >= 1, 4000);
+
+    expect(commands[0]).toMatch(/^•+$/);
+    expect(commands.join(' ')).not.toContain('hunter2');
+    // The username is not a secret, but it went out inside the same command,
+    // so the whole line is masked rather than half of it.
+    expect(commands.join(' ')).not.toContain('vaelor');
   });
 
   it('redacts the answers to the account-creation password prompts too', async () => {
@@ -3798,6 +3922,50 @@ describe('a step the server never answers', () => {
     return { socket, notices };
   }
 
+  /*
+   * And the probe goes out on its own clock, not on the next line.
+   *
+   * Asked only when something arrived, a step followed by silence was probed
+   * at the first line after it — a room answering a *later* command, arriving
+   * past the write-off — and the probe then kept the stale step alive long
+   * enough to be credited with that room: the smoke's `climb cliff` was filed
+   * as the way `n` went. Here nothing at all arrives after the move, and the
+   * `rm` has to reach the wire anyway.
+   */
+  it('probes a step on time through a silence, with nothing arriving', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      parse: { ...DEFAULT_INTERNAL.tuning.parse, staleProbeMs: 100, staleMoveMs: 2000 },
+      session: { ...DEFAULT_INTERNAL.tuning.session, reconsiderMs: 25 }
+    });
+    const { sink, notices } = collect();
+    // On, because the probe is automation's: the queue refuses it otherwise.
+    manager = new SessionManager(sink, undefined, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm: [],
+      rules: []
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const sent: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => sent.push(chunk));
+    const wire = (): string => Buffer.concat(sent).toString('latin1');
+    socket.write('Guild Street\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.room.name === 'Guild Street');
+
+    manager.send('n\r');
+    await until(() => wire().includes('n\r\n'));
+    // Nothing is written back from here on: the positive control for the
+    // silence is that the move itself reached the wire.
+    await until(() => wire().includes('rm\r\n'));
+    expect(notices.some((notice) => notice.includes('“n”'))).toBe(true);
+    // Probed once: one `rm` answers the question, and a second only spends.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(wire().split('rm\r\n')).toHaveLength(2);
+  });
+
   it('gives up on it, and says which step, once', async () => {
     const { socket, notices } = await lostAStep();
 
@@ -4584,6 +4752,35 @@ describe('SessionManager dead link', () => {
     expect(drops).toEqual([null]);
     expect(notices.some((notice) => /treating the connection as lost/.test(notice))).toBe(true);
     expect(manager.state.phase).toBe('closed');
+    // This client hung up; the far end closed nothing.
+    expect(notices).toContain('Hung up on a connection that had stopped answering.');
+    expect(notices.some((notice) => /closed by remote host/i.test(notice))).toBe(false);
+  });
+
+  /*
+   * 2026-09-18: every line after the close re-armed the clock, and the
+   * console repeated the dead-link sentence every 45 seconds for seven hours.
+   */
+  it('owes nothing for a line sent after the socket has gone', async () => {
+    const { sink, notices, drops } = collect();
+    silentFor(60);
+    manager = new SessionManager(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    await client();
+
+    // The arbiter takes a card's ask while the socket is up…
+    expect(manager.ask('rm')).toBe(true);
+    manager.send('who\r\n');
+    await until(() => drops.length > 0);
+    const dead = (): number =>
+      notices.filter((notice) => /treating the connection as lost/.test(notice)).length;
+    expect(dead()).toBe(1);
+    // …and refuses one once it has gone, rather than filing it as sent.
+    expect(manager.ask('rm')).toBe(false);
+
+    manager.send('\r');
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    expect(dead()).toBe(1);
   });
 
   it('is answered by the server saying anything at all', async () => {

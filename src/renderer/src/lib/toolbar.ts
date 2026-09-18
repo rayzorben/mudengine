@@ -71,6 +71,7 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   automation: 'bolt',
   combat: 'sword',
   retaliate: 'shield',
+  autoBless: 'sparkle',
   retreat: 'run',
   hangUp: 'unplug',
   loot: 'coins',
@@ -123,6 +124,8 @@ function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.combat');
     case 'retaliate':
       return t('toolbar.retaliate');
+    case 'autoBless':
+      return t('toolbar.autoBless');
     case 'retreat':
       return t('toolbar.retreat');
     case 'hangUp':

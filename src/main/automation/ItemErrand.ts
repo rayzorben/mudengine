@@ -68,8 +68,8 @@ export interface ItemPlanner {
   /** Take this by name while the errand runs — session-scoped, never the file. */
   alsoTake(name: string): void;
   stopTaking(name: string): void;
-  /** The route the player asked for, walked once the pack holds the item. */
-  walk(route: Route): string | null;
+  /** The route the player asked for, walked — or run (todo 06) — once the pack holds the item. */
+  walk(route: Route, run: boolean): string | null;
   /** Whether the player's own supply list names this item, so it is kept. */
   kept(name: string): boolean;
 }
@@ -86,8 +86,8 @@ interface Wanted {
 
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'buying'; item: Wanted; owes: Route }
-  | { kind: 'hunting'; item: Wanted; owes: Route; mob: string }
+  | { kind: 'buying'; item: Wanted; owes: Route; run: boolean }
+  | { kind: 'hunting'; item: Wanted; owes: Route; run: boolean; mob: string }
   /**
    * The pack holds it and the way is still being offered to the walker.
    *
@@ -97,7 +97,7 @@ type Phase =
    * this client's own still on the wire and `Walker.start` refuses to plan
    * across it. `why` is the last refusal, said only if the window runs out.
    */
-  | { kind: 'delivering'; item: Wanted; owes: Route; until: number; why: string };
+  | { kind: 'delivering'; item: Wanted; owes: Route; run: boolean; until: number; why: string };
 
 const ACTION = 'collect';
 
@@ -127,13 +127,14 @@ export class ItemErrand {
    * person is looking at the answer — and null once something is under way.
    * **The pack is asked first**: an item the character is already carrying
    * means the route is walked now, which is the commonest case for a key that
-   * was collected on an earlier trip.
+   * was collected on an earlier trip. `run` is *Run it*, carried to the walk
+   * the errand ends in.
    */
-  collect(item: Wanted, owes: Route, state: CharacterState): string | null {
+  collect(item: Wanted, owes: Route, state: CharacterState, run = false): string | null {
     if (this.phase.kind !== 'idle') return t('automation.collect.refusalBusy');
     if (state.phase !== 'in-game') return t('automation.collect.refusalNotInRealm');
     if (carriedCount(state, item.name) > 0) {
-      const refused = this.planner.walk(owes);
+      const refused = this.planner.walk(owes, run);
       return refused ?? null;
     }
     // Where the errand is taking this character afterwards, so the counter is
@@ -166,7 +167,7 @@ export class ItemErrand {
       };
       const refused = this.planner.buy(row);
       if (refused !== null) return this.refuse(item, refused);
-      this.phase = { kind: 'buying', item, owes };
+      this.phase = { kind: 'buying', item, owes, run };
       /*
        * Two literal calls rather than one sentence with a figure that is
        * sometimes zero: *0 steps off the way* is a number where the reader
@@ -205,7 +206,7 @@ export class ItemErrand {
       this.planner.stopTaking(item.name);
       return this.refuse(item, refused);
     }
-    this.phase = { kind: 'hunting', item, owes, mob: lair.mob };
+    this.phase = { kind: 'hunting', item, owes, run, mob: lair.mob };
     this.events.notice?.(
       t('automation.collect.hunting', { item: item.name, mob: lair.mob, room: lair.name })
     );
@@ -233,7 +234,7 @@ export class ItemErrand {
       this.abandon(t('automation.collect.whyLeftRealm'));
       return;
     }
-    const { item, owes } = this.phase;
+    const { item, owes, run } = this.phase;
     /*
      * Still trying to hand the way over: try again from where the character
      * now stands. Every attempt re-plans, so this costs nothing until one
@@ -241,7 +242,7 @@ export class ItemErrand {
      * still unanswered) clears the moment the room for it arrives.
      */
     if (this.phase.kind === 'delivering') {
-      const refused = this.planner.walk(owes);
+      const refused = this.planner.walk(owes, run);
       if (refused === null) {
         this.phase = { kind: 'idle' };
         return;
@@ -255,7 +256,7 @@ export class ItemErrand {
       return;
     }
     if (carriedCount(state, item.name) > 0) {
-      this.deliver(item, owes);
+      this.deliver(item, owes, run);
       return;
     }
     /*
@@ -276,8 +277,8 @@ export class ItemErrand {
     }
   }
 
-  /** The pack holds it: stop collecting, say which happened, and walk on. */
-  private deliver(item: Wanted, owes: Route): void {
+  /** The pack holds it: stop collecting, say which happened, and walk on — or run on. */
+  private deliver(item: Wanted, owes: Route, run: boolean): void {
     const hunting = this.phase.kind === 'hunting';
     this.give();
     this.phase = { kind: 'idle' };
@@ -308,12 +309,13 @@ export class ItemErrand {
      * tried again on every state until it takes, or until the window is up and
      * the refusal is a real one worth saying.
      */
-    const refused = this.planner.walk(owes);
+    const refused = this.planner.walk(owes, run);
     if (refused === null) return;
     this.phase = {
       kind: 'delivering',
       item,
       owes,
+      run,
       until: this.now() + tuning().walk.errandHandoverMs,
       why: refused
     };

@@ -73,15 +73,35 @@ connection:
     # order would stall there. Enter is always sent, so `send: ''` is a bare
     # Enter, which several menus want.
     #
+    # `repeat: true` answers a row every time its prompt arrives instead of
+    # once. It is for a *pager* -- `(N)onstop, (Q)uit, or (C)ontinue?` -- which
+    # a BBS asks once per screenful, so it comes back precisely because the
+    # answer worked. A menu is the other kind and stays once-only: one that
+    # comes back means the answer was refused, and answering again loops. A row
+    # that sends `{user}` or `{password}` ignores the flag; the account goes out
+    # once per connection whatever the script says, which is what stops an
+    # automated client retrying a password into a lockout.
+    #
     # This replaced four named keys -- selection, realm, character, enterRealm.
     # Those were *Paradigm's* menus, and naming them made one realm's layout
     # part of the client's vocabulary; MajorMUD behind WorldGroup can put any
     # number of menus and any amount of ANSI in between.
     #
+    # `{user}` and `{password}` send the character's own, so the two account
+    # prompts are rows here like every other. They used to be answered from the
+    # client's own vocabulary instead, which recognised one wording of each --
+    # a realm that asks `Enter your ID:` got no answer and no way to say so.
+    # The values are still never written here: they come from the character's
+    # file. `{username}` and `{pass}` mean the same two things.
+    #
     # The rows below are what Paradigm asks for. A realm you add on the Realms
     # page carries its own `login:` list, which is the better place for it:
     # every character on one realm meets the same menus.
     steps:
+      - when: 'Please enter your username'
+        send: '{user}'
+      - when: 'Please enter your password'
+        send: '{password}'
       - when: 'Please enter your selection'
         send: P
       - when: 'Please select a realm'
@@ -94,8 +114,12 @@ connection:
       # the same way; one nobody has configured is left alone silently.
       - when: Accept these realm rules to continue
         send: '1'
+      # The pager, which is asked once per screenful: without `repeat` the
+      # first one is answered, the text that follows fills another screen, and
+      # the login sits at the second prompt for ever.
       - when: '(N)onstop, (Q)uit, or (C)ontinue?'
         send: ''
+        repeat: true
 
 # Realms -- the servers you connect to -- are files: one directory each.
 #
@@ -146,7 +170,9 @@ terminal:
       - LucidaProgrammer Nerd Font Mono
     size: 16
 
-  # Lines kept in the virtualised backscroll buffer.
+  # Lines kept in the backscroll: what the console can scroll back through,
+  # and how much of it is written down per character and read back at the
+  # next launch, so quitting empties nothing. 0 keeps none and writes none.
   scrollback: 100000
 
   cursorBlink: true
@@ -800,6 +826,13 @@ automation:
     walkWhileBlind: false
     walkWhilePoisoned: false
 
+    # Turn auto-combat back on when a route you asked for arrives. The usual
+    # reason to walk with it off is to get somewhere without fighting on the
+    # way, and on arrival that reason is gone. A loop's leg and an errand are
+    # not journeys with an arrival in them. Flips the switch in this file, so
+    # the toolbar shows it.
+    fightOnArrival: true
+
     # The key to the door in front of you.
     #
     # A keyed exit with no key and nothing a picklock can do about it is a wall
@@ -1334,13 +1367,12 @@ automation:
   # lands inside the round or after it. That window is what this covers.
   #
   # Write the spell's whole name (or its abbreviation) -- readable either
-  # way. What actually goes out is `c <short> <target>`, the realm's own
-  # short name, because `c` reads exactly one word as the spell: measured
-  # live, `c pressure points` answers `You do not know how to cast
-  # pressure.` while `c pres` casts it. The client resolves the name through
-  # your own spell listing and the realm data at the moment of casting, and
-  # a cast on yourself goes out bare, with no target -- a targetless cast
-  # lands on the caster.
+  # way. What actually goes out is `<short> <target>`, the realm's own
+  # short name typed as the command itself, never behind `c`: a mystic's
+  # `swan` has no `c` form, and `pres` casts what `c pressure points`
+  # refuses. The client resolves the name through your own spell listing
+  # and the realm data at the moment of casting, and a cast on yourself
+  # goes out bare, with no target -- a targetless cast lands on the caster.
   spells:
     # Auto Choose Best Spell.
     #
@@ -1495,6 +1527,12 @@ automation:
     # caster's client still applies its own per-player remote permissions.
     # Off: it speaks on somebody's telepath channel unasked.
     notifyPartyOnWearOff: false
+
+    # Whether the blessings above are cast unasked at all. The toolbar's
+    # Auto-Bless switch: turn it off to keep the mana for healing through a
+    # fight and back on after, without emptying the list. Off, nothing here is
+    # cast for you; the cures and the heal are untouched.
+    autoBless: true
 
   # Fighting for you, rather than keeping you alive.
   #

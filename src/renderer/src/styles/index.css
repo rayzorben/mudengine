@@ -1499,6 +1499,112 @@ kbd {
 }
 
 /*
+ * The Combat Stats card's level meter and rate graph (todo 08).
+ *
+ * The level meter is the target meter's grammar: the fill is how far into the
+ * level, the darker band inside it is what this session made, and when the
+ * character is past the level the 100% mark moves left and the overage is
+ * tinted beyond it. The graph is an SVG stretched to the card's width, one
+ * bar or point per bin, with the session's own rate ruled across it.
+ */
+.stats-level {
+  margin-bottom: 8px;
+}
+
+.stats-level .meter {
+  height: max(20px, calc(var(--font-micro) * 1.6));
+}
+
+.stats-level > .hint {
+  display: block;
+  font-size: var(--font-micro);
+  margin-top: -2px;
+}
+
+.meter.exp-meter .fill {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.meter.exp-meter .mine {
+  background: color-mix(in srgb, var(--accent) 75%, transparent);
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+
+.meter.exp-meter .over {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+
+.meter.exp-meter .mark {
+  background: var(--text-hi);
+  height: 100%;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+
+.stats-graph {
+  margin: 4px 0 10px;
+}
+
+.stats-graph-head {
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.stats-graph svg {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: block;
+  height: 36px;
+  width: 100%;
+}
+
+.stats-graph .bar {
+  fill: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.stats-graph .line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 85%, transparent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-graph .now {
+  stroke: var(--ok);
+  stroke-dasharray: 3 2;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.meter.exchange .fill {
+  background: color-mix(in srgb, var(--ok) 50%, transparent);
+}
+
+/* The room's fight, run: green is safe, and the two graver hues are the
+   meter's own `data-level` rules below. */
+.meter.survival[data-level='ok'] .fill {
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.combat-survival {
+  margin-bottom: 8px;
+}
+
+.combat-survival .hint {
+  display: block;
+  margin-top: -2px;
+}
+
+/*
  * Level overrides the tone. These follow the two rules above deliberately —
  * equal specificity, so source order decides, and "how bad is it" must win over
  * "which resource is it": a red health bar and a red mana bar mean the same
@@ -6168,6 +6274,16 @@ button.lookup.quest-where svg {
   padding: 4px 6px;
 }
 
+/*
+ * The pager tick, which is the row's one flag rather than another answer: a
+ * bare checkbox against the remove button, so the two inputs stay the row's
+ * shape. Its own width so `input { flex: 1 1 auto }` above cannot stretch it.
+ */
+.settings-steps input.repeat {
+  flex: 0 0 auto;
+  min-width: auto;
+}
+
 .add-step {
   display: inline-flex;
   align-items: center;
@@ -6767,6 +6883,16 @@ button.lookup.quest-where svg {
  * it would pack differently depending on whether the way happens to name an
  * item — one head drawn in two registers.
  */
+/*
+ * *Run it* (todo 06), the press before *Walk it*: the same `flex: 0 0 auto`
+ * as the ticks, so the head's free space is distributed the same way whether
+ * or not the way names an item, and the button cannot be the one child that
+ * shrinks at the rail's narrow end while the filled one beside it does not.
+ */
+.route-summary .route-run {
+  flex: 0 0 auto;
+}
+
 .route-summary :is(.route-collect, .route-stop) {
   align-items: center;
   color: var(--text-lo);
@@ -7419,6 +7545,67 @@ button.lookup:hover,
 button.lookup:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/*
+ * A single-line box that clips sideways must not clip its own ascenders.
+ *
+ * Every rule below is `overflow: hidden` with an ellipsis, and the clip is the
+ * padding box -- a line box exactly one font tall. Chromium rounds the font's
+ * ascent to whole pixels *down*: at 12px the mono face's 9.47px ascent becomes
+ * a 9px line box, the `b` of `big bugbear captain` is 9.25px tall, and the
+ * synthetic bold and its anti-aliasing add most of another pixel above that.
+ * Photographed at 6x in the built app with the clip on and off (2026-09-17,
+ * todo 09): with no slack the top of the `b` is lost; with a fifth of an em,
+ * comfortably more than the rounding and the emboldening can take together,
+ * the two pictures are identical. So a fifth of an em is given back inside
+ * the clip and taken away again outside it: no row moves, and the letters
+ * are whole. The two boxes of this shape that carry their own padding are
+ * not listed.
+ */
+:is(
+  .progression .step-name,
+  .line-log .text,
+  .route-steps .step-name,
+  .quest-name-cell > button.lookup,
+  .quest-track-head .quiet-note,
+  button.lookup.quest-where,
+  .builder-waypoint .step-name,
+  .trace-reason,
+  .status-rail .detail,
+  .palette li .hint,
+  .loops-modal .loops-group-name,
+  .loops-modal .loop-row-name,
+  .tab-rail .new-character .what,
+  .tab .name,
+  .tab .on,
+  .tab .where,
+  .picker-row .entry > span,
+  .candidates .of,
+  .found .what,
+  .card-table td.wide,
+  .stock .what,
+  .loop-name,
+  .route-steps li.group .step-command,
+  .route-steps .step-fold > .fold-name,
+  .reference .what,
+  .reference-popover .popover-head h2,
+  .realm-title,
+  .player-seen,
+  .remote-name,
+  .settings-entry .hint,
+  .settings-name,
+  .combat-name .name,
+  .party-name,
+  .party-class,
+  .party-meter-value,
+  .rewrite-list .rewrite-name,
+  .rewrite-tag .hint,
+  .settings-saving,
+  .home-browser-name
+) {
+  margin-block: -0.2em;
+  padding-block: 0.2em;
 }
 
 /*

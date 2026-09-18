@@ -1,25 +1,33 @@
 import { memo, useCallback, type ReactNode } from 'react';
 
-import BentoCard, { type CardChrome } from './BentoCard';
+import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
+import { useRememberedChoice } from '../hooks/useRemembered';
 import CardTable, { type Column } from './CardTable';
 import type { CharacterState } from '@shared/character';
 import { experienceOwed, experienceStanding } from '@shared/experience';
 import {
   BLOW_KINDS,
+  DEFAULT_STATS_GRAPH,
+  DEFAULT_STATS_HOURS,
   damageDealt,
   engagedFor,
   engagedShare,
   hitsDealt,
   mean,
   perRound,
+  onlineFor,
   ratePerHour,
+  rateSeries,
   share,
   sinceBaseline,
   swings,
   turnedAside,
   type BlowKind,
   type BlowTally,
-  type CombatTally
+  type CombatTally,
+  type AwaySpell,
+  type ExperienceSample,
+  type StatsGraph
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
 import { t } from '../lib/i18n';
@@ -180,8 +188,181 @@ const KIND_LABEL: Record<BlowKind, string> = {
  * Nothing here sends, and nothing here decides. Same rule as the Reference
  * card: this is a readout of what already happened.
  */
+/*
+ * Two faces (todo 08): the card, with what decides an evening — the level
+ * meter, the rates and the damage — and *More*, with what qualifies it. The
+ * face is remembered per character, as the Self card's is.
+ */
+const FACE_IDS = ['stats', 'more'] as const;
+const MORE_ROWS: ReadonlySet<string> = new Set([
+  'deflected',
+  'dodged',
+  'sneak',
+  'coins',
+  'income',
+  'attacking'
+]);
+
+interface LevelReading {
+  next: number;
+  into: number;
+  span: number;
+  over: number;
+  made: number;
+}
+
+/**
+ * Where the character stands in its level, off the experience table.
+ *
+ * `into` is what it has past the level's own threshold and `span` what the
+ * next one costs from there; past the next threshold `over` is the surplus,
+ * which is a banked level the trainer has not been asked for. `made` is this
+ * scope's own experience, drawn as the band it accounts for.
+ */
+function levelReading(progress: CharacterState['progress'], made: number): LevelReading | null {
+  const { level, exp, expTable } = progress;
+  if (level === null || exp === null || expTable === null) return null;
+  const rowAt = (which: number): number | null =>
+    expTable.rows.find((row) => row.level === which)?.experience ?? null;
+  const base = rowAt(level) ?? (level <= 1 ? 0 : null);
+  const top = rowAt(level + 1);
+  if (base === null || top === null || top <= base) return null;
+  const into = Math.max(0, exp - base);
+  const span = top - base;
+  return { next: level + 1, into, span, over: Math.max(0, into - span), made: Math.max(0, made) };
+}
+
+/**
+ * The level meter. The scale is the larger of the way into the level and the
+ * level's span, so a character past the threshold fills the whole track, the
+ * 100% mark moves left to where the span ends and the overage is tinted past
+ * it — the todo's own picture. The band inside the fill is this scope's
+ * share, as the target meter draws this character's share of the damage.
+ */
+function LevelMeter({ reading }: { reading: LevelReading }) {
+  const scale = Math.max(reading.into, reading.span, 1);
+  const pct = (value: number): number => Math.max(0, Math.min(100, (value / scale) * 100));
+  const fill = pct(reading.into);
+  const mark = pct(reading.span);
+  const mineFrom = pct(Math.max(0, reading.into - reading.made));
+  const percent = Math.round((reading.into / reading.span) * 100);
+  return (
+    <div className="stats-level">
+      <div className="meter exp-meter" data-level="ok">
+        <div className="fill" style={{ width: `${fill}%` }} />
+        {reading.made > 0 && (
+          <span className="mine" style={{ left: `${mineFrom}%`, width: `${fill - mineFrom}%` }} />
+        )}
+        {reading.over > 0 && (
+          <>
+            <span className="over" style={{ left: `${mark}%`, width: `${100 - mark}%` }} />
+            <span className="mark" style={{ left: `${mark}%` }} />
+          </>
+        )}
+        {/* A figure and a word, like every meter: a sentence in a bar wraps
+            when the chrome font is turned up. The sentence is the hint's. */}
+        <span className="meter-label">
+          {t('cards.stats.percent', { value: String(percent) })}
+          {reading.over > 0 && (
+            <span className="meter-state">
+              {t('cards.stats.levelOver', { over: figure(reading.over) })}
+            </span>
+          )}
+        </span>
+      </div>
+      <span className="hint">
+        {t('cards.stats.levelFigure', { percent, next: reading.next })}
+        {' · '}
+        {t('cards.stats.levelMade', { made: figure(reading.made) })}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The rate over the window, one bar or point per bin, the scope's own rate
+ * ruled across it. Drawn from `CombatTally.samples`; a bin before the first
+ * sample is left blank rather than drawn as a rate of nothing.
+ */
+function RateGraph({
+  samples,
+  away,
+  leftAt,
+  hours,
+  graph,
+  now,
+  current
+}: {
+  samples: readonly ExperienceSample[];
+  away: readonly AwaySpell[];
+  leftAt: number | null;
+  hours: number;
+  graph: StatsGraph;
+  now: number;
+  current: number | null;
+}) {
+  const bins = tuning().statsGraphBins;
+  // A stretch away still running reaches to now: a character off the realm
+  // is drawn as off it, not as earning nothing.
+  const spells = leftAt === null ? away : [...away, { from: leftAt, to: now }];
+  const series = rateSeries(samples, now - hours * 3_600_000, now, bins, spells);
+  const known = series.filter((value): value is number => value !== null);
+  const head = (
+    <div className="stats-graph-head">
+      <span>{t('cards.stats.graphLabel', { hours })}</span>
+      {current !== null && <span>{t('cards.stats.graphNow', { rate: rate(current) })}</span>}
+    </div>
+  );
+  if (known.length === 0) {
+    return (
+      <div className="stats-graph">
+        {head}
+        <span className="hint">{t('cards.stats.graphEmpty')}</span>
+      </div>
+    );
+  }
+  const top = Math.max(...known, current ?? 0, 1);
+  const height = 36;
+  const width = 100;
+  const step = width / series.length;
+  const y = (value: number): number => height - 2 - (value / top) * (height - 4);
+  const points = series
+    .map((value, index) => (value === null ? null : `${index * step + step / 2},${y(value)}`))
+    .filter((point): point is string => point !== null)
+    .join(' ');
+  return (
+    <div className="stats-graph">
+      {head}
+      <svg aria-hidden="true" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+        {graph === 'bars' ? (
+          series.map((value, index) =>
+            value === null ? null : (
+              <rect
+                className="bar"
+                height={height - y(value)}
+                key={index}
+                width={Math.max(0.2, step - 0.6)}
+                x={index * step + 0.3}
+                y={y(value)}
+              />
+            )
+          )
+        ) : (
+          <polyline className="line" points={points} />
+        )}
+        {current !== null && (
+          <line className="now" x1={0} x2={width} y1={y(current)} y2={y(current)} />
+        )}
+      </svg>
+    </div>
+  );
+}
+
 function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCardProps) {
   const { tally, progress } = character;
+  const [face, chooseFace] = useRememberedChoice(session, 'stats-tab', FACE_IDS, FACE_IDS[0]);
+  const hours = chrome.settings?.value.statsHours ?? DEFAULT_STATS_HOURS;
+  const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
 
   /**
    * The Reset control, as a *baseline* rather than a message to main.
@@ -203,9 +384,17 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * still exactly **one** baseline, written by the button and by the lap alike,
    * so neither has to be compared against the other.
    */
+  /*
+   * A baseline from another series cannot be subtracted from this one. The
+   * totals are kept per character *and realm* and outlive the launch, while
+   * the baseline is kept per character; `since` is set once per series, so a
+   * baseline taken on another realm's record — or on one since thrown away —
+   * carries a different one, and subtracting it would draw the totals
+   * negative.
+   */
   const stale =
     baseline !== null &&
-    (tally.since === null || baseline.at === null || baseline.at < tally.since);
+    (tally.since === null || baseline.at === null || baseline.since !== tally.since);
   const shown = sinceBaseline(tally, stale ? null : baseline);
 
   // Read once per render rather than per figure, so every number on the card
@@ -216,12 +405,16 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const landed = hitsDealt(shown);
   const incoming = shown.taken.hits + turnedAside(shown);
   /*
-   * Every rate is read over the **scope**, which is `since` to now — the same
-   * stretch the duration badge at the top of this card draws. So `Exp. made
-   * 66` over `0:00:40` is a rate the reader can check against the two rows
-   * above it, and pressing Reset re-bases all three in one act.
+   * Every rate is read over the **scope's own clock** — the time this
+   * character has stood in the realm since the scope began, the same stretch
+   * the duration badge at the top of this card draws. So `Exp. made 66` over
+   * `0:00:40` is a rate the reader can check against the two rows above it,
+   * and pressing Reset re-bases all three in one act. In the realm, not since
+   * `since`: the tally outlives the socket and the launch, and a night spent
+   * disconnected is not an hour the character earned nothing in.
    */
-  const expRate = ratePerHour(shown.experience, shown.since, now, tuning().rateFloorMs);
+  const elapsed = onlineFor(shown, now);
+  const expRate = ratePerHour(shown.experience, elapsed, tuning().rateFloorMs);
   /*
    * **What is still owed, from the table rather than from the realm's summary.**
    *
@@ -354,7 +547,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       {
         key: 'kill-rate',
         label: t('cards.stats.killRateLabel'),
-        value: rate(ratePerHour(shown.kills, shown.since, now, tuning().rateFloorMs))
+        value: rate(ratePerHour(shown.kills, elapsed, tuning().rateFloorMs))
       },
       {
         key: 'dealt',
@@ -408,7 +601,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       {
         key: 'income',
         label: t('cards.stats.incomeRateLabel'),
-        value: rate(ratePerHour(shown.coins, shown.since, now, tuning().rateFloorMs)),
+        value: rate(ratePerHour(shown.coins, elapsed, tuning().rateFloorMs)),
         when: everHappened(tally.coins)
       },
       {
@@ -419,18 +612,131 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       }
     ].filter((row) => row.when !== false);
 
-  const copyText = useCallback((): string => {
+  const level = levelReading(progress, shown.experience);
+  const mainRows = readout.filter((row) => !MORE_ROWS.has(row.key));
+  const moreRows = readout.filter((row) => MORE_ROWS.has(row.key));
+  const exchange = share(dealt, dealt + shown.taken.damage);
+
+  const rowLines = (list: typeof readout): string[] =>
+    list.map((row) =>
+      row.second === undefined
+        ? `${row.label}: ${row.value}`
+        : `${row.label}: ${row.value} · ${row.second}`
+    );
+  const copyMain = useCallback((): string => {
     return [
-      ...readout.map((row) =>
-        row.second === undefined
-          ? `${row.label}: ${row.value}`
-          : `${row.label}: ${row.value} · ${row.second}`
-      ),
+      ...(level === null
+        ? []
+        : [
+            t('cards.stats.levelFigure', {
+              percent: Math.round((level.into / level.span) * 100),
+              next: level.next
+            })
+          ]),
+      ...rowLines(mainRows),
       ...rows.map(
         (row) => `${row.label}: ${row.hits} · ${percent(row.accuracy)} · ${span(row.blows)}`
       )
     ].join('\n');
-  }, [readout, rows]);
+  }, [level, mainRows, rows]);
+  const copyMore = useCallback((): string => {
+    return [
+      ...rowLines(moreRows),
+      ...(exchange === null
+        ? []
+        : [
+            `${t('cards.stats.exchangeLabel')}: ${t('cards.stats.exchangeFigure', {
+              dealt: figure(dealt),
+              taken: figure(shown.taken.damage)
+            })}`
+          ])
+    ].join('\n');
+  }, [moreRows, exchange, dealt, shown.taken.damage]);
+
+  const empty = shown.since === null ? <div className="empty">{t('cards.stats.empty')}</div> : null;
+  const pairs = (list: typeof readout): React.JSX.Element[] =>
+    list.map((row) => (
+      <Pair id={row.key} key={row.key} label={row.label} second={row.second} value={row.value} />
+    ));
+
+  const tabs: CardTab[] = [
+    {
+      id: 'stats',
+      label: t('cards.stats.title'),
+      paned: true,
+      copyText: copyMain,
+      content: (
+        <div className="scroller">
+          {empty ?? (
+            <>
+              {level !== null && <LevelMeter reading={level} />}
+              {/*
+                One `<dl>` for the face, and the table under it rather than
+                between two of them: a `.readout` sizes its label column from
+                its own children. Three columns: an average, a share or a rate
+                is a *second figure* with a track of its own (`.readout.paired`),
+                and `dt` is pinned to column one so a row with no second figure
+                still starts a new row.
+              */}
+              <dl className="readout paired">{pairs(mainRows)}</dl>
+              <RateGraph
+                away={shown.away}
+                current={expRate}
+                graph={graph}
+                hours={hours}
+                leftAt={shown.leftAt}
+                now={now}
+                samples={shown.samples}
+              />
+              <CardTable
+                caption={t('cards.stats.tableCaption')}
+                className="stats-table"
+                columns={columns}
+                empty={t('cards.stats.noSwings')}
+                keyOf={(row) => row.key}
+                name="stats"
+                rows={rows}
+                session={session}
+              />
+            </>
+          )}
+        </div>
+      )
+    },
+    {
+      id: 'more',
+      label: t('cards.stats.faceMore'),
+      paned: true,
+      copyText: copyMore,
+      content: (
+        <div className="scroller">
+          {empty ?? (
+            <>
+              <dl className="readout paired">{pairs(moreRows)}</dl>
+              {exchange !== null && (
+                <div className="stats-level">
+                  <div className="meter exchange">
+                    <div className="fill" style={{ width: `${exchange * 100}%` }} />
+                    <span className="meter-label">
+                      {t('cards.stats.percent', { value: (exchange * 100).toFixed(0) })}
+                    </span>
+                  </div>
+                  <span className="hint">
+                    {t('cards.stats.exchangeLabel')}
+                    {': '}
+                    {t('cards.stats.exchangeFigure', {
+                      dealt: figure(dealt),
+                      taken: figure(shown.taken.damage)
+                    })}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )
+    }
+  ];
 
   return (
     <BentoCard
@@ -446,73 +752,23 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
           run: onReset
         }
       ]}
+      active={face}
       badge={
         shown.since === null ? (
           <span className="chip off">{t('cards.stats.badge.nothingYet')}</span>
         ) : (
-          <span className="chip off">{clock(now - shown.since)}</span>
+          <span className="chip off">{clock(elapsed)}</span>
         )
       }
       className="stats-card"
-      copyText={copyText}
+      onActive={chooseFace}
       paned
+      tabs={tabs}
       title={t('cards.stats.title')}
-    >
-      <div className="scroller">
-        {shown.since === null ? (
-          <div className="empty">{t('cards.stats.empty')}</div>
-        ) : (
-          <>
-            {/*
-              One `<dl>` for the whole card, and the table under it rather than
-              between two of them: a `.readout` sizes its label column from its
-              own children, so the two it had gave one card two label columns of
-              different widths with nothing in the text to say why.
-
-              Three columns rather than two, and the third is what the todo
-              asked for: an average, a share or a rate is a *second figure*, and
-              appending it inside the value cell put it at whatever x the first
-              figure happened to end at — a different one on every row.
-              `.readout.paired` gives it a track of its own, and `dt` is pinned
-              to column one so a row with no second figure still starts a new
-              row rather than letting the next label auto-place into the gap.
-            */}
-            <dl className="readout paired">
-              {readout.map((row) => (
-                <Pair
-                  id={row.key}
-                  key={row.key}
-                  label={row.label}
-                  second={row.second}
-                  value={row.value}
-                />
-              ))}
-            </dl>
-
-            <CardTable
-              caption={t('cards.stats.tableCaption')}
-              className="stats-table"
-              columns={columns}
-              empty={t('cards.stats.noSwings')}
-              keyOf={(row) => row.key}
-              name="stats"
-              rows={rows}
-              session={session}
-            />
-          </>
-        )}
-      </div>
-    </BentoCard>
+    />
   );
 }
 
-/**
- * One row of the readout: the label, the figure, and the second figure.
- *
- * A fragment rather than a wrapper, because the three cells are laid out by
- * the `<dl>`'s own grid — an element around them would take one cell and put
- * the alignment back where it was.
- */
 function Pair({
   id,
   label,

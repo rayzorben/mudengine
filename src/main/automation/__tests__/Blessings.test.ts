@@ -81,7 +81,7 @@ describe('keeping a blessing up on this character', () => {
   it('casts on entering the realm, by name, and again when the wire says it wore off', () => {
     const blessings = new Blessings(spells([armour]), true, queue);
     blessings.onCharacter(state());
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
 
     // Confirmed on the wire: the buff is up, so nothing more goes out even
     // long past the proposal cooldown.
@@ -123,7 +123,7 @@ describe('keeping a blessing up on this character', () => {
     vi.advanceTimersByTime(299_000);
     expect(sent).toEqual([]);
     vi.advanceTimersByTime(2_000);
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 
@@ -142,7 +142,7 @@ describe('keeping a blessing up on this character', () => {
     vi.advanceTimersByTime(74_000);
     expect(sent).toEqual([]);
     vi.advanceTimersByTime(2_000);
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 
@@ -158,7 +158,7 @@ describe('keeping a blessing up on this character', () => {
     vi.advanceTimersByTime(10_000);
     expect(sent).toEqual([]);
     fighter.onCharacter(state({ inCombat: true }));
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     fighter.dispose();
   });
 
@@ -171,7 +171,7 @@ describe('keeping a blessing up on this character', () => {
 
     const free = new Blessings(spells([{ ...armour, minMana: 0 }]), true, queue);
     free.onCharacter(state({}, { mana: null, manaMax: null }));
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     free.dispose();
   });
 
@@ -180,13 +180,13 @@ describe('keeping a blessing up on this character', () => {
     const blessings = new Blessings(spells([armour, shield]), true, queue);
     blessings.onCharacter(state());
     // Both are down; one proposal per pass, highest priority first.
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     // The next comes once the cooldown has passed and the first is up.
     vi.advanceTimersByTime(7_000);
     blessings.onCharacter(
       state({ buffs: [{ spell: 'protection', by: null, appliedAt: Date.now() }] })
     );
-    expect(sent).toEqual(['c protection', 'c mage shield']);
+    expect(sent).toEqual(['protection', 'mage shield']);
     blessings.dispose();
   });
 
@@ -196,7 +196,7 @@ describe('keeping a blessing up on this character', () => {
     blessings.onCharacter(state());
     expect(sent).toEqual([]);
     blessings.urgent(state());
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 
@@ -213,7 +213,7 @@ describe('keeping a blessing up on this character', () => {
   it('casts on itself before the character name has arrived', () => {
     const blessings = new Blessings(spells([armour]), true, queue);
     blessings.onCharacter({ ...state(), name: null });
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 
@@ -223,7 +223,7 @@ describe('keeping a blessing up on this character', () => {
     const listed = state();
     listed.spellbook = [{ name: 'protection', short: 'prot', level: null, cost: null }];
     blessings.onCharacter(listed);
-    expect(sent).toEqual(['c prot']);
+    expect(sent).toEqual(['prot']);
     blessings.dispose();
   });
 
@@ -272,6 +272,20 @@ describe('keeping a blessing up on this character', () => {
     expect(sent).toEqual([]);
     blessings.dispose();
   });
+
+  /* The toolbar's own switch, under the master one (todo 04). */
+  it('is off with auto-bless off, and comes back when it is turned on', () => {
+    const first: BlessingConfig = { ...armour, prioritizeOverHeal: true };
+    const blessings = new Blessings({ ...spells([first]), autoBless: false }, true, queue);
+    blessings.onCharacter(state());
+    blessings.urgent(state());
+    vi.advanceTimersByTime(120_000);
+    expect(sent).toEqual([]);
+    blessings.configure(spells([first]), true);
+    blessings.urgent(state());
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
 });
 
 describe('blessing the party', () => {
@@ -295,13 +309,13 @@ describe('blessing the party', () => {
       }
     });
     blessings.onCharacter(roster);
-    expect(sent).toEqual(['c bless Soul']);
+    expect(sent).toEqual(['bless Soul']);
     blessings.onBlock(
       block('spell-cast', { caster: 'You', spell: 'bless', target: 'Soul' }),
       roster
     );
     vi.advanceTimersByTime(7_000);
-    expect(sent).toEqual(['c bless Soul', 'c bless Yang']);
+    expect(sent).toEqual(['bless Soul', 'bless Yang']);
     blessings.onBlock(
       block('spell-cast', { caster: 'You', spell: 'bless', target: 'Yang' }),
       roster
@@ -312,7 +326,7 @@ describe('blessing the party', () => {
     // Soul's clock (started at 0s) lapses at 60s; Yang's (7s) has not yet.
     vi.advanceTimersByTime(24_000);
     expect(sent).toHaveLength(3);
-    expect(sent[2]).toBe('c bless Soul');
+    expect(sent[2]).toBe('bless Soul');
     blessings.dispose();
   });
 
@@ -335,7 +349,7 @@ describe('blessing the party', () => {
   it('restarts a member clock from the confirmed cast, and recasts at once on @bless-expired', () => {
     const blessings = new Blessings(spells([bless]), true, queue);
     blessings.onCharacter(state({ party: party('Soul') }));
-    expect(sent).toEqual(['c bless Soul']);
+    expect(sent).toEqual(['bless Soul']);
 
     // The confirmation restarts the clock; the fallback runs from here.
     blessings.onBlock(
@@ -347,7 +361,7 @@ describe('blessing the party', () => {
 
     // Soul's client says it wore off: due now, not at the clock.
     blessings.onPeerExpired('Soul', 'bless');
-    expect(sent).toEqual(['c bless Soul', 'c bless Soul']);
+    expect(sent).toEqual(['bless Soul', 'bless Soul']);
     blessings.dispose();
   });
 
@@ -420,7 +434,7 @@ describe('a blessing the pool cannot pay for', () => {
      * is both where mana changes and where this is asked again.
      */
     blessings.onCharacter(state({}, { mana: 2, manaMax: 30 }));
-    expect(sent).toEqual(['c owl']);
+    expect(sent).toEqual(['owl']);
     blessings.dispose();
   });
 
@@ -452,7 +466,7 @@ describe('a blessing the pool cannot pay for', () => {
       () => null
     );
     blessings.onCharacter(state({}, { mana: 1, manaMax: 30 }));
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 
@@ -490,7 +504,7 @@ describe("the server's own countdown", () => {
     vi.advanceTimersByTime(89_000);
     expect(sent).toEqual([]);
     vi.advanceTimersByTime(2_000);
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 
@@ -511,7 +525,7 @@ describe("the server's own countdown", () => {
       })
     );
     vi.advanceTimersByTime(31_000);
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
     blessings.dispose();
   });
 });
@@ -525,7 +539,7 @@ describe('a cast that failed', () => {
   it('is retried on the next round rather than after the retry floor', () => {
     const blessings = new Blessings(spells([armour]), true, queue);
     blessings.onCharacter(state());
-    expect(sent).toEqual(['c protection']);
+    expect(sent).toEqual(['protection']);
 
     // Nothing on the list: the cast failed. Without the block, the next pass
     // is held by the retry floor.
@@ -536,7 +550,7 @@ describe('a cast that failed', () => {
 
     blessings.onBlock(block('spell-failed', { spell: 'protection' }), state());
     blessings.onCharacter(state());
-    expect(sent).toEqual(['c protection', 'c protection']);
+    expect(sent).toEqual(['protection', 'protection']);
     blessings.dispose();
   });
 

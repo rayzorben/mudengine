@@ -393,7 +393,8 @@ export class AutoCombat {
       minMana: 0,
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
-      notifyPartyOnWearOff: false
+      notifyPartyOnWearOff: false,
+      autoBless: true
     },
     /**
      * The realm's own row for a spell it names, whole.
@@ -447,7 +448,11 @@ export class AutoCombat {
      * the control answer in both directions.
      */
     if (this.config.enabled && !config.enabled) this.declineWhileTravelling();
-    if (!this.config.enabled && config.enabled) this.declined = false;
+    // A reload that reads on is the player's hand whichever edge it arrived
+    // on: a run's write and the toolbar's press inside one poll reach here as
+    // on → on, and a decline left standing beside a switch that reads on is
+    // auto-combat dead with nothing to say why (todo 06, on review).
+    if (config.enabled) this.declined = false;
     this.config = config;
     this.enabled = enabled;
     if (spells) this.spells = spells;
@@ -588,7 +593,8 @@ export class AutoCombat {
    * The journey's override is the client's decision, so the player has to be
    * able to overrule it — and the overruling has to outlast the room it was
    * made in, or the next arrival turns fighting straight back on. It holds
-   * until this journey ends; the next one asks again.
+   * until this journey ends; the next one asks again. *Run it* (todo 06) makes
+   * the same refusal on the player's behalf the moment the walk starts.
    */
   declineWhileTravelling(): void {
     if (this.travelling) this.declined = true;
@@ -601,9 +607,17 @@ export class AutoCombat {
    * fights whatever the block says**, unless the player has said otherwise for
    * this journey (todo 00; a lap alone overrode it from todo 03, 2026-09-06).
    * See {@link setTravelling} for the argument.
+   *
+   * **A declined journey is declined whatever the switch reads** (todo 06):
+   * *Run it* declines the journey in the same breath as asking the file to
+   * turn the switch off, and the file answers half a second later through
+   * `configure`. Until then the switch still reads on, and a first step taken
+   * beside a monster would open exactly the fight the press was made to avoid.
+   * Nothing else holds `declined` beside a switch that reads on: it is set on
+   * the switch going off and cleared by any reload that reads on.
    */
   private get acting(): boolean {
-    return this.enabled && (this.config.enabled || (this.travelling && !this.declined));
+    return this.enabled && !this.declined && (this.config.enabled || this.travelling);
   }
 
   /**
@@ -618,7 +632,9 @@ export class AutoCombat {
    * reading a switch they set and finding it obeyed, which needs no sentence.
    */
   private get declinedOnly(): boolean {
-    return this.enabled && !this.config.enabled && this.travelling && this.declined;
+    // Whatever the switch reads: a run's decline stands beside a switch that
+    // still reads on for half a second, and is reported for that half second.
+    return this.enabled && this.travelling && this.declined;
   }
 
   /**
@@ -1312,7 +1328,7 @@ export class AutoCombat {
     if (engaged !== null) return t('automation.combat.refusedEngagedWith', { target: engaged });
     // The journey turned fighting on and the player turned it back off; it
     // stays off until the next one (`declineWhileTravelling`).
-    if (this.travelling && this.declined && !this.config.enabled) {
+    if (this.travelling && this.declined) {
       return t('automation.combat.refusedDeclinedTravelling');
     }
 
@@ -1787,15 +1803,15 @@ export class AutoCombat {
      * room, once a round. See `canPayFor`.
      */
     if (cast !== null && found !== null && canPayFor(state, spellCost(found))) {
-      // The realm's short name — the `Cast` command reads exactly one word
-      // as the spell (`castWord`), so `mmis giant rat`, never
-      // `c minor missile giant rat`.
+      // The realm's short name, which is itself the command (`castWord`):
+      // `mmis giant rat`, never `c minor missile giant rat` — and a
+      // mystic's `swan` has no `c` form at all.
       const word = found.word;
       this.queue.enqueue({
         // A room spell is cast bare: the wire shows an area cast with no
         // target answering `You cast poison cloud on the room!`
         // (captures/131); a named target on one has never been seen.
-        command: cast.area ? `c ${word}` : `c ${word} ${target}`,
+        command: cast.area ? word : `${word} ${target}`,
         priority: 'combat',
         coalesceKey: 'round-attack',
         expiresAt: Date.now() + tuning().combat.roundMs * 20,

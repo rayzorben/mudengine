@@ -199,13 +199,22 @@ export function worstDisposition(all: Iterable<MobDisposition>): MobDisposition 
  * one only at the exact bottom of their own band, which nothing on screen
  * distinguishes — and that is reported as *unknown* rather than resolved.
  *
- * `Lawful` is deliberately **absent**. It is in this client's `Alignment` union
- * and in the `who` pattern, and `GetAlignmentTitle` does not produce it — so
- * there is no band to place it in, and inventing one would decide a fight on a
- * number nobody has read. It reads as unknown, like every other absence here.
+ * **`Lawful` is MajorMUD's word for `Saint`'s band** (2026-09-17), which is
+ * why it has one at all: it was deliberately absent here on the grounds that
+ * `GetAlignmentTitle` does not produce it, and the exemption said it would go
+ * when the capture arrived. It has. Bearfather's MajorMUD 1.11p prints a
+ * roster of `Lawful`, `Good`, `Neutral` and `Criminal` and never `Saint`, and
+ * `Saint` appears nowhere in the 218-capture corpus while `Lawful` appears in
+ * two — eight rungs on each ladder, seven words shared, one word in each that
+ * the other does not have. The cost of the absence was a route: every
+ * `hates-evil` guardsman in Godfrey answered *nobody can say* against a
+ * `Lawful` character, a pass was priced as a fight a level-1 mystic cannot
+ * survive, and the walk to Newhaven went 46 steps round a town square it
+ * could have crossed. See `decisions.md`.
  */
 const ALIGNMENT_RANGE: Partial<Record<Alignment, [number, number]>> = {
   Saint: [-1000, -200],
+  Lawful: [-1000, -200],
   Good: [-200, -50],
   Neutral: [-50, 30],
   Seedy: [30, 40],

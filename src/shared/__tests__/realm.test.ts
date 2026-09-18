@@ -38,7 +38,16 @@ function unionMembers(): string[] {
 }
 
 function block(type: Block['type'], groups: Record<string, string> = {}): Block {
-  return { seq: 1, at: 0, type, domain: 'status', groups, text: '', confidence: 1 };
+  return {
+    seq: 1,
+    at: 0,
+    type,
+    domain: 'status',
+    groups,
+    text: '',
+    terminator: 'newline',
+    confidence: 1
+  };
 }
 
 const GMUD: RealmBuild = {

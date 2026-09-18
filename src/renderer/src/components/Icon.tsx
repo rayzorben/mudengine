@@ -54,6 +54,7 @@ export type IconName =
   | 'check'
   | 'login'
   | 'reset'
+  | 'sparkle'
   | 'pin'
   | 'unpin'
   | 'help'
@@ -519,6 +520,8 @@ const ICONS: Record<IconName, ReactNode> = {
     <path d="M12 20.3s-7.8-4.6-7.8-9.7a4.3 4.3 0 0 1 7.8-2.5 4.3 4.3 0 0 1 7.8 2.5c0 5.1-7.8 9.7-7.8 9.7Z" />
   ),
   moon: <path d="M20.4 14.3A8.6 8.6 0 0 1 9.7 3.6a8.6 8.6 0 1 0 10.7 10.7Z" />,
+  // A four-point star: a blessing, the glint every game draws on a buff.
+  sparkle: <path d="M12 3l2.2 6.3 6.3 2.2-6.3 2.2L12 20l-2.2-6.3L3.5 11.5l6.3-2.2Z" />,
   // A torch's flame: the light switch. One outer tongue and a smaller inner
   // one, because a single outline reads as a leaf at 14px.
   flame: (

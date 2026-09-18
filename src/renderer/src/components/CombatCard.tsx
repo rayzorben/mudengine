@@ -2,6 +2,7 @@ import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import type { CharacterState, TargetHealth } from '@shared/character';
+import type { RoomVerdict } from '@shared/verdict';
 import { woundBandFor } from '@shared/wounds';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -12,6 +13,8 @@ import { tuning } from '../lib/tuning';
 
 export interface CombatCardProps extends CardChrome {
   character: CharacterState;
+  /** The room appraised — and its fight run — pushed on change beside the character. */
+  verdict: RoomVerdict;
   /** A monster's name clicked: the realm's answer, beside it. */
   inspect?(name: string, anchor: HTMLElement): void;
   /** A person's name clicked: the Player flyout — a PvP attacker is a person. */
@@ -188,7 +191,68 @@ function Provenance({ health }: { health: TargetHealth }) {
  * monster nothing can put a number on gets a damage tally and no bar, rather
  * than a bar drawn against a maximum somebody made up.
  */
-function CombatCard({ character, inspect, onSelect, ...chrome }: CombatCardProps) {
+/**
+ * *Will I walk out of this room?* — the fight run rather than added up
+ * (`simulateFight`), drawn the moment the room is read and before anything
+ * has swung. One meter: the share of fights survived is its fill, the level
+ * its hue — green is what the tuning calls safe, amber merely risky, red
+ * deadly — and the words say the same, since a hue alone is not a reading.
+ * Unknown is drawn as unknown, never as any of the three.
+ */
+function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | null }) {
+  const survival = verdict.survival;
+  const level: Level =
+    survival === null
+      ? 'unknown'
+      : survival.level === 'safe'
+        ? 'ok'
+        : survival.level === 'risky'
+          ? 'caution'
+          : 'critical';
+  const percent = survival === null ? 0 : Math.round(survival.survives * 100);
+  return (
+    <div className="combat-survival">
+      <div
+        className={`meter survival${survival === null ? ' unknown' : ''}`}
+        data-level={level}
+        title={
+          survival === null
+            ? undefined
+            : t('cards.combat.survival.trials', { count: survival.trials })
+        }
+      >
+        <div className="fill" style={survival === null ? undefined : { width: `${percent}%` }} />
+        {/* A figure and a word, like every meter: a sentence in a bar wraps
+            when the chrome font is turned up. The sentence is the hint's. */}
+        <span className="meter-label">
+          {survival === null ? '—' : t('cards.combat.survival.figure', { percent })}
+          {survival !== null && <span className="meter-state">{levelWord(level)}</span>}
+        </span>
+      </div>
+      <span className="hint">
+        {survival === null
+          ? t('cards.combat.survival.unknown')
+          : [
+              t('cards.combat.survival.walkOut', { percent }),
+              survival.hpLeft === null
+                ? t('cards.combat.survival.roundsOnly', {
+                    rounds: Math.round(survival.rounds.value)
+                  })
+                : t('cards.combat.survival.detail', {
+                    rounds: Math.round(survival.rounds.value),
+                    hp: Math.round(survival.hpLeft),
+                    hpMax: hp ?? Math.round(survival.hpLeft)
+                  }),
+              ...(survival.heals >= 0.5
+                ? [t('cards.combat.survival.heals', { count: Math.round(survival.heals) })]
+                : [])
+            ].join(' · ')}
+      </span>
+    </div>
+  );
+}
+
+function CombatCard({ character, verdict, inspect, onSelect, ...chrome }: CombatCardProps) {
   const { combat } = character;
   const outnumbered = combat.attackers.length > 1;
 
@@ -215,6 +279,12 @@ function CombatCard({ character, inspect, onSelect, ...chrome }: CombatCardProps
       title={t('cards.combat.title')}
     >
       <div className="scroller">
+        {/* Drawn whether or not anything has swung yet: the question it
+            answers is asked on the way in, and only where the room holds
+            something the realm could weigh. */}
+        {verdict.monsters.length > 0 && (
+          <SurvivalMeter hp={character.vitals.hp} verdict={verdict} />
+        )}
         {!combat.engaged && combat.attackers.length === 0 ? (
           <div className="empty">{t('cards.combat.empty')}</div>
         ) : (

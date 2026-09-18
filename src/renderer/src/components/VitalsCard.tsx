@@ -156,7 +156,7 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
    * condition, and a badge saying so would be chrome.
    */
   /*
-   * Four literal `t()` calls rather than a lookup keyed on the field name:
+   * Five literal `t()` calls rather than a lookup keyed on the field name:
    * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic
    * key would be an unexempted dynamic call and a key nothing is seen to read.
    */
@@ -164,7 +164,8 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
     afflictions.blind === 'yes' ? t('cards.vitals.afflicted.blind') : null,
     afflictions.poisoned === 'yes' ? t('cards.vitals.afflicted.poisoned') : null,
     afflictions.diseased === 'yes' ? t('cards.vitals.afflicted.diseased') : null,
-    afflictions.held === 'yes' ? t('cards.vitals.afflicted.held') : null
+    afflictions.held === 'yes' ? t('cards.vitals.afflicted.held') : null,
+    afflictions.confused === 'yes' ? t('cards.vitals.afflicted.confused') : null
   ].filter((word): word is string => word !== null);
 
   const badge = inCombat ? (

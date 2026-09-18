@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 import type { SessionId } from '@shared/ipc';
+import { isCombatTally, type CombatTally } from '@shared/tally';
 
 /**
  * Read what the store holds for a key, or fall back.
@@ -211,4 +212,31 @@ export function useRememberedRanks(
   );
 
   return { get: (key) => ranks[key] ?? null, set };
+}
+
+/**
+ * The Combat Stats card's baseline, per character: the totals as they stood
+ * when Reset was pressed.
+ *
+ * Not a hook — `App` holds the baseline and writes it from a callback — and
+ * `localStorage` like the rest of this file, because a press on a card must
+ * not rewrite a file full of the user's own comments. Main's totals outlive
+ * the launch (`Belongings` keeps them), so the reading they are subtracted
+ * from has to as well, or every launch silently undid the last Reset. Parsed
+ * on the way back, not trusted: a value an older build wrote is dropped, and
+ * one older than the totals is dropped by the card's own `stale` test.
+ */
+export function recallStatsBase(session: SessionId): CombatTally | null {
+  return readStored(
+    `mudengine.stats-base.${session}`,
+    (stored) => {
+      const parsed: unknown = JSON.parse(stored);
+      return isCombatTally(parsed) ? parsed : null;
+    },
+    () => null
+  );
+}
+
+export function rememberStatsBase(session: SessionId, base: CombatTally): void {
+  writeStored(`mudengine.stats-base.${session}`, JSON.stringify(base));
 }

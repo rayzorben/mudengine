@@ -150,6 +150,25 @@ describe('collecting what a route needs', () => {
     expect(decisions.at(-1)).toMatchObject({ action: 'collect', acted: true });
   });
 
+  /* *Run it* rides through the errand to the walk it ends in (todo 06). */
+  it('carries a run through to the walk it ends in', () => {
+    const runs: boolean[] = [];
+    sources = { shops: [counter()], lairs: [] };
+    const auto = errand({
+      walk: (route, run) => {
+        walked.push(route);
+        runs.push(run);
+        return null;
+      }
+    });
+    expect(auto.collect(KEY, OWED, carrying(), true)).toBeNull();
+    expect(runs).toEqual([true]);
+    expect(auto.collect(KEY, OWED, ready(), true)).toBeNull();
+    auto.onCharacter(carrying());
+    expect(walked).toEqual([OWED, OWED]);
+    expect(runs).toEqual([true, true]);
+  });
+
   /*
    * Found: a loop over the rooms the realm says its droppers live in, with the
    * name added to what the character picks up for as long as the errand runs.

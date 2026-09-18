@@ -45,7 +45,16 @@ const t = makeT(dict, (problem) => {
 });
 
 function block(type: BlockType, text: string): Block {
-  return { seq: 1, at: 1000, type, domain: domainOf(type), groups: {}, text, confidence: 0.8 };
+  return {
+    seq: 1,
+    at: 1000,
+    type,
+    domain: domainOf(type),
+    groups: {},
+    text,
+    terminator: 'newline',
+    confidence: 0.8
+  };
 }
 
 function withVitals(hp: number | null, hpMax: number | null, at = 2000): CharacterState {

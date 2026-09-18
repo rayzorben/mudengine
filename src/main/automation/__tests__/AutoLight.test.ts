@@ -57,6 +57,7 @@ function block(type: BlockType, groups: Record<string, string> = {}): Block {
     domain: domainOf(type),
     groups,
     text: '',
+    terminator: 'newline',
     confidence: 0.8
   };
 }

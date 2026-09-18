@@ -16,7 +16,7 @@ import type { SpellTargeting } from '@shared/spellcraft';
  * person to use it typed the spell into the wrong one and lost the row. The
  * value is always the **whole name** — the readable spelling; the client
  * resolves it to the realm's short word at the moment of casting
- * (`castWord`), because `c` reads exactly one word as the spell. The
+ * (`castWord`), which is the command itself on the wire. The
  * abbreviation is still searched, because `mihe` is how a MegaMUD-trained
  * player thinks of `minor healing`.
  *

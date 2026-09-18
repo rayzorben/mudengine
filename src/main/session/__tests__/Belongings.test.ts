@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { Belongings, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
+import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 
 let dir = '';
 let file = '';
@@ -484,5 +485,99 @@ describe('who the record is about', () => {
     expect(store.forget()).toBe(false);
     store.close();
     expect(fs.readFileSync(file, 'utf8')).toBe('not json');
+  });
+});
+
+/*
+ * The running totals (todo 06, 2026-09-17): the Combat Stats card and its
+ * rate graph open where they were left, and the clock a launch left running
+ * is closed at the last moment the client is known to have been in the realm.
+ */
+describe('what the fighting added up to', () => {
+  const tally: CombatTally = {
+    ...NO_TALLY,
+    since: 1_000,
+    at: 9_000,
+    kills: 3,
+    experience: 800,
+    samples: [{ at: 9_000, experience: 800 }],
+    onlineMs: 4_000,
+    onlineSince: 5_000
+  };
+
+  it('survives a restart with the moment it was handed over', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberStats(tally);
+    store.close();
+
+    const back = new Belongings({ file, realm: REALM }).recallStats();
+    expect(back?.tally.kills).toBe(3);
+    expect(back?.tally.samples).toEqual([{ at: 9_000, experience: 800 }]);
+    expect(typeof back?.savedAt).toBe('number');
+  });
+
+  it('closes a clock still running on the way out, at that moment', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberStats(tally);
+    const before = Date.now();
+    store.close();
+
+    const back = new Belongings({ file, realm: REALM }).recallStats();
+    expect(back?.tally.onlineSince).toBeNull();
+    // Four seconds settled, plus the visit open since 5,000 closed at the
+    // write — which is now, not the moment the tally was handed over.
+    expect(back?.tally.onlineMs).toBeGreaterThanOrEqual(4_000 + (before - 5_000));
+    expect(back?.savedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it('starts null: never kept is not "never fought"', () => {
+    expect(new Belongings({ file, realm: REALM }).recallStats()).toBeNull();
+  });
+
+  /* The totals move on every blow, so they wait on their own longer delay;
+     a balance still lands on the short one, and brings them with it. */
+  it('waits longer to write the totals than a balance, and a balance brings them forward', () => {
+    vi.useFakeTimers();
+    try {
+      const store = new Belongings({ file, realm: REALM });
+      store.rememberStats(tally);
+      vi.advanceTimersByTime(2_500);
+      expect(fs.existsSync(file)).toBe(false);
+      store.rememberBanks([balance()]);
+      vi.advanceTimersByTime(2_500);
+      expect(fs.existsSync(file)).toBe(true);
+      expect(new Belongings({ file, realm: REALM }).recallStats()?.tally.kills).toBe(3);
+      store.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses a record whose tally another hand has bent, with the rest of the file', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: REALM,
+        banks: [balance()],
+        stats: { savedAt: 1, tally: { ...tally, kills: 'three' } }
+      }),
+      'utf8'
+    );
+    const store = new Belongings({ file, realm: REALM });
+    expect(store.recallStats()).toBeNull();
+    // Suspended, like every unreadable record: the balances in the same file
+    // are the only copy of what the banks said.
+    expect(store.recallBanks()).toEqual([]);
+    expect(store.forget()).toBe(false);
+  });
+
+  it('goes with the rest of the record at the word', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberStats(tally);
+    expect(store.forget()).toBe(true);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallStats()).toBeNull();
   });
 });

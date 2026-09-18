@@ -106,6 +106,9 @@ toolbar:
     - automation
     - combat
     - retaliate
+    # Keeping the blessings up, on the row: the switch somebody flips for one
+    # fight to keep the mana for healing, and back after.
+    - autoBless
     - loot
     # Searching every room, on the row rather than in the kebab: it costs a
     # command per room, so it is the kind of switch somebody turns on for one
@@ -307,6 +310,17 @@ tuning:
     # short enough that a fight is still a fight when it lapses.
     staleMoveMs: 8000
 
+    # A step unanswered this long is probed: `rm` goes out behind it, and its
+    # answer is an ordered one -- the server answers in the order it was asked
+    # -- so a `Location:` arriving with the step still unanswered proves the
+    # step produced nothing and it is dropped at once, while a probe still
+    # unanswered proves the server is slow and the step waits, up to
+    # staleMoveMaxMs. Three seconds is two movement rounds; thirty is a link
+    # that has gone, not a server that is slow.
+    staleProbeMs: 3000
+
+    staleMoveMaxMs: 30000
+
     # Pack changes held against a listing that has not finished arriving. A
     # listing takes about a second; this covers what a person or a fight can
     # do in one, and no more.
@@ -314,6 +328,13 @@ tuning:
 
     # Possible rooms kept for the resolution trace.
     maxRoomCandidates: 8
+
+    # How often the experience total is sampled for the Combat Stats card's
+    # rate graph, and how many samples are kept: a minute, and a day of them.
+    # The newest sample is updated in place until its minute is spent.
+    statsSampleMs: 60000
+
+    statsSamplesKept: 1440
 
     # The band a line has to be inside to be read as a room's name.
     #
@@ -450,6 +471,18 @@ tuning:
     # counts towards the order — taken early, at full health — without
     # outweighing every round of blows before it.
     deathOverRounds: 5
+
+    # The room's fight, run: how many times, how long a fight may run before
+    # it is called, and the shares of fights survived that read as safe and as
+    # merely risky — under riskyAbove is deadly. Three hundred runs of a long
+    # fight are a millisecond or two; the figures move a point between seeds.
+    survivalTrials: 300
+
+    survivalRoundCap: 120
+
+    survivalSafeAbove: 0.95
+
+    survivalRiskyAbove: 0.6
 
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
@@ -1029,6 +1062,17 @@ tuning:
     # never finishes.
     promptHoldMs: 1000
 
+    # How long a tail that is NOT a prompt may keep arriving before the client
+    # frames it anyway. The 150ms quiet period releases a prompt, and over the
+    # internet that is not long enough to mean an ordinary sentence ended: the
+    # bearfather BBS paused 178ms in the middle of a room name, and the half in
+    # hand was read as a room and learned as a place that does not exist.
+    # Measured over 670 sessions: 25 server sentences cut in half (room exits, a
+    # monster's arrival, who rows split mid-name); 700ms covers 22. The rest are
+    # a banner nothing parses and one 33-second stall, where waiting is worse
+    # than splitting. Only text the server appends after a prompt waits on this.
+    sentenceHoldMs: 700
+
     # How long the lines of a listing the client redraws (ui.rewrites) wait for
     # the status line that ends the listing before they are painted as sent.
     # The listing is redrawn whole at that prompt, which the idle flush frames
@@ -1114,8 +1158,22 @@ tuning:
     # How many it holds if a flush never happens.
     talkHeld: 500
 
+    # How long painted console output waits before it is written down.
+    backscrollFlushMs: 2000
+
+    # Rewrite the backscroll file once it holds this many times what is kept,
+    # rather than appending for ever: it is read whole at launch, and a cap on
+    # the lines kept is not a cap on a file that only grows.
+    backscrollRewriteAt: 2
+
     # How long a balance change waits before it is written.
     belongingsWriteDelayMs: 2000
+
+    # How long the running totals wait before the record is written. Longer
+    # than a balance, because they move on every blow and the record is
+    # rewritten whole; a crash costs at most this much of them, and a quit
+    # writes them exactly.
+    statsWriteDelayMs: 30000
 
     # Vaults kept for one character. The shipped realm has seven banks; a file
     # past this is one being fed something that is not a bank name.
@@ -1225,6 +1283,18 @@ tuning:
     # is priced as a wall: walked only when there is no other way at all, never
     # preferred while there is. One is *expected to die there*.
     deadlyShare: 1
+
+    # The most of the bar a pass *nobody can say will happen* may be priced at,
+    # however bad it would be if it did. A monster's disposition can be
+    # conditional — one that hates the evil opens on an Outlaw and leaves a
+    # Saint alone — so a character whose standing the client has not read meets
+    # *nobody can say*, and such a monster is counted in rather than out,
+    # because unknown is never the reassuring answer. Counted in at its full
+    # share it reaches `deadlyShare`, and a fact nobody has read then walls a
+    # corridor: a tenth of the bar is about twenty plain steps, enough to
+    # prefer a way round that exists and never enough to justify a map.
+    # `deadlyShare` or above restores the wall; zero says *safe*.
+    unsureShare: 0.1
 
     # What one pass through a room whose spell this client cannot read is
     # priced at, as a share of the bar.
@@ -1603,6 +1673,16 @@ tuning:
     roomSearchDebounceMs: 150
 
     roomSearchMinChars: 2
+
+    # How many of the realm's own things — monsters, items, spells — a palette
+    # query lists beneath the rooms it found. The lookup answers a dozen per
+    # kind with the name-prefix matches first, so the cap trims the substring
+    # tail; typing one more letter is how the list narrows, not scrolling.
+    paletteFoundRows: 12
+
+    # How many bars or points the Combat Stats card's rate graph draws across
+    # its window, whatever the window is.
+    statsGraphBins: 24
 
     # How long a pointer rests on a room before its quick view opens, and how
     # long the panel stays after the pointer has left both it and the room.

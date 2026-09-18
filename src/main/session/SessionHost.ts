@@ -39,7 +39,7 @@ import {
   type SessionId,
   type SessionSummary
 } from '../../shared/ipc';
-import type { AppConfig } from '../../shared/config';
+import type { AppConfig, AutomationSwitch } from '../../shared/config';
 import type { ConnectionState, ConnectionTarget } from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
@@ -74,16 +74,18 @@ export interface SessionSlot {
    *
    * **The exposure that comes with being unconditional, stated rather than
    * inherited.** Outbound commands are masked by `SessionManager.reportable`,
-   * which arms on a prompt the *classifier typed* — `prompt-password` or
-   * `prompt-new-password` — with an exact match against the configured
-   * password as its only fallback. So on a realm whose password prompt this
-   * client does not recognise, a password that is not the configured one (a
-   * second account, or one being created) is written down verbatim. That has
-   * always been true of the capture, and the capture is opt-in and stays on
-   * the player's disk; this ring is always on and exists to be *sent to
-   * somebody else*, which makes the same gap a different size. The answer when
-   * it bites is a pattern, in `patterns.ts`, from a capture — not a second
-   * redactor here.
+   * armed three ways: on a prompt the *classifier typed* (`prompt-password` or
+   * `prompt-new-password`), by `LoginAutomator` filling a `{password}` in — the
+   * arm that covers a realm whose prompt this client does not recognise, since
+   * the script answers it whatever it is called — and an exact match against
+   * the configured password. What none of them covers is a password the player
+   * types *by hand* at an unrecognised prompt, and one that is not the
+   * configured one: a second account, or one being created. That has always
+   * been true of the capture, and the capture is opt-in and stays on the
+   * player's disk; this ring is always on and exists to be *sent to somebody
+   * else*, which makes the same gap a different size. The answer when it bites
+   * is a pattern, in `patterns.ts`, from a capture — not a second redactor
+   * here.
    */
   readonly debug: SessionDebug;
   /** The last character name published, so the roster is republished on change. */
@@ -101,6 +103,8 @@ export interface SessionHostOptions {
    * exist.
    */
   worldFor(id: SessionId): WorldGraph | undefined;
+  /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
+  flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /**
    * What is known about the monsters on *this character's* realm.
    *
@@ -144,6 +148,12 @@ export interface SessionHostOptions {
    * does, and a telepath belongs on exactly one Talk card. See `TalkLog`.
    */
   talkFor(id: SessionId): TalkSink;
+  /**
+   * Where this character's console output is kept between launches, so the
+   * terminal opens where it was left. Optional: a test keeps it in memory.
+   * See `Backscroll`.
+   */
+  backscrollFor?(id: SessionId): string;
   /**
    * What is known about the other players on *this character's* realm.
    *
@@ -417,6 +427,7 @@ export class SessionHost {
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
+        switchAutomation: (name, on) => this.options.flipSwitch?.(id, name, on) ?? false,
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.
@@ -476,7 +487,11 @@ export class SessionHost {
     const slot: SessionSlot = {
       id,
       manager,
-      backscroll: new Backscroll(),
+      backscroll: new Backscroll({
+        lines: config.terminal.scrollback,
+        file: this.options.backscrollFor?.(id),
+        onProblem: (message) => this.options.notice({ session: id, message })
+      }),
       reconnect,
       log: null,
       capture: null,
@@ -585,6 +600,7 @@ export class SessionHost {
       const config = this.options.configFor(slot.id);
       slot.manager.configure(config.automation, config.connection.login, config.ui.rewrites);
       slot.manager.configureInternal(this.options.internal());
+      slot.backscroll.setLimit(config.terminal.scrollback);
     }
   }
 
@@ -615,6 +631,9 @@ export class SessionHost {
     slot.manager.dispose();
     void slot.log?.close();
     void slot.capture?.close();
+    // Synchronous, unlike the two above: what this loses at quit is the last
+    // lines the console will show at the next launch, not a record's tail.
+    slot.backscroll.close();
     this.slots.delete(id);
     this.options.publishRoster();
   }

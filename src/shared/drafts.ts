@@ -96,6 +96,14 @@ export function asLoop(value: unknown): Loop | null {
 export interface LoginStepDraft {
   when: string;
   send: string;
+  /**
+   * Answer it every time it arrives, rather than once per connection.
+   *
+   * For a pager — `(N)onstop, (Q)uit, or (C)ontinue?` — which is asked once per
+   * screenful, so it comes back because the answer worked. See
+   * `LoginStep.repeat`, which this mirrors.
+   */
+  repeat?: boolean;
 }
 
 /** A saved place, and how to get through its menus. */
@@ -244,6 +252,7 @@ export interface GlobalDraft {
       cures: CuresDraft;
       blessings: BlessingDraft[];
       notifyPartyOnWearOff: boolean;
+      autoBless: boolean;
       invokeItems: boolean;
     };
     loot: ProfileDraft['loot'];
@@ -446,6 +455,7 @@ export interface ProfileDraft {
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
+    fightOnArrival: boolean;
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
     collectKeys: boolean;
   };
@@ -542,6 +552,7 @@ export interface ProfileDraft {
     cures: CuresDraft;
     blessings: BlessingDraft[];
     notifyPartyOnWearOff: boolean;
+    autoBless: boolean;
     invokeItems: boolean;
   };
   /**
@@ -686,6 +697,9 @@ export function asServerDraft(value: unknown): ServerDraft | null {
  * editor with a `+` produces a blank row the moment somebody presses it, and
  * refusing the save until every row is filled in would make the button hostile.
  * An empty `send` is kept — it is a bare Enter, which several menus want.
+ *
+ * `repeat` is carried only when it is exactly `true`, so anything else a window
+ * sends reads as the default — which is *once*, the safe half of the choice.
  */
 function asLoginSteps(value: unknown): LoginStepDraft[] {
   if (!Array.isArray(value)) return [];
@@ -694,7 +708,11 @@ function asLoginSteps(value: unknown): LoginStepDraft[] {
     if (!isRecord(entry)) continue;
     const when = text(entry['when']);
     if (when.length === 0 || when.length > 200) continue;
-    steps.push({ when, send: text(entry['send']).slice(0, 200) });
+    steps.push({
+      when,
+      send: text(entry['send']).slice(0, 200),
+      ...(entry['repeat'] === true ? { repeat: true } : {})
+    });
   }
   return steps;
 }
@@ -895,6 +913,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // Off by default, MegaMUD's own: a blank field waits the condition out.
       walkWhileBlind: movement['walkWhileBlind'] === true,
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
+      // `!== false`: on unless it was turned off. See the field.
+      fightOnArrival: movement['fightOnArrival'] !== false,
       lightDimRooms: movement['lightDimRooms'] === true,
       extinguishInLight: movement['extinguishInLight'] === true,
       // Off unless said: it walks the character back to where it died.
@@ -1006,6 +1026,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       cures: asCures(spells['cures']),
       blessings: asBlessings(spells['blessings']),
       notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
+      // `!== false`: on unless it was turned off. See the field.
+      autoBless: spells['autoBless'] !== false,
       invokeItems: spells['invokeItems'] === true
     },
     alerts: {
@@ -1203,6 +1225,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         cures: asCures(spells['cures']),
         blessings: asBlessings(spells['blessings']),
         notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
+        autoBless: spells['autoBless'] !== false,
         invokeItems: spells['invokeItems'] === true
       },
       // Read by the function that already knows how, like the blocks above.

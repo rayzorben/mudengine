@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LineTokenizer, plainText, stripAnsi } from '../LineTokenizer';
+import { LineTokenizer, plainText, resolveBackspaces, stripAnsi } from '../LineTokenizer';
 import { PROMPT_REPAINT } from '../stream-quirks';
 
 /** Convenience: frame a whole string in one push. */
@@ -134,6 +134,32 @@ describe('stripAnsi', () => {
   });
 });
 
+describe('resolveBackspaces', () => {
+  it('overwrites the letter MajorMUD hides each exit word behind', () => {
+    // bearfather's wire, and capture 031: a random letter, a backspace, the
+    // rest of the word. The letter differs line to line and is never read.
+    expect(resolveBackspaces('Obvious exits: nG\borth, sJ\bouth, eD\bast, wU\best')).toBe(
+      'Obvious exits: north, south, east, west'
+    );
+  });
+
+  it('parks a trailing backspace on the character rather than erasing it', () => {
+    // The BBS's own menu line. A backspace with nothing behind it only moves
+    // the cursor, so the question mark a login script matches is still there.
+    expect(resolveBackspaces('(N)onstop, (Q)uit, or (C)ontinue?\b')).toBe(
+      '(N)onstop, (Q)uit, or (C)ontinue?'
+    );
+  });
+
+  it('erases with the backspace-space-backspace the BBS spinner uses', () => {
+    expect(resolveBackspaces('|\b/\b-')).toBe('-');
+  });
+
+  it('cannot walk off the start of the line', () => {
+    expect(resolveBackspaces('\b\b\bab')).toBe('ab');
+  });
+});
+
 describe('plainText', () => {
   it('strips ANSI and the trailing terminator', () => {
     expect(
@@ -145,6 +171,15 @@ describe('plainText', () => {
     expect(plainText({ text: `[HP=100/MA=50]:${PROMPT_REPAINT}`, terminator: 'repaint' })).toBe(
       '[HP=100/MA=50]:'
     );
+  });
+
+  it('replays backspaces, so the exits a rule sees are the ones on screen', () => {
+    expect(
+      plainText({
+        text: '\x1b[0;32mObvious exits: nG\borth, sJ\bouth\x1b[0m\r\n',
+        terminator: 'newline'
+      })
+    ).toBe('Obvious exits: north, south');
   });
 
   it('leaves interior whitespace alone, because columns are meaningful', () => {

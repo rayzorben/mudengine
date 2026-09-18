@@ -126,6 +126,20 @@ describe('the tuning block', () => {
     ).toBe(1);
   });
 
+  /*
+   * Except the one the template says 0 switches off. Floored, it became a
+   * one-millisecond deadline, and a client told to stop hanging up on a silent
+   * link hung up on every connection a millisecond after its first command.
+   */
+  it('keeps zero where zero means off', () => {
+    expect(
+      normalizeInternal({ tuning: { reconnect: { silentForMs: 0 } } }).tuning.reconnect.silentForMs
+    ).toBe(0);
+    expect(
+      normalizeInternal({ tuning: { reconnect: { silentForMs: -5 } } }).tuning.reconnect.silentForMs
+    ).toBe(0);
+  });
+
   /* A count may be zero — "no holds", "nothing quiet" — and is a whole number. */
   it('lets a count be zero, and rounds one that is not whole', () => {
     expect(normalizeInternal({ tuning: { walk: { maxHolds: 0 } } }).tuning.walk.maxHolds).toBe(0);

@@ -1049,9 +1049,10 @@ export interface IpcApi {
    * Resolves to what happened: walking, a refusal, or **the plan drawn again**
    * — the character moved between the drawing and the press, so the way from
    * where it now stands is what comes back, for the reader to read and press
-   * again. See {@link WalkStart}.
+   * again. See {@link WalkStart}. `run` is *Run it*: auto-combat turned off
+   * before the first step and left off (todo 06).
    */
-  walkRoute(session: SessionId, route: Route): Promise<WalkStart>;
+  walkRoute(session: SessionId, route: Route, run?: boolean): Promise<WalkStart>;
   /**
    * Start moving. `loop` names the loop the card's picker shows — null is the
    * picker's resume entry, and the name of the lap already stopped means
@@ -1078,7 +1079,8 @@ export interface IpcApi {
   collectThenWalk(
     session: SessionId,
     item: { id: number; name: string },
-    route: Route
+    route: Route,
+    run?: boolean
   ): Promise<string | null>;
   /** Stop moving, whichever of the two is running. Keeps its place. */
   stopMoving(session: SessionId): Promise<void>;

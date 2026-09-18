@@ -200,7 +200,7 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   'user-levels': { severity: 'info', channel: 'session' },
   'user-learns': { severity: 'info', channel: 'session' },
   'user-reads-spell': { severity: 'info', channel: 'session' },
-  /* Leaving on purpose; automatic login stands down, and the rail should say why. */
+  /* Asking to leave; the realm may still refuse, and the rail should say it was asked. */
   'user-exits-realm': { severity: 'info', channel: 'session' },
   /*
    * Leaving by accident, charged for on the way back in.
@@ -251,6 +251,8 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   'user-poisoned': { severity: 'warning', channel: 'combat' },
   'user-diseased': { severity: 'warning', channel: 'combat' },
   'user-held': { severity: 'warning', channel: 'combat' },
+  /* Every command may be thrown away until it ends; the fumbles say so one at a time. */
+  'user-confused': { severity: 'warning', channel: 'combat' },
   'user-cant-sneak': { severity: 'warning', channel: 'stealth' },
   'user-hide-failed': { severity: 'warning', channel: 'stealth' },
   'user-cant-hide': { severity: 'warning', channel: 'stealth' },
@@ -284,6 +286,13 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   'player-disconnects': { severity: 'info', channel: 'presence' },
   /* Something moving in the next room, which is the only warning a lair gives. */
   'heard-movement': { severity: 'info', channel: 'presence' },
+  /*
+   * The nightly cleanup, announced fifteen, five and one minute out and as it
+   * runs. Worth a row because it moves things a player is counting on: every
+   * non-placed item on every floor is hidden, `Del@Maint` items are destroyed
+   * wherever they lie, and a `Remove@Maint` item leaves the pack.
+   */
+  'realm-cleanup': { severity: 'info', channel: 'realm' },
   /*
    * The answer to `search`, both ways round, and kept where the rest of the
    * housekeeping was cut because it is *rare*: it arrives only when somebody
@@ -419,6 +428,7 @@ export const ALERT_EVENTS = {
   poisoned: { channel: 'combat', types: ['user-poisoned'] },
   diseased: { channel: 'combat', types: ['user-diseased'] },
   held: { channel: 'combat', types: ['user-held'] },
+  confused: { channel: 'combat', types: ['user-confused'] },
   'attack-refused': { channel: 'combat', types: ['attack-refused'] },
   'attack-useless': { channel: 'combat', types: ['attack-ineffective'] },
   'spell-useless': { channel: 'combat', types: ['spell-ineffective'] },
@@ -436,6 +446,8 @@ export const ALERT_EVENTS = {
   /* Somebody near, or gone. */
   'movement-heard': { channel: 'presence', types: ['heard-movement'] },
   'player-disconnects': { channel: 'presence', types: ['player-disconnects'] },
+  /* The realm's own clock: the nightly cleanup, fifteen minutes out to done. */
+  cleanup: { channel: 'realm', types: ['realm-cleanup'] },
 
   /* Getting about. */
   'way-blocked': { channel: 'movement', types: ['direction-failed', 'open-failed'] },

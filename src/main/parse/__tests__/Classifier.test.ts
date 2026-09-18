@@ -523,6 +523,21 @@ describe('conversation, movement, items', () => {
     expectType('You are typing too quickly - command ignored', 'command-ignored');
     // Every death with a life left prints this after `You have been killed!` (Player.cs:1467).
     expectType('But, due to a miracle, you have been saved.', 'user-saved');
+    // The nightly cleanup, all four announcements (the user's own log, 2026-08-25).
+    expect(expectType('A new day begins to approach.', 'realm-cleanup')['phase']).toBe(
+      'begins to approach'
+    );
+    expect(expectType('A new day is fast approaching.', 'realm-cleanup')['phase']).toBe(
+      'is fast approaching'
+    );
+    expect(expectType('A new day is imminent.', 'realm-cleanup')['phase']).toBe('is imminent');
+    expect(expectType('A new day has come!', 'realm-cleanup')['phase']).toBe('has come');
+    // And what it prints for a `Remove@Maint` item in the pack (`GMUDServer.cs:445`, no full stop).
+    expect(
+      expectType('Your black star key has been returned to its proper place', 'user-item-returned')[
+        'item'
+      ]
+    ).toBe('black star key');
     expectType("Why don't you slow down for a few seconds?", 'slow-down');
   });
 
@@ -1739,12 +1754,22 @@ describe('the cheap eight', () => {
     expect(expectType('You successfully unlocked the door.', 'door-changed')['state2']).toBe(
       'unlocked'
     );
+    // A door nobody here touched, from `Door.cs`: the timer and the far side
+    // both compose it, and it is the one door sentence naming the direction.
+    expect(expectType('The door to the northwest just closed.', 'door-swings')).toMatchObject({
+      barrier: 'door',
+      direction: 'northwest',
+      state: 'closed'
+    });
+    expect(expectType('The gate to the south just opened.', 'door-swings')['state']).toBe('opened');
     expect(expectType('Rend went west from here.', 'user-tracks')).toMatchObject({
       player: 'Rend',
       direction: 'west'
     });
     expectType('Your tracking skills fail you this time.', 'user-tracks-failed');
     expectType('You are now resting.', 'user-rests');
+    // MajorMUD's `confusion` and `song of dazzling` land with this (captures/001, 037, 092).
+    expectType('You are confused!', 'user-confused');
   });
 });
 
@@ -2909,6 +2934,39 @@ describe("the server's message table", () => {
     expect(block.groups).toMatchObject({ caster: 'kobold thief', spell: 'curse', target: 'you' });
   });
 
+  /*
+   * `You retch uncontrollably!` is row 72, the `ConfuseMsg` of six spells on
+   * the shipped realm — `ActionFigure.CheckConfusion` printing it means the
+   * command was thrown away (todo 05). The character's own line is the
+   * fumble; the room's line is somebody else's and stays explained.
+   */
+  it("reads the character's line of a confusion row as a fumbled command", () => {
+    const rows = MessageBook.fromRows(
+      parseMessagesCsv(
+        [
+          'number,kind,line1,line2,line3',
+          '72,spell,"You retch uncontrollably!","%s retches uncontrollably!","You feel nauseous!"'
+        ].join('\n')
+      )
+    );
+    const confused = (plain: string) =>
+      new Classifier(
+        NAMES,
+        undefined,
+        undefined,
+        undefined,
+        (text) => rows.match(text),
+        (row) => row === 72
+      ).classify(line(plain)).block;
+    expect(confused('You retch uncontrollably!').type).toBe('command-fumbled');
+    expect(confused('Soul retches uncontrollably!').type).toBe('realm-message');
+    // And a realm that names no such row explains the line and decides nothing.
+    const plain = new Classifier(NAMES, undefined, undefined, undefined, (text) =>
+      rows.match(text)
+    ).classify(line('You retch uncontrollably!')).block;
+    expect(plain.type).toBe('realm-message');
+  });
+
   it('explains any other row by its number and role, and decides nothing', () => {
     const block = read('You are healed of 12 damage!');
     expect(block.type).toBe('realm-message');
@@ -2918,5 +2976,68 @@ describe("the server's message table", () => {
   it('never overrules a frame', () => {
     expect(read('You have been killed!').type).toBe('user-dies');
     expect(read('[HP=74/MA=66]:').type).toBe('status-line');
+  });
+});
+
+/**
+ * How the line ended reaches the block.
+ *
+ * `LoginAutomator` is the reader, and it is the only one: a script row that
+ * sends the account may answer a prompt and must not answer a notice, and on a
+ * BBS whose prompts this client has never met both arrive as `unknown` with
+ * nothing else to tell them apart. A regression here is silent in both
+ * directions — `newline` where the server flushed stops an unknown realm
+ * answering its login, `flush` where it did not removes the gate — so the
+ * producer is asserted as well as the consumer.
+ */
+describe('the terminator reaches the block', () => {
+  function framed(plain: string, terminator: StreamLine['terminator']) {
+    seq += 1;
+    return new Classifier(NAMES).classify({
+      seq,
+      at: 1_700_000_000_000 + seq,
+      text: plain,
+      plain,
+      terminator
+    });
+  }
+
+  it('carries what the tokenizer framed, whichever it was', () => {
+    // The login prompt: no newline, released by the idle flush.
+    expect(framed('Please enter your password:', 'flush').block.terminator).toBe('flush');
+    expect(framed('Please enter your password:', 'newline').block.terminator).toBe('newline');
+    // The status line's own repaint, which is how this stream frames at all.
+    expect(framed('[HP=33/33]:', 'repaint').block.terminator).toBe('repaint');
+  });
+
+  it('carries it for a line no rule claimed', () => {
+    // The case the gate turns on: an unrecognised BBS's prompt is `unknown`.
+    const block = framed('Login ID: ', 'flush').block;
+    expect(block.type).toBe('unknown');
+    expect(block.terminator).toBe('flush');
+  });
+
+  /*
+   * A batch is several lines and only the last one has a terminator to carry,
+   * so it takes the terminator of the line that *closed* it — here the status
+   * line the server moved on with.
+   */
+  it('gives a batch the terminator of the line that closed it', () => {
+    const classifier = new Classifier(NAMES);
+    const feed = (plain: string, terminator: StreamLine['terminator']) => {
+      seq += 1;
+      return classifier.classify({
+        seq,
+        at: 1_700_000_000_000 + seq,
+        text: plain,
+        plain,
+        terminator
+      });
+    };
+    feed('You are carrying a rope and grapple, 6 torch.', 'newline');
+    feed('You have no keys.', 'newline');
+    const closed = feed('[HP=33/33]:', 'flush');
+    expect(closed.batch?.type).toBe('user-inventory');
+    expect(closed.batch?.terminator).toBe('flush');
   });
 });

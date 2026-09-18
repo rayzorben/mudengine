@@ -1248,6 +1248,8 @@ function createInternal(): InternalStore {
 function createHost(): SessionHost {
   return new SessionHost({
     worldFor,
+    // The same write the toolbar's press makes, so the toggle shows it.
+    flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,
@@ -1255,6 +1257,9 @@ function createHost(): SessionHost {
     memoryFor: splitMemoryFor,
     fightsFor,
     talkFor,
+    // Beside the conversation and for the same reason: what the console
+    // showed outlives the launch. `check:secrets` walks the whole home.
+    backscrollFor: (id) => home.state('backscroll', `${id}.log`),
     belongingsAt,
     playersFor,
     destinationsFor,
@@ -1602,26 +1607,29 @@ function registerIpc(): void {
    * reviewed is the point, and re-planning here could quietly walk a different
    * one.
    */
-  handle(Invoke.walkRoute, (_caller, session: SessionId, payload: unknown): WalkStart => {
-    const slot = host?.get(session);
-    if (!slot) return { refused: t('app.session.notConnected') };
-    /*
-     * Parsed, not trusted. This is the one payload a window sends that turns
-     * into commands on the socket, so it is the one that has to be proven at
-     * the boundary — a malformed route otherwise fails several frames later
-     * inside the walker, where nothing on the stack says where it came from.
-     */
-    const route = asRoute(payload);
-    if (!route) return { refused: t('app.route.invalidPayload') };
-    /*
-     * Through the manager rather than straight at the walker: a route the
-     * player asked for is one of the two moments the supply list is consulted,
-     * and the shop is visited before the route is walked. And it is the one
-     * route that can have gone stale while somebody read it, so it goes
-     * through `walkPlan`, which redraws it rather than refusing. See both.
-     */
-    return slot.manager.walkPlan(route);
-  });
+  handle(
+    Invoke.walkRoute,
+    (_caller, session: SessionId, payload: unknown, run: unknown): WalkStart => {
+      const slot = host?.get(session);
+      if (!slot) return { refused: t('app.session.notConnected') };
+      /*
+       * Parsed, not trusted. This is the one payload a window sends that turns
+       * into commands on the socket, so it is the one that has to be proven at
+       * the boundary — a malformed route otherwise fails several frames later
+       * inside the walker, where nothing on the stack says where it came from.
+       */
+      const route = asRoute(payload);
+      if (!route) return { refused: t('app.route.invalidPayload') };
+      /*
+       * Through the manager rather than straight at the walker: a route the
+       * player asked for is one of the two moments the supply list is consulted,
+       * and the shop is visited before the route is walked. And it is the one
+       * route that can have gone stale while somebody read it, so it goes
+       * through `walkPlan`, which redraws it rather than refusing. See both.
+       */
+      return slot.manager.walkPlan(route, run === true);
+    }
+  );
   /*
    * Collect what a door wants, then walk the way through it (todo 07).
    *
@@ -1629,17 +1637,20 @@ function registerIpc(): void {
    * on a socket — and the item is checked as narrowly as the route: an id and
    * a name, both of which the realm gave the window in the first place.
    */
-  handle(Invoke.collectThenWalk, (_caller, session: SessionId, item: unknown, payload: unknown) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    const route = asRoute(payload);
-    if (!route) return t('app.route.invalidPayload');
-    const asked = item as { id?: unknown; name?: unknown } | null;
-    const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
-    const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
-    if (id === null || name.length === 0) return t('app.route.invalidPayload');
-    return slot.manager.collectThenWalk({ id, name }, route);
-  });
+  handle(
+    Invoke.collectThenWalk,
+    (_caller, session: SessionId, item: unknown, payload: unknown, run: unknown) => {
+      const slot = host?.get(session);
+      if (!slot) return t('app.session.notConnected');
+      const route = asRoute(payload);
+      if (!route) return t('app.route.invalidPayload');
+      const asked = item as { id?: unknown; name?: unknown } | null;
+      const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
+      const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
+      if (id === null || name.length === 0) return t('app.route.invalidPayload');
+      return slot.manager.collectThenWalk({ id, name }, route, run === true);
+    }
+  );
   /*
    * The one play button and the one stop button.
    *
