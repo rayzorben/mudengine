@@ -167,12 +167,16 @@ describe('whether a monster will open the fight', () => {
   });
 
   /*
-   * `Lawful` is in this client's alignment union and the server never produces
-   * it, so there is no band to place it in. Inventing one would decide a fight
-   * on a number nobody has read.
+   * `Lawful` is MajorMUD's name for `Saint`'s band (2026-09-17), so it answers
+   * exactly as `Saint` does at both ends: attacked by what hates the good,
+   * left alone by what hates the evil. It read as *nobody can say* while it
+   * had no band, and that silence priced every guardsman in Godfrey as a
+   * fight and sent the route round the town square.
    */
-  it('says nothing for an alignment word the server never produces', () => {
-    expect(attacksOnSight('hates-good', 'Lawful')).toBeNull();
+  it('answers for Lawful exactly as it does for Saint', () => {
+    expect(attacksOnSight('hates-good', 'Lawful')).toBe(attacksOnSight('hates-good', 'Saint'));
+    expect(attacksOnSight('hates-evil', 'Lawful')).toBe(attacksOnSight('hates-evil', 'Saint'));
+    expect(attacksOnSight('hates-evil', 'Lawful')).toBe(false);
   });
 
   it('says nothing at all about a monster nothing can place', () => {

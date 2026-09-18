@@ -51,15 +51,20 @@ export interface RoutePanelProps {
    * Resolves to what happened: walking, why it could not, or **the plan drawn
    * again** — the character moved between the drawing and the press, and the
    * way from where it now stands comes back to be read and pressed again.
+   * `run` is *Run it*: auto-combat turned off first, and left off (todo 06).
    */
-  onWalk(route: Route): Promise<WalkStart>;
+  onWalk(route: Route, run: boolean): Promise<WalkStart>;
   /**
    * Collects what the way needs first, then walks it (todo 07).
    *
    * Offered on whichever way is on screen, where it names an item to go and
    * get — a door it crosses, or a spell its rooms cast (`itemWanted`).
    */
-  onCollectThenWalk(item: { id: number; name: string }, route: Route): Promise<string | null>;
+  onCollectThenWalk(
+    item: { id: number; name: string },
+    route: Route,
+    run: boolean
+  ): Promise<string | null>;
   /**
    * A destination chosen elsewhere — clicking the map — to plan on opening.
    *
@@ -508,7 +513,7 @@ export default function RoutePanel({
   });
 
   const walk = useCallback(
-    (plan: Route): void => {
+    (plan: Route, run = false): void => {
       /*
        * *Collect it first* is a different press: main goes and gets the item
        * and walks the way that wanted it when the pack holds it. The item is
@@ -550,10 +555,12 @@ export default function RoutePanel({
        * way on from there itself, so a plan handed to it cannot be stale and
        * there is nothing for it to redraw.
        */
+      // *Run it* rides through both doors: the errand carries it to the walk
+      // it ends in, so the ticks and the press compose as they do for a walk.
       const started: Promise<WalkStart> =
         needed === null
-          ? onWalk(walked)
-          : onCollectThenWalk(needed, walked).then((reason) =>
+          ? onWalk(walked, run)
+          : onCollectThenWalk(needed, walked, run).then((reason) =>
               reason === null ? { started: true } : { refused: reason }
             );
       void started
@@ -1073,6 +1080,18 @@ export default function RoutePanel({
                         </label>
                       );
                     })()}
+                    {/* *Run it* (todo 06): the same press with auto-combat
+                    turned off first and left off — turn off, go. `type="button"`
+                    because Enter is *Walk it*, and not `.primary` because the
+                    panel spends its one filled control on that. */}
+                    <button
+                      className="route-run"
+                      onClick={() => walk(shown, true)}
+                      title={t('cards.route.runTooltip')}
+                      type="button"
+                    >
+                      {t('cards.route.runButton')}
+                    </button>
                     {/* The one filled control in this panel, per §3.3: walking is
                     the action, everything else here is reading. */}
                     {/* Also the form's default action, so Enter walks it. */}

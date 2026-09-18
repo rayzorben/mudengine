@@ -9,10 +9,10 @@ import { parseSpellMessagesCsv } from '../../../shared/spell-messages';
 import {
   ABILITY_INTERNAL,
   ABILITY_SHAPE,
-  abilityIsClaimed,
   abilityIsNotable,
   abilityIsUnread,
   abilityName,
+  abilityShape,
   type AbilityTable
 } from '../../../shared/abilities';
 
@@ -94,8 +94,6 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
         unread += 1;
         continue;
       }
-      // Read, and read as "no" — see `EffectRows`. Draws nothing, admits nothing.
-      if (!abilityIsClaimed(id, value, 'item')) continue;
       const already = rows.get(id);
       if (already) already.push(value);
       else rows.set(id, [value]);
@@ -180,31 +178,32 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
   it('reads every effect on spiked gauntlets, and admits no gap', () => {
     const { rows, unread } = read('spiked gauntlets');
     expect(unread).toBe(0);
-    // `Del@Maint 0` draws nothing: a flag saying no has no row.
-    expect([...rows.keys()].sort((a, b) => a - b)).toEqual([4, 135]);
+    // `Del@Maint 0` draws its label: the gauntlets go at cleanup (todo 01).
+    expect([...rows.keys()].sort((a, b) => a - b)).toEqual([4, 119, 135]);
     expect(rows.get(4)).toEqual([1]);
     expect(rows.get(135)).toEqual([20]);
   });
 
   /*
-   * The maintenance flags at scale. 386 of the 413 items carrying `Del@Maint`
-   * carry it as zero, which is why it is a flag and not a count: drawn from
-   * presence, the card would tell 386 players their item is destroyed nightly
-   * when the row exists to promise it is not.
+   * The maintenance flags at scale. Most of the items carrying `Del@Maint`
+   * carry it as zero, and the server destroys every one of them at cleanup
+   * (`RoomManager.DoCleanup` tests the row's presence, never its value; todo
+   * 01, 2026-09-17), so a flag is read and drawn whatever it holds.
    */
-  it('draws a maintenance flag only on the items the realm actually sets it on', () => {
+  it('reads a maintenance flag on every item the realm sets it on', () => {
     let carried = 0;
-    let claimed = 0;
+    let zero = 0;
     for (const item of shippedItems()) {
       for (const [id, value] of item.ab ?? []) {
         if (id !== 119) continue;
         carried += 1;
-        if (abilityIsClaimed(id, value, 'item')) claimed += 1;
+        if (value === 0) zero += 1;
+        expect(abilityIsUnread(id, 'item')).toBe(false);
       }
     }
     expect(carried).toBeGreaterThan(300);
-    // A small minority — the flag is the exception, and the zero is the rule.
-    expect(claimed).toBeLessThan(carried / 4);
+    // The zero is the rule, and it is not the realm answering no.
+    expect(zero).toBeGreaterThan(carried / 2);
   });
 
   /*
@@ -255,9 +254,9 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
     expect(rows.get(1002)).toBe(0); // GrantTraps, without one
     expect(rows.get(31)).toBe(0); // Bash — every class has it
     // And every one of them is drawn: a grant is claimed at zero.
-    for (const [id, value] of thief!.ab!) {
+    for (const [id] of thief!.ab!) {
       expect(abilityIsNotable(id, 'item'), `Thief ability ${id}`).toBe(true);
-      expect(abilityIsClaimed(id, value, 'item'), `Thief ability ${id}`).toBe(true);
+      expect(abilityIsUnread(id, 'class'), `Thief ability ${id}`).toBe(false);
     }
   });
 
@@ -329,7 +328,8 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
     const rows = new Map(heal!.ab);
     expect(rows.get(18)).toBe(0);
     // Drawn, because a grant is claimed at zero — the row says *what* it does.
-    expect(abilityIsClaimed(18, 0, 'item')).toBe(true);
+    expect(abilityShape(18, 'spell')).toBe('grant');
+    expect(abilityIsUnread(18, 'spell')).toBe(false);
   });
 
   /*
@@ -350,7 +350,7 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
         const pairs = (row.ab ?? []).filter(([id]) => !ABILITY_INTERNAL.has(id));
         if ((row.ab ?? []).length === 0) continue;
         withEffects += 1;
-        const bad = pairs.filter(([id, value]) => abilityIsUnread(id, value, table));
+        const bad = pairs.filter(([id]) => abilityIsUnread(id, table));
         if (bad.length > 0) withUnread += 1;
         for (const [id] of bad) remaining.add(id);
       }
@@ -380,7 +380,6 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
      * place. Each is a value the client holds and cannot draw, which is what
      * the counter is for.
      *
-     *   119   `Del@Maint`, on the two items that read 646 rather than 0 or 1
      *   137   `ShockMsg`
      *   178   `Shadowform`
      *   1115  `NoFirstKillDrop`, 23 monsters
@@ -397,14 +396,15 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
      * here: a wrong shape draws a confident sentence about an item somebody
      * decides to buy with, where an unread id draws an honest "1 more".
      */
-    expect([...remaining].sort((a, b) => a - b)).toEqual([119, 137, 178, 1115, 1117, 1174]);
+    expect([...remaining].sort((a, b) => a - b)).toEqual([137, 178, 1115, 1117, 1174]);
   });
 
   /*
    * The regression for the worst failure this work had.
    *
    * `flag`'s zero-means-no rule was measured on `Items` and left alone when
-   * the other four tables were wired in, so `abilityIsClaimed` dropped a row
+   * the other four tables were wired in, so the claim test of the time (since
+   * removed: a flag claims by presence now) dropped a row
    * that had been read perfectly well — drawn nowhere and, because it never
    * reached the counter, *confessed* nowhere. **303 spells rendered no effects
    * row at all**, including the spell literally named `freedom` whose only
@@ -423,12 +423,9 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
         const pairs = (row.ab ?? []).filter(([id]) => !ABILITY_INTERNAL.has(id));
         if ((row.ab ?? []).length === 0 || pairs.length === 0) continue;
         const drawn = pairs.some(
-          ([id, value]) =>
-            !abilityIsUnread(id, value, table) &&
-            abilityName(id, 'greatermud') !== null &&
-            abilityIsClaimed(id, value, table)
+          ([id]) => !abilityIsUnread(id, table) && abilityName(id, 'greatermud') !== null
         );
-        const admitted = pairs.some(([id, value]) => abilityIsUnread(id, value, table));
+        const admitted = pairs.some(([id]) => abilityIsUnread(id, table));
         if (!drawn && !admitted) silent.push(`${which}/${row.n}`);
       }
     }
@@ -450,11 +447,11 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
     expect(witchunter, 'the realm has a Witchunter').toBeDefined();
     // 44 rows realm-wide state `AntiMagic` and not one states a value.
     expect(witchunter!.ab!.some(([id]) => id === 51)).toBe(true);
-    expect(abilityIsClaimed(51, 0, 'class')).toBe(true);
+    expect(abilityShape(51, 'class')).toBe('grant');
 
     const freedom = shipped('spells').find((row) => row.n === 'freedom');
     expect(freedom!.ab).toEqual([[81, 0]]);
-    expect(abilityIsClaimed(81, 0, 'spell')).toBe(true);
+    expect(abilityShape(81, 'spell')).toBe('grant');
   });
 
   /*

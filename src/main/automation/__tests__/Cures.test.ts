@@ -48,9 +48,9 @@ describe('curing by a sentence', () => {
   it('casts the configured cure, bare, when the server says the condition is on', () => {
     const cures = new Cures(spells(), true, queue);
     cures.onCharacter(state({ poisoned: 'yes' }));
-    expect(sent).toEqual(['c cure poison']);
+    expect(sent).toEqual(['cure poison']);
     cures.onCharacter(state({ poisoned: 'yes', blind: 'yes', diseased: 'yes' }));
-    expect(sent).toEqual(['c cure poison', 'c cure blindness', 'c cure disease']);
+    expect(sent).toEqual(['cure poison', 'cure blindness', 'cure disease']);
   });
 
   it('casts by the short word when the realm can name it', () => {
@@ -58,7 +58,7 @@ describe('curing by a sentence', () => {
       name === 'cure poison' ? { id: 19, name: 'cure poison', short: 'cpoi' } : null
     );
     cures.onCharacter(state({ poisoned: 'yes' }));
-    expect(sent).toEqual(['c cpoi']);
+    expect(sent).toEqual(['cpoi']);
   });
 
   /* Unknown is not yes, and no is not yes. */
@@ -74,7 +74,7 @@ describe('curing by a sentence', () => {
     cures.onCharacter(state({ poisoned: 'yes' }));
     cures.onCharacter(state({ poisoned: 'yes' }));
     cures.onCharacter(state({ poisoned: 'yes' }));
-    expect(sent).toEqual(['c cure poison']);
+    expect(sent).toEqual(['cure poison']);
   });
 
   /* A cure the server answered with nothing gets a second chance, patiently. */
@@ -160,7 +160,7 @@ describe('curing by a sentence', () => {
     cures.onCharacter(poisoned);
     vi.advanceTimersByTime(50);
     // The cheapest that cures, cast on the character — never the enemy-targeted bolt.
-    expect(sent).toEqual(['c anti']);
+    expect(sent).toEqual(['anti']);
     expect(said).toHaveLength(1);
     expect(said[0]).toMatch(/Curing poison with antidote/);
   });
@@ -193,6 +193,6 @@ describe('a cure the pool cannot pay for', () => {
     cures.onCharacter(state({ poisoned: 'yes' }, { mana: 3 }));
     expect(sent).toEqual([]);
     cures.onCharacter(state({ poisoned: 'yes' }, { mana: 8 }));
-    expect(sent).toEqual(['c cpoi']);
+    expect(sent).toEqual(['cpoi']);
   });
 });

@@ -27,6 +27,7 @@ function said(at: number, text: string): Block {
     domain: 'conversation',
     groups: { player: 'Soul', message: text },
     text,
+    terminator: 'newline',
     confidence: 0.9
   };
 }

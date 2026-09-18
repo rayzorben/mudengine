@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { AFFLICTION_ONSETS, BATCH_RULES, RULES } from '../patterns';
+import { parseSpellMessagesCsv } from '../../../shared/spell-messages';
 import type { Afflictions } from '../../../shared/character';
 import { domainOf, type BlockType } from '../../../shared/blocks';
 import { TALK_PRESENCE_TYPES } from '../../../shared/talk';
@@ -265,14 +266,21 @@ describe('every fact the parser produces reaches something', () => {
  * is enough — a condition gains a wording, never a direction.
  */
 describe('every condition is readable in both directions', () => {
-  const ENDINGS: Record<keyof Afflictions, BlockType> = {
+  /*
+   * Null is a condition whose every ending is the table's (todo 05): a spell
+   * that confuses states its own stop line in `spell-messages.csv` and the
+   * server's code fixes none, so a fixed ending rule would be a sentence
+   * invented. The test below holds the table to it instead.
+   */
+  const ENDINGS: Record<keyof Afflictions, BlockType | null> = {
     blind: 'user-blind-ends',
     poisoned: 'user-poison-ends',
     diseased: 'user-disease-ends',
-    held: 'user-held-ends'
+    held: 'user-held-ends',
+    confused: null
   };
 
-  it('states an onset sentence for each of the four', () => {
+  it('states an onset sentence for each of the five', () => {
     const conditions = AFFLICTION_ONSETS.map((onset) => onset.condition).sort();
     expect(conditions).toEqual((Object.keys(ENDINGS) as (keyof Afflictions)[]).sort());
   });
@@ -285,9 +293,28 @@ describe('every condition is readable in both directions', () => {
 
   it('has an ending rule for every condition that has an onset', () => {
     const types = new Set(RULES.map((rule) => rule.type));
-    const missing = (Object.keys(ENDINGS) as (keyof Afflictions)[]).filter(
-      (condition) => !types.has(ENDINGS[condition])
-    );
+    const missing = (Object.keys(ENDINGS) as (keyof Afflictions)[]).filter((condition) => {
+      const ending = ENDINGS[condition];
+      return ending !== null && !types.has(ending);
+    });
     expect(missing, `an affliction that can begin but not end: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  /*
+   * And a condition the table ends must be one the table can end: every
+   * shipped spell that confuses states a stop sentence, the fixed onset's own
+   * spells among them.
+   */
+  it('finds a stop sentence in the shipped table for every spell that confuses', () => {
+    const table = parseSpellMessagesCsv(
+      fs.readFileSync(path.resolve('resources/world/spell-messages.csv'), 'utf8')
+    );
+    const byName = new Map(table.map((row) => [row.spell, row]));
+    for (const spell of ['confusion', 'song of dazzling', 'spore cloud', 'fungus cloud']) {
+      const row = byName.get(spell);
+      expect(row, `${spell} is in the table`).toBeDefined();
+      expect(row!.stop, `${spell} states an ending`).toBeTruthy();
+    }
+    expect(byName.get('confusion')!.start).toBe('You are confused!');
   });
 });

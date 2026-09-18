@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ALIGNMENTS, alignmentRank, isHostile } from '../alignment';
+import { ALIGNMENTS, alignmentRank, asAlignment, isHostile } from '../alignment';
 
 /*
  * `ALIGNMENT_SCALE` exists because the router had to price
@@ -14,7 +14,13 @@ describe('the standing scale', () => {
    * reading of the source rather than a capture.
    */
   it('runs in the server’s own order', () => {
-    expect(ALIGNMENTS.filter((word) => alignmentRank(word) !== null)).toEqual([
+    const ranked = ALIGNMENTS.filter((word) => alignmentRank(word) !== null)
+      .slice()
+      .sort((a, b) => alignmentRank(a)! - alignmentRank(b)!);
+    expect([...new Set(ranked.map((word) => alignmentRank(word)))]).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7
+    ]);
+    expect(ranked.filter((word) => word !== 'Lawful')).toEqual([
       'Saint',
       'Good',
       'Neutral',
@@ -27,17 +33,20 @@ describe('the standing scale', () => {
   });
 
   /*
-   * **`Lawful` has no rank, and that is the point.** `src/shared/mobs.ts`
-   * settled it for `ALIGNMENT_RANGE` first: the word is in this client's union
-   * and in the `who` pattern, `GetAlignmentTitle` does not produce it, so there
-   * is no band to place it in. Ranked, it would sit somewhere near `Good` and a
-   * character on a derivative realm whose roster row says `Lawful` would be
-   * **pruned** from `Alignment: Neutral to Fiend` — a confident refusal built on
-   * an order nobody has read. Unranked, that gate reads as unevaluable, which
-   * the router discourages and never prunes.
+   * **`Lawful` ranks with `Saint`, because it is that rung under another
+   * realm's name** (2026-09-17). It was unranked while `ALIGNMENT_RANGE` had
+   * no band for it, on the grounds that a rank invented near `Good` would
+   * **prune** a Lawful character from `Alignment: Neutral to Fiend` on an
+   * order nobody had read. The capture that settled the band settled the rank
+   * with it — MajorMUD prints `Lawful` where GreaterMUD prints `Saint`, eight
+   * rungs each, and neither ladder has both — so the exclusion is now the
+   * realm's own and not this client's invention. An alias, not a ninth rung:
+   * the word survives `asAlignment` so a realm that writes it is answered in
+   * its own spelling.
    */
-  it('refuses to rank a word the server’s enum does not have', () => {
-    expect(alignmentRank('Lawful')).toBeNull();
+  it('ranks Lawful with Saint and keeps the word', () => {
+    expect(alignmentRank('Lawful')).toBe(alignmentRank('Saint'));
+    expect(asAlignment('Lawful')).toBe('Lawful');
     expect(ALIGNMENTS).toContain('Lawful');
   });
 

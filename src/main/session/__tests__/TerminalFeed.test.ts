@@ -65,6 +65,8 @@ function harness(
     feed.line(framed.text, framed.terminator, plain, type, undefined, facts(plain, type));
   };
   const chunk = (text: string): string => {
+    // As `SessionManager`'s data handler does, before the packet's lines.
+    feed.arrived();
     for (const framed of tokenizer.push(text)) publish(framed);
     feed.partial(tokenizer.buffered);
     const out = feed.take();
@@ -128,6 +130,27 @@ describe('a quiet command', () => {
     expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + PROMPT);
     // And the window is closed: the next line is shown.
     expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
+  });
+
+  /*
+   * Sent in reply to a line, between it and the status line behind it in the
+   * same packet: that status line was written before the `rm` existed, so it
+   * cannot close the `rm`'s window. It did, and the `rm`'s own answer, next
+   * on the wire, was painted (the smoke's *the console was never shown it*).
+   */
+  it('is not answered by the packet it was sent in the middle of', () => {
+    let h: ReturnType<typeof harness> | null = null;
+    h = harness(['rm', 'l'], undefined, undefined, (plain) => {
+      if (/no exit/.test(plain)) h?.feed.sent('rm', 'automation');
+      return undefined;
+    });
+    h.chunk(PROMPT);
+    h.flush();
+    const refused = 'There is no exit in that direction!\r\n' + PROMPT + '\r\n';
+    // Everything in the packet was written before the `rm`, so all of it shows.
+    expect(h.chunk(refused)).toBe(refused);
+    expect(h.chunk('rm\r\nLocation: 1,2147\r\n\r\n')).toBe('');
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + PROMPT);
   });
 
   it('closes on a status line the idle flush frames later, not twice', () => {
@@ -440,6 +463,7 @@ describe('a listing the client draws itself', () => {
             groups: { items: 'rope and grapple, 6 torch' },
             rows: [{ items: 'rope and grapple, 6 torch' }],
             text: lines.join('\n'),
+            terminator: 'newline',
             confidence: 1
           };
           open = null;
@@ -450,6 +474,7 @@ describe('a listing the client draws itself', () => {
         at: 0,
         type: type ?? 'unknown',
         domain: 'session',
+        terminator: 'newline',
         groups: {},
         text: plain,
         confidence: 1

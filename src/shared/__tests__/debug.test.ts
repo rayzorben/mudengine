@@ -55,6 +55,7 @@ describe('what a line was classified as', () => {
     at: 0,
     type: 'status-line',
     domain: 'status',
+    terminator: 'newline',
     groups: {},
     text: '[HP=334/KAI=27]:',
     confidence: 0.8,

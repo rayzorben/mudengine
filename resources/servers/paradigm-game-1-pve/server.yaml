@@ -40,12 +40,20 @@ encoding: cp437
 # menu. Enter is always assumed, so `send: ''` is a bare Enter -- which is a
 # real answer several menus want, not "no answer".
 #
-# Your account name and password are NOT here. They belong to a character, in
-# `profiles/<id>/profile.yaml`, because they are the one thing two people
-# sharing this file must not share. Paradigm runs one account with several
-# character slots, so the slot number is the row two of your characters
-# differ on -- state it on the character, not here.
+# Your account name and password are NOT here -- `{user}` and `{password}` are.
+# The values belong to a character, in `profiles/<id>/profile.yaml`, because
+# they are the one thing two people sharing this file must not share; the two
+# prompts that ask for them are rows like any other, because every BBS words
+# them differently. (`{username}` and `{pass}` mean the same two things. A
+# placeholder the client does not know is refused rather than typed at the
+# realm.) Paradigm runs one account with several character slots, so the slot
+# number is the row two of your characters differ on -- state it on the
+# character, not here.
 login:
+  - when: 'Please enter your username'
+    send: '{user}'
+  - when: 'Please enter your password'
+    send: '{password}'
   # The service menu. Paradigm is `P`.
   - when: 'Please enter your selection'
     send: P

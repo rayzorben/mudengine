@@ -33,7 +33,7 @@
  *   profiles/<id>/profile.yaml one character
  *   profiles/<id>/loops/*.yaml loops only that character may walk
  *   internal.yaml              the client's settings about itself
- *   memory/  fights/  realms/  logs/  mob-lore.json  workspace.json
+ *   memory/  fights/  realms/  logs/  backscroll/  mob-lore.json  workspace.json
  * ```
  *
  * Pure: no `electron`, no `fs`. {@link homeRoot} is the one function that asks

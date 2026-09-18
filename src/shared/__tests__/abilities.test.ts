@@ -4,7 +4,6 @@ import {
   ABILITY,
   ABILITY_INTERNAL,
   ABILITY_SHAPE,
-  abilityIsClaimed,
   abilityIsNotable,
   abilityIsUnread,
   abilityName,
@@ -14,6 +13,7 @@ import {
   IMMUNE_TO_POISON_ABILITY,
   PICKLOCKS_ABILITY,
   poisonRefusesRest,
+  readEffects,
   restsInTheShadows,
   SHADOW_HOME_ABILITY
 } from '../abilities';
@@ -103,44 +103,51 @@ describe('naming what an Abil-n means', () => {
   });
 
   /*
-   * A flag is drawn as its label alone — there is no magnitude to print beside
-   * it — so a flag whose value is *zero* would be a row asserting the opposite
-   * of what the realm says. 46 of the 65 shipped items carrying `LoyalItem`
-   * carry it as 0, and all 41 carrying `RoomVisible` do.
+   * A flag claims by presence, whatever its value (todo 01, 2026-09-17).
+   *
+   * The server reads every flag it acts on as `Abilities[id] != null` and
+   * loads any slot with a non-zero id whatever the value beside it, so
+   * `LoyalItem 0` is loyal and `Del@Maint 0` goes at cleanup. Until then a
+   * zero was read as the realm answering *no*, which drew 446 of Paradigm's
+   * 476 `Del@Maint` items as kept.
    */
-  it('does not let a zero-valued flag claim the thing it names', () => {
-    expect(abilityIsClaimed(100, 1, 'item')).toBe(true);
-    expect(abilityIsClaimed(100, 0, 'item')).toBe(false);
-    expect(abilityIsClaimed(138, 0, 'item')).toBe(false);
+  it('lets a zero-valued flag claim the thing it names', () => {
+    const t = (key: string): string => key;
+    const shown = (value: number): string[] =>
+      readEffects([[100, value]], { table: 'item', family: 'greatermud' }, t).shown.map(
+        (effect) => effect.label
+      );
+    expect(shown(1)).toEqual(['LoyalItem']);
+    expect(shown(0)).toEqual(['LoyalItem']);
+    // And a flag draws its label alone: its presence is the whole fact.
+    expect(
+      readEffects([[100, 0]], { table: 'item', family: 'greatermud' }, t).shown[0]?.value
+    ).toBe('');
   });
 
   /*
-   * Only flags. `Illu 0` is a light that gives none, which is a real statement
-   * about an item — reading it as absence would delete a fact the realm states.
+   * `Illu 0` is a light that gives none, which is a real statement about an
+   * item — and it is read, since the shape is known.
    */
-  it('keeps a zero that is a magnitude rather than a yes/no', () => {
+  it('keeps a zero that is a magnitude', () => {
     expect(ABILITY_SHAPE[13]).toBe('points');
-    expect(abilityIsClaimed(13, 0, 'item')).toBe(true);
-    // And an id with no shape at all is not the claim test's business.
-    expect(abilityIsClaimed(12, 0, 'item')).toBe(true);
+    expect(abilityIsUnread(13, 'item')).toBe(false);
   });
 
   /*
    * The server's maintenance cycle, which is a fact a player acts on: whether
    * an item survives the night decides whether it is worth banking.
-   *
-   * Flags, not counts, and the reason is the same one `LoyalItem` records at a
-   * fifteenth of the scale — 386 of the 413 items carrying `Del@Maint` carry
-   * it as zero, the realm promising the item is kept.
    */
-  it('reads the maintenance cycle as yes/no rather than as a magnitude', () => {
+  it('reads the maintenance cycle as flags, present or absent', () => {
     for (const id of [119, 149, 154]) {
       expect(abilityIsNotable(id, 'item')).toBe(true);
       expect(ABILITY_SHAPE[id]).toBe('flag');
     }
-    // Zero is the realm answering "no", and a flag answering no draws nothing.
-    expect(abilityIsClaimed(119, 0, 'item')).toBe(false);
-    expect(abilityIsClaimed(119, 1, 'item')).toBe(true);
+    const t = (key: string): string => key;
+    // `black star key` carries `Del@Maint 0`, and goes at cleanup.
+    expect(
+      readEffects([[119, 0]], { table: 'item', family: 'greatermud' }, t).shown.map((e) => e.label)
+    ).toEqual(['Del@Maint']);
   });
 
   /*
@@ -172,17 +179,22 @@ describe('naming what an Abil-n means', () => {
    * The `grant` shape, which arrived when the race and class tables reached a
    * card and neither existing shape fitted them.
    *
-   * A `flag`'s zero means **no** (`LoyalItem 0` denies an item is loyal); a
-   * grant's means **yes, with no bonus**. All fifteen classes carry `Bash 0`
-   * and `ClassStealth 0` names exactly the seven stealth classes, so drawing
-   * these from value rather than presence would hide every one of them.
+   * A grant's zero means **yes, with no bonus**. All fifteen classes carry
+   * `Bash 0` and `ClassStealth 0` names exactly the seven stealth classes, so
+   * drawing these from value rather than presence would hide every one of
+   * them. A flag claims by presence too; the difference is that a grant
+   * draws a non-zero bonus and a flag draws nothing beside its label.
    */
-  it('reads a grant from its presence, and a flag from its value', () => {
+  it('reads a grant from its presence, with its bonus', () => {
     expect(ABILITY_SHAPE[31]).toBe('grant');
     expect(ABILITY_SHAPE[103]).toBe('grant');
-    // A grant is claimed at zero; a flag is not. That is the whole difference.
-    expect(abilityIsClaimed(31, 0, 'item')).toBe(true);
-    expect(abilityIsClaimed(100, 0, 'item')).toBe(false);
+    const t = (key: string): string => key;
+    expect(
+      readEffects([[31, 0]], { table: 'class', family: 'greatermud' }, t).shown.map((e) => e.value)
+    ).toEqual(['']);
+    expect(
+      readEffects([[31, 2]], { table: 'class', family: 'greatermud' }, t).shown.map((e) => e.value)
+    ).toEqual(['cards.reference.item.effectPlus']);
   });
 
   /*
@@ -194,8 +206,8 @@ describe('naming what an Abil-n means', () => {
    */
   it('reads the damage family as a kind rather than a magnitude', () => {
     for (const id of [1, 17, 18, 150]) expect(ABILITY_SHAPE[id]).toBe('grant');
-    // And a spell that *does* state one still draws it.
-    expect(abilityIsClaimed(18, 9_999, 'item')).toBe(true);
+    // And a spell that *does* state one is read, not counted as a gap.
+    expect(abilityIsUnread(18, 'item')).toBe(false);
   });
 
   /*
@@ -254,9 +266,9 @@ describe('naming what an Abil-n means', () => {
     // Never nonzero on a monster or a class: presence is the fact.
     expect(abilityShape(51, 'mob')).toBe('grant');
     expect(abilityShape(51, 'class')).toBe('grant');
-    expect(abilityIsClaimed(51, 0, 'class')).toBe(true);
     // The spell named `freedom` says what it does with `Freedom 0`.
-    expect(abilityIsClaimed(81, 0, 'spell')).toBe(true);
+    expect(abilityShape(81, 'spell')).toBe('grant');
+    expect(abilityIsUnread(81, 'spell')).toBe(false);
     /*
      * And the same id keeps its item reading, because there the realm *does*
      * state values — `hellblade` carries `EvilOnly 250`. One shape for both
@@ -286,20 +298,20 @@ describe('naming what an Abil-n means', () => {
   });
 
   /*
-   * A yes/no column holding neither a yes nor a no is a third answer, and it
-   * belongs in the counter rather than in a claim.
+   * A flag's value is not read at all, so no value it holds is a gap.
    *
-   * Two items carry `Del@Maint 646`. Treated as truthy it drew a bare
-   * `Del@Maint` — a confident assertion that the waterskin is destroyed
-   * nightly, built from a value the shape table itself says is not a yes/no.
+   * Two items carry `Del@Maint 646` (`waterskin`, `cup of tea`). This was
+   * counted as *a yes/no column holding neither* until the server's own
+   * reading settled it: the row is present, so the item goes at cleanup, and
+   * 646 is the realm's own noise beside it.
    */
-  it('counts a yes/no column holding neither, rather than asserting it', () => {
-    expect(abilityIsUnread(119, 646, 'item')).toBe(true);
-    // The two real answers are read, and neither is a gap.
-    expect(abilityIsUnread(119, 0, 'item')).toBe(false);
-    expect(abilityIsUnread(119, 1, 'item')).toBe(false);
+  it('reads a flag whatever it holds, and counts only an unshaped id', () => {
+    const t = (key: string): string => key;
+    const read = readEffects([[119, 646]], { table: 'item', family: 'greatermud' }, t);
+    expect(read.shown.map((e) => e.label)).toEqual(['Del@Maint']);
+    expect(read.quiet).toBe(0);
     // And an unshaped id is unread wherever it appears.
-    expect(abilityIsUnread(137, 3_051, 'item')).toBe(true);
+    expect(abilityIsUnread(137, 'item')).toBe(true);
   });
 
   /*
@@ -312,7 +324,7 @@ describe('naming what an Abil-n means', () => {
   it('withdraws a shape for a table where it makes no sense', () => {
     expect(abilityShape(59, 'item')).toBe('class');
     expect(abilityShape(59, 'class')).toBeUndefined();
-    expect(abilityIsUnread(59, 74, 'class')).toBe(true);
+    expect(abilityIsUnread(59, 'class')).toBe(true);
   });
 
   /*

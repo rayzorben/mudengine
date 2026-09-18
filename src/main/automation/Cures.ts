@@ -18,10 +18,10 @@
  * gets a second chance, and a cure that worked but was never announced does
  * not become a cast every three seconds.
  *
- * `c <short>` bare in the `combat` band under the shared `minMana` floor,
+ * `<short>` bare in the `combat` band under the shared `minMana` floor,
  * exactly as a self heal, and for the same reasons: a targetless cast lands
- * on the caster, and the `Cast` command reads exactly one word as the spell,
- * which is the realm's short name (`castWord`).
+ * on the caster, and the realm's short name is itself the command, never
+ * behind `c` (`castWord`).
  */
 import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
@@ -132,7 +132,7 @@ export class Cures {
       if (!canPayFor(state, spellCost(found))) continue;
       this.lastCastAt.set(cure, at);
       this.queue.enqueue({
-        command: `c ${found.word}`,
+        command: found.word,
         priority: 'combat',
         coalesceKey: `cure:${cure}`,
         expiresAt: at + tuning().spells.cureExpiresMs,

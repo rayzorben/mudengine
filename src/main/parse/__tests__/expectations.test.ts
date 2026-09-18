@@ -421,3 +421,55 @@ describe('a direction word sent at a menu', () => {
     expect(memory.moves).toBe(1);
   });
 });
+
+/*
+ * A step unanswered is probed, and an ordered answer settles it (todo 10,
+ * 2026-09-17). The server answers in the order it was asked: `rm`'s answer
+ * arriving with a step still unanswered proves the step produced nothing,
+ * and a probe still unanswered proves the server is slow.
+ */
+describe('a step unanswered is probed, and an ordered answer settles it', () => {
+  const probe = DEFAULT_INTERNAL.tuning.parse.staleProbeMs;
+  const life = DEFAULT_INTERNAL.tuning.parse.staleMoveMs;
+  const most = DEFAULT_INTERNAL.tuning.parse.staleMoveMaxMs;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('names the head once it is past the probe clock, once, and then waits the longer life', () => {
+    const memory = new Expectations();
+    const at = Date.now();
+    memory.observeCommand('n', inGame);
+    expect(memory.staleProbe(at + probe - 1)).toBeNull();
+    expect(memory.staleProbe(at + probe)).toBe('n');
+    // Once: a second probe only spends from the budget.
+    expect(memory.staleProbe(at + probe + 1)).toBeNull();
+    // Probed, the flat clock no longer drops it; the ceiling does.
+    expect(memory.expire(at + life)).toEqual([]);
+    expect(memory.moves).toBe(1);
+    expect(memory.expire(at + most)).toEqual([{ command: 'n', moved: true }]);
+    expect(memory.moves).toBe(0);
+  });
+
+  it('drops every claim older than the locate its answer proves was processed', () => {
+    const memory = new Expectations();
+    memory.observeCommand('n', inGame);
+    memory.observeCommand('rm', inGame);
+    vi.advanceTimersByTime(1);
+    memory.observeCommand('e', inGame);
+    expect(memory.answeredInOrder()).toEqual([{ command: 'n', moved: true }]);
+    expect(memory.moves).toBe(1);
+    expect(memory.head()).toMatchObject({ kind: 'move', direction: 'e' });
+    // Answered once: the same answer cannot settle anything twice.
+    expect(memory.answeredInOrder()).toEqual([]);
+  });
+
+  it('settles nothing when no locate went out', () => {
+    const memory = new Expectations();
+    memory.observeCommand('n', inGame);
+    expect(memory.answeredInOrder()).toEqual([]);
+    expect(memory.moves).toBe(1);
+  });
+});

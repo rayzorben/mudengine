@@ -31,6 +31,7 @@ function block(type: string, groups: Record<string, string> = {}): Block {
     domain: 'combat',
     groups,
     text: '',
+    terminator: 'newline',
     confidence: 0.8
   };
 }

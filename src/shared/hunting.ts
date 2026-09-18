@@ -172,11 +172,20 @@ export interface SpotEstimate {
   /** Health one room's cycle is expected to take off the character, over what it can spawn. */
   damagePerRoom: number | null;
   /**
-   * Health one room's cycle takes when it spawns the worst of what it can — the
-   * figure the exclusions read, since a mean over three spawns hides the one
-   * that takes the whole bar.
+   * Health one room's cycle takes when it spawns the worst of what it can —
+   * read over the mean, since a mean over three spawns hides the one that
+   * takes the whole bar. Null while a spawn's rounds are unknown.
    */
   worstDamagePerRoom: number | null;
+  /**
+   * The least the worst spawn can cost, from the blows alone: a monster whose
+   * rounds are unknown still swings for `perRound` over the shortest kill the
+   * model allows (`LEAST_ROUNDS`). Equal to `worstDamagePerRoom` where every
+   * spawn's rounds are known; a bound in the dangerous direction otherwise,
+   * which is the one direction an exclusion may read a bound in. Null only
+   * where no spawn's blows can be priced.
+   */
+  worstDamageAtLeast: number | null;
   /** Seconds the cycle spends meditating the mana back; 0 for a character that does not cast. */
   meditateSeconds: number | null;
   /** Casts of the heal a cycle spends instead of resting; 0 where resting is quicker or nothing heals. */
@@ -185,15 +194,22 @@ export interface SpotEstimate {
   poisonSeconds: number | null;
   /** `damagePerRoom / hpMax`. */
   damageShare: number | null;
-  /** `worstDamagePerRoom / hpMax`: what *deadly* and *costly* are decided on. */
+  /** `worstDamagePerRoom / hpMax`. */
   worstShare: number | null;
+  /** `worstDamageAtLeast / hpMax`: what *deadly* and *costly* are decided on. */
+  worstShareAtLeast: number | null;
   /** Mean rounds per kill, the opener credited. */
   roundsPerKill: number | null;
-  /** One room's cycle, at its worst spawn, is expected to take the whole bar. */
+  /** One room's cycle, at its worst spawn, takes at least the whole bar. */
   deadly: boolean;
   /** One room's worst spawn takes more than `maxDamageShare` of the bar: too dangerous to start in. */
   costly: boolean;
-  /** Not even the worst spawn could take `trivialShare` off an unarmoured character: beneath this level. */
+  /**
+   * Not even the worst spawn could take `trivialShare` off an unarmoured
+   * character: beneath this level. Decided only where every spawn's naked
+   * figure is finished — a room with one spawn nobody can price is not
+   * beneath anybody.
+   */
   trivial: boolean;
   unknown: HuntingUnknown[];
 }
@@ -243,6 +259,14 @@ export function moveDelayMs(
   return Math.max(1000, 1100 + Math.trunc(share * share * 2000));
 }
 
+/**
+ * The shortest kill the model prices, in rounds: the floor under a stated
+ * figure in `roomCycle`'s fight, and the kill a monster whose rounds are
+ * unknown is charged for — so its blows still count against the bar, as a
+ * bound in the dangerous direction.
+ */
+const LEAST_ROUNDS = 0.5;
+
 /** The mean of the stated figures, or null when none is stated. */
 function mean(values: ReadonlyArray<number | null>): number | null {
   const known = values.filter((value): value is number => value !== null && Number.isFinite(value));
@@ -264,9 +288,11 @@ interface RoomCycle {
   roundsPerKill: number | null;
   /** Expected over what the room can spawn. */
   damage: number | null;
-  /** When it spawns the worst of them; null only when no monster can be priced. */
+  /** When it spawns the worst of them; null while a spawn's rounds are unknown. */
   worstDamage: number | null;
-  /** The worst spawn's, against an unarmoured character. */
+  /** The least the worst spawn can cost, each spawn charged its rounds or `LEAST_ROUNDS`. */
+  worstDamageAtLeast: number | null;
+  /** The worst spawn's, against an unarmoured character; null unless every spawn's is finished. */
   nakedDamage: number | null;
   /** Fighting time, the kill overhead included. */
   seconds: number | null;
@@ -297,8 +323,8 @@ function roomCycle(
    * rounds: while the k-th dies the ones after it are still swinging.
    */
   const fight = (kill: number): { rounds: number; ramp: number } => {
-    const plain = Math.max(0.5, kill);
-    const opened = Math.max(0.5, 1 + Math.max(0, kill - c.backstabMultiplier));
+    const plain = Math.max(LEAST_ROUNDS, kill);
+    const opened = Math.max(LEAST_ROUNDS, 1 + Math.max(0, kill - c.backstabMultiplier));
     const perKill: number[] = [];
     for (let k = 0; k < spawns; k += 1) {
       const first = k === 0 || spawns === 1;
@@ -322,17 +348,39 @@ function roomCycle(
    * And the worst the room can spawn, each monster fought for its own rounds:
    * a lair naming a ghost, a shadowraith and a crimson mist averaged to half
    * the bar and spawned, one visit in three, a monster that takes it whole.
+   *
+   * A monster whose rounds are unknown is not a monster that costs nothing:
+   * its blows are known, and it swings them for at least the shortest kill
+   * the model prices. So the exact figure waits for every spawn's rounds
+   * while the floor is charged whatever is known — a level-one Mystic on a
+   * stock realm, where the kill arithmetic is not this family's, was offered
+   * a lair of bone warriors at 103 hp a round against a 33 hp bar because
+   * the rounds were unknown and so, the survey concluded, was the danger.
+   * The naked figure runs the other way: it decides *beneath this level*,
+   * which is the reassuring answer, so one spawn unfinished leaves it
+   * unfinished — except a spawn that cannot hit anybody, whose figure is
+   * nought however long it stands there.
    */
   let worstDamage: number | null = null;
+  let worstDamageAtLeast: number | null = null;
   let nakedDamage: number | null = null;
+  let roundsComplete = true;
+  let nakedComplete = true;
   for (const mob of mobs) {
-    if (mob.rounds === null) continue;
-    const { ramp } = fight(mob.rounds);
-    if (mob.perRound !== null) worstDamage = Math.max(worstDamage ?? 0, mob.perRound * ramp);
-    if (mob.nakedPerRound !== null) {
+    if (mob.rounds === null) roundsComplete = false;
+    const { ramp } = fight(mob.rounds ?? LEAST_ROUNDS);
+    if (mob.perRound !== null) {
+      worstDamageAtLeast = Math.max(worstDamageAtLeast ?? 0, mob.perRound * ramp);
+      if (mob.rounds !== null) worstDamage = Math.max(worstDamage ?? 0, mob.perRound * ramp);
+    }
+    if (mob.nakedPerRound === null || (mob.rounds === null && mob.nakedPerRound > 0)) {
+      nakedComplete = false;
+    } else {
       nakedDamage = Math.max(nakedDamage ?? 0, mob.nakedPerRound * ramp);
     }
   }
+  if (!roundsComplete) worstDamage = null;
+  if (!nakedComplete) nakedDamage = null;
   const seconds =
     roomRounds === null ? null : roomRounds * c.roundSeconds + (spawns * c.killOverheadMs) / 1000;
 
@@ -354,6 +402,7 @@ function roomCycle(
     roundsPerKill,
     damage,
     worstDamage,
+    worstDamageAtLeast,
     nakedDamage,
     seconds,
     poisons,
@@ -397,17 +446,22 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
   /*
    * `damagePerRoom`/`worstDamagePerRoom` and the verdicts drawn off them are
    * the primary lair's alone and do not move with the cycle: they are what one
-   * room costs to clear, which is what the exclusions and *deadly* read.
+   * room costs to clear. The exclusions and *deadly* read the floor, which is
+   * the worst figure where every spawn's rounds are known and a bound in the
+   * dangerous direction where one is not — the only direction a bound may be
+   * read in when the question is whether to send somebody there.
    */
   const hpMax = ch.hpMax;
   const damagePerRoom = primary.damage;
   const worstDamagePerRoom = primary.worstDamage;
+  const worstDamageAtLeast = primary.worstDamageAtLeast;
   const share = (damage: number | null): number | null =>
     damage === null || hpMax === null || hpMax <= 0 ? null : damage / hpMax;
   const damageShare = share(damagePerRoom);
   const worstShare = share(worstDamagePerRoom);
-  const deadly = worstShare !== null && worstShare >= 1;
-  const costly = worstShare !== null && worstShare > c.maxDamageShare;
+  const worstShareAtLeast = share(worstDamageAtLeast);
+  const deadly = worstShareAtLeast !== null && worstShareAtLeast >= 1;
+  const costly = worstShareAtLeast !== null && worstShareAtLeast > c.maxDamageShare;
   const trivial =
     primary.nakedDamage !== null &&
     hpMax !== null &&
@@ -720,11 +774,13 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
     waitSeconds: pass.waitSeconds,
     damagePerRoom,
     worstDamagePerRoom,
+    worstDamageAtLeast,
     meditateSeconds: pass.meditateSeconds,
     healCasts: pass.healCasts,
     poisonSeconds: pass.poisonSeconds,
     damageShare,
     worstShare,
+    worstShareAtLeast,
     roundsPerKill: primary.roundsPerKill,
     deadly,
     costly,
@@ -925,21 +981,52 @@ export interface HuntingAdvice {
 }
 
 /**
+ * Whether a spot sits in the nearest-first tier: no rate, not deadly, and the
+ * fight itself unpriced — the rounds, or the blows, unknown for every spawn.
+ * The card's head counts the rows this is true of, so it is the tier and not
+ * a part of it: a lair with one spawn priced and one not has a rate and a
+ * floor, and is ranked on the rate.
+ */
+export function fightUnpriced(
+  estimate: Pick<SpotEstimate, 'expPerHour' | 'deadly' | 'unknown'>
+): boolean {
+  return (
+    estimate.expPerHour === null &&
+    !estimate.deadly &&
+    (estimate.unknown.includes('rounds') || estimate.unknown.includes('damage'))
+  );
+}
+
+/**
  * The order the reader wants: a known rate first, highest first; then a
- * spot whose rate could not be finished, by what one sweep earns and then
- * its ceiling; a deadly spot last, whatever it pays. An unknown rate is
- * never a high one.
+ * spot whose rate could not be finished but whose fight was priced, by what
+ * one sweep earns and then its ceiling; then a spot whose fight nobody could
+ * price, nearest first and never by what it pays; a deadly spot last,
+ * whatever it pays. An unknown rate is never a high one.
+ *
+ * The third tier is the whole card on a realm whose kill arithmetic is not
+ * known (`prowess.swing` answers null off the GreaterMUD lineage): ordered by
+ * the sweep, the top of a level-one character's list was ten bone warriors
+ * at 270,000 a room, because the biggest reward with no cost beside it is
+ * the most dangerous room in reach. Nearest is the one fact the character
+ * has about every one of them.
  */
 export function compareSpots(a: HuntingSpot, b: HuntingSpot): number {
   const rank = (spot: HuntingSpot): number =>
-    spot.estimate.deadly ? 2 : spot.estimate.expPerHour === null ? 1 : 0;
+    spot.estimate.deadly
+      ? 3
+      : spot.estimate.expPerHour !== null
+        ? 0
+        : fightUnpriced(spot.estimate)
+          ? 2
+          : 1;
   const ra = rank(a);
   const rb = rank(b);
   if (ra !== rb) return ra - rb;
   if (ra === 0) {
     const d = b.estimate.expPerHour! - a.estimate.expPerHour!;
     if (d !== 0) return d;
-  } else {
+  } else if (ra !== 2) {
     /*
      * Where no rate could be finished, what one sweep of the lair earns
      * (`expPerCycle`, over its rooms) is the better bet, then the ceiling as a

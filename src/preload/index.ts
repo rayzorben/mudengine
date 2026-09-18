@@ -71,11 +71,11 @@ const api: IpcApi = {
   saveDebug: (session) => ipcRenderer.invoke(Invoke.saveDebug, session),
   getCharacter: (session) => ipcRenderer.invoke(Invoke.getCharacter, session),
   routeTo: (session, map, room) => ipcRenderer.invoke(Invoke.routeTo, session, map, room),
-  walkRoute: (session, route) => ipcRenderer.invoke(Invoke.walkRoute, session, route),
+  walkRoute: (session, route, run) => ipcRenderer.invoke(Invoke.walkRoute, session, route, run),
   startMoving: (session, loop, confirmed) =>
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
-  collectThenWalk: (session, item, route) =>
-    ipcRenderer.invoke(Invoke.collectThenWalk, session, item, route),
+  collectThenWalk: (session, item, route, run) =>
+    ipcRenderer.invoke(Invoke.collectThenWalk, session, item, route, run),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),

@@ -285,6 +285,8 @@ interface Sent {
   command: string;
   quiet: boolean;
   at: number;
+  /** How many packets had arrived when it was sent: see `arrived`. */
+  after: number;
 }
 
 /** One thing to paint, with the marks that decorate the lines in it. */
@@ -311,12 +313,28 @@ export class TerminalFeed {
   private swallowed = false;
   /** The listing being withheld for a rewrite, its lines so far, and the clock that gives up on it. */
   private held: { type: BlockType; lines: HeldLine[]; timer: NodeJS.Timeout | null } | null = null;
+  /** Packets read so far, counted as each one starts: see `arrived`. */
+  private received = 0;
 
   constructor(
     private readonly source: FeedSource,
     /** Called with whatever a delayed hold releases, outside any chunk. */
     private readonly release: (emitted: Emitted) => void
   ) {}
+
+  /**
+   * A packet has arrived and its lines are about to be fed.
+   *
+   * Nothing in a packet can answer a command sent while it was being read: the
+   * server wrote it first. An automated `rm` sent in reply to a refusal went
+   * out between that line and the status line behind it in the same packet,
+   * the status line closed the `rm`'s window, and the `rm`'s own answer came
+   * next and was painted. A command is answered only by packets that arrive
+   * after it (`answerable`).
+   */
+  arrived(): void {
+    this.received += 1;
+  }
 
   /** A command went out. `user` commands are never quiet. */
   sent(command: string, from: 'user' | 'automation'): void {
@@ -325,14 +343,25 @@ export class TerminalFeed {
     // room read — so it answers to `BARE_ENTER` rather than to nothing.
     const word = typed.length === 0 ? BARE_ENTER : (typed.split(SPACES)[0]?.toLowerCase() ?? '');
     const quiet = from === 'automation' && this.source.isQuiet(word);
-    this.queue.push({ command, quiet, at: this.source.now() });
+    this.queue.push({ command, quiet, at: this.source.now(), after: this.received });
     this.expire();
   }
 
-  /** Whether the line arriving now is the answer to a quiet command. */
+  /** Whether a quiet command's window is open: the next packet's lines answer it. */
   get quiet(): boolean {
     this.expire();
     return this.queue[0]?.quiet ?? false;
+  }
+
+  /** Whether the line being read now is the answer to a quiet command. */
+  private get answeringQuiet(): boolean {
+    return this.quiet && this.answerable();
+  }
+
+  /** Whether what is being read now could answer the head: it arrived after the head was sent. */
+  private answerable(): boolean {
+    const head = this.queue[0];
+    return head !== undefined && this.received > head.after;
   }
 
   /**
@@ -394,7 +423,9 @@ export class TerminalFeed {
      * written off, and the quiet command behind it was shown in full.
      */
     if (type === 'command-echo') {
-      const index = this.queue.findIndex((sent) => sent.command.trim() === plain.trim());
+      const index = this.queue.findIndex(
+        (sent) => this.received > sent.after && sent.command.trim() === plain.trim()
+      );
       if (index > 0) this.queue.splice(0, index);
     }
 
@@ -402,7 +433,7 @@ export class TerminalFeed {
     // as the client's own line where one is designed and none of it has been
     // painted yet, which is the prompt arriving whole with its terminator.
     if (type === 'status-line') {
-      if (!this.acknowledged) this.queue.shift();
+      if (!this.acknowledged && this.answerable()) this.queue.shift();
       this.acknowledged = false;
       const drawn = already === 0 ? this.designed(text, plain) : null;
       this.emit(drawn ?? text.slice(already), terminator, mark);
@@ -410,7 +441,8 @@ export class TerminalFeed {
     }
     this.acknowledged = false;
 
-    const withhold = this.quiet && already === 0 && (type === null || !VOLUNTEERED.has(type));
+    const withhold =
+      this.answeringQuiet && already === 0 && (type === null || !VOLUNTEERED.has(type));
     if (!withhold && already === 0 && facts !== undefined && this.source.rewrites !== undefined) {
       /*
        * The header of a listing the client will draw: withheld from here,
@@ -487,7 +519,7 @@ export class TerminalFeed {
      */
     const plain = stripAnsi(pending);
     const status = this.source.isStatus(plain.trimStart());
-    if (this.quiet && status) {
+    if (this.answeringQuiet && status) {
       this.queue.shift();
       this.acknowledged = true;
     }
@@ -513,7 +545,7 @@ export class TerminalFeed {
 
     // A status line is always shown, whatever it acknowledged and whatever
     // is queued behind it: it is the prompt row.
-    if (!this.quiet || status) {
+    if (!this.answeringQuiet || status) {
       this.cancelHold();
       /*
        * The client's own line in the prompt's place — only while nothing of

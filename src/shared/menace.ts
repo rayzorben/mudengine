@@ -142,7 +142,7 @@ export interface Menace {
 const ROUND_ENERGY = 1000;
 const MAX_SWINGS = 50;
 const EFFECT_TICK_SECONDS = 3;
-const ROUND_SECONDS = 5;
+export const ROUND_SECONDS = 5;
 const MAGIC_RES_CEILING = 150;
 const MAGIC_RES_PIVOT = 50;
 const RESISTED_BY_ANYONE = 2;
@@ -404,7 +404,7 @@ export function afflictionsOf(mob: MenaceSubject): MobAffliction[] {
  * grant over the energy an average swing costs. A profile whose swings cost
  * nothing swings the fifty.
  */
-function swingsPerRound(attacks: readonly MobAttack[]): number {
+export function mobSwingsPerRound(attacks: readonly MobAttack[]): number {
   const perSwing = attacks.reduce((sum, attack) => sum + attack.chance * attack.energy, 0);
   if (perSwing <= 0) return attacks.length > 0 ? MAX_SWINGS : 0;
   return Math.min(MAX_SWINGS, ROUND_ENERGY / perSwing);
@@ -412,7 +412,7 @@ function swingsPerRound(attacks: readonly MobAttack[]): number {
 
 /** Plain blows only: what the room's `unit` is made from. */
 function bloodPerRound(profile: MobProfile, player: MenacePlayer): number {
-  const swings = swingsPerRound(profile.attacks);
+  const swings = mobSwingsPerRound(profile.attacks);
   let perSwing = 0;
   for (const attack of profile.attacks) {
     if (attack.kind !== 'melee') continue;
@@ -439,7 +439,7 @@ function rowPerRound(
     return hazard.harm * scale;
   };
 
-  const swings = swingsPerRound(profile.attacks);
+  const swings = mobSwingsPerRound(profile.attacks);
   let blows = 0;
   let perSwing = 0;
   for (const attack of profile.attacks) {

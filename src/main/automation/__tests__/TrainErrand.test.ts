@@ -230,6 +230,7 @@ describe('going to collect the level', () => {
       at: 0,
       type: 'user-experience',
       domain: 'status',
+      terminator: 'newline',
       groups: {},
       text: 'Exp: 1 Level: 31 Exp needed for next level: 0 (12)',
       confidence: 1

@@ -39,10 +39,10 @@
  * that member due now. Opt-in on the sending side, permission-gated on the
  * receiving side like every remote.
  *
- * `c <short> <name>` for a party member and `c <short>` bare for this
- * character — a targetless cast lands on the caster, and the word is the
- * realm's short name because the `Cast` command reads exactly one word as the
- * spell (`castWord`). In the `probe` band out of combat and `combat` when the
+ * `<short> <name>` for a party member and `<short>` bare for this
+ * character — a targetless cast lands on the caster, and the realm's short
+ * name is itself the command, never behind `c`: the wire types `swan` and
+ * `mihe` bare (`castWord`). In the `probe` band out of combat and `combat` when the
  * entry allows it mid-fight, coalesced by the entry's spell — which is the
  * row's identity: the list holds one row per spell.
  */
@@ -114,7 +114,11 @@ export class Blessings {
      * third. See `resolveSpell`.
      */
     private readonly realmSpell: (name: string) => WorldSpell | null = () => null
-  ) {}
+  ) {
+    // The toolbar's Auto-Bless switch, under the master one — as `configure`
+    // folds it, so the first pass and every later one agree.
+    this.enabled = enabled && config.autoBless;
+  }
 
   /**
    * Whether a wire spelling and a configured spelling name the same spell.
@@ -135,7 +139,9 @@ export class Blessings {
 
   configure(config: SpellsConfig, enabled: boolean): void {
     this.config = config;
-    this.enabled = enabled;
+    // The toolbar's Auto-Bless switch, under the master one: off, nothing
+    // here is proposed, and the list stays as the player wrote it.
+    this.enabled = enabled && config.autoBless;
     this.arm();
   }
 
@@ -397,7 +403,7 @@ export class Blessings {
     this.lastProposalAt = now;
     const word = found.word;
     this.queue.enqueue({
-      command: target === null ? `c ${word}` : `c ${word} ${target}`,
+      command: target === null ? word : `${word} ${target}`,
       // Mid-fight a recast competes for the round like a heal; idle it is the
       // least urgent thing in the client, below walking and the player.
       priority: state.inCombat ? 'combat' : 'probe',

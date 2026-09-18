@@ -375,6 +375,9 @@ notices:
     gearButtonPinned:
       'A gear button was added to your toolbar, beside the dial. It puts back what the client
       last saw in each worn slot — the first press after a death.'
+    blessSwitchPinned:
+      'An Auto-Bless switch was added to your toolbar, beside retaliate. Off, the blessings you
+      listed are not cast for you until it is on again.'
     loopsRenamed:
       one:
         'The shipped loops are named the way whoever recorded them named them, rather than after the
@@ -431,6 +434,23 @@ notices:
         back for the kit and put it on. Nothing walks until you turn it on.'
       many: '"automation.movement.recoverGear" was written into {count} files ({fileList}), off:
         after a death, walk back for the kit and put it on. Nothing walks until you turn it on.'
+    accountJoinedTheScript:
+      one: 'The username and password prompts are login steps now, so {fileList} gained a row
+        for each — realms word those two prompts differently, and the client used to recognise
+        only one wording. Your account itself stays on the character; the rows name it.'
+      many: 'The username and password prompts are login steps now, so {count} files
+        ({fileList}) each gained a row for each — realms word those two prompts differently, and
+        the client used to recognise only one wording. Your account itself stays on the
+        character; the rows name it.'
+    pagerRepeats:
+      one: 'A login step in {fileList} answers a pager — "(N)onstop, (Q)uit, or (C)ontinue?" —
+        which a BBS asks once per screenful rather than once per way in, so it is now marked
+        "answer every time". It used to be answered once and the login then sat at the second
+        one.'
+      many: 'A login step in {count} files ({fileList}) answers a pager — "(N)onstop, (Q)uit, or
+        (C)ontinue?" — which a BBS asks once per screenful rather than once per way in, so each
+        is now marked "answer every time". They used to be answered once and the login then sat
+        at the second one.'
     mobPriority:
       one: '"automation.combat.mobPriority" was written into {fileList}, empty: the order
         monsters are attacked in, as five bands. Nothing changes until you name one.'
@@ -598,6 +618,13 @@ notices:
       Side by side would leave each console about {columns} columns, and this realm
       formats to {minColumns}. Stack them instead, or set a smaller terminal font size.
   session:
+    backscroll:
+      readError:
+        'Could not read {fileName} ({message}). The console starts empty and nothing is written
+        over the file; fix or remove it before the next launch.'
+      saveError:
+        'Could not write {fileName}: {message}. The console keeps working; nothing more is kept
+        for the next launch.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
   world:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
@@ -735,6 +762,7 @@ palette:
     layout: Layout
     navigate: Navigate
     pinned: Pinned
+    realm: In the realm
     view: View
   layout:
     cardAlwaysHint: it leaves the rail while it has nothing to say
@@ -760,6 +788,8 @@ palette:
     gotoLabel: 'Goto: {roomName}'
     gotoVisitedHint: '{roomReference} · {agoText}'
     loopLabel: 'Loop: {loopName}'
+    lookupLabel: 'Look up: {name}'
+    lookupNumberHint: '{kindWord} #{number}'
     moveStopHint: routing or looping — it keeps its place, so play picks it back up
     moveStopLabel: Stop moving
     loopStopsHint:
@@ -769,7 +799,7 @@ palette:
     huntLabel: Where should I hunt?
     routeLabel: Route to room
     searchLabel: Search the console
-  noMatches: No matching command, and no room by that name.
+  noMatches: No matching command, and nothing in the realm by that name.
   pin:
     pinTitle: Pin to the top ({chord})
     unpinTitle: Unpin ({chord})
@@ -843,6 +873,7 @@ toolbar:
   assistLeader: Auto-Assist Leader
   autoDeposit: Auto-Deposit (Bank Coins)
   automation: Auto (On/Off)
+  autoBless: Auto-Bless (Buff Spells)
   bashDoors: Auto-Bash Doors
   combat: Auto-Combat
   connect: Connect
@@ -1269,6 +1300,10 @@ cards:
     refresh: Ask again
     from: '{count} lairs priced over {swept} rooms from {room}.'
     excluded: 'Left out: {dangerous} too dangerous, {beneath} beneath this level.'
+    # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
+    # so the row is ordered by distance and never by what it pays.
+    unpricedOne: 'The fight in one of them could not be priced; it is listed nearest first.'
+    unpricedMany: 'The fight in {count} of them could not be priced; those are listed nearest first.'
     columns:
       lair: Lair
       rate: Exp/h
@@ -1306,6 +1341,7 @@ cards:
       openerCredited: (opener credited)
       cost: A room costs
       costValue: '{hp} hp ({share} of the bar), up to {worst} hp ({worstShare}) at its worst spawn'
+      costAtLeast: 'at least {worst} hp ({worstShare} of the bar) at its worst spawn; a spawn’s rounds to kill are unknown'
       walk: The walk
       walkValue: '{steps} steps round, {ms} ms a step'
       heal: Recovery
@@ -1567,6 +1603,14 @@ cards:
       onDeathLabel: On Death
       noAttackers: nothing yet
       onYou: Attacking
+    survival:
+      detail: 'about {rounds} rounds · {hp} of {hpMax} hp left'
+      figure: '{percent}%'
+      walkOut: '{percent}% survivable'
+      heals: '{count} heals'
+      roundsOnly: 'about {rounds} rounds'
+      trials: 'the room’s fight, run {count} times as you stand'
+      unknown: the fight cannot be run
     title: Combat
   copyMenu:
     copy: Copy
@@ -2329,6 +2373,9 @@ cards:
     walkHereButton: Walk here
     walkHereTooltip: Walk only as far as {roomName}
     walkTooltip: Walk this route (Enter)
+    # Todo 06: turn off, go.
+    runButton: Run it
+    runTooltip: Walk this route with auto-combat turned off first, and leave it off
   session:
     encoding: Encoding
     grid: Grid
@@ -2351,6 +2398,13 @@ cards:
     room:
       findDays: Show finds from the last (days)
       findDaysAll: all
+    stats:
+      graph: Rate graph
+      graphs:
+        bars: bars
+        line: line
+      window: Rate graph covers
+      windowHours: '{hours} h'
     talk:
       # Off: the box sends what was typed, so `gos` is how a line gossips.
       channels: Put a channel in front.
@@ -2456,6 +2510,15 @@ cards:
     # often already paid for, and `Exp. needed` alone read as though it were not.
     expNeededToLevel: Exp. needed, level {level}
     expRateLabel: Exp. rate
+    exchangeFigure: '{dealt} dealt · {taken} taken'
+    exchangeLabel: Dealt against taken
+    faceMore: More
+    graphEmpty: nothing measured in this window yet
+    graphLabel: 'Exp. rate, last {hours} h'
+    graphNow: 'now {rate}'
+    levelFigure: '{percent}% into level {next}'
+    levelMade: '{made} this session'
+    levelOver: '{over} over'
     incomeRateLabel: Income rate
     killRateLabel: Kill rate
     killedLabel: Killed
@@ -2585,6 +2648,7 @@ cards:
     # ordinary state of a character.
     afflicted:
       blind: blind
+      confused: confused
       diseased: diseased
       held: held
       poisoned: poisoned
@@ -2733,6 +2797,7 @@ settings:
       poisoned: you are poisoned
       diseased: you are diseased
       held: you are held
+      confused: you are confused
       attackRefused: your attack is refused
       attackUseless: your attack has no effect
       spellUseless: your spell has no effect
@@ -2746,6 +2811,7 @@ settings:
       tracked: you track somebody
       movementHeard: movement nearby
       playerDisconnects: a player drops out
+      cleanup: the nightly cleanup is coming, or done
       wayBlocked: the way is blocked
       bashFailed: a door will not break
       sneakFailed: you fail to sneak
@@ -2990,8 +3056,9 @@ settings:
       hostPlaceholder: paramud.mudinfo.net
       loginMenuSendPlaceholder: '1'
       loginMenusNote:
-        When the realm prints the text on the left, the client sends what is on the right. A
-        new realm starts with these; each realm keeps its own on its page afterwards.
+        When the realm prints the text on the left, the client sends what is on the right, with
+        {user} and {password} standing in for the character's own. A new realm starts with these;
+        each realm keeps its own on its page afterwards.
       noteBeforeCharacter: Until you have made a character, this is also the address the client connects to.
     saved: Settings saved.
     startingValuesNote:
@@ -3095,11 +3162,17 @@ settings:
   login:
     addStep: Add a menu
     legend: Login Menus, This Character
-    note: 'Usually empty: the menus are from {realmOrAddress}. Anything here replaces that script
-      rather than being added to it.'
+    note: "Usually empty: the menus are from {realmOrAddress}. Anything here replaces that script
+      rather than being added to it, the rows that send {user} and {password} included — so the
+      first one you add starts as a copy of the realm's."
     noteFallbackAddress: the address this character dials
     removeStepAria: Remove step {stepNumber}
     removeStepTitle: Remove this menu
+    stepRepeatAria: Answer every time, step {stepNumber}
+    stepRepeatTitle:
+      'Answer this every time it appears, not just once. For a pager — "(N)onstop, (Q)uit, or
+      (C)ontinue?" — which a BBS asks once per screenful. A menu is asked once, so leave this
+      off: a menu that comes back means the answer was refused.'
     stepSendAria: Send, step {stepNumber}
     stepSendPlaceholder: '2'
     stepWhenAria: When the realm says, step {stepNumber}
@@ -3194,6 +3267,10 @@ settings:
     walkWhilePoisonedHint:
       Off, a route or a loop stands still until the poison runs its course — MegaMUD's IgnorePoison
       default. Paralysis always holds; a step while held is refused.
+    fightOnArrival: Auto-Combat On at Arrival
+    fightOnArrivalHint:
+      Turns auto-combat back on when a route you asked for arrives, since walking with it off is how
+      you get somewhere without fighting on the way. Loops and errands are left alone.
     extinguishInLight: Put the Light Out in Lit Rooms
     extinguishInLightHint:
       Removes the lit torch in a room that does not need it, while nothing is walking the character,
@@ -3390,7 +3467,10 @@ settings:
     idPlaceholder: thorn
     manageRealms: Manage realms…
     namePlaceholder: Thorn the Unready
-    passwordHint: Kept in this character’s own file, and never shown back.
+    passwordHint:
+      Kept in this character’s own file, and never shown back. The realm’s login steps send it
+      where they say {password}, which is how a realm that words its prompt differently is
+      answered at all.
     passwordLabel: Password
     passwordPlaceholderSet: •••••••• — leave blank to keep it
     passwordPlaceholderUnset: none set
@@ -3409,7 +3489,9 @@ settings:
     loginLegend: Login Menus
     loginNote:
       When the realm prints the text on the left, the client sends what is on the right. Leave
-      the answer blank to send a bare Enter, which several menus want.
+      the answer blank to send a bare Enter, which several menus want. Write {user} or {password}
+      to send this character's own — realms word those two prompts differently, so they are rows
+      here like any other, and the account itself stays on the character's page.
     loopsNote:
       Every character that plays here can walk these, without being told to. A character may
       add loops of its own on its own page.
@@ -3458,6 +3540,10 @@ settings:
       come before ones on the party. A blessing on a party member recasts on its own timer,
       because its wear-off shows on their screen, not yours.
     notifyWearOffLabel: Notify Caster on Buff Wear-Off
+    autoBlessLabel: Auto-Bless
+    autoBlessHint:
+      Cast the blessings below unasked. Off keeps the mana for healing through a fight without
+      emptying the list; the toolbar has the same switch.
     invokeItemsLabel: Bless from an item
     invokeItemsHint:
       Ask a carried item for the blessing it casts, when that blessing is not up. Only items the
@@ -3691,6 +3777,7 @@ session:
     connecting: Connecting to {host}:{port} ({encoding})…
     deadLink: No answer from the realm for {seconds}s — treating the connection as lost.
     disconnected: Disconnected.
+    hungUp: Hung up on a connection that had stopped answering.
     failed: 'Connection failed: {detail}'
     socketError: 'Connection error: {message}'
   hunt:
@@ -3849,6 +3936,21 @@ session:
       Nothing answered the last move in {seconds}s, so the client has given up waiting for it and is
       taking the room on screen as where you are. Running away, walking a route and running a loop
       all wait for a step, so they were held until now.
+    claimProbed:
+      'Nothing has answered “{command}” in {seconds}s. Asking the realm where you are — if it
+      answers that first, the step is not coming; if it does not, the realm is slow and the step
+      waits.'
+    claimProbedUntyped:
+      'Nothing has answered the last move in {seconds}s. Asking the realm where you are — if it
+      answers that first, the move is not coming; if it does not, the realm is slow and the move
+      waits.'
+    claimSettledByLocate:
+      'The realm answered a later question before “{command}”, so that step is not coming; taking
+      the room the realm named as where you are.'
+    probeReason: a step has gone unanswered — asking where you are tells a slow realm from a lost step
+    readSettledByLocate:
+      'The realm answered a later question before “{command}”, so that re-read is not coming.
+      Nothing was held up by it.'
     exitBackOpen: The room lists {direction} again, so routes will use it once more.
     exitRefused: The realm data promised an exit {direction} that the realm refuses; routes will avoid it.
     exitShut: The way {direction} is shut rather than absent; routes will avoid it until the room lists it.
@@ -3933,6 +4035,13 @@ automation:
       no more than 95, while hiding rolls the whole figure — the skill past {ceiling} only pays
       standing still.'
   combat:
+    lentForHold: 'Held with auto-combat off: turning it on until the hold wears off.'
+    returnedAfterHold: 'The hold wore off: auto-combat back off, walking on.'
+    backOnArrival: 'Arrived: auto-combat back on.'
+    # Todo 06: *Run it* is turn off, go -- said at the start, and again where the
+    # run is picked up after a lost connection or an errand.
+    runningCombatOff: 'Running it: auto-combat is off, and stays off until you turn it back on.'
+    runRefused: 'Not running it: auto-combat could not be turned off in the character''s file.'
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something walked in the realm data could not place'
     reasonRefresh: 'auto-combat: re-reading the room'
@@ -4129,10 +4238,19 @@ automation:
   login:
     credentialMissing: No {credentialType} configured — finish logging in yourself.
     leftOnPurpose: Left the realm on purpose; automatic login stands down until the next connection.
-    promptRepeated: The {credentialType} prompt came back. Automatic login stopped rather than retrying.
+    noAccountRow:
+      "This character has a username and password, but its login steps have no row that sends
+      them — add one answering the realm's username prompt with {user}, and its password prompt
+      with {password}. A character that states its own steps replaces the realm's whole list."
+    promptRepeated:
+      '"{promptText}" came back after the account was answered. Automatic login stopped rather
+      than retrying.'
     reasonCredential: 'login: {credentialType}'
     reasonMenu: answering "{promptText}"
     rejected: Login rejected. Automatic login stopped — check the credentials in your options file.
+    unknownPlaceholder:
+      'The login step for "{promptText}" sends {placeholder}, which the client cannot fill in.
+      Automatic login stopped rather than typing it at the realm.'
   afk:
     reasonReply: away reply
     replied: 'Told {player} you are away.'
@@ -4410,6 +4528,8 @@ automation:
     reasonLostAfterFight: the fight ended somewhere the client could not place
     reasonMoveUnanswered: the fight ended with {command} still unanswered, so there is nowhere to plan from
     reasonNotQueued: the client refused to send {command}
+    # A walk that ended inside `Walker.start` with no reason recorded (todo 06, on review).
+    stoppedAtStart: the walk stopped before its first step went out
     reasonNotSent: '{command} never left the client'
     reasonNudge: forcing an answer after {command}
     reasonOpening: opening the {barrier} to {stepName}

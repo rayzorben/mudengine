@@ -355,6 +355,25 @@ describe('arming the idle clock', () => {
     }
     expect(queue.snapshot.pending.some((i) => i.command === 'l')).toBe(false);
   });
+
+  /*
+   * 2026-09-18: the clock outlived the socket and proposed a bare Enter every
+   * 45 seconds into a closed session for seven hours. Out of the realm is out,
+   * a reload included; back in arms it again.
+   */
+  it('stops when the character leaves the realm, and starts again on the way back', () => {
+    const idle = { enabled: true, afterSeconds: 5, command: 'l' };
+    const { routines, queue } = make({ idle, onEnterRealm: [] });
+    routines.onCharacter(inRealm);
+    routines.onCharacter({ ...EMPTY_CHARACTER, phase: 'unknown' });
+    routines.configure({ ...DEFAULT_CONFIG.automation, enabled: true, idle, onEnterRealm: [] });
+    vi.advanceTimersByTime(100_000);
+    expect(queue.snapshot.pending.some((i) => i.command === 'l')).toBe(false);
+
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(6000);
+    expect(queue.snapshot.pending.some((i) => i.command === 'l')).toBe(true);
+  });
 });
 
 /*

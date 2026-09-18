@@ -172,9 +172,10 @@ export function createWebBridge(): IpcApi {
     saveDebug: (session) => invoke(Invoke.saveDebug, session),
     getCharacter: (session) => invoke(Invoke.getCharacter, session),
     routeTo: (session, map, room) => invoke(Invoke.routeTo, session, map, room),
-    walkRoute: (session, route) => invoke(Invoke.walkRoute, session, route),
+    walkRoute: (session, route, run) => invoke(Invoke.walkRoute, session, route, run),
     startMoving: (session, loop, confirmed) => invoke(Invoke.startMoving, session, loop, confirmed),
-    collectThenWalk: (session, item, route) => invoke(Invoke.collectThenWalk, session, item, route),
+    collectThenWalk: (session, item, route, run) =>
+      invoke(Invoke.collectThenWalk, session, item, route, run),
     stopMoving: (session) => invoke(Invoke.stopMoving, session),
     stepBack: (session, confirmed) => invoke(Invoke.stepBack, session, confirmed),
     listLoops: (session) => invoke(Invoke.listLoops, session),

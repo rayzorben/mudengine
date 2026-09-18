@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,7 +26,7 @@ import { ActionBook, parseActionsCsv } from '../../../shared/actions';
 import { DeathBook, parseDeathMessagesCsv } from '../../../shared/death-messages';
 import { NO_MESSAGES } from '../../../shared/messages';
 import type { PlayerFacts, RealmPlayers } from '../../../shared/players';
-import { NO_BELONGINGS } from '../../../shared/belongings';
+import { NO_BELONGINGS, type StatsRecord } from '../../../shared/belongings';
 import {
   effectKey,
   SpellMessageBook,
@@ -37,7 +37,7 @@ import {
   type SpellMessageKind
 } from '../../../shared/spell-messages';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
-import { swings } from '../../../shared/tally';
+import { NO_TALLY, swings, type CombatTally } from '../../../shared/tally';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
 
@@ -3578,6 +3578,36 @@ describe('moving unseen', () => {
   });
 
   /*
+   * The same fact counted rather than read for stealth, and published so that
+   * something other than this file can tell an arrival from a reprint — see
+   * `Room.arrival`. Two rooms a maze gives the same name and the same exits
+   * are one address and two arrivals, which is the whole of what `AutoSearch`
+   * could not see on bearfather (2026-09-17).
+   */
+  it('counts an arrival, and a reprint of the same room as none', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    expect(tracker.current.room.arrival).toBe(0);
+
+    tracker.observeCommand('e');
+    feed('Secret Passage');
+    feed('Obvious exits: east, west');
+    expect(tracker.current.room.arrival).toBe(1);
+
+    // A namesake with the very same exits is still somewhere else.
+    tracker.observeCommand('e');
+    feed('Secret Passage');
+    feed('Obvious exits: east, west');
+    expect(tracker.current.room.arrival).toBe(2);
+
+    // A look is not a step, so nowhere changed.
+    tracker.observeCommand('l');
+    feed('Secret Passage');
+    feed('Obvious exits: east, west');
+    expect(tracker.current.room.arrival).toBe(2);
+  });
+
+  /*
    * `MoveCommand`'s no-exit branch calls `BreakStealth()` beside the sentence
    * — running into a wall is announced to the room — and a bash does the same
    * in `Door.cs`.
@@ -3661,7 +3691,7 @@ describe('moving unseen', () => {
    * one case that exempts — both without a word.
    */
   it('is seen the moment this character attacks', () => {
-    for (const command of ['a fat mutant', 'bs fat mutant', 'c mm fat mutant']) {
+    for (const command of ['a fat mutant', 'bs fat mutant', 'mm fat mutant']) {
       const { tracker, feed } = feeder();
       feed('[HP=33]:');
       feed('Sneaking...');
@@ -6032,6 +6062,28 @@ describe('leaving the realm on purpose', () => {
     ]);
     expect(t.current.phase).toBe('in-game');
   });
+
+  // Bearfather's wire, 2026-09-17: MajorMUD says the exit completed.
+  it("leaves on MajorMUD's saved sentence even with the request unread", () => {
+    const t = play([
+      ...inside,
+      'Your character has been saved. If you have any comments or suggestions, please',
+      '[MAJORMUD]:'
+    ]);
+    expect(t.current.phase).toBe('authenticating');
+  });
+
+  // Bearfather's wire, 2026-09-17: a monster's blow ends the meditation.
+  it('forgets the request once the realm interrupts it', () => {
+    const t = play([
+      ...inside,
+      'You will exit after a period of silent meditation.',
+      'Your meditation has been interrupted - you may not exit now!',
+      '[HP=34]:',
+      '[PARADIGM]:'
+    ]);
+    expect(t.current.phase).toBe('in-game');
+  });
 });
 
 describe('coins off the floor', () => {
@@ -7797,7 +7849,8 @@ describe('what the server has said is wrong with the character', () => {
       blind: 'yes',
       poisoned: 'yes',
       diseased: 'unknown',
-      held: 'yes'
+      held: 'yes',
+      confused: 'unknown'
     });
     const later = play([
       '[HP=34]:',
@@ -7810,7 +7863,8 @@ describe('what the server has said is wrong with the character', () => {
       blind: 'no',
       poisoned: 'no',
       diseased: 'unknown',
-      held: 'no'
+      held: 'no',
+      confused: 'unknown'
     });
   });
 
@@ -10001,7 +10055,8 @@ describe('the spellbook and the belongings record', () => {
         cost: number | null;
       }> | null,
       durations: {} as Record<string, number>,
-      abilities: null as AbilitySums | null
+      abilities: null as AbilitySums | null,
+      stats: null as StatsRecord | null
     };
     return {
       state,
@@ -10024,6 +10079,10 @@ describe('the spellbook and the belongings record', () => {
         },
         recallIdentity: () => null,
         rememberIdentity: () => {},
+        recallStats: () => state.stats,
+        rememberStats: (tally: CombatTally) => {
+          state.stats = { savedAt: state.stats?.savedAt ?? 0, tally: { ...tally } };
+        },
         forget: () => false
       }
     };
@@ -10081,6 +10140,115 @@ describe('the spellbook and the belongings record', () => {
     tracker.useBelongings(sink);
     tracker.reset();
     expect(tracker.current.abilities).toBeNull();
+  });
+
+  /*
+   * The running totals (todo 06, 2026-09-17): what the fighting added up to
+   * outlives the socket and the launch, and the rates it is read at divide
+   * by time in the realm rather than by a night spent disconnected.
+   */
+  describe('the running totals', () => {
+    const T0 = 1_700_000_000_000;
+    const ARRIVE = ['Welcome back, Vaelor!', '[HP=34]:'];
+
+    it('starts the clock the rates divide by on arrival, and writes every change down', () => {
+      const { state, sink } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, ARRIVE);
+      expect(tracker.current.tally.onlineSince).toBe(T0 + 2_000);
+      expect(state.stats?.tally.onlineSince).toBe(T0 + 2_000);
+    });
+
+    it('settles both clocks when the realm is left, and keeps the totals', () => {
+      const { state, sink } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, [...ARRIVE, 'You gain 66 experience.']);
+      expect(tracker.current.tally.experience).toBe(66);
+      tracker.leaveRealm(T0 + 10_000);
+      const { tally } = tracker.current;
+      expect(tally.experience).toBe(66);
+      expect(tally.onlineSince).toBeNull();
+      expect(tally.onlineMs).toBe(8_000);
+      // Handed to the record settled, so a quit right after writes it so.
+      expect(state.stats?.tally).toEqual(tally);
+    });
+
+    it('carries the totals through a reconnect, the gap between not counted', () => {
+      const { sink } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, [...ARRIVE, 'You gain 66 experience.']);
+      tracker.leaveRealm(T0 + 10_000);
+      tracker.reset();
+      expect(tracker.current.tally.experience).toBe(66);
+      expect(tracker.current.tally.onlineMs).toBe(8_000);
+      expect(tracker.current.tally.onlineSince).toBeNull();
+      feedThrough(tracker, ARRIVE);
+      expect(tracker.current.tally.experience).toBe(66);
+      expect(tracker.current.tally.onlineMs).toBe(8_000);
+      expect(tracker.current.tally.onlineSince).toBe(T0 + 2_000);
+    });
+
+    /* A launch that ended without the socket closing left both clocks open;
+       the write is the last moment the client is known to have been in the
+       realm, and that is where they close. */
+    it('seeds a launch back from the record, closing what it left open at the write', () => {
+      const { sink, state } = fakeBelongings();
+      state.stats = {
+        savedAt: T0 + 5_000,
+        tally: {
+          ...NO_TALLY,
+          since: T0,
+          at: T0 + 3_000,
+          kills: 2,
+          experience: 500,
+          onlineSince: T0 + 2_000,
+          engagedSince: T0 + 3_000
+        }
+      };
+      const next = new CharacterTracker();
+      next.useBelongings(sink);
+      next.reset();
+      const { tally } = next.current;
+      expect(tally.kills).toBe(2);
+      expect(tally.experience).toBe(500);
+      expect(tally.onlineSince).toBeNull();
+      expect(tally.onlineMs).toBe(3_000);
+      expect(tally.engagedSince).toBeNull();
+      expect(tally.engagedMs).toBe(2_000);
+    });
+
+    it('seeds nothing kept as nothing counted', () => {
+      const { sink } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      tracker.reset();
+      expect(tracker.current.tally).toBe(NO_TALLY);
+    });
+
+    it('closes the stretch away on arriving, so the graph can leave it blank', () => {
+      const { sink, state } = fakeBelongings();
+      state.stats = { savedAt: T0, tally: { ...NO_TALLY, since: T0 - 1, leftAt: T0 } };
+      const next = new CharacterTracker();
+      next.useBelongings(sink);
+      next.reset();
+      feedThrough(next, ARRIVE);
+      expect(next.current.tally.away).toEqual([{ from: T0, to: T0 + 2_000 }]);
+      expect(next.current.tally.leftAt).toBeNull();
+    });
+
+    it('starts the clocks again when the record is thrown away in the realm', () => {
+      const { sink } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, [...ARRIVE, 'You gain 66 experience.']);
+      tracker.forgetBelongings(T0 + 9_000);
+      expect(tracker.current.tally.experience).toBe(0);
+      expect(tracker.current.tally.since).toBe(T0 + 9_000);
+      expect(tracker.current.tally.onlineSince).toBe(T0 + 9_000);
+    });
   });
 
   it('writes the book down when a listing commits, and seeds it back at reset', () => {
@@ -10142,11 +10310,14 @@ describe('the spellbook and the belongings record', () => {
  * would test the counter against itself.
  */
 describe('what the fighting adds up to', () => {
-  it('counts nothing before anything has happened', () => {
+  it('counts nothing before anything has happened, and only starts the clock', () => {
     const tally = play(['[HP=57/KAI=3]: ']).current.tally;
-    expect(tally.since).toBeNull();
+    // Arrival opens the clock the rates divide by (todo 06); it counts nothing.
+    expect(tally.since).not.toBeNull();
+    expect(tally.onlineSince).toBe(tally.since);
     expect(tally.kills).toBe(0);
     expect(tally.dealt.melee.hits).toBe(0);
+    expect(tally.samples).toEqual([]);
   });
 
   it('separates a critical from an ordinary blow, and keeps both extremes', () => {
@@ -10292,21 +10463,30 @@ describe('what the fighting adds up to', () => {
   });
 
   /*
-   * The totals are *this visit's* fighting. An engagement clock left open
-   * across a closed socket would count the hours the client sat disconnected
-   * as time spent in combat.
+   * The totals outlive the socket (todo 06, 2026-09-17); what must not
+   * outlive it is a clock. An engagement clock left open across a closed
+   * socket would count the hours the client sat disconnected as time spent in
+   * combat, and the realm clock the same hours as time the character earned
+   * nothing in.
    */
-  it('forgets everything on leaving the realm', () => {
+  it('keeps the totals on leaving the realm, with both clocks settled', () => {
     const tracker = play([
       '[HP=57/KAI=0]: ',
       '*Combat Engaged*',
       'You punch fat giant rat for 6 damage!'
     ]);
-    expect(tracker.current.tally.dealt.melee.hits).toBe(1);
-    tracker.leaveRealm();
-    expect(tracker.current.tally.dealt.melee.hits).toBe(0);
-    expect(tracker.current.tally.since).toBeNull();
-    expect(tracker.current.tally.engagedSince).toBeNull();
+    const { tally: before } = tracker.current;
+    expect(before.dealt.melee.hits).toBe(1);
+    expect(before.engagedSince).not.toBeNull();
+    expect(before.onlineSince).not.toBeNull();
+    tracker.leaveRealm((before.at ?? 0) + 4_000);
+    const { tally } = tracker.current;
+    expect(tally.dealt.melee.hits).toBe(1);
+    expect(tally.since).toBe(before.since);
+    expect(tally.engagedSince).toBeNull();
+    expect(tally.engagedMs).toBe(4_000 + (before.at ?? 0) - (before.engagedSince ?? 0));
+    expect(tally.onlineSince).toBeNull();
+    expect(tally.onlineMs).toBe(4_000 + (before.at ?? 0) - (before.onlineSince ?? 0));
   });
 });
 
@@ -10844,5 +11024,212 @@ describe('a step that hands the character to a draw', () => {
     tracker.observeCommand('w');
     feed(['Cell', 'Obvious exits: east']);
     expect(tracker.current.room.resolvedBy).not.toBe('scattered');
+  });
+});
+
+/*
+ * A door the room listed changes state without a reprint (todo 00,
+ * 2026-09-17). The live transcript: `open door northwest` on the list, then
+ * `The door to the northwest just closed.` from the door's own timer, and the
+ * next reprint said `closed door northwest` — the sentence was the whole of
+ * the news, and it was read as nothing and suspected as an effect.
+ */
+describe('a door the room listed changes state without a reprint', () => {
+  const WORKSHOP = [
+    'Cluttered Workshop',
+    'Also here: gnome inventor.',
+    'Obvious exits: open door northwest, south'
+  ];
+  const notes = (tracker: CharacterTracker): Array<[string, string | null]> =>
+    tracker.current.room.exits.map((exit) => [exit.direction, exit.note]);
+
+  it('re-notes the exit when the door swings shut on its own', () => {
+    const tracker = play([...WORKSHOP, 'The door to the northwest just closed.']);
+    expect(notes(tracker)).toEqual([
+      ['nw', 'closed door'],
+      ['s', null]
+    ]);
+  });
+
+  it('and open again when somebody beyond it opens it', () => {
+    const tracker = play([
+      ...WORKSHOP,
+      'The door to the northwest just closed.',
+      'The gate to the northwest just opened.'
+    ]);
+    expect(notes(tracker)).toEqual([
+      ['nw', 'open gate'],
+      ['s', null]
+    ]);
+  });
+
+  it('invents no exit the list never printed', () => {
+    const tracker = play([...WORKSHOP, 'The door to the east just closed.']);
+    expect(notes(tracker)).toEqual([
+      ['nw', 'open door'],
+      ['s', null]
+    ]);
+  });
+
+  it("re-notes the door this character's own command named", () => {
+    const tracker = play([...WORKSHOP, { send: 'close nw' }, 'The door is now closed.']);
+    expect(notes(tracker)).toEqual([
+      ['nw', 'closed door'],
+      ['s', null]
+    ]);
+    // Opened by the walker's own `open`, and `already` is still a statement.
+    const reopened = play([
+      ...WORKSHOP,
+      { send: 'close nw' },
+      'The door is now closed.',
+      { send: 'open nw' },
+      'The door was already open.'
+    ]);
+    expect(notes(reopened)[0]).toEqual(['nw', 'open door']);
+  });
+
+  it('places nothing when the last command named no door', () => {
+    const tracker = play([
+      ...WORKSHOP,
+      { send: 'close nw' },
+      { send: 'l s' },
+      'The door is now closed.'
+    ]);
+    expect(notes(tracker)[0]).toEqual(['nw', 'open door']);
+    // A pick leaves a shut door shut.
+    const picked = play([
+      ...WORKSHOP,
+      'The door to the northwest just closed.',
+      { send: 'pi nw' },
+      'You successfully unlocked the door.'
+    ]);
+    expect(notes(picked)[0]).toEqual(['nw', 'closed door']);
+  });
+});
+
+/*
+ * The nightly cleanup takes a `Remove@Maint` item out of the pack and says so
+ * once per item (`GMUDServer.DoCleanup`, todo 01, 2026-09-17). Onto no floor:
+ * the server poofs it.
+ */
+describe('the cleanup returning an item to its proper place', () => {
+  it('takes one instance out of the pack, and onto no floor', () => {
+    const tracker = play([
+      '[HP=34]:',
+      'You are carrying padded helm (Head), black star key, black star key',
+      'You have no keys.',
+      'Wealth: 0 copper farthings',
+      'Encumbrance: 300/3360 - None [8%]',
+      '[HP=34]:',
+      'Your black star key has been returned to its proper place'
+    ]);
+    expect(
+      tracker.current.inventory.items.filter((item) => item.name === 'black star key')
+    ).toHaveLength(1);
+    expect(tracker.current.room.items).toEqual([]);
+  });
+});
+
+/*
+ * Confusion, read three ways (todo 05, 2026-09-17): the fixed `You are
+ * confused!`, the realm's own `Confusion` rows through the spell table
+ * (`Your lungs are filled with spores!` is `spore cloud` and `fungus cloud`),
+ * and the fumble itself. Ended by the table alone — no server sentence ends
+ * it, and inventing one is the thing the vocabulary test refuses.
+ */
+describe('confusion', () => {
+  const sporeTable = () =>
+    spellLoreOf(
+      SpellMessageBook.fromRows([
+        {
+          spell: 'fungus cloud',
+          start: 'Your lungs are filled with spores!',
+          stop: 'Your lungs fill with fresh air.'
+        }
+      ]),
+      new SpellMessageBook()
+    );
+
+  it('is stated by the fixed onset and by a fumble', () => {
+    expect(play(['You are confused!']).current.afflictions.confused).toBe('yes');
+    expect(play(['You fumble in confusion!']).current.afflictions.confused).toBe('yes');
+    expect(play(['You are blind!']).current.afflictions.confused).toBe('unknown');
+  });
+
+  it.runIf(realm !== null)('is read from the realm’s own row, both ways', () => {
+    const tracker = play(
+      ['[HP=208/208]:', 'Your lungs are filled with spores!'],
+      realm!,
+      undefined,
+      undefined,
+      undefined,
+      sporeTable()
+    );
+    expect(tracker.current.afflictions.confused).toBe('yes');
+    // Nothing was refused by the landing: the queue is untouched.
+    expect(tracker.current.afflictions.held).toBe('unknown');
+    const over = play(
+      ['[HP=208/208]:', 'Your lungs are filled with spores!', 'Your lungs fill with fresh air.'],
+      realm!,
+      undefined,
+      undefined,
+      undefined,
+      sporeTable()
+    );
+    expect(over.current.afflictions.confused).toBe('no');
+  });
+});
+
+/*
+ * `Location:` is `rm`'s answer and an ordered one (todo 10, 2026-09-17): a
+ * step still unanswered when it arrives produced nothing, and is dropped
+ * where the flat clock would have waited eight seconds for it.
+ */
+describe('a location answer settles the steps sent before the ask', () => {
+  it('drops the unanswered step, places the character, and says which step', () => {
+    const tracker = play([
+      '[HP=34]:',
+      { send: 'n' },
+      { send: 'rm' },
+      'Location:            1,1210',
+      '[HP=34]:'
+    ]);
+    expect(tracker.current.room.map).toBe(1);
+    expect(tracker.current.room.number).toBe(1210);
+    expect(tracker.pendingMoves).toBe(0);
+    expect(tracker.takeSettledByLocate()).toEqual([{ command: 'n', moved: true }]);
+    // Taken once.
+    expect(tracker.takeSettledByLocate()).toEqual([]);
+  });
+
+  it('leaves a step sent after the ask alone', () => {
+    // The ask's moment is the wall clock's, so the clock is held here.
+    vi.useFakeTimers();
+    try {
+      const classifier = new Classifier();
+      const tracker = new CharacterTracker();
+      let seq = 0;
+      const feed = (text: string): void => {
+        seq += 1;
+        const { block, batch } = classifier.classify({
+          seq,
+          at: 1_700_000_000_000 + seq,
+          text,
+          plain: text,
+          terminator: 'newline'
+        });
+        tracker.apply(block);
+        if (batch) tracker.apply(batch, batch.rows);
+      };
+      feed('[HP=34]:');
+      tracker.observeCommand('rm');
+      vi.advanceTimersByTime(5);
+      tracker.observeCommand('e');
+      feed('Location:            1,1210');
+      expect(tracker.pendingMoves).toBe(1);
+      expect(tracker.takeSettledByLocate()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

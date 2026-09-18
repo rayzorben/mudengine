@@ -17,7 +17,8 @@ import type { Block } from '../../shared/blocks';
 import { DENOMINATIONS, type Denomination } from '../../shared/character';
 import type { CharacterState } from '../../shared/character';
 import { COPPER_PER } from '../../shared/coins';
-import { blowKind, withBlow, type CombatTally } from '../../shared/tally';
+import { blowKind, withArrival, withBlow, withSample, type CombatTally } from '../../shared/tally';
+import { tuning } from '../app/tuning';
 
 /** `You` and this character's own name are the same swing, said to two audiences. */
 function isSelf(who: string | undefined, state: CharacterState): boolean {
@@ -181,6 +182,13 @@ export function trackTally(
         experience: next.experience + int(g['exp']),
         kills: before.inCombat ? next.kills + 1 : next.kills
       });
+      // And the moment, for the rate graph (todo 08).
+      next = withSample(
+        next,
+        block.at,
+        tuning().parse.statsSampleMs,
+        tuning().parse.statsSamplesKept
+      );
       break;
     }
 
@@ -194,15 +202,47 @@ export function trackTally(
    * `*Combat Engaged*` and `*Combat Off*` are not the only things that move
    * `inCombat` — leaving the realm drops it too — and reading the transition
    * catches every one of them without a case per cause. An open interval that
-   * never closes is bounded by `leaveRealm`, which resets the whole tally.
+   * never closes is settled by `leaveRealm` when the socket does.
    */
   if (after.inCombat && !before.inCombat) {
-    next = { ...next, since: next.since ?? block.at, engagedSince: block.at };
+    next = { ...next, since: next.since ?? block.at, at: block.at, engagedSince: block.at };
   } else if (!after.inCombat && before.inCombat && next.engagedSince !== null) {
     next = {
       ...next,
+      at: block.at,
       engagedMs: next.engagedMs + Math.max(0, block.at - next.engagedSince),
       engagedSince: null
+    };
+  }
+
+  /*
+   * And the clock the rates divide by, read off the same kind of transition:
+   * in the realm or not. A tally that outlives the socket needs it, because
+   * wall-clock time since `since` would count a night spent disconnected as
+   * hours the character earned nothing in. `leaveRealm` closes it when the
+   * socket does, since no block describes that moment. Every clock-opening
+   * transition moves `at` as well: `at` is the moment a baseline dates its
+   * scope from, and `clockSince` clamps an open clock to it — a clock opened
+   * without moving `at` would be one the reset could not clamp.
+   */
+  if (after.phase === 'in-game' && before.phase !== 'in-game') {
+    next = withArrival(
+      {
+        ...next,
+        since: next.since ?? block.at,
+        at: block.at,
+        onlineSince: next.onlineSince ?? block.at
+      },
+      block.at,
+      tuning().parse.statsSampleMs * tuning().parse.statsSamplesKept
+    );
+  } else if (after.phase !== 'in-game' && before.phase === 'in-game' && next.onlineSince !== null) {
+    next = {
+      ...next,
+      at: block.at,
+      onlineMs: next.onlineMs + Math.max(0, block.at - next.onlineSince),
+      onlineSince: null,
+      leftAt: block.at
     };
   }
 

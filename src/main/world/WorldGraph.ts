@@ -89,7 +89,7 @@ import { trainersFor, type TrainerRow } from '../../shared/training';
 import { spellServes } from '../../shared/spellcraft';
 import { itemInvocation } from '../../shared/items';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
-import { HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
+import { CONFUSE_MESSAGE_ABILITY, HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
 import {
   ARMOUR_TYPE,
@@ -1438,6 +1438,7 @@ export class WorldGraph {
   private spells: WorldSpell[] = [];
   /** The same rows by id — see `spellById` for why this is not a scan. */
   private spellsById = new Map<number, WorldSpell>();
+  private confusionRows: ReadonlySet<number> | null = null;
   /** The realm's races and classes, in table order. Empty before v10. */
   private races: WorldRace[] = [];
   private classes: WorldClass[] = [];
@@ -2962,6 +2963,25 @@ export class WorldGraph {
   }
 
   /**
+   * The message rows this realm's spells print on a fumble — every
+   * `ConfuseMsg` value across the spell table (todo 05). Thirty-odd rows on
+   * Paradigm, `You retch uncontrollably!` among them; the classifier reads
+   * the character's own line of one as `command-fumbled`.
+   */
+  confusionMessages(): ReadonlySet<number> {
+    if (this.confusionRows === null) {
+      const rows = new Set<number>();
+      for (const spell of this.spells) {
+        for (const [id, value] of spell.abilities ?? []) {
+          if (id === CONFUSE_MESSAGE_ABILITY && value > 0) rows.add(value);
+        }
+      }
+      this.confusionRows = rows;
+    }
+    return this.confusionRows;
+  }
+
+  /**
    * Spells matching a name fragment, best first.
    *
    * A prefix match sorts ahead of a match anywhere, because somebody typing
@@ -3825,6 +3845,7 @@ export class WorldGraph {
     }
     this.spells = spells;
     this.spellsById = new Map(spells.map((spell) => [spell.id, spell]));
+    this.confusionRows = null;
   }
 
   /**

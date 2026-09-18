@@ -36,8 +36,9 @@ import path from 'node:path';
 
 import type { AbilitySums, BankBalance, KnownSpell } from '../../shared/character';
 import { bankKey } from '../../shared/character';
-import type { BelongingsSink } from '../../shared/belongings';
+import type { BelongingsSink, StatsRecord } from '../../shared/belongings';
 import type { CharacterIdentity } from '../../shared/reset';
+import { isCombatTally, settleClocks, type CombatTally } from '../../shared/tally';
 import type { Loadout, WornSlot } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
 import { errorMessage } from '../../shared/values';
@@ -80,6 +81,11 @@ interface BelongingsFile {
    * See `src/shared/reset.ts`.
    */
   identity?: CharacterIdentity;
+  /**
+   * What the fighting has added up to, and when it was last handed over.
+   * Absent means never kept. See `StatsRecord`.
+   */
+  stats?: StatsRecord;
 }
 
 export interface BelongingsOptions {
@@ -104,7 +110,11 @@ export class Belongings implements BelongingsSink {
   private abilities: AbilitySums | null = null;
   /** Null is *never read*. See `recallIdentity`. */
   private identity: CharacterIdentity | null = null;
+  /** Null is *never kept*. See `recallStats`. */
+  private stats: StatsRecord | null = null;
   private timer: NodeJS.Timeout | null = null;
+  /** When the armed timer fires, so a sooner request can replace a later one. */
+  private due = 0;
   private dirty = false;
   /** True once the file was found unreadable; nothing is written over it. */
   private suspended = false;
@@ -178,6 +188,28 @@ export class Belongings implements BelongingsSink {
     return this.identity;
   }
 
+  recallStats(): StatsRecord | null {
+    return this.stats;
+  }
+
+  rememberStats(tally: CombatTally): void {
+    if (this.suspended) return;
+    /*
+     * Held as it is, not copied: every transform of a tally replaces rather
+     * than mutates (`withBlow`, `withSample`, `settleClocks`), which is what
+     * makes holding the reference safe, and copying 1,440 samples on every
+     * blow would be the parse path paying for a rule it does not need.
+     *
+     * Written on its own, longer delay. The tally moves on every blow, and a
+     * record rewritten every two seconds of a fight is sixty kilobytes a
+     * second per character (measured 2026-09-18: 119 KB with a full series).
+     * A crash costs at most that delay of totals; `close()` writes a clean
+     * quit exactly, and a bank or a worn slot still lands on the short one.
+     */
+    this.stats = { savedAt: Date.now(), tally };
+    this.schedule(tuning().records.statsWriteDelayMs);
+  }
+
   /**
    * Throws the whole record away, at the player's word.
    *
@@ -200,6 +232,7 @@ export class Belongings implements BelongingsSink {
     this.durations = {};
     this.abilities = null;
     this.identity = null;
+    this.stats = null;
     this.schedule();
     return true;
   }
@@ -238,6 +271,20 @@ export class Belongings implements BelongingsSink {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    /*
+     * A clock still running is closed now: quitting is a moment the client
+     * knows it was in the realm and nothing on the wire will describe, and a
+     * record read back with the clock open has to close it at the last change
+     * instead — hours short, if the character stood idle.
+     */
+    if (this.stats !== null && !this.suspended) {
+      const at = Date.now();
+      const settled = settleClocks(this.stats.tally, at);
+      if (settled !== this.stats.tally) {
+        this.stats = { savedAt: at, tally: settled };
+        this.dirty = true;
+      }
+    }
     if (this.dirty) this.write();
   }
 
@@ -266,6 +313,7 @@ export class Belongings implements BelongingsSink {
       // Absent is *never read*, and stays null — the spellbook's rule.
       this.abilities = parsed.abilities ?? null;
       this.identity = parsed.identity ?? null;
+      this.stats = parsed.stats ?? null;
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -282,13 +330,17 @@ export class Belongings implements BelongingsSink {
     }
   }
 
-  private schedule(): void {
+  private schedule(delayMs = tuning().records.belongingsWriteDelayMs): void {
     this.dirty = true;
-    if (this.timer) return;
+    const due = Date.now() + delayMs;
+    // A timer already due sooner stands; a later one is brought forward.
+    if (this.timer && due >= this.due) return;
+    if (this.timer) clearTimeout(this.timer);
+    this.due = due;
     this.timer = setTimeout(() => {
       this.timer = null;
       this.write();
-    }, tuning().records.belongingsWriteDelayMs);
+    }, delayMs);
     // Never the reason the app stays open; `close()` is what guarantees the
     // last balance lands.
     this.timer.unref?.();
@@ -305,7 +357,8 @@ export class Belongings implements BelongingsSink {
       ...(Object.keys(this.durations).length > 0 ? { spellDurations: this.durations } : {}),
       // Omitted while never read, so the absence survives the round trip.
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
-      ...(this.identity !== null ? { identity: this.identity } : {})
+      ...(this.identity !== null ? { identity: this.identity } : {}),
+      ...(this.stats !== null ? { stats: this.stats } : {})
     };
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -423,7 +476,19 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.spellDurations !== undefined && !isDurationRecord(file.spellDurations)) return false;
   if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
+  if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
   return file.banks.every(isBankBalance);
+}
+
+/** The clock is what closes an interval the record left open, so a record without one is refused. */
+function isStatsRecord(value: unknown): value is StatsRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Partial<StatsRecord>;
+  return (
+    typeof record.savedAt === 'number' &&
+    Number.isFinite(record.savedAt) &&
+    isCombatTally(record.tally)
+  );
 }
 
 /**

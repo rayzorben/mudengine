@@ -108,7 +108,7 @@ type Expectation = (
  * to invent a timestamp: the stamp is put on at `push`, which is the one place
  * a claim enters the queue. See `expire` for what it is for.
  */
-type Claim = Expectation & { at: number };
+type Claim = Expectation & { at: number; probedAt?: number };
 
 /** One claim the client has given up on, and whether anything waited on it. */
 export interface LapsedClaim {
@@ -242,6 +242,14 @@ export class Expectations {
    * remembering what was typed.
    */
   private pending: Claim[] = [];
+  /**
+   * When `rm` last went out, or null (todo 10). The server answers in the
+   * order it was asked, so the `Location:` that answers it — or the refusal
+   * that retires it — proves every claim sent before it produced nothing:
+   * `answeredInOrder` drops those. Unmodelled otherwise, like every word the
+   * queue does not follow.
+   */
+  private locateSentAt: number | null = null;
   /** Whether the player asked to leave the realm and nothing has cancelled it. */
   private leaving = false;
   /** Where the last `sys go` said it was going, until a room answers it. */
@@ -393,6 +401,8 @@ export class Expectations {
 
     // `break` cancels a pending exit as surely as it ends a fight.
     if (commandOf(trimmed) === 'Break') this.leaving = false;
+    // The locate word, whose answer is an ordered one. See `answeredInOrder`.
+    if (commandOf(trimmed) === 'Room') this.locateSentAt = Date.now();
 
     const looked = lookTarget(command);
     if (looked !== null) {
@@ -645,9 +655,50 @@ export class Expectations {
    * was false roughly once a session.
    */
   expire(now: number): LapsedClaim[] {
-    const life = tuning().parse.staleMoveMs;
+    const { staleMoveMs, staleMoveMaxMs } = tuning().parse;
     const dropped: LapsedClaim[] = [];
-    while (this.pending[0] !== undefined && now - this.pending[0].at >= life) {
+    // A probed head has a longer life: the probe outstanding is the server
+    // being slow, not the step being lost — see `staleProbe`.
+    const lifeOf = (claim: Claim): number =>
+      claim.probedAt === undefined ? staleMoveMs : Math.max(staleMoveMs, staleMoveMaxMs);
+    while (this.pending[0] !== undefined && now - this.pending[0].at >= lifeOf(this.pending[0])) {
+      const claim = this.pending[0];
+      dropped.push({ command: claim.command ?? '', moved: claim.kind === 'move' });
+      this.spendPromise(claim);
+      this.pending.shift();
+    }
+    return dropped;
+  }
+
+  /**
+   * The head claim, unanswered past `staleProbeMs` and not yet probed: marked
+   * probed and named, so the caller sends the locate word (todo 10). Null
+   * when there is nothing to probe. Once per claim, because one `rm` answers
+   * the question and a second only spends from the budget.
+   *
+   * The caller sends the probe only where the realm has the word; on a realm
+   * without one nothing is marked and the flat clock stands.
+   */
+  staleProbe(now: number): string | null {
+    const head = this.pending[0];
+    if (head === undefined || head.probedAt !== undefined) return null;
+    if (now - head.at < tuning().parse.staleProbeMs) return null;
+    head.probedAt = now;
+    return head.command ?? '';
+  }
+
+  /**
+   * The locate word was answered — `Location:` came, or `You say "rm"` did —
+   * so every claim sent before it was answered by nothing the parser could
+   * read, and is dropped as `expire` would drop it. What was sent after the
+   * locate is left alone: its answer may be in the next packet.
+   */
+  answeredInOrder(): LapsedClaim[] {
+    const sentAt = this.locateSentAt;
+    this.locateSentAt = null;
+    if (sentAt === null) return [];
+    const dropped: LapsedClaim[] = [];
+    while (this.pending[0] !== undefined && this.pending[0].at <= sentAt) {
       const claim = this.pending[0];
       dropped.push({ command: claim.command ?? '', moved: claim.kind === 'move' });
       this.spendPromise(claim);
@@ -884,6 +935,11 @@ export class Expectations {
   /** `You are about to leave the realm`: a menu prompt arriving next is the exit. */
   askedToLeave(): void {
     this.leaving = true;
+  }
+
+  /** The realm called the exit off: a menu prompt now is not the way out. */
+  stayed(): void {
+    this.leaving = false;
   }
 
   /**

@@ -158,6 +158,20 @@ export const AFFLICTION_ONSETS: ReadonlyArray<{
     type: 'user-held',
     condition: 'held',
     pattern: /^(?:Your legs are paralyzed|You are held(?: by .+)?)!$/
+  },
+  /*
+   * `You are confused!` — the start line of MajorMUD's `confusion` and `song
+   * of dazzling` (`spell-messages.csv`), on the wire in three captures
+   * (`captures/001`, `037`, `092`). The realm's other confusions state their
+   * own start (`Your lungs are filled with spores!`) and are read through the
+   * table by the `Confusion` ability, as a hold is by `HoldPerson`; the
+   * ending is the table's too, so no fixed ending rule exists — see
+   * `vocabulary.test.ts`.
+   */
+  {
+    type: 'user-confused',
+    condition: 'confused',
+    pattern: /^You are confused!$/
   }
 ];
 
@@ -213,6 +227,11 @@ export const RULES: Rule[] = [
   },
 
   { type: 'user-exits-realm', pattern: /^You will exit after a period of silent meditation\./ },
+  {
+    type: 'user-exit-interrupted',
+    pattern: /^Your meditation has been interrupted - you may not exit now!/
+  },
+  { type: 'user-left-realm', pattern: /^Your character has been saved\./ },
   /*
    * `The gods have punished you appropriately.` — the realm charging this
    * character for how the *last* session ended, printed on the way in, one
@@ -509,6 +528,7 @@ export const RULES: Rule[] = [
   { type: 'user-disease-ends', pattern: /^The disease dies down\.$/ },
   onsetRule('held'),
   { type: 'user-held-ends', pattern: /^You can move again!$/ },
+  onsetRule('confused'),
   /* `You are now resting.` — the flag the next status line will carry, said first. */
   { type: 'user-rests', pattern: /^You are now (?<state>resting|meditating)\.$/ },
 
@@ -1470,6 +1490,55 @@ export const RULES: Rule[] = [
   {
     type: 'door-changed',
     pattern: /^You bashed the (?<barrier>[\w ]+?) (?<state>open)\.$/
+  },
+  /*
+   * `The door to the northwest just closed.` — a door moved by something other
+   * than this character's own command, and the one door sentence that names
+   * the direction.
+   *
+   * `Door.cs` prints it three ways and composes all three the same:
+   * `"The " + doorType + " to the " + exitName + " just closed."` — the
+   * door's own timer shutting it (`closeDoor_Fire`, to this room and to the
+   * room beyond), and somebody on the far side opening or closing it
+   * (`TryOpenDoor` / `TryCloseDoor`, `just opened.` / `just closed.` to the
+   * room the door leads to). The live transcript on todo 00 (2026-09-15) is
+   * the timer's: the room reprinted straight after with `closed door
+   * northwest` where the list had said `open door northwest`, and nothing
+   * else on the wire had said so. `doorType` is `door` or `gate` in the
+   * source; the third noun is admitted because `door-changed` admits it.
+   *
+   * The direction is the server's long word (`Exit.GetExitName`), read
+   * through `MOVE_COMMANDS` like `user-tracks`' is.
+   */
+  {
+    type: 'door-swings',
+    pattern:
+      /^The (?<barrier>door|gate|portcullis) to the (?<direction>[a-z]+) just (?<state>opened|closed)\.$/
+  },
+  /*
+   * `A new day begins to approach.` — the nightly cleanup, announced four
+   * times. `TimedEventManager.cs` fixes all four strings and the clock: the
+   * first fifteen minutes before, then five, then one, then `A new day has
+   * come!` as `GMUDServer.DoCleanup` runs (22:00 server time: midnight less
+   * two hours and the first warning's fifteen minutes). On the wire twice in
+   * the user's own log of 2026-08-25, all four each night; unread, every one
+   * was suspected as an effect. `phase` is the server's own words.
+   */
+  {
+    type: 'realm-cleanup',
+    pattern: /^A new day (?<phase>begins to approach|is fast approaching|is imminent|has come)[.!]$/
+  },
+  /*
+   * `Your torch has been returned to its proper place` — an item carrying
+   * `Remove@Maint` taken out of the pack by the cleanup (`GMUDServer.cs:445`),
+   * no full stop, from the source: the two dozen items that carry the flag
+   * are quest props nobody on the test realm has held through a cleanup. An
+   * item with its own `DestructMessage` prints that row instead, which the
+   * message table explains and nothing reads.
+   */
+  {
+    type: 'user-item-returned',
+    pattern: /^Your (?<item>.+) has been returned to its proper place$/
   },
   /*
    * `Your skill fails you this time.` — three attempts of it in `captures/002`

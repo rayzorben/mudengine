@@ -9,7 +9,10 @@ import {
   type ReactNode
 } from 'react';
 
-import CommandPalette, { type Command } from './components/CommandPalette';
+import CommandPalette, { type Command, type Found } from './components/CommandPalette';
+import { entryWord, flattenLookup, entryNumber } from './components/ReferenceDetail';
+import type { IconName } from './components/Icon';
+import { entityNumber } from '@shared/entities';
 import AutomationCard from './components/AutomationCard';
 import LinkCard from './components/LinkCard';
 import MapCard from './components/MapCard';
@@ -71,6 +74,7 @@ import LoopBuilderCard, {
 import ToolbarCard from './components/ToolbarCard';
 import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
+import { recallStatsBase, rememberStatsBase } from './hooks/useRemembered';
 import NavigationCard from './components/NavigationCard';
 import { type TerminalHandle } from './components/TerminalView';
 import { useConfig } from './hooks/useConfig';
@@ -340,6 +344,19 @@ const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_RANGE.mi
 const NO_SESSIONS: SessionSummary[] = [];
 /** A character whose file names no supplies. One list, so a card's props hold still. */
 const NO_SUPPLIES: SupplyItem[] = [];
+
+/**
+ * The totals as they stand, written down as the Combat Stats card's baseline.
+ *
+ * The one writer for the button and the lap alike, so neither has to be
+ * compared against the other — and written down beside the layout, because
+ * main's totals outlive the launch and the reading they are subtracted from
+ * has to as well, or a launch silently undid the last press or the lap.
+ */
+function rebased(session: SessionId, view: SessionView): CombatTally {
+  rememberStatsBase(session, view.character.tally);
+  return view.character.tally;
+}
 
 const EMPTY_VIEW: SessionView = {
   state: INITIAL_STATE,
@@ -824,6 +841,7 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           character={character}
           inspect={ctx.inspect}
           onSelect={ctx.selectPlayer}
+          verdict={view.verdict}
         />
       );
     }
@@ -1987,10 +2005,12 @@ export default function App() {
          * Carried, not reset. A snapshot is this window attaching to a session
          * that was already running, and main's totals are the same monotonic
          * ones the baseline was taken from — so a reading this window had
-         * survives the attach. A baseline older than the *session* is a
-         * different matter and is discarded by the card's own `stale` test.
+         * survives the attach — and one written down before the launch is
+         * read back here, since main's totals outlive the launch too. A
+         * baseline older than the *totals* is a different matter and is
+         * discarded by the card's own `stale` test.
          */
-        statsBase: was.statsBase,
+        statsBase: was.statsBase ?? recallStatsBase(id),
         lines: snapshot.lines.slice(-tuning().lineLogLimit),
         telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
         // The conversation log's tail: main keeps what was said on disk, so a
@@ -2254,7 +2274,7 @@ export default function App() {
            */
           statsBase:
             payload.lapBegunAt !== null && payload.lapBegunAt !== v.loop.lapBegunAt
-              ? v.character.tally
+              ? rebased(id, v)
               : v.statsBase
         }))
       ),
@@ -2948,10 +2968,14 @@ export default function App() {
     (query: string) => api.searchRooms(session, query),
     [api, session]
   );
-  const walkRoute = useCallback((route: Route) => api.walkRoute(session, route), [api, session]);
+  const walkRoute = useCallback(
+    (route: Route, run: boolean) => api.walkRoute(session, route, run),
+    [api, session]
+  );
   /** *Collect it first*, from the route panel's alternative that needs one (todo 07). */
   const collectThenWalk = useCallback(
-    (item: { id: number; name: string }, route: Route) => api.collectThenWalk(session, item, route),
+    (item: { id: number; name: string }, route: Route, run: boolean) =>
+      api.collectThenWalk(session, item, route, run),
     [api, session]
   );
 
@@ -3118,6 +3142,74 @@ export default function App() {
       setAsked({ name, anchor });
     },
     [dismissPeek]
+  );
+
+  /**
+   * What the realm knows by a name typed into the palette: a monster, an item,
+   * a spell, offered as rows that open the same quick view a clicked name does.
+   *
+   * The palette lists commands and never the realm's population — but that
+   * rule is about the *shelf*: a row per monster while browsing is a wall. A
+   * typed query is a different question, and these rows exist only for as
+   * long as it does (`transient`), under their own heading below the rooms.
+   * Choosing one puts the panel where the palette stood, because the name it
+   * answers for was never drawn anywhere else on screen.
+   */
+  const findInRealm = useCallback(
+    async (query: string): Promise<Command[]> => {
+      const entries = flattenLookup(await api.lookup(session, query));
+      return entries.slice(0, tuning().paletteFoundRows).map((entry, index) => {
+        const kindWord = entryWord(entry);
+        const number = entityNumber(entryNumber(entry));
+        const icon: IconName =
+          entry.kind === 'mob'
+            ? 'sword'
+            : entry.kind === 'spell'
+              ? 'bolt'
+              : entry.kind === 'item'
+                ? 'bag'
+                : 'users';
+        return {
+          // Position, not name: the realm holds two `maelstrom` rows and four
+          // `void sphere` rows, and a keyed list handed a duplicate keeps a corpse.
+          id: `lookup:${entry.kind}:${index}`,
+          icon,
+          transient: true,
+          label: t('palette.navigate.lookupLabel', { name: entry.name }),
+          hint:
+            number === null
+              ? kindWord
+              : t('palette.navigate.lookupNumberHint', { kindWord, number: String(number) }),
+          run: (from?: PopoverAnchor) => {
+            // A hotkey has no box to hand over; the palette always does.
+            inspectAt(
+              entry.name,
+              from ?? {
+                box: {
+                  top: 0,
+                  right: window.innerWidth / 2,
+                  bottom: 0,
+                  left: window.innerWidth / 2
+                },
+                within: document.body
+              }
+            );
+          }
+        };
+      });
+    },
+    [api, session, inspectAt]
+  );
+  /** Both answers to a typed query, rooms first: Enter on a room query means what it did. */
+  const findFromPalette = useCallback(
+    async (query: string): Promise<Found[]> => {
+      const [rooms, realm] = await Promise.all([findRooms(query), findInRealm(query)]);
+      return [
+        { key: 'rooms', label: t('palette.groups.found'), items: rooms },
+        { key: 'realm', label: t('palette.groups.realm'), items: realm }
+      ];
+    },
+    [findRooms, findInRealm]
   );
 
   /**
@@ -4787,7 +4879,7 @@ export default function App() {
    * either, which is what makes both safe.
    */
   const resetStats = useCallback(
-    (sid: SessionId) => patchView(sid, (v) => ({ ...v, statsBase: v.character.tally })),
+    (sid: SessionId) => patchView(sid, (v) => ({ ...v, statsBase: rebased(sid, v) })),
     [patchView]
   );
   const resetStatsRef = useRef(resetStats);
@@ -5750,7 +5842,7 @@ export default function App() {
 
       <CommandPalette
         commands={commands}
-        find={findRooms}
+        find={findFromPalette}
         onClose={closePalette}
         onTogglePin={pins.toggle}
         open={paletteOpen}

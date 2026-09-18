@@ -57,13 +57,13 @@ export function isHostile(alignment: Alignment | null): boolean {
  * `GreaterMUD.Module/Player.cs`'s `Alignment`, read out of the source rather
  * than captured, and matching the boundaries `EvilPointLevels` states.
  *
- * **`Lawful` is deliberately absent**, and `src/shared/mobs.ts` settled why for
- * `ALIGNMENT_RANGE` before this existed: it is in this client's union and in
- * the `who` pattern, `GetAlignmentTitle` does not produce it, so there is no
- * band to place it in and inventing one would decide something on a number
- * nobody has read. Here that something is a **route** — a rank for `Lawful`
- * would have a character on a derivative realm pruned from a corridor by an
- * order this codebase has written down that it must not hold.
+ * **`Lawful` is a second spelling of the top rung, not a ninth rung**
+ * (2026-09-17). It was deliberately absent here while `ALIGNMENT_RANGE` had no
+ * band for it; `src/shared/mobs.ts` carries the capture that settled where it
+ * sits — MajorMUD prints `Lawful` where GreaterMUD prints `Saint`, and neither
+ * ladder has both. So it is an alias below rather than an entry here: this
+ * array is the *scale*, one word per rung, and `asAlignment` reads membership
+ * from `ALIGNMENTS` so a realm that writes `Lawful` sees it written back.
  */
 const ALIGNMENT_SCALE: readonly Alignment[] = [
   'Saint',
@@ -77,18 +77,31 @@ const ALIGNMENT_SCALE: readonly Alignment[] = [
 ];
 
 /**
+ * The words one realm spells differently for a rung another already has.
+ *
+ * One entry, and the shape exists because a second is expected rather than
+ * because one is hypothetical: the two realms this client has read differ by
+ * exactly this word, and a derivative that renames another rung would be
+ * added here rather than given a rank of its own.
+ */
+const ALIGNMENT_ALIASES: Readonly<Record<string, Alignment>> = { lawful: 'Saint' };
+
+/**
  * Where a word sits on that scale, or null for one it does not name.
  *
  * Case-insensitive, because the realm's own exit instruction writes `Fiend`
  * where the roster writes `FIEND`, and null is a first-class answer everywhere
- * it is asked — `Lawful`, a word from a realm this client has never seen, and
- * an empty string all read as *nobody has said*, which the router discourages
- * and never prunes.
+ * it is asked — a word from a realm this client has never seen and an empty
+ * string both read as *nobody has said*, which the router discourages and
+ * never prunes. `Lawful` used to be in that company and no longer is: it ranks
+ * with `Saint`, so `Alignment: Saint to Seedy` admits a Lawful character
+ * exactly as the realm printing that word intends.
  */
 export function alignmentRank(word: string): number | null {
   const key = word.trim().toLowerCase();
   if (key.length === 0) return null;
-  const index = ALIGNMENT_SCALE.findIndex((entry) => entry.toLowerCase() === key);
+  const rung = (ALIGNMENT_ALIASES[key] ?? key).toLowerCase();
+  const index = ALIGNMENT_SCALE.findIndex((entry) => entry.toLowerCase() === rung);
   return index < 0 ? null : index;
 }
 
@@ -98,11 +111,14 @@ export function alignmentRank(word: string): number | null {
  * Parse, do not validate: the realm's exit instruction writes a word and the
  * rest of the client carries a closed union, so the crossing happens once and
  * everything downstream holds an `Alignment` or nothing. Here beside the scale
- * rather than at the parser, because deriving it there meant indexing a
- * *different* array by this function's index — `ALIGNMENTS` has nine words and
- * this has eight, so `Neutral` came back as `Lawful`.
+ * rather than at the parser, and by **membership** rather than by rank: the
+ * two arrays are different lengths, and indexing one by the other's index is
+ * what once returned `Lawful` for `Neutral`. It is also what keeps an alias
+ * its own word — a realm that writes `Lawful` is answered `Lawful`, and it is
+ * `alignmentRank` that knows the two rank together.
  */
 export function asAlignment(word: string): Alignment | null {
-  const rank = alignmentRank(word);
-  return rank === null ? null : ALIGNMENT_SCALE[rank]!;
+  const key = word.trim().toLowerCase();
+  if (key.length === 0) return null;
+  return ALIGNMENTS.find((entry) => entry.toLowerCase() === key) ?? null;
 }

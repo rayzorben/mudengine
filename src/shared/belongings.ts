@@ -31,6 +31,18 @@
 import type { AbilitySums, BankBalance, KnownSpell } from './character';
 import type { Loadout } from './gear';
 import type { CharacterIdentity } from './reset';
+import type { CombatTally } from './tally';
+
+/**
+ * The running totals as last handed over, and when. The moment is
+ * load-bearing: a launch that ended without the socket closing leaves the
+ * tally's clocks open, and the write is the last moment the client is known
+ * to have been in the realm, so that is where `settleClocks` closes them.
+ */
+export interface StatsRecord {
+  savedAt: number;
+  tally: CombatTally;
+}
 
 export interface BelongingsSink {
   /**
@@ -122,6 +134,16 @@ export interface BelongingsSink {
   /** The wire has said who this is. See `src/shared/reset.ts`. */
   rememberIdentity(identity: CharacterIdentity): void;
   /**
+   * What the fighting has added up to, from before this session.
+   *
+   * Read at `reset()` beside the balances, so the Combat Stats card and its
+   * rate graph open where they were left rather than empty. Null is *never
+   * kept*; the tally's own `since` says whether anything was ever counted.
+   */
+  recallStats(): StatsRecord | null;
+  /** The tally moved; keep the whole of it, since every change is the newest fact. */
+  rememberStats(tally: CombatTally): void;
+  /**
    * Throws the whole record away, because the player says this is not the same
    * character.
    *
@@ -151,5 +173,7 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberAbilities: () => {},
   recallIdentity: () => null,
   rememberIdentity: () => {},
+  recallStats: () => null,
+  rememberStats: () => {},
   forget: () => false
 };

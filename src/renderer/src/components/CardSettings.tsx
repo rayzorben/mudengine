@@ -9,6 +9,13 @@ import { t } from '../lib/i18n';
 import { themesOfAppearance, THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import { DEFAULT_MAP_DENSITY } from '@shared/map';
 import {
+  DEFAULT_STATS_GRAPH,
+  DEFAULT_STATS_HOURS,
+  isStatsGraph,
+  STATS_GRAPHS,
+  STATS_WINDOW_HOURS
+} from '@shared/tally';
+import {
   DEFAULT_TALK_LAYOUT,
   DEFAULT_TALK_STAMP,
   formatTalkStamp,
@@ -320,6 +327,53 @@ export default function CardSettingsPopup({
               type="text"
               value={value.findDays ?? ''}
             />
+          </label>
+        </>
+      )}
+
+      {cardId === 'stats' && (
+        <>
+          {/*
+            The rate graph's window and shape (todo 08). View settings, like the
+            map's density: the samples are kept for a day whatever is shown.
+            Stored only where they differ from the shipped answer.
+          */}
+          <label className="card-settings-field">
+            <span>{t('cards.settings.stats.window')}</span>
+            <select
+              onChange={(event) => {
+                const hours = Number.parseInt(event.target.value, 10);
+                onChange({ statsHours: hours === DEFAULT_STATS_HOURS ? undefined : hours });
+              }}
+              value={value.statsHours ?? DEFAULT_STATS_HOURS}
+            >
+              {STATS_WINDOW_HOURS.map((hours) => (
+                <option key={hours} value={hours}>
+                  {t('cards.settings.stats.windowHours', { hours })}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="card-settings-field">
+            <span>{t('cards.settings.stats.graph')}</span>
+            <select
+              onChange={(event) => {
+                const chosen = event.target.value;
+                onChange({
+                  statsGraph:
+                    !isStatsGraph(chosen) || chosen === DEFAULT_STATS_GRAPH ? undefined : chosen
+                });
+              }}
+              value={value.statsGraph ?? DEFAULT_STATS_GRAPH}
+            >
+              {STATS_GRAPHS.map((graph) => (
+                <option key={graph} value={graph}>
+                  {graph === 'bars'
+                    ? t('cards.settings.stats.graphs.bars')
+                    : t('cards.settings.stats.graphs.line')}
+                </option>
+              ))}
+            </select>
           </label>
         </>
       )}

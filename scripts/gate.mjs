@@ -183,7 +183,8 @@ const SMOKE_PATHS = [
   'electron.vite.config.ts',
   'package.json',
   'package-lock.json',
-  'scripts/smoke.mjs'
+  'scripts/smoke.mjs',
+  'scripts/smoke-baseline.json'
 ];
 const WEB_SMOKE_PATHS = [
   'src/main/host/',
@@ -196,6 +197,7 @@ const WEB_SMOKE_PATHS = [
   'src/renderer/src/lib/pickers.ts',
   'scripts/web.mjs',
   'scripts/web-smoke.mjs',
+  'scripts/web-smoke-baseline.json',
   'scripts/lib/browser.mjs',
   'electron.vite.config.ts',
   'package.json',

@@ -59,7 +59,7 @@ describe('healing by a number', () => {
   it('heals itself bare — a targetless cast lands on the caster', () => {
     make(spells()).onCharacter(state({ hp: 40 }));
     drain();
-    expect(sent).toEqual(['c minor healing']);
+    expect(sent).toEqual(['minor healing']);
   });
 
   it('casts by the short word when the spellbook or the realm can name it', () => {
@@ -67,7 +67,7 @@ describe('healing by a number', () => {
     listed.spellbook = [{ name: 'minor healing', short: 'mihe', level: null, cost: null }];
     make(spells()).onCharacter(listed);
     drain();
-    expect(sent).toEqual(['c mihe']);
+    expect(sent).toEqual(['mihe']);
 
     sent.length = 0;
     const realm = new AutoHeal(
@@ -79,7 +79,7 @@ describe('healing by a number', () => {
     );
     realm.onCharacter(state({}, [member('Yang', 0.3)]));
     drain();
-    expect(sent).toEqual(['c mihe Yang']);
+    expect(sent).toEqual(['mihe Yang']);
   });
 
   it('does nothing above it, with no spell, or when unknown', () => {
@@ -101,7 +101,7 @@ describe('healing by a number', () => {
     const auto = make(spells({ healParty: true, healPartyWith: 'minor healing' }));
     auto.onCharacter(state({}, [member('Soul', null), member('Yang', 0.3)]));
     drain();
-    expect(sent).toEqual(['c minor healing Yang']);
+    expect(sent).toEqual(['minor healing Yang']);
   });
 
   it('leaves the party alone unless told', () => {
@@ -119,7 +119,7 @@ describe('healing by a number', () => {
     vi.advanceTimersByTime(7000);
     auto.onCharacter(state({ hp: 41 }));
     drain();
-    expect(sent).toEqual(['c minor healing', 'c minor healing']);
+    expect(sent).toEqual(['minor healing', 'minor healing']);
   });
   /*
    * The realm marks `way of the swan` castable on the caster alone, so the two
@@ -133,13 +133,13 @@ describe('healing by a number', () => {
     );
     auto.onCharacter(state({ hp: 40 }, [member('Yang', 0.3)]));
     drain();
-    expect(sent).toEqual(['c way of the swan']);
+    expect(sent).toEqual(['way of the swan']);
 
     sent.length = 0;
     // Healthy again, so the member is the one under the threshold.
     auto.onCharacter(state({ hp: 100 }, [member('Yang', 0.3)]));
     drain();
-    expect(sent).toEqual(['c minor healing Yang']);
+    expect(sent).toEqual(['minor healing Yang']);
   });
 
   it('heals nobody in the party until a party spell is named', () => {
@@ -166,7 +166,7 @@ describe('healing by a number', () => {
     );
     auto.onCharacter(state({}, [member('Yang', 0.3)]));
     drain();
-    expect(sent).toEqual(['c rain']);
+    expect(sent).toEqual(['rain']);
   });
 
   describe('the heal ceiling', () => {
@@ -186,7 +186,7 @@ describe('healing by a number', () => {
       vi.advanceTimersByTime(7000);
       auto.onCharacter(state({ hp: 95 }));
       drain();
-      expect(sent).toEqual(['c minor healing', 'c minor healing']);
+      expect(sent).toEqual(['minor healing', 'minor healing']);
     });
 
     /* A ceiling of 0 is the single cast at the threshold, as before the pair. */
@@ -197,7 +197,7 @@ describe('healing by a number', () => {
       vi.advanceTimersByTime(7000);
       auto.onCharacter(state({ hp: 60 }));
       drain();
-      expect(sent).toEqual(['c minor healing']);
+      expect(sent).toEqual(['minor healing']);
     });
 
     /* Unknown is not low, and it does not continue a heal either. */
@@ -212,7 +212,7 @@ describe('healing by a number', () => {
       // Back with a figure, above the floor: the heal is over, not resumed.
       auto.onCharacter(state({ hp: 60 }));
       drain();
-      expect(sent).toEqual(['c minor healing']);
+      expect(sent).toEqual(['minor healing']);
     });
 
     it('carries the ceiling to a party member too', () => {
@@ -224,7 +224,7 @@ describe('healing by a number', () => {
       vi.advanceTimersByTime(7000);
       auto.onCharacter(state({}, [member('Yang', 0.7)]));
       drain();
-      expect(sent).toEqual(['c minor healing Yang', 'c minor healing Yang']);
+      expect(sent).toEqual(['minor healing Yang', 'minor healing Yang']);
     });
   });
 });
@@ -248,14 +248,14 @@ describe('healing in a fight', () => {
     vi.advanceTimersByTime(7000);
     auto.onCharacter(state({ hp: 60 }));
     drain();
-    expect(sent).toEqual(['c minor healing']);
+    expect(sent).toEqual(['minor healing']);
   });
 
   it('still heals in a fight once it is bad enough', () => {
     const auto = make(spells({ healBelow: 0.8, healBelowInCombat: 0.4 }));
     auto.onCharacter(fighting(30));
     drain();
-    expect(sent).toEqual(['c minor healing']);
+    expect(sent).toEqual(['minor healing']);
   });
 
   /* 0 uses the ordinary floor for both, which is what this module did before
@@ -264,7 +264,7 @@ describe('healing in a fight', () => {
     const auto = make(spells({ healBelow: 0.8, healBelowInCombat: 0 }));
     auto.onCharacter(fighting(60));
     drain();
-    expect(sent).toEqual(['c minor healing']);
+    expect(sent).toEqual(['minor healing']);
   });
 });
 
@@ -321,13 +321,13 @@ describe('choosing the heal from the spellbook', () => {
   it('mends a scratch with the cheapest spell that covers it', () => {
     chooser(spells({ autoChoose: true, heal: '', healBelow: 1 })).onCharacter(bar(145));
     drain();
-    expect(sent).toEqual(['c mihe']);
+    expect(sent).toEqual(['mihe']);
   });
 
   it('mends a real wound with the most any one cast mends', () => {
     chooser(spells({ autoChoose: true, heal: '', healBelow: 0.7 })).onCharacter(bar(90));
     drain();
-    expect(sent).toEqual(['c mahe']);
+    expect(sent).toEqual(['mahe']);
   });
 
   /* The whole complaint: one configured spell is wrong at one end of the bar. */
@@ -336,13 +336,13 @@ describe('choosing the heal from the spellbook', () => {
       bar(90)
     );
     drain();
-    expect(sent).toEqual(['c mahe']);
+    expect(sent).toEqual(['mahe']);
     sent.length = 0;
     chooser(spells({ autoChoose: false, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
       bar(90)
     );
     drain();
-    expect(sent).toEqual(['c mihe']);
+    expect(sent).toEqual(['mihe']);
   });
 
   /*
@@ -356,7 +356,7 @@ describe('choosing the heal from the spellbook', () => {
     healer.onCharacter(unread);
     drain();
     // The realm names the short word even where this character's book is unread.
-    expect(sent).toEqual(['c mihe']);
+    expect(sent).toEqual(['mihe']);
     expect(said).toHaveLength(1);
     expect(said[0]).toContain('minor healing');
     healer.onCharacter(unread);
@@ -398,7 +398,7 @@ describe('choosing the heal from the spellbook', () => {
       spells({ autoChoose: true, heal: '', healParty: true, healPartyWith: '', healBelow: 0.5 })
     ).onCharacter(bar(150, [vague, stated]));
     drain();
-    expect(sent).toEqual(['c mahe Yang']);
+    expect(sent).toEqual(['mahe Yang']);
   });
 
   /*
@@ -415,7 +415,7 @@ describe('choosing the heal from the spellbook', () => {
     });
     chooser(config).onCharacter(bar(150, [member('Soul', 0.2)]));
     drain();
-    expect(sent).toEqual(['c mihe Soul']);
+    expect(sent).toEqual(['mihe Soul']);
     expect(said).toHaveLength(1);
     expect(said[0]).toContain('@health');
 
@@ -425,6 +425,6 @@ describe('choosing the heal from the spellbook', () => {
     chooser(config).onCharacter(bar(150, [answered]));
     drain();
     // 120 missing: the most one cast mends.
-    expect(sent).toEqual(['c mahe Soul']);
+    expect(sent).toEqual(['mahe Soul']);
   });
 });

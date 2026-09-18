@@ -5,6 +5,18 @@ import { LoginAutomator } from '../LoginAutomator';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import type { LoginConfig } from '../../../shared/config';
 import type { Block, BlockType } from '../../../shared/blocks';
+import type { LineTerminator } from '../../../shared/types';
+
+/**
+ * The two prompts the local server actually prints, verbatim.
+ *
+ * Named rather than inlined because they are now matched as *text* like every
+ * other prompt: the account used to be answered off the block type, which is
+ * one wording of each question and the reason a BBS that asks anything else
+ * could not be described at all.
+ */
+const USERNAME = 'Please enter your username or "new": ';
+const PASSWORD = 'Please enter your password: ';
 
 const credentials: LoginConfig = {
   ...DEFAULT_CONFIG.connection.login,
@@ -13,8 +25,25 @@ const credentials: LoginConfig = {
   password: 'secret'
 };
 
-function block(type: BlockType, text = ''): Block {
-  return { seq: 1, at: Date.now(), type, domain: 'session', groups: {}, text, confidence: 0.8 };
+/**
+ * One classified line.
+ *
+ * `terminator` defaults to `flush` because everything this module answers is a
+ * prompt, and `flush` is what makes a line one — it ended because the server
+ * stopped talking. A test that wants an ordinary sentence says `newline`, and
+ * that is the distinction a credential row is gated on.
+ */
+function block(type: BlockType, text = '', terminator: LineTerminator = 'flush'): Block {
+  return {
+    seq: 1,
+    at: Date.now(),
+    type,
+    domain: 'session',
+    groups: {},
+    text,
+    terminator,
+    confidence: 0.8
+  };
 }
 
 let sent: string[];
@@ -45,14 +74,14 @@ afterEach(() => {
  * Walks the whole sequence the local server actually asks for, with the prompt
  * *text* each block carries.
  *
- * The text matters now: menus are answered by matching the prompt rather than
- * by its block type, which is what lets one client speak to MajorMUD,
- * GreaterMUD, Paradigm and a WorldGroup front end without four vocabularies.
- * Only the username and password are answered from the schema.
+ * The text is the whole of it: every prompt is answered by matching what the
+ * realm printed rather than by its block type, the account's two included,
+ * which is what lets one client speak to MajorMUD, GreaterMUD, Paradigm and a
+ * WorldGroup front end without four vocabularies.
  */
 const PROMPTS: Array<[BlockType, string]> = [
-  ['prompt-username', 'Please enter your username or "new": '],
-  ['prompt-password', 'Please enter your password: '],
+  ['prompt-username', USERNAME],
+  ['prompt-password', PASSWORD],
   ['prompt-selection', 'Please enter your selection: '],
   ['prompt-realm', 'Please select a realm: '],
   ['prompt-menu', '[PARADIGM]: ']
@@ -89,17 +118,69 @@ describe('answering the sequence', () => {
     // A bare Enter, which is what that menu wants.
     expect(sent).toEqual(['']);
   });
+
+  it('answers a pager every screenful, not once per connection', () => {
+    /*
+     * Measured on bearfather: the script's answer stops the first pageful, the
+     * BBS prints the text that follows — registry notice, credits, banners —
+     * pages that too and asks again. Answered once, the login sat at the
+     * second prompt for the rest of the connection.
+     *
+     * So the prompt coming back is the answer *working*, which is the opposite
+     * of what it means for a menu, and the row says which it is.
+     */
+    const pager = '(N)onstop, (Q)uit, or (C)ontinue?';
+    const paged = new LoginAutomator(
+      { ...credentials, steps: [{ when: pager, send: 'Q', repeat: true }] },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+
+    for (let screenful = 0; screenful < 3; screenful += 1) {
+      paged.onBlock(block('unknown', pager));
+      vi.advanceTimersByTime(50);
+    }
+
+    expect(sent).toEqual(['Q', 'Q', 'Q']);
+    // And never reported as a prompt that came back: coming back is the point.
+    expect(notices.join(' ')).not.toMatch(/came back/i);
+  });
+
+  it('still answers a menu once, even next to a pager', () => {
+    // The flag is per row, so the default stays *once* and nothing that works
+    // today changes.
+    const menu = new LoginAutomator(
+      {
+        ...credentials,
+        steps: [
+          { when: 'Make Your Selection', send: 'M' },
+          { when: 'or (C)ontinue', send: 'Q', repeat: true }
+        ]
+      },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+
+    menu.onBlock(block('unknown', 'Make Your Selection: '));
+    vi.advanceTimersByTime(50);
+    menu.onBlock(block('unknown', '(N)onstop, (Q)uit, or (C)ontinue?'));
+    vi.advanceTimersByTime(50);
+    menu.onBlock(block('unknown', 'Make Your Selection: '));
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['M', 'Q']);
+  });
 });
 
 describe('safety', () => {
   it('never retries a rejected password', () => {
     // Retrying is how an automated client walks into a lockout, and a wrong
     // password does not become right on the second attempt.
-    login.onBlock(block('prompt-username'));
-    login.onBlock(block('prompt-password'));
+    login.onBlock(block('prompt-username', USERNAME));
+    login.onBlock(block('prompt-password', PASSWORD));
     vi.advanceTimersByTime(50);
     login.onBlock(block('login-failed', 'Invalid username/password!'));
-    login.onBlock(block('prompt-username'));
+    login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(100);
 
     expect(sent).toEqual(['vaelor', 'secret']);
@@ -108,12 +189,34 @@ describe('safety', () => {
 
   it('stops rather than answering a prompt that came back', () => {
     // A repeated prompt means the answer was refused; answering again loops.
-    login.onBlock(block('prompt-username', 'Please enter your username or "new": '));
+    login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
-    login.onBlock(block('prompt-username', 'Please enter your username or "new": '));
+    login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
 
     expect(sent).toEqual(['vaelor']);
+    expect(notices.join(' ')).toMatch(/came back/i);
+  });
+
+  it('never repeats a credential, whatever the row says', () => {
+    /*
+     * `repeat` describes a pager, and a password prompt is never one. Honoured
+     * here it would retry the account at a realm that just refused it, which
+     * is the lockout this module exists to avoid — so the credential's own
+     * once-per-connection is checked first and this flag cannot reach it.
+     */
+    const reckless = new LoginAutomator(
+      { ...credentials, steps: [{ when: 'password', send: '{password}', repeat: true }] },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+
+    reckless.onBlock(block('prompt-password', PASSWORD));
+    vi.advanceTimersByTime(50);
+    reckless.onBlock(block('prompt-password', PASSWORD));
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['secret']);
     expect(notices.join(' ')).toMatch(/came back/i);
   });
 
@@ -121,7 +224,7 @@ describe('safety', () => {
     const partial = new LoginAutomator({ ...credentials, password: '' }, queue, {
       notice: (m) => notices.push(m)
     });
-    partial.onBlock(block('prompt-password'));
+    partial.onBlock(block('prompt-password', PASSWORD));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([]);
     expect(notices.join(' ')).toMatch(/finish logging in yourself/i);
@@ -143,18 +246,254 @@ describe('safety', () => {
     expect(sent).toEqual([]);
   });
 
+  /*
+   * A placeholder the client cannot fill in is a typo in the script, and the
+   * script is typed into a form. Sending `{slot}` verbatim at a live service is
+   * the one outcome worse than sending nothing, so `{` is reserved: an answer
+   * naming anything but the account stops the sequence and says which row.
+   */
+  it('refuses a placeholder it does not know rather than typing it', () => {
+    const typo = new LoginAutomator(
+      { ...credentials, steps: [{ when: 'Please select a character', send: '{slot}' }] },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+    typo.onBlock(block('prompt-character', 'Please select a character: '));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([]);
+    expect(notices.join(' ')).toMatch(/\{slot\}/);
+  });
+
+  /*
+   * A credential answers a *prompt* — a line that ended because the server
+   * stopped talking — and nothing else.
+   *
+   * Matched on text alone the password would go out at any line containing the
+   * row's wording, and a BBS prints plenty pre-login: `(C)hange Password`,
+   * `Forgot your password? mail sysop`. That is the password in the clear at a
+   * live service one line before the prompt that asks for it. A menu answer is
+   * `P` or `1` and is not worth the same gate.
+   */
+  it('never sends the account at an ordinary line that merely mentions it', () => {
+    const loose = new LoginAutomator(
+      { ...credentials, steps: [{ when: 'Password', send: '{password}' }] },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+    loose.onBlock(block('unknown', '  (C)hange Password    (L)ogoff', 'newline'));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([]);
+
+    // And the prompt itself, one line later, is still answered.
+    loose.onBlock(block('unknown', 'Password: ', 'flush'));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['secret']);
+  });
+
+  /*
+   * The same line, arriving newline-terminated on a realm whose prompts are in
+   * `patterns.ts`. The type carries what the framing did not, so allowing it
+   * costs nothing and refusing it would be a regression on the realms that
+   * already work.
+   */
+  it('still answers a typed prompt that did not arrive on a flush', () => {
+    login.onBlock(block('prompt-username', USERNAME, 'newline'));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['vaelor']);
+  });
+
+  /*
+   * "A rejected credential is never retried" survives a second matching row.
+   *
+   * Recording the repeat was not enough on its own: the loop returns from
+   * inside the match, so a leftover row matching the same prompt sent the
+   * password again and the recording was never read. One attempt closer to a
+   * lockout, which is the whole reason the sequence stops rather than retries.
+   */
+  it('does not answer a returning credential prompt from a second row', () => {
+    const twice = new LoginAutomator(
+      {
+        ...credentials,
+        steps: [
+          { when: 'Please enter your password', send: '{password}' },
+          { when: 'password', send: '{password}' }
+        ]
+      },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+    twice.onBlock(block('prompt-password', PASSWORD));
+    vi.advanceTimersByTime(50);
+    twice.onBlock(block('prompt-password', PASSWORD));
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['secret']);
+    expect(notices.join(' ')).toMatch(/came back/i);
+  });
+
+  /*
+   * The same rule with the rows the other way up.
+   *
+   * `repeated` used to be worked out as the selection loop went, so it held
+   * only what the rows *before* the match said — and a duplicate sitting above
+   * the used one saw `false` and sent the password again. Decided over the
+   * whole script now, so row order cannot change the answer.
+   */
+  it('does not answer a returning credential prompt from an earlier row either', () => {
+    const twice = new LoginAutomator(
+      {
+        ...credentials,
+        steps: [
+          { when: 'Password:', send: '{password}' },
+          { when: 'enter your password', send: '{password}' }
+        ]
+      },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+    // The first wording matches only the second row.
+    twice.onBlock(block('unknown', 'Please enter your password '));
+    vi.advanceTimersByTime(50);
+    // The realm refuses and re-prompts in wording the *first* row matches.
+    twice.onBlock(block('unknown', 'Password: '));
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['secret']);
+    expect(notices.join(' ')).toMatch(/came back/i);
+  });
+
+  /*
+   * The script is hot-reloaded, and `noAccountRow` sends the player to edit it
+   * while they are sitting at the prompt it names. `used` is keyed by index, so
+   * a reindexed row would otherwise read as already answered and the sequence
+   * would stall with nothing said.
+   */
+  it('forgets which menus it has used when the script itself changes', () => {
+    const edited = new LoginAutomator(
+      { ...credentials, steps: [{ when: 'Continue', send: 'y' }] },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+    edited.onBlock(block('unknown', 'Continue: '));
+    vi.advanceTimersByTime(50);
+    // Reindexed by an edit, so what index 0 meant is no longer what it means.
+    edited.configure({
+      ...credentials,
+      steps: [
+        { when: 'Accept the rules', send: '1' },
+        { when: 'Continue', send: 'y' }
+      ]
+    });
+    edited.onBlock(block('unknown', 'Continue: '));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['y', 'y']);
+  });
+
+  /*
+   * The account's own used-once does *not* reset with the script, because it
+   * is keyed on the credential rather than on the row: editing the file does
+   * not un-send what the realm already has. Which is what makes `noAccountRow`
+   * safe advice — a player who had no credential row has sent nothing, so the
+   * row they add fires.
+   */
+  it('does not re-send a credential the realm already has after an edit', () => {
+    login.onBlock(block('prompt-username', USERNAME));
+    vi.advanceTimersByTime(50);
+    login.configure({ ...credentials, steps: [{ when: 'Login ID', send: '{user}' }] });
+    login.onBlock(block('unknown', 'Login ID: '));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['vaelor']);
+  });
+
+  /*
+   * `Please enter the password you would like to use:` — the account-creation
+   * path, which the classifier types apart from the login's own prompt for
+   * exactly this reason. A row reading `when: password` is a reasonable thing
+   * to write and matches it, and answering would make an account.
+   */
+  it('never answers the prompt that chooses a new password', () => {
+    login.onBlock(
+      block('prompt-new-password', 'Please enter the password you would like to use: ')
+    );
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * The record, not the wire. `SessionManager.reportable` arms on a
+   * `prompt-password` block and falls back to an exact match against the
+   * configured password — neither of which covers a realm this client does not
+   * recognise answered with `{user} {password}`. The module doing the filling
+   * in is the one that knows for certain.
+   */
+  it('marks the command it sends as carrying the password', () => {
+    const marked: boolean[] = [];
+    const queue = new CommandQueue(
+      { ...DEFAULT_CONFIG.automation, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      {
+        send: (command, intent) => {
+          sent.push(command);
+          marked.push(intent.secret === true);
+        }
+      }
+    );
+    const embedded = new LoginAutomator(
+      {
+        ...credentials,
+        steps: [
+          { when: 'Account', send: 'login {user} {password}' },
+          { when: 'Continue', send: '' }
+        ]
+      },
+      queue,
+      {}
+    );
+    embedded.onBlock(block('unknown', 'Account: '));
+    vi.advanceTimersByTime(50);
+    embedded.onBlock(block('unknown', 'Continue: '));
+    vi.advanceTimersByTime(50);
+    queue.dispose();
+
+    expect(sent).toEqual(['login vaelor secret', '']);
+    // The flag is on the command it is about, so the queue holding the two
+    // apart cannot spend it on somebody else's line. See `Intent.secret`.
+    expect(marked).toEqual([true, false]);
+  });
+
+  /*
+   * A character that states its own `login.steps` **replaces** the realm's, so
+   * a player who adds one row to change their character slot loses the account
+   * rows with it — and every other refusal here is silent, so nothing would
+   * say why the client is sitting at the username prompt doing nothing.
+   * Reported, not stopped: the menus may still be worth answering.
+   */
+  it('says so when the account is configured and no row sends it', () => {
+    const slotOnly = new LoginAutomator(
+      { ...credentials, steps: [{ when: 'Please select a character', send: '2' }] },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+    slotOnly.onBlock(block('prompt-username', USERNAME));
+    vi.advanceTimersByTime(50);
+    slotOnly.onBlock(block('prompt-character', 'Please select a character: '));
+    vi.advanceTimersByTime(50);
+
+    expect(sent).toEqual(['2']);
+    expect(notices.filter((m) => /no row that sends them/i.test(m))).toHaveLength(1);
+  });
+
   it('does nothing at all when disabled', () => {
     const off = new LoginAutomator({ ...credentials, enabled: false }, queue);
-    off.onBlock(block('prompt-username'));
+    off.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([]);
   });
 
   it('starts fresh on a reconnect', () => {
-    login.onBlock(block('prompt-username'));
+    login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
     login.reset();
-    login.onBlock(block('prompt-username'));
+    login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual(['vaelor', 'vaelor']);
   });
@@ -194,11 +533,21 @@ describe('config', () => {
  * of the client's vocabulary.
  */
 describe('a BBS whose menus are nothing like Paradigm’s', () => {
+  /**
+   * And whose *account* prompts are nothing like Paradigm's either.
+   *
+   * `Login ID:` and `Password:` are typed `unknown` by the classifier — its two
+   * credential patterns are this realm family's own wording — so before the
+   * account joined the script there was no answer to them and no row anybody
+   * could write to supply one. They are ordinary rows now.
+   */
   const shift: LoginConfig = {
     enabled: true,
     username: 'vaelor',
     password: 'secret',
     steps: [
+      { when: 'Login ID', send: '{user}' },
+      { when: 'Password', send: '{password}' },
       { when: 'S : Shift', send: 's' },
       { when: 'Please select a realm', send: '1' },
       // A bare Enter, which is what several BBS menus want. Enter is always
@@ -210,8 +559,8 @@ describe('a BBS whose menus are nothing like Paradigm’s', () => {
   it('walks a script the client has never seen before', () => {
     const login = new LoginAutomator(shift, queue, { notice: (m) => notices.push(m) });
     for (const [type, text] of [
-      ['prompt-username', 'Please enter your username or "new": '],
-      ['prompt-password', 'Please enter your password: '],
+      ['unknown', 'Login ID: '],
+      ['unknown', 'Password: '],
       ['unknown', '   S : Shift'],
       ['prompt-realm', 'Please select a realm: '],
       ['unknown', 'Press ENTER to continue']
@@ -254,6 +603,42 @@ describe('a BBS whose menus are nothing like Paradigm’s', () => {
   });
 });
 
+/*
+ * Bearfather, 2026-09-17: the player's own keystroke dismissed the pager and
+ * held the queue; the script's `Q` waited behind it, then behind two attacks,
+ * and reached the realm — where `q` is quit — half a second after the status
+ * line. The realm began the exit.
+ */
+describe('an answer the queue held', () => {
+  const pager = '(N)onstop, (Q)uit, or (C)ontinue?';
+  let paged: LoginAutomator;
+
+  beforeEach(() => {
+    paged = new LoginAutomator(
+      { ...credentials, steps: [{ when: pager, send: 'Q', repeat: true }] },
+      queue,
+      {}
+    );
+  });
+
+  it('still goes out when the hold ends at the same screen', () => {
+    queue.noteTyping(true);
+    paged.onBlock(block('unknown', pager));
+    queue.noteTyping(false);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['Q']);
+  });
+
+  it('is dropped once the realm has been entered', () => {
+    queue.noteTyping(true);
+    paged.onBlock(block('unknown', pager));
+    paged.onBlock(block('status-line', '[HP=44/KAI=2]:'));
+    queue.noteTyping(false);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([]);
+  });
+});
+
 describe('leaving on purpose', () => {
   it('stands down at the menu that follows an exit, and says so once', () => {
     login.onBlock(block('status-line', '[HP=34]:'));
@@ -282,39 +667,81 @@ describe('leaving on purpose', () => {
  */
 describe('why a lost socket must not be dialled again', () => {
   it('says nothing while the login is going normally', () => {
-    login.onBlock(block('prompt-username'));
+    login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
     expect(login.standDown).toBeNull();
   });
 
   /*
-   * Read from `leaving` alone, before any menu has arrived. The exit takes a
-   * few seconds and the BBS can hang up inside them, so waiting for the menu
-   * would miss the ordinary way somebody leaves.
+   * The request is not the leaving: the realm refuses one and interrupts
+   * another (Festus, 2026-09-18, a bugbear). Only a completed exit counts.
    */
-  it('names the exit as soon as one is asked for', () => {
+  const REQUEST = 'You will exit after a period of silent meditation.';
+  const SAVED = 'Your character has been saved. If you have any comments or suggestions, please';
+
+  it('does not name an exit that was only asked for', () => {
     login.onBlock(block('status-line', '[HP=34]:'));
-    login.onBlock(block('user-exits-realm', 'You will exit after a period of silent meditation.'));
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
+    expect(login.standDown).toBeNull();
+  });
+
+  it('names it once the menu has confirmed it', () => {
+    login.onBlock(block('status-line', '[HP=34]:'));
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
+    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
     expect(login.standDown).toBe('left-realm');
   });
 
-  it('keeps naming it once the menu has confirmed it', () => {
+  // Bearfather's wire, 2026-09-17: MajorMUD says so before its menu.
+  it("names it on MajorMUD's own sentence for a completed exit", () => {
     login.onBlock(block('status-line', '[HP=34]:'));
-    login.onBlock(block('user-exits-realm', 'You will exit after a period of silent meditation.'));
-    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
+    login.onBlock(block('user-left-realm', SAVED, 'newline'));
     expect(login.standDown).toBe('left-realm');
   });
 
   it('forgets it when the player breaks the exit', () => {
     login.onBlock(block('status-line', '[HP=34]:'));
-    login.onBlock(block('user-exits-realm', 'You will exit after a period of silent meditation.'));
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
     login.observeCommand('break');
+    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
     expect(login.standDown).toBeNull();
   });
 
+  /*
+   * 2026-09-18: interrupted four seconds in, the exit's latch stood for three
+   * hours, and the link that dropped then was not dialled back.
+   */
+  it('forgets it when the realm interrupts the exit', () => {
+    login.onBlock(block('status-line', '[HP=34]:'));
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
+    login.onBlock(
+      block(
+        'user-exit-interrupted',
+        'Your meditation has been interrupted - you may not exit now!',
+        'newline'
+      )
+    );
+    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
+    expect(login.standDown).toBeNull();
+  });
+
+  it('lifts it when the character comes back in on the same connection', () => {
+    login.onBlock(block('status-line', '[HP=34]:'));
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
+    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
+    expect(login.standDown).toBe('left-realm');
+    login.onBlock(block('status-line', '[HP=34]:'));
+    expect(login.standDown).toBeNull();
+    // And a second exit is a second stand-down, said again.
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
+    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
+    expect(login.standDown).toBe('left-realm');
+    expect(notices.filter((m) => m.includes('stands down'))).toHaveLength(2);
+  });
+
   it('names a refused login, because the way back in from one is a lockout', () => {
-    login.onBlock(block('prompt-username'));
-    login.onBlock(block('prompt-password'));
+    login.onBlock(block('prompt-username', USERNAME));
+    login.onBlock(block('prompt-password', PASSWORD));
     vi.advanceTimersByTime(50);
     login.onBlock(block('login-failed', 'Invalid username/password!'));
     expect(login.standDown).toBe('login-refused');
@@ -322,7 +749,8 @@ describe('why a lost socket must not be dialled again', () => {
 
   it('is clear again on the next connection', () => {
     login.onBlock(block('status-line', '[HP=34]:'));
-    login.onBlock(block('user-exits-realm', 'You will exit after a period of silent meditation.'));
+    login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
+    login.onBlock(block('prompt-menu', '[PARADIGM]:'));
     login.reset();
     expect(login.standDown).toBeNull();
   });

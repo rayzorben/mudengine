@@ -4,6 +4,7 @@ import {
   addFiller,
   compareSpots,
   estimateSpot,
+  fightUnpriced,
   moveDelayMs,
   orderRing,
   respawnSeconds,
@@ -281,6 +282,62 @@ describe('what is left out before the ranking', () => {
       false
     );
     expect(estimateSpot(singles({ character: { ...melee, hpMax: null } }), C).trivial).toBe(false);
+  });
+
+  /*
+   * A level-one Mystic on a stock realm (2026-09-17), where the kill
+   * arithmetic is not this family's: every spawn's rounds unknown, so neither
+   * exclusion fired and the top of the list was ten bone warriors at 103 hp a
+   * round against a 33 hp bar. The blows are known whether the rounds are or
+   * not, and a kill takes at least the shortest one the model prices.
+   */
+  it('reads the blows alone where the rounds are unknown, as a floor', () => {
+    const bar = { ...melee, hpMax: 33 };
+    const warriors = estimateSpot(
+      singles({ spawns: 10, character: bar, mobs: [mutant({ rounds: null, perRound: 103 })] }),
+      C
+    );
+    expect(warriors.worstShare).toBeNull();
+    expect(warriors.worstShareAtLeast!).toBeGreaterThan(1);
+    expect(warriors.deadly).toBe(true);
+    expect(warriors.costly).toBe(true);
+    expect(warriors.unknown).toContain('rounds');
+    // One at 10 a round: half a round is 5 of the 33, and the rest is not known.
+    const thug = estimateSpot(
+      singles({ character: bar, mobs: [mutant({ rounds: null, perRound: 10 })] }),
+      C
+    );
+    expect(thug.worstDamageAtLeast).toBe(5);
+    expect(thug.worstShareAtLeast).toBeCloseTo(5 / 33, 5);
+    expect(thug.costly).toBe(false);
+    expect(thug.expPerHour).toBeNull();
+    // Where every spawn's rounds are known the floor is the exact figure.
+    const priced = estimateSpot(singles(), C);
+    expect(priced.worstDamageAtLeast).toBe(priced.worstDamagePerRoom);
+  });
+
+  it('calls a room that cannot hit anybody beneath this level, rounds known or not', () => {
+    const e = estimateSpot(
+      singles({ mobs: [mutant({ rounds: null, perRound: 0, nakedPerRound: 0 })] }),
+      C
+    );
+    expect(e.trivial).toBe(true);
+  });
+
+  it('marks nothing beneath this level while one spawn is unfinished', () => {
+    // A priced rat beside an unpriced one that can hit: not trivial, and the
+    // exact cost waits for the second spawn's rounds.
+    const e = estimateSpot(
+      singles({ mobs: [mutant({ nakedPerRound: 4 }), mutant({ rounds: null, nakedPerRound: 4 })] }),
+      C
+    );
+    expect(e.trivial).toBe(false);
+    expect(e.worstShare).toBeNull();
+    expect(e.worstShareAtLeast).not.toBeNull();
+    // The rate is finished off the priced spawn, so it is ranked on the rate
+    // and not counted among the fights nobody could price.
+    expect(e.expPerHour).not.toBeNull();
+    expect(fightUnpriced(e)).toBe(false);
   });
 });
 
@@ -600,8 +657,10 @@ describe('the order the reader wants', () => {
         waitSeconds: null,
         damagePerRoom: null,
         worstDamagePerRoom: null,
+        worstDamageAtLeast: null,
         damageShare: null,
         worstShare: null,
+        worstShareAtLeast: null,
         roundsPerKill: null,
         deadly,
         costly: false,
@@ -644,6 +703,33 @@ describe('the order the reader wants', () => {
       sweep('priest', 5, 5)
     ].sort(compareSpots);
     expect(ordered.map((s) => s.key)).toEqual(['sewers', 'troll', 'priest']);
+  });
+
+  /*
+   * Where the fight itself went unpriced there is no cost beside the reward,
+   * and ordering by the sweep put ten bone warriors above the rats a level-one
+   * character could actually fight (2026-09-17). Nearest first, after every
+   * spot whose fight was priced.
+   */
+  it('lists a fight nobody could price after every priced one, nearest first', () => {
+    const unpriced = (key: string, steps: number, cycle: number): HuntingSpot => {
+      const s = spot(key, null, cycle * 12);
+      return {
+        ...s,
+        rooms: [{ ...s.rooms[0]!, steps }],
+        estimate: { ...s.estimate, expPerCycle: cycle, unknown: ['rounds'] }
+      };
+    };
+    const priced = spot('sewers', null, null);
+    const ordered = [
+      unpriced('bone warriors', 211, 270_000),
+      {
+        ...priced,
+        estimate: { ...priced.estimate, expPerCycle: 5, unknown: ['respawn' as const] }
+      },
+      unpriced('rats', 6, 37)
+    ].sort(compareSpots);
+    expect(ordered.map((s) => s.key)).toEqual(['sewers', 'rats', 'bone warriors']);
   });
 });
 

@@ -198,11 +198,11 @@ async function main() {
    * sit the character back down after it — so this is the sanctioned realm
    * being asked the same question, not a discovery.
    *
-   * `c` alone is never sent: an unrecognised command here is said out loud in
-   * the room, and a spell this character does not know is answered out loud
-   * too. Unnamed, it says so rather than guessing at one.
+   * The short name goes out bare, as the wire types it (`swan`, never
+   * `c swan`), and a spell this character does not know is answered out
+   * loud. Unnamed, it says so rather than guessing at one.
    */
-  if (CAST) results.push(await measure(`c ${CAST}`, 'casting — see the note under the table'));
+  if (CAST) results.push(await measure(CAST, 'casting — see the note under the table'));
   for (const result of results) row(result);
 
   /*
@@ -244,7 +244,7 @@ async function main() {
 
   console.log(
     CAST
-      ? `\n  \`c ${CAST}\` is the cast. On Paradigm it breaks a rest (2026-09-02),\n` +
+      ? `\n  \`${CAST}\` is the cast. On Paradigm it breaks a rest (2026-09-02),\n` +
           '  which is why `automation.health.restTo` exists — without it one heal\n' +
           '  ended the resting for the whole of the recovery, at a sixth of the\n' +
           '  regeneration.'

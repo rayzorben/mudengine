@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
+import { MASKED_COMMAND } from '../../../shared/automation';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { AutomationConfig } from '../../../shared/config';
 
@@ -304,6 +305,50 @@ describe('the master switch', () => {
   });
 });
 
+/*
+ * 2026-09-18: a keep-alive every 45 seconds for seven hours into a socket
+ * that had closed, each one filed as sent and reported unanswered.
+ */
+describe('a closed socket', () => {
+  it('takes nothing and sends nothing until one is open again', () => {
+    let open = true;
+    sent = [];
+    const gated = new CommandQueue(base, {
+      send: (command) => sent.push(command),
+      connected: () => open
+    });
+    expect(gated.enqueue({ command: 'st', priority: 'probe' })).toBe(true);
+    open = false;
+    expect(gated.enqueue({ command: '', priority: 'idle' })).toBe(false);
+    expect(gated.enqueue({ command: 'n', priority: 'user' })).toBe(false);
+    gated.notePrompt();
+    vi.advanceTimersByTime(5000);
+    expect(sent).toEqual(['st']);
+    open = true;
+    expect(gated.enqueue({ command: 'i', priority: 'probe' })).toBe(true);
+    expect(sent).toEqual(['st', 'i']);
+    gated.dispose();
+  });
+
+  it('sends nothing already queued once the socket has gone', () => {
+    let open = true;
+    sent = [];
+    const gated = new CommandQueue(base, {
+      send: (command) => sent.push(command),
+      connected: () => open
+    });
+    // The window is two: the third waits for a prompt's credit.
+    for (const command of ['a', 'b', 'c']) gated.enqueue({ command, priority: 'probe' });
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['a', 'b']);
+    open = false;
+    gated.notePrompt();
+    vi.advanceTimersByTime(5000);
+    expect(sent).toEqual(['a', 'b']);
+    gated.dispose();
+  });
+});
+
 describe('snapshot', () => {
   it('reports depth and what is waiting, for the decision trace', () => {
     queue.enqueue({ command: 'a', priority: 'probe', reason: 'entering the realm' });
@@ -315,6 +360,25 @@ describe('snapshot', () => {
     expect(snapshot.depth).toBe(2);
     expect(snapshot.pending.map((p) => p.command)).toContain('b');
     expect(snapshot.pending.find((p) => p.command === 'b')?.reason).toBe('idle');
+  });
+
+  /*
+   * The trace is drawn, not only written down.
+   *
+   * This snapshot is what the Automation card and the status rail show, and
+   * `SessionManager` republishes it on every block — so a login answer waiting
+   * out the typing hold or the pacing gap put the filled password on screen in
+   * full until it drained. `reportable` never sees a pending intent.
+   */
+  it('masks a command carrying a credential while it waits', () => {
+    queue.enqueue({ command: 'first', priority: 'probe' });
+    queue.enqueue({ command: 'login vaelor hunter2', priority: 'user', secret: true });
+
+    const pending = queue.snapshot.pending;
+    expect(pending.map((intent) => intent.command)).not.toContain('login vaelor hunter2');
+    expect(pending.at(-1)?.command).toMatch(/^•+$/);
+    // Fixed width, so the length of what it hides is not recorded either.
+    expect(pending.at(-1)?.command).toBe(MASKED_COMMAND);
   });
 });
 

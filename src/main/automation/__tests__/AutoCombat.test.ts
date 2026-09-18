@@ -745,6 +745,60 @@ describe('refusing to start one', () => {
   });
 
   /*
+   * *Run it* (todo 06) declines the journey the moment the walk starts and
+   * asks the file to turn the switch off in the same breath — but the file
+   * answers through `configure` half a second later, and until then the
+   * switch still reads on. The decline has to hold across that, or the first
+   * step beside a monster opens the fight the press was made to avoid.
+   */
+  it('stays declined while the switch still reads on, until it is turned back on', () => {
+    const auto = make(combat({ enabled: true }));
+    auto.noteWalking(true);
+    auto.declineWhileTravelling();
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+    // The file lands: still declined, and not a journey that fights.
+    auto.configure(combat({ enabled: false }), true);
+    expect(auto.fightingBecauseTravelling).toBe(false);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+    // Turned back on by hand: the journey fights again.
+    auto.configure(combat({ enabled: true }), true);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
+  /* And the decline is reported for that half second, not only obeyed. */
+  it('reports the decline while the switch still reads on, and sends nothing', () => {
+    const auto = make(combat({ enabled: true }));
+    auto.noteWalking(true);
+    auto.declineWhileTravelling();
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual(['giant rat — you turned auto-combat off for this journey']);
+  });
+
+  /*
+   * A reload that reads on is the player's hand whichever edge it arrived on:
+   * a run's write and the toolbar's press inside one poll reach `configure`
+   * as on → on, and a decline left standing there would be auto-combat dead
+   * with the switch reading on and nothing to say why.
+   */
+  it('takes the decline back on any reload that reads on', () => {
+    const auto = make(combat({ enabled: true }));
+    auto.noteWalking(true);
+    auto.declineWhileTravelling();
+    auto.configure(combat({ enabled: true }), true);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
+  /*
    * And **nothing swings** on that path, retaliation included.
    *
    * `declinedOnly` opens a door through the `acting` early return purely so
@@ -1598,7 +1652,7 @@ describe('casting in a fight', () => {
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
-    expect(sent).toEqual(['c fjet mutant']);
+    expect(sent).toEqual(['fjet mutant']);
     expect(notices.filter((n) => /Casting fire jet/.test(n))).toHaveLength(1);
     // Said once: the next round repeats the choice and not the sentence.
     auto.onBlock(block('user-hits'));
@@ -1652,13 +1706,14 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoBless: true,
       autoChoose: false
     });
     auto.onCharacter(fighting());
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
-    expect(sent).toEqual(['c ma giant rat']);
+    expect(sent).toEqual(['ma giant rat']);
   });
 
   it('names what it is casting at, so it cannot fall back to the last target', () => {
@@ -1681,6 +1736,7 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoBless: true,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -1689,7 +1745,7 @@ describe('casting in a fight', () => {
     drain();
     // The whole spell name, not a first word: the server matches on a prefix,
     // so `ice` would cast whatever begins with it.
-    expect(sent).toEqual(['c ice blade giant rat']);
+    expect(sent).toEqual(['ice blade giant rat']);
   });
 
   it('casts nothing when the mana is not there', () => {
@@ -1712,6 +1768,7 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoBless: true,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -1742,6 +1799,7 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoBless: true,
       autoChoose: false
     });
     auto.onCharacter(
@@ -1753,7 +1811,7 @@ describe('casting in a fight', () => {
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
-    expect(sent).toEqual(['c ma giant rat']);
+    expect(sent).toEqual(['ma giant rat']);
   });
 
   /*
@@ -1780,13 +1838,14 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoBless: true,
       autoChoose: false
     });
     auto.onCharacter(fighting());
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
-    expect(sent).toEqual(['c ma giant rat']);
+    expect(sent).toEqual(['ma giant rat']);
   });
 
   it('casts nothing when no spell is configured', () => {
@@ -1824,6 +1883,7 @@ describe('casting in a fight', () => {
       cures: { blindness: '', poison: '', disease: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
+      autoBless: true,
       autoChoose: false,
       ...over
     });
@@ -1846,7 +1906,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
     });
 
     /* MegaMUD's FailoverSpellAttacks: the server says the round spell has no
@@ -1862,12 +1922,12 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
       auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat', 'c mmis giant rat']);
+      expect(sent).toEqual(['ma giant rat', 'mmis giant rat']);
       expect(notices.some((line) => line.includes('mmis'))).toBe(true);
     });
 
@@ -1882,7 +1942,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
       expect(notices.filter((line) => line.includes('no effect'))).toHaveLength(1);
     });
 
@@ -1898,12 +1958,12 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat', 'c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
       auto.onBlock(block('spell-cast', { caster: 'You', spell: 'ma', target: 'giant rat' }));
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat', 'c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
     });
 
     /* A heal confirmed in the same window is a different spell and spends
@@ -1918,7 +1978,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat', 'c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
     });
 
     it('starts the count again on a new target', () => {
@@ -1933,7 +1993,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat', 'c ma kobold thief']);
+      expect(sent).toEqual(['ma giant rat', 'ma kobold thief']);
     });
 
     it('casts the crowd spell bare at the threshold', () => {
@@ -1942,7 +2002,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c poison cloud']);
+      expect(sent).toEqual(['poison cloud']);
     });
 
     it('falls back to the single-target spell under the crowd floor', () => {
@@ -1952,7 +2012,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
     });
 
     /* Unknown is not empty — the same asymmetry the single spell keeps. */
@@ -1966,7 +2026,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c poison cloud']);
+      expect(sent).toEqual(['poison cloud']);
     });
 
     /* A shopkeeper is not a reason to gas the room: the crowd is threats,
@@ -1988,7 +2048,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
     });
 
     /*
@@ -2009,7 +2069,7 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['c ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
     });
   });
 });

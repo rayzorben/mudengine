@@ -144,6 +144,36 @@ export function stripAnsi(text: string): string {
 }
 
 /**
+ * Replays the backspaces a line carries, as the terminal already does.
+ *
+ * MajorMUD writes each exit word as a letter, a *random* letter, a backspace
+ * and the rest — `Obvious exits: nG\borth, sJ\bouth` — so what the player
+ * reads is `north, south` and what a rule was matched against was not. The
+ * exits capture stops dead at the control byte, so every room on such a realm
+ * printed one exit named `ng`, drawn as `NG` on the Room card, and the walk
+ * lost track of where it was. Seen on bearfather's wire and in capture 031.
+ *
+ * Modelled as a cursor rather than as "delete the character before", because
+ * a trailing backspace parks the cursor on a character it never erases:
+ * `(C)ontinue?\b` still ends in its question mark.
+ */
+export function resolveBackspaces(text: string): string {
+  if (!text.includes('\b')) return text;
+  const out: string[] = [];
+  let at = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i]!;
+    if (char === '\b') {
+      if (at > 0) at -= 1;
+      continue;
+    }
+    out[at] = char;
+    at += 1;
+  }
+  return out.join('');
+}
+
+/**
  * The plain text of a line, with its terminator and trailing CR removed.
  *
  * This is what a parser rule should match against: every pattern in both
@@ -152,5 +182,7 @@ export function stripAnsi(text: string): string {
  * (docs/legacy-assessment.md §5, consequence 3).
  */
 export function plainText(line: FramedLine): string {
-  return stripAnsi(line.text).replace(LINE_END, '').replace(TRAILING_CR, '');
+  // Backspaces last: the terminator goes first, so a line ending in one cannot
+  // eat its own CR, and ANSI goes first because an escape prints nothing.
+  return resolveBackspaces(stripAnsi(line.text).replace(LINE_END, '').replace(TRAILING_CR, ''));
 }

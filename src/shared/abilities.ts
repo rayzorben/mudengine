@@ -338,6 +338,14 @@ export function abilityName(id: number, realm: 'greatermud' | 'other'): string |
 export const MIN_LEVEL_ABILITY = 135;
 
 /**
+ * `ConfuseMsg` — the `Messages` row a confusing spell prints when it throws a
+ * command away (`ActionFigure.CheckConfusion`). The row's first line is the
+ * sentence the character sees, so the set of these across a realm's spells is
+ * the closed list of what a fumble can look like there (todo 05).
+ */
+export const CONFUSE_MESSAGE_ABILITY = 101;
+
+/**
  * What a character can *do*, from the realm's own class and race rows
  * (todo 22, 2026-09-12).
  *
@@ -797,33 +805,26 @@ export const ABILITY_SHAPE: Readonly<Record<number, AbilityShape>> = {
   1113: 'percent', // VileWard
   1114: 'percent', // CastOnKill%
   /*
-   * Whether the item stays with its owner: every value in the shipped realm is
-   * 0 or 1, so it is a yes/no and not a magnitude.
-   *
-   * Declared `flag`, which means the row is drawn **only when the answer is
-   * yes** — see `abilityIsClaimed`. 46 of the 65 items carrying it carry a
-   * *zero*, and a flag drawn from its presence rather than its value would tell
-   * 46 players their item is loyal when the realm says the opposite.
+   * Whether the item stays with its owner: a yes/no, not a magnitude, and
+   * the server reads it by presence (`Player.cs:3068`, `:6461`), so the 96
+   * Paradigm items carrying it as zero are loyal too — see `abilityIsUnread`.
    */
   100: 'flag', // LoyalItem
   138: 'flag', // RoomVisible
   /*
    * The server's own maintenance cycle, which a player *does* act on: an item
    * that vanishes at maintenance is one not worth banking, and the realm says
-   * so on 413 items.
+   * so on 476 items in Paradigm and 348 in stock.
    *
    * Left unshaped until 2026-08-31 and therefore counted as unreadable, which
    * is what put `+1 more the client cannot read` on `spiked gauntlets` — whose
-   * only unshaped pair was `Del@Maint 0`, the realm saying the gauntlets are
-   * *kept*. 386 of the 413 carry that zero, so drawn from presence rather than
-   * value this would have told 386 players their item is destroyed nightly
-   * when the row exists to promise the opposite. Flags, like `LoyalItem`.
-   *
-   * Two items (`waterskin`, `cup of tea`) carry `Del@Maint 646`, which is not a
-   * yes/no; both also carry `CastsSp`, so it reads like the realm's own
-   * misfiled pair rather than a magnitude. A flag draws its label alone, so
-   * those two say the item goes at maintenance and no number is invented for a
-   * value nothing here understands.
+   * only unshaped pair was `Del@Maint 0`. Until 2026-09-17 that zero was read
+   * as the realm promising the gauntlets are *kept*, which the server's own
+   * source says is wrong: `RoomManager.DoCleanup` poofs an item whose type
+   * `Abilities[DelAtMaint] != null`, and `ItemType.cs:165` loads every slot
+   * whose id is non-zero whatever its value. Presence is the claim (see
+   * `abilityIsUnread`); 446 of the 476 carry it as zero and every one of them
+   * goes at cleanup. `waterskin` and `cup of tea` carry it as 646, and go too.
    */
   119: 'flag', // Del@Maint
   149: 'flag', // Remove@Maint
@@ -1091,9 +1092,9 @@ export type AbilityTable = 'item' | 'mob' | 'spell' | 'race' | 'class';
  *
  * This existed as a defect for the length of one review. `flag`'s zero-means-no
  * rule was measured on `Items` alone (`LoyalItem`, `Del@Maint`) and left
- * untouched when the other four tables were wired in on 2026-08-31 — so
- * `abilityIsClaimed` dropped, silently and without even reaching the "cannot
- * read" counter:
+ * untouched when the other four tables were wired in on 2026-08-31 — so the
+ * claim test of the time (since removed: a flag claims by presence now)
+ * dropped, silently and without even reaching the "cannot read" counter:
  *
  * - **303 spells rendered no effects row at all**, the spell literally named
  *   `freedom` among them: its only pair is `Freedom 0`, which is the realm
@@ -1186,45 +1187,24 @@ export function abilityShape(id: number, table: AbilityTable): AbilityShape | un
 }
 
 /**
- * Whether this pair actually claims anything, given its shape.
- *
- * A `flag` is drawn as its label alone — the value is not a magnitude, so there
- * is nothing to print beside it — which makes a flag whose value is **zero** a
- * row asserting the opposite of what the realm says. That is not hypothetical:
- * 46 of the 65 items carrying `LoyalItem` carry it as 0, and `RoomVisible` is
- * 0 on all 41 items that have it (measured against `gmud20230902`,
- * 2026-08-31). Drawn from presence alone, every one of those would have said
- * the item is loyal, or visible, when the row exists precisely to say it is
- * not.
- *
- * Only flags are tested this way. A `points` value of 0 is a real statement —
- * `Illu 0` is a light that gives none — and a `class` value of 0 cannot occur,
- * because 0 is the realm's empty ability slot rather than a class.
- *
- * The maintenance flags added on 2026-08-31 are the same shape of hazard at
- * fifteen times the scale: 386 of the 413 items carrying `Del@Maint` carry it
- * as **0**, the realm promising the item survives the night. Drawn from
- * presence, every one of those would have said the opposite.
- */
-export function abilityIsClaimed(id: number, value: number, table: AbilityTable): boolean {
-  return abilityShape(id, table) === 'flag' ? value === 1 : true;
-}
-
-/**
  * Whether a pair is one the client holds and cannot read — the honest count.
  *
- * Three of these questions exist and they are genuinely different. An id with
- * no shape is *not understood*. A flag reading zero is *understood, and the
- * answer is no* — silence, not ignorance, which is why `spiked gauntlets`
- * stopped confessing. And a **flag reading neither 0 nor 1** is a third thing:
- * a yes/no column holding something that is not a yes or a no.
+ * An id with no shape is *not understood*. Every shaped pair is read, and a
+ * `flag`'s value is not part of the reading: **a flag claims by presence,
+ * whatever its value says** (2026-09-17, todo 01). The server settles it —
+ * `AbilityContainer.this[id]` answers the row or null, `ItemType.cs:165`
+ * loads any slot with a non-zero id and keeps the value beside it, and every
+ * place the server asks about a flag asks `!= null`: `LoyalItem` in
+ * `Player.cs:3068`, `DelAtMaint` in `RoomManager.DoCleanup`, `RemoveAtMaint`
+ * in `GMUDServer.DoCleanup`. `RoomVisible` and `VisibleAtMaint` are read
+ * nowhere in it.
  *
- * Two items carry `Del@Maint 646` (`waterskin`, `cup of tea`, both also
- * carrying `CastsSp`, so it reads like the realm's own misfiled pair). Treated
- * as truthy it drew a bare `Del@Maint` — a confident claim that the waterskin
- * is destroyed nightly, built from a value nothing here understands. That is
- * the guess `refuse rather than guess` forbids, and the counter is exactly
- * where an unreadable value belongs.
+ * Until then a flag at zero was read as the realm answering *no*, measured
+ * off the data's shape alone: 96 of 119 `LoyalItem` rows and 446 of 476
+ * `Del@Maint` rows in Paradigm carry a zero. Read that way, 446 items that
+ * go at cleanup were drawn as kept. A realm author spends a scarce slot to
+ * state a flag, never to state its default, which is what the numbers were
+ * saying all along. `Del@Maint 646` on `waterskin` is the same presence.
  */
 /**
  * Whether a shape's value is a *magnitude* — a number the reader compares —
@@ -1240,11 +1220,8 @@ export function abilityIsMagnitude(shape: AbilityShape | undefined): boolean {
   return shape === 'points' || shape === 'percent' || shape === 'stat';
 }
 
-export function abilityIsUnread(id: number, value: number, table: AbilityTable): boolean {
-  const shape = abilityShape(id, table);
-  if (shape === undefined) return true;
-  // A yes/no column holding neither: read, not understood.
-  return shape === 'flag' && value !== 0 && value !== 1;
+export function abilityIsUnread(id: number, table: AbilityTable): boolean {
+  return abilityShape(id, table) === undefined;
 }
 
 /* ──────────────────────────────────────────────── the pairs, as a reading */
@@ -1303,13 +1280,10 @@ export function readEffects(
   for (const [id, value] of pairs) {
     // The server talking to itself, drawn nowhere and confessed to nowhere.
     if (ABILITY_INTERNAL.has(id)) continue;
-    if (abilityName(id, family) === null || abilityIsUnread(id, value, table)) {
+    if (abilityName(id, family) === null || abilityIsUnread(id, table)) {
       quiet += 1;
       continue;
     }
-    // A flag the realm set to zero was read, and read as "no": silence and
-    // ignorance are different answers and the count is only for the second.
-    if (!abilityIsClaimed(id, value, table)) continue;
     const already = collected.get(id);
     if (already) already.push(value);
     else collected.set(id, [value]);

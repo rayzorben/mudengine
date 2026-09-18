@@ -13,7 +13,16 @@ import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 const T0 = 1_700_000_000_000;
 
 function block(type: BlockType, groups: Record<string, string>, at = T0): Block {
-  return { seq: 1, at, type, domain: domainOf(type), groups, text: '', confidence: 0.8 };
+  return {
+    seq: 1,
+    at,
+    type,
+    domain: domainOf(type),
+    groups,
+    text: '',
+    terminator: 'newline',
+    confidence: 0.8
+  };
 }
 
 function who(name: string, alignment: Adventurer['alignment'] = null): Adventurer {
