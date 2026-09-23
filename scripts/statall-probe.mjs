@@ -231,7 +231,9 @@ async function main() {
     const state = session.character;
     const row = world.classNamed(state.className ?? '') ?? null;
     const cls = { combat: row?.combat ?? null, magery: row?.magery ?? null };
-    const inputs = prowessSheetOf(state, cls);
+    // The arithmetic is what is graded, so the sheet this run just read is
+    // withheld: handed in, every figure would be the server's own, twice.
+    const inputs = { ...prowessSheetOf(state, cls), stated: null };
     const weapon = wieldedWeapon(state.inventory.items);
     console.log(
       `\n  grading the arithmetic (class ${state.className ?? '?'}: combat ${cls.combat ?? '?'}, magery ${cls.magery ?? '?'}; weapon ${weapon ? `${weapon.min}-${weapon.max} speed ${weapon.speed ?? '?'}` : 'none'})`

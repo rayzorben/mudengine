@@ -14,6 +14,7 @@ import type {
   ItemHandover,
   MobPlaces,
   MobSpawn,
+  PlaceGroup,
   ShopPlace,
   WorldClass,
   WorldItem,
@@ -164,12 +165,13 @@ export function entryFigure(entry: ReferenceEntry): string | null {
 }
 
 /**
- * Where the realm puts a monster, as places you can plan a walk to.
+ * Where the realm puts a monster or an item, as places you can plan a walk to.
  *
  * The answer to *where do I find one of these*, which until now the client
  * held and could not draw: `Rooms.NPC` and `Rooms.Lair` were read forwards
  * only, so the Room card could say what a lair holds and nothing could say
- * where a monster is. See `WorldGraph.mobPlaces`.
+ * where a monster is (`WorldGraph.mobPlaces`); `Rooms.Placed` likewise for an
+ * item (`WorldGraph.itemPlaces`).
  *
  * **A group of one room is a place; a group of several is a choice.** One room
  * is a button that opens the route panel on it, exactly as a shop's name in
@@ -179,14 +181,17 @@ export function entryFigure(entry: ReferenceEntry): string | null {
  * discloses rather than opening a second panel, because the panel a room opens
  * is the one this row is a way into.
  */
-function SpawnsIn({
+function PlacesIn({
   spawns,
   more,
+  choose,
   onRoom,
   onResize
 }: {
-  spawns: readonly MobSpawn[];
+  spawns: ReadonlyArray<PlaceGroup & Partial<Pick<MobSpawn, 'via' | 'max'>>>;
   more: number;
+  /** The title on a group of several: what opening it shows. */
+  choose: (room: string) => string;
   onRoom: ((map: number, room: number) => void) | null;
   onResize: (() => void) | null;
 }) {
@@ -199,7 +204,7 @@ function SpawnsIn({
   return (
     <dd>
       {spawns.map((spawn, index) => {
-        const key = `${spawn.via}:${spawn.roomName}`;
+        const key = `${spawn.via ?? ''}:${spawn.roomName}`;
         const only = spawn.count === 1 ? spawn.rooms[0] : undefined;
         const showing = open === key;
         return (
@@ -228,7 +233,7 @@ function SpawnsIn({
                   // The Player flyout's faces are the same shape.
                   onResize?.();
                 }}
-                title={t('cards.reference.mob.spawnChooseTitle', { room: spawn.roomName })}
+                title={choose(spawn.roomName)}
                 type="button"
               >
                 {spawn.roomName}
@@ -245,7 +250,8 @@ function SpawnsIn({
                 once*, because a group is several rooms and the figure is each
                 room's: `Snowy Plains ×3 (up to 2 at once)` reads as two across
                 the three, which is not what the realm said about any of them. */}
-            {spawn.max !== null &&
+            {spawn.max !== undefined &&
+              spawn.max !== null &&
               (spawn.max === 1 ? (
                 <span className="quiet"> {t('cards.reference.mob.spawnMax.one')}</span>
               ) : (
@@ -288,6 +294,14 @@ function SpawnsIn({
       )}
     </dd>
   );
+}
+
+function spawnChoose(room: string): string {
+  return t('cards.reference.mob.spawnChooseTitle', { room });
+}
+
+function placedChoose(room: string): string {
+  return t('cards.reference.item.placedChooseTitle', { room });
 }
 
 /**
@@ -574,13 +588,25 @@ function MobDetail({
       {residents.length > 0 && (
         <>
           <dt>{t('cards.reference.mob.livesLabel')}</dt>
-          <SpawnsIn more={0} onResize={onResize} onRoom={onRoom} spawns={residents} />
+          <PlacesIn
+            choose={spawnChoose}
+            more={0}
+            onResize={onResize}
+            onRoom={onRoom}
+            spawns={residents}
+          />
         </>
       )}
       {lairs.length > 0 && (
         <>
           <dt>{t('cards.reference.mob.spawnsLabel')}</dt>
-          <SpawnsIn more={places?.more ?? 0} onResize={onResize} onRoom={onRoom} spawns={lairs} />
+          <PlacesIn
+            choose={spawnChoose}
+            more={places?.more ?? 0}
+            onResize={onResize}
+            onRoom={onRoom}
+            spawns={lairs}
+          />
         </>
       )}
     </dl>
@@ -972,6 +998,7 @@ function ItemDetail({
   shopPlaces,
   onRoom,
   onName,
+  onResize,
   supplies
 }: {
   item: WorldItem;
@@ -980,6 +1007,7 @@ function ItemDetail({
   shopPlaces: Record<string, ShopPlace>;
   onRoom: ((map: number, room: number) => void) | null;
   onName: ((name: string, anchor: HTMLElement) => void) | null;
+  onResize: (() => void) | null;
   supplies: SupplyList | null;
 }) {
   const nothing =
@@ -992,6 +1020,7 @@ function ItemDetail({
     !item.shops?.length &&
     !item.mobs?.length &&
     !item.from?.length &&
+    item.placed === undefined &&
     !item.abilities?.length;
   if (nothing && supplies === null) {
     return <div className="empty">{t('cards.reference.item.noDetail')}</div>;
@@ -1070,6 +1099,22 @@ function ItemDetail({
         <>
           <dt>{t('cards.reference.item.givenByLabel')}</dt>
           <GivenBy from={item.from} onName={onName} onRoom={onRoom} />
+        </>
+      )}
+      {item.placed !== undefined && (
+        <>
+          <dt title={t('cards.reference.item.placedHint')}>
+            {item.placed.fixed === true
+              ? t('cards.reference.item.placedFixedLabel')
+              : t('cards.reference.item.placedLabel')}
+          </dt>
+          <PlacesIn
+            choose={placedChoose}
+            more={item.placed.more}
+            onResize={onResize}
+            onRoom={onRoom}
+            spawns={item.placed.groups}
+          />
         </>
       )}
     </dl>
@@ -1466,6 +1511,7 @@ export default function ReferenceDetail({
           classNames={classNames}
           item={entry.item}
           onName={onName}
+          onResize={onResize}
           onRoom={onRoom}
           realm={realm}
           shopPlaces={shopPlaces}

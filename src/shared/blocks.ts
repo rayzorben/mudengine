@@ -267,6 +267,17 @@ export type BlockType =
    * `source`, so a reader can tell that the listing ran to its end.
    */
   | 'user-abilities'
+  /**
+   * `stat all` — the server's own arithmetic for this character
+   * (`Player.ShowStatAll`): a three-column sheet, then the attack table,
+   * `Attacks:` or `Attacks against <monster>:`, then the spells cast in the
+   * last fight. Wire-verbatim on `orohost` and Paradigm, 2026-09-05 onward.
+   *
+   * Rows carry `healthRegen`/`restingRegen`, `baseManaRegen`/`manaRegen`, a
+   * `section` heading (with `against`), and the plain `Attack` row's
+   * `swings`, `accuracy`, `min` and `max`. See `src/shared/stated.ts`.
+   */
+  | 'user-stat-all'
   | 'user-inventory'
   /**
    * `You have 22 platinum pieces, 50 gold crowns, 3 silver nobles, 4 copper
@@ -894,6 +905,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'spellbook-empty': 'status',
   'user-mortally-wounded': 'status',
   'user-abilities': 'status',
+  'user-stat-all': 'status',
   'user-inventory': 'status',
   'user-wealth': 'status',
   'who-list': 'status',

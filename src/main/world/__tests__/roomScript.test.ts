@@ -79,6 +79,12 @@ describe('what a room answers to', () => {
     const answer = parseRoomScript('dive pool:message 1943:teleport 121 12:cast 512', named)[0];
     expect(answer?.to).toBe('12/121');
     expect(answer?.need).toBeUndefined();
+    // But the spell it puts on you is kept (format 43): *holding breath* is
+    // the only statement anywhere that the passage below is a timed one.
+    expect(answer?.casts).toBe(512);
+    expect(
+      parseRoomScript('go door:roomitem 9999 1:teleport 1 1', named)[0]?.casts
+    ).toBeUndefined();
   });
 
   /*

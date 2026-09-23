@@ -182,3 +182,21 @@ describe('the room’s fight, run', () => {
     expect(spent.heals).toBeLessThan(kept.heals);
   });
 });
+
+/*
+ * `stat all`'s range where it still holds, as `prowess.swing` takes it: the
+ * verdict's rounds and the run beside it on the Room card roll the same blow.
+ */
+describe('the blow the sheet states', () => {
+  it('is the blow the run rolls', () => {
+    const tough = { name: 'ogre', subject: { hp: 400, profiles: [biter(20, 1, 3)] } };
+    const armed = simulateFight(fight({ foes: [tough] }))!;
+    const stated = simulateFight(
+      fight({
+        foes: [tough],
+        sheet: { ...SHEET, stated: { damage: { min: 40, max: 60 } } }
+      })
+    )!;
+    expect(stated.rounds.value).toBeLessThan(armed.rounds.value / 3);
+  });
+});

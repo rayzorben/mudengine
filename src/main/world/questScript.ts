@@ -37,6 +37,13 @@
  * The trailing number on a gate (`goodaligned -51 801`, `checkitem 622 3208`)
  * is the block to jump to on failure. It is read past deliberately: it names
  * the *refusal*, and a refusal is a sentence rather than a requirement.
+ *
+ * Two more are kept since todo 106 (2026-09-21), because the runner and the
+ * card both need them: `testskill <stat> <value> [block]` is a **roll** —
+ * the stat less the value, clamped to 2..98, against 1–100
+ * (`TextBlockPart.cs:1139`) — kept as a `skill` gate; and `adddelay N` (or
+ * `delay N`) is the server holding the rest of the block for N seconds
+ * (`ContinueTextblockCommand`), kept as the line's `delay`.
  */
 import type { Denomination } from '../../shared/character';
 import type { QuestGate, QuestReward } from '../../shared/quests';
@@ -55,6 +62,8 @@ export interface QuestScript {
    * never guessed at here.
    */
   granted: Array<{ id: number; value: number }>;
+  /** `adddelay N`: how long the server holds the rest of the line, in seconds. */
+  delay?: number;
 }
 
 /** The coin letters `givecoins` takes, in the server's own spelling. */
@@ -101,6 +110,7 @@ export function readQuestScript(line: string): QuestScript {
 
   let level: { min?: number; max?: number } | null = null;
   let alignment: { atMost?: number; atLeast?: number } | null = null;
+  let delay: number | null = null;
 
   for (const raw of text.split(':')) {
     const parts = raw.trim().split(/\s+/);
@@ -159,6 +169,22 @@ export function readQuestScript(line: string): QuestScript {
       case 'price':
         if (a !== null) needs.push({ kind: 'price', amount: a });
         break;
+      case 'testskill': {
+        // The stat is the script's own word; the value is what is rolled
+        // against. `current_hp` is absolute rather than a chance and is
+        // read past: it is a gate on the moment, not a roll on the sheet.
+        const stat = (parts[1] ?? '').toLowerCase();
+        const value = num(parts[2]);
+        if (stat.length > 0 && stat !== 'current_hp' && value !== null) {
+          needs.push({ kind: 'skill', stat, value });
+        }
+        break;
+      }
+      case 'adddelay':
+      case 'delay':
+        // Several on one line add up: the server holds at each in turn.
+        if (a !== null && a > 0) delay = (delay ?? 0) + a;
+        break;
 
       case 'takeitem':
         if (a !== null) takes.push(a);
@@ -206,7 +232,7 @@ export function readQuestScript(line: string): QuestScript {
   if (level !== null) needs.push({ kind: 'level', ...level });
   if (alignment !== null) needs.push({ kind: 'alignment', ...alignment });
 
-  return { needs, takes, gives, granted };
+  return { needs, takes, gives, granted, ...(delay === null ? {} : { delay }) };
 }
 
 /**

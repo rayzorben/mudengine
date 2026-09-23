@@ -6,6 +6,7 @@ import {
   narrowed,
   nextSort,
   readSort,
+  shelve,
   sortRows,
   terms,
   writeSort,
@@ -119,6 +120,60 @@ describe('sortRows', () => {
     const before = [...items];
     sortRows(items, { column: 'weight', direction: 'descending' }, value);
     expect(items).toEqual(before);
+  });
+});
+
+describe('shelve', () => {
+  interface Quest {
+    name: string;
+    shelf: string;
+  }
+  const groups = [
+    { id: 'open', label: 'Open' },
+    { id: 'done', label: 'Done' },
+    { id: 'barred', label: 'Shut' }
+  ];
+  const book: Quest[] = [
+    { name: 'IceSorc', shelf: 'open' },
+    { name: 'DarkDruid', shelf: 'done' },
+    { name: 'GoodQuest', shelf: 'barred' },
+    { name: 'DaoLord', shelf: 'open' },
+    { name: 'Phoenix', shelf: 'done' }
+  ];
+  const shelfOf = (quest: Quest): string => quest.shelf;
+
+  it('puts the shelves in the order they were declared, each in the card’s own order', () => {
+    expect(
+      shelve(book, groups, shelfOf).map((shelf) => [
+        shelf.group?.id,
+        shelf.rows.map((quest) => quest.name)
+      ])
+    ).toEqual([
+      ['open', ['IceSorc', 'DaoLord']],
+      ['done', ['DarkDruid', 'Phoenix']],
+      ['barred', ['GoodQuest']]
+    ]);
+  });
+
+  it('draws no head over an empty shelf', () => {
+    const open = book.filter((quest) => quest.shelf === 'open');
+    expect(shelve(open, groups, shelfOf).map((shelf) => shelf.group?.id)).toEqual(['open']);
+  });
+
+  it('keeps a row shelved nowhere, last and under no head', () => {
+    const stray = [...book, { name: 'Lost', shelf: 'nowhere' }];
+    const shelves = shelve(stray, groups, shelfOf);
+    expect(shelves[shelves.length - 1]).toEqual({
+      group: null,
+      rows: [{ name: 'Lost', shelf: 'nowhere' }]
+    });
+    expect(shelves.flatMap((shelf) => shelf.rows)).toHaveLength(stray.length);
+  });
+
+  it('does not disturb what it was given', () => {
+    const before = [...book];
+    shelve(book, groups, shelfOf);
+    expect(book).toEqual(before);
   });
 });
 

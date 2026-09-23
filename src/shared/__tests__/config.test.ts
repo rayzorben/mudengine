@@ -13,8 +13,8 @@ import {
   resolveUiFonts,
   targetFromConfig,
   toCssFontStack,
-  mergeMobPriorities,
-  normalizeMobPriorities,
+  mergeMobRules,
+  normalizeMobRules,
   type AppConfig
 } from '../config';
 import { DENOMINATIONS } from '../character';
@@ -184,7 +184,7 @@ describe('normalizeConfig', () => {
         database: '',
         // Empty for the same reason the menus are: a realm ranks nothing until
         // somebody playing it says so.
-        mobPriority: []
+        mobRules: []
       }
     ]);
   });
@@ -425,31 +425,25 @@ describe('automation.combat', () => {
 
   /*
    * Monster names are keyed the way the wire spells them, once, here — so
-   * `Giant Rat`, `giant rat` and `the giant rat` are one entry rather than
+   * `Giant Rat`, `giant rat` and `the giant rat` are one row rather than
    * three that miss.
    */
   it('keys monster names the way the stream spells them', () => {
-    expect(combat({ avoid: ['The Giant Rat', 'giant rat', '  A Kobold  Thief '] }).avoid).toEqual([
-      'giant rat',
-      'kobold thief'
+    expect(
+      combat({
+        mobRules: [
+          { mob: 'The Giant Rat', treat: 'never' },
+          { mob: 'giant rat', treat: 'first' },
+          { mob: '  A Kobold  Thief ', treat: 'last' }
+        ]
+      }).mobRules
+    ).toEqual([
+      { mob: 'giant rat', treat: 'never' },
+      { mob: 'kobold thief', treat: 'last' }
     ]);
   });
 
-  /*
-   * The same coercion every other health threshold here gets: a number above 1
-   * is read as a percentage, because writing `maxFightCost: 30` is what somebody
-   * means by "thirty percent" and refusing it would be pedantry with a
-   * character on the end of it.
-   */
-  it('reads a threshold above one as a percentage, like every other one', () => {
-    expect(combat({ maxFightCost: 30 }).maxFightCost).toBe(0.3);
-    expect(combat({ maxFightCost: 0.3 }).maxFightCost).toBe(0.3);
-  });
-
   it('clamps the rest rather than refusing the file', () => {
-    expect(combat({ maxFightCost: -1 }).maxFightCost).toBe(
-      DEFAULT_CONFIG.automation.combat.maxFightCost
-    );
     expect(combat({ maxMobs: 900 }).maxMobs).toBe(20);
     expect(combat({ maxMobs: -4 }).maxMobs).toBe(0);
   });
@@ -684,7 +678,8 @@ describe('following somebody', () => {
     expect(party({})).toEqual({
       assistLeader: false,
       defendParty: false,
-      restWithLeader: false
+      restWithLeader: false,
+      askForHealBelow: 0
     });
   });
 
@@ -693,13 +688,21 @@ describe('following somebody', () => {
       party({
         assistLeader: true,
         defendParty: true,
-        restWithLeader: true
+        restWithLeader: true,
+        askForHealBelow: 0.4
       })
     ).toEqual({
       assistLeader: true,
       defendParty: true,
-      restWithLeader: true
+      restWithLeader: true,
+      askForHealBelow: 0.4
     });
+  });
+
+  // MegaMUD states it as a percentage (`PartyAskHeal%=50`), and so will people.
+  it('reads the ask-for-healing line as a share, a percentage included', () => {
+    expect(party({ askForHealBelow: 50 }).askForHealBelow).toBe(0.5);
+    expect(party({ askForHealBelow: -1 }).askForHealBelow).toBe(0);
   });
 });
 
@@ -788,46 +791,46 @@ describe('the coins collected and the coins shed', () => {
   });
 });
 
-describe('the priority list, merged across scopes rather than replaced', () => {
+describe('the monster list, merged across scopes rather than replaced', () => {
   it('keeps a monster only one scope names', () => {
-    const merged = mergeMobPriorities(
-      [{ mob: 'rat', priority: 'low' }],
-      [{ mob: 'sewer rat', priority: 'last' }],
-      [{ mob: 'dragon', priority: 'first' }]
+    const merged = mergeMobRules(
+      [{ mob: 'rat', treat: 'low' }],
+      [{ mob: 'sewer rat', treat: 'last' }],
+      [{ mob: 'dragon', treat: 'first' }]
     );
     expect(merged.map((row) => row.mob).sort()).toEqual(['dragon', 'rat', 'sewer rat']);
   });
 
   /*
    * The whole reason this list is merged and every other one is replaced: a
-   * character that wants the realm's ranking plus one row of its own must not
+   * character that wants the realm's rules plus one row of its own must not
    * have to restate the realm's.
    */
   it('lets the narrowest scope win for a monster two of them name', () => {
-    const merged = mergeMobPriorities(
-      [{ mob: 'rat', priority: 'low' }],
-      [{ mob: 'rat', priority: 'high' }],
-      [{ mob: 'rat', priority: 'first' }]
+    const merged = mergeMobRules(
+      [{ mob: 'rat', treat: 'low' }],
+      [{ mob: 'rat', treat: 'high' }],
+      [{ mob: 'rat', treat: 'first' }]
     );
-    expect(merged).toEqual([{ mob: 'rat', priority: 'first' }]);
+    expect(merged).toEqual([{ mob: 'rat', treat: 'first' }]);
   });
 
   it('lets the realm win over the global list where the character is silent', () => {
-    const merged = mergeMobPriorities(
-      [{ mob: 'rat', priority: 'low' }],
-      [{ mob: 'rat', priority: 'last' }],
+    const merged = mergeMobRules(
+      [{ mob: 'rat', treat: 'low' }],
+      [{ mob: 'rat', treat: 'last' }],
       []
     );
-    expect(merged).toEqual([{ mob: 'rat', priority: 'last' }]);
+    expect(merged).toEqual([{ mob: 'rat', treat: 'last' }]);
   });
 
   it('keys a row the way the wire spells a monster', () => {
-    const merged = mergeMobPriorities([{ mob: 'The Giant Rat', priority: 'low' }], [], []);
-    expect(merged).toEqual([{ mob: 'giant rat', priority: 'low' }]);
+    const merged = mergeMobRules([{ mob: 'The Giant Rat', treat: 'low' }], [], []);
+    expect(merged).toEqual([{ mob: 'giant rat', treat: 'low' }]);
   });
 
   it('drops a row naming no monster, which could only ever match nothing', () => {
-    expect(normalizeMobPriorities([{ mob: '   ', priority: 'first' }])).toEqual([]);
+    expect(normalizeMobRules([{ mob: '   ', treat: 'first' }])).toEqual([]);
   });
 
   /*
@@ -835,16 +838,30 @@ describe('the priority list, merged across scopes rather than replaced', () => {
    * `default`: a typo that became a row reading as deliberate and doing
    * nothing is worse than one that is visibly absent.
    */
-  it('drops a row whose band the table does not know', () => {
-    expect(normalizeMobPriorities([{ mob: 'rat', priority: 'urgent' }])).toEqual([]);
+  it('drops a row whose treatment the table does not know', () => {
+    expect(normalizeMobRules([{ mob: 'rat', treat: 'urgent' }])).toEqual([]);
+  });
+
+  /*
+   * `never` is the refusal the flat `avoid` list used to be, and it merges by
+   * the same rule as a band: a character that leaves the town guard alone
+   * where the realm ranks it `first` leaves it alone.
+   */
+  it('lets a character leave alone what a broader scope ranks', () => {
+    const merged = mergeMobRules(
+      [{ mob: 'town guard', treat: 'first' }],
+      [],
+      [{ mob: 'town guard', treat: 'never' }]
+    );
+    expect(merged).toEqual([{ mob: 'town guard', treat: 'never' }]);
   });
 
   it('keeps the first row for a monster and drops a later duplicate', () => {
     expect(
-      normalizeMobPriorities([
-        { mob: 'rat', priority: 'first' },
-        { mob: 'the rat', priority: 'last' }
+      normalizeMobRules([
+        { mob: 'rat', treat: 'first' },
+        { mob: 'the rat', treat: 'last' }
       ])
-    ).toEqual([{ mob: 'rat', priority: 'first' }]);
+    ).toEqual([{ mob: 'rat', treat: 'first' }]);
   });
 });

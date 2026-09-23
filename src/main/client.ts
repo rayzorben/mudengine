@@ -105,6 +105,7 @@ import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
+import { IDLE_QUEST_RUN } from '../shared/quests';
 import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
 import { EMPTY_MAP } from '../shared/map';
 import {
@@ -544,6 +545,10 @@ function fightsFor(id: SessionId): FightSink {
     notice: (message) => announce('fights', message)
   });
   fightLogs.set(id, log);
+  // Folded now, off the thread: the hunting survey asks synchronously, and
+  // automatic hunting's first survey would otherwise price nothing and keep
+  // that answer until the level moved. `ready` never rejects.
+  void log.ready();
   return log;
 }
 
@@ -1535,16 +1540,20 @@ function registerIpc(): void {
    * the builder cannot happen. A character nobody has read the sheet of is
    * priced as one that can force nothing, which is `edgePenalty`'s own rule.
    */
-  const travellerOf = (session: SessionId, preferring: boolean): Traveller => {
+  const travellerOf = (session: SessionId, walking: 'route' | 'lap'): Traveller => {
     const manager = host?.get(session)?.manager;
     // The session's own statement of what its character costs to move — the
-    // stats off the sheet, the purse, what the server refused and, for every
-    // caller but the builder, the corridors it prefers — so a door graded one
-    // way on the panel and another way in a loop's leg cannot happen. The
-    // builder plans plainly on purpose: see the header of `loopDraft.ts`. A
-    // character with no session yet is priced as one that can force nothing,
-    // which is `edgePenalty`'s own rule.
-    if (manager) return manager.travellerNow(manager.character, preferring);
+    // stats off the sheet, the purse, what the server refused — so a door
+    // graded one way on the panel and another way in a loop's leg cannot
+    // happen. The builder drafts as the lap will walk, by distance and
+    // passability: see the header of `loopDraft.ts`. A character with no
+    // session yet is priced as one that can force nothing, which is
+    // `edgePenalty`'s own rule.
+    if (manager) {
+      return walking === 'lap'
+        ? manager.lapTraveller(manager.character)
+        : manager.travellerNow(manager.character);
+    }
     return { level: null, strength: null, pickSkill: undefined, wealth: null };
   };
 
@@ -1572,7 +1581,7 @@ function registerIpc(): void {
     return world.route(
       roomId(here.map, here.number),
       roomId(map, room),
-      travellerOf(session, true),
+      travellerOf(session, 'route'),
       { alternatives: true }
     );
   });
@@ -1583,9 +1592,9 @@ function registerIpc(): void {
    * the same ceiling a loop payload has (the card refuses the click before
    * it gets here), and an entry that is not a room is refused outright —
    * skipping it would plan a different loop from the one on the screen.
-   * Priced against the character's stats as the route panel prices, and
-   * plainly — without the corridors it prefers — so the way drawn is the way
-   * the reduction reproduces; see the header of `loopDraft.ts`.
+   * Planned as a lap walks — by distance and passability, without the
+   * corridors it prefers — so the way drawn is the way the reduction
+   * reproduces and the way the lap walks; see the header of `loopDraft.ts`.
    */
   handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown) => {
     const world = worldFor(session);
@@ -1597,7 +1606,7 @@ function registerIpc(): void {
       cache = new LoopDraftCache();
       drafts.set(session, cache);
     }
-    return cache.draft(world, picks, travellerOf(session, false));
+    return cache.draft(world, picks, travellerOf(session, 'lap'));
   });
 
   /*
@@ -1922,6 +1931,7 @@ function registerIpc(): void {
       learned: manager?.learned ?? [],
       finds: manager?.foundHere ?? [],
       questSaid: { ...(manager?.questProgress ?? {}) },
+      questRun: manager?.questRunProgress ?? IDLE_QUEST_RUN,
       // The Talk card's history. Only for a session that exists: attach never
       // creates one, so it must not conjure a log for a stale id either.
       talk: slot ? talkFor(session).backlog() : []
@@ -2076,6 +2086,25 @@ function registerIpc(): void {
     if (typeof block !== 'number' || !Number.isInteger(block)) return null;
     return host?.get(session)?.manager?.questErrand(block) ?? null;
   });
+  handle(Invoke.questPlan, (_caller, session: SessionId, block: unknown, marked: unknown) => {
+    // Parsed like the errand's block, and for the same reason: a chain's plan
+    // is an A* per step, and only one of the realm's own blocks earns it.
+    if (typeof block !== 'number' || !Number.isInteger(block)) return null;
+    const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
+    return host?.get(session)?.manager?.questPlan(block, rank) ?? null;
+  });
+  handle(Invoke.questRun, (_caller, session: SessionId, block: unknown, marked: unknown) => {
+    if (typeof block !== 'number' || !Number.isInteger(block)) {
+      return t('automation.quests.refusalUnknownStep', { block: String(block) });
+    }
+    const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined || manager === null) return t('automation.quests.refusalNotInRealm');
+    return manager.questRun(block, rank);
+  });
+  handle(Invoke.questStop, (_caller, session: SessionId) => {
+    host?.get(session)?.manager?.questStop();
+  });
   handle(
     Invoke.localMap,
     (_caller, session: SessionId, map: number, room: number, radius?: unknown) => {
@@ -2097,7 +2126,7 @@ function registerIpc(): void {
       return localMap(world, roomId(map, room), asked);
     }
   );
-  handle(Invoke.huntingGrounds, (_caller, session: SessionId) => {
+  handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {
     const manager = host?.get(session)?.manager;
     if (!manager) {
       return {
@@ -2105,6 +2134,7 @@ function registerIpc(): void {
         radius: null,
         swept: 0,
         spots: [],
+        unmeasured: [],
         excluded: { dangerous: 0, beneath: 0 },
         assumptions: {
           family: null,
@@ -2114,13 +2144,18 @@ function registerIpc(): void {
           stepMs: tuning().hunting.stepMs,
           heal: null,
           poisonHoldsRest: false,
+          measured: null,
           constants: tuning().hunting
         },
         refusal: t('session.hunt.noSession')
       } satisfies HuntingAdvice;
     }
+    // A kill the realm cannot price is priced off the fight record, folded
+    // off the thread; the card waits for it rather than showing a first
+    // answer with every fight unpriced.
+    await fightLogs.get(session)?.ready();
     // Everywhere the exits reach: distance is a column of the answer, not its bound.
-    return manager.huntingGrounds(null);
+    return manager.huntingGrounds(null, typeof measure === 'string' ? measure : null);
   });
   /*
    * Where this character may go and level. Addressed, and answered from the
@@ -2148,12 +2183,29 @@ function registerIpc(): void {
       diseased: world.itemsServing('diseased').map((item) => item.name)
     };
   });
+  /*
+   * And the realm's own half of the same list (todo 02): where it says a
+   * spell stops a room's effect and an item's use casts that spell. A
+   * property of the realm like the line above, so one call answers the
+   * section.
+   */
+  handle(Invoke.wards, (_caller, session: SessionId) => worldFor(session)?.wards() ?? []);
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the
     // same answer as a room it does not hold: the panel says so either way.
     if (!world || world.size === 0) return null;
-    return roomBrief(world, roomId(map, room));
+    /*
+     * The family the *wire* stated, not the realm file's: it decides the
+     * lair's respawn clock alone, and on the shipped configuration the two
+     * legitimately differ (a Paradigm-built world file against a GreaterMUD
+     * default realm). The same reading `CharacterTracker` resolves the Room
+     * card's own `LAIR` face with, so the panel and the card cannot answer two
+     * clocks for one room. See `WorldGraph.lair`.
+     */
+    const manager = host?.get(session)?.manager;
+    const family = manager?.family ?? null;
+    return roomBrief(world, roomId(map, room), family, manager?.level ?? null);
   });
 
   /*

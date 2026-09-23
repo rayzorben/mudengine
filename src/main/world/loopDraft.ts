@@ -2,8 +2,10 @@
  * Planning a loop that is being built by hand on the map.
  *
  * The builder's picks are rooms clicked in order. Every pair is planned by
- * `WorldGraph.route` — the same planner a person's route and a loop's leg go
- * through, priced against the character's stats — and then the picks are
+ * `WorldGraph.route` with the traveller a lap walks by
+ * (`SessionManager.lapTraveller`: distance and passability, nothing waiting
+ * on the way priced), so a detour clicked round a lair stays a waypoint where
+ * the lap would otherwise walk through it — and then the picks are
  * reduced to **waypoints**: the fewest rooms whose routes reproduce the whole
  * way exactly. A loop in this client is a list of places
  * (`src/shared/loops.ts`), and a pick in the middle of a corridor the planner

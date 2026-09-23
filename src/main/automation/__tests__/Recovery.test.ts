@@ -659,7 +659,8 @@ describe('resting with the leader', () => {
     new Recovery({ ...DEFAULT_CONFIG.automation.health }, true, queue, {
       assistLeader: false,
       defendParty: false,
-      restWithLeader: true
+      restWithLeader: true,
+      askForHealBelow: 0
     });
 
   it('rests when the leader rests', () => {

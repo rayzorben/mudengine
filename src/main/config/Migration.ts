@@ -143,6 +143,7 @@ export function migrateHome(options: MigrationOptions): void {
   dropAnonymousConnection(home, note);
   statedDoorForcing(home, note);
   keptTheConversationLog(home, note);
+  theWardSwitchMovedToHealth(home, note);
   statedTheNewAutomation(home, note);
   mergedBuffsIntoBlessings(home, note);
   keyedBlessingsOnSpell(home, note);
@@ -198,12 +199,14 @@ export function migrateHome(options: MigrationOptions): void {
   statedTheSpellChoice(home, note);
   statedTheTraining(home, note);
   theCombatFloorWent(home, note);
+  theFightCostWent(home, note);
   statedTheLevelling(home, note);
   statedThePotionRules(home, note);
   statedTheRecoveryBounds(home, note);
   statedTheAlertRules(home, note);
   theCombatAndPotionSettingsWent(home, note);
-  statedTheMobPriority(home, note);
+  theMobListsBecameRules(home, note);
+  statedTheMobRules(home, note);
   alertRowsBecameEvents(home, note);
   theDesktopSwitchesBecameRows(home, note);
   theToolbarGainedBack(home, note, options.internalTemplate);
@@ -537,6 +540,42 @@ function theCombatFloorWent(home: Home, note: (message: string) => void): void {
     cleaned.length === 1
       ? t('notices.migration.combatFloorDropped.one', params)
       : t('notices.migration.combatFloorDropped.many', params)
+  );
+}
+
+/**
+ * `combat.maxFightCost` off the files that state it (2026-09-21).
+ *
+ * The one preference the verdict left to the player, removed at the player's
+ * own ask: a share of current health the expected cost of a fight had to stay
+ * under. It shipped at 0 — never refuses — so nothing on disk changes
+ * behaviour by this, exactly as `theCombatFloorWent` above. What goes is the
+ * option, so no file is left naming a setting nothing reads. The verdict's
+ * cost is still drawn on the cards; what it no longer does is decline.
+ */
+function theFightCostWent(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const cleaned: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat)) return false;
+      if (!combat.has('maxFightCost')) return false;
+      combat.delete('maxFightCost');
+      // An emptied block reads as a setting somebody meant to fill in.
+      if (combat.items.length === 0) document.deleteIn(['automation', 'combat']);
+      cleaned.push(file);
+      return true;
+    });
+  }
+
+  if (cleaned.length === 0) return;
+  const params = { count: cleaned.length, fileList: cleaned.join(', ') };
+  note(
+    cleaned.length === 1
+      ? t('notices.migration.fightCostDropped.one', params)
+      : t('notices.migration.fightCostDropped.many', params)
   );
 }
 
@@ -1230,7 +1269,112 @@ const EVENT_FOR_OLD_ROW: Record<string, AlertRule['on']> = {
 };
 
 /**
- * `combat.mobPriority` into a file that predates it, empty (todo 01).
+ * `combat.avoid` and `combat.mobPriority` became one `combat.mobRules` list
+ * (2026-09-21, todo 104).
+ *
+ * Leaving a monster alone and saying where it comes in the attack order were
+ * two lists that merged by different rules — the ranking per monster across
+ * global, realm and character, the refusal replaced wholesale per scope — so a
+ * character that wanted the realm's refusals plus one of its own had to
+ * restate the realm's and keep the copy in step by hand. One row per monster
+ * now, `treat: never` being the refusal the flat list used to be.
+ *
+ * Rebuilt from the values, as `theRewritesBecameAList` is: every `avoid` name
+ * becomes a `never` row and every `mobPriority` row keeps its band, the `avoid`
+ * rows going **first** because `normalizeMobRules` keeps the first row for a
+ * monster and a monster named by both lists was one the player had said to
+ * leave alone. The paragraph above the key becomes the template's new one: the
+ * old one described five bands and a second list that no longer exists.
+ *
+ * The realm's own list is a top-level `mobPriority` in `servers/<id>/server.yaml`
+ * and is renamed there too — a realm states no `avoid`, so that half is a key
+ * rename and nothing else.
+ */
+function theMobListsBecameRules(home: Home, note: (message: string) => void): void {
+  const changed: string[] = [];
+
+  const rowsFrom = (node: unknown): Array<{ mob: string; treat: string }> => {
+    if (!isSeq(node)) return [];
+    const rows: Array<{ mob: string; treat: string }> = [];
+    for (const item of (node as YAMLSeq).items) {
+      if (!isMap(item)) continue;
+      const mob = (item as YAMLMap).get('mob', false);
+      const band = (item as YAMLMap).get('priority', false);
+      if (typeof mob !== 'string' || mob.trim().length === 0) continue;
+      rows.push({ mob, treat: typeof band === 'string' && band.length > 0 ? band : 'default' });
+    }
+    return rows;
+  };
+
+  const namesFrom = (node: unknown): string[] => {
+    if (!isSeq(node)) return [];
+    return (node as YAMLSeq).items
+      .filter((item) => isScalar(item) && typeof item.value === 'string')
+      .map((item) => String((item as Scalar).value))
+      .filter((name) => name.trim().length > 0);
+  };
+
+  // The options file and every character's: `automation.combat`.
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  for (const file of files) {
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat)) return false;
+      const hasAvoid = combat.has('avoid');
+      const hasPriority = combat.has('mobPriority');
+      if (!hasAvoid && !hasPriority) return false;
+
+      const rows = [
+        ...namesFrom(combat.get('avoid', true)).map((mob) => ({ mob, treat: 'never' })),
+        ...rowsFrom(combat.get('mobPriority', true))
+      ];
+
+      /*
+       * Where the *first* of the two keys sat, so the list does not move to
+       * the end of the block. Read before the deletes and taken from the first
+       * rather than either: everything ahead of it keeps its index whichever
+       * of the two go, which an index read off the second would not. The
+       * player's own paragraph is deliberately not kept — the one that was
+       * there described two lists and five bands.
+       */
+      const at = combat.items.findIndex(
+        (item) => keyText(item) === (hasAvoid ? 'avoid' : 'mobPriority')
+      );
+      if (hasAvoid) combat.delete('avoid');
+      if (hasPriority) combat.delete('mobPriority');
+      const pair = document.createPair('mobRules', rows) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = MOB_RULES_COMMENT;
+      if (at === -1) combat.items.push(pair);
+      else combat.items.splice(Math.min(at, combat.items.length), 0, pair);
+      changed.push(file);
+      return true;
+    });
+  }
+
+  // And each realm's own list, which is top-level and has no `avoid` half.
+  for (const id of directories(home.serversDir)) {
+    const file = home.server(id).file;
+    edit(file, (document) => {
+      if (!document.hasIn(['mobPriority'])) return false;
+      const rows = rowsFrom(document.getIn(['mobPriority'], true));
+      document.deleteIn(['mobPriority']);
+      if (rows.length > 0) document.setIn(['mobRules'], rows);
+      changed.push(file);
+      return true;
+    });
+  }
+
+  if (changed.length === 0) return;
+  const params = { count: changed.length, fileList: changed.join(', ') };
+  note(
+    changed.length === 1
+      ? t('notices.migration.mobRulesFolded.one', params)
+      : t('notices.migration.mobRulesFolded.many', params)
+  );
+}
+
+/**
+ * `combat.mobRules` into a file that predates it, empty (todo 01, 104).
  *
  * An empty list is exactly what the client does without the key, so nothing on
  * disk changes behaviour by this. It is written anyway for the reason every
@@ -1244,20 +1388,20 @@ const EVENT_FOR_OLD_ROW: Record<string, AlertRule['on']> = {
  * absent key there already means *this realm ranks nothing*, and a realm file
  * is short enough to read whole.
  */
-function statedTheMobPriority(home: Home, note: (message: string) => void): void {
+function statedTheMobRules(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
 
   for (const file of files) {
     edit(file, (document) => {
       const combat = document.getIn(['automation', 'combat'], true);
-      if (!isMap(combat) || combat.has('mobPriority')) return false;
+      if (!isMap(combat) || combat.has('mobRules')) return false;
 
-      const pair = document.createPair('mobPriority', []) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = MOB_PRIORITY_COMMENT;
-      // After `avoid`, which is the other list of monster names and where the
-      // template puts it, so the two files read in the same order.
-      const at = combat.items.findIndex((item) => keyText(item) === 'avoid');
+      const pair = document.createPair('mobRules', []) as Pair;
+      if (isScalar(pair.key)) pair.key.commentBefore = MOB_RULES_COMMENT;
+      // Where the template puts it: after the refusals it belongs with, so the
+      // two files read in the same order.
+      const at = combat.items.findIndex((item) => keyText(item) === 'refreshRounds');
       if (at === -1) combat.items.push(pair);
       else combat.items.splice(at + 1, 0, pair);
       stated.push(file);
@@ -1269,26 +1413,30 @@ function statedTheMobPriority(home: Home, note: (message: string) => void): void
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(
     stated.length === 1
-      ? t('notices.migration.mobPriority.one', params)
-      : t('notices.migration.mobPriority.many', params)
+      ? t('notices.migration.mobRules.one', params)
+      : t('notices.migration.mobRules.many', params)
   );
 }
 
 /** The template's own words for the list, so the two files read alike. */
-const MOB_PRIORITY_COMMENT = ` The order monsters are attacked in -- MegaMUD's Attack Priority List.
+const MOB_RULES_COMMENT = ` How named monsters are treated -- MegaMUD's Attack Priority List and its
+ avoid list, as one row per monster.
 
- Five bands: first, high, default, low, last. A monster no row names is
- \`default\`, so this is somewhere to add the one that matters rather than a
- ranking of the realm.
+ Six treatments: never, first, high, default, low, last. \`never\` is the
+ refusal -- that monster is not attacked automatically at all -- and the
+ other five are the order the rest are attacked in. A monster no row names
+ is \`default\`, so this is somewhere to add the one that matters rather
+ than a ranking of the realm.
 
-   mobPriority:
-     - { mob: gnoll shaman, priority: first }
-     - { mob: giant rat, priority: last }
+   mobRules:
+     - { mob: town guard, treat: never }
+     - { mob: gnoll shaman, treat: first }
+     - { mob: giant rat, treat: last }
 
- Where one of these is in the room the band decides outright and the
+ Where a banded monster is in the room the band decides outright and the
  client's own weighing is skipped -- which is the point: a ranking the
  realm's arithmetic could overturn is one nobody can predict from reading
- it. \`avoid\` and every other refusal still apply first, so a band says
+ it. \`never\` and every other refusal still apply first, so a band says
  which of the monsters worth attacking to attack, never that one is.
 
  A realm may state its own list in \`servers/<id>/server.yaml\`, and it is
@@ -3224,6 +3372,71 @@ function theDoorsOpenByDefault(home: Home, note: (message: string) => void): voi
   );
 }
 
+/**
+ * `movement.useWards` becomes `health.useWards`, and it is turned **on**
+ * (2026-09-22, todo 02).
+ *
+ * Two changes to one key, and both of them are the same admission: the switch
+ * was put in the wrong section and shipped off. It is one day old, and on the
+ * world that ships for MajorMUD realms it could not have fired at all in that
+ * day — that data writes the desert's gate as `checkspell`, which the
+ * converter declined to read as *this spell stops the room* until realm
+ * format 45. So there is no file anywhere whose `false` records a player
+ * watching this work and turning it off; every one of them is
+ * `statedTheNewAutomation` writing the shipped default a day ago.
+ *
+ * Which is `theDoorsOpenByDefault`'s argument exactly, and the same two
+ * narrownesses apply: a stated `true` carries across as `true`, so this cannot
+ * undo somebody's own switch, and it is said out loud naming every file, with
+ * the rolling backup beside each holding the old answer.
+ *
+ * The section move is the other half. Every row of `health.potions` is *use
+ * this item when that is true*, this is that sentence written by the realm,
+ * and the settings screen draws them together under *When to use an item* —
+ * so a key under `movement:` would be one the screen shows somewhere its own
+ * file does not.
+ */
+function theWardSwitchMovedToHealth(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const moved: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const movement = document.getIn(['automation', 'movement'], true);
+      if (!isMap(movement) || !movement.has('useWards')) return false;
+      // `true` either way, and the two ways are not the same fact: a stated
+      // `true` is somebody's own answer travelling across unchanged, and a
+      // `false` is this client's own write at the old default being replaced
+      // by the new one. See the doc comment for why the second is defensible.
+      movement.delete('useWards');
+      // An emptied block reads as a setting somebody meant to fill in, the
+      // same reason `theCombatFloorWent` deletes one.
+      if (movement.items.length === 0) document.deleteIn(['automation', 'movement']);
+      const health = document.getIn(['automation', 'health'], true);
+      // A file stating no `health:` block gets the key from
+      // `statedTheNewAutomation`'s own pass, which runs after this one.
+      if (isMap(health)) {
+        if (health.has('useWards')) health.set('useWards', true);
+        else {
+          const pair = document.createPair('useWards', true) as Pair;
+          if (isScalar(pair.key)) pair.key.commentBefore = USE_WARDS_COMMENT;
+          health.items.push(pair);
+        }
+      }
+      moved.push(file);
+      return true;
+    });
+  }
+
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.wardsMoved.one', params)
+      : t('notices.migration.wardsMoved.many', params)
+  );
+}
+
 function statedDoorForcing(home: Home, note: (message: string) => void): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
@@ -3872,6 +4085,12 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
         if (addKeys(document, ['automation'], [['banking', BANKING_DEFAULT]], BANKING_COMMENT)) {
           changed = true;
         }
+        if (addKeys(document, ['automation'], [['quests', QUESTS_DEFAULT]], QUESTS_COMMENT)) {
+          changed = true;
+        }
+        if (addKeys(document, ['automation'], [['gear', GEAR_DEFAULT]], GEAR_COMMENT)) {
+          changed = true;
+        }
       }
       // The keys inside blocks a file already states.
       if (addKeys(document, ['automation', 'safety'], [['pvp', PVP_DEFAULT]], PVP_COMMENT)) {
@@ -3906,6 +4125,14 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
           FIGHT_ON_ARRIVAL_COMMENT
         )
       ) {
+        changed = true;
+      }
+      if (
+        addKeys(document, ['automation', 'party'], [['askForHealBelow', 0]], ASK_FOR_HEAL_COMMENT)
+      ) {
+        changed = true;
+      }
+      if (addKeys(document, ['automation', 'health'], [['useWards', true]], USE_WARDS_COMMENT)) {
         changed = true;
       }
       if (changed) stated.push(file);
@@ -4200,6 +4427,12 @@ const FIGHT_ON_ARRIVAL_COMMENT = ` Turn auto-combat back on when a route you ask
  with it off is how you get somewhere without fighting on the way, and on
  arrival that reason is gone. Flips the switch in this file.`;
 
+const USE_WARDS_COMMENT = ` The realm's own half of the potion rules above: where it says a spell
+ stops a room's effect and a carried item's use casts it -- the waterskin
+ against the desert spell -- use the item before the step into such a room,
+ and again whenever the spell lapses while standing in one. On, for the reason
+ the torch is; a use spends a charge.`;
+
 const AUTO_BLESS_COMMENT = ` Whether the blessings above are cast unasked at all. The toolbar's
  Auto-Bless switch: off keeps the mana for healing through a fight without
  emptying the list; the cures and the heal are untouched.`;
@@ -4213,6 +4446,27 @@ const DROP_COMMENT = ` Dropping named junk, unasked -- the other half of MegaMUD
  server itself grades the load as anything but None. Off by default.`;
 
 const BANKING_DEFAULT = { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500 };
+/** Running a quest's plan (todo 102): off, like everything automated. */
+const GEAR_DEFAULT = { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 } };
+const GEAR_COMMENT = ` Which kit to be in, and when -- the equipment manager.
+
+ A set names only the slots it cares about, and the kit is the \`always\` set
+ overlaid by whichever other set applies: \`when\` is \`always\`, \`moving\` (a
+ route or a lap under way) or \`fighting\`, and a fighting set may add \`mob:\`
+ to apply against one monster only. The off-hand comes off before a two-handed
+ weapon goes on, off the realm's own \`Items.WeaponType\`.
+
+ \`offRound\` is \`use <item> <target>\` between rounds. It costs the round --
+ the server will not use a weapon that is not in hand -- so \`everyRounds\` is
+ the floor under it and 0, where it ships, is off.`;
+const QUESTS_DEFAULT = { enabled: false };
+const QUESTS_COMMENT = ` Running a quest's plan -- the Quest card's Run it.
+
+ With \`enabled\` on, Run it carries a plan one step at a time: the pack is
+ read, each item is bought, hunted or asked for the way the plan says, the way
+ to the act is walked as a leg, the act is sent, and the counter is read back
+ with \`abil\` before the next step starts. Off, because a run walks across
+ the realm, buys, hunts and fights for as long as the chain takes.`;
 const BANKING_COMMENT = ` Banking the purse, unasked -- MegaMUD's StashCoin. At a bank counter with
  more than \`depositThresholdCopper\` in the purse, deposits everything above
  \`keepCopper\` and asks \`bank\` behind it. Both numbers are copper: 10 to the
@@ -4231,6 +4485,11 @@ const PVP_COMMENT = ` What to do the moment a player opens on you. \`notifyGang\
 const DEFEND_PARTY_COMMENT = ` Swing at a monster seen attacking any party member -- MegaMUD's
  DefendParty. The fight came to the party, so combat.engage does not gate
  it, but every other combat gate does. Never a player on either end.`;
+
+const ASK_FOR_HEAL_COMMENT = ` Say @heal in the room when health falls below this share of maximum while
+ in a party -- MegaMUD's Ask For Healing. A member running MegaMUD or this
+ client answers with a heal. Said on the crossing and again every
+ tuning.remotes.healAskAgainMs while still under it. 0 never asks.`;
 
 const AREA_SPELL_DEFAULTS: ReadonlyArray<readonly [string, string | number]> = [
   ['areaAttack', ''],
@@ -4713,11 +4972,13 @@ function statedPartyRemotes(home: Home, note: (message: string) => void): void {
 
 /** The template's own words for the list, so the two files read alike. */
 const PARTY_REMOTES_COMMENT = ` What anybody who has **joined** this character's party may ask for, and
- the one list that ships with anything in it. Two names, and they are the two
- that say nothing the party listing does not already say and do nothing to
- this character: @health is the absolute figures behind the percentage the
- listing shows, and @bless-expired is a member telling this character their
- blessing ran out.
+ the one list that ships with anything in it. The first two names say nothing
+ the party listing does not already say and do nothing to this character:
+ @health is the absolute figures behind the percentage the listing shows, and
+ @bless-expired is a member telling this character their blessing ran out.
+ @heal is a member asking for one party heal: nothing while spells.healParty
+ is off, and while it is on, one cast per request, no oftener than the heal's
+ cooldown and never below minMana.
 
  @where, @status, @wait and @ok are not on it. The first two name the room
  and the stealth flag, which the listing does not carry; @wait pauses a
@@ -5636,6 +5897,10 @@ function theTuningBlockGainedKeys(
     addGroup('gearRecovery', { ...DEFAULT_INTERNAL.tuning.gearRecovery });
     // The stat screen driver (todo 10, 2026-09-12).
     addGroup('train', { ...DEFAULT_INTERNAL.tuning.train });
+    // The quest runner's own clocks (2026-09-21, todos 102-103): every wait it
+    // makes is bounded by one of these, so a run that looks stuck is diagnosed
+    // from this block or not at all.
+    addGroup('quests', { ...DEFAULT_INTERNAL.tuning.quests });
 
     /** One key into a sub-block the file already states, with its paragraph. */
     const addKey = (group: string, key: string, value: number): void => {
@@ -5775,6 +6040,49 @@ function theTuningBlockGainedKeys(
     addKey('world', 'errandItems', DEFAULT_INTERNAL.tuning.world.errandItems);
     addKey('world', 'errandPlaces', DEFAULT_INTERNAL.tuning.world.errandPlaces);
     addKey('world', 'errandSweepRooms', DEFAULT_INTERNAL.tuning.world.errandSweepRooms);
+    /*
+     * The follow window (2026-09-23): how long a walk stands in the room it
+     * has arrived in before stepping out again, where the room behind held a
+     * monster. It is the one number that decides whether a lap drags whatever
+     * was chasing it through the next four rooms, and the sort of number
+     * somebody who plays a realm with different pacing would want to raise.
+     */
+    addKey('walk', 'followSettleMs', DEFAULT_INTERNAL.tuning.walk.followSettleMs);
+    /*
+     * And the eight this file had fallen behind by (2026-09-23, on review).
+     *
+     * Every one of them is stated in the shipped template and reachable from
+     * `TUNING_DEFAULTS`, so nothing behaved wrongly — but `reconcileWithTemplate`
+     * fills in an absent *top-level* block and never reaches inside `tuning:`,
+     * which every file that has ever run this client states. So they were eight
+     * numbers documented in a file nobody's copy contained, which is the whole
+     * of what `internal.yaml` exists not to be.
+     *
+     * A member's `@heal` request and how often this character asks for one
+     * (2026-09-19); the fights a lair's own measured rate needs before it
+     * outranks the prediction; the quest runner's whole clock block and its
+     * banner's linger (2026-09-21, todos 102-103); the two figures that price a
+     * second way to somewhere and the count of stoppers a hazard's supplies buy.
+     */
+    /*
+     * **The group first, because `addKey` only fills a block the file already
+     * states.** Measured against this machine's own `internal.yaml`: 24 groups,
+     * and `remotes:` is not one of them — so `addKey('remotes', …)` alone would
+     * have been a second migration that reached nobody, for the same reason as
+     * the first. `addGroup` returns early where the block is there, so the pair
+     * is *write the block whole, or fill the one key into the block that
+     * exists*, and a file that has neither ends up with both.
+     */
+    for (const group of ['spells', 'remotes', 'view', 'world', 'walk'] as const) {
+      addGroup(group, { ...DEFAULT_INTERNAL.tuning[group] });
+    }
+    addKey('spells', 'healRequestMs', DEFAULT_INTERNAL.tuning.spells.healRequestMs);
+    addKey('remotes', 'healAskAgainMs', DEFAULT_INTERNAL.tuning.remotes.healAskAgainMs);
+    addKey('hunting', 'measuredFightsMin', DEFAULT_INTERNAL.tuning.hunting.measuredFightsMin);
+    addKey('view', 'questRunLingerMs', DEFAULT_INTERNAL.tuning.view.questRunLingerMs);
+    addKey('world', 'anotherWayPenalty', DEFAULT_INTERNAL.tuning.world.anotherWayPenalty);
+    addKey('world', 'anotherWayLonger', DEFAULT_INTERNAL.tuning.world.anotherWayLonger);
+    addKey('world', 'hazardSupplyCount', DEFAULT_INTERNAL.tuning.world.hazardSupplyCount);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

@@ -78,6 +78,7 @@ import { resumeAtHealth, type AutomationConfig } from '../../shared/config';
 import { splitSpells } from '../../shared/spell-messages';
 import { t } from '../app/i18n';
 import type { CommandQueue } from './CommandQueue';
+import { countMobs } from './RuleEngine';
 import { tuning } from '../app/tuning';
 import { openableHere } from '../../shared/world';
 
@@ -161,6 +162,14 @@ export interface WalkerEvents {
    */
   beforeStep?(ahead: { name: string; light: number | undefined }, state: CharacterState): void;
   /**
+   * A step is about to be sent into `to`, and the ward the room wants goes
+   * on the queue now, in the same band, so it reaches the wire first (todo
+   * 105) — the waterskin before the desert. Asked of the session for
+   * `beforeStep`'s reason: the answer needs the realm's spell and item
+   * tables and the pack.
+   */
+  wardFor?(to: RoomId, state: CharacterState): void;
+  /**
    * Whether a light would be readied for the room the character is standing in
    * — asked before the walk gives up on a room it cannot read.
    *
@@ -205,6 +214,16 @@ export interface WalkerEvents {
    * `true` has already reached it as the tracker's flag.
    */
   spellsHold?(spells: readonly string[]): boolean | null;
+  /**
+   * Whether the room the character stands in is under a timed spell the way
+   * in put on it — the underwater passage (todo 104). Inside one the walk
+   * moves and does nothing else: no hold for health, a trap, a rest or a
+   * quarry, and a fight that finds the character there is walked out of
+   * rather than waited out. The health hold and the trap hold apply at the
+   * mouth, which is the step *into* it, and never inside. Absent, nothing
+   * is claimed and every hold applies.
+   */
+  moveOnly?(state: CharacterState): boolean;
   /**
    * The character as it is *now*, for a question asked on a timer.
    *
@@ -283,8 +302,11 @@ export interface WalkerEvents {
    *
    * Returns the route, or the reason there is none — reported as the reason
    * the walk stopped, because a journey that cannot be re-planned is over.
+   *
+   * `shortest` is the walk's own `start` option, handed back so a lap's leg
+   * is re-planned by distance as it was first planned.
    */
-  replan?(to: RoomId): Route | string;
+  replan?(to: RoomId, shortest: boolean): Route | string;
   /**
    * Every lever the realm says opens this exit, and where each is pulled.
    *
@@ -306,14 +328,27 @@ export interface WalkerEvents {
    * first lever, and legs two onwards start somewhere the character is not yet.
    *
    * Absent means the run cannot be checked, and an unchecked all-or-nothing
-   * journey is not one to start.
+   * journey is not one to start. `shortest` as for `replan`.
    */
-  routeBetween?(from: RoomId, to: RoomId): Route | string;
+  routeBetween?(from: RoomId, to: RoomId, shortest: boolean): Route | string;
 }
 
 export class Walker {
   private route: Route | null = null;
   private index = 0;
+  /**
+   * Steps confirmed on *this journey* before the plan being walked now
+   * (todo 03).
+   *
+   * `index` is the current plan's own count and it resets every time the
+   * route is redrawn — a fight, a scatter, a door, a lever errand — so a
+   * ninety-five step walk to the Bank of Khazard reported `2 of 15` after the
+   * first monster, which is the leg's arithmetic and not the journey's. This
+   * is the part of the journey the current plan no longer holds, added back
+   * at both ends of the fraction. Reset only by `start`, which is the one
+   * place a *new* journey begins.
+   */
+  private walked = 0;
   private status: WalkStatus = 'idle';
   private reason: string | null = null;
   /** The room the step in flight is supposed to reach. */
@@ -451,6 +486,19 @@ export class Walker {
   private holds = 0;
   private holdTimer: NodeJS.Timeout | null = null;
   /**
+   * Whether the room the step in flight is leaving held a monster.
+   *
+   * The one fact that says a follower is possible, and it cannot be read off
+   * the room the character lands in: the server computes the follow inside the
+   * move and writes the arrival sentences *after* the room block
+   * (`settleForFollowers`). Kept from the last state seen in the departure
+   * room rather than from the state the step was sent against, because a
+   * monster that charges in while the step is on the wire is the case this
+   * exists for — five saracens did exactly that, 1.3 seconds after `e` had
+   * gone out and 0.8 seconds before the room the client walked them into.
+   */
+  private leftMobsBehind = false;
+  /**
    * The spent light this walker has already spoken about, or null.
    *
    * A fact about the pack, so it is said once and not once per dark step — see
@@ -582,6 +630,12 @@ export class Walker {
    * them, and `SessionManager` picks up only what it is handed.
    */
   private resumeAfterLoss = true;
+  /**
+   * Whether every re-plan of this walk is by distance alone: a lap's leg
+   * (`LoopRunner`), whose route is always the shortest way to the next stop.
+   * See `mudengine-automation` › *A lap walks the shortest way*.
+   */
+  private shortest = false;
   /**
    * When the fight this walk was holding for stopped being a fight, or null.
    *
@@ -775,8 +829,10 @@ export class Walker {
       // An idle walker has walked nothing to be wrong about, and a stopped leg
       // must not be read as a stopped route: see `movementOf`.
       asked: this.status === 'idle' ? true : this.asked,
-      done: this.index,
-      total: this.route?.steps.length ?? 0,
+      // The journey's, not this plan's: `walked` is what the redrawn
+      // plans before this one already covered. See the field.
+      done: this.walked + this.index,
+      total: this.walked + (this.route?.steps.length ?? 0),
       /*
        * The same journey the map draws, in words. The step at `index` is the
        * one being attempted, so its room is the *next* one entered and every
@@ -898,7 +954,8 @@ export class Walker {
       holdWhenHurt = true,
       resumeAfterFight = true,
       whileFighting = true,
-      resumeAfterLoss = true
+      resumeAfterLoss = true,
+      shortest = false
     }: {
       quiet?: boolean;
       asked?: boolean;
@@ -906,6 +963,7 @@ export class Walker {
       resumeAfterFight?: boolean;
       whileFighting?: boolean;
       resumeAfterLoss?: boolean;
+      shortest?: boolean;
     } = {}
   ): string | null {
     if (!this.config.enabled) return t('automation.walk.refusalDisabled');
@@ -1018,6 +1076,7 @@ export class Walker {
 
     this.route = route;
     this.index = 0;
+    this.walked = 0;
     this.reason = null;
     this.status = 'walking';
     // A fresh walk gets the whole patience. `holds` is otherwise only cleared
@@ -1026,6 +1085,9 @@ export class Walker {
     // budget already spent and its first step unheld.
     this.holds = 0;
     this.barrierRounds = 0;
+    // And the room behind is the last walk's, not this one's: `sendCurrent`
+    // reads it again from the state this route is planned from.
+    this.leftMobsBehind = false;
     /*
      * A door another walk found locked says nothing about this one's, which
      * may not even pass the same room — and the errand belongs to the journey
@@ -1059,6 +1121,7 @@ export class Walker {
     this.resumeAfterFight = resumeAfterFight;
     this.fightHeldCouldEnd = false;
     this.resumeAfterLoss = resumeAfterLoss;
+    this.shortest = shortest;
     /*
      * Asked for while a fight was running, so this walk's job is to leave it —
      * **but only when leaving is what ends the fight**.
@@ -1197,6 +1260,10 @@ export class Walker {
     this.clearTimer();
     this.route = null;
     this.index = 0;
+    // And the journey's own counter with it: `walked` survives a redrawn plan
+    // by design, so a reconnect that did not clear it published a finished
+    // journey — `done: 20, total: 20` — for a walker walking nothing.
+    this.walked = 0;
     this.status = 'idle';
     this.reason = null;
     this.hold = null;
@@ -1208,12 +1275,14 @@ export class Walker {
     this.darkSince = null;
     this.onsetAnsweredStep = null;
     this.stepSent = false;
+    this.leftMobsBehind = false;
     this.escaped = false;
     this.quiet = false;
     this.holdWhenHurt = true;
     this.resumeAfterFight = true;
     this.resumeAfterLoss = true;
-    // The fourth of the same group: `start` writes it unconditionally, but
+    this.shortest = false;
+    // One more of the same group: `start` writes it unconditionally, but
     // this is the deterministic-cleanup path for a new session and one start
     // option surviving it is exactly the kind of thing that comes back.
     this.leavingAFight = false;
@@ -2012,7 +2081,7 @@ export class Walker {
     let best: { at: RoomId; route: Route } | null = null;
     let why: string | null = null;
     for (const at of rooms.keys()) {
-      const there = this.events.replan?.(at);
+      const there = this.events.replan?.(at, this.shortest);
       if (there === undefined) return false;
       if (typeof there === 'string') {
         why ??= there;
@@ -2054,6 +2123,7 @@ export class Walker {
         })
       );
     }
+    this.walked += this.index;
     this.route = best.route;
     this.index = 0;
     // The new route's first step is not behind the old door: its ladder, its
@@ -2130,7 +2200,7 @@ export class Walker {
           : t('automation.walk.leverNext', { roomCount: errand.rooms.length })
       );
     }
-    const on = this.events.replan?.(to);
+    const on = this.events.replan?.(to, this.shortest);
     if (on === undefined || typeof on === 'string') {
       this.errand = null;
       this.stop(on ?? t('automation.walk.refusalNoRoute'));
@@ -2160,6 +2230,7 @@ export class Walker {
       return this.finishErrand(state);
     }
     if (next === undefined) this.errand = null;
+    this.walked += this.index;
     this.route = on;
     this.index = 0;
     // The way on starts at a fresh step, and the gate the errand was for is
@@ -2234,12 +2305,12 @@ export class Walker {
     if (state === undefined) return false;
 
     // Leg one from here; the rest between rooms the character is not in yet.
-    const first = this.events.replan?.(chain[0]!.at);
+    const first = this.events.replan?.(chain[0]!.at, this.shortest);
     if (first === undefined) return false;
     let why: string | null = typeof first === 'string' ? first : null;
     let walkable = typeof first !== 'string' && !first.blocked;
     for (let leg = 1; walkable && leg < chain.length; leg += 1) {
-      const between = this.events.routeBetween?.(chain[leg - 1]!.at, chain[leg]!.at);
+      const between = this.events.routeBetween?.(chain[leg - 1]!.at, chain[leg]!.at, this.shortest);
       if (between === undefined || typeof between === 'string') {
         why ??= typeof between === 'string' ? between : null;
         walkable = false;
@@ -2252,7 +2323,7 @@ export class Walker {
     }
     // And back to the gate, or the levers buy a room nothing can leave.
     if (walkable) {
-      const home = this.events.routeBetween?.(chain.at(-1)!.at, step.from);
+      const home = this.events.routeBetween?.(chain.at(-1)!.at, step.from, this.shortest);
       if (home === undefined || typeof home === 'string' || home.blocked) {
         why ??= typeof home === 'string' ? home : (home?.reason ?? null);
         walkable = false;
@@ -2281,6 +2352,7 @@ export class Walker {
      * an empty leg pulls what is here and plans the next.
      */
     if (opening.steps.length === 0) return this.finishErrand(state);
+    this.walked += this.index;
     this.route = opening;
     this.index = 0;
     this.forgetBarrier();
@@ -2924,7 +2996,10 @@ export class Walker {
        * the answer is what the walk needs the moment the fight is over.
        */
       this.askWhereAfterDraw(state);
-      if (!this.leavingAFight && this.answerFight()) return;
+      // Under a timed spell a fight is walked out of, never waited out: the
+      // spell is the deadline, and standing still for a round is drowning.
+      if (!this.leavingAFight && this.events.moveOnly?.(state) !== true && this.answerFight())
+        return;
     } else {
       // Out of it. Anything that starts from here is a fight nobody asked
       // about, and holds for it as usual.
@@ -3000,7 +3075,13 @@ export class Walker {
      * has arrived. Only its own hold, as every release here is.
      */
     this.releaseDarkHold();
-    if (here === step.from) return;
+    if (here === step.from) {
+      // Still where the step started, so this is the room anything that
+      // follows will follow *out of* — read every time, because a monster can
+      // walk in while the step is on the wire. See `settleForFollowers`.
+      this.noteRoomBehind(state);
+      return;
+    }
 
     /*
      * A draw landed. **This is the step working, not the walk going wrong.**
@@ -3124,7 +3205,64 @@ export class Walker {
      */
     if (wasLeaving && fightIsRunning(state) && this.answerFight()) return;
     if (this.holdBeforeSending(state)) return;
+    // And not under a timed spell, where `holdBeforeSending` has already
+    // returned early for every other hold: the spell is the deadline, nothing
+    // in there will fight what followed, and a third of a second a room is
+    // a third of a second of held breath bought for no decision.
+    if (this.events.moveOnly?.(state) !== true && this.settleForFollowers(state)) return;
     this.sendCurrent();
+  }
+
+  /**
+   * Stand still a moment in the room just arrived in, where something in the
+   * room behind may be about to walk in after the character.
+   *
+   * **A room block is the room as the server described it, not as the read
+   * carrying it leaves it.** The server works the follow out inside the move
+   * (`Exits.cs:165`), so the arrival sentences are composed *after* the room
+   * block and `Also here:` is absent from a room about to hold five monsters
+   * — and the walk read it six milliseconds into the socket read that said
+   * so. The capture, the measurement behind `walk.followSettleMs` and the
+   * chase this deliberately does not cover are in `mudengine-automation`
+   * › *A room block is the room before whatever followed the character in*.
+   *
+   * Decides nothing about the monsters: it only stops the walk deciding
+   * before they are on the list, then re-asks the ordinary holds. Its own
+   * timer and outside `walk.maxHolds`, for `holdForLight`'s reason — the step
+   * *was* answered. Silent, being shorter than a round and resolving either
+   * into a hold that states its own reason or into the step it was going to
+   * send anyway.
+   */
+  private settleForFollowers(state: CharacterState): boolean {
+    if (!this.leftMobsBehind) return false;
+    // Spent by the arrival it was recorded for: the room ahead is the next
+    // step's, and `noteRoomBehind` will read it when the character is in it.
+    this.leftMobsBehind = false;
+    this.holdTimer = setTimeout(() => {
+      this.holdTimer = null;
+      if (this.status !== 'walking') return;
+      // The live room, which is the whole point of having waited — and the
+      // arrival's own state behind it, as every other hold's re-ask falls
+      // back, so a session that cannot answer holds exactly as it used to.
+      if (this.holdBeforeSending(this.events.stateNow?.() ?? state)) return;
+      this.sendCurrent();
+    }, tuning().walk.followSettleMs);
+    this.holdTimer.unref?.();
+    return true;
+  }
+
+  /**
+   * Whether the room the character is standing in holds a monster.
+   *
+   * `countMobs` and not `countThreats`: what follows is decided by the
+   * server's own `CurrentTarget`, which this client cannot read, so a monster
+   * whose row the realm does not hold — `kind: 'mob'`, no disposition — is
+   * one that may follow. It stops at `kind`, though: an `unknown` is a
+   * capitalised name nobody has listed, which is far likelier to be a person,
+   * and a person walking out behind the character drags nothing.
+   */
+  private noteRoomBehind(state: CharacterState): void {
+    this.leftMobsBehind = countMobs(state.room.occupants) > 0;
   }
 
   /**
@@ -3189,6 +3327,14 @@ export class Walker {
    * for the other outcome, where nothing bites and the walk must not stall.
    */
   private holdBeforeSending(state: CharacterState): boolean {
+    /*
+     * Under a timed spell, nothing holds but a condition the server has
+     * stated: a rest, the health, a trap, a fight and a quarry all wait at
+     * the mouth of the passage, and inside it the one thing that helps is
+     * the next step (todo 104). Being held is the exception because a step
+     * while held is a command spent to be refused.
+     */
+    if (this.events.moveOnly?.(state) === true) return this.holdForAffliction(state);
     /*
      * A rest this client has just asked for, first of all and outside the
      * beat's budget.
@@ -3531,7 +3677,7 @@ export class Walker {
     }
 
     const destination = route.steps.at(-1)!;
-    const replanned = this.events.replan?.(destination.to);
+    const replanned = this.events.replan?.(destination.to, this.shortest);
     if (replanned === undefined) {
       // Nobody can plan for this walker, so a character that moved during the
       // fight is exactly the off-path case it has always stopped for.
@@ -3567,6 +3713,7 @@ export class Walker {
       this.publish();
       return;
     }
+    this.walked += this.index;
     this.route = replanned;
     this.index = 0;
     this.carryOn(state);
@@ -3633,7 +3780,7 @@ export class Walker {
             })
       );
     }
-    const replanned = this.events.replan?.(destination.to);
+    const replanned = this.events.replan?.(destination.to, this.shortest);
     if (replanned === undefined) {
       this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));
       return;
@@ -3664,6 +3811,7 @@ export class Walker {
       this.publish();
       return;
     }
+    this.walked += this.index;
     this.route = replanned;
     this.index = 0;
     // Through `carryOn` for `resumeFromFight`'s reason: the two gates that
@@ -3811,10 +3959,8 @@ export class Walker {
    *   and a walk pinned for want of a stat sheet is a character that never
    *   arrives.
    *
-   * Said out loud on the way in and on the way out, because a route reading
-   * *29 steps to Bank of Godfrey* that does not move is otherwise
-   * indistinguishable from a broken client — and silent for a loop's own leg,
-   * which reports its holds itself.
+   * Published and not printed: `mudengine-automation` › *A route stands still
+   * while too hurt to travel*.
    */
   private holdForHealth(state: CharacterState): boolean {
     if (!this.wantsHealthHold(state)) {
@@ -3822,7 +3968,6 @@ export class Walker {
       // has come back.
       if (this.hold === 'health') {
         this.hold = null;
-        if (!this.quiet) this.events.notice?.(t('automation.walk.healthResumed'));
         this.publish();
       }
       return false;
@@ -3830,7 +3975,6 @@ export class Walker {
 
     if (this.hold === null) {
       this.hold = 'health';
-      if (!this.quiet) this.events.notice?.(t('automation.walk.healthHolding'));
       this.publish();
     }
 
@@ -4194,8 +4338,12 @@ export class Walker {
      * one thing here that is not per-step-per-room: see `sneakFirst`.
      */
     const now = this.events.stateNow?.() ?? from;
+    if (now !== undefined) this.noteRoomBehind(now);
     if (fresh && now !== undefined) {
       this.events.beforeStep?.({ name: step.name, light: step.light }, now);
+      // And the ward the room ahead wants, in the same band and after the
+      // light for the same reason: both must reach the wire before the step.
+      this.events.wardFor?.(step.to, now);
       /*
        * And the door the room has already said is shut, in place of the step
        * — see `openShutWayFirst`. After the light, which the step behind the
@@ -4338,10 +4486,32 @@ export class Walker {
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.status !== 'walking') return;
+      if (this.afterTheLine(() => this.waitForAnswer(step, command))) return;
       this.nudge(step, command);
       this.waitForPrompt(command);
     }, this.nudgeAfter());
     this.timer.unref?.();
+  }
+
+  /**
+   * Runs `then` once the player's half-typed line has closed, and answers
+   * whether it had to wait. The server holds its answers behind that line
+   * (`TGSSocket.Send` backlogs while `CurrentCommand` is non-empty) and
+   * flushes them on Enter, so a deadline on the wire that lapses while the
+   * line is open is armed again in full once it closes, not spent. The check
+   * runs on the send wait's beat so that the new window starts no earlier than
+   * the Enter. Bounded by the queue's abandoned-line ceiling, past which
+   * `suppressed` is false.
+   */
+  private afterTheLine(then: () => void): boolean {
+    if (!this.queue.snapshot.suppressed) return false;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.status !== 'walking') return;
+      if (!this.afterTheLine(then)) then();
+    }, tuning().walk.nudgeAfterMs);
+    this.timer.unref?.();
+    return true;
   }
 
   /**
@@ -4411,6 +4581,7 @@ export class Walker {
        * that ladder is a reason not to *send*, and a step already on the wire
        * with no answer is not waiting on any of them.
        */
+      if (this.afterTheLine(() => this.waitForPrompt(command))) return;
       const now = this.events.stateNow?.();
       if (now !== undefined && this.holdForAffliction(now)) return;
       this.stop(t('automation.walk.reasonTimeout', { command }));

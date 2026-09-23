@@ -46,12 +46,18 @@ import { errorMessage } from '../../shared/values';
 import {
   AS_PRINTED,
   foldFight,
+  foldOutput,
+  measuredPerRound,
   summarizeFolds,
   type FightFold,
   type FightFolds,
+  type FightOutput,
+  type FightOutputs,
   type FightRecord,
   type FightSink,
   type FightSummary,
+  type MeasureAsk,
+  type MeasuredOutput,
   type MobResolver
 } from '../../shared/fights';
 import { tuning } from '../app/tuning';
@@ -61,15 +67,27 @@ export interface FightLogEvents {
   notice?(message: string): void;
 }
 
+/** The file as it stood, folded both ways: per monster, and per level of what was dealt. */
+interface FoldedRecord {
+  folds: ReadonlyMap<string, FightFold>;
+  outputs: ReadonlyMap<number, FightOutput>;
+}
+
+const NOTHING_FOLDED: FoldedRecord = { folds: new Map(), outputs: new Map() };
+
 export class FightLog implements FightSink {
   private held: FightRecord[] = [];
   /** Every fight this instance has recorded, folded as it happened. */
   private readonly recorded: FightFolds = new Map();
+  /** And what this character dealt in them, per level. */
+  private readonly recordedOutput: FightOutputs = new Map();
   /**
    * What the file held before this instance opened it, folded once on the
    * first question and off the thread. See `pastRecord`.
    */
-  private before: Promise<ReadonlyMap<string, FightFold>> | null = null;
+  private before: Promise<FoldedRecord> | null = null;
+  /** The same, once it has arrived: `measured` is asked synchronously. */
+  private past: FoldedRecord | null = null;
   /**
    * How long the file was when this instance opened it. Everything past that
    * is this instance's own, already in `recorded`, and is not read back.
@@ -92,6 +110,7 @@ export class FightLog implements FightSink {
   record(fight: FightRecord): void {
     this.held.push(fight);
     foldFight(this.recorded, fight);
+    foldOutput(this.recordedOutput, fight);
     if (this.held.length > tuning().records.fightsHeld) this.held.shift();
     if (this.timer !== null) return;
     this.timer = setTimeout(() => {
@@ -162,7 +181,7 @@ export class FightLog implements FightSink {
     names: readonly string[],
     resolve: MobResolver = AS_PRINTED
   ): Promise<Map<string, FightSummary>> {
-    const before = await this.pastRecord();
+    const before = (await this.pastRecord()).folds;
     const out = new Map<string, FightSummary>();
     for (const name of names) {
       const summary = summarizeFolds([before, this.recorded], name, resolve);
@@ -172,18 +191,42 @@ export class FightLog implements FightSink {
   }
 
   /**
+   * What this character deals a round at `level`, from the whole record —
+   * the hunting survey's rounds where the realm's arithmetic declines.
+   *
+   * Synchronous, because the survey is: until the file has been folded this
+   * answers from this session's fights alone and starts the fold, and
+   * `ready()` is what a caller that can wait awaits first.
+   */
+  measured(level: number, ask: MeasureAsk): MeasuredOutput | null {
+    if (this.past === null) void this.pastRecord();
+    return measuredPerRound(
+      [this.past?.outputs ?? NOTHING_FOLDED.outputs, this.recordedOutput],
+      level,
+      ask
+    );
+  }
+
+  /** Resolves once the file as it stood has been folded. */
+  async ready(): Promise<void> {
+    await this.pastRecord();
+  }
+
+  /**
    * The record as it stood before this instance, folded. Started by the first
    * question and shared by every later one; a file that cannot be read is
    * said out loud once and answers as empty, so the fights this session sees
    * are still counted.
    */
-  private pastRecord(): Promise<ReadonlyMap<string, FightFold>> {
-    this.before ??= foldFile(this.file, this.priorBytes).catch((error: unknown) => {
-      this.events.notice?.(
-        `Fight statistics could not be read from ${this.file}: ${errorMessage(error)}`
-      );
-      return new Map<string, FightFold>();
-    });
+  private pastRecord(): Promise<FoldedRecord> {
+    this.before ??= foldFile(this.file, this.priorBytes)
+      .catch((error: unknown) => {
+        this.events.notice?.(
+          `Fight statistics could not be read from ${this.file}: ${errorMessage(error)}`
+        );
+        return NOTHING_FOLDED;
+      })
+      .then((folded) => (this.past = folded));
     return this.before;
   }
 }
@@ -207,9 +250,10 @@ function lengthOf(file: string): number {
  * `records.fightsFoldSlice` fights, so a socket read is never behind more
  * than one slice of it.
  */
-async function foldFile(file: string, bytes: number): Promise<FightFolds> {
+async function foldFile(file: string, bytes: number): Promise<FoldedRecord> {
   const folds: FightFolds = new Map();
-  if (bytes === 0) return folds;
+  const outputs: FightOutputs = new Map();
+  if (bytes === 0) return { folds, outputs };
   const raw = Buffer.alloc(bytes);
   const handle = await fs.promises.open(file, 'r');
   let read: number;
@@ -235,7 +279,9 @@ async function foldFile(file: string, bytes: number): Promise<FightFolds> {
     if (end === -1) end = text.length;
     if (end > start) {
       try {
-        foldFight(folds, JSON.parse(text.slice(start, end)) as FightRecord);
+        const record = JSON.parse(text.slice(start, end)) as FightRecord;
+        foldFight(folds, record);
+        foldOutput(outputs, record);
       } catch {
         // One malformed line costs one fight, not the file.
       }
@@ -244,7 +290,7 @@ async function foldFile(file: string, bytes: number): Promise<FightFolds> {
     }
     start = end + 1;
   }
-  return folds;
+  return { folds, outputs };
 }
 
 /**

@@ -22,7 +22,7 @@
 import type { RoomId } from './world';
 
 /** The file format's version, so a reader can refuse one it does not know. */
-export const FINDS_VERSION = 1;
+export const FINDS_VERSION = 2;
 
 export interface Find {
   /** Where it was turned up. Known, or the find is not worth writing down. */
@@ -58,6 +58,48 @@ export interface Find {
    * searching every lap.
    */
   seen: number;
+  /**
+   * Of the searches of its room the log has counted (`searched`), how many
+   * turned it up.
+   *
+   * Not `seen`: rows written before searches were counted (2026-09-18) have a
+   * `seen` with no count of the searches that missed beside it, so theirs
+   * started at zero. On every row written since, the two agree.
+   */
+  hits: number;
+  /**
+   * How many bare searches of its room the log has counted, whatever they
+   * turned up. The **room's** count, kept once per room and joined on where a
+   * row is handed out: a room searched twenty times before a thing first turns
+   * up is one find in twenty-one searches, not one in one.
+   */
+  searched: number;
+}
+
+/** One thing one search turned up, before the log has counted it. */
+export type Sighting = Omit<Find, 'room' | 'seen' | 'hits' | 'searched'>;
+
+/**
+ * How often a search of its room turns this up, 0–1; null before its room's
+ * first counted search.
+ *
+ * Measured, because nothing states it: the server rolls each hidden item
+ * against the searcher's Perception (`Player.TrySearch`, source) and whether
+ * it is there to roll for is up to whoever hid it. Pooled across every
+ * character on the realm, as the log is.
+ */
+export function findRate(find: Find): number | null {
+  return find.searched > 0 ? find.hits / find.searched : null;
+}
+
+/** Rarest first, a row with no rate yet last, and newest first among equals. */
+export function byRarest(a: Find, b: Find): number {
+  const rateA = findRate(a);
+  const rateB = findRate(b);
+  if (rateA === rateB) return byNewest(a, b);
+  if (rateA === null) return 1;
+  if (rateB === null) return -1;
+  return rateA - rateB || byNewest(a, b);
 }
 
 /**
@@ -78,7 +120,7 @@ export function isCash(find: Find): boolean {
   return find.copper !== null;
 }
 
-/** Newest first, which is the order the card offers and the one a log wants. */
+/** Newest first, the order a log wants and the card's among equally rare rows. */
 export function byNewest(a: Find, b: Find): number {
   return b.at - a.at;
 }
@@ -95,7 +137,7 @@ export function roomsWithFinds(finds: readonly Find[]): ReadonlySet<RoomId> {
 }
 
 /**
- * The finds still inside a window, newest first.
+ * The finds still inside a window, rarest first.
  *
  * `days` of `0` means *keep showing everything*: the store is the record and
  * this is a window on it, so turning the number up brings rows back rather
@@ -104,7 +146,7 @@ export function roomsWithFinds(finds: readonly Find[]): ReadonlySet<RoomId> {
  */
 export function within(finds: readonly Find[], days: number, now: number): Find[] {
   const floor = days > 0 ? now - days * 86_400_000 : Number.NEGATIVE_INFINITY;
-  return finds.filter((find) => find.at >= floor).sort(byNewest);
+  return finds.filter((find) => find.at >= floor).sort(byRarest);
 }
 
 /** Whether a find is one somebody asked to be told about. */

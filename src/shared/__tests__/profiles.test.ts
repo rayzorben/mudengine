@@ -253,24 +253,24 @@ describe('the mob priority list, across global, realm and character', () => {
     host: 'gmud-tgs',
     port: 2427,
     encoding: 'cp437',
-    mobPriority: [{ mob: 'sewer rat', priority: 'last' }]
+    mobRules: [{ mob: 'sewer rat', treat: 'last' }]
   };
   const withRealm: Record<string, unknown> = {
     servers: [realm],
-    automation: { combat: { mobPriority: [{ mob: 'red dragon', priority: 'last' }] } }
+    automation: { combat: { mobRules: [{ mob: 'red dragon', treat: 'last' }] } }
   };
 
-  const priorities = (profile: { config: { automation: { combat: { mobPriority: unknown } } } }) =>
-    profile.config.automation.combat.mobPriority;
+  const rules = (profile: { config: { automation: { combat: { mobRules: unknown } } } }) =>
+    profile.config.automation.combat.mobRules;
 
   it('keeps a monster only the realm names', () => {
     const profile = resolve({ name: 'Thorn', server: 'GreaterMUD (local)' }, withRealm);
-    expect(priorities(profile)).toContainEqual({ mob: 'sewer rat', priority: 'last' });
+    expect(rules(profile)).toContainEqual({ mob: 'sewer rat', treat: 'last' });
   });
 
   it('keeps the global rows beside the realm’s', () => {
     const profile = resolve({ name: 'Thorn', server: 'GreaterMUD (local)' }, withRealm);
-    expect(priorities(profile)).toContainEqual({ mob: 'red dragon', priority: 'last' });
+    expect(rules(profile)).toContainEqual({ mob: 'red dragon', treat: 'last' });
   });
 
   /*
@@ -282,15 +282,15 @@ describe('the mob priority list, across global, realm and character', () => {
       {
         name: 'Thorn',
         server: 'GreaterMUD (local)',
-        automation: { combat: { mobPriority: [{ mob: 'gnoll shaman', priority: 'first' }] } }
+        automation: { combat: { mobRules: [{ mob: 'gnoll shaman', treat: 'first' }] } }
       },
       withRealm
     );
-    expect(priorities(profile)).toEqual(
+    expect(rules(profile)).toEqual(
       expect.arrayContaining([
-        { mob: 'gnoll shaman', priority: 'first' },
-        { mob: 'sewer rat', priority: 'last' },
-        { mob: 'red dragon', priority: 'last' }
+        { mob: 'gnoll shaman', treat: 'first' },
+        { mob: 'sewer rat', treat: 'last' },
+        { mob: 'red dragon', treat: 'last' }
       ])
     );
   });
@@ -300,23 +300,23 @@ describe('the mob priority list, across global, realm and character', () => {
       {
         name: 'Thorn',
         server: 'GreaterMUD (local)',
-        automation: { combat: { mobPriority: [{ mob: 'sewer rat', priority: 'first' }] } }
+        automation: { combat: { mobRules: [{ mob: 'sewer rat', treat: 'first' }] } }
       },
       withRealm
     );
-    expect(priorities(profile)).toContainEqual({ mob: 'sewer rat', priority: 'first' });
-    expect(priorities(profile)).not.toContainEqual({ mob: 'sewer rat', priority: 'last' });
+    expect(rules(profile)).toContainEqual({ mob: 'sewer rat', treat: 'first' });
+    expect(rules(profile)).not.toContainEqual({ mob: 'sewer rat', treat: 'last' });
   });
 
   it('lets the realm’s row win over the global one', () => {
     const profile = resolve(
       { name: 'Thorn', server: 'GreaterMUD (local)' },
       {
-        servers: [{ ...realm, mobPriority: [{ mob: 'red dragon', priority: 'first' }] }],
-        automation: { combat: { mobPriority: [{ mob: 'red dragon', priority: 'last' }] } }
+        servers: [{ ...realm, mobRules: [{ mob: 'red dragon', treat: 'first' }] }],
+        automation: { combat: { mobRules: [{ mob: 'red dragon', treat: 'last' }] } }
       }
     );
-    expect(priorities(profile)).toEqual([{ mob: 'red dragon', priority: 'first' }]);
+    expect(rules(profile)).toEqual([{ mob: 'red dragon', treat: 'first' }]);
   });
 
   /*
@@ -325,6 +325,6 @@ describe('the mob priority list, across global, realm and character', () => {
    */
   it('keeps the global list for a character that spells its address out inline', () => {
     const profile = resolve({ name: 'Thorn', server: { host: 'gmud-tgs', port: 2427 } }, withRealm);
-    expect(priorities(profile)).toEqual([{ mob: 'red dragon', priority: 'last' }]);
+    expect(rules(profile)).toEqual([{ mob: 'red dragon', treat: 'last' }]);
   });
 });

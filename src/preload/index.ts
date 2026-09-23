@@ -35,7 +35,7 @@ import type { LoopProgress } from '../shared/loops';
 import type { WalkProgress } from '../shared/walk';
 import type { AutomationSnapshot } from '../shared/automation';
 import type { RoomVerdict } from '../shared/verdict';
-import type { QuestWatched, RoomAsk } from '../shared/quests';
+import type { QuestRunProgress, QuestWatched, RoomAsk } from '../shared/quests';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -128,13 +128,18 @@ const api: IpcApi = {
   worldInfo: (session) => ipcRenderer.invoke(Invoke.worldInfo, session),
   questBook: (session) => ipcRenderer.invoke(Invoke.questBook, session),
   questErrand: (session, block) => ipcRenderer.invoke(Invoke.questErrand, session, block),
+  questPlan: (session, block, marked) =>
+    ipcRenderer.invoke(Invoke.questPlan, session, block, marked),
+  questRun: (session, block, marked) => ipcRenderer.invoke(Invoke.questRun, session, block, marked),
+  questStop: (session) => ipcRenderer.invoke(Invoke.questStop, session),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
-  huntingGrounds: (session) => ipcRenderer.invoke(Invoke.huntingGrounds, session),
+  huntingGrounds: (session, measure) => ipcRenderer.invoke(Invoke.huntingGrounds, session, measure),
   trainers: (session) => ipcRenderer.invoke(Invoke.trainers, session),
   banks: (session) => ipcRenderer.invoke(Invoke.banks, session),
   itemsServing: (session) => ipcRenderer.invoke(Invoke.itemsServing, session),
+  wards: (session) => ipcRenderer.invoke(Invoke.wards, session),
   draftLoop: (session, rooms) => ipcRenderer.invoke(Invoke.draftLoop, session, rooms),
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),
   lookup: (session, query) => ipcRenderer.invoke(Invoke.lookup, session, query),
@@ -166,6 +171,7 @@ const api: IpcApi = {
   onFinds: (handler) => subscribe<Addressed<Find[]>>(Push.finds, handler),
   onCharacterReset: (handler) => subscribe<Addressed<ResetNotice>>(Push.characterReset, handler),
   onQuestSaid: (handler) => subscribe<Addressed<QuestWatched>>(Push.questSaid, handler),
+  onQuestRun: (handler) => subscribe<Addressed<QuestRunProgress>>(Push.questRun, handler),
   onConfig: (handler) => subscribe<ConfigSnapshot>(Push.config, handler),
   onInternal: (handler) => subscribe<InternalConfig>(Push.internal, handler)
 };

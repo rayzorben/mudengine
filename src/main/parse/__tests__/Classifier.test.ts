@@ -147,6 +147,65 @@ describe('combat', () => {
     expect(g['attacker']).toBe('huge cave rat');
   });
 
+  /*
+   * The three blows whose tail carries a comma (todo 02).
+   *
+   * `…swings at you, but you dodge out of the way!` was read the whole time
+   * and `…hits you, but the swing glances off!` was read as nothing, and the
+   * only difference between them is a second `you` for the lazy head to eat.
+   * The cost of the gap: `*Combat Off*` had just cleared the fight — this
+   * client's own blessing cast produced it — the glance was the only evidence
+   * the sandworm was still swinging, `combat.attackers` stayed empty, and the
+   * walker spent its three beats and stepped out of the fight
+   * (`logs/2026-09-22_08-02-35_festus.mudcap.jsonl`, the glance at t=620598
+   * and `sw` at t=624061).
+   *
+   * The article is optional on the glance because the wire carries lowercase
+   * monsters (`quickling lord jabs you, …`) and because a player's blow is
+   * the same sentence.
+   */
+  it('reads a blow whose clause after "you" carries a comma', () => {
+    const glance = expectType(
+      'The big sandworm hits you, but the swing glances off!',
+      'mob-misses'
+    );
+    expect(glance['line']).toBe('big sandworm hits you');
+    expect(classify('quickling lord jabs you, but the swing glances off!').type).toBe('mob-misses');
+
+    const missed = expectType(
+      'The mermex hunter swings at you with its claws, but misses!',
+      'mob-misses'
+    );
+    expect(missed['line']).toBe('mermex hunter swings at you with its claws');
+
+    expect(
+      expectType('The orc rogue slashes at you, but your armour deflects the blow!', 'mob-misses')[
+        'line'
+      ]
+    ).toBe('orc rogue slashes at you');
+  });
+
+  /*
+   * And what the frame must not swallow, which is why the tail class was not
+   * simply given a comma instead: replaying the corpus that way moved 46
+   * lines and 16 of them were **deaths** becoming misses. A death read as a
+   * miss leaves the corpse standing in the room for ever, and it is
+   * irreversible — `asDeathSentence` returns early on a block a rule has
+   * already typed, so no table gets a second look at it.
+   *
+   * These are the realm's own death sentences, so the rules leave them for
+   * that table; what this asserts is that they do not become a blow.
+   */
+  it('leaves a death whose sentence mentions this character to the death table', () => {
+    for (const line of [
+      'The bandit eyes you evilly, and dies.',
+      'The minotaur chieftain curses at you spitefully, and dies!',
+      'The fire ant soldier snaps at you, stumbles, and is still!'
+    ]) {
+      expect(classify(line).type).not.toBe('mob-misses');
+    }
+  });
+
   /* Speech is not a swing, and a name that merely starts with "you" is not you. */
   it('does not read an ordinary sentence as a blow', () => {
     expect(classify('The shopkeeper says "I have nothing for you!"').type).not.toBe('mob-misses');
@@ -1456,6 +1515,22 @@ describe('combat, anchored on the frame', () => {
     expect(expectType('Kaylon kneels to meditate.', 'player-rests')['player']).toBe('Kaylon');
   });
 
+  /*
+   * MajorMUD tells the fallen character the room's sentence (bearfather,
+   * `logs/2026-09-18_21-00-32_soul.mudcap.jsonl`: `Soul drops to the ground!`
+   * at `[HP=-1/KAI=0]`, then every command refused as mortally wounded).
+   */
+  it('reads this character’s own name dropping as this character going down', () => {
+    const as = (self: string | null) => new Classifier({ ...NAMES, self: () => self });
+    const type = (classifier: Classifier, plain: string) =>
+      classifier.classify(line(plain)).block.type;
+    expect(type(as('Soul'), 'Soul drops to the ground!')).toBe('user-mortally-wounded');
+    // Somebody else, the other sentence of the rule, and a name nobody has said.
+    expect(type(as('Soul'), 'Trickster drops to the ground!')).toBe('player-dies');
+    expect(type(as('Soul'), 'Soul is dead.')).toBe('player-dies');
+    expect(type(as(null), 'Soul drops to the ground!')).toBe('player-dies');
+  });
+
   it('reads damage with no attacker', () => {
     expect(
       expectType('You take 1 damage for bashing the door!', 'user-takes-damage')
@@ -2386,6 +2461,105 @@ describe('the ability listing', () => {
     expect(c.classify(line('Newhaven')).block.type).toBe('room-name');
     expect(c.classify(line('The Silver River')).block.type).toBe('room-name');
     expect(c.classify(line('Race')).block.type).not.toBe('room-name');
+  });
+});
+
+/*
+ * `stat all`, verbatim from the wire: the user's own paste (Festus on
+ * Paradigm, 2026-09-18), with the attack rows of two sheets run against a
+ * monster (Festus, 2026-09-06 and 2026-09-07) beside it below.
+ */
+const STAT_ALL = [
+  'Name: Festus                                     Illu:           25',
+  'HP Regen:   6/18       AC vs Evil:  68           Cold Resist:     0',
+  'MA Regen:   3/3        Shadow:       0           Water Resist:    0',
+  'Max HP:    45          Party:        0           Fire Resist:    10',
+  'Max Mana:   5          Prev:        10           Stone Resist:    0',
+  'Encum:      0          Prgd:         0           Lit Resist:      0',
+  '                       vs Good:     58           Dodge:          13',
+  '                                                 Crits:           3',
+  '                                                 Spell Damage:    0',
+  'Attacks:',
+  'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)',
+  'Attack       3.584    105     8    25     0(3)            65(67)  ',
+  'Bash         1.792    105    22    82                     93(94)  ',
+  '',
+  'Spells:                               ',
+  'Short Name   Casts   Diff   Min   Max                Avg/Rnd',
+  '                 1    100     5    25                     15',
+  'mace             1    100     1     3                      2'
+];
+
+describe('the stat all sheet', () => {
+  const feed = (lines: string[]) => {
+    const c = new Classifier(NAMES);
+    const seen: string[] = [];
+    let batch;
+    for (const text of lines) {
+      const out = c.classify(line(text));
+      seen.push(out.block.type, ...(out.tails ?? []).map((tail) => tail.type));
+      if (out.batch) batch = out.batch;
+    }
+    return { batch, seen };
+  };
+
+  it('reads both regeneration lines and the plain round, and nothing it does not use', () => {
+    const { batch } = feed([...STAT_ALL, '[HP=259/259,MA=49/49]:']);
+    expect(batch?.type).toBe('user-stat-all');
+    expect(batch?.rows).toEqual([
+      { healthRegen: '6', restingRegen: '18' },
+      { baseManaRegen: '3', manaRegen: '3' },
+      { section: 'Attacks' },
+      // No `QnD(Total)` on a bash, and `(+xtra)` on both: optional columns.
+      { swings: '3.584', accuracy: '105', min: '8', max: '25' },
+      { section: 'Spells' }
+    ]);
+  });
+
+  it('is found behind the prompt it was typed at', () => {
+    const [first, ...rest] = STAT_ALL;
+    const { batch } = feed([`[HP=156/MA=13]:${first}`, ...rest, '[HP=156/MA=13]:']);
+    expect(batch?.type).toBe('user-stat-all');
+  });
+
+  it('names the monster a sheet was run against', () => {
+    const { batch } = feed([
+      ...STAT_ALL.slice(0, 9),
+      'Attacks against <black orc captain>:',
+      'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)',
+      'Attack        2.32     86     5    22     0(2)            25(26)  ',
+      'Bash          1.16     83    19    79                     39      ',
+      '[HP=156/MA=13]:'
+    ]);
+    expect(batch?.rows).toContainEqual({ section: 'Attacks', against: 'black orc captain' });
+    expect(batch?.rows).toContainEqual({ swings: '2.32', accuracy: '86', min: '5', max: '22' });
+  });
+
+  it('reads a sheet without the extra column, and a negative figure', () => {
+    const { batch } = feed([
+      ...STAT_ALL.slice(0, 9),
+      'Attacks against <Mother Ungol>:',
+      'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd',
+      'Attack       2.817     79     0     0     0(-2)            0      ',
+      '[HP=148/MA=13]:'
+    ]);
+    expect(batch?.rows).toContainEqual({ swings: '2.817', accuracy: '79', min: '0', max: '0' });
+  });
+
+  /* Walking into a room called `Attacks` is the failure the abilities listing had. */
+  it('reads no line of it as a room', () => {
+    const { batch, seen } = feed([...STAT_ALL, '[HP=259/259,MA=49/49]:']);
+    expect(batch?.type).toBe('user-stat-all');
+    expect(seen).not.toContain('room-name');
+    expect(seen).not.toContain('room-description');
+  });
+
+  it('is not the stat sheet', () => {
+    const { batch } = feed([
+      'Name: Festus Marcus                  Lives/CP:      9/0',
+      '[HP=259/259,MA=49/49]:'
+    ]);
+    expect(batch?.type).not.toBe('user-stat-all');
   });
 });
 

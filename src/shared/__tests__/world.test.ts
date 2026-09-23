@@ -4,6 +4,8 @@ import {
   asRoomReference,
   asRoute,
   describeBlock,
+  hazardFor,
+  type SpellHazard,
   newDemands,
   openableHere,
   parseLair,
@@ -339,11 +341,13 @@ describe('newDemands', () => {
       walls: [{ kind: 'unreachable' }],
       hazards: [
         {
+          id: 754,
           spell: 'river damage',
           rooms: 4,
           share: 0.1,
           unread: false,
           summons: false,
+          relocates: false,
           needs: [{ id: 191, name: 'log raft' }],
           needsSpell: []
         }
@@ -436,5 +440,52 @@ describe('openableHere', () => {
     expect(openableHere({ kind: 'hidden', raw: 'Hidden/Searchable', searchable: true })).toBe(
       false
     );
+  });
+});
+
+/*
+ * A gate on level says *which* character, and the router is planning for one
+ * (todo 01). Paradigm's desert spell: a one-in-a-hundred sandstorm gated at
+ * `maxlevel 19`, on 979 rooms a level 21 character walks through.
+ */
+describe('a hazard as it applies to one character', () => {
+  const desert: SpellHazard = {
+    relocates: true,
+    summons: true,
+    avoidedBySpell: [711],
+    levels: { relocates: { max: 19 } }
+  };
+
+  it('drops an effect the realm has already excluded this character from', () => {
+    expect(hazardFor(desert, 21).relocates).toBe(false);
+    // And keeps everything the band says nothing about.
+    expect(hazardFor(desert, 21).summons).toBe(true);
+    expect(hazardFor(desert, 21).avoidedBySpell).toEqual([711]);
+  });
+
+  it('keeps it for a character inside the band', () => {
+    expect(hazardFor(desert, 19).relocates).toBe(true);
+    expect(hazardFor(desert, 1).relocates).toBe(true);
+  });
+
+  /*
+   * Unknown is never the reassuring answer, and here the reassuring answer is
+   * *it cannot happen to you*: a character the client cannot place is priced
+   * for the whole chain, exactly as it was before any of this.
+   */
+  it('keeps the whole hazard for an unstated level', () => {
+    expect(hazardFor(desert, null)).toBe(desert);
+    expect(hazardFor(desert, undefined)).toBe(desert);
+  });
+
+  it('is the same object where nothing is gated, so the ordinary room is free', () => {
+    const plain: SpellHazard = { damage: 15, avoidedBy: [690] };
+    expect(hazardFor(plain, 21)).toBe(plain);
+  });
+
+  it('reads a minimum as well as a maximum', () => {
+    const summonsHigh: SpellHazard = { summons: true, levels: { summons: { min: 50 } } };
+    expect(hazardFor(summonsHigh, 21).summons).toBe(false);
+    expect(hazardFor(summonsHigh, 50).summons).toBe(true);
   });
 });

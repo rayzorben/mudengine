@@ -205,19 +205,25 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
      * Nine exits in the shipped realm, seven in the other, eight distinct
      * instructions between them. The ids that occur are `DaoLordQuest` (134),
      * `Rune` (152), `Mandos Quest` (200) and `GuildmasterQuest` (204) — quest
-     * counters, which the wire states nowhere. So what this parse buys is the
-     * one case that *can* be priced: `Ability: 0 w/value 0 to 0`, where the id
-     * is the realm's empty slot and the server builds a plain exit (case 23).
-     * Dropping the zero is what makes that exit free instead of a condition
-     * nobody can meet.
+     * counters, which the wire states nowhere *except* in `abil`'s listing.
+     *
+     * **The window is kept, because there is now something that can read it.**
+     * It was dropped while no client fact could be compared against it, and
+     * `Ability: 0 w/value 0 to 0` — the realm's empty slot, which the server
+     * builds as a plain exit (case 23) — was the only case this parse could
+     * settle. `abil` states the sums, so the window is the comparison the
+     * server makes and it goes on `abilities` as the one `AbilityGate` this
+     * exit states, in the same shape a room script's `checkability` takes.
+     * One field, one reader, and the two shapes cannot answer differently
+     * about the same character.
      */
     const gate = /^Ability:\s*(\d+)\s*w\/value\s*(\d+)\s*to\s*(\d+)/i.exec(text);
     if (gate) {
-      // The id alone. The window is matched so the shape is proved read, and
-      // then dropped: nothing can price it without the character's ability sum,
-      // and the chip already shows the instruction verbatim.
       const id = Number(gate[1]);
-      if (id > 0) requirement.abilityId = id;
+      if (id > 0) {
+        requirement.abilityId = id;
+        requirement.abilities = [{ id, atLeast: Number(gate[2]), atMost: Number(gate[3]) }];
+      }
     }
   }
 

@@ -64,7 +64,7 @@ body {
  * coincidence: a translucent value would put the fallback straight back.
  *
  * Written once, against the element, rather than per select. The three selects
- * that exist today are on the Talk card, the settings forms and the "Plays on"
+ * that exist today are on the Talk card, the settings forms and the Realm
  * picker, and the next one added must not have to remember this.
  */
 option {
@@ -507,6 +507,8 @@ option {
 .terminal-layer {
   min-height: 0;
   min-width: 0;
+  /* The quest run banner is positioned against the pane it reports on. */
+  position: relative;
 }
 
 /*
@@ -530,6 +532,309 @@ option {
  */
 .terminal-layers:not([style*='--panes: 1']) .terminal-layer[data-focused='true'] > .terminal-cell {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-line));
+}
+
+/* ============================================== the quest run, over the pane
+ *
+ * The run of a quest plan over the top rows of the console it is running in
+ * (`QuestRunBanner`, 2026-09-22): a multi-step form's stepper. Why it is over
+ * the pane and not docked, and why it is main's words: `mudengine-ui` ›
+ * quests, *the run is a banner*.
+ *
+ * Saturated and never blurred, the floating card's rule, but near-opaque
+ * rather than its see-through fill, measured: at 84% the room name under the
+ * head line showed through the quest's name and neither could be read. The
+ * accent's own hairline along the top is the one lit rim in colour, and it
+ * turns to the condition tone when the run ends.
+ */
+.quest-banner {
+  animation: card-enter var(--dur-surface) var(--ease-out) backwards;
+  background: var(--glass-fill-near);
+  backdrop-filter: saturate(1.2);
+  -webkit-backdrop-filter: saturate(1.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--ink-line));
+  border-radius: var(--r-control);
+  box-shadow: var(--glass-rim), var(--elev-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  left: 10px;
+  overflow: hidden;
+  padding: 8px 10px 9px;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 4;
+}
+
+.quest-banner::before {
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 35%, transparent)
+  );
+  content: '';
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.quest-banner[data-status='done'] {
+  border-color: color-mix(in srgb, var(--ok) 30%, var(--ink-line));
+}
+
+.quest-banner[data-status='done']::before {
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 35%, transparent));
+}
+
+.quest-banner[data-status='stopped'] {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--ink-line));
+}
+
+.quest-banner[data-status='stopped']::before {
+  background: linear-gradient(
+    90deg,
+    var(--danger),
+    color-mix(in srgb, var(--danger) 35%, transparent)
+  );
+}
+
+/* The head: the quest, the rank, which step, the phase and its subject, Stop. */
+.quest-banner-head {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  min-width: 0;
+}
+
+.quest-banner-head > .icon {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.quest-banner[data-status='done'] .quest-banner-head > .icon {
+  color: var(--ok);
+}
+
+.quest-banner[data-status='stopped'] .quest-banner-head > .icon {
+  color: var(--danger);
+}
+
+/* The name gives way before the controls do: it ellipsises, Stop never leaves the row. */
+.quest-banner-title {
+  color: var(--text-hi);
+  flex: 0 1 auto;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-banner-rank,
+.quest-banner-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.quest-banner-count {
+  border-left: 1px solid var(--ink-line);
+  padding-left: 8px;
+}
+
+/* What it is doing takes the room that is left, and ellipsises before the button does. */
+.quest-banner-state {
+  align-items: baseline;
+  display: flex;
+  flex: 1 1 0;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.quest-banner-state > .chip {
+  flex: 0 0 auto;
+}
+
+.quest-banner-detail {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.quest-banner-stop {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+button.quest-banner-dismiss {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 4px;
+}
+
+/*
+ * The stepper: one stop per step, a node with its number over the act's words,
+ * joined by a line from the previous node's centre to this one's. The three
+ * words run against the reading order as they do everywhere (§ *What is left
+ * is the loudest thing*): done is quiet and ticked, now is the accent, filled,
+ * with the halo, and left is ordinary ink in an outlined ring. The one thing
+ * the grammar does not say: the done node and the trail behind the walk are
+ * tinted `--ok`, the form's own mark for a stop passed; the words stay quiet.
+ */
+.quest-banner-steps {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.quest-banner-steps > li {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  position: relative;
+}
+
+.quest-banner-steps > li + li::before {
+  background: var(--ink-line);
+  content: '';
+  height: 2px;
+  left: -50%;
+  position: absolute;
+  right: 50%;
+  top: 10px;
+}
+
+/* The line behind the walk is the trail it left; the one into `now` runs into the accent. */
+.quest-banner-steps > li[data-progress='done'] + li::before {
+  background: color-mix(in srgb, var(--ok) 65%, var(--ink-line));
+}
+
+.quest-banner-steps > li[data-progress='done'] + li[data-progress='now']::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ok) 65%, var(--ink-line)),
+    var(--accent)
+  );
+}
+
+/*
+ * The line *into* the step being walked to is how far through that walk the
+ * character is (todo 03), so the connector stops being decoration and becomes
+ * the progress indicator the count beside it states.
+ *
+ * It overrides the two rules above rather than joining them, because those
+ * describe the *chain*'s progress — done behind, accent ahead — and this one
+ * is about the journey inside one leg. The unfilled remainder keeps the line
+ * that was there, so a step with no walk under way looks exactly as before.
+ */
+.quest-banner-steps > li[data-progress='now'][style*='--through']::before {
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--through, 0%),
+    color-mix(in srgb, var(--ok) 65%, var(--ink-line)) var(--through, 0%)
+  );
+}
+
+/*
+ * And the count, beside the node it is about. Absolutely placed so it cannot
+ * widen the column — every step is `flex: 1 1 0` and a number in the flow
+ * would make the one being walked wider than the rest, which is the stepper
+ * jumping every time a step lands.
+ */
+.quest-banner-walk {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  line-height: 1;
+  position: absolute;
+  right: calc(50% + 14px);
+  top: 4px;
+  white-space: nowrap;
+}
+
+.quest-banner-node {
+  align-items: center;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+  border-radius: 50%;
+  box-sizing: border-box;
+  color: var(--text-lo);
+  display: flex;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 22px;
+  justify-content: center;
+  line-height: 1;
+  position: relative;
+  width: 22px;
+  z-index: 1;
+}
+
+.quest-banner-steps > li[data-progress='done'] > .quest-banner-node {
+  background: color-mix(in srgb, var(--ok) var(--tone), var(--ink-raised));
+  border-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
+  color: var(--ok);
+}
+
+.quest-banner-steps > li[data-progress='now'] > .quest-banner-node {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--on-accent);
+}
+
+/* The ring breathes while the run is going, the connection dot's own cue, and stands still once it has ended. */
+.quest-banner[data-status='running']
+  .quest-banner-steps
+  > li[data-progress='now']
+  > .quest-banner-node {
+  animation: quest-banner-pulse 1.6s var(--ease-inout) infinite;
+}
+
+@keyframes quest-banner-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone), transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+.quest-banner-name {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-banner-steps > li[data-progress='done'] > .quest-banner-name {
+  color: var(--text-lo-quiet);
+}
+
+.quest-banner-steps > li[data-progress='now'] > .quest-banner-name {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* ============================================================ glass surface */
@@ -1954,11 +2259,11 @@ kbd {
 }
 
 /*
- * The sentence, every chip that qualifies the walk, the offer to fetch what
- * the way needs, and the one press. It **wraps**: the tick is the only child
- * that can neither shrink nor break (a named item, `nowrap`), so without this
- * a route wearing several hazard chips pushed `Walk it` off the right edge of
- * a 560px panel rather than taking a second line.
+ * The sentence, every chip that qualifies the walk, the two toggles and the
+ * two presses. It **wraps**: the toggles and the press box can neither shrink
+ * nor break (a named item, `nowrap`), so without this a route wearing several
+ * hazard chips pushed `Walk it` off the right edge of a 560px panel rather
+ * than taking a second line.
  */
 .route-summary {
   align-items: center;
@@ -2762,6 +3067,20 @@ kbd {
   white-space: nowrap;
 }
 
+/*
+ * Nothing on the track is written in the quietest ink but what is done.
+ *
+ * `.quiet-note` is the chrome's register for an aside, and the track had put
+ * where an item comes from, how far a walk is and how many steps are done in
+ * it — which on the dark ground is 3.4:1 and was reported as *so dark I can
+ * barely read it* (2026-09-21). A source is not an aside: it is the answer
+ * the reader opened the quest for. Ordinary ink here; the done rows keep the
+ * quiet one through their own rule, which is the progression's grammar.
+ */
+.quest-track .quiet-note {
+  color: var(--text-lo);
+}
+
 .quest-steps {
   flex: 0 1 auto;
   list-style: none;
@@ -2821,9 +3140,9 @@ kbd {
 .quest-node {
   align-items: center;
   background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
-  border: var(--rule) solid var(--ink-line);
+  border: var(--rule) solid var(--ink-edge);
   border-radius: 50%;
-  color: var(--text-lo);
+  color: var(--text);
   cursor: pointer;
   display: flex;
   font-family: var(--font-mono);
@@ -2859,6 +3178,12 @@ span.quest-node {
   color: var(--accent);
 }
 
+/* And its panel wears the same tone, so the step is found without reading. */
+.quest-step[data-state='next'] .quest-what {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
 /*
  * A step the player says is behind them.
  *
@@ -2868,7 +3193,7 @@ span.quest-node {
  * down at a glance.
  */
 .quest-step[data-state='done'] .quest-what {
-  opacity: 0.45;
+  opacity: 0.6;
 }
 
 .quest-step[data-state='done'] .quest-node {
@@ -2876,10 +3201,68 @@ span.quest-node {
   border-color: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
 }
 
+/*
+ * One step's lines, on a surface of their own.
+ *
+ * A tonal panel with a hairline seam and the control radius — the material
+ * register (§9), where a step used to be a run of lines separated from the
+ * next by a rule through the padding, which on a twelve-step chain read as
+ * one column of grey. The separation is now the surface, and the step the
+ * character is on wears the accent on it.
+ *
+ * **A wrapping row, not a column.** The lines are short — a command, a place
+ * and a gate, a flag, what it pays — and stacked one under another they took
+ * five rows of a card that had the width for two. Each is a flex item at its
+ * own width, so *where* sits beside the flag and the reward beside that where
+ * there is room, and each takes a line of its own where there is not; the
+ * lists (what to bring, the routes, the way in) take the whole width always,
+ * because a list beside a list is two lists. The reading order is untouched:
+ * the realm's own, left to right and down.
+ */
 .quest-what {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--text-lo) 5%, transparent);
+  border: var(--rule) solid color-mix(in srgb, var(--ink-line) 85%, transparent);
+  border-radius: var(--r-control);
+  column-gap: 14px;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 6px 8px;
+  row-gap: 4px;
+}
+
+.quest-what > * {
+  flex: 1 1 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* The short lines share a row where they fit. */
+.quest-what > .quest-meta,
+.quest-what > .quest-gives,
+.quest-what > .quest-plan-act,
+.quest-what > .quest-plan-snags {
+  flex: 0 1 auto;
+}
+
+/*
+ * The act leads the step, and the way to a plan sits at its right.
+ *
+ * A row of its own so the control is at the top corner of the step whatever
+ * the act's length — the place a reader's eye goes for *do something with
+ * this* — rather than the quiet last line it was, which was reported as
+ * invisible (2026-09-21).
+ */
+.quest-step-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.quest-step-head > p {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -3061,6 +3444,141 @@ button.lookup.quest-where svg {
 }
 
 /*
+ * The plan to one step, drawn in the steps' place while it is open.
+ *
+ * Its own list and not the track: a plan is *what is still to do* and reads
+ * as a to-do list — a number, the things to gather, then the act — where the
+ * track is the realm's chain with the counter on it. The number is the
+ * errand's own quiet column, never a `.quest-node` ring, which is a rank. A
+ * step whose way the router could not find is dimmed the way a barred row is,
+ * with the reason on its chip.
+ */
+.quest-plan-box {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.quest-plan-head {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0;
+  padding-bottom: 6px;
+}
+
+.quest-plan {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+/* Each step of the plan is a panel of its own, like a step of the track;
+   the number stands in the gutter beside it. */
+.quest-plan > li {
+  display: grid;
+  gap: 0 8px;
+  grid-template-columns: 2ch minmax(0, 1fr);
+}
+
+.quest-plan > li > .quest-stop {
+  color: var(--text);
+  padding-top: 7px;
+}
+
+.quest-plan-head .quest-verb {
+  color: var(--accent);
+}
+
+/*
+ * The run of a plan: the runner's own progression in the track's three words,
+ * above the plan rows it is carrying, and the phase it is on under it.
+ */
+.quest-run {
+  border-bottom: 1px solid var(--ink-line);
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
+.quest-run .progression {
+  max-height: 7.5em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.quest-run-phase {
+  color: var(--text-lo);
+  margin: 4px 0 0;
+}
+
+.quest-plan-run {
+  margin-left: auto;
+}
+
+.quest-plan > li[data-reachable='false'] > .quest-what {
+  opacity: 0.7;
+}
+
+.quest-plan-act,
+.quest-plan-snags {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 4px;
+  margin: 0;
+}
+
+/*
+ * The way to plan a step: a visible control at the step's top corner.
+ *
+ * Outlined in the accent and tonal behind, never filled — the one filled
+ * control on a surface is its primary action and a chain has twelve of these.
+ * Short, because it sits on a row with a command and a full `--control-h`
+ * would space the whole track out (the failure `.row-action` records).
+ */
+button.quest-plan-btn {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: none;
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 22px;
+  letter-spacing: 0.04em;
+  /* At the right even on a step the realm traced to nobody, where it is alone. */
+  margin-left: auto;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+button.quest-plan-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The way back from a plan, in the same register: it is the head's own control. */
+button.quest-plan-back {
+  font-size: var(--font-micro);
+  height: 22px;
+  padding: 0 8px;
+}
+
+/*
  * What the way into a place demands be carried, under the line it is about.
  *
  * `.quest-items`' own list, indented: it is subordinate to the step's place or
@@ -3127,7 +3645,7 @@ button.lookup.quest-where svg {
  * around the buttons needs so a row of them does not read as one word.
  */
 .quest-ways dd {
-  color: var(--text-lo-quiet);
+  color: var(--text-lo);
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -3181,10 +3699,18 @@ button.lookup.quest-where svg {
  * beside it reads as a second fact — the rule `.quiet-note` already records.
  */
 .quest-verb {
-  color: var(--text-lo-quiet);
+  color: var(--text-lo);
   font-size: var(--font-micro);
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* How many of a supply the plan buys, beside its name. */
+.quest-count {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
 }
 
 /*
@@ -3212,6 +3738,92 @@ button.lookup.quest-where svg {
 }
 
 /*
+ * A row of the book takes a little more height than a row of the pack.
+ *
+ * The pack is read for one item and scrolled; the book is read down, three
+ * shelves at a time, and a row that carries a name, a number and a chip at
+ * one pixel of padding reads as a listing rather than as a list of things to
+ * go and do. Two pixels either side, and the shelves' heads do the rest.
+ */
+.quest-table td {
+  border-bottom: var(--rule) solid color-mix(in srgb, var(--ink-line) 70%, transparent);
+  color: var(--text);
+  padding-block: 3px;
+}
+
+/*
+ * A quest this character can get on with is written in the brightest ink,
+ * because those rows are what the book is opened for; the level and the pay
+ * beside it stay a step down. Reported as *I can barely read it* (2026-09-21):
+ * the whole table was `--text-lo`, which is the pack's register for a listing
+ * scrolled past, and this listing is read.
+ */
+.quest-table tr[data-standing='open'] .quest-name-cell > button.lookup {
+  color: var(--text-hi);
+}
+
+/*
+ * The shelves say which they are in colour as well as in a word: the accent
+ * for what is open (the progression's *now*), the condition tone for what is
+ * done, the ordinary ink for what the realm shuts this character out of. A
+ * wash of the same tone behind the head, so the shelf is found from across
+ * the card, and the seam under it takes the tone too.
+ */
+.quest-table tbody[data-group='open'] .table-group th {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+  border-bottom-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+.quest-table tbody[data-group='done'] .table-group th {
+  background: color-mix(in srgb, var(--ok) var(--tone-wash), transparent);
+  border-bottom-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
+  color: var(--ok);
+}
+
+.quest-table tbody[data-group='barred'] .table-group th {
+  color: var(--text-lo);
+}
+
+/*
+ * A quest this character has finished: the quietest thing on the card.
+ *
+ * The progression's own word for *done* (§ *What is left is the loudest
+ * thing*): the row goes to the quiet ink and the chip carries the tick. Never
+ * dropped, and never dimmed the way a barred row is — a finished chain is
+ * something the reader did, and the two states are told apart by the tick
+ * and the shelf rather than by two depths of grey.
+ */
+.quest-table tr[data-standing='done'] td {
+  color: var(--text-lo);
+}
+
+/*
+ * And the one under way is the loudest: the accent, the progression's word
+ * for *now*, on the chip — which is the only thing on the row that says how
+ * far, so it is the thing that says it is the row the reader is looking for.
+ * Several rows may carry it; a character is under way on a handful of chains
+ * and *which ones* is exactly the question.
+ */
+.chip.quest-progress {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+/* Finished: the tick, in the condition tone the client uses for a thing that
+   is right, rather than a third grey. */
+.chip.quest-progress[data-done='true'] {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
+  color: var(--ok);
+}
+
+.chip.quest-progress[data-done='true']::before {
+  content: '✓ ';
+}
+
+/*
  * A quest this character cannot do, sunk to the bottom of the book.
  *
  * Quieter than the ordinary row and louder than a hidden one, which is the
@@ -3225,12 +3837,12 @@ button.lookup.quest-where svg {
  * it belongs to somebody else — and a character that changes class or gains
  * ten levels reads the same book with the rows back in it.
  */
-.quest-table tr[data-barred='true'] {
+.quest-table tr[data-standing='barred'] {
   opacity: 0.7;
 }
 
 /* Both at once is one dimming, not two multiplied into illegibility. */
-.quest-table tr[data-barred='true'][data-hidden='true'] {
+.quest-table tr[data-standing='barred'][data-hidden='true'] {
   opacity: 0.55;
 }
 
@@ -6121,6 +6733,41 @@ button.lookup.quest-where svg {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
 }
 
+/*
+ * A shelf's head, over the rows it holds (`CardTable.groups`).
+ *
+ * The column headings' own register — micro, upper-case, quiet, a seam under
+ * it — one step down: it names a part of the listing the way they name a
+ * column, and a second weight for it would be a second kind of heading. Not
+ * sticky, because two stacked sticky rows on a card two hundred pixels tall
+ * would be most of the card. A shelf after the first takes air above its
+ * head, which is the whole of the separation between shelves: a rule across
+ * a table already made of rows reads as one more row.
+ */
+.card-table .table-group th {
+  border-bottom: var(--rule) solid var(--ink-line);
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 4px 6px 2px;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.card-table tbody + tbody .table-group th {
+  padding-top: 12px;
+}
+
+/* How many are on the shelf: the figure the facet chips carry, in their place. */
+.table-group-count {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-left: 6px;
+}
+
 /* Read aloud, never drawn: the caption names the table for anything reading
    the screen, and the card's heading says the same thing to everyone else. */
 .sr-only {
@@ -6282,6 +6929,59 @@ button.lookup.quest-where svg {
 .settings-steps input.repeat {
   flex: 0 0 auto;
   min-width: auto;
+}
+
+/*
+ * The realm's own *use this item there* rules, under the player's own list
+ * and under the switch that obeys them (todo 02).
+ *
+ * Read-only, so it is a list rather than a form: nothing here is a control
+ * and nothing here takes focus. The item carries the row and the reason is
+ * quiet beside it, which is `.progression`'s emphasis rule applied to two
+ * halves of one sentence rather than to three stages of one journey.
+ */
+/*
+ * How far through a journey a route is, drawn along the foot of the chip that
+ * states it (todo 03).
+ *
+ * A `background-image` on the chip rather than an element inside it: the chip
+ * is one line of text and a strip under it is a picture of the same fraction,
+ * so giving it a child would be two things to keep in step. `--through` is
+ * set from the same `done / total` the chip prints.
+ */
+.chip.walk-through {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent) 45%, transparent) var(--through, 0%),
+    transparent var(--through, 0%)
+  );
+  background-repeat: no-repeat;
+  background-position: bottom left;
+  background-size: 100% 2px;
+}
+
+.ward-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ward-rules li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ward-rules .ward-item {
+  font-family: var(--font-mono);
+}
+
+.ward-rules .ward-because {
+  color: var(--text-lo-quiet);
 }
 
 .add-step {
@@ -6552,26 +7252,26 @@ button.lookup.quest-where svg {
 }
 
 /*
- * The priority rows, as a grid rather than a flex row.
+ * The monster rules, as a grid rather than a flex row.
  *
- * Every row here has the same three parts — a monster, a band, a remove — so
- * the columns are declared once and each row fills them, and the band selects
- * line up down the page however long the monster names are. `.blessing-line`
- * next door is a flex row because its rows genuinely differ; a column that is
- * the same on every row is a grid's job.
+ * Every row here has the same three parts — a monster, how it is treated, a
+ * remove — so the columns are declared once and each row fills them, and the
+ * selects line up down the page however long the monster names are.
+ * `.blessing-line` next door is a flex row because its rows genuinely differ;
+ * a column that is the same on every row is a grid's job.
  */
-.settings-priorities .priority-line {
+.settings-mob-rules .mob-rule-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
 }
 
-.settings-priorities .spell-picker {
+.settings-mob-rules .spell-picker {
   min-width: 0;
 }
 
-.settings-priorities select {
+.settings-mob-rules select {
   width: auto;
 }
 
@@ -6876,30 +7576,35 @@ button.lookup.quest-where svg {
 }
 
 /*
- * *Collect the key first*, in the head beside the press it changes (todo 07).
- * A label wrapping its own box, so the words are the hit area; it sits last
- * before *Walk it*, which is the order it is read in. No auto margin: an auto
- * margin eats the free space `space-between` distributes, so the chips beside
- * it would pack differently depending on whether the way happens to name an
- * item — one head drawn in two registers.
+ * *Collect the key first* (todo 07) and *Stop before entering* (todo 03), in
+ * the head beside the press they change. Both are `.chip.pick` — the row's own
+ * control register, drawn from `aria-pressed` — rather than a checkbox and its
+ * label: the head is a row of chips already, and a box plus a word spent about
+ * twice a chip's width on one bit of state, on the one row that also has to
+ * hold both presses. `flex: 0 0 auto` because neither may shrink; no auto
+ * margin, since an auto margin eats the free space `space-between` distributes
+ * and the chips beside them would then pack differently depending on whether
+ * the way happens to name an item — one head drawn in two registers.
  */
-/*
- * *Run it* (todo 06), the press before *Walk it*: the same `flex: 0 0 auto`
- * as the ticks, so the head's free space is distributed the same way whether
- * or not the way names an item, and the button cannot be the one child that
- * shrinks at the rail's narrow end while the filled one beside it does not.
- */
-.route-summary .route-run {
+.route-summary :is(.route-collect, .route-stop) {
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 
-.route-summary :is(.route-collect, .route-stop) {
+/*
+ * *Run it* (todo 06) and *Walk it*, in one box. They are one choice made two
+ * ways, so they wrap together or not at all: a head wearing three chips put
+ * *Run it* at the end of one line and *Walk it* alone at the start of the
+ * next, which reads as two unrelated controls and spends a row on one button.
+ * `flex: 0 0 auto` for the reason the chips have it — the head's free space is
+ * distributed the same way whether or not the way names an item, and neither
+ * press may be the child that shrinks at the rail's narrow end.
+ */
+.route-summary > .route-presses {
   align-items: center;
-  color: var(--text-lo);
-  display: inline-flex;
+  display: flex;
   flex: 0 0 auto;
-  gap: 4px;
-  white-space: nowrap;
+  gap: 8px;
 }
 
 /*
@@ -7408,16 +8113,76 @@ button.lookup.quest-where svg {
 }
 
 /*
- * The ways out, each a direction and where it leads, wrapping as a paragraph
- * rather than stacking one per line: a junction with four exits is four short
- * facts and a column of them is a panel twice as tall as the lair it is above.
+ * The operative word, wherever this panel says one: the direction a way out
+ * goes, the phrase a room answers to.
+ *
+ * The same register the route list gives it -- mono, firm, small -- and for
+ * the same reason: it is the half of the line a reader is scanning for. It had
+ * none here, so `northwest` and `Sandbar` were drawn identically and the ways
+ * out read as one unpunctuated sentence. Without the route list's `min-width`,
+ * which belongs to a column of steps and not to a word inside a pill.
+ */
+.room-peek .step-command {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+}
+
+/*
+ * The ways out, wrapping as a paragraph rather than stacking one per line: a
+ * junction with four exits is four short facts and a column of them is a panel
+ * twice as tall as the lair it is above.
+ */
+.room-peek .peek-exits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * **One way out is one bounded thing.** Two of one name -- `northeast Sandbar
+ * northwest Sandbar` -- ran together, because the only thing between a
+ * destination and the next direction was a slightly wider gap than the one
+ * inside the pair. A seam of its own settles it at a glance, at no cost in
+ * height; the arrow inside says which half is the way and which is where it
+ * goes.
  */
 .room-peek .peek-exit {
   align-items: baseline;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-chip);
   display: inline-flex;
-  gap: 4px;
-  margin-right: 10px;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px 7px;
+}
+
+/* The way and the mark for it are one token and never break. */
+.room-peek .peek-exit > .step-command,
+.room-peek .peek-exit-arrow {
+  flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.room-peek .peek-exit-arrow {
+  color: var(--text-lo-quiet);
+}
+
+/*
+ * The destination is the one part that may wrap, because **nothing is hidden**
+ * and the panel's width comes from the room beside the anchor rather than from
+ * the longest name in it: `Newhaven, Village Entrance` in a pill the panel is
+ * narrower than was cut off mid-word at the edge. It takes a second line
+ * inside its own seam instead.
+ */
+.room-peek .peek-exit-to {
+  color: var(--text-hi);
+  overflow-wrap: anywhere;
 }
 
 .room-peek .peek-answers {
@@ -7602,7 +8367,10 @@ button.lookup:focus-visible {
   .rewrite-list .rewrite-name,
   .rewrite-tag .hint,
   .settings-saving,
-  .home-browser-name
+  .home-browser-name,
+  .quest-banner-title,
+  .quest-banner-detail,
+  .quest-banner-name
 ) {
   margin-block: -0.2em;
   padding-block: 0.2em;
@@ -10010,7 +10778,7 @@ tr:hover .row-action.worn,
 }
 
 /*
- * A path plus the picker that fills it in — and, for "Plays on", a select
+ * A path plus the picker that fills it in — and, for Realm, a select
  * plus the button that jumps to editing what it points at, which is the same
  * shape: one control naming a thing, one action beside it that goes to manage
  * the thing itself.

@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   asksHere,
+  earlierHandover,
   packHolds,
+  planAct,
+  planSpan,
   questBars,
   questExperience,
+  questGroup,
   questLevel,
   questSide,
+  rollChance,
   stepDone,
+  stepRoll,
   stepsDone,
+  QUEST_GROUPS,
   type Quest,
   type QuestDoer,
   type QuestGate,
@@ -182,6 +189,136 @@ describe('which steps a counter leaves behind', () => {
 
   it('holds every step of an unheld counter, whatever rank is claimed', () => {
     expect(stepDone(step({ to: 1 }), 5, false)).toBe(false);
+  });
+});
+
+/**
+ * The steps a plan carries: one per rank, from the counter to the target.
+ *
+ * Alternatives share a rank and the first the client could tell somebody to
+ * do is taken; what is behind the character is left out; a target the realm
+ * sets no rank for, or one already reached, plans nothing.
+ */
+describe('the span of a plan', () => {
+  const chain = quest([
+    step({ block: 1, to: 1, who: 'elder', say: ['traders'] }),
+    step({ block: 2, from: 1, to: 2, who: 'sergeant', say: ['head'] }),
+    // Two ways to rank 3: a Warrior's asker and a Mage's, the first actable
+    // one is the plan's.
+    step({ block: 3, from: 2, to: 3, who: 'Meia', say: ['box'] }),
+    step({ block: 4, from: 2, to: 3, who: 'Other', say: ['box'] }),
+    step({ block: 5, from: 3, to: 4, who: 'Tolgard', say: ['return'] })
+  ]);
+
+  it('plans every rank after the character’s up to the target, in rank order', () => {
+    expect(planSpan(chain, 5, 1).map((s) => s.block)).toEqual([2, 3, 5]);
+  });
+
+  it('plans from the start where nothing has stated the counter', () => {
+    expect(planSpan(chain, 2, null).map((s) => s.block)).toEqual([1, 2]);
+  });
+
+  it('takes one step per rank, the first the client can place', () => {
+    const traced = quest([
+      step({ block: 9, to: 1 }),
+      step({ block: 10, to: 1, who: 'elder', say: ['x'] })
+    ]);
+    expect(planSpan(traced, 10, null).map((s) => s.block)).toEqual([10]);
+  });
+
+  it('plans nothing for a step already behind the character', () => {
+    expect(planSpan(chain, 2, 2)).toEqual([]);
+    expect(planSpan(chain, 2, 5)).toEqual([]);
+  });
+
+  it('plans nothing for a block the realm sets no rank for, or does not hold', () => {
+    expect(planSpan(quest([step({ block: 7 })]), 7, null)).toEqual([]);
+    expect(planSpan(chain, 99, null)).toEqual([]);
+  });
+});
+
+describe('what a plan step does', () => {
+  it('asks the asker the first word', () => {
+    expect(planAct(step({ who: 'seeress', say: ['accept', 'yes'] }))).toEqual({
+      verb: 'ask',
+      who: 'seeress',
+      say: 'accept'
+    });
+  });
+
+  it('says the phrase where a room owns the step', () => {
+    expect(planAct(step({ room: '12/2248', say: ['peruse red book'] }))).toEqual({
+      verb: 'say',
+      phrase: 'peruse red book'
+    });
+  });
+
+  it('kills where a death owns it, whatever else the step says', () => {
+    expect(planAct(step({ kill: 'Dao Lord', who: 'x', say: ['y'] }))).toEqual({
+      verb: 'kill',
+      mob: 'Dao Lord'
+    });
+  });
+
+  it('refuses a step traced to nobody, nowhere and no death', () => {
+    expect(planAct(step({ say: ['word'] }))).toBeNull();
+    expect(planAct(step({ who: 'elder' }))).toBeNull();
+  });
+});
+
+describe('an earlier step that hands the item over', () => {
+  const chain = quest([
+    step({ block: 1, to: 1, gives: [{ kind: 'item', id: 50, name: 'heavy box' }] }),
+    step({ block: 2, to: 2, ways: [{ needs: [], takes: [], gives: [{ kind: 'item', id: 51 }] }] }),
+    step({ block: 3, to: 3, takes: [{ id: 50 }] })
+  ]);
+
+  it('names the rank of the step that gives it, only ahead of the asker', () => {
+    expect(earlierHandover(chain, 2, 50)).toBe(1);
+    expect(earlierHandover(chain, 0, 50)).toBeNull();
+  });
+
+  it('reads every route of the earlier step', () => {
+    expect(earlierHandover(chain, 2, 51)).toBe(2);
+  });
+
+  it('answers null for an item nothing earlier gives', () => {
+    expect(earlierHandover(chain, 2, 99)).toBeNull();
+  });
+});
+
+/**
+ * Which shelf of the book a quest is on: open, done, or shut.
+ *
+ * Done is decided first because it is the stronger statement, and the two
+ * cannot both hold — `questBars` asks about the rank after the character's.
+ */
+describe('which shelf a quest is on', () => {
+  const shut = [{ kind: 'level' as const, level: 20 }];
+
+  it('shelves a quest with nothing done and nothing in the way as open', () => {
+    expect(questGroup(0, 12, [])).toBe('open');
+  });
+
+  it('keeps a quest under way on the open shelf', () => {
+    expect(questGroup(3, 12, [])).toBe('open');
+  });
+
+  it('shelves a finished quest as done', () => {
+    expect(questGroup(12, 12, [])).toBe('done');
+  });
+
+  it('shelves a barred quest as shut, however far along it is', () => {
+    expect(questGroup(0, 52, shut)).toBe('barred');
+    expect(questGroup(9, 52, shut)).toBe('barred');
+  });
+
+  it('never calls a quest of no steps finished', () => {
+    expect(questGroup(0, 0, [])).toBe('open');
+  });
+
+  it('reads the shelves in the order the book draws them', () => {
+    expect(QUEST_GROUPS).toEqual(['open', 'done', 'barred']);
   });
 });
 
@@ -543,5 +680,38 @@ describe('what the room’s occupants can be asked', () => {
     expect(asksHere([gated], ['Morukai'], anybody, null, []).map((a) => a.say)).toEqual([
       'phoenix'
     ]);
+  });
+});
+
+/*
+ * A step that rolls (todo 106): the first `skill` gate on the step's own
+ * line, and the odds of one try as the server computes them —
+ * `TextBlockPart.cs:1235`, the stat less the value clamped to 2..98.
+ */
+describe('a step that rolls', () => {
+  const rolling: QuestStep = {
+    block: 2605,
+    who: 'red book',
+    say: ['read red'],
+    needs: [
+      { kind: 'ability', id: 134, atLeast: 6 },
+      { kind: 'skill', stat: 'intellect', value: 30 }
+    ],
+    takes: [],
+    gives: [],
+    to: 7
+  };
+
+  it('names the roll, and none for a step without one', () => {
+    expect(stepRoll(rolling)).toEqual({ stat: 'intellect', value: 30 });
+    expect(stepRoll({ ...rolling, needs: [] })).toBeNull();
+  });
+
+  it('gives the odds off the sheet, clamped as the server clamps them', () => {
+    expect(rollChance(45, 30)).toBe(15);
+    expect(rollChance(30, 30)).toBe(2);
+    expect(rollChance(200, 30)).toBe(98);
+    // An unread stat is unknown, never a chance.
+    expect(rollChance(null, 30)).toBeNull();
   });
 });

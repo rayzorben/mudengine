@@ -63,6 +63,12 @@
  *   status line arrives several times a second under pressure and a `party`
  *   listing repeats.
  *
+ * ## A member may ask
+ *
+ * `@heal` is one party heal whatever the listing says: the member's own word
+ * is the number. Every other gate here still applies. See `mudengine-automation`
+ * › *A member's `@heal` is one party heal*.
+ *
  * Proposes `<short>` bare for this character — a targetless cast lands on the
  * caster (the todo's own transcript, 2026-09-01) — and `<short> <name>` for a
  * member, except where the realm calls the spell party-wide (`healing rain`),
@@ -73,7 +79,7 @@
  */
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
-import type { CharacterState } from '../../shared/character';
+import type { CharacterState, PartyMember } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { castsBare, resolveSpell, spellCost, spellTargeting } from '../../shared/spellcraft';
 import { canPayFor } from './mana';
@@ -100,6 +106,13 @@ export class AutoHeal {
   private healing = new Set<string>();
   /** What was last said about a derived choice, per aim, so a change is said once. */
   private saidChoice = new Map<HealAim, string>();
+  /**
+   * Members who said `@heal`, by lower-cased name: their own spelling and when.
+   * Spent when the cast is **sent**, never when it is queued.
+   */
+  private asked = new Map<string, { from: string; at: number }>();
+  /** Why the last request from each member was refused, so a repeat says nothing new. */
+  private saidRefusal = new Map<string, string>();
 
   constructor(
     private config: SpellsConfig,
@@ -139,10 +152,74 @@ export class AutoHeal {
     this.lastCastAt.clear();
     this.healing.clear();
     this.saidChoice.clear();
+    this.asked.clear();
+    this.saidRefusal.clear();
+  }
+
+  /**
+   * A party member said `@heal`. Recorded for the next decision, which the
+   * caller asks for at once; refused out loud, once per asker and reason, where
+   * this character would not heal them however low they were.
+   *
+   * Membership is asked here as well as by the permission gate, because a
+   * player `allow` passes somebody who is not in the party, and a heal meant
+   * for the party is not cast on a stranger for asking.
+   */
+  request(from: string, state: CharacterState): void {
+    if (!this.enabled) return;
+    const key = from.toLowerCase();
+    const member = state.party.members.some(
+      (row) => !row.invited && row.name.toLowerCase() === key
+    );
+    const refusal = !member
+      ? t('automation.heal.requestNotMember', { from })
+      : this.config.healBelow <= 0
+        ? t('automation.heal.requestHealOff', { from })
+        : !this.config.healParty
+          ? t('automation.heal.requestPartyOff', { from })
+          : this.config.healPartyWith.trim().length === 0 && !this.config.autoChoose
+            ? t('automation.heal.requestNoSpell', { from })
+            : null;
+    if (refusal !== null) {
+      this.sayRefusal(key, refusal);
+      return;
+    }
+    this.asked.set(key, { from, at: this.now() });
+    // Kept rather than refused: the pool refills, and the request stands until
+    // it lapses. But a heal that is not coming yet is said.
+    if (!this.hasMana(state)) this.sayRefusal(key, t('automation.heal.requestLowMana', { from }));
+    else this.saidRefusal.delete(key);
+  }
+
+  private sayRefusal(key: string, refusal: string): void {
+    if (this.saidRefusal.get(key) !== refusal) this.events.notice?.(refusal);
+    this.saidRefusal.set(key, refusal);
+  }
+
+  /**
+   * A request nothing answered in time — this character's own heal, another
+   * member's cooldown or the purse stood in front of it — is said, once, as it
+   * lapses; unless the reason it waited was already said.
+   */
+  private forgetStaleRequests(): void {
+    if (this.asked.size === 0) return;
+    const since = this.now() - tuning().spells.healRequestMs;
+    for (const [key, { from, at }] of [...this.asked]) {
+      if (at > since) continue;
+      this.asked.delete(key);
+      if (this.saidRefusal.has(key)) continue;
+      this.events.notice?.(
+        t('automation.heal.requestLapsed', {
+          from,
+          seconds: Math.round(tuning().spells.healRequestMs / 1000)
+        })
+      );
+    }
   }
 
   onCharacter(state: CharacterState): void {
     if (!this.enabled || this.config.healBelow <= 0) return;
+    this.forgetStaleRequests();
     if (state.phase !== 'in-game' || !this.hasMana(state)) return;
 
     const self = this.config.heal.trim();
@@ -160,9 +237,23 @@ export class AutoHeal {
 
     const party = this.config.healPartyWith.trim();
     if (!this.config.healParty || (party.length === 0 && !this.config.autoChoose)) return;
-    for (const member of state.party.members) {
-      if (member.health === null || state.name === member.name) continue;
-      if (!this.wants(member.name.toLowerCase(), member.health, state.inCombat)) continue;
+    // Those who asked first: their own word is the freshest figure there is,
+    // and a listing that lags keeps a member low for a round after the heal.
+    const asking = (member: PartyMember): number =>
+      this.asked.has(member.name.toLowerCase()) ? 0 : 1;
+    for (const member of [...state.party.members].sort((a, b) => asking(a) - asking(b))) {
+      if (state.name === member.name) continue;
+      const key = member.name.toLowerCase();
+      const asked = this.asked.has(key);
+      /*
+       * A request is one cast and nothing more: it neither needs the listing's
+       * figure nor starts `healTo`'s run, so the thresholds decide everything
+       * after it exactly as they would have.
+       */
+      if (!asked) {
+        if (member.health === null) continue;
+        if (!this.wants(key, member.health, state.inCombat)) continue;
+      }
       /*
        * The percentage is enough to decide *whether* to heal and not enough to
        * decide *which*: 30% of 4,434 and 30% of 62 are the same bar. Only a
@@ -179,14 +270,21 @@ export class AutoHeal {
        * healed must not stand in front of one that can.
        */
       if (spell.length === 0) continue;
+      const reason =
+        asked || member.health === null
+          ? t('automation.heal.reasonRequested', { memberName: member.name })
+          : t('automation.heal.reasonParty', {
+              memberName: member.name,
+              percent: Math.round(member.health * 100)
+            });
+      // Spent when the cast leaves, and by nothing else: one held back by the
+      // cooldown, the purse or the queue is still owed until it lapses.
       this.cast(
         spell,
         member.name,
         state,
-        t('automation.heal.reasonParty', {
-          memberName: member.name,
-          percent: Math.round(member.health * 100)
-        })
+        reason,
+        asked ? () => this.asked.delete(key) : undefined
       );
       return;
     }
@@ -342,8 +440,17 @@ export class AutoHeal {
     return mana / manaMax >= this.config.minMana;
   }
 
-  /** A null target is this character: cast bare, and keyed apart from any name. */
-  private cast(spell: string, target: string | null, state: CharacterState, reason: string): void {
+  /**
+   * A null target is this character: cast bare, and keyed apart from any name.
+   * `onSent` is told when the cast leaves, which is what spends a request.
+   */
+  private cast(
+    spell: string,
+    target: string | null,
+    state: CharacterState,
+    reason: string,
+    onSent?: () => void
+  ): void {
     const key = target === null ? SELF : target.toLowerCase();
     const at = this.now();
     const last = this.lastCastAt.get(key);
@@ -356,7 +463,6 @@ export class AutoHeal {
      * waiting costs nothing and needs no timer. See `canPayFor`.
      */
     if (!canPayFor(state, spellCost(found))) return;
-    this.lastCastAt.set(key, at);
     const word = found.word;
     /*
      * A party-wide spell takes no name: `healing rain` reaches everybody
@@ -365,12 +471,16 @@ export class AutoHeal {
      * through to the named form, which is what the configuration asked for.
      */
     const bare = target === null || castsBare(spellTargeting(found.realm?.targets));
-    this.queue.enqueue({
+    const taken = this.queue.enqueue({
       command: bare ? word : `${word} ${target}`,
       priority: 'combat',
       coalesceKey: `heal:${key}`,
       expiresAt: at + tuning().spells.healExpiresMs,
-      reason
+      reason,
+      ...(onSent === undefined ? {} : { onSent })
     });
+    // A refused enqueue is *not now*, never a cast: the cooldown is for one
+    // that is on its way (todo 113's rule).
+    if (taken) this.lastCastAt.set(key, at);
   }
 }

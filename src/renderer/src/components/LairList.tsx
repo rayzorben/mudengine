@@ -48,6 +48,30 @@ export function ownAlignment(character: CharacterState): Alignment | null {
   return character.online.find((entry) => entry.name.toLowerCase() === self)?.alignment ?? null;
 }
 
+/**
+ * A clock, in the shortest reading that rounds no real difference away.
+ *
+ * The realm states `Rooms.Delay` in whole minutes (1–120 across both shipped
+ * worlds) and `Monsters.RegenTime` in whole hours, so minutes and hours are
+ * what a reader recognises — but GreaterMUD's thirty-second offset lands a
+ * two-minute lair on 90 seconds, and `2m` there would be the client rounding
+ * away the half of the clock the player is standing about waiting for.
+ *
+ * Bare unit letters rather than dictionary keys, as the Hunting card's own
+ * figures are: a suffix on a numeral is not a word the chrome is saying.
+ */
+export function clockText(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) {
+    const minutes = Math.floor(seconds / 60);
+    const rest = Math.round(seconds % 60);
+    return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  const rest = Math.round((seconds % 3600) / 60);
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
 /** The realm's figure, or its range where rows sharing the name disagree. */
 export function healthOf(mob: WorldMob): string {
   return mob.span === undefined
@@ -57,14 +81,27 @@ export function healthOf(mob: WorldMob): string {
 
 /** One line per thing that can spawn, with its health, for pasting. */
 export function lairCopyText(lair: WorldLair): string {
-  const head =
-    lair.max === null
-      ? t('cards.room.tabs.lair')
-      : `${t('cards.room.tabs.lair')} — ${
+  /*
+   * The same two facts the chip row draws, in the order it draws them: the
+   * clock is half of what a lair is worth knowing, and a paste that carried
+   * only the slots would be the card copying something other than its face.
+   */
+  const qualifiers = [
+    ...(lair.max === null
+      ? []
+      : [
           lair.max === 1
             ? t('cards.room.lair.upTo.one')
             : t('cards.room.lair.upTo.many', { max: lair.max })
-        }`;
+        ]),
+    ...(lair.respawnSeconds === null
+      ? []
+      : [t('cards.room.lair.respawn', { clock: clockText(lair.respawnSeconds) })])
+  ];
+  const head =
+    qualifiers.length === 0
+      ? t('cards.room.tabs.lair')
+      : `${t('cards.room.tabs.lair')} — ${qualifiers.join(', ')}`;
   /*
    * The number goes into the paste because it is drawn on the rows: a copy
    * that dropped it would be the card copying something other than the face
@@ -92,13 +129,25 @@ export default function LairList({ lair, mine, inspect }: LairListProps) {
   }
   return (
     <>
-      {lair.max !== null && (
+      {(lair.max !== null || lair.respawnSeconds !== null) && (
         <div className="chip-row">
-          <span className="chip quiet">
-            {lair.max === 1
-              ? t('cards.room.lair.upTo.one')
-              : t('cards.room.lair.upTo.many', { max: lair.max })}
-          </span>
+          {lair.max !== null && (
+            <span className="chip quiet">
+              {lair.max === 1
+                ? t('cards.room.lair.upTo.one')
+                : t('cards.room.lair.upTo.many', { max: lair.max })}
+            </span>
+          )}
+          {/* How long the room takes to fill again — `Rooms.Delay`, resolved in
+              main against the family the wire stated (`WorldGraph.lair`). It
+              is the other half of what a lair is worth: the slots say how much
+              is up, this says how often. Absent, never guessed at, for a realm
+              converted before the column was read. */}
+          {lair.respawnSeconds !== null && (
+            <span className="chip quiet" title={t('cards.room.lair.respawnHint')}>
+              {t('cards.room.lair.respawn', { clock: clockText(lair.respawnSeconds) })}
+            </span>
+          )}
         </div>
       )}
       <dl className="readout lair-list">
@@ -151,6 +200,16 @@ export default function LairList({ lair, mine, inspect }: LairListProps) {
                     {mob.costly === 'always'
                       ? t('cards.room.occupant.alignCostChip')
                       : t('cards.room.occupant.alignCostUncertainChip')}
+                  </span>
+                )}
+                {/* This row's *own* clock — `Monsters.RegenTime` (format 36),
+                    which is a boss's and not the room's: about 300 rows in
+                    each shipped world hold one, up to a day, and a monster
+                    that comes back tomorrow inside a lair that fills every two
+                    minutes is the one thing about the room worth knowing. */}
+                {mob.regenHours !== undefined && mob.regenHours > 0 && (
+                  <span className="chip quiet" title={t('cards.room.lair.mobRespawnHint')}>
+                    {t('cards.room.lair.respawn', { clock: clockText(mob.regenHours * 3600) })}
                   </span>
                 )}
               </dd>

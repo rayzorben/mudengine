@@ -327,6 +327,13 @@ notices:
       one: '"combat.minHealth" was removed from {count} file: there is no longer a health floor on
         opening a fight. Low health is the retreat''s business and the rest''s, which act on the
         character rather than on the decision to swing back. {fileList}'
+    fightCostDropped:
+      many: '"combat.maxFightCost" was removed from {count} files: a fight is no longer declined for
+        what it is expected to cost. The Room card still draws the figure; nothing refuses on it.
+        {fileList}'
+      one: '"combat.maxFightCost" was removed from {count} file: a fight is no longer declined for
+        what it is expected to cost. The Room card still draws the figure; nothing refuses on it.
+        {fileList}'
     recoveryBounds:
       many:
         '"recoverGearTries" and "recoverGearFloor" were written into {count} files: going back for
@@ -361,6 +368,19 @@ notices:
         'Picking and bashing locked doors are now settings, and were written into {count} file with
         the paragraph that explains them. Both are off, which is what the client was already doing.
         {fileList}'
+    wardsMoved:
+      many:
+        '"automation.movement.useWards" moved to "automation.health.useWards" in {count} files and
+        was turned on. It is the realm''s own half of the "when to use an item" rules — the
+        waterskin against the desert spell — and it shipped off one day ago, so the "false" it
+        replaces was this client''s own writing rather than your answer. Turn it off under Health
+        in settings; the backup beside each file has the old answer. {fileList}'
+      one:
+        '"automation.movement.useWards" moved to "automation.health.useWards" in {count} file and
+        was turned on. It is the realm''s own half of the "when to use an item" rules — the
+        waterskin against the desert spell — and it shipped off one day ago, so the "false" it
+        replaces was this client''s own writing rather than your answer. Turn it off under Health
+        in settings; the backup beside the file has the old answer. {fileList}'
     doorsOpened:
       many:
         'Opening and bashing doors on a route are now on by default, and were turned on in {count}
@@ -451,11 +471,20 @@ notices:
         (C)ontinue?" — which a BBS asks once per screenful rather than once per way in, so each
         is now marked "answer every time". They used to be answered once and the login then sat
         at the second one.'
-    mobPriority:
-      one: '"automation.combat.mobPriority" was written into {fileList}, empty: the order
-        monsters are attacked in, as five bands. Nothing changes until you name one.'
-      many: '"automation.combat.mobPriority" was written into {count} files ({fileList}), empty:
-        the order monsters are attacked in, as five bands. Nothing changes until you name one.'
+    mobRules:
+      one: '"automation.combat.mobRules" was written into {fileList}, empty: one row per monster,
+        saying whether to leave it alone and where it comes in the attack order. Nothing changes
+        until you name one.'
+      many: '"automation.combat.mobRules" was written into {count} files ({fileList}), empty: one
+        row per monster, saying whether to leave it alone and where it comes in the attack order.
+        Nothing changes until you name one.'
+    mobRulesFolded:
+      one: '"automation.combat.avoid" and "combat.mobPriority" became one "combat.mobRules" list in
+        {fileList}. An avoided monster is now a row set to never attack; every ranked monster kept
+        its band.'
+      many: '"automation.combat.avoid" and "combat.mobPriority" became one "combat.mobRules" list in
+        {count} files ({fileList}). An avoided monster is now a row set to never attack; every
+        ranked monster kept its band.'
     hideForOpener:
       one: '"automation.combat.hideForOpener" was written into {fileList}, off: hide (or sneak,
         while a lap or route has the character) between fights, so an opening backstab lands
@@ -477,8 +506,9 @@ notices:
       character on somebody else's word, and that is a decision to make on purpose."
     partyRemotesStated:
       '"automation.remotes.party" was written into {file}: the remotes anybody who has joined this
-      character''s party may ask for. It ships with @health and @bless-expired on it, which is
-      what the client was already answering with — nothing changes until "remotes.enabled" is on.'
+      character''s party may ask for. It ships with @health, @bless-expired and @heal on it, which
+      is what the client was already answering with — nothing changes until "remotes.enabled" is
+      on.'
     profileLoopsLifted:
       many: '{count} loops moved out of {characterId} into {loopsDir}.'
       one: '{count} loop moved out of {characterId} into {loopsDir}.'
@@ -687,6 +717,9 @@ notices:
       invalidFile: '{fileName} is not a find log — starting fresh.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
+      upgraded:
+        "{fileName} now counts searches, so each find's chance starts with the next search of
+        its room. The previous file is kept as {fileName}.bak."
     belongings:
       invalidFile:
         '{fileName} is not a record file. Bank balances and worn slots are not kept on disk
@@ -851,6 +884,28 @@ terminal:
   fontNotFixedPitch: "{fontName} is not fixed-pitch ('{widest}' is wider than '{narrowest}') — maps
     and frames will not align."
   jumpToLatest: Jump to latest ↓
+  # The run of a quest plan, as a banner over the top of this character's
+  # console (2026-09-22): the chain as a row of numbered stops with the one
+  # being carried lit, the phase in a word, and what it is about after it.
+  questRun:
+    aria: Quest run
+    toRank: to rank {to}
+    walkSteps: '{done}/{total} steps'
+    stepOf: step {nth} of {count}
+    phase:
+      deciding: Deciding
+      held: Held up
+      listing: Listing the pack
+      fetching: Getting
+      walking: Walking
+      acting: Acting
+      confirming: Confirming
+    done: Done
+    stopped: Stopped
+    stop: Stop
+    stopTitle: Stop the run, and everything it started
+    dismiss: Dismiss
+    dismissTitle: Take the banner down; the Quest card keeps how the run ended
   search:
     closeLabel: Close search
     inputLabel: Find in backscroll
@@ -870,6 +925,8 @@ toolbar:
   invokeItems: Bless from an item
   provideLight: Auto-Light (Light Dark Rooms)
   supplies: Auto-Buy Supplies
+  quests: Auto-Quest (Run a Plan)
+  gear: Auto-Gear (Equipment Sets)
   assistLeader: Auto-Assist Leader
   autoDeposit: Auto-Deposit (Bank Coins)
   automation: Auto (On/Off)
@@ -1304,6 +1361,14 @@ cards:
     # so the row is ordered by distance and never by what it pays.
     unpricedOne: 'The fight in one of them could not be priced; it is listed nearest first.'
     unpricedMany: 'The fight in {count} of them could not be priced; those are listed nearest first.'
+    # Where the realm's own arithmetic cannot price a kill (off the GreaterMUD
+    # lineage), the character's fight record does: said, with its count.
+    measured: 'Kills priced from this character’s own record: {perRound} damage a round over {fights} fights, from level {level} up.'
+    # Past the best few, a lair is ranked on the first estimate: its loop not
+    # walked out, nothing beside it added.
+    rough: rough
+    roughLong: 'Ranked on the first estimate: the loop is its nearest rooms in distance order, with no lair beside it added.'
+    measuring: Measuring this lair’s loop…
     columns:
       lair: Lair
       rate: Exp/h
@@ -1477,13 +1542,98 @@ cards:
         many: '{count} lives or more'
         one: '{count} life or more'
       price: costs {amount}
+      skill: rolls {stat} against {value}
       race: '{name} only'
       spell: under {name}
     gives: Gives
+    # The book's three shelves, in reading order. One word each, because a
+    # head is a label; the sentence is its hover text. `Shut` rather than
+    # `Not yet`: a class or a race is never a yet, and the row's own tooltip
+    # says which kind of shut it is.
+    group:
+      barred: Shut
+      barredTitle: What the realm's gates shut this character out of; each row says why
+      done: Done
+      doneTitle: Every step of these is behind this character
+      open: Open
+      openTitle: What this character can get on with, started or not
     hideHidden: Hide them again
     hideOne: Hide {name}
     none: This realm scripts no quests the client can read. A realm converted before quests were
       indexed states none until it is converted again.
+    # The plan to one step: the steps still to do to reach it, from where the
+    # character stands — steps, never rooms. `by.*` is how each item is got,
+    # split around the realm names that are controls; `snag.*` is what the
+    # realm states would stop it being carried unattended.
+    plan:
+      back: Back to the steps
+      blocked: Blocked
+      button: Plan it
+      buttonTitle: The steps still to do to reach this one, from where this character stands
+      count: '×{count}'
+      by:
+        ask: ask
+        at: at
+        buy: buy at
+        carried: in your pack
+        detour: '{moves} out of the way'
+        earlier: from step {rank}
+        kill: kill
+        say: say {word}
+        sold: sold at {shops}
+        unplaced: nowhere the realm names
+      fromNowhere: from nowhere the client can place
+      fromRank: from rank {from}
+      fromStart: from the start
+      fromUnstated: from the start, with no rank stated — type abil for the realm's count
+      get: Get
+      head: Plan to rank {to}
+      headUnranked: Plan
+      # A rejected ask, in the error's words: not work in progress, and not a
+      # realm with no plan.
+      failed: 'The plan could not be worked out: {reason}'
+      loading: Working the plan out…
+      noAct: nothing the client can tell you to do here
+      none: The realm has no plan for this step.
+      nothing: Nothing left to do to reach this step.
+      routeTo: Route to
+      # A step that rolls (todo 106): said as a chance where the sheet gives one.
+      roll: 'may fail — rolls {stat} against {value}'
+      rollChance: 'may fail — rolls {stat} against {value}, about {chance}% a try'
+      rollTitle: 'A testskill roll: the stat less the value, clamped to 2–98, against 1–100. Run it asks again while it fails.'
+      # The run of a plan (todo 102): the press, its refusal, and the
+      # progression the runner publishes -- in the track's own three words.
+      run: Run it
+      runTitle: Carry this plan step by step, from where this character stands
+      runStop: Stop
+      runStopTitle: Stop the run, and everything it started
+      runStarting: Starting…
+      runRefused: 'Not run: {reason}'
+      runNow: 'Running: {detail}'
+      runNowQuiet: Running
+      runDone: 'Done — {reason}'
+      runStopped: 'Stopped — {reason}'
+      runTries: 'roll {tries}'
+      snag:
+        corridor: '{spell} ×{rooms} · run through'
+        corridorOpen: '{spell} ×{rooms} · run through, and the way out is past this leg'
+        corridorOpenTitle: This leg ends inside it, so the count is to the leg's end and the next leg does not carry it.
+        corridorTitle: 'The way in puts {spell} on you for {ticks} ticks, and then {then}: cross the {rooms} rooms without stopping'
+        corridorTitleShort: 'The way in puts {spell} on you: cross the {rooms} rooms without stopping'
+        hazard: '{spell} ×{rooms}'
+        hazardMoves: '{spell} ×{rooms} · may move you'
+        hazardNeeds: 'A spell the rooms on the way cast; stopped by carrying {needs}'
+        hazardSafe: '{spell} ×{rooms} · safe with {item}'
+        hazardSafeTitle: 'A spell the rooms on the way cast; {item} stops it, and the plan has one'
+        hazardTitle: A spell the rooms on the way cast, which nothing carried stops
+        hazardUnread: '{spell} ×{rooms} · effect unread'
+        hazardUnreadTitle: The realm's script for this spell has a step the client cannot follow, so it cannot say what the rooms do to you.
+        unplaced: '{item}: nowhere known'
+        unreachable: No way there
+      stops: 'for the {spell} on the way'
+      unpriced: Unpriced
+      untraced: The realm traces this step to nobody, nowhere and no death, so there is no act to plan.
+      untracedTarget: The step itself is traced to nobody, nowhere and no death; the plan stops at the rank before it.
     progress:
       clear: Not started
       done:
@@ -1854,6 +2004,9 @@ cards:
       title: Loop
     route:
       badgeArrived: arrived
+      badgeThroughTitle:
+        '{done} of {total} steps walked on this journey, counting the ones walked before the way
+        was redrawn.'
       badgeSearching: searching
       badgeBlocked: blocked
       badgeDark: lighting
@@ -2038,6 +2191,12 @@ cards:
       givenMoreWords: '+{count} more'
       givenSaying: Saying
       noDetail: Named in the world data, with no further detail.
+      # Where the realm puts one (`Rooms.Placed`). `Stands in` for what nobody
+      # can pick up — a sign, a coffin, a tree — and `Lies in` for the rest.
+      placedChooseTitle: Show the {room} rooms it is put in
+      placedFixedLabel: Stands in
+      placedHint: The realm puts one here, and puts it back at the nightly cleanup if it is gone — unless as many as it allows are already out.
+      placedLabel: Lies in
       priceNote: 'Base Value: {price} (pre-markup)'
       shopPlaces: (in {count} places)
       shopRouteTitle: Plan a route to {room}
@@ -2100,6 +2259,7 @@ cards:
       learnedSurvived: ' — seen to survive {hp} hp'
       livesLabel: Lives in
       spawnChooseTitle: Show the {room} rooms it can spawn in
+      # `spawnCount`, `spawnMore` and `spawnRoomsMore` are an item's `Lies in` row too (`PlacesIn`).
       spawnCount: '×{count}'
       spawnMax:
         many: (up to {max} to a room)
@@ -2198,6 +2358,11 @@ cards:
       newRoomChip: new room
       soldItemChip: sold item
       unnamedDestination: somewhere unnamed
+    # Something the realm will not let anybody pick up — a sign, a coffin, a
+    # tree it puts in the room. Said in place of a price, which would answer
+    # *is this worth taking* about a thing nobody can take.
+    fixedChip: fixed
+    fixedTitle: The realm will not let anybody pick this up
     itemLookupTooltip: What the world data says about it
     light:
       deadReckoning: placed by dead reckoning
@@ -2246,12 +2411,22 @@ cards:
         client's data was not built from.
       health: '{hp} hp'
       healthSpan: '{low}–{high} hp'
+      # How long the room waits before it fills again, and — on a row the realm
+      # gives a clock of its own — how long that one monster takes to come back.
+      respawn: respawn {clock}
+      respawnHint: How long this room takes to fill again once it has been cleared.
+      mobRespawnHint: This one has a clock of its own, and comes back on it rather than with the room.
       upTo:
         many: up to {max} at once
         one: one at a time
     finds:
       caption: What searching has turned up in this realm
+      chance: Chance
+      chanceTooltip: Turned up by {hits} of the {searched} searches counted here
       empty: Nothing has been found by searching here yet.
+      facet:
+        cash: coins
+        item: items
       findPlaceholder: Find in what was found
       forget: ''
       forgetAria: Forget the {what} found in {room}
@@ -2278,6 +2453,9 @@ cards:
     pending: Asking the realm about this room…
     pendingName: This room
     placeLabel: Place
+    # What the realm puts in the room and puts back at every nightly cleanup.
+    placedHint: The realm puts these here, and puts each back at the nightly cleanup if it is gone — unless as many as it allows are already out.
+    placedLabel: Placed here
     roomSpellDamage: about {damage} damage a tick
     roomSpellLabel: Casts on you
     roomSpellMoves: it moves you somewhere else
@@ -2286,7 +2464,7 @@ cards:
     unknownRoom: This realm's data has no room with that address.
     walkHereButton: Walk here
     walkHereTooltip: Walk the plan on screen only as far as this room
-    walkToButton: Walk to
+    walkToButton: Plan route
     walkToTooltip: Plan the way here. Nothing is walked until you read the steps and say so.
   route:
     alreadyHere: You are already here.
@@ -2302,7 +2480,7 @@ cards:
     reasons:
       unknownDestinationRoom: Unknown destination {roomId}
       unknownStartRoom: Unknown start room {roomId}
-    routeSummary: '{stepCount} steps · cost {cost}'
+    routeSummary: '{stepCount} steps'
     scatter: 'then {spellName} — one of {roomCount} rooms at random, about {moves} more moves'
     searchAria: Find a room
     trapDamage: up to {damage} damage
@@ -2326,12 +2504,27 @@ cards:
     hazardUnread: this client cannot read what it does
     hazardSummons: it may summon something
     hazardSpell: 'Or be under: {spellList}'
+    # A passage the way in puts a timed spell on you for (todo 104): nothing
+    # carried stops it, and the answer is to keep moving.
+    corridor: '{spellName} for {roomCount} rooms · run through'
+    corridorOpen: '{spellName} for {roomCount} rooms and no way out on this way'
+    corridorTitle: 'The way in puts it on you for {ticks} ticks; it ends in {then}. Inside, the walk moves and does nothing else.'
+    corridorTitleShort: 'The way in puts it on you. Inside, the walk moves and does nothing else.'
     hazardCarry: 'Carry one of these and the rooms on the way stop hurting:'
     stepDeadly: expected to kill you
     stepHazard: '{percent}%'
     stepSlight: <1%
-    stepUnread: unread
+    stepUnread: effect unread
+    stepUnreadTitle:
+      'The realm runs a script when you stand here, and it has a step this client cannot follow — a
+      block the realm''s own table does not hold, a verb nothing here reads, or a spell that ends in
+      another spell. So what the room does to you is unknown, and the router prices it as a risk
+      rather than as free. It is not a reading that the room is dangerous; it is the absence of one.'
     stepSummons: summons
+    stepSummonsTitle:
+      The realm's script for this room can put a monster in it, which is what a lair does — so the
+      router discourages the room the same way, and the share is the discouragement rather than
+      damage anybody measured.
     stepLair: 'lair · {percent}%'
     alternatives:
       many: '{count} alternate routes'
@@ -2341,16 +2534,18 @@ cards:
       round: 'A way round the worst of it, {stepCount} steps'
       carrying: 'Carrying {itemList}, {stepCount} steps'
       viaItem: 'Using {itemList}, {stepCount} steps — saves {savedCount}'
+      another: 'A different way, {stepCount} steps — {freshCount} rooms not on the plan'
     showing:
       round: the way round
       carrying: the way with the items
       viaItem: the way using an item
+      another: the different way
     usedHere: 'here, in {roomName}'
     spendsOnce: single use
     spendsUses: '{useCount} uses'
     spendsForever: unlimited uses
     collectFirst: Collect {itemName} first
-    stopShort: Stop before entering {roomName}
+    stopShort: Stop before entering
     stopShortTooltip: Walk as far as {roomName} and stop there
     stepSkipped: not walked
     alreadyBefore: You are already in the room before {roomName}.
@@ -2922,25 +3117,25 @@ settings:
     attackVerbLabel: Attack Command
     attackVerbPlaceholder: a
     attackWithPlaceholder: a
-    avoidHint: Names as the realm spells them, separated by commas.
-    avoidLabel: Avoid / Ignore Monsters
-    priorityAdd: Add a monster
-    priorityBandAria: 'Priority for monster {number}'
-    priorityDefault: Default — follow the game logic
-    priorityDuplicate: Already ranked above. A monster is in one band; this row does nothing.
-    priorityFirst: First — always attack this first
-    priorityHigh: High — before everything below
-    priorityLast: Last — after everything else
-    priorityLegend: Attack Priority
-    priorityLow: Low — after the game logic
-    priorityNameAria: 'Monster for priority row {number}'
-    priorityNamePlaceholder: Monster name
-    priorityNote:
-      Where one of these is in the room the band decides outright and the usual weighing is
-      skipped. Anything unlisted counts as Default. Monsters you avoid, or that are refused
-      for any other reason, are still never attacked.
-    priorityRemoveAria: 'Remove priority row {number}'
-    priorityRemoveTitle: Remove this monster
+    mobRuleAdd: Add a monster
+    mobRuleDefault: Default — follow the game logic
+    mobRuleDuplicate: Already listed above. A monster is treated one way; this row does nothing.
+    mobRuleFirst: First — always attack this first
+    mobRuleHigh: High — before everything below
+    mobRuleLast: Last — after everything else
+    mobRuleLegend: Monster Rules
+    mobRuleLow: Low — after the game logic
+    mobRuleNameAria: 'Monster for rule {number}'
+    mobRuleNamePlaceholder: Monster name
+    mobRuleNever: Never Attack — leave it alone
+    mobRuleNote:
+      One row per monster you care about. Never Attack is refused before anything else; the
+      other five are the order the rest are attacked in, and where one of these is in the room
+      the band decides outright and the usual weighing is skipped. Anything unlisted counts as
+      Default.
+    mobRuleRemoveAria: 'Remove rule {number}'
+    mobRuleRemoveTitle: Remove this monster
+    mobRuleTreatAria: 'How monster {number} is treated'
     maxMonsterExpHint: Will not attack anything worth more experience than this. 0 is off,
       unknown monsters will be attacked.
     maxMonsterExpLabel: Max Monster Experience
@@ -2952,7 +3147,6 @@ settings:
       Will not attack anything the realm gives more health than this. 0 is off, and a monster the
       realm cannot place is not refused by it.
     maxTargetHealthLabel: Max Target Health
-    avoidPlaceholder: town guard, priest
     engageAll: Attack All Monsters
     engageHint:
       What the world data says about a monster, never its name — one it calls good is attacked only
@@ -2971,10 +3165,6 @@ settings:
     masterSwitchHint: The master switch. With this off nothing below sends anything, whatever it says.
     maxMobsHint: Will not open a fight in a room holding more than this. 0 never refuses.
     maxMobsLabel: Max Monsters in Room
-    maxFightCostHint:
-      Will not open on a monster the fight is expected to cost more than this share of current health,
-      by the same figure the Room card draws. A monster the realm cannot cost is not refused. 0 never.
-    maxFightCostLabel: Max Fight Cost, % of HP
     monstersLegend: Monsters
     openerHint: Sent for the first blow of a fight only. Blank for none.
     openerLabel: Opening Attack
@@ -3112,6 +3302,15 @@ settings:
     # realm's own data, so a rule for poison offers the antidotes and not the
     # healing potions.
     potionRuleLegend: When to use an item
+    useWards: Follow the realm's own rules too
+    useWardsHint:
+      The realm writes rules of this shape itself, and this is whether they are obeyed. Where it
+      says a spell stops a room's effect and a carried item's use casts that spell, the item is
+      used before the step into such a room, and again whenever the spell lapses while standing in
+      one. A use spends a charge and a round. The rules this realm holds are listed below.
+    wardRow:
+      one: against {hazard}, cast in {rooms} room
+      many: against {hazard}, cast in {rooms} rooms
     potionRuleNote:
       Name an item and say what makes it worth using. The list is what this realm says would
       serve the condition; anything else can still be typed, and only an item the pack lists is
@@ -3412,14 +3611,18 @@ settings:
     playerLegend: Permissions for {name}
     partyListNote:
       There is a third list on the Party page — what anybody who has joined this character's
-      party may ask for. It ships with @health and @bless-expired on it, and nothing else.
+      party may ask for. It ships with @health, @bless-expired and @heal on it, and nothing else.
     removePlayer: Remove
     removePlayerTitle: Take every permission back off {name}
     remoteControlNote:
-      Answers @health, @do, @join, @forget, @get-all, @party, @wait and @ok on its own;
+      Answers or acts on the @ commands that can be ticked below, for whoever they are granted to;
       every other @ command is read and reported, never answered.
     replyRoutingNote: The answer goes back the way the question came — ask by telepath to be answered.
   party:
+    askHealHint:
+      Say @heal in the room below this while in a party; a member running MegaMUD or this client
+      answers with a heal. 0 never asks.
+    askHealLabel: Ask for Healing Below %
     assistHint:
       Swing at what the leader — whoever this character follows — was last seen hitting, while it
       is still in the room. Never a player; still under the combat health floor.
@@ -3431,6 +3634,10 @@ settings:
       Swing at a monster seen attacking any party member, while it is still in the room. The fight came to the
       party, so it fires whatever Attack Target Selection says. Never a player.
     defendLabel: Auto-Defend Party
+    healLegend: Healing
+    healNote:
+      A member's own @heal is answered by Auto-Heal Party Members on the Spells page, when @heal is
+      ticked under Party @ commands below.
     legend: Following
     remotesLegend: Party @ commands
     remotesNote:
@@ -3474,9 +3681,9 @@ settings:
     passwordLabel: Password
     passwordPlaceholderSet: •••••••• — leave blank to keep it
     passwordPlaceholderUnset: none set
-    playsOnElsewhere: Somewhere else — type the address
-    playsOnLabel: Plays On
     portLabel: Port
+    realmElsewhere: Somewhere else — type the address
+    realmLabel: Realm
     themeInherit: As set in MudEngine
     themeLabel: Theme
     themeSystem: Follow the system
@@ -3495,9 +3702,10 @@ settings:
     loopsNote:
       Every character that plays here can walk these, without being told to. A character may
       add loops of its own on its own page.
-    priorityNote:
-      Every character that plays here is ranked by this, under any row of its own. Where one of
-      these is in the room the band decides outright and the usual weighing is skipped.
+    mobRuleNote:
+      Every character that plays here follows these, under any row of its own. A monster set to
+      Never Attack is left alone; where one of the others is in the room the band decides
+      outright and the usual weighing is skipped.
     nameHint: What your characters call this realm. Renaming it moves every character that plays here.
     nameLabel: Name
     namePlaceholder: Paradigm Game 1 PVE
@@ -3507,6 +3715,48 @@ settings:
     stepSendPlaceholder: '1'
     stepWhenPlaceholder: Please select a realm
     submit: Add realm
+  gear:
+    legend: Equipment Sets
+    note:
+      A set names only the slots it cares about. What the character has on is the "always" set with
+      whichever other set applies laid over it — so "Moving" is one line about boots rather than a
+      second copy of the whole kit.
+    enabled: Swap kit to suit
+    enabledHint:
+      With this on, the sets below are put on and taken off as the situation changes — walking,
+      fighting, or fighting one named monster. The off-hand comes off before a two-handed weapon
+      goes on, and the weapon hand is sent first, so coming back the other way frees the hand
+      before the shield is asked for.
+    setAdd: Add a set
+    setNamePlaceholder: What to call it
+    setNameAria: Set {number} name
+    setWhenAria: When set {number} applies
+    setMobPlaceholder: Any monster
+    setMobAria: Set {number} monster
+    setRemoveTitle: Remove this set
+    setRemoveAria: Remove set {number}
+    setShadowed: An earlier set already claims this situation, so this one never applies.
+    itemAdd: Add an item
+    itemPlaceholder: The item, as the pack lists it
+    itemAria: Set {number}, item {item}
+    itemRemoveTitle: Remove this item
+    itemRemoveAria: Remove item {item} from set {number}
+    whenAlways: always
+    whenMoving: while moving
+    whenFighting: while fighting
+    offRoundLegend: Between rounds
+    offRoundNote:
+      Using an item on what is being fought, between swings. The server will not use a weapon that
+      is not in hand, so a two-handed one costs six commands a round — off-hand off, weapon on,
+      use, weapon back, off-hand back — against a window of three. 0 rounds never uses it.
+    offRoundItem: Item to use
+    offRoundItemHint:
+      The item, as the pack lists it. It is put in hand, used on whatever is being fought, and the
+      kit put back afterwards.
+    offRoundEvery: Every (rounds)
+    offRoundEveryHint:
+      At most one use this many rounds. 0 never uses it. Every use is a round this character is not
+      swinging in, so a low figure on a long fight is a fight fought with fewer blows.
   sections:
     character: Character
     login: Login
@@ -3733,6 +3983,19 @@ settings:
     rewrites: Rewrites
     talk: Talk
     train: Training
+    gear: Gear
+    quests: Quests
+  # Running a quest's plan -- `automation.quests` (todo 102). One switch,
+  # and the warning in the open: a run walks, buys, hunts and fights unattended.
+  quests:
+    legend: Quests
+    warning:
+      A run walks across the realm, buys, hunts and fights for as long as the chain takes, and
+      stops only for what stops a route. Turn it on for a character you mean to leave to it.
+    enabled: Auto-Quest
+    enabledHint:
+      Lets the Quest card's Run it carry a plan step by step, through the walker, the shopping
+      errand and auto-combat. Off, the press refuses and names this switch.
   talk:
     legend: Other Players
     lookHint:
@@ -3763,6 +4026,12 @@ errors:
     profileUnreadable: could not be read
 # What a session reports: connection, walking, safety, memory.
 session:
+  # Under a timed spell the way in cast (todo 104): said once going in and
+  # once coming out, because every routine stands down in between.
+  corridor:
+    entered: 'Under {spell}: moving only, {rooms} rooms to the way out. Nothing rests, heals, loots,
+      searches or fights until it lifts.'
+    left: 'Out from under {spell}.'
   supplies:
     abandonedDied: the character died
     beforeRoute: Short of {item} — going to {shop} first, then on to {destination}.
@@ -3823,7 +4092,6 @@ session:
   finds:
     coins: coins
     forgot: 'Forgot the {what} found in {room}.'
-    found: 'Found by searching: {what}, in {room} ({id}).'
   reset:
     forgotten:
       'Forgot what was kept about the character that was here before. What was learned about the
@@ -3985,17 +4253,108 @@ automation:
     buyingOnTheWay: 'Going to buy {item} at {shop} in {room} first; the way there goes past it.'
     gotAndKept: '{item} is in the pack, and it is on the keep list, so it stays.'
     gotForTheDoor: '{item} is in the pack — collected for this door, not kept.'
-    hunting: 'Looking for {item}: {mob} drops it, starting at {room}.'
+    hunting: 'Looking for {item}: {mob} drops it, starting at {room}, {steps} steps away.'
+    huntingHere: 'Looking for {item}: {mob} drops it, starting here in {room}.'
+    huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
     loopName: 'Collect: {item}'
     refusalBusy: Something is already being collected.
     replacingLap: 'Stopping {loopName} to go and collect it; it will not start again on its own.'
     refusalLapStopped: 'The hunt for {item} stopped before the pack held one.'
     refusalNoSource: The realm names nowhere this comes from.
+    refusalDropperUnplaced: 'Dropped only by {mobs}, which the realm summons rather than places anywhere.'
+    refusalDropperUnreachable: 'Dropped only by {mobs}, which the realm places nowhere this character can reach from here.'
     refusalNotBought: '{item} was not bought, so the route is not being walked.'
     refusalNotInRealm: This character is not in the realm.
     refusalRouteRefused: 'The way is open now, but the route did not start: {why}'
     stoppedGotIt: 'the pack holds {item}'
     whyLeftRealm: the realm was left
+  # Keeping a room's ward up off a carried item -- `Wards` (todo 105).
+  wards:
+    reason: 'using {item} for {spell} against {hazard}'
+    using: 'Using {item} for {spell}: the rooms ahead cast {hazard}, and nothing carried stops it outright.'
+    nothingCarried:
+      'The rooms ahead cast {hazard}, which {spells} would stop, and the pack holds nothing whose
+      use casts one of them.'
+    lentForRun:
+      'Using wards for the quest run: the plan bought them to be used, though Keep a Room’s Ward Up
+      is off in the settings.'
+    returnedAfterRun: 'The quest run is over: wards are off again, as the settings say.'
+    lendEnded: 'Keep a Room’s Ward Up was turned off, so the quest run goes on without wards.'
+  # Running a quest's plan -- `QuestRunner` (todos 102-103). Every sentence
+  # names the step it is about, and every refusal says what stopped it.
+  quests:
+    because: 'running {quest} to rank {to}'
+    becausePressed: the Quest card's Run it was pressed
+    started: 'Running {quest} to rank {to}: {count} steps.'
+    finished: '{quest} reached rank {to}. The run is done.'
+    refused: 'Quest run stopped: {why}'
+    abandoned: 'Quest run stopped: {why}'
+    going: 'Step {nth}: walking to {room} ({steps} steps).'
+    buying: 'Step {nth}: buying {item} ×{count} at {shop}, {room}.'
+    hunting: 'Step {nth}: hunting {mob} for {item}.'
+    handover: 'Step {nth}: getting {item} — {command}.'
+    asking: 'Step {nth}: {command}.'
+    askingAgain: 'Step {nth}: {command} again — try {tries} of {max}; the roll did not pass.'
+    stepDone: 'Step {nth} done: {quest} is at rank {rank}.'
+    stepAssumed:
+      'Step {nth} sent; this realm prints no counter and the step takes and gives nothing, so
+      the act itself is taken as done.'
+    reasonPack: 'reading the pack for the quest run'
+    reasonAbil: 'reading the quest counter after the act'
+    reasonAct: 'quest step {nth}'
+    reasonHandover: 'asking for {item} for the quest'
+    detailFetching: 'getting {item}'
+    detailWalking: 'walking to {room}'
+    detailKilling: 'fighting {mob}'
+    detailWaitingFor: 'at {who}'
+    detailConfirming: reading the counter
+    whyReset: the connection was reset
+    whyLeftRealm: the realm was left
+    whyPlayerMoved: you moved the character yourself
+    whyStopped: you asked it to
+    whySwitchedOff: Auto-Quest was switched off
+    whyWalkStopped: the walk stopped
+    whyErrandEnded: the shopping errand ended without it
+    whyNothingMoved: nothing moved for long enough that something is stuck
+    whyLegStalled: the walk to the next step stood still
+    heldUp: 'Held up — {why}. Trying again in {seconds}s (setback {tries} of {max}).'
+    stockingUp: 'Stocking up on {item} before step {nth} — this leg passes nearest the counter.'
+    stockUnfilled: 'Carrying on without {item}: the counter had none to spare, and the quest does not want one.'
+    refusalGaveUp: '{why}, and that is {tries} setbacks in a row with nothing achieved'
+    refusalSwitchedOff: 'Auto-Quest is off. Turn it on under Quests in the settings, then press Run it again.'
+    refusalBusy: A quest is already being run.
+    refusalNotInRealm: This character is not in the realm.
+    refusalNothing: The plan has no steps to run.
+    refusalUnplaced: This character is not placed, so nothing can be walked.
+    refusalWalking: A route is being walked; stop it first.
+    refusalEscaping: An escape is in flight.
+    refusalNoPlan: The realm has no plan for this step.
+    refusalUnknownStep: 'No quest holds step {block}.'
+    refusalPackUnread: The pack was asked for and nothing answered.
+    refusalItemGone: 'Step {nth} wants {item}, which the plan said was in the pack and is not.'
+    refusalNotHandedOver: '{item} should have come from the step at rank {rank}, and the pack does not hold it.'
+    refusalItemUnplaced: 'The realm names nowhere {item} comes from.'
+    refusalItemUnnamed: 'The realm names no item for row {id}.'
+    refusalNoWords: 'The realm names no words to say for {item}.'
+    refusalNotBought: '{item} was not bought: {why}'
+    refusalNotHunted: 'Could not go hunting for {item}: {why}'
+    refusalHuntStopped: 'The hunt for {item} stopped before the pack held one.'
+    refusalHandoverUnanswered: '{item} was asked for and the pack did not gain it.'
+    refusalNoRoute: 'No way to {room}: {why}'
+    refusalNotReached: 'Did not reach {room}: {why}'
+    refusalUntraced: 'Step {nth} is traced to nobody, nowhere and no death, so there is nothing to do.'
+    refusalAskerNotHere: '{who} did not turn up for step {nth}.'
+    refusalMobNotHere: '{mob} did not turn up for step {nth}.'
+    refusalMobNotFought: '{mob} is here for step {nth} and nothing will fight it'
+    refusalNotQueued: 'The arbiter would not send {command}.'
+    refusalListingUnanswered: 'abil was asked for after step {nth} and nothing answered.'
+    refusalCounterUnmoved: 'Step {nth} was sent and the counter stayed at {rank}, short of {to}. Check its gates by hand.'
+    refusalRollFailed: 'Step {nth} rolled {tries} times and never passed.'
+    refusalRollUnreadable:
+      'Step {nth} rolls and this realm prints no counter, so whether it passed cannot be read. Do it
+      by hand.'
+    refusalPackUnmoved: 'Step {nth} was sent and the pack did not change; the realm prints no counter to read instead.'
+    refusalUnwatched: 'Step {nth} was sent and nothing on this realm says whether it took.'
   # Hunting on its own -- `AutoHunt` (todo 05). Every sentence names a figure:
   # what it is going to, what it expects to earn there, or why it will not.
   hunt:
@@ -4041,7 +4400,7 @@ automation:
     # Todo 06: *Run it* is turn off, go -- said at the start, and again where the
     # run is picked up after a lost connection or an errand.
     runningCombatOff: 'Running it: auto-combat is off, and stays off until you turn it back on.'
-    runRefused: 'Not running it: auto-combat could not be turned off in the character''s file.'
+    runRefused: "Not running it: auto-combat could not be turned off in the character's file."
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something walked in the realm data could not place'
     reasonRefresh: 'auto-combat: re-reading the room'
@@ -4052,7 +4411,10 @@ automation:
     # so a second fight opened beside the first is always waste, and the block
     # between `*Combat Off*` and `*Combat Engaged*` is where it used to happen.
     refusedEngagedWith: 'already swinging at {target}, which is still here'
-    refusedAvoided: '{target} is on the avoid list'
+    refusedNever: '{target} is set to never attack'
+    # The realm lists {guard} as moving to protect {target}, and the server
+    # hands a blow at {target} to it; {why} is the guard's own refusal.
+    refusedGuarded: '{guard} protects {target} and is refused itself: {why}'
     refusedCostly: Attacking {target} causes an alignment penalty (-10 points).
     refusedEngageNone: engage is set to none, so nothing is opened unasked
     refusedTooTough: '{target} has {hp} health and maxTargetHealth is {cap}'
@@ -4062,7 +4424,6 @@ automation:
     refusedMovePending: a step is still waiting for its room
     refusedNotHostile: the realm does not say {target} attacks first
     refusedClaimed: '{player} is already fighting {target}, and politeAttacks is on'
-    refusedTooCostly: 'the fight with {target} would cost up to {cost} hp of your {hp}'
     refusedRetreating: Retreat in progress
     refusedStandDown: you typed break
     refusedUncertain: 'the realm disagrees with itself about {target}, and engage is hostile'
@@ -4084,6 +4445,9 @@ automation:
     verbBack: '{verb} is back: the weapon the realm refused it with is no longer in hand.'
     whyHitBack: hitting back
     whyHitBackMostDangerous: 'hitting back at the most dangerous of {count} attackers ({perRound} hp a round against you, {costs}{hazards})'
+    whyGuardFirst: '{target} protects {ward}, so it goes first'
+    whyGuardJoins: '{target} protects {ward}, so attacking {ward} brings it in; it goes first'
+    whyHitBackGuard: 'hitting back: {target} protects {ward}, so it goes first'
     whyInRoom: in the room
     whyRanked: 'first of {count} here: your priority list ranks {target} {band}'
     whyRankedAlone: 'your priority list ranks {target} {band}'
@@ -4213,6 +4577,10 @@ automation:
       'Only {max} were sent; {more} more were left. Each one is a command out of the same budget
       a fight is fought with.'
     missing: 'The pack no longer holds {count}: {items}.'
+    wearing: 'Changing into {set}.'
+    missingFromSet: '{item} is in an equipment set and not in the pack.'
+    offRound: 'Using {item} on {target} between rounds.'
+    offRoundMissing: '{item} is set to be used between rounds and is not in the pack.'
   hangUp:
     reasonInCombat: you are in combat
     reasonMobEngaged: something in the room is still attacking you
@@ -4222,7 +4590,14 @@ automation:
     reasonPvpUnnamed: PvP in the last five minutes ({minutes} to go)
   heal:
     reasonParty: 'heal: {memberName} is at {percent}%'
+    reasonRequested: 'heal: {memberName} asked (@heal)'
     reasonSelf: 'heal: health is low'
+    requestHealOff: '{from} asked for a heal (@heal), and healing is off (Heal If Below is 0) — nothing is cast.'
+    requestLapsed: '{from} asked for a heal (@heal) and none went out within {seconds}s.'
+    requestLowMana: '{from} asked for a heal (@heal); it waits for mana over the floor.'
+    requestNoSpell: '{from} asked for a heal (@heal), and no party heal spell is set — nothing is cast.'
+    requestNotMember: '{from} asked for a heal (@heal) and is not on the party listing — nothing is cast.'
+    requestPartyOff: '{from} asked for a heal (@heal), and Auto-Heal Party Members is off — nothing is cast.'
     choseCovers: 'Healing with {spell} ({min}-{max}, {cost} mana): the cheapest cast expected to
       cover the {deficit} hp missing.'
     choseMost: 'Healing with {spell} ({min}-{max}, about {expected} a cast, {cost} mana): the most
@@ -4403,6 +4778,7 @@ automation:
       was walked.'
     reasonAnswering: answering {name}
     reasonAsking: asking {who} {body}
+    reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'
     reasonDo: '@do from {from}'
     reasonDropAll: '@drop-all from {from}'
     reasonForget: '@forget from {from}'
@@ -4483,13 +4859,11 @@ automation:
     barrierTooHard: Requires {wanted}; this character has {picklocks} picklocks and {strength} strength.
     barrierTooHurt: Too hurt to spend a bash on it.
     barrierUnknownSkill: unknown
-    healthHolding: Too hurt to travel; waiting here until health is back.
     restHolding: Waiting for the rest to land before stepping.
     scattered: '{spellName} dropped you in {roomName}; planning again from here.'
     scatteredUnplaced:
       '{spellName} dropped you somewhere the room name and its exits cannot tell apart; asking the
       realm where that is.'
-    healthResumed: Health is back; walking on.
     trapHolding:
       'The way into {stepName} is a trap of up to {damage} damage; resting here to {needed} HP
       (now {hp}) before taking it.'

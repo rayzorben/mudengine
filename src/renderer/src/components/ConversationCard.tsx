@@ -764,16 +764,20 @@ function ConversationCard({
   const [finding, setFinding] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   /*
-   * The log's own height at the last commit, and the timer that puts the log
-   * back to following after the reader has stopped scrolling.
+   * Where the box was the last time the card knew — where it put it, or where
+   * a `scroll` event found it — and the hold: the timer that puts the log back
+   * to following after the reader has stopped scrolling. Following is simply
+   * *no hold*, and only the reader's own scroll takes one.
    *
    * Refs rather than state, for the reason `tuning()` is not state either:
    * nothing on screen is drawn from either of them. Where the box is scrolled
    * to is a fact the box already holds, and making a copy of it state would
    * redraw every line in the backlog on a wheel turn.
    */
-  const heightRef = useRef(0);
+  const seenTopRef = useRef(0);
   const resumeRef = useRef<number | undefined>(undefined);
+  /** The frame awaited when the box moved and its `scroll` event has not landed. */
+  const settleRef = useRef(0);
   /**
    * Where this card itself last put the box.
    *
@@ -874,8 +878,17 @@ function ConversationCard({
    * lands a rounding error short of it, and an exact comparison would read
    * that as the reader having scrolled up.
    */
-  const atEdge = (node: HTMLDivElement, height: number): boolean =>
-    height - node.scrollTop - node.clientHeight <= 1;
+  const atEdge = (node: HTMLDivElement): boolean =>
+    node.scrollHeight - node.scrollTop - node.clientHeight <= 1;
+
+  /** Puts the box on the newest line, recording that the card put it there. */
+  const pin = (node: HTMLDivElement): void => {
+    node.scrollTop = node.scrollHeight;
+    // What the card put there, so the `scroll` event this causes is known for
+    // the card's own and does not read as somebody scrolling away.
+    ownScrollRef.current = node.scrollTop;
+    seenTopRef.current = node.scrollTop;
+  };
 
   /** Puts the log on the newest line, and lets go of any hold on it. */
   const follow = (): void => {
@@ -883,38 +896,27 @@ function ConversationCard({
     resumeRef.current = undefined;
     setBehind(false);
     const node = logRef.current;
-    if (node === null) return;
-    node.scrollTop = node.scrollHeight;
-    // What the card put there, so the `scroll` event this causes is known for
-    // the card's own and does not read as somebody scrolling away.
-    ownScrollRef.current = node.scrollTop;
-    heightRef.current = node.scrollHeight;
+    if (node !== null) pin(node);
   };
 
   /*
    * The hold, and when it expires.
    *
-   * This decides *when the reader last scrolled* and nothing else. Whether the
-   * feed follows is decided from the box's own geometry below, deliberately
-   * not from a flag set here: a wheel is scrolled on the compositor and its
-   * event is delivered at the next rendering update, so a line arriving in
-   * between would find a flag that still said "following" and pull the box out
-   * from under somebody who had already scrolled away from it. `scrollTop`
-   * itself has moved by then, which is why the geometry can be trusted where a
-   * flag cannot.
-   *
-   * The wait runs from the *last* scroll — reading further up extends it — and
-   * arriving back at the live edge lets go at once rather than after it.
+   * The one place a hold is taken: a scroll the card did not cause, landing
+   * anywhere but the live edge. The wait runs from the *last* scroll — reading
+   * further up extends it — and arriving back at the live edge lets go at once
+   * rather than after it.
    */
   const noteScroll = (): void => {
     const node = logRef.current;
     if (node === null) return;
+    seenTopRef.current = node.scrollTop;
     // The card's own move, arriving a frame late. Not a backscroll, whatever
     // the geometry says by now — see `ownScrollRef`.
     if (Math.abs(node.scrollTop - ownScrollRef.current) <= 1) return;
     ownScrollRef.current = -1;
     window.clearTimeout(resumeRef.current);
-    if (atEdge(node, node.scrollHeight)) {
+    if (atEdge(node)) {
       resumeRef.current = undefined;
       setBehind(false);
       return;
@@ -927,12 +929,12 @@ function ConversationCard({
    * scrolled up, which is the one thing that outranks new output. Nothing the
    * server prints may undo what the player did.
    *
-   * "Was the reader at the live edge?" is asked of the height the box had at
-   * the *last* commit, against where they have it now: the lines just added
-   * have already made `scrollHeight` bigger, so measuring against that would
-   * say no every time. It is the same figure the console reads before a write
-   * (`TerminalView`'s `wasPinned`), taken the same way and for the same
-   * reason — the state to act on is the one from before the output.
+   * **Following is the state, and only `noteScroll` leaves it**: the box's
+   * size is not the reader (`mudengine-ui`, *The feed follows the newest
+   * line*). Geometry answers one question — has the box moved since the card
+   * last saw it, with its `scroll` event still in flight? A wheel is scrolled
+   * on the compositor and its event lands a frame later; that event decides,
+   * so no commit pins under it. Two frames on it has landed or never will.
    *
    * A layout effect, so the box is never painted holding new lines at the old
    * offset. The *log* scrolls, not the card: the filters belong at the top and
@@ -947,18 +949,49 @@ function ConversationCard({
   useLayoutEffect(() => {
     const node = logRef.current;
     if (node === null) return;
-    if (atEdge(node, heightRef.current)) {
-      node.scrollTop = node.scrollHeight;
-      ownScrollRef.current = node.scrollTop;
-    } else if (resumeRef.current !== undefined) {
+    if (resumeRef.current !== undefined) {
       // Held, and a line has arrived behind the reader's back: that is exactly
       // what the button is for. Set here rather than derived from the message
       // count, because *behind* is about this reader's box and not about how
       // many lines the card holds.
       setBehind(true);
+      return;
     }
-    heightRef.current = node.scrollHeight;
+    if (Math.abs(node.scrollTop - seenTopRef.current) > 1) {
+      if (settleRef.current === 0) {
+        settleRef.current = requestAnimationFrame(() => {
+          settleRef.current = requestAnimationFrame(() => {
+            settleRef.current = 0;
+            const moved = Math.abs(node.scrollTop - seenTopRef.current) > 1;
+            if (moved && resumeRef.current === undefined) pin(node);
+          });
+        });
+      }
+      return;
+    }
+    pin(node);
   }, [shown]);
+
+  /*
+   * And a box that changes size while following stays on the newest line at
+   * once, rather than at the next line said: shorter hides the newest lines
+   * under the composer. Zero is a rolled card, which has no edge to keep, and
+   * unrolling it is a new view of the backlog, like another face.
+   */
+  useEffect(() => {
+    const node = logRef.current;
+    if (node === null) return;
+    let hidden = node.clientHeight === 0;
+    const observer = new ResizeObserver(() => {
+      const wasHidden = hidden;
+      hidden = node.clientHeight === 0;
+      if (hidden) return;
+      if (wasHidden) follow();
+      else if (resumeRef.current === undefined) pin(node);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   /*
    * A different view of the backlog starts at the newest line, hold or no
@@ -978,8 +1011,14 @@ function ConversationCard({
     follow();
   }, [showingKey, query, finding, session]);
 
-  /* The hold is a timer this card owns, so it goes when the card does. */
-  useEffect(() => () => window.clearTimeout(resumeRef.current), []);
+  /* The hold and the settle are this card's own, so they go when the card does. */
+  useEffect(
+    () => () => {
+      window.clearTimeout(resumeRef.current);
+      cancelAnimationFrame(settleRef.current);
+    },
+    []
+  );
 
   const feed = (
     <>

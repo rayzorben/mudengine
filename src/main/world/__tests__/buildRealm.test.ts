@@ -13,6 +13,7 @@ import {
   indexItemNames,
   indexClasses,
   parseExit,
+  placedItems,
   rowProfile
 } from '../buildRealm';
 import { realmKind } from '../RealmSource';
@@ -92,6 +93,23 @@ describe('reading an exit', () => {
   });
 });
 
+describe('reading a room’s placed items', () => {
+  it('takes the comma-terminated list the realm stores', () => {
+    expect(placedItems('1410,1417,')).toEqual([1410, 1417]);
+    expect(placedItems('939')).toEqual([939]);
+  });
+
+  it('reads nothing into an empty or missing cell', () => {
+    expect(placedItems('')).toEqual([]);
+    expect(placedItems(null)).toEqual([]);
+    expect(placedItems(undefined)).toEqual([]);
+  });
+
+  it('keeps each item once, and drops what is not an item number', () => {
+    expect(placedItems('12,12,-3,0,1.5,abc,,40,')).toEqual([12, 40]);
+  });
+});
+
 describe('converting a realm', () => {
   const today = '2026-08-25';
 
@@ -140,7 +158,31 @@ describe('converting a realm', () => {
     const parsed = JSON.parse(built.lines[0]!);
     expect(parsed).not.toHaveProperty('s');
     expect(parsed).not.toHaveProperty('lair');
-    expect(parsed).not.toHaveProperty('placed');
+    expect(parsed).not.toHaveProperty('pl');
+  });
+
+  /*
+   * `Rooms.Placed` — format 42. What the realm puts on the floor and puts
+   * back every night, as ids, each one named: the room refers to the item the
+   * way a shop refers to its stock.
+   */
+  it('reads what the realm places in a room, and names each item', () => {
+    const built = buildRealm(
+      fake({
+        Rooms: [room({ Placed: '690,938,' }), room({ 'Room Number': 2, Placed: ' 690 , x,0,' })],
+        Items: [
+          { Number: 690, Name: 'log raft' },
+          { Number: 938, Name: 'slag sign', Gettable: 0 }
+        ]
+      }),
+      today
+    );
+    const [first, second] = built.lines.map((line) => JSON.parse(line));
+    expect(first.pl).toEqual([690, 938]);
+    // Padding survives, and what is not an item number is dropped, not guessed.
+    expect(second.pl).toEqual([690]);
+    expect(first).not.toHaveProperty('placed');
+    expect(built.header.items?.map((item) => item.n)).toEqual(['log raft', 'slag sign']);
   });
 
   /*

@@ -8,6 +8,7 @@
  * constant is `tuning.hunting`; every unknown is named, never zeroed. See
  * `mudengine-world` § *Where to hunt is derived from the realm's own clock*.
  */
+import type { MeasuredOutput } from './fights';
 import type { UiLookup } from './i18n';
 import type { Loop } from './loops';
 import type { MobAffliction } from './menace';
@@ -962,6 +963,12 @@ export interface HuntingAssumptions {
   stepMs: number;
   heal: HealingCast | null;
   poisonHoldsRest: boolean;
+  /**
+   * This character's own damage a round, off its fight record, where the
+   * realm's arithmetic could not price a kill — null where it could, or where
+   * the record is too thin (`tuning.hunting.measuredFightsMin`).
+   */
+  measured: MeasuredOutput | null;
   constants: HuntingConstants;
 }
 
@@ -972,7 +979,14 @@ export interface HuntingAdvice {
   radius: number | null;
   /** How many rooms it reached. */
   swept: number;
+  /** The best `maxSpots`, measured: what automatic hunting chooses among. */
   spots: HuntingSpot[];
+  /**
+   * Every other lair it reached and did not leave out, on the first estimate:
+   * the loop is the nearest rooms in distance order, with no filler. Listed so
+   * the answer is the realm; never walked unasked.
+   */
+  unmeasured: HuntingSpot[];
   /** What was left out before the ranking, and why. */
   excluded: { dangerous: number; beneath: number };
   assumptions: HuntingAssumptions;

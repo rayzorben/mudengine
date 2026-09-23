@@ -7,20 +7,30 @@ import { useRemembered, useRememberedRanks } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
 import {
+  earlierHandover,
   packHolds,
+  planSpan,
   questBars,
   questExperience,
+  questGroup,
   questLevel,
   questReading,
   questSide,
   itemsBrought,
   stepDone,
   stepsDone,
+  QUEST_GROUPS,
+  type PlanSnag,
+  type PlanSource,
+  type PlanStep,
   type Quest,
   type QuestBar,
   type QuestDoer,
   type QuestErrand,
   type QuestGate,
+  type QuestGroup,
+  type QuestPlan,
+  type QuestRunProgress,
   type QuestReward,
   type QuestSource,
   type QuestStep,
@@ -28,7 +38,8 @@ import {
   type QuestWay
 } from '@shared/quests';
 import type { AbilitySums } from '@shared/character';
-import type { ApproachGate, ItemHandover } from '@shared/world';
+import { errorMessage } from '@shared/values';
+import type { ApproachGate, ItemHandover, RoomId } from '@shared/world';
 import type { SessionId } from '@shared/ipc';
 
 /**
@@ -111,6 +122,25 @@ export interface QuestCardProps extends CardChrome {
    * surface that cannot bind it.
    */
   loadErrand?: ((block: number) => Promise<QuestErrand | null>) | null;
+  /**
+   * Asks main for the plan to one step: the steps still to do to reach it,
+   * from where this character stands, as steps and never rooms.
+   *
+   * Addressed like the errand and for its reasons, and one more: the plan is
+   * priced with the counter this character will hold at each step. `marked`
+   * is the rank the player said they were at, so main ranks the three
+   * readings exactly as the track does. Null on a surface that cannot bind it.
+   */
+  loadPlan?: ((block: number, marked: number | null) => Promise<QuestPlan | null>) | null;
+  /**
+   * Runs the plan to one step (todo 102), and stops it. Addressed like the
+   * plan, and null on a surface that cannot bind one. `runPlan` answers the
+   * refusal for the press, or null once the run is under way.
+   */
+  runPlan?: ((block: number, marked: number | null) => Promise<string | null>) | null;
+  stopRun?: (() => void) | null;
+  /** How the run is going, as main pushes it, or null where nothing carries one. */
+  run?: QuestRunProgress | null;
   /** When the configuration last reloaded — a character can be re-pointed. */
   realmAt: number;
   /** Opens the route panel on a room, so a quest's NPC can be walked to. */
@@ -191,6 +221,22 @@ export interface QuestCardProps extends CardChrome {
    * statement that it is carrying none of them.
    */
   carrying?: readonly number[] | null;
+  /**
+   * Where this character stands, as the realm addresses it, or null while
+   * nobody has placed it.
+   *
+   * A plan starts here, so an open one is asked again when it changes. Null
+   * is said by the plan as itself, never as the start.
+   */
+  here?: RoomId | null;
+  /**
+   * Whether a walk or a lap is moving this character (`movementOf`).
+   *
+   * While it is, the plan holds the ground it was last asked from: a plan
+   * open through a walk is asked once at the walk's end rather than once per
+   * room, which is nine A*s on the socket's thread each time.
+   */
+  moving?: boolean;
 }
 
 /**
@@ -224,6 +270,8 @@ interface Row {
    * client's own progress rather than the realm's.
    */
   bars: QuestBar[];
+  /** Which shelf of the book it is on for this character — `questGroup`. */
+  group: QuestGroup;
 }
 
 /**
@@ -376,6 +424,9 @@ export function gateWords(gate: QuestGate): string {
         : t('cards.quests.gate.lives.many', { count: gate.atLeast });
     case 'price':
       return t('cards.quests.gate.price', { amount: gate.amount.toLocaleString() });
+    case 'skill':
+      // A roll, not a gate: the stat less the value is the chance in percent.
+      return t('cards.quests.gate.skill', { stat: gate.stat, value: gate.value });
   }
 }
 
@@ -671,13 +722,9 @@ function flagWords(step: QuestStep): string | null {
  * class's route hands out is still an item that route can be taken for.
  */
 function earlierStep(quest: Quest, at: number, id: number): number | null {
-  const found = quest.steps.findIndex((other) =>
-    [other, ...(other.ways ?? [])].some((way) =>
-      way.gives.some((reward) => reward.kind === 'item' && reward.id === id)
-    )
-  );
-  if (found === -1 || found >= at) return null;
-  return quest.steps[found]?.to ?? null;
+  // One reading, in `quests.ts`, because the plan main solves asks the same
+  // question and a card and a plan naming different steps would be two facts.
+  return earlierHandover(quest, at, id);
 }
 
 /**
@@ -948,10 +995,47 @@ function limitWords(quest: Quest): string[] {
 /** What a card holds before its realm has answered. A constant, so the memo holds. */
 const NO_QUESTS: readonly Quest[] = [];
 
+/**
+ * The book's three shelves, in the order it is read: what this character can
+ * get on with, what is behind them, what the realm shuts them out of. The
+ * head is one word and the sentence behind it is its hover text; three
+ * literal `t()` calls, as the dictionary is read.
+ */
+const GROUPS: ReadonlyArray<{ id: QuestGroup; label: string; title: string }> = QUEST_GROUPS.map(
+  (id) => {
+    switch (id) {
+      case 'open':
+        return {
+          id,
+          label: t('cards.quests.group.open'),
+          title: t('cards.quests.group.openTitle')
+        };
+      case 'done':
+        return {
+          id,
+          label: t('cards.quests.group.done'),
+          title: t('cards.quests.group.doneTitle')
+        };
+      case 'barred':
+        return {
+          id,
+          label: t('cards.quests.group.barred'),
+          title: t('cards.quests.group.barredTitle')
+        };
+    }
+  }
+);
+
 function QuestCard({
   session,
   loadQuests,
   loadErrand,
+  loadPlan,
+  runPlan,
+  stopRun,
+  run,
+  here,
+  moving,
   realmAt,
   onGoTo,
   onName,
@@ -1004,6 +1088,8 @@ function QuestCard({
    * is the thing that reports it — stable, because it is an effect dependency.
    */
   const closeTrack = useCallback(() => setOpen(null), []);
+  /** Back from a plan to the steps it was asked about. */
+  const closePlan = useCallback(() => setPlanFor(null), []);
 
   /*
    * How far through each quest this character is.
@@ -1043,6 +1129,7 @@ function QuestCard({
        * character cannot do it* in its own tooltip.
        */
       const progress = progressOf(quest);
+      const bars = questBars(quest, who, progress);
       return {
         quest,
         side: questSide(quest),
@@ -1051,21 +1138,22 @@ function QuestCard({
         limits: limitWords(quest),
         hidden: hidden.has(String(quest.id)),
         progress,
-        bars: questBars(quest, who, progress)
+        bars,
+        group: questGroup(progress.done, progress.total, bars)
       };
     });
     /*
-     * And what this character cannot do goes last — **the card's own order**,
-     * which is the one a third click on a heading comes back to, and the one
-     * place a table is allowed an opinion about what matters. A book of
-     * thirty-nine quests is mostly other people's: a Paladin has no business
-     * reading past `Smash` to find the good chain, and a quest sunk here is
-     * never hidden, because *not for you* and *not interested* are different
-     * statements and only the second is the player's.
-     *
-     * Stable, so within each half the realm's own order survives.
+     * In the realm's own order. **The card's own order** — the one a third
+     * click on a heading comes back to, and the one place a table is allowed
+     * an opinion about what matters — is the three shelves the table draws
+     * from `group`: what this character can get on with, then what is behind
+     * them, then what they cannot do. A book of thirty-nine quests is mostly
+     * other people's, and a Paladin has no business reading past `Smash` to
+     * find the good chain; a quest sunk to the last shelf is never hidden,
+     * because *not for you* and *not interested* are different statements and
+     * only the second is the player's.
      */
-    return book.sort((a, b) => Number(a.bars.length > 0) - Number(b.bars.length > 0));
+    return book;
   }, [quests, hidden, counters, said, ranks, characterClass, characterRace, characterLevel]);
 
   /*
@@ -1156,6 +1244,13 @@ function QuestCard({
           {row.progress.done > 0 && (
             <span
               className="chip quest-progress"
+              /*
+                Finished is the one state a count cannot say on its own —
+                `9/9` and `2/2` are the same shape as `9/52` — so the chip
+                says it with the progression's own tick and tone, and the
+                row it is on goes quiet with it.
+              */
+              data-done={row.group === 'done' ? 'true' : undefined}
               title={
                 row.progress.observed
                   ? t('cards.quests.progress.fromRealm')
@@ -1244,6 +1339,41 @@ function QuestCard({
 
   const opened = open === null ? null : (quests.find((quest) => quest.id === open) ?? null);
 
+  /*
+   * The plan being read, held here and not in the track: what is on screen
+   * goes on the clipboard, and the copy text is this card's. A plan belongs
+   * to the quest it was asked about, so another quest opening drops it.
+   */
+  const [planFor, setPlanFor] = useState<number | null>(null);
+  useEffect(() => {
+    setPlanFor(null);
+  }, [open]);
+  const openedProgress = opened === null ? null : progressOf(opened);
+  /*
+   * The ground the plan is asked from: the room, held still while a walk or
+   * a lap is moving the character. Main reads the true room at every ask, so
+   * this is only the key that decides *when* to ask again — and a room per
+   * step of a walk would be a plan per step, each cancelled by the next.
+   */
+  const [ground, setGround] = useState<RoomId | null>(here ?? null);
+  useEffect(() => {
+    if (moving !== true) setGround(here ?? null);
+  }, [here, moving]);
+  const {
+    plan,
+    loading: planLoading,
+    failed: planFailed
+  } = usePlan(
+    loadPlan,
+    planFor,
+    opened === null ? null : (ranks.get(String(opened.id)) ?? null),
+    openedProgress?.rank ?? null,
+    openedProgress?.held ?? null,
+    ground,
+    // By value: the rows are rebuilt every render, and the pack is what moved.
+    carrying === null || carrying === undefined ? null : carrying.join(',')
+  );
+
   return (
     <BentoCard
       {...chrome}
@@ -1273,8 +1403,11 @@ function QuestCard({
       className="quest-card"
       copyText={() => {
         const book = questCopyText(shown.map((row) => row.quest));
-        // What is on screen: the book, and the track under it when one is open.
-        return opened === null ? book : `${book}\n\n${questStepsText(opened)}`;
+        // What is on screen: the book, and the track under it when one is
+        // open — or the plan standing in the track's place.
+        if (opened === null) return book;
+        if (planFor !== null && plan !== null) return `${book}\n\n${questPlanText(opened, plan)}`;
+        return `${book}\n\n${questStepsText(opened)}`;
       }}
       paned
       title={t('cards.quests.title')}
@@ -1293,6 +1426,8 @@ function QuestCard({
           { id: 'any', label: t('cards.quests.side.any') }
         ]}
         find={t('cards.quests.find')}
+        groupOf={(row) => row.group}
+        groups={GROUPS}
         keyOf={(row) => String(row.quest.id)}
         name="quests"
         onDetailHidden={closeTrack}
@@ -1302,12 +1437,14 @@ function QuestCard({
           // the track below has to say which of forty quests it belongs to.
           'data-open': open === row.quest.id ? 'true' : 'false',
           /*
-            Sunk to the bottom and drawn quiet, with the realm's own reason as
-            the row's hover text. On the row rather than on the name, because
-            the whole row is what is dimmed and the reason has to be reachable
+            Which shelf it is on, so the row says so once the shelves are
+            sorted away: a finished chain goes quiet, and one this character
+            cannot do is sunk and dimmed with the realm's own reason as the
+            row's hover text. On the row rather than on the name, because the
+            whole row is what is dimmed and the reason has to be reachable
             from whichever part of it the hand is over.
           */
-          'data-barred': row.bars.length > 0 ? 'true' : 'false',
+          'data-standing': row.group,
           ...(barsTitle(row.bars) === undefined ? {} : { title: barsTitle(row.bars) })
         })}
         rows={shown}
@@ -1320,8 +1457,17 @@ function QuestCard({
           loadErrand={loadErrand}
           onGoTo={onGoTo}
           onName={onName}
+          onPlan={loadPlan ? setPlanFor : null}
+          onPlanBack={closePlan}
           onRank={(rank) => ranks.set(String(opened.id), rank)}
-          progress={progressOf(opened)}
+          onRun={runPlan ? (block) => runPlan(block, ranks.get(String(opened.id)) ?? null) : null}
+          onStopRun={stopRun ?? null}
+          plan={plan}
+          planFailed={planFailed}
+          planFor={planFor}
+          planLoading={planLoading}
+          run={run ?? null}
+          progress={openedProgress ?? progressOf(opened)}
           quest={opened}
         />
       )}
@@ -1342,6 +1488,15 @@ function Track({
   onRank,
   onGoTo,
   onName,
+  onPlan,
+  onPlanBack,
+  plan,
+  planFailed,
+  planFor,
+  planLoading,
+  run,
+  onRun,
+  onStopRun,
   characterClass,
   carrying,
   loadErrand
@@ -1366,6 +1521,19 @@ function Track({
   /** What the pack holds, as realm rows, or null where nobody has listed it. */
   carrying: readonly number[] | null;
   loadErrand?: ((block: number) => Promise<QuestErrand | null>) | null;
+  /** Asks for the plan to a step; null where this surface cannot bind one. */
+  onPlan: ((block: number) => void) | null;
+  onPlanBack: () => void;
+  /** The plan being read, standing in the steps' place while `planFor` names its step. */
+  plan: QuestPlan | null;
+  planFor: number | null;
+  planLoading: boolean;
+  /** Why the ask failed, in the error's words, or null. */
+  planFailed: string | null;
+  /** The run of a plan, and the presses that start and stop one. See `Plan`. */
+  run: QuestRunProgress | null;
+  onRun: ((block: number) => Promise<string | null>) | null;
+  onStopRun: (() => void) | null;
 }): React.JSX.Element {
   const { rank, held, observed, watched, at } = progress;
   // `stepDone` is the whole of the rule and it is stated once, in `quests.ts`.
@@ -1449,32 +1617,684 @@ function Track({
           )
         )}
       </div>
-      <ol className="quest-steps">
-        {quest.steps.map((step, at) => (
-          <Step
-            at={at}
-            carrying={carrying}
-            characterClass={characterClass}
-            key={`${step.block}:${step.from ?? ''}:${step.to ?? ''}`}
-            onGoTo={onGoTo}
-            onName={onName}
-            /*
+      {planFor !== null ? (
+        <Plan
+          failed={planFailed}
+          loading={planLoading}
+          onBack={onPlanBack}
+          onGoTo={onGoTo}
+          onName={onName}
+          onRun={onRun}
+          onStopRun={onStopRun}
+          plan={plan}
+          quest={quest}
+          run={run}
+          target={planFor}
+        />
+      ) : (
+        <ol className="quest-steps">
+          {quest.steps.map((step, at) => (
+            <Step
+              at={at}
+              carrying={carrying}
+              characterClass={characterClass}
+              key={`${step.block}:${step.from ?? ''}:${step.to ?? ''}`}
+              onGoTo={onGoTo}
+              onName={onName}
+              /*
               Only on the step being run. An order is a walk from where the
               character is standing *now*, which is an answer about the step
               they are on and a fiction about one four ranks ahead — and each
               one costs main a sweep of the realm graph per place.
             */
-            errand={at === next ? errand : null}
-            onErrandAgain={at === next ? again : null}
-            onRank={observed ? null : () => onRank(toggle(step))}
-            quest={quest}
-            state={done(step) ? 'done' : at === next ? 'next' : 'later'}
-            step={step}
-          />
-        ))}
-      </ol>
+              errand={at === next ? errand : null}
+              onErrandAgain={at === next ? again : null}
+              onPlan={onPlan}
+              onRank={observed ? null : () => onRank(toggle(step))}
+              quest={quest}
+              state={done(step) ? 'done' : at === next ? 'next' : 'later'}
+              step={step}
+            />
+          ))}
+        </ol>
+      )}
     </div>
   );
+}
+
+/**
+ * The plan to one step, asked for once and again as the ground moves.
+ *
+ * Re-asked when the mark, the realm's own count or whether the counter is
+ * held moves, when the ground does and when the pack changes — each moves
+ * where the plan starts, what it already holds or what the head says of the
+ * counter; cleared first, so a late answer for the step before is never
+ * drawn against this one. No control asks: the card knows the plan is stale
+ * before the reader does. A failed ask is said in the error's words rather
+ * than left as a spinner or drawn as *no plan*. A surface that cannot bind
+ * the loader asks nothing and the control that would open a plan is not
+ * drawn.
+ */
+function usePlan(
+  loadPlan:
+    ((block: number, marked: number | null) => Promise<QuestPlan | null>) | null | undefined,
+  block: number | null,
+  marked: number | null,
+  rank: number | null,
+  held: boolean | null,
+  ground: RoomId | null,
+  pack: string | null
+): { plan: QuestPlan | null; loading: boolean; failed: string | null } {
+  const [plan, setPlan] = useState<QuestPlan | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    setPlan(null);
+    setFailed(null);
+    if (block === null || !loadPlan) {
+      setLoading(false);
+      return;
+    }
+    let stale = false;
+    setLoading(true);
+    loadPlan(block, marked)
+      .then((answer) => {
+        if (stale) return;
+        setPlan(answer);
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (stale) return;
+        setFailed(errorMessage(error));
+        setLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [block, loadPlan, marked, rank, held, ground, pack]);
+  return { plan, loading, failed };
+}
+
+/** Whether the target step is one the realm traced to somebody, somewhere or a death — one a plan can end on. */
+function planTarget(quest: Quest, block: number): boolean {
+  const step = quest.steps.find((each) => each.block === block);
+  return step !== undefined && planSpan(quest, block, null).includes(step);
+}
+
+/**
+ * The plan to one step, drawn in the steps' place: a head saying which rank
+ * it reaches, from where and how far, then one row per step still to do —
+ * what to gather and how, where to go, what to say. Steps, never rooms: the
+ * walk between two acts is one figure, and the route panel is where the
+ * rooms are. Every realm name is the control it is everywhere else.
+ */
+function Plan({
+  quest,
+  plan,
+  loading,
+  target,
+  failed,
+  run,
+  onRun,
+  onStopRun,
+  onBack,
+  onName,
+  onGoTo
+}: {
+  quest: Quest;
+  plan: QuestPlan | null;
+  loading: boolean;
+  /** Why the ask failed, or null; drawn in the rows' place, never as *no plan*. */
+  failed: string | null;
+  target: number;
+  /**
+   * The run main is carrying, or carried last — drawn only where it is this
+   * step's — and the presses that start and stop one (todo 102). Null where
+   * this surface cannot bind them, and the head then offers nothing.
+   */
+  run: QuestRunProgress | null;
+  onRun: ((block: number) => Promise<string | null>) | null;
+  onStopRun: (() => void) | null;
+  onBack: () => void;
+  onName?: ((name: string, anchor: HTMLElement) => void) | null;
+  onGoTo?: ((room: string) => void) | null;
+}): React.JSX.Element {
+  const to = quest.steps.find((step) => step.block === target)?.to;
+  /*
+   * The press's own answer: main refuses out loud with a sentence — the
+   * switch is off, a route is walking — and it is drawn here beside the
+   * button rather than left to the console, because the person is looking
+   * at the button. Cleared by the next press and by the run starting.
+   */
+  const [refused, setRefused] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const mine = run !== null && run.block === target && run.status !== 'idle';
+  const running = mine && run.status === 'running';
+  useEffect(() => {
+    if (running) setRefused(null);
+  }, [running]);
+  const press = (): void => {
+    if (onRun === null || starting) return;
+    setStarting(true);
+    setRefused(null);
+    void onRun(target)
+      .then((answer) => setRefused(answer))
+      .catch((error: unknown) => setRefused(errorMessage(error)))
+      .finally(() => setStarting(false));
+  };
+  return (
+    <div className="quest-plan-box">
+      <p className="quest-plan-head">
+        <span className="quest-verb">
+          {to === undefined
+            ? t('cards.quests.plan.headUnranked')
+            : t('cards.quests.plan.head', { to })}
+        </span>
+        {/* Where the counter stood — or that nothing has stated it, which is
+            not the same as the start and is said as itself. */}
+        {plan !== null &&
+          (plan.fromRank !== null ? (
+            <span className="quiet-note">
+              {t('cards.quests.plan.fromRank', { from: plan.fromRank })}
+            </span>
+          ) : plan.stated ? (
+            <span className="quiet-note">{t('cards.quests.plan.fromStart')}</span>
+          ) : (
+            <span className="quiet-note">{t('cards.quests.plan.fromUnstated')}</span>
+          ))}
+        {/* Where it starts, or the admission that nobody has placed the
+            character — in which case every step below is unpriced, said. */}
+        {plan !== null &&
+          (plan.from === undefined ? (
+            <span className="quiet-note">{t('cards.quests.plan.fromNowhere')}</span>
+          ) : (
+            <Where lead onGoTo={onGoTo} place={plan.fromPlace} room={plan.from} />
+          ))}
+        {plan !== null && plan.steps.length > 0 && plan.reachable === true && (
+          <span className="chip quiet">{legWords(plan.moves)}</span>
+        )}
+        {plan?.reachable === false && (
+          <span className="chip bad">{t('cards.quests.plan.blocked')}</span>
+        )}
+        {plan !== null && plan.reachable === null && plan.steps.length > 0 && (
+          <span className="chip quiet">{t('cards.quests.plan.unpriced')}</span>
+        )}
+        <button className="quest-plan-back" onClick={onBack} onMouseDown={keepFocus} type="button">
+          {t('cards.quests.plan.back')}
+        </button>
+        {/* Run it, where there is a plan to run and something to run it; Stop
+            while this step's run is under way. The accent-outlined control the
+            step's own Plan it is, because it is the same kind of press. */}
+        {running && onStopRun !== null ? (
+          <button
+            className="quest-plan-btn quest-plan-run"
+            onClick={onStopRun}
+            onMouseDown={keepFocus}
+            title={t('cards.quests.plan.runStopTitle')}
+            type="button"
+          >
+            {t('cards.quests.plan.runStop')}
+          </button>
+        ) : (
+          onRun !== null &&
+          plan !== null &&
+          plan.steps.length > 0 &&
+          plan.reachable !== false && (
+            <button
+              className="quest-plan-btn quest-plan-run"
+              disabled={starting}
+              onClick={press}
+              onMouseDown={keepFocus}
+              title={t('cards.quests.plan.runTitle')}
+              type="button"
+            >
+              {starting ? t('cards.quests.plan.runStarting') : t('cards.quests.plan.run')}
+            </button>
+          )
+        )}
+      </p>
+      {refused !== null && (
+        <p className="quiet-note">{t('cards.quests.plan.runRefused', { reason: refused })}</p>
+      )}
+      {mine && <RunProgress run={run} />}
+      {/* And where the rows stop short of the target because the target
+          itself is untraced, the head says so rather than leaving a gap. */}
+      {!loading && plan !== null && plan.steps.length > 0 && !planTarget(quest, target) && (
+        <p className="quiet-note">{t('cards.quests.plan.untracedTarget')}</p>
+      )}
+      {failed !== null ? (
+        /* Said as itself: a rejected ask is neither work in progress nor a
+           realm with no plan, and either would be a lie about the other. */
+        <p className="quiet-note">{t('cards.quests.plan.failed', { reason: failed })}</p>
+      ) : loading ? (
+        <p className="quiet-note quest-plan-loading">{t('cards.quests.plan.loading')}</p>
+      ) : plan === null ? (
+        <p className="quiet-note">{t('cards.quests.plan.none')}</p>
+      ) : plan.steps.length === 0 ? (
+        /* Nothing to do, or nothing the realm traced: a step it traced to
+           nobody, nowhere and no death has no act to plan, and *nothing left*
+           would be the reassuring answer about it. */
+        <p className="quiet-note">
+          {planTarget(quest, target)
+            ? t('cards.quests.plan.nothing')
+            : t('cards.quests.plan.untraced')}
+        </p>
+      ) : (
+        <ol className="quest-plan">
+          {plan.steps.map((step, nth) => (
+            <PlanRow key={step.block} nth={nth + 1} onGoTo={onGoTo} onName={onName} step={step} />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The run as main reports it: its steps in the progression's three words —
+ * the one being carried loud, the done ones quiet with a tick, the rest in
+ * ordinary ink — then what it is doing now, or how it ended. The step's name
+ * is its act, as the plan rows draw it, said once by main (`QuestRunStep.words`)
+ * so this list and the banner over the console cannot disagree.
+ */
+function RunProgress({ run }: { run: QuestRunProgress }): React.JSX.Element {
+  const state =
+    run.status === 'running'
+      ? run.detail === null
+        ? t('cards.quests.plan.runNowQuiet')
+        : t('cards.quests.plan.runNow', { detail: run.detail })
+      : run.status === 'done'
+        ? t('cards.quests.plan.runDone', { reason: run.reason ?? '' })
+        : t('cards.quests.plan.runStopped', { reason: run.reason ?? '' });
+  return (
+    <div className="quest-run" data-status={run.status}>
+      <ol className="progression">
+        {run.steps.map((step) => (
+          <li data-progress={step.state} key={step.block}>
+            <span className="step-name">{step.words}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="quest-run-phase">
+        {state}
+        {run.tries > 0 && (
+          <>
+            {' '}
+            <span className="chip quiet">
+              {t('cards.quests.plan.runTries', { tries: run.tries })}
+            </span>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** One step of a plan: gather these, go there, do this, and what stands in the way. */
+function PlanRow({
+  nth,
+  step,
+  onName,
+  onGoTo
+}: {
+  nth: number;
+  step: PlanStep;
+  onName?: ((name: string, anchor: HTMLElement) => void) | null;
+  onGoTo?: ((room: string) => void) | null;
+}): React.JSX.Element {
+  return (
+    <li data-reachable={step.reachable === null ? undefined : step.reachable ? 'true' : 'false'}>
+      <span className="quest-stop">{nth}</span>
+      <div className="quest-what">
+        {step.items.length > 0 && (
+          <ul className="quest-items">
+            {step.items.map((item) => (
+              <li
+                data-held={item.held === null ? undefined : item.held ? 'true' : 'false'}
+                key={item.id}
+                title={
+                  item.held === null
+                    ? undefined
+                    : item.held
+                      ? t('cards.quests.bring.held')
+                      : t('cards.quests.bring.missing')
+                }
+              >
+                <span className="quest-verb">{t('cards.quests.plan.get')}</span>
+                <Name onName={onName}>{item.name ?? `#${item.id}`}</Name>
+                {item.count !== undefined && item.count > 1 && (
+                  <span className="quest-count">
+                    {t('cards.quests.plan.count', { count: item.count })}
+                  </span>
+                )}
+                <span className="quiet-note">{sourceOfNodes(item.source, onName, onGoTo)}</span>
+                {/* A supply the way wants rather than the step, said so:
+                    a waterskin on a step that asks for a saracen's head
+                    would otherwise read as a fourth thing the seeress wants. */}
+                {item.stops !== undefined && (
+                  <span className="chip quiet">
+                    {t('cards.quests.plan.stops', { spell: item.stops })}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="quest-plan-act">
+          {step.at !== undefined && (
+            <>
+              <span className="quest-verb">{t('cards.quests.plan.routeTo')}</span>
+              <Where lead onGoTo={onGoTo} place={step.at.place} room={step.at.room} />
+              {step.moves !== undefined && (
+                <span className="chip quiet">{legWords(step.moves)}</span>
+              )}
+            </>
+          )}
+          {actNodes(step, onName)}
+          {/* A step that rolls can fail, and the plan says so with the odds
+              off this character's sheet where it has them (todo 106). */}
+          {step.roll !== undefined && (
+            <span className="chip warn" title={t('cards.quests.plan.rollTitle')}>
+              {step.roll.chance === undefined
+                ? t('cards.quests.plan.roll', { stat: step.roll.stat, value: step.roll.value })
+                : t('cards.quests.plan.rollChance', {
+                    stat: step.roll.stat,
+                    value: step.roll.value,
+                    chance: step.roll.chance
+                  })}
+            </span>
+          )}
+        </p>
+        {step.snags.length > 0 && (
+          <p className="quest-plan-snags">
+            {step.snags.map((snag, index) => snagChip(snag, index))}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** The act, in the register the track draws it: the ask and the say go in the console, the kill does not. */
+function actNodes(
+  step: PlanStep,
+  onName?: ((name: string, anchor: HTMLElement) => void) | null
+): React.ReactNode {
+  const act = step.act;
+  if (act === null) return <span className="quiet-note">{t('cards.quests.plan.noAct')}</span>;
+  if (act.verb === 'kill') {
+    return (
+      <span className="quest-kill">
+        <span className="quest-verb">{t('cards.quests.step.killVerb')}</span>
+        <Name onName={onName}>{act.mob}</Name>
+      </span>
+    );
+  }
+  if (act.verb === 'ask') {
+    return (
+      <span className="quest-ask">
+        <span>{t('cards.quests.step.verb')} </span>
+        <Name onName={onName}>{act.who}</Name>
+        <span> {act.say}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="quest-ask">
+      <span>{t('cards.quests.step.doVerb')} </span>
+      <span>{act.phrase}</span>
+    </span>
+  );
+}
+
+/** How an item is got, with the realm's names as controls. */
+function sourceOfNodes(
+  source: PlanSource,
+  onName?: ((name: string, anchor: HTMLElement) => void) | null,
+  onGoTo?: ((room: string) => void) | null
+): React.ReactNode {
+  switch (source.how) {
+    case 'carried':
+      return t('cards.quests.plan.by.carried');
+    case 'earlier':
+      return t('cards.quests.plan.by.earlier', { rank: source.rank });
+    case 'unplaced':
+      return t('cards.quests.plan.by.unplaced');
+    case 'buy':
+      return source.at === undefined ? (
+        t('cards.quests.plan.by.sold', { shops: source.shops.slice(0, 2).join(', ') })
+      ) : (
+        <>
+          {t('cards.quests.plan.by.buy')}
+          <Where lead onGoTo={onGoTo} place={source.at.place} room={source.at.room} />
+          {/* What the counter costs the leg, so the head's total can be
+              checked against the rows: a walk to the tavern is most of it. */}
+          {source.detour !== undefined && source.detour > 0 && (
+            <span className="chip quiet">
+              {t('cards.quests.plan.by.detour', { moves: source.detour })}
+            </span>
+          )}
+        </>
+      );
+    case 'kill':
+      return (
+        <>
+          {t('cards.quests.plan.by.kill')} <Name onName={onName}>{source.mob}</Name>
+          {source.at !== undefined && (
+            <>
+              {' '}
+              {t('cards.quests.plan.by.at')}
+              <Where lead onGoTo={onGoTo} place={source.at.place} room={source.at.room} />
+            </>
+          )}
+        </>
+      );
+    case 'ask':
+      return (
+        <>
+          {t('cards.quests.plan.by.ask')} <Name onName={onName}>{source.who}</Name>
+          {source.say !== undefined && <span> {source.say}</span>}
+          {source.at !== undefined && (
+            <>
+              {' '}
+              {t('cards.quests.plan.by.at')}
+              <Where lead onGoTo={onGoTo} place={source.at.place} room={source.at.room} />
+            </>
+          )}
+        </>
+      );
+    case 'said':
+      return (
+        <>
+          {t('cards.quests.plan.by.say', { word: source.say })}
+          {source.at !== undefined && (
+            <>
+              {' '}
+              {t('cards.quests.plan.by.at')}
+              <Where lead onGoTo={onGoTo} place={source.at.place} room={source.at.room} />
+            </>
+          )}
+        </>
+      );
+  }
+}
+
+/** The same answer as text, for the clipboard. */
+function sourceWords(source: PlanSource): string {
+  switch (source.how) {
+    case 'carried':
+      return t('cards.quests.plan.by.carried');
+    case 'earlier':
+      return t('cards.quests.plan.by.earlier', { rank: source.rank });
+    case 'unplaced':
+      return t('cards.quests.plan.by.unplaced');
+    case 'buy': {
+      if (source.at === undefined)
+        return t('cards.quests.plan.by.sold', { shops: source.shops.slice(0, 2).join(', ') });
+      const detour =
+        source.detour !== undefined && source.detour > 0
+          ? ` (${t('cards.quests.plan.by.detour', { moves: source.detour })})`
+          : '';
+      return `${t('cards.quests.plan.by.buy')} ${source.at.place ?? source.at.room}${detour}`;
+    }
+    case 'kill':
+      return `${t('cards.quests.plan.by.kill')} ${source.mob}${placeWords(source.at)}`;
+    case 'ask':
+      return `${t('cards.quests.plan.by.ask')} ${source.who}${source.say === undefined ? '' : ` ${source.say}`}${placeWords(source.at)}`;
+    case 'said':
+      return `${t('cards.quests.plan.by.say', { word: source.say })}${placeWords(source.at)}`;
+  }
+}
+
+function placeWords(at: { room: string; place?: string } | undefined): string {
+  return at === undefined ? '' : ` ${t('cards.quests.plan.by.at')} ${at.place ?? at.room}`;
+}
+
+/**
+ * What the realm says would stop a step being carried unattended, as a chip.
+ *
+ * A hazard is `warn`, because the router still found the way and the pack
+ * may yet stop it; an unread one says so, since a spell the converter could
+ * not read is one the client cannot promise to survive. No way there is `bad`
+ * with the router's reason on the tooltip, and an unplaced item is the plan's
+ * own admission, never a guess at where it might be.
+ */
+/**
+ * A snag as a chip: the words `snagWords` chose, in the tone they earn. Green
+ * for a spell something in hand or on the plan stops, the accent for a
+ * passage that is safe if walked without stopping, amber for a spell nothing
+ * stops or the client cannot read, red for no way there.
+ */
+function snagChip(snag: PlanSnag, index: number): React.JSX.Element {
+  const { text, title, tone } = snagWords(snag);
+  return (
+    <span className={`chip ${tone}`} key={`${snag.kind}:${index}`} title={title}>
+      {text}
+    </span>
+  );
+}
+
+/**
+ * What a snag says, once, for the chip and for the clipboard.
+ *
+ * A hazard is named with what settles it, because *desert spell ×64* on its
+ * own is a warning with nothing to do about it: *safe with waterskin* where
+ * the pack or the plan's own rows hold what stops it, *may move you* for a
+ * teleport, *effect unread* where the realm's script has a step the client
+ * cannot follow — said in those words rather than as a bare `unread`, which
+ * read as a term of art. A corridor's answer is *run through*.
+ */
+function snagWords(snag: PlanSnag): { text: string; title: string | undefined; tone: string } {
+  switch (snag.kind) {
+    case 'hazard': {
+      const at = { spell: snag.spell, rooms: snag.rooms };
+      if (snag.safeWith !== undefined) {
+        return {
+          text: t('cards.quests.plan.snag.hazardSafe', { ...at, item: snag.safeWith }),
+          title: t('cards.quests.plan.snag.hazardSafeTitle', { item: snag.safeWith }),
+          tone: 'on'
+        };
+      }
+      const needs =
+        snag.needs.length > 0
+          ? t('cards.quests.plan.snag.hazardNeeds', { needs: snag.needs.join(', ') })
+          : t('cards.quests.plan.snag.hazardTitle');
+      if (snag.unread) {
+        return {
+          text: t('cards.quests.plan.snag.hazardUnread', at),
+          title: `${t('cards.quests.plan.snag.hazardUnreadTitle')} ${needs}`,
+          tone: 'warn'
+        };
+      }
+      if (snag.moves) {
+        return { text: t('cards.quests.plan.snag.hazardMoves', at), title: needs, tone: 'warn' };
+      }
+      return { text: t('cards.quests.plan.snag.hazard', at), title: needs, tone: 'warn' };
+    }
+    case 'corridor': {
+      const at = { spell: snag.spell, rooms: snag.rooms };
+      const lasts =
+        snag.ticks !== undefined && snag.then !== undefined
+          ? t('cards.quests.plan.snag.corridorTitle', {
+              ...at,
+              ticks: snag.ticks,
+              then: snag.then
+            })
+          : t('cards.quests.plan.snag.corridorTitleShort', at);
+      // A leg that ends inside it is not a passage crossed: the count is to
+      // the leg's end, and the chip says so in the warning tone.
+      return snag.ends
+        ? { text: t('cards.quests.plan.snag.corridor', at), title: lasts, tone: 'info' }
+        : {
+            text: t('cards.quests.plan.snag.corridorOpen', at),
+            title: `${lasts} ${t('cards.quests.plan.snag.corridorOpenTitle')}`,
+            tone: 'warn'
+          };
+    }
+    case 'unreachable':
+      return { text: t('cards.quests.plan.snag.unreachable'), title: snag.reason, tone: 'bad' };
+    case 'unplaced':
+      return {
+        text: t('cards.quests.plan.snag.unplaced', { item: snag.item }),
+        title: undefined,
+        tone: 'warn'
+      };
+  }
+}
+
+/** The plan as text: what is on screen goes on the clipboard. */
+export function questPlanText(quest: Quest, plan: QuestPlan): string {
+  const to = quest.steps.find((step) => step.block === plan.block)?.to;
+  const head = [
+    `${quest.name} ${t('cards.quests.counter', { id: quest.id })}`,
+    to === undefined ? t('cards.quests.plan.headUnranked') : t('cards.quests.plan.head', { to }),
+    plan.fromRank !== null
+      ? t('cards.quests.plan.fromRank', { from: plan.fromRank })
+      : plan.stated
+        ? t('cards.quests.plan.fromStart')
+        : t('cards.quests.plan.fromUnstated'),
+    plan.from === undefined ? t('cards.quests.plan.fromNowhere') : (plan.fromPlace ?? plan.from)
+  ].join(' · ');
+  const rows = plan.steps.map((step, nth) => {
+    const parts: string[] = [];
+    for (const item of step.items) {
+      const count =
+        item.count !== undefined && item.count > 1
+          ? ` ${t('cards.quests.plan.count', { count: item.count })}`
+          : '';
+      const stops =
+        item.stops === undefined ? '' : `, ${t('cards.quests.plan.stops', { spell: item.stops })}`;
+      parts.push(
+        `${t('cards.quests.plan.get')} ${item.name ?? `#${item.id}`}${count} (${sourceWords(item.source)}${stops})`
+      );
+    }
+    if (step.at !== undefined) {
+      const moves = step.moves === undefined ? '' : ` (${legWords(step.moves)})`;
+      parts.push(`${t('cards.quests.plan.routeTo')} ${step.at.place ?? step.at.room}${moves}`);
+    }
+    const act = step.act;
+    if (act === null) parts.push(t('cards.quests.plan.noAct'));
+    else if (act.verb === 'kill') parts.push(`${t('cards.quests.step.killVerb')} ${act.mob}`);
+    else if (act.verb === 'ask') parts.push(`${t('cards.quests.step.verb')} ${act.who} ${act.say}`);
+    else parts.push(`${t('cards.quests.step.doVerb')} ${act.phrase}`);
+    if (step.roll !== undefined) {
+      parts.push(
+        step.roll.chance === undefined
+          ? t('cards.quests.plan.roll', { stat: step.roll.stat, value: step.roll.value })
+          : t('cards.quests.plan.rollChance', {
+              stat: step.roll.stat,
+              value: step.roll.value,
+              chance: step.roll.chance
+            })
+      );
+    }
+    for (const snag of step.snags) {
+      const { text } = snagWords(snag);
+      parts.push(snag.kind === 'unreachable' ? `${text}: ${snag.reason}` : text);
+    }
+    return `  ${nth + 1}. ${parts.join(' · ')}`;
+  });
+  return [head, ...rows].join('\n');
 }
 
 /**
@@ -1682,7 +2502,8 @@ function Step({
   characterClass,
   carrying,
   errand,
-  onErrandAgain
+  onErrandAgain,
+  onPlan
 }: {
   step: QuestStep;
   quest: Quest;
@@ -1711,6 +2532,8 @@ function Step({
   errand?: QuestErrand | null;
   /** Re-solves it from where the character is standing now. */
   onErrandAgain?: (() => void) | null;
+  /** Asks for the plan to this step; null where this surface cannot bind one. */
+  onPlan: ((block: number) => void) | null;
 }): React.JSX.Element {
   const ask = askWords(step);
   const flag = flagWords(step);
@@ -1786,29 +2609,52 @@ function Step({
           command that does not exist. It takes the `Hand over` rows' shape
           instead — a label and a realm name — which is what it is.
         */}
-        {step.kill !== undefined ? (
-          <p className="quest-kill">
-            <span className="quest-verb">{t('cards.quests.step.killVerb')}</span>
-            <Name onName={onName}>{step.kill}</Name>
-          </p>
-        ) : ask === null ? null : (
-          <p className="quest-ask">
-            {step.who === undefined || step.who.trim().length === 0 ? (
-              <span>{t('cards.quests.step.doVerb')} </span>
-            ) : (
-              <>
-                <span>{t('cards.quests.step.verb')} </span>
-                <Name onName={onName}>{step.who}</Name>
-              </>
+        {/*
+          The act leads the step and the way to a plan sits at its right: the
+          plan to a step is the steps between here and it, and a step behind
+          the character has none, so the control is drawn on every step still
+          to do and never on one that is done. A control bound to nowhere (a
+          pinned float's null loader) is not drawn. The head row is skipped
+          where there would be nothing in it.
+        */}
+        {(step.kill !== undefined || ask !== null || (onPlan !== null && state !== 'done')) && (
+          <div className="quest-step-head">
+            {step.kill !== undefined ? (
+              <p className="quest-kill">
+                <span className="quest-verb">{t('cards.quests.step.killVerb')}</span>
+                <Name onName={onName}>{step.kill}</Name>
+              </p>
+            ) : ask === null ? null : (
+              <p className="quest-ask">
+                {step.who === undefined || step.who.trim().length === 0 ? (
+                  <span>{t('cards.quests.step.doVerb')} </span>
+                ) : (
+                  <>
+                    <span>{t('cards.quests.step.verb')} </span>
+                    <Name onName={onName}>{step.who}</Name>
+                  </>
+                )}
+                <span> {step.say[0]}</span>
+                {step.say.length > 1 && (
+                  <span className="quiet-note">
+                    {' '}
+                    {t('cards.quests.step.orSay', { words: step.say.slice(1).join(', ') })}
+                  </span>
+                )}
+              </p>
             )}
-            <span> {step.say[0]}</span>
-            {step.say.length > 1 && (
-              <span className="quiet-note">
-                {' '}
-                {t('cards.quests.step.orSay', { words: step.say.slice(1).join(', ') })}
-              </span>
+            {onPlan !== null && state !== 'done' && (
+              <button
+                className="quest-plan-btn"
+                onClick={() => onPlan(step.block)}
+                onMouseDown={keepFocus}
+                title={t('cards.quests.plan.buttonTitle')}
+                type="button"
+              >
+                {t('cards.quests.plan.button')}
+              </button>
             )}
-          </p>
+          </div>
         )}
 
         {/*

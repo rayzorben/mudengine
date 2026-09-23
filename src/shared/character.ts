@@ -24,6 +24,7 @@ import type {
 import type { ExperienceTable } from './experience';
 import type { Direction, RoomCommand, WorldLair, WorldShop, WorldSpell } from './world';
 import type { WoundBand } from './wounds';
+import type { StatedSheet } from './stated';
 import { NO_PLAYERS, type PlayerRegistry } from './players';
 import { NO_TALLY, type CombatTally } from './tally';
 
@@ -1512,6 +1513,11 @@ export interface CharacterState {
    * one this project refuses.
    */
   abilities: AbilitySums | null;
+  /**
+   * What the last `stat all` said, or null until one has been read. Carries
+   * what it was computed from; `statedNow` says what of it still holds.
+   */
+  stated: StatedSheet | null;
   /** See `StatusLineFacts`. */
   statline: StatusLineFacts;
   /** Epoch ms of the last status line, i.e. the last confirmed heartbeat. */
@@ -1595,6 +1601,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   buffs: [],
   spellbook: null,
   abilities: null,
+  stated: null,
   statline: { reported: null, exact: null },
   lastStatusAt: null,
   updatedAt: null

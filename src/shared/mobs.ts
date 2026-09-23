@@ -636,4 +636,10 @@ export interface NameSources {
   present(): readonly string[];
   /** What the realm data says about a monster of this name, if anything. */
   mob(name: string): MobFacts | undefined;
+  /**
+   * This character's own name as the server prints it, or null while nobody
+   * has said — for the sentences a realm prints about the character in the
+   * third person (MajorMUD's `Soul drops to the ground!` to Soul itself).
+   */
+  self?(): string | null;
 }

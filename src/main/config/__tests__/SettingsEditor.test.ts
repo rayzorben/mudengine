@@ -65,6 +65,8 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
     ...DEFAULT_CONFIG.automation.train,
     wanted: { ...DEFAULT_CONFIG.automation.train.wanted }
   },
+  quests: { ...DEFAULT_CONFIG.automation.quests },
+  gear: { ...DEFAULT_CONFIG.automation.gear },
   loot: structuredClone(DEFAULT_CONFIG.automation.loot),
   drop: structuredClone(DEFAULT_CONFIG.automation.drop),
   search: { ...DEFAULT_CONFIG.automation.search },
@@ -335,7 +337,7 @@ describe('servers, one directory each', () => {
     login: [],
     loops: [],
     database: '',
-    mobPriority: [],
+    mobRules: [],
     ...draft
   });
 
@@ -445,7 +447,7 @@ describe('servers, one directory each', () => {
       login: [],
       loops: [],
       database: '',
-      mobPriority: []
+      mobRules: []
     });
     expect(servers()).toEqual([
       { id: 'greatermud-local', name: 'GreaterMUD (local)', host: '127.0.0.1' }
@@ -518,7 +520,7 @@ describe('credentials in the messages', () => {
       login: [],
       loops: [],
       database: '',
-      mobPriority: []
+      mobRules: []
     });
     for (const file of fs.readdirSync(dir)) {
       if (!fs.statSync(path.join(dir, file)).isFile()) continue;
@@ -914,7 +916,7 @@ describe('the loops a character owns', () => {
       login: [],
       loops: [arena],
       database: '',
-      mobPriority: []
+      mobRules: []
     });
     editor.saveProfile('vaelor', draft());
 
@@ -994,7 +996,7 @@ describe('filing one loop from the Loops modal', () => {
       login: [],
       loops: [],
       database: '',
-      mobPriority: []
+      mobRules: []
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });
     const store = new LoopStore(home);
@@ -1118,28 +1120,28 @@ connection:
    * assertion alone.
    */
   /*
-   * The priority list is the one `automation:` list merged across scopes
+   * The monster list is the one `automation:` list merged across scopes
    * rather than replaced, so the resolved one holds the global file's rows as
    * well as the realm's. Seeding the form with those and saving it back would
-   * write them into this character's own file -- pinning down a ranking it was
+   * write them into this character's own file -- pinning down rules it was
    * only inheriting, so a later change to the global list would silently not
    * reach it (todo 01).
    */
-  it('shows a character only its own priority rows, not the ones it inherits', () => {
+  it('shows a character only its own monster rules, not the ones it inherits', () => {
     const wide = global();
-    wide.automation.combat.mobPriority = [{ mob: 'red dragon', priority: 'low' }];
+    wide.automation.combat.mobRules = [{ mob: 'red dragon', treat: 'low' }];
     expect(editor.saveGlobal(wide)).toEqual({ ok: true });
     expect(editor.saveProfile('thorn', draft())).toEqual({ ok: true });
 
     const thorn = editor.snapshot().characters.find((entry) => entry.id === 'thorn');
     // Its own file states none, so its form shows none -- and a save cannot
     // write the global row into it.
-    expect(thorn?.combat.mobPriority).toEqual([]);
+    expect(thorn?.combat.mobRules).toEqual([]);
     expect(
       (
         parse(fs.readFileSync(home.profile('thorn').file, 'utf8'))['automation'] as
           Record<string, Record<string, unknown>> | undefined
-      )?.['combat']?.['mobPriority']
+      )?.['combat']?.['mobRules']
     ).toEqual([]);
   });
 

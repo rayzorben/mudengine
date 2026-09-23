@@ -25,12 +25,12 @@
  */
 import {
   DEFAULT_CONFIG,
-  mergeMobPriorities,
-  normalizeMobPriorities,
+  mergeMobRules,
+  normalizeMobRules,
   normalizeConfig,
   type AppConfig,
   type LoginStep,
-  type MobPriority,
+  type MobRule,
   type Server
 } from './config';
 import type { ConnectionTarget } from './types';
@@ -152,7 +152,7 @@ function resolveServer(
   name: string;
   login: LoginStep[];
   database: string;
-  mobPriority: MobPriority[];
+  mobRules: MobRule[];
 } | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
@@ -162,7 +162,7 @@ function resolveServer(
           name: found.name,
           login: found.login,
           database: found.database,
-          mobPriority: found.mobPriority
+          mobRules: found.mobRules
         }
       : null;
   }
@@ -192,7 +192,7 @@ function resolveServer(
       // An inline address names no server directory, so there is no realm list
       // to inherit — the character's own, over the global one, is the whole of
       // it. Same reasoning as `login` above.
-      mobPriority: [],
+      mobRules: [],
       target: {
         host,
         port,
@@ -209,7 +209,7 @@ function resolveServer(
 }
 
 /**
- * Folds the realm's priority list in between the global one and the character's.
+ * Folds the realm's monster list in between the global one and the character's.
  *
  * The one setting in `automation:` that is merged across scopes rather than
  * replaced, and it has to be done **after** `normalizeConfig` rather than as
@@ -220,7 +220,7 @@ function resolveServer(
  *
  * So the three lists are read from where each is actually written — the base
  * file, the realm's `server.yaml`, and the character's own raw mapping — and
- * merged broadest-first by `mergeMobPriorities`. A character's row for a
+ * merged broadest-first by `mergeMobRules`. A character's row for a
  * monster wins over the realm's, and the realm's over the global one; a
  * monster only one scope names is kept by all three.
  *
@@ -228,13 +228,13 @@ function resolveServer(
  * reason: `patch` has already flattened "stated nothing" and "stated a list"
  * into one value, and only the raw mapping still knows which happened.
  */
-function withRealmPriorities(
+function withRealmMobRules(
   config: AppConfig,
-  global: MobPriority[],
-  realm: MobPriority[],
+  global: MobRule[],
+  realm: MobRule[],
   raw: Record<string, unknown>
 ): AppConfig {
-  const own = ownMobPriority(raw);
+  const own = ownMobRules(raw);
   /*
    * Read from where each is actually written, not off the merged config:
    * `overlay` has already replaced the global list with the character's where
@@ -243,12 +243,12 @@ function withRealmPriorities(
    * own file, `own` the character's raw rows.
    */
   if (realm.length === 0 && own.length === 0) return config;
-  const merged = mergeMobPriorities(global, realm, own);
+  const merged = mergeMobRules(global, realm, own);
   return {
     ...config,
     automation: {
       ...config.automation,
-      combat: { ...config.automation.combat, mobPriority: merged }
+      combat: { ...config.automation.combat, mobRules: merged }
     }
   };
 }
@@ -260,13 +260,13 @@ function withRealmPriorities(
  * its form from these rather than from the resolved list, or saving would
  * write the realm's and the global file's rows into this character's own.
  */
-export function ownMobPriority(raw: Record<string, unknown>): MobPriority[] {
+export function ownMobRules(raw: Record<string, unknown>): MobRule[] {
   const automation = raw['automation'];
   if (!isRecord(automation)) return [];
   const combat = automation['combat'];
   if (!isRecord(combat)) return [];
-  const rows = combat['mobPriority'];
-  return Array.isArray(rows) ? normalizeMobPriorities(rows) : [];
+  const rows = combat['mobRules'];
+  return Array.isArray(rows) ? normalizeMobRules(rows) : [];
 }
 
 /**
@@ -390,10 +390,10 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
-      config: withRealmPriorities(
+      config: withRealmMobRules(
         normalizeConfig(overlay(baseSource, patch)),
-        base.automation.combat.mobPriority,
-        server.mobPriority,
+        base.automation.combat.mobRules,
+        server.mobRules,
         raw
       )
     }

@@ -428,3 +428,189 @@ describe('choosing the heal from the spellbook', () => {
     expect(sent).toEqual(['mahe Soul']);
   });
 });
+
+/*
+ * `@heal` — a member saying they are low. MegaMUD heals a member "when they are
+ * low or when they have requested aid", and captures/081 has it answering
+ * `Death telepaths: @heal` with `mend death` on the next prompt.
+ */
+describe('a member asking for a heal', () => {
+  let said: string[];
+  const healer = (over: Partial<SpellsConfig> = {}) => {
+    said = [];
+    return new AutoHeal(
+      spells({ healParty: true, healPartyWith: 'minor healing', ...over }),
+      true,
+      queue,
+      undefined,
+      undefined,
+      { notice: (message) => said.push(message) }
+    );
+  };
+
+  it('heals a member who asked, whatever the listing says', () => {
+    const auto = healer();
+    const now = state({}, [member('Yang', 0.95)]);
+    auto.request('Yang', now);
+    auto.onCharacter(now);
+    drain();
+    expect(sent).toEqual(['minor healing Yang']);
+  });
+
+  it('takes the request as the number where the listing states none', () => {
+    const auto = healer();
+    const now = state({}, [member('Yang', null)]);
+    auto.request('yang', now);
+    auto.onCharacter(now);
+    drain();
+    expect(sent).toEqual(['minor healing Yang']);
+  });
+
+  it('casts once per request, not once per status line', () => {
+    const auto = healer();
+    const now = state({}, [member('Yang', 0.95)]);
+    auto.request('Yang', now);
+    auto.onCharacter(now);
+    drain();
+    vi.advanceTimersByTime(7000);
+    auto.onCharacter(now);
+    drain();
+    expect(sent).toEqual(['minor healing Yang']);
+  });
+
+  it('keeps a request the cooldown held back, and casts it once the cooldown is over', () => {
+    const auto = healer();
+    auto.onCharacter(state({}, [member('Yang', 0.3)]));
+    drain();
+    vi.advanceTimersByTime(1000);
+    const better = state({}, [member('Yang', 0.95)]);
+    auto.request('Yang', better);
+    auto.onCharacter(better);
+    drain();
+    expect(sent).toEqual(['minor healing Yang']);
+
+    vi.advanceTimersByTime(6000);
+    auto.onCharacter(better);
+    drain();
+    expect(sent).toEqual(['minor healing Yang', 'minor healing Yang']);
+  });
+
+  it('lets a request lapse that nothing could answer in time', () => {
+    const auto = healer({ minMana: 0.5 });
+    const dry = state({ mana: 10 }, [member('Yang', 0.95)]);
+    auto.request('Yang', dry);
+    auto.onCharacter(dry);
+    vi.advanceTimersByTime(11_000);
+    auto.onCharacter(state({}, [member('Yang', 0.95)]));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('mana');
+  });
+
+  it('is one cast, and leaves the ceiling to the thresholds', () => {
+    const auto = healer({ healBelow: 0.5, healTo: 0.9 });
+    auto.request('Yang', state({}, [member('Yang', 0.7)]));
+    auto.onCharacter(state({}, [member('Yang', 0.7)]));
+    drain();
+    vi.advanceTimersByTime(7000);
+    auto.onCharacter(state({}, [member('Yang', 0.8)]));
+    drain();
+    // 80% is over the floor and the request started no run up to `healTo`.
+    expect(sent).toEqual(['minor healing Yang']);
+  });
+
+  it('refuses a request with the heal switched off', () => {
+    const auto = healer({ healBelow: 0 });
+    const now = state({}, [member('Yang', 0.3)]);
+    auto.request('Yang', now);
+    auto.onCharacter(now);
+    drain();
+    expect(sent).toEqual([]);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('Heal If Below');
+  });
+
+  /*
+   * Spent when the cast leaves, not when it is queued: a heal dropped from the
+   * queue unsent — the stat screen, a lost connection, its own expiry — is
+   * still owed while the request stands.
+   */
+  it('spends the request when the cast leaves, not when it is queued', () => {
+    const auto = healer();
+    const now = state({}, [member('Yang', 0.95)]);
+    queue.noteTyping(true);
+    auto.request('Yang', now);
+    auto.onCharacter(now);
+    queue.clear();
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual([]);
+
+    vi.advanceTimersByTime(7000);
+    auto.onCharacter(now);
+    drain();
+    expect(sent).toEqual(['minor healing Yang']);
+  });
+
+  it('heals the member who asked ahead of one the listing has low', () => {
+    const auto = healer();
+    const now = state({}, [member('Brok', 0.3), member('Yang', 0.95)]);
+    auto.request('Yang', now);
+    auto.onCharacter(now);
+    drain();
+    auto.onCharacter(now);
+    drain();
+    expect(sent).toEqual(['minor healing Yang', 'minor healing Brok']);
+  });
+
+  it('says a request that lapsed with nothing sent', () => {
+    // This character's own heal goes first, every cooldown, for the whole window.
+    const auto = healer();
+    const hurt = state({ hp: 10 }, [member('Yang', 0.95)]);
+    auto.request('Yang', hurt);
+    auto.onCharacter(hurt);
+    vi.advanceTimersByTime(7000);
+    auto.onCharacter(hurt);
+    expect(said).toEqual([]);
+    vi.advanceTimersByTime(4000);
+    auto.onCharacter(hurt);
+    drain();
+    expect(sent).toEqual(['minor healing', 'minor healing']);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('none went out');
+  });
+
+  it('refuses out loud, once per asker, where nothing would be cast', () => {
+    const off = healer({ healParty: false });
+    const now = state({}, [member('Yang', 0.3)]);
+    off.request('Yang', now);
+    off.request('Yang', now);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('Auto-Heal Party Members');
+
+    const noSpell = healer({ healPartyWith: '' });
+    noSpell.request('Yang', now);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('no party heal spell');
+
+    const stranger = healer();
+    stranger.request('Rend', now);
+    stranger.onCharacter(state({}, [member('Yang', 0.95)]));
+    drain();
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('not on the party listing');
+    expect(sent).toEqual([]);
+  });
+
+  it('never takes an invitation for membership', () => {
+    const auto = healer();
+    const invited = { ...member('Rend', 0.2), invited: true };
+    const now = state({}, [invited]);
+    auto.request('Rend', now);
+    auto.onCharacter(state({}, [{ ...member('Rend', 0.95), invited: true }]));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said[0]).toContain('not on the party listing');
+  });
+});

@@ -62,6 +62,7 @@ import {
   formatLives,
   formatRoomAddress,
   formatSettings,
+  formatStats,
   formatStatus,
   formatVersion,
   formatVitals,
@@ -232,6 +233,11 @@ export interface RemoteEvents {
    */
   blessExpired?(from: string, spell: string): void;
   /**
+   * A party member said `@heal`. Reported to `AutoHeal`, which decides against
+   * this character's own heal settings, as `blessExpired` goes to `Blessings`.
+   */
+  healRequested?(from: string): void;
+  /**
    * Another player's client answered `@version`, or stopped answering the
    * extended question this client had asked it.
    *
@@ -277,6 +283,13 @@ export class Remotes {
 
   /** Questions sent and not yet answered, by player. See {@link Outstanding}. */
   private readonly asked = new Map<string, Outstanding>();
+
+  /** When this character last asked for a heal. See `askForHeal`. */
+  private askedForHealAt: number | null = null;
+  /** Whether a `@heal` is still worth sending, as of the last state. */
+  private wantsHeal = false;
+  /** Whether the character is known to be seen, so a say costs no stealth. */
+  private seen = false;
 
   constructor(
     private config: AutomationConfig,
@@ -533,6 +546,7 @@ export class Remotes {
    */
   onCharacter(state: CharacterState): void {
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
+    this.askForHeal(state);
     const resting = state.vitals.resting || state.vitals.meditating;
     const was = this.resting;
     this.resting = resting;
@@ -541,6 +555,68 @@ export class Remotes {
     const leader = state.party.following;
     if (leader === null) return;
     this.ask(leader, resting ? 'wait' : 'ok', state);
+  }
+
+  /**
+   * MegaMUD's *Ask For Healing*: `@heal` below `party.askForHealBelow`, in a
+   * party, at most once per `tuning.remotes.healAskAgainMs` whatever the bar
+   * did in between — a bar bobbing round the line is one ask, not one a dip.
+   *
+   * **Said in the room while the character is known to be seen**, because a
+   * heal reaches only the room and one say reaches every member standing in it
+   * (`Kindred says "@heal"`, captures/167; `.@held` → `You say "@held"` is how a
+   * MegaMUD types one). **Telepathed to each member otherwise**: a say is
+   * `CommType.Talk`, which calls `BreakStealth()` (`CommManager.cs:243`, the
+   * server's source, not the wire), and a telepath does not — so a character
+   * hiding or sneaking, or one nobody has placed either way, is not unhidden at
+   * low health by its own request.
+   *
+   * Counted when sent; dropped unsent if the bar has recovered, or the say's
+   * stealth has changed, by then. Its own setting, not `remotes.enabled`,
+   * which is about answering.
+   */
+  private askForHeal(state: CharacterState): void {
+    const below = this.config.party.askForHealBelow;
+    const { hp, hpMax } = state.vitals;
+    const fraction = hp === null || hpMax === null || hpMax <= 0 ? null : hp / hpMax;
+    this.seen = state.stealth === 'seen';
+    this.wantsHeal =
+      this.config.enabled &&
+      below > 0 &&
+      state.phase === 'in-game' &&
+      fraction !== null &&
+      fraction < below &&
+      inAParty(state);
+    if (!this.wantsHeal || fraction === null) return;
+    const last = this.askedForHealAt;
+    if (last !== null && Date.now() - last < tuning().remotes.healAskAgainMs) return;
+    const reason = t('automation.remotes.reasonAskingHeal', {
+      percent: Math.round(fraction * 100)
+    });
+    const onSent = (): void => {
+      this.askedForHealAt = Date.now();
+    };
+    if (this.seen) {
+      this.queue.enqueue({
+        command: '.@heal',
+        priority: 'combat',
+        coalesceKey: 'remote:ask-heal',
+        stillWanted: () => this.wantsHeal && this.seen,
+        onSent,
+        reason
+      });
+      return;
+    }
+    for (const member of partyMembers(state)) {
+      this.queue.enqueue({
+        command: `/${member} @heal`,
+        priority: 'combat',
+        coalesceKey: `remote:ask-heal:${playerKey(member)}`,
+        stillWanted: () => this.wantsHeal,
+        onSent,
+        reason
+      });
+    }
   }
 
   /**
@@ -630,6 +706,9 @@ export class Remotes {
   reset(): void {
     this.resting = false;
     this.asked.clear();
+    this.askedForHealAt = null;
+    this.wantsHeal = false;
+    this.seen = false;
   }
 
   /**
@@ -797,6 +876,9 @@ export class Remotes {
       }
       case 'lives':
         this.say(from, command, formatLives(state.progress.lives), prefix);
+        return;
+      case 'stats':
+        this.say(from, command, formatStats(state.progress), prefix);
         return;
       case 'wealth':
         this.say(from, command, formatWealth(state.inventory.wealth), prefix);
@@ -1148,6 +1230,12 @@ export class Remotes {
         return;
       }
 
+      case 'heal':
+        // No reply either: the heal landing on the sender is the answer, and
+        // captures/081 shows MegaMUD giving no other (`mend death`, nothing said).
+        this.events.healRequested?.(from);
+        return;
+
       case 'wait':
       case 'ok': {
         /*
@@ -1199,6 +1287,18 @@ export class Remotes {
     }
     this.reply(from, body, prefix);
   }
+}
+
+/** Everybody besides this character who has joined its party, by name. */
+function partyMembers(state: CharacterState): string[] {
+  const me = state.name?.toLowerCase() ?? null;
+  return state.party.members
+    .filter((member) => !member.invited && member.name.toLowerCase() !== me)
+    .map((member) => member.name);
+}
+
+function inAParty(state: CharacterState): boolean {
+  return partyMembers(state).length > 0;
 }
 
 /**

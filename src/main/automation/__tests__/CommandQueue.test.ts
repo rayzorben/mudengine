@@ -303,6 +303,15 @@ describe('the master switch', () => {
     expect(sent).toEqual(['n']);
     off.dispose();
   });
+
+  /* The keep-alive serves the connection, not the character — see `keepsLink`. */
+  it('passes the keep-alive, in its own band, and nothing else of automation’s', () => {
+    const off = make({ enabled: false });
+    expect(off.enqueue({ command: '', priority: 'idle', keepsLink: true })).toBe(true);
+    expect(off.enqueue({ command: 'l', priority: 'idle' })).toBe(false);
+    expect(sent).toEqual(['']);
+    off.dispose();
+  });
 });
 
 /*

@@ -6,7 +6,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { SafetyDecision } from '../../../shared/automation';
 import type { SupplyItem } from '../../../shared/config';
 import type { Loop } from '../../../shared/loops';
-import type { BuyingPlace, Route } from '../../../shared/world';
+import type { BuyingPlace, DropPlace, Route } from '../../../shared/world';
 
 const KEY = { id: 4211, name: 'black star key' };
 
@@ -95,8 +95,17 @@ beforeEach(() => {
   buying = false;
   looping = false;
   keptNames = [];
-  sources = { shops: [], lairs: [] };
+  sources = { shops: [], ...dropped([]) };
 });
+
+/** Lairs as `WorldGraph.droppingPlaces` hands them over: each dropper named beside them. */
+function dropped(lairs: DropPlace[]): Pick<ItemSources, 'droppers' | 'lairs'> {
+  const mobs = [...new Set(lairs.map((lair) => lair.mob))];
+  return {
+    droppers: mobs.map((mob) => ({ mob, placed: lairs.filter((lair) => lair.mob === mob).length })),
+    lairs
+  };
+}
 
 /**
  * One counter, as `WorldGraph.buyingPlaces` hands it over: a room, not a name.
@@ -131,7 +140,7 @@ describe('collecting what a route needs', () => {
    * floor of one and is written nowhere.
    */
   it('buys it where the realm names a shop', () => {
-    sources = { shops: [counter()], lairs: [] };
+    sources = { shops: [counter()], ...dropped([]) };
     const auto = errand();
     expect(auto.collect(KEY, OWED, ready())).toBeNull();
     /*
@@ -153,7 +162,7 @@ describe('collecting what a route needs', () => {
   /* *Run it* rides through the errand to the walk it ends in (todo 06). */
   it('carries a run through to the walk it ends in', () => {
     const runs: boolean[] = [];
-    sources = { shops: [counter()], lairs: [] };
+    sources = { shops: [counter()], ...dropped([]) };
     const auto = errand({
       walk: (route, run) => {
         walked.push(route);
@@ -176,10 +185,10 @@ describe('collecting what a route needs', () => {
   it('hunts for it where only a monster drops it', () => {
     sources = {
       shops: [],
-      lairs: [
+      ...dropped([
         { id: '1/816', name: 'Graveyard', mob: 'fierce zombie', steps: 4 },
         { id: '1/833', name: 'Crypt', mob: 'fierce zombie', steps: 6 }
-      ]
+      ])
     };
     const auto = errand();
     expect(auto.collect(KEY, OWED, ready())).toBeNull();
@@ -199,7 +208,7 @@ describe('collecting what a route needs', () => {
    * not, and which happened is said.
    */
   it('says whether what it collected stays in the pack', () => {
-    sources = { shops: [counter()], lairs: [] };
+    sources = { shops: [counter()], ...dropped([]) };
     keptNames = ['black star key'];
     const auto = errand();
     auto.collect(KEY, OWED, ready());
@@ -215,9 +224,66 @@ describe('collecting what a route needs', () => {
     expect(decisions.at(-1)).toMatchObject({ action: 'collect', acted: false });
   });
 
+  /*
+   * The reported case (2026-09-21): the Dao Lord run stopped at its second
+   * step with *the realm names nowhere this comes from*, said of a head the
+   * saracen raider drops in sixteen rooms 88 moves away. `droppingPlaces` now
+   * answers realm-wide; where it still has no ring to send the character to,
+   * the refusal says which of the three that is, and a sentence about
+   * placement names only the droppers the realm places.
+   */
+  it('names the dropper when the realm places it nowhere this character can reach', () => {
+    sources = { shops: [], droppers: [{ mob: 'saracen raider', placed: 16 }], lairs: [] };
+    const refused = errand().collect(KEY, OWED, ready());
+    expect(refused).toContain('saracen raider');
+    expect(refused).toContain('reach');
+    expect(loops).toHaveLength(0);
+    expect(taking).toEqual([]);
+    expect(decisions.at(-1)).toMatchObject({ action: 'collect', acted: false });
+  });
+
+  it('says a dropper the realm only summons is not somewhere to go', () => {
+    sources = { shops: [], droppers: [{ mob: 'dao lord', placed: 0 }], lairs: [] };
+    const refused = errand().collect(KEY, OWED, ready());
+    expect(refused).toContain('dao lord');
+    expect(refused).toContain('summons');
+    expect(loops).toHaveLength(0);
+  });
+
+  it('leaves a summoned dropper out of a sentence about where the placed one is', () => {
+    sources = {
+      shops: [],
+      droppers: [
+        { mob: 'ghost of the tomb', placed: 0 },
+        { mob: 'saracen raider', placed: 16 }
+      ],
+      lairs: []
+    };
+    const refused = errand().collect(KEY, OWED, ready());
+    expect(refused).toContain('saracen raider');
+    expect(refused).not.toContain('ghost of the tomb');
+  });
+
+  /* Zero and one are facts, not figures: three literal sentences. */
+  it('says where the hunt starts without printing 0 or 1 as a count of steps', () => {
+    for (const [steps, word] of [
+      [0, 'here in Graveyard'],
+      [1, 'next door in Graveyard'],
+      [4, '4 steps away']
+    ] as const) {
+      notices = [];
+      sources = {
+        shops: [],
+        ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps }])
+      };
+      errand().collect(KEY, OWED, ready());
+      expect(notices.some((line) => line.includes(word))).toBe(true);
+    }
+  });
+
   /* The shopping errand gave up: the route is not walked, and it says so. */
   it('does not walk the route when the errand ends without the item', () => {
-    sources = { shops: [counter()], lairs: [] };
+    sources = { shops: [counter()], ...dropped([]) };
     const auto = errand();
     auto.collect(KEY, OWED, ready());
     buying = false;
@@ -235,7 +301,10 @@ describe('collecting what a route needs', () => {
    * meant the key was collected and the way it was collected for never walked.
    */
   it('keeps offering the way while a move of its own is still unanswered', () => {
-    sources = { shops: [], lairs: [{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }] };
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
     let inFlight = true;
     const auto = errand({
       walk: (route) => {
@@ -262,7 +331,10 @@ describe('collecting what a route needs', () => {
 
   /* And a refusal that never clears is said out loud once the window is up. */
   it('says why it gave up when the way goes on refusing', () => {
-    sources = { shops: [], lairs: [{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }] };
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
     let clock = 0;
     const auto = errand({ walk: () => 'there is no way there' }, () => clock);
     auto.collect(KEY, OWED, ready());
@@ -279,7 +351,10 @@ describe('collecting what a route needs', () => {
 
   /* And what it was taking is given back when the errand is abandoned. */
   it('stops taking the item when it gives up', () => {
-    sources = { shops: [], lairs: [{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }] };
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
     const auto = errand();
     auto.collect(KEY, OWED, ready());
     expect(taking).toEqual(['black star key']);

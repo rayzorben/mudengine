@@ -153,6 +153,11 @@ export interface ItemEntity {
    * name the realm places once.
    */
   ids?: readonly number[];
+  /**
+   * The row the room settled a shared name to: the one it places (format 42,
+   * `WorldGraph.itemPlacedHere`). Every figure below is that row's then.
+   */
+  row?: { id: number };
   /** Base cost in copper, before a shop's markup. */
   price?: number;
   encumbrance?: number;

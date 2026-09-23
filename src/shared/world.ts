@@ -342,12 +342,12 @@ export interface Requirement {
    * `DaoLordQuest` (134), `Rune` (152), `Mandos Quest` (200) and
    * `GuildmasterQuest` (204) — quest counters the wire states nowhere.
    *
-   * **The window is matched and deliberately not stored.** Only the id is, and
-   * only so the realm's empty slot can be told from a real gate: `0` means no
-   * gate, the server builds a plain exit for it (case 23), and that exit costs
-   * nothing. The two numbers would be a field produced and read by nobody —
-   * no price can use them without the character's ability sum, and the chip
-   * shows the instruction verbatim, window included.
+   * The id alone, so the realm's empty slot can be told from a real gate: `0`
+   * means no gate, the server builds a plain exit for it (case 23), and that
+   * exit costs nothing. **The window is on `abilities`**, as the one
+   * `AbilityGate` this exit states — the field that had no reader when this
+   * gate was first parsed, and has had one since `abil` began stating the
+   * counters.
    */
   abilityId?: number;
   /**
@@ -467,14 +467,19 @@ export interface Requirement {
    */
   unread?: readonly string[];
   /**
-   * The ability gates among `unread`, read into the comparison the server
-   * makes.
+   * Every ability comparison this edge makes, read into the form the server
+   * compares in — whichever of the realm's two shapes wrote it.
    *
-   * `unread` keeps every condition in the realm's own words, because that is
-   * what a person reads on the chip. These are the subset the *client* can
-   * answer once `abil` has stated the counters, kept beside them rather than
-   * taken out of them: `checkability 133 5` is still worth showing whether or
-   * not this character passes it.
+   * A room script writes `checkability 133 5` among its `unread` conditions,
+   * and the exit table writes `Ability: 204 w/value 1 to 999` in the direction
+   * column itself. They are one subject: the server makes the same comparison
+   * against `Player.GetAbility(id).Sum` for both, so they are read into one
+   * field and answered in one place, and the two cannot drift into agreeing
+   * differently about the same character.
+   *
+   * For a script these are the subset of `unread` the *client* can answer, and
+   * they are kept beside those rather than taken out of them: `checkability
+   * 133 5` is still worth showing whether or not this character passes it.
    *
    * **Read, not obeyed, until the counters arrive.** `edgePenalty` refuses an
    * edge whose gate this character fails and prices one nobody has the
@@ -482,10 +487,48 @@ export interface Requirement {
    * which is never the reassuring answer and never the alarming one either.
    */
   abilities?: readonly AbilityGate[];
+  /**
+   * A timed passage this way in opens — resolved at load (`WorldGraph
+   * .linkPortals`, todo 104), never written to the file. The room command's
+   * own `cast` puts a spell on the character that ends in harm, and the
+   * rooms it lands in are under it until an exit whose cast kills it. See
+   * {@link Corridor}.
+   */
+  corridor?: Corridor;
+  /**
+   * Who may **use** the item this edge spends — an item-landing edge's own
+   * gate (`WorldGraph.itemLandings`, `linkItemLandings`), read off the
+   * item's `classes`, `races` and `minLevel`.
+   *
+   * The pack says whether the token is *held*; this says whether the server
+   * will let it be *used*, which is a different question with a different
+   * answer: `use token of Silvermere` at level 21 was answered *You are not
+   * experienced enough to make that trip!* (2026-09-21), and the level was in
+   * the item row all along (`MinLevel`, ability 135). Priced by `edgePenalty`
+   * through `equipBlock`, the one rule for who may use a thing, so the card
+   * and the router cannot disagree about it.
+   */
+  usableBy?: ItemUseGate;
 }
 
 /**
- * One ability gate a scripted way through states, as the server compares it.
+ * The realm's gate on who may use an item, as `WorldItem` states it — an
+ * allow-list of classes and races, and a level. Every field absent is a thing
+ * anybody may use.
+ */
+export interface ItemUseGate {
+  classes?: readonly number[];
+  races?: readonly number[];
+  minLevel?: number;
+}
+
+/**
+ * One ability gate an edge states, as the server compares it.
+ *
+ * A scripted way through writes it with one of three verbs; the exit table
+ * writes it as a window (`Ability: 204 w/value 1 to 999`, `AbilityExit`
+ * reading `GetAbility(id).Sum` between two ints), which is `atLeast` and
+ * `atMost` already and needs no fourth spelling.
  *
  * The three verbs are one subject and three comparisons against
  * `Player.GetAbility(id).Sum` (`TextBlockPart.Execute`, transcribed in
@@ -711,6 +754,17 @@ export interface WorldItem {
    * the converter cannot describe is not one to offer.
    */
   usableIn?: RoomId[];
+  /**
+   * The rooms the realm puts one in — `Rooms.Placed`, format 42.
+   *
+   * The fourth answer to *where does this come from*, and the only one that
+   * is a place rather than an act: put back at the nightly cleanup where it is
+   * missing, **within the item's game limit** (`RoomManager.DoCleanup`) — so an
+   * empty floor means somebody took it since, or as many as the realm allows
+   * are out. Joined at the lookup from the rooms' own column, over every row
+   * the name holds (`WorldGraph.itemPlaces`).
+   */
+  placed?: ItemPlaces;
   /** What the realm charges, before a shop's markup. Absent when it says none. */
   price?: number;
   /** What it weighs, in the units the status line counts encumbrance in. */
@@ -1080,6 +1134,42 @@ export interface BuyingPlace {
   moves: number;
 }
 
+/** One stop of the ring to go and kill in for an item — `WorldGraph.droppingPlaces`. */
+export interface DropPlace {
+  id: RoomId;
+  name: string;
+  /** The dropper this room spawns, as the realm spells it. */
+  mob: string;
+  /** How many moves from where the character stood, for the sentence. */
+  steps: number;
+}
+
+/** One monster whose drop list names an item, and whether the realm places it. */
+export interface Dropper {
+  /** As the realm spells it. */
+  mob: string;
+  /** How many rooms the realm spawns it in, reachable or not; 0 for one only ever summoned. */
+  placed: number;
+}
+
+/**
+ * Where the realm says an item can be killed for, from one room.
+ *
+ * The droppers ride beside the lairs because an empty `lairs` has two
+ * readings a refusal must keep apart: every dropper summoned rather than
+ * placed, or placed where this traveller cannot go. See `mudengine-automation`
+ * › *A route that needs an item goes and gets it*.
+ */
+export interface DropSources {
+  droppers: readonly Dropper[];
+  /**
+   * The ring nearest the character: the cheapest placement to reach and the
+   * placements within `hunting.clusterRadius` of it, capped, in the order a
+   * lap walks out from the first.
+   */
+  lairs: readonly DropPlace[];
+}
+
 /** `Shops.ShopType` as words, sampled name by name (see `buildRealm.ts`). */
 export function shopKind(type: number): ShopKind | undefined {
   switch (type) {
@@ -1163,6 +1253,20 @@ export interface WorldNames {
  * hundred rooms of damage, and the router has to price those differently or
  * the answer is wrong for one of the two characters asking.
  */
+/**
+ * A band of character levels an effect is gated to, as the realm's own
+ * `minlevel` / `maxlevel` state it. Absent on either side is unbounded there.
+ *
+ * `TextBlockPart.cs` answers both from the sheet with `Succeeded` or `Failed`,
+ * so what stands behind one happens to *some* character — and which one is
+ * stated, which is what lets the router stop pricing a sandstorm that cannot
+ * catch the character it is planning for (todo 01).
+ */
+export interface LevelBand {
+  min?: number;
+  max?: number;
+}
+
 export interface SpellHazard {
   /**
    * Hit points a tick in the room is expected to cost. Absent where the chain
@@ -1196,6 +1300,67 @@ export interface SpellHazard {
    * than walked for free, which is exactly what an unread script used to buy.
    */
   unread?: boolean;
+  /**
+   * The level bands the realm gates some of these effects behind (todo 01).
+   *
+   * Absent per effect is **ungated**. Read through `hazardFor`, never
+   * directly: a reader that forgot to would price a gated effect for every
+   * character, which is the bug this exists to fix.
+   */
+  levels?: { damage?: LevelBand; relocates?: LevelBand; summons?: LevelBand };
+}
+
+/**
+ * This hazard as it applies to a character of this level.
+ *
+ * **Unknown level keeps everything**, which is the refuse-rather-than-guess
+ * rule: a character the client cannot place is priced for the whole chain, as
+ * it was before any of this existed. Only a *stated* level drops a *stated*
+ * band, and only where the band excludes it outright.
+ *
+ * Returns the same reference where nothing is gated, so the ordinary room —
+ * which is almost all of them — costs one property read.
+ */
+export function hazardFor(hazard: SpellHazard, level: number | null | undefined): SpellHazard {
+  const bands = hazard.levels;
+  if (bands === undefined || level === null || level === undefined) return hazard;
+  const out = (band: LevelBand | undefined): boolean =>
+    band !== undefined &&
+    ((band.min !== undefined && level < band.min) || (band.max !== undefined && level > band.max));
+
+  const damage = out(bands.damage);
+  const relocates = out(bands.relocates);
+  const summons = out(bands.summons);
+  if (!damage && !relocates && !summons) return hazard;
+  return {
+    ...hazard,
+    ...(damage ? { damage: undefined } : {}),
+    ...(relocates ? { relocates: false } : {}),
+    ...(summons ? { summons: false } : {})
+  };
+}
+
+/**
+ * One ward the realm itself writes: an item's use stops a room's own spell.
+ *
+ * The realm's half of `automation.health.potions` — a player's row says *drink
+ * the antidote when poisoned* and this says *use the waterskin where the
+ * desert spell is cast*, which is the same sentence with the realm as its
+ * author. `Wards` acts on it and the settings screen draws it, so a switch
+ * over rules nobody can read is not what the player is offered.
+ *
+ * Every field is a name rather than an id: this crosses to the renderer, and
+ * a row id means nothing there.
+ */
+export interface WardRule {
+  /** The item whose use casts the ward, as the realm names it. */
+  item: string;
+  /** The spell that use casts. */
+  ward: string;
+  /** The room's own spell it stops. */
+  hazard: string;
+  /** How many rooms of this realm cast that spell. */
+  rooms: number;
 }
 
 /**
@@ -1207,18 +1372,28 @@ export interface SpellHazard {
  * row ids the listing resolved — and an unlisted pack is *nobody has said*,
  * which is never *avoided*: the reassuring answer is the dangerous one here.
  *
- * The spell half is deliberately not consulted: what the client knows about
- * its own blessings is what the server printed, and a route priced on a bless
- * that may have lapsed is a guess with a hundred rooms of damage after it. It
- * is said on the card instead.
+ * The spell half is consulted only where the server has **stated** the spell
+ * up with a countdown still running (`Traveller.spellsUp`, todo 105): what
+ * the client knows about its own blessings is otherwise what the server
+ * printed once, and a route priced on a bless that may have lapsed is a guess
+ * with a hundred rooms of damage after it. A bless with no stated clock is
+ * said on the card and kept up by `Wards`, never priced.
  */
 export function hazardAvoided(
   hazard: SpellHazard,
-  carrying: readonly number[] | undefined
+  carrying: readonly number[] | undefined,
+  spellsUp: readonly number[] = []
 ): boolean {
   const wanted = hazard.avoidedBy;
-  if (wanted === undefined || wanted.length === 0 || carrying === undefined) return false;
-  return wanted.some((item) => carrying.includes(item));
+  if (
+    wanted !== undefined &&
+    carrying !== undefined &&
+    wanted.some((item) => carrying.includes(item))
+  )
+    return true;
+  const spells = hazard.avoidedBySpell;
+  if (spells === undefined || spellsUp.length === 0) return false;
+  return spells.some((spell) => spellsUp.includes(spell));
 }
 
 export interface WorldSpell {
@@ -1474,6 +1649,19 @@ export interface WorldLair {
   /** How many are up at once, when the descriptor states it. */
   max: number | null;
   /**
+   * How long the room waits before it fills again, in seconds.
+   *
+   * `Rooms.Delay` put through `respawnSeconds` (`src/shared/hunting.ts`), which
+   * is the one reading of that column — the unit rules and GreaterMUD's
+   * thirty-second offset included. Resolved in main rather than carried raw,
+   * because the offset is a *server* behaviour and only main holds the family
+   * the wire stated; the renderer reads a number of seconds and nothing else.
+   *
+   * Null where the data states no clock — a realm converted before format 33.
+   * Every lair in both shipped worlds states one (14,068 and 3,102).
+   */
+  respawnSeconds: number | null;
+  /**
    * What can spawn, de-duplicated, in the realm's order. Empty when the
    * descriptor names only ids this table lacks — a derivative's additions —
    * which the face says rather than hides.
@@ -1525,7 +1713,36 @@ export function parseLair(descriptor: string): { max: number | null; ids: number
  * never a button that walks to whichever room the file listed first, which is
  * the guess `ShopPlace` already refuses for the same reason.
  */
-export interface MobSpawn {
+/**
+ * Rooms of one name that something is put in — a monster's spawn group, an
+ * item's placement.
+ *
+ * Grouped by name because that is what a reader recognises, and **a group of
+ * several is a choice, never a walk to the first**: the card opens it into
+ * its addresses. `count` is the whole group and `rooms` the capped list.
+ */
+export interface PlaceGroup {
+  roomName: string;
+  /** How many rooms of that name hold it, whether or not `rooms` lists them all. */
+  count: number;
+  /** Those rooms, capped — each one a place a walk can be planned to. */
+  rooms: Array<{ map: number; room: number }>;
+}
+
+/**
+ * Every room the realm puts one item in — `Rooms.Placed`, format 42. The
+ * `MobPlaces` shape, for the question *where does this lie*.
+ */
+export interface ItemPlaces {
+  /** The widest spread first. Capped. */
+  groups: PlaceGroup[];
+  /** Groups the cap left out, so a truncated list says it is one. */
+  more: number;
+  /** Every placed row is one the realm will not let anybody pick up. */
+  fixed?: true;
+}
+
+export interface MobSpawn extends PlaceGroup {
   /**
    * How the realm puts it there.
    *
@@ -1535,11 +1752,6 @@ export interface MobSpawn {
    * The distinction decides whether walking there finds the thing.
    */
   via: 'npc' | 'lair';
-  roomName: string;
-  /** How many rooms of that name spawn it, whether or not `rooms` lists them all. */
-  count: number;
-  /** Those rooms, capped — each one a place a walk can be planned to. */
-  rooms: Array<{ map: number; room: number }>;
   /**
    * How many may be up at once, where every descriptor in the group agrees.
    * Null where they disagree or state none — a figure folded from rows that
@@ -1938,6 +2150,29 @@ export function nameAnswersTo(name: string, typed: string): boolean {
   return name === typed || name.startsWith(typed) || name.includes(` ${typed}`);
 }
 
+/**
+ * A passage walked under a timed spell — the dive into the Muddy Underwater
+ * Passage: `dive pool` casts *holding breath* (25 ticks), which ends in
+ * *drowning*, and the way up at the far end casts the spell that kills both.
+ *
+ * `rooms` is how many the way in puts under it before the nearest exit that
+ * lifts it, counting the landing; `ends` false is a passage with no such
+ * exit within `ticks` moves of the landing, which the router walls. Nothing
+ * carried stops one: the answer is to keep moving, which is what
+ * `Walker`'s move-only rule and the session's gates do inside it.
+ */
+export interface Corridor {
+  /** The spell the way in casts, and its name. */
+  spell: number;
+  name: string;
+  rooms: number;
+  ends: boolean;
+  /** How many ticks the spell lasts, where the realm states a duration. */
+  ticks?: number;
+  /** What it ends in, named. */
+  then?: string;
+}
+
 export interface WorldExit {
   direction: Direction;
   /** Destination, as `map/room`. */
@@ -2012,6 +2247,13 @@ export interface WorldRoom {
    * them apart.
    */
   spell?: number;
+  /**
+   * `Rooms.Placed` — the items the realm puts on this floor and puts back at
+   * the nightly cleanup where they are missing, within each item's game limit
+   * (format 42). Ids, named where they are read; most are furniture nobody can
+   * pick up.
+   */
+  placed?: number[];
 }
 
 /**
@@ -2063,6 +2305,12 @@ export interface RoomBrief {
   light?: number;
   /** The words the room answers to, from its own script. */
   commands?: RoomCommand[];
+  /**
+   * What the realm puts in this room at every cleanup (`WorldRoom.placed`),
+   * named. `fixed` where the realm will not let it be picked up, which is
+   * most of them: a sign, a coffin, a tree.
+   */
+  placed?: Array<{ id: number; name: string; fixed?: true }>;
 }
 
 export interface RoomBriefExit {
@@ -2086,6 +2334,16 @@ export interface RoomCommand {
   say: string[];
   /** Where it leads, as `map/room`, when it moves you at all. */
   to?: RoomId;
+  /**
+   * The spell saying it puts on the character — format 43.
+   *
+   * `dive pool` at the Bountiful Oasis is `teleport 121 12:cast 512`: the
+   * teleport is where you land and the cast is *holding breath*, 25 ticks
+   * that end in `drowning`, which ends in death. The landing was read since
+   * format 29 and the spell was narration, so eleven underwater rooms were a
+   * free corridor to the router and the plan. Read by `WorldGraph.corridorsAlong`.
+   */
+  casts?: number;
   /** What it wants, in the realm's own words. */
   need?: string[];
   /**
@@ -2468,6 +2726,8 @@ export interface RouteInvocation {
 }
 
 export interface RouteHazard {
+  /** The spell's own row, so a reader can ask the realm what stops it. */
+  id: number;
   /** The realm's name for it — `river damage`, `swamp poison`. */
   spell: string;
   /** How many rooms on the way cast it. */
@@ -2483,6 +2743,8 @@ export interface RouteHazard {
   unread: boolean;
   /** Whether the spell can put a monster in the room. */
   summons: boolean;
+  /** Whether it can move the character somewhere the exit table does not name. */
+  relocates: boolean;
   /**
    * What would stop it, named, that the pack does not already hold — *carry
    * one of these and this stops happening*. Empty where the realm names
@@ -2494,6 +2756,12 @@ export interface RouteHazard {
    * (`hazardAvoided`), so this is advice rather than a price.
    */
   needsSpell: string[];
+  /**
+   * Set where this is not a room's own spell but a passage the way *in* puts
+   * on the character (todo 104): `rooms` is then the rooms under it on this
+   * route, `share` null, and the chip says *run through*. See {@link Corridor}.
+   */
+  corridor?: { ends: boolean; ticks?: number; then?: string };
 }
 
 /**
@@ -2754,6 +3022,33 @@ export type RouteBlock =
       opensBySaying?: string;
       opensItemName?: string;
     }
+  | {
+      /**
+       * A quest counter the exit wants, against what `abil` said this
+       * character holds.
+       *
+       * Its own kind rather than a `born`: a standing or a race is what the
+       * realm decided at creation and nothing on the route can change, and
+       * this is the one gate on an exit that a player can go away and *open* —
+       * which makes the counter's own name and the window the whole of what
+       * there is to act on.
+       *
+       * Only ever built once a listing has landed, for the reason `carry` is:
+       * before one, nobody has said, and nobody having said never blocks. So
+       * `held` is a number the realm stated rather than a guess, and it is
+       * zero where a **complete** listing did not name the counter at all.
+       */
+      kind: 'quest';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      abilityId: number;
+      /** The realm's own word for the counter, where the enum knows one. */
+      counterName?: string;
+      held: number;
+      atLeast?: number;
+      atMost?: number;
+    }
   /** No path at all, gates ignored: the two rooms are not joined in the data. */
   | { kind: 'unreachable' };
 
@@ -2770,6 +3065,7 @@ export const ROUTE_BLOCK_KINDS = [
   'toll',
   'carry',
   'born',
+  'quest',
   'door',
   'unreachable'
 ] as const;
@@ -2884,6 +3180,30 @@ export function describeBlock(block: RouteBlock): string {
         ? `${block.name} has a ${block.condition} gate you do not meet, and ${mine}`
         : `${block.name} admits ${say(block.admits)} only, and ${mine}`;
     }
+    case 'quest': {
+      /*
+       * The counter and what it wants, then what the character holds — the
+       * level block's rule, because the number that was not met is the whole
+       * of what somebody can act on. The realm's own word for the counter
+       * where the enum has one, and the id where it does not: `GuildmasterQuest`
+       * is an errand and `ability 204` is a number to go and look up, but both
+       * beat *you may not go that way*.
+       */
+      const what = block.counterName ?? `ability ${block.abilityId}`;
+      const wants =
+        block.atLeast !== undefined && block.atMost !== undefined
+          ? block.atLeast === block.atMost
+            ? `exactly ${block.atLeast}`
+            : `${block.atLeast}–${block.atMost}`
+          : block.atLeast !== undefined
+            ? `at least ${block.atLeast}`
+            : block.atMost !== undefined
+              ? `at most ${block.atMost}`
+              : null;
+      return wants === null
+        ? `${block.name} wants ${what}, and yours is ${block.held}`
+        : `${block.name} wants ${what} ${wants}, and yours is ${block.held}`;
+    }
     case 'door': {
       /*
        * What opens it, every channel the realm named, then what the character
@@ -2953,6 +3273,7 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
     case 'level':
     case 'toll':
     case 'born':
+    case 'quest':
     case 'unreachable':
       return null;
   }
@@ -3035,6 +3356,23 @@ export interface Route {
    * already uses one, and on any route not planned for a reader.
    */
   viaItem?: Route;
+  /**
+   * A way that is **materially different** from the plan, where one exists —
+   * the third alternative, and the one asked for by name and over again:
+   * *other ways of getting there if it differs by more than a few rooms*.
+   *
+   * The other three are defined by what they assume — a room avoided, an
+   * item carried, a charge spent. This one is defined by what it *is not*:
+   * the plan's own edges are priced `tuning.world.anotherWayPenalty` times
+   * over and the search asked again, so it leaves the plan wherever a detour
+   * costs less than that much of what it replaces. Offered when at least
+   * `alternativeMinSteps` of its rooms are not on the plan and it is no more
+   * than `anotherWayLonger` longer; never walled, never deadly, and never for
+   * a plan that is itself walled or deadly, which `otherWay` already asks
+   * round. Its `cost` is the honest one, priced without the penalty. Absent
+   * on any route not planned for a reader.
+   */
+  another?: Route;
 }
 
 /**

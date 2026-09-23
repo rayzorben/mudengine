@@ -58,7 +58,8 @@ if (process.argv[2] !== undefined && only === null) {
 }
 const jobs = (only === null ? SHIPPED_WORLDS : [only]).map((world) => ({
   world,
-  source: only !== null && process.argv[3] !== undefined ? path.resolve(process.argv[3]) : ARCHIVES[world]
+  source:
+    only !== null && process.argv[3] !== undefined ? path.resolve(process.argv[3]) : ARCHIVES[world]
 }));
 
 for (const { world, source } of jobs) {
@@ -75,12 +76,24 @@ for (const { world, source } of jobs) {
   });
   realm.close();
 
+  // What a room is furnished with (format 42) is a source like a shop's stock,
+  // stated on the rooms rather than on the items.
+  const furnished = new Set();
+  let furnishedRooms = 0;
+  for (const line of built.lines) {
+    const placed = JSON.parse(line).pl ?? [];
+    if (placed.length > 0) furnishedRooms += 1;
+    for (const id of placed) furnished.add(id);
+  }
   console.log(`  ${built.stats.rooms.toLocaleString()} rooms`);
   console.log(
-    `  ${built.stats.items} items named — what an exit demands, what a shop stocks and what a ` +
-      `script hands over, ` +
-      `${built.header.items.filter((item) => item.shops || item.mobs || item.from).length} ` +
+    `  ${built.stats.items} items named — what an exit demands, what a shop stocks, what a ` +
+      `script hands over and what a room holds, ` +
+      `${built.header.items.filter((item) => item.shops || item.mobs || item.from || furnished.has(item.id)).length} ` +
       `with a known source`
+  );
+  console.log(
+    `  ${furnishedRooms} rooms the realm puts ${furnished.size} items in, back every night`
   );
   console.log(
     `  ${built.stats.shops} shops with stock, ` +

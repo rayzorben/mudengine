@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { alertsFor, byNewest, findKey, isCash, roomsWithFinds, within, type Find } from '../finds';
+import {
+  alertsFor,
+  byNewest,
+  byRarest,
+  findKey,
+  findRate,
+  isCash,
+  roomsWithFinds,
+  within,
+  type Find
+} from '../finds';
 
 const DAY = 86_400_000;
 const NOW = 1_757_000_000_000;
@@ -14,6 +24,8 @@ function find(over: Partial<Find> = {}): Find {
     copper: null,
     at: NOW,
     seen: 1,
+    hits: 1,
+    searched: 1,
     ...over
   };
 }
@@ -34,9 +46,17 @@ describe('a find is one thing in one room', () => {
 });
 
 describe('the window on the log', () => {
-  it('is newest first', () => {
+  it('is newest first among equally rare rows', () => {
     const rows = within([find({ at: NOW - DAY }), find({ room: '1/2', at: NOW })], 0, NOW);
     expect(rows.map((row) => row.at)).toEqual([NOW, NOW - DAY]);
+  });
+
+  it('is rarest first, and a row with no rate yet goes last', () => {
+    const common = find({ name: 'coins', hits: 9, searched: 10 });
+    const rare = find({ name: 'rusty key', hits: 1, searched: 10, at: NOW - DAY });
+    const uncounted = find({ name: 'sash', hits: 0, searched: 0, at: NOW + 1 });
+    const rows = within([uncounted, common, rare], 0, NOW);
+    expect(rows.map((row) => row.name)).toEqual(['rusty key', 'coins', 'sash']);
   });
 
   it('keeps everything at zero days, which is the shipped answer', () => {
@@ -60,6 +80,24 @@ describe('the window on the log', () => {
 
   it('sorts by the stamp, never by the words', () => {
     expect(byNewest(find({ at: 2 }), find({ at: 1 }))).toBeLessThan(0);
+  });
+});
+
+describe('how often a search turns it up', () => {
+  it("is the room's counted searches that found it", () => {
+    expect(findRate(find({ hits: 1, searched: 20 }))).toBe(0.05);
+  });
+
+  it('is unknown, not zero, before the room has a counted search', () => {
+    // A row written before searches were counted: nine finds and no misses on
+    // record, which is no rate at all rather than a perfect one.
+    expect(findRate(find({ seen: 9, hits: 0, searched: 0 }))).toBeNull();
+  });
+
+  it('puts never-found-since-counting above rare, since it is rarer', () => {
+    const none = find({ hits: 0, searched: 3 });
+    const rare = find({ name: 'ring', hits: 1, searched: 3 });
+    expect(byRarest(none, rare)).toBeLessThan(0);
   });
 });
 

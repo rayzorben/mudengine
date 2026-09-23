@@ -633,10 +633,30 @@ export class Classifier {
       this.resolveNames(rule, groups);
       this.bindReceipt(rule.type, groups);
 
-      return this.build(line, rule.type, groups, text, confidence);
+      return this.build(line, this.fellHere(rule.type, groups, text), groups, text, confidence);
     }
 
     return this.build(line, 'unknown', {}, text, 0);
+  }
+
+  /**
+   * `<Name> drops to the ground!` naming this character is this character
+   * going down.
+   *
+   * GreaterMUD sends the fallen `You drop to the ground!` and the room the
+   * named line (`Player.cs:5165`); MajorMUD sends the fallen the room's line
+   * (bearfather, `logs/2026-09-18_21-00-32_soul.mudcap.jsonl`: `Soul drops to
+   * the ground!` at `[HP=-1/KAI=0]`). Read as a stranger's, nothing stood
+   * down and automation sent `swan` and `s` into `You may not do that while
+   * you are mortally wounded!` until the character died. Not `is dead.`,
+   * which is the same rule and a different fact.
+   */
+  private fellHere(type: BlockType, groups: Record<string, string>, text: string): BlockType {
+    if (type !== 'player-dies' || !text.endsWith('drops to the ground!')) return type;
+    const own = this.names?.self?.() ?? null;
+    const named = groups['player'] ?? null;
+    if (own === null || named === null) return type;
+    return own.toLowerCase() === named.toLowerCase() ? 'user-mortally-wounded' : type;
   }
 
   /**

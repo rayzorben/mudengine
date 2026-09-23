@@ -41,7 +41,7 @@
  * The quick view is the builder's only because it is *every* map's (todo
  * 2026-09-14): a lair is what makes a room worth putting in a loop, and this
  * was the one map that would not say what was in one. The **same** panel, with
- * the same *Walk to* on it — what the builder decides is what a **click**
+ * the same *Plan route* on it — what the builder decides is what a **click**
  * means, and nothing else. A panel identical everywhere but for its one
  * control is two panels.
  */

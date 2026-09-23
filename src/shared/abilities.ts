@@ -570,6 +570,15 @@ export const HAZARD_ABILITY = {
    */
   endCast: 151,
   /**
+   * The spell this one takes *off* the character.
+   *
+   * The end of a timed corridor: `exit muddy water`, cast by the way up out
+   * of the Muddy Underwater Passage, ends in `stop mud drown`, which kills
+   * `holding breath` and `drowning`. `WorldGraph.corridorsAlong` reads it to
+   * find where a spell the way in put on the character comes off again.
+   */
+  killSpell: 153,
+  /**
    * The spell an **item** casts when it is used.
    *
    * The other odd one out beside `textBlock`: it is on `Items.Abil-n` rather

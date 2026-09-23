@@ -145,6 +145,61 @@ export function readSort(stored: string, columns: readonly string[]): Sort | nul
 }
 
 /**
+ * One shelf of a listing that has them: a name, and the rows under it.
+ *
+ * `title` is the sentence behind a one-word head, as hover text — a head is
+ * a label and takes the label's budget.
+ */
+export interface Group {
+  id: string;
+  label: string;
+  title?: string;
+}
+
+/** The rows of one shelf, under its head — or under none, for a row the card shelved nowhere. */
+export interface Shelf<Row> {
+  group: Group | null;
+  rows: Row[];
+}
+
+/**
+ * The rows, shelved in the card's own order.
+ *
+ * A listing can have an opinion about what matters, and a quest book has
+ * three: what this character can get on with, what is behind them, and what
+ * is shut. Stated as shelves rather than as a hidden sort, because an order
+ * nobody can see the reason for reads as no order at all — the head is what
+ * says why a finished chain is under the open ones.
+ *
+ * Only in the card's own order. A column sort is a sort of the whole table,
+ * as it is everywhere else, and the heads go with it: a shelf whose rows are
+ * scattered through a sorted list is a claim about nothing.
+ *
+ * Stable within a shelf, so the card's order survives inside each. A row
+ * shelved on a group the card did not declare goes last, under no head — it
+ * is drawn, never dropped, because a listing that lost rows to a bookkeeping
+ * slip would be lying about what it holds.
+ */
+export function shelve<Row>(
+  rows: readonly Row[],
+  groups: readonly Group[],
+  groupOf: (row: Row) => string
+): Shelf<Row>[] {
+  const shelves = new Map<string, Row[]>(groups.map((group) => [group.id, []]));
+  const stray: Row[] = [];
+  for (const row of rows) {
+    const shelf = shelves.get(groupOf(row));
+    if (shelf === undefined) stray.push(row);
+    else shelf.push(row);
+  }
+  const shelved: Shelf<Row>[] = groups
+    .map((group) => ({ group, rows: shelves.get(group.id) ?? [] }))
+    .filter((shelf) => shelf.rows.length > 0);
+  if (stray.length > 0) shelved.push({ group: null, rows: stray });
+  return shelved;
+}
+
+/**
  * What to say about a table that is not showing everything it holds.
  *
  * Null when nothing is hidden, so the line is absent rather than saying

@@ -26,7 +26,17 @@ import { t } from '../app/i18n';
 import { describeObstacle } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
-import { itemsBrought } from '../../shared/quests';
+import {
+  earlierHandover,
+  itemsBrought,
+  packHolds,
+  planAct,
+  stepRoll,
+  type PlanItem,
+  type PlanPlace,
+  type PlanSnag,
+  type PlanStep
+} from '../../shared/quests';
 import type { Quest, QuestErrand, QuestSource, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
@@ -42,11 +52,14 @@ import {
   type RouteBlock,
   type Direction,
   type Requirement,
+  type ItemUseGate,
   type Route,
   type RouteStep,
   type RoomId,
   type WorldExit,
   type WorldItem,
+  type WardRule,
+  type LevelBand,
   type ItemHandover,
   type ApproachGate,
   type ApproachItem,
@@ -54,14 +67,19 @@ import {
   type BankChoice,
   type ShopPlace,
   type BuyingPlace,
+  type Dropper,
+  type DropSources,
   type MobPlaces,
   type MobSpawn,
+  type ItemPlaces,
+  type PlaceGroup,
   type RequirementAction,
   openableHere,
   parseLair,
   type WorldShop,
   type WorldShopItem,
   hazardAvoided,
+  hazardFor,
   type RouteHazard,
   type RouteInvocation,
   type RouteScatter,
@@ -80,6 +98,7 @@ import {
   type MobProfile,
   type WorldNames,
   type RoomCommand,
+  type Corridor,
   type RemoteLever,
   type WorldRoom,
   type ShopKind,
@@ -89,7 +108,12 @@ import { trainersFor, type TrainerRow } from '../../shared/training';
 import { spellServes } from '../../shared/spellcraft';
 import { itemInvocation } from '../../shared/items';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
-import { CONFUSE_MESSAGE_ABILITY, HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
+import {
+  CONFUSE_MESSAGE_ABILITY,
+  HAZARD_ABILITY,
+  abilityName,
+  abilityShape
+} from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
 import {
   ARMOUR_TYPE,
@@ -100,6 +124,7 @@ import {
   itemKind
 } from '../../shared/items';
 import { tuning } from '../app/tuning';
+import { respawnSeconds } from '../../shared/hunting';
 import { spellTargeting } from '../../shared/spellcraft';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
 import type { AttributeSpans, RoomExit } from '../../shared/character';
@@ -117,6 +142,7 @@ import {
   type ArchiveIdentity,
   type ShippedWorld
 } from '../../shared/worlds';
+import { equipBlock, type Wearer } from '../../shared/gear';
 
 /**
  * A room-script teleport the router may walk — `dive pool`, `go vortex`.
@@ -208,6 +234,14 @@ export interface Traveller {
    * dependency on the character's.
    */
   counters?: { sums: Readonly<Record<number, number>>; complete: boolean } | null;
+  /**
+   * The spells the server has stated up on this character with a countdown
+   * still running (todo 105) — a room spell one of them stops is priced as a
+   * plain step (`hazardAvoided`). Only a *stated* clock: a bless recorded
+   * without one may have lapsed, and pricing on it is the guess the spell
+   * half of `hazardAvoided` refused for a year. Absent is nobody has said.
+   */
+  spellsUp?: readonly number[];
   /** Picklocks, for a door the realm lets that skill open. */
   pickSkill?: number | null;
   /** Strength, for the same doors — the realm accepts either. */
@@ -310,6 +344,15 @@ export interface Traveller {
    * the way round the Massive Doors still ends in the room behind them.
    */
   avoidEdges?: ReadonlySet<string>;
+  /**
+   * Edges of the plan a *different* way is being asked for, as `from|to`
+   * room ids — priced `tuning.world.anotherWayPenalty` times over rather than
+   * pruned (`Route.another`). Pruning them would refuse every way that shares
+   * a bridge with the plan; pricing them lets the search reuse the plan
+   * exactly where leaving it costs more than it saves. Never set by a caller
+   * planning a walk.
+   */
+  penalised?: ReadonlySet<string>;
 }
 
 /** What a caller wants beyond the plan itself. */
@@ -564,7 +607,7 @@ export function edgeBlock(
   requirement: Requirement | null,
   traveller: Traveller
 ): {
-  kind: 'key' | 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'item';
+  kind: 'key' | 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'item' | 'ability';
   requirement: Requirement;
   /** The item a lever wants, when the block is a hidden exit's; `keyId` otherwise. */
   itemId?: number;
@@ -587,7 +630,12 @@ export function edgeBlock(
 
     case 'item': {
       const wanted = requirement.keyId;
-      if (wanted === undefined || traveller.keys?.includes(wanted)) return null;
+      if (wanted === undefined) return null;
+      // The mirror of `edgePenalty`'s first refusal: an item the character
+      // may not use blocks whatever the pack holds, and says which half.
+      const gate = useGateShut(requirement, traveller);
+      if (gate !== null) return { kind: gate, requirement };
+      if (traveller.keys?.includes(wanted)) return null;
       return traveller.packKnown === true ? { kind: 'item', requirement } : null;
     }
     case 'level': {
@@ -656,6 +704,22 @@ export function edgeBlock(
       if (rank === null || low === null || high === null) return null;
       return rank >= low && rank <= high ? null : { kind: 'alignment', requirement };
     }
+
+    /*
+     * The mirror of `edgePenalty`'s one refusal on the counters, and the only
+     * gate here a player can go away and *open*. `abilityGatesMet` is asked
+     * rather than the window compared again: three copies of *does this
+     * character pass* agree exactly until one is edited, which is the reason
+     * `openableHere` exists one kind across.
+     *
+     * Null on *nobody has said*, which is the rule every case above follows —
+     * an unread listing is discouraged and never pruned, so a block of this
+     * kind always names a counter the realm stated.
+     */
+    case 'ability':
+      return abilityGatesMet(requirement.abilities, traveller.counters) === false
+        ? { kind: 'ability', requirement }
+        : null;
 
     default:
       return null;
@@ -785,10 +849,36 @@ export function dangerPenalty(share: number | null): number {
  * `nomonsters` and the `takeitem` beside it — is no more readable than it was.
  */
 export function edgePenalty(requirement: Requirement | null, traveller: Traveller): number | null {
+  /*
+   * **Ahead of everything else, because a refusal is a refusal.** This sat
+   * under the `unread` guard below, where it answered a room script's
+   * `checkability` and never saw the exit table's own `Ability: 204 w/value 1
+   * to 999` — which carries no `unread`, having nothing unread about it. Live,
+   * 2026-09-21: a 286-step plan walked into `2/9458 sw` and the realm answered
+   * *You realize that you need more information for the task at hand!*
+   */
+  if (abilityGatesMet(requirement?.abilities, traveller.counters) === false) return null;
   const priced = statedPenalty(requirement, traveller);
-  if (priced === null || requirement?.unread === undefined) return priced;
-  if (abilityGatesMet(requirement.abilities, traveller.counters) === false) return null;
-  return priced + UNEVALUATED;
+  if (priced === null) return null;
+  const under = corridorCost(requirement);
+  if (under === null) return null;
+  const total = priced + under;
+  if (requirement?.unread === undefined) return total;
+  return total + UNEVALUATED;
+}
+
+/**
+ * What a way in that puts a timed spell on the character costs (todo 104):
+ * the rooms under it to the exit that lifts it, against the ticks it lasts.
+ * A passage with no way out this side of the spell's end, or one whose
+ * length the realm states no duration against, is a wall — unknown is never
+ * the reassuring answer, and here the reassuring answer drowns somebody.
+ */
+function corridorCost(requirement: Requirement | null): number | null {
+  const corridor = requirement?.corridor;
+  if (corridor === undefined) return 0;
+  if (!corridor.ends || corridor.ticks === undefined) return null;
+  return corridor.rooms > corridor.ticks ? null : corridor.rooms;
 }
 
 function statedPenalty(requirement: Requirement | null, traveller: Traveller): number | null {
@@ -969,13 +1059,19 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * here *is* that exit and it costs nothing.
        *
        * Every other ability gate names a quest counter (`DaoLordQuest`,
-       * `Rune`, `Mandos Quest`, `GuildmasterQuest`) that the wire states
-       * nowhere: the server reads `GetAbility(id).Sum`, which folds the race,
-       * the class, everything worn and everything running, and no listing this
-       * client can ask for prints it. So it stays discouraged, and the chip
-       * carries the realm's own words for a person to judge by.
+       * `Rune`, `Mandos Quest`, `GuildmasterQuest`), and `abil` states those
+       * outright. A gate this character **fails** never reaches here — it is
+       * refused a layer up, where a script's gate is — so the two answers left
+       * are *settled and passing*, which is a plain corridor and costs
+       * nothing, and *nobody has said*, which stays discouraged with the chip
+       * carrying the realm's own words for a person to judge by.
+       *
+       * Nothing is added to a gate that passes, unlike the script beside it: a
+       * room script has a `nomonsters` and a `takeitem` left unread after its
+       * gate is answered, and an `AbilityExit` is the gate and nothing else.
        */
-      return requirement.abilityId === undefined ? 0 : UNEVALUATED;
+      if (requirement.abilityId === undefined) return 0;
+      return abilityGatesMet(requirement.abilities, traveller.counters) === true ? 0 : UNEVALUATED;
 
     case 'cast':
       /*
@@ -1064,6 +1160,18 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        */
       const wanted = requirement.keyId;
       if (wanted === undefined) return 0;
+      /*
+       * **And whether the server will let it be used at all**, which the pack
+       * cannot answer: the token of Silvermere sat in a level-21 pack, the
+       * walk out of the Sandbar wanted a rope and grapple the pack lacked, so
+       * the last-resort landing planned `use token of Silvermere` and the
+       * server said *You are not experienced enough to make that trip!*
+       * (2026-09-21). The item row states level 25. Refused, not discouraged:
+       * a level is not something a detour fetches. Unknown never refuses,
+       * exactly as `equipBlock` never greys a row out on a sheet nobody has
+       * read.
+       */
+      if (useGateShut(requirement, traveller) !== null) return null;
       if (traveller.keys?.includes(wanted)) return 0;
       return traveller.packKnown === true ? null : UNEVALUATED;
     }
@@ -1212,6 +1320,12 @@ export class WorldGraph {
   /** Lowercased name -> every room that bears it. Names are far from unique. */
   private readonly byName = new Map<string, WorldRoom[]>();
   /**
+   * Item id -> every room the realm places one in, in load order: the other
+   * direction of `WorldRoom.placed`, built as the rooms arrive so the file
+   * states the fact once (format 42).
+   */
+  private readonly placedIn = new Map<number, RoomId[]>();
+  /**
    * The three the scatter solve works from, all built on first use and none of
    * them on load: a realm's rooms are read at startup and most sessions never
    * plan through a draw, so the index that answers *what leads here* (140,000
@@ -1263,6 +1377,18 @@ export class WorldGraph {
    * the second onto the first would have opened a gate on a name.
    */
   private readonly itemRowsByName = new Map<string, number[]>();
+  /**
+   * The items whose use casts a spell, by the spell — `Items.Abil-n = CastsSp`
+   * the other way round. A room spell's script names the spell that stops it
+   * (`failspell 711`), and this is how a plan gets from that to the waterskin.
+   */
+  private readonly grants = new Map<number, WorldItem[]>();
+  /**
+   * The rooms a way in leaves under a timed spell (todo 104), by the passage
+   * that puts them there — the eleven Muddy Underwater Passage rooms under
+   * *holding breath*. Built by `linkPortals`; read by `spellOver`.
+   */
+  private readonly underSpell = new Map<RoomId, Corridor>();
   /**
    * Every monster the realm names, keyed by lowercased name.
    *
@@ -1608,7 +1734,29 @@ export class WorldGraph {
     const rows = this.itemRowsByName.get(key);
     // Absent is a name the realm cannot place; more than one is a name that
     // does not say which row. Both are *nobody has said*, not *not carried*.
-    return rows === undefined || rows.length !== 1 ? null : rows[0]!;
+    if (rows === undefined) return null;
+    if (rows.length === 1) return rows[0]!;
+    /*
+     * Among several, a row the realm offers no way to hold is never the one
+     * held: not gettable, and nothing sells, drops or hands it over. Format 42
+     * named the furniture and gave `silver box` — the Guildmaster's handover —
+     * a fixed twin. Only among several: `acid gland` is `Gettable` 0 and a
+     * script hands it over, so the flag alone says nothing about a pack.
+     */
+    const holdable = rows.filter((id) => this.holdable(id));
+    return holdable.length === 1 ? holdable[0]! : null;
+  }
+
+  /** Whether the realm offers any way to be holding this row. See `oneRowNamed`. */
+  private holdable(id: number): boolean {
+    const item = this.items.get(id);
+    if (item === undefined || item.gettable !== false) return true;
+    return (
+      (item.shops?.length ?? 0) > 0 ||
+      (item.mobs?.length ?? 0) > 0 ||
+      (item.from?.length ?? 0) > 0 ||
+      this.stockedBy(id).length > 0
+    );
   }
 
   itemsNamed(names: readonly string[]): Record<string, WorldItem> {
@@ -1712,6 +1860,61 @@ export class WorldGraph {
      */
     const rows = this.itemRowsByName.get(name.toLowerCase());
     if (rows !== undefined && rows.length > 0) entity.ids = rows;
+    this.fillFromRow(entity, known);
+    /*
+     * A realm row with nothing observed against it — a shop's shelf, a drop
+     * table — is `mdb` rather than `hybrid`. The distinction is what lets a
+     * card say "the realm says this shop stocks it" apart from "this is in
+     * your pack".
+     */
+    if (
+      observed.slot === undefined &&
+      observed.equipped === undefined &&
+      observed.charges === undefined &&
+      observed.count === undefined &&
+      observed.rawText === undefined
+    ) {
+      entity.source = 'mdb';
+    }
+    return entity;
+  }
+
+  /**
+   * A floor item settled to the row this room places — format 42.
+   *
+   * A name several rows share says nothing about which is lying here, and the
+   * entity is built from the first; but a room placing exactly one of them
+   * has said, as a lair says which monster row stands in it
+   * (`resolveMobRow`). The Treasure Room's `wooden box` is its own fixed row,
+   * not the loot row a lookup by name answers with. Anything else comes back
+   * as it was.
+   */
+  itemPlacedHere(item: ItemEntity, room: WorldRoom): ItemEntity {
+    const rows = item.ids;
+    const placed = room.placed;
+    if (rows === undefined || rows.length < 2 || placed === undefined) return item;
+    const here = rows.filter((id) => placed.includes(id));
+    const known = here.length === 1 ? this.items.get(here[0]!) : undefined;
+    if (known === undefined) return item;
+    const entity: ItemEntity = {
+      name: item.name,
+      source: item.source,
+      slot: item.slot,
+      equipped: item.equipped,
+      charges: item.charges,
+      ...(item.slotSource === undefined ? {} : { slotSource: item.slotSource }),
+      ...(item.count === undefined ? {} : { count: item.count }),
+      ...(item.rawText === undefined ? {} : { rawText: item.rawText }),
+      id: known.id,
+      ids: rows,
+      row: { id: known.id }
+    };
+    this.fillFromRow(entity, known);
+    return entity;
+  }
+
+  /** What an item's realm row says, onto an entity being built. */
+  private fillFromRow(entity: ItemEntity, known: WorldItem): void {
     if (known.price !== undefined) entity.price = known.price;
     if (known.encumbrance !== undefined) entity.encumbrance = known.encumbrance;
     if (known.kind !== undefined) entity.kind = known.kind;
@@ -1729,22 +1932,6 @@ export class WorldGraph {
     if (known.limit !== undefined) entity.limit = known.limit;
     if (known.shops !== undefined) entity.shops = known.shops;
     if (known.mobs !== undefined) entity.droppedBy = known.mobs;
-    /*
-     * A realm row with nothing observed against it — a shop's shelf, a drop
-     * table — is `mdb` rather than `hybrid`. The distinction is what lets a
-     * card say "the realm says this shop stocks it" apart from "this is in
-     * your pack".
-     */
-    if (
-      observed.slot === undefined &&
-      observed.equipped === undefined &&
-      observed.charges === undefined &&
-      observed.count === undefined &&
-      observed.rawText === undefined
-    ) {
-      entity.source = 'mdb';
-    }
-    return entity;
   }
 
   /**
@@ -2121,7 +2308,8 @@ export class WorldGraph {
    * said, and a realm built before v9 simply answers nothing.
    */
   lairOf(room: WorldRoom): WorldMob[] {
-    return this.lair(room)?.mobs ?? [];
+    // The clock is discarded here: this asks what spawns, never when.
+    return this.lair(room, null)?.mobs ?? [];
   }
 
   /**
@@ -2140,8 +2328,16 @@ export class WorldGraph {
    * about that room — the range across row 224 and row 2204, an 830-HP scout
    * that spawns somewhere else entirely — and the Room card's own `LAIR` face
    * said the same about the room the character was standing in.
+   *
+   * **The family is the caller's**, and it is not this file's `info.family`:
+   * the clock's only interpretation that is not in the column is GreaterMUD's
+   * thirty-second offset, which is a behaviour of the *server* rather than of
+   * the data — and on the shipped configuration the two legitimately disagree
+   * (a Paradigm-built world file against a GreaterMUD default realm; see
+   * `SessionManager.noteFamily`). Null is *unknown*, and reads as the nominal
+   * figure, which is the longer of the two.
    */
-  lair(room: WorldRoom): WorldLair | null {
+  lair(room: WorldRoom, family: RealmFamily | null): WorldLair | null {
     if (!room.lair) return null;
     // `parseLair` reads the descriptor, and reads *only* the monster numbers in
     // it — see its own note for the four that were being invented per lair.
@@ -2164,7 +2360,20 @@ export class WorldGraph {
       seen.add(key);
       mobs.push(row === undefined ? mob : mobAsRow(mob, row, namedHere(id)));
     }
-    return { max, mobs };
+    /*
+     * And when it fills again — `Rooms.Delay` (format 33), read here so the
+     * Room card's face and the map's quick view cannot come to two answers
+     * about one room's clock. `respawnSeconds` is the one reading of the
+     * column and stays that.
+     */
+    const { greatermudRespawnOffsetSeconds } = tuning().hunting;
+    return {
+      max,
+      respawnSeconds: respawnSeconds(room.delay ?? null, family, {
+        greatermudRespawnOffsetSeconds
+      }),
+      mobs
+    };
   }
 
   /**
@@ -2294,9 +2503,18 @@ export class WorldGraph {
    * spell whose chain reaches nothing worth pricing. The last is the ordinary
    * case: two thirds of the realm's room spells are scenery.
    */
-  hazardOf(room: WorldRoom): SpellHazard | null {
+  hazardOf(room: WorldRoom, level?: number | null): SpellHazard | null {
     if (room.spell === undefined) return null;
-    return this.spellById(room.spell)?.hazard ?? null;
+    const hazard = this.spellById(room.spell)?.hazard ?? null;
+    /*
+     * Narrowed to the character being planned for, where the realm gates an
+     * effect on level and the client knows which character it is (todo 01).
+     * This is the one join, so it is the one place the narrowing can be made
+     * without a reader forgetting to — and `hazardFor` keeps the whole hazard
+     * for an unstated level, which is the ordinary refuse-rather-than-guess
+     * answer and what every caller got before.
+     */
+    return hazard === null ? null : hazardFor(hazard, level);
   }
 
   shopRooms(): WorldRoom[] {
@@ -2373,9 +2591,44 @@ export class WorldGraph {
    * then the trip *is* the detour and this ranks by what it costs to get there.
    */
   buyingPlaces(item: number, from: RoomId, to: RoomId | null, traveller: Traveller): BuyingPlace[] {
-    const candidates = this.stockRooms(item);
+    return this.buyingPlacesFor([item], from, to, traveller);
+  }
+
+  /**
+   * The same for a whole stock list on one pair of sweeps — what topping each
+   * row up would add to *this* leg, so a plan can put the shopping on the leg
+   * that passes nearest the counter. `buyingPlacesFor`'s reason exactly: a
+   * sweep pair per row over a nine-step chain is Dijkstras on the socket's
+   * thread for a handful of torches.
+   */
+  stockingPlaces(
+    items: readonly number[],
+    from: RoomId,
+    to: RoomId | null,
+    traveller: Traveller
+  ): Array<BuyingPlace & { item: number }> {
+    return this.buyingPlacesFor(items, from, to, traveller);
+  }
+
+  /**
+   * The same for several items at once, on one pair of sweeps: every counter
+   * stocking any of them, priced together, each place saying which item it
+   * is for. `supplyFor` asks about the two to four things the realm says stop
+   * one spell, and a sweep pair per item was eight Dijkstras on the socket's
+   * thread for a river crossing (review, 2026-09-21).
+   */
+  private buyingPlacesFor(
+    items: readonly number[],
+    from: RoomId,
+    to: RoomId | null,
+    traveller: Traveller
+  ): Array<BuyingPlace & { item: number }> {
+    const candidates: Array<{ item: number; room: WorldRoom }> = [];
+    for (const item of items) {
+      for (const room of this.stockRooms(item)) candidates.push({ item, room });
+    }
     if (candidates.length === 0) return [];
-    const wanted = new Set(candidates.map((room) => roomId(room.map, room.room)));
+    const wanted = new Set(candidates.map(({ room }) => roomId(room.map, room.room)));
     const head = this.sweepTo(from, wanted, traveller);
     /*
      * One sweep backwards from the destination answers both halves at once:
@@ -2390,7 +2643,7 @@ export class WorldGraph {
         : this.sweepBack(
             new Map([[to, 0]]),
             new Set([...wanted, from]),
-            this.holding(traveller, item),
+            items.reduce((held, item) => this.holding(held, item), traveller),
             true
           );
     /*
@@ -2401,8 +2654,8 @@ export class WorldGraph {
      * destination at all.
      */
     const base = back?.get(from);
-    const places: BuyingPlace[] = [];
-    for (const room of candidates) {
+    const places: Array<BuyingPlace & { item: number }> = [];
+    for (const { item, room } of candidates) {
       const id = roomId(room.map, room.room);
       const reach = head.get(id);
       // Nothing the router can walk leads there, so there is no detour to
@@ -2433,7 +2686,8 @@ export class WorldGraph {
          * rounded zero is the counter the route already walks through.
          */
         detour: Math.max(0, Math.round(detour)),
-        moves: reach.moves
+        moves: reach.moves,
+        item
       });
     }
     const dearer = tuning().supplies.dearerSteps;
@@ -2492,7 +2746,7 @@ export class WorldGraph {
       ...traveller,
       keys,
       hazard: (room) => {
-        const hazard = this.hazardOf(room);
+        const hazard = this.hazardOf(room, traveller.level);
         return hazard !== null && hazardAvoided(hazard, keys) ? null : priced(room);
       }
     };
@@ -2519,27 +2773,7 @@ export class WorldGraph {
    * scripted in.
    */
   mobPlaces(mob: WorldMob, groups = 12, perGroup = 12): MobPlaces | undefined {
-    const found: MobSpawnRoom[] = [];
-    /*
-     * A name can hold several of the realm's rows — five `cocoon`s — and each
-     * row is placed separately, so every id behind the name contributes. The
-     * mob index is keyed by name and `mobsById` maps the ids onto it, so this
-     * asks the id index which of its entries *is* this mob rather than keeping
-     * a third index of name → ids.
-     *
-     * Through the fold and not through the argument, because `mobAt` hands
-     * back a *copy* re-answered by one row and an identity test against that
-     * copy matches nothing: the card lost its whole `spawns in` list the day
-     * the room began resolving the name. And where one row was resolved, only
-     * that row's rooms are places this monster is — the other row's are where
-     * its namesake lives, which is the confusion the resolution exists to end.
-     */
-    const fold = this.mobs.get(mobKey(mob.name));
-    const only = mob.row?.id;
-    for (const [id, rooms] of this.mobRooms()) {
-      if (only !== undefined ? id !== only : this.mobsById.get(id) !== fold) continue;
-      found.push(...rooms);
-    }
+    const found = this.spawnRoomsOf(mob);
     if (found.length === 0) return undefined;
 
     /*
@@ -2609,6 +2843,33 @@ export class WorldGraph {
       rooms: byRoom.size,
       more: Math.max(0, all.length - groups)
     };
+  }
+
+  /**
+   * Every placement of this monster, one entry per room and slot, uncapped.
+   *
+   * A name can hold several of the realm's rows — five `cocoon`s — and each
+   * row is placed separately, so every id behind the name contributes. The
+   * mob index is keyed by name and `mobsById` maps the ids onto it, so this
+   * asks the id index which of its entries *is* this mob rather than keeping
+   * a third index of name → ids.
+   *
+   * Through the fold and not through the argument, because `mobAt` hands
+   * back a *copy* re-answered by one row and an identity test against that
+   * copy matches nothing: the card lost its whole `spawns in` list the day
+   * the room began resolving the name. And where one row was resolved, only
+   * that row's rooms are places this monster is — the other row's are where
+   * its namesake lives, which is the confusion the resolution exists to end.
+   */
+  private spawnRoomsOf(mob: WorldMob): MobSpawnRoom[] {
+    const found: MobSpawnRoom[] = [];
+    const fold = this.mobs.get(mobKey(mob.name));
+    const only = mob.row?.id;
+    for (const [id, rooms] of this.mobRooms()) {
+      if (only !== undefined ? id !== only : this.mobsById.get(id) !== fold) continue;
+      found.push(...rooms);
+    }
+    return found;
   }
 
   /** The reverse index, built on the first ask. See `mobPlaces`. */
@@ -3081,7 +3342,7 @@ export class WorldGraph {
       mobs,
       items: best(
         [...this.itemsByName.values()].map((item) => [item.name.toLowerCase(), item] as const)
-      ).map((item) => this.placingHandovers(item)),
+      ).map((item) => this.withPlacements(this.placingHandovers(item))),
       spells: this.searchSpells(query, limit),
       /*
        * Two closed vocabularies of thirteen and fifteen, so the same ranking
@@ -3114,6 +3375,63 @@ export class WorldGraph {
         const name = this.rooms.get(handover.room as RoomId)?.name.trim();
         return name === undefined || name.length === 0 ? handover : { ...handover, place: name };
       })
+    };
+  }
+
+  /**
+   * An item with the rooms the realm puts it in — format 42.
+   *
+   * Joined at the lookup for `placingHandovers`' reason: the rooms arrive
+   * after the header the items are in. A copy, never a write into the shared
+   * row. **Every row the name holds**, as `mobPlaces` takes every row behind
+   * a monster's: the lookup answers one row per name, and `nightblack
+   * portal`'s first is placed nowhere while its others stand in 26 rooms.
+   */
+  private withPlacements(item: WorldItem): WorldItem {
+    const rows = this.itemRowsByName.get(item.name.trim().toLowerCase()) ?? [item.id];
+    const placed = this.itemPlaces(rows);
+    return placed === undefined ? item : { ...item, placed };
+  }
+
+  /**
+   * Every room the realm puts an item in, grouped the way `mobPlaces` groups
+   * a monster's: by room name, in the map's own order, the widest spread
+   * first, and capped with the counts beside — a coffin stands in 77 rooms
+   * and a list of them is a scan, not a lead.
+   */
+  itemPlaces(rows: readonly number[], groups = 12, perGroup = 12): ItemPlaces | undefined {
+    const placedRows = rows.filter((row) => (this.placedIn.get(row) ?? []).length > 0);
+    const ids = new Set(placedRows.flatMap((row) => this.placedIn.get(row) ?? []));
+    const rooms = [...ids]
+      .map((id) => this.rooms.get(id))
+      .filter((room): room is WorldRoom => room !== undefined)
+      .sort((a, b) => a.map - b.map || a.room - b.room);
+    if (rooms.length === 0) return undefined;
+    const grouped = new Map<string, PlaceGroup>();
+    for (const room of rooms) {
+      const name = room.name.trim();
+      const group = grouped.get(name.toLowerCase());
+      if (group === undefined) {
+        grouped.set(name.toLowerCase(), {
+          roomName: name,
+          count: 1,
+          rooms: [{ map: room.map, room: room.room }]
+        });
+        continue;
+      }
+      group.count += 1;
+      if (group.rooms.length < perGroup) group.rooms.push({ map: room.map, room: room.room });
+    }
+    const all = [...grouped.values()].sort(
+      (a, b) => b.count - a.count || a.roomName.localeCompare(b.roomName)
+    );
+    // Whether what stands there can be taken is the placed rows' question,
+    // not the name's first row's: `wooden box` is loot and furniture both.
+    const fixed = placedRows.every((row) => this.items.get(row)?.gettable === false);
+    return {
+      groups: all.slice(0, groups),
+      more: Math.max(0, all.length - groups),
+      ...(fixed ? { fixed: true as const } : {})
     };
   }
 
@@ -3269,6 +3587,12 @@ export class WorldGraph {
           if (Number.isInteger(limit) && limit > 0) item.limit = limit;
           readItemKind(record, item);
           graph.items.set(id, item);
+          for (const [ability, spell] of item.abilities ?? []) {
+            if (ability !== HAZARD_ABILITY.castsSpell || spell <= 0) continue;
+            const holders = graph.grants.get(spell);
+            if (holders === undefined) graph.grants.set(spell, [item]);
+            else if (!holders.includes(item)) holders.push(item);
+          }
           const key = item.name.trim().toLowerCase();
           if (key.length > 0) {
             if (!graph.itemsByName.has(key)) graph.itemsByName.set(key, item);
@@ -3368,7 +3692,8 @@ export class WorldGraph {
             kind: 'item',
             raw: `Item: ${item.id}`,
             keyId: item.id,
-            commands: [command]
+            commands: [command],
+            ...useGateOf(item)
           }
         };
         this.spends.set(edge, {
@@ -3419,6 +3744,7 @@ export class WorldGraph {
         }
 
         const gated = minLevel !== undefined || maxLevel !== undefined;
+        const corridor = this.corridorFrom(command, command.to);
         const requirement: Requirement = {
           // A level gate prices and blocks exactly as an exit's `Level:` does;
           // an unguarded portal is a `Text:` exit in everything but the table
@@ -3429,7 +3755,8 @@ export class WorldGraph {
           ...(minLevel !== undefined ? { minLevel } : {}),
           ...(maxLevel !== undefined ? { maxLevel } : {}),
           ...(unread.length > 0 ? { unread } : {}),
-          ...(gates.length > 0 ? { abilities: gates } : {})
+          ...(gates.length > 0 ? { abilities: gates } : {}),
+          ...(corridor === null ? {} : { corridor })
         };
         const edge: PortalExit = {
           direction: 'portal',
@@ -3442,6 +3769,143 @@ export class WorldGraph {
         else this.portals.set(id, [edge]);
       }
     }
+  }
+
+  /**
+   * The timed passage a room command opens, or null (todo 104).
+   *
+   * The command's own `cast` puts a spell on the character; where that spell,
+   * or what it ends in (`EndCast`), carries harm the passage is one to run
+   * through. From the landing the rooms are swept breadth-first over their
+   * exits, up to the spell's duration in moves, until an exit whose own cast
+   * kills the chain (`killsAny`) — that is the way out, and the rooms before
+   * it are written into `underSpell`. No duration, or no way out within it,
+   * is `ends: false`, which `corridorCost` walls.
+   *
+   * Sixty-odd ways in on the shipped realm cast something; the dive is the
+   * one whose chain reaches harm. A bless off a portal casts and ends in
+   * nothing that hurts, and is not a passage at all.
+   */
+  private corridorFrom(command: RoomCommand, landing: RoomId): Corridor | null {
+    if (command.casts === undefined) return null;
+    const first = this.spellById(command.casts);
+    if (first === null) return null;
+    const chain: WorldSpell[] = [];
+    const seen = new Set<number>();
+    for (let next: number | undefined = first.id; next !== undefined && next > 0;) {
+      if (seen.has(next) || chain.length > 4) break;
+      seen.add(next);
+      const spell = this.spellById(next);
+      if (spell === null) break;
+      chain.push(spell);
+      next = spell.abilities?.find(([ability]) => ability === HAZARD_ABILITY.endCast)?.[1];
+    }
+    const harms = chain.some((spell) =>
+      (spell.abilities ?? []).some(([ability, value]) => HURTS.has(ability) && value !== 0)
+    );
+    if (!harms) return null;
+    const lifts = new Set(chain.map((spell) => spell.id));
+    const ticks = first.duration;
+    // Bounded by the ticks where the realm states them, and by a stride
+    // beyond any passage the shipped realms hold where it does not.
+    const reach = ticks ?? 64;
+    const depth = new Map<RoomId, number>([[landing, 0]]);
+    const queue: RoomId[] = [landing];
+    let endAt = Infinity;
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const here = depth.get(id) ?? 0;
+      if (here >= endAt) break;
+      const room = this.rooms.get(id);
+      if (room === undefined) continue;
+      for (const exit of room.exits) {
+        const requirement = exit.requirement;
+        const casts = [requirement?.castPre, requirement?.castPost].filter(
+          (spell): spell is number => spell !== undefined && spell > 0
+        );
+        if (casts.some((spell) => this.killsAny(spell, lifts, 0))) {
+          endAt = Math.min(endAt, here + 1);
+          continue;
+        }
+        const to = roomId(exit.map, exit.room);
+        if (depth.has(to) || here + 1 >= reach) continue;
+        depth.set(to, here + 1);
+        queue.push(to);
+      }
+    }
+    const ends = endAt !== Infinity;
+    const rooms = ends ? endAt : depth.size;
+    const corridor: Corridor = {
+      spell: first.id,
+      name: first.name,
+      rooms,
+      ends,
+      ...(ticks === undefined ? {} : { ticks }),
+      ...(chain[1] === undefined ? {} : { then: chain[1].name })
+    };
+    for (const [id, at] of depth) {
+      if (at < rooms && !this.underSpell.has(id)) this.underSpell.set(id, corridor);
+    }
+    return corridor;
+  }
+
+  /**
+   * The items whose *use* casts this spell — `Items.Abil-n = CastsSp`, the
+   * `grants` index read the other way — for a ward the walk keeps up (todo
+   * 105): the waterskin against the desert's spell.
+   */
+  itemsCasting(spell: number): readonly WorldItem[] {
+    return this.grants.get(spell) ?? [];
+  }
+
+  /**
+   * Every ward this realm writes, for the settings screen to draw (todo 02).
+   *
+   * The join is the one `Wards` makes at each step, made once over the whole
+   * realm instead: a room spell whose hazard names a spell that stops it, and
+   * an item whose use casts that spell. A rule with no such item is left out,
+   * because what the screen is drawing is the rules this client can act on —
+   * the sunstone wristband stops the desert too and no `use` casts it, so it
+   * is a thing to go and find rather than a rule to switch on.
+   *
+   * **Counted over the rooms**, because the count is what says whether the
+   * rule matters: the shipped realms each hold exactly one, and it guards 945
+   * rooms of desert. One scan of the room table per call, and the call is one
+   * settings section opening.
+   */
+  wards(): WardRule[] {
+    const casting = new Map<number, number>();
+    for (const room of this.rooms.values()) {
+      if (room.spell === undefined) continue;
+      casting.set(room.spell, (casting.get(room.spell) ?? 0) + 1);
+    }
+    const rules: WardRule[] = [];
+    for (const [id, rooms] of casting) {
+      const cast = this.spellById(id);
+      if (cast === null) continue;
+      for (const ward of cast.hazard?.avoidedBySpell ?? []) {
+        const casts = this.spellById(ward);
+        for (const item of this.grants.get(ward) ?? []) {
+          rules.push({
+            item: item.name,
+            ward: casts?.name ?? String(ward),
+            hazard: cast.name,
+            rooms
+          });
+        }
+      }
+    }
+    // Widest first: the one that guards a realm's worth of rooms is the one
+    // somebody is deciding about.
+    return rules.sort((a, b) => b.rooms - a.rooms || a.item.localeCompare(b.item));
+  }
+
+  /**
+   * The timed passage a room is under, or null: what the session reads to
+   * stand every routine down and keep the character moving (todo 104).
+   */
+  spellOver(room: RoomId): Corridor | null {
+    return this.underSpell.get(room) ?? null;
   }
 
   /**
@@ -4320,6 +4784,495 @@ export class WorldGraph {
    * `joinStep` reads them: a shop's stock list and an item's own `shops`, a
    * monster's drop list and an item's own `mobs`.
    */
+  /**
+   * One step of a plan, from the room the step before it ends in: what it
+   * gathers and how, where it happens, and whether the way there exists
+   * (`QuestPlan`, `mudengine-world` › *A plan is steps, and each is priced from
+   * the one before*).
+   *
+   * One step and not the chain, on purpose: a route is an A* per leg (up to
+   * 300ms on Paradigm), so the session paces the chain across the event loop
+   * between steps rather than holding the socket's thread for the lot. The
+   * traveller is handed in with the counters the character *will* hold at this
+   * step, which is what opens the ability-gated exits the realm writes on the
+   * way into a chain's later rooms.
+   */
+  planStep(
+    quest: Quest,
+    step: QuestStep,
+    from: RoomId | null,
+    carrying: readonly number[] | null,
+    traveller: Traveller,
+    supplies: readonly number[] = [],
+    lap: Traveller = traveller
+  ): PlanStep {
+    const at = this.planPlace(step.room);
+    const index = quest.steps.indexOf(step);
+    const own = itemsBrought(step).map((item) =>
+      this.planItem(quest, index, item, from, at?.room ?? null, carrying, traveller, lap)
+    );
+    const snags: PlanSnag[] = [];
+    for (const item of own) {
+      if (item.source.how === 'unplaced') {
+        snags.push({ kind: 'unplaced', item: item.name ?? `#${item.id}` });
+      }
+    }
+    // What the way wants, gathered before anything the step itself wants:
+    // every walk this step makes leaves from `from`, and the hunts leave first.
+    const bought: PlanItem[] = [];
+    let reachable: boolean | null = null;
+    let moves: number | undefined;
+    if (from !== null && at !== undefined && this.rooms.has(from) && this.rooms.has(at.room)) {
+      /*
+       * Priced as if what is in hand were used — the pack, and what earlier
+       * legs of this plan bought — which is the premise the plan's own rows
+       * state (`Route.carrying` makes the same one). Without it the desert is
+       * a wall and the leg's figure is the way round, drawn beside a chip
+       * that says the way through is safe (review, 2026-09-21).
+       */
+      const inHand = [...(carrying ?? []), ...supplies];
+      /*
+       * The ways this step walks, in the order the run walks them: out to
+       * each monster it hunts, each from where the last hunt ends, then the
+       * leg from there to the act. A hunt is the errand's loop, planned on
+       * the lap's traveller, so it is read on `lap` — the shortest way,
+       * straight through the desert — never on the plan's, which prices a
+       * way round it and buys nothing for the way the run takes (review,
+       * 2026-09-21; `mudengine-automation` › *A quest's plan is carried*).
+       */
+      const hunts: Route[] = [];
+      let cursor: RoomId = from;
+      for (const item of own) {
+        if (item.source.how !== 'kill' || item.source.at === undefined) continue;
+        const to = item.source.at.room as RoomId;
+        if (!this.rooms.has(to)) continue;
+        const way = this.route(cursor, to, this.quietened(lap, inHand));
+        if (way.blocked) continue;
+        hunts.push(way);
+        cursor = to;
+      }
+      let route = this.route(cursor, at.room, this.quietened(traveller, inHand));
+      if (route.blocked) {
+        reachable = false;
+        snags.push({ kind: 'unreachable', reason: route.reason ?? '' });
+      } else {
+        reachable = true;
+        /*
+         * What the ways meet that nothing in hand stops is bought here, once
+         * each — two spells the same raft stops are one raft — at the counter
+         * least off the way to the *first room casting it*, since a counter
+         * the route passes beyond the desert prices at nothing and is no use
+         * in it. Then the leg is priced again carrying what was bought, and
+         * what that way meets is named but not bought for: one more search,
+         * never a chase.
+         */
+        const spent: number[] = [];
+        for (const way of [...hunts, route]) {
+          for (const hazard of way.hazards ?? []) {
+            if (!this.worthNaming(hazard)) continue;
+            if (this.stopperOf(hazard.id, carrying, [...supplies, ...spent]) !== undefined)
+              continue;
+            const before =
+              this.firstCasting(way.steps, hazard.id) ?? way.steps.at(-1)?.to ?? at.room;
+            const supply = this.supplyFor(hazard, from, before, carrying, traveller);
+            if (supply === undefined) continue;
+            bought.push(supply);
+            spent.push(supply.id);
+          }
+        }
+        if (spent.length > 0) {
+          const again = this.route(
+            cursor,
+            at.room,
+            this.quietened(traveller, [...inHand, ...spent])
+          );
+          if (!again.blocked) route = again;
+        }
+        /*
+         * Every hazard the router still names is one the pack does not stop:
+         * `hazardAvoided` has already silenced the ones it does. A spell that
+         * only summons is a lair by another name and not a thing the walk has
+         * to survive, so it is not a snag. The rest are named with what
+         * settles them, once each across the hunts and the leg, with the most
+         * rooms any one way crosses; a timed passage on any of them is named.
+         */
+        const named = new Map<number, Extract<PlanSnag, { kind: 'hazard' }>>();
+        for (const way of [...hunts, route]) {
+          for (const hazard of way.hazards ?? []) {
+            if (!this.worthNaming(hazard)) continue;
+            const seen = named.get(hazard.id);
+            if (seen !== undefined) {
+              seen.rooms = Math.max(seen.rooms, hazard.rooms);
+              continue;
+            }
+            const safeWith = this.stopperOf(hazard.id, carrying, [...supplies, ...spent]);
+            const snag: Extract<PlanSnag, { kind: 'hazard' }> = {
+              kind: 'hazard',
+              spell: hazard.spell,
+              rooms: hazard.rooms,
+              unread: hazard.unread,
+              moves: hazard.relocates,
+              needs: hazard.needs.map((need) => need.name),
+              ...(safeWith === undefined ? {} : { safeWith })
+            };
+            named.set(hazard.id, snag);
+            snags.push(snag);
+          }
+        }
+        for (const way of [...hunts, route]) snags.push(...this.corridorsAlong(way.steps));
+        // The step is every way it walks and the way out to each counter and
+        // back: a figure that left the hunt out, or the tavern's three
+        // hundred rooms, would be a plan nobody could keep to. What the fight
+        // itself costs is not a number of moves.
+        moves = route.steps.length;
+        for (const way of hunts) moves += way.steps.length;
+        for (const item of [...bought, ...own]) {
+          if (item.source.how === 'buy' && item.source.detour !== undefined)
+            moves += item.source.detour;
+        }
+      }
+    }
+    const items = [...bought, ...own];
+    const roll = stepRoll(step);
+    return {
+      block: step.block,
+      act: planAct(step),
+      items,
+      ...(at === undefined ? {} : { at }),
+      reachable,
+      ...(moves === undefined ? {} : { moves }),
+      snags,
+      ...(roll === null ? {} : { roll })
+    };
+  }
+
+  /** A room the realm names, with its name where the graph holds it. */
+  private planPlace(room: string | undefined): PlanPlace | undefined {
+    if (room === undefined) return undefined;
+    const name = this.rooms.get(room as RoomId)?.name.trim();
+    return name === undefined || name.length === 0 ? { room } : { room, place: name };
+  }
+
+  /**
+   * Every item the realm says stops a room's spell: the ones its script
+   * names outright (`failitem`), and the ones whose *use* casts a spell it
+   * names (`failspell 711` is the waterskin, through `grants`). In the
+   * realm's order, items before spells.
+   */
+  private stoppersOf(spell: number): WorldItem[] {
+    const hazard = this.spellById(spell)?.hazard;
+    if (hazard === undefined) return [];
+    const found: WorldItem[] = [];
+    for (const id of hazard.avoidedBy ?? []) {
+      const item = this.items.get(id);
+      if (item !== undefined && !found.includes(item)) found.push(item);
+    }
+    for (const id of hazard.avoidedBySpell ?? []) {
+      for (const item of this.grants.get(id) ?? []) if (!found.includes(item)) found.push(item);
+    }
+    return found;
+  }
+
+  /**
+   * Whether a hazard the router names is one the plan should: a spell that
+   * does something the reader would want to survive — a figure, a chain that
+   * could not be read, a teleport. Read off the spell's own facts and never
+   * off `RouteHazard.share`, which is null for *unknown health* as well as
+   * for *no figure*, and non-null for a summons the session prices as a
+   * discouragement (review, 2026-09-21: the swamp's summons on every leg, and
+   * the river dropped before the first status line).
+   */
+  private worthNaming(hazard: RouteHazard): boolean {
+    // A passage the way in opens is the route's own entry for what
+    // `corridorsAlong` names on the plan; naming it here would say it twice
+    // and buy nothing for it, since nothing carried stops one.
+    if (hazard.corridor !== undefined) return false;
+    const facts = this.spellById(hazard.id)?.hazard;
+    if (facts === undefined) return true;
+    return facts.damage !== undefined || facts.unread === true || facts.relocates === true;
+  }
+
+  /**
+   * The traveller with every room spell that `stoppers` stop priced at
+   * nothing — `holding`'s wrapper, over both halves of what stops a spell
+   * (the item the script names and the item whose use casts the spell it
+   * names). One answer per spell, kept for the search's thousands of asks.
+   */
+  private quietened(traveller: Traveller, stoppers: readonly number[]): Traveller {
+    const priced = traveller.hazard;
+    if (priced === undefined || stoppers.length === 0) return traveller;
+    const settled = new Map<number, boolean>();
+    const stopped = (spell: number): boolean => {
+      const known = settled.get(spell);
+      if (known !== undefined) return known;
+      const answer = this.stoppersOf(spell).some((item) => stoppers.includes(item.id));
+      settled.set(spell, answer);
+      return answer;
+    };
+    return {
+      ...traveller,
+      hazard: (room) => (room.spell !== undefined && stopped(room.spell) ? null : priced(room))
+    };
+  }
+
+  /** The first room on the way that casts the spell, where a supply must be in hand by. */
+  private firstCasting(steps: readonly RouteStep[], spell: number): RoomId | undefined {
+    return steps.find(
+      (step) => step.scatter === undefined && this.rooms.get(step.to)?.spell === spell
+    )?.to;
+  }
+
+  /**
+   * The name of a stopper already in hand: in the pack, or on a `Get` row of
+   * an earlier leg of the same plan. Undefined where the walk would meet the
+   * spell with nothing against it — which is what `supplyFor` then answers.
+   */
+  private stopperOf(
+    spell: number,
+    carrying: readonly number[] | null,
+    supplies: readonly number[]
+  ): string | undefined {
+    for (const item of this.stoppersOf(spell)) {
+      if (supplies.includes(item.id) || packHolds(carrying, item.id) === true) return item.name;
+    }
+    return undefined;
+  }
+
+  /**
+   * The stopper to buy for a leg, as a `Get` row: of every item the realm
+   * says stops the spell, the one whose counter is least off this leg
+   * (`buyingPlaces`, the petrol-station price), with how many
+   * (`tuning.world.hazardSupplyCount` for a thing that is spent, one for a
+   * thing that is not). Undefined where no counter stocks any of them, and
+   * the snag then says what it would have taken.
+   */
+  private supplyFor(
+    hazard: RouteHazard,
+    from: RoomId,
+    to: RoomId,
+    carrying: readonly number[] | null,
+    traveller: Traveller
+  ): PlanItem | undefined {
+    const stoppers = this.stoppersOf(hazard.id);
+    const place = this.buyingPlacesFor(
+      stoppers.map((item) => item.id),
+      from,
+      to,
+      traveller
+    )[0];
+    const item = place === undefined ? undefined : stoppers.find((each) => each.id === place.item);
+    if (place === undefined || item === undefined) return undefined;
+    const at = this.planPlace(roomId(place.map, place.room));
+    const spent = item.uses !== undefined && item.uses > 0;
+    return {
+      id: item.id,
+      name: item.name,
+      held: packHolds(carrying, item.id),
+      hand: false,
+      source: {
+        how: 'buy',
+        shops: [place.shop],
+        ...(at === undefined ? {} : { at }),
+        detour: place.detour
+      },
+      ...(spent ? { count: tuning().world.hazardSupplyCount } : {}),
+      stops: hazard.spell
+    };
+  }
+
+  /**
+   * The timed passages a route walks into: a text exit whose room command
+   * puts a spell on the character (`RoomCommand.casts`, format 43) that ends
+   * in another (`EndCast`) — *holding breath* into *drowning* — counted from
+   * the room it lands in to the exit whose own cast kills it (`killSpell`,
+   * on the spell or on what it ends in), else to the route's end with `ends`
+   * false, since a leg that stops underwater is a fact the next leg does not
+   * carry. Nothing carried stops one; the plan says how many rooms and how
+   * many ticks.
+   */
+  private corridorsAlong(steps: readonly RouteStep[]): PlanSnag[] {
+    return this.corridorsOn(steps).map(({ id: _id, ...snag }) => ({ kind: 'corridor', ...snag }));
+  }
+
+  /**
+   * The passages a route walks into, with the spell's id, for the plan's
+   * snag and the route's hazard alike — one reading, so the two cannot count
+   * the rooms differently.
+   */
+  private corridorsOn(steps: readonly RouteStep[]): Array<{
+    id: number;
+    spell: string;
+    rooms: number;
+    ends: boolean;
+    ticks?: number;
+    then?: string;
+  }> {
+    const found: Array<{
+      id: number;
+      spell: string;
+      rooms: number;
+      ends: boolean;
+      ticks?: number;
+      then?: string;
+    }> = [];
+    for (const [index, step] of steps.entries()) {
+      if (step.requirement?.kind !== 'text') continue;
+      // The phrase the walker will send, not any phrase to that room: two
+      // words into one pool may cast two different things or nothing.
+      const command = this.rooms
+        .get(step.from)
+        ?.commands?.find((each) => each.casts !== undefined && each.say.includes(step.command));
+      const held = command?.casts === undefined ? null : this.spellById(command.casts);
+      if (held === null || held === undefined) continue;
+      const next = held.abilities?.find(([ability]) => ability === HAZARD_ABILITY.endCast)?.[1];
+      if (next === undefined || next <= 0) continue;
+      const then = this.spellById(next);
+      const lifts = new Set([held.id, next]);
+      let rooms = steps.length - index;
+      let ends = false;
+      for (let ahead = index + 1; ahead < steps.length; ahead += 1) {
+        const exit = steps[ahead]?.requirement;
+        if (exit?.kind !== 'cast' || exit.castPre === undefined) continue;
+        if (this.killsAny(exit.castPre, lifts, 0)) {
+          rooms = ahead - index;
+          ends = true;
+          break;
+        }
+      }
+      found.push({
+        id: held.id,
+        spell: held.name,
+        rooms,
+        ends,
+        ...(held.duration === undefined ? {} : { ticks: held.duration }),
+        ...(then === null ? {} : { then: then.name })
+      });
+    }
+    return found;
+  }
+
+  /** Whether a spell, or what it ends in, takes one of `spells` off the character. */
+  private killsAny(spell: number, spells: ReadonlySet<number>, depth: number): boolean {
+    if (depth > 4) return false;
+    const row = this.spellById(spell);
+    if (row === null) return false;
+    for (const [ability, value] of row.abilities ?? []) {
+      if (ability === HAZARD_ABILITY.killSpell && spells.has(value)) return true;
+      if (
+        ability === HAZARD_ABILITY.endCast &&
+        value > 0 &&
+        this.killsAny(value, spells, depth + 1)
+      )
+        return true;
+    }
+    return false;
+  }
+
+  /**
+   * How one item a step wants is got, cheapest act first: it is in the pack;
+   * an earlier step of this chain hands it over, so the plan already has it;
+   * a counter sells it, chosen by how far off the road it is (`buyingPlaces`);
+   * a script hands it over for a word; a monster drops it, at the first place
+   * the realm spawns one. Nothing named is `unplaced`, which the plan says
+   * rather than guesses about.
+   */
+  private planItem(
+    quest: Quest,
+    index: number,
+    item: { id: number; name?: string; hand: boolean },
+    from: RoomId | null,
+    to: RoomId | null,
+    carrying: readonly number[] | null,
+    traveller: Traveller,
+    lap: Traveller
+  ): PlanItem {
+    const held = packHolds(carrying, item.id);
+    const base = {
+      id: item.id,
+      ...(item.name === undefined ? {} : { name: item.name }),
+      held,
+      hand: item.hand
+    };
+    if (held === true) return { ...base, source: { how: 'carried' } };
+    const earlier = earlierHandover(quest, index, item.id);
+    if (earlier !== null) return { ...base, source: { how: 'earlier', rank: earlier } };
+    const source = quest.steps[index]?.sources?.find((known) => known.id === item.id);
+    const shops = source?.shops ?? [];
+    if (shops.length > 0) {
+      const origin = from ?? to;
+      const best =
+        origin === null ? undefined : this.buyingPlaces(item.id, origin, to, traveller)[0];
+      const at = best === undefined ? undefined : this.planPlace(roomId(best.map, best.room));
+      return {
+        ...base,
+        source: {
+          how: 'buy',
+          shops,
+          ...(at === undefined ? {} : { at }),
+          ...(best === undefined ? {} : { detour: best.detour })
+        }
+      };
+    }
+    for (const handover of source?.from ?? []) {
+      const at = this.planPlace(handover.room);
+      const placed = at === undefined ? {} : { at };
+      const word = handover.say?.[0];
+      if (handover.kind === 'killed' && handover.who !== undefined) {
+        return { ...base, source: { how: 'kill', mob: handover.who, ...placed } };
+      }
+      if (handover.kind === 'asked' && handover.who !== undefined) {
+        return {
+          ...base,
+          source: {
+            how: 'ask',
+            who: handover.who,
+            ...(word === undefined ? {} : { say: word }),
+            ...placed
+          }
+        };
+      }
+      if (word !== undefined) return { ...base, source: { how: 'said', say: word, ...placed } };
+    }
+    const who = source?.mobs?.[0];
+    if (who !== undefined) {
+      const start = this.huntStart(item, who, from, lap);
+      return {
+        ...base,
+        source: {
+          how: 'kill',
+          mob: start?.mob ?? who,
+          ...(start === undefined ? {} : { at: start.at })
+        }
+      };
+    }
+    return { ...base, source: { how: 'unplaced' } };
+  }
+
+  /**
+   * Where a hunt for this item would start, and for which dropper: the
+   * ring's first stop from where the character stands — `droppingPlaces` on
+   * the **lap's** traveller, the errand's own choice priced the errand's own
+   * way, so the plan names the room the run will walk to — else the
+   * monster's first placement in the realm's order, for a character nobody
+   * has placed. Undefined where the realm places none.
+   */
+  private huntStart(
+    item: { id: number; name?: string },
+    mob: string,
+    from: RoomId | null,
+    lap: Traveller
+  ): { mob: string; at: PlanPlace } | undefined {
+    if (from !== null && this.rooms.has(from)) {
+      const first = this.droppingPlaces(item, from, lap, { rooms: 1, radius: 0 }).lairs[0];
+      const at = first === undefined ? undefined : this.planPlace(first.id);
+      if (first !== undefined && at !== undefined) return { mob: first.mob, at };
+    }
+    const known = this.mob(mob);
+    const spawn = known === undefined ? undefined : this.mobPlaces(known)?.spawns[0]?.rooms[0];
+    const at = spawn === undefined ? undefined : this.planPlace(roomId(spawn.map, spawn.room));
+    return at === undefined ? undefined : { mob, at };
+  }
+
   sourcesOf(item: { id: number; name?: string }): { shops: string[]; mobs: string[] } {
     const known = this.items.get(item.id);
     const shops = new Set(known?.shops ?? []);
@@ -4328,6 +5281,60 @@ export class WorldGraph {
     const name = item.name ?? known?.name;
     if (name !== undefined) for (const mob of this.dropsOf(name)) mobs.add(mob);
     return { shops: [...shops], mobs: [...mobs] };
+  }
+
+  /**
+   * Where to go and kill for an item, from one room: the realm's every
+   * placement of a dropper, priced from `from` with `sweepTo` — the router's
+   * units for the choice, moves for the sentence, a wall walked as the errand
+   * solver walks one — and the ring nearest: the cheapest placement to reach
+   * and the placements within `ring.radius` of it, `ring.rooms` at most, in
+   * the order a lap walks out from the first. Cheapest-eight-from-here was a
+   * march: five maps for an item five monsters drop.
+   *
+   * Realm-wide, on the index `mobPlaces` reads: the errand's bounded sweep
+   * called a raider 88 moves off *nowhere* (2026-09-21; `mudengine-automation`
+   * › *A route that needs an item goes and gets it*). The droppers ride along,
+   * each with its own placement count, so an empty `lairs` can say which of
+   * two it is without welding one dropper's name to another's rooms.
+   */
+  droppingPlaces(
+    item: { id: number; name?: string },
+    from: RoomId,
+    traveller: Traveller,
+    ring: { rooms: number; radius: number }
+  ): DropSources {
+    const { mobs } = this.sourcesOf(item);
+    const spawns = new Map<RoomId, { room: WorldRoom; mob: string }>();
+    const droppers: Dropper[] = [];
+    for (const name of mobs) {
+      const mob = this.mob(name);
+      const placed = new Set<RoomId>();
+      for (const { room } of mob === undefined ? [] : this.spawnRoomsOf(mob)) {
+        const id = roomId(room.map, room.room);
+        placed.add(id);
+        if (!spawns.has(id)) spawns.set(id, { room, mob: name });
+      }
+      droppers.push({ mob: name, placed: placed.size });
+    }
+    if (spawns.size === 0) return { droppers, lairs: [] };
+    const priced = [...this.sweepTo(from, new Set(spawns.keys()), traveller)].sort(
+      (a, b) => a[1].cost - b[1].cost || a[1].moves - b[1].moves || a[0].localeCompare(b[0])
+    );
+    const first = priced[0];
+    if (first === undefined) return { droppers, lairs: [] };
+    const around = this.withinSteps(first[0], ring.radius, traveller);
+    const lairs = priced
+      .filter(([id]) => around.has(id))
+      .sort(
+        (a, b) => around.get(a[0])! - around.get(b[0])! || priced.indexOf(a) - priced.indexOf(b)
+      )
+      .slice(0, Math.max(1, ring.rooms))
+      .map(([id, { moves }]) => {
+        const { room, mob } = spawns.get(id)!;
+        return { id, name: room.name, mob, steps: moves };
+      });
+    return { droppers, lairs };
   }
 
   /**
@@ -4417,7 +5424,10 @@ export class WorldGraph {
           kind: 'item',
           raw: `Item: ${item.id}`,
           keyId: item.id,
-          commands: [command]
+          commands: [command],
+          // Who may use it, so a token the character has not grown into is
+          // refused here rather than by the server (`edgePenalty`).
+          ...useGateOf(item)
         }
       };
       built.push(exit);
@@ -5030,6 +6040,12 @@ export class WorldGraph {
     // The lair's respawn clock as the realm states it — format 33.
     if (typeof raw['dl'] === 'number' && raw['dl'] !== 0) result.delay = raw['dl'];
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
+    // What the realm puts on the floor — format 42. Before it the column was
+    // the raw string under another key, which nothing read and this does not.
+    const placed = Array.isArray(raw['pl'])
+      ? raw['pl'].filter((id): id is number => Number.isInteger(id) && (id as number) > 0)
+      : [];
+    if (placed.length > 0) result.placed = placed;
     /*
      * The words the room answers — format 13. A malformed entry is dropped
      * rather than repaired: this file is written by this client, so a shape
@@ -5064,6 +6080,12 @@ export class WorldGraph {
     const bucket = this.byName.get(key);
     if (bucket) bucket.push(room);
     else this.byName.set(key, [room]);
+    const id = roomId(room.map, room.room);
+    for (const item of room.placed ?? []) {
+      const rooms = this.placedIn.get(item);
+      if (rooms === undefined) this.placedIn.set(item, [id]);
+      else if (!rooms.includes(id)) rooms.push(id);
+    }
   }
 
   get(map: number, room: number): WorldRoom | undefined {
@@ -5267,11 +6289,19 @@ export class WorldGraph {
         options.alternatives === true
           ? this.viaItem(from, to, goal, route, traveller, draws)
           : null;
+      // And a way that is simply not this one — asked for by name, over and
+      // over, and defined by what it is not rather than by what it assumes.
+      // See `Route.another`.
+      const different =
+        options.alternatives === true
+          ? this.another(from, to, goal, route, traveller, draws)
+          : null;
       const planned: Route = {
         ...route,
         ...(other === null ? {} : { otherWay: other }),
         ...(equipped === null ? {} : { carrying: equipped }),
-        ...(invoked === null ? {} : { viaItem: invoked })
+        ...(invoked === null ? {} : { viaItem: invoked }),
+        ...(different === null ? {} : { another: different })
       };
       if (found.cost >= tuning().world.wallCost) {
         /*
@@ -5317,9 +6347,31 @@ export class WorldGraph {
      * report of, and leaving it on the refusal would have fixed the route and
      * kept the lie for anybody who had not fetched the potion yet.
      */
-    const ignoring = this.search(from, to, goal, traveller, true, walkable.drawsAhead, true).found;
+    /*
+     * **The walk is explained first, and the item beside it.** One search
+     * with the gates open and the pack enabled explained the cheapest opened
+     * way, which for a character standing where a token lands is the token:
+     * a level-21 character on the Sandbar was told only that the token of
+     * Silvermere needs level 25, and not that the walk out wants a rope and
+     * grapple — the half a person can act on (2026-09-21). So the walk's
+     * blocks are named, and the item's are added where an item lands
+     * somewhere the walk could not reach; a refusal keeps its candidates.
+     */
+    const ignoring = this.search(from, to, goal, traveller, true, walkable.drawsAhead, false).found;
     const blocks = ignoring ? this.blocksAlong(ignoring.cameFrom, to, traveller) : [];
-    const reasons = blocks.length > 0 ? blocks : ([{ kind: 'unreachable' }] as RouteBlock[]);
+    const invoked =
+      walkable.landingsAhead && this.landingsReach().has(to)
+        ? this.search(from, to, goal, traveller, true, walkable.drawsAhead, true).found
+        : null;
+    const seen = new Set(blocks.map((block) => blockKey(block)));
+    const spent =
+      invoked === null
+        ? []
+        : this.blocksAlong(invoked.cameFrom, to, traveller).filter(
+            (block) => !seen.has(blockKey(block))
+          );
+    const named = [...blocks, ...spent];
+    const reasons = named.length > 0 ? named : ([{ kind: 'unreachable' }] as RouteBlock[]);
     return {
       steps: [],
       cost: 0,
@@ -5514,11 +6566,11 @@ export class WorldGraph {
     const priced = traveller.hazard;
     if (priced === undefined) return null;
     const quietened = (room: WorldRoom): boolean => {
-      const hazard = this.hazardOf(room);
+      const hazard = this.hazardOf(room, traveller.level);
       return (
         hazard !== null &&
         (hazard.avoidedBy?.length ?? 0) > 0 &&
-        !hazardAvoided(hazard, traveller.keys)
+        !hazardAvoided(hazard, traveller.keys, traveller.spellsUp)
       );
     };
     const equipped: Traveller = {
@@ -5535,6 +6587,75 @@ export class WorldGraph {
       return room !== undefined && quietened(room);
     });
     return crosses ? other : null;
+  }
+
+  /**
+   * A way that is materially different from the plan — `Route.another`.
+   *
+   * The plan's own edges are priced `anotherWayPenalty` times over
+   * (`Traveller.penalised`, read in `stepCost`) and the search asked again:
+   * a soft penalty rather than a pruning, because pruning would refuse every
+   * way that shares one bridge with the plan, and a penalty lets the search
+   * reuse the plan exactly where leaving it costs more than it saves. What
+   * comes back is priced again without the penalty, so its `cost` is what
+   * walking it would cost and not what the search paid to find it.
+   *
+   * Offered when at least `alternativeMinSteps` of its rooms are not on the
+   * plan — a corner cut is the plan again — and it is no more than
+   * `anotherWayLonger` longer, because a way that differs is expected to be
+   * dearer (that is why it was not the plan) and past some point it is a tour
+   * rather than a choice. Never walled or deadly, and never for a plan that
+   * is, which `otherWay` asks round already; never through a draw, whose
+   * steps are priced by a solve this repricing does not repeat; never for a
+   * plan that spends an item, which is the last resort and has no variations.
+   * One more A* per route planned for a reader, and none for a short one.
+   */
+  private another(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    route: Route,
+    traveller: Traveller,
+    draws: boolean
+  ): Route | null {
+    const { alternativeMinSteps, anotherWayLonger, wallCost } = tuning().world;
+    if (draws) return null;
+    if (route.steps.length < alternativeMinSteps) return null;
+    if (route.cost >= wallCost) return null;
+    if (route.steps.some((step) => step.deadly === true || step.invoke !== undefined)) return null;
+    const penalised = new Set(route.steps.map((step) => `${step.from}|${step.to}`));
+    const found = this.search(from, to, goal, { ...traveller, penalised }, false, false).found;
+    if (found === null) return null;
+    const cost = this.costAlong(found.cameFrom, to, traveller);
+    if (cost >= wallCost) return null;
+    const other = this.buildRoute(found.cameFrom, to, cost, traveller, false);
+    const onPlan = new Set(route.steps.map((step) => step.to));
+    const fresh = other.steps.filter((step) => !onPlan.has(step.to)).length;
+    if (fresh < alternativeMinSteps) return null;
+    if (other.steps.length > route.steps.length * (1 + anotherWayLonger)) return null;
+    return other.steps.some((step) => step.deadly === true) ? null : other;
+  }
+
+  /**
+   * What a found path costs this traveller, priced plainly — the honest
+   * figure for a search that ran under a penalty (`another`).
+   */
+  private costAlong(
+    cameFrom: Map<RoomId, { prev: RoomId; exit: WorldExit | PortalExit }>,
+    to: RoomId,
+    traveller: Traveller
+  ): number {
+    const discount = this.discountFor(traveller);
+    let cost = 0;
+    let cursor = to;
+    while (cameFrom.has(cursor)) {
+      const { prev, exit } = cameFrom.get(cursor)!;
+      const into = this.rooms.get(cursor) ?? null;
+      const invoked = this.spends.has(exit as PortalExit);
+      cost += this.stepCost(prev, exit, into, traveller, false, discount, invoked) ?? 0;
+      cursor = prev;
+    }
+    return cost;
   }
 
   /**
@@ -6117,7 +7238,13 @@ export class WorldGraph {
      */
     const room =
       into === null || traveller.hazard === undefined ? 0 : dangerPenalty(traveller.hazard(into));
-    return (1 + penalty + surcharge + risk + room) * along + wall;
+    // And a step along the plan a different way is being asked for, priced
+    // over rather than pruned (`another`). Never for a walk.
+    const dearer =
+      into !== null && traveller.penalised?.has(`${from}|${roomId(into.map, into.room)}`) === true
+        ? tuning().world.anotherWayPenalty
+        : 1;
+    return (1 + penalty + surcharge + risk + room) * along * dearer + wall;
   }
 
   /**
@@ -6313,13 +7440,21 @@ export class WorldGraph {
             ...(item === undefined ? {} : { itemName: item.name })
           });
         } else if (blocked.kind === 'level') {
+          // An item's own level gate names the item, not the room it lands
+          // in: *token of Silvermere needs level 25* is the sentence, and
+          // *Pier needs level 25* is a claim about the wrong thing.
+          const gate = requirement.usableBy?.minLevel;
           blocks.unshift({
             kind: 'level',
             at: prev,
             to: cursor,
-            name,
+            name: gate === undefined ? name : (this.spends.get(exit as PortalExit)?.name ?? name),
             level: traveller.level ?? null,
-            ...(requirement.minLevel === undefined ? {} : { minLevel: requirement.minLevel }),
+            ...(gate !== undefined
+              ? { minLevel: gate }
+              : requirement.minLevel === undefined
+                ? {}
+                : { minLevel: requirement.minLevel }),
             ...(requirement.maxLevel === undefined ? {} : { maxLevel: requirement.maxLevel })
           });
         } else if (blocked.kind === 'toll') {
@@ -6340,6 +7475,36 @@ export class WorldGraph {
               ? {}
               : { purseCopper: traveller.wealth })
           });
+        } else if (blocked.kind === 'ability') {
+          /*
+           * The counter, the window and what the character holds.
+           *
+           * `held` is never a guess: this block exists only where
+           * `abilityGatesMet` answered *false*, which it does only against a
+           * listing, so an id the listing did not name is zero because a
+           * complete listing enumerates — the same reading `countersMet` uses.
+           *
+           * **Named as GreaterMUD's**, because `abil` is GreaterMUD's command:
+           * a listing is the one thing that puts a block here, so a realm that
+           * cannot state the counters cannot reach this line. An id the enum
+           * does not hold leaves the name off and the number stands.
+           */
+          const gate = (requirement.abilities ?? [])[0];
+          const id = gate?.id ?? requirement.abilityId;
+          if (id !== undefined) {
+            const named = abilityName(id, 'greatermud');
+            blocks.unshift({
+              kind: 'quest',
+              at: prev,
+              to: cursor,
+              name,
+              abilityId: id,
+              ...(named === null ? {} : { counterName: named }),
+              held: traveller.counters?.sums[id] ?? 0,
+              ...(gate?.atLeast === undefined ? {} : { atLeast: gate.atLeast }),
+              ...(gate?.atMost === undefined ? {} : { atMost: gate.atMost })
+            });
+          }
         } else {
           /*
            * The three the character *is*, in one block shape: which condition,
@@ -6369,13 +7534,23 @@ export class WorldGraph {
             blocked.kind === 'alignment'
               ? (traveller.alignment ?? null)
               : named(blocked.kind === 'class' ? traveller.classId : traveller.raceId);
+          // An item's allow-list is several names where an exit's gate is
+          // one, and the item is what admits them, not the room it lands in.
+          const allowed =
+            blocked.kind === 'class'
+              ? requirement.usableBy?.classes
+              : blocked.kind === 'race'
+                ? requirement.usableBy?.races
+                : undefined;
           const admits =
             blocked.kind === 'alignment'
               ? requirement.minAlignment === undefined
                 ? undefined
                 : `${requirement.minAlignment} to ${requirement.maxAlignment ?? requirement.minAlignment}`
-              : (named(blocked.kind === 'class' ? requirement.classOk : requirement.raceOk) ??
-                undefined);
+              : allowed !== undefined
+                ? allowed.map((id) => String(named(id))).join(', ')
+                : (named(blocked.kind === 'class' ? requirement.classOk : requirement.raceOk) ??
+                  undefined);
           const refuses =
             named(blocked.kind === 'class' ? requirement.classNo : requirement.raceNo) ?? undefined;
           blocks.unshift({
@@ -6500,7 +7675,7 @@ export class WorldGraph {
         ...(hazard !== null && hazard > 0 ? { hazard } : {}),
         // And the word, where the share is a discouragement and not a figure.
         ...(hazard !== null && hazard > 0 && arriving !== undefined
-          ? hazardWordOf(this.hazardOf(arriving))
+          ? hazardWordOf(this.hazardOf(arriving, traveller.level))
           : {}),
         /*
          * **Either of them reaching the wall makes the step deadly.** It was
@@ -6572,13 +7747,14 @@ export class WorldGraph {
       const spell = this.spellById(room.spell);
       const hazard = spell?.hazard;
       if (spell === null || hazard === undefined) continue;
-      if (hazardAvoided(hazard, traveller.keys)) continue;
+      if (hazardAvoided(hazard, traveller.keys, traveller.spellsUp)) continue;
       const seen = folded.get(spell.id);
       if (seen !== undefined) {
         seen.rooms += 1;
         continue;
       }
       folded.set(spell.id, {
+        id: spell.id,
         spell: spell.name,
         rooms: 1,
         /*
@@ -6592,6 +7768,7 @@ export class WorldGraph {
         share: step.hazard ?? null,
         unread: hazard.unread === true,
         summons: hazard.summons === true,
+        relocates: hazard.relocates === true,
         needs: (hazard.avoidedBy ?? []).flatMap((id) => {
           if (traveller.keys?.includes(id) === true) return [];
           const item = this.item(id);
@@ -6607,9 +7784,33 @@ export class WorldGraph {
     }
     // Worst first: the reader is deciding whether to walk it, and the figure
     // that decides is the heaviest one.
-    return [...folded.values()].sort(
+    const hazards = [...folded.values()].sort(
       (a, b) => (b.share ?? 0) * b.rooms - (a.share ?? 0) * a.rooms || b.rooms - a.rooms
     );
+    /*
+     * And the passages the way in puts the character under (todo 104), said
+     * as the plan says them: nothing carried stops one, so `needs` is empty
+     * and `share` null, and the chip reads *run through* off `corridor`.
+     */
+    for (const passage of this.corridorsOn(steps)) {
+      hazards.push({
+        id: passage.id,
+        spell: passage.spell,
+        rooms: passage.rooms,
+        share: null,
+        unread: false,
+        summons: false,
+        relocates: false,
+        needs: [],
+        needsSpell: [],
+        corridor: {
+          ends: passage.ends,
+          ...(passage.ticks === undefined ? {} : { ticks: passage.ticks }),
+          ...(passage.then === undefined ? {} : { then: passage.then })
+        }
+      });
+    }
+    return hazards;
   }
 }
 
@@ -6936,9 +8137,38 @@ function readHazard(value: unknown): SpellHazard | null {
   if (record['tp'] === 1) hazard.relocates = true;
   if (record['sm'] === 1) hazard.summons = true;
   if (record['u'] === 1) hazard.unread = true;
+  const levels = readLevelBands(record['lv']);
+  if (levels !== null) hazard.levels = levels;
   // Nothing stated at all is nothing to carry: the writer omits a spell whose
   // chain reaches no harm, so an empty object here is a row that says nothing.
   return Object.keys(hazard).length > 0 ? hazard : null;
+}
+
+/**
+ * The level bands a hazard's own effects sit behind — format 46, `[min, max]`
+ * with `null` for unbounded. A band that bounds nothing is not carried: it is
+ * the same fact as an absent one and would make `hazardFor` copy the object
+ * for no answer.
+ */
+function readLevelBands(value: unknown): SpellHazard['levels'] | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const band = (raw: unknown): LevelBand | undefined => {
+    if (!Array.isArray(raw)) return undefined;
+    const [min, max] = raw as [unknown, unknown];
+    const read: LevelBand = {};
+    if (typeof min === 'number' && Number.isFinite(min)) read.min = min;
+    if (typeof max === 'number' && Number.isFinite(max)) read.max = max;
+    return read.min === undefined && read.max === undefined ? undefined : read;
+  };
+  const levels: NonNullable<SpellHazard['levels']> = {};
+  const damage = band(record['d']);
+  if (damage !== undefined) levels.damage = damage;
+  const relocates = band(record['tp']);
+  if (relocates !== undefined) levels.relocates = relocates;
+  const summons = band(record['sm']);
+  if (summons !== undefined) levels.summons = summons;
+  return Object.keys(levels).length > 0 ? levels : null;
 }
 
 /** `RouteStep.hazardKind` for a spell priced on nothing the realm states. */
@@ -6960,6 +8190,49 @@ function hazardWordOf(hazard: SpellHazard | null): { hazardKind?: 'unread' | 'su
 function readIdList(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.filter((id): id is number => Number.isInteger(id) && (id as number) > 0);
+}
+
+/**
+ * The item's own gate on who may use it, for the edge that spends it —
+ * `Requirement.usableBy`, or nothing where the realm gates it on nobody.
+ */
+function useGateOf(item: WorldItem): { usableBy: ItemUseGate } | Record<never, never> {
+  const gate: ItemUseGate = {
+    ...(item.classes === undefined ? {} : { classes: item.classes }),
+    ...(item.races === undefined ? {} : { races: item.races }),
+    ...(item.minLevel === undefined ? {} : { minLevel: item.minLevel })
+  };
+  return Object.keys(gate).length === 0 ? {} : { usableBy: gate };
+}
+
+/**
+ * Which half of an item's use gate this traveller fails, or null — through
+ * `equipBlock`, the one rule for who may use a thing, so the card that greys
+ * a token out and the router that refuses to plan it cannot disagree. The
+ * names tables are the card's concern; a block here is named by
+ * `blocksAlong`.
+ */
+function useGateShut(
+  requirement: Requirement,
+  traveller: Traveller
+): 'class' | 'race' | 'level' | null {
+  if (requirement.usableBy === undefined) return null;
+  const wearer: Wearer = {
+    classId: traveller.classId ?? null,
+    raceId: traveller.raceId ?? null,
+    level: traveller.level ?? null,
+    strength: null,
+    classNames: {},
+    raceNames: {}
+  };
+  const shut = equipBlock(requirement.usableBy, wearer);
+  // Strength is a weapon's, and a use gate carries none.
+  return shut === null || shut.kind === 'strength' ? null : shut.kind;
+}
+
+/** A block's identity across two explanations of one refusal: the edge. */
+function blockKey(block: RouteBlock): string {
+  return 'at' in block && 'to' in block ? `${block.kind}|${block.at}|${block.to}` : block.kind;
 }
 
 /** A table as `{ id: name }`. Built per call: fifteen entries, and a lookup is a click. */

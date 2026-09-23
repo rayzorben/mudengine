@@ -246,3 +246,58 @@ describe('what the record says about a monster', () => {
     log.dispose();
   });
 });
+
+/*
+ * The hunting survey's rounds where the realm's arithmetic declines
+ * (2026-09-19): what this character deals a round, off its own opened fights.
+ */
+describe('what the record says this character deals a round', () => {
+  const ask = { least: 2, roundMs: 5000, openerRounds: 1 };
+
+  it('counts a fight of k rounds as k, from its first blow to its last', () => {
+    const log = new FightLog(file);
+    // 10s is two round lengths, so three rounds; one blow is one round.
+    log.record(fight({ level: 5, mine: 90, ms: 10_000 }));
+    log.record(fight({ level: 5, mine: 30, ms: null }));
+    expect(log.measured(5, ask)).toEqual({ perRound: 30, fights: 2, fromLevel: 5 });
+    // A backstab opener is credited by the survey itself, so it is taken back out.
+    expect(log.measured(5, { ...ask, openerRounds: 4 })?.perRound).toBe(120 / 10);
+    log.dispose();
+  });
+
+  it('measures nothing from a fight it joined or shared, or under the least', () => {
+    const log = new FightLog(file);
+    log.record(fight({ level: 5, mine: 500, ms: 0, opened: false }));
+    log.record(fight({ level: 5, mine: 500, ms: 0, others: 40 }));
+    log.record(fight({ level: 5, mine: 30, ms: 0 }));
+    expect(log.measured(5, ask)).toBeNull();
+    // Positive control: the one fight that measures is there.
+    expect(log.measured(5, { ...ask, least: 1 })).toMatchObject({ perRound: 30, fights: 1 });
+    log.dispose();
+  });
+
+  it('adds the levels below, nearest first, and never one above', () => {
+    const log = new FightLog(file);
+    log.record(fight({ level: 3, mine: 10, ms: 0 }));
+    log.record(fight({ level: 4, mine: 20, ms: 0 }));
+    log.record(fight({ level: 6, mine: 900, ms: 0 }));
+    log.record(fight({ level: 5, mine: 40, ms: 0 }));
+    expect(log.measured(5, ask)).toEqual({ perRound: 30, fights: 2, fromLevel: 4 });
+    log.dispose();
+  });
+
+  it('answers from the file once it has been folded, and this session’s fights before', async () => {
+    vi.useRealTimers();
+    const earlier = new FightLog(file);
+    earlier.record(fight({ level: 5, mine: 50, ms: 0 }));
+    earlier.dispose();
+
+    const log = new FightLog(file);
+    log.record(fight({ level: 5, mine: 10, ms: 0 }));
+    // Synchronous, so what it has: this session's one fight.
+    expect(log.measured(5, { ...ask, least: 1 })?.fights).toBe(1);
+    await log.ready();
+    expect(log.measured(5, ask)).toEqual({ perRound: 30, fights: 2, fromLevel: 5 });
+    log.dispose();
+  });
+});

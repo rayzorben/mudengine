@@ -702,8 +702,11 @@ export class Routines {
 
   private armIdle(): void {
     this.stopIdle();
-    // A reload while out of the realm must not start it; entering does.
-    if (!this.inRealm || !this.config.enabled || !this.config.idle.enabled) return;
+    // A reload while out of the realm must not start it; entering does. Not
+    // gated on the master switch: the keep-alive serves the connection (see
+    // `Intent.keepsLink`), and the two drains that share this tick gate
+    // themselves on it.
+    if (!this.inRealm || !this.config.idle.enabled) return;
 
     // Checked at a fraction of the threshold so the command lands close to the
     // configured quiet period rather than up to a whole period late.
@@ -730,6 +733,7 @@ export class Routines {
       command: this.config.idle.command,
       priority: 'idle',
       coalesceKey: 'idle',
+      keepsLink: true,
       // Worthless if it arrives late — by then something else has happened.
       expiresAt: Date.now() + this.config.idle.afterSeconds * 1000,
       reason: t('automation.routines.reasonIdle')

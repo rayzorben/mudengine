@@ -664,7 +664,7 @@ describe('the shipped realm places its monsters', () => {
    * lair face.
    */
   test('reads a lair as the monsters in it and nothing else', () => {
-    const lair = graph!.lair(graph!.byId('1/527')!);
+    const lair = graph!.lair(graph!.byId('1/527')!, null);
     expect(lair?.max).toBe(1);
     expect(lair?.mobs.map((mob) => mob.name)).toEqual(['healer']);
   });

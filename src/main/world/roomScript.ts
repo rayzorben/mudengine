@@ -431,6 +431,10 @@ export function parseRoomScript(
         const id = number(words[1]);
         const landing = id === null ? undefined : spellLanding(id);
         if (landing !== undefined && command.to === undefined) command.to = landing;
+        // And what it puts on the character, whether or not it moves them
+        // (format 43): the dive's `cast 512` is *holding breath*, the only
+        // statement anywhere that the passage below is a timed one.
+        if (id !== null && id > 0 && command.casts === undefined) command.casts = id;
         continue;
       }
       /*

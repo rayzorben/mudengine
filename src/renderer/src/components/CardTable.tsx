@@ -10,9 +10,11 @@ import {
   narrowed,
   nextSort,
   readSort,
+  shelve,
   sortRows,
   writeSort,
   type CellValue,
+  type Group,
   type Sort
 } from '../lib/table';
 import type { SessionId } from '@shared/ipc';
@@ -135,6 +137,18 @@ export interface CardTableProps<Row> {
   facets?: readonly Facet[];
   /** Which facet a row belongs to. Required when `facets` is given. */
   facetOf?(row: Row): string;
+  /**
+   * The shelves the card's own order is made of, in order — `shelve`.
+   *
+   * A head is drawn over each shelf that has a row on screen, and only in the
+   * card's own order: a column sort is a sort of the whole table, as it is on
+   * every card, and takes the heads with it. The rows still carry whatever
+   * the card put on them (`rowAttrs`), which is what keeps a shelved state
+   * legible once the shelves are gone.
+   */
+  groups?: readonly Group[];
+  /** Which shelf a row is on. Required when `groups` is given. */
+  groupOf?(row: Row): string;
   rowAttrs?(row: Row): RowAttrs;
   /** What the card says when it holds nothing at all — a fact, not a filter result. */
   empty: ReactNode;
@@ -293,6 +307,8 @@ export default function CardTable<Row>({
   find,
   facets = NO_FACETS,
   facetOf,
+  groups,
+  groupOf,
   rowAttrs,
   empty,
   className,
@@ -373,6 +389,16 @@ export default function CardTable<Row>({
   });
 
   const count = narrowed(shown.length, rows.length);
+
+  /*
+   * The shelves, where the card declares them and nothing is sorted. One
+   * nameless shelf otherwise, so the body below is written once: a table
+   * with no opinion and a sorted one are the same shape.
+   */
+  const shelves =
+    groups !== undefined && groupOf !== undefined && sort === null
+      ? shelve(shown, groups, groupOf)
+      : [{ group: null, rows: shown }];
 
   // Where each row came in, so a key survives being filtered and sorted.
   const order = new Map(rows.map((row, at) => [row, at]));
@@ -519,17 +545,34 @@ export default function CardTable<Row>({
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {shown.map((row) => (
-                <tr key={keyOf(row, order.get(row) ?? 0)} {...rowAttrs?.(row)}>
-                  {columns.map((column) => (
-                    <td className={columnClassName(column, column.id)} key={column.id}>
-                      {column.cell === undefined ? column.value(row) : column.cell(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
+            {/*
+              One body per shelf, which is what a row group is in a table: the
+              head is a `<th scope="rowgroup">` across every column, so a
+              screen reader hears which shelf a row is on the way a sighted
+              reader sees it. Keyed by the shelf, and the rows keep their own
+              keys inside it.
+            */}
+            {shelves.map((shelf) => (
+              <tbody data-group={shelf.group?.id} key={shelf.group?.id ?? ''}>
+                {shelf.group !== null && (
+                  <tr className="table-group">
+                    <th colSpan={columns.length} scope="rowgroup" title={shelf.group.title}>
+                      {shelf.group.label}
+                      <span className="table-group-count">{shelf.rows.length}</span>
+                    </th>
+                  </tr>
+                )}
+                {shelf.rows.map((row) => (
+                  <tr key={keyOf(row, order.get(row) ?? 0)} {...rowAttrs?.(row)}>
+                    {columns.map((column) => (
+                      <td className={columnClassName(column, column.id)} key={column.id}>
+                        {column.cell === undefined ? column.value(row) : column.cell(row)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            ))}
           </table>
         )}
       </div>

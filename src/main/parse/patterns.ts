@@ -608,6 +608,43 @@ export const RULES: Rule[] = [
     // a blow nothing can name: counted, and attributed to nobody.
     pattern: /^(?:The|A|An) (?<line>[^"]*?\byou\b[^"]*?) for (?<damage>\d+) damage!/
   },
+  /*
+   * The three blows whose tail carries a comma, which the frame below cannot
+   * take (2026-09-22, todo 02).
+   *
+   * `[\w' ]{0,32}` has no comma in it, so a clause after `you` only reaches
+   * the `[.!]` when a **second** `you` appears later and the lazy head can eat
+   * the first — which is why `…swings at you, but you dodge out of the way!`
+   * was read all along and `…hits you, but the swing glances off!` was read as
+   * nothing at all. Measured on the wire: 2,134 lines over 300 monsters'
+   * verbs, on two of the three hosts this client has talked to.
+   *
+   * **The cost of simply admitting a comma is the reason these are three
+   * rules instead.** Replaying the 218 captures with `[\w', ]{0,32}` moves 46
+   * lines, and 16 of them are `mob-dies` becoming `mob-misses` — `The bandit
+   * eyes you evilly, and dies.`, `The minotaur chieftain curses at you
+   * spitefully, and dies!` A death read as a miss leaves a corpse in the room
+   * and never takes the target out, and it is irreversible: `asDeathSentence`
+   * returns early on a block a rule has already typed. So each tail is
+   * anchored on its own fixed clause, and the corpus does not move.
+   *
+   * What each is: `Mob.cs:1654` composes `[The ]<Name> <hitsMsg> you, but the
+   * swing glances off!` for a blow the armour absorbed — the article is
+   * optional because a lowercase monster name is on the wire (`quickling lord
+   * jabs you, …`) and because `PlayerAttackType.cs:363` sends the same
+   * sentence for a player's blow. The other two are `Messages` rows of kind
+   * `other` (23 of them, `resources/world/messages.csv`), which reached the
+   * client as `realm-message` — a type nothing anywhere reads.
+   *
+   * No `nameFallback` on any of them: an attacker no listing has placed stays
+   * unnamed, and a blow nothing could name still counts.
+   */
+  { type: 'mob-misses', pattern: /^(?:The )?(?<line>[^"]*?\byou), but the swing glances off!$/ },
+  { type: 'mob-misses', pattern: /^The (?<line>[^"]*?\byou[\w' ]{0,32}), but misses!$/ },
+  {
+    type: 'mob-misses',
+    pattern: /^The (?<line>[^"]*?\byou), but your armou?r deflects the blow!$/
+  },
   { type: 'mob-misses', pattern: /^The (?<line>[^"]*?\byou\b[\w' ]{0,32})[.!]$/ },
   /*
    * The same swing at this character from something with no article — a
@@ -2676,6 +2713,49 @@ export const BATCH_RULES: BatchRule[] = [
        * table be seen rather than inferred.
        */
       /^(?<name>.+)\((?<id>\d+)\)\s+(?<value>-?\d+)\s*$/
+    ]
+  },
+  {
+    /*
+     * `stat all` — `Player.ShowStatAll`, wire-verbatim on `orohost` (probe,
+     * 2026-09-05; Vaelor, 2026-09-11) and Paradigm (Festus, four sheets from
+     * 2026-09-06 and the one the user pasted on 2026-09-18):
+     *
+     *     Name: Festus                                     Illu:           25
+     *     HP Regen:   6/18       AC vs Evil:  68           Cold Resist:     0
+     *     MA Regen:   3/3        Shadow:       0           Water Resist:    0
+     *     …
+     *                            vs Good:     58           Dodge:          13
+     *     …
+     *     Attacks:
+     *     Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)
+     *     Attack       3.584    105     8    25     0(3)            65(67)
+     *     Bash         1.792    105    22    82                     93(94)
+     *
+     *     Spells:
+     *     Short Name   Casts   Diff   Min   Max                Avg/Rnd
+     *     mace             1    100     1     3                      2
+     *
+     * The header is not `st`'s (`Lives/CP:`), and a sheet glued behind a
+     * prompt is found on the tail as every batch is. Only the figures
+     * something reads are qualified (`src/shared/stated.ts`): both
+     * regeneration lines, the two headings and the plain `Attack` row, whose
+     * `QnD(Total)` and `(+xtra)` columns are optional, as the server blanks
+     * them. `Bash`, `Backstab` and the rest are printed and not read.
+     * `maxLines` is a backstop above the longest shape: nine rows, two
+     * headings, seven attacks, a blank and a spell table as long as the last
+     * fight's casts; the prompt ends it long before.
+     */
+    type: 'user-stat-all',
+    header: /^Name:\s+\S.*?\s+Illu:\s+-?\d+\s*$/,
+    shape: 'array',
+    maxLines: 40,
+    qualifiers: [
+      /^HP Regen:\s+(?<healthRegen>-?\d+)\/(?<restingRegen>-?\d+)\s+AC vs Evil:/,
+      /^MA Regen:\s+(?<baseManaRegen>-?\d+)\/(?<manaRegen>-?\d+)\s+Shadow:/,
+      /^(?<section>Attacks)(?: against <(?<against>.+)>)?:\s*$/,
+      /^Attack\s+(?<swings>\d+(?:\.\d+)?)\s+(?<accuracy>-?\d+)\s+(?<min>-?\d+)\s+(?<max>-?\d+)\s+(?:-?\d+\(-?\d+\)\s+)?-?\d+(?:\(-?\d+\))?\s*$/,
+      /^(?<section>Spells)(?: against <.+>)?:\s*$/
     ]
   },
   {

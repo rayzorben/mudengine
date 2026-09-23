@@ -508,6 +508,7 @@ export function indexQuests(
         ...maybe('room', owner?.room),
         ...maybe('from', step.from),
         ...maybe('to', step.to),
+        ...maybe('delaySeconds', step.delay),
         // A route naming pass each, so a way's own gates and rewards read the
         // same as the step's — the names come from one table either way.
         ...maybe(
@@ -694,6 +695,12 @@ interface BlockStep extends BlockWay {
   /** The routes that differ; absent where the block writes one. */
   ways?: BlockWay[];
   /**
+   * `adddelay N` on the step's line, in seconds — the longest where merged
+   * lines differ, since the runner waits it out before reading a refusal
+   * into silence and the longer wait is the safe one (todo 106).
+   */
+  delay?: number;
+  /**
    * The phrases the lines that make up *this* step are reached by — the first
    * field of each line (`<phrase> : <step> : <step>`).
    *
@@ -740,7 +747,14 @@ interface BlockStep extends BlockWay {
 function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
   const merged = new Map<
     string,
-    { counter: number; from?: number; to?: number; routes: BlockWay[]; phrases: string[] }
+    {
+      counter: number;
+      from?: number;
+      to?: number;
+      routes: BlockWay[];
+      phrases: string[];
+      delay?: number;
+    }
   >();
   for (const line of action.split('\n')) {
     const script = readQuestScript(line);
@@ -770,7 +784,8 @@ function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
         routes: [route],
         phrases: phrase.length > 0 ? [phrase] : [],
         ...maybe('from', from),
-        ...maybe('to', grant.value)
+        ...maybe('to', grant.value),
+        ...maybe('delay', script.delay)
       });
       continue;
     }
@@ -778,12 +793,14 @@ function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
     // spellings of one act are two phrases reaching one step.
     if (!held.routes.some((seen) => same(seen, route))) held.routes.push(route);
     if (phrase.length > 0 && !held.phrases.includes(phrase)) held.phrases.push(phrase);
+    if (script.delay !== undefined && script.delay > (held.delay ?? 0)) held.delay = script.delay;
   }
   return [...merged.values()].map((entry) => ({
     counter: entry.counter,
     phrases: entry.phrases,
     ...maybe('from', entry.from),
     ...maybe('to', entry.to),
+    ...maybe('delay', entry.delay),
     ...shareRoutes(entry.routes)
   }));
 }

@@ -38,6 +38,7 @@ import {
 } from '../../../shared/spell-messages';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { NO_TALLY, swings, type CombatTally } from '../../../shared/tally';
+import { statedNow } from '../../../shared/stated';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
 
@@ -2352,6 +2353,29 @@ describe('the fight this character is in', () => {
   /* The realm says the orc rogue would have swung, so its miss is a miss. */
   it('still reads a hostile monster’s miss as a blow', () => {
     const tracker = atTheTemple('The orc rogue lunges at you!');
+    expect(tracker.current.combat.attackers).toEqual(['orc rogue']);
+  });
+
+  /*
+   * And the glance, which is the same fact in the spelling the rules could not
+   * take until todo 02 — the whole of the reported bug, end to end.
+   *
+   * `*Combat Off*` clears the fight outright, and this client produces one
+   * itself every time a blessing is cast mid-fight. What said the monster was
+   * still there was its next blow, and *that* blow's sentence was unread: the
+   * client stood in a room being hit with `combat.attackers` empty, so
+   * `fightIsRunning` read false, the walker spent its three beats and stepped
+   * out, and retaliation — which needs an attacker — never fired.
+   * (`logs/2026-09-22_08-02-35_festus.mudcap.jsonl`, t=619556 to t=624061.)
+   */
+  it('reads the glancing blow that follows a fight this client ended', () => {
+    const tracker = atTheTemple(
+      { send: 'aa orc rogue' },
+      '*Combat Engaged*',
+      { send: 'prev' },
+      '*Combat Off*',
+      'The orc rogue hits you, but the swing glances off!'
+    );
     expect(tracker.current.combat.attackers).toEqual(['orc rogue']);
   });
 
@@ -9813,6 +9837,41 @@ describe('the spellbook', () => {
     ]);
     expect(tracker.current.vitals.manaType).toBe('KAI');
     expect(tracker.current.vitals.manaMax).toBe(27);
+  });
+});
+
+/*
+ * `stat all`: the server's own arithmetic, kept with what it was computed
+ * from. The user's own sheet (Festus on Paradigm, 2026-09-18), typed at a
+ * prompt as it was.
+ */
+describe('the stat all sheet', () => {
+  const sheet = [
+    '[HP=259/259,MA=49/49]:stat all',
+    'Name: Festus                                     Illu:           25',
+    'HP Regen:   6/18       AC vs Evil:  68           Cold Resist:     0',
+    'MA Regen:   3/3        Shadow:       0           Water Resist:    0',
+    'Max HP:    45          Party:        0           Fire Resist:    10',
+    'Max Mana:   5          Prev:        10           Stone Resist:    0',
+    'Encum:      0          Prgd:         0           Lit Resist:      0',
+    '                       vs Good:     58           Dodge:          13',
+    '                                                 Crits:           3',
+    '                                                 Spell Damage:    0',
+    'Attacks:',
+    'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)',
+    'Attack       3.584    105     8    25     0(3)            65(67)  ',
+    'Bash         1.792    105    22    82                     93(94)  ',
+    '[HP=259/259,MA=49/49]:'
+  ];
+
+  it('starts unread', () => {
+    expect(play(['[HP=34]:']).current.stated).toBeNull();
+  });
+
+  it('keeps the figures, and they hold while nothing has moved', () => {
+    const state = play(sheet).current;
+    expect(state.stated).toMatchObject({ healthRegen: 6, restingRegen: 18, manaRegen: 3 });
+    expect(statedNow(state)).toMatchObject({ accuracy: 105, swings: 3.584, health: 6 });
   });
 });
 
