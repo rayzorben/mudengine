@@ -51,6 +51,19 @@ describe('the quest run banner', () => {
     expect(banner).toContain('step.state === \'done\' ? <Icon name="check"');
   });
 
+  it('centres the walk count on the connector and draws it over the line (todo 02)', () => {
+    const count = rule(css, '.quest-banner-walk');
+    expect(count).toContain('left: 0;');
+    expect(count).toContain('transform: translate(-50%, -50%)');
+    expect(count).toContain('top: calc(var(--quest-node) / 2)');
+    expect(count).toContain('z-index: 1');
+    expect(count).toContain('background:');
+    expect(count).not.toMatch(/(top|left|right): -?\d*[1-9]/);
+    expect(rule(css, '.quest-banner-steps > li + li::before')).toContain(
+      'top: calc((var(--quest-node) - var(--quest-line)) / 2)'
+    );
+  });
+
   it('names the quest and the steps in the words main pushed, as the card does', () => {
     const runner = read('src/main/automation/QuestRunner.ts');
     const card = read('src/renderer/src/components/QuestCard.tsx');

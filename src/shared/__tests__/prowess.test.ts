@@ -4,13 +4,13 @@ import {
   accuracy,
   castOdds,
   dodge,
-  dodgedFraction,
   regeneration,
   REGEN_TICK_SECONDS,
   swing,
   swingsPerRound,
   type ProwessSheet
 } from '../prowess';
+import { dodgedFraction } from '../menace';
 
 /** A level-10 fighter with ordinary stats, every input read. */
 const SHEET: ProwessSheet = {

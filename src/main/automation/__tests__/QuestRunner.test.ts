@@ -619,10 +619,62 @@ describe('running a quest plan', () => {
     expect(sent).toEqual(['ask Master Trader Tolgard favour']);
     expect(runner.progress.phase).toBe('fetching');
     expect(runner.progress.detail).toContain('heavy box');
-    // The pack gains it: on to the act.
+    // The script's `giveitem` names nothing on the wire, so the pack is asked
+    // for once the ask has gone out — nothing is concluded from silence.
+    runner.onCharacter(hall);
+    drain();
+    expect(sent).toEqual(['ask Master Trader Tolgard favour', 'inventory']);
+    // The listing answering it holds the box: on to the act.
+    runner.noteListing('inventory');
     runner.onCharacter(withHere(inRealm(['heavy box']), '1/2', ['Master Trader Tolgard', 'Sage']));
     drain();
     expect(sent).toContain('ask Sage hello');
+  });
+
+  /*
+   * Festus, 2026-09-23: Tolgard said *gives it to you*, the reply window ran
+   * out with no listing asked for, and the run said the pack did not gain the
+   * box and asked again. The next `i` showed it. Neither the window nor an
+   * older listing is the answer; a listing asked for after the ask is.
+   */
+  it('never says the pack did not gain a handover without listing it first', () => {
+    const step: PlanStep = {
+      ...STEP_ONE,
+      items: [
+        {
+          id: 77,
+          name: 'heavy box',
+          held: false,
+          hand: true,
+          source: { how: 'ask', who: 'Tolgard', say: 'favour', at: { room: '1/2', place: 'Hall' } }
+        }
+      ]
+    };
+    const runner = make();
+    here = '1/2';
+    const hall = withHere(inRealm(), '1/2', ['Master Trader Tolgard', 'Sage']);
+    runner.start(plan(step), QUEST, hall);
+    drain();
+    runner.onCharacter(hall);
+    drain();
+    expect(sent.filter((command) => command === 'inventory')).toHaveLength(1);
+    // The window passes with the listing unanswered: asked again, not concluded.
+    clock += tuning().quests.replyMs + 1;
+    runner.onCharacter(hall);
+    drain();
+    expect(sent.filter((command) => command === 'inventory')).toHaveLength(2);
+    expect(runner.progress.phase).toBe('fetching');
+    expect(notices.join('\n')).not.toContain('does not hold');
+    // Somebody else's `i`, sent before the ask and answered after the run's
+    // own went out, lists the pack as it was: not the answer.
+    runner.noteListing('i');
+    runner.onCharacter(hall);
+    expect(runner.progress.phase).toBe('fetching');
+    // The run's own listing, without the box: now it is a setback.
+    runner.noteListing('inventory');
+    runner.onCharacter(hall);
+    expect(runner.progress.phase).toBe('held');
+    expect(notices.at(-1)).toContain('heavy box was asked for, and the pack listed after it');
   });
 
   it('is put down by the player, walk and errands with it', () => {
@@ -654,6 +706,127 @@ describe('running a quest plan', () => {
     const second = make();
     expect(second.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
     expect(second.progress.to).toBe(1);
+  });
+
+  it('reads a step without a counter off a pack listed after the act', () => {
+    const giving: Quest = {
+      ...QUEST,
+      steps: [{ ...QUEST.steps[0]!, gives: [{ kind: 'item', id: 88, name: 'blue sword' }] }]
+    };
+    const runner = make({ printsCounters: () => false });
+    here = '1/2';
+    const atSage = withHere(inRealm(), '1/2', ['Sage']);
+    runner.start(plan(STEP_ONE), giving, atSage);
+    drain();
+    runner.onCharacter(atSage);
+    drain();
+    expect(sent).toEqual(['ask Sage hello', 'inventory']);
+    // Silence past the reply window is not an unmoved pack.
+    clock += tuning().quests.replyMs + 1;
+    runner.onCharacter(atSage);
+    expect(runner.running).toBe(true);
+    runner.noteListing('inventory');
+    runner.onCharacter(withHere(inRealm(['blue sword']), '1/2', ['Sage']));
+    expect(runner.running).toBe(false);
+    expect(runner.progress.status).toBe('done');
+  });
+
+  /*
+   * The reviewer's case: the player's half-typed line holds the ask in the
+   * queue, and the queue pushes its deadline back for as long. A lapse the run
+   * read off its own clock set back at `expiresMs`, and the queue then sent
+   * the ask anyway to a run no longer watching for it.
+   */
+  it('reads a handover lapse off the queue, never its own clock, and takes the ask back', () => {
+    const step: PlanStep = {
+      ...STEP_ONE,
+      items: [
+        {
+          id: 77,
+          name: 'heavy box',
+          held: false,
+          hand: true,
+          source: { how: 'ask', who: 'Tolgard', say: 'favour', at: { room: '1/2', place: 'Hall' } }
+        }
+      ]
+    };
+    const runner = make();
+    here = '1/2';
+    const hall = withHere(inRealm(), '1/2', ['Master Trader Tolgard', 'Sage']);
+    queue.noteTyping(true);
+    runner.start(plan(step), QUEST, hall);
+    drain();
+    expect(sent).toEqual([]);
+    clock += tuning().quests.expiresMs + 1;
+    runner.onCharacter(hall);
+    expect(runner.progress.phase).toBe('fetching');
+    // The line committed: the ask goes out, once, and the pack is read after it.
+    queue.noteTyping(false);
+    drain();
+    runner.onCharacter(hall);
+    drain();
+    expect(sent).toEqual(['ask Master Trader Tolgard favour', 'inventory']);
+
+    // And a lapse the queue did make is one: dropped there, set back here.
+    runner.stop('again');
+    sent.length = 0;
+    const second = make();
+    queue.noteTyping(true);
+    second.start(plan(step), QUEST, hall);
+    queue.cancel(() => true);
+    second.onCharacter(hall);
+    expect(second.progress.phase).toBe('held');
+    expect(notices.at(-1)).toContain('lapsed in the queue');
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('takes back a queued act when the run is set back', () => {
+    const runner = make({ printsCounters: () => false });
+    here = '1/2';
+    const giving: Quest = {
+      ...QUEST,
+      steps: [{ ...QUEST.steps[0]!, gives: [{ kind: 'item', id: 88, name: 'blue sword' }] }]
+    };
+    queue.noteTyping(true);
+    runner.start(plan(STEP_ONE), giving, withHere(inRealm(), '1/2', ['Sage']));
+    runner.stop('enough');
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * A step with an `adddelay` waits the delay before reading the pack, and the
+   * wait for the listing is bounded from the first ask — measured from the
+   * wire, a delay of a minute spent the whole bound before anything was asked.
+   */
+  it('asks for the pack after a long script delay rather than giving up unasked', () => {
+    const giving: Quest = {
+      ...QUEST,
+      steps: [
+        {
+          ...QUEST.steps[0]!,
+          delaySeconds: 60,
+          gives: [{ kind: 'item', id: 88, name: 'blue sword' }]
+        }
+      ]
+    };
+    const runner = make({ printsCounters: () => false });
+    here = '1/2';
+    const atSage = withHere(inRealm(), '1/2', ['Sage']);
+    runner.start(plan(STEP_ONE), giving, atSage);
+    drain();
+    expect(sent).toEqual(['ask Sage hello']);
+    clock += 60_000 + 1;
+    runner.onCharacter(atSage);
+    drain();
+    expect(sent).toEqual(['ask Sage hello', 'inventory']);
+    expect(runner.progress.phase).not.toBe('held');
+    runner.noteListing('inventory');
+    runner.onCharacter(withHere(inRealm(['blue sword']), '1/2', ['Sage']));
+    expect(runner.progress.status).toBe('done');
   });
 
   it('refuses a step the realm prints no counter for and that leaves no evidence', () => {

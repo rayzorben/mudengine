@@ -872,7 +872,16 @@ const TUNING_DEFAULTS = {
      * and the whole realm's span of markups is worth about a hundred and
      * seventy. Zero makes the price count for nothing and detour decide alone.
      */
-    dearerSteps: 20
+    dearerSteps: 20,
+    /**
+     * Copper withdrawn over what a purchase costs, where the vault holds it.
+     *
+     * The price is the server's own arithmetic and exact, but a counter's
+     * markup is the realm's to change, and a purse withdrawn to the copper is
+     * one refused the moment anything moves. A thousand is ten gold crowns: a
+     * second waterskin, not a fortune carried about. Zero withdraws exactly.
+     */
+    cashBuffer: 1000
   },
   /** Carrying a quest's plan through the arbiter — `QuestRunner`. */
   quests: {
@@ -891,6 +900,12 @@ const TUNING_DEFAULTS = {
      * ask and one listing.
      */
     rollTries: 12,
+    /**
+     * How many times a listing the outcome waits on — `abil` for a counter,
+     * `i` for a pack a script handed something to — is asked for, `replyMs`
+     * apart, before the silence is a setback.
+     */
+    listingAsks: 3,
     /**
      * How long to stand at a step's room waiting for its asker or its
      * monster to be there before the run gives up on it. A lair's clock is

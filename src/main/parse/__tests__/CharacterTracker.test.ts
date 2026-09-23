@@ -2035,6 +2035,47 @@ describe('the fight this character is in', () => {
     });
 
     /*
+     * And the experience line behind it is the same death, not a second one
+     * (todo 00, 2026-09-23): Festus killed one of two `saracen raider`s, the
+     * sentence took it out and the experience line took the other, and the
+     * walk stepped out of a fight with a monster still swinging.
+     */
+    it('takes one namesake out for a sentence and the experience line together', () => {
+      const lore = remembered();
+      lore.deaths.set('orc rogue', 'The orc rogue utters a low growl, and dies.');
+      const tracker = play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue, orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'The orc rogue utters a low growl, and dies.',
+          '[HP=98/MA=50]:',
+          'You gain 25 experience.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(names(tracker.current.room.occupants)).toEqual(['orc rogue']);
+    });
+
+    it('takes one namesake out for an experience line with no sentence', () => {
+      const tracker = play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue, orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'You gain 25 experience.'
+        ],
+        combatWorld()
+      );
+      expect(names(tracker.current.room.occupants)).toEqual(['orc rogue']);
+    });
+
+    /*
      * And somebody else's kill is somebody else's: it takes their monster out
      * of the room and leaves this character's fight exactly where it was.
      *

@@ -75,6 +75,25 @@ function fight(overrides: Partial<SurvivalInput> = {}): SurvivalInput {
 }
 
 describe('the room’s fight, run', () => {
+  /* Mob.DoCombat's protection reaches the fight run, not only the ranking (todo 00). */
+  it('runs an evil monster’s blows against the protection that applies to them', () => {
+    const foes = [1, 2, 3].map((n) => ({
+      name: `orc ${n}`,
+      subject: { hp: 60, profiles: [biter(60, 6, 12)], disposition: 'hostile' as const }
+    }));
+    const bare = simulateFight(fight({ foes, casting: [null, null, null] }))!;
+    const warded = simulateFight(
+      fight({
+        foes,
+        casting: [null, null, null],
+        player: { armourClass: 20, damageResist: 1, magicRes: 0, versusEvil: 30, dodge: 10 }
+      })
+    )!;
+    // 50 against an accuracy of 60 is past reach: (60² / 14) / 10 = 25, 2,500 / 25.
+    expect(bare.hpLeft!).toBeLessThan(100);
+    expect(warded.hpLeft).toBe(100);
+  });
+
   it('walks out of a room of rats every time', () => {
     const result = simulateFight(fight());
     expect(result).not.toBeNull();

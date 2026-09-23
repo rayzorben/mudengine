@@ -435,6 +435,11 @@ export class CommandQueue {
     return removed;
   }
 
+  /** Whether anything matching a predicate is still waiting to go out. */
+  queued(match: (intent: Intent) => boolean): boolean {
+    return this.pending.some(match);
+  }
+
   /**
    * Everything queued, gone.
    *

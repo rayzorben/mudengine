@@ -65,6 +65,7 @@ import {
   type ApproachItem,
   type WorldLookup,
   type BankChoice,
+  type CashPlace,
   type ShopPlace,
   type BuyingPlace,
   type Dropper,
@@ -124,10 +125,16 @@ import {
   itemKind
 } from '../../shared/items';
 import { tuning } from '../app/tuning';
+import { counterPriceInCopper, currencyOfCode } from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
 import { spellTargeting } from '../../shared/spellcraft';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
-import type { AttributeSpans, RoomExit } from '../../shared/character';
+import {
+  balanceOf,
+  type AttributeSpans,
+  type BankBalance,
+  type RoomExit
+} from '../../shared/character';
 import type { SpellOption } from '../../shared/ipc';
 import {
   asRealmFamily,
@@ -2980,6 +2987,74 @@ export class WorldGraph {
   }
 
   /**
+   * What this counter charges for one of this item, in copper, before the
+   * buyer's charm (`counterPriceInCopper`). Zero for a thing the realm gives
+   * away (`Free` on the listing); null where the file predates the coin
+   * (format 47) or the realm holds no such row.
+   */
+  priceAt(item: number, shop: number): number | null {
+    const known = this.items.get(item);
+    const place = this.shops.get(shop);
+    if (known?.currency === undefined || place === undefined) return null;
+    return counterPriceInCopper(known.price ?? 0, known.currency, place.markup ?? 0);
+  }
+
+  /**
+   * The vaults holding at least `need` copper by this character's own record,
+   * best first by what stopping at each adds to the way to `to` (todo 00).
+   *
+   * `buyingPlacesFor`'s arithmetic over bank rooms instead of counters, on the
+   * same two sweeps: the detour, not the distance, since the cash is wanted at
+   * the counter and a vault the way already passes costs nothing. A vault
+   * nobody has asked is not a candidate — a walk to learn a balance is a guess
+   * at one — and the one the record overstates is found out at its counter,
+   * where the errand asks `bank` before it withdraws.
+   */
+  cashPlaces(
+    balances: readonly BankBalance[],
+    need: number,
+    from: RoomId,
+    to: RoomId | null,
+    traveller: Traveller
+  ): CashPlace[] {
+    const candidates: Array<{ choice: BankChoice; copper: number }> = [];
+    for (const choice of this.banks()) {
+      const held = balanceOf({ id: choice.shop, name: choice.name }, balances);
+      if (held === null || held.copper < need) continue;
+      candidates.push({ choice, copper: held.copper });
+    }
+    if (candidates.length === 0) return [];
+    const wanted = new Set(candidates.map(({ choice }) => roomId(choice.map, choice.room)));
+    const head = this.sweepTo(from, wanted, traveller);
+    const back =
+      to === null
+        ? null
+        : this.sweepBack(new Map([[to, 0]]), new Set([...wanted, from]), traveller, true);
+    const base = back?.get(from);
+    const places: CashPlace[] = [];
+    for (const { choice, copper } of candidates) {
+      const id = roomId(choice.map, choice.room);
+      const reach = head.get(id);
+      if (reach === undefined) continue;
+      let detour = reach.cost;
+      if (back !== null && base !== undefined) {
+        const tail = back.get(id);
+        if (tail === undefined) continue;
+        detour = reach.cost + tail - base;
+      }
+      places.push({
+        ...choice,
+        copper,
+        detour: Math.max(0, Math.round(detour)),
+        moves: reach.moves
+      });
+    }
+    return places.sort(
+      (a, b) => a.detour - b.detour || a.moves - b.moves || a.map - b.map || a.room - b.room
+    );
+  }
+
+  /**
    * Every trainer that will take this character, with the room it is in.
    *
    * The join the levelling errand and the settings screen both need: the
@@ -3548,6 +3623,11 @@ export class WorldGraph {
           }
           const price = Number(record['price']);
           if (Number.isFinite(price) && price > 0) item.price = price;
+          // Format 47: absent is copper, and before it the coin is unknown.
+          if (graph.meta.version >= CURRENCY_SINCE) {
+            const currency = currencyOfCode(Number(record['cur'] ?? 0));
+            if (currency !== null) item.currency = currency;
+          }
           const encumbrance = Number(record['enc']);
           if (Number.isFinite(encumbrance) && encumbrance > 0) item.encumbrance = encumbrance;
           /*
@@ -7938,6 +8018,9 @@ function isCastable(spell: WorldSpell): boolean {
  * formats; this is the one row of that table the reader has to know.
  */
 const PROFILES_SINCE = 20;
+
+/** The realm format that states the coin a price is counted in (`BuiltItem.cur`). */
+const CURRENCY_SINCE = 47;
 
 /**
  * How many `room|name` resolutions are kept before the table is dropped whole.

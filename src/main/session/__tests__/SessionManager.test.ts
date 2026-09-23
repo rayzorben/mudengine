@@ -2454,15 +2454,24 @@ describe('asking for the quest counters', () => {
  * the socket's thread for an answer the card will drop.
  */
 describe('the plan to a step', () => {
-  /** Two rooms and one quest whose only step is an ask in the second. */
-  function questWorld(): WorldGraph {
+  /**
+   * Two rooms and one quest whose only step is an ask in the second — or,
+   * `buying`, one that takes a waterskin the counter in the first sells.
+   */
+  function questWorld(buying = false): WorldGraph {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-plan-'));
     const file = path.join(dir, 'rooms.jsonl.gz');
     const header = JSON.stringify({
-      v: 25,
+      v: buying ? 47 : 25,
       source: 'test',
       rooms: 2,
       generatedAt: 'x',
+      ...(buying
+        ? {
+            items: [{ id: 283, n: 'waterskin', price: 25, cur: 1 }],
+            shops: [{ id: 3, n: 'General Store', items: [283], markup: 100 }]
+          }
+        : {}),
       quests: [
         {
           id: 134,
@@ -2474,7 +2483,7 @@ describe('the plan to a step', () => {
               room: '1/2',
               say: ['hello'],
               needs: [],
-              takes: [],
+              takes: buying ? [{ id: 283, name: 'waterskin' }] : [],
               gives: [],
               to: 1
             }
@@ -2483,7 +2492,7 @@ describe('the plan to a step', () => {
       ]
     });
     const rooms = [
-      { m: 1, r: 1, n: 'Shore', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 1, n: 'Shore', x: { e: { m: 1, r: 2 } }, ...(buying ? { s: 3 } : {}) },
       { m: 1, r: 2, n: 'Middle Road', x: { w: { m: 1, r: 1 } } }
     ];
     fs.writeFileSync(
@@ -2502,9 +2511,9 @@ describe('the plan to a step', () => {
   };
 
   /** Connects and places the character on the shore. */
-  async function placed(): Promise<void> {
+  async function placed(buying = false): Promise<void> {
     const { sink } = collect();
-    manager = new SessionManager(sink, questWorld(), still);
+    manager = new SessionManager(sink, questWorld(buying), still);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
@@ -2517,6 +2526,16 @@ describe('the plan to a step', () => {
     const plan = await manager!.questPlan(1, null);
     expect(plan?.from).toBe('1/1');
     expect(plan?.steps[0]?.moves).toBe(1);
+  });
+
+  // Todo 00: the counter's price on the row, and the whole set against the purse.
+  it('prices what it buys, and calls an unread purse unread rather than short', async () => {
+    await placed(true);
+    const plan = await manager!.questPlan(1, null);
+    const source = plan?.steps[0]?.items[0]?.source;
+    expect(source).toMatchObject({ how: 'buy', copper: 500 });
+    // Charm unread, so priced at its floor: ten percent on.
+    expect(plan?.cash).toEqual({ owed: 550, unpriced: 0, purse: null, short: false });
   });
 
   it('answers null to an ask a later one superseded', async () => {

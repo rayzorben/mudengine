@@ -120,10 +120,19 @@ type Phase =
   | {
       kind: 'fetching';
       item: PlanItem;
-      how: 'buy' | 'hunt' | 'handover';
+      how: 'buy' | 'hunt';
       since: number;
-      /** How many the pack held when the fetch began, for a handover. */
       before: number;
+    }
+  | {
+      kind: 'fetching';
+      item: PlanItem;
+      how: 'handover';
+      since: number;
+      /** How many the pack held when the fetch began. */
+      before: number;
+      /** Its answer, read off a listing asked for after it. */
+      pack: PackCheck;
     }
   | { kind: 'walking'; to: RoomId; legs: number; since: number; at: RoomId | null }
   /** A fight ended the leg; the next leg waits for it to be over. */
@@ -138,7 +147,52 @@ type Phase =
       askedTimes: number;
       /** The pack before the act, by item id, for a realm that prints no counter. */
       before: ReadonlyMap<number, number>;
+      /** And the pack after it, where no counter says. */
+      pack: PackCheck;
     };
+
+/**
+ * Reading the pack after a script was asked for something.
+ *
+ * A script's `giveitem` and `takeitem` print nothing that names the item
+ * (`TextBlockPart.cs:132`): the sentence is the realm author's prose, so no
+ * broadcast keeps the pack true across one and only a listing asked for
+ * **after** the act can say what it did — told apart from anybody else's by
+ * the command the server echoes before it. See `mudengine-automation` › *A
+ * handover is read off a listing asked for after it*.
+ */
+interface PackCheck {
+  /** When the act went out; null while it waits in the queue. */
+  sentAt: number | null;
+  /** When the first listing was asked for, which the whole wait is bounded from. */
+  askingSince: number | null;
+  /** When one was last asked for, and how many times the queue took one. */
+  asked: number | null;
+  askedTimes: number;
+  /** Whether the run's own listing has gone out, and whether it has been answered. */
+  listSent: boolean;
+  answered: boolean;
+}
+
+const packCheck = (sentAt: number | null = null): PackCheck => ({
+  sentAt,
+  askingSince: null,
+  asked: null,
+  askedTimes: 0,
+  listSent: false,
+  answered: false
+});
+
+/** The key the act goes out under, so a run that stops can take it back. */
+const ACT_KEY = 'quests:act';
+/** And the listing asked after it, under its own key and in its own spelling. */
+const AFTER_KEY = 'quests:after';
+/**
+ * `Commands.cs`' own long word for `i`. Nothing else in this client asks with
+ * it — the entry probe, the deposit and the run's first read all send `i` —
+ * so the server's echo of it names the run's listing and nobody else's.
+ */
+const AFTER_WORD = 'inventory';
 
 interface Run {
   plan: QuestPlan;
@@ -650,14 +704,21 @@ export class QuestRunner {
           return;
         }
         if (fightIsRunning(state) || this.planner.moveInFlight()) return;
+        const pack = packCheck();
         run.phase = {
           kind: 'fetching',
           item,
           how: 'handover',
           since: this.now(),
-          before: item.name === undefined ? 0 : carriedCount(state, item.name)
+          before: item.name === undefined ? 0 : carriedCount(state, item.name),
+          pack
         };
-        if (!this.send(command, t('automation.quests.reasonHandover', { item: name }))) return;
+        const asked = this.send(
+          command,
+          t('automation.quests.reasonHandover', { item: name }),
+          () => void (pack.sentAt = this.now())
+        );
+        if (!asked) return;
         this.events.notice?.(t('automation.quests.handover', { nth, item: name, command }));
         this.publish();
         return;
@@ -671,7 +732,7 @@ export class QuestRunner {
     phase: Extract<Phase, { kind: 'fetching' }>,
     state: CharacterState
   ): void {
-    const { item, how } = phase;
+    const { item } = phase;
     const name = item.name ?? `#${item.id}`;
     /** This fetch is over: on to the step's next item, or to the step itself. */
     const gathered = (): void => {
@@ -688,7 +749,7 @@ export class QuestRunner {
       gathered();
       return;
     }
-    switch (how) {
+    switch (phase.how) {
       case 'buy':
         if (this.planner.buying()) return;
         /*
@@ -718,11 +779,24 @@ export class QuestRunner {
         if (!this.planner.hunting())
           this.setback(t('automation.quests.refusalHuntStopped', { item: name }));
         return;
-      case 'handover':
-        if (this.now() - phase.since > tuning().quests.replyMs) {
+      case 'handover': {
+        const { pack } = phase;
+        if (pack.sentAt === null) {
+          // The queue's own drop is the lapse, never a clock of the run's:
+          // the player's half-typed line pushes every deadline back.
+          if (!this.actQueued()) {
+            this.setback(t('automation.quests.refusalHandoverUnsent', { item: name }));
+          }
+          return;
+        }
+        const read = this.packAfter(pack);
+        if (read === 'read') {
           this.setback(t('automation.quests.refusalHandoverUnanswered', { item: name }));
+        } else if (read === 'unanswered') {
+          this.setback(t('automation.quests.refusalPackUnread'));
         }
         return;
+      }
     }
   }
 
@@ -889,8 +963,21 @@ export class QuestRunner {
     ]) {
       before.set(item.id, item.name === undefined ? 0 : carriedCount(state, item.name));
     }
-    run.phase = { kind: 'confirming', sentAt: this.now(), asked: null, askedTimes: 0, before };
-    if (!this.send(command, t('automation.quests.reasonAct', { nth }))) return;
+    const pack = packCheck();
+    run.phase = {
+      kind: 'confirming',
+      sentAt: this.now(),
+      asked: null,
+      askedTimes: 0,
+      before,
+      pack
+    };
+    const sent = this.send(
+      command,
+      t('automation.quests.reasonAct', { nth }),
+      () => void (pack.sentAt = this.now())
+    );
+    if (!sent) return;
     this.events.notice?.(
       run.tries > 0
         ? t('automation.quests.askingAgain', {
@@ -918,14 +1005,17 @@ export class QuestRunner {
     return found?.name ?? null;
   }
 
-  private send(command: string, reason: string): boolean {
+  private send(command: string, reason: string, sent: () => void): boolean {
     const queued = this.queue.enqueue({
       command,
       priority: 'probe',
-      coalesceKey: 'quests:act',
+      coalesceKey: ACT_KEY,
       expiresAt: this.now() + tuning().quests.expiresMs,
       reason,
-      onSent: () => this.planner.said(command)
+      onSent: () => {
+        sent();
+        this.planner.said(command);
+      }
     });
     if (!queued) this.setback(t('automation.quests.refusalNotQueued', { command }));
     return queued;
@@ -935,7 +1025,14 @@ export class QuestRunner {
 
   /** A kill the book watched: confirmed from the moment it was seen. */
   private confirmFrom(run: Run, state: CharacterState, sentAt: number): void {
-    run.phase = { kind: 'confirming', sentAt, asked: null, askedTimes: 0, before: new Map() };
+    run.phase = {
+      kind: 'confirming',
+      sentAt,
+      asked: null,
+      askedTimes: 0,
+      before: new Map(),
+      pack: packCheck(sentAt)
+    };
     this.publish();
     this.confirm(run, run.phase, state);
   }
@@ -967,7 +1064,7 @@ export class QuestRunner {
       if (!fresh) {
         if (now < phase.sentAt + delay) return;
         if (phase.asked !== null && now - phase.asked < tuning().quests.replyMs) return;
-        if (phase.askedTimes >= 3) {
+        if (phase.askedTimes >= tuning().quests.listingAsks) {
           this.setback(t('automation.quests.refusalListingUnanswered', { nth }));
           return;
         }
@@ -1015,6 +1112,19 @@ export class QuestRunner {
      * be read — both are said, never assumed.
      */
     if (phase.before.size > 0) {
+      if (phase.pack.sentAt === null) {
+        // The act lapsed in the queue: nothing was asked, so nothing is read.
+        if (!this.actQueued()) {
+          this.setback(t('automation.quests.refusalNotQueued', { command: this.wordsOf(step) }));
+        }
+        return;
+      }
+      if (now < phase.sentAt + delay) return;
+      const read = this.packAfter(phase.pack);
+      if (read === 'unanswered') {
+        this.setback(t('automation.quests.refusalPackUnread'));
+        return;
+      }
       let moved = false;
       for (const item of realm.takes) {
         const was = phase.before.get(item.id) ?? 0;
@@ -1028,9 +1138,7 @@ export class QuestRunner {
         this.stepDone(run, state, realm.to);
         return;
       }
-      if (now - phase.sentAt > tuning().quests.replyMs + delay) {
-        this.refuse(t('automation.quests.refusalPackUnmoved', { nth }));
-      }
+      if (read === 'read') this.refuse(t('automation.quests.refusalPackUnmoved', { nth }));
       return;
     }
     if (stepRoll(realm) !== null) {
@@ -1046,6 +1154,61 @@ export class QuestRunner {
     if (now - phase.sentAt > tuning().quests.replyMs + delay) {
       this.refuse(t('automation.quests.refusalUnwatched', { nth }));
     }
+  }
+
+  /**
+   * The pack as the act left it: `read` once a listing asked for after the
+   * act has landed, `waiting` while one is owed — asked for here, `replyMs`
+   * apart — and `unanswered` once `listingAsks` of them went unanswered.
+   * The act is the answer only once it is on the wire, so nothing is asked
+   * before; the queue keeps the `i` behind it, and the server answers in turn.
+   */
+  private packAfter(pack: PackCheck): 'read' | 'waiting' | 'unanswered' {
+    if (pack.answered) return 'read';
+    const now = this.now();
+    if (pack.sentAt === null) return 'waiting';
+    const { replyMs, listingAsks } = tuning().quests;
+    if (pack.asked !== null && now - pack.asked < replyMs) return 'waiting';
+    // Counted in asks the queue took, and bounded in time from the first as
+    // well: a queue that refuses every ask would otherwise count none of them.
+    pack.askingSince ??= now;
+    if (pack.askedTimes >= listingAsks || now - pack.askingSince > replyMs * listingAsks) {
+      return 'unanswered';
+    }
+    // A refused enqueue is *not now*, never *never* (todo 113), as for `abil`.
+    const queued = this.queue.enqueue({
+      command: AFTER_WORD,
+      priority: 'probe',
+      coalesceKey: AFTER_KEY,
+      expiresAt: now + tuning().quests.expiresMs,
+      reason: t('automation.quests.reasonPackAfter'),
+      onSent: () => void (pack.listSent = true)
+    });
+    if (!queued) return 'waiting';
+    pack.asked = now;
+    pack.askedTimes += 1;
+    return 'waiting';
+  }
+
+  /**
+   * A pack listing landed, answering the command the server echoed before it
+   * (`SessionManager.answering`). Only the run's own spelling, sent after the
+   * act, is the answer: an `i` somebody else sent before the act can land after
+   * the run's ask went out, and it lists the pack as it was.
+   */
+  noteListing(answering: string | null): void {
+    const phase = this.run?.phase;
+    const pack =
+      phase?.kind === 'confirming' || (phase?.kind === 'fetching' && phase.how === 'handover')
+        ? phase.pack
+        : null;
+    if (pack === null || !pack.listSent) return;
+    if (answering?.trim().toLowerCase() === AFTER_WORD) pack.answered = true;
+  }
+
+  /** Whether the act is still waiting in the queue to go out. */
+  private actQueued(): boolean {
+    return this.queue.queued((intent) => intent.coalesceKey === ACT_KEY);
   }
 
   private stepDone(run: Run, state: CharacterState, rank: number): void {
@@ -1103,6 +1266,9 @@ export class QuestRunner {
     const run = this.run;
     if (run === null) return;
     run.setbacks += 1;
+    // Whatever the run proposed and has not sent is not sent now: nothing
+    // would be watching for its answer.
+    this.takeBack();
     const max = tuning().quests.setbacks;
     if (run.setbacks > max) {
       this.refuse(t('automation.quests.refusalGaveUp', { why, tries: max }));
@@ -1167,6 +1333,7 @@ export class QuestRunner {
    * `stop` arranges and why.
    */
   private settle(run: Run, status: 'done' | 'stopped', reason: string): void {
+    this.takeBack();
     if (run.phase.kind === 'walking' && this.planner.walking()) this.planner.stopWalking(reason);
     const step = run.plan.steps[run.at];
     if (step?.act?.verb === 'kill') this.planner.stopFighting(step.act.mob);
@@ -1179,6 +1346,12 @@ export class QuestRunner {
     this.idle = { ...this.progressOf(run), status, phase: null, detail: null, reason };
     this.lastPublished = null;
     this.events.progress?.(this.idle);
+  }
+
+  private takeBack(): void {
+    this.queue.cancel(
+      (intent) => intent.coalesceKey === ACT_KEY || intent.coalesceKey === AFTER_KEY
+    );
   }
 
   private because(): string {

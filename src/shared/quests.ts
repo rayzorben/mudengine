@@ -1112,6 +1112,12 @@ export type PlanSource =
       at?: PlanPlace;
       /** Moves out of the way to the counter and back onto the leg (`BuyingPlace.detour`). */
       detour?: number;
+      /**
+       * What that counter charges for one, in copper before charm — the
+       * realm's own arithmetic (`WorldGraph.priceAt`). Absent where the realm
+       * file does not state the coin.
+       */
+      copper?: number;
     }
   | { how: 'kill'; mob: string; at?: PlanPlace }
   | { how: 'ask'; who: string; say?: string; at?: PlanPlace }
@@ -1255,6 +1261,28 @@ export interface QuestPlan {
   /** True where every step's route exists; false where any is blocked; null where any is unknown. */
   reachable: boolean | null;
   moves: number;
+  /** What the plan's counters cost and where the cash comes from; absent where it buys nothing. */
+  cash?: PlanCash;
+}
+
+/**
+ * What the plan spends at its counters, against the purse and the vaults the
+ * character's record names (todo 00). The run draws cash one purchase at a
+ * time (`Supplies`); this is the same question asked of the whole plan, so the
+ * card can say before the press that a run would stand at a counter. Read by
+ * the card alone: the run's own refusal is each purchase's.
+ */
+export interface PlanCash {
+  /** Copper, charm applied, over every row the realm prices and the pack lacks. */
+  owed: number;
+  /** Rows bought whose price the realm does not state: `owed` is then a floor. */
+  unpriced: number;
+  /** The purse in copper, or null where no listing has counted it. */
+  purse: number | null;
+  /** The vault nearest the first counter that holds what the purse lacks, where one is on record. */
+  bank?: { name: string; room: string; place: string; copper: number };
+  /** The purse is short and no vault on record holds the rest. */
+  short: boolean;
 }
 
 /**

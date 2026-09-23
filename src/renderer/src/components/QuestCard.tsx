@@ -29,6 +29,7 @@ import {
   type QuestErrand,
   type QuestGate,
   type QuestGroup,
+  type PlanCash,
   type QuestPlan,
   type QuestRunProgress,
   type QuestReward,
@@ -1819,6 +1820,9 @@ function Plan({
         {plan !== null && plan.reachable === null && plan.steps.length > 0 && (
           <span className="chip quiet">{t('cards.quests.plan.unpriced')}</span>
         )}
+        {/* What the counters cost and where the cash comes from: the run
+            draws on the bank named here, and stands still where none is. */}
+        {plan?.cash !== undefined && <CashChips cash={plan.cash} />}
         <button className="quest-plan-back" onClick={onBack} onMouseDown={keepFocus} type="button">
           {t('cards.quests.plan.back')}
         </button>
@@ -2074,6 +2078,11 @@ function sourceOfNodes(
               {t('cards.quests.plan.by.detour', { moves: source.detour })}
             </span>
           )}
+          {source.copper !== undefined && (
+            <span className="chip quiet">
+              {t('cards.quests.plan.by.price', { copper: source.copper.toLocaleString() })}
+            </span>
+          )}
         </>
       );
     case 'kill':
@@ -2135,7 +2144,11 @@ function sourceWords(source: PlanSource): string {
         source.detour !== undefined && source.detour > 0
           ? ` (${t('cards.quests.plan.by.detour', { moves: source.detour })})`
           : '';
-      return `${t('cards.quests.plan.by.buy')} ${source.at.place ?? source.at.room}${detour}`;
+      const price =
+        source.copper === undefined
+          ? ''
+          : `, ${t('cards.quests.plan.by.price', { copper: source.copper.toLocaleString() })}`;
+      return `${t('cards.quests.plan.by.buy')} ${source.at.place ?? source.at.room}${detour}${price}`;
     }
     case 'kill':
       return `${t('cards.quests.plan.by.kill')} ${source.mob}${placeWords(source.at)}`;
@@ -2253,7 +2266,8 @@ export function questPlanText(quest: Quest, plan: QuestPlan): string {
       : plan.stated
         ? t('cards.quests.plan.fromStart')
         : t('cards.quests.plan.fromUnstated'),
-    plan.from === undefined ? t('cards.quests.plan.fromNowhere') : (plan.fromPlace ?? plan.from)
+    plan.from === undefined ? t('cards.quests.plan.fromNowhere') : (plan.fromPlace ?? plan.from),
+    ...(plan.cash === undefined ? [] : cashWords(plan.cash).map((part) => part.words))
   ].join(' · ');
   const rows = plan.steps.map((step, nth) => {
     const parts: string[] = [];
@@ -2355,6 +2369,62 @@ function walkOrder(bring: Bring[], walk: Walk | null): Bring[] {
   if (walk === null) return bring;
   const position = (item: Bring): number => walk.stops.get(item.id)?.position ?? Infinity;
   return [...bring].sort((a, b) => position(a) - position(b));
+}
+
+/**
+ * What a plan's counters cost and where the cash comes from, in words — one
+ * reading for the head's chips and the clipboard. The cost is a floor where a
+ * row's price is unstated; an unread purse is said as itself, never as short.
+ */
+function cashWords(cash: PlanCash): Array<{ words: string; tone: string; title?: string }> {
+  const owed = cash.owed.toLocaleString();
+  const parts: Array<{ words: string; tone: string; title?: string }> = [
+    {
+      words:
+        cash.unpriced > 0
+          ? t('cards.quests.plan.cash.owedAtLeast', { owed })
+          : t('cards.quests.plan.cash.owed', { owed }),
+      tone: 'quiet'
+    }
+  ];
+  if (cash.purse === null) {
+    parts.push({ words: t('cards.quests.plan.cash.purseUnread'), tone: 'quiet' });
+  } else if (cash.bank !== undefined) {
+    parts.push({
+      words: t('cards.quests.plan.cash.fromBank', {
+        short: (cash.owed - cash.purse).toLocaleString(),
+        bank: cash.bank.name
+      }),
+      tone: 'info',
+      title: t('cards.quests.plan.cash.fromBankTitle', {
+        purse: cash.purse.toLocaleString(),
+        held: cash.bank.copper.toLocaleString(),
+        place: cash.bank.place
+      })
+    });
+  } else if (cash.short) {
+    parts.push({
+      words: t('cards.quests.plan.cash.short'),
+      tone: 'bad',
+      title: t('cards.quests.plan.cash.shortTitle', { purse: cash.purse.toLocaleString() })
+    });
+  } else if (cash.owed <= cash.purse && cash.unpriced === 0) {
+    // A floor within the purse says nothing about the rows it leaves out.
+    parts.push({ words: t('cards.quests.plan.cash.inPurse'), tone: 'on' });
+  }
+  return parts;
+}
+
+function CashChips({ cash }: { cash: PlanCash }): React.JSX.Element {
+  return (
+    <>
+      {cashWords(cash).map((part) => (
+        <span className={`chip ${part.tone}`} key={part.words} title={part.title}>
+          {part.words}
+        </span>
+      ))}
+    </>
+  );
 }
 
 /** One leg's length, in the moves a player actually presses. */

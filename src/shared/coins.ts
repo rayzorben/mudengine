@@ -52,6 +52,43 @@ export function quotedInCopper(quoted: string): number | null {
 }
 
 /**
+ * `Items.Currency` read as the coin an item's `Price` is counted in — the
+ * server's own table (`BuyCommand.GetCopperValue`, `ListCommand.GetCurrencyName`):
+ * 0 copper, 1 silver, 2 gold, 3 platinum, 4 runic. Anything else is unknown.
+ */
+export function currencyOfCode(code: number): Denomination | null {
+  return (['copper', 'silver', 'gold', 'platinum', 'runic'] as const)[code] ?? null;
+}
+
+/**
+ * What a counter charges for one, in copper, before the buyer's charm —
+ * `BuyCommand.TryToBuy`'s `markedUpCost`: the base in copper times
+ * `(100 + markup)`, divided by 100 in integers. Measured against the wire: a
+ * waterskin (25 silver) at the General Store (100%) was quoted 50 silver
+ * nobles, and a short-spear (2 gold) sold for 400 copper (2026-09-03).
+ */
+export function counterPriceInCopper(
+  price: number,
+  currency: Denomination,
+  markup: number
+): number {
+  return Math.trunc((COPPER_PER[currency] * price * (100 + markup)) / 100);
+}
+
+/**
+ * What the buyer is charged for one: the counter's price less
+ * `ceil(price × trunc((charm − 50) ÷ 5) ÷ 100)` — the server knocks a fifth of
+ * a percent per point of charm over 50 off, and adds it under 50.
+ *
+ * An unread charm is priced at the sheet's floor (0: ten percent more), since
+ * this answers *is the purse enough* and unknown is never the reassuring answer.
+ */
+export function chargedInCopper(counterPrice: number, charm: number | null): number {
+  const modifier = Math.trunc(((charm ?? 0) - 50) / 5);
+  return counterPrice - Math.ceil((counterPrice * modifier) / 100);
+}
+
+/**
  * A `CurrencyEntity` from counts by denomination, with the total the ladder
  * above produces.
  *
