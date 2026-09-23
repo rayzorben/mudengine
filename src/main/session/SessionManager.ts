@@ -68,7 +68,8 @@ import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand, type ItemSources } from '../automation/ItemErrand';
 import { QuestRunner } from '../automation/QuestRunner';
 import { EquipmentManager } from '../automation/EquipmentManager';
-import { sameItem } from '../../shared/items';
+import { bareName, sameItem } from '../../shared/items';
+import { chargedInCopper } from '../../shared/coins';
 import { Wards } from '../automation/Wards';
 import { Events } from '../automation/Events';
 import type { Loop } from '../../shared/loops';
@@ -132,6 +133,7 @@ import {
   rollChance,
   stepKilled,
   stepSaid,
+  type PlanCash,
   type PlanItem,
   type PlanStep,
   type Quest,
@@ -214,7 +216,13 @@ import { statedNow } from '../../shared/stated';
 import { LairCosts } from '../world/LairCosts';
 import { inTheFight } from '../../shared/guards';
 import { attacksOnSight } from '../../shared/mobs';
-import { regeneration, swing, type ProwessSheet, type ProwessWeapon } from '../../shared/prowess';
+import {
+  dodge,
+  regeneration,
+  swing,
+  type ProwessSheet,
+  type ProwessWeapon
+} from '../../shared/prowess';
 import {
   castsToKill,
   chooseAttackSpell,
@@ -243,6 +251,7 @@ import {
 } from '../../shared/hunting';
 import {
   afflictionsOf,
+  protectionOf,
   ROUND_SECONDS,
   scaledPower,
   weighRoom,
@@ -1787,6 +1796,19 @@ export class SessionManager {
         },
         shopRoom: (item) => this.shopRoom(item),
         routeTo: (room) => this.planFromHere(room),
+        priceAt: (item, shop) => this.priceAt(item.name, shop),
+        cashFrom: (need, then) => {
+          const state = this.tracker.current;
+          const here = state.room;
+          if (this.world === undefined || here.map === null || here.number === null) return [];
+          return this.world.cashPlaces(
+            state.banks,
+            need,
+            roomId(here.map, here.number),
+            then,
+            this.travellerNow(state)
+          );
+        },
         walk: (route) =>
           this.walker.start(route, this.tracker.current, {
             quiet: true,
@@ -4276,7 +4298,7 @@ export class SessionManager {
      * every one of those was the client saying "rm" out loud to everybody in
      * the room, once per fight, all evening.
      */
-    this.combat.onBlock(block);
+    this.combat.onBlock(block, this.answering);
     this.loot.onBlock(block, this.tracker.current);
     // A floor listing the server wrapped arrives as a batch, and the loot
     // reads the floor; without this a pile long enough to wrap — which is the
@@ -4385,7 +4407,11 @@ export class SessionManager {
      * is what makes `current` the listing's own figure rather than the one the
      * client believed a moment ago — the whole of the bug this shape replaced.
      */
-    if (batch?.type === 'user-inventory') this.deposit.onListing(this.tracker.current);
+    if (batch?.type === 'user-inventory') {
+      this.deposit.onListing(this.tracker.current);
+      // And the quest run, which reads only the listing its own ask answered.
+      this.questRunner.noteListing(this.answering);
+    }
 
     /*
      * What the search turned up, written down against the room it was in.
@@ -4646,8 +4672,9 @@ export class SessionManager {
          */
         this.search.onCharacter(state);
         // And banking the purse at a counter, which refuses combat and an
-        // unread purse for itself.
-        this.deposit.onCharacter(state);
+        // unread purse for itself — never while an errand is carrying cash it
+        // has just withdrawn to a shop.
+        if (this.supplies.current === null) this.deposit.onCharacter(state);
       }
       /*
        * And the kit, which is not under the escape guard above.
@@ -5824,16 +5851,82 @@ export class SessionManager {
         ? true
         : null;
     const fromPlace = here === null ? undefined : world.byId(here)?.name.trim();
+    const money = this.cashFor(steps, state, here);
     return {
       block,
       ...(here === null ? {} : { from: here }),
       ...(fromPlace === undefined || fromPlace.length === 0 ? {} : { fromPlace }),
       fromRank,
       stated,
-      steps,
+      steps: money.steps,
       reachable,
-      moves
+      moves,
+      ...(money.cash === undefined ? {} : { cash: money.cash })
     };
+  }
+
+  /**
+   * The plan's counters priced, and the cash for them found (todo 00): each
+   * buy row takes what its counter charges, and the whole is set against the
+   * purse and the vaults the record names — the question `Supplies` asks of
+   * each purchase as the run makes it, asked once of the whole plan so the
+   * card can say before the press that a run would stand at a counter.
+   */
+  private cashFor(
+    steps: PlanStep[],
+    state: CharacterState,
+    here: RoomId | null
+  ): { steps: PlanStep[]; cash?: PlanCash } {
+    let owed = 0;
+    let unpriced = 0;
+    let bought = 0;
+    let first: RoomId | null = null;
+    const priced = steps.map((step) => ({
+      ...step,
+      items: step.items.map((item): PlanItem => {
+        const source = item.source;
+        if (source.how !== 'buy') return item;
+        const copper =
+          source.at === undefined || item.name === undefined
+            ? null
+            : this.priceAt(item.name, source.at.room);
+        if (item.held !== true) {
+          bought += 1;
+          first ??= source.at?.room ?? null;
+          // A top-up buys what the pack lacks of its ceiling, as `Supplies` does.
+          const count =
+            item.stock !== undefined && item.name !== undefined
+              ? Math.max(0, (item.count ?? 1) - carriedCount(state, item.name))
+              : (item.count ?? 1);
+          if (copper === null) unpriced += 1;
+          else owed += chargedInCopper(copper, state.progress.charm) * count;
+        }
+        return copper === null ? item : { ...item, source: { ...source, copper } };
+      })
+    }));
+    if (bought === 0) return { steps: priced };
+    const purse = state.inventory.wealth;
+    const cash: PlanCash = { owed, unpriced, purse, short: false };
+    // An unread purse and an unplaced character are unknown, never short.
+    if (purse !== null && owed > purse && this.world !== undefined && here !== null) {
+      const bank = this.world.cashPlaces(
+        state.banks,
+        owed - purse,
+        here,
+        first,
+        this.travellerNow(state)
+      )[0];
+      if (bank === undefined) cash.short = true;
+      else {
+        cash.bank = {
+          name: bank.name,
+          room: roomId(bank.map, bank.room),
+          place: bank.roomName,
+          copper: bank.copper
+        };
+      }
+    }
+    return { steps: priced, cash };
   }
 
   /**
@@ -7933,6 +8026,21 @@ export class SessionManager {
   }
 
   /**
+   * What the counter in this room charges for one of a thing by this name, in
+   * copper before charm — the shelf row the name answers to, priced by the
+   * realm (`WorldGraph.priceAt`). Null where the room holds no counter, the
+   * shelf no such row, or the realm file no coin.
+   */
+  private priceAt(name: string, shop: RoomId): number | null {
+    const world = this.world;
+    const row = world?.byId(shop)?.shop;
+    const counter = row === undefined ? undefined : world?.shop(row);
+    const line = counter?.items.find((each) => nameAnswersTo(bareName(each.name), bareName(name)));
+    if (world === undefined) return null;
+    return counter === undefined || line === undefined ? null : world.priceAt(line.id, counter.id);
+  }
+
+  /**
    * Where a supply's shop is, settled the way a loop's stop is.
    *
    * The room the list states first — six rooms are called General Store and
@@ -8638,16 +8746,19 @@ export class SessionManager {
     return verdicts;
   }
 
-  /** The three sheet figures a monster's blow or cast is measured against. */
-  private menacePlayer(state: CharacterState): {
-    armourClass: number | null;
-    damageResist: number | null;
-    magicRes: number | null;
-  } {
+  /**
+   * What a monster's blow or cast is measured against: the sheet's three
+   * figures, the protection the server adds that the sheet does not print,
+   * and the character's dodge. `AutoCombat.weigh` reads the same.
+   */
+  private menacePlayer(state: CharacterState): MenacePlayer {
+    const { combat, magery, family } = this.realmClass();
     return {
       armourClass: state.progress.armourClass,
       damageResist: state.progress.damageResist,
-      magicRes: state.progress.magicRes
+      magicRes: state.progress.magicRes,
+      ...protectionOf(state, (name) => this.world?.spellNamed(name) ?? null),
+      dodge: dodge(prowessSheetOf(state, { combat, magery }), family)?.value ?? null
     };
   }
 

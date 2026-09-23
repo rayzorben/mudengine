@@ -1292,6 +1292,22 @@ export function bankKey(name: string): string {
 }
 
 /**
+ * The balance this character's record holds for a bank row: by the shop id
+ * the header printed, else by the name through `bankKey`, since one realm
+ * prints no id and the two spell the article differently. Null is a vault
+ * nobody has asked, never an empty one.
+ */
+export function balanceOf(
+  shop: { id: number; name: string },
+  banks: readonly BankBalance[]
+): BankBalance | null {
+  const byId = banks.find((bank) => bank.shop !== null && bank.shop === shop.id);
+  if (byId) return byId;
+  const key = bankKey(shop.name);
+  return banks.find((bank) => bankKey(bank.name) === key) ?? null;
+}
+
+/**
  * What the realm says the prompt is, and whether the last prompt agreed.
  *
  * `reported` is `pro`'s `Statusline:` row, verbatim — the class-default word

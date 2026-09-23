@@ -15,6 +15,7 @@ import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
 import type { AlignmentCost, MobDisposition } from './mobs';
 import type { Verdict } from './verdict';
+import type { Denomination } from './character';
 
 /** The ten directions the game uses. */
 export type Direction = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'u' | 'd';
@@ -767,6 +768,11 @@ export interface WorldItem {
   placed?: ItemPlaces;
   /** What the realm charges, before a shop's markup. Absent when it says none. */
   price?: number;
+  /**
+   * The coin `price` is counted in (`Items.Currency`, realm format 47). Absent
+   * on an older file, where the price is a number in no known unit.
+   */
+  currency?: Denomination;
   /** What it weighs, in the units the status line counts encumbrance in. */
   encumbrance?: number;
   /**
@@ -963,6 +969,18 @@ export interface BankChoice {
   map: number;
   room: number;
   roomName: string;
+}
+
+/**
+ * A vault to draw cash from on the way to a counter — `WorldGraph.cashPlaces`,
+ * ranked by the detour as `BuyingPlace` is.
+ */
+export interface CashPlace extends BankChoice {
+  /** What the character's own record says is on deposit there, in copper. */
+  copper: number;
+  /** What stopping here adds to the way to the counter, in plain steps. */
+  detour: number;
+  moves: number;
 }
 
 export interface TrainerChoice {

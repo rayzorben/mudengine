@@ -46,6 +46,16 @@
  * Every decision — going, bought, refused and why — is a `SafetyDecision`,
  * because an errand that silently did not happen is a character that runs
  * out of torches with the feature switched on.
+ *
+ * ## A short purse goes to the bank first
+ *
+ * The realm prices the purchase before the walk (`priceAt`, charm applied by
+ * `chargedInCopper`), and the counter's quote prices it again on arrival; either
+ * finding the purse short sends the errand to the vault the record says holds
+ * the rest, nearest the counter first (`cashFrom`), where `bank` is asked
+ * before `withdraw` because the server answers a withdrawal it will not pay
+ * with nothing at all. Once per errand. See `mudengine-automation` › *The pack
+ * is kept stocked*.
  */
 import type { CommandQueue } from './CommandQueue';
 import { fightIsRunning } from './Walker';
@@ -54,11 +64,12 @@ import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
-import { quotedInCopper } from '../../shared/coins';
+import { chargedInCopper, quotedInCopper } from '../../shared/coins';
+import { balanceOf } from '../../shared/character';
 import type { SuppliesConfig, SupplyItem } from '../../shared/config';
 import { bareName } from '../../shared/items';
 import { carriedCount } from '../../shared/supplies';
-import { nameAnswersTo, type RoomId, type Route } from '../../shared/world';
+import { nameAnswersTo, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
 
 export interface SupplyPlanner {
   /** Where the character is, or null while it is not placed. */
@@ -66,6 +77,10 @@ export interface SupplyPlanner {
   /** The room a supply's shop is in, or the reason the shop cannot be settled. */
   shopRoom(item: SupplyItem): { room: RoomId; name: string } | string;
   routeTo(room: RoomId): Route | string;
+  /** What one costs at the counter in that room, in copper before charm; null where unsaid. */
+  priceAt(item: SupplyItem, shop: RoomId): number | null;
+  /** The vaults the record says hold `need` copper, best first on the way to `then`. */
+  cashFrom(need: number, then: RoomId): CashPlace[];
   /** Hands the route to the walker; a refusal, or null once walking. */
   walk(route: Route): string | null;
   moveInFlight(): boolean;
@@ -90,7 +105,21 @@ export interface SupplyEvents {
 }
 
 /** What the errand is doing, for the trace and the card. */
-export type ErrandStage = 'walking' | 'waiting' | 'listing' | 'buying';
+export type ErrandStage = 'walking' | 'waiting' | 'listing' | 'buying' | 'balance' | 'withdrawing';
+
+/** The vault an errand is drawing cash from on its way to the counter. */
+export interface BankLeg {
+  place: CashPlace;
+  room: RoomId;
+  /** What the purse is short by, what the errand costs and what the purse held, in copper. */
+  shortfall: number;
+  owed: number;
+  wealth: number;
+  /** The withdrawal asked for, so a `withdraw` the player typed is not taken for it. */
+  amount: number | null;
+  /** Vaults already found wanting, so the next is the fallback. */
+  tried: RoomId[];
+}
 
 export interface Errand {
   item: SupplyItem;
@@ -103,9 +132,16 @@ export interface Errand {
   wanted: number;
   bought: number;
   legs: number;
-  /** When `list` was asked, for the listing's own stamp to be compared against. */
+  /** When `list` or `bank` was asked, for the answer's own stamp to be compared against. */
   askedAt: number;
+  /** The vault being walked to first, while the purse is short. */
+  bank: BankLeg | null;
+  /** Whether a vault has been drawn on: once per errand, so a counter no purse meets is refused. */
+  banked: boolean;
 }
+
+/** What the errand asks a counter or a vault, withdrawn when it walks on before the answer. */
+const ERRAND_ASKS = new Set(['supplies:list', 'supplies:bank', 'supplies:withdraw']);
 
 export class Supplies {
   private errand: Errand | null = null;
@@ -272,7 +308,21 @@ export class Supplies {
         }
         const price = quotedInCopper(row.price);
         const wealth = state.inventory.wealth;
-        if (price !== null && wealth !== null && price > wealth) {
+        /*
+         * The counter's own figure, where the realm's was unsaid or the record
+         * was stale. The quote is before charm, as the listing prints it; what
+         * is short is what the rest of the errand costs, the figure `begin` uses.
+         */
+        const owed =
+          price === null
+            ? null
+            : chargedInCopper(price, state.progress.charm) * (errand.wanted - errand.bought);
+        if (price !== null && owed !== null && wealth !== null && owed > wealth) {
+          if (!errand.banked) {
+            // Either walking to the vault, or ended with the vault's refusal.
+            if (this.toBank(errand, owed - wealth, owed, wealth)) this.leg(errand, state);
+            return;
+          }
           this.finish(
             errand,
             false,
@@ -288,8 +338,12 @@ export class Supplies {
         this.buy(errand);
         return;
       }
+      case 'balance':
+        this.readBalance(errand, state);
+        return;
       case 'walking':
       case 'buying':
+      case 'withdrawing':
         return;
     }
   }
@@ -298,7 +352,7 @@ export class Supplies {
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     const errand = this.errand;
     if (errand === null || errand.stage !== 'walking') return;
-    if (arrived && this.planner.here() === errand.room) {
+    if (arrived && this.planner.here() === (errand.bank?.room ?? errand.room)) {
       this.arrive(errand);
       return;
     }
@@ -335,7 +389,7 @@ export class Supplies {
         errand,
         false,
         t('automation.supplies.refusalUnreachable', {
-          shop: errand.shopName,
+          shop: errand.bank?.place.name ?? errand.shopName,
           why: reason ?? t('automation.loops.fallbackWhy')
         })
       );
@@ -346,6 +400,12 @@ export class Supplies {
 
   onBlock(block: Block, state: CharacterState): void {
     const errand = this.errand;
+    if (errand?.stage === 'withdrawing' && block.type === 'user-withdraws') {
+      // Only the errand's own: a `withdraw` the player typed is not the vault paying this.
+      if (Number(block.groups['amount']) === errand.bank?.amount)
+        this.withdrew(errand, block, state);
+      return;
+    }
     if (errand === null || errand.stage !== 'buying' || block.type !== 'user-buys') return;
     const item = block.groups['item'];
     if (item === undefined || !nameAnswersTo(bareName(item), bareName(errand.item.name))) return;
@@ -542,12 +602,156 @@ export class Supplies {
       wanted: Math.max(item.max, item.min) - have,
       bought: 0,
       legs: 0,
-      askedAt: 0
+      askedAt: 0,
+      bank: null,
+      banked: false
     };
     this.errand = errand;
     this.armErrandTimer(errand);
     this.planner.hold();
-    if (this.planner.here() === found.room) {
+    /*
+     * Priced before the walk where the realm states the coin. An unread purse
+     * is not an empty one and walks as before; the counter's quote is the
+     * second chance to find the purse short.
+     */
+    const each = this.planner.priceAt(item, found.room);
+    const wealth = state.inventory.wealth;
+    if (each !== null && wealth !== null) {
+      const owed = chargedInCopper(each, state.progress.charm) * errand.wanted;
+      if (owed > wealth && !this.toBank(errand, owed - wealth, owed, wealth)) return;
+    }
+    if (this.planner.here() === (errand.bank?.room ?? found.room)) {
+      this.arrive(errand);
+      return;
+    }
+    this.leg(errand, state);
+  }
+
+  /**
+   * Send the errand to the vault that holds what the purse is short of, or
+   * refuse it: true when a vault was chosen, false when the errand has ended.
+   *
+   * `cashFrom` answers from the character's own record, nearest the counter
+   * first; a vault already found wanting is passed over for the next.
+   */
+  private toBank(errand: Errand, shortfall: number, owed: number, wealth: number): boolean {
+    // Whatever the last place was waiting on is owed nothing now.
+    this.clearTimer();
+    this.queue.cancel((intent) => ERRAND_ASKS.has(intent.coalesceKey ?? ''));
+    const tried = errand.bank?.tried ?? [];
+    const place = this.planner
+      .cashFrom(shortfall, errand.room)
+      .find((each) => !tried.includes(roomId(each.map, each.room)));
+    if (place === undefined) {
+      const figures = {
+        item: errand.item.name,
+        owed: owed.toLocaleString(),
+        wealth: wealth.toLocaleString(),
+        short: shortfall.toLocaleString()
+      };
+      this.finish(
+        errand,
+        false,
+        tried.length > 0
+          ? t('automation.supplies.refusalNoOtherBank', figures)
+          : t('automation.supplies.refusalNoBank', figures)
+      );
+      return false;
+    }
+    const room = roomId(place.map, place.room);
+    errand.bank = { place, room, shortfall, owed, wealth, amount: null, tried: [...tried, room] };
+    errand.banked = true;
+    errand.legs = 0;
+    errand.stage = 'walking';
+    // Each vault is a walk of its own, and gets the whole errand's time for it.
+    this.armErrandTimer(errand);
+    this.events.notice?.(
+      t('automation.supplies.toBank', {
+        item: errand.item.name,
+        owed: owed.toLocaleString(),
+        wealth: wealth.toLocaleString(),
+        bank: place.name,
+        held: place.copper.toLocaleString()
+      })
+    );
+    this.events.decided?.({
+      at: this.now(),
+      action: 'supplies',
+      because: t('automation.supplies.becausePurseShort', {
+        item: errand.item.name,
+        owed: owed.toLocaleString(),
+        wealth: wealth.toLocaleString()
+      }),
+      acted: true
+    });
+    return true;
+  }
+
+  /**
+   * `bank` has been asked at the vault: read the figure it stated, and
+   * withdraw the shortfall and the buffer — never more than it holds, since a
+   * withdrawal over the balance is answered with silence (`WithdrawCommand`).
+   */
+  private readBalance(errand: Errand, state: CharacterState): void {
+    const leg = errand.bank;
+    if (leg === null) return;
+    const held = balanceOf({ id: leg.place.shop, name: leg.place.name }, state.banks);
+    if (held === null || held.at < errand.askedAt) return;
+    this.clearTimer();
+    if (held.copper < leg.shortfall) {
+      this.nextVault(
+        errand,
+        t('automation.supplies.bankShort', {
+          bank: leg.place.name,
+          held: held.copper.toLocaleString(),
+          short: leg.shortfall.toLocaleString()
+        })
+      );
+      return;
+    }
+    const amount = Math.min(held.copper, leg.shortfall + tuning().supplies.cashBuffer);
+    leg.amount = amount;
+    errand.stage = 'withdrawing';
+    this.queue.enqueue({
+      command: `withdraw ${amount}`,
+      priority: 'probe',
+      coalesceKey: 'supplies:withdraw',
+      expiresAt: this.now() + tuning().supplies.expiresMs,
+      reason: t('automation.supplies.reasonWithdraw', {
+        amount: amount.toLocaleString(),
+        item: errand.item.name
+      })
+    });
+    this.armTimer(errand, t('automation.supplies.refusalNoPayout', { bank: leg.place.name }), true);
+  }
+
+  /**
+   * This vault will not do — short, silent, or not paying — so the next the
+   * record names, said with the reason; the errand ends only when none is left.
+   */
+  private nextVault(errand: Errand, why: string): void {
+    const leg = errand.bank;
+    if (leg === null) return;
+    this.events.notice?.(why);
+    if (this.toBank(errand, leg.shortfall, leg.owed, leg.wealth)) this.leg(errand);
+  }
+
+  /** The vault paid out: on to the counter, with the errand's clock started again. */
+  private withdrew(errand: Errand, block: Block, state: CharacterState): void {
+    this.clearTimer();
+    const bank = errand.bank?.place.name ?? '';
+    errand.bank = null;
+    errand.legs = 0;
+    errand.stage = 'walking';
+    this.armErrandTimer(errand);
+    this.events.notice?.(
+      t('automation.supplies.withdrew', {
+        amount: (block.groups['amount'] ?? '').trim(),
+        bank,
+        shop: errand.shopName
+      })
+    );
+    if (this.planner.here() === errand.room) {
       this.arrive(errand);
       return;
     }
@@ -555,7 +759,7 @@ export class Supplies {
   }
 
   /** Plan and start a walk to the shop from wherever the character is. */
-  private leg(errand: Errand, _state: CharacterState): void {
+  private leg(errand: Errand, _state?: CharacterState): void {
     /*
      * Never onto an escape. The guard lives in `consider` for a fresh errand,
      * and a leg replanned after a fight is exactly when an escape is most
@@ -568,12 +772,13 @@ export class Supplies {
     }
     errand.legs += 1;
     errand.stage = 'walking';
-    const route = this.planner.routeTo(errand.room);
+    const place = errand.bank?.place.name ?? errand.shopName;
+    const route = this.planner.routeTo(errand.bank?.room ?? errand.room);
     if (typeof route === 'string') {
       this.finish(
         errand,
         false,
-        t('automation.supplies.refusalNoRoute', { shop: errand.shopName, why: route })
+        t('automation.supplies.refusalNoRoute', { shop: place, why: route })
       );
       return;
     }
@@ -582,11 +787,12 @@ export class Supplies {
       this.finish(
         errand,
         false,
-        t('automation.supplies.refusalNoRoute', { shop: errand.shopName, why: refused })
+        t('automation.supplies.refusalNoRoute', { shop: place, why: refused })
       );
       return;
     }
-    if (errand.legs === 1) {
+    // Said once, on the first leg to the counter: the bank leg said its own.
+    if (errand.legs === 1 && errand.bank === null && !errand.banked) {
       this.events.notice?.(
         t('automation.supplies.going', {
           item: errand.item.name,
@@ -611,8 +817,25 @@ export class Supplies {
 
   /** Standing at the counter: ask what it sells before spending a `buy`. */
   private arrive(errand: Errand): void {
-    errand.stage = 'listing';
     errand.askedAt = this.now();
+    if (errand.bank !== null) {
+      // At the vault: the balance first, since the record may be stale.
+      errand.stage = 'balance';
+      this.queue.enqueue({
+        command: 'bank',
+        priority: 'probe',
+        coalesceKey: 'supplies:bank',
+        expiresAt: this.now() + tuning().supplies.expiresMs,
+        reason: t('automation.supplies.reasonBalance', { bank: errand.bank.place.name })
+      });
+      this.armTimer(
+        errand,
+        t('automation.supplies.refusalNoBalance', { bank: errand.bank.place.name }),
+        true
+      );
+      return;
+    }
+    errand.stage = 'listing';
     this.queue.enqueue({
       command: 'list',
       priority: 'probe',
@@ -638,13 +861,17 @@ export class Supplies {
     this.armTimer(errand, t('automation.supplies.refusalUnconfirmed', { item: errand.item.name }));
   }
 
-  /** A deadline on the counter answering, for the refusals nothing reads. */
-  private armTimer(errand: Errand, refusal: string): void {
+  /**
+   * A deadline on the counter answering, for the refusals nothing reads. At a
+   * vault (`orNextVault`) silence is that vault's refusal, not the errand's.
+   */
+  private armTimer(errand: Errand, refusal: string, orNextVault = false): void {
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.errand !== errand) return;
-      this.finish(errand, false, refusal);
+      if (orNextVault) this.nextVault(errand, refusal);
+      else this.finish(errand, false, refusal);
     }, tuning().supplies.buyTimeoutMs);
     this.timer.unref?.();
   }

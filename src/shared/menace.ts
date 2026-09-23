@@ -23,9 +23,9 @@
  * applies a damage ability on the cast and on every three-second effect tick
  * for the spell's duration, and lets a target's magic resistance turn a
  * resistable cast away. Where the server's reading and the wire disagree the
- * wire wins, and nothing here has been checked against a capture yet: the
- * figures are a *ranking*, and the trace prints them so a person can see what
- * the ranking was made from.
+ * wire wins. One capture has checked the blows (todo 00, 2026-09-23: the
+ * leader's 7 of 40 against 30%, a raider's 15 of 561 against 0–22% by row),
+ * and the trace prints the figures so a person can see what they were.
  *
  * ## What a hazard is worth
  *
@@ -56,8 +56,9 @@
  * The stat sheet's `Armour Class`, `Damage Resist` and `Magic Res` are the
  * exact figures the server divides its internal values down to
  * (`StatCommand` prints `AC / 10` and `DR / 10`), so a blow's hit chance and
- * size are computed as the server would. Dodge is not on the sheet and is
- * taken as none; a maximum not yet read is taken as the figure that makes
+ * size are computed as the server would, with the protection the sheet does
+ * not print (`protectionOf`) and the dodge its figures give (`prowess.dodge`)
+ * added as `Mob.DoCombat` adds them; a maximum not yet read is taken as the figure that makes
  * every blow land, because **unknown is never the reassuring answer**. The
  * character's own damage output is not known to the client at all, so the
  * time to kill is health alone; a factor equal for every monster in a room
@@ -66,7 +67,8 @@
  * Dependency-free, like everything here: `AutoCombat` hands it the room and
  * the sheet, and the trace prints what came back.
  */
-import { HAZARD_ABILITY } from './abilities';
+import { HAZARD_ABILITY, PROTECTION_ABILITY } from './abilities';
+import type { ActiveBuff, CharacterState } from './character';
 import type { MobEntity } from './entities';
 import type { MobAttack, MobProfile, WorldSpell } from './world';
 
@@ -74,13 +76,25 @@ import type { MobAttack, MobProfile, WorldSpell } from './world';
  * What of a monster's entity the weighing reads. An occupant the tracker
  * could attach no entity to weighs as `{}`: nothing known, which is `null`.
  */
-export type MenaceSubject = Pick<MobEntity, 'hp' | 'deathSpell' | 'profiles' | 'spells'>;
+export type MenaceSubject = Pick<MobEntity, 'hp' | 'deathSpell' | 'profiles' | 'spells'> &
+  Partial<Pick<MobEntity, 'disposition' | 'uncertain' | 'costly'>>;
 
-/** The three sheet figures a blow or a cast is measured against. Null is *not read yet*. */
+/** The sheet figures a blow or a cast is measured against. Null is *not read yet*. */
 export interface MenacePlayer {
   armourClass: number | null;
   damageResist: number | null;
   magicRes: number | null;
+  /**
+   * What `Mob.DoCombat` adds to the armour class before the roll, in the
+   * sheet's units — `secondaryDefense / 10`: the party rank everywhere, and
+   * `Prev` against an evil monster or `Prgd` against a good one. `stat all`
+   * prints the sums as `AC vs Evil` and `vs Good`; absent or null adds none.
+   */
+  versusAll?: number | null;
+  versusEvil?: number | null;
+  versusGood?: number | null;
+  /** `Player.Dodge`, in points (`prowess.dodge`). Absent or null dodges nothing. */
+  dodge?: number | null;
 }
 
 /**
@@ -174,6 +188,109 @@ export function hitChance(accuracy: number, armourClass: number | null): number 
   const fixed = Math.max(0, Math.trunc(armourClass ?? 0));
   const reach = Math.max(Math.trunc(Math.trunc((accuracy * accuracy) / 14) / 10), 1);
   return Math.max(0, 100 - Math.trunc((fixed * fixed) / reach)) / 100;
+}
+
+/** `GMUDServer.SPECIAL_DODGE_POINT`: where a dodge percentage starts to taper. */
+const SPECIAL_DODGE_POINT = 45;
+
+/** `TGSGlobals.diminishing_returns` — a triangular-number taper, transcribed. */
+function diminishingReturns(value: number, scale: number): number {
+  if (value < 0) return -diminishingReturns(-value, scale);
+  const mult = value / scale;
+  return ((Math.sqrt(8 * mult + 1) - 1) / 2) * scale;
+}
+
+/**
+ * How much of a swing a defender's dodge turns away, as a fraction —
+ * `PlayerAttackType.GetDodgePercentAgainstDefense`, and `Mob.DoCombat`'s own
+ * copy for a blow at a player.
+ *
+ *     dodge% = dodge² / max((acc² / 14) / 10, 1)
+ *
+ * with the same denominator the hit roll uses, and above `SPECIAL_DODGE_POINT`
+ * the excess is tapered through `diminishing_returns(excess, 4)`. A defender
+ * whose dodge is not known dodges nothing, which is the answer that makes the
+ * most swings land. The server tapers ten points later for a Mystic or Ninja
+ * *defending*; not read, so theirs is a floor.
+ */
+export function dodgedFraction(dodgeValue: number | null, accuracyValue: number): number {
+  const held = Math.max(0, Math.trunc(dodgeValue ?? 0));
+  if (held === 0) return 0;
+  const reach = Math.max(Math.trunc(Math.trunc((accuracyValue * accuracyValue) / 14) / 10), 1);
+  let percent = Math.trunc((held * held) / reach);
+  if (percent > SPECIAL_DODGE_POINT) {
+    percent =
+      SPECIAL_DODGE_POINT + Math.trunc(diminishingReturns(percent - SPECIAL_DODGE_POINT, 4));
+  }
+  return Math.min(1, Math.max(0, percent) / 100);
+}
+
+/**
+ * Which side of `Mob.DoCombat`'s alignment test a monster is on:
+ * `EvilPoints` is 100 for the four evil alignments and −75 for `Good` and
+ * `LawfulGood`. Read back off what the realm file carries — a disposition
+ * every row agrees on that only an evil alignment gives (`hostile`,
+ * `hates-good`), or an attack that always costs evil points, which only a
+ * good one does. Anything else is null, and null adds no protection.
+ */
+export function sideOf(mob: MenaceSubject): 'evil' | 'good' | null {
+  if (mob.costly === 'always') return 'good';
+  if (mob.uncertain === true) return null;
+  if (mob.disposition === 'hostile' || mob.disposition === 'hates-good') return 'evil';
+  return null;
+}
+
+/** The character as this monster's blows meet it: its armour with the protection that applies. */
+export function facing(player: MenacePlayer, mob: MenaceSubject): MenacePlayer {
+  if (player.armourClass === null) return player;
+  const side = sideOf(mob);
+  const ward =
+    side === 'evil' ? (player.versusEvil ?? 0) : side === 'good' ? (player.versusGood ?? 0) : 0;
+  return { ...player, armourClass: player.armourClass + (player.versusAll ?? 0) + ward };
+}
+
+/** The chance one blow of this accuracy does anything: the hit roll, less what dodge turns away. */
+export function landsOn(accuracy: number, player: MenacePlayer): number {
+  return (
+    hitChance(accuracy, player.armourClass) * (1 - dodgedFraction(player.dodge ?? null, accuracy))
+  );
+}
+
+/**
+ * The protection the sheet does not print, as the server adds it
+ * (`Mob.DoCombat`, `ActionFigure.GetPartyRankACBonus`): 5 in the middle rank
+ * of a party and 10 at the back, and the `Prev` and `Prgd` sums of the effects
+ * up — each buff's realm row, its stated figure or the low end of its power at
+ * this level; a buff that could be several spells counts the least of them.
+ * Items and the class row are not read, so this is a floor.
+ */
+export function protectionOf(
+  state: Pick<CharacterState, 'buffs' | 'party' | 'name' | 'fullName'> & {
+    progress: Pick<CharacterState['progress'], 'level'>;
+  },
+  spellOf: (name: string) => WorldSpell | null
+): Pick<MenacePlayer, 'versusAll' | 'versusEvil' | 'versusGood'> {
+  const level = state.progress.level ?? 0;
+  const sum = (ability: number): number =>
+    state.buffs.reduce((total, buff: ActiveBuff) => {
+      const each = [buff.spell, ...(buff.candidates ?? [])].map((name) => {
+        const spell = spellOf(name);
+        const row = spell?.abilities?.find(([id]) => id === ability);
+        if (spell === null || spell === undefined || row === undefined) return 0;
+        return row[1] !== 0 ? row[1] : scaledPower(spell, level)[0];
+      });
+      return total + Math.max(0, Math.min(...each));
+    }, 0);
+  const members = state.party.members;
+  const own =
+    members.length > 1
+      ? members.find((member) => member.name === state.name || member.name === state.fullName)
+      : undefined;
+  return {
+    versusAll: own?.rank === 'mid' ? 5 : own?.rank === 'back' ? 10 : 0,
+    versusEvil: sum(PROTECTION_ABILITY.evil),
+    versusGood: sum(PROTECTION_ABILITY.good)
+  };
 }
 
 /**
@@ -417,7 +534,7 @@ function bloodPerRound(profile: MobProfile, player: MenacePlayer): number {
   for (const attack of profile.attacks) {
     if (attack.kind !== 'melee') continue;
     const { damage } = expectedBlow(attack.min, attack.max, player.damageResist);
-    perSwing += attack.chance * hitChance(attack.accuracy, player.armourClass) * damage;
+    perSwing += attack.chance * landsOn(attack.accuracy, player) * damage;
   }
   return swings * perSwing;
 }
@@ -444,7 +561,7 @@ function rowPerRound(
   let perSwing = 0;
   for (const attack of profile.attacks) {
     if (attack.kind === 'melee') {
-      const hit = hitChance(attack.accuracy, player.armourClass);
+      const hit = landsOn(attack.accuracy, player);
       const { damage, lands } = expectedBlow(attack.min, attack.max, player.damageResist);
       blows += attack.chance * hit * damage;
       // The hit spell rides on a blow that did damage, at level zero —
@@ -491,7 +608,10 @@ export function weighRoom(
   const blood = mobs.map((mob) =>
     mob.profiles === undefined
       ? 0
-      : mob.profiles.reduce((worst, row) => Math.max(worst, bloodPerRound(row, player)), 0)
+      : mob.profiles.reduce(
+          (worst, row) => Math.max(worst, bloodPerRound(row, facing(player, mob))),
+          0
+        )
   );
   const unit = Math.max(
     Math.max(0, weights.unitFloor),
@@ -503,8 +623,9 @@ export function weighRoom(
     if (mob.profiles === undefined) return null;
     const spells = mob.spells ?? {};
     let worst = { perRound: 0, blows: 0, kinds: new Set<HazardKind>(), wide: false };
+    const against = facing(player, mob);
     for (const row of mob.profiles) {
-      const weighed = rowPerRound(row, spells, unit, player, weights);
+      const weighed = rowPerRound(row, spells, unit, against, weights);
       if (weighed.perRound > worst.perRound) worst = weighed;
     }
     const death =

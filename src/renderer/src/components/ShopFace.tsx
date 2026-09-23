@@ -4,7 +4,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { affordable, mergeStock, priceValue, type StockRow } from '../lib/shop';
-import { bankKey, type BankBalance, type ShopListing } from '@shared/character';
+import { balanceOf, type BankBalance, type ShopListing } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
 import type { ShopKind, WorldShop } from '@shared/world';
 
@@ -128,11 +128,7 @@ export function balanceHere(
   shop: WorldShop | null,
   banks: readonly BankBalance[]
 ): BankBalance | null {
-  if (shop === null) return null;
-  const byId = banks.find((bank) => bank.shop !== null && bank.shop === shop.id);
-  if (byId) return byId;
-  const key = bankKey(shop.name);
-  return banks.find((bank) => bankKey(bank.name) === key) ?? null;
+  return shop === null ? null : balanceOf(shop, banks);
 }
 
 /**

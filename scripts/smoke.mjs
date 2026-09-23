@@ -3340,6 +3340,21 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'and a second Enter walks it, rather than doing nothing',
     `before ${JSON.stringify(beforeWalk)} after ${JSON.stringify(afterWalk)}`
   );
+  /*
+   * And the caret is back in the terminal. Typing is what stops a walk, so
+   * the hand that started one has to be able to type at once.
+   */
+  if (!afterWalk.open) {
+    const caret = await readUntil(
+      () => evaluate(`!!document.activeElement?.closest('.xterm')`),
+      (inTerminal) => inTerminal === true
+    );
+    check(
+      caret === true,
+      'and starting it hands the caret back to the terminal',
+      await evaluate(`document.activeElement?.className ?? 'none'`)
+    );
+  }
 
   /*
    * And now a route really is being walked, which is the one moment the
@@ -3384,7 +3399,30 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       'and pressing it opens the route panel on that room',
       `${String(heading)} -- ${JSON.stringify(panelText)}`
     );
-    await press('Escape', 'Escape', 27);
+    /*
+     * Alt G is *Walk it* from the keyboard. Waited for the plan first, since
+     * the chord is bound only while there is one to walk; then any of the
+     * three answers a press can have, and doing nothing is the failure.
+     */
+    await waitFor(async () => evaluate(`!!document.querySelector('.route-panel .route-run')`));
+    await press('g', 'KeyG', 71, 1);
+    await waitFor(async () =>
+      evaluate(
+        `!document.querySelector('.route-panel') || !!document.querySelector('.route-refused, .route-redrawn')`
+      )
+    );
+    const altWalk = await evaluate(`
+      (() => ({
+        open: !!document.querySelector('.route-panel'),
+        answered: !!document.querySelector('.route-refused, .route-redrawn')
+      }))()
+    `);
+    check(
+      !altWalk.open || altWalk.answered,
+      'and Alt G walks the plan on screen, as Walk it does',
+      JSON.stringify(altWalk)
+    );
+    if (altWalk.open) await press('Escape', 'Escape', 27);
     await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
   }
 

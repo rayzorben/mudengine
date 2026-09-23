@@ -697,6 +697,10 @@ button.quest-banner-dismiss {
   margin: 0;
   min-width: 0;
   padding: 0;
+  /* The node's size and the line's weight, named once: the line and the walk's
+     count are placed from them, so neither is a second guess at the node. */
+  --quest-line: 2px;
+  --quest-node: 22px;
 }
 
 .quest-banner-steps > li {
@@ -712,11 +716,11 @@ button.quest-banner-dismiss {
 .quest-banner-steps > li + li::before {
   background: var(--ink-line);
   content: '';
-  height: 2px;
+  height: var(--quest-line);
   left: -50%;
   position: absolute;
   right: 50%;
-  top: 10px;
+  top: calc((var(--quest-node) - var(--quest-line)) / 2);
 }
 
 /* The line behind the walk is the trail it left; the one into `now` runs into the accent. */
@@ -751,20 +755,41 @@ button.quest-banner-dismiss {
 }
 
 /*
- * And the count, beside the node it is about. Absolutely placed so it cannot
- * widen the column — every step is `flex: 1 1 0` and a number in the flow
- * would make the one being walked wider than the rest, which is the stepper
- * jumping every time a step lands.
+ * And the count, on the connector it is about (todo 02, 2026-09-23). Absolutely
+ * placed so it cannot widen the column — every step is `flex: 1 1 0` and a
+ * number in the flow would make the one being walked wider than the rest.
+ * The connector runs from the previous node's centre to this one's, so its
+ * midpoint is this `li`'s left edge: `left: 0` and a half-width pull back
+ * centres it on the line, and the node's half-height centres it across. A
+ * tonal glass pill over the line (z-order, like the nodes), so the line
+ * passes behind the words instead of through them.
  */
 .quest-banner-walk {
+  background: color-mix(in srgb, var(--accent) var(--tone), var(--ink-raised));
+  border: 1px solid color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-rim), var(--elev-1);
+  box-sizing: border-box;
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: 0.85em;
+  left: 0;
   line-height: 1;
+  max-width: calc(100% - 2 * var(--quest-node));
+  overflow: hidden;
+  padding: 0.2em 0.6em;
   position: absolute;
-  right: calc(50% + 14px);
-  top: 4px;
+  text-overflow: ellipsis;
+  top: calc(var(--quest-node) / 2);
+  transform: translate(-50%, -50%);
   white-space: nowrap;
+  z-index: 1;
+}
+
+/* The first step has no connector into it: the count takes the stretch before its node, inside the banner's edge. */
+.quest-banner-steps > li:first-child > .quest-banner-walk {
+  max-width: calc(50% - var(--quest-node));
+  transform: translateY(-50%);
 }
 
 .quest-banner-node {
@@ -779,11 +804,11 @@ button.quest-banner-dismiss {
   font-family: var(--font-mono);
   font-size: var(--font-micro);
   font-weight: 600;
-  height: 22px;
+  height: var(--quest-node);
   justify-content: center;
   line-height: 1;
   position: relative;
-  width: 22px;
+  width: var(--quest-node);
   z-index: 1;
 }
 

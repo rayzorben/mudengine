@@ -4,6 +4,7 @@ import MapView from './MapView';
 import ClearField from './ClearField';
 import Icon from './Icon';
 import { commandsOf, runsOf, stepSignature } from '../lib/route';
+import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { t } from '../lib/i18n';
 import { type LocalMap } from '@shared/map';
@@ -632,10 +633,25 @@ export default function RoutePanel({
     [onPeek, shown, walk]
   );
 
-  if (!open) return null;
-
   /** True when there is a plan on screen that could actually be walked. */
   const walkable = shown !== null && !shown.blocked && shown.steps.length > 0;
+
+  /*
+   * The two presses from the keyboard: Alt R runs it, Alt G walks it. At the
+   * window rather than on the form, because a click on the panel's own
+   * background leaves the caret on the body, and only while a plan is on
+   * screen, so neither chord is taken from the game the rest of the time.
+   */
+  useHotkeys(
+    open && walkable && shown !== null
+      ? [
+          { key: 'r', alt: true, run: () => walk(shown, true) },
+          { key: 'g', alt: true, run: () => walk(shown) }
+        ]
+      : []
+  );
+
+  if (!open) return null;
 
   return (
     // The palette's scrim, whole: one dismissal rule for every dialog that

@@ -1,4 +1,4 @@
-import { hitChance } from './menace';
+import { dodgedFraction, hitChance } from './menace';
 import type { RealmFamily } from './realm';
 import type { StatedProwess } from './stated';
 import type { WorldItem, WorldSpell } from './world';
@@ -127,24 +127,8 @@ const LIGHT_LOAD = 33;
  */
 const MAX_SUCCESS_RATE = 100;
 
-/**
- * Where dodge stops paying for itself — `GMUDServer.SPECIAL_DODGE_POINT`.
- *
- * The server raises it by ten for a Mystic or a Ninja *defending*; that branch
- * is on the target's class and belongs to whatever asks about being hit, not
- * to a character asking about its own swing.
- */
-const SPECIAL_DODGE_POINT = 45;
-
 /** `TimedEventManager.RegenTickTime`, in seconds. */
 export const REGEN_TICK_SECONDS = 121;
-
-/** `TGSGlobals.diminishing_returns` — a triangular-number taper, transcribed. */
-function diminishingReturns(value: number, scale: number): number {
-  if (value < 0) return -diminishingReturns(-value, scale);
-  const mult = value / scale;
-  return ((Math.sqrt(8 * mult + 1) - 1) / 2) * scale;
-}
 
 /** Every input present, or nothing computed. There is no default stat here. */
 function need(...values: Array<number | null>): number[] | null {
@@ -253,30 +237,6 @@ export function dodge(sheet: ProwessSheet, family: RealmFamily | null): Reckonin
   const enc = sheet.encumbrancePercent;
   if (enc !== null && enc < LIGHT_LOAD) value += Math.trunc(10 - enc / 10);
   return { value: Math.max(0, value), from: 'bound' };
-}
-
-/**
- * How much of a swing a defender's dodge turns away, as a fraction —
- * `PlayerAttackType.GetDodgePercentAgainstDefense`.
- *
- *     dodge% = dodge² / max((acc² / 14) / 10, 1)
- *
- * with the same denominator the hit roll uses, and above `SPECIAL_DODGE_POINT`
- * the excess is tapered through `diminishing_returns(excess, 4)`. A defender
- * whose dodge is not known dodges nothing, which is the answer that makes the
- * most swings land — the safe direction for a character deciding what to
- * attack.
- */
-export function dodgedFraction(dodgeValue: number | null, accuracyValue: number): number {
-  const held = Math.max(0, Math.trunc(dodgeValue ?? 0));
-  if (held === 0) return 0;
-  const reach = Math.max(Math.trunc(Math.trunc((accuracyValue * accuracyValue) / 14) / 10), 1);
-  let percent = Math.trunc((held * held) / reach);
-  if (percent > SPECIAL_DODGE_POINT) {
-    percent =
-      SPECIAL_DODGE_POINT + Math.trunc(diminishingReturns(percent - SPECIAL_DODGE_POINT, 4));
-  }
-  return Math.min(1, Math.max(0, percent) / 100);
 }
 
 /**

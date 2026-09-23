@@ -12,7 +12,8 @@
 import { guardsFirst, type GuardSubject } from './guards';
 import {
   expectedBlow,
-  hitChance,
+  facing,
+  landsOn,
   mobSwingsPerRound,
   weighRoom,
   type MenacePlayer,
@@ -151,9 +152,12 @@ export function simulateFight(input: SurvivalInput): Survival | null {
     );
     const attack = blow !== null && blow.rounds !== null ? blow : null;
     const cast = input.casting[index] ?? null;
+    // Its blows meet the protection that applies to it (`menace.facing`).
+    const against = facing(input.player, subject);
     return {
       hp: menaceHp !== null && menaceHp > 0 ? menaceHp : 1,
-      profile: worstProfile(subject.profiles ?? [], input.player),
+      against,
+      profile: worstProfile(subject.profiles ?? [], against),
       // The expected harm of everything that is not a blow: hit spells, casts,
       // lasting damage. Sampled nowhere, since the variance that kills is the
       // blows'.
@@ -242,7 +246,7 @@ export function simulateFight(input: SurvivalInput): Survival | null {
       // Every foe still standing takes its round.
       for (const [index, side] of foeSides.entries()) {
         if (alive[index]! <= 0) continue;
-        hp -= side.spellHarm + meleeRound(random, side.profile, input.player);
+        hp -= side.spellHarm + meleeRound(random, side.profile, side.against);
       }
       if (hp <= 0) {
         dead = true;
@@ -300,7 +304,7 @@ function worstProfile(profiles: readonly MobProfile[], player: MenacePlayer): Mo
     for (const attack of profile.attacks) {
       if (attack.kind !== 'melee') continue;
       const { damage } = expectedBlow(attack.min, attack.max, player.damageResist);
-      perSwing += attack.chance * hitChance(attack.accuracy, player.armourClass) * damage;
+      perSwing += attack.chance * landsOn(attack.accuracy, player) * damage;
     }
     if (swings * perSwing > most) {
       most = swings * perSwing;
@@ -313,7 +317,8 @@ function worstProfile(profiles: readonly MobProfile[], player: MenacePlayer): Mo
 /**
  * One round of a monster's blows, rolled the way `rowPerRound` expects them:
  * so many swings a round, each choosing an attack by its chance, each landing
- * by accuracy against armour class, each doing its range less resistance.
+ * by accuracy against armour class and dodge, each doing its range less
+ * resistance.
  */
 function meleeRound(random: () => number, profile: MobProfile, player: MenacePlayer): number {
   const swings = sampledCount(random, mobSwingsPerRound(profile.attacks));
@@ -322,7 +327,7 @@ function meleeRound(random: () => number, profile: MobProfile, player: MenacePla
   for (let n = 0; n < swings; n += 1) {
     const attack = pickAttack(random, profile.attacks);
     if (attack === null || attack.kind !== 'melee') continue;
-    if (random() >= hitChance(attack.accuracy, player.armourClass)) continue;
+    if (random() >= landsOn(attack.accuracy, player)) continue;
     harm += Math.max(0, between(random, attack.min, attack.max) - resist);
   }
   return harm;

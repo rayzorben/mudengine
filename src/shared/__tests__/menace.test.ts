@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   afflictionsOf,
   expectedBlow,
+  facing,
   hitChance,
+  landsOn,
   magicResistance,
+  protectionOf,
   rankByMenace,
   scaledPower,
   weighRoom,
@@ -13,6 +16,7 @@ import {
   type MenaceWeights
 } from '../menace';
 import type { MobAttack, MobCast, WorldSpell } from '../world';
+import { EMPTY_CHARACTER, type PartyMember } from '../character';
 
 /*
  * The prices `internal.yaml` ships with, written out so a test reads as the
@@ -90,6 +94,71 @@ describe('whether a blow lands', () => {
      every blow land. */
   it('treats an unread armour class as none', () => {
     expect(hitChance(45, null)).toBe(1);
+  });
+});
+
+const partyRow = (name: string): PartyMember => ({
+  name,
+  className: null,
+  health: null,
+  mana: null,
+  rank: 'front',
+  activity: null,
+  invited: false,
+  vitals: null
+});
+
+/*
+ * What `Mob.DoCombat` adds that the sheet does not print (todo 00,
+ * 2026-09-23). Festus: armour class 68 and *protection from evil* up against
+ * saracens, whose blows the card priced at 41% and 47% where the server rolls
+ * 22% and 30% — and the wire saw 15 land in 561 raider swings and 7 in 40 of
+ * the leader's.
+ */
+describe('the protection the server adds', () => {
+  const sheet: MenacePlayer = { armourClass: 68, damageResist: 14, magicRes: 47 };
+  const evil: MenaceSubject = { disposition: 'hostile', uncertain: false, costly: 'never' };
+  const good: MenaceSubject = { disposition: 'passive', uncertain: false, costly: 'always' };
+  const guarded: MenacePlayer = { ...sheet, versusEvil: 10, versusGood: 3, dodge: 11 };
+
+  it('adds Prev against an evil monster and Prgd against a good one', () => {
+    expect(facing(guarded, evil).armourClass).toBe(78);
+    expect(facing(guarded, good).armourClass).toBe(71);
+    // Rows that disagree say nothing about the side, and nothing is added.
+    expect(facing(guarded, { ...evil, uncertain: true }).armourClass).toBe(68);
+  });
+
+  it('rolls the leader and the raider as the server does', () => {
+    expect(hitChance(110, 68)).toBe(0.47);
+    expect(hitChance(105, 68)).toBe(0.41);
+    // Dodge 11 turns 1% away: 121 / 78.
+    expect(landsOn(110, facing(guarded, evil))).toBeCloseTo(0.3 * 0.99, 5);
+    expect(landsOn(105, facing(guarded, evil))).toBeCloseTo(0.22 * 0.99, 5);
+  });
+
+  it('reads Prev off the buffs up, the party rank beside it', () => {
+    const prev: WorldSpell = {
+      id: 107,
+      name: 'protection from evil',
+      level: 5,
+      abilities: [[24, 0]],
+      power: [10, 10]
+    } as WorldSpell;
+    const state = {
+      ...structuredClone(EMPTY_CHARACTER),
+      name: 'Festus',
+      buffs: [{ spell: 'protection from evil', by: null, appliedAt: 0 }],
+      party: {
+        ...EMPTY_CHARACTER.party,
+        members: [{ ...partyRow('Festus'), rank: 'back' as const }, partyRow('Brackle')]
+      }
+    };
+    const found = (name: string): WorldSpell | null =>
+      name === 'protection from evil' ? prev : null;
+    expect(protectionOf(state, found)).toEqual({ versusAll: 10, versusEvil: 10, versusGood: 0 });
+    // A buff that could be another spell counts the least of them.
+    const either = { ...state, buffs: [{ ...state.buffs[0]!, candidates: ['bless'] }] };
+    expect(protectionOf(either, found).versusEvil).toBe(0);
   });
 });
 

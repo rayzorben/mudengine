@@ -684,6 +684,9 @@ tuning:
     # worth in steps of going out of the way — 4.01 two minutes off the road
     # beats 3.99 twenty-five minutes off it. Zero lets the detour decide alone.
     dearerSteps: 20
+    # Copper withdrawn over a purchase's price when the purse is short and a
+    # bank on record holds it; zero withdraws exactly the shortfall.
+    cashBuffer: 1000
 
   # Carrying a quest's plan through the arbiter — `QuestRunner`. `replyMs` is
   # how long an act has to move the counter before its silence is a refusal;
@@ -692,6 +695,7 @@ tuning:
   quests:
     replyMs: 12000
     rollTries: 12
+    listingAsks: 3
     waitForMs: 600000
     maxLegs: 6
     # A setback -- a walker refusing while a move is unanswered, an escape, a

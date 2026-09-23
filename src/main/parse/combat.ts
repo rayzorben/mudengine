@@ -210,6 +210,18 @@ export class FightTracker {
   private attacking: string | null = null;
 
   /**
+   * The monster a death sentence has just taken out of the room, by key.
+   *
+   * The server prints a kill's sentence and then `You gain N experience.` for
+   * the one death (`Mob.Killed`), and both paths take an instance out, so a
+   * room holding two `saracen raider`s read as empty after the first died and
+   * the walk stepped out of a fight still running (todo 00, 2026-09-23). The
+   * experience line consumes it; any blow in between clears it, since the
+   * kill it paired with is then over.
+   */
+  private fell: string | null = null;
+
+  /**
    * The last blow this character landed that the *sentence* attributed, and
    * when.
    *
@@ -289,6 +301,7 @@ export class FightTracker {
     this.ledgers.clear();
     this.attacking = null;
     this.landed = null;
+    this.fell = null;
   }
 
   /** `*Combat Engaged*` or `*Combat Off*`. */
@@ -412,6 +425,7 @@ export class FightTracker {
    * which is what raises the critical alert and starts the hang-up clock.
    */
   blowOnMe(s: CharacterState, at: number, attacker: string | undefined): CharacterState {
+    this.fell = null;
     if (!attacker) return { ...s, combat: struck(s.combat, at, {}) };
     const room = this.sources.withOccupant(s, attacker);
     return { ...s, room, combat: struck(s.combat, at, { by: attacker }) };
@@ -427,6 +441,7 @@ export class FightTracker {
    * after a kill is whatever else is in the room.
    */
   missed(s: CharacterState, at: number, target: string | undefined): CharacterState | null {
+    this.fell = null;
     if (!target || mobKey(target) === mobKey(s.combat.target ?? '')) return null;
     const combat = struck(s.combat, at, { at: target });
     return {
@@ -454,6 +469,7 @@ export class FightTracker {
     damage: number,
     proc = false
   ): CharacterState | null {
+    this.fell = null;
     if (target !== undefined && /^you$/i.test(target)) {
       return this.blowOnMe(s, at, attacker);
     }
@@ -542,6 +558,10 @@ export class FightTracker {
      * says whether the line before this one was the target's own sentence,
      * which the record keeps beside the kill (todo 04).
      */
+    // The sentence before this line already took this death's instance out.
+    const fell = this.fell;
+    this.fell = null;
+    if (fell !== null && fell === mobKey(s.combat.target ?? '')) return s;
     const died = this.suspectDeath(s.combat.target, at, by);
     /*
      * And a thing that died is a thing that is no longer in the room.
@@ -558,9 +578,12 @@ export class FightTracker {
      * next `Also here:` replaces the whole list — so the cost of being
      * wrong is one listing, while the cost of leaving it is a fight with
      * something that is not there.
+     *
+     * **One instance**, as a sentence takes one: the experience line is one
+     * death, and a namesake still standing is still fighting.
      */
     if (!died) return s;
-    return this.leaves(s, mobKey(s.combat.target ?? ''), false);
+    return this.leaves(s, mobKey(s.combat.target ?? ''), true);
   }
 
   /**
@@ -583,6 +606,7 @@ export class FightTracker {
       ledger.killedAt = at;
       ledger.killedBy = 'sentence';
     }
+    this.fell = key;
     return this.leaves(s, key, true);
   }
 

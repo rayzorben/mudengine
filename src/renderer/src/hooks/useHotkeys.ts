@@ -49,14 +49,22 @@ export interface Hotkey {
   key: string;
   /** Require Ctrl on Windows/Linux or Meta on macOS. */
   mod?: boolean;
+  /** Require Alt (Option on macOS). A chord, like `mod`. */
+  alt?: boolean;
   shift?: boolean;
   run: () => void;
 }
 
 function matches(event: KeyboardEvent, hotkey: Hotkey): boolean {
-  if (event.key.toLowerCase() !== hotkey.key.toLowerCase()) return false;
+  // Option turns a letter into another character on macOS (Option R is `®`),
+  // so an Alt chord also answers to the physical key.
+  const named =
+    event.key.toLowerCase() === hotkey.key.toLowerCase() ||
+    ((hotkey.alt ?? false) && event.code === `Key${hotkey.key.toUpperCase()}`);
+  if (!named) return false;
   const mod = event.ctrlKey || event.metaKey;
   if ((hotkey.mod ?? false) !== mod) return false;
+  if ((hotkey.alt ?? false) !== event.altKey) return false;
   return (hotkey.shift ?? false) === event.shiftKey;
 }
 
@@ -71,7 +79,7 @@ export function useHotkeys(hotkeys: Hotkey[]): void {
       const hit = ref.current.find((hotkey) => matches(event, hotkey));
       if (!hit) return;
       // An unmodified key belongs to whatever holds the caret.
-      if (!(hit.mod ?? false) && chromeOwnsKeys(event.target)) return;
+      if (!((hit.mod ?? false) || (hit.alt ?? false)) && chromeOwnsKeys(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       hit.run();

@@ -600,6 +600,13 @@ export const HAZARD_ABILITY = {
 export const DODGE_ABILITY = 34;
 
 /**
+ * `Prev` (24) and `Prgd` (25): protection from evil and from good, which
+ * `Mob.DoCombat` adds to the armour class of a player an evil or a good
+ * monster swings at, ten internal points for each (`menace.protectionOf`).
+ */
+export const PROTECTION_ABILITY = { evil: 24, good: 25 } as const;
+
+/**
  * The abilities worth putting on a card, and what each one *is*.
  *
  * The enum names 235 ids and a card that listed all of them would be a table

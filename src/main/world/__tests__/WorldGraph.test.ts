@@ -1422,6 +1422,112 @@ describe('where to buy a thing, on the way to somewhere', () => {
   });
 });
 
+/*
+ * Cash for a counter the purse cannot meet (todo 00): what the counter charges
+ * is the realm's own arithmetic once it states the coin, and which vault to
+ * draw on is the detour, as for the counter itself.
+ */
+describe('what a counter charges, and which vault pays for it', () => {
+  const link = (m: number, r: number, to: Array<[Direction, number, number]>) => ({
+    m,
+    r,
+    n: `Room ${m}/${r}`,
+    x: Object.fromEntries(to.map(([dir, tm, tr]) => [dir, { m: tm, r: tr }]))
+  });
+  /** A corridor 1/1–1/21, a vault in it at 1/11 and one up a spur off 1/3. */
+  const town = (version = 47): WorldGraph => {
+    const rooms: Array<Record<string, unknown>> = [];
+    for (let i = 1; i <= 21; i += 1) {
+      const to: Array<[Direction, number, number]> = [];
+      if (i < 21) to.push(['e', 1, i + 1]);
+      if (i > 1) to.push(['w', 1, i - 1]);
+      if (i === 3) to.push(['n', 1, 50]);
+      const counter = i === 11 ? { s: 1 } : i === 21 ? { s: 3 } : {};
+      rooms.push({ ...link(1, i, to), ...counter });
+    }
+    rooms.push(
+      link(1, 50, [
+        ['n', 1, 51],
+        ['s', 1, 3]
+      ])
+    );
+    rooms.push({ ...link(1, 51, [['s', 1, 50]]), s: 2 });
+    return makeWorld(
+      rooms,
+      {
+        items: [
+          { id: 12, n: 'waterskin', price: 25, cur: 1 },
+          { id: 13, n: 'torch' },
+          { id: 14, n: 'short-spear', price: 2, cur: 2 }
+        ],
+        shops: [
+          { id: 1, n: 'Bank of Godfrey', items: [], t: 7 },
+          { id: 2, n: 'Silvermere Bank', items: [], t: 7 },
+          { id: 3, n: 'General Store', items: [12, 13, 14], markup: 100 }
+        ]
+      },
+      version
+    );
+  };
+  const ends = { from: roomId(1, 1), to: roomId(1, 21) };
+  const said = (shop: number | null, name: string, copper: number) => ({
+    shop,
+    name,
+    copper,
+    at: 1
+  });
+
+  it('prices a counter in copper, as the wire quoted it', () => {
+    const world = town();
+    expect(world.priceAt(12, 3)).toBe(500);
+    expect(world.priceAt(14, 3)).toBe(400);
+    // Nothing stated is free, as the listing prints it.
+    expect(world.priceAt(13, 3)).toBe(0);
+    expect(world.priceAt(99, 3)).toBeNull();
+  });
+
+  it('prices nothing on a file that predates the coin', () => {
+    expect(town(46).priceAt(12, 3)).toBeNull();
+  });
+
+  it('prefers the vault the way passes over a nearer one off it', () => {
+    const places = town().cashPlaces(
+      [said(1, 'Bank of Godfrey', 9_000_000), said(2, 'Silvermere Bank', 9_000_000)],
+      1650,
+      ends.from,
+      ends.to,
+      {}
+    );
+    expect(places.map((place) => [place.name, place.detour])).toEqual([
+      ['Bank of Godfrey', 0],
+      ['Silvermere Bank', 4]
+    ]);
+    expect(places[0]).toMatchObject({ copper: 9_000_000, moves: 10 });
+  });
+
+  it('leaves out a vault short of the need, and one nobody has asked', () => {
+    const places = town().cashPlaces(
+      [said(2, 'Silvermere Bank', 100)],
+      1650,
+      ends.from,
+      ends.to,
+      {}
+    );
+    expect(places).toEqual([]);
+  });
+
+  it('matches a balance the header gave no id by the name, article and all', () => {
+    const places = town().cashPlaces(
+      [said(null, 'The Bank of Godfrey', 5000)],
+      1650,
+      ends.from,
+      ends.to,
+      {}
+    );
+    expect(places.map((place) => place.name)).toEqual(['Bank of Godfrey']);
+  });
+});
+
 describe('the shipped realm data', () => {
   /*
    * The tests above build synthetic worlds, which is right for the algorithm
@@ -1435,6 +1541,11 @@ describe('the shipped realm data', () => {
 
   it.runIf(has)('loads every room', () => {
     expect(realm!.size).toBeGreaterThan(50_000);
+  });
+
+  // The quote a quest run met with an empty purse (todo 00): 50 silver nobles.
+  it.runIf(has)('prices a waterskin at the General Store as the counter quoted it', () => {
+    expect(realm!.priceAt(283, 3)).toBe(500);
   });
 
   /*

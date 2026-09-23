@@ -8,7 +8,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
 import type { SafetyDecision } from '../../../shared/automation';
-import type { Route } from '../../../shared/world';
+import type { CashPlace, Route } from '../../../shared/world';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -108,6 +108,8 @@ function planner(over: Partial<SupplyPlanner> = {}) {
       log.push(`route:${room}`);
       return ROUTE;
     },
+    priceAt: () => null,
+    cashFrom: () => [],
     walk: () => {
       log.push('walk');
       return null;
@@ -125,7 +127,12 @@ function planner(over: Partial<SupplyPlanner> = {}) {
     release: () => log.push('release'),
     ...over
   };
-  return { planner: base, log, arrive: () => void (here = '1/2147') };
+  return {
+    planner: base,
+    log,
+    arrive: () => void (here = '1/2147'),
+    goTo: (room: string) => void (here = room)
+  };
 }
 
 const make = (p: SupplyPlanner, config = TORCHES, enabled = true): Supplies =>
@@ -291,7 +298,7 @@ describe('at the counter', () => {
     expect(decisions.at(-1)?.refused).toContain('does not list torch');
   });
 
-  it('refuses when the quote is more than the purse holds', () => {
+  it('refuses when the quote is more than the purse holds and no bank holds the rest', () => {
     const { planner: p, arrive } = planner();
     const auto = make(p);
     auto.onCharacter(character(2));
@@ -300,7 +307,9 @@ describe('at the counter', () => {
     auto.onCharacter(listed(character(2), '90 gold crowns'));
     drain();
     expect(sent).toEqual(['list']);
-    expect(decisions.at(-1)?.refused).toContain('9,000 copper');
+    // Three at 9,000 each, charm unread and so priced at its floor: ten percent on.
+    expect(decisions.at(-1)?.refused).toContain('29,700 copper');
+    expect(decisions.at(-1)?.refused).toContain('no bank on record');
   });
 
   it('takes a buy the counter never confirms as refused, and says so', () => {
@@ -594,5 +603,229 @@ describe('when an errand may start at all', () => {
     const { planner: p } = planner({ looping: () => false });
     const auto = make(p);
     expect(auto.considerBeforeRoute(character(9))).toBeNull();
+  });
+});
+
+describe('a purse short of the price', () => {
+  const GODFREY: CashPlace = {
+    shop: 8,
+    name: 'Bank of Godfrey',
+    map: 1,
+    room: 2170,
+    roomName: 'Bank of Godfrey',
+    copper: 9_000_000,
+    detour: 4,
+    moves: 6
+  };
+  const SILVERMERE: CashPlace = { ...GODFREY, shop: 9, name: 'Silvermere Bank', room: 3000 };
+  const broke = (torches = 2): CharacterState => {
+    const state = character(torches);
+    return { ...state, inventory: { ...state.inventory, wealth: 0 } };
+  };
+  const stated = (state: CharacterState, copper: number, shop = 8): CharacterState => ({
+    ...state,
+    banks: [
+      { shop, name: shop === 8 ? 'Bank of Godfrey' : 'Silvermere Bank', copper, at: Date.now() + 1 }
+    ]
+  });
+
+  it('goes to the bank the record says holds it, withdraws, and walks on to the counter', () => {
+    const asked: number[] = [];
+    const {
+      planner: p,
+      log,
+      goTo,
+      arrive
+    } = planner({
+      priceAt: () => 500,
+      cashFrom: (need) => {
+        asked.push(need);
+        return [GODFREY];
+      }
+    });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    // Three torches at 500, charm unread: 550 each.
+    expect(asked).toEqual([1650]);
+    expect(log).toEqual(['hold', 'route:1/2170', 'walk']);
+    expect(notices[0]).toContain('Bank of Godfrey');
+    expect(decisions[0]).toMatchObject({ action: 'supplies', acted: true });
+
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    drain();
+    expect(sent).toEqual(['bank']);
+    expect(auto.current?.stage).toBe('balance');
+
+    auto.onCharacter(stated(broke(), 9_000_000));
+    drain();
+    expect(sent).toEqual(['bank', `withdraw ${1650 + TUNING.supplies.cashBuffer}`]);
+
+    auto.onBlock(block('user-withdraws', { amount: '2650' }), broke());
+    expect(log.slice(-2)).toEqual(['route:1/2147', 'walk']);
+    expect(notices.at(-1)).toContain('Withdrew 2650');
+    arrive();
+    auto.onWalkEnded(true, null, broke());
+    drain();
+    expect(sent.at(-1)).toBe('list');
+  });
+
+  it('prices a charm it has read', () => {
+    const asked: number[] = [];
+    const { planner: p } = planner({
+      priceAt: () => 500,
+      cashFrom: (need) => (asked.push(need), [GODFREY])
+    });
+    const state = broke();
+    make(p).onCharacter({ ...state, progress: { ...state.progress, charm: 70 } });
+    // (70 − 50) ÷ 5 = 4% off: 480 each.
+    expect(asked).toEqual([1440]);
+  });
+
+  it('never asks for more than the vault holds', () => {
+    const { planner: p, goTo } = planner({ priceAt: () => 500, cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    auto.onCharacter(stated(broke(), 2000));
+    drain();
+    expect(sent).toEqual(['bank', 'withdraw 2000']);
+  });
+
+  it('falls back to the next bank when the first is short of what the record said', () => {
+    const {
+      planner: p,
+      log,
+      goTo
+    } = planner({
+      priceAt: () => 500,
+      cashFrom: () => [GODFREY, SILVERMERE]
+    });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    auto.onCharacter(stated(broke(), 100));
+    drain();
+    expect(sent).toEqual(['bank']);
+    expect(log.slice(-2)).toEqual(['route:1/3000', 'walk']);
+    expect(notices.some((n) => n.includes('holds 100 copper'))).toBe(true);
+  });
+
+  it('refuses when no bank on record holds the rest, and walks nowhere', () => {
+    const { planner: p, log } = planner({ priceAt: () => 500 });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    expect(log).toEqual(['hold', 'release']);
+    expect(auto.current).toBeNull();
+    expect(decisions.at(-1)?.refused).toContain('1,650 copper');
+  });
+
+  it('refuses when the only bank turns out short, naming it', () => {
+    const { planner: p, log, goTo } = planner({ priceAt: () => 500, cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    auto.onCharacter(stated(broke(), 100));
+    expect(auto.current).toBeNull();
+    expect(log.at(-1)).toBe('release');
+    expect(decisions.at(-1)?.refused).toContain('no other bank');
+  });
+
+  it('takes a withdrawal the bank never answers as refused', () => {
+    const { planner: p, log, goTo } = planner({ priceAt: () => 500, cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    auto.onCharacter(stated(broke(), 9_000_000));
+    drain();
+    vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
+    expect(auto.current).toBeNull();
+    expect(log.at(-1)).toBe('release');
+    expect(notices.some((n) => n.includes('did not pay out'))).toBe(true);
+    expect(decisions.at(-1)?.refused).toContain('no other bank');
+  });
+
+  it('falls to the next vault when one never states a balance', () => {
+    const {
+      planner: p,
+      log,
+      goTo
+    } = planner({
+      priceAt: () => 500,
+      cashFrom: () => [GODFREY, SILVERMERE]
+    });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
+    expect(auto.current?.stage).toBe('walking');
+    expect(log.slice(-2)).toEqual(['route:1/3000', 'walk']);
+    expect(notices.some((n) => n.includes('did not state a balance'))).toBe(true);
+  });
+
+  it('does not take a withdrawal the player typed for the one it asked', () => {
+    const { planner: p, log, goTo } = planner({ priceAt: () => 500, cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    auto.onCharacter(stated(broke(), 9_000_000));
+    auto.onBlock(block('user-withdraws', { amount: '1' }), broke());
+    expect(auto.current?.stage).toBe('withdrawing');
+    expect(log.at(-1)).toBe('walk');
+  });
+
+  it('checks the whole errand against the purse at the counter, not one', () => {
+    const { planner: p, log, arrive } = planner({ cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    const state = character(2);
+    const purse = { ...state, inventory: { ...state.inventory, wealth: 600 } };
+    auto.onCharacter(purse);
+    arrive();
+    auto.onWalkEnded(true, null, purse);
+    auto.onCharacter(listed(purse, '50 silver nobles'));
+    drain();
+    // Three at 550 is 1,650 against 600: to the vault, not to `buy`.
+    expect(sent).toEqual(['list']);
+    expect(log.slice(-2)).toEqual(['route:1/2170', 'walk']);
+  });
+
+  it('goes to the bank from the counter when only the quote says the purse is short', () => {
+    const { planner: p, log, arrive } = planner({ cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    auto.onCharacter(character(2));
+    arrive();
+    auto.onWalkEnded(true, null, character(2));
+    auto.onCharacter(listed(character(2), '90 gold crowns'));
+    drain();
+    expect(sent).toEqual(['list']);
+    expect(log.slice(-2)).toEqual(['route:1/2170', 'walk']);
+    expect(auto.current?.stage).toBe('walking');
+    // The counter's own deadline went with it: the walk to the vault outlives it.
+    vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
+    expect(auto.current?.stage).toBe('walking');
+  });
+
+  it('asks the vault once per errand, and then refuses a quote the purse still cannot meet', () => {
+    const { planner: p, goTo, arrive } = planner({ cashFrom: () => [GODFREY] });
+    const auto = make(p);
+    auto.onCharacter(character(2));
+    arrive();
+    auto.onWalkEnded(true, null, character(2));
+    auto.onCharacter(listed(character(2), '90 gold crowns'));
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, character(2));
+    auto.onCharacter(stated(character(2), 9_000_000));
+    auto.onBlock(block('user-withdraws', { amount: '25700' }), character(2));
+    arrive();
+    auto.onWalkEnded(true, null, character(2));
+    auto.onCharacter(listed(character(2), '90 gold crowns'));
+    expect(auto.current).toBeNull();
+    expect(decisions.at(-1)?.refused).toContain('is quoted at 9,000 copper');
   });
 });

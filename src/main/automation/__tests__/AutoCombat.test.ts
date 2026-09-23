@@ -2080,6 +2080,55 @@ describe('asking once about one monster', () => {
     expect(sent).toEqual(['a small giant rat']);
   });
 
+  /*
+   * festus, 2026-09-23 (todo 03): `aa dustdevil`, then a lapsed `gbls` 167ms
+   * later — an instant spell ends the fight — and the cooldown the `aa` had
+   * just armed refused the re-engage until the dustdevil had swung twice.
+   */
+  it('re-engages at once when a cast, not an attack, ended the fight', () => {
+    const auto = make(combat());
+    const devil = mob('dustdevil', 'hostile');
+    const here = { ...EMPTY_CHARACTER.room, occupants: [devil] };
+
+    auto.onCharacter(state({ room: here }));
+    drain();
+    expect(sent).toEqual(['a dustdevil']);
+
+    auto.onCharacter(
+      state({
+        room: here,
+        inCombat: true,
+        combat: { ...EMPTY_CHARACTER.combat, target: 'dustdevil', engaged: true }
+      })
+    );
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'gbls');
+    auto.onCharacter(state({ room: here, inCombat: false }));
+    drain();
+    expect(sent).toEqual(['a dustdevil', 'a dustdevil']);
+  });
+
+  it('keeps the cooldown when the Off answers the attack itself', () => {
+    const auto = make(combat());
+    const devil = mob('dustdevil', 'hostile');
+    const here = { ...EMPTY_CHARACTER.room, occupants: [devil] };
+
+    auto.onCharacter(state({ room: here }));
+    drain();
+    auto.onCharacter(
+      state({
+        room: here,
+        inCombat: true,
+        combat: { ...EMPTY_CHARACTER.combat, target: 'dustdevil', engaged: true }
+      })
+    );
+    // A re-attack's own pair, and a bare prompt's Off: neither releases it.
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'aa dustdevil');
+    auto.onBlock(block('combat-status', { status: 'Off' }), null);
+    auto.onCharacter(state({ room: here, inCombat: false }));
+    drain();
+    expect(sent).toEqual(['a dustdevil']);
+  });
+
   it('releases the cooldown when the monster itself is gone', () => {
     // The arena spawns same-name monsters back to back. The cooldown is a
     // floor on asking about one individual, not a tax on the species: the
@@ -2178,6 +2227,178 @@ describe('asking once about one monster', () => {
     queue.noteTyping(false);
     drain();
     expect(sent).toEqual([]);
+  });
+});
+
+/*
+ * One target, kept until it is dead (todo 00, 2026-09-23). Festus's desert
+ * fight: the leader died, `aa saracen raider` went out, and each raider's
+ * first swing before the engagement came back — the tracker files the newest
+ * attacker first, and equal verdicts tie in that order — sent another `aa`,
+ * three a round, every round, each cancelling the last.
+ */
+describe('one target until it is dead', () => {
+  const raider = (name: string): RoomOccupant => fighter(name, 250, [bite(5, 18, 105)]);
+  const desert = {
+    ...EMPTY_CHARACTER.room,
+    occupants: [
+      raider('saracen raider'),
+      raider('small saracen raider'),
+      raider('fat saracen raider')
+    ]
+  };
+  const swinging = (attackers: string[], target: string | null = null): CharacterState =>
+    state({
+      room: desert,
+      inCombat: target !== null,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: target !== null, target, attackers }
+    });
+
+  it('does not open on each new attacker before the first attack is answered', () => {
+    const auto = make(combat({ attack: 'aa', engage: 'hostile' }));
+    auto.onCharacter(swinging([]));
+    drain();
+    expect(sent).toEqual(['aa saracen raider']);
+
+    auto.onCharacter(swinging(['saracen raider']));
+    auto.onCharacter(swinging(['small saracen raider', 'saracen raider']));
+    auto.onCharacter(swinging(['fat saracen raider', 'small saracen raider', 'saracen raider']));
+    drain();
+    expect(sent).toEqual(['aa saracen raider']);
+  });
+
+  it('goes back to the same one after the fight drops, past the cooldown', () => {
+    const auto = make(combat({ attack: 'aa', engage: 'hostile' }));
+    auto.onCharacter(swinging([]));
+    drain();
+    auto.onCharacter(swinging([], 'saracen raider'));
+    // A heal's `*Combat Off*` a round later: target and attackers cleared,
+    // and the others' blows arrive newest first.
+    vi.advanceTimersByTime(5_000);
+    auto.onCharacter(swinging([]));
+    auto.onCharacter(swinging(['fat saracen raider']));
+    auto.onCharacter(swinging(['small saracen raider', 'fat saracen raider']));
+    drain();
+    expect(sent).toEqual(['aa saracen raider', 'aa saracen raider']);
+    expect(decisions.filter((one) => one.acted).at(-1)?.because).toContain('still on');
+  });
+
+  it('chooses afresh once it is dead', () => {
+    const auto = make(combat({ attack: 'aa', engage: 'hostile' }));
+    auto.onCharacter(swinging([]));
+    drain();
+    const rest = desert.occupants.filter((who) => who.name !== 'saracen raider');
+    auto.onCharacter(state({ room: { ...desert, occupants: rest } }));
+    drain();
+    expect(sent).toEqual(['aa saracen raider', 'aa small saracen raider']);
+  });
+
+  it('keeps the one the player chose', () => {
+    const auto = make(combat({ attack: 'aa', engage: 'hostile' }));
+    auto.onCharacter(swinging([]));
+    drain();
+    auto.noteUserCommand('aa fat');
+    vi.advanceTimersByTime(5_000);
+    auto.onCharacter(swinging(['saracen raider']));
+    drain();
+    expect(sent).toEqual(['aa saracen raider', 'aa fat saracen raider']);
+  });
+
+  it('chooses afresh in a new room, whatever its monsters are called', () => {
+    const auto = make(combat({ attack: 'aa', engage: 'hostile' }));
+    auto.onCharacter(swinging([]));
+    drain();
+    expect(sent).toEqual(['aa saracen raider']);
+    vi.advanceTimersByTime(5_000);
+    // A step into the next `Scorching Desert`: a namesake, and a leader.
+    auto.onCharacter(
+      state({
+        inCombat: true,
+        room: {
+          ...desert,
+          arrival: 1,
+          occupants: [
+            raider('saracen raider'),
+            fighter('fierce saracen leader', 350, [bite(8, 24, 110), bite(40, 80, 110)])
+          ]
+        },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['saracen raider'] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['aa saracen raider', 'aa fierce saracen leader']);
+  });
+
+  /*
+   * A monster that has not swung is one retaliation would be opening on, so
+   * every refusal `choose` makes of it stands: the heavier one is not picked.
+   */
+  describe('weighing the whole fight passes the refusals opening would', () => {
+    const ogre = (over: Partial<MobEntity> = {}): RoomOccupant =>
+      fighter('orc warrior', 60, [bite(20, 60, 90)], over);
+    const rat = fighter('giant rat', 20, [bite(1, 3, 20)]);
+    const bitten = (occupants: RoomOccupant[], claimed = {}): CharacterState =>
+      state({
+        inCombat: true,
+        room: { ...EMPTY_CHARACTER.room, occupants },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['giant rat'], claimed }
+      });
+
+    it('positive control: the heavier bystander is taken first', () => {
+      make(combat({ engage: 'hostile' })).onCharacter(bitten([ogre(), rat]));
+      drain();
+      expect(sent).toEqual(['a orc warrior']);
+    });
+
+    it('leaves a stranger’s monster to them', () => {
+      make(combat({ engage: 'hostile', politeAttacks: true })).onCharacter(
+        bitten([ogre(), rat], { 'orc warrior': { by: 'Rend', at: Date.now() } })
+      );
+      drain();
+      expect(sent).toEqual(['a giant rat']);
+    });
+
+    it('leaves what a guard left alone protects', () => {
+      const guard: RoomOccupant = {
+        ...fighter('kobold thief', 30, [bite(1, 8, 15)]),
+        mob: { ...fighter('kobold thief', 30, []).mob!, ids: [10] }
+      };
+      const ward = ogre({ ids: [20], abilities: [[GUARDED_BY_ABILITY, 10]] });
+      make(
+        combat({ engage: 'hostile', mobRules: [{ mob: 'kobold thief', treat: 'never' }] })
+      ).onCharacter(bitten([guard, ward, rat]));
+      drain();
+      expect(sent).toEqual(['a giant rat']);
+    });
+
+    it('keeps to the caps', () => {
+      make(combat({ engage: 'hostile', maxTargetHealth: 50 })).onCharacter(bitten([ogre(), rat]));
+      make(combat({ engage: 'hostile', maxMonsterExperience: 100 })).onCharacter(
+        bitten([ogre({ experience: 5_000 }), rat])
+      );
+      drain();
+      expect(sent).toEqual(['a giant rat', 'a giant rat']);
+    });
+  });
+
+  /* The first to swing is the order the server walks the room in, not the worst. */
+  it('hits back at the worst of the whole fight, not the first to swing', () => {
+    const auto = make(combat({ engage: 'hostile' }));
+    auto.onCharacter(
+      state({
+        inCombat: true,
+        room: {
+          ...EMPTY_CHARACTER.room,
+          occupants: [
+            fighter('kobold thief', 30, [bite(1, 8, 15)]),
+            fighter('wererat shaman', 40, [bite(10, 30, 60)])
+          ]
+        },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['kobold thief'] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a wererat shaman']);
   });
 });
 

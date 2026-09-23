@@ -1577,11 +1577,25 @@ cards:
         buy: buy at
         carried: in your pack
         detour: '{moves} out of the way'
+        price: '{copper} copper each'
         earlier: from step {rank}
         kill: kill
         say: say {word}
         sold: sold at {shops}
         unplaced: nowhere the realm names
+      # What the plan's counters cost, and where the cash comes from (todo 00).
+      cash:
+        owed: 'costs {owed} copper'
+        owedAtLeast: 'costs at least {owed} copper'
+        inPurse: in the purse
+        purseUnread: purse not read
+        fromBank: '{short} from {bank}'
+        fromBankTitle:
+          'The purse holds {purse}; the run withdraws the rest at {place}, which last said {held}.'
+        short: the purse and the banks on record hold too little
+        shortTitle:
+          'The purse holds {purse} and no bank on record holds the rest. Ask a bank for its balance
+          to put it on record.'
       fromNowhere: from nowhere the client can place
       fromRank: from rank {from}
       fromStart: from the start
@@ -2567,10 +2581,10 @@ cards:
     walkButton: Walk it
     walkHereButton: Walk here
     walkHereTooltip: Walk only as far as {roomName}
-    walkTooltip: Walk this route (Enter)
+    walkTooltip: Walk this route (Enter or Alt G)
     # Todo 06: turn off, go.
     runButton: Run it
-    runTooltip: Walk this route with auto-combat turned off first, and leave it off
+    runTooltip: Walk this route with auto-combat turned off first, and leave it off (Alt R)
   session:
     encoding: Encoding
     grid: Grid
@@ -4303,6 +4317,7 @@ automation:
     reasonAbil: 'reading the quest counter after the act'
     reasonAct: 'quest step {nth}'
     reasonHandover: 'asking for {item} for the quest'
+    reasonPackAfter: 'reading the pack after the quest step'
     detailFetching: 'getting {item}'
     detailWalking: 'walking to {room}'
     detailKilling: 'fighting {mob}'
@@ -4339,7 +4354,8 @@ automation:
     refusalNotBought: '{item} was not bought: {why}'
     refusalNotHunted: 'Could not go hunting for {item}: {why}'
     refusalHuntStopped: 'The hunt for {item} stopped before the pack held one.'
-    refusalHandoverUnanswered: '{item} was asked for and the pack did not gain it.'
+    refusalHandoverUnanswered: '{item} was asked for, and the pack listed after it does not hold one.'
+    refusalHandoverUnsent: '{item} was never asked for: the ask lapsed in the queue.'
     refusalNoRoute: 'No way to {room}: {why}'
     refusalNotReached: 'Did not reach {room}: {why}'
     refusalUntraced: 'Step {nth} is traced to nobody, nowhere and no death, so there is nothing to do.'
@@ -4353,7 +4369,7 @@ automation:
     refusalRollUnreadable:
       'Step {nth} rolls and this realm prints no counter, so whether it passed cannot be read. Do it
       by hand.'
-    refusalPackUnmoved: 'Step {nth} was sent and the pack did not change; the realm prints no counter to read instead.'
+    refusalPackUnmoved: 'Step {nth} was sent and the pack listed after it did not change; the realm prints no counter to read instead.'
     refusalUnwatched: 'Step {nth} was sent and nothing on this realm says whether it took.'
   # Hunting on its own -- `AutoHunt` (todo 05). Every sentence names a figure:
   # what it is going to, what it expects to earn there, or why it will not.
@@ -4449,6 +4465,7 @@ automation:
     whyGuardJoins: '{target} protects {ward}, so attacking {ward} brings it in; it goes first'
     whyHitBackGuard: 'hitting back: {target} protects {ward}, so it goes first'
     whyInRoom: in the room
+    whyStillOn: 'still on {target}: one target at a time, until it is dead'
     whyRanked: 'first of {count} here: your priority list ranks {target} {band}'
     whyRankedAlone: 'your priority list ranks {target} {band}'
     whyRankedOver: 'first of {count} here: your priority list ranks {other} {band}'
@@ -4715,6 +4732,23 @@ automation:
     bought: 'Bought {count} {item} at {shop}; {have} carried.'
     boughtSome: 'Bought {count} of {wanted} {item}, then stopped: {why}'
     refused: 'Not buying {item}: {why}'
+    # A purse short of the price: the vault the record says holds the rest.
+    toBank:
+      'Going to {bank} for cash first — {item} costs {owed} copper and the purse holds {wealth};
+      the bank last said {held}.'
+    becausePurseShort: '{item}: {owed} copper wanted, {wealth} in the purse'
+    reasonBalance: 'asking {bank} for the balance, to withdraw for supplies'
+    reasonWithdraw: 'withdrawing {amount} copper for {item}'
+    withdrew: 'Withdrew {amount} copper at {bank}; on to {shop}.'
+    bankShort: '{bank} holds {held} copper, short of the {short} wanted.'
+    refusalNoBank:
+      '{item} costs {owed} copper, the purse holds {wealth}, and no bank on record holds the
+      {short} short — ask a bank for its balance to put it on record'
+    refusalNoOtherBank:
+      '{item} costs {owed} copper, the purse holds {wealth}, and no other bank on record holds the
+      {short} short'
+    refusalNoBalance: '{bank} did not state a balance'
+    refusalNoPayout: '{bank} did not pay out'
   keys:
     reasonNeeded: 'key: the way {direction} needs {item}, and it is on this floor'
     picking: Picking up {item} — the realm says the way {direction} needs it and the pack has none.
