@@ -289,3 +289,65 @@ describe('regeneration — Player.cs:4813 and :4863', () => {
     expect(regeneration({ ...SHEET, health: null }, null, 'greatermud')).toBeNull();
   });
 });
+
+/*
+ * `stat all`'s own figures (`ProwessSheet.stated`) outrank every formula here,
+ * gear and spells included, and need no family: nothing was computed.
+ */
+describe('what the server stated', () => {
+  const STATED: ProwessSheet = {
+    ...SHEET,
+    stated: {
+      accuracy: 105,
+      swings: 3.584,
+      health: 6,
+      resting: 18,
+      mana: 11,
+      meditating: 8,
+      damage: { min: 8, max: 25 }
+    }
+  };
+
+  it('wins over the transcription, and says so', () => {
+    expect(accuracy(STATED, SWORD, 'greatermud')).toEqual({ value: 105, from: 'stated' });
+    expect(swingsPerRound(STATED, SWORD, 'greatermud')).toEqual({ value: 3.584, from: 'stated' });
+  });
+
+  it('is the server’s figure on any family, and for a bare hand', () => {
+    expect(accuracy(STATED, null, 'majormud')).toEqual({ value: 105, from: 'stated' });
+    expect(swingsPerRound(STATED, null, null)).toEqual({ value: 3.584, from: 'stated' });
+  });
+
+  it('states the regeneration, and keeps none for a class that casts nothing', () => {
+    const regen = regeneration(STATED, null, 'greatermud')!;
+    expect(regen.health).toEqual({ value: 6, from: 'stated' });
+    expect(regen.restingHealth).toEqual({ value: 18, from: 'stated' });
+    expect(regen.mana).toBeNull();
+    expect(regen.meditatingMana).toBeNull();
+  });
+
+  /*
+   * `TimedEventManager`: the passive tick adds `MARegen`, bonus and all, and
+   * the meditating tick `GetBaseMARegen()` flat — the sheet's `8/11`.
+   */
+  it('meditates at the base rate and stands at the bonus rate', () => {
+    const caster = regeneration({ ...STATED, mageryLevel: 2 }, null, 'greatermud')!;
+    expect(caster.mana).toEqual({ value: 11, from: 'stated' });
+    expect(caster.meditatingMana).toEqual({ value: 8, from: 'stated' });
+  });
+
+  it('takes the blow’s range off the sheet, and still rolls only on GreaterMUD', () => {
+    const target = { armourClass: 0, damageResist: 0, dodge: null, health: 100 };
+    const hit = swing(STATED, null, target, 'greatermud')!;
+    expect(hit.damage).toEqual({ value: 16.5, from: 'stated' });
+    expect(hit.swings).toEqual({ value: 3.584, from: 'stated' });
+    // The hit roll is GreaterMUD's arithmetic, whoever stated the accuracy.
+    expect(swing(STATED, null, target, 'majormud')).toBeNull();
+  });
+
+  it('falls back to the arithmetic for what it does not state', () => {
+    const partial: ProwessSheet = { ...SHEET, stated: { health: 6, resting: 18 } };
+    expect(accuracy(partial, SWORD, 'greatermud')).toEqual({ value: 57, from: 'bound' });
+    expect(regeneration(partial, null, 'greatermud')?.health.from).toBe('stated');
+  });
+});

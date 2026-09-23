@@ -466,6 +466,82 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     expect(memory.answeredInOrder()).toEqual([]);
   });
 
+  /*
+   * `2026-09-18_16-04-09_festus`, t=25649214: `e e e n` typed in 1.3s, each
+   * room a movement round (~1.6s) after the last. The server had not reached
+   * the later steps, yet timed from the send they were probed as unanswered.
+   */
+  it('times a queued claim from the answer ahead of it, not from its send', () => {
+    const memory = new Expectations();
+    const at = Date.now();
+    const answerAt = (ms: number): void => {
+      vi.setSystemTime(at + ms);
+      expect(memory.staleProbe(at + ms - 1)).toBeNull();
+      memory.shift();
+    };
+    memory.observeCommand('e', inGame);
+    vi.setSystemTime(at + 225);
+    memory.observeCommand('e', inGame);
+    vi.setSystemTime(at + 471);
+    memory.observeCommand('e', inGame);
+    vi.setSystemTime(at + 1339);
+    memory.observeCommand('n', inGame);
+
+    answerAt(1663);
+    answerAt(3272);
+    answerAt(4835);
+    // Positive control: the last step, a probe clock after the server reached it.
+    expect(memory.staleProbe(at + 4835 + probe - 1)).toBeNull();
+    expect(memory.staleProbe(at + 4835 + probe)).toBe('n');
+  });
+
+  it('does not count a write-off as the server reaching the claim behind it', () => {
+    const memory = new Expectations();
+    const at = Date.now();
+    memory.observeCommand('n', inGame);
+    memory.observeCommand('e', inGame);
+    expect(memory.expire(at + life)).toEqual([
+      { command: 'n', moved: true },
+      { command: 'e', moved: true }
+    ]);
+  });
+
+  /*
+   * The user's transcript, 2026-09-18: `n` and `w` sent, a gossip typed over
+   * them, and both probed as unanswered mid-line — the server backlogs every
+   * byte while its `CurrentCommand` is non-empty (`TGSSocket.Send`), and the
+   * room came the moment the line was committed.
+   */
+  it('holds every claim clock while the player has a half-typed line', () => {
+    const memory = new Expectations();
+    const at = Date.now();
+    memory.observeCommand('n', inGame);
+    vi.setSystemTime(at + 500);
+    memory.noteTyping(true);
+    vi.setSystemTime(at + 10_000);
+    memory.noteTyping(true);
+    expect(memory.staleProbe(at + 10_000)).toBeNull();
+    expect(memory.expire(at + 10_000)).toEqual([]);
+    expect(memory.moves).toBe(1);
+
+    vi.setSystemTime(at + 12_000);
+    memory.noteTyping(false);
+    // Positive control: the clock starts again at the commit.
+    expect(memory.staleProbe(at + 12_000 + probe - 1)).toBeNull();
+    expect(memory.staleProbe(at + 12_000 + probe)).toBe('n');
+  });
+
+  it('writes an abandoned line off on the queue’s clock, and times the claim from there', () => {
+    const memory = new Expectations();
+    const at = Date.now();
+    const abandoned = DEFAULT_INTERNAL.tuning.queue.abandonedLineMs;
+    memory.observeCommand('n', inGame);
+    memory.noteTyping(true);
+    expect(memory.staleProbe(at + abandoned - 1)).toBeNull();
+    expect(memory.staleProbe(at + abandoned + probe - 1)).toBeNull();
+    expect(memory.staleProbe(at + abandoned + probe)).toBe('n');
+  });
+
   it('settles nothing when no locate went out', () => {
     const memory = new Expectations();
     memory.observeCommand('n', inGame);

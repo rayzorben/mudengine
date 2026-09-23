@@ -314,15 +314,24 @@ describe('the conditions a character is born with or carries', () => {
     const rune = parseInstruction('Ability: 152 w/value 1 to 1');
     expect(rune?.kind).toBe('ability');
     expect(rune?.abilityId).toBe(152);
-    // The window is matched and not stored: nothing can price it without the
-    // character's ability sum, and the chip shows the instruction verbatim.
+    /*
+     * The window is the comparison the server makes, in the shape a room
+     * script's `checkability` already takes — one field for the realm's two
+     * spellings of one gate, so `edgePenalty` answers both by asking once.
+     */
+    expect(rune?.abilities).toEqual([{ id: 152, atLeast: 1, atMost: 1 }]);
     expect(rune?.raw).toContain('1 to 1');
 
+    const guild = parseInstruction('Ability: 204 w/value 1 to 999');
+    expect(guild?.abilities).toEqual([{ id: 204, atLeast: 1, atMost: 999 }]);
+
     // `Ability: 0` is an exit the server builds plain, so the id is dropped and
-    // the price reads the absence as *no gate at all*.
+    // the price reads the absence as *no gate at all* — and states no gate for
+    // the counters to fail either.
     const none = parseInstruction('Ability: 0 w/value 0 to 0');
     expect(none?.kind).toBe('ability');
     expect(none?.abilityId).toBeUndefined();
+    expect(none?.abilities).toBeUndefined();
   });
 
   it('reads both spells a cast exit fires, and neither of the zeroes', () => {

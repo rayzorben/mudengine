@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   canRestore,
   dropAllPlan,
+  kitFor,
+  offRoundPlan,
+  overlayFor,
+  swapPlan,
   equip,
   equipAllPlan,
   equipBlock,
@@ -13,9 +17,12 @@ import {
   unequip,
   UNKNOWN_WEARER,
   type EquipRestrictions,
+  type GearSet,
+  type GearSituation,
   type Loadout,
   type Wearer
 } from '../gear';
+import { OFF_HAND, WEAPON_HAND } from '../items';
 import type { CarriedItem } from '../character';
 import { wireItem } from '../entities';
 
@@ -339,5 +346,142 @@ describe('who the realm lets wear a thing', () => {
     // An item the realm does not carry is not the same as one it says is not
     // wearable, and the card keeps the button rather than guessing.
     expect(isWearable(undefined)).toBe(false);
+  });
+});
+
+/*
+ * The equipment sets (todo 00). Shaped on the report's own example: plate
+ * boots while fighting, brown leather boots while walking, and a magic weapon
+ * for one boss the lap otherwise fights with throwing hammers.
+ */
+describe('choosing a kit for the situation', () => {
+  const sets: GearSet[] = [
+    { name: 'Default', when: 'always', mob: '', wear: ['plate boots', 'lifestealer'] },
+    { name: 'Moving', when: 'moving', mob: '', wear: ['brown leather boots'] },
+    { name: 'Fighting', when: 'fighting', mob: '', wear: ['plate boots'] },
+    { name: 'Boss', when: 'fighting', mob: 'nasty sandworm', wear: ['nexus spear'] }
+  ];
+  const SLOTS: Record<string, string> = {
+    'plate boots': 'Feet',
+    'brown leather boots': 'Feet',
+    lifestealer: WEAPON_HAND,
+    'nexus spear': WEAPON_HAND,
+    'golden chalice': OFF_HAND
+  };
+  const slotOf = (name: string): string | null => SLOTS[name] ?? null;
+  const still: GearSituation = { moving: false, fighting: false, target: null };
+
+  it('takes the most specific set, and the first of two that match equally', () => {
+    expect(overlayFor(sets, still)).toBeNull();
+    expect(overlayFor(sets, { ...still, moving: true })?.name).toBe('Moving');
+    expect(overlayFor(sets, { ...still, fighting: true })?.name).toBe('Fighting');
+    // The monster narrows it; another monster does not reach the boss row.
+    const boss = { moving: false, fighting: true, target: 'nasty sandworm' };
+    expect(overlayFor(sets, boss)?.name).toBe('Boss');
+    expect(overlayFor(sets, { ...boss, target: 'big sandworm' })?.name).toBe('Fighting');
+    // A fight outranks a walk: the fight decides what the next round costs.
+    expect(overlayFor(sets, { moving: true, fighting: true, target: null })?.name).toBe('Fighting');
+  });
+
+  it('lays the set over the base rather than replacing it', () => {
+    // Walking: the boots are the moving set's and the weapon is still the base's.
+    expect([...kitFor(sets, { ...still, moving: true }, slotOf)]).toEqual([
+      ['feet', 'brown leather boots'],
+      ['weapon hand', 'lifestealer']
+    ]);
+    // And with nothing applying, the base alone.
+    expect([...kitFor(sets, still, slotOf)]).toEqual([
+      ['feet', 'plate boots'],
+      ['weapon hand', 'lifestealer']
+    ]);
+  });
+
+  /*
+   * The ordering rule, which is the whole reason this is a plan rather than a
+   * list of `wear`s: `UseCommand`'s own refusal is about the hand, and the
+   * server will not put a two-hander on over a held shield.
+   */
+  it('takes the off-hand off before a two-handed weapon goes on', () => {
+    const hands = (name: string): 1 | 2 | null => (name === 'nexus spear' ? 2 : 1);
+    const pack = [
+      worn('golden chalice', OFF_HAND),
+      worn('lifestealer', WEAPON_HAND),
+      carried({ name: 'nexus spear' })
+    ];
+    const kit = kitFor(sets, { moving: false, fighting: true, target: 'nasty sandworm' }, slotOf);
+    expect(swapPlan(kit, pack, 10, hands).commands).toEqual([
+      'remove golden chalice',
+      'wear nexus spear'
+    ]);
+  });
+
+  it('sends the weapon hand before the rest, so coming back frees the hand first', () => {
+    const hands = (): 1 | 2 | null => 1;
+    const pack = [carried({ name: 'lifestealer' }), carried({ name: 'plate boots' })];
+    expect(swapPlan(kitFor(sets, still, slotOf), pack, 10, hands).commands).toEqual([
+      'wear lifestealer',
+      'wear plate boots'
+    ]);
+  });
+
+  it('reports what the pack does not hold rather than asking for it', () => {
+    const plan = swapPlan(kitFor(sets, still, slotOf), [], 10, () => 1);
+    expect(plan.commands).toEqual([]);
+    expect(plan.missing.sort()).toEqual(['lifestealer', 'plate boots']);
+  });
+
+  it('leaves alone what is already on', () => {
+    const pack = [worn('plate boots', 'Feet'), worn('lifestealer', WEAPON_HAND)];
+    expect(swapPlan(kitFor(sets, still, slotOf), pack, 10, () => 1).commands).toEqual([]);
+  });
+});
+
+/*
+ * The off-round invocation (todo 00, case 2). The server's two facts are what
+ * shape it: `use` will not take a weapon that is not in hand, and the target
+ * is split off the item name by `GetPossibleItemStacks` itself.
+ */
+describe('using an item between rounds', () => {
+  const hands = (name: string): 1 | 2 | null => (name === 'nexus spear' ? 2 : 1);
+
+  it('puts the weapon in hand, uses it, and puts the kit back', () => {
+    const pack = [
+      worn('golden chalice', OFF_HAND),
+      worn('lifestealer', WEAPON_HAND),
+      carried({ name: 'nexus spear' })
+    ];
+    expect(offRoundPlan('nexus spear', 'nasty sandworm', pack, hands)).toEqual([
+      'remove golden chalice',
+      'wear nexus spear',
+      'use nexus spear nasty sandworm',
+      'wear lifestealer',
+      'wear golden chalice'
+    ]);
+  });
+
+  /* One-handed: the off-hand never has to move, so it is three commands. */
+  it('leaves the off-hand alone for a one-handed weapon', () => {
+    const pack = [
+      worn('golden chalice', OFF_HAND),
+      worn('lifestealer', WEAPON_HAND),
+      carried({ name: 'throwing hammer' })
+    ];
+    expect(offRoundPlan('throwing hammer', 'big sandworm', pack, hands)).toEqual([
+      'wear throwing hammer',
+      'use throwing hammer big sandworm',
+      'wear lifestealer'
+    ]);
+  });
+
+  it('is one command when the item is already the weapon in hand', () => {
+    const pack = [worn('nexus spear', WEAPON_HAND)];
+    expect(offRoundPlan('nexus spear', 'big sandworm', pack, hands)).toEqual([
+      'use nexus spear big sandworm'
+    ]);
+  });
+
+  it('sends nothing for an item the pack does not hold, or with nothing to aim at', () => {
+    expect(offRoundPlan('nexus spear', 'big sandworm', [], hands)).toEqual([]);
+    expect(offRoundPlan('nexus spear', '', [worn('nexus spear', WEAPON_HAND)], hands)).toEqual([]);
   });
 });

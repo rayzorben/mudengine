@@ -17,7 +17,7 @@
 import type { CarriedItem } from './character';
 import type { ItemEntity } from './entities';
 import type { UiLookup } from './i18n';
-import { sameItem } from './items';
+import { OFF_HAND, sameItem, WEAPON_HAND } from './items';
 
 /**
  * The five things a gear button can ask for.
@@ -478,4 +478,231 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
     label: t('cards.inventory.equipTooltip', { item: item.name }),
     command: equip(item.name)
   };
+}
+
+/* ------------------------------------------------- the equipment manager */
+
+/**
+ * When a set applies. Ordered **least specific first**, because the array's
+ * order is the precedence and `GEAR_WHENS.indexOf` is what ranks two sets that
+ * both match.
+ *
+ * Three, because three is what the client can answer without guessing:
+ * `always` is the kit a character is in when nothing else is happening,
+ * `moving` is a walk or a lap under way, `fighting` is `fightIsRunning`. A
+ * fourth band for *resting* was left out — a rest is broken by the `wear` that
+ * would start it, so a set for it could never take effect.
+ */
+export const GEAR_WHENS = ['always', 'moving', 'fighting'] as const;
+
+export type GearWhen = (typeof GEAR_WHENS)[number];
+
+/**
+ * One kit, or part of one — `automation.gear.sets`.
+ *
+ * **Partial on purpose.** A set names only the slots it cares about, so
+ * *Moving* is one line about boots rather than a second copy of everything the
+ * character owns; what it does not name is left as the `always` set has it.
+ * That is also what makes the list editable: a kit restated in full in four
+ * places is four places to forget a ring.
+ */
+export interface GearSet {
+  /** What the player calls it. Shown, never sent. */
+  name: string;
+  /** When it applies. See `GEAR_WHENS`. */
+  when: GearWhen;
+  /**
+   * Only while fighting this monster, keyed as the wire spells it. Blank is
+   * *any* monster.
+   *
+   * The narrowing todo 00 asks for by name: a lap fought with throwing hammers
+   * and one boss that wants the magic weapon. Meaningless on `always` and
+   * `moving`, where it is ignored rather than refused — the form offers it
+   * only on a fighting row.
+   */
+  mob: string;
+  /** The items to have on, as the pack lists them. */
+  wear: string[];
+}
+
+/** What the client knows about the character's situation, for choosing a set. */
+export interface GearSituation {
+  /** A route or a lap is under way. */
+  moving: boolean;
+  /** Anything is swinging — `fightIsRunning`. */
+  fighting: boolean;
+  /** The monster being fought, or null. */
+  target: string | null;
+}
+
+/**
+ * Which set applies now, or null.
+ *
+ * **Most specific wins, and the tie is the list's own order**, so a player who
+ * writes two sets for the same situation gets the first one rather than an
+ * answer that depends on how the file was sorted. Specificity is: a fighting
+ * set naming this monster, then any fighting set, then a moving set. A
+ * fighting character that is also walking is *fighting* — the fight is the
+ * thing that decides what the next round costs.
+ */
+export function overlayFor(sets: readonly GearSet[], now: GearSituation): GearSet | null {
+  const matches = (set: GearSet): boolean => {
+    if (set.when === 'always') return false;
+    if (set.when === 'moving') return now.moving;
+    if (!now.fighting) return false;
+    const mob = set.mob.trim();
+    return mob.length === 0 || (now.target !== null && sameItem(now.target, mob));
+  };
+  const rank = (set: GearSet): number =>
+    set.when === 'fighting' ? (set.mob.trim().length > 0 ? 3 : 2) : 1;
+
+  let best: GearSet | null = null;
+  for (const set of sets) {
+    if (!matches(set)) continue;
+    if (best === null || rank(set) > rank(best)) best = set;
+  }
+  return best;
+}
+
+/** The base kit every overlay is laid over: the first `always` set, or none. */
+export function baseSet(sets: readonly GearSet[]): GearSet | null {
+  return sets.find((set) => set.when === 'always') ?? null;
+}
+
+/**
+ * The kit the character should be in: the base, overlaid by whichever set
+ * applies, as slot → item.
+ *
+ * `slotOf` is the realm's answer for a name (`WorldItem.slot`), because a set
+ * is written before anything is worn and the slot is what says which of the
+ * base's items this one *replaces*. An item the realm cannot place is carried
+ * through under its own name as its own key: it is still something the player
+ * asked to have on, and refusing to wear it because the client could not file
+ * it would be the client overruling them about their own pack.
+ */
+export function kitFor(
+  sets: readonly GearSet[],
+  now: GearSituation,
+  slotOf: (name: string) => string | null
+): Map<string, string> {
+  const kit = new Map<string, string>();
+  const lay = (set: GearSet | null): void => {
+    for (const name of set?.wear ?? []) {
+      const item = name.trim();
+      if (item.length === 0) continue;
+      kit.set((slotOf(item) ?? `item:${item}`).toLowerCase(), item);
+    }
+  };
+  lay(baseSet(sets));
+  lay(overlayFor(sets, now));
+  return kit;
+}
+
+/**
+ * What to send to get into a kit, in the order it has to be sent.
+ *
+ * Three rungs, and the middle one is the whole reason this is not a list of
+ * `wear`s:
+ *
+ * 1. **The off-hand comes off first**, where a two-handed weapon is going on
+ *    over something held. `Items.WeaponType` carries handedness as its own
+ *    axis (`src/shared/items.ts`), so this is the realm's answer and not a
+ *    guess from the name.
+ * 2. **Then the weapon hand**, so that coming back the other way — a
+ *    one-handed weapon replacing the two-hander — frees the off-hand before
+ *    the shield is asked for. One ordering serves both directions.
+ * 3. **Then everything else**, in the kit's own order.
+ *
+ * An item the pack does not hold is reported rather than asked for, as
+ * `restorePlan` reports it: the difference between *put it on* and *it is
+ * gone* is the thing worth knowing. An item already worn anywhere is left
+ * alone — `wear` at something already on earns a refusal out of the budget a
+ * fight is fought with.
+ */
+export function swapPlan(
+  kit: ReadonlyMap<string, string>,
+  items: readonly CarriedItem[],
+  max: number,
+  handsOf: (name: string) => 1 | 2 | null
+): GearPlan {
+  const missing: string[] = [];
+  const wanted: Array<{ slot: string; item: string }> = [];
+
+  for (const [slot, name] of kit) {
+    const held = items.filter((item) => sameItem(item.name, name));
+    if (held.length === 0) {
+      missing.push(name);
+      continue;
+    }
+    if (held.some((item) => item.equipped)) continue;
+    wanted.push({ slot, item: name });
+  }
+
+  const weapon = wanted.find((row) => row.slot === WEAPON_HAND.toLowerCase());
+  /*
+   * The off-hand item to take off first: only where a two-hander is going on,
+   * only where something is actually in that hand, and only where the kit is
+   * not asking for that very thing to stay — a kit naming both is a kit the
+   * server will refuse, and saying so is the form's job, not this one's.
+   */
+  const removals: string[] = [];
+  if (weapon !== undefined && handsOf(weapon.item) === 2) {
+    const held = items.find(
+      (item) => item.equipped && (item.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
+    );
+    if (held !== undefined && !kit.has(OFF_HAND.toLowerCase())) removals.push(unequip(held.name));
+  }
+
+  const rest = wanted.filter((row) => row !== weapon);
+  const commands = [
+    ...removals,
+    ...(weapon === undefined ? [] : [equip(weapon.item)]),
+    ...rest.map((row) => equip(row.item))
+  ];
+  return capped(commands, missing, max);
+}
+
+/**
+ * The off-round invocation, whole: `use <item> <target>` with the item in hand
+ * and the kit put back afterwards (todo 00, case 2).
+ *
+ * **The item has to be equipped and that is the server's rule, not a
+ * courtesy**: `UseCommand` answers a weapon that is not worn with *You do not
+ * have <item> equipped.* (`UseCommand.cs`), and it is what makes this a dance
+ * rather than one command. The target is split off the item name by the server
+ * itself — `GetPossibleItemStacks` grows the item name word by word and hands
+ * back the remainder (`ItemContainer.cs:277`) — so `use nexus spear big
+ * sandworm` reaches the right pair with nothing for this client to escape.
+ *
+ * Returns the commands in order and nothing else: the caller decides whether
+ * the round can afford them, because only the caller knows what else is
+ * queued.
+ */
+export function offRoundPlan(
+  item: string,
+  target: string,
+  items: readonly CarriedItem[],
+  handsOf: (name: string) => 1 | 2 | null
+): string[] {
+  const spear = items.find((each) => sameItem(each.name, item));
+  if (spear === undefined || target.trim().length === 0) return [];
+
+  const inHand = items.find(
+    (each) => each.equipped && (each.slot ?? '').toLowerCase() === WEAPON_HAND.toLowerCase()
+  );
+  const offHand = items.find(
+    (each) => each.equipped && (each.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
+  );
+  // Already the weapon in hand: the whole dance is one command.
+  if (inHand !== undefined && sameItem(inHand.name, item)) return [`use ${spear.name} ${target}`];
+
+  const twoHanded = handsOf(spear.name) === 2;
+  return [
+    ...(twoHanded && offHand !== undefined ? [unequip(offHand.name)] : []),
+    equip(spear.name),
+    `use ${spear.name} ${target}`,
+    // Back the way it was, weapon first so the hand is free for the off-hand.
+    ...(inHand === undefined ? [] : [equip(inHand.name)]),
+    ...(twoHanded && offHand !== undefined ? [equip(offHand.name)] : [])
+  ];
 }

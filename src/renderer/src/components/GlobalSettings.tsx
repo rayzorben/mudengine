@@ -3,7 +3,8 @@ import Advanced from './Advanced';
 import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
-import MobPriorityList from './MobPriorityList';
+import MobRuleList from './MobRuleList';
+import GearSetList from './GearSetList';
 import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
@@ -121,7 +122,9 @@ const SECTIONS: Record<GlobalScope, readonly Section[]> = {
     'spells',
     'party',
     'movement',
+    'gear',
     'train',
+    'quests',
     'remotes',
     'alerts',
     'rewrites'
@@ -137,7 +140,9 @@ type Section =
   | 'spells'
   | 'party'
   | 'movement'
+  | 'gear'
   | 'train'
+  | 'quests'
   | 'remotes'
   | 'alerts'
   | 'rewrites';
@@ -157,7 +162,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
   combat: [
     { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
-    { id: 'combat-priority', label: t('settings.combat.priorityLegend') }
+    { id: 'combat-mob-rules', label: t('settings.combat.mobRuleLegend') }
   ],
   health: [
     { id: 'health-recover', label: t('settings.health.recoverLegend') },
@@ -173,6 +178,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   ],
   party: [
     { id: 'party-follow', label: t('settings.party.legend') },
+    { id: 'party-healing', label: t('settings.party.healLegend') },
     { id: 'party-remotes', label: t('settings.party.remotesLegend') }
   ],
   movement: [
@@ -184,6 +190,11 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
   train: [{ id: 'train', label: t('settings.train.legend') }],
+  gear: [
+    { id: 'gear', label: t('settings.gear.legend') },
+    { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
+  ],
+  quests: [{ id: 'quests', label: t('settings.quests.legend') }],
   remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
   alerts: [
     { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
@@ -201,7 +212,9 @@ const SECTION_LABEL: Record<Section, string> = {
   spells: t('settings.tabs.spells'),
   party: t('settings.tabs.party'),
   movement: t('settings.tabs.movement'),
+  gear: t('settings.tabs.gear'),
   train: t('settings.tabs.train'),
+  quests: t('settings.tabs.quests'),
   remotes: t('settings.tabs.remotes'),
   alerts: t('settings.tabs.alerts'),
   rewrites: t('settings.tabs.rewrites')
@@ -828,18 +841,6 @@ export default function GlobalSettings({
                 value={String(draft.automation.combat.maxMobs)}
               />
               <NumberField
-                hint={t('settings.combat.maxFightCostHint')}
-                label={t('settings.combat.maxFightCostLabel')}
-                name="global-max-fight-cost"
-                onChange={(value) =>
-                  automation({
-                    combat: { ...draft.automation.combat, maxFightCost: fraction(value) }
-                  })
-                }
-                bar={barOfHealth(draft.automation.combat.maxFightCost)}
-                value={percent(draft.automation.combat.maxFightCost)}
-              />
-              <NumberField
                 hint={t('settings.combat.minMobsHint')}
                 label={t('settings.combat.minMobsLabel')}
                 name="global-min-mobs"
@@ -855,17 +856,6 @@ export default function GlobalSettings({
               />
             </div>
 
-            <TextField
-              hint={t('settings.combat.avoidHint')}
-              label={t('settings.combat.avoidLabel')}
-              name="global-avoid"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, avoid: splitNames(value) } })
-              }
-              placeholder={t('settings.combat.avoidPlaceholder')}
-              value={joinNames(draft.automation.combat.avoid)}
-              wide
-            />
             <fieldset className="settings-menus" data-fieldset="combat-monsters">
               <legend>{t('settings.combat.monstersLegend')}</legend>
               <NumberField
@@ -897,21 +887,21 @@ export default function GlobalSettings({
                 value={String(draft.automation.combat.maxMonsterExperience)}
               />
             </fieldset>
-            <fieldset className="settings-menus" data-fieldset="combat-priority">
-              <legend>{t('settings.combat.priorityLegend')}</legend>
-              <p className="settings-note">{t('settings.combat.priorityNote')}</p>
+            <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
+              <legend>{t('settings.combat.mobRuleLegend')}</legend>
+              <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
               {/* No suggestions here, and deliberately: this page belongs to no
                 character and therefore to no realm, and the monsters one realm
                 names mean nothing on another. The field is typable, which is
                 what it is for a character on a realm the client holds no data
                 for either. */}
-              <MobPriorityList
+              <MobRuleList
                 known={[]}
-                namePrefix="global-mob-priority"
+                namePrefix="global-mob-rule"
                 onChange={(rows) =>
-                  automation({ combat: { ...draft.automation.combat, mobPriority: rows } })
+                  automation({ combat: { ...draft.automation.combat, mobRules: rows } })
                 }
-                rows={draft.automation.combat.mobPriority}
+                rows={draft.automation.combat.mobRules}
               />
             </fieldset>
             <Advanced label={t('settings.global.combat.advancedPacing')}>
@@ -1065,6 +1055,18 @@ export default function GlobalSettings({
                 }
                 potions={draft.automation.health.potions}
                 serving={{}}
+              />
+              {/* The realm's own half of the same list. No rows drawn beside
+                  it here: which wards exist is a property of a realm, and this
+                  page is every realm. */}
+              <CheckField
+                checked={draft.automation.health.useWards}
+                hint={t('settings.health.useWardsHint')}
+                label={t('settings.health.useWards')}
+                name="global-use-wards"
+                onChange={(value) =>
+                  automation({ health: { ...draft.automation.health, useWards: value } })
+                }
               />
             </fieldset>
 
@@ -1502,6 +1504,24 @@ export default function GlobalSettings({
                   automation({ party: { ...draft.automation.party, restWithLeader: value } })
                 }
               />
+            </fieldset>
+            <fieldset className="settings-menus" data-fieldset="party-healing">
+              <legend>{t('settings.party.healLegend')}</legend>
+              <p className="settings-note">{t('settings.party.healNote')}</p>
+              <div className="settings-inline">
+                <NumberField
+                  hint={t('settings.party.askHealHint')}
+                  label={t('settings.party.askHealLabel')}
+                  name="global-party-ask-heal"
+                  onChange={(value) =>
+                    automation({
+                      party: { ...draft.automation.party, askForHealBelow: fraction(value) }
+                    })
+                  }
+                  bar={barOfHealth(draft.automation.party.askForHealBelow)}
+                  value={percent(draft.automation.party.askForHealBelow)}
+                />
+              </div>
             </fieldset>
             {/*
             The party's `@` commands, on the Party page rather than beside the
@@ -2026,6 +2046,93 @@ export default function GlobalSettings({
                 value={draft.automation.train.wanted.charm}
               />
             </div>
+          </fieldset>
+        )}
+
+        {shown === 'gear' && (
+          <>
+            {/*
+              The kit, and when to be in it (todo 00). No monster suggestions
+              here: which monsters exist is a property of a realm, and this
+              page is every realm — the field stays typable, as the potion
+              rules' does.
+            */}
+            <fieldset className="settings-menus" data-fieldset="gear">
+              <legend>{t('settings.gear.legend')}</legend>
+              <p className="settings-note">{t('settings.gear.note')}</p>
+              <CheckField
+                checked={draft.automation.gear.enabled}
+                hint={t('settings.gear.enabledHint')}
+                label={t('settings.gear.enabled')}
+                name="global-gear-enabled"
+                onChange={(value) =>
+                  automation({ gear: { ...draft.automation.gear, enabled: value } })
+                }
+              />
+              <GearSetList
+                mobs={[]}
+                namePrefix="global-gear-set"
+                onChange={(sets) => automation({ gear: { ...draft.automation.gear, sets } })}
+                sets={draft.automation.gear.sets}
+              />
+            </fieldset>
+
+            <fieldset className="settings-menus" data-fieldset="gear-offround">
+              <legend>{t('settings.gear.offRoundLegend')}</legend>
+              <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
+              <div className="settings-inline">
+                <TextField
+                  hint={t('settings.gear.offRoundItemHint')}
+                  label={t('settings.gear.offRoundItem')}
+                  name="global-gear-offround-item"
+                  onChange={(value) =>
+                    automation({
+                      gear: {
+                        ...draft.automation.gear,
+                        offRound: { ...draft.automation.gear.offRound, item: value }
+                      }
+                    })
+                  }
+                  value={draft.automation.gear.offRound.item}
+                />
+                <NumberField
+                  hint={t('settings.gear.offRoundEveryHint')}
+                  label={t('settings.gear.offRoundEvery')}
+                  name="global-gear-offround-every"
+                  onChange={(value) =>
+                    automation({
+                      gear: {
+                        ...draft.automation.gear,
+                        offRound: {
+                          ...draft.automation.gear.offRound,
+                          everyRounds: Number.parseInt(value, 10) || 0
+                        }
+                      }
+                    })
+                  }
+                  value={String(draft.automation.gear.offRound.everyRounds)}
+                />
+              </div>
+            </fieldset>
+          </>
+        )}
+
+        {shown === 'quests' && (
+          <fieldset className="settings-menus" data-fieldset="quests">
+            <legend>{t('settings.quests.legend')}</legend>
+            {/*
+              In the open, like opening fights unasked: a run has the character
+              for as long as a chain takes, and the sentence that says so is
+              not a tooltip.
+            */}
+            <p className="settings-warn">{t('settings.quests.warning')}</p>
+            <CheckField
+              checked={draft.automation.quests.enabled}
+              hint={t('settings.quests.enabledHint')}
+              label={t('settings.quests.enabled')}
+              name="global-quests-enabled"
+              onChange={(value) => automation({ quests: { enabled: value } })}
+            />
           </fieldset>
         )}
 

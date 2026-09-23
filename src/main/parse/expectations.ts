@@ -250,6 +250,25 @@ export class Expectations {
    * queue does not follow.
    */
   private locateSentAt: number | null = null;
+  /**
+   * When the server last answered a claim. The server runs one command at a
+   * time, in order, so the claim behind reaches it only then: its clock is
+   * the later of its send and this. Four steps typed in a second are answered
+   * a movement round apart, and timed from the send the third was probed as
+   * unanswered while it waited its turn. A write-off is not an answer.
+   */
+  private answeredAt = 0;
+  /**
+   * The player's half-typed line, until it is written off. `TGSSocket.Send`
+   * backlogs every byte while `CurrentCommand` is non-empty and flushes it at
+   * the commit, so no claim can be answered while one is open: nothing ages,
+   * and every clock starts again at `typedUntil`. The write-off is the
+   * queue's (`tuning.queue.abandonedLineMs` from the last keystroke), because
+   * the mirror of the server's line has been wrong before.
+   */
+  private typing: { until: number } | null = null;
+  /** When the last half-typed line was committed, erased or written off. */
+  private typedUntil = 0;
   /** Whether the player asked to leave the realm and nothing has cancelled it. */
   private leaving = false;
   /** Where the last `sys go` said it was going, until a room answers it. */
@@ -661,7 +680,11 @@ export class Expectations {
     // being slow, not the step being lost — see `staleProbe`.
     const lifeOf = (claim: Claim): number =>
       claim.probedAt === undefined ? staleMoveMs : Math.max(staleMoveMs, staleMoveMaxMs);
-    while (this.pending[0] !== undefined && now - this.pending[0].at >= lifeOf(this.pending[0])) {
+    if (this.typingHolds(now)) return dropped;
+    while (
+      this.pending[0] !== undefined &&
+      now - this.reachedAt(this.pending[0]) >= lifeOf(this.pending[0])
+    ) {
       const claim = this.pending[0];
       dropped.push({ command: claim.command ?? '', moved: claim.kind === 'move' });
       this.spendPromise(claim);
@@ -682,9 +705,40 @@ export class Expectations {
   staleProbe(now: number): string | null {
     const head = this.pending[0];
     if (head === undefined || head.probedAt !== undefined) return null;
-    if (now - head.at < tuning().parse.staleProbeMs) return null;
+    if (this.typingHolds(now)) return null;
+    if (now - this.reachedAt(head) < tuning().parse.staleProbeMs) return null;
     head.probedAt = now;
     return head.command ?? '';
+  }
+
+  /**
+   * Whether the player has a half-typed line on the wire: `true` on every
+   * keystroke that leaves one, `false` when it is committed or erased. Fed
+   * from the one place the queue's typing hold is fed. See `typing`.
+   */
+  noteTyping(partial: boolean): void {
+    const now = Date.now();
+    if (partial) {
+      this.typing = { until: now + tuning().queue.abandonedLineMs };
+      return;
+    }
+    if (this.typing === null) return;
+    this.typedUntil = Math.min(now, this.typing.until);
+    this.typing = null;
+  }
+
+  /** Whether an open line holds every claim's clock at `now`, writing off an abandoned one. */
+  private typingHolds(now: number): boolean {
+    if (this.typing === null) return false;
+    if (now < this.typing.until) return true;
+    this.typedUntil = this.typing.until;
+    this.typing = null;
+    return false;
+  }
+
+  /** When the server reached the head claim. See `answeredAt` and `typing`. */
+  private reachedAt(head: Claim): number {
+    return Math.max(head.at, this.answeredAt, this.typedUntil);
   }
 
   /**
@@ -704,6 +758,7 @@ export class Expectations {
       this.spendPromise(claim);
       this.pending.shift();
     }
+    this.answeredAt = Date.now();
     return dropped;
   }
 
@@ -755,7 +810,9 @@ export class Expectations {
 
   /** The command a room block, or a refused direction, has just answered. */
   shift(): Expectation | null {
-    return this.pending.shift() ?? null;
+    const answered = this.pending.shift() ?? null;
+    if (answered !== null) this.answeredAt = Date.now();
+    return answered;
   }
 
   /**
@@ -782,6 +839,7 @@ export class Expectations {
     if (this.pending[ahead] === undefined) return null;
     this.pending.splice(0, ahead);
     const answered = this.pending.shift() ?? null;
+    this.answeredAt = Date.now();
     this.spendPromise(answered ?? undefined);
     this.dropLandingHalf(answered);
     return answered;
@@ -813,6 +871,7 @@ export class Expectations {
     const held = this.pending[ahead]!;
     this.spendPromise(held);
     this.pending.splice(0, ahead + 1);
+    this.answeredAt = Date.now();
     this.dropLandingHalf(held);
     return true;
   }
@@ -844,6 +903,7 @@ export class Expectations {
     while (this.pending[ahead]?.kind === 'reread') ahead += 1;
     if (this.pending[ahead]?.kind !== 'peek') return false;
     this.pending.splice(0, ahead + 1);
+    this.answeredAt = Date.now();
     return true;
   }
 
@@ -891,6 +951,7 @@ export class Expectations {
     if (this.pending[ahead]?.command !== text) return false;
     this.pending.splice(0, ahead);
     const head = this.pending.shift();
+    this.answeredAt = Date.now();
     // A refused teleport command must disarm the coordinates it promised, or
     // the *next* named room would be resolved to somewhere nobody went — and
     // a refused cast exit takes the landing half of its pair with it.
@@ -1004,5 +1065,6 @@ export class Expectations {
     this.hintedTeleport = null;
     this.hintedCast = null;
     this.aimedAt = null;
+    this.typing = null;
   }
 }

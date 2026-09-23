@@ -561,6 +561,13 @@ const TUNING_DEFAULTS = {
     healExpiresMs: 3000,
     /** Long enough for the next status line to say whether the heal worked. */
     healCooldownMs: 6000,
+    /**
+     * How long a member's `@heal` stands waiting for a cast. Past one
+     * `healCooldownMs`, so a request arriving just after a heal to that member
+     * still gets its own once the first has been read; after that the asker's
+     * client asks again if it is still low.
+     */
+    healRequestMs: 10_000,
     /** How long a cure proposal stays worth sending. */
     cureExpiresMs: 3000,
     /** How often the blessing maintainer looks at what has lapsed. */
@@ -685,8 +692,18 @@ const TUNING_DEFAULTS = {
     backstabMultiplier: 4,
     /** How many rooms a suggested loop visits at most, fillers included. */
     maxLoopRooms: 8,
-    /** How many suggestions are handed back. */
+    /**
+     * How many of the best suggestions are measured — the ring's legs, its
+     * size, its fillers. Every other one is still listed, on the survey's
+     * first estimate: measuring all of them costs the thread a second.
+     */
     maxSpots: 24,
+    /**
+     * How many of this character's own opened fights its measured damage a
+     * round needs before the survey prices a kill with it, where the realm's
+     * arithmetic cannot (`measuredPerRound`, off the GreaterMUD lineage).
+     */
+    measuredFightsMin: 30,
     /** How far the loop's own low-experience stop looks for a better lair, in steps. */
     betterSpotRadius: 80,
     /**
@@ -857,6 +874,48 @@ const TUNING_DEFAULTS = {
      */
     dearerSteps: 20
   },
+  /** Carrying a quest's plan through the arbiter — `QuestRunner`. */
+  quests: {
+    /**
+     * How long an act has to move the counter, or a handover to reach the
+     * pack, before the silence is read as a refusal. The server answers an
+     * ask with the next prompt and `abil` lists everything in one burst, so
+     * this covers only a realm under load; a step with an `adddelay` waits
+     * that delay on top.
+     */
+    replyMs: 12_000,
+    /**
+     * How many times a step that rolls (`testskill`) is asked again after
+     * the counter stayed put. The red book passes one try in seven at
+     * Intellect 45; twelve tries fail one time in six, and every try is one
+     * ask and one listing.
+     */
+    rollTries: 12,
+    /**
+     * How long to stand at a step's room waiting for its asker or its
+     * monster to be there before the run gives up on it. A lair's clock is
+     * minutes; a boss summoned by a step before this one is seconds.
+     */
+    waitForMs: 600_000,
+    /** Legs planned again after a stopped walk, before the run gives up. A fight spends none. */
+    maxLegs: 6,
+    /**
+     * How long the run stands still after a setback before trying the same
+     * thing again. Long enough for what caused one to pass — a move nobody
+     * answered, an escape, a monster between the character and the door —
+     * and short enough that a night's run is not spent waiting.
+     */
+    retryMs: 20_000,
+    /**
+     * Setbacks in a row, with nothing achieved between them, before the run
+     * gives up for good. Anything going right — a leg started, an item in the
+     * pack, a step confirmed — puts the count back to zero, so this counts a
+     * run that is stuck rather than a run having a hard night.
+     */
+    setbacks: 20,
+    /** A queued ask, phrase or `abil` still waiting after this is for a moment that has passed. */
+    expiresMs: 8000
+  },
   /** Shedding named junk — `AutoDrop`. */
   drop: {
     expiresMs: 5000
@@ -927,6 +986,43 @@ const TUNING_DEFAULTS = {
     holdMs: 1_500,
     /** How many holds run back to back before it walks on regardless. */
     maxHolds: 3,
+    /**
+     * How long a walk stands in the room it has just arrived in before
+     * stepping out of it again, where the room it left held a monster.
+     *
+     * The server works the follow out **inside** the move — `Exits.cs:165`
+     * collects every mob in the room whose `CurrentTarget` is this character,
+     * rolls each against `MobType.FollowPercent` and moves the winners with
+     * the player — so the arrival sentences are composed *after* the room
+     * block, and `Also here:` is absent from a room block that is about to
+     * hold five monsters. Measured on
+     * `2026-09-23_09-33-51_festus.mudcap.jsonl` t=1678757: one socket read
+     * carried the room block, the prompt and all five
+     * `saracen ... moves into the room from the west.` lines, and the walk
+     * sent `ne` six milliseconds in.
+     *
+     * **A margin over that window, and only that window.** Across every
+     * session log on this machine, 28 monsters arrived from the direction the
+     * character had just come, naming something the departure room's own
+     * listing held. 22 are that synchronous follow: none later than 39ms, and
+     * four of them a socket read behind the room block rather than in it, so
+     * the read boundary alone is not the bound. One straggler at 330ms. This
+     * covers both with room to spare.
+     *
+     * **It does not cover the chase, and nothing could.** The other five
+     * arrived 959–1,670ms on: `Mob.CheckFollow` tracks through
+     * `Room.RecentMovers` on the monster's own clock and forgets the target
+     * only after thirty seconds, so a chaser can arrive at any tick. One that
+     * arrives while the character is standing there is the ordinary arrival's
+     * to answer; one that catches up after the walk has moved on is a
+     * different problem, and a longer settle would buy a slower walk rather
+     * than a solution.
+     *
+     * **Paid only where something could follow.** A room the character left
+     * empty settles for nothing, so an ordinary corridor walks at the speed
+     * it always did.
+     */
+    followSettleMs: 350,
     /**
      * How far the character may have wandered from what it was walking before
      * pressing play asks about it first.
@@ -1313,7 +1409,14 @@ const TUNING_DEFAULTS = {
      * command answer is well under ten — with the rest as margin for a client
      * whose player is mid-fight. Revisit with a capture.
      */
-    replyMs: 30_000
+    replyMs: 30_000,
+    /**
+     * How often a character still under `party.askForHealBelow` says `@heal`
+     * again. MegaMUD's own party clock (`ParPeriod=15` in its sample.ini) is
+     * how often it re-reads the listing in a fight; a healer that could not
+     * answer the first request hears the second about as often.
+     */
+    healAskAgainMs: 15_000
   },
   /**
    * How many commands one press or one `@` may spend.
@@ -1693,6 +1796,32 @@ const TUNING_DEFAULTS = {
      */
     alternativeMinSteps: 10,
     /**
+     * What a step along the plan costs while the router is asked for a way
+     * that differs from it (`Route.another`): the plan's own edges are priced
+     * this many times over and the search asked again, so it leaves the plan
+     * wherever a detour costs less than this much of what it replaces. 1
+     * finds the plan again and offers nothing.
+     */
+    anotherWayPenalty: 3,
+    /**
+     * How much longer than the plan a different way may be and still be
+     * offered, as a share of the plan's steps: 0.5 is half again as long. A
+     * way that differs is expected to be dearer — that is why it was not the
+     * plan — and past this it is a tour rather than a choice.
+     */
+    anotherWayLonger: 0.5,
+    /**
+     * How many of a consumable a quest's plan buys against a room spell on
+     * the way, where the realm says using one stops the spell.
+     *
+     * A waterskin is three uses and its spell lasts 600 ticks, the desert
+     * crossing is 64 rooms each way, and the plan cannot know how many times
+     * the walk will stop: two is one spare. A thing that is not spent
+     * (`WorldItem.uses` absent or unbounded) is fetched once whatever this
+     * says.
+     */
+    hazardSupplyCount: 2,
+    /**
      * How many rounds of a lair's blows one pass through the room is priced
      * at. In and out is one round from whatever attacks on sight; two prices
      * every lair as if the character stood a round longer in each.
@@ -1908,6 +2037,14 @@ const TUNING_DEFAULTS = {
      * there for the whole of the hold.
      */
     talkFollowResumeMs: 45_000,
+    /**
+     * How long the quest run banner stays over the console saying how the run
+     * ended, before it takes itself down. The ending is also in the stream
+     * and on the Quest card, so the banner is a notice and not the record —
+     * and while it stands it covers the console's top rows and takes their
+     * clicks. Long enough to read a reason; the × on it is for sooner.
+     */
+    questRunLingerMs: 30_000,
     /**
      * Lines the Talk composer remembers for its Up arrow.
      *

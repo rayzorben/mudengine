@@ -97,7 +97,7 @@ describe('guard fields', () => {
         // from — it is unknown until the server or the realm says.
         light: 'pitch black',
         shop: { id: 3, kind: 'shop', name: 'Village Store', items: [] },
-        lair: { max: 2, mobs: [] },
+        lair: { max: 2, respawnSeconds: 120, mobs: [] },
         occupants: [
           {
             name: 'giant rat',
@@ -203,7 +203,9 @@ describe('what the realm says about this room', () => {
     expect(
       readField('shopHere', inRoom({ shop: { id: 3, kind: 'shop', name: 'X', items: [] } }))
     ).toBe(true);
-    expect(readField('lairHere', inRoom({ lair: { max: 2, mobs: [] } }))).toBe(true);
+    expect(readField('lairHere', inRoom({ lair: { max: 2, respawnSeconds: 120, mobs: [] } }))).toBe(
+      true
+    );
   });
 });
 

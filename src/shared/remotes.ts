@@ -48,6 +48,7 @@
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
 import { EXP_RATE_SETTLE_MS, type Stealth } from './character';
+import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 export const REMOTE_NAMES = [
   'version',
@@ -119,6 +120,12 @@ export const REMOTE_NAMES = [
    * for the same command.
    */
   'bless-expired',
+  /*
+   * Also mudengine's own: the six attributes off the stat sheet, which no
+   * MegaMUD remote answers (its manual has none, 2026-09-19). A MegaMUD asked
+   * `@stats` answers `{command invalid or not allowed}`. See `formatStats`.
+   */
+  'stats',
   /*
    * The extended pair, and the reason there is such a thing as an extended
    * remote at all.
@@ -398,13 +405,15 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     support: 'unread',
     because: 'nothing here retraces a walk, and no capture shows the exchange'
   },
-  heal: {
-    name: 'heal',
-    support: 'unread',
-    because:
-      'auto-heal already casts on a member below a threshold, and a request carries no number — ' +
-      'what a request should do that the threshold does not is undecided'
-  },
+  /*
+   * Acted and never answered: the heal landing on the sender is the answer.
+   * captures/081 has the whole exchange — `Death telepaths: @heal`, then the
+   * MegaMUD at this end typing `mend death` — and MegaMUD's own manual says a
+   * request is healed "when they are low **or** when they have requested aid".
+   * So a request is one party heal whatever the listing's figure says, and
+   * `AutoHeal.request` decides it against this character's own settings.
+   */
+  heal: { name: 'heal', support: 'acted' },
   blind: {
     name: 'blind',
     support: 'unread',
@@ -428,6 +437,8 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   // Acted and not answered, like `@join`: the recast the sender sees land on
   // them is the acknowledgement both clients can already read.
   'bless-expired': { name: 'bless-expired', support: 'acted' },
+  // Answered in a frame this client chose, since there is no capture to copy.
+  stats: { name: 'stats', support: 'answered' },
   /*
    * `@where` with the ambiguity taken out, and `@comeback` made possible by
    * the same fact. See the note beside them in `REMOTE_NAMES`.
@@ -847,6 +858,39 @@ export function parseRoomAddress(argument: string | null): { map: number; room: 
   return { map: Number(match[1]), room: Number(match[2]) };
 }
 
+/** The realm's own `Races` column names, its `AGL` and `CHM` spelled as they read. */
+const STAT_KEYS: Readonly<Record<TrainedAttribute, string>> = {
+  strength: 'STR',
+  intellect: 'INT',
+  willpower: 'WIL',
+  agility: 'AGI',
+  health: 'HEA',
+  charm: 'CHA'
+};
+
+/**
+ * `{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}` — the answer to `@stats`.
+ *
+ * **Ours, not captured**: no MegaMUD remote states attributes, so the frame is
+ * `@health`'s (`{HP=600/600,MA=516/516}`) — braces, `KEY=value`, comma-joined
+ * — which keeps it apart from chat and from every other reply `parseRemoteReply`
+ * reads. The stat screen's field order.
+ *
+ * **All six or nothing**: one sheet states them together, so a gap is a sheet
+ * not yet read, and a partial answer would read as the whole of one.
+ */
+export function formatStats(
+  stats: Readonly<Record<TrainedAttribute, number | null>>
+): string | null {
+  const fields: string[] = [];
+  for (const attribute of TRAINED_ATTRIBUTES) {
+    const value = stats[attribute];
+    if (value === null) return null;
+    fields.push(`${STAT_KEYS[attribute]}=${value}`);
+  }
+  return `{${fields.join(',')}}`;
+}
+
 /** `{mudengine 0.5.0}`, in the shape of `{MegaMMUD 2.1}`. */
 export function formatVersion(client: string, version: string): string {
   return `{${client} ${version}}`;
@@ -879,9 +923,11 @@ export function formatVersion(client: string, version: string): string {
  * object and answers that objection rather than ignoring it:
  *
  * - It grants named commands and never all of them, and the shipped default is
- *   **two**: `@health` and `@bless-expired`, both facts about this character's
+ *   **three**: `@health` and `@bless-expired`, both facts about this character's
  *   own body that the party listing already states more coarsely, and neither
- *   of which does anything to it. Four more were on that list and came off on
+ *   of which does anything to it; and `@heal`, one party heal on request —
+ *   nothing while `spells.healParty` is off, and one cast per heal cooldown
+ *   above the mana floor while it is on. Four more were on that list and came off on
  *   review — `RemotesConfig.party` has each one's reason, and the short
  *   version is that `@where` and `@status` say *where to find me* and `@wait`
  *   stops the character's lap with no deadline.
@@ -891,7 +937,8 @@ export function formatVersion(client: string, version: string): string {
  *   realm following somebody is how a party is joined, and whether the server
  *   honours an uninvited `follow` has never been asked of the wire
  *   (`npm run probe:party`). That is why the default is two facts about this
- *   character's own body rather than a membership test anybody can pass.
+ *   character's own body and one heal bounded by the heal's own limits,
+ *   rather than a membership test anybody can pass.
  * - `deny` on a player still beats it, so *"the party, except Rend"* is
  *   expressible where it was not on a ground.
  *

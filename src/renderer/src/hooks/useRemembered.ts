@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from 'react';
 
 import type { SessionId } from '@shared/ipc';
 import { isCombatTally, type CombatTally } from '@shared/tally';
@@ -93,7 +100,10 @@ export function useRemembered(
     [key, setChosen]
   );
 
-  return { has: (value) => chosen.has(value), toggle };
+  // One object per set, not per render: a caller's memo keyed on this would
+  // otherwise recompute every render — the Talk card's feed, and with it the
+  // jump-to-latest offer, on every status line while `All` is off.
+  return useMemo(() => ({ has: (value: string) => chosen.has(value), toggle }), [chosen, toggle]);
 }
 
 /**

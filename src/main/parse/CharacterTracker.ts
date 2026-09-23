@@ -33,7 +33,7 @@ import {
   type Afflictions,
   type Affliction,
   type KnownSpell,
-  type RealmFamily,
+  type RealmFamily as RealmWord,
   type ActiveBuff,
   type Stealth,
   ownAlignment
@@ -70,6 +70,7 @@ import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world
 import { mobKey, nameAnswersTo, roomAddress, roomId } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { NO_LORE, type MobLore } from '../../shared/lore';
+import type { RealmFamily } from '../../shared/realm';
 import {
   effectKey,
   isUnnamedEffect,
@@ -101,6 +102,7 @@ import { observe, playerEntity, playerKey } from '../../shared/players';
 import { noteRemoteCall, noteRemoteClient, trackPlayers } from './players';
 import { trackTally } from './tally';
 import { NO_TALLY, settleClocks, type CombatTally } from '../../shared/tally';
+import { readStatAll, statedBasis } from '../../shared/stated';
 import {
   rosterFrom,
   withArrival,
@@ -432,6 +434,8 @@ export function looksLikeEffectSentence(text: string): boolean {
 
 export class CharacterTracker {
   private state: CharacterState = structuredClone(EMPTY_CHARACTER);
+  /** The server's lineage, as `SessionManager` read it. See `useFamily`. */
+  private serverFamily: RealmFamily | null = null;
 
   /** The room being assembled; promoted to `state.room` when exits arrive. */
   private readonly room = new RoomDraft();
@@ -995,6 +999,11 @@ export class CharacterTracker {
     return this.expect.staleProbe(now);
   }
 
+  /** The player has a half-typed line on the wire, or no longer has. See `Expectations.noteTyping`. */
+  noteTyping(partial: boolean): void {
+    this.expect.noteTyping(partial);
+  }
+
   /** The claims a `Location:` answer proved unanswerable, taken once. */
   takeSettledByLocate(): LapsedClaim[] {
     const settled = this.settledByLocate;
@@ -1436,7 +1445,8 @@ export class CharacterTracker {
     if (placed === undefined) return;
 
     room.shop = placed.shop === undefined ? null : (world.shop(placed.shop) ?? null);
-    room.lair = world.lair(placed);
+    // The family the wire stated, for the clock's own offset — see `lair`.
+    room.lair = world.lair(placed, this.serverFamily);
     if (placed.commands !== undefined) room.commands = placed.commands;
     room.spell = placed.spell === undefined ? null : world.spellById(placed.spell);
     if (placed.light !== undefined) room.lightLevel = placed.light;
@@ -1455,6 +1465,9 @@ export class CharacterTracker {
      */
     const at = roomAddress(room);
     room.occupants = room.occupants.map((who) => this.asRowHere(who, at));
+    // And the floor the same way: a room that places one of a shared name's
+    // rows has said which is lying here (format 42).
+    room.items = room.items.map((item) => world.itemPlacedHere(item, placed));
   }
 
   /**
@@ -3141,6 +3154,26 @@ export class CharacterTracker {
    */
   useRealm(players: RealmPlayers): void {
     this.players = players;
+    // A different realm may be a different lineage, and carrying the last
+    // one's answer forward would be worse than having none. See `useFamily`.
+    this.serverFamily = null;
+  }
+
+  /**
+   * Which lineage's arithmetic the *server* runs — `SessionManager`'s reading,
+   * handed over.
+   *
+   * Told rather than worked out here, because the reading is `familyToldBy`'s
+   * and it is a fold over three positive tells (`shared/realm.ts`), none of
+   * which is the `[MAJORMUD]:` menu prompt this file reads into
+   * `CharacterState.realm`. Those are two different facts and they have two
+   * different unions: `paradigm` is a *database*, and there is no Paradigm
+   * arithmetic. The one thing this decides is the lair's respawn clock, whose
+   * only reading outside the realm's own column is GreaterMUD's thirty-second
+   * offset (`WorldGraph.lair`); null is unknown and takes the nominal figure.
+   */
+  useFamily(family: RealmFamily | null): void {
+    this.serverFamily = family;
   }
 
   /**
@@ -3299,7 +3332,7 @@ export class CharacterTracker {
    * which are the character's *record* rather than its state and are keyed on
    * disk by character and realm anyway.
    */
-  private forgetCharacter(realm: RealmFamily | null): CharacterState {
+  private forgetCharacter(realm: RealmWord | null): CharacterState {
     const s = this.state;
     this.room.discard();
     // Nothing outstanding can be answered from the menu, and a room arriving
@@ -5716,6 +5749,16 @@ export class CharacterTracker {
         // client that asks again every launch.
         this.belongings.rememberAbilities(abilities);
         return { ...s, abilities };
+      }
+
+      /*
+       * `stat all` — the server's own arithmetic, kept with what it was
+       * computed from, so `statedNow` can drop each figure the moment its
+       * inputs move rather than on a clock.
+       */
+      case 'user-stat-all': {
+        const stated = readStatAll(rows ?? [], statedBasis(s));
+        return stated === null ? null : { ...s, stated };
       }
 
       /*

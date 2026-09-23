@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { asShippedWorld } from '@shared/worlds';
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
-import type { BankChoice, TrainerChoice } from '@shared/world';
+import type { GearSet } from '@shared/gear';
+import type { BankChoice, TrainerChoice, WardRule } from '@shared/world';
 import type { PotionRule, PotionWhen } from '@shared/config';
 import type { AlertRule } from '@shared/notifications';
 import AlertList from './AlertList';
-import MobPriorityList from './MobPriorityList';
+import MobRuleList from './MobRuleList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
-import PotionList from './PotionList';
+import GearSetList from './GearSetList';
+import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
 import FormField, {
   CheckField,
@@ -31,7 +33,7 @@ import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
+import { barOf, figureOf, fractionOf, percentOf } from '../lib/form';
 import {
   begin,
   canRedo,
@@ -68,7 +70,7 @@ import {
   type DropConfig,
   type EngagePolicy,
   type LootConfig,
-  type MobPriority,
+  type MobRule,
   type RetreatStrategy,
   type PvpAction,
   type RewritesUiConfig,
@@ -327,6 +329,12 @@ export interface SettingsScreenProps {
    */
   loadServing(session: SessionId): Promise<Partial<Record<PotionWhen, string[]>>>;
   /**
+   * The realm's own *use this item there* rules, drawn under the switch
+   * that obeys them. A property of the realm, so one call answers the
+   * section.
+   */
+  loadWards(session: SessionId): Promise<WardRule[]>;
+  /**
    * The monsters this character's realm names, for the priority list's
    * picker. A property of the realm, so one call answers every row.
    */
@@ -412,7 +420,9 @@ const SECTIONS = [
   'spells',
   'party',
   'movement',
+  'gear',
   'train',
+  'quests',
   'remotes',
   'talk',
   'alerts',
@@ -427,7 +437,9 @@ const SECTION_LABEL: Record<Section, string> = {
   spells: t('settings.tabs.spells'),
   party: t('settings.tabs.party'),
   movement: t('settings.tabs.movement'),
+  gear: t('settings.tabs.gear'),
   train: t('settings.tabs.train'),
+  quests: t('settings.tabs.quests'),
   remotes: t('settings.tabs.remotes'),
   talk: t('settings.tabs.talk'),
   alerts: t('settings.tabs.alerts'),
@@ -454,7 +466,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'combat-attack', label: t('settings.combat.attackLegend') },
     { id: 'combat-attacks', label: t('settings.combat.attacksLegend') },
     { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
-    { id: 'combat-priority', label: t('settings.combat.priorityLegend') }
+    { id: 'combat-mob-rules', label: t('settings.combat.mobRuleLegend') }
   ],
   health: [
     { id: 'health-recover', label: t('settings.health.recoverLegend') },
@@ -470,6 +482,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   ],
   party: [
     { id: 'party-follow', label: t('settings.party.legend') },
+    { id: 'party-healing', label: t('settings.party.healLegend') },
     { id: 'party-remotes', label: t('settings.party.remotesLegend') }
   ],
   movement: [
@@ -480,7 +493,12 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'movement-carry', label: t('settings.movement.carryLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
+  gear: [
+    { id: 'gear', label: t('settings.gear.legend') },
+    { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
+  ],
   train: [{ id: 'train', label: t('settings.train.legend') }],
+  quests: [{ id: 'quests', label: t('settings.quests.legend') }],
   remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
   talk: [
     { id: 'talk', label: t('settings.talk.legend') },
@@ -547,15 +565,15 @@ interface CharacterForm {
   combatPoliteAttacks: boolean;
   combatMaxMobs: string;
   /** Share of current health a fight may be expected to cost, as a percentage string. */
-  combatMaxFightCost: string;
   /** Following somebody — `automation.party`. */
   partyAssist: boolean;
   partyDefend: boolean;
   partyRest: boolean;
+  /** `party.askForHealBelow`, as a percentage string. */
+  partyAskHeal: string;
   combatRefresh: string;
-  combatAvoid: string;
-  /** The player's own ranking of the realm's monsters. See `MobPriorityList`. */
-  combatPriorities: MobPriority[];
+  /** The player's own rules for the realm's monsters. See `MobRuleList`. */
+  combatMobRules: MobRule[];
   combatMaxTargetHealth: string;
   combatMinMobs: string;
   combatMaxMonsterExp: string;
@@ -569,6 +587,8 @@ interface CharacterForm {
   /** And where a running loop holds still and walks on again. */
   /** The player's own *use this when that* rules. See `PotionList`. */
   potionRules: PotionRule[];
+  /** The realm's own half of those rules — `automation.health.useWards`. */
+  useWards: boolean;
   /** Spells — the one cast a rule cannot time. */
   spellAttack: string;
   spellAreaAttack: string;
@@ -632,6 +652,14 @@ interface CharacterForm {
   /** The chosen trainer's shop row, as text, or '' for the cheapest. */
   trainTrainer: string;
   trainWanted: Record<TrainedAttribute, string>;
+  /** Running a quest's plan — `automation.quests`. */
+  questsEnabled: boolean;
+  /** Which kit to be in, and when — `automation.gear`. */
+  gearEnabled: boolean;
+  gearSets: GearSet[];
+  gearOffRoundItem: string;
+  /** As text, so a half-typed figure is not read as 0. */
+  gearOffRoundEvery: string;
   /*
    * Held whole, like `rewrites`, rather than flattened into eighteen fields.
    * They are the *same four blocks the Global page edits*, and the controls
@@ -732,16 +760,15 @@ function formOf(entry: ProfileEditable): CharacterForm {
     combatRetaliate: entry.combat.retaliate,
     combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
-    combatMaxFightCost: String(Math.round(entry.combat.maxFightCost * 100)),
     partyAssist: entry.party.assistLeader,
     partyDefend: entry.party.defendParty,
     partyRest: entry.party.restWithLeader,
+    partyAskHeal: percent(entry.party.askForHealBelow),
     // A percentage on screen and a fraction in the file, like every other
     // threshold here: one representation on disk, the one people think in on
     // the form.
     combatRefresh: String(entry.combat.refreshRounds),
-    combatAvoid: joinNames(entry.combat.avoid),
-    combatPriorities: entry.combat.mobPriority.map((row) => ({ ...row })),
+    combatMobRules: entry.combat.mobRules.map((row) => ({ ...row })),
     combatMaxTargetHealth: String(entry.combat.maxTargetHealth),
     combatMinMobs: String(entry.combat.minMobs),
     combatMaxMonsterExp: String(entry.combat.maxMonsterExperience),
@@ -751,6 +778,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     meditateBelow: percent(entry.health.meditateBelow),
     restNextDoor: entry.health.restNextDoor,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
+    useWards: entry.health.useWards,
     spellAttack: entry.spells.attack,
     spellAutoChoose: entry.spells.autoChoose,
     spellAreaAttack: entry.spells.areaAttack,
@@ -794,6 +822,12 @@ function formOf(entry: ProfileEditable): CharacterForm {
     trainLevels: entry.train.levels,
     trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
     trainWanted: wantedStrings(entry.train.wanted),
+    questsEnabled: entry.quests.enabled,
+    gearEnabled: entry.gear.enabled,
+    gearSets: entry.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
+    gearOffRoundItem: entry.gear.offRound.item,
+    gearOffRoundEvery:
+      entry.gear.offRound.everyRounds > 0 ? String(entry.gear.offRound.everyRounds) : '',
     loot: structuredClone(entry.loot),
     drop: structuredClone(entry.drop),
     search: { ...entry.search },
@@ -910,10 +944,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
       retaliate: form.combatRetaliate,
       politeAttacks: form.combatPoliteAttacks,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
-      maxFightCost: (Number.parseInt(form.combatMaxFightCost, 10) || 0) / 100,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
-      avoid: splitNames(form.combatAvoid),
-      mobPriority: form.combatPriorities,
+      mobRules: form.combatMobRules,
       maxTargetHealth: Math.max(0, Number.parseInt(form.combatMaxTargetHealth, 10) || 0),
       minMobs: Math.max(0, Number.parseInt(form.combatMinMobs, 10) || 0),
       maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0)
@@ -928,7 +960,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
     party: {
       assistLeader: form.partyAssist,
       defendParty: form.partyDefend,
-      restWithLeader: form.partyRest
+      restWithLeader: form.partyRest,
+      askForHealBelow: fractionOf(form.partyAskHeal)
     },
     health: {
       restBelow: fractionOf(form.restBelow),
@@ -938,7 +971,8 @@ function draftOf(form: CharacterForm): ProfileDraft {
       restNextDoor: form.restNextDoor,
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
-      potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() }))
+      potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
+      useWards: form.useWards
     },
     spells: {
       attack: form.spellAttack.trim(),
@@ -1001,6 +1035,22 @@ function draftOf(form: CharacterForm): ProfileDraft {
       // 0 is *the cheapest that will take me*, which is what the picker's
       // first entry means and what an unset field says.
       trainer: Number.parseInt(form.trainTrainer, 10) || 0
+    },
+    quests: { enabled: form.questsEnabled },
+    gear: {
+      enabled: form.gearEnabled,
+      // Rows are kept as typed and dropped at the boundary, so a set being
+      // written does not vanish from under the caret on the next save.
+      sets: form.gearSets.map((set) => ({
+        ...set,
+        name: set.name.trim(),
+        mob: set.mob.trim(),
+        wear: set.wear.map((item) => item.trim()).filter((item) => item.length > 0)
+      })),
+      offRound: {
+        item: form.gearOffRoundItem.trim(),
+        everyRounds: Number.parseInt(form.gearOffRoundEvery, 10) || 0
+      }
     },
     loot: form.loot,
     drop: form.drop,
@@ -1105,7 +1155,7 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     database: '',
     // Nor for the monsters, and for exactly the same reason: a ranking names
     // this realm's own monsters, so there is nothing to carry from Global.
-    mobPriority: []
+    mobRules: []
   };
 }
 
@@ -1139,6 +1189,8 @@ function emptyForm(
   const movement = defaults?.automation.movement ?? DEFAULT_MOVEMENT;
   const hunting = defaults?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting;
   const train = defaults?.automation.train ?? DEFAULT_CONFIG.automation.train;
+  const quests = defaults?.automation.quests ?? DEFAULT_CONFIG.automation.quests;
+  const gear = defaults?.automation.gear ?? DEFAULT_CONFIG.automation.gear;
   const spells = defaults?.automation.spells ?? DEFAULT_SPELLS;
   const alerts = defaults?.ui.alerts ?? DEFAULT_ALERTS;
   const remotes = defaults?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes;
@@ -1215,13 +1267,12 @@ function emptyForm(
     combatRetaliate: combat.retaliate,
     combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
-    combatMaxFightCost: percent(combat.maxFightCost),
     partyAssist: party.assistLeader,
     partyDefend: party.defendParty,
     partyRest: party.restWithLeader,
+    partyAskHeal: percent(party.askForHealBelow),
     combatRefresh: String(combat.refreshRounds),
-    combatAvoid: joinNames(combat.avoid),
-    combatPriorities: combat.mobPriority.map((row) => ({ ...row })),
+    combatMobRules: combat.mobRules.map((row) => ({ ...row })),
     combatMaxTargetHealth: String(combat.maxTargetHealth),
     combatMinMobs: String(combat.minMobs),
     combatMaxMonsterExp: String(combat.maxMonsterExperience),
@@ -1231,6 +1282,7 @@ function emptyForm(
     meditateBelow: percent(health.meditateBelow),
     restNextDoor: health.restNextDoor,
     potionRules: health.potions.map((rule) => ({ ...rule })),
+    useWards: health.useWards,
     spellAttack: spells.attack,
     spellAutoChoose: spells.autoChoose,
     spellAreaAttack: spells.areaAttack,
@@ -1274,6 +1326,11 @@ function emptyForm(
     trainLevels: train.levels,
     trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
     trainWanted: wantedStrings(train.wanted),
+    questsEnabled: quests.enabled,
+    gearEnabled: gear.enabled,
+    gearSets: gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
+    gearOffRoundItem: gear.offRound.item,
+    gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',
     loot: structuredClone(loot),
     drop: structuredClone(drop),
     search: { ...search },
@@ -1369,6 +1426,7 @@ export default function SettingsScreen({
   loadTrainers,
   loadBanks,
   loadServing,
+  loadWards,
   loadMobNames
 }: SettingsScreenProps) {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
@@ -1912,6 +1970,12 @@ export default function SettingsScreen({
    */
   const [serving, setServing] = useState<Partial<Record<PotionWhen, string[]>>>({});
   /*
+   * And the realm's own rules of that same kind. Empty where no realm is
+   * loaded, which draws no rows — the switch still says what it does, and
+   * a realm this client holds no data for has nothing to list.
+   */
+  const [wards, setWards] = useState<WardRule[]>([]);
+  /*
    * The monsters this character's realm names, for the priority list's picker.
    * Empty where no realm is loaded, which draws no suggestions and leaves the
    * field typable — the same rule the potion picker follows.
@@ -1969,10 +2033,16 @@ export default function SettingsScreen({
       (found) => void (stale || setServing(found)),
       () => void (stale || setServing({}))
     );
+    void loadWards(selected).then(
+      (found) => void (stale || setWards(found)),
+      // A realm that could not be read is not a reason to refuse the save:
+      // no rows are drawn, exactly as no suggestions are.
+      () => void (stale || setWards([]))
+    );
     return () => {
       stale = true;
     };
-  }, [open, tab, section, selected, loadServing]);
+  }, [open, tab, section, selected, loadServing, loadWards]);
   useEffect(() => {
     if (!open || tab !== 'characters' || section !== 'combat') return;
     if (selected === null || selected === NEW_CHARACTER) return;
@@ -2414,7 +2484,7 @@ export default function SettingsScreen({
                         value={form.name}
                       />
 
-                      <FormField label={t('settings.profile.playsOnLabel')} name="plays-on" wide>
+                      <FormField label={t('settings.profile.realmLabel')} name="realm" wide>
                         {() => (
                           <div className="settings-file">
                             <select
@@ -2430,7 +2500,7 @@ export default function SettingsScreen({
                                   {server.name}
                                 </option>
                               ))}
-                              <option value="">{t('settings.profile.playsOnElsewhere')}</option>
+                              <option value="">{t('settings.profile.realmElsewhere')}</option>
                             </select>
                             {/*
                               The other way to a realm, beside the field that
@@ -2771,15 +2841,6 @@ export default function SettingsScreen({
                                 value={form.combatMaxMobs}
                               />
                               <NumberField
-                                hint={t('settings.combat.maxFightCostHint')}
-                                label={t('settings.combat.maxFightCostLabel')}
-                                name="max-fight-cost"
-                                bar={barOfHealth(form.combatMaxFightCost)}
-                                figure={ofHealth(form.combatMaxFightCost)}
-                                onChange={(value) => patch({ combatMaxFightCost: value })}
-                                value={form.combatMaxFightCost}
-                              />
-                              <NumberField
                                 hint={t('settings.combat.minMobsHint')}
                                 label={t('settings.combat.minMobsLabel')}
                                 name="min-mobs"
@@ -2833,16 +2894,6 @@ export default function SettingsScreen({
 
                           <fieldset className="settings-menus" data-fieldset="combat-monsters">
                             <legend>{t('settings.combat.monstersLegend')}</legend>
-                            <TextField
-                              hint={t('settings.combat.avoidHint')}
-                              label={t('settings.combat.avoidLabel')}
-                              name="avoid"
-                              onChange={(value) => patch({ combatAvoid: value })}
-                              placeholder={t('settings.combat.avoidPlaceholder')}
-                              spellCheck={false}
-                              value={form.combatAvoid}
-                              wide
-                            />
                             <NumberField
                               hint={t('settings.combat.maxTargetHealthHint')}
                               label={t('settings.combat.maxTargetHealthLabel')}
@@ -2859,18 +2910,18 @@ export default function SettingsScreen({
                             />
                           </fieldset>
 
-                          <fieldset className="settings-menus" data-fieldset="combat-priority">
-                            <legend>{t('settings.combat.priorityLegend')}</legend>
+                          <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
+                            <legend>{t('settings.combat.mobRuleLegend')}</legend>
                             {/* In the open rather than behind a hint: that the
                                 band skips the weighing is the one thing about
                                 this control somebody could otherwise have
                                 wrong for a whole evening. */}
-                            <p className="settings-note">{t('settings.combat.priorityNote')}</p>
-                            <MobPriorityList
+                            <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
+                            <MobRuleList
                               known={mobs}
-                              namePrefix="mob-priority"
-                              onChange={(rows) => patch({ combatPriorities: rows })}
-                              rows={form.combatPriorities}
+                              namePrefix="mob-rule"
+                              onChange={(rows) => patch({ combatMobRules: rows })}
+                              rows={form.combatMobRules}
                             />
                           </fieldset>
                         </>
@@ -3064,6 +3115,24 @@ export default function SettingsScreen({
                           potions={form.potionRules}
                           serving={serving}
                         />
+                        {/*
+                          And the realm's own rows of the same list (todo 02).
+                          A player writes *drink the antidote when poisoned*;
+                          the realm has already written *use the waterskin
+                          where the desert spell is cast*, and the switch is
+                          whether that half is obeyed. The rows are drawn
+                          because a switch over a rule nobody can read is the
+                          invisible setting this project refuses everywhere
+                          else — they say which realm's rules these are.
+                        */}
+                        <CheckField
+                          checked={form.useWards}
+                          hint={t('settings.health.useWardsHint')}
+                          label={t('settings.health.useWards')}
+                          name="use-wards"
+                          onChange={(value) => patch({ useWards: value })}
+                        />
+                        <WardRules rules={wards} />
                       </fieldset>
                     </>
                   )}
@@ -3293,6 +3362,21 @@ export default function SettingsScreen({
                           onChange={(value) => patch({ partyRest: value })}
                         />
                       </fieldset>
+                      <fieldset className="settings-menus" data-fieldset="party-healing">
+                        <legend>{t('settings.party.healLegend')}</legend>
+                        <p className="settings-note">{t('settings.party.healNote')}</p>
+                        <div className="settings-inline">
+                          <NumberField
+                            hint={t('settings.party.askHealHint')}
+                            label={t('settings.party.askHealLabel')}
+                            name="party-ask-heal"
+                            onChange={(value) => patch({ partyAskHeal: value })}
+                            bar={barOfHealth(form.partyAskHeal)}
+                            figure={ofHealth(form.partyAskHeal)}
+                            value={form.partyAskHeal}
+                          />
+                        </div>
+                      </fieldset>
                       {/*
                         The party's `@` commands, here rather than beside the
                         gang's on the Remotes page, because this is where
@@ -3455,6 +3539,70 @@ export default function SettingsScreen({
                           value={form.trainWanted.charm}
                         />
                       </div>
+                    </fieldset>
+                  )}
+
+                  {section === 'gear' && (
+                    <>
+                      {/*
+                        The kit, and when to be in it (todo 00). The sets are
+                        the section; the off-round invocation is its own
+                        fieldset because it is a different verb — `use` rather
+                        than `wear` — and the only control here that spends a
+                        round of a fight.
+                      */}
+                      <fieldset className="settings-menus" data-fieldset="gear">
+                        <legend>{t('settings.gear.legend')}</legend>
+                        <p className="settings-note">{t('settings.gear.note')}</p>
+                        <CheckField
+                          checked={form.gearEnabled}
+                          hint={t('settings.gear.enabledHint')}
+                          label={t('settings.gear.enabled')}
+                          name="gear-enabled"
+                          onChange={(value) => patch({ gearEnabled: value })}
+                        />
+                        <GearSetList
+                          mobs={mobs}
+                          namePrefix="gear-set"
+                          onChange={(gearSets) => patch({ gearSets })}
+                          sets={form.gearSets}
+                        />
+                      </fieldset>
+
+                      <fieldset className="settings-menus" data-fieldset="gear-offround">
+                        <legend>{t('settings.gear.offRoundLegend')}</legend>
+                        <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
+                        <div className="settings-inline">
+                          <TextField
+                            hint={t('settings.gear.offRoundItemHint')}
+                            label={t('settings.gear.offRoundItem')}
+                            name="gear-offround-item"
+                            onChange={(value) => patch({ gearOffRoundItem: value })}
+                            value={form.gearOffRoundItem}
+                          />
+                          <NumberField
+                            hint={t('settings.gear.offRoundEveryHint')}
+                            label={t('settings.gear.offRoundEvery')}
+                            name="gear-offround-every"
+                            onChange={(value) => patch({ gearOffRoundEvery: value })}
+                            value={form.gearOffRoundEvery}
+                          />
+                        </div>
+                      </fieldset>
+                    </>
+                  )}
+
+                  {section === 'quests' && (
+                    <fieldset className="settings-menus" data-fieldset="quests">
+                      <legend>{t('settings.quests.legend')}</legend>
+                      <p className="settings-warn">{t('settings.quests.warning')}</p>
+                      <CheckField
+                        checked={form.questsEnabled}
+                        hint={t('settings.quests.enabledHint')}
+                        label={t('settings.quests.enabled')}
+                        name="quests-enabled"
+                        onChange={(value) => patch({ questsEnabled: value })}
+                      />
                     </fieldset>
                   )}
 
@@ -4267,18 +4415,18 @@ export default function SettingsScreen({
                     everything to every character playing here. A character's
                     own row for a monster still wins over this one.
                   */}
-                  <fieldset className="settings-menus" data-fieldset="realm-priority">
-                    <legend>{t('settings.combat.priorityLegend')}</legend>
-                    <p className="settings-note">{t('settings.realms.priorityNote')}</p>
+                  <fieldset className="settings-menus" data-fieldset="realm-mob-rules">
+                    <legend>{t('settings.combat.mobRuleLegend')}</legend>
+                    <p className="settings-note">{t('settings.realms.mobRuleNote')}</p>
                     {/* No suggestions: the realm page is reached without a
                         session, and the monster names come from the realm a
                         *session* has loaded. The field is typable, as it is
                         for a realm the client holds no data for. */}
-                    <MobPriorityList
+                    <MobRuleList
                       known={[]}
-                      namePrefix="realm-mob-priority"
-                      onChange={(rows) => setServerForm({ ...serverForm, mobPriority: rows })}
-                      rows={serverForm.mobPriority}
+                      namePrefix="realm-mob-rule"
+                      onChange={(rows) => setServerForm({ ...serverForm, mobRules: rows })}
+                      rows={serverForm.mobRules}
                     />
                   </fieldset>
 

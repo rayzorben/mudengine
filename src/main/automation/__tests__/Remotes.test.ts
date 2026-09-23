@@ -171,6 +171,24 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     expect(notices.join(' ')).toContain('does not have that number yet');
   });
 
+  it('answers @stats, its own extension, off the stat sheet and not before it', () => {
+    const sheet = {
+      ...EMPTY_CHARACTER.progress,
+      strength: 60,
+      intellect: 45,
+      willpower: 50,
+      agility: 55,
+      health: 45,
+      charm: 40
+    };
+    asked('@stats', who({ progress: sheet }));
+    expect(sent).toEqual(['/Rand {STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}']);
+    sent.length = 0;
+    asked('@stats', who());
+    expect(sent).toEqual([]);
+    expect(notices.join(' ')).toContain('does not have that number yet');
+  });
+
   it('answers @wealth and @enc from the listing', () => {
     asked('@wealth', who({ inventory: { ...EMPTY_CHARACTER.inventory, wealth: 2199807 } }));
     asked(
@@ -1296,5 +1314,175 @@ describe('talking to another one of these clients', () => {
     expect(comebacks).toEqual([]);
     expect(sent).toEqual([]);
     expect(notices.join(' ')).toContain('readable map/room');
+  });
+});
+
+/*
+ * `@heal`, both halves. Received, it is the member's word handed to the
+ * healer and nothing said back — captures/081 answers `Death telepaths: @heal`
+ * with `mend death` and no reply. Sent, it is MegaMUD's *Ask For Healing*: the
+ * room say most of the corpus shows (`Kindred says "@heal"`, captures/167).
+ */
+describe('@heal', () => {
+  const partyMember = (name: string, invited = false) => ({
+    name,
+    className: null,
+    health: 1,
+    mana: null,
+    rank: null,
+    activity: null,
+    invited,
+    vitals: null
+  });
+  // Known to be seen, so the ask is the room say; `hidden` below covers the rest.
+  const inParty = (hp: number | null, ...others: string[]): CharacterState =>
+    who({
+      stealth: 'seen',
+      vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100 },
+      party: {
+        ...EMPTY_CHARACTER.party,
+        members: [partyMember('Vaelor'), ...others.map((name) => partyMember(name))]
+      }
+    });
+  const asking = (below: number, over: Partial<AutomationConfig> = {}): AutomationConfig => ({
+    ...config,
+    party: { ...config.party, askForHealBelow: below },
+    ...over
+  });
+
+  it('hands a request to the healer, said in the room or telepathed, and answers nothing', () => {
+    const wanted: string[] = [];
+    const healer = new Remotes(config, queue, { healRequested: (from) => wanted.push(from) });
+    healer.onBlock(said('conversation-local', 'Soul', '@heal'), inParty(100, 'Soul'));
+    healer.onBlock(said('conversation-telepath', 'Yang', '@heal'), inParty(100, 'Yang'));
+    drain();
+    expect(wanted).toEqual(['Soul', 'Yang']);
+    expect(sent).toEqual([]);
+  });
+
+  it('is granted to a party member by the shipped list', () => {
+    const wanted: string[] = [];
+    const shipped: AutomationConfig = {
+      ...config,
+      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+    };
+    const healer = new Remotes(shipped, queue, {
+      healRequested: (from) => wanted.push(from),
+      notice: (m) => notices.push(m)
+    });
+    healer.onBlock(said('conversation-local', 'Soul', '@heal'), inParty(100, 'Soul'));
+    // And not to somebody who is not in the party.
+    healer.onBlock(said('conversation-local', 'Rend', '@heal'), inParty(100, 'Soul'));
+    expect(wanted).toEqual(['Soul']);
+    expect(notices.join(' ')).toContain('not on the party listing');
+  });
+
+  it('asks the room once on the crossing, not on every status line', () => {
+    peers.configure(asking(0.5));
+    peers.onCharacter(inParty(80, 'Soul'));
+    peers.onCharacter(inParty(40, 'Soul'));
+    peers.onCharacter(inParty(38, 'Soul'));
+    drain();
+    peers.onCharacter(inParty(35, 'Soul'));
+    drain();
+    expect(sent).toEqual(['.@heal']);
+  });
+
+  it('asks again after the interval while still under the line', () => {
+    peers.configure(asking(0.5));
+    peers.onCharacter(inParty(40, 'Soul'));
+    drain();
+    vi.advanceTimersByTime(15_000);
+    peers.onCharacter(inParty(40, 'Soul'));
+    drain();
+    expect(sent).toEqual(['.@heal', '.@heal']);
+  });
+
+  it('asks no oftener than the interval, however the bar bobs round the line', () => {
+    peers.configure(asking(0.5));
+    peers.onCharacter(inParty(48, 'Soul'));
+    drain();
+    peers.onCharacter(inParty(52, 'Soul'));
+    peers.onCharacter(inParty(48, 'Soul'));
+    drain();
+    expect(sent).toEqual(['.@heal']);
+    vi.advanceTimersByTime(15_000);
+    peers.onCharacter(inParty(48, 'Soul'));
+    drain();
+    expect(sent).toEqual(['.@heal', '.@heal']);
+  });
+
+  /*
+   * A say is `CommType.Talk`, which calls `BreakStealth()` on GreaterMUD
+   * (`CommManager.cs:243`, the server's source); a telepath does not. So only a
+   * character known to be seen says it; one sneaking, or nobody has placed
+   * either way, telepaths each member instead.
+   */
+  it('telepaths each member instead of saying it unless known to be seen', () => {
+    peers.configure(asking(0.5));
+    for (const stealth of ['sneaking', 'unknown'] as const) {
+      sent.length = 0;
+      peers.reset();
+      peers.onCharacter({ ...inParty(40, 'Soul', 'Yang'), stealth });
+      drain();
+      expect(sent).toEqual(['/Soul @heal', '/Yang @heal']);
+    }
+  });
+
+  it('drops a say queued while seen once the character is hiding', () => {
+    peers.configure(asking(0.5));
+    queue.noteTyping(true);
+    peers.onCharacter(inParty(40, 'Soul'));
+    peers.onCharacter({ ...inParty(40, 'Soul'), stealth: 'sneaking' });
+    queue.noteTyping(false);
+    drain();
+    // The telepath went instead; the say never left.
+    expect(sent).toEqual(['/Soul @heal']);
+  });
+
+  it('does not ask outside a party, at 0, on an unknown bar, or with automation off', () => {
+    peers.configure(asking(0.5));
+    peers.onCharacter(inParty(10));
+    peers.onCharacter(who({ party: inParty(10, 'Soul').party }));
+    peers.onCharacter(
+      who({
+        vitals: { ...EMPTY_CHARACTER.vitals, hp: 10, hpMax: 100 },
+        party: { ...EMPTY_CHARACTER.party, members: [partyMember('Rend', true)] }
+      })
+    );
+    peers.configure(asking(0));
+    peers.onCharacter(inParty(10, 'Soul'));
+    peers.configure(asking(0.5, { enabled: false }));
+    peers.onCharacter(inParty(10, 'Soul'));
+    drain();
+    expect(sent).toEqual([]);
+    // The positive control: the same bar, in a party, with it on.
+    peers.configure(asking(0.5));
+    peers.onCharacter(inParty(10, 'Soul'));
+    drain();
+    expect(sent).toEqual(['.@heal']);
+  });
+
+  it('asks on its own setting, with answering other players switched off', () => {
+    peers.configure(asking(0.5, { remotes: { ...config.remotes, enabled: false } }));
+    peers.onCharacter(inParty(40, 'Soul'));
+    drain();
+    expect(sent).toEqual(['.@heal']);
+  });
+
+  it('drops an ask the bar recovered from before it could go out', () => {
+    peers.configure(asking(0.5));
+    queue.noteTyping(true);
+    peers.onCharacter(inParty(40, 'Soul'));
+    peers.onCharacter(inParty(70, 'Soul'));
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual([]);
+    // Nothing went out, so nothing was counted: the next crossing asks at once.
+    queue.noteTyping(true);
+    peers.onCharacter(inParty(40, 'Soul'));
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual(['.@heal']);
   });
 });

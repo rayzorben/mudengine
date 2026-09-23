@@ -141,7 +141,7 @@ export interface Menace {
  */
 const ROUND_ENERGY = 1000;
 const MAX_SWINGS = 50;
-const EFFECT_TICK_SECONDS = 3;
+export const EFFECT_TICK_SECONDS = 3;
 export const ROUND_SECONDS = 5;
 const MAGIC_RES_CEILING = 150;
 const MAGIC_RES_PIVOT = 50;

@@ -91,7 +91,14 @@ export type QuestGate =
    */
   | { kind: 'alignment'; atMost?: number; atLeast?: number }
   | { kind: 'lives'; atLeast: number }
-  | { kind: 'price'; amount: number };
+  | { kind: 'price'; amount: number }
+  /**
+   * `testskill <stat> <value>` — a roll, not a gate: the chance is the stat
+   * less the value, clamped to 2..98% (`TextBlockPart.cs:1139`), so with
+   * Intellect 45 against 30 the red book answers one try in seven. `stat` is
+   * the script's own word (`intellect`, `perception`, `strength`).
+   */
+  | { kind: 'skill'; stat: string; value: number };
 
 /** One thing a step hands over when it runs. */
 export type QuestReward =
@@ -202,6 +209,12 @@ export interface QuestStep {
   to?: number;
   /** What **every** route through this step demands. */
   needs: QuestGate[];
+  /**
+   * `adddelay N` — how long the server holds the rest of the block before
+   * it runs (`ContinueTextblockCommand`, seconds). The runner waits this long
+   * for the counter to move before it reads a refusal into silence.
+   */
+  delaySeconds?: number;
   /** Items the step consumes — `takeitem`. What every route consumes. */
   takes: Array<{ id: number; name?: string }>;
   /** What every route pays. */
@@ -1071,6 +1084,343 @@ export function questBars(quest: Quest, who: QuestDoer, standing: QuestStanding)
     return softest(bars.flat());
   }
   return [];
+}
+
+/**
+ * A place a plan names: the realm's address, and its name where it has one.
+ */
+export interface PlanPlace {
+  room: string;
+  place?: string;
+}
+
+/**
+ * How a plan proposes to get one item a step needs, from the realm's own
+ * indexes and nothing else.
+ *
+ * The same four answers `sourceNodes` draws on the card, made a closed union
+ * so the plan and the executor that will one day carry it read one fact: a
+ * shop is walked to and bought from, a monster is fought for it, a script is
+ * asked or told, an earlier step of this chain hands it over. `unplaced` is
+ * the fifth and is the refusal, never a guess.
+ */
+export type PlanSource =
+  | { how: 'carried' }
+  | {
+      how: 'buy';
+      shops: string[];
+      at?: PlanPlace;
+      /** Moves out of the way to the counter and back onto the leg (`BuyingPlace.detour`). */
+      detour?: number;
+    }
+  | { how: 'kill'; mob: string; at?: PlanPlace }
+  | { how: 'ask'; who: string; say?: string; at?: PlanPlace }
+  | { how: 'said'; say: string; at?: PlanPlace }
+  | { how: 'earlier'; rank: number }
+  | { how: 'unplaced' };
+
+/** One item a plan step gathers before its act, and how. */
+export interface PlanItem {
+  id: number;
+  name?: string;
+  /** `packHolds`' three answers: in the pack, not, or nobody has listed it. */
+  held: boolean | null;
+  /** `takeitem` — handed over and kept by the step. Else only carried. */
+  hand: boolean;
+  source: PlanSource;
+  /**
+   * How many, where the plan buys a consumable against a spell on the way
+   * (`tuning.world.hazardSupplyCount`). Absent means one, or a thing that is
+   * not spent.
+   */
+  count?: number;
+  /**
+   * The room spell this is fetched against, by name — a supply the *way*
+   * wants rather than the step, which is why it is drawn as one.
+   */
+  stops?: string;
+  /**
+   * The floor from the character's own stock list, where this row is a
+   * top-up rather than something the quest wants (`automation.supplies`).
+   *
+   * `count` is the list's maximum and is what the plan buys to; this is its
+   * minimum, and reaching it is enough — a counter that had four torches
+   * when the plan wanted six has still done the job.
+   */
+  stock?: number;
+}
+
+/**
+ * What a plan step does once its items are in hand — the three owners a step
+ * can have, as `askWords` draws them.
+ */
+export type PlanAct =
+  | { verb: 'ask'; who: string; say: string }
+  | { verb: 'say'; phrase: string }
+  | { verb: 'kill'; mob: string };
+
+/**
+ * A fact the realm states that would stop the plan being carried unattended.
+ *
+ * Computed, never guessed: an item the realm places nowhere, a room the
+ * router cannot reach from the step before, a spell on the way. A hazard is
+ * named with what settles it — `safeWith` is an item in the pack or on the
+ * plan's own `Get` rows that the realm says stops the spell, and a hazard
+ * the converter could not read (`unread`) is still named, because an unread
+ * hazard is one the client cannot price and so cannot promise to survive. A
+ * spell that only summons is scenery here and not named at all. A
+ * `corridor` is a spell the way *in* puts on the character — the dive into
+ * the underwater passage — with the rooms to cross before the way out lifts
+ * it: nothing stops it, and the answer is to keep moving.
+ */
+export type PlanSnag =
+  | { kind: 'unplaced'; item: string }
+  | { kind: 'unreachable'; reason: string }
+  | {
+      kind: 'hazard';
+      spell: string;
+      rooms: number;
+      unread: boolean;
+      /** Whether it can move the character off the route. */
+      moves: boolean;
+      needs: string[];
+      safeWith?: string;
+    }
+  | {
+      kind: 'corridor';
+      spell: string;
+      /** Rooms under it: to the exit that lifts it, or to the leg's end where none does. */
+      rooms: number;
+      /** Whether this leg reaches the exit that lifts it; false is a leg that ends inside. */
+      ends: boolean;
+      ticks?: number;
+      then?: string;
+    };
+
+/** One step of a plan: gather these, go there, do this. */
+export interface PlanStep {
+  block: number;
+  /** Null where the realm traced the step to nobody, nowhere and no death. */
+  act: PlanAct | null;
+  items: PlanItem[];
+  /** Where the act happens, where the realm names a room. */
+  at?: PlanPlace;
+  /**
+   * Whether the router found a way from the previous step's room.
+   *
+   * Null where either end is unplaced — a step whose room the realm does not
+   * name, or a character nobody has placed — which is *unknown* and never
+   * *no*.
+   */
+  reachable: boolean | null;
+  /**
+   * The route's own steps plus the detour to every counter this leg buys at.
+   * What a kill or an ask on the way costs is not priced here.
+   */
+  moves?: number;
+  snags: PlanSnag[];
+  /**
+   * The roll the step makes, where it makes one (`stepRoll`): a step that
+   * can fail and be asked again. `chance` is the odds of one try in percent
+   * off this character's sheet (`rollChance`), absent where the stat is
+   * unread or is not one the sheet prints.
+   */
+  roll?: { stat: string; value: number; chance?: number };
+}
+
+/**
+ * The plan to reach one step of a quest from where the character stands,
+ * solved by main (`SessionManager.questPlan` over `WorldGraph.planStep`) and
+ * drawn by the card.
+ *
+ * It is *steps*, never rooms: the walk between two acts is one figure, and
+ * the route panel is where the rooms are. `fromRank` is where the counter
+ * stood when it was solved, so a plan drawn against a later listing says so.
+ */
+export interface QuestPlan {
+  block: number;
+  /** Absent where nobody has placed the character; every step is then unpriced. */
+  from?: string;
+  fromPlace?: string;
+  /** The rank the plan starts after, where a listing or a mark stated one; else null. */
+  fromRank: number | null;
+  /**
+   * Whether anything stated the counter at all — a listing naming it, a
+   * complete listing not naming it (which is zero), or the player's mark.
+   * False with `fromRank` null is *nobody has read a listing*, which the head
+   * says rather than calling it the start.
+   */
+  stated: boolean;
+  steps: PlanStep[];
+  /** True where every step's route exists; false where any is blocked; null where any is unknown. */
+  reachable: boolean | null;
+  moves: number;
+}
+
+/**
+ * The roll a step makes, where it makes one — the first `skill` gate on the
+ * step's own line. A step's roll is on the step, never on a route: the realm
+ * writes the red book's one line, and a roll per class would be a shape
+ * neither shipped realm has.
+ */
+export function stepRoll(step: QuestStep): { stat: string; value: number } | null {
+  for (const gate of step.needs) {
+    if (gate.kind === 'skill') return { stat: gate.stat, value: gate.value };
+  }
+  return null;
+}
+
+/**
+ * The chance one try passes a `testskill` roll, in percent, or null where the
+ * stat is unread. The server's own arithmetic (`TextBlockPart.cs:1235`): the
+ * stat less the value, clamped between 2 and 98, against a roll of 1–100.
+ */
+export function rollChance(stat: number | null, value: number): number | null {
+  if (stat === null) return null;
+  return Math.min(98, Math.max(2, stat - value));
+}
+
+/**
+ * How a run of a plan is going, for the card to draw in the progression's own
+ * grammar (`done` / `now` / `left`) beside the plan it is carrying.
+ *
+ * Published on every change by `QuestRunner`, whole: a card that missed a
+ * push would otherwise hold a list with a hole in it. `IDLE_QUEST_RUN` is what
+ * a character that has never run one holds.
+ */
+export type QuestRunPhase =
+  /** Stood still by a setback, about to try the same thing again. */
+  | 'held'
+  /** Asking for the pack, which nobody has listed. */
+  | 'listing'
+  /** Going and getting one of the step's items. */
+  | 'fetching'
+  /** Walking to where the act happens, or to where an item is handed over. */
+  | 'walking'
+  /** Waiting for the asker or the monster, or fighting it. */
+  | 'acting'
+  /** The act is sent; reading whether the counter moved. */
+  | 'confirming';
+
+export interface QuestRunStep {
+  block: number;
+  state: 'done' | 'now' | 'left';
+  /**
+   * The step named by its act, as the plan rows name it — `ask Sage hello`,
+   * `kill orc` — or `#block` where the realm traced it to nobody. Said by
+   * main once, so the card and the banner over the console cannot name one
+   * step two ways.
+   */
+  words: string;
+}
+
+export interface QuestRunProgress {
+  status: 'idle' | 'running' | 'done' | 'stopped';
+  /** The block the run was asked to reach — how the card knows a run is this step's. */
+  block: number | null;
+  /** The quest's own name and the rank the run reaches; null while idle. */
+  name: string | null;
+  to: number | null;
+  steps: QuestRunStep[];
+  phase: QuestRunPhase | null;
+  /** What the phase is about, in words — the item, the place, the act. */
+  detail: string | null;
+  /** Why it stopped, or what it finished with. Null while running. */
+  reason: string | null;
+  /** Tries spent on the step's roll so far, where it rolls. */
+  tries: number;
+}
+
+export const IDLE_QUEST_RUN: QuestRunProgress = {
+  status: 'idle',
+  block: null,
+  name: null,
+  to: null,
+  steps: [],
+  phase: null,
+  detail: null,
+  reason: null,
+  tries: 0
+};
+
+/**
+ * What a step does, as the act a plan carries: the three owners a step can
+ * have, read the way `askWords` reads them for the card. Null where the realm
+ * traced the step to nobody, nowhere and no death.
+ */
+export function planAct(step: QuestStep): PlanAct | null {
+  if (step.kill !== undefined) return { verb: 'kill', mob: step.kill };
+  const word = step.say[0];
+  if (word === undefined) return null;
+  if (step.who !== undefined && step.who.trim().length > 0) {
+    return { verb: 'ask', who: step.who, say: word };
+  }
+  return step.room === undefined ? null : { verb: 'say', phrase: word };
+}
+
+/**
+ * The rank of an earlier step of this quest that hands the item over, or null.
+ *
+ * The realm never says so and it is one of the four answers: a later step's
+ * `takeitem` is routinely an earlier step's `giveitem` — 18 of the shipped
+ * realm's 82 item requirements are answered by nothing else. Every route of
+ * an earlier step, not only what all of them share: an item one class's route
+ * hands out is still an item that route can be taken for. `before` is the
+ * step's own index; only steps ahead of it in the chain count.
+ */
+export function earlierHandover(quest: Quest, before: number, id: number): number | null {
+  const found = quest.steps.findIndex((other) =>
+    [other, ...(other.ways ?? [])].some((way) =>
+      way.gives.some((reward) => reward.kind === 'item' && reward.id === id)
+    )
+  );
+  if (found === -1 || found >= before) return null;
+  return quest.steps[found]?.to ?? null;
+}
+
+/**
+ * The steps a plan to `block` must carry, from a counter at `fromRank`.
+ *
+ * One step per rank, in rank order: the realm writes alternatives as several
+ * steps sharing a `to`, and a plan does one of them, so the first the client
+ * could tell somebody to go and do is taken (`actable`, the reading
+ * `questBars` makes of the same alternatives). A rank already behind the
+ * character is left out — the plan is what is still to do — and a target
+ * the realm sets no rank for, or one already reached, plans nothing.
+ */
+export function planSpan(quest: Quest, block: number, fromRank: number | null): QuestStep[] {
+  const target = quest.steps.find((step) => step.block === block);
+  if (target === undefined || target.to === undefined) return [];
+  const done = fromRank ?? -Infinity;
+  if (target.to <= done) return [];
+  const byRank = new Map<number, QuestStep>();
+  for (const step of quest.steps) {
+    if (step.to === undefined || step.to <= done || step.to > target.to) continue;
+    if (!actable(step)) continue;
+    if (!byRank.has(step.to)) byRank.set(step.to, step);
+  }
+  return [...byRank.keys()].sort((a, b) => a - b).map((rank) => byRank.get(rank) as QuestStep);
+}
+
+/**
+ * Which shelf of the book a quest sits on for this character.
+ *
+ * Three, in the order a reader wants them: what they can get on with, what is
+ * behind them, and what the realm's gates shut them out of. A finished chain
+ * is never barred — `questBars` asks about the rank *after* the character's
+ * and a finished chain has none — so the two cannot both be true of one quest,
+ * and `done` is decided first only because it is the stronger statement.
+ *
+ * `total` is guarded: a quest of no steps is nothing to have finished.
+ */
+export type QuestGroup = 'open' | 'done' | 'barred';
+
+/** The shelves in the order the book draws them. */
+export const QUEST_GROUPS: readonly QuestGroup[] = ['open', 'done', 'barred'];
+
+export function questGroup(done: number, total: number, bars: readonly QuestBar[]): QuestGroup {
+  if (total > 0 && done >= total) return 'done';
+  return bars.length > 0 ? 'barred' : 'open';
 }
 
 /**

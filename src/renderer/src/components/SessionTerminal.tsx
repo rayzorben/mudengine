@@ -1,10 +1,13 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
+import QuestRunBanner from './QuestRunBanner';
 import TerminalView, { type TerminalHandle } from './TerminalView';
 import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
+import type { QuestRunProgress } from '@shared/quests';
+import type { WalkProgress } from '@shared/walk';
 import type { StreamChunk, TerminalActionName, TerminalSize } from '@shared/types';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
@@ -48,6 +51,11 @@ export interface SessionTerminalProps {
   /** The state this character was in when the terminal attached to it. */
   onSnapshot(session: SessionId, snapshot: AttachSnapshot): void;
   onSearchResult(result: { index: number; count: number } | undefined): void;
+  /** The run of a quest plan main reports for this character, drawn over the console. */
+  run: QuestRunProgress;
+  /** How far through the walk a running quest is, for the banner. */
+  walk: WalkProgress | null;
+  onStopRun(session: SessionId): void;
 }
 
 /**
@@ -94,7 +102,10 @@ function SessionTerminal({
   onInspect,
   onSelectPlayer,
   onSelectGang,
-  onChooseRoom
+  onChooseRoom,
+  run,
+  walk,
+  onStopRun
 }: SessionTerminalProps) {
   const api = window.mudengine;
   const handleRef = useRef<TerminalHandle | null>(null);
@@ -209,6 +220,12 @@ function SessionTerminal({
     (action: TerminalActionName) => onAct?.(session, action),
     [onAct, session]
   );
+  // The banner's Stop is this terminal's character's run, whichever pane has
+  // the keyboard — the same reason `act` binds the session above. A press
+  // that takes the control away hands the caret back to the console, as
+  // jump-to-latest does, rather than leaving it on a node that is gone.
+  const stopRun = useCallback(() => onStopRun(session), [onStopRun, session]);
+  const focusConsole = useCallback(() => handleRef.current?.focus(), []);
 
   return (
     <div
@@ -218,6 +235,8 @@ function SessionTerminal({
       onMouseDown={() => onFocusPane(session)}
       style={place}
     >
+      {/* Over this pane rather than docked: `mudengine-ui` › quests, *the run is a banner*. */}
+      <QuestRunBanner onSettled={focusConsole} onStop={stopRun} run={run} walk={walk} />
       <TerminalView
         fontStack={fontStack}
         index={index}

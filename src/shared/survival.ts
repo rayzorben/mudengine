@@ -9,6 +9,7 @@
  * (`prowess.swing`, `menace.hitChance`), and reports how often the character
  * walked out. See mudengine-automation › *The verdict is also run as a fight*.
  */
+import { guardsFirst, type GuardSubject } from './guards';
 import {
   expectedBlow,
   hitChance,
@@ -32,7 +33,7 @@ import type { MobAttack, MobProfile } from './world';
 /** One thing in the room that will fight, as the realm knows it. */
 export interface SurvivalFoe {
   name: string;
-  subject: MenaceSubject & TargetEntity;
+  subject: MenaceSubject & TargetEntity & GuardSubject;
 }
 
 /** The heal the automation would cast, as it is configured. */
@@ -127,7 +128,11 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   const verdicts = subjects.map((subject, index) =>
     verdictFor(ranked[index] ?? null, targetOf(subject), input.sheet, input.weapon, input.family)
   );
-  const order = rankByVerdict(verdicts);
+  // A guard before what it protects, as the engine swings (`guards.ts`).
+  const order = guardsFirst(
+    rankByVerdict(verdicts),
+    foes.map((foe) => ({ name: foe.name, mob: foe.subject }))
+  );
 
   const foeSides = subjects.map((subject, index) => {
     const wound = wounds[index] ?? null;
@@ -165,8 +170,10 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   const trials = Math.max(1, Math.trunc(input.trials));
   const roundCap = Math.max(1, Math.trunc(input.roundCap));
   const heal = input.heal;
-  const weaponLow = input.weapon?.min;
-  const weaponHigh = input.weapon?.max;
+  // The sheet's own range where `stat all` still states it: `prowess.swing`'s rule.
+  const stated = input.sheet.stated?.damage;
+  const weaponLow = stated?.min ?? input.weapon?.min;
+  const weaponHigh = stated?.max ?? input.weapon?.max;
 
   let survived = 0;
   let roundsTotal = 0;

@@ -1,5 +1,6 @@
 import { hitChance } from './menace';
 import type { RealmFamily } from './realm';
+import type { StatedProwess } from './stated';
 import type { WorldItem, WorldSpell } from './world';
 
 /**
@@ -38,12 +39,12 @@ import type { WorldItem, WorldSpell } from './world';
  *
  * `stat all` prints accuracy, swings per round, damage range, dodge and both
  * regeneration figures **as the server computes them**
- * (docs/greatermud/player-and-world.md). No recorded session has ever sent it,
- * so nothing here can be `stated` yet — but the ladder has the rung, and the
- * moment `probe:statall` produces a pattern the sheet's figure wins and these
- * formulas are demoted to what they are best at: *what if I wore this, what if
- * I gained a level*. Until then everything below is `source`, and the surfaces
- * that draw it say so.
+ * (docs/greatermud/player-and-world.md), gear and spells included. Read since
+ * 2026-09-18 (`user-stat-all`, `src/shared/stated.ts`), and handed in as
+ * `ProwessSheet.stated` only while what it was computed from still holds: the
+ * sheet's figure wins wherever it is present, needing no family because
+ * nothing was computed, and the formulas answer the rest — and every *what if
+ * I wore this* — as they always did.
  */
 
 /**
@@ -100,6 +101,11 @@ export interface ProwessSheet {
    * granted — because unknown is never the reassuring answer.
    */
   encumbrancePercent: number | null;
+  /**
+   * What the last `stat all` said that still holds (`statedNow`), which
+   * outranks every formula here. Absent or null is *not stated*.
+   */
+  stated?: StatedProwess | null;
 }
 
 /** What of a class the sheet cannot state. See `ProwessSheet.combatLevel`. */
@@ -180,6 +186,8 @@ export function accuracy(
   weapon: ProwessWeapon | null,
   family: RealmFamily | null
 ): Reckoning<number> | null {
+  const said = sheet.stated?.accuracy;
+  if (said !== undefined) return { value: said, from: 'stated' };
   if (family !== 'greatermud') return null;
   const held = need(sheet.level, sheet.agility, sheet.intellect, sheet.charm, sheet.combatLevel);
   if (held === null) return null;
@@ -304,6 +312,9 @@ export function swingsPerRound(
   weapon: ProwessWeapon | null,
   family: RealmFamily | null
 ): Reckoning<number> | null {
+  // Unarmed too: the sheet prints the bare-handed round, which no formula here has.
+  const said = sheet.stated?.swings;
+  if (said !== undefined) return { value: said, from: 'stated' };
   if (family !== 'greatermud') return null;
   const speed = weapon?.speed;
   if (speed === undefined || speed <= 0) return null;
@@ -383,6 +394,8 @@ export function swing(
   target: ProwessTarget,
   family: RealmFamily | null
 ): Swing | null {
+  // The hit roll below is GreaterMUD's, whoever stated the accuracy.
+  if (family !== 'greatermud') return null;
   const acc = accuracy(sheet, weapon, family);
   if (acc === null) return null;
 
@@ -397,8 +410,14 @@ export function swing(
    * realm can state, so damage is `null` rather than zero: martial arts is on
    * the sheet and its conversion to a range is not in hand.
    */
-  const low = weapon?.min;
-  const high = weapon?.max;
+  /*
+   * The sheet's own range where it holds — the server's, with every damage
+   * modifier applied (`PreRollMinModifier`, `DamageMultiplierMin`) and one for
+   * a bare hand, which the realm's item row cannot give.
+   */
+  const stated = sheet.stated?.damage;
+  const low = stated?.min ?? weapon?.min;
+  const high = stated?.max ?? weapon?.max;
   const resist = Math.max(0, Math.trunc(target.damageResist ?? 0));
   let mean: number | null = null;
   if (low !== undefined && high !== undefined && high >= low) {
@@ -421,7 +440,10 @@ export function swing(
 
   return {
     lands: { value: lands, from: 'bound' },
-    damage: { value: mean ?? 0, from: mean === null ? 'bound' : 'source' },
+    damage: {
+      value: mean ?? 0,
+      from: mean === null ? 'bound' : stated !== undefined ? 'stated' : 'source'
+    },
     swings,
     rounds
   };
@@ -485,6 +507,12 @@ export interface Regeneration {
   health: Reckoning<number>;
   /** Null for a class that casts nothing — a Mystic's figure is the server's own 1. */
   mana: Reckoning<number> | null;
+  /**
+   * What a meditating tick returns: `GetBaseMARegen()`, flat, where the
+   * passive tick adds `MARegen` with its ability bonus (`TimedEventManager`).
+   * The same figure as `mana` wherever the bonus cannot be seen.
+   */
+  meditatingMana: Reckoning<number> | null;
   /** Seconds between ticks while standing. Resting ticks every 15s at triple the health rate. */
   tickSeconds: number;
   /** What resting returns per health tick — the sheet's `HP Regen: n/3n`. */
@@ -505,15 +533,29 @@ export interface Regeneration {
  * computed off the wrong stat.
  *
  * The ability bonuses on both are gear and spells the client cannot enumerate,
- * which makes each a floor: `bound`, and the sheet's own `HP Regen:` line —
- * printed by `stat all`, a command no recorded session has ever sent — is what
- * will replace it with `stated`.
+ * which makes each a floor: `bound` — until `stat all`'s own `HP Regen:` and
+ * `MA Regen:` lines are in hand (`ProwessSheet.stated`), which answer instead.
  */
 export function regeneration(
   sheet: ProwessSheet,
   manaStat: number | null,
   family: RealmFamily | null
 ): Regeneration | null {
+  const said = sheet.stated;
+  if (said?.health !== undefined && said.resting !== undefined) {
+    // A class that casts nothing still prints `0/0`; its answer stays none.
+    const caster = sheet.mageryLevel !== null;
+    return {
+      health: { value: said.health, from: 'stated' },
+      mana: said.mana === undefined || !caster ? null : { value: said.mana, from: 'stated' },
+      meditatingMana:
+        said.meditating === undefined || !caster
+          ? null
+          : { value: said.meditating, from: 'stated' },
+      tickSeconds: REGEN_TICK_SECONDS,
+      restingHealth: { value: said.resting, from: 'stated' }
+    };
+  }
   if (family !== 'greatermud') return null;
   const held = need(sheet.level, sheet.health);
   if (held === null) return null;
@@ -532,6 +574,8 @@ export function regeneration(
   return {
     health: { value: hp, from: 'bound' },
     mana,
+    // The formula above is `GetBaseMARegen`'s; the bonus is what it cannot see.
+    meditatingMana: mana,
     tickSeconds: REGEN_TICK_SECONDS,
     // The sheet prints `n/3n` and the rest tick is 15s: resting is three times
     // the rate on a tick eight times as often, which is the whole reason a

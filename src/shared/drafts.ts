@@ -17,14 +17,17 @@ import {
   RETREAT_STRATEGIES,
   normalizeRewrites,
   normalizeHuntingAutomation,
+  normalizeGear,
+  normalizeQuests,
+  type GearConfig,
   normalizeTrain,
   type RewritesUiConfig,
   type BlessingTarget,
   type DensityPreference,
   type EngagePolicy,
   type RetreatStrategy,
-  normalizeMobPriorities,
-  type MobPriority,
+  normalizeMobRules,
+  type MobRule,
   POTION_WHENS,
   type PotionRule,
   type PotionWhen,
@@ -142,15 +145,15 @@ export interface ServerDraft {
    */
   database: string;
   /**
-   * How this realm's own monsters are ranked, under every character's list.
+   * How this realm's own monsters are treated, under every character's list.
    *
    * On the realm for the reason the loops are: it names monsters by the names
    * *this realm's* data spells, so it means nothing on another one, and every
    * character playing here wants the same answer. Merged rather than replaced
    * — a character's row for a monster wins and the rest of this list still
-   * applies. See `Server.mobPriority` and `mergeMobPriorities`.
+   * applies. See `Server.mobRules` and `mergeMobRules`.
    */
-  mobPriority: MobPriority[];
+  mobRules: MobRule[];
 }
 
 /**
@@ -232,6 +235,8 @@ export interface GlobalDraft {
     movement: ProfileDraft['movement'];
     hunting: ProfileDraft['hunting'];
     train: ProfileDraft['train'];
+    quests: ProfileDraft['quests'];
+    gear: ProfileDraft['gear'];
     spells: {
       /** Derive the round spell and the cures from the book. See `SpellsConfig`. */
       autoChoose: boolean;
@@ -401,12 +406,9 @@ export interface ProfileDraft {
     /** Leave alone a monster a stranger is already fighting. See `CombatConfig`. */
     politeAttacks: boolean;
     maxMobs: number;
-    /** Share of current health a fight may be expected to cost before it is declined. 0 never. */
-    maxFightCost: number;
     refreshRounds: number;
-    avoid: string[];
-    /** The player's own ranking of the realm's monsters. See `CombatConfig`. */
-    mobPriority: MobPriority[];
+    /** The player's own rules for the realm's monsters. See `CombatConfig`. */
+    mobRules: MobRule[];
     maxTargetHealth: number;
     minMobs: number;
     maxMonsterExperience: number;
@@ -424,6 +426,7 @@ export interface ProfileDraft {
     assistLeader: boolean;
     defendParty: boolean;
     restWithLeader: boolean;
+    askForHealBelow: number;
   };
   health: {
     restBelow: number;
@@ -434,6 +437,8 @@ export interface ProfileDraft {
     meditateBelow: number;
     /** The *use this when that* rules. See `PotionRule`. */
     potions: PotionRule[];
+    /** The realm's own half of those rules. See `HealthConfig.useWards`. */
+    useWards: boolean;
   };
   movement: {
     openDoors: boolean;
@@ -473,6 +478,10 @@ export interface ProfileDraft {
     /** The trainer's shop row, or 0 for the cheapest that will take this character. */
     trainer: number;
   };
+  /** Running a quest's plan — `automation.quests`. See `QuestsConfig`. */
+  quests: { enabled: boolean };
+  /** Which kit to be in, and when — `automation.gear`. See `GearConfig`. */
+  gear: GearConfig;
   /*
    * The four blocks below are a character's as much as the ones above it
    * (todo 03, 2026-09-12). They were on the Global draft alone, typed inline,
@@ -684,9 +693,9 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     loops: asLoops(value['loops'], LOOP_LIMITS),
     database: text(value['database']).slice(0, 400),
     // Parsed rather than trusted, like the loops: this crossed the IPC
-    // boundary. `normalizeMobPriorities` is the same coercion the config file
-    // goes through, so a row means one thing whichever door it arrived at.
-    mobPriority: normalizeMobPriorities(value['mobPriority'])
+    // boundary. `normalizeMobRules` is the same coercion the config file goes
+    // through, so a row means one thing whichever door it arrived at.
+    mobRules: normalizeMobRules(value['mobRules'])
   };
 }
 
@@ -830,12 +839,10 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // must not silently make a character stand aside.
       politeAttacks: combat['politeAttacks'] === true,
       maxMobs: Math.min(20, Math.max(0, Math.trunc(Number(combat['maxMobs']) || 0))),
-      maxFightCost: Math.min(1, Math.max(0, Number(combat['maxFightCost']) || 0)),
       // Capped low: every round is a fraction of a second, so a client asked to
       // look every round would spend most of a fight looking.
       refreshRounds: Math.min(20, Math.max(0, Math.trunc(Number(combat['refreshRounds']) || 0))),
-      avoid: words(combat['avoid'], 64),
-      mobPriority: normalizeMobPriorities(combat['mobPriority']),
+      mobRules: normalizeMobRules(combat['mobRules']),
       maxTargetHealth: Math.max(0, Math.round(Number(combat['maxTargetHealth']) || 0)),
       minMobs: Math.max(0, Math.min(99, Math.round(Number(combat['minMobs']) || 0))),
       maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0))
@@ -849,7 +856,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     party: {
       assistLeader: party['assistLeader'] === true,
       defendParty: party['defendParty'] === true,
-      restWithLeader: party['restWithLeader'] === true
+      restWithLeader: party['restWithLeader'] === true,
+      askForHealBelow: unit(party['askForHealBelow'])
     },
     health: {
       /*
@@ -895,7 +903,13 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
               }
             ];
           })
-        : []
+        : [],
+      // On by default, so an omitted field is the shipped answer rather
+      // than off — `collectKeys`' reading below, for its reason.
+      useWards:
+        health['useWards'] === undefined
+          ? DEFAULT_CONFIG.automation.health.useWards
+          : health['useWards'] === true
     },
     movement: {
       openDoors: movement['openDoors'] === true,
@@ -940,6 +954,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     hunting: normalizeHuntingAutomation(value['hunting']),
     // The options file's own reading: a figure is a whole number, 0 to 999.
     train: normalizeTrain(value['train']),
+    quests: normalizeQuests(value['quests']),
+    // Parsed by the config's own reader: the set list is a closed union and a
+    // bounded list, and one reading of it is what keeps the form and the file
+    // agreeing about a row nobody can save.
+    gear: normalizeGear(value['gear']),
     loot: {
       coins: loot['coins'] === true,
       coinKinds: Array.isArray(loot['coinKinds'])
@@ -1205,6 +1224,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       movement: asIf.movement,
       hunting: asIf.hunting,
       train: asIf.train,
+      quests: asIf.quests,
+      gear: asIf.gear,
       afk: asIf.afk,
       spells: {
         autoChoose: spells['autoChoose'] === true,

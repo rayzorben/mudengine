@@ -191,6 +191,63 @@ describe('edgePenalty', () => {
   });
 
   /*
+   * todo 102, 2026-09-21: the same gate in the realm's other spelling, which
+   * the exit table writes in the direction column itself and which carried no
+   * `unread` — so the refusal above, guarded on `unread`, never saw it. Live,
+   * routing Bank of Godfrey to Bone-Strewn Hillside planned 286 steps through
+   * `2/9458` and the realm answered *You realize that you need more
+   * information for the task at hand!* at step 104.
+   */
+  describe('an exit gated on a quest counter', () => {
+    const gate = {
+      kind: 'ability' as const,
+      raw: 'Ability: 204 w/value 1 to 999',
+      abilityId: 204,
+      abilities: [{ id: 204, atLeast: 1, atMost: 999 }]
+    };
+
+    it('refuses the step when the counters say this character fails it', () => {
+      expect(edgePenalty(gate, { counters: { sums: { 204: 0 }, complete: true } })).toBeNull();
+      // A complete listing enumerates, so an id it does not name is zero.
+      expect(edgePenalty(gate, { counters: { sums: {}, complete: true } })).toBeNull();
+    });
+
+    it('discourages it exactly as before while nobody has read a listing', () => {
+      expect(edgePenalty(gate, {})).toBe(60);
+      expect(edgePenalty(gate, { counters: null })).toBe(60);
+      expect(edgePenalty(gate, { counters: { sums: {}, complete: false } })).toBe(60);
+    });
+
+    /*
+     * Nothing is added to a gate that passes, unlike the script above it: an
+     * `AbilityExit` is the gate and nothing else, so an answered one is a
+     * plain corridor.
+     */
+    it('charges nothing for a gate the counters answer', () => {
+      expect(edgePenalty(gate, { counters: { sums: { 204: 3 }, complete: true } })).toBe(0);
+    });
+
+    /* `Ability: 0 w/value 0 to 0` is the realm's empty slot: a plain exit. */
+    it('charges nothing where the realm left the slot empty', () => {
+      const empty = { kind: 'ability' as const, raw: 'Ability: 0 w/value 0 to 0' };
+      expect(edgePenalty(empty, { counters: { sums: {}, complete: true } })).toBe(0);
+    });
+
+    /*
+     * A pruned edge nothing can explain reports *the two rooms are not joined
+     * in the data*, which is untrue and unactionable at once.
+     */
+    it('names the counter it wants, and never before a listing has landed', () => {
+      expect(edgeBlock(gate, { counters: { sums: {}, complete: true } })).toEqual({
+        kind: 'ability',
+        requirement: gate
+      });
+      expect(edgeBlock(gate, {})).toBeNull();
+      expect(edgeBlock(gate, { counters: { sums: { 204: 3 }, complete: true } })).toBeNull();
+    });
+  });
+
+  /*
    * And only once somebody has looked. `Traveller.keys` went unset from the
    * day it was written until todo 00 (2026-09-06), so this pruned every keyed
    * door in the realm on an answer nobody had asked for — the question and the
@@ -728,7 +785,10 @@ describe('the real realm data', () => {
               : gate.kind === 'ability'
                 ? // `Ability: 0` is the realm's empty slot; the id is dropped
                   // and the exit is plain, which is a reading and not a miss.
-                  gate.abilityId !== undefined || gate.raw.startsWith('Ability: 0 ')
+                  // Everything else states the window as well as the id, since
+                  // the window is the comparison `abil`'s counters answer.
+                  (gate.abilityId !== undefined && gate.abilities !== undefined) ||
+                  gate.raw.startsWith('Ability: 0 ')
                 : gate.kind === 'cast'
                   ? gate.spellEffect !== undefined || gate.raw === 'Cast: pre-0, post-0'
                   : gate.kind === 'spell'
@@ -1405,6 +1465,77 @@ describe('the shipped realm data', () => {
     // *further* away than the nine this pack cannot reach at all.
     expect(places[0]!.detour).toBeLessThan(places[1]!.detour);
     expect(realm!.shopPlace('Boat Launch')).toMatchObject({ at: 'several', count: 2 });
+  });
+
+  /*
+   * The reported case (2026-09-21): the Dao Lord run stopped at its second
+   * step — *Could not go hunting for saracen head: The realm names nowhere
+   * this comes from* — from the room its first step ends in. The head is the
+   * saracen raider's drop, and the realm places the raider in sixteen rooms
+   * of the Saracen quarters on map 12, the nearest 88 moves from 12/59:
+   * past the 80-step sweep the errand used, and well inside the realm.
+   */
+  it.runIf(has)('finds where to kill for a quest item anywhere in the realm', () => {
+    const festus: Traveller = { level: 21, packKnown: true, keys: [] };
+    const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
+    const head = { id: 1152, name: 'saracen head' };
+    const found = realm!.droppingPlaces(head, roomId(12, 59), festus, ring);
+    expect(found.droppers).toEqual([{ mob: 'saracen raider', placed: 16 }]);
+    expect(found.lairs).toHaveLength(8);
+    for (const lair of found.lairs) {
+      expect(lair).toMatchObject({ mob: 'saracen raider' });
+      expect(lair.id.startsWith('12/')).toBe(true);
+      expect(lair.steps).toBeGreaterThan(tuning().hunting.betterSpotRadius);
+    }
+    // The cheapest to reach first: the Entrance Hall before the quarters behind it.
+    expect(found.lairs[0]).toMatchObject({ id: roomId(12, 2099), name: 'Entrance Hall' });
+    // A room nothing leads out of: placed all the same, and nowhere to go.
+    const shut = realm!.droppingPlaces(head, roomId(17, 2020), festus, ring);
+    expect(shut).toEqual({ droppers: [{ mob: 'saracen raider', placed: 16 }], lairs: [] });
+    // Nothing drops a thing nobody drops, and it is said as that.
+    expect(
+      realm!.droppingPlaces({ id: 9, name: 'grey robes' }, roomId(12, 59), festus, ring)
+    ).toEqual({ droppers: [], lairs: [] });
+  });
+
+  /*
+   * A ring, not a march (on review, 2026-09-21): the cheapest eight from here
+   * spanned five maps for an `oak chest`, which five monsters drop, and a lap
+   * over those is a circuit of several hundred moves with every monster long
+   * since respawned. The ring is the cheapest placement and what lies within
+   * `hunting.clusterRadius` of it, walked out from the first.
+   */
+  it.runIf(has)('keeps the stops within one ring of the nearest placement', () => {
+    const festus: Traveller = { level: 21, packKnown: true, keys: [] };
+    const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
+    // Five dragons, one cavern each, maps apart: one stop, not a tour of five.
+    const chest = realm!.itemIdNamed('oak chest');
+    expect(chest).not.toBeNull();
+    const chests = realm!.droppingPlaces(
+      { id: chest!, name: 'oak chest' },
+      roomId(12, 59),
+      festus,
+      ring
+    );
+    expect(chests.droppers.length).toBeGreaterThan(1);
+    expect(chests.lairs).toHaveLength(1);
+    // Seventy-eight dwarf warriors across map 6: eight stops, all in one mine.
+    const axe = realm!.itemIdNamed('dwarven axe');
+    expect(axe).not.toBeNull();
+    const found = realm!.droppingPlaces(
+      { id: axe!, name: 'dwarven axe' },
+      roomId(12, 59),
+      festus,
+      ring
+    );
+    expect(found.lairs).toHaveLength(8);
+    expect(new Set(found.lairs.map((lair) => lair.id.split('/')[0])).size).toBe(1);
+    const first = found.lairs[0]!;
+    const near = realm!.withinSteps(first.id, tuning().hunting.clusterRadius, festus);
+    for (const lair of found.lairs) expect(near.has(lair.id)).toBe(true);
+    // And walked out from the first, so the lap's legs are short.
+    const spread = found.lairs.map((lair) => near.get(lair.id)!);
+    expect(spread).toEqual([...spread].sort((a, b) => a - b));
   });
 
   /*
@@ -2678,7 +2809,10 @@ describe('lairs', () => {
       r: 1,
       n: 'Dungeon, Entrance',
       x: { n: { m: 1, r: 2 } },
-      lair: '(Max 3): 1,109,'
+      lair: '(Max 3): 1,109,',
+      // `Rooms.Delay`, minutes -- the lair's own respawn clock (format 33).
+      // The cavern below states none, which is the other half of the reading.
+      dl: 2
     };
     const cavern = {
       m: 1,
@@ -2703,25 +2837,46 @@ describe('lairs', () => {
     expect(world.lairOf(world.byId('1/2')!).map((mob) => mob.hp)).toEqual([50]);
   });
 
-  /* The face's question: how many at once, and what. */
+  /* The face's question: how many at once, how often, and what. */
   it('reads the lair whole, with how many are up at once', () => {
     const world = withLairs();
-    const lair = world.lair(world.byId('1/1')!);
+    const lair = world.lair(world.byId('1/1')!, null);
     expect(lair?.max).toBe(3);
     expect(lair?.mobs.map((mob) => mob.name)).toEqual(['giant rat']);
-    expect(world.lair(world.byId('1/2')!)).toEqual({
+    expect(world.lair(world.byId('1/2')!, null)).toEqual({
       max: 1,
+      respawnSeconds: null,
       mobs: [expect.objectContaining({ name: 'cave bear', hp: 50 })]
     });
   });
 
+  /*
+   * And when it fills again -- `Rooms.Delay`, which the card could price the
+   * cost of a lair from and never what it pays (format 33).
+   *
+   * The family is the caller's because the only reading outside the column is
+   * GreaterMUD's, whose regen adds thirty seconds to the elapsed time before
+   * comparing (`RegenSlot.cs:33`) -- so its two-minute lair is back in ninety
+   * seconds. Unknown takes the nominal figure, never the shorter one.
+   */
+  it('reads the lair clock the way the server the wire named reads it', () => {
+    const world = withLairs();
+    const entrance = world.byId('1/1')!;
+    expect(world.lair(entrance, 'majormud')?.respawnSeconds).toBe(120);
+    expect(world.lair(entrance, null)?.respawnSeconds).toBe(120);
+    expect(world.lair(entrance, 'greatermud')?.respawnSeconds).toBe(90);
+    // A room that states no clock claims none, on either server.
+    expect(world.lair(world.byId('1/2')!, 'greatermud')?.respawnSeconds).toBeNull();
+  });
+
   it('is no lair at all for a room the realm does not mark as one', () => {
     const world = withLairs();
-    expect(world.lair({ ...world.byId('1/1')!, lair: undefined })).toBeNull();
+    expect(world.lair({ ...world.byId('1/1')!, lair: undefined }, null)).toBeNull();
     // A descriptor naming nothing the table knows is still a lair -- the map
     // marks it as one -- and comes back empty so the face can say why.
-    expect(world.lair({ ...world.byId('1/1')!, lair: '(Max 2): 9999,' })).toEqual({
+    expect(world.lair({ ...world.byId('1/1')!, lair: '(Max 2): 9999,' }, null)).toEqual({
       max: 2,
+      respawnSeconds: 120,
       mobs: []
     });
   });
@@ -2843,7 +2998,7 @@ describe('lairs', () => {
      */
     it('reads a lair as the row its descriptor names, range and all', () => {
       const graph = byRow();
-      const post = graph.lair(graph.byId('1/1')!);
+      const post = graph.lair(graph.byId('1/1')!, null);
       expect(post?.mobs).toHaveLength(1);
       expect(post?.mobs[0]).toMatchObject({
         name: 'gnoll scout',
@@ -2855,9 +3010,12 @@ describe('lairs', () => {
       // The fold's range was doubt about the row's twins, and the row is not
       // in doubt about itself.
       expect(post?.mobs[0]).not.toHaveProperty('span');
-      expect(graph.lair(graph.byId('1/2')!)?.mobs[0]).toMatchObject({ hp: 830, experience: 2000 });
+      expect(graph.lair(graph.byId('1/2')!, null)?.mobs[0]).toMatchObject({
+        hp: 830,
+        experience: 2000
+      });
       // The disposition too, for a name whose rows disagree about it.
-      expect(graph.lair(graph.byId('1/3')!)?.mobs[0]).toMatchObject({
+      expect(graph.lair(graph.byId('1/3')!, null)?.mobs[0]).toMatchObject({
         disposition: 'hates-evil',
         uncertain: false
       });
@@ -2886,7 +3044,7 @@ describe('lairs', () => {
       // Two entries, not one line saying `100-830`: the descriptor names both
       // rows and they are a 100-HP monster and an 830-HP one. The repeat is
       // still one line, because a row is its own identity.
-      expect(warren.lair(warren.byId('1/1')!)?.mobs.map((mob) => mob.hp)).toEqual([100, 830]);
+      expect(warren.lair(warren.byId('1/1')!, null)?.mobs.map((mob) => mob.hp)).toEqual([100, 830]);
     });
 
     it('folds by name again on a realm with no per-row records', () => {
@@ -2897,7 +3055,7 @@ describe('lairs', () => {
         { mobs: [{ n: 'gnoll scout', hp: 100, hi: 830, i: [224, 2204], d: 'h' }] },
         31
       );
-      const only = older.lair(older.byId('1/1')!)?.mobs;
+      const only = older.lair(older.byId('1/1')!, null)?.mobs;
       expect(only).toHaveLength(1);
       expect(only?.[0]).toMatchObject({ hp: 830, span: [100, 830] });
       expect(only?.[0]).not.toHaveProperty('row');
@@ -3100,7 +3258,7 @@ describe('lairs', () => {
     const world = withLairs();
     const spelled = { ...world.byId('1/1')!, lair: '(Max 3): 1,109,[6-30-31-2]' };
     expect(world.lairOf(spelled).map((mob) => mob.name)).toEqual(['giant rat']);
-    expect(world.lair(spelled)?.max).toBe(3);
+    expect(world.lair(spelled, null)?.max).toBe(3);
   });
 
   /*
@@ -3125,7 +3283,7 @@ describe('lairs', () => {
     fs.rmSync(dir, { recursive: true, force: true });
     // Undefined, not an empty lair: the map's glyph reads this field directly.
     expect(world.byId('1/1')?.lair).toBeUndefined();
-    expect(world.lair(world.byId('1/1')!)).toBeNull();
+    expect(world.lair(world.byId('1/1')!, null)).toBeNull();
   });
 });
 
@@ -3255,6 +3413,115 @@ describe('where the realm puts a monster', () => {
     expect(places.spawns[0]!.rooms).toHaveLength(2);
     // And the total is the rooms, not the groups.
     expect(places.rooms).toBe(4);
+  });
+});
+
+/*
+ * `Rooms.Placed` read the other way — format 42: the fourth answer to *where
+ * does this come from*, in the shape a monster's placements are answered in.
+ */
+describe('where the realm puts an item', () => {
+  const world = (): WorldGraph =>
+    makeWorld(
+      [
+        { m: 1, r: 1, n: 'Boat Launch', x: {}, pl: [690] },
+        { m: 3, r: 2, n: 'Riverbank', x: {}, pl: [690, 938] },
+        { m: 3, r: 1, n: 'Riverbank', x: {}, pl: [690] },
+        { m: 4, r: 1, n: 'Empty Field', x: {} },
+        // A name two rows share, the first placed nowhere: `yellow bone portal`'s shape.
+        { m: 5, r: 1, n: 'Bone Dock', x: {}, pl: [1807] },
+        // And one that is loot and furniture both: the Treasure Room's `wooden box`.
+        { m: 6, r: 1, n: 'Treasure Room', x: {}, pl: [1809] }
+      ],
+      {
+        items: [
+          { id: 690, n: 'log raft' },
+          { id: 938, n: 'slag sign', ngt: 1 },
+          { id: 12, n: 'lantern' },
+          { id: 1749, n: 'yellow bone portal', ngt: 1 },
+          { id: 1807, n: 'yellow bone portal', ngt: 1 },
+          { id: 907, n: 'wooden box', price: 150 },
+          { id: 1809, n: 'wooden box', ngt: 1, price: 1 }
+        ]
+      },
+      42
+    );
+
+  it('groups the rooms by name, widest spread first, in the map’s own order', () => {
+    expect(world().itemPlaces([690])).toEqual({
+      more: 0,
+      groups: [
+        {
+          roomName: 'Riverbank',
+          count: 2,
+          rooms: [
+            { map: 3, room: 1 },
+            { map: 3, room: 2 }
+          ]
+        },
+        { roomName: 'Boat Launch', count: 1, rooms: [{ map: 1, room: 1 }] }
+      ]
+    });
+  });
+
+  it('answers the lookup with it, and leaves an item placed nowhere alone', () => {
+    const found = world().lookup('l');
+    const raft = found.items.find((item) => item.name === 'log raft');
+    expect(raft?.placed?.groups.map((group) => group.count)).toEqual([2, 1]);
+    expect(raft?.placed).not.toHaveProperty('fixed');
+    const lantern = found.items.find((item) => item.name === 'lantern');
+    expect(lantern).toBeDefined();
+    expect(lantern).not.toHaveProperty('placed');
+    // A copy: the row every lookup shares is never written into.
+    expect(world().item(690)).not.toHaveProperty('placed');
+  });
+
+  /* `mobPlaces`' rule: every row behind the name, not the lookup's first. */
+  it('answers for every row a name holds, and says when none of it can be taken', () => {
+    const portal = world()
+      .lookup('yellow bone portal')
+      .items.find((item) => item.name === 'yellow bone portal');
+    expect(portal?.placed?.groups.map((group) => group.roomName)).toEqual(['Bone Dock']);
+    expect(portal?.placed?.fixed).toBe(true);
+  });
+
+  it('caps the groups and the rooms in one, and says how many it left out', () => {
+    const places = world().itemPlaces([690], 1, 1)!;
+    expect(places.groups).toHaveLength(1);
+    expect(places.more).toBe(1);
+    expect(places.groups[0]!.count).toBe(2);
+    expect(places.groups[0]!.rooms).toHaveLength(1);
+  });
+
+  it('answers nothing for an item the realm places in no room', () => {
+    expect(world().itemPlaces([12])).toBeUndefined();
+  });
+
+  /*
+   * A name several rows share is settled by the room that places one of
+   * them, as a lair settles a monster's row: the Treasure Room's box is its
+   * fixed row, not the loot row the name answers with.
+   */
+  it('settles a shared name on the floor to the row the room places', () => {
+    const graph = world();
+    const box = graph.buildItemEntity('wooden box', {});
+    expect(box.price).toBe(150);
+    const here = graph.itemPlacedHere(box, graph.get(6, 1)!);
+    expect(here).toMatchObject({ id: 1809, row: { id: 1809 }, gettable: false, price: 1 });
+    expect(here.ids).toEqual([907, 1809]);
+    // Anywhere else, the name keeps its rows and says nothing about which.
+    expect(graph.itemPlacedHere(box, graph.get(4, 1)!)).toBe(box);
+  });
+
+  /*
+   * Among several rows, one the realm offers no way to hold is never the one
+   * held; a name with one row is that row, whatever its flag says — a script
+   * hands over `acid gland`, which is `Gettable` 0.
+   */
+  it('reads a carried name past the furniture that shares it', () => {
+    expect(world().itemIdNamed('wooden box')).toBe(907);
+    expect(world().itemIdNamed('yellow bone portal')).toBeNull();
+    expect(world().itemIdNamed('slag sign')).toBe(938);
   });
 });
 
@@ -3659,6 +3926,17 @@ describe('describeBlock', () => {
       keyId: 593,
       itemName: 'black serpent key'
     },
+    quest: {
+      kind: 'quest',
+      at: '2/9458',
+      to: '2/9459',
+      name: "Dragon's Teeth Pass",
+      abilityId: 204,
+      counterName: 'GuildmasterQuest',
+      held: 0,
+      atLeast: 1,
+      atMost: 999
+    },
     unreachable: { kind: 'unreachable' }
   };
 
@@ -3740,11 +4018,13 @@ describe('itemWanted', () => {
     itemName: 'black serpent key'
   };
   const raft = {
+    id: 5,
     spell: 'drowning',
     rooms: 4,
     share: 0.2,
     unread: false,
     summons: false,
+    relocates: false,
     needs: [{ id: 41, name: 'log raft' }],
     needsSpell: []
   };
@@ -3814,6 +4094,53 @@ describe('routing through room-script teleports', () => {
     const refused = portalWorld(gated).route('1/1', '2/1', { level: 10 });
     expect(refused.blocked).toBe(true);
     expect(refused.blocks?.some((block) => block.kind === 'level')).toBe(true);
+  });
+
+  /*
+   * todo 102. The realm's own rooms, because this is the route that went
+   * wrong: `2/9458 sw` wants `GuildmasterQuest` and the plan walked into it.
+   * A refusal a person can act on is the whole of the fix — the counter's own
+   * name, the window and the number the character holds.
+   */
+  it('refuses an exit the counters fail, and names the counter it wants', () => {
+    const pass = makeWorld([
+      {
+        m: 2,
+        r: 9458,
+        n: "Dragon's Teeth Pass",
+        x: { sw: { m: 2, r: 9459, i: 'Ability: 204 w/value 1 to 999' } }
+      },
+      { m: 2, r: 9459, n: "Dragon's Teeth Pass", x: { ne: { m: 2, r: 9458 } } }
+    ]);
+
+    const refused = pass.route('2/9458', '2/9459', {
+      counters: { sums: {}, complete: true }
+    });
+    expect(refused.blocked).toBe(true);
+    const block = refused.blocks?.find((one) => one.kind === 'quest');
+    expect(block).toEqual({
+      kind: 'quest',
+      at: '2/9458',
+      to: '2/9459',
+      name: "Dragon's Teeth Pass",
+      abilityId: 204,
+      counterName: 'GuildmasterQuest',
+      held: 0,
+      atLeast: 1,
+      atMost: 999
+    });
+    expect(describeBlock(block!)).toContain('GuildmasterQuest 1–999');
+    expect(describeBlock(block!)).toContain('yours is 0');
+
+    // And the same exit is a plain corridor for a character who has it.
+    const open = pass.route('2/9458', '2/9459', {
+      counters: { sums: { 204: 1 }, complete: true }
+    });
+    expect(open.blocked).toBe(false);
+    expect(open.steps.map((step) => step.direction)).toEqual(['sw']);
+
+    // Before any listing, nobody has said: discouraged, never pruned.
+    expect(pass.route('2/9458', '2/9459').blocked).toBe(false);
   });
 
   /*
@@ -3896,6 +4223,99 @@ describe('routing through room-script teleports', () => {
  * ordinary and a client that degraded to nothing there would be worse than one
  * that never looked anything up.
  */
+/*
+ * A way in that puts a timed spell on the character (todo 104): `dive pool`
+ * casts *holding breath*, which ends in *drowning*, and the way up at the far
+ * end casts the spell that kills both. The passage is priced by the rooms
+ * under the spell against the ticks it lasts, the rooms are known, and a
+ * passage with no way out inside the ticks is a wall.
+ */
+describe('a way in that puts a timed spell on you', () => {
+  const dive = (ticks: number): WorldGraph =>
+    makeWorld(
+      [
+        { m: 1, r: 1, n: 'Pool', x: {}, cmd: [{ say: ['dive pool'], to: '1/2', casts: 512 }] },
+        { m: 1, r: 2, n: 'Passage', x: { e: { m: 1, r: 3 } } },
+        { m: 1, r: 3, n: 'Passage', x: { e: { m: 1, r: 4 }, w: { m: 1, r: 2 } } },
+        {
+          m: 1,
+          r: 4,
+          n: 'Passage',
+          x: { u: { m: 1, r: 5, i: 'Cast: pre-681, post-0' }, w: { m: 1, r: 3 } }
+        },
+        { m: 1, r: 5, n: 'Shore', x: {} }
+      ],
+      {
+        spells: [
+          { id: 512, n: 'holding breath', dur: ticks, ab: [[151, 513]] },
+          {
+            id: 513,
+            n: 'drowning',
+            dur: 5,
+            ab: [
+              [1, 10],
+              [151, 514]
+            ]
+          },
+          { id: 514, n: 'drowned to death', ab: [[1, 9999]] },
+          {
+            id: 681,
+            n: 'stop drowning',
+            ab: [
+              [153, 512],
+              [153, 513]
+            ]
+          }
+        ]
+      },
+      43
+    );
+
+  it('resolves the passage on the way in, and knows which rooms are under it', () => {
+    const graph = dive(25);
+    const portal = graph.portalsFrom(roomId(1, 1))[0];
+    expect(portal?.requirement.corridor).toEqual({
+      spell: 512,
+      name: 'holding breath',
+      rooms: 3,
+      ends: true,
+      ticks: 25,
+      then: 'drowning'
+    });
+    expect(graph.spellOver(roomId(1, 2))?.spell).toBe(512);
+    expect(graph.spellOver(roomId(1, 4))?.spell).toBe(512);
+    expect(graph.spellOver(roomId(1, 1))).toBeNull();
+    expect(graph.spellOver(roomId(1, 5))).toBeNull();
+  });
+
+  it('prices the rooms under the spell and names the passage on the route', () => {
+    const graph = dive(25);
+    const portal = graph.portalsFrom(roomId(1, 1))[0];
+    const route = graph.route(roomId(1, 1), roomId(1, 5), {});
+    expect(route.blocked).toBe(false);
+    expect(route.steps.map((step) => step.command)).toEqual(['dive pool', 'e', 'e', 'u']);
+    // The way in costs the three rooms under the spell on top of the step;
+    // the way out is a cast exit priced by its own rule.
+    expect(edgePenalty(portal!.requirement, {})).toBe(3);
+    expect(route.cost).toBeGreaterThanOrEqual(7);
+    expect(route.hazards).toContainEqual(
+      expect.objectContaining({
+        spell: 'holding breath',
+        rooms: 3,
+        share: null,
+        corridor: { ends: true, ticks: 25, then: 'drowning' }
+      })
+    );
+  });
+
+  it('walls a passage whose way out is further than the spell lasts', () => {
+    const graph = dive(2);
+    const portal = graph.portalsFrom(roomId(1, 1))[0];
+    expect(portal?.requirement.corridor?.ends).toBe(false);
+    expect(graph.route(roomId(1, 1), roomId(1, 5), {}).blocked).toBe(true);
+  });
+});
+
 describe('building entities', () => {
   /** A world with one item, one monster and a shop, for the joins. */
   const built = (): WorldGraph => {
@@ -4438,6 +4858,534 @@ describe('the order a step fetches its items in', () => {
 
   const stepOf = (graph: WorldGraph): QuestStep => graph.quests()[0]!.steps[0]!;
 
+  /*
+   * One step of a plan: what it gathers and how, where it happens, whether
+   * the way there from the step before exists. Priced from the room handed
+   * in, never from anywhere it guesses.
+   */
+  describe('a plan step', () => {
+    const asker = {
+      block: 1,
+      say: ['box'],
+      needs: [],
+      takes: [{ id: 10, name: 'near thing' }],
+      gives: [],
+      who: 'Morukai',
+      room: '1/7'
+    };
+
+    it('buys a stocked item at the counter least off the road, and prices the way there', () => {
+      const graph = errandWorld(asker);
+      const quest = graph.quests()[0]!;
+      const planned = graph.planStep(quest, stepOf(graph), '1/1', null, {});
+      expect(planned.act).toEqual({ verb: 'ask', who: 'Morukai', say: 'box' });
+      expect(planned.at).toEqual({ room: '1/7', place: 'Room 7' });
+      expect(planned.reachable).toBe(true);
+      expect(planned.moves).toBe(6);
+      expect(planned.items).toHaveLength(1);
+      expect(planned.items[0]?.source).toMatchObject({
+        how: 'buy',
+        shops: ['Near Shop'],
+        at: { room: '1/3' },
+        detour: 0
+      });
+      expect(planned.items[0]?.held).toBeNull();
+      expect(planned.snags).toEqual([]);
+    });
+
+    it('says an item is carried, and asks for nothing else about it', () => {
+      const graph = errandWorld(asker);
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [10], {});
+      expect(planned.items[0]?.held).toBe(true);
+      expect(planned.items[0]?.source).toEqual({ how: 'carried' });
+    });
+
+    it('names an item the realm places nowhere as a snag, never a guess', () => {
+      const graph = errandWorld({ ...asker, takes: [{ id: 12, name: 'thing from nowhere' }] });
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {});
+      expect(planned.items[0]?.source).toEqual({ how: 'unplaced' });
+      expect(planned.snags).toEqual([{ kind: 'unplaced', item: 'thing from nowhere' }]);
+    });
+
+    it('leaves the way unpriced for a character nobody has placed', () => {
+      const graph = errandWorld(asker);
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), null, null, {});
+      expect(planned.reachable).toBeNull();
+      expect(planned.moves).toBeUndefined();
+      // The counter is still named: the plan says how, only not how far.
+      expect(planned.items[0]?.source).toMatchObject({ how: 'buy' });
+    });
+
+    it('reports a room the router cannot reach as unreachable, with its reason', () => {
+      // An island: a room the realm holds and nothing leads to.
+      const graph = makeWorld(
+        [...street(3), { m: 1, r: 9, n: 'Island', x: {} }],
+        {
+          quests: [{ id: 131, name: 'IslandQuest', steps: [{ ...asker, room: '1/9', takes: [] }] }]
+        },
+        25
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {});
+      expect(planned.reachable).toBe(false);
+      expect(planned.snags[0]).toMatchObject({ kind: 'unreachable' });
+    });
+
+    it('leaves a room the realm no longer holds unpriced, since the router cannot say', () => {
+      const graph = errandWorld({ ...asker, room: '9/9', takes: [] });
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {});
+      expect(planned.reachable).toBeNull();
+      expect(planned.at).toEqual({ room: '9/9' });
+    });
+
+    /*
+     * The desert in miniature (2026-09-21): two rooms on the only way cast a
+     * spell that can move the character, stopped by a wristband nobody sells
+     * and by the spell a waterskin casts; a third room casts a spell that
+     * only summons. The plan buys the waterskin at the counter on the way,
+     * says the desert is safe with it, and says nothing about the summons.
+     */
+    function desertWorld(): WorldGraph {
+      const rooms = street(7).map((room) =>
+        room['r'] === 3
+          ? { ...room, s: 1 }
+          : room['r'] === 4 || room['r'] === 5
+            ? { ...room, sp: 683 }
+            : room['r'] === 6
+              ? { ...room, sp: 915 }
+              : room
+      );
+      return makeWorld(
+        rooms,
+        {
+          items: [
+            { id: 283, n: 'waterskin', ab: [[43, 711]], type: 5, uses: 3 },
+            { id: 1180, n: 'sunstone wristband' }
+          ],
+          shops: [{ id: 1, n: 'General Store', items: [283], t: 0 }],
+          spells: [
+            { id: 683, n: 'desert spell', hz: { av: [1180], sp: [711], tp: 1 } },
+            { id: 711, n: 'waterskin', dur: 600 },
+            { id: 915, n: 'darkwood forest spell', hz: { sm: 1 } }
+          ],
+          quests: [{ id: 134, name: 'DesertQuest', steps: [{ ...asker, takes: [] }] }]
+        },
+        43
+      );
+    }
+
+    /**
+     * The session's own arithmetic, in miniature: every room spell prices as
+     * a discouragement, summons included (`SessionManager.roomHazard`), so
+     * `RouteHazard.share` is non-null for the summons and the plan has to
+     * read the spell's facts to drop it, never the share.
+     */
+    const priced = (graph: WorldGraph): Traveller => ({
+      packKnown: true,
+      keys: [],
+      hazard: (room) => (graph.hazardOf(room) === null ? null : 0.02)
+    });
+
+    it('buys what stops a spell on the way, and says the way is safe with it', () => {
+      const graph = desertWorld();
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      expect(planned.reachable).toBe(true);
+      expect(planned.items).toEqual([
+        {
+          id: 283,
+          name: 'waterskin',
+          held: false,
+          hand: false,
+          // The counter is on the way, so it costs the leg nothing.
+          source: {
+            how: 'buy',
+            shops: ['General Store'],
+            at: { room: '1/3', place: 'Room 3' },
+            detour: 0
+          },
+          count: tuning().world.hazardSupplyCount,
+          stops: 'desert spell'
+        }
+      ]);
+      // The summons is scenery; the desert is named once, settled.
+      expect(planned.snags).toEqual([
+        {
+          kind: 'hazard',
+          spell: 'desert spell',
+          rooms: 2,
+          unread: false,
+          moves: true,
+          needs: ['sunstone wristband'],
+          safeWith: 'waterskin'
+        }
+      ]);
+    });
+
+    /*
+     * The reported run (2026-09-21): the plan bought the waterskin for the
+     * leg and listed it after the step's own head, so the run hunted the
+     * saracen raider across the desert first, unwatered. Here the asker
+     * stands *before* the desert and only the hunt crosses it: the skin is
+     * still bought, listed first, and the hunt starts at the ring's nearest
+     * stop rather than the monster's first placement in the realm's order.
+     */
+    it("buys the way's supplies before the step's own items, and for the hunt's way too", () => {
+      const rooms = street(8).map((room) =>
+        room['r'] === 2
+          ? { ...room, s: 1 }
+          : room['r'] === 4 || room['r'] === 5
+            ? { ...room, sp: 683 }
+            : room['r'] === 7
+              ? { ...room, lair: '(Max 2): 569,' }
+              : room['r'] === 8
+                ? { ...room, lair: '(Max 2): 569,' }
+                : room
+      );
+      const graph = makeWorld(
+        rooms,
+        {
+          items: [
+            { id: 283, n: 'waterskin', ab: [[43, 711]], type: 5, uses: 3 },
+            { id: 1152, n: 'saracen head' }
+          ],
+          shops: [{ id: 1, n: 'General Store', items: [283], t: 0 }],
+          spells: [
+            { id: 683, n: 'desert spell', hz: { av: [1180], sp: [711], tp: 1 } },
+            { id: 711, n: 'waterskin', dur: 600 }
+          ],
+          mobs: [{ n: 'saracen raider', hp: 250, i: [569], d: 'h', drops: ['saracen head'] }],
+          quests: [
+            {
+              id: 134,
+              name: 'HeadQuest',
+              steps: [{ ...asker, room: '1/3', takes: [{ id: 1152, name: 'saracen head' }] }]
+            }
+          ]
+        },
+        43
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      expect(planned.reachable).toBe(true);
+      expect(planned.items.map((item) => item.name)).toEqual(['waterskin', 'saracen head']);
+      expect(planned.items[0]).toMatchObject({
+        source: { how: 'buy', at: { room: '1/2' }, detour: 0 },
+        stops: 'desert spell'
+      });
+      expect(planned.items[1]?.source).toEqual({
+        how: 'kill',
+        mob: 'saracen raider',
+        at: { room: '1/7', place: 'Room 7' }
+      });
+      // The desert is the hunt's, not the leg's, and it is named settled.
+      expect(planned.snags).toEqual([
+        expect.objectContaining({ kind: 'hazard', spell: 'desert spell', safeWith: 'waterskin' })
+      ]);
+      // Out to the lair (six), back to the asker from there (four), the
+      // counter on the way: the step is every way it walks.
+      expect(planned.moves).toBe(10);
+    });
+
+    /*
+     * The hunt is the errand's lap, planned on the lap's traveller — the
+     * shortest way, hazards unpriced — so the plan reads it on that traveller
+     * (review, 2026-09-21). Read on the plan's own, which prices the desert,
+     * the A* took the clean road round, met nothing and bought nothing, and
+     * the run then walked the short way through the desert unwatered. Two
+     * lairs: one four rooms off through the desert, one five off by the
+     * clean road; the lap picks the near one, the plan must say so.
+     */
+    it("reads the hunt on the lap's traveller, not the plan's", () => {
+      // 1 -e- 2 -e- 3 -e- 4 -e- 5(lair)      desert at 3 and 4
+      // 1 -s- 6 -e- 7 -e- 8 -e- 9 -e- 10(lair)  the clean road, one longer
+      const room = (r: number, n: string, x: Record<string, unknown>, more = {}) => ({
+        m: 1,
+        r,
+        n,
+        x,
+        ...more
+      });
+      const e = (r: number) => ({ e: { m: 1, r } });
+      const w = (r: number) => ({ w: { m: 1, r } });
+      const rooms = [
+        room(1, 'Start', { ...e(2), s: { m: 1, r: 6 } }, { s: 1 }),
+        room(2, 'Road', { ...e(3), ...w(1) }),
+        room(3, 'Desert', { ...e(4), ...w(2) }, { sp: 683 }),
+        room(4, 'Desert', { ...e(5), ...w(3) }, { sp: 683 }),
+        room(5, 'Near Lair', { ...w(4) }, { lair: '(Max 2): 569,' }),
+        room(6, 'Clean Road', { ...e(7), n: { m: 1, r: 1 } }),
+        room(7, 'Clean Road', { ...e(8), ...w(6) }),
+        room(8, 'Clean Road', { ...e(9), ...w(7) }),
+        room(9, 'Clean Road', { ...e(10), ...w(8) }),
+        room(10, 'Far Lair', { ...w(9) }, { lair: '(Max 2): 569,' })
+      ];
+      const graph = makeWorld(
+        rooms,
+        {
+          items: [
+            { id: 283, n: 'waterskin', ab: [[43, 711]], type: 5, uses: 3 },
+            { id: 1152, n: 'saracen head' }
+          ],
+          shops: [{ id: 1, n: 'General Store', items: [283], t: 0 }],
+          spells: [
+            { id: 683, n: 'desert spell', hz: { av: [1180], sp: [711], tp: 1 } },
+            { id: 711, n: 'waterskin', dur: 600 }
+          ],
+          mobs: [{ n: 'saracen raider', hp: 250, i: [569], d: 'h', drops: ['saracen head'] }],
+          quests: [
+            {
+              id: 134,
+              name: 'HeadQuest',
+              steps: [{ ...asker, room: '1/1', takes: [{ id: 1152, name: 'saracen head' }] }]
+            }
+          ]
+        },
+        43
+      );
+      // The plan's traveller prices the desert dearly; the lap's prices nothing.
+      const plan: Traveller = {
+        packKnown: true,
+        keys: [],
+        hazard: (room) => (graph.hazardOf(room) === null ? null : 0.9)
+      };
+      const lap: Traveller = { packKnown: true, keys: [] };
+      const step = stepOf(graph);
+      const read = graph.planStep(graph.quests()[0]!, step, '1/1', [], plan, [], lap);
+      expect(read.items.map((item) => item.name)).toEqual(['waterskin', 'saracen head']);
+      expect(read.items[1]?.source).toMatchObject({ how: 'kill', at: { room: '1/5' } });
+      expect(read.snags).toEqual([
+        expect.objectContaining({ kind: 'hazard', spell: 'desert spell', safeWith: 'waterskin' })
+      ]);
+      // Read on the plan's own traveller, the clean road wins and nothing is bought.
+      const misread = graph.planStep(graph.quests()[0]!, step, '1/1', [], plan);
+      expect(misread.items.map((item) => item.name)).toEqual(['saracen head']);
+      expect(misread.items[0]?.source).toMatchObject({ at: { room: '1/10' } });
+    });
+
+    it('buys nothing twice: a later leg reads the supply an earlier one fetched', () => {
+      const graph = desertWorld();
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        priced(graph),
+        [283]
+      );
+      expect(planned.items).toEqual([]);
+      expect(planned.snags[0]).toMatchObject({ kind: 'hazard', safeWith: 'waterskin' });
+    });
+
+    /*
+     * Two spells the same raft stops are one raft: the river and the ocean
+     * name the identical four boats, and a coastal leg bought one per spell
+     * (review, 2026-09-21).
+     */
+    it('buys one stopper for two spells it stops', () => {
+      const graph = makeWorld(
+        street(7).map((room) =>
+          room['r'] === 3
+            ? { ...room, s: 1 }
+            : room['r'] === 4
+              ? { ...room, sp: 753 }
+              : room['r'] === 5
+                ? { ...room, sp: 5249 }
+                : room
+        ),
+        {
+          items: [{ id: 690, n: 'log raft' }],
+          shops: [{ id: 1, n: 'Boathouse', items: [690], t: 0 }],
+          spells: [
+            { id: 753, n: 'river damage', hz: { d: 15, av: [690] } },
+            { id: 5249, n: 'Ocean', hz: { d: 20, av: [690] } }
+          ],
+          quests: [{ id: 134, name: 'CoastQuest', steps: [{ ...asker, takes: [] }] }]
+        },
+        43
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      expect(planned.items.map((item) => item.name)).toEqual(['log raft']);
+      expect(planned.snags.map((snag) => snag.kind === 'hazard' && snag.safeWith)).toEqual([
+        'log raft',
+        'log raft'
+      ]);
+    });
+
+    /*
+     * A counter the route passes *beyond* the desert prices at no detour and
+     * is no use in it: the supply is bought on the way to the first room
+     * casting the spell. The spur off room 2 costs two moves; the counter at
+     * room 6 costs nothing to the leg's end and four to the desert.
+     */
+    it('buys the stopper before the first room that casts the spell', () => {
+      const graph = makeWorld(
+        [
+          ...street(7).map((room) =>
+            room['r'] === 2
+              ? { ...room, x: { ...(room['x'] as object), n: { m: 1, r: 8 } } }
+              : room['r'] === 4
+                ? { ...room, sp: 753 }
+                : room['r'] === 6
+                  ? { ...room, s: 1 }
+                  : room
+          ),
+          { m: 1, r: 8, n: 'Spur', s: 2, x: { s: { m: 1, r: 2 } } }
+        ],
+        {
+          items: [{ id: 690, n: 'log raft' }],
+          shops: [
+            { id: 1, n: 'Far Boathouse', items: [690], t: 0 },
+            { id: 2, n: 'Near Boathouse', items: [690], t: 0 }
+          ],
+          spells: [{ id: 753, n: 'river damage', hz: { d: 15, av: [690] } }],
+          quests: [{ id: 134, name: 'RiverQuest', steps: [{ ...asker, takes: [] }] }]
+        },
+        43
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      expect(planned.items[0]?.source).toMatchObject({
+        how: 'buy',
+        at: { room: '1/8' },
+        detour: 2
+      });
+      expect(planned.moves).toBe(8);
+    });
+
+    /*
+     * And a spell with a figure is named whether or not the character's
+     * health is known: the share is the session's *unknown* as well as its
+     * *nothing*, and the plan reads the spell's own facts (review, 2026-09-21).
+     */
+    it('names a spell with a figure when nothing prices the room', () => {
+      const graph = desertWorld();
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {
+        packKnown: true,
+        keys: []
+      });
+      expect(planned.snags.map((snag) => snag.kind)).toEqual(['hazard']);
+    });
+
+    it('reads a waterskin already in the pack as what makes the desert safe', () => {
+      const graph = desertWorld();
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [283], {
+        packKnown: true,
+        keys: [283]
+      });
+      expect(planned.items).toEqual([]);
+      expect(planned.snags[0]).toMatchObject({ kind: 'hazard', safeWith: 'waterskin' });
+    });
+
+    it('names the spell nothing sold stops, with what it would have taken', () => {
+      const graph = makeWorld(
+        street(7).map((room) => (room['r'] === 4 ? { ...room, sp: 683 } : room)),
+        {
+          items: [{ id: 1180, n: 'sunstone wristband' }],
+          spells: [{ id: 683, n: 'desert spell', hz: { av: [1180], tp: 1 } }],
+          quests: [{ id: 134, name: 'DesertQuest', steps: [{ ...asker, takes: [] }] }]
+        },
+        43
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {
+        packKnown: true,
+        keys: []
+      });
+      expect(planned.items).toEqual([]);
+      expect(planned.snags).toEqual([
+        {
+          kind: 'hazard',
+          spell: 'desert spell',
+          rooms: 1,
+          unread: false,
+          moves: true,
+          needs: ['sunstone wristband']
+        }
+      ]);
+    });
+
+    /*
+     * The dive at the Bountiful Oasis (format 43): `dive pool` puts *holding
+     * breath* on the character, which ends in *drowning*; two rooms down the
+     * way up casts *exit muddy water*, which ends in a spell that kills both.
+     * Nothing carried stops it, so the plan says how far and how long.
+     */
+    it('names a timed passage the way in puts on the character, to the exit that lifts it', () => {
+      const graph = makeWorld(
+        [
+          { m: 1, r: 1, n: 'Pool', x: {}, cmd: [{ say: ['dive pool'], to: '1/2', casts: 512 }] },
+          { m: 1, r: 2, n: 'Passage', x: { d: { m: 1, r: 3 } } },
+          { m: 1, r: 3, n: 'Passage', x: { u: { m: 1, r: 4, i: 'Cast: pre-681, post-0' } } },
+          { m: 1, r: 4, n: 'Shore', x: {} }
+        ],
+        {
+          spells: [
+            { id: 512, n: 'holding breath', dur: 25, ab: [[151, 513]] },
+            {
+              id: 513,
+              n: 'drowning',
+              dur: 5,
+              ab: [
+                [1, 0],
+                [151, 514]
+              ],
+              pw: [5, 20]
+            },
+            { id: 514, n: 'drowned to death', ab: [[1, 0]], pw: [9999, 9999] },
+            { id: 681, n: 'exit muddy water', ab: [[151, 682]] },
+            {
+              id: 682,
+              n: 'stop mud drown',
+              ab: [
+                [153, 512],
+                [153, 513]
+              ]
+            }
+          ],
+          quests: [{ id: 134, name: 'DiveQuest', steps: [{ ...asker, room: '1/4', takes: [] }] }]
+        },
+        43
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {});
+      expect(planned.reachable).toBe(true);
+      expect(planned.snags).toEqual([
+        {
+          kind: 'corridor',
+          spell: 'holding breath',
+          rooms: 2,
+          ends: true,
+          ticks: 25,
+          then: 'drowning'
+        }
+      ]);
+    });
+
+    it('says a leg that ends inside the passage does not reach the way out', () => {
+      const graph = makeWorld(
+        [
+          { m: 1, r: 1, n: 'Pool', x: {}, cmd: [{ say: ['dive pool'], to: '1/2', casts: 512 }] },
+          { m: 1, r: 2, n: 'Passage', x: { d: { m: 1, r: 3 } } },
+          { m: 1, r: 3, n: 'Passage', x: {} }
+        ],
+        {
+          spells: [
+            { id: 512, n: 'holding breath', dur: 25, ab: [[151, 513]] },
+            {
+              id: 513,
+              n: 'drowning',
+              dur: 5,
+              ab: [
+                [1, 0],
+                [151, 514]
+              ],
+              pw: [5, 20]
+            }
+          ],
+          quests: [{ id: 134, name: 'DiveQuest', steps: [{ ...asker, room: '1/3', takes: [] }] }]
+        },
+        43
+      );
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {});
+      expect(planned.snags[0]).toMatchObject({ kind: 'corridor', rooms: 2, ends: false });
+    });
+  });
+
   it('walks past the near thing to the far one, because the whole walk is shorter', () => {
     const graph = errandWorld(both);
     const errand = graph.errand(stepOf(graph), '1/4', {});
@@ -4767,11 +5715,13 @@ describe('what a room does to whoever stands in it prices the way through it', (
     expect(route.steps[0]?.hazard).toBeCloseTo(15 / 100_000);
     expect(route.hazards).toEqual([
       {
+        id: 753,
         spell: 'river damage',
         rooms: 2,
         share: 15 / 100_000,
         unread: false,
         summons: false,
+        relocates: false,
         needs: [{ id: 690, name: 'log raft' }],
         needsSpell: []
       }
@@ -5224,6 +6174,48 @@ describe('the items that would serve a condition', () => {
   });
 });
 
+/*
+ * And the realm's own rules of the same shape — the wards (todo 02).
+ *
+ * `Wards` makes this join a room at a time; the settings screen asks for the
+ * whole realm's worth, so a switch over rules nobody can read is not what the
+ * player is offered. Shaped on the desert: spell 683 is stopped outright by
+ * the sunstone wristband (1180) and by spell 711, which using a waterskin
+ * casts.
+ */
+describe('the wards the realm itself writes', () => {
+  const realm = (): WorldGraph =>
+    makeWorld(
+      [
+        { m: 12, r: 1, n: 'Scorching Desert', sp: 683 },
+        { m: 12, r: 2, n: 'Scorching Desert', sp: 683 },
+        // A room whose spell nothing carried stops, and one with no spell.
+        { m: 12, r: 3, n: 'Silver River', sp: 753 },
+        { m: 12, r: 4, n: 'Ornate Tent' }
+      ],
+      {
+        items: [
+          { id: 283, n: 'waterskin', uses: 3, ab: [[43, 711]] },
+          // Stops the desert outright, and no `use` casts it: a thing to go
+          // and find, not a rule to switch on.
+          { id: 1180, n: 'sunstone wristband' }
+        ],
+        spells: [
+          { id: 683, n: 'desert spell', hz: { d: 13, av: [1180], sp: [711] } },
+          { id: 711, n: 'waterskin', dur: 600 },
+          { id: 753, n: 'silver river', hz: { d: 15, av: [690] } }
+        ]
+      },
+      45
+    );
+
+  it('names the item, the ward and the room spell, counted over the rooms', () => {
+    expect(realm().wards()).toEqual([
+      { item: 'waterskin', ward: 'waterskin', hazard: 'desert spell', rooms: 2 }
+    ]);
+  });
+});
+
 /**
  * What every way into a place demands be carried.
  *
@@ -5549,6 +6541,147 @@ describe('an item that teleports is an edge the router may walk', () => {
   });
 
   /*
+   * And who may use it, which the pack cannot answer (2026-09-21): the token
+   * of Silvermere sat in a level-21 pack, the walk out of the Sandbar wanted
+   * a rope and grapple the pack lacked, so the last resort planned `use token
+   * of Silvermere` and the server said *You are not experienced enough to
+   * make that trip!*. The item row states level 25.
+   */
+  const grownInto = (gate: Record<string, unknown>): WorldGraph =>
+    makeWorld(
+      [
+        ...Array.from({ length: 60 }, (_, i) => ({
+          m: 1,
+          r: i + 1,
+          n: `Road ${i + 1}`,
+          x: i + 1 < 60 ? { e: { m: 1, r: i + 2 } } : {}
+        })),
+        { m: 2, r: 1, n: 'Sealed Cave', x: {} }
+      ],
+      {
+        items: [
+          { id: 8, n: 'token of Kingsport', type: 0, lands: '1/60', uses: 5, ...gate },
+          { id: 7, n: 'potion of levitation', type: 0, lands: '2/1', uses: 1, ...gate }
+        ]
+      },
+      40
+    );
+
+  it('does not offer a token the character has not grown into', () => {
+    const graph = grownInto({ lvl: 25 });
+    const young = graph.route(
+      roomId(1, 1),
+      roomId(1, 60),
+      { keys: [8], packKnown: true, level: 21 },
+      { alternatives: true }
+    );
+    expect(young.viaItem).toBeUndefined();
+    const grown = graph.route(
+      roomId(1, 1),
+      roomId(1, 60),
+      { keys: [8], packKnown: true, level: 25 },
+      { alternatives: true }
+    );
+    expect(grown.viaItem?.steps[0]?.invoke?.name).toBe('token of Kingsport');
+  });
+
+  it('refuses the only way in on the level, and names the item rather than the room', () => {
+    const route = grownInto({ lvl: 25 }).route(roomId(1, 1), roomId(2, 1), {
+      keys: [7],
+      packKnown: true,
+      level: 21
+    });
+    expect(route.blocked).toBe(true);
+    expect(route.blocks).toEqual([
+      expect.objectContaining({
+        kind: 'level',
+        name: 'potion of levitation',
+        minLevel: 25,
+        level: 21
+      })
+    ]);
+    expect(route.reason).toBe('potion of levitation needs level 25, at level 21');
+  });
+
+  it('never refuses on a level nobody has read', () => {
+    // `equipBlock`'s rule, and the card's: unknown greys nothing out.
+    const route = grownInto({ lvl: 25 }).route(roomId(1, 1), roomId(2, 1), {
+      keys: [7],
+      packKnown: true
+    });
+    expect(route.blocked).toBe(false);
+    expect(route.steps[0]?.invoke?.id).toBe(7);
+  });
+
+  it("refuses an item the character's class may not use, by the allow-list", () => {
+    const graph = grownInto({ cls: [3, 4] });
+    const wrong = graph.route(roomId(1, 1), roomId(2, 1), {
+      keys: [7],
+      packKnown: true,
+      classId: 5
+    });
+    expect(wrong.blocked).toBe(true);
+    expect(wrong.blocks).toEqual([
+      expect.objectContaining({ kind: 'born', condition: 'class', name: 'Sealed Cave' })
+    ]);
+    const right = graph.route(roomId(1, 1), roomId(2, 1), {
+      keys: [7],
+      packKnown: true,
+      classId: 4
+    });
+    expect(right.blocked).toBe(false);
+  });
+
+  it("names the walk's wall and the token's level together, on the shipped realm", () => {
+    /*
+     * The report this was written for: *going from 16 273 to 1 297 is trying
+     * to use token of silvermere but it is level 25 restricted*. The Sandbar's
+     * only way out on foot is `16/111 u`, which wants a rope and grapple; the
+     * one search with the gates open explained the cheaper opened way, the
+     * token, and said nothing about the rope — the half a person can fetch.
+     */
+    const graph = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    const token = graph.itemIdNamed('token of Silvermere')!;
+    const route = graph.route(
+      roomId(16, 273),
+      roomId(1, 297),
+      { keys: [token], packKnown: true, level: 21 },
+      { alternatives: true }
+    );
+    expect(route.blocked).toBe(true);
+    expect(route.blocks).toEqual([
+      expect.objectContaining({ kind: 'carry', itemName: 'rope and grapple' }),
+      expect.objectContaining({
+        kind: 'level',
+        name: 'token of Silvermere',
+        minLevel: 25,
+        level: 21
+      })
+    ]);
+    // With the rope, the walk is the plan and the token is not offered.
+    const rope = graph.itemIdNamed('rope and grapple')!;
+    const walked = graph.route(
+      roomId(16, 273),
+      roomId(1, 297),
+      { keys: [token, rope], packKnown: true, level: 21 },
+      { alternatives: true }
+    );
+    expect(walked.blocked).toBe(false);
+    expect(walked.steps.some((step) => step.invoke !== undefined)).toBe(false);
+    expect(walked.viaItem).toBeUndefined();
+    // And at 25 it is: the walk, and beside it the token for twenty steps.
+    const grown = graph.route(
+      roomId(16, 273),
+      roomId(1, 297),
+      { keys: [token, rope], packKnown: true, level: 25 },
+      { alternatives: true }
+    );
+    expect(grown.steps.some((step) => step.invoke !== undefined)).toBe(false);
+    expect(grown.viaItem?.steps[0]?.invoke?.name).toBe('token of Silvermere');
+    expect(grown.viaItem!.steps.length).toBeLessThan(grown.steps.length - 100);
+  });
+
+  /*
    * And the shipped realm, end to end: the report this was written for —
    * *there is no route from 6, 644 to 9, 1431 but I have the titanium fork and
    * the levitation potion*. No exit or portal in either database enters the
@@ -5595,5 +6728,77 @@ describe('an item that teleports is an edge the router may walk', () => {
     // A recall token's guards are `nomonsters` and `failroomitem`: conditions
     // on the moment, not on the place, so it stays usable anywhere.
     expect(graph.item(graph.itemIdNamed('token of Kingsport')!)?.usableIn).toBeUndefined();
+  });
+});
+
+/*
+ * The third alternative, asked for by name and over again: *other ways of
+ * getting there if it differs by more than a few rooms* (2026-09-21).
+ */
+describe('a way that is materially different from the plan', () => {
+  /**
+   * Two roads from the gate to the square: the high road, twenty rooms east,
+   * and the low road, one south, `detour` rooms east and one north. Or, with
+   * `bypass`, the low road replaced by a two-room corner cut round the fifth
+   * room of the high road.
+   */
+  const roads = (detour: number, bypass = false): WorldGraph => {
+    const rooms: Array<Record<string, unknown>> = [];
+    for (let i = 1; i <= 21; i++) {
+      const x: Record<string, unknown> = {};
+      if (i < 21) x['e'] = { m: 1, r: i + 1 };
+      if (i === 1 && !bypass) x['s'] = { m: 1, r: 31 };
+      if (i === 5 && bypass) x['s'] = { m: 1, r: 31 };
+      rooms.push({ m: 1, r: i, n: i === 1 ? 'Gate' : i === 21 ? 'Square' : `High Road ${i}`, x });
+    }
+    if (bypass) {
+      rooms.push({ m: 1, r: 31, n: 'Alley 1', x: { e: { m: 1, r: 32 } } });
+      rooms.push({ m: 1, r: 32, n: 'Alley 2', x: { n: { m: 1, r: 7 } } });
+    } else {
+      for (let i = 0; i < detour; i++) {
+        rooms.push({
+          m: 1,
+          r: 31 + i,
+          n: `Low Road ${i + 1}`,
+          x: i + 1 < detour ? { e: { m: 1, r: 32 + i } } : { n: { m: 1, r: 21 } }
+        });
+      }
+    }
+    return makeWorld(rooms);
+  };
+
+  it('offers the low road beside the high road, priced honestly', () => {
+    const route = roads(20).route(roomId(1, 1), roomId(1, 21), {}, { alternatives: true });
+    expect(route.steps).toHaveLength(20);
+    expect(route.another?.steps).toHaveLength(21);
+    // The search paid the penalty to find it; the reader is told what walking
+    // it costs.
+    expect(route.another?.cost).toBe(21);
+    const onPlan = new Set(route.steps.map((step) => step.to));
+    expect(route.another!.steps.filter((step) => !onPlan.has(step.to))).toHaveLength(20);
+    // An alternative is read, never used to plan a third.
+    expect(route.another?.another).toBeUndefined();
+  });
+
+  it('does not offer a corner cut', () => {
+    const route = roads(20, true).route(roomId(1, 1), roomId(1, 21), {}, { alternatives: true });
+    expect(route.steps).toHaveLength(20);
+    expect(route.another).toBeUndefined();
+  });
+
+  it('does not offer a tour', () => {
+    // Thirty-six steps against twenty: past `anotherWayLonger`.
+    const route = roads(35).route(roomId(1, 1), roomId(1, 21), {}, { alternatives: true });
+    expect(route.another).toBeUndefined();
+  });
+
+  it('is not searched for on a route nobody reads', () => {
+    const route = roads(20).route(roomId(1, 1), roomId(1, 21), {});
+    expect(route.another).toBeUndefined();
+  });
+
+  it('is not searched for on a short plan', () => {
+    const route = roads(20).route(roomId(1, 1), roomId(1, 5), {}, { alternatives: true });
+    expect(route.another).toBeUndefined();
   });
 });

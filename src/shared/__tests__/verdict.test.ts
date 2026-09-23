@@ -17,7 +17,7 @@ import {
 import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobEntity } from '../entities';
-import type { MobPriority, MobPriorityBand } from '../config';
+import type { MobRule, MobTreatment } from '../config';
 import type { MobAttack } from '../world';
 import { EMPTY_CHARACTER } from '../character';
 
@@ -458,9 +458,9 @@ describe('passShare', () => {
   });
 });
 
-describe('the priority list, which replaces the weighing rather than ranking against it', () => {
-  const rows = (...pairs: Array<[string, MobPriorityBand]>): MobPriority[] =>
-    pairs.map(([mob, priority]) => ({ mob, priority }));
+describe('the monster list, which replaces the weighing rather than ranking against it', () => {
+  const rows = (...pairs: Array<[string, MobTreatment]>): MobRule[] =>
+    pairs.map(([mob, treat]) => ({ mob, treat }));
 
   it('leaves the weighing alone when no row names anything in the room', () => {
     expect(rankByPriority(['gnoll', 'imp'], rows(['dragon', 'first']))).toBeNull();
@@ -515,5 +515,19 @@ describe('the priority list, which replaces the weighing rather than ranking aga
       rows(['low one', 'low'], ['high one', 'high'])
     );
     expect(order).toEqual([2, 1, 0]);
+  });
+
+  /*
+   * A `never` row is a refusal, not a rank: `choose` declined that monster
+   * long before this, so counting it as *listed* would take the whole room off
+   * the realm's arithmetic on the strength of one nobody is fighting.
+   */
+  it('ignores a row that says never attack, rather than ranking on it', () => {
+    expect(rankByPriority(['rat', 'gnoll'], rows(['rat', 'never']))).toBeNull();
+  });
+
+  it('still ranks on the bands beside a never row', () => {
+    const order = rankByPriority(['rat', 'gnoll'], rows(['rat', 'never'], ['gnoll', 'first']));
+    expect(order).toEqual([1, 0]);
   });
 });

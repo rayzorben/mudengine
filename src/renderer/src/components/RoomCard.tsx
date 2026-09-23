@@ -950,8 +950,22 @@ function RoomBody({
 
                       Off the entity now rather than out of a lookup table this
                       card fetched over IPC: the price arrived with the room.
+
+                      Not for a thing the realm will not let anybody pick up:
+                      *worth taking* has no answer there, and since the realm's
+                      own furniture is named (format 42) that is most of what
+                      it puts in a room.
                     */}
-                        {item.price !== undefined && <span className="price"> {item.price}</span>}
+                        {item.gettable === false ? (
+                          <>
+                            {' '}
+                            <span className="chip quiet" title={t('cards.room.fixedTitle')}>
+                              {t('cards.room.fixedChip')}
+                            </span>
+                          </>
+                        ) : (
+                          item.price !== undefined && <span className="price"> {item.price}</span>
+                        )}
                         {index < room.items.length - 1 && ', '}
                       </span>
                     ))}

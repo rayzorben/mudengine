@@ -329,3 +329,38 @@ describe('where a script hands an item over', () => {
     expect(answer.named.has(4242)).toBe(false);
   });
 });
+
+/*
+ * The roll and the delay the runner needs (todo 106): the red book's own
+ * shape, a step that rolls after the server holds the block ten seconds.
+ */
+describe('a step that rolls after a delay', () => {
+  const BOOKS = {
+    Rooms: [{ 'Map Number': 12, 'Room Number': 2248, Name: 'Secret Library', CMD: 2605 }],
+    TBInfo: [
+      {
+        Number: 2605,
+        Action: [
+          'read red : checkability 134 6 : adddelay 10 : testskill intellect 30 2607 : giveability 134 7',
+          'read blue : checkability 134 5 : giveability 134 6'
+        ].join('\n'),
+        LinkTo: 0
+      },
+      {
+        Number: 2700,
+        Action: 'ask seeress head : checkability 134 7 : giveability 134 8',
+        LinkTo: 0
+      }
+    ]
+  };
+
+  it('carries the roll as a gate and the delay onto the step, and neither onto a step without them', () => {
+    const quest = indexQuests(fake(BOOKS), naming).find((each) => each.id === 134);
+    const red = quest?.steps.find((step) => step.to === 7);
+    expect(red?.needs).toContainEqual({ kind: 'skill', stat: 'intellect', value: 30 });
+    expect(red?.delaySeconds).toBe(10);
+    const blue = quest?.steps.find((step) => step.to === 6);
+    expect(blue?.needs.some((gate) => gate.kind === 'skill')).toBe(false);
+    expect(blue?.delaySeconds).toBeUndefined();
+  });
+});

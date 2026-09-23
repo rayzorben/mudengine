@@ -341,6 +341,25 @@ describe('arming the idle clock', () => {
     expect(queue.snapshot.pending.some((i) => i.command === 'l')).toBe(true);
   });
 
+  /*
+   * 2026-09-18, bearfather: automation switched off after a death took the
+   * keep-alive with it, so when the link died half an hour later nothing had
+   * gone out for `LinkWatch` to time and the client sat on a dead socket for
+   * 23 minutes. The keep-alive serves the connection; the roster catch-up on
+   * the same tick is the control, and still asks nothing.
+   */
+  it('keeps the link alive with automation switched off, and asks nothing else', () => {
+    const { routines, queue } = make({
+      enabled: false,
+      idle: { enabled: true, afterSeconds: 5, command: '' },
+      onEnterRealm: []
+    });
+    routines.onCharacter(inRealm);
+    routines.onRosterUnknown();
+    vi.advanceTimersByTime(6000);
+    expect(queue.snapshot.pending.map((intent) => intent.command)).toEqual(['']);
+  });
+
   it('does not fire while this client is the one talking', () => {
     const { routines, queue } = make({
       idle: { enabled: true, afterSeconds: 5, command: 'l' },

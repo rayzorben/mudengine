@@ -83,8 +83,9 @@ export interface Loop {
    * a list of places to visit, so every leg between its stops is planned once
    * and the corridors it runs along are priced at a fraction of an ordinary
    * step (`tuning.world.preferredStepCost`) for every route this character
-   * plans afterwards — the palette's, a loop's leg, the way home from a
-   * fight. A loop without it is only somewhere to walk round.
+   * plans afterwards — the palette's, the way home from a fight. Not a lap's
+   * own leg, which is always the shortest way (`SessionManager.lapTraveller`).
+   * A loop without it is only somewhere to walk round.
    */
   prefer?: boolean;
   /**

@@ -143,7 +143,12 @@ import { movementOf, type MovementConfirm } from '@shared/movement';
 import type { CombatTally } from '@shared/tally';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
-import type { QuestWatched, RoomAsk } from '@shared/quests';
+import {
+  IDLE_QUEST_RUN,
+  type QuestRunProgress,
+  type QuestWatched,
+  type RoomAsk
+} from '@shared/quests';
 import type { Block } from '@shared/blocks';
 import { isTalkBlock } from '@shared/talk';
 import type { Discovery } from '@shared/memory';
@@ -170,6 +175,7 @@ import {
 } from '@shared/notifications';
 import {
   asRoomReference,
+  roomAddress,
   roomId,
   type LoopDraft,
   type RoomId,
@@ -302,6 +308,8 @@ interface SessionView {
    * typed at an asker, `stepKilled` for the monster a step is owned by.
    */
   questSaid: QuestWatched;
+  /** How a run of a quest's plan is going, or how the last one ended. */
+  questRun: QuestRunProgress;
 }
 
 /**
@@ -374,7 +382,8 @@ const EMPTY_VIEW: SessionView = {
   unseen: { critical: 0, warning: 0, latest: null },
   learned: [],
   finds: [],
-  questSaid: {}
+  questSaid: {},
+  questRun: IDLE_QUEST_RUN
 };
 
 /**
@@ -496,8 +505,13 @@ interface CardContext {
    * character is standing and is priced against what it can get through.
    */
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
+  /** The plan to reach one step, from where this character stands — addressed, like the errand. */
+  loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
+  /** Run that plan (todo 102), and stop it. Addressed like the plan. */
+  runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
+  stopRun(): void;
   /** Where to hunt from where this character stands — addressed, like the book. */
-  loadHunting(): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
   /**
    * Walks a loop the Hunting card built, filed nowhere or under this
    * character — the builder's own save, offered for the *shown* character
@@ -591,7 +605,10 @@ interface AddressedActions {
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
-  loadHunting(): ReturnType<IpcApi['huntingGrounds']>;
+  loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
+  runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
+  stopRun(): void;
+  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
@@ -900,6 +917,17 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           */
           carrying={packRows(character.inventory)}
           /*
+            And where it stands, so an open plan is asked again from wherever
+            the character has walked to since it was drawn. Null is unplaced,
+            which the plan says as itself.
+          */
+          here={roomAddress(character.room)}
+          /*
+            And whether a walk or a lap is moving it, so an open plan holds its
+            ground until the walk ends rather than being asked at every room.
+          */
+          moving={movementOf(view.walk, view.loop).moving}
+          /*
             The realm's own count of each quest counter, where the realm has a
             command that prints one. It outranks the marks the player has left
             on the track, which is why it is handed to the card rather than
@@ -929,6 +957,14 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
             is one this character may not be able to take.
           */
           loadErrand={ctx.loadErrand}
+          loadPlan={ctx.loadPlan}
+          /*
+            And the run of that plan (todo 102): pressed on the card, carried
+            by main, drawn from the progress main pushes for this character.
+          */
+          run={view.questRun}
+          runPlan={ctx.runPlan}
+          stopRun={ctx.stopRun}
           loadQuests={ctx.loadQuests}
           onName={ctx.chooseOnMap === null ? null : ctx.inspect}
           realmAt={ctx.realmAt}
@@ -2023,7 +2059,8 @@ export default function App() {
         unseen: { critical: 0, warning: 0, latest: null },
         learned: snapshot.learned,
         finds: snapshot.finds,
-        questSaid: snapshot.questSaid
+        questSaid: snapshot.questSaid,
+        questRun: snapshot.questRun
       }));
     },
     [patchView]
@@ -2284,6 +2321,9 @@ export default function App() {
       api.onFinds(({ session: id, payload }) => patchView(id, (v) => ({ ...v, finds: payload }))),
       api.onQuestSaid(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, questSaid: payload }))
+      ),
+      api.onQuestRun(({ session: id, payload }) =>
+        patchView(id, (v) => ({ ...v, questRun: payload }))
       ),
       // Not folded into a view: it is a question about a character rather than
       // a fact about one, and it is answered once.
@@ -2724,6 +2764,9 @@ export default function App() {
     setFocusedPane(Math.max(0, paneAt - 1));
   }, [paneAt, panes]);
 
+  /** The banner's Stop, addressed at the pane's own character; one function for every pane. */
+  const stopRunFor = useCallback((sid: SessionId) => void api.questStop(sid), [api]);
+
   const focusPane = useCallback(
     (id: SessionId) => {
       const at = panes.indexOf(id);
@@ -2892,6 +2935,8 @@ export default function App() {
       // And what the realm says would serve each condition, for the potion
       // rule list's suggestions.
       loadServing: (session: SessionId) => api.itemsServing(session),
+      // And the realm's own rules of the same kind, for the rows under it.
+      loadWards: (session: SessionId) => api.wards(session),
       // And the monsters the realm names, for the priority list's picker.
       loadMobNames: (session: SessionId) => api.mobNames(session)
     }),
@@ -3505,7 +3550,7 @@ export default function App() {
    *
    * **The Map card's, the loop builder's, one panel with one button** (todo
    * 2026-09-14). The builder's was given `act: null` first, on the argument
-   * that a click there is a pick and *Walk to* opens a dialog over the float
+   * that a click there is a pick and *Plan route* opens a dialog over the float
    * being drawn on. That was wrong twice over: it left the builder's rooms
    * with the way-there offered nowhere at all — the `<title>` still said
    * *Route to …*, which is the affordance a button is supposed to be — and a
@@ -3540,7 +3585,7 @@ export default function App() {
    * the head. The same panel, with the route list's own action where the room
    * is a step of the plan: *walk here* — the plan is already on screen, and
    * stopping short at a room is what picking one of its steps already means.
-   * A neighbour the plan does not pass through gets the map's *walk to*,
+   * A neighbour the plan does not pass through gets the map's *plan route*,
    * which re-plans by name, in the open, rather than nothing: the picture is
    * there to be read, and a room on it that answers for itself but cannot be
    * gone to would be the one room on the screen that is.
@@ -4908,7 +4953,10 @@ export default function App() {
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
         loadErrand: (block) => api.questErrand(sid, block),
-        loadHunting: () => api.huntingGrounds(sid),
+        loadPlan: (block, marked) => api.questPlan(sid, block, marked),
+        runPlan: (block, marked) => api.questRun(sid, block, marked),
+        stopRun: () => void api.questStop(sid),
+        loadHunting: (measure) => api.huntingGrounds(sid, measure),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes state
@@ -5023,6 +5071,9 @@ export default function App() {
         goToRoom,
         loadQuests: bound.loadQuests,
         loadErrand: bound.loadErrand,
+        loadPlan: bound.loadPlan,
+        runPlan: bound.runPlan,
+        stopRun: bound.stopRun,
         loadHunting: bound.loadHunting,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
@@ -5569,6 +5620,13 @@ export default function App() {
                   // laid out, so it stays measurable, and out of the tab order.
                   pane={at >= 0 ? at : paneAt}
                   palette={consolePalette}
+                  // The run banner over this pane: the push main addresses at
+                  // this character, whichever pane is being read.
+                  run={views[entry.id]?.questRun ?? IDLE_QUEST_RUN}
+                  // And how far through the walk the run is on, for the step
+                  // count beside the node it is heading for (todo 03).
+                  walk={views[entry.id]?.walk ?? null}
+                  onStopRun={stopRunFor}
                   session={entry.id}
                   settings={config.terminal}
                   shown={at >= 0}
@@ -5973,6 +6031,7 @@ export default function App() {
         loadTrainers={settingsApi.loadTrainers}
         loadBanks={settingsApi.loadBanks}
         loadServing={settingsApi.loadServing}
+        loadWards={settingsApi.loadWards}
         loadMobNames={settingsApi.loadMobNames}
         revealProfiles={settingsApi.revealProfiles}
         saveProfile={settingsApi.saveProfile}

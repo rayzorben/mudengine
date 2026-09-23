@@ -24,7 +24,8 @@ import type { AutomationSnapshot } from '../../../shared/automation';
 import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
 import { NO_REALM_PLAYERS } from '../../../shared/players';
-import type { Find } from '../../../shared/finds';
+import type { Find, Sighting } from '../../../shared/finds';
+import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
@@ -2445,6 +2446,89 @@ describe('asking for the quest counters', () => {
 });
 
 /*
+ * The plan to a step is priced from where the character stands, and a later
+ * ask supersedes one still pricing.
+ *
+ * The card asks again at every room and every pack change, so the chain an
+ * earlier ask started stops at its next leg rather than spending nine A*s on
+ * the socket's thread for an answer the card will drop.
+ */
+describe('the plan to a step', () => {
+  /** Two rooms and one quest whose only step is an ask in the second. */
+  function questWorld(): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-plan-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({
+      v: 25,
+      source: 'test',
+      rooms: 2,
+      generatedAt: 'x',
+      quests: [
+        {
+          id: 134,
+          name: 'TestQuest',
+          steps: [
+            {
+              block: 1,
+              who: 'Sage',
+              room: '1/2',
+              say: ['hello'],
+              needs: [],
+              takes: [],
+              gives: [],
+              to: 1
+            }
+          ]
+        }
+      ]
+    });
+    const rooms = [
+      { m: 1, r: 1, n: 'Shore', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Middle Road', x: { w: { m: 1, r: 1 } } }
+    ];
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync([header, ...rooms.map((room) => JSON.stringify(room))].join('\n') + '\n')
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  }
+
+  const still: AutomationConfig = {
+    ...DEFAULT_CONFIG.automation,
+    enabled: true,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
+  };
+
+  /** Connects and places the character on the shore. */
+  async function placed(): Promise<void> {
+    const { sink } = collect();
+    manager = new SessionManager(sink, questWorld(), still);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,1\r\nShore\r\nObvious exits: east\r\n');
+    await until(() => manager!.character.room.number === 1);
+  }
+
+  it('prices the step from where the character stands', async () => {
+    await placed();
+    const plan = await manager!.questPlan(1, null);
+    expect(plan?.from).toBe('1/1');
+    expect(plan?.steps[0]?.moves).toBe(1);
+  });
+
+  it('answers null to an ask a later one superseded', async () => {
+    await placed();
+    const first = manager!.questPlan(1, null);
+    const second = manager!.questPlan(1, null);
+    expect(await first).toBeNull();
+    expect((await second)?.from).toBe('1/1');
+  });
+});
+
+/*
  * Which way out, and how the client knew it.
  *
  * Four rungs, and each is strictly better than the one under it, which is why
@@ -2754,6 +2838,37 @@ describe('which way out', () => {
     // And then it goes down. Health past zero, which every threshold reads as
     // *more* urgent, and the realm refusing everything.
     socket.write('You drop to the ground!\r\n');
+    await until(() => manager!.character.mortallyWounded);
+    socket.write('[HP=-8]:\r\n');
+    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+
+    expect(seen()).toBe(before);
+  });
+
+  /*
+   * The same on MajorMUD, which tells the fallen character the room's sentence:
+   * bearfather, 2026-09-18, `Soul drops to the ground!` at `[HP=-1/KAI=0]`,
+   * then `swan` and `s` sent and refused until the character died.
+   */
+  it('reads the realm naming this character as it going down', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Welcome back, Soul!\r\n');
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 3);
+    expect(manager!.character.name).toBe('Soul');
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+
+    socket.write('[HP=10]:\r\n');
+    await until(() => /\bs\r\n/.test(seen()));
+    const before = seen();
+
+    socket.write('Soul drops to the ground!\r\n');
     await until(() => manager!.character.mortallyWounded);
     socket.write('[HP=-8]:\r\n');
     await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
@@ -3966,6 +4081,46 @@ describe('a step the server never answers', () => {
     expect(wire().split('rm\r\n')).toHaveLength(2);
   });
 
+  /*
+   * The server backlogs its answers behind the player's half-typed line
+   * (`TGSSocket.Send`), so a step taken just before a gossip is answered at
+   * the Enter. Probed mid-line, the player read that the step was lost.
+   */
+  it('does not probe a step while the player is typing, and does after the commit', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      parse: { ...DEFAULT_INTERNAL.tuning.parse, staleProbeMs: 100, staleMoveMs: 2000 },
+      session: { ...DEFAULT_INTERNAL.tuning.session, reconsiderMs: 25 }
+    });
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, undefined, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm: [],
+      rules: []
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const sent: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => sent.push(chunk));
+    const wire = (): string => Buffer.concat(sent).toString('latin1');
+    socket.write('Guild Street\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.room.name === 'Guild Street');
+
+    manager.send('n\r');
+    manager.send('-need');
+    await until(() => wire().includes('-need'));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(wire()).not.toContain('rm\r\n');
+    expect(notices.some((notice) => notice.includes('“n”'))).toBe(false);
+
+    // Positive control: the same silence, the line committed, and the probe.
+    manager.send(' gear\r');
+    await until(() => wire().includes('rm\r\n'));
+    expect(notices.some((notice) => notice.includes('“n”'))).toBe(true);
+  });
+
   it('gives up on it, and says which step, once', async () => {
     const { socket, notices } = await lostAStep();
 
@@ -4720,6 +4875,141 @@ describe('what this character costs to move', () => {
   });
 });
 
+/*
+ * A lap walks the shortest way to its next stop, whatever waits on it
+ * (2026-09-18). On bearfather a four-step leg to Dark Alley 1/1167 was planned
+ * as 146 steps round a lair priced past half the health left — down a manhole
+ * and through the Crumbling Tunnels, which nothing priced — and the lap died
+ * there. The monsters on a loop are what it is walked for.
+ */
+describe('a lap walks the shortest way', () => {
+  /** North through the den is two steps; round by the tunnels is four. */
+  const den = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-lap-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      { m: 1, r: 1, n: 'Cave Mouth', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 4 } } },
+      {
+        m: 1,
+        r: 2,
+        n: 'Troll Den',
+        x: { s: { m: 1, r: 1 }, n: { m: 1, r: 3 } },
+        lair: '(Max 2): 7,'
+      },
+      { m: 1, r: 3, n: 'Far Gallery', x: { s: { m: 1, r: 2 }, e: { m: 1, r: 6 } } },
+      { m: 1, r: 4, n: 'Side Tunnel', x: { w: { m: 1, r: 1 }, n: { m: 1, r: 5 } } },
+      { m: 1, r: 5, n: 'Damp Tunnel', x: { s: { m: 1, r: 4 }, n: { m: 1, r: 6 } } },
+      { m: 1, r: 6, n: 'Upper Tunnel', x: { s: { m: 1, r: 5 }, w: { m: 1, r: 3 } } }
+    ];
+    const header = {
+      v: 32,
+      source: 'test',
+      rooms: rooms.length,
+      generatedAt: 'x',
+      mobs: [
+        {
+          n: 'cave troll',
+          hp: 500,
+          i: [7],
+          d: 'h',
+          ac: 50,
+          xp: 1000,
+          pf: [{ a: [[1, 1, 200, 40, 80, 250, 0]], c: [] }]
+        }
+      ]
+    };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [JSON.stringify(header), ...rooms.map((room) => JSON.stringify(room))].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  /** In the realm, placed by `rm`'s answer, with a reader for what reached the wire. */
+  async function standingIn(
+    location: string
+  ): Promise<{ world: WorldGraph; socket: net.Socket; wire: () => string }> {
+    const world = den();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm: [],
+      rules: []
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.write('Health: 20/20 [100%]\r\n');
+    socket.write('[HP=20]:' + PROMPT_REPAINT);
+    socket.write(location);
+    await until(() => manager!.character.room.number !== null);
+    return { world, socket, wire: () => Buffer.concat(chunks).toString('latin1') };
+  }
+
+  it('goes through the lair a route the player asked for would go round', async () => {
+    const { world, wire } = await standingIn(
+      'Location:            1,1\r\nCave Mouth\r\nObvious exits: north, east\r\n'
+    );
+
+    // Positive control: priced as a person's route is, the den is walked round.
+    const priced = world.route('1/1', '1/3', manager!.travellerNow(manager!.character));
+    expect(priced.steps.map((step) => step.command)).toEqual(['e', 'n', 'n', 'w']);
+
+    expect(
+      manager!.loops.start(
+        { name: 'lap', stops: [{ room: 'Far Gallery' }, { room: 'Cave Mouth' }] },
+        manager!.character
+      )
+    ).toBeNull();
+    await until(() => /\b[ne]\r\n/.test(wire()));
+    expect(wire()).toMatch(/\bn\r\n/);
+    expect(wire()).not.toMatch(/\be\r\n/);
+  });
+
+  /*
+   * And the resume measures the wander the same way, or it quotes a detour the
+   * leg will never take: from Far Gallery the lap's way to Cave Mouth is two
+   * steps, one fewer than from the room it stopped in; priced, it is four.
+   */
+  it('measures a stopped lap’s wander by the way it will walk', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      walk: { ...DEFAULT_INTERNAL.tuning.walk, resumeAskSteps: 0 }
+    });
+    const { socket, wire } = await standingIn(
+      'Location:            1,6\r\nUpper Tunnel\r\nObvious exits: south, west\r\n'
+    );
+    // Started mid-fight, so the lap waits and sends nothing: stopped in Upper
+    // Tunnel, heading for Cave Mouth.
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    expect(
+      manager!.loops.start(
+        { name: 'lap', stops: [{ room: 'Cave Mouth' }, { room: 'Far Gallery' }] },
+        manager!.character
+      )
+    ).toBeNull();
+    manager!.stopMoving();
+    socket.write('*Combat Off*\r\n');
+    await until(() => !manager!.character.inCombat);
+
+    manager!.send('w\r');
+    await until(() => /\bw\r\n/.test(wire()));
+    socket.write('Far Gallery\r\nObvious exits: south, east\r\n');
+    await until(() => manager!.character.room.number === 3);
+
+    expect(manager!.startMoving(null, null)).toEqual({ started: true });
+    await until(() => /\bs\r\n/.test(wire()));
+  });
+});
+
 /**
  * A socket that is open is not a connection that is alive.
  *
@@ -4832,18 +5122,32 @@ describe('SessionManager dead link', () => {
  */
 describe('SessionManager finds', () => {
   /** A find log with nothing in it, and a record of what reached it. */
-  function log(): { finds: RealmFinds; rows: Array<Omit<Find, 'seen'>> } {
-    const rows: Array<Omit<Find, 'seen'>> = [];
+  function log(): {
+    finds: RealmFinds;
+    rows: Array<Sighting & { room: string }>;
+    searches: string[];
+  } {
+    const rows: Array<Sighting & { room: string }> = [];
+    const searches: string[] = [];
+    const row = (sighting: Sighting & { room: string }): Find => ({
+      ...sighting,
+      seen: 1,
+      hits: 1,
+      searched: searches.filter((room) => room === sighting.room).length
+    });
     return {
       rows,
+      searches,
       finds: {
-        record: (find) => {
-          rows.push(find);
-          return { ...find, seen: 1 };
+        search: (room, found) => {
+          searches.push(room);
+          const fresh = found.map((sighting) => ({ ...sighting, room }));
+          rows.push(...fresh);
+          return fresh.map(row);
         },
         forget: () => false,
         get all() {
-          return rows.map((row) => ({ ...row, seen: 1 }));
+          return rows.map(row);
         }
       }
     };
@@ -4891,8 +5195,39 @@ describe('SessionManager finds', () => {
     const cash = rows.find((row) => row.copper !== null);
     expect(cash?.copper).toBe(4);
     expect(rows.every((row) => row.room === '1/2140')).toBe(true);
-    // Said out loud, once per find.
-    expect(notices.some((notice) => /Found by searching/.test(notice))).toBe(true);
+    // Recorded, not announced: the rows above are the positive control, written
+    // in the same call that once raised a notice per find.
+    expect(notices.some((notice) => notice.includes('scroll of minor healing'))).toBe(false);
+  });
+
+  it('counts a search that found nothing, and not one asked of an exit', async () => {
+    const { sink, lines } = collect();
+    const { finds, rows, searches } = log();
+    const socket = await standing(sink, finds);
+    const heard: Buffer[] = [];
+    socket.on('data', (chunk) => heard.push(chunk));
+    /*
+     * One exchange at a time, as the realm has them: the slot a bare search
+     * arms is armed by the send, so an answer written before its command is on
+     * the wire, or a command sent before the last answer is read, is a search
+     * the classifier cannot pair.
+     */
+    const ask = async (command: string, answer: string): Promise<void> => {
+      const before = Buffer.concat(heard).length;
+      manager!.send(`${command}\r`);
+      await until(() => Buffer.concat(heard).subarray(before).toString('latin1').includes(command));
+      socket.write(`${answer}\r\n[HP=100/MA=50]:`);
+      await until(() => lines.some((line) => line.text.startsWith(answer)));
+    };
+
+    await ask('search north', 'You notice nothing different to the north.');
+    await ask('search', 'Your search revealed nothing.');
+    await ask('search', 'You notice a rusty key here.');
+
+    // The find is the positive control: once it is written, both answers
+    // before it have been read, and only the bare search's was counted.
+    await until(() => rows.length >= 1);
+    expect(searches).toEqual(['1/2140', '1/2140']);
   });
 
   it('writes nothing down for a room it cannot place', async () => {
@@ -5439,5 +5774,178 @@ describe('stepping back the way the character came', () => {
   it('refuses a back press with nothing behind the character', async () => {
     await onTheShore();
     expect(manager!.stepBack(null)).toEqual({ refused: t('session.back.nothingBehind') });
+  });
+});
+
+/*
+ * Off the GreaterMUD lineage `prowess.swing` declines by design, and every
+ * row of the survey was a fight nobody could price — ranked nearest first, so
+ * a Paladin with 74,000 fights on record was shown the lairs round the bank
+ * (2026-09-19, Festus on Paradigm). The record measures what the arithmetic
+ * cannot: damage a round, against the monster's health.
+ */
+describe('the hunting survey prices a kill off the fight record', () => {
+  /** A town and two lairs in a line, from a realm that names no family. */
+  const lairs = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-hunt-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      { m: 1, r: 1, n: 'Town Square', x: { e: { m: 1, r: 2 } } },
+      {
+        m: 1,
+        r: 2,
+        n: 'Goblin Warren',
+        x: { w: { m: 1, r: 1 }, e: { m: 1, r: 3 } },
+        lair: '(Max 1): 7,',
+        dl: 2
+      },
+      { m: 1, r: 3, n: 'Orc Pit', x: { w: { m: 1, r: 2 } }, lair: '(Max 1): 8,', dl: 2 }
+    ];
+    const mob = (n: string, id: number, hp: number, xp: number, dr = 0) => ({
+      n,
+      hp,
+      i: [id],
+      d: 'h',
+      ac: 20,
+      ...(dr > 0 ? { dr } : {}),
+      xp,
+      pf: [{ a: [[1, 1, 200, 3, 9, 1000, 0]], c: [] }]
+    });
+    const header = {
+      v: 32,
+      source: 'test',
+      rooms: rooms.length,
+      generatedAt: 'x',
+      mobs: [mob('goblin', 7, 200, 300), mob('orc', 8, 300, 400, 300)]
+    };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [JSON.stringify(header), ...rooms.map((room) => JSON.stringify(room))].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  /** A record that measured fifty a round, and what it was asked with. */
+  function record(): { fights: FightSink; asked: Array<{ level: number; ask: MeasureAsk }> } {
+    const asked: Array<{ level: number; ask: MeasureAsk }> = [];
+    return {
+      asked,
+      fights: {
+        record: () => {},
+        measured: (level, ask): MeasuredOutput => {
+          asked.push({ level, ask });
+          return { perRound: 50, fights: 40, fromLevel: level };
+        }
+      }
+    };
+  }
+
+  async function surveyed(fights: FightSink | undefined, sheet: string[] = []): Promise<void> {
+    const { sink } = collect();
+    manager = new SessionManager(
+      sink,
+      lairs(),
+      { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      DEFAULT_CONFIG.connection.login,
+      undefined,
+      undefined,
+      fights
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    socket.write(
+      'Name: Festus Marcus                    Lives/CP:      9/1\r\n' +
+        'Race: Kang        Exp: 792666          Perception:     62\r\n' +
+        'Class: Paladin    Level: 10            Stealth:         0\r\n' +
+        'Hits:   148/148   Armour Class:  46/5  Thievery:        0\r\n' +
+        'Mana:     5/26    Spellcasting: 66     Traps:           0\r\n'
+    );
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    if (sheet.length > 0) {
+      socket.write(sheet.map((row) => `${row}\r\n`).join('') + '[HP=148/MA=5]:' + PROMPT_REPAINT);
+      await until(() => manager!.character.stated != null);
+    }
+    socket.write('Location:            1,1\r\nTown Square\r\nObvious exits: east\r\n');
+    await until(
+      () => manager!.character.progress.level === 10 && manager!.character.room.number !== null
+    );
+  }
+
+  it('prices the rounds as the monster’s health over the measured round', async () => {
+    const { fights, asked } = record();
+    await surveyed(fights);
+    const advice = manager!.huntingGrounds(null);
+
+    expect(asked.at(-1)).toEqual({
+      level: 10,
+      ask: {
+        least: DEFAULT_INTERNAL.tuning.hunting.measuredFightsMin,
+        roundMs: 5000,
+        openerRounds: 1
+      }
+    });
+    expect(advice.assumptions.measured).toEqual({ perRound: 50, fights: 40, fromLevel: 10 });
+    const rows = [...advice.spots, ...advice.unmeasured];
+    const goblin = rows.find((spot) => spot.mobs[0]?.name === 'goblin');
+    expect(goblin?.mobs[0]?.rounds).toBe(4);
+    expect(goblin?.estimate.unknown).not.toContain('rounds');
+  });
+
+  it('lists past the measured few rather than cutting the realm at them', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      hunting: { ...DEFAULT_INTERNAL.tuning.hunting, maxSpots: 1 }
+    });
+    await surveyed(record().fights);
+    const advice = manager!.huntingGrounds(null);
+    expect(advice.spots).toHaveLength(1);
+    expect(advice.unmeasured).toHaveLength(1);
+
+    // And measures the one a reader opened, so what it would walk is a ring.
+    const rough = advice.unmeasured[0]!.key;
+    const opened = manager!.huntingGrounds(null, rough);
+    expect(opened.spots.map((spot) => spot.key)).toContain(rough);
+    expect(opened.unmeasured).toHaveLength(0);
+  });
+
+  /*
+   * Caught on review: a swing that lands nothing is a refusal, not a decline,
+   * and the record priced it anyway — a lair the character cannot hurt,
+   * ranked by what it pays. `stat all` states the blow on GreaterMUD (`rm`
+   * answering is the tell), and the orc's resistance takes all of it.
+   */
+  it('lets a refusal stand where the arithmetic priced the fight and found no way to win', async () => {
+    const { fights, asked } = record();
+    await surveyed(fights, [
+      'Name: Festus                                     Illu:           25',
+      'HP Regen:   6/18       AC vs Evil:  68           Cold Resist:     0',
+      'MA Regen:   3/3        Shadow:       0           Water Resist:    0',
+      'Attacks:',
+      'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)',
+      'Attack       3.584    105     8    25     0(3)            65(67)  '
+    ]);
+    const advice = manager!.huntingGrounds(null);
+    const rows = [...advice.spots, ...advice.unmeasured];
+    // Positive control: the swing priced the goblin itself.
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')?.mobs[0]?.rounds).not.toBeNull();
+    const orc = rows.find((spot) => spot.mobs[0]?.name === 'orc');
+    expect(orc?.estimate.unknown).toContain('rounds');
+    expect(advice.assumptions.measured).toBeNull();
+    expect(asked).toHaveLength(0);
+  });
+
+  it('leaves the rounds unknown, and says nothing measured, with no record to ask', async () => {
+    await surveyed(undefined);
+    const advice = manager!.huntingGrounds(null);
+    const rows = [...advice.spots, ...advice.unmeasured];
+    // Positive control: both lairs were reached and kept.
+    expect(rows).toHaveLength(2);
+    expect(rows.every((spot) => spot.estimate.unknown.includes('rounds'))).toBe(true);
+    expect(advice.assumptions.measured).toBeNull();
   });
 });

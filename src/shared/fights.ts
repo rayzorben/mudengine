@@ -135,6 +135,11 @@ export interface FightRecord {
  */
 export interface FightSink {
   record(fight: FightRecord): void;
+  /**
+   * What this character deals a round at `level`, measured off its own
+   * record (`measuredPerRound`). Absent on a sink that keeps nothing.
+   */
+  measured?(level: number, ask: MeasureAsk): MeasuredOutput | null;
 }
 
 /** The one that writes nothing, for a session with nowhere to write. */
@@ -284,6 +289,95 @@ export function summarizeFolds(
     opened,
     latest
   };
+}
+
+/**
+ * What this character dealt at one level, added up: the half of *how long a
+ * kill takes* that the realm's arithmetic answers only on the GreaterMUD
+ * lineage (`prowess.swing`), measured instead of computed.
+ *
+ * **Only a fight it opened, alone.** A fight joined halfway is not a
+ * measurement of anything (`FightRecord.opened`), and one somebody else was
+ * hitting in is shorter than the character's own would have been.
+ */
+export interface FightOutput {
+  fights: number;
+  /** Damage this character dealt across them. */
+  mine: number;
+  /** Their lengths, first blow to last; a fight of one blow adds nothing. */
+  ms: number;
+}
+
+export type FightOutputs = Map<number, FightOutput>;
+
+/** Adds one fight into the per-level output, when it is one that measures anything. */
+export function foldOutput(into: FightOutputs, record: FightRecord): void {
+  if (!record.opened || record.others > 0 || record.level === null) return;
+  const output = into.get(record.level) ?? { fights: 0, mine: 0, ms: 0 };
+  output.fights += 1;
+  output.mine += record.mine;
+  output.ms += record.ms ?? 0;
+  into.set(record.level, output);
+}
+
+/** What a measured figure is asked with: the numbers are the caller's tuning. */
+export interface MeasureAsk {
+  /** Fewer fights than this is no measurement. */
+  least: number;
+  /** One round, ms. */
+  roundMs: number;
+  /**
+   * What the opening round is worth in ordinary rounds: 1, or the backstab
+   * multiplier where the opener is a backstab — the survey credits that
+   * round itself (`estimateSpot`), so it is taken back out of the rate here.
+   */
+  openerRounds: number;
+}
+
+export interface MeasuredOutput {
+  /** Damage an ordinary round deals. */
+  perRound: number;
+  /** How many fights it was measured over. */
+  fights: number;
+  /** The lowest level those fights were fought at; the highest is the one asked. */
+  fromLevel: number;
+}
+
+/**
+ * This character's damage a round at `level`, from its own opened fights.
+ *
+ * A fight of *k* rounds runs *k − 1* round lengths from its first blow to its
+ * last, so its rounds are `ms / roundMs + 1`. The asked level first; where it
+ * holds fewer than `least` fights the levels below are added, nearest first —
+ * a weaker character's figure, which errs towards the longer fight and so
+ * towards the dearer one. Null where the whole record holds fewer than `least`.
+ */
+export function measuredPerRound(
+  tables: ReadonlyArray<ReadonlyMap<number, FightOutput>>,
+  level: number,
+  ask: MeasureAsk
+): MeasuredOutput | null {
+  const levels = new Set<number>();
+  for (const table of tables) for (const at of table.keys()) if (at <= level) levels.add(at);
+  let fights = 0;
+  let mine = 0;
+  let ms = 0;
+  let fromLevel = level;
+  for (const at of [...levels].sort((a, b) => b - a)) {
+    for (const table of tables) {
+      const output = table.get(at);
+      if (output === undefined) continue;
+      fights += output.fights;
+      mine += output.mine;
+      ms += output.ms;
+    }
+    fromLevel = at;
+    if (fights >= ask.least) break;
+  }
+  if (fights === 0 || fights < ask.least || ask.roundMs <= 0) return null;
+  const rounds = ms / ask.roundMs + fights * Math.max(1, ask.openerRounds);
+  if (rounds <= 0 || mine <= 0) return null;
+  return { perRound: mine / rounds, fights, fromLevel };
 }
 
 /** The same answer read straight off the records, for a caller holding them. */

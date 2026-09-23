@@ -23,7 +23,14 @@ import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
-import type { Quest, QuestErrand, QuestWatched, RoomAsk } from './quests';
+import type {
+  Quest,
+  QuestErrand,
+  QuestPlan,
+  QuestRunProgress,
+  QuestWatched,
+  RoomAsk
+} from './quests';
 import type { HuntingAdvice } from './hunting';
 import type {
   AlertsUiConfig,
@@ -38,6 +45,8 @@ import type {
   SearchConfig,
   BankingConfig,
   HuntingAutomationConfig,
+  GearConfig,
+  QuestsConfig,
   TrainConfig,
   RemotesConfig,
   StatlineConfig,
@@ -70,6 +79,7 @@ import type {
   Route,
   BankChoice,
   TrainerChoice,
+  WardRule,
   WorldLookup,
   WorldNames,
   WorldRoom
@@ -228,6 +238,8 @@ export interface AttachSnapshot {
    * watched doing this session, and when each was seen. See `Push.questSaid`.
    */
   questSaid: QuestWatched;
+  /** How a run of a quest's plan is going, or how the last one ended. See `QuestRunner`. */
+  questRun: QuestRunProgress;
   /**
    * The Talk card's history — the conversation log's tail, oldest first, so a
    * restart restores the conversation instead of starting the card empty.
@@ -414,6 +426,10 @@ export interface ProfileEditable {
   hunting: HuntingAutomationConfig;
   /** Spending character points on the stat screen. Resolved, like the rest. */
   train: TrainConfig;
+  /** Running a quest's plan (todo 102). Resolved, like the rest. */
+  quests: QuestsConfig;
+  /** Which kit to be in, and when. See `GearConfig`. */
+  gear: GearConfig;
   /*
    * What the character picks up, puts down, searches for and banks — resolved,
    * like the rest (todo 03, 2026-09-12). They were reachable only on the
@@ -832,6 +848,8 @@ export const Invoke = {
   trainers: 'world:trainers',
   banks: 'world:banks',
   itemsServing: 'world:serving',
+  /** The realm's own *use this item there* rules, for the same list. */
+  wards: 'world:wards',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
   /** Every monster this realm names, for the priority list's picker. */
@@ -841,6 +859,16 @@ export const Invoke = {
   questBook: 'world:quests',
   /** The order one quest step's several items are best fetched in. */
   questErrand: 'world:quest-errand',
+  /** The steps still to do to reach one quest step, from where the character stands. */
+  questPlan: 'world:quest-plan',
+  /**
+   * Run the plan to one step (todo 102): the card's *Run it*. Answers the
+   * refusal for the press, or null once it is under way. See
+   * `SessionManager.questRun`.
+   */
+  questRun: 'world:quest-run',
+  /** Stop the run, and everything it started. */
+  questStop: 'world:quest-stop',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
   /** Everything the realm knows about one room, for a room nobody is in. */
@@ -999,7 +1027,12 @@ export const Push = {
    * card ranks it **under** the realm's own count. See `stepSaid` and
    * `stepKilled`.
    */
-  questSaid: 'world:quest-said'
+  questSaid: 'world:quest-said',
+  /**
+   * How a run of a quest's plan is going, on every change — which step it is
+   * on, what it is doing, and why it stopped. See `QuestRunProgress`.
+   */
+  questRun: 'world:quest-run-progress'
 } as const;
 
 /** Both characters, and why the client thinks they are two. See `Push.characterReset`. */
@@ -1258,6 +1291,17 @@ export interface IpcApi {
    * realm places anywhere, which is where there is no walk to order.
    */
   questErrand(session: SessionId, block: number): Promise<QuestErrand | null>;
+  /**
+   * The plan to reach one step: what each step gathers, where it happens and
+   * whether the way there exists — steps, never rooms. `marked` is the rank
+   * the player has said they are at, handed in so main ranks the three
+   * readings exactly as the card does. Null for a block no quest holds.
+   */
+  questPlan(session: SessionId, block: number, marked: number | null): Promise<QuestPlan | null>;
+  /** Run the plan to one step. The refusal for the press, or null once under way. */
+  questRun(session: SessionId, block: number, marked: number | null): Promise<string | null>;
+  /** Stop the run, and everything it started. */
+  questStop(session: SessionId): Promise<void>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
@@ -1275,9 +1319,9 @@ export interface IpcApi {
    * arithmetic the Room card prices a fight with, the loop sized to the clock
    * and filled from the lairs beside it, best first. Addressed, and asked on
    * demand — the sweep and the pricing are work, and the steps move with the
-   * character.
+   * character. `measure` names one row past the measured few to measure too.
    */
-  huntingGrounds(session: SessionId): Promise<HuntingAdvice>;
+  huntingGrounds(session: SessionId, measure: string | null): Promise<HuntingAdvice>;
   /**
    * The trainers that will take this character, cheapest first (todo 18).
    *
@@ -1314,6 +1358,15 @@ export interface IpcApi {
    * hold an item the shipped data lacks, and the field stays typable.
    */
   itemsServing(session: SessionId): Promise<Partial<Record<PotionWhen, string[]>>>;
+  /**
+   * The realm's own half of the same list: a room spell, the spell that
+   * stops it, and the item whose use casts that spell (todo 02).
+   *
+   * A property of the realm exactly as `itemsServing` is, and addressed for
+   * the same reason — to find which realm this character is on. Empty where
+   * no world is loaded, which draws no rows and leaves the switch alone.
+   */
+  wards(session: SessionId): Promise<WardRule[]>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
    * go on.
@@ -1380,6 +1433,7 @@ export interface IpcApi {
   onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
   onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;
   onQuestSaid(handler: (message: Addressed<QuestWatched>) => void): () => void;
+  onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
 }

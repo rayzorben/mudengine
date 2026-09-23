@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import Icon, { type IconName } from './Icon';
@@ -634,8 +634,24 @@ function walkChip(walk: WalkProgress) {
     return <span className="chip info">{t('cards.navigation.route.badgeDark')}</span>;
   }
   if (walk.status === 'walking') {
+    /*
+     * The whole journey, and drawn as one (todo 03): `done` and `total` are
+     * the journey's own figures rather than the plan being walked, since a
+     * route redrawn at the first monster reported `2 of 15` about a
+     * ninety-five step walk. The fill is the same fraction as a strip along
+     * the chip's foot — no element of its own, as the settings fields' bar is
+     * not one either — so the number and the picture cannot disagree.
+     */
+    const through = walk.total > 0 ? Math.min(1, walk.done / walk.total) : 0;
     return (
-      <span className="chip">
+      <span
+        className="chip walk-through"
+        style={{ '--through': `${Math.round(through * 100)}%` } as CSSProperties}
+        title={t('cards.navigation.route.badgeThroughTitle', {
+          done: walk.done,
+          total: walk.total
+        })}
+      >
         {walk.done}/{walk.total}
       </span>
     );

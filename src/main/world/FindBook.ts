@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { findKey, FINDS_VERSION, type Find } from '../../shared/finds';
+import { findKey, FINDS_VERSION, type Find, type Sighting } from '../../shared/finds';
+import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -16,12 +17,17 @@ interface FindsFile {
    * stamped with another realm is kept and ignored rather than deleted.
    */
   realm: string;
+  /** Bare searches counted per room, whatever they turned up. See `Find.searched`. */
+  searches: Record<RoomId, number>;
   /**
    * Read as `unknown[]` and checked a row at a time, because the envelope
    * deliberately does not vouch for the rows. See `load`.
    */
   finds: unknown[];
 }
+
+/** A row as it is kept: its room's count lives once, in `searches`. */
+type Kept = Omit<Find, 'searched'>;
 
 /**
  * What searching has turned up in one realm, on disk.
@@ -46,8 +52,9 @@ interface FindsFile {
  * worth searching" legible.
  */
 export class FindBook {
-  private finds: Find[] = [];
-  private readonly index = new Map<string, Find>();
+  private finds: Kept[] = [];
+  private readonly index = new Map<string, Kept>();
+  private readonly searches = new Map<RoomId, number>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
 
@@ -66,48 +73,63 @@ export class FindBook {
     this.load();
   }
 
-  /** Everything found, oldest first. The card sorts; this preserves arrival. */
+  /** Everything found, oldest first, each with its room's count. The card sorts. */
   get all(): readonly Find[] {
-    return this.finds;
+    return this.finds.map((row) => this.joined(row));
   }
 
   /**
-   * Writes down one find, or moves the one already there.
+   * Counts one bare search of a room and writes down what it turned up —
+   * nothing, for `Your search revealed nothing.`, which is a search all the
+   * same and the one a rate most needs.
    *
-   * Returns the row when this search is the **first** to turn the thing up in
-   * that room, so a caller can say so once rather than on every lap. A repeat
-   * returns null and still moves `at` and `seen`: the record changed, the news
-   * did not.
+   * One call, so a hit can never be written without the search it was part of
+   * and no row's `hits` can pass its room's count. Returns the rows this search
+   * was the **first** to turn up, so a caller can say so once rather than on
+   * every lap; a repeat still moves `at`, `seen` and `hits`.
    */
-  record(find: Omit<Find, 'seen'>): Find | null {
-    const key = findKey(find);
-    const known = this.index.get(key);
-    if (known !== undefined) {
-      known.at = find.at;
-      known.seen += 1;
-      // The quantity is this search's, not the first one's: four farthings
-      // today and none tomorrow is a room that had four farthings today.
-      known.quantity = find.quantity;
-      known.copper = find.copper;
-      this.schedule();
-      return null;
-    }
+  search(room: RoomId, found: readonly Sighting[]): Find[] {
+    this.searches.set(room, (this.searches.get(room) ?? 0) + 1);
+    const fresh: Kept[] = [];
+    const counted = new Set<string>();
 
-    const row: Find = { ...find, seen: 1 };
-    this.index.set(key, row);
-    this.finds.push(row);
-    /*
-     * The oldest goes, as in `WorldMemory`: a character that has played for
-     * months has searched the rooms it plays in, and the cap guards against a
-     * pathological stream rather than against ordinary use — in which case the
-     * recent rows are the ones still true.
-     */
-    if (this.finds.length > tuning().records.findLimit) {
-      const dropped = this.finds.shift();
-      if (dropped) this.index.delete(findKey(dropped));
+    for (const sighting of found) {
+      const key = findKey({ room, name: sighting.name });
+      // One search is one hit however many of its names fold together, or a
+      // room could report a thing turning up more often than it was searched.
+      if (counted.has(key)) continue;
+      counted.add(key);
+
+      const known = this.index.get(key);
+      if (known !== undefined) {
+        known.at = sighting.at;
+        known.seen += 1;
+        known.hits += 1;
+        // The quantity is this search's, not the first one's: four farthings
+        // today and none tomorrow is a room that had four farthings today.
+        known.quantity = sighting.quantity;
+        known.copper = sighting.copper;
+        continue;
+      }
+
+      const row: Kept = { ...sighting, room, seen: 1, hits: 1 };
+      this.index.set(key, row);
+      this.finds.push(row);
+      fresh.push(row);
+      /*
+       * The oldest goes, as in `WorldMemory`: a character that has played for
+       * months has searched the rooms it plays in, and the cap guards against a
+       * pathological stream rather than against ordinary use — in which case
+       * the recent rows are the ones still true. The room counts stay, bounded
+       * by the realm's rooms, and a dropped row found again is fresh.
+       */
+      if (this.finds.length > tuning().records.findLimit) {
+        const dropped = this.finds.shift();
+        if (dropped) this.index.delete(findKey(dropped));
+      }
     }
     this.schedule();
-    return row;
+    return fresh.map((row) => this.joined(row));
   }
 
   /**
@@ -138,7 +160,9 @@ export class FindBook {
   private load(): void {
     try {
       if (!fs.existsSync(this.file)) return;
-      const parsed: unknown = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+      const read: unknown = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+      const upgraded = fromVersion1(read);
+      const parsed = upgraded ?? read;
       if (!isFindsFile(parsed)) {
         this.onError?.(
           t('notices.world.finds.invalidFile', { fileName: path.basename(this.file) })
@@ -146,6 +170,7 @@ export class FindBook {
         return;
       }
       if (parsed.realm !== this.realm) return;
+      const searches = new Map(Object.entries(parsed.searches));
 
       /*
        * A malformed row refuses the file and a *missing* one is skipped — the
@@ -154,9 +179,10 @@ export class FindBook {
        * it; when one is added, this is where its skip goes, and the whole-file
        * refusal must not be widened to cover it.
        */
-      const rows: Find[] = [];
+      const rows: Kept[] = [];
       for (const find of parsed.finds) {
-        if (!isFind(find)) {
+        // More hits than its room was searched is a count that cannot be true.
+        if (!isKept(find) || find.hits > (searches.get(find.room) ?? 0)) {
           this.onError?.(
             t('notices.world.finds.invalidFile', { fileName: path.basename(this.file) })
           );
@@ -165,11 +191,18 @@ export class FindBook {
         rows.push(find);
       }
 
+      for (const [room, count] of searches) this.searches.set(room, count);
       for (const find of rows) {
         const key = findKey(find);
         if (this.index.has(key)) continue;
         this.index.set(key, find);
         this.finds.push(find);
+      }
+
+      if (upgraded !== null) {
+        fs.copyFileSync(this.file, `${this.file}.bak`);
+        this.onError?.(t('notices.world.finds.upgraded', { fileName: path.basename(this.file) }));
+        this.schedule();
       }
     } catch (error) {
       // Kept, not deleted: it is the only record of what this realm hides, and
@@ -181,6 +214,10 @@ export class FindBook {
         })
       );
     }
+  }
+
+  private joined(row: Kept): Find {
+    return { ...row, searched: this.searches.get(row.room) ?? 0 };
   }
 
   private schedule(): void {
@@ -195,7 +232,12 @@ export class FindBook {
   }
 
   private write(): void {
-    const payload: FindsFile = { version: FINDS_VERSION, realm: this.realm, finds: this.finds };
+    const payload: FindsFile = {
+      version: FINDS_VERSION,
+      realm: this.realm,
+      searches: Object.fromEntries(this.searches),
+      finds: this.finds
+    };
     const temporary = `${this.file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
@@ -216,17 +258,46 @@ export class FindBook {
   }
 }
 
+/**
+ * A version 1 log as version 2, or null for anything else (2026-09-18).
+ *
+ * Version 1 counted no searches, so every room starts at none and every row at
+ * no hits: no rate until its room is searched again, never a guessed one. Done
+ * here rather than once by hand because the file is written while the player
+ * plays, and a version 1 file refused is overwritten by the next find. Goes
+ * when no version 1 file remains.
+ */
+function fromVersion1(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return null;
+  const file = value as { version?: unknown; finds?: unknown };
+  if (file.version !== 1 || !Array.isArray(file.finds)) return null;
+  return {
+    ...file,
+    version: FINDS_VERSION,
+    searches: {},
+    finds: file.finds.map((row: unknown) =>
+      typeof row === 'object' && row !== null ? { ...row, hits: 0 } : row
+    )
+  };
+}
+
 /** Parsed, not trusted — the envelope only. See `WorldMemory`'s own note. */
 function isFindsFile(value: unknown): value is FindsFile {
   if (typeof value !== 'object' || value === null) return false;
   const file = value as Partial<FindsFile>;
   if (file.version !== FINDS_VERSION || typeof file.realm !== 'string') return false;
+  if (!isCounts(file.searches)) return false;
   return Array.isArray(file.finds);
 }
 
-function isFind(value: unknown): value is Find {
+function isCounts(value: unknown): value is Record<RoomId, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every((count) => Number.isInteger(count) && count > 0);
+}
+
+function isKept(value: unknown): value is Kept {
   if (typeof value !== 'object' || value === null) return false;
-  const find = value as Partial<Find>;
+  const find = value as Partial<Kept>;
   return (
     typeof find.room === 'string' &&
     typeof find.roomName === 'string' &&
@@ -234,6 +305,9 @@ function isFind(value: unknown): value is Find {
     (find.quantity === null || typeof find.quantity === 'number') &&
     (find.copper === null || typeof find.copper === 'number') &&
     typeof find.at === 'number' &&
-    typeof find.seen === 'number'
+    typeof find.seen === 'number' &&
+    typeof find.hits === 'number' &&
+    Number.isInteger(find.hits) &&
+    find.hits >= 0
   );
 }

@@ -104,7 +104,11 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   restWithLeader: 'moon',
   remotes: 'at',
   gangpath: 'broadcast',
-  lookAtPlayers: 'eye'
+  lookAtPlayers: 'eye',
+  // The flag a quest's counter is: the card draws a chain as a track of them.
+  quests: 'flag',
+  // The worn shirt: this switch is about what is on, not about the pack.
+  gear: 'shirtWorn'
 };
 
 /**
@@ -166,6 +170,10 @@ function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.provideLight');
     case 'invokeItems':
       return t('toolbar.invokeItems');
+    case 'quests':
+      return t('toolbar.quests');
+    case 'gear':
+      return t('toolbar.gear');
     default: {
       /* A switch in the union with no label is a button nobody can read. */
       const unreachable: never = name;

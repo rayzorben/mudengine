@@ -381,9 +381,7 @@ check(
  */
 const startsOn = await evaluate(`
   (() => {
-    const select = [...document.querySelectorAll('.settings-form label')]
-      .find((l) => /plays on/i.test(l.querySelector('span')?.innerText ?? ''))
-      ?.querySelector('select');
+    const select = document.querySelector('.settings-form label[data-field="realm"] select');
     return select ? select.value : '(no control)';
   })()
 `);

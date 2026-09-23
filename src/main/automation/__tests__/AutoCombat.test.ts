@@ -18,6 +18,7 @@ import {
 import { classifyOccupant, type AlignmentCost, type MobDisposition } from '../../../shared/mobs';
 import type { Block } from '../../../shared/blocks';
 import type { ItemEntity, MobEntity } from '../../../shared/entities';
+import { GUARDED_BY_ABILITY } from '../../../shared/guards';
 import { WEAPON_HAND } from '../../../shared/items';
 import type { RealmFamily } from '../../../shared/realm';
 import type { MobAttack, WorldSpell } from '../../../shared/world';
@@ -550,53 +551,22 @@ describe('which one to go for', () => {
     expect(sent).toEqual(['a thug']);
   });
 
-  /* The one preference the verdict leaves to the player. An ogre with six
-     thousand health costs this swordsman far more than a tenth of its own,
-     and the refusal names both figures — from the same `Verdict` the card
-     draws, so the card and the engine cannot disagree about a bad fight. */
-  it('declines a fight expected to cost more than the stated share of health, and says so', () => {
-    const auto = make(combat({ maxFightCost: 0.1 }), true, undefined, armed);
-    const me = swordsman({
-      ...EMPTY_CHARACTER.room,
-      occupants: [fighter('ogre', 6000, [bite(40, 60)])]
-    });
-    auto.onCharacter({ ...me, vitals: { ...me.vitals, hp: 100, hpMax: 100 } });
-    drain();
-    expect(sent).toEqual([]);
-    expect(refusals()[0]).toMatch(
-      /^ogre — the fight with ogre would cost up to \d+ hp of your 100$/
-    );
-  });
-
-  /* Unknown is not expensive: a monster the realm cannot cost is still opened
-     on, or auto-combat would be off by another name on a lineage the client
-     has no arithmetic for. */
-  it('takes a fight whose cost is unknown, whatever the share', () => {
-    const auto = make(combat({ maxFightCost: 0.1 }), true, undefined, armed);
-    const me = swordsman({
-      ...EMPTY_CHARACTER.room,
-      occupants: [mob('giant rat', 'hostile')]
-    });
-    auto.onCharacter({ ...me, vitals: { ...me.vitals, hp: 100, hpMax: 100 } });
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
   it('skips one it was told never to attack', () => {
-    const auto = make(combat({ avoid: ['giant rat'] }));
+    const auto = make(combat({ mobRules: [{ mob: 'giant rat', treat: 'never' }] }));
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual(['a wererat shaman']);
   });
 
-  /* The config keys names the way the wire spells them, so case and the
-     leading article cannot make a list silently miss. */
-  it('matches a name however the config spelled it', () => {
-    const auto = make(combat({ avoid: ['The Giant Rat'] }));
+  /* Both sides go through `mobKey`, as the ranking's rows already did: a row
+     typed on the settings screen has not been through `normalizeCombat` yet,
+     and a refusal that did nothing until the file was reloaded would be the
+     control lying about itself while somebody watched it. */
+  it('leaves it alone however the row spelled the name', () => {
+    const auto = make(combat({ mobRules: [{ mob: 'The Giant Rat', treat: 'never' }] }));
     auto.onCharacter(state({ room }));
     drain();
-    // Normalisation happens in `normalizeCombat`, so go through it.
-    expect(sent).toEqual(['a giant rat']);
+    expect(sent).toEqual(['a wererat shaman']);
   });
 });
 
@@ -941,6 +911,14 @@ describe('the beat a walk takes for it', () => {
     const auto = make(combat({ engage: 'none' }));
     auto.noteWalking(true);
     expect(auto.quarry(state({ room }))).toBe(false);
+  });
+
+  it('is not asked for in a room too small for engage to open in', () => {
+    const auto = make(combat({ engage: 'all', minMobs: 2 }));
+    auto.noteWalking(true);
+    expect(auto.quarry(state({ room }))).toBe(false);
+    const two = { ...room, occupants: [...room.occupants, mob('kobold', 'hostile')] };
+    expect(auto.quarry(state({ room: two }))).toBe(true);
   });
 
   it('is not asked for in a room with nothing in it worth stopping for', () => {
@@ -2301,7 +2279,8 @@ describe('fighting what the leader fights', () => {
   const party = {
     assistLeader: true,
     defendParty: false,
-    restWithLeader: false
+    restWithLeader: false,
+    askForHealBelow: 0
   };
   const following = (target: string, at = Date.now()) => ({
     following: 'Soul',
@@ -2395,7 +2374,8 @@ describe('defending the party', () => {
   const party = {
     assistLeader: false,
     defendParty: true,
-    restWithLeader: false
+    restWithLeader: false,
+    askForHealBelow: 0
   };
   /** Soul is being hit by `target`; nobody here follows anybody. */
   const threatened = (target: string, at = Date.now()) => ({
@@ -2521,11 +2501,11 @@ describe('saying why it did not open a fight', () => {
     expect(refusals()).toEqual(['shopkeeper — the realm does not say shopkeeper attacks first']);
   });
 
-  it('names the avoid list', () => {
-    const auto = make(combat({ avoid: ['thug'] }));
+  it('names a row set to never attack', () => {
+    const auto = make(combat({ mobRules: [{ mob: 'thug', treat: 'never' }] }));
     auto.onCharacter(room(mob('thug', 'hostile')));
     drain();
-    expect(refusals()).toEqual(['thug — thug is on the avoid list']);
+    expect(refusals()).toEqual(['thug — thug is set to never attack']);
   });
 
   /*
@@ -2705,5 +2685,165 @@ describe('the size of the room and the size of the monster', () => {
     auto.onCharacter(inRoom(unplaced('thing from the deep')));
     drain();
     expect(sent).toEqual(['a thing from the deep']);
+  });
+});
+
+describe('a monster that protects another', () => {
+  /** `who`, as realm rows `ids`, protected by the rows in `by` (`MonsGuards`). */
+  function rows(who: RoomOccupant, ids: number[], by: number[] = []): RoomOccupant {
+    return {
+      ...who,
+      mob: {
+        ...who.mob!,
+        ids,
+        ...(by.length === 0
+          ? {}
+          : { abilities: by.map((row): [number, number] => [GUARDED_BY_ABILITY, row]) })
+      }
+    };
+  }
+
+  /** `who`, as a monster the realm says leaves this character alone. */
+  function passive(who: RoomOccupant): RoomOccupant {
+    return { ...who, disposition: 'passive', mob: { ...who.mob!, disposition: 'passive' } };
+  }
+
+  // The shaman is the one the weighing takes first ('which one to go for').
+  const shaman = (by: number[]): RoomOccupant =>
+    rows(fighter('wererat shaman', 40, [bite(10, 30, 60)]), [20], by);
+  const kobold = rows(fighter('kobold thief', 30, [bite(1, 8, 15)]), [10]);
+
+  function fightIn(occupants: RoomOccupant[], config = combat()): AutoCombat {
+    const auto = make(config);
+    auto.onCharacter(state({ room: { ...EMPTY_CHARACTER.room, occupants } }));
+    drain();
+    return auto;
+  }
+
+  /* `AttackCommand.cs`: the guard moves to protect, and the blow is its. */
+  it('goes for the guard before what it protects, whatever the weighing says', () => {
+    fightIn([kobold, shaman([10])]);
+    expect(sent).toEqual(['a kobold thief']);
+    expect(decisions.find((decision) => decision.acted)?.because).toBe(
+      'kobold thief protects wererat shaman, so it goes first'
+    );
+  });
+
+  it('weighs the room as before where nothing protects anything', () => {
+    fightIn([kobold, shaman([])]);
+    expect(sent).toEqual(['a wererat shaman']);
+  });
+
+  it('puts the guard ahead of the priority list too, since the server does', () => {
+    fightIn(
+      [kobold, shaman([10])],
+      combat({ mobRules: [{ mob: 'wererat shaman', treat: 'first' }] })
+    );
+    expect(sent).toEqual(['a kobold thief']);
+  });
+
+  /* Attacking the shaman turns the kobold on the character anyway. */
+  it('brings in a guard that would not start a fight when what it protects is attacked', () => {
+    fightIn([passive(kobold), shaman([10])]);
+    expect(sent).toEqual(['a kobold thief']);
+    expect(decisions.find((decision) => decision.acted)?.because).toBe(
+      'kobold thief protects wererat shaman, so attacking wererat shaman brings it in; it goes first'
+    );
+  });
+
+  it('leaves a guard that would not start a fight when nothing it protects is attacked', () => {
+    fightIn([passive(kobold), passive(shaman([10]))]);
+    expect(sent).toEqual([]);
+  });
+
+  /* Only some of the kobold's rows protect: the server decides, rather than
+     this client opening on a monster that may have left it alone. */
+  it('does not bring in a guard the realm is only sure of for some of its rows', () => {
+    fightIn([passive(rows(kobold, [10, 11])), shaman([10])]);
+    expect(sent).toEqual(['a wererat shaman']);
+  });
+
+  // Listed first, so its reason is the one reported.
+  it('declines what a refused guard protects, with the guard’s reason', () => {
+    fightIn(
+      [shaman([10]), kobold],
+      combat({ mobRules: [{ mob: 'kobold thief', treat: 'never' }] })
+    );
+    expect(sent).toEqual([]);
+    expect(refusals()).toContain(
+      'wererat shaman — kobold thief protects wererat shaman and is refused itself: kobold thief is set to never attack'
+    );
+  });
+
+  it('hits back at the guard first when both are swinging', () => {
+    const auto = make(combat({ engage: 'none' }));
+    auto.onCharacter(
+      state({
+        inCombat: true,
+        room: { ...EMPTY_CHARACTER.room, occupants: [kobold, shaman([10])] },
+        combat: {
+          ...EMPTY_CHARACTER.combat,
+          engaged: true,
+          attackers: ['wererat shaman', 'kobold thief']
+        }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a kobold thief']);
+  });
+
+  /* A hostile ward swings first; its guard has not landed a blow yet. */
+  it('hits back at a guard standing here that has not swung yet', () => {
+    // Hitting back is traced by the reason the command carries.
+    const said: string[] = [];
+    queue.dispose();
+    queue = new CommandQueue(automation, {
+      send: (command, intent) => {
+        sent.push(command);
+        said.push(intent.reason ?? '');
+      }
+    });
+    const auto = make(combat({ engage: 'none' }));
+    auto.onCharacter(
+      state({
+        inCombat: true,
+        room: { ...EMPTY_CHARACTER.room, occupants: [shaman([10]), passive(kobold)] },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['wererat shaman'] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a kobold thief']);
+    expect(said).toEqual([
+      'auto-combat: hitting back: kobold thief protects wererat shaman, so it goes first'
+    ]);
+  });
+
+  it('does not hit back through a guard set to never attack', () => {
+    const auto = make(
+      combat({ engage: 'none', mobRules: [{ mob: 'kobold thief', treat: 'never' }] })
+    );
+    auto.onCharacter(
+      state({
+        inCombat: true,
+        room: { ...EMPTY_CHARACTER.room, occupants: [shaman([10]), kobold] },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['wererat shaman'] }
+      })
+    );
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /* `orc warlord` ← `orc captain` ← `orc lieutenant`, the lieutenant left
+     alone: the captain cannot be fought, so neither can what it protects. */
+  it('declines the whole chain behind a refused guard', () => {
+    fightIn(
+      [
+        rows(fighter('orc warlord', 300, [bite(10, 20)]), [724], [725]),
+        rows(fighter('orc captain', 200, [bite(8, 16)]), [725], [727]),
+        rows(fighter('orc lieutenant', 150, [bite(6, 12)]), [727])
+      ],
+      combat({ mobRules: [{ mob: 'orc lieutenant', treat: 'never' }] })
+    );
+    expect(sent).toEqual([]);
   });
 });

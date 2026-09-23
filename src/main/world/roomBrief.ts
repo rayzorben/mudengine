@@ -13,11 +13,28 @@
  *
  * See `mudengine-world` › *The realm data answers before the server is asked*.
  */
+import type { RealmFamily } from '../../shared/realm';
 import type { RoomBrief, RoomBriefExit, RoomId } from '../../shared/world';
 import { describeObstacle } from './obstacle';
 import type { WorldGraph } from './WorldGraph';
 
-export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
+/**
+ * `family` is the one thing here that is not the realm file's: it decides the
+ * lair's respawn clock, whose only interpretation outside the column is
+ * GreaterMUD's own offset. See `WorldGraph.lair`.
+ */
+export function roomBrief(
+  graph: WorldGraph,
+  id: RoomId,
+  family: RealmFamily | null,
+  /**
+   * The reader's own level, so a room spell the realm gates on level is
+   * described as it applies to them (todo 01): the desert's sandstorm is
+   * `maxlevel 19`, and the panel said *it moves you somewhere else* to a
+   * level 21 character on 979 rooms. Null keeps the whole hazard.
+   */
+  level?: number | null
+): RoomBrief | null {
   const room = graph.byId(id);
   if (!room) return null;
 
@@ -65,7 +82,7 @@ export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
   const shop = room.shop === undefined ? undefined : graph.shop(room.shop);
   if (shop !== undefined) brief.place = { kind: shop.kind ?? 'shop', name: shop.name };
 
-  const lair = graph.lair(room);
+  const lair = graph.lair(room, family);
   if (lair !== null) brief.lair = lair;
 
   const npc = room.npcId === undefined ? undefined : graph.mobById(room.npcId);
@@ -78,7 +95,7 @@ export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
    * damage` and `inn rest` are the same column, and the realm states which is
    * which. The items that stop it are named here, where the item table is.
    */
-  const hazard = graph.hazardOf(room);
+  const hazard = graph.hazardOf(room, level);
   if (hazard !== null) {
     brief.hazard = hazard;
     const named = (hazard.avoidedBy ?? []).flatMap((id) => {
@@ -90,6 +107,19 @@ export function roomBrief(graph: WorldGraph, id: RoomId): RoomBrief | null {
 
   if (room.light !== undefined) brief.light = room.light;
   if (room.commands !== undefined && room.commands.length > 0) brief.commands = room.commands;
+
+  /*
+   * What the realm furnishes the room with — format 42. Named here, where the
+   * item table is; a number the table lacks is one the server skips too.
+   */
+  const placed = (room.placed ?? []).flatMap((item) => {
+    const known = graph.item(item);
+    if (known === undefined) return [];
+    return [
+      { id: item, name: known.name, ...(known.gettable === false ? { fixed: true as const } : {}) }
+    ];
+  });
+  if (placed.length > 0) brief.placed = placed;
 
   return brief;
 }

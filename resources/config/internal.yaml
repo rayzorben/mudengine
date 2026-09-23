@@ -496,6 +496,10 @@ tuning:
     # Long enough for the next status line to say whether the heal worked.
     healCooldownMs: 6000
 
+    # How long a party member's @heal stands waiting for a cast. Past one
+    # healCooldownMs, so a request arriving just after a heal still gets its own.
+    healRequestMs: 10000
+
     # How long a cure proposal stays worth sending.
     cureExpiresMs: 3000
 
@@ -564,9 +568,13 @@ tuning:
   # GreaterMUD's regen adds before comparing with a room's delay (its author
   # calls it a kept bug), so a lair comes back that much sooner there;
   # `backstabMultiplier` what the opening backstab is worth in swings
-  # (measured 4.1×); `maxLoopRooms` and `maxSpots` bound the suggestions;
-  # `betterSpotRadius` is how far the lap's low-experience stop looks for a
-  # better lair. `maxDamageShare` leaves out a lair whose one cycle takes
+  # (measured 4.1×); `maxLoopRooms` bounds a loop, and `maxSpots` is how many
+  # of the best are measured properly -- every other lair is still listed, on
+  # the first estimate. `measuredFightsMin` is how many of the character's own
+  # opened fights price a kill where the realm's arithmetic is not known (off
+  # the GreaterMUD lineage): its measured damage a round against the
+  # monster's health. `betterSpotRadius` is how far the lap's low-experience
+  # stop looks for a better lair. `maxDamageShare` leaves out a lair whose one cycle takes
   # more than that share of the bar; `trivialShare` leaves out one that could
   # not take that share off an unarmoured character, the bar read
   # `trivialLevelMargin` lower; `clusterRadius` is how far apart a loop's own
@@ -586,6 +594,7 @@ tuning:
     backstabMultiplier: 4
     maxLoopRooms: 8
     maxSpots: 24
+    measuredFightsMin: 30
     betterSpotRadius: 80
     maxDamageShare: 0.5
     trivialShare: 0.1
@@ -676,6 +685,23 @@ tuning:
     # beats 3.99 twenty-five minutes off it. Zero lets the detour decide alone.
     dearerSteps: 20
 
+  # Carrying a quest's plan through the arbiter — `QuestRunner`. `replyMs` is
+  # how long an act has to move the counter before its silence is a refusal;
+  # `rollTries` how many times a step that rolls is asked again; `waitForMs`
+  # how long to wait at a step's room for its asker or its monster.
+  quests:
+    replyMs: 12000
+    rollTries: 12
+    waitForMs: 600000
+    maxLegs: 6
+    # A setback -- a walker refusing while a move is unanswered, an escape, a
+    # corridor busy with monsters -- stands the run still for this long and it
+    # tries again, giving up only after this many in a row with nothing
+    # achieved between them.
+    retryMs: 20000
+    setbacks: 20
+    expiresMs: 8000
+
   # Shedding named junk — `AutoDrop`.
   drop:
     expiresMs: 5000
@@ -730,6 +756,29 @@ tuning:
 
     # How many holds run back to back before it walks on regardless.
     maxHolds: 3
+
+    # How long a walk stands in the room it has just arrived in before
+    # stepping out of it again, where the room it left held a monster.
+    #
+    # The server works the follow out inside the move (`Exits.cs:165`: every
+    # mob in the room whose target is this character rolls against
+    # `FollowPercent` and is moved with the player), so the arrival sentences
+    # are composed after the room block and `Also here:` is absent from a room
+    # block about to hold five monsters — which is what the walk read before it
+    # stepped out and dragged them on.
+    #
+    # A margin over that window and only that window. Across every session log
+    # on this machine, 28 monsters arrived from the direction the character had
+    # just come naming something the departure room's own listing held: 22 are
+    # that synchronous follow, none later than 39ms, four of them a socket read
+    # behind the room block rather than in it; one straggler at 330ms. Raising
+    # this buys a slower walk rather than more safety — the other five arrived
+    # 959-1,670ms on, and those are `Mob.CheckFollow` chasing on the monster's
+    # own clock, which no settle can cover.
+    #
+    # Paid only where something could follow: a room the character left empty
+    # settles for nothing.
+    followSettleMs: 350
 
     # How far the character may have wandered from what it was walking before
     # pressing play asks about it first.
@@ -1019,6 +1068,10 @@ tuning:
     # Not measured against a peer: there has never been a second one of these
     # clients to capture. Revisit with a capture.
     replyMs: 30000
+
+    # How often a character still under party.askForHealBelow says @heal again.
+    # MegaMUD re-reads the party listing every 15s in a fight (ParPeriod).
+    healAskAgainMs: 15000
 
   # How many commands one press or one `@` may spend.
   #
@@ -1322,6 +1375,26 @@ tuning:
     # shorter is the same way with a corner cut.
     alternativeMinSteps: 10
 
+    # What a step along the plan costs while the router is asked for a way that
+    # differs from it: the plan's own edges are priced this many times over and
+    # the search asked again, so it leaves the plan wherever a detour costs less
+    # than this much of what it replaces. 1 finds the plan again and offers
+    # nothing.
+    anotherWayPenalty: 3
+
+    # How much longer than the plan a different way may be and still be
+    # offered, as a share of the plan's steps: 0.5 is half again as long. A way
+    # that differs is expected to be dearer — that is why it was not the plan —
+    # and past this it is a tour rather than a choice.
+    anotherWayLonger: 0.5
+
+    # How many of a consumable a quest's plan buys against a room spell on the
+    # way, where the realm says using one stops the spell. A waterskin is three
+    # uses and its spell lasts 600 ticks, the desert crossing is 64 rooms each
+    # way, and the plan cannot know how many times the walk will stop: two is
+    # one spare. A thing that is not spent is fetched once whatever this says.
+    hazardSupplyCount: 2
+
     # How many rounds of a lair's blows one pass through the room is priced at.
     # In and out is one round from whatever attacks on sight; two prices every
     # lair as if you stood a round longer in each.
@@ -1475,6 +1548,10 @@ tuning:
     # live edge resumes at once and does not wait, and the "jump to latest"
     # button is there for the whole of the hold.
     talkFollowResumeMs: 45000
+    # How long the quest run banner stays over the console saying how the run
+    # ended before it takes itself down; the stream and the Quest card keep the
+    # record, and the banner covers the console's top rows while it stands.
+    questRunLingerMs: 30000
 
     # Lines the Talk composer remembers for its Up arrow. A short list on
     # purpose: this is the shell's history, not the card's backlog — what it is

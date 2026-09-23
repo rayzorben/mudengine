@@ -24,7 +24,7 @@
  * map's bare click used to be.
  */
 import { createPortal } from 'react-dom';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 import EntityNumber from './EntityNumber';
 import LairList from './LairList';
@@ -69,8 +69,8 @@ export interface RoomAsked {
   /**
    * What the one action does to this room, and what it is called.
    *
-   * The map's is *walk to* — plan the way there, which is what a room's click
-   * used to do on its own. A route list's is *walk here* — walk the plan on
+   * The map's is *plan route* — lay the way there out, which is what a room's
+   * click used to do on its own. A route list's is *walk here* — walk the plan on
    * screen only as far as this room. Null where there is nothing to offer: a
    * pinned float cannot plan on somebody else's realm, and a control bound to
    * nowhere is worse than none.
@@ -304,24 +304,64 @@ function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }
             <dd className="span">{brief.hazardItems.map((item) => item.name).join(', ')}</dd>
           </>
         )}
+        {/* What the realm furnishes it with and puts back every night —
+            format 42. Names, not controls, for the lair's reason below; the
+            ones nobody can pick up are drawn quiet, since the raft is the
+            thing a reader came for and the sign beside it is scenery. */}
+        {brief.placed !== undefined && (
+          <>
+            <dt title={t('cards.roomPeek.placedHint')}>{t('cards.roomPeek.placedLabel')}</dt>
+            <dd className="span">
+              {brief.placed.map((item, index) => (
+                <Fragment key={item.id}>
+                  {index > 0 && ', '}
+                  {item.fixed === true ? (
+                    <span className="quiet" title={t('cards.room.fixedTitle')}>
+                      {item.name}
+                    </span>
+                  ) : (
+                    item.name
+                  )}
+                  <EntityNumber of={{ id: item.id }} />
+                </Fragment>
+              ))}
+            </dd>
+          </>
+        )}
         <dt>{t('cards.roomPeek.exitsLabel')}</dt>
         <dd className="span">
           {brief.exits.length === 0 ? (
             <span className="quiet">{t('cards.roomPeek.noExits')}</span>
           ) : (
-            brief.exits.map((exit) => (
-              <span className="peek-exit" key={exit.direction}>
-                <span className="step-command">
-                  {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
-                </span>
-                <span>{exit.name ?? exit.to}</span>
-                {exit.obstacle !== undefined && (
-                  <span className="chip warn" title={exit.obstacle.detail}>
-                    {exit.obstacle.label}
+            /*
+             * **One way out is one bounded thing.** Two of one name —
+             * `northeast Sandbar northwest Sandbar` — ran together into a
+             * sentence, because the only thing between a destination and the
+             * next direction was a wider gap than the one inside the pair. So
+             * each takes a seam of its own, and the arrow inside says which
+             * half is the way and which is where it goes — the `→` the room's
+             * own answers already use below. Still wrapping rather than
+             * stacking: a column of four short facts is a panel twice as tall
+             * as the lair it is above.
+             */
+            <ul className="peek-exits">
+              {brief.exits.map((exit) => (
+                <li className="peek-exit" key={exit.direction}>
+                  <span className="step-command">
+                    {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
                   </span>
-                )}
-              </span>
-            ))
+                  <span aria-hidden="true" className="peek-exit-arrow">
+                    →
+                  </span>
+                  <span className="peek-exit-to">{exit.name ?? exit.to}</span>
+                  {exit.obstacle !== undefined && (
+                    <span className="chip warn" title={exit.obstacle.detail}>
+                      {exit.obstacle.label}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </dd>
       </dl>

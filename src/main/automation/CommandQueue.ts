@@ -90,6 +90,15 @@ export interface Intent {
    */
   secret?: boolean;
   /**
+   * The command keeps the **connection** alive rather than acting for the
+   * character, so it goes out with automation switched off as well — at its
+   * own band, unlike a login answer, which rides at `user`. The keep-alive is
+   * the one: without it a switched-off character sends nothing, and a link
+   * that dies then is noticed by nobody (`LinkWatch` only times a command that
+   * went out). Measured 2026-09-18: 23 minutes on a dead socket.
+   */
+  keepsLink?: boolean;
+  /**
    * The command has just been written to the socket.
    *
    * For a proposer whose own deadline measures the **server's** silence. The
@@ -301,7 +310,9 @@ export class CommandQueue {
     // is listening.
     if (this.held !== null) return false;
     if (this.events.connected?.() === false) return false;
-    if (!this.config.enabled && intent.priority !== 'user') return false;
+    if (!this.config.enabled && intent.priority !== 'user' && intent.keepsLink !== true) {
+      return false;
+    }
     if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return false;
     /*
      * A word this realm does not have. Refused rather than sent, and said out

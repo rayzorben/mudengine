@@ -20,6 +20,7 @@ import {
   type Capabilities
 } from '../../shared/abilities';
 import { trainingCost } from '../../shared/training';
+import { carriedCount } from '../../shared/supplies';
 import type { TrainerChoice } from '../../shared/world';
 import { MASKED_COMMAND } from '../../shared/automation';
 import type {
@@ -65,6 +66,10 @@ import {
 } from '../../shared/movement';
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand, type ItemSources } from '../automation/ItemErrand';
+import { QuestRunner } from '../automation/QuestRunner';
+import { EquipmentManager } from '../automation/EquipmentManager';
+import { sameItem } from '../../shared/items';
+import { Wards } from '../automation/Wards';
 import { Events } from '../automation/Events';
 import type { Loop } from '../../shared/loops';
 import { splitStop } from '../../shared/loops';
@@ -72,7 +77,6 @@ import {
   OPPOSITE,
   asDirection,
   hazardAvoided,
-  mobKey,
   nameAnswersTo,
   newDemands,
   parseLair,
@@ -81,9 +85,11 @@ import {
   landingRooms,
   type WorldRoom,
   type Direction,
+  type Corridor,
   type RoomId,
   type TrailStep,
   type Route,
+  type BuyingPlace,
   type WorldSpell
 } from '../../shared/world';
 import { actionsFor } from './actions';
@@ -116,15 +122,22 @@ import { NO_REALM_PLAYERS, type RealmPlayers } from '../../shared/players';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { describeDiscovery, discoveryKey, type Discovery } from '../../shared/memory';
-import { findKey, type Find } from '../../shared/finds';
+import { findKey, type Find, type Sighting } from '../../shared/finds';
 import {
   asksHere,
   countersNow,
   countersRefuse,
+  planSpan,
+  questReading,
+  rollChance,
   stepKilled,
   stepSaid,
+  type PlanItem,
+  type PlanStep,
   type Quest,
   type QuestErrand,
+  type QuestPlan,
+  type QuestRunProgress,
   type QuestSeen,
   type QuestStep,
   type QuestWatched,
@@ -197,9 +210,11 @@ import {
   type RoomVerdict,
   type Verdict
 } from '../../shared/verdict';
+import { statedNow } from '../../shared/stated';
 import { LairCosts } from '../world/LairCosts';
+import { inTheFight } from '../../shared/guards';
 import { attacksOnSight } from '../../shared/mobs';
-import { regeneration, type ProwessSheet, type ProwessWeapon } from '../../shared/prowess';
+import { regeneration, swing, type ProwessSheet, type ProwessWeapon } from '../../shared/prowess';
 import {
   castsToKill,
   chooseAttackSpell,
@@ -418,8 +433,8 @@ export interface RealmMemory {
  * which is the record it most resembles and which keys the same way.
  */
 export interface RealmFinds {
-  /** Writes one down. Returns it only when this room had not held it before. */
-  record(find: Omit<Find, 'seen'>): Find | null;
+  /** Counts one search of a room and writes down what it turned up. Returns the first sightings. */
+  search(room: RoomId, found: readonly Sighting[]): Find[];
   /** Strikes one out by its `findKey`. Whether there was one to strike. */
   forget(key: string): boolean;
   readonly all: readonly Find[];
@@ -427,7 +442,7 @@ export interface RealmFinds {
 
 /** A realm nothing is written down for, which is what every test wants. */
 const NO_FINDS: RealmFinds = {
-  record: () => null,
+  search: () => [],
   forget: () => false,
   all: []
 };
@@ -508,6 +523,8 @@ export interface SessionSink {
    * The whole map, for the reason `learned` sends the whole record.
    */
   questSaid?(progress: QuestWatched): void;
+  /** How a run of a quest's plan is going, on every change. See `QuestRunner`. */
+  questRun?(progress: QuestRunProgress): void;
   /**
    * A command the client committed to the wire, reassembled from keystrokes.
    * One place does this, so a capture and the tracker cannot disagree.
@@ -622,6 +639,8 @@ export class SessionManager {
   private familyStated = false;
   /** The realm's own word for its data, once the menu has said it. See `noteRealmWord`. */
   private realmTold: RealmWord | null = null;
+  /** The last `fitness` answer and the state it was for; dropped when the family moves. */
+  private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
   private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
   /**
@@ -633,6 +652,8 @@ export class SessionManager {
    */
   private huntPrices: { key: string; world: WorldGraph; groups: Map<string, HuntPrice> } | null =
     null;
+  /** The fight record, which the survey asks what this character deals a round. */
+  private readonly fightRecord: FightSink;
   private internal: InternalConfig = DEFAULT_INTERNAL;
   private readonly lineLog: StreamLine[] = [];
   private seq = 0;
@@ -918,6 +939,12 @@ export class SessionManager {
   private readonly hunt: AutoHunt;
   /** Going to get the item a route's door wants — todo 07. */
   private readonly itemErrand: ItemErrand;
+  /** Carrying a quest's plan, step by step (todos 102–103). */
+  private readonly questRunner: QuestRunner;
+  /** Keeping a room's ward up off a carried item (todo 105). */
+  private readonly wards: Wards;
+  /** Which kit the character should be in, and getting it there (todo 00). */
+  private readonly gear: EquipmentManager;
   /** Resting next door to a lair rather than in it. See `RestAway`. */
   private readonly restAway: RestAway;
   /** Spending character points on the stat screen. See `StatScreen`. */
@@ -1098,6 +1125,8 @@ export class SessionManager {
    * `questReading`.
    */
   private questSaid: Record<number, QuestSeen> = {};
+  /** Which ask for a plan is current; an earlier chain stops at its next leg. */
+  private planAsked = 0;
   /**
    * Whether the far end is still answering. See `LinkWatch`.
    *
@@ -1168,6 +1197,7 @@ export class SessionManager {
      */
     sentences: ShippedSentences = NO_SHIPPED_SENTENCES
   ) {
+    this.fightRecord = fights;
     this.tracker = new CharacterTracker(
       world,
       lore,
@@ -1202,7 +1232,8 @@ export class SessionManager {
     this.classifier = new Classifier(
       {
         present: () => this.tracker.current.room.occupants.map((who) => who.name),
-        mob: (name) => world?.mob(name)
+        mob: (name) => world?.mob(name),
+        self: () => this.tracker.current.name
       },
       // And the spell message table, for the whole-line sentences no frame
       // reads; a lookup because what has been learned changes as the session runs.
@@ -1390,6 +1421,7 @@ export class SessionManager {
         this.recoverGear.onWalkEnded(arrived, reason, this.tracker.current);
         this.trainLevel.onWalkEnded(arrived, reason, this.tracker.current);
         this.hunt.onWalkEnded(arrived, reason, this.tracker.current);
+        this.questRunner.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to, landing) => {
         if (landing !== undefined && direction !== 'portal') {
@@ -1463,7 +1495,10 @@ export class SessionManager {
        * purse and the edges this session has seen refused, and the walker
        * holds a route and a queue and deliberately not the world.
        */
-      replan: (to) => this.planFromHere(to),
+      replan: (to, shortest) => this.planFromHere(to, {}, shortest),
+      // Under a timed spell the way in cast, the walk moves and does nothing
+      // else (todo 104). The fact is the realm's; see `underTimedSpell`.
+      moveOnly: (state) => this.underTimedSpell(state) !== null,
       /*
        * And where a draw put the character, when the room's own name and
        * exits cannot say. The same ask the lap makes and the same one
@@ -1484,9 +1519,14 @@ export class SessionManager {
        * levers spread over several rooms can be walked at all. Priced by the
        * same traveller, so the check and the walk cannot disagree.
        */
-      routeBetween: (from, to) =>
-        this.world?.route(from, to, this.travellerNow(this.tracker.current)) ??
-        t('session.loop.noRealmData'),
+      routeBetween: (from, to, shortest) =>
+        this.world?.route(
+          from,
+          to,
+          shortest
+            ? this.lapTraveller(this.tracker.current)
+            : this.travellerNow(this.tracker.current)
+        ) ?? t('session.loop.noRealmData'),
       // A walk that engages pauses where there is something worth fighting, so
       // the wanderer met mid-corridor is met, not passed — and so is the second
       // monster in a room the first was just killed in. Asked of auto-combat
@@ -1505,6 +1545,8 @@ export class SessionManager {
       lightSource: (state) => this.lightSource(state),
       // And the light itself, ahead of the step. See `AutoLight`.
       beforeStep: (ahead, state) => this.light.beforeStep(ahead, state),
+      // And the ward the room ahead wants, off the pack (todo 105).
+      wardFor: (to, state) => this.wards.beforeStep(to, state),
       /*
        * And whether one is coming for the room the character is standing in,
        * which is what a walk waits on rather than giving up in the dark. This
@@ -1552,6 +1594,9 @@ export class SessionManager {
         notice: (message) => this.sink.notice(message),
         // The choice found no book read: the routines ask once (todo 09).
         needBook: () => this.routines.askBook(this.tracker.current),
+        // The round beat, for the one thing that rides it without being a
+        // cast: the equipment manager's off-round invocation (todo 00).
+        round: (state) => this.gear.round(state),
         /*
          * The trace, not the console. A refusal to open a fight is not news
          * the *game's* surface should carry — it happens in every corridor and
@@ -1637,6 +1682,34 @@ export class SessionManager {
      * the state on every arrival. Its refusals go to the safety trace, because
      * a torch not lit in a dark room is a decision somebody will ask about.
      */
+    /*
+     * And the ward a room wants, kept up off the pack (todo 105): the realm
+     * says which spell stops a room's effect and which item's use casts it,
+     * and this uses the item before the step and again when the spell
+     * lapses. The stated countdowns are the router's; this module's own clock
+     * is the walk's.
+     */
+    this.wards = new Wards(
+      automation.health,
+      automation.enabled,
+      this.queue,
+      {
+        hazardAt: (room) => {
+          const world = this.world;
+          const found = world?.byId(room);
+          if (world === undefined || found === undefined || found.spell === undefined) return null;
+          const spell = world.spellById(found.spell);
+          const hazard = spell?.hazard;
+          return spell === null || spell === undefined || hazard === undefined
+            ? null
+            : { spell, hazard };
+        },
+        itemsCasting: (spell) => this.world?.itemsCasting(spell) ?? [],
+        spellById: (id) => this.world?.spellById(id) ?? null,
+        spellsUp: (state) => this.spellsUp(state)
+      },
+      { notice: (message) => this.sink.notice(message) }
+    );
     this.light = new AutoLight(automation.movement, automation.enabled, this.queue, {
       notice: (message) => this.sink.notice(message),
       decided: (decision) => this.noteSafety(decision),
@@ -1865,7 +1938,8 @@ export class SessionManager {
           this.escapeAwaiting !== null ||
           this.supplies.current !== null ||
           this.trainLevel.busy ||
-          this.itemErrand.running
+          this.itemErrand.running ||
+          this.questRunner.running
       },
       {
         notice: (message) => this.sink.notice(message),
@@ -1949,6 +2023,66 @@ export class SessionManager {
       {
         notice: (message) => this.sink.notice(message),
         decided: (decision) => this.noteSafety(decision)
+      }
+    );
+    /*
+     * And carrying a quest's plan (todos 102–103): the errands above, the
+     * walker and auto-combat, driven one step at a time by the plan the card
+     * drew. Its legs are an errand's — quiet, held for health, not owed
+     * across a lost connection — and it holds the lap as the errands do.
+     */
+    this.questRunner = new QuestRunner(
+      automation.quests,
+      automation.enabled,
+      this.queue,
+      {
+        here: () => roomAddress(this.tracker.current.room),
+        /*
+         * `abil` is GreaterMUD's alone, and the family is told by the banner
+         * or by the listing having answered at all: a realm that has printed
+         * its counters once prints them.
+         */
+        printsCounters: () =>
+          this.serverFamily === 'greatermud' || this.tracker.current.abilities !== null,
+        routeTo: (room) => this.planFromHere(room),
+        walk: (route) =>
+          this.walker.start(route, this.tracker.current, {
+            quiet: false,
+            asked: false,
+            holdWhenHurt: true,
+            resumeAfterFight: true,
+            whileFighting: false,
+            resumeAfterLoss: false
+          }),
+        stopWalking: (reason) => {
+          if (this.walker.walking && !this.walkAsked) this.walker.stop(reason);
+        },
+        moveInFlight: () => this.tracker.pendingMoves > 0,
+        walking: () => this.walker.walking,
+        busy: () => this.isRetreating() || this.retreat !== null || this.escapeAwaiting !== null,
+        looping: () => this.loops.progress.status === 'running',
+        hold: () => this.loops.noteErrand(),
+        release: () => this.loops.noteErrandOver(),
+        buy: (row) => this.supplies.fetch(row, this.tracker.current),
+        buying: () => this.supplies.current !== null,
+        restock: (to, later) => this.questRestock(to, later),
+        hunt: (item) => this.itemErrand.collect(item, null, this.tracker.current),
+        hunting: () => this.itemErrand.running,
+        abandonErrands: (reason) => {
+          this.supplies.abandon(reason);
+          this.itemErrand.abandon(reason);
+        },
+        fightFor: (mob) => this.combat.alsoFight(mob),
+        stopFighting: (mob) => this.combat.stopFighting(mob),
+        questing: (on) => this.combat.noteQuesting(on),
+        warding: (on) => this.wards.lend(on),
+        said: (command) => this.noteQuestSaid(command),
+        watched: () => this.questSaid
+      },
+      {
+        notice: (message) => this.sink.notice(message),
+        decided: (decision) => this.noteSafety(decision),
+        progress: (progress) => this.sink.questRun?.(progress)
       }
     );
     /*
@@ -2049,7 +2183,8 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       // The state as it is at the send, not as it was at the proposal.
-      () => this.tracker.current
+      () => this.tracker.current,
+      (state) => this.combat.quarry(state)
     );
     /*
      * And what neither should be carrying: the purse over the threshold, banked
@@ -2159,6 +2294,16 @@ export class SessionManager {
       },
       // A blessed party member says the spell wore off; recast on the event.
       blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
+      /*
+       * A member asks for a heal. Decided now rather than on the next status
+       * line, which out of a fight may be a long way off — under the guard the
+       * heal always runs under, since nothing is cast on the way out of a room.
+       */
+      healRequested: (from) => {
+        const state = this.tracker.current;
+        this.heal.request(from, state);
+        if (!state.mortallyWounded && !this.isRetreating()) this.heal.onCharacter(state);
+      },
       /*
        * Which client another player runs — the fact the extended vocabulary
        * turns on. On the registry with everything else known about them, and
@@ -2275,6 +2420,23 @@ export class SessionManager {
       spellById: (id) => this.world?.spellById(id) ?? null,
       spellNamed: realmSpell
     });
+    /*
+     * And which kit to be in. The pack is asked before the realm for both
+     * facts: a carried item carries the realm's own reading joined onto it
+     * (`ItemEntity.realmSlot`, `weapon.hands`), and that is the row the
+     * server will actually put on — a second row of the same name in the
+     * catalogue is not.
+     */
+    this.gear = new EquipmentManager(
+      automation.gear,
+      automation.enabled,
+      this.queue,
+      {
+        slotOf: (name) => this.gearSlotOf(name),
+        handsOf: (name) => this.gearHandsOf(name)
+      },
+      { notice: (message) => this.sink.notice(message) }
+    );
     // The party half of two modules that already exist: whom to swing at, and
     // when to sit down. Configured rather than constructed with it, so the
     // constructor arguments stay what every test builds.
@@ -2298,7 +2460,7 @@ export class SessionManager {
           if (here.map === null || here.number === null) return t('session.loop.unknownRoom');
           const found = this.findStop(stop);
           if (typeof found === 'string') return found;
-          return this.planFromHere(roomId(found.map, found.room));
+          return this.planFromHere(roomId(found.map, found.room), {}, true);
         },
         /*
          * Quietly: the loop is what is happening, and the loop narrates it.
@@ -2346,7 +2508,9 @@ export class SessionManager {
             whileFighting: false,
             // A leg is the loop's to plan again, from wherever the character
             // is when it is back — the same recovery a fight gets.
-            resumeAfterLoss: false
+            resumeAfterLoss: false,
+            // And by distance, however the walker comes to re-plan it.
+            shortest: true
           }),
         moveInFlight: () => this.tracker.pendingMoves > 0,
         // A rest this client asked for a millisecond ago. The lap waits a beat
@@ -2629,6 +2793,29 @@ export class SessionManager {
     return this.tracker.current;
   }
 
+  /**
+   * Which lineage's arithmetic the *server* runs, as the wire stated it.
+   *
+   * Not `CharacterState.realm`, which is the `[MAJORMUD]:` / `[PARADIGM]:`
+   * menu prompt — a different fact over a different union, since `paradigm` is
+   * a database and there is no Paradigm arithmetic. Exposed for the queries
+   * main answers out of the realm file, which have to read a column the way
+   * this server reads it. Null until the wire has said.
+   */
+  get family(): RealmFamily | null {
+    return this.serverFamily;
+  }
+
+  /**
+   * This character's level, for a query out of the realm file that has to
+   * answer *for this character* — a room spell whose effect the realm gates
+   * on level (todo 01). Null until a status line or a sheet has said, which
+   * `hazardFor` reads as *keep the whole hazard*.
+   */
+  get level(): number | null {
+    return this.tracker.current.progress.level;
+  }
+
   /** The lapse the notice quotes, in whole seconds. Read, never captured. */
   private get staleMoveSeconds(): number {
     return Math.round(tuning().parse.staleMoveMs / 1000);
@@ -2675,19 +2862,22 @@ export class SessionManager {
   }
 
   /**
-   * Writes down what the last search turned up here, and says so once a find.
+   * Counts the search just answered here and writes down what it turned up,
+   * saying so once a find.
    *
-   * Silent about a repeat, which is what `FindBook.record` returning null buys:
-   * a lair searched every lap should not announce the same key every lap. The
-   * row still moves — its `at` and its count — because the record changed even
-   * though the news did not.
+   * Both answers count — `Your search revealed nothing.` is the search a rate
+   * most needs — and the listing is read after `apply`, so an empty answer
+   * reads the empty floor the tracker has just written. Silent about a
+   * repeat: a lair searched every lap should not announce the same key every
+   * lap. The rows still move, and the card is told whenever this room has
+   * any, because every one of their rates just changed.
    *
    * A room the client cannot place is **not** written down. A find whose room
    * is a guess is a row nobody can walk back to, and the map cannot mark it;
    * refusing rather than guessing is the standing rule, and the search is still
    * on screen where the player can see it.
    */
-  private recordFinds(): void {
+  private recordSearch(): void {
     const state = this.tracker.current;
     const { room } = state;
     if (room.map === null || room.number === null) return;
@@ -2700,26 +2890,19 @@ export class SessionManager {
      */
     const roomName = room.name ?? this.world?.byId(where)?.name ?? where;
     const at = Date.now();
-    const fresh: Find[] = [];
-
-    for (const item of room.hidden) {
-      const found = this.finds.record({
-        room: where,
-        roomName,
-        name: item.name,
-        // Absent is *not one*: the server counts stacks and says nothing about
-        // a single thing. See `Find.quantity`.
-        quantity: item.count ?? null,
-        copper: null,
-        at
-      });
-      if (found) fresh.push(found);
-    }
+    const found: Sighting[] = room.hidden.map((item) => ({
+      roomName,
+      name: item.name,
+      // Absent is *not one*: the server counts stacks and says nothing about
+      // a single thing. See `Find.quantity`.
+      quantity: item.count ?? null,
+      copper: null,
+      at
+    }));
 
     const cash = room.hiddenCash;
     if (cash !== null) {
-      const found = this.finds.record({
-        room: where,
+      found.push({
         roomName,
         // The server's own phrase where it printed one, so a row reads as the
         // line did: `4 copper farthings`, not a reconstruction of it.
@@ -2728,16 +2911,13 @@ export class SessionManager {
         copper: cash.totalCopper,
         at
       });
-      if (found) fresh.push(found);
     }
 
-    if (fresh.length === 0) return;
-    for (const find of fresh) {
-      this.sink.notice(
-        t('session.finds.found', { what: find.name, room: find.roomName, id: find.room })
-      );
-    }
-    this.sink.finds?.([...this.finds.all]);
+    // Recorded silently: the search's own line is on screen, and the Room
+    // card's Found tab is where the record is read.
+    this.finds.search(where, found);
+    const all = this.finds.all;
+    if (all.some((find) => find.room === where)) this.sink.finds?.([...all]);
   }
 
   /**
@@ -2883,11 +3063,14 @@ export class SessionManager {
     this.search.reset();
     this.deposit.reset();
     this.light.reset();
+    this.wards.reset();
+    this.gear.reset();
     this.stealth.reset();
     this.recoverGear.reset();
     this.trainLevel.reset();
     this.hunt.reset();
     this.itemErrand.reset();
+    this.questRunner.reset();
     this.restAway.reset();
     this.statScreen.reset();
     this.keys.reset();
@@ -3152,6 +3335,8 @@ export class SessionManager {
      * server said `lpu thin kobold thief` out loud in the room.
      */
     this.queue.noteTyping(this.outbound.length > 0);
+    // And the server holds its answers behind that line, so no claim ages.
+    this.tracker.noteTyping(this.outbound.length > 0);
   }
 
   resize(size: TerminalSize): void {
@@ -3204,6 +3389,7 @@ export class SessionManager {
     // And the errand, which is a walk automation chose: the player steering is
     // the one thing it may never argue with.
     this.supplies.notePlayerMoved();
+    this.questRunner.notePlayerMoved();
   }
 
   /**
@@ -3365,11 +3551,14 @@ export class SessionManager {
     this.search.reset();
     this.deposit.reset();
     this.light.reset();
+    this.wards.reset();
+    this.gear.reset();
     this.stealth.reset();
     this.recoverGear.reset();
     this.trainLevel.reset();
     this.hunt.reset();
     this.itemErrand.reset();
+    this.questRunner.reset();
     this.restAway.reset();
     this.statScreen.reset();
     this.keys.reset();
@@ -3511,9 +3700,12 @@ export class SessionManager {
     this.search.configure(automation.search, automation.enabled);
     this.deposit.configure(automation.banking, automation.enabled);
     this.light.configure(automation.movement, automation.enabled);
+    this.wards.configure(automation.health, automation.enabled);
+    this.gear.configure(automation.gear, automation.enabled);
     this.stealth.configure(automation.combat, automation.enabled);
     this.recoverGear.configure(automation.movement, automation.enabled);
     this.trainLevel.configure(automation.train, automation.enabled);
+    this.questRunner.configure(automation.quests, automation.enabled);
     this.hunt.configure(automation.hunting, automation.walk, automation.health, automation.enabled);
     this.restAway.configure(automation.health, automation.enabled);
     this.statScreen.configure(automation.train, automation.enabled);
@@ -3670,6 +3862,10 @@ export class SessionManager {
     const reading = familyToldBy(block, answering);
     if (reading === null) return;
     this.serverFamily = reading.family;
+    // The parser needs it too: the lair's respawn clock is resolved where the
+    // room is (`CharacterTracker.attachRealm`). See `CharacterTracker.useFamily`.
+    this.tracker.useFamily(reading.family);
+    this.fitted = null;
     if (this.familyStated) return;
 
     const data = this.world?.info.family ?? null;
@@ -3707,6 +3903,7 @@ export class SessionManager {
     // And a different realm may be a different family. The tells are cheap and
     // arrive again; carrying the last realm's answer forward would not.
     this.serverFamily = null;
+    this.fitted = null;
     this.familyStated = false;
     this.tracker.useRealm(players);
     // A vault and a kit are the server's, so they are re-keyed with the roster
@@ -4200,7 +4397,13 @@ export class SessionManager {
      * — the item's name, its count, the coins normalised into copper — so this
      * reads the fact rather than splitting the line a second time.
      */
-    if (block.type === 'room-hidden-items') this.recordFinds();
+    if (
+      block.type === 'room-hidden-items' ||
+      // The bare search's empty answer; `to the north` asked about an exit.
+      (block.type === 'user-search-failed' && block.groups['direction'] === undefined)
+    ) {
+      this.recordSearch();
+    }
 
     /*
      * And what died, for the quest steps a monster's death runs.
@@ -4330,6 +4533,17 @@ export class SessionManager {
       this.saidMortallyWounded = false;
       this.unrefuseWhatTheRoomPrints(state);
       this.noteStatline(state);
+      /*
+       * Under a timed spell the way in put on the character — the dive into
+       * the underwater passage — nothing below but the walk, the escapes and
+       * the quest run gets a say (todo 104): a rest, a heal, a search or a
+       * fight opened there is a round not spent walking out, and the spell is
+       * the deadline. Said once going in and once coming out.
+       */
+      const passage = this.underTimedSpell(state);
+      this.noteMoveOnly(passage);
+      const moveOnly = passage !== null;
+      this.combat.noteMoveOnly(moveOnly);
       this.routines.onCharacter(state);
       this.rules.observe({ hangUpClean: this.hangUp.clean(state, Date.now()) });
       this.rules.onState(state);
@@ -4339,6 +4553,9 @@ export class SessionManager {
       // the walker has the character, because a torch is never put out
       // mid-route: the next step may be dark again.
       this.light.onCharacter(state, this.walker.walking);
+      // And the ward the room the character stands in wants, when its spell
+      // has lapsed (todo 105).
+      this.wards.onCharacter(state, roomAddress(state.room));
       // And the key to a way out of this room, off this room's floor.
       this.keys.onCharacter(state);
       this.events.onCharacter(state);
@@ -4351,24 +4568,29 @@ export class SessionManager {
       this.considerEscape(state);
       // And the walk home a `safe-haven` escape armed, once the fight is over.
       this.walkHomeIfDue(state);
-      // Shopping, which yields to every one of the above: not while running
-      // away, not while walking home, not while anything else has the
-      // character. See `Supplies.consider`.
-      this.supplies.onCharacter(state);
-      // And the kit after a death, on the same terms as the errand.
-      this.recoverGear.onCharacter(state);
-      this.trainLevel.onCharacter(state);
-      /*
-       * And where the character should be at all, which is the last of the
-       * *going somewhere* decisions and rightly so: it only ever acts when
-       * nothing else has the character, so anything above that took it has
-       * already said so.
-       */
-      this.hunt.onCharacter(state);
-      // And whether the thing a door wants is in the pack yet (todo 07).
-      this.itemErrand.onCharacter(state);
+      if (!moveOnly) {
+        // Shopping, which yields to every one of the above: not while running
+        // away, not while walking home, not while anything else has the
+        // character. See `Supplies.consider`.
+        this.supplies.onCharacter(state);
+        // And the kit after a death, on the same terms as the errand.
+        this.recoverGear.onCharacter(state);
+        this.trainLevel.onCharacter(state);
+        /*
+         * And where the character should be at all, which is the last of the
+         * *going somewhere* decisions and rightly so: it only ever acts when
+         * nothing else has the character, so anything above that took it has
+         * already said so.
+         */
+        this.hunt.onCharacter(state);
+        // And whether the thing a door wants is in the pack yet (todo 07).
+        this.itemErrand.onCharacter(state);
+      }
+      // And the quest run, which drives the errands above one step at a time
+      // — and whose leg is what walks the passage, so it is never stood down.
+      this.questRunner.onCharacter(state);
       // And the character points, at a trainer, under the switch.
-      this.statScreen.onCharacter(state);
+      if (!moveOnly) this.statScreen.onCharacter(state);
       this.considerHangingUp(state);
       /*
        * And fighting is considered *last*, after both escapes have had their
@@ -4382,6 +4604,9 @@ export class SessionManager {
       // opened now lands in the room being left. Observed above, off every
       // line, because it is a fact about the wire rather than about the state.
       this.combat.onCharacter(state);
+      // Under the passage's spell every routine below stands down: the walk
+      // is the one thing that helps, and the walker is already told so.
+      if (moveOnly) return;
       /*
        * And sitting down last of all, which is where it belongs rather than
        * beside the retreat it looks like: it is the thing to do when none of
@@ -4423,6 +4648,21 @@ export class SessionManager {
         // And banking the purse at a counter, which refuses combat and an
         // unread purse for itself.
         this.deposit.onCharacter(state);
+      }
+      /*
+       * And the kit, which is not under the escape guard above.
+       *
+       * Running away is a direction and dressing is not a command spent on the
+       * way out of a room: a swap proposed while an escape is in flight is
+       * queued behind it in a lower band and answered in the room it lands
+       * in, where the situation is asked again. What it must not cross is a
+       * move of this client's own, which is the guard it does have.
+       */
+      if (this.tracker.pendingMoves === 0) {
+        this.gear.onCharacter(
+          state,
+          this.walker.walking || this.loops.progress.status === 'running'
+        );
       }
       /*
        * And not while a route is being walked.
@@ -4483,8 +4723,59 @@ export class SessionManager {
    *   `restTo` widened the band: before it, only a character under
    *   `restBelow` was affected.
    */
+  /**
+   * The spells the server has stated up on this character with a countdown
+   * still running, as the realm's ids (todo 105). Only a stated clock — the
+   * Paramud `st` sheet's timer — because a buff recorded without one may
+   * have lapsed, and the router prices on nothing that may have. Every name
+   * a buff could be is resolved, as `Blessings.sameSpell` resolves one.
+   */
+  private spellsUp(state: CharacterState): number[] {
+    const world = this.world;
+    if (world === undefined || state.buffs.length === 0) return [];
+    const now = Date.now();
+    const up: number[] = [];
+    for (const buff of state.buffs) {
+      if (buff.expiresAt === undefined || buff.expiresAt <= now) continue;
+      for (const name of [buff.spell, ...(buff.candidates ?? [])]) {
+        const id = world.spellNamed(name)?.id;
+        if (id !== undefined && !up.includes(id)) up.push(id);
+      }
+    }
+    return up;
+  }
+
+  /**
+   * The timed passage the character is standing in, or null (todo 104): the
+   * realm's own reading (`WorldGraph.spellOver`) of the room, never the
+   * spell list, which records what the wire confirmed and the dive's
+   * *holding breath* is confirmed by nothing readable.
+   */
+  private underTimedSpell(state: CharacterState): Corridor | null {
+    const here = roomAddress(state.room);
+    if (here === null || this.world === undefined) return null;
+    return this.world.spellOver(here);
+  }
+
+  /** The passage last said, so going in and coming out are each said once. */
+  private passageSaid: Corridor | null = null;
+
+  private noteMoveOnly(passage: Corridor | null): void {
+    if (passage === this.passageSaid) return;
+    if (passage !== null) {
+      this.sink.notice(
+        t('session.corridor.entered', { spell: passage.name, rooms: passage.rooms })
+      );
+    } else if (this.passageSaid !== null) {
+      this.sink.notice(t('session.corridor.left', { spell: this.passageSaid.name }));
+    }
+    this.passageSaid = passage;
+  }
+
   private mayRest(): boolean {
     if (this.isRetreating()) return false;
+    // Under a timed spell the way in cast, sitting down is drowning (todo 104).
+    if (this.underTimedSpell(this.tracker.current) !== null) return false;
     // An escape whose answer has not come is a room the character may still
     // be standing in — the one it just tried to leave (todo 06).
     if (this.escapeAwaiting !== null) return false;
@@ -4642,6 +4933,11 @@ export class SessionManager {
     // its probe is the one that most needs to go out on time.
     this.settleClaims();
     if (this.isRetreating()) return;
+    // And the quest run's own clocks — a script's delay, a wait for an asker
+    // — which lapse while the wire says nothing at all. Ahead of the rest,
+    // because its leg is what walks a passage nothing else may act in.
+    this.questRunner.onCharacter(state);
+    if (this.underTimedSpell(state) !== null) return;
     this.heal.onCharacter(state);
     this.potions.onCharacter(state);
     this.cures.onCharacter(state);
@@ -4877,14 +5173,15 @@ export class SessionManager {
    * a fight, because those two answering the question differently is the
    * "two halves of one gate in two files" failure this codebase keeps
    * relearning — and the purse is exactly the argument it was left out of
-   * once already.
+   * once already. `shortest` is a lap's leg: see `lapTraveller`.
    */
-  private planFromHere(to: RoomId, options: RouteOptions = {}): Route | string {
+  private planFromHere(to: RoomId, options: RouteOptions = {}, shortest = false): Route | string {
     const state = this.tracker.current;
     const here = state.room;
     if (here.map === null || here.number === null) return t('session.loop.unknownRoom');
+    const traveller = shortest ? this.lapTraveller(state) : this.travellerNow(state);
     const plan =
-      this.world?.route(roomId(here.map, here.number), to, this.travellerNow(state), options) ??
+      this.world?.route(roomId(here.map, here.number), to, traveller, options) ??
       t('session.loop.noRealmData');
     if (typeof plan !== 'string') this.askCountersFor(plan);
     return plan;
@@ -4899,6 +5196,13 @@ export class SessionManager {
    * the plan never named. `edgePenalty` refuses such an edge outright once the
    * counters are read, and reads *nobody has said* as the old price; this is
    * what turns the second into the first.
+   *
+   * **A gate, whichever of the realm's two shapes wrote it.** `Requirement.
+   * abilities` holds the exit table's `Ability: 204 w/value 1 to 999` as well
+   * as the script's verbs, so this reads both by reading one field. An
+   * `AbilityExit` does not misplace the character — the server simply refuses
+   * the step — but it stops the walk exactly as dead, nine exits' worth, and
+   * the listing is what turns a 286-step plan into a refusal with a reason.
    *
    * **Asked off the plan rather than on the way in**, though it is one command
    * in the cheapest band. A *complete* listing enumerates, so it settles every
@@ -4961,6 +5265,9 @@ export class SessionManager {
        * reads as *nobody has said* and never as the gate passing.
        */
       counters: state.abilities,
+      // And the wards the server has stated up with a clock still running,
+      // for a room spell one of them stops (todo 105).
+      spellsUp: this.spellsUp(state),
       ...pack,
       refused: this.refusedEdges,
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
@@ -4983,6 +5290,26 @@ export class SessionManager {
   }
 
   /**
+   * What a lap's leg costs to move: the distance, and whether each way can be
+   * passed at all — never what is waiting on it.
+   *
+   * A loop is walked for the monsters on it, so pricing them re-routes the
+   * lap around its own purpose. Kept: the gates (doors, keys, levels, class,
+   * counters), the edges the server refused, and a room whose spell moves the
+   * character, which is not a way to arrive anywhere. Dropped: the lair, the
+   * room's damage, the preferred corridors. See `mudengine-automation` ›
+   * *A lap walks the shortest way*.
+   */
+  lapTraveller(state: CharacterState): Traveller {
+    const priced = this.travellerNow(state, false);
+    const relocates = (room: WorldRoom): number | null =>
+      this.world?.hazardOf(room, state.progress.level)?.relocates === true
+        ? (priced.hazard?.(room) ?? null)
+        : null;
+    return { ...priced, danger: undefined, hazard: relocates };
+  }
+
+  /**
    * What a room's own spell is expected to cost this character, as a share of
    * the health it has now (`Traveller.hazard`, todo 01).
    *
@@ -4995,11 +5322,14 @@ export class SessionManager {
    */
   private roomHazard(room: WorldRoom, state: CharacterState, carrying?: number[]): number | null {
     if (!this.world) return null;
-    const hazard = this.world.hazardOf(room);
+    // The character's own level: the realm gates some effects on it, and a
+    // sandstorm that cannot catch this character is not a price it pays.
+    const hazard = this.world.hazardOf(room, state.progress.level);
     if (hazard === null) return null;
     // Carrying what stops it is not *unknown*, it is *free*: the room costs a
     // plain step, which is what it is for that character.
-    if (hazardAvoided(hazard, carrying ?? this.packContents(state).keys)) return null;
+    if (hazardAvoided(hazard, carrying ?? this.packContents(state).keys, this.spellsUp(state)))
+      return null;
     /*
      * **A room that moves you is a wall, exactly as an exit that casts one
      * is** (`edgePenalty`'s `spellEffect === 'relocates'`). The walker's next
@@ -5092,13 +5422,15 @@ export class SessionManager {
   /**
    * The figures a lair's cost depends on, as one string, so a change to any
    * of them drops every remembered room. The sheet, the weapon in hand, the
-   * class row, the standing (which decides who attacks on sight) and the
-   * server's family; not the pack, the purse nor the health itself, which
-   * move every room and change no blow.
+   * class row, the standing (which decides who attacks on sight), the
+   * server's family and what `stat all` still states; not the pack, the purse
+   * nor the health itself, which move every room and change no blow.
    */
   private fitness(state: CharacterState): string {
+    // Asked once per lair a search expands; a state is never edited in place.
+    if (this.fitted?.state === state) return this.fitted.key;
     const { progress } = state;
-    return [
+    const key = [
       progress.level,
       ownAlignment(state),
       progress.armourClass,
@@ -5110,8 +5442,11 @@ export class SessionManager {
       progress.strength,
       state.className,
       JSON.stringify(wieldedWeapon(state.inventory.items)),
-      this.serverFamily
+      this.serverFamily,
+      JSON.stringify(statedNow(state))
     ].join('|');
+    this.fitted = { state, key };
+    return key;
   }
 
   /**
@@ -5131,7 +5466,7 @@ export class SessionManager {
     if (!world) return null;
     const room = world.byId(id);
     if (!room) return null;
-    const lair = world.lair(room);
+    const lair = world.lair(room, this.serverFamily);
     if (lair === null || lair.mobs.length === 0) return null;
     const state = this.tracker.current;
     const { combat, magery, family } = this.realmClass();
@@ -5220,10 +5555,322 @@ export class SessionManager {
   }
 
   /**
+   * The plan to reach one step of a quest from where this character stands:
+   * the steps still to do up to it, each with what it gathers, where it
+   * happens and whether the way there exists (`WorldGraph.planStep`).
+   *
+   * **Paced across the event loop**, one step per turn, the way `FightLog`
+   * folds a long file: each step is an A* per leg and a chain to its ninth
+   * rank is nine of them, which held the socket's thread for over a second
+   * on Paradigm when it was one call. A refusal answers nothing: no world, or
+   * a block no quest holds.
+   *
+   * Where the counter stands is `questReading`, the card's own ranking with
+   * the card's own mark handed in, so the plan and the track cannot start
+   * from two different ranks. The traveller carries the counter the
+   * character *will* hold at each step, since the way into a chain's later
+   * rooms is routinely gated on the rank the step before hands out.
+   */
+  /**
+   * The character's own stock rows that a plan should fill, with the realm's
+   * id for each.
+   *
+   * Short of the **ceiling**, not of the floor: a list saying *keep three,
+   * carry six* is asking for six before setting out, and four torches at the
+   * door of a fortress is how a run ends up in the dark (2026-09-22). A row
+   * naming no counter is `AutoLoot`'s to fill off the floor, and an unlisted
+   * pack is not an empty one.
+   */
+  private stockShort(state: CharacterState): Array<{ id: number; row: SupplyItem }> {
+    const world = this.world;
+    if (world === undefined) return [];
+    // Nothing is planned against a switch that is off: `Supplies.fetch`
+    // would answer *Auto-Supplies is off* and the run would wear the refusal
+    // for a torch the quest never asked for.
+    if (!this.automationConfig.enabled || !this.automationConfig.supplies.enabled) return [];
+    if (packRows(state.inventory) === null) return [];
+    const wanted = this.automationConfig.supplies.items.filter(
+      (row) =>
+        row.shop.trim().length > 0 && carriedCount(state, row.name) < Math.max(row.max, row.min)
+    );
+    if (wanted.length === 0) return [];
+    const named = world.itemsNamed(wanted.map((row) => row.name));
+    return wanted.flatMap((row) => {
+      const found = named[row.name];
+      return found === undefined ? [] : [{ id: found.id, row }];
+    });
+  }
+
+  /**
+   * Whether the leg about to be walked is where the stock list should be
+   * filled — the run's own answer to *this torch has burnt out*.
+   *
+   * The question is never *are we short*, which a status line answers, but
+   * **is it worth the detour now**: a counter already on the way costs
+   * nothing and is taken at once, and one off the way waits for the leg that
+   * passes nearest it, which may be this one and may be the sixth. Priced
+   * with `buyingPlaces`' own figure — steps out of the way and back onto the
+   * road — so the comparison is in the units the plan is drawn in.
+   *
+   * Asked once per step of a run, and only when something is below its floor,
+   * because each answer is a sweep pair per leg still to walk.
+   */
+  private questRestock(to: RoomId | null, later: readonly RoomId[]): PlanItem | null {
+    const world = this.world;
+    const here = roomAddress(this.tracker.current.room);
+    if (world === undefined || here === null) return null;
+    const state = this.tracker.current;
+    const short = this.stockShort(state).filter(
+      ({ row }) => carriedCount(state, row.name) < row.min
+    );
+    if (short.length === 0) return null;
+    const traveller = this.travellerNow(state);
+    const mine = new Map<number, BuyingPlace>();
+    for (const place of world.stockingPlaces(
+      short.map(({ id }) => id),
+      here,
+      to,
+      traveller
+    )) {
+      const best = mine.get(place.item);
+      if (best === undefined || place.detour < best.detour) mine.set(place.item, place);
+    }
+    /*
+     * The legs the plan still has after this one, each priced from the room
+     * the leg before it ends in — and the first of them from **here** where
+     * this step names no room, or the leg this one would be compared against
+     * goes unpriced.
+     */
+    const legs: Array<{ from: RoomId; to: RoomId | null }> = [];
+    let from = to ?? here;
+    for (const room of later) {
+      legs.push({ from, to: room });
+      from = room;
+    }
+    // Cheapest first, so two rows short do not settle it by the order they
+    // were typed into the item list.
+    const ranked = short
+      .flatMap(({ id, row }) => {
+        const place = mine.get(id);
+        return place === undefined ? [] : [{ id, row, place }];
+      })
+      .sort((one, two) => one.place.detour - two.place.detour);
+    const nearer =
+      ranked.length === 0 || ranked[0]!.place.detour === 0
+        ? new Map<number, number>()
+        : this.nearestLater(
+            ranked.map(({ id }) => id),
+            legs,
+            traveller
+          );
+    for (const { id, row, place } of ranked) {
+      // A counter already on the road wins outright and is never compared.
+      if (place.detour > 0 && (nearer.get(id) ?? Infinity) < place.detour) continue;
+      return {
+        id,
+        name: row.name,
+        held: false,
+        hand: false,
+        count: Math.max(row.max, row.min),
+        stock: row.min,
+        source: {
+          how: 'buy',
+          shops: [place.shop],
+          at: { room: roomId(place.map, place.room), place: place.roomName },
+          detour: place.detour
+        }
+      };
+    }
+    return null;
+  }
+
+  /**
+   * The cheapest detour each of these items would cost on any leg the plan
+   * still has to walk.
+   *
+   * **One sweep pair per leg for the whole list**, never one per item:
+   * `buyingPlacesFor` takes several for exactly this reason, and a pair each
+   * was the eight Dijkstras a river crossing cost before it did.
+   */
+  private nearestLater(
+    items: readonly number[],
+    legs: ReadonlyArray<{ from: RoomId; to: RoomId | null }>,
+    traveller: Traveller
+  ): Map<number, number> {
+    const best = new Map<number, number>();
+    for (const leg of legs) {
+      for (const place of this.world?.stockingPlaces(items, leg.from, leg.to, traveller) ?? []) {
+        const seen = best.get(place.item);
+        if (seen === undefined || place.detour < seen) best.set(place.item, place.detour);
+      }
+    }
+    return best;
+  }
+
+  async questPlan(block: number, marked: number | null): Promise<QuestPlan | null> {
+    const world = this.world;
+    if (world === undefined) return null;
+    const quest = world.quests().find((each) => each.steps.some((step) => step.block === block));
+    if (quest === undefined) return null;
+    // A later ask supersedes this chain: the answer would be thrown away by
+    // the card, and nine A*s for it would still be paid on the socket's thread.
+    this.planAsked += 1;
+    const asked = this.planAsked;
+    const state = this.tracker.current;
+    const counters = countersNow(state.abilities ?? null, this.questSaid);
+    const standing = questReading(quest.id, counters, this.questSaid, marked);
+    const fromRank = standing.held ? standing.rank : null;
+    // A complete listing that does not name the counter has stated it, at zero.
+    const stated = standing.held || counters?.complete === true;
+    const here = roomAddress(state.room);
+    const carrying = packRows(state.inventory);
+    const traveller = this.travellerNow(state);
+    const steps: PlanStep[] = [];
+    // What earlier legs decided to buy against a spell on the way, so a later
+    // leg through the same rooms reads the spell as stopped rather than
+    // buying a second waterskin.
+    const supplies: number[] = [];
+    // And the character's own stock list, which nothing about a quest run
+    // used to fill: each row short of its ceiling, and the leg whose detour
+    // to a counter is cheapest, decided as the legs are priced.
+    const stocking = this.stockShort(state);
+    const stockAt = new Map<number, { step: number; detour: number; item: PlanItem }>();
+    let at: RoomId | null = here;
+    let rank = fromRank ?? 0;
+    let moves = 0;
+    for (const step of planSpan(quest, block, fromRank)) {
+      const before = step.from ?? rank;
+      const priced = {
+        ...traveller,
+        counters: {
+          sums: { ...(counters?.sums ?? {}), [quest.id]: before },
+          complete: counters?.complete ?? false
+        }
+      };
+      // The hunts are the errand's laps, so the plan reads them on the lap's
+      // own traveller, carrying the same counter.
+      const lap = { ...this.lapTraveller(state), counters: priced.counters };
+      const planned = world.planStep(quest, step, at, carrying, priced, supplies, lap);
+      // The odds of the step's roll off this character's own sheet, where
+      // the sheet prints the stat the script names (todo 106).
+      const chance =
+        planned.roll === undefined
+          ? null
+          : rollChance(statFigure(state, planned.roll.stat), planned.roll.value);
+      steps.push(
+        planned.roll === undefined || chance === null
+          ? planned
+          : { ...planned, roll: { ...planned.roll, chance } }
+      );
+      moves += planned.moves ?? 0;
+      for (const item of planned.items) {
+        if (item.stops !== undefined && !supplies.includes(item.id)) supplies.push(item.id);
+      }
+      if (stocking.length > 0 && at !== null) {
+        const to = planned.at === undefined ? null : planned.at.room;
+        for (const place of world.stockingPlaces(
+          stocking.map((row) => row.id),
+          at,
+          to,
+          priced
+        )) {
+          const row = stocking.find((each) => each.id === place.item);
+          const best = stockAt.get(place.item);
+          if (row === undefined || (best !== undefined && best.detour <= place.detour)) continue;
+          stockAt.set(place.item, {
+            step: steps.length - 1,
+            detour: place.detour,
+            item: {
+              id: row.id,
+              name: row.row.name,
+              held: false,
+              hand: false,
+              count: Math.max(row.row.max, row.row.min),
+              stock: row.row.min,
+              source: {
+                how: 'buy',
+                shops: [place.shop],
+                at: { room: roomId(place.map, place.room), place: place.roomName },
+                detour: place.detour
+              }
+            }
+          });
+        }
+      }
+      // The next leg starts where this act happens, reached or not: a plan
+      // that stopped pricing at the first blocked room would say nothing
+      // about the eight after it.
+      if (planned.at !== undefined && world.byId(planned.at.room) !== undefined)
+        at = planned.at.room;
+      rank = step.to ?? rank;
+      await new Promise<void>((next) => setImmediate(next));
+      if (asked !== this.planAsked) return null;
+    }
+    /*
+     * The stock rows go on last, each on the leg it costs least to stop on —
+     * which is the whole of *delay it until a step where we would be closer*.
+     * Before the step's own items, because the run gathers in the plan's
+     * order and a torch is wanted for the walk rather than for the act.
+     */
+    for (const { step: index, detour, item } of stockAt.values()) {
+      const step = steps[index];
+      if (step === undefined) continue;
+      steps[index] = { ...step, items: [item, ...step.items], moves: (step.moves ?? 0) + detour };
+      moves += detour;
+    }
+    const reachable = steps.some((step) => step.reachable === false)
+      ? false
+      : steps.every((step) => step.reachable === true)
+        ? true
+        : null;
+    const fromPlace = here === null ? undefined : world.byId(here)?.name.trim();
+    return {
+      block,
+      ...(here === null ? {} : { from: here }),
+      ...(fromPlace === undefined || fromPlace.length === 0 ? {} : { fromPlace }),
+      fromRank,
+      stated,
+      steps,
+      reachable,
+      moves
+    };
+  }
+
+  /**
+   * Run the plan to one step (todo 102): the card's *Run it*.
+   *
+   * The plan is drawn afresh here rather than taken from the card, for the
+   * reason `walkPlan` redraws a route: it is true from the room it was drawn
+   * in, and the press may come a minute later. What the card showed and what
+   * is run are the same plan whenever the character has not moved, and the
+   * run's own progress says which steps it is on either way. Returns the
+   * refusal for the press, or null once it is under way.
+   */
+  async questRun(block: number, marked: number | null): Promise<string | null> {
+    const quest = this.world
+      ?.quests()
+      .find((each) => each.steps.some((step) => step.block === block));
+    if (quest === undefined) return t('automation.quests.refusalUnknownStep', { block });
+    const plan = await this.questPlan(block, marked);
+    if (plan === null) return t('automation.quests.refusalNoPlan');
+    return this.questRunner.start(plan, quest, this.tracker.current);
+  }
+
+  /** The card's *Stop*: the run and whatever it started, put down out loud. */
+  questStop(): void {
+    this.questRunner.stop(t('automation.quests.whyStopped'));
+  }
+
+  /** How the quest run is going, for a window that has just attached. */
+  get questRunProgress(): QuestRunProgress {
+    return this.questRunner.progress;
+  }
+
+  /**
    * Where the realm says an item comes from, from where the character stands
    * and on the way to `to` (todo 07; re-ranked 2026-09-16): the counters that
-   * stock it, least out of the way first, and the rooms within reach whose lair
-   * or resident is a monster that drops it, nearest first.
+   * stock it, least out of the way first, and the rooms anywhere in the realm
+   * whose lair or resident is a monster that drops it, nearest first.
    *
    * **The counters are `WorldGraph.buyingPlaces`' answer, taken whole.** This
    * used to rank the realm's shop **names** by how near each one's room was,
@@ -5234,35 +5881,24 @@ export class SessionManager {
    * created. Nearness was the wrong question besides: what matters is how far
    * off the road the stop is, and the router answers that.
    *
-   * The lairs are swept the way `huntingGrounds` sweeps them and **not**
-   * through the survey itself: the survey ranks by what a lair *pays* and
-   * leaves out what is too trivial to bother with, which is exactly the sort
-   * of monster that carries a key. What is wanted here is where the thing is,
-   * not whether the fight is worth having.
+   * **The lairs are `WorldGraph.droppingPlaces`' answer, realm-wide**, never
+   * the survey's: the survey ranks by what a lair *pays* and leaves out the
+   * trivial, which is exactly the sort of monster that carries a key. And
+   * **priced with the lap's own traveller**, since the loop that walks them is
+   * planned with it (`mudengine-automation` › *A lap walks the shortest way*):
+   * ranked on `travellerNow`, the lair's own danger walled the very rooms the
+   * errand was going to fight in. The counters keep the route's prices, as a
+   * shopping leg does.
    */
   private itemSources(item: { id: number; name: string }, to: RoomId | null): ItemSources {
     const world = this.world;
-    const here = roomAddress(this.tracker.current.room);
-    if (world === undefined || here === null) return { shops: [], lairs: [] };
-    const traveller = this.travellerNow(this.tracker.current);
-    const ordered = world.buyingPlaces(item.id, here, to, traveller);
-    const { mobs } = world.sourcesOf(item);
-    if (mobs.length === 0) return { shops: ordered, lairs: [] };
-    const reach = world.withinSteps(here, tuning().hunting.betterSpotRadius, traveller);
-    const wanted = new Set(mobs.map((name) => mobKey(name)));
-    const lairs: Array<{ id: RoomId; name: string; mob: string; steps: number }> = [];
-    for (const [id, steps] of reach) {
-      const room = world.byId(id);
-      if (!room) continue;
-      const entities = room.lair ? world.lairEntities(room) : world.residentEntities(room);
-      const found = entities.find((entity) => wanted.has(mobKey(entity.name)));
-      if (found === undefined) continue;
-      lairs.push({ id, name: room.name, mob: found.name, steps });
-    }
-    lairs.sort((a, b) => a.steps - b.steps);
-    // A loop, not a march: the nearest few rooms that hold it, as the Hunting
-    // card's own ring is the nearest few rooms of one lair.
-    return { shops: ordered, lairs: lairs.slice(0, tuning().hunting.maxLoopRooms) };
+    const state = this.tracker.current;
+    const here = roomAddress(state.room);
+    if (world === undefined || here === null) return { shops: [], droppers: [], lairs: [] };
+    const shops = world.buyingPlaces(item.id, here, to, this.travellerNow(state));
+    const { maxLoopRooms, clusterRadius } = tuning().hunting;
+    const ring = { rooms: maxLoopRooms, radius: clusterRadius };
+    return { shops, ...world.droppingPlaces(item, here, this.lapTraveller(state), ring) };
   }
 
   /**
@@ -5275,10 +5911,11 @@ export class SessionManager {
    * `estimateSpot`. Two exclusions before the ranking, counted and said: a
    * room whose one cycle costs more than `maxDamageShare` of the bar, and
    * one that could not scratch an unarmoured character. The best `maxSpots`
-   * are then measured properly (`measuredSpot`) and ranked again. Distance
-   * is a column, not a bound: the walk there is automated.
+   * are then measured properly (`measuredSpot`) and ranked again, with the
+   * one `measure` names; the rest come back unmeasured, since the answer is
+   * the realm. Distance is a column, not a bound: the walk there is automated.
    */
-  huntingGrounds(radius: number | null): HuntingAdvice {
+  huntingGrounds(radius: number | null, measure: string | null = null): HuntingAdvice {
     const state = this.tracker.current;
     const world = this.world;
     // Every figure the model runs on, named here so each has a reader.
@@ -5298,7 +5935,8 @@ export class SessionManager {
       trivialLevelMargin,
       clusterRadius,
       fillerRadius,
-      sizeTolerance
+      sizeTolerance,
+      measuredFightsMin
     } = tuning().hunting;
     const c: HuntingConstants = {
       roundSeconds,
@@ -5355,7 +5993,7 @@ export class SessionManager {
        * `GetBaseMARegen()` flat, so the mana rate is the standing rate.
        */
       ...this.castingCost(state),
-      meditatingManaPerTick: regen?.mana?.value ?? null,
+      meditatingManaPerTick: regen?.meditatingMana?.value ?? null,
       passiveManaPerTick: regen?.mana?.value ?? null,
       stepMs: step,
       heal,
@@ -5369,6 +6007,7 @@ export class SessionManager {
       stepMs: step,
       heal,
       poisonHoldsRest,
+      measured: null,
       constants: c
     };
     const refused = (refusal: string): HuntingAdvice => ({
@@ -5376,6 +6015,7 @@ export class SessionManager {
       radius,
       swept: 0,
       spots: [],
+      unmeasured: [],
       excluded: { dangerous: 0, beneath: 0 },
       assumptions,
       refusal
@@ -5443,13 +6083,36 @@ export class SessionManager {
      * one cast a round over the full pool, says it.
      */
     const casting = this.castingInput(state, sheet, family);
+    /*
+     * Where the arithmetic *declines* — `swing` is null only on the family
+     * gate or an unread accuracy, neither of which reads the target, and a
+     * book with no attack spell casts nothing — a kill is priced from what
+     * this character has measured dealing a round. Where either *refuses*
+     * (no blow lands, the spell is resisted), the refusal stands.
+     */
+    const blank = { armourClass: null, damageResist: null, dodge: null, health: null };
+    const declines =
+      swing(sheet, weapon, blank, family) === null &&
+      (casting === null ||
+        chooseAttackSpell({ ...casting, target: null, excluded: new Set() }).refusal ===
+          'no-attack-spells');
+    const level = state.progress.level;
+    const measured =
+      !declines || level === null
+        ? null
+        : (this.fightRecord.measured?.(level, {
+            least: measuredFightsMin,
+            roundMs: roundSeconds * 1000,
+            openerRounds: backstab ? backstabMultiplier : 1
+          }) ?? null);
     const priceKey = [
       this.fitness(state),
       this.automationConfig.spells.attack,
       this.automationConfig.spells.autoChoose,
       this.automationConfig.combat.opener,
       state.spellbook?.length ?? -1,
-      state.vitals.manaMax
+      state.vitals.manaMax,
+      measured === null ? '-' : Math.round(measured.perRound)
     ].join('|');
     if (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world) {
       this.huntPrices = { key: priceKey, world, groups: new Map() };
@@ -5464,6 +6127,8 @@ export class SessionManager {
       if (entities.length === 0) return null;
       const verdicts = weighVerdicts(entities, player, weights, sheet, weapon, family);
       const bare = weighRoom(entities, naked, weights);
+      const recorded = (hp: number | null): number | null =>
+        measured === null || hp === null || hp <= 0 ? null : hp / measured.perRound;
       const mobs: SpotMob[] = entities.map((entity, index) => ({
         name: entity.name,
         experience: entity.experience ?? null,
@@ -5475,7 +6140,8 @@ export class SessionManager {
                 hp: verdicts[index]?.menace?.hp ?? entity.hp ?? null,
                 magicRes: entity.magicResist ?? null,
                 abilities: entity.abilities
-              })?.rounds ?? null)),
+              })?.rounds ?? null)) ??
+          recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),
         perRound: verdicts[index]?.menace?.perRound ?? null,
         nakedPerRound: bare[index]?.perRound ?? null,
         afflictions: afflictionsOf(entity),
@@ -5569,30 +6235,36 @@ export class SessionManager {
      * is under a millisecond and there are thousands of groups, so the survey
      * ranks on the guess and measures `maxSpots` of them. A spot just below
      * the cut could measure into it; the guess is the same shape for all, so
-     * the order it gives is the order the measurement mostly keeps.
+     * the order it gives is the order the measurement mostly keeps. The rest
+     * are handed back unmeasured rather than dropped: measuring all 910 of
+     * Paradigm's cost 1.1s, and a list cut at twenty-four is not the realm.
+     * The one a reader opened is measured too, so what it walks is a ring.
      */
-    const spots = survey
-      .slice(0, c.maxSpots)
-      .map((spot) =>
-        this.measuredSpot(
-          spot,
-          priced.get(spot.key)!,
-          priced,
-          groupOfRoom,
-          reach,
-          character,
-          c,
-          world
-        )
-      );
+    const rest = survey.slice(c.maxSpots);
+    const opened = rest.findIndex((spot) => spot.key === measure);
+    const chosen = survey.slice(0, c.maxSpots);
+    if (opened !== -1) chosen.push(rest[opened]!);
+    const spots = chosen.map((spot) =>
+      this.measuredSpot(
+        spot,
+        priced.get(spot.key)!,
+        priced,
+        groupOfRoom,
+        reach,
+        character,
+        c,
+        world
+      )
+    );
     spots.sort(compareSpots);
     return {
       from: { id: from, name: start.name },
       radius,
       swept: reach.size,
       spots,
+      unmeasured: opened === -1 ? rest : rest.filter((_, at) => at !== opened),
       excluded,
-      assumptions,
+      assumptions: { ...assumptions, measured },
       refusal: null
     };
   }
@@ -5877,7 +6549,8 @@ export class SessionManager {
    * Derived here rather than in the graph because a stop is resolved the way
    * a loop's stop is (`findStop`), and a route with a stop the realm cannot
    * settle is said out loud once — a preference that silently prefers
-   * nothing is a setting somebody edits and then waits to see work.
+   * nothing is a setting somebody edits and then waits to see work. Each leg
+   * by `lapTraveller`, so the corridor preferred is the one the lap walks.
    */
   preferredEdges(): ReadonlySet<string> {
     if (this.preferred !== null) return this.preferred;
@@ -5889,7 +6562,7 @@ export class SessionManager {
         const room = this.findStop(stop);
         return typeof room === 'string' ? null : roomId(room.map, room.room);
       },
-      this.travellerNow(this.tracker.current, false)
+      this.lapTraveller(this.tracker.current)
     );
     for (const name of found.unresolved) {
       this.sink.notice(t('session.loop.preferUnresolved', { loopName: name }));
@@ -7104,7 +7777,9 @@ export class SessionManager {
     const loop = this.loops.progress;
     const heading = this.loops.heading;
     if (heading !== null) {
-      const plan = this.planFromHere(heading);
+      // Measured the way the lap will walk it, or the prompt quotes a detour
+      // the leg will never take.
+      const plan = this.planFromHere(heading, {}, true);
       if (typeof plan !== 'string') {
         const owed = this.stepsFromStop(heading);
         const wandered = plan.steps.length - (owed ?? 0);
@@ -7177,7 +7852,7 @@ export class SessionManager {
   private stepsFromStop(heading: RoomId): number | null {
     const from = this.loops.strayedFrom;
     if (from === null || this.world === undefined) return null;
-    const route = this.world.route(from, heading, this.travellerNow(this.tracker.current));
+    const route = this.world.route(from, heading, this.lapTraveller(this.tracker.current));
     return route.blocked ? null : route.steps.length;
   }
 
@@ -7236,6 +7911,8 @@ export class SessionManager {
     // And the errand that was collecting a key: the route it was collecting
     // for starts somewhere this character no longer is.
     this.itemErrand.abandon(t('session.supplies.abandonedDied'));
+    // And the quest run, on the same terms: the temple is not on its plan.
+    this.questRunner.abandon(t('session.supplies.abandonedDied'));
     /*
      * And a route still owed from a lost connection — the third holder of a
      * destination, and the one with the narrowest window: dialled back into
@@ -7671,6 +8348,29 @@ export class SessionManager {
     };
   }
 
+  /**
+   * Which slot an equipment set's item goes in, and how many hands it takes.
+   *
+   * **The pack first, the catalogue second.** A carried item already carries
+   * the realm's own reading joined onto it (`ItemEntity.realmSlot`,
+   * `weapon.hands`), resolved against the row this character is actually
+   * holding; the catalogue is a name, and a name can hold several rows — the
+   * `flail` that is one-handed in one row and two-handed in another is the
+   * measured case (`src/shared/items.ts`). Null where neither can say, which
+   * `kitFor` and `swapPlan` both read as *unknown* rather than as a refusal.
+   */
+  private gearSlotOf(name: string): string | null {
+    const carried = this.tracker.current.inventory.items.find((item) => sameItem(item.name, name));
+    return (
+      carried?.realmSlot ?? carried?.slot ?? this.world?.itemsNamed([name])[name]?.slot ?? null
+    );
+  }
+
+  private gearHandsOf(name: string): 1 | 2 | null {
+    const carried = this.tracker.current.inventory.items.find((item) => sameItem(item.name, name));
+    return carried?.weapon?.hands ?? this.world?.itemsNamed([name])[name]?.weapon?.hands ?? null;
+  }
+
   private capabilities(): Capabilities {
     const world = this.world;
     const state = this.tracker.current;
@@ -7807,19 +8507,19 @@ export class SessionManager {
      * What would fight: everything the realm says attacks on sight, anything
      * it cannot say about (unknown never reassures), and whatever is already
      * swinging or being swung at. A passive resident standing by is not a
-     * foe, or every shop would read as a fight.
+     * foe, or every shop would read as a fight — unless it is certain to
+     * protect one, when the server brings it in (`guards.ts`).
      */
     const casting = this.castingInput(state, sheet, family);
     const foes: SurvivalFoe[] = [];
     const casts: Array<{ perRound: number; manaPerRound: number } | null> = [];
-    for (const who of state.room.occupants) {
-      if (who.kind === 'player') continue;
-      if (
-        attacksOnSight(who.disposition, standing) === false &&
-        !fighting.has(who.name.toLowerCase())
-      ) {
-        continue;
-      }
+    const fights = inTheFight(
+      state.room.occupants.filter((who) => who.kind !== 'player'),
+      (who) =>
+        attacksOnSight(who.disposition, standing) !== false || fighting.has(who.name.toLowerCase()),
+      () => true
+    );
+    for (const who of fights) {
       const subject: SurvivalFoe['subject'] = who.mob ?? {};
       foes.push({ name: who.name, subject });
       const kill =
@@ -7990,4 +8690,47 @@ export function echoedCommand(plain: string): string | null {
   if (!match) return null;
   const echo = plain.slice(match[0].length).trim();
   return echo.length > 0 ? echo : null;
+}
+
+/**
+ * The sheet's figure for a stat a `testskill` names, or null where the sheet
+ * has not said or prints no such figure (todo 106). The script's words are
+ * `TextBlockPart.cs`'s own switch: `wisdom` reads the sheet's Willpower,
+ * `stealth` its Stealth figure, `magicresistance` its MR. Anything else —
+ * `current_hp`, a word a derivative invents — is unknown, never zero.
+ */
+function statFigure(state: CharacterState, stat: string): number | null {
+  const sheet = state.progress;
+  switch (stat.toLowerCase()) {
+    case 'intellect':
+      return sheet.intellect;
+    case 'strength':
+      return sheet.strength;
+    case 'health':
+      return sheet.health;
+    case 'charm':
+      return sheet.charm;
+    case 'agility':
+      return sheet.agility;
+    case 'wisdom':
+      return sheet.willpower;
+    case 'perception':
+      return sheet.perception;
+    case 'stealth':
+      return sheet.stealthSkill;
+    case 'picklocks':
+      return sheet.picklocks;
+    case 'traps':
+      return sheet.traps;
+    case 'thievery':
+      return sheet.thievery;
+    case 'spellcasting':
+      return sheet.spellcasting;
+    case 'tracking':
+      return sheet.tracking;
+    case 'magicresistance':
+      return sheet.magicRes;
+    default:
+      return null;
+  }
 }

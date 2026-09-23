@@ -89,7 +89,15 @@ export const WORN_SLOT: Readonly<Record<number, string>> = {
   9: 'Legs',
   10: 'Waist',
   11: 'Torso',
-  12: 'Off Hand',
+  /*
+   * Hyphenated, and the only one of the eighteen that is. Read as `Off
+   * Hand` until 2026-09-22, which matched nothing: the server's own
+   * definition is `new EquippedItemLocationDefinition(12, "Off-Hand", 1)`
+   * (`RealmEquippedItemManager.cs:24`) and the wire prints `(Off-Hand)`
+   * 181 times in this machine's logs and `(Off Hand)` never. Every other
+   * word here matches the same file exactly.
+   */
+  12: 'Off-Hand',
   14: 'Wrist',
   15: 'Ears',
   16: 'Worn',
@@ -107,6 +115,15 @@ export const WORN_SLOT: Readonly<Record<number, string>> = {
  * `WORN_SLOT` is the Reference card's.
  */
 export const WEAPON_HAND = 'Weapon Hand';
+
+/**
+ * `Worn` code 12 — the other hand, which a two-handed weapon takes with it.
+ *
+ * Named for the same reason `WEAPON_HAND` is: one slot decides something on
+ * its own. A shield here is what an equipment set has to take off before a
+ * two-hander goes on, and the server refuses the `wear` otherwise.
+ */
+export const OFF_HAND = 'Off-Hand';
 
 /**
  * `Items.WeaponType`: **handedness × damage kind**, which is two axes and not

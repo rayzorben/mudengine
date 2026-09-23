@@ -90,8 +90,13 @@ import {
  * | 39 | **Where a script hands an item over.** `neededItems` was fed by exits, levers, shops, monster drop lists and **room-owned** scripts, so an item the realm hands over in a text block no room owns had no row at all: `acid gland`, `unfertilized eggs` and `double-terminated quartz` are `giveitem` in three blocks run by a monster's **death** (a white jelly's, a queen ant's, Leo the Quick's), and the Reference card answered *Named in the world data, with no further detail* about three of the four things the Phoenix quest sends a player to fetch — reported as *these are real sundry items and are dropped through the textblocks of monsters or rooms*. `itemsInReach` reads the quest traversal — every block a greeting, a room's script or a death spell can run — for items rather than for counters. That closes the naming half (1,226 → 1,296 rows in stock, 1,942 → 2,056 in Paradigm; items with no source at all fall from 109 to 33 and from 128 to 23) and answers the other one: `BuiltItem.from` carries the owner's kind, its name, the `map/room` the realm places it in and the words that reach the line, so an item is a monster to look up and a room to walk to. 221 of stock's items carry one and 389 of Paradigm's |
  * | 40 | **An item can be a door, and a block whose line is one step places nothing.** Two halves of one report — *it is showing the titanium fork but it is not showing the potion of levitation*, and *when I click the fork there is no way to figure out how to get it*. The first: the only entrance the Catacombs have is the **potion of levitation**, which the corridor table says nothing about at all — the realm states it as `Items.Abil-n = CastsSp 607`, that spell's `TextBlock 1421`, and `teleport 1009 9` inside it, so an item is a *way in* exactly as a key on a door is. `landingsOfItems` follows the three hops at build time (the middle one is `TBInfo`, which does not ship) into `BuiltItem.lands`, and `WorldGraph.approachItems` treats a landing inside an enclosed region as a way into it: 4 items in Paradigm and 4 in stock. The second: `itemsGivenInLine` read a line as `phrase:steps` and dropped the first field, which is true of a **room**'s script and of nothing else — so a block whose whole action is `giveitem 983` placed nothing, and the fork the Catacombs are locked behind came from nobody. 26 items in Paradigm and 15 in stock get their only source back, the gnome inventor's fork among them |
  * | 41 | **And where that item may be used, because a teleport is not an *anywhere*.** Format 40 read the `teleport` step out of an item's text block and dropped every other step in it, so a conditional effect was recorded as an unconditional one — the client planned `use potion of levitation` in the Alchemist's Hut, the server answered with nothing at all, and the walk stopped on its own eight-second timeout. `TBInfo 1421` is `roomitem 993 1834:message 1835:teleport 1009 9:message 1836`, and `roomitem` is a **guard**: `TextBlockPart.cs` returns `Failed` when the room lacks the item, its own comment on the branch reading *used for potion of levitation for example*, so the block stops on step one and the teleport never runs. Item 993 is `waterfall`, which `Items."Obtained From"` places in `Room 3/1` — the pool under the waterfall, reached by boat up the Silvermere from the Pier (`BOATMOST.mp` wants a `wooden skiff`), and the one room MegaMUD's own 4,501 path files ever use the potion in. `BuiltItem.landsFrom` carries those rooms and `linkPortals` makes the landing an ordinary portal out of each of them, so the router walks to the waterfall and uses it there. Paradigm's seven recall tokens carry `nomonsters 3509` and `failroomitem 3391` instead — conditions on the moment and not on the place — and stay usable anywhere, which is why no path file paths one. A `roomitem` whose item the realm places nowhere **withholds the landing**, rather than claiming it works everywhere |
+ * | 42 | **What a room holds by the realm's own hand.** `Rooms.Placed` was written as the raw string since the file began and read by nothing, so the client could not say where a thing lies nor what a room is furnished with. The server puts each placed item on the room's floor at start and **puts it back at every nightly cleanup** where it is missing, within its game limit (`RoomManager.LoadPlacedItems`, `DoCleanup`), and it is listed like any other item — `You notice log raft here.` on the wire. `BuiltRoom.pl` carries the ids and each one is named: 554 rooms and 268 items in Paradigm (200 of them newly named), 362 and 193 in stock; 211 and 140 of them the realm will not let anybody pick up — signs, coffins, trees, portals. `WorldGraph` indexes the other direction at load, so the fact is written once |
+ * | 43 | **The spell a room's own command puts on you, and a gate is followed rather than called unread.** `dive pool` at the Bountiful Oasis (`Rooms.CMD` 2500) is `message 1943:teleport 121 12:cast 512`, and `roomScript.ts` read the landing (format 29) and dropped the cast as narration — so *holding breath* (25 ticks, `EndCast` into *drowning* at 5–20 a tick, into *drowned to death*) was written nowhere, and the eleven Muddy Underwater Passage rooms between the pool and the way up were a free corridor to the router and to a quest's plan. `RoomCommand.casts` carries the spell and `WorldGraph.corridorsAlong` reads its chain at the plan. And `spellHazard.ts` follows a gate on the character — `checkitem`, `checkspell`, `checkability`, `minlevel`, `maxlevel`, `class`, `race`, the alignment pair — at full weight instead of calling the chain unread: `TextBlockPart.cs` answers each from the sheet with `Succeeded` or `Failed`, so what stands behind one happens to *some* character and the pessimistic reading is to follow it. The desert's spell (683) is 85% nothing, a sandstorm teleport for level ≤ 19 and a one-in-a-hundred summons, all of it behind `failspell 711` — the waterskin — and the gates open its chain (it stays *unread* for a one-tick spell whose `EndCast` is the sandstorm, which is the `EndCast` rule doing its job); the oasis pools' *stop drowning* (515) is `checkspell 512 4099:cast 515`, which removes the spell and hurts nobody, and read as a hazard on eight rooms of every route to the Golden Spire. The block a spell gate names is run for a character without the spell, so it is followed too |
+ * | 44 | **The quest indexer keeps the roll and the delay** (todo 106). `testskill <stat> <value>` is a roll — the stat less the value, clamped 2..98, against 1–100 (`TextBlockPart.cs:1139`) — and `adddelay N` holds the rest of the block N seconds (`ContinueTextblockCommand`); `roomScript.ts` dropped both. `readQuestScript` keeps the roll as a `skill` gate and the delay on the line, `stepsInBlock` carries the longest onto `QuestStep.delaySeconds`, and the runner reads them: a step that rolls is asked again, after its delay, a bounded number of times. The red book at 12/2248 is the one case in the Dao Lord chain |
+ * | 45 | **`checkspell` is what the waterskin does to the desert, on the data that spells it that way.** Format 43 followed a `checkspell <spell> <block>` gate and deliberately declined to read it as *this spell stops the room*, on the ground that the two GreaterMUD builds answer the verb opposite ways. `TextBlockPart.cs:479` returns `Failed` unconditionally and runs the block only for a character the spell is **not** on, and `ExecuteOnMatch` breaks the line on `Failed`, so the block is the whole of what the room does and it is `failspell`'s shape exactly. Live, Festus took *You suffer in the desert heat…* 24 times, typed `drink water` — spell 711 — and crossed 26 more desert rooms without it printing once. The two shipped worlds spell the desert's own gate differently: Paradigm and GreaterMUD write `failspell 711 2654` and already named the ward, MajorMUD's v1.11p data writes `checkspell 711 2654` and named none — so stock goes from **0 warded room spells to 3** (946 rooms, 945 of them desert) and Paradigm from 2 to 4 (+57 rooms). No hazard loses a figure, since the block was already followed. Bumped for the **cache**, like 19, 26 and 27 — todo 02 |
+ * | 46 | **A gate on level says *which* character, and the router is planning for one.** Format 43 follows `minlevel` / `maxlevel` at full weight — what stands behind a gate happens to *somebody* — and then flattened it, so the desert's sandstorm (`86:maxlevel 19:cast 713`, a one-in-a-hundred teleport) was priced as *it moves you somewhere else* on all 979 of Paradigm's desert rooms, for a level 21 character it cannot touch. Reported as *it is set to maxlevel 19 so in this case festus is level 21 so it wont execute and can be ignored*. `BuiltSpellHazard.lv` carries the band each of `d`, `tp` and `sm` was recorded under — a gate governs the rest of its own line, so the band is taken back at the end of each — and `hazardFor` (`src/shared/world.ts`) narrows a hazard to the character's level at `WorldGraph.hazardOf`, the one join. **An unstated level keeps the whole hazard**, and an effect recorded both inside a gate and outside one is ungated: the reassuring answer here is *it cannot happen to you* — todo 01 |
  */
-export const REALM_FORMAT = 41;
+export const REALM_FORMAT = 46;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -463,6 +468,16 @@ export interface BuiltSpellHazard {
   /** 1 when the chain can put a monster in the room. Format 31. */
   sm?: 1;
   u?: 1;
+  /**
+   * The level bands the realm gates `d`, `tp` and `sm` behind, where it gates
+   * them at all — format 46. `[min, max]`, with `null` on either side for
+   * unbounded. Absent per effect is ungated.
+   */
+  lv?: {
+    d?: [number | null, number | null];
+    tp?: [number | null, number | null];
+    sm?: [number | null, number | null];
+  };
 }
 
 /**
@@ -819,6 +834,31 @@ export function parseExit(raw: unknown): BuiltExit | null {
   };
   if (match[3]) exit.i = match[3];
   return exit;
+}
+
+/**
+ * `Rooms.Placed` as item numbers — format 42.
+ *
+ * Stored as a comma-*terminated* list (`1410,1417,`), which is the shape the
+ * server's own reader walked comma by comma (`Room.GetPlacedItems`, now
+ * commented out; the import fills `RoomPlacedItems` from `Placed Item 0..9`
+ * columns, the same fact in another shape). A token
+ * that is not a positive whole number is dropped rather than repaired; a
+ * repeat is one item, since the server puts one back only where none lies
+ * (`LoadPlacedItems`) — 15 of Paradigm's 77 coffin rooms repeat it, up to
+ * four times; and a number the item table lacks is kept: the server skips it
+ * (`RoomManager`'s `TryGetValue`), and the reader drops what it cannot name.
+ */
+export function placedItems(raw: unknown): number[] {
+  if (raw === null || raw === undefined) return [];
+  const ids: number[] = [];
+  for (const token of String(raw).split(',')) {
+    const id = Number(token.trim());
+    if (token.trim().length > 0 && Number.isInteger(id) && id > 0 && !ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  return ids;
 }
 
 /**
@@ -1268,7 +1308,18 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
      */
     const delay = number(row['Delay']);
     if (delay !== null && delay !== 0 && delay !== BLANK_AS_NUMBER) room['dl'] = delay;
-    if (row['Placed'] && row['Placed'] !== '') room['placed'] = row['Placed'];
+    /*
+     * What the realm puts on this room's floor and puts back at the nightly
+     * cleanup, within each item's game limit — format 42
+     * (`docs/greatermud/rooms-and-items.md` › *The nightly cleanup*). Written as the raw string since the file began and read by
+     * nothing; ids now, and each one named, since the room refers to it the
+     * way a shop refers to its stock.
+     */
+    const furnished = placedItems(row['Placed']);
+    if (furnished.length > 0) {
+      room['pl'] = furnished;
+      for (const id of furnished) neededItems.add(id);
+    }
 
     /*
      * And the levers this room's own script pulls — the same fact the

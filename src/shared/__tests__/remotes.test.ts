@@ -8,6 +8,7 @@ import {
   formatLevel,
   formatLives,
   formatSettings,
+  formatStats,
   formatStatus,
   formatVersion,
   formatWealth,
@@ -257,6 +258,24 @@ describe('answering the questions the way MegaMUD does', () => {
 
   it('answers @version in the shape of {MegaMMUD 2.1}', () => {
     expect(formatVersion('mudengine', '0.5.0')).toBe('{mudengine 0.5.0}');
+  });
+});
+
+describe('answering @stats, which is this client’s own', () => {
+  const sheet = { strength: 60, intellect: 45, willpower: 50, agility: 55, health: 45, charm: 40 };
+
+  it('states the six in the stat screen’s order, in @health’s frame', () => {
+    expect(formatStats(sheet)).toBe('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}');
+  });
+
+  it('says nothing rather than part of a sheet', () => {
+    expect(formatStats({ ...sheet, charm: null })).toBeNull();
+  });
+
+  it('is read as no other reply, and is not mistaken for @status', () => {
+    expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}')).toBeNull();
+    expect(parseRemoteCall('@stats')?.name).toBe('stats');
+    expect(parseRemoteCall('@status')?.name).toBe('status');
   });
 });
 

@@ -22,11 +22,11 @@ import {
  * that happens to be wrong, and because the rule about which rows are
  * *toggleable* is a fact about the vocabulary rather than about a screen.
  *
- * ## All fifty-eight are shown, and only twenty-one can be set
+ * ## All sixty-one are shown, and only twenty-seven can be set
  *
- * `REMOTE_NAMES` is MegaMUD's whole vocabulary plus this client's one peer
- * extension (`@bless-expired`). Twenty-one of them round-trip here;
- * the rest are `unread` — no capture shows the reply format, so answering would
+ * `REMOTE_NAMES` is MegaMUD's whole vocabulary plus this client's own
+ * extensions (`@bless-expired`, the `-room` pair, `@stats`). Twenty-seven of
+ * them round-trip here; the rest are `unread` — no capture shows the reply format, so answering would
  * mean inventing one another client then fails to parse — or `refused`, which
  * this client declines on its own account however granted (`@kill`, `@hangup`).
  *
@@ -58,10 +58,10 @@ import {
  * ## It is a list and not a `CardTable`
  *
  * The table rules are for a listing whose length the player does not control
- * and which has a dimension worth cutting by. This is fifty-eight rows of
+ * and which has a dimension worth cutting by. This is sixty rows of
  * *controls*, fixed while the vocabulary is, and the only dimension — support — is already
  * carried on each row as the reason it cannot be set. What it does borrow is
- * the find field, because fifty-eight rows is more than anybody reads down, and
+ * the find field, because sixty rows is more than anybody reads down, and
  * the `n of m` line that a narrowed listing owes the reader.
  */
 export type RemoteListMode = 'player' | 'gang' | 'party';

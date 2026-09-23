@@ -27,10 +27,13 @@ import type { CharacterState } from '../../shared/character';
 import type { SupplyItem } from '../../shared/config';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
-import type { BuyingPlace, RoomId, Route } from '../../shared/world';
+import type { BuyingPlace, DropSources, RoomId, Route } from '../../shared/world';
 
-/** One place the realm says an item comes from. */
-export interface ItemSources {
+/**
+ * Where the realm says an item comes from: the counters, and the lairs with
+ * the two facts a refusal needs beside them (`DropSources`).
+ */
+export interface ItemSources extends DropSources {
   /**
    * The counters that stock it, least out of the way first.
    *
@@ -42,8 +45,6 @@ export interface ItemSources {
    * whose route walked through one of them).
    */
   shops: readonly BuyingPlace[];
-  /** Rooms the monsters that drop it live in, nearest first. */
-  lairs: ReadonlyArray<{ id: RoomId; name: string; mob: string; steps: number }>;
 }
 
 export interface ItemPlanner {
@@ -84,10 +85,15 @@ interface Wanted {
   name: string;
 }
 
+/**
+ * `owes` is the route walked once the pack holds the thing — or null for a
+ * quest run's fetch (todo 103), which wants the item and nothing walked
+ * afterwards: the run plans its own next leg from wherever the errand ends.
+ */
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'buying'; item: Wanted; owes: Route; run: boolean }
-  | { kind: 'hunting'; item: Wanted; owes: Route; run: boolean; mob: string }
+  | { kind: 'buying'; item: Wanted; owes: Route | null; run: boolean }
+  | { kind: 'hunting'; item: Wanted; owes: Route | null; run: boolean }
   /**
    * The pack holds it and the way is still being offered to the walker.
    *
@@ -130,17 +136,18 @@ export class ItemErrand {
    * was collected on an earlier trip. `run` is *Run it*, carried to the walk
    * the errand ends in.
    */
-  collect(item: Wanted, owes: Route, state: CharacterState, run = false): string | null {
+  collect(item: Wanted, owes: Route | null, state: CharacterState, run = false): string | null {
     if (this.phase.kind !== 'idle') return t('automation.collect.refusalBusy');
     if (state.phase !== 'in-game') return t('automation.collect.refusalNotInRealm');
     if (carriedCount(state, item.name) > 0) {
+      if (owes === null) return null;
       const refused = this.planner.walk(owes, run);
       return refused ?? null;
     }
     // Where the errand is taking this character afterwards, so the counter is
     // chosen by how far off *that* road it is rather than by how near it is to
     // where the character happens to be standing.
-    const sources = this.planner.sourcesOf(item, owes.steps.at(-1)?.to ?? null);
+    const sources = this.planner.sourcesOf(item, owes?.steps.at(-1)?.to ?? null);
     /*
      * **Bought before found**, where both are known: a counter is a fixed
      * price and a walk, and a drop is a fight and a chance. The player's own
@@ -191,7 +198,27 @@ export class ItemErrand {
       return null;
     }
     const lair = sources.lairs[0];
-    if (lair === undefined) return this.refuse(item, t('automation.collect.refusalNoSource'));
+    if (lair === undefined) {
+      /*
+       * Which of three it is, since each sends the player somewhere different
+       * (`mudengine-automation` › *A route that needs an item goes and gets
+       * it*). A sentence about placement names only the droppers the realm
+       * places; *nowhere* is never said of a monster it does.
+       */
+      if (sources.droppers.length === 0) {
+        return this.refuse(item, t('automation.collect.refusalNoSource'));
+      }
+      const placed = sources.droppers.filter((dropper) => dropper.placed > 0);
+      const mobs = (placed.length > 0 ? placed : sources.droppers)
+        .map((dropper) => dropper.mob)
+        .join(', ');
+      return this.refuse(
+        item,
+        placed.length > 0
+          ? t('automation.collect.refusalDropperUnreachable', { mobs })
+          : t('automation.collect.refusalDropperUnplaced', { mobs })
+      );
+    }
     /*
      * The loop is built from the realm's own rooms for those monsters, as the
      * Hunting card builds one, and filed nowhere. Its stops are every room
@@ -206,9 +233,16 @@ export class ItemErrand {
       this.planner.stopTaking(item.name);
       return this.refuse(item, refused);
     }
-    this.phase = { kind: 'hunting', item, owes, run, mob: lair.mob };
+    this.phase = { kind: 'hunting', item, owes, run };
+    // Three literal calls, as `buying` above: *0 steps away* is a number
+    // where the reader wants a fact, and *1 steps* is not English.
+    const where = { item: item.name, mob: lair.mob, room: lair.name };
     this.events.notice?.(
-      t('automation.collect.hunting', { item: item.name, mob: lair.mob, room: lair.name })
+      lair.steps === 0
+        ? t('automation.collect.huntingHere', where)
+        : lair.steps === 1
+          ? t('automation.collect.huntingNextDoor', where)
+          : t('automation.collect.hunting', { ...where, steps: lair.steps })
     );
     return null;
   }
@@ -242,7 +276,7 @@ export class ItemErrand {
      * still unanswered) clears the moment the room for it arrives.
      */
     if (this.phase.kind === 'delivering') {
-      const refused = this.planner.walk(owes, run);
+      const refused = this.planner.walk(this.phase.owes, run);
       if (refused === null) {
         this.phase = { kind: 'idle' };
         return;
@@ -278,7 +312,7 @@ export class ItemErrand {
   }
 
   /** The pack holds it: stop collecting, say which happened, and walk on — or run on. */
-  private deliver(item: Wanted, owes: Route, run: boolean): void {
+  private deliver(item: Wanted, owes: Route | null, run: boolean): void {
     const hunting = this.phase.kind === 'hunting';
     this.give();
     this.phase = { kind: 'idle' };
@@ -300,6 +334,8 @@ export class ItemErrand {
       because: t('automation.collect.becauseDoor', { item: item.name }),
       acted: true
     });
+    // Nothing owed: a quest run's fetch, which plans its own next leg.
+    if (owes === null) return;
     /*
      * **Offered, not fired once.** The loop that just found this has a step on
      * the wire — it stepped on before the server confirmed the pick-up — so

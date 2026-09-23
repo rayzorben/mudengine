@@ -464,6 +464,8 @@ export class SessionHost {
           this.options.toAll(Push.characterReset, { session: id, payload: notice }),
         questSaid: (progress) =>
           this.options.toAll(Push.questSaid, { session: id, payload: progress }),
+        questRun: (progress) =>
+          this.options.toAll(Push.questRun, { session: id, payload: progress }),
         command: (command, source) => {
           // Already through `SessionManager.reportable`, which is the one place
           // this client redacts a password. Both records take the same value.

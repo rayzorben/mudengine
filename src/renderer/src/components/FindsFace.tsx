@@ -1,14 +1,29 @@
 import { useMemo } from 'react';
 
-import CardTable, { type Column } from './CardTable';
+import CardTable, { type Column, type Facet } from './CardTable';
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { copperSpread } from '@shared/coins';
 import { ago } from '../lib/players';
-import { within, type Find } from '@shared/finds';
+import { findRate, isCash, within, type Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
+
+/*
+ * Money or a thing, the one line `Find.copper` already draws: a room searched
+ * every lap for its farthings buries the one scroll it turned up once. Both
+ * are listed whatever the log holds, because the remembered mute is checked
+ * against this list.
+ */
+const KINDS: readonly Facet[] = [
+  { id: 'item', label: t('cards.room.finds.facet.item') },
+  { id: 'cash', label: t('cards.room.finds.facet.cash') }
+];
+
+function kindOf(find: Find): string {
+  return isCash(find) ? 'cash' : 'item';
+}
 
 export interface FindsFaceProps {
   session: SessionId;
@@ -29,7 +44,8 @@ export interface FindsFaceProps {
 }
 
 /**
- * What searching has turned up in this realm, newest first.
+ * What searching has turned up in this realm, rarest first (`byRarest`): the
+ * card's own order, so a heading's third click comes back to it.
  *
  * A **log**, and the only one on this card: every other face says something
  * about the room the character is standing in, and this one says what the realm
@@ -123,6 +139,31 @@ export default function FindsFace({
         numeric: true,
         value: (find) => find.seen
       },
+      {
+        id: 'chance',
+        label: t('cards.room.finds.chance'),
+        numeric: true,
+        // A fraction is nothing anybody types, and `0` would match every row.
+        unsearchable: true,
+        // Blank, never `0%`, before the room's first counted search: a row
+        // written before searches were counted has no rate yet, not a low one.
+        value: (find) => findRate(find),
+        cell: (find) => {
+          const rate = findRate(find);
+          return rate === null ? (
+            ''
+          ) : (
+            <span
+              title={t('cards.room.finds.chanceTooltip', {
+                hits: find.hits,
+                searched: find.searched
+              })}
+            >
+              {percentText(rate)}
+            </span>
+          );
+        }
+      },
       ...(forget === undefined
         ? []
         : [
@@ -160,6 +201,8 @@ export default function FindsFace({
       className="finds-table"
       columns={columns}
       empty={t('cards.room.finds.empty')}
+      facetOf={kindOf}
+      facets={KINDS}
       find={t('cards.room.finds.findPlaceholder')}
       keyOf={(find) => `${find.room}|${find.name}`}
       name="finds"
@@ -170,7 +213,16 @@ export default function FindsFace({
   );
 }
 
-/** The face's own clipboard text: the table as it reads, newest first. */
+/**
+ * A rate as a percentage, a decimal place below ten so one find in three
+ * hundred searches does not read as never.
+ */
+function percentText(rate: number): string {
+  const percent = rate * 100;
+  return `${percent > 0 && percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+}
+
+/** The face's own clipboard text: the table as it reads, rarest first. */
 export function findsCopyText(finds: readonly Find[], days: number, now: number): string {
   const rows = within(finds, days, now);
   if (rows.length === 0) return t('cards.room.finds.empty');
@@ -182,7 +234,9 @@ export function findsCopyText(finds: readonly Find[], days: number, now: number)
           : find.quantity === null
             ? ''
             : `${find.quantity} `;
-      return `${many}${find.name} — ${find.roomName} ${find.room}, ${ago(find.at, now)} (${find.seen})`;
+      const rate = findRate(find);
+      const chance = rate === null ? '' : `, ${percentText(rate)}`;
+      return `${many}${find.name} — ${find.roomName} ${find.room}, ${ago(find.at, now)} (${find.seen}${chance})`;
     })
     .join('\n');
 }
