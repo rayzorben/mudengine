@@ -442,6 +442,16 @@ describe('putting back a command the realm threw away', () => {
     expect(sent).toEqual(['e', 'e']);
   });
 
+  /* A talk-box line's command is the player's, and a lost one breaks the path. */
+  it('puts back one of a talk-box line’s commands, still the player’s', () => {
+    queue.enqueue({ command: 's', priority: 'user', typed: true });
+    expect(sent).toEqual(['s']);
+    expect(queue.resendLast('s')).toBe(true);
+    expect(queue.snapshot.pending).toEqual([
+      expect.objectContaining({ command: 's', priority: 'user', typed: true })
+    ]);
+  });
+
   /*
    * The echo is the server's own statement of which command it is answering.
    * A mismatch means the fumbled one was not what this queue sent — the player

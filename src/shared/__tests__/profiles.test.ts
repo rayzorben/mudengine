@@ -90,6 +90,43 @@ describe('the realm a character walks', () => {
   });
 });
 
+/* Whether a hang-up is charged: the character, then its realm, then the options file (todo 01). */
+describe('who says a hang-up is charged', () => {
+  const realm = (hangPenalties?: boolean) => ({
+    servers: [
+      {
+        name: 'Bearfather',
+        host: 'bbs.bearfather.net',
+        port: 23,
+        ...(hangPenalties === undefined ? {} : { hangPenalties })
+      }
+    ],
+    automation: { safety: { hangUp: { penalties: false } } }
+  });
+  const penalties = (raw: Record<string, unknown>, config: unknown): boolean =>
+    resolve({ server: 'Bearfather', ...raw }, config).config.automation.safety.hangUp.penalties;
+  const own = (value: boolean) => ({ automation: { safety: { hangUp: { penalties: value } } } });
+
+  it('takes the realm over the options file where the character says nothing', () => {
+    expect(penalties({}, realm(true))).toBe(true);
+    expect(penalties({ automation: { safety: { hangUp: { enabled: true } } } }, realm(true))).toBe(
+      true
+    );
+  });
+
+  it('takes the character over its realm', () => {
+    expect(penalties(own(false), realm(true))).toBe(false);
+    expect(penalties(own(true), realm(false))).toBe(true);
+  });
+
+  it('falls to the options file where the realm says nothing, and that is off', () => {
+    expect(penalties({}, realm())).toBe(false);
+    expect(
+      resolve({ server: 'GreaterMUD (local)' }).config.automation.safety.hangUp.penalties
+    ).toBe(false);
+  });
+});
+
 describe('resolveProfile', () => {
   it('resolves a server named in the options file', () => {
     const profile = resolve({ server: 'GreaterMUD (local)' });

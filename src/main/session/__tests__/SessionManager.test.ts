@@ -27,7 +27,7 @@ import { NO_REALM_PLAYERS } from '../../../shared/players';
 import type { Find, Sighting } from '../../../shared/finds';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
-import { setTuning } from '../../app/tuning';
+import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
@@ -71,6 +71,19 @@ afterEach(async () => {
 async function client(index = 0): Promise<net.Socket> {
   await until(() => accepted.length > index);
   return accepted[index]!;
+}
+
+/**
+ * A route under way, as the escape reads it: only a character the client is
+ * taking somewhere runs (todo 03). For the tests about which way out, where a
+ * real walk would send steps of its own into the wire under test.
+ */
+function underWay(session: SessionManager): void {
+  vi.spyOn(session, 'movement', 'get').mockReturnValue({
+    kind: 'route',
+    moving: true,
+    resumable: false
+  });
 }
 
 function collect(): {
@@ -1332,7 +1345,8 @@ describe('hanging up to escape', () => {
       hangUp: {
         enabled: true,
         belowHealth: 0.3,
-        onlyWhenClean: true,
+        // The charged realm, which is where the refusals below live.
+        penalties: true,
         onPlayerInRoom: false,
         ...over
       }
@@ -1460,13 +1474,10 @@ describe('hanging up to escape', () => {
     expect(notices.filter((notice) => /Not hanging up/.test(notice))).toHaveLength(1);
   });
 
-  /*
-   * Off is for a realm where PvP is disabled or the penalty is not configured —
-   * which the client cannot detect and the player can know.
-   */
-  it('hangs up anyway when told to, and says the penalty is likely', async () => {
+  /* A realm that charges nothing: below the floor it hangs up, whatever it can see (todo 01). */
+  it('hangs up whatever it can see where the settings say the realm charges nothing', async () => {
     const { sink, notices } = collect();
-    manager = new SessionManager(sink, undefined, safety({ onlyWhenClean: false }));
+    manager = new SessionManager(sink, undefined, safety({ penalties: false }));
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     knowMaximum(socket);
@@ -1482,7 +1493,58 @@ describe('hanging up to escape', () => {
     socket.write('[HP=10]:\r\n');
 
     await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(/Penalty likely/);
+    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(
+      /Your settings say this realm charges nothing/
+    );
+  });
+
+  /*
+   * Paradigm's realm menu says what a hang-up costs, and what it said outranks
+   * the setting both ways (todo 01): the wire's own menu, then the player's `2`.
+   */
+  const PARADIGM_MENU = [
+    '[1] . Paradigm PVE (v1.9.1) [ PvE ]',
+    '    . . Character Limit 2',
+    '[2] . Paradigm PVP (v1.9.1) [ PvP Enabled ]',
+    '    . . PvP Level Range 12',
+    '    . . Hang Penalties 25%',
+    '',
+    'Please select a realm: '
+  ].join('\r\n');
+  const chooseRealm = async (socket: net.Socket, choice: string): Promise<void> => {
+    socket.write(PARADIGM_MENU);
+    await until(() => manager!.character.phase === 'authenticating');
+    manager!.send(`${choice}\r`);
+  };
+
+  it('refuses on the realm the menu says charges, whatever the setting says', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, undefined, safety({ penalties: false }));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    await chooseRealm(socket, '2');
+    await until(() => notices.some((notice) => /Paradigm PVP charges 25%/.test(notice)));
+    knowMaximum(socket);
+    socket.write('The orc rogue slashes you for 5 damage!\r\n');
+    await until(() => manager!.character.combat.blows > 0);
+    socket.write('[HP=10]:\r\n');
+    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
+    expect(manager.state.phase).toBe('connected');
+  });
+
+  it('hangs up on the realm the menu says charges nothing, whatever the setting says', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, undefined, safety({ penalties: true }));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    await chooseRealm(socket, '1');
+    await until(() => notices.some((notice) => /Paradigm PVE charges nothing/.test(notice)));
+    knowMaximum(socket);
+    socket.write('The orc rogue slashes you for 5 damage!\r\n');
+    await until(() => manager!.character.combat.blows > 0);
+    socket.write('[HP=10]:\r\n');
+    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
+    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(/by its own realm menu/);
   });
 
   /*
@@ -1597,6 +1659,7 @@ describe('running away', () => {
   it('runs when health falls, in a fight — and it is a move that goes out', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = sent(socket, /\bn\r\n/);
@@ -1624,6 +1687,7 @@ describe('running away', () => {
   it('refuses out loud rather than inventing a way out', async () => {
     const { sink, notices, traces } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const chunks: Buffer[] = [];
@@ -1659,6 +1723,7 @@ describe('running away', () => {
   it('does not run when nothing is fighting it', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1672,6 +1737,7 @@ describe('running away', () => {
   it('does not run above the threshold', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1691,6 +1757,7 @@ describe('running away', () => {
   it('runs when outnumbered, whatever the health says', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping({ whenOutnumbered: 2 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1713,7 +1780,7 @@ describe('running away', () => {
     socket.write('[HP=98]:\r\n');
 
     await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/attackers/);
+    expect(notices.find((notice) => RAN.test(notice))).toMatch(/^Running \w+: 2 attackers/);
   });
 
   /* MegaMUD's ManaRun%: a caster with an empty pool is losing whatever the
@@ -1722,6 +1789,7 @@ describe('running away', () => {
   it('runs when mana falls under its floor, whatever the health says', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping({ belowMana: 0.2 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1731,12 +1799,13 @@ describe('running away', () => {
     socket.write('[HP=100/100,MA=5/50]:\r\n');
 
     await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/mana at 10%/);
+    expect(notices.find((notice) => RAN.test(notice))).toMatch(/^Running \w+: mana at 10%/);
   });
 
   it('does not count one attacker as being outnumbered', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping({ whenOutnumbered: 2 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1759,6 +1828,7 @@ describe('running away', () => {
   it('queues one escape however many status lines arrive', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1779,6 +1849,7 @@ describe('running away', () => {
   it('records why it ran, which way, and how it knew that way', async () => {
     const { sink, notices, traces } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -1807,6 +1878,7 @@ describe('running away', () => {
   it('opens a shut door on the way out and runs again', async () => {
     const { sink, notices, traces } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = sent(socket, /open n\r\nn\r\n/);
@@ -1838,6 +1910,7 @@ describe('running away', () => {
   it('falls to the next rung the moment a direction is refused, and records the refusal', async () => {
     const { sink, notices, traces } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = sent(socket, /\bs\r\n/);
@@ -1864,6 +1937,7 @@ describe('running away', () => {
   it('does nothing while it is switched off', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping({ enabled: false }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -2604,6 +2678,7 @@ describe('which way out', () => {
   it('retraces the move the character is known to have made', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2624,6 +2699,66 @@ describe('which way out', () => {
     await until(() => /\bs\r\n/.test(seen()));
   });
 
+  /** At Haven Hall with a two-step route north to the Rat Lair under way. */
+  async function walkingToTheLair(): Promise<{ socket: net.Socket; seen: () => string }> {
+    const world = haven();
+    manager = new SessionManager(collected.sink, world, escaping());
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('[HP=100]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,1\r\nHaven Hall\r\nObvious exits: north\r\n');
+    await until(() => manager!.character.room.number === 1);
+    expect(manager.walker.start(world.route('1/1', '1/3'), manager.character)).toBeNull();
+    await until(() => /\bn\r\n/.test(seen()));
+    return { socket, seen };
+  }
+  let collected: ReturnType<typeof collect>;
+  beforeEach(() => {
+    collected = collect();
+  });
+
+  /*
+   * Todo 03, verbatim in shape: Festus arrived at the Shimmering Pool to dive
+   * it, a scorpion opened, and at 39% the escape stepped him back the way he
+   * came. A route that has arrived is where the player wanted to be.
+   */
+  it('stays where a route arrived, and says so once', async () => {
+    const { socket, seen } = await walkingToTheLair();
+    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
+    await until(() => (seen().match(/\bn\r\n/g) ?? []).length === 2);
+    socket.write('Rat Lair\r\nObvious exits: south\r\n');
+    await until(() => manager!.walker.progress.status === 'arrived');
+
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+    await until(() =>
+      collected.notices.some((n) => /nothing is taking this character anywhere/.test(n))
+    );
+    expect(seen()).not.toMatch(/\bs\r\n/);
+    socket.write('[HP=9]:\r\n');
+    await until(() => manager!.character.vitals.hp === 9);
+    expect(
+      collected.notices.filter((n) => /nothing is taking this character anywhere/.test(n))
+    ).toHaveLength(1);
+    await until(() => collected.traces.some((trace) => trace.safety.length > 0));
+    expect(collected.traces.at(-1)?.safety[0]).toMatchObject({ action: 'retreat', acted: false });
+  });
+
+  /* The other half: a route a fight is holding is still going somewhere. */
+  it('runs while a route is still under way', async () => {
+    const { socket, seen } = await walkingToTheLair();
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.walker.progress.hold === 'fight');
+    socket.write('Middle Road\r\nObvious exits: south, north\r\n');
+    await until(() => manager!.character.room.number === 2);
+    socket.write('[HP=10]:\r\n');
+    await until(() => /\bs\r\n/.test(seen()));
+    expect(collected.notices.some((n) => /Retreating s, the way we came/.test(n))).toBe(true);
+  });
+
   /*
    * The retrace rung answers only for a compass exit. Vaelor climbed `u` out
    * of the sewer into Dark Alley 1/383, whose `d` is `Text: go manhole`, and at
@@ -2634,6 +2769,7 @@ describe('which way out', () => {
   it('does not retrace through a text exit, and takes the next rung at once', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2664,6 +2800,7 @@ describe('which way out', () => {
   it('doubles back onto the trail when the newest step no longer ends here', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1000 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('Health: 100/100 [100%]\r\n');
@@ -2698,6 +2835,7 @@ describe('which way out', () => {
   it('takes an exit the realm can place when there is no trail', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2723,6 +2861,7 @@ describe('which way out', () => {
   it('takes an exit the room printed when nothing is placed', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, undefined, escaping());
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2748,6 +2887,7 @@ describe('which way out', () => {
       haven(),
       escaping({ strategy: 'safe-haven', safeHavenRoom: 'Haven Hall 1/1' })
     );
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2782,6 +2922,46 @@ describe('which way out', () => {
     expect(notices.find((notice) => /Retreating to Haven Hall/.test(notice))).toMatch(/: 1 step/);
   });
 
+  /*
+   * The walk home ends in a fight (`resumeAfterFight: false`) and nothing else
+   * is taking the character anywhere. The journey home is re-armed there, so
+   * the character still runs from that fight: the reviewer's find on todo 03.
+   * No stub for this half; only the first escape is taken on trust.
+   */
+  it('still runs from a fight that ends the walk home short', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(
+      sink,
+      haven(),
+      escaping({ strategy: 'safe-haven', safeHavenRoom: 'Haven Hall 1/1', cooldownMs: 1 })
+    );
+    underWay(manager);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 3);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+    await until(() => /\bs\r\n/.test(seen()));
+    socket.write('*Combat Off*\r\n');
+    await until(() => !manager!.character.inCombat);
+    socket.write('Middle Road\r\nObvious exits: north, south\r\n');
+    await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
+    vi.restoreAllMocks();
+
+    // Met on the step home, which ends the walk; the step lands anyway.
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.walker.progress.status !== 'walking');
+    socket.write('Haven Hall\r\nObvious exits: north\r\n');
+    await until(() => manager!.character.room.number === 1);
+    socket.write('[HP=9]:\r\n');
+    await until(() => /\bs\r\n[\s\S]*\bs\r\n[\s\S]*\bn\r\n/.test(seen()));
+    expect(notices.some((notice) => /nothing is taking this character/.test(notice))).toBe(false);
+  });
+
   /**
    * The escape must not retrace its own escape.
    *
@@ -2798,6 +2978,7 @@ describe('which way out', () => {
   it('never runs back into a room it has just run out of', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2840,6 +3021,7 @@ describe('which way out', () => {
   it('sends nothing once the character is on the ground', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2872,6 +3054,7 @@ describe('which way out', () => {
   it('reads the realm naming this character as it going down', async () => {
     const { sink, notices } = collect();
     manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2910,6 +3093,7 @@ describe('which way out', () => {
       ...escaping(),
       health: { ...DEFAULT_CONFIG.automation.health, restBelow: 0.5, restTo: 0.9 }
     });
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -2923,6 +3107,46 @@ describe('which way out', () => {
     await until(() => /\brest\r\n/.test(seen()));
   });
 
+  /*
+   * Festus's dead end (todo 00): the room printed `northeast`, and the escape
+   * refused it for leading back to the bandit — then said the room named no
+   * exit, and that it was standing and fighting with auto-combat off, five
+   * times in twenty-five seconds.
+   */
+  it('names the exit it refused for leading back, says it is not fighting, and says it once', async () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, haven(), escaping({ cooldownMs: 1 }));
+    underWay(manager);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 2);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+    await until(() => /\bs\r\n/.test(seen()));
+
+    // Into the dead end, and the fight follows.
+    socket.write('Haven Hall\r\nObvious exits: north\r\n');
+    await until(() => manager!.character.room.name === 'Haven Hall');
+    socket.write('*Combat Engaged*\r\n[HP=9]:\r\n');
+    await until(() => notices.some((notice) => notice.includes('leads back')));
+    // Said on the arrival itself or the prompt after it: the figure is either.
+    const refusal = notices.filter((notice) => notice.startsWith('Not running:'));
+    expect(refusal).toHaveLength(1);
+    expect(refusal[0]).toContain('the only way out, north, leads back');
+    expect(refusal[0]!.endsWith(t('session.safety.escapeNotFighting'))).toBe(true);
+
+    // Two more prompts under the floor: nothing said again.
+    socket.write('[HP=8]:\r\n');
+    await settled(8);
+    socket.write('[HP=7]:\r\n');
+    await settled(7);
+    expect(notices.filter((notice) => notice.startsWith('Not running:'))).toHaveLength(1);
+  });
+
   /* A haven the realm cannot place is refused out loud, and nothing is walked. */
   it('safe-haven refuses a room it cannot place, and says so', async () => {
     const { sink, notices } = collect();
@@ -2931,6 +3155,7 @@ describe('which way out', () => {
       haven(),
       escaping({ strategy: 'safe-haven', safeHavenRoom: 'Nowhere Hall 9/9' })
     );
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -3186,6 +3411,7 @@ describe('a death stops everything that was going somewhere', () => {
         }
       }
     });
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const chunks: Buffer[] = [];
@@ -4217,6 +4443,71 @@ describe('a step the server never answers', () => {
     socket.write('[HP=56/MA=12]:' + PROMPT_REPAINT);
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(notices.filter((notice) => notice.includes('given up waiting'))).toEqual([]);
+  });
+});
+
+/*
+ * Hit and not moving with auto-combat off (todo 00, 2026-09-23). The switch
+ * is the character's file, so the harness stands in for it: a flip asked for
+ * is a reload of the same configuration with the switch the other way.
+ */
+describe('auto-combat lent to a character hit and not moving', () => {
+  const config = (combat: boolean): AutomationConfig => ({
+    ...DEFAULT_CONFIG.automation,
+    enabled: true,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    onEnterRealm: [],
+    rules: [],
+    combat: { ...DEFAULT_CONFIG.automation.combat, enabled: combat, defendAfterRounds: 2 }
+  });
+
+  it('turns it on after two rounds, swings back, and hands it back on the next arrival', async () => {
+    const collected = collect();
+    const flips: boolean[] = [];
+    const sink: SessionSink = {
+      ...collected.sink,
+      switchAutomation: (_name, on) => {
+        flips.push(on);
+        setTimeout(() => manager?.configure(config(on), DEFAULT_CONFIG.connection.login), 0);
+        return true;
+      }
+    };
+    manager = new SessionManager(sink, undefined, config(false));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    const wire = (): string => Buffer.concat(chunks).toString('latin1');
+
+    socket.write(
+      'Guild Street\r\nAlso here: slime beast.\r\nObvious exits: north, south\r\n[HP=56/MA=12]:' +
+        PROMPT_REPAINT
+    );
+    await until(() => manager!.character.room.occupants.length === 1);
+
+    // One round: below the setting. Positive control for the silence.
+    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=53/MA=12]:' + PROMPT_REPAINT);
+    await settled(53);
+    expect(flips).toEqual([]);
+    expect(wire()).not.toContain('slime beast');
+
+    // A second round, well past the round beat: lent, and the next blow is hit back.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=50/MA=12]:' + PROMPT_REPAINT);
+    await until(() => flips.length === 1);
+    expect(flips).toEqual([true]);
+    expect(collected.notices.some((n) => n.includes('turning it on until you move'))).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
+    await until(() => wire().includes('slime beast'));
+
+    // Moved: handed back. An arrival is a room answering a move, never a reprint.
+    const before = wire().length;
+    manager.send('n\r');
+    await until(() => wire().slice(before).includes('n\r\n'));
+    socket.write('Guild Hall\r\nObvious exits: south\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
+    await until(() => flips.length === 2);
+    expect(flips).toEqual([true, false]);
   });
 });
 
@@ -5966,5 +6257,94 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((spot) => spot.estimate.unknown.includes('rounds'))).toBe(true);
     expect(advice.assumptions.measured).toBeNull();
+  });
+});
+
+/*
+ * A talk-box line of several commands (todo 04): `s;recover corpse;2d,6s`.
+ * Queued at the player's own band and sent a prompt at a time, because the
+ * realm drops the twentieth command it is handed at once, and each one goes
+ * out down the path a keystroke takes, so it is the player's.
+ */
+describe('a talk-box line of several commands', () => {
+  const paced: AutomationConfig = {
+    ...DEFAULT_CONFIG.automation,
+    // Off: the player's own line goes whatever the master switch says.
+    enabled: false,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    onEnterRealm: [],
+    rules: [],
+    pacing: { window: 2, minGapMs: 10, ackTimeoutMs: 30_000 }
+  };
+
+  async function inTheRealm(): Promise<{
+    socket: net.Socket;
+    sent: Array<{ command: string; source: string }>;
+    notices: string[];
+  }> {
+    const sent: Array<{ command: string; source: string }> = [];
+    const { sink, notices } = collect();
+    manager = new SessionManager(
+      { ...sink, command: (command, source) => sent.push({ command, source }) },
+      undefined,
+      paced
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=100]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    return { socket, sent, notices };
+  }
+
+  it('sends each command in turn, a prompt at a time, as the player’s own', async () => {
+    const { socket, sent } = await inTheRealm();
+    manager!.sendMacro('smile;2wave');
+    await until(() => sent.length === 2);
+    // The window is two, so the third waits for the realm to answer.
+    expect(manager!.queue.snapshot.pending).toEqual([
+      expect.objectContaining({ command: 'wave', priority: 'user', typed: true })
+    ]);
+    socket.write('[HP=100]:' + PROMPT_REPAINT);
+    await until(() => sent.length === 3);
+    expect(sent).toEqual([
+      { command: 'smile', source: 'user' },
+      { command: 'wave', source: 'user' },
+      { command: 'wave', source: 'user' }
+    ]);
+  });
+
+  it('refuses a line for a character that is not connected, out loud', () => {
+    const { sink, notices } = collect();
+    manager = new SessionManager(sink, undefined, paced);
+    manager.sendMacro('smile;wave');
+    expect(notices).toContain(t('session.macro.offline'));
+    expect(manager.queue.snapshot.depth).toBe(0);
+  });
+
+  it('refuses a line that stands for more than the ceiling, out loud', async () => {
+    const { sent, notices } = await inTheRealm();
+    const count = tuning().session.macroCommands + 1;
+    manager!.sendMacro(`${count}s`);
+    expect(notices).toContain(
+      t('session.macro.tooMany', { count, limit: tuning().session.macroCommands })
+    );
+    expect(manager!.queue.snapshot.depth).toBe(0);
+    expect(sent).toEqual([]);
+  });
+
+  it('drops what is still waiting at the box’s press, and at a death, and says so', async () => {
+    const { socket, sent, notices } = await inTheRealm();
+    manager!.sendMacro('4s');
+    await until(() => sent.length === 2);
+    manager!.dropTyped();
+    expect(notices).toContain(t('session.macro.dropped.many', { count: 2 }));
+    expect(manager!.queue.snapshot.depth).toBe(0);
+
+    // Two still in flight, so all three of these wait.
+    manager!.sendMacro('3n');
+    expect(manager!.queue.snapshot.depth).toBe(3);
+    socket.write('You have been killed!\r\n');
+    await until(() => notices.includes(t('session.macro.droppedDied.many', { count: 3 })));
+    expect(manager!.queue.snapshot.depth).toBe(0);
   });
 });

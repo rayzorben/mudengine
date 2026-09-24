@@ -8,6 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import PopupMenu from './PopupMenu';
 import { clipboardIntent, readClipboard, writeClipboard } from '../lib/clipboard';
+import { describeElement, ownsItsEnter } from '../lib/focus';
 import { linkAt } from '../lib/linkify';
 import { t } from '../lib/i18n';
 import { measurePitch } from '../lib/fonts';
@@ -27,11 +28,17 @@ import type { Box } from '../lib/menu';
 import { anchorRect, type PopoverAnchor } from '../lib/popover';
 import { MARK_GLYPH } from './marks';
 import { GLYPH_CELLS } from '@shared/template';
-import { splitMarks } from '../lib/chunks';
+import { sliceLines, splitMarks } from '../lib/chunks';
+import { tuning } from '../lib/tuning';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
 export interface TerminalHandle {
   write(chunk: StreamChunk): void;
+  /**
+   * Write a restored backscroll a slice at a time, then `done` once parsed and
+   * the view is at the live edge. See `lib/restore.ts`.
+   */
+  restore(text: string, done: () => void): void;
   /**
    * Empty the screen and the scrollback, for a slate about to show a different
    * character. Concatenating two characters' output into one backscroll is
@@ -638,6 +645,9 @@ export default function TerminalView({
     mount.addEventListener('mousedown', startSelecting);
     document.addEventListener('mouseup', stopSelecting);
 
+    /** Whether the shown console has sent a line end since the last plain Enter (todo 00). */
+    let enterTaken = true;
+    let enterTimer: ReturnType<typeof setTimeout> | null = null;
     term.onData((data) => {
       /*
        * Typing is playing, and playing outranks a selection left lying
@@ -650,8 +660,46 @@ export default function TerminalView({
         holdRef.current = false;
         term.clearSelection();
       }
+      if (/[\r\n]/.test(data)) enterTaken = true;
       handlers.current.onInput(data);
     });
+
+    /*
+     * A plain Enter the window saw that this console never sent (todo 00).
+     * The capture shows the first Enter of a fast line never reaching main,
+     * and nothing records keys or focus, so this says where it went. Matched
+     * on the physical key, because an input method holding it reports
+     * `Process` and 229. A text field or dialog that owns its Enter is left
+     * alone; silence on a lost Enter means it never reached the page.
+     */
+    const watchEnter = (event: KeyboardEvent): void => {
+      if (!reportRef.current) return;
+      if (event.code !== 'Enter' && event.code !== 'NumpadEnter' && event.key !== 'Enter') return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target !== null && !mount.contains(target) && ownsItsEnter(target)) return;
+      const where =
+        target === null || target === document.body
+          ? t('terminal.enterWhere.nowhere')
+          : mount.contains(target)
+            ? t('terminal.enterWhere.console')
+            : // Another character's cell; this console's own controls name themselves.
+              target.closest('.terminal-cell')?.contains(mount) === false
+              ? t('terminal.enterWhere.elsewhere')
+              : describeElement(target);
+      const code = event.keyCode;
+      enterTaken = false;
+      if (enterTimer !== null) clearTimeout(enterTimer);
+      enterTimer = setTimeout(() => {
+        enterTimer = null;
+        if (enterTaken) return;
+        writerRef.current?.settled(() => {
+          const atLineStart = term.buffer.active.cursorX === 0;
+          term.write(noticeSequence(t('terminal.enterNotTaken', { where, code }), atLineStart));
+        });
+      }, tuning().enterTakenMs);
+    };
+    window.addEventListener('keydown', watchEnter, { capture: true });
     term.onResize(publishSize);
 
     /*
@@ -799,6 +847,14 @@ export default function TerminalView({
        * a reset that jumped the line would clear the screen and then have the
        * previous character's last chunk painted onto it.
        */
+      restore: (text, done) => {
+        for (const piece of sliceLines(text, tuning().restoreSliceChars)) writer.write(piece);
+        writer.settled(() => {
+          // A reader who scrolled up or selected while it filled stays put.
+          if (!holdRef.current) term.scrollToBottom();
+          done();
+        });
+      },
       reset: () => writer.settled(() => term.reset()),
       notice: (message) => {
         /*
@@ -853,6 +909,8 @@ export default function TerminalView({
     observer.observe(mount);
 
     return () => {
+      window.removeEventListener('keydown', watchEnter, { capture: true });
+      if (enterTimer !== null) clearTimeout(enterTimer);
       links.dispose();
       observer.disconnect();
       viewport?.removeEventListener('scroll', syncPin);

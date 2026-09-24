@@ -1466,6 +1466,12 @@ const TUNING_DEFAULTS = {
     /** Framed lines retained; the terminal keeps the real backscroll. */
     lineLogLimit: 500,
     /**
+     * The most commands one talk-box line may stand for (todo 04). The line
+     * is paced by the prompt, so this is not the realm's flood limit; it is
+     * what `99s` typed for `9s` would cost before anyone could stop it.
+     */
+    macroCommands: 40,
+    /**
      * How long a prompt that has opened its bracket and not closed it may
      * keep arriving before the client stops waiting for the rest.
      *
@@ -2299,6 +2305,20 @@ const TUNING_DEFAULTS = {
      * long a loop has been going. A second, because that is the unit shown.
      */
     clockTickMs: 1000,
+    /**
+     * How much restored backscroll a console is handed per write at launch.
+     * xterm parses one write in one go and yields only between writes, so a
+     * whole restored backscroll (100,000 lines, 8 MB) was a second-long task
+     * per character (todo 02, 2026-09-23); slices this size keep each under a
+     * frame.
+     */
+    restoreSliceChars: 65536,
+    /**
+     * How long after a plain Enter the shown console must have turned it into
+     * input before the console says it did not (todo 00). xterm hands a key
+     * over inside its own keydown, so this only has to outlast a busy frame.
+     */
+    enterTakenMs: 250,
     /**
      * How long a room search waits after the last keystroke, and the shortest
      * query worth running.

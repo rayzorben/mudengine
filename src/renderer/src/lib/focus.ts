@@ -32,3 +32,50 @@ import type { MouseEvent } from 'react';
 export function keepFocus(event: MouseEvent): void {
   event.preventDefault();
 }
+
+/** What `ownsItsEnter` and `describeElement` read of an element. */
+export interface KeyTarget {
+  tagName: string;
+  isContentEditable: boolean;
+  textContent: string | null;
+  closest(selector: string): unknown;
+  getAttribute(name: string): string | null;
+}
+
+/**
+ * Whether chrome outside the console takes a plain Enter as its own: a text
+ * field, a surface marked `data-owns-keys`, or anything inside a dialog.
+ * Anything else holding the caret is somewhere an Enter for the game went
+ * astray (todo 00).
+ */
+export function ownsItsEnter(target: KeyTarget): boolean {
+  const tag = target.tagName.toUpperCase();
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable ||
+    target.closest('[data-owns-keys], [role="dialog"]') !== null
+  );
+}
+
+/**
+ * An element as a sentence names it: its tag, and its label where it has one.
+ * Text is read only off a control, whose text is its name; a focused card or
+ * scroller would have its whole contents built into a string to keep forty
+ * characters of it.
+ */
+export function describeElement(target: KeyTarget): string {
+  const control = ['BUTTON', 'A', 'LABEL', 'SUMMARY'].includes(target.tagName.toUpperCase());
+  const label = (
+    target.getAttribute('aria-label') ??
+    target.getAttribute('title') ??
+    (control ? target.textContent : null) ??
+    ''
+  )
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  const tag = target.tagName.toLowerCase();
+  return label.length > 0 ? `${tag} "${label}"` : tag;
+}

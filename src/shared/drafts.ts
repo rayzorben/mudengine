@@ -154,6 +154,8 @@ export interface ServerDraft {
    * applies. See `Server.mobRules` and `mergeMobRules`.
    */
   mobRules: MobRule[];
+  /** Whether a hang-up here is charged; null leaves it to the options file. See `Server.hangPenalties`. */
+  hangPenalties: boolean | null;
 }
 
 /**
@@ -226,7 +228,8 @@ export interface GlobalDraft {
     idle: { enabled: boolean; afterSeconds: number; command: string };
     pacing: { window: number; minGapMs: number; ackTimeoutMs: number };
     walk: { stepTimeoutMs: number; clearAfterSeconds: number; minExpPerHour: number };
-    hangUp: ProfileDraft['hangUp'];
+    /** The options file's answer is a plain yes or no: there is nothing above it. */
+    hangUp: Omit<ProfileDraft['hangUp'], 'penalties'> & { penalties: boolean };
     retreat: ProfileDraft['retreat'];
     pvp: ProfileDraft['pvp'];
     combat: ProfileDraft['combat'];
@@ -368,7 +371,8 @@ export interface ProfileDraft {
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    onlyWhenClean: boolean;
+    /** This character's own answer; null leaves it to the realm, then the options file. */
+    penalties: boolean | null;
     onPlayerInRoom: boolean;
   };
   /** Running away — the escape that works, and the one to offer first. */
@@ -403,6 +407,8 @@ export interface ProfileDraft {
     hideForOpener: boolean;
     engage: EngagePolicy;
     retaliate: boolean;
+    /** Rounds hit without moving before auto-combat is lent. See `CombatConfig`. */
+    defendAfterRounds: number;
     /** Leave alone a monster a stranger is already fighting. See `CombatConfig`. */
     politeAttacks: boolean;
     maxMobs: number;
@@ -695,7 +701,8 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     // Parsed rather than trusted, like the loops: this crossed the IPC
     // boundary. `normalizeMobRules` is the same coercion the config file goes
     // through, so a row means one thing whichever door it arrived at.
-    mobRules: normalizeMobRules(value['mobRules'])
+    mobRules: normalizeMobRules(value['mobRules']),
+    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null
   };
 }
 
@@ -793,12 +800,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // that got dragged, not a decision, and refusing the whole save over it
       // would lose everything else on the form.
       belowHealth: Math.min(1, Math.max(0, Number(hangUp['belowHealth']) || 0)),
-      /*
-       * Defaults to *true* when absent, unlike every other boolean here.
-       * Everything else defaults cautiously because caution is cheap; this one
-       * defaults cautiously because the alternative can cost a character.
-       */
-      onlyWhenClean: hangUp['onlyWhenClean'] !== false,
+      penalties: typeof hangUp['penalties'] === 'boolean' ? hangUp['penalties'] : null,
       onPlayerInRoom: hangUp['onPlayerInRoom'] === true
     },
     retreat: {
@@ -835,6 +837,18 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // The one boolean here that defaults *on*, because it is the one that
       // cannot start a fight: something is already swinging. See `CombatConfig`.
       retaliate: combat['retaliate'] !== false,
+      // Absent is the shipped figure, not 0: 0 is a choice to stand and be hit.
+      defendAfterRounds: Math.min(
+        20,
+        Math.max(
+          0,
+          Math.trunc(
+            Number(
+              combat['defendAfterRounds'] ?? DEFAULT_CONFIG.automation.combat.defendAfterRounds
+            ) || 0
+          )
+        )
+      ),
       // Defaults off, which is MegaMUD's own `PoliteAttacks=0`: a blank field
       // must not silently make a character stand aside.
       politeAttacks: combat['politeAttacks'] === true,
@@ -1215,7 +1229,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         // Zero is off, so a missing or unreadable figure is the off one.
         minExpPerHour: clamp(walk['minExpPerHour'], 0, 100_000_000, 0)
       },
-      hangUp: asIf.hangUp,
+      hangUp: { ...asIf.hangUp, penalties: asIf.hangUp.penalties === true },
       retreat: asIf.retreat,
       pvp: asIf.pvp,
       combat: asIf.combat,

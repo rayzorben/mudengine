@@ -1110,6 +1110,11 @@ tuning:
     # Framed lines retained; the terminal keeps the real backscroll.
     lineLogLimit: 500
 
+    # The most commands one talk-box line may stand for: `s;n;2d,6s` is ten.
+    # The line is paced by the prompt, so this is not the realm's flood limit;
+    # it is what `99s` typed for `9s` would cost before anyone could stop it.
+    macroCommands: 40
+
     # How long a prompt that has opened its bracket and not closed it may keep
     # arriving before the client stops waiting for the rest. The bearfather BBS
     # writes its prompt in two pieces about a tenth of a second apart (median
@@ -1743,6 +1748,15 @@ tuning:
     # How often a card redraws a running clock — the uptime readout, and how
     # long a loop has been going. A second, because that is the unit shown.
     clockTickMs: 1000
+
+    # How much restored backscroll a console is handed per write at launch.
+    # xterm parses one write in one go, so a whole restored backscroll was a
+    # second-long freeze per character; slices this size keep each short.
+    restoreSliceChars: 65536
+
+    # How long after a plain Enter the shown console must have turned it into
+    # input before the console says it did not, and where the caret was.
+    enterTakenMs: 250
 
     # How long a room search waits after the last keystroke, and the shortest
     # query worth running.

@@ -467,7 +467,9 @@ describe('the round combat macro', () => {
       hideForOpener: false,
       // And by `statedTheMobRules`, empty, which is what the client already
       // does without the key.
-      mobRules: []
+      mobRules: [],
+      // And by `statedTheNewAutomation`, at the shipped figure (todo 00).
+      defendAfterRounds: 2
     });
   });
 
@@ -756,6 +758,57 @@ describe('the ward switch moving to health', () => {
     migrate();
     expect(said.join(' ')).toMatch(/moved to/);
     expect(said.join(' ')).toContain(home.options);
+  });
+});
+
+/*
+ * `onlyWhenClean` became `penalties`, 2026-09-23 (todo 01): whether the realm
+ * charges for a hang-up. The options file takes the new default; a character
+ * inherits its realm unless it had said `false`, which was *hang up anyway*.
+ */
+describe('the hang-up refusal becoming whether the realm charges', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  const block = (clean: boolean): string =>
+    `automation:\n  safety:\n    hangUp:\n      enabled: true\n      onlyWhenClean: ${clean}\n`;
+  const hangUp = (file: string): Record<string, unknown> => {
+    const parsed = parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+    const automation = parsed['automation'] as Record<string, Record<string, unknown>>;
+    return automation['safety']!['hangUp'] as Record<string, unknown>;
+  };
+  const profile = (id: string, text: string): string => {
+    const file = path.join(home.profilesDir, id, 'profile.yaml');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, 'utf8');
+    return file;
+  };
+
+  it('gives the options file the new default, with its sentence', () => {
+    fs.writeFileSync(home.options, block(true), 'utf8');
+    migrate();
+    expect(hangUp(home.options)).toEqual({ enabled: true, penalties: false });
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('charges for a hang-up');
+  });
+
+  it('leaves a character to its realm, unless it had said hang up anyway', () => {
+    const copied = profile('festus', block(true));
+    const chosen = profile('soul', block(false));
+    migrate();
+    expect(hangUp(copied)).toEqual({ enabled: true });
+    expect(hangUp(chosen)).toEqual({ enabled: true, penalties: false });
+  });
+
+  it('says so, naming the files, and is safe to run again', () => {
+    fs.writeFileSync(home.options, block(true), 'utf8');
+    migrate();
+    expect(said.join(' ')).toMatch(/became "hangUp.penalties"/);
+    expect(said.join(' ')).toContain(home.options);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect(said.join(' ')).not.toMatch(/became "hangUp.penalties"/);
   });
 });
 

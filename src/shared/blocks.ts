@@ -43,6 +43,17 @@ export type BlockType =
   | 'prompt-new-password'
   | 'prompt-selection'
   | 'prompt-realm'
+  /**
+   * `[1] . Paradigm PVE (v1.9.1) [ PvE ]` — one realm on Paradigm's realm
+   * menu, with its mode (`PvE`, `PvP Enabled`). Wire, 226 sessions; stock
+   * GreaterMUD's menu (` 1) GreaterMUD - Docker`) states no mode and is not read.
+   */
+  | 'realm-listed'
+  /**
+   * `    . . Hang Penalties 25%` — the realm listed above it charges this share
+   * for a hang-up. Printed under Paradigm's PvP realm only (todo 01).
+   */
+  | 'realm-hang-penalty'
   | 'prompt-character'
   | 'prompt-menu'
   | 'login-failed'
@@ -872,6 +883,8 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'prompt-new-password': 'session',
   'prompt-selection': 'session',
   'prompt-realm': 'session',
+  'realm-listed': 'session',
+  'realm-hang-penalty': 'session',
   'prompt-character': 'session',
   'prompt-menu': 'session',
   'login-failed': 'session',

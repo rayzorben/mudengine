@@ -535,7 +535,8 @@ interface CharacterForm {
   login: LoginStepDraft[];
   hangUp: boolean;
   hangUpBelow: string;
-  hangUpOnlyWhenClean: boolean;
+  /** This character's own answer, null where it is left to the realm (todo 01). */
+  hangUpPenalties: boolean | null;
   hangUpOnPlayer: boolean;
   pvpNotifyGang: boolean;
   pvpAction: PvpAction;
@@ -561,6 +562,7 @@ interface CharacterForm {
   combatHideForOpener: boolean;
   combatEngage: EngagePolicy;
   combatRetaliate: boolean;
+  combatDefendAfterRounds: string;
   /** Leave alone a monster a stranger is already fighting — MegaMUD's PoliteAttacks. */
   combatPoliteAttacks: boolean;
   combatMaxMobs: string;
@@ -748,7 +750,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     // As a percentage, because that is how somebody thinks about health. The
     // file keeps a fraction, so the whole client holds one representation.
     hangUpBelow: String(Math.round(entry.hangUp.belowHealth * 100)),
-    hangUpOnlyWhenClean: entry.hangUp.onlyWhenClean,
+    hangUpPenalties: entry.hangUp.penalties,
     hangUpOnPlayer: entry.hangUp.onPlayerInRoom,
     pvpNotifyGang: entry.pvp.notifyGang,
     pvpAction: entry.pvp.action,
@@ -758,6 +760,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     combatHideForOpener: entry.combat.hideForOpener,
     combatEngage: entry.combat.engage,
     combatRetaliate: entry.combat.retaliate,
+    combatDefendAfterRounds: String(entry.combat.defendAfterRounds),
     combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
     partyAssist: entry.party.assistLeader,
@@ -942,6 +945,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       hideForOpener: form.combatHideForOpener,
       engage: form.combatEngage,
       retaliate: form.combatRetaliate,
+      defendAfterRounds: Number.parseInt(form.combatDefendAfterRounds, 10) || 0,
       politeAttacks: form.combatPoliteAttacks,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
@@ -953,7 +957,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
     hangUp: {
       enabled: form.hangUp,
       belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100,
-      onlyWhenClean: form.hangUpOnlyWhenClean,
+      penalties: form.hangUpPenalties,
       onPlayerInRoom: form.hangUpOnPlayer
     },
     pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
@@ -1141,6 +1145,15 @@ function copyOf(entry: ProfileEditable): CharacterForm {
 /** This form keeps every field as the string in its box, so the percent is one too. */
 const percent = (fraction: number): string => String(percentOf(fraction));
 
+/** A three-way answer as the select spells it: blank leaves it to the scope above. */
+function penaltiesChoice(value: boolean | null): string {
+  return value === null ? '' : value ? 'yes' : 'no';
+}
+
+function penaltiesOf(choice: string): boolean | null {
+  return choice === 'yes' ? true : choice === 'no' ? false : null;
+}
+
 function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
   return {
     name: '',
@@ -1155,7 +1168,8 @@ function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     database: '',
     // Nor for the monsters, and for exactly the same reason: a ranking names
     // this realm's own monsters, so there is nothing to carry from Global.
-    mobRules: []
+    mobRules: [],
+    hangPenalties: null
   };
 }
 
@@ -1255,7 +1269,9 @@ function emptyForm(
     retreatHaven: retreat.safeHavenRoom,
     hangUp: hangUp.enabled,
     hangUpBelow: percent(hangUp.belowHealth),
-    hangUpOnlyWhenClean: hangUp.onlyWhenClean,
+    // Not the options file's answer copied down: a copy would outrank the
+    // realm's own, and whether a realm charges is a fact about the realm.
+    hangUpPenalties: null,
     hangUpOnPlayer: hangUp.onPlayerInRoom,
     pvpNotifyGang: pvp.notifyGang,
     pvpAction: pvp.action,
@@ -1265,6 +1281,7 @@ function emptyForm(
     combatHideForOpener: combat.hideForOpener,
     combatEngage: combat.engage,
     combatRetaliate: combat.retaliate,
+    combatDefendAfterRounds: String(combat.defendAfterRounds),
     combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
     partyAssist: party.assistLeader,
@@ -2799,6 +2816,17 @@ export default function SettingsScreen({
                           name="combat"
                           onChange={(value) => patch({ combat: value })}
                         />
+                        {/* Drawn whether the switch is on or off: it is the
+                            one combat setting that acts while it is off. */}
+                        <div className="settings-inline">
+                          <NumberField
+                            hint={t('settings.combat.defendAfterRoundsHint')}
+                            label={t('settings.combat.defendAfterRounds')}
+                            name="defend-after-rounds"
+                            onChange={(value) => patch({ combatDefendAfterRounds: value })}
+                            value={form.combatDefendAfterRounds}
+                          />
+                        </div>
                         {form.combat && (
                           <>
                             <CheckField
@@ -3081,12 +3109,17 @@ export default function SettingsScreen({
                         </div>
                         {form.hangUp && (
                           <>
-                            <CheckField
-                              checked={form.hangUpOnlyWhenClean}
-                              hint={t('settings.health.hangUpCleanHint')}
-                              label={t('settings.health.hangUpCleanLabel')}
-                              name="clean"
-                              onChange={(value) => patch({ hangUpOnlyWhenClean: value })}
+                            <SelectField
+                              hint={t('settings.health.hangPenaltiesHint')}
+                              label={t('settings.health.hangPenaltiesLabel')}
+                              name="hang-penalties"
+                              onChange={(value) => patch({ hangUpPenalties: penaltiesOf(value) })}
+                              options={[
+                                { value: '', label: t('settings.health.hangPenaltiesRealm') },
+                                { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
+                                { value: 'no', label: t('settings.health.hangPenaltiesNo') }
+                              ]}
+                              value={penaltiesChoice(form.hangUpPenalties)}
                             />
                             <CheckField
                               checked={form.hangUpOnPlayer}
@@ -4428,6 +4461,27 @@ export default function SettingsScreen({
                       onChange={(rows) => setServerForm({ ...serverForm, mobRules: rows })}
                       rows={serverForm.mobRules}
                     />
+                  </fieldset>
+
+                  {/* Whether a hang-up here is charged: a fact about the place (todo 01). */}
+                  <fieldset data-fieldset="realm-hang-penalties">
+                    <legend>{t('settings.health.hangUpLegend')}</legend>
+                    <div className="settings-inline">
+                      <SelectField
+                        hint={t('settings.health.hangPenaltiesHint')}
+                        label={t('settings.health.hangPenaltiesLabel')}
+                        name="realm-hang-penalties"
+                        onChange={(value) =>
+                          setServerForm({ ...serverForm, hangPenalties: penaltiesOf(value) })
+                        }
+                        options={[
+                          { value: '', label: t('settings.health.hangPenaltiesGlobal') },
+                          { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
+                          { value: 'no', label: t('settings.health.hangPenaltiesNo') }
+                        ]}
+                        value={penaltiesChoice(serverForm.hangPenalties)}
+                      />
+                    </div>
                   </fieldset>
 
                   <div className="settings-actions">

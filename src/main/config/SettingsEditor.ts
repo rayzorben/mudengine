@@ -23,6 +23,7 @@ import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import {
+  ownHangPenalties,
   ownMobRules,
   PROFILE_ACCENTS,
   resolveProfile,
@@ -320,7 +321,9 @@ export class SettingsEditor {
           document.setIn(['automation', 'safety', 'hangUp'], {
             enabled: draft.hangUp.enabled,
             belowHealth: draft.hangUp.belowHealth,
-            onlyWhenClean: draft.hangUp.onlyWhenClean,
+            // Absent leaves it to the realm and then the options file, so null
+            // writes no key rather than a copy of what is inherited.
+            ...(draft.hangUp.penalties === null ? {} : { penalties: draft.hangUp.penalties }),
             onPlayerInRoom: draft.hangUp.onPlayerInRoom
           });
         }
@@ -754,6 +757,11 @@ export class SettingsEditor {
         } else if (document.hasIn(['mobRules'])) {
           document.deleteIn(['mobRules']);
         }
+
+        // And whether a hang-up here is charged: absent leaves it to the
+        // options file, so null removes the key rather than writing one.
+        if (draft.hangPenalties !== null) document.setIn(['hangPenalties'], draft.hangPenalties);
+        else if (document.hasIn(['hangPenalties'])) document.deleteIn(['hangPenalties']);
       },
       verify: (value) => {
         const server = asServer(value, id);
@@ -931,7 +939,7 @@ export class SettingsEditor {
         hangUp: {
           enabled: config.automation.safety.hangUp.enabled,
           belowHealth: config.automation.safety.hangUp.belowHealth,
-          onlyWhenClean: config.automation.safety.hangUp.onlyWhenClean,
+          penalties: config.automation.safety.hangUp.penalties,
           onPlayerInRoom: config.automation.safety.hangUp.onPlayerInRoom
         },
         retreat: retreatOf(config.automation.safety.retreat),
@@ -1179,7 +1187,12 @@ export class SettingsEditor {
          * stale the first time the first one changes, which is the rule the
          * options template already keeps: defaults live in exactly one place.
          */
-        hangUp: effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp,
+        // The character's own answer about penalties, read raw as `mobRules`
+        // is below: the resolved one may be the realm's or the options file's.
+        hangUp: {
+          ...(effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp),
+          penalties: ownHangPenalties(record)
+        },
         retreat: retreatOf(
           effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
         ),
@@ -1367,7 +1380,7 @@ function blank(id: string): ProfileEditable {
     username: '',
     hasPassword: false,
     login: [],
-    hangUp: DEFAULT_CONFIG.automation.safety.hangUp,
+    hangUp: { ...DEFAULT_CONFIG.automation.safety.hangUp, penalties: null },
     retreat: retreatOf(DEFAULT_CONFIG.automation.safety.retreat),
     pvp: DEFAULT_CONFIG.automation.safety.pvp,
     combat: DEFAULT_CONFIG.automation.combat,

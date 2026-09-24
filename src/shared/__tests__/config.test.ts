@@ -184,7 +184,8 @@ describe('normalizeConfig', () => {
         database: '',
         // Empty for the same reason the menus are: a realm ranks nothing until
         // somebody playing it says so.
-        mobRules: []
+        mobRules: [],
+        hangPenalties: null
       }
     ]);
   });

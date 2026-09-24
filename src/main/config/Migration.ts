@@ -124,9 +124,31 @@ const STATE = ['memory', 'fights', 'realms', 'logs'];
 const STATE_FILES = ['internal.yaml', 'mob-lore.json', 'workspace.json'];
 
 /**
+ * Every file this run has parsed, by path, as the text it was parsed from.
+ *
+ * Sixty-seven steps each read and parsed every file they might touch — the
+ * options file and each profile, on every launch — and that was most of the
+ * two seconds the window waited on this (todo 02, 2026-09-23: 12ms a parse of
+ * a 51 KB options file, 3.6ms a clone). A step is handed a clone, so one that
+ * changes a document and answers *unchanged* leaves no trace, exactly as a
+ * fresh parse did; the text is the key and a write drops the entry, so what a
+ * step reads is always a parse of what is on disk. Only for one run.
+ */
+let parsed: Map<string, { text: string; document: Document }> | null = null;
+
+/**
  * Brings whatever is on disk up to the current shape. Safe to call every launch.
  */
 export function migrateHome(options: MigrationOptions): void {
+  parsed = new Map();
+  try {
+    migrateAll(options);
+  } finally {
+    parsed = null;
+  }
+}
+
+function migrateAll(options: MigrationOptions): void {
   const { home, note } = options;
 
   adoptLegacyRoot(options);
@@ -218,6 +240,7 @@ export function migrateHome(options: MigrationOptions): void {
   pinTheBlessSwitch(home, note);
   theAccountJoinedTheScript(home, note);
   thePagerRepeats(home, note);
+  theHangPenaltyIsTheRealms(home, note);
 }
 
 /**
@@ -2339,14 +2362,8 @@ function theEscapeIsADirection(
  */
 function templateComments(template: string | undefined, root: string): Map<string, string> {
   const found = new Map<string, string>();
-  if (template === undefined || !fs.existsSync(template)) return found;
-  let document: Document;
-  try {
-    document = parseDocument(fs.readFileSync(template, 'utf8'));
-  } catch {
-    return found;
-  }
-  if (document.errors.length > 0) return found;
+  const document = templateOf(template);
+  if (document === null) return found;
   const block = document.get(root, true);
   if (!isMap(block)) return found;
   for (const pair of block.items) {
@@ -3373,6 +3390,44 @@ function theDoorsOpenByDefault(home: Home, note: (message: string) => void): voi
 }
 
 /**
+ * `hangUp.onlyWhenClean` became `hangUp.penalties` (2026-09-23, todo 01): the
+ * question is whether the realm charges for a hang-up, which Paradigm's menu
+ * answers itself and a realm's `server.yaml` can answer for everyone there.
+ * Every file stated `onlyWhenClean: true`, the shipped default copied whole,
+ * so nobody chose it: the options file takes the new default, `penalties:
+ * false`, and a profile drops the key to inherit its realm. A profile that
+ * said `false` said *hang up anyway*, and keeps that as `penalties: false`.
+ */
+function theHangPenaltyIsTheRealms(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const changed: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const hangUp = document.getIn(['automation', 'safety', 'hangUp'], true);
+      if (!isMap(hangUp) || !hangUp.has('onlyWhenClean')) return false;
+      const saidFalse = hangUp.get('onlyWhenClean') === false;
+      hangUp.delete('onlyWhenClean');
+      if ((file === home.options || saidFalse) && !hangUp.has('penalties')) {
+        const pair = document.createPair('penalties', false) as Pair;
+        if (isScalar(pair.key)) pair.key.commentBefore = HANG_PENALTIES_COMMENT;
+        hangUp.items.push(pair);
+      }
+      changed.push(file);
+      return true;
+    });
+  }
+
+  if (changed.length === 0) return;
+  const params = { count: changed.length, fileList: changed.join(', ') };
+  note(
+    changed.length === 1
+      ? t('notices.migration.hangPenalties.one', params)
+      : t('notices.migration.hangPenalties.many', params)
+  );
+}
+
+/**
  * `movement.useWards` becomes `health.useWards`, and it is turned **on**
  * (2026-09-22, todo 02).
  *
@@ -4135,6 +4190,16 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
       if (addKeys(document, ['automation', 'health'], [['useWards', true]], USE_WARDS_COMMENT)) {
         changed = true;
       }
+      if (
+        addKeys(
+          document,
+          ['automation', 'combat'],
+          [['defendAfterRounds', 2]],
+          DEFEND_AFTER_ROUNDS_COMMENT
+        )
+      ) {
+        changed = true;
+      }
       if (changed) stated.push(file);
       return changed;
     });
@@ -4426,6 +4491,15 @@ const NOTIFY_WEAR_OFF_COMMENT = ` Tell the party member who blessed you when the
 const FIGHT_ON_ARRIVAL_COMMENT = ` Turn auto-combat back on when a route you asked for arrives: walking
  with it off is how you get somewhere without fighting on the way, and on
  arrival that reason is gone. Flips the switch in this file.`;
+
+const DEFEND_AFTER_ROUNDS_COMMENT = ` With auto-combat off, or a route run with it off, being hit for this many
+ rounds without moving turns it on until you next arrive in another room.
+ Off means do not start fights; it never meant stand there and be killed.
+ Flips the switch in this file, both ways. 0 never does.`;
+
+const HANG_PENALTIES_COMMENT = ` Whether this realm charges for a hang-up at all. Off: below belowHealth
+ the client simply hangs up. Paradigm's realm menu states it, and that
+ outranks this; so does a realm's own server.yaml (hangPenalties).`;
 
 const USE_WARDS_COMMENT = ` The realm's own half of the potion rules above: where it says a spell
  stops a room's effect and a carried item's use casts it -- the waterskin
@@ -6154,15 +6228,51 @@ function editOptions(home: Home, change: (document: Document) => boolean): void 
   edit(home.options, change);
 }
 
-function edit(file: string, change: (document: Document) => boolean): void {
-  if (!fs.existsSync(file)) return;
+/**
+ * The document in `file`, fresh for the caller to change: a clone of this
+ * run's parse while the text is unchanged (`parsed`), else a new parse. Null
+ * for a file that will not parse, which is left alone.
+ */
+function documentOf(file: string): Document | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+  const kept = parsed?.get(file);
+  if (kept !== undefined && kept.text === text) return kept.document.clone();
   let document: Document;
   try {
-    document = parseDocument(fs.readFileSync(file, 'utf8'));
+    document = parseDocument(text);
   } catch {
-    return;
+    return null;
   }
-  if (document.errors.length > 0) return;
+  if (document.errors.length > 0) return null;
+  parsed?.set(file, { text, document: document.clone() });
+  return document;
+}
+
+/** The template's document, to read and never to change or take nodes from. */
+function templateOf(template: string | undefined): Document | null {
+  if (template === undefined || !fs.existsSync(template)) return null;
+  const kept = parsed?.get(template);
+  if (kept !== undefined) return kept.document;
+  let document: Document;
+  try {
+    document = parseDocument(fs.readFileSync(template, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (document.errors.length > 0) return null;
+  parsed?.set(template, { text: '', document });
+  return document;
+}
+
+function edit(file: string, change: (document: Document) => boolean): void {
+  if (!fs.existsSync(file)) return;
+  const document = documentOf(file);
+  if (document === null) return;
 
   let changed = false;
   try {
@@ -6177,6 +6287,11 @@ function edit(file: string, change: (document: Document) => boolean): void {
     const temporary = `${file}.tmp-${process.pid}`;
     fs.writeFileSync(temporary, String(document), 'utf8');
     fs.renameSync(temporary, file);
+    /*
+     * Parsed again by the next step, not kept: a step may set a plain value
+     * into a map, which prints the same but is not the node a parse makes.
+     */
+    parsed?.delete(file);
   } catch {
     // Reported by the store that reads it next; a failed move is not a reason
     // to refuse to start.
@@ -6427,14 +6542,8 @@ function theTransportBecameOneButton(
  * block's own lead, and the list of button ids is in it.
  */
 function templateLead(template: string | undefined, root: string): string | undefined {
-  if (template === undefined || !fs.existsSync(template)) return undefined;
-  let document: Document;
-  try {
-    document = parseDocument(fs.readFileSync(template, 'utf8'));
-  } catch {
-    return undefined;
-  }
-  if (document.errors.length > 0) return undefined;
+  const document = templateOf(template);
+  if (document === null) return undefined;
   const contents = document.contents;
   if (!isMap(contents)) return undefined;
   const pair = contents.items.find((item) => keyText(item) === root);

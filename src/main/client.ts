@@ -1401,6 +1401,15 @@ function registerIpc(): void {
     host?.get(session)?.manager.send(data);
   });
 
+  // Parsed again in main; a payload that is not a string is not a line.
+  on(Send.macro, (_caller, session: SessionId, line: unknown) => {
+    if (typeof line === 'string') host?.get(session)?.manager.sendMacro(line);
+  });
+
+  on(Send.dropMacro, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.dropTyped();
+  });
+
   on(Send.resize, (_caller, session: SessionId, size: TerminalSize) => {
     host?.get(session)?.manager.resize(size);
   });

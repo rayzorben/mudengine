@@ -5,11 +5,12 @@
  */
 import { CommandQueue } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
-import { Walker } from '../automation/Walker';
+import { fightIsRunning, Walker } from '../automation/Walker';
 import type { FledRoom, WalkProgress } from '../../shared/walk';
 import { stillFled } from '../../shared/walk';
 import { holdsMovement } from '../../shared/spellcraft';
 import { splitOntoChannel } from '../../shared/talk';
+import { macroLength, parseMacro } from '../../shared/macro';
 import {
   capabilitiesOf,
   CLASS_STEALTH_ABILITY,
@@ -71,11 +72,13 @@ import { EquipmentManager } from '../automation/EquipmentManager';
 import { bareName, sameItem } from '../../shared/items';
 import { chargedInCopper } from '../../shared/coins';
 import { Wards } from '../automation/Wards';
+import { RealmMenu } from './RealmMenu';
 import { Events } from '../automation/Events';
 import type { Loop } from '../../shared/loops';
 import { splitStop } from '../../shared/loops';
 import {
   OPPOSITE,
+  DIRECTION_NAME,
   asDirection,
   hazardAvoided,
   nameAnswersTo,
@@ -116,6 +119,8 @@ import { preferredEdges } from '../world/loopDraft';
 
 /** No preferred corridors: one value, so a session with none re-renders nothing. */
 const NO_EDGES: ReadonlySet<string> = new Set();
+/** `escapeRefusalSaid` for a character nothing is taking anywhere, which no room key can equal. */
+const STAYING = '\0staying';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
@@ -737,6 +742,17 @@ export class SessionManager {
    */
   private lastEscapeSent = 0;
   /**
+   * The escape's last refusal, as room, reason and what happens instead, so
+   * it is said once rather than on every prompt of the fight it refused out
+   * of (todo 00: a dog's twenty-five seconds printed it five times). Cleared
+   * by an escape that goes, and by the fight ending.
+   */
+  private escapeRefusalSaid: string | null = null;
+  /** Talk-box lines queued this session, so each one's commands can be named together. */
+  private macros = 0;
+  /** What the realm menu said a hang-up costs on the realm chosen (todo 01). */
+  private readonly realmMenu = new RealmMenu();
+  /**
    * The escape whose answer has not come: the direction sent, by when, how
    * many times its door has been opened, and every direction tried from this
    * room. A declared postcondition, as `Walker` arms `expecting` — the escape
@@ -797,6 +813,12 @@ export class SessionManager {
   private saidMortallyWounded = false;
   /** A `safe-haven` walk home waiting for the fight to end; see `walkHomeIfDue`. */
   private retreat: { room: string; armedAt: number; from: string | null } | null = null;
+  /**
+   * The safe room a walk home is under way to. A fight on the way ends that
+   * walk (`resumeAfterFight: false`), and re-arming `retreat` there keeps the
+   * journey going after it and keeps the character going somewhere (todo 03).
+   */
+  private homeward: string | null = null;
   /**
    * Where a route the player was walking still owes them, across a lost
    * connection. See `pickUpAfterLoss`.
@@ -1319,6 +1341,16 @@ export class SessionManager {
     this.queue = new CommandQueue(automation, {
       send: (command, intent) => {
         /*
+         * The player's own line, paced (todo 04): the path a keystroke takes,
+         * so it is observed and recorded as typed. Safe inside a drain: the
+         * queue sends only with no typing hold standing, so `send`'s own
+         * `noteTyping(false)` returns at once.
+         */
+        if (intent.typed === true) {
+          this.send(`${command}\r`);
+          return;
+        }
+        /*
          * An empty line is not a command, and the typed path has always said
          * so (`send` skips all three of these for a bare Enter). Filing one
          * would clear the slots that interpret the *previous* command — the
@@ -1336,6 +1368,7 @@ export class SessionManager {
         if (command.length > 0) {
           this.tracker.observeCommand(command);
           this.login.observeCommand(command);
+          this.noteRealmChoice(command);
           // The classifier needs it too: the server echoes what we send, and
           // `You say "<command>"` is only interpretable next to it.
           this.classifier.observeCommand(command);
@@ -1415,11 +1448,28 @@ export class SessionManager {
      */
     this.combatLease = new CombatLease({
       flip: (on) => this.sink.switchAutomation?.('combat', on) ?? false,
-      notice: (message) => this.sink.notice(message)
+      notice: (message) => this.sink.notice(message),
+      decided: (decision) => this.noteSafety(decision),
+      declined: () => this.combat.journeyDeclined,
+      returned: (declined) => this.combat.leaseReturned(declined)
     });
+    // Configured where it is built, as the loop runner is: unconfigured, it
+    // read every switch as on and would never lend (todo 00).
+    this.combatLease.configure(automation);
     this.walker = new Walker(automation, this.queue, {
       // A loop walks through the walker, so this is how it hears a leg end.
       ended: (arrived, reason) => {
+        const home = this.homeward;
+        this.homeward = null;
+        const standing = this.tracker.current;
+        if (home !== null && !arrived && fightIsRunning(standing)) {
+          const { map, number } = standing.room;
+          this.retreat = {
+            room: home,
+            armedAt: Date.now(),
+            from: map !== null && number !== null ? roomId(map, number) : null
+          };
+        }
         // Whether the player asked for this walk, before anything replans.
         this.combatLease.onWalkEnded(arrived, this.walkAsked, this.walkRun);
         this.walkAsked = false;
@@ -1556,6 +1606,10 @@ export class SessionManager {
       beforeStep: (ahead, state) => this.light.beforeStep(ahead, state),
       // And the ward the room ahead wants, off the pack (todo 105).
       wardFor: (to, state) => this.wards.beforeStep(to, state),
+      // Whether a fight here is one auto-combat will fight: the walk waits out
+      // nothing else (`Walker.canEndAFight`), and never past an escape's move.
+      willFight: () => this.combat.wouldFight,
+      escaping: () => this.escapeAwaiting !== null || this.isRetreating(),
       /*
        * And whether one is coming for the room the character is standing in,
        * which is what a walk waits on rather than giving up in the dark. This
@@ -2745,7 +2799,10 @@ export class SessionManager {
        * that has ended would be sent into the *next* one.
        */
       this.walker.stop(t('session.walk.stoppedConnectionClosed'));
+      this.dropTyped();
       this.queue.clear();
+      // A lent switch is in the player's file; nothing is fighting for it now.
+      this.combatLease.end(lost ? 'lost' : 'closed');
       /*
        * The character is no longer in the realm, and saying otherwise is a lie
        * the HUD acts on: it went on reporting vitals and a room for a character
@@ -3171,6 +3228,7 @@ export class SessionManager {
     this.safetyLog.length = 0;
     this.engageLog.length = 0;
     this.login.reset();
+    this.realmMenu.reset();
     this.outbound = '';
     this.playerMove = null;
     this.phaseWas = 'unknown';
@@ -3295,6 +3353,7 @@ export class SessionManager {
           this.playerMove = { where: this.whereWeStand(), at: Date.now() };
         }
         this.login.observeCommand(command);
+        this.noteRealmChoice(command);
         this.classifier.observeCommand(command);
         /*
          * The earliest moment the client can know the command prompt is about
@@ -3359,6 +3418,91 @@ export class SessionManager {
     this.queue.noteTyping(this.outbound.length > 0);
     // And the server holds its answers behind that line, so no claim ages.
     this.tracker.noteTyping(this.outbound.length > 0);
+  }
+
+  /**
+   * A talk-box line that stands for several commands (todo 04), parsed here
+   * again rather than trusted off the wire. Each goes into the queue at the
+   * player's own band and out through `send` when its turn comes, one prompt
+   * at a time: written at once, fifteen commands fill the realm's queue and
+   * the automation behind them is told to slow down (`Intent.typed`).
+   */
+  sendMacro(line: string): void {
+    const steps = parseMacro(line);
+    if (steps === null) {
+      this.send(`${line}\r`);
+      return;
+    }
+    const count = macroLength(steps);
+    const limit = tuning().session.macroCommands;
+    if (count > limit) {
+      this.sink.notice(t('session.macro.tooMany', { count, limit }));
+      return;
+    }
+    const holding = this.queue.holding;
+    if (holding !== null || !this.client.connected) {
+      this.sink.notice(
+        holding !== null ? t('session.macro.held', { reason: holding }) : t('session.macro.offline')
+      );
+      return;
+    }
+    const batch = `macro:${(this.macros += 1)}:`;
+    let n = 0;
+    for (const step of steps) {
+      for (let i = 0; i < step.times; i += 1) {
+        n += 1;
+        const taken = this.queue.enqueue({
+          command: step.command,
+          priority: 'user',
+          typed: true,
+          // Unique per command: a second `s` is a different move.
+          coalesceKey: `${batch}${n}`,
+          reason: t('session.macro.reason', { line })
+        });
+        if (!taken) {
+          /*
+           * The line's own earlier command can close the queue: a `train
+           * stats` goes out inside `enqueue` and holds it. What is still
+           * waiting of the line goes too; what went out has gone.
+           */
+          this.queue.cancel((intent) => intent.coalesceKey?.startsWith(batch) === true);
+          const reason = this.queue.holding;
+          this.sink.notice(
+            reason !== null
+              ? t('session.macro.restHeld', { command: step.command, reason })
+              : t('session.macro.restRefused', { command: step.command })
+          );
+          this.publishAutomation();
+          return;
+        }
+      }
+    }
+    this.publishAutomation();
+  }
+
+  /**
+   * What is still waiting of the talk box's lines, gone and said. The box's
+   * own Drop, and a death: the rest of a path walked from a temple is a walk
+   * nobody asked for.
+   */
+  dropTyped(died = false): void {
+    const count = this.queue.cancel((intent) => intent.typed === true);
+    if (count === 0) return;
+    // The box's count is read off the snapshot, and nothing else may move soon.
+    this.publishAutomation();
+    if (died) {
+      this.sink.notice(
+        count === 1
+          ? t('session.macro.droppedDied.one', { count })
+          : t('session.macro.droppedDied.many', { count })
+      );
+    } else {
+      this.sink.notice(
+        count === 1
+          ? t('session.macro.dropped.one', { count })
+          : t('session.macro.dropped.many', { count })
+      );
+    }
   }
 
   resize(size: TerminalSize): void {
@@ -3545,6 +3689,8 @@ export class SessionManager {
    */
   private leftTheRealm(): void {
     this.sink.notice(t('session.realm.left'));
+    this.combatLease.end('left');
+    this.dropTyped();
     this.queue.clear();
     this.playerMove = null;
     // A journey owed across a loss is owed to a character standing in the
@@ -3710,11 +3856,14 @@ export class SessionManager {
     this.queue.configure(automation);
     this.routines.configure(automation);
     this.walker.configure(automation);
+    // The lease first: it knows whether this reload is its own write landing.
+    const leaseEdge = this.combatLease.configure(automation);
     this.combat.configure(
       automation.combat,
       automation.enabled,
       automation.spells,
-      automation.party
+      automation.party,
+      leaseEdge
     );
     this.recovery.configure(automation.health, automation.enabled, automation.party);
     this.loot.configure(automation.loot, automation.supplies, automation.enabled);
@@ -3739,7 +3888,6 @@ export class SessionManager {
     this.potions.configure(automation.health, automation.enabled);
     this.cures.configure(automation.spells, automation.enabled);
     this.blessings.configure(automation.spells, automation.enabled);
-    this.combatLease.configure(automation);
     this.invoke.configure(automation.enabled && automation.spells.invokeItems);
     this.events.configure(automation.events, automation.enabled);
     this.loops.configure(automation.health, automation.movement, automation.walk);
@@ -4220,6 +4368,9 @@ export class SessionManager {
     // keystroke's echo, and the sentence the server prints on SAVE alone.
     this.statScreen.onBlock(block);
 
+    // Ahead of the login script, which answers the realm prompt inside its own
+    // `onBlock`: the menu has to know it was asked before the answer goes.
+    this.realmMenu.onBlock(block);
     this.login.onBlock(block);
     /*
      * An unrecognised command is not refused by this server — it is *said out
@@ -4272,7 +4423,11 @@ export class SessionManager {
      * same block, which is right: a plain walk has to end on a death whether
      * anything else is watching or not.
      */
-    if (block.type === 'user-dies') this.stopGoingAnywhere();
+    if (block.type === 'user-dies') {
+      this.stopGoingAnywhere();
+      this.combatLease.end('died');
+      this.wards.died();
+    }
 
     this.noticeRealmMismatch(block);
     this.rules.onBlock(block);
@@ -4394,6 +4549,17 @@ export class SessionManager {
     const batchChanged = batch ? this.tracker.apply(batch, batch.rows) : false;
     // An escape in flight reads what the server said back (todo 06).
     if (this.escapeAwaiting !== null) this.settleEscape(block, roomBefore);
+    /*
+     * A monster's blow on this character, for the rounds `CombatLease` counts.
+     * After `apply`: a miss's pattern also fits a sentence about somebody
+     * standing here, and only the tracker's vouching puts an attacker on it.
+     */
+    if (
+      block.type === 'mob-hits' ||
+      (block.type === 'mob-misses' && this.tracker.current.combat.attackers.length > 0)
+    ) {
+      this.combatLease.noteMonsterBlow(block.at);
+    }
     const changed = lineChanged || batchChanged;
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
@@ -4491,9 +4657,10 @@ export class SessionManager {
        * fumble branch imposes.
        *
        * Both read `this.answering` — the status line's echo — because the
-       * sentence names nothing, and it is what makes this apply to automation
-       * and not to a person: the resend is refused unless the fumbled command
-       * is the one the queue itself last sent.
+       * sentence names nothing, and it is what makes this apply to what the
+       * queue sent and not to a keystroke: the resend is refused unless the
+       * fumbled command is one the queue itself sent, a talk-box line's
+       * included.
        */
       this.tracker.noteFumbled(this.answering);
       if (this.queue.resendLast(this.answering)) {
@@ -4594,6 +4761,18 @@ export class SessionManager {
       this.considerEscape(state);
       // And the walk home a `safe-haven` escape armed, once the fight is over.
       this.walkHomeIfDue(state);
+      /*
+       * Hit and not moving with auto-combat off lends it (todo 00). After the
+       * walker, whose arrival decides first whether a destination keeps it on,
+       * and after the escape, which outranks fighting.
+       */
+      this.combatLease.defend(state, {
+        moveOnly,
+        escaping: this.escapeAwaiting !== null || this.isRetreating(),
+        stoodDown: this.combat.stoodDown,
+        movePending: this.tracker.pendingMoves > 0,
+        fighting: this.combat.willFight
+      });
       if (!moveOnly) {
         // Shopping, which yields to every one of the above: not while running
         // away, not while walking home, not while anything else has the
@@ -6883,6 +7062,7 @@ export class SessionManager {
      */
     if (!state.inCombat && state.combat.attackers.length === 0) {
       this.forgetRanFrom(Date.now());
+      this.escapeRefusalSaid = null;
       return;
     }
 
@@ -6934,13 +7114,59 @@ export class SessionManager {
       safety.belowMana > 0 && manaFraction !== null && manaFraction <= safety.belowMana;
     if (!hurt && !outnumbered && !drained) return;
 
-    this.lastAskedToEscape = now;
     const why = hurt
       ? t('session.safety.whyHealth', { percent: this.percentText(fraction) })
       : drained
         ? t('session.safety.whyMana', { percent: this.percentText(manaFraction) })
         : t('session.safety.whyAttackers', { count: state.combat.attackers.length });
+    /*
+     * **Only a character the client is taking somewhere runs** (todo 03): a
+     * route that has arrived is where the player wanted to be. Said once a
+     * fight and traced; the PvP retreat is its own switch and does not come
+     * through here. `mudengine-automation` › *Running away is a direction*.
+     */
+    if (!this.goingSomewhere()) {
+      if (this.escapeRefusalSaid === STAYING) return;
+      this.escapeRefusalSaid = STAYING;
+      const fighting = this.combat.willFight || this.combatLease.lending;
+      this.sink.notice(
+        t('session.safety.escapeStaying', {
+          why,
+          then: fighting
+            ? t('session.safety.escapeStanding')
+            : t('session.safety.escapeNotFighting')
+        })
+      );
+      this.noteSafety({
+        at: now,
+        action: 'retreat',
+        because: why,
+        acted: false,
+        refused: t('session.safety.escapeStayingReason')
+      });
+      return;
+    }
+
+    this.lastAskedToEscape = now;
     this.escape(state, why, now);
+  }
+
+  /**
+   * Whether the client is taking this character anywhere: a walk under way or
+   * held, a running lap or one a follower's `@wait` paused, a walk to the safe
+   * room armed, or an errand or quest run whose leg a fight has ended — each
+   * walks on once the fight is over.
+   */
+  private goingSomewhere(): boolean {
+    return (
+      this.movement.moving ||
+      this.pausedForFollowers ||
+      this.retreat !== null ||
+      this.supplies.current !== null ||
+      this.trainLevel.busy ||
+      this.itemErrand.running ||
+      this.questRunner.running
+    );
   }
 
   /**
@@ -7122,17 +7348,44 @@ export class SessionManager {
        * that did nothing, and the notice read exactly as it would have if the
        * escape were working. A refusal is a decision and a decision nobody can
        * read did not happen.
+       *
+       * **And it says what is true** (todo 00). A room that printed exits
+       * every one of which leads back into a room just run from did name an
+       * exit — the client refused it — and *standing and fighting* is only
+       * true where auto-combat will swing, lent or not.
        */
-      this.sink.notice(t('session.safety.escapeNoExit', { why }));
+      const blocked = state.room.exits.flatMap((exit) => {
+        const direction = asDirection(exit.direction);
+        return direction === null || tried.has(direction) ? [] : [DIRECTION_NAME[direction]];
+      });
+      const fighting = this.combat.willFight || this.combatLease.lending;
+      const then = fighting
+        ? t('session.safety.escapeStanding')
+        : t('session.safety.escapeNotFighting');
+      const said = `${here ?? state.room.name}|${blocked.join(',')}|${fighting}`;
+      if (said === this.escapeRefusalSaid) return;
+      this.escapeRefusalSaid = said;
+      const directions = blocked.join(', ');
+      this.sink.notice(
+        blocked.length === 0
+          ? t('session.safety.escapeNoExit', { why, then })
+          : blocked.length === 1
+            ? t('session.safety.escapeOnlyBack.one', { why, directions, then })
+            : t('session.safety.escapeOnlyBack.many', { why, directions, then })
+      );
       this.noteSafety({
         at: now,
         action: 'retreat',
         because: why,
         acted: false,
-        refused: t('session.safety.escapeNoExitReason')
+        refused:
+          blocked.length === 0
+            ? t('session.safety.escapeNoExitReason')
+            : t('session.safety.escapeOnlyBackReason')
       });
       return;
     }
+    this.escapeRefusalSaid = null;
 
     /*
      * The room being run out of, so nothing walks back into it while the fight
@@ -7423,6 +7676,7 @@ export class SessionManager {
       this.sink.notice(t('session.safety.retreatRefused', { room: retreat.room, reason: refused }));
       return;
     }
+    this.homeward = retreat.room;
     this.sink.notice(
       t('session.safety.retreatPlanned', { room: retreat.room, stepCount: route.steps.length })
     );
@@ -7763,6 +8017,8 @@ export class SessionManager {
    * keeps its route, which is what `startMoving` picks back up.
    */
   stopMoving(): void {
+    // A walk home the player stops is not carried past the fight it stops in.
+    this.homeward = null;
     const reason = t('session.walk.stoppedByPlayer');
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
     this.walker.stop(reason);
@@ -7971,6 +8227,7 @@ export class SessionManager {
   }
 
   private stopGoingAnywhere(): void {
+    this.homeward = null;
     const retreat = this.retreat;
     if (retreat !== null) {
       this.retreat = null;
@@ -8006,6 +8263,8 @@ export class SessionManager {
     this.itemErrand.abandon(t('session.supplies.abandonedDied'));
     // And the quest run, on the same terms: the temple is not on its plan.
     this.questRunner.abandon(t('session.supplies.abandonedDied'));
+    // And what is left of a talk-box line: its moves were typed from there.
+    this.dropTyped(true);
     /*
      * And a route still owed from a lost connection — the third holder of a
      * destination, and the one with the narrowest window: dialled back into
@@ -8096,6 +8355,17 @@ export class SessionManager {
     return Date.now() - this.lastEscapeSent < this.automationConfig.safety.retreat.cooldownMs;
   }
 
+  /** A command answering the realm menu: what it said the realm chosen charges, said once. */
+  private noteRealmChoice(command: string): void {
+    const chosen = this.realmMenu.noteCommand(command);
+    if (chosen === null) return;
+    this.sink.notice(
+      chosen.percent > 0
+        ? t('session.safety.realmCharges', { realm: chosen.realm, percent: chosen.percent })
+        : t('session.safety.realmChargesNothing', { realm: chosen.realm })
+    );
+  }
+
   /**
    * The panic button, and why it mostly refuses to be pressed.
    *
@@ -8114,6 +8384,9 @@ export class SessionManager {
     const safety = this.automationConfig.safety.hangUp;
     if (!safety.enabled || !this.automationConfig.enabled) return;
     if (state.phase !== 'in-game' || !this.client.connected) return;
+    // Once: the lines already in the socket still arrive while it closes, and
+    // each would hang up, and say so, again.
+    if (this.current.phase === 'closing') return;
 
     const fraction = this.healthFraction(state);
     const hurt = fraction !== null && fraction <= safety.belowHealth;
@@ -8124,8 +8397,23 @@ export class SessionManager {
       ? t('session.safety.whyHealth', { percent: this.percentText(fraction) })
       : t('session.safety.whyCompany');
     const assessment = this.hangUp.assess(state, Date.now());
+    // The realm's own menu outranks every setting; see `RealmMenu`.
+    const menu = this.realmMenu.penalty;
+    const penalised = menu !== null ? menu.percent > 0 : safety.penalties;
 
-    if (safety.onlyWhenClean && !assessment.clean) {
+    if (!penalised) {
+      this.lastHangUpRefusal = null;
+      this.sink.notice(
+        menu !== null
+          ? t('session.safety.hangingUpUncharged', { why, realm: menu.realm })
+          : t('session.safety.hangingUpUnchargedSetting', { why })
+      );
+      this.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
+      this.disconnect('client');
+      return;
+    }
+
+    if (!assessment.clean) {
       // Once per reason-set, not once per status line: at low health this runs
       // several times a second and a repeated warning is a warning nobody reads.
       const key = assessment.reasons.join('|');
@@ -8146,22 +8434,8 @@ export class SessionManager {
     }
 
     this.lastHangUpRefusal = null;
-    this.sink.notice(
-      assessment.clean
-        ? t('session.safety.hangingUpClean', { why })
-        : t('session.safety.hangingUp', { why, reasons: assessment.reasons.join('; ') })
-    );
-    this.noteSafety({
-      at: Date.now(),
-      action: 'hang up',
-      because: why,
-      acted: true,
-      ...(assessment.clean
-        ? {}
-        : {
-            refused: t('session.safety.penaltyLikely', { reasons: assessment.reasons.join('; ') })
-          })
-    });
+    this.sink.notice(t('session.safety.hangingUpClean', { why }));
+    this.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
     // Through the same path the player's own disconnect takes, so the phase,
     // the walker, the queue and the roster are all torn down identically —
     // said as the *client's* doing, because nobody pressed anything.
@@ -8181,14 +8455,16 @@ export class SessionManager {
    * Cleared rather than paused: what is queued was decided for a character
    * standing in a room, and the character is not standing in one — the server
    * has already run `Player.Exits()` on them. The player's own keystrokes are
-   * untouched, as they are everywhere else; they never come through the queue,
-   * and typing into the form is the whole reason they are there.
+   * untouched, as they are everywhere else, and typing into the form is the
+   * whole reason they are there; what is left of a talk-box line, which does
+   * come through the queue, is dropped and said.
    *
    * Said out loud, once, with the refusal recorded beside every other one: a
    * client that silently stops automating looks exactly like a client that has
    * crashed.
    */
   private holdForStatScreen(because: string): void {
+    if (this.queue.holding === null) this.dropTyped();
     if (!this.queue.hold(because)) return;
     this.sink.notice(t('session.stats.held'));
     this.noteSafety({
