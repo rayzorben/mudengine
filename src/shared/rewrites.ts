@@ -208,6 +208,7 @@ const SOLD_FIELDS: readonly FieldSpec[] = [
   text('name'),
   number('quantity'),
   text('price'),
+  text('priceLong'),
   number('cost'),
   text('afford'),
   flag('short'),
@@ -397,7 +398,7 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     template: [
       '{table header}',
       '{for item in items}',
-      '{bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.price}  {item.afford}  {item.usable}  {item.icon}',
+      '{bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}',
       '{/for}',
       '{/table}'
     ].join('\n')
@@ -833,6 +834,12 @@ export function shopScope(rows: readonly ShopRow[], wealth: number | null, t: Ui
         name: sold.name,
         quantity: fact(sold.quantity),
         price: sold.price,
+        /*
+         * The counter's price on the coin ladder, richest coins first: `50003
+         * gold crowns` is `5 runic, 3 gold`. The counter's own words where it
+         * said nothing the ladder can carry — an unreadable price, or `Free`.
+         */
+        priceLong: sold.cost === null || sold.cost === 0 ? sold.price : wealthLong(sold.cost, t),
         cost: fact(sold.cost),
         afford: short ? { text: t('rewrites.shop.short'), colour: 'brightRed' } : { text: '' },
         short: wealth === null || sold.cost === null ? null : short,

@@ -99,6 +99,16 @@ export class Wards {
   }
 
   /**
+   * A death strips every effect without a word (`Player.Killed` →
+   * `RemoveSpellAbilities`, Player.cs:1406), so a ward this clock still has
+   * up is gone.
+   */
+  died(): void {
+    this.until.clear();
+    this.askedAt.clear();
+  }
+
+  /**
    * Wards lent for a quest run whose plan bought them, as auto-combat is lent
    * for a route: session-scoped, never written to the file, said both ways
    * where the switch is off. See `mudengine-automation` › *A quest's plan is

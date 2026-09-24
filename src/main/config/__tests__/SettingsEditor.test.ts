@@ -44,7 +44,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   accent: 'cyan',
   theme: '',
   login: [],
-  hangUp: { enabled: false, belowHealth: 0.15, onlyWhenClean: true, onPlayerInRoom: false },
+  hangUp: { enabled: false, belowHealth: 0.15, penalties: null, onPlayerInRoom: false },
   retreat: {
     enabled: false,
     belowHealth: 0.3,
@@ -338,6 +338,7 @@ describe('servers, one directory each', () => {
     loops: [],
     database: '',
     mobRules: [],
+    hangPenalties: null,
     ...draft
   });
 
@@ -355,6 +356,15 @@ describe('servers, one directory each', () => {
       { id: 'bearfather', name: 'Bearfather', host: 'bbs.bearfather.net' }
     ]);
     expect(fs.existsSync(home.server('bearfather').file)).toBe(true);
+  });
+
+  /* Whether a hang-up here is charged: stated when chosen, and no key when left to Global (todo 01). */
+  it('writes the realm\u2019s hang penalty only when it states one', () => {
+    editor.saveServer(null, server({ hangPenalties: true }));
+    expect(new ServerStore(home).all[0]!.server.hangPenalties).toBe(true);
+    editor.saveServer('Bearfather', server({ hangPenalties: null }));
+    expect(new ServerStore(home).all[0]!.server.hangPenalties).toBeNull();
+    expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('hangPenalties');
   });
 
   it('updates one in place rather than adding a second', () => {
@@ -447,7 +457,8 @@ describe('servers, one directory each', () => {
       login: [],
       loops: [],
       database: '',
-      mobRules: []
+      mobRules: [],
+      hangPenalties: null
     });
     expect(servers()).toEqual([
       { id: 'greatermud-local', name: 'GreaterMUD (local)', host: '127.0.0.1' }
@@ -520,7 +531,8 @@ describe('credentials in the messages', () => {
       login: [],
       loops: [],
       database: '',
-      mobRules: []
+      mobRules: [],
+      hangPenalties: null
     });
     for (const file of fs.readdirSync(dir)) {
       if (!fs.statSync(path.join(dir, file)).isFile()) continue;
@@ -673,7 +685,7 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, onlyWhenClean: true, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2, penalties: true, onPlayerInRoom: false }
       })
     );
     const safety = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
@@ -682,9 +694,21 @@ describe('what a character plays against, and what keeps it alive', () => {
     expect(safety?.['hangUp']).toEqual({
       enabled: true,
       belowHealth: 0.2,
-      onlyWhenClean: true,
+      penalties: true,
       onPlayerInRoom: false
     });
+
+    // Left to the realm: no key, so the realm's own answer reaches it (todo 01).
+    editor.saveProfile(
+      'vaelor',
+      draft({
+        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
+      })
+    );
+    const again = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
+      'safety'
+    ];
+    expect(again?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2, onPlayerInRoom: false });
   });
 
   /*
@@ -740,7 +764,7 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, onlyWhenClean: true, onPlayerInRoom: false }
+        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -916,7 +940,8 @@ describe('the loops a character owns', () => {
       login: [],
       loops: [arena],
       database: '',
-      mobRules: []
+      mobRules: [],
+      hangPenalties: null
     });
     editor.saveProfile('vaelor', draft());
 
@@ -996,7 +1021,8 @@ describe('filing one loop from the Loops modal', () => {
       login: [],
       loops: [],
       database: '',
-      mobRules: []
+      mobRules: [],
+      hangPenalties: null
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });
     const store = new LoopStore(home);

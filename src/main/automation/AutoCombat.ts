@@ -471,7 +471,9 @@ export class AutoCombat {
     config: CombatConfig,
     enabled: boolean,
     spells?: SpellsConfig,
-    party?: PartyConfig
+    party?: PartyConfig,
+    // `CombatLease`'s own write landing: not the player overruling a journey.
+    leaseEdge = false
   ): void {
     /*
      * The switch going off *during* a journey is the player overruling the
@@ -481,7 +483,7 @@ export class AutoCombat {
      * Turning it back on the same way clears the refusal, which is what makes
      * the control answer in both directions.
      */
-    if (this.config.enabled && !config.enabled) this.declineWhileTravelling();
+    if (this.config.enabled && !config.enabled && !leaseEdge) this.declineWhileTravelling();
     // A reload that reads on is the player's hand whichever edge it arrived
     // on: a run's write and the toolbar's press inside one poll reach here as
     // on → on, and a decline left standing beside a switch that reads on is
@@ -664,9 +666,13 @@ export class AutoCombat {
   private setTravelling(moving: boolean): void {
     if (moving === this.travelling) return;
     this.travelling = moving;
-    // A fresh journey takes back a refusal made during the last one: the
-    // player said *not this route*, not *never again*.
-    if (moving) this.declined = false;
+    /*
+     * A refusal is this journey's and ends with it, either edge: the player
+     * said *not this route*, not *never again*. `acting` read it bare, so one
+     * left standing past the journey refused everything beside a switch that
+     * read on until a reload happened to clear it, and said nothing.
+     */
+    this.declined = false;
   }
 
   /**
@@ -680,6 +686,44 @@ export class AutoCombat {
    */
   declineWhileTravelling(): void {
     if (this.travelling) this.declined = true;
+  }
+
+  /**
+   * `CombatLease` handed the switch back (todo 00, 2026-09-23): the journey
+   * is put back as it was when the switch was lent — declined again after a
+   * *Run it*, still fighting on a route that was. The reload that follows
+   * arrives flagged as the lease's (`configure`'s `leaseEdge`), so it
+   * declines nothing by itself.
+   */
+  leaseReturned(declined: boolean): void {
+    this.declined = declined && this.travelling;
+  }
+
+  /** Whether the journey under way is one the player declined to fight on. */
+  get journeyDeclined(): boolean {
+    return this.travelling && this.declined;
+  }
+
+  /** Whether this would hit back at a monster swinging now. */
+  get willFight(): boolean {
+    return this.acting && this.config.retaliate;
+  }
+
+  /**
+   * Whether this fights at all right now, for the walker's question of
+   * whether a fight around a route will end (2026-09-23, on review): acting,
+   * not stood down by a `break`, and either hitting back or engaging.
+   * `willFight` is the defend lease's, which is about hitting back alone.
+   */
+  get wouldFight(): boolean {
+    return (
+      this.acting && !this.stoodDown && (this.config.retaliate || this.config.engage !== 'none')
+    );
+  }
+
+  /** Whether a typed `break` still stands this down. */
+  get stoodDown(): boolean {
+    return Date.now() < this.standDownUntil;
   }
 
   /**
@@ -700,7 +744,10 @@ export class AutoCombat {
    */
   private get acting(): boolean {
     return (
-      this.enabled && !this.declined && !this.moveOnly && (this.config.enabled || this.travelling)
+      this.enabled &&
+      !this.journeyDeclined &&
+      !this.moveOnly &&
+      (this.config.enabled || this.travelling)
     );
   }
 

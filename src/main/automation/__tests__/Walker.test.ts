@@ -211,6 +211,8 @@ describe('refusing to start', () => {
     let fighting = false;
     const walk = new Walker(config, queue, {
       notice: (m) => notices.push(m),
+      // A quarry is a monster auto-combat will fight, so it fights this one.
+      willFight: () => true,
       holdAt: () => true,
       stateNow: () =>
         at(1, 1, {
@@ -346,13 +348,19 @@ describe('refusing to start', () => {
    * of 3,493ms, and that window is exactly the one the walk must not stop in.
    */
   it('holds for a fight that starts after it left the first one', async () => {
-    walker.start(ROUTE, at(1, 1, { inCombat: true }));
+    // Nothing fights the first fight, so the walk leaves it; the later one is
+    // fought, so the walk waits it out.
+    let fights = false;
+    const walk = new Walker(config, queue, { willFight: () => fights });
+    walk.start(ROUTE, at(1, 1, { inCombat: true }));
     await vi.advanceTimersByTimeAsync(50);
     // Out of the first fight, still in the room it started from.
-    walker.onCharacter(at(1, 1));
-    walker.onCharacter(at(1, 1, { inCombat: true }));
-    expect(walker.progress.hold).toBe('fight');
-    expect(walker.walking).toBe(true);
+    walk.onCharacter(at(1, 1));
+    fights = true;
+    walk.onCharacter(at(1, 1, { inCombat: true }));
+    expect(walk.progress.hold).toBe('fight');
+    expect(walk.walking).toBe(true);
+    walk.dispose();
   });
 
   /*
@@ -365,13 +373,18 @@ describe('refusing to start', () => {
    * room the fight was in.
    */
   it('ends the exemption at the first confirmed step, with the fight still running', async () => {
-    walker.start(ROUTE, at(1, 1, { inCombat: true }));
+    let fights = false;
+    const walk = new Walker(config, queue, { willFight: () => fights });
+    walk.start(ROUTE, at(1, 1, { inCombat: true }));
     await vi.advanceTimersByTimeAsync(50);
-    // The step lands — in the next room, with the follower still swinging.
-    walker.onCharacter(at(1, 2, { inCombat: true }));
-    expect(walker.progress.hold).toBe('fight');
-    expect(walker.walking).toBe(true);
+    // The step lands — in the next room, with the follower still swinging,
+    // and something fighting it now.
+    fights = true;
+    walk.onCharacter(at(1, 2, { inCombat: true }));
+    expect(walk.progress.hold).toBe('fight');
+    expect(walk.walking).toBe(true);
     expect(moves(sent)).toEqual(['e']);
+    walk.dispose();
   });
 
   it('will not walk a blocked route', () => {
@@ -1915,7 +1928,10 @@ describe('holding a step where there is quarry', () => {
    * `cancelQueued` to recall a move already sent.
    */
   it('does not step out of the room a fresh route was planned in while it holds a quarry', () => {
-    walker = new Walker(config, queue, { holdAt: (state) => state.room.number === 1 });
+    walker = new Walker(config, queue, {
+      holdAt: (state) => state.room.number === 1,
+      willFight: () => true
+    });
     walker.start(ROUTE, at(1, 1));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([]);
@@ -2038,7 +2054,10 @@ describe('holding a step where there is quarry', () => {
   });
 
   it('a fight starting during the hold takes the walk over, and the quarry beat dies with it', () => {
-    walker = new Walker(config, queue, { holdAt: (state) => state.room.number !== 1 });
+    walker = new Walker(config, queue, {
+      holdAt: (state) => state.room.number !== 1,
+      willFight: () => true
+    });
     walker.start(ROUTE, at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
@@ -3487,6 +3506,8 @@ describe('a fight on the way', () => {
     const walk = new Walker(config, queue, {
       notice: (m) => notices.push(m),
       stateNow: () => current,
+      // Auto-combat is fighting: the one fight a route waits out.
+      willFight: () => true,
       ...(replan ? { replan } : {})
     });
     return { walk, move: (state) => (current = state) };
@@ -3551,8 +3572,8 @@ describe('a fight on the way', () => {
       walk.dispose();
     });
 
-    /* The retreat is the other ending the client owns, and either is enough. */
-    it('goes on holding while the retreat could still end it', async () => {
+    /* The retreat ends a fight by walking out too, later and hurt: no reason to stand first. */
+    it('walks on though the retreat is on', async () => {
       const both: AutomationConfig = {
         ...fights,
         safety: { ...fights.safety, retreat: { ...fights.safety.retreat, enabled: true } }
@@ -3563,27 +3584,83 @@ describe('a fight on the way', () => {
       walk.configure({ ...both, combat: { ...both.combat, enabled: false } });
       await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
 
-      expect(walk.progress.hold).toBe('fight');
-      expect(sent).toEqual([]);
-      expect(notices).toEqual([]);
+      expect(walk.progress.hold).toBeNull();
+      expect(sent).toContain('e');
       walk.dispose();
     });
 
     /*
-     * And a configuration that never could fight holds as it always has,
-     * bounded by `fightHoldMs`. That is the stock one, and holding there is a
-     * settled decision from a separate report — a route abandoned two steps
-     * into twenty-one, in a sewer. This change is the transition and nothing
-     * else.
+     * Never past the escape's own move (2026-09-23, on review): walking through
+     * while the escape is in flight is two moves from a room being left.
      */
-    it('holds as before for a configuration that never could end it', async () => {
-      const walk = await holding(config);
-
-      sent.length = 0;
-      await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs * 3);
+    it('holds instead of walking through while an escape is in flight', async () => {
+      let escaping = true;
+      const walk = new Walker(config, queue, {
+        notice: (message) => notices.push(message),
+        stateNow: () => fighting(1, 1),
+        escaping: () => escaping
+      });
+      walk.start(ROUTE, at(1, 1));
+      await vi.advanceTimersByTimeAsync(50);
+      walk.onCharacter(fighting(1, 1));
       expect(walk.progress.hold).toBe('fight');
-      expect(sent).toEqual([]);
-      expect(notices).toEqual([]);
+      expect(notices).not.toContain(t('automation.walk.reasonWalkingThroughFight'));
+      // The escape settles and nothing is fighting it: walked through then.
+      escaping = false;
+      await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+      expect(notices).toContain(t('automation.walk.reasonWalkingThroughFight'));
+      walk.dispose();
+    });
+
+    it('takes the fight hold the moment the escape goes', async () => {
+      const walk = new Walker(config, queue, {
+        notice: (message) => notices.push(message),
+        stateNow: () => fighting(1, 1)
+      });
+      walk.start(ROUTE, at(1, 1));
+      await vi.advanceTimersByTimeAsync(50);
+      walk.noteEscaped();
+      expect(walk.progress.hold).toBe('fight');
+      walk.dispose();
+    });
+
+    /* A follower swinging in every room is one decision, and one line. */
+    it('says it walks through once a walk, not once a room', async () => {
+      const walk = new Walker(config, queue, {
+        notice: (message) => notices.push(message),
+        stateNow: () => fighting(1, 1)
+      });
+      walk.start(ROUTE, at(1, 1));
+      await vi.advanceTimersByTimeAsync(50);
+      walk.onCharacter(fighting(1, 1));
+      walk.onCharacter(fighting(1, 2));
+      walk.onCharacter(fighting(1, 2));
+      expect(
+        notices.filter((line) => line === t('automation.walk.reasonWalkingThroughFight'))
+      ).toHaveLength(1);
+      walk.dispose();
+    });
+
+    /*
+     * And a fight nothing is fighting from its start is walked through too
+     * (2026-09-23): holding there was two minutes in the blows and then the
+     * route stopped anyway. Walking on keeps the route, which is what the
+     * sewer report that asked for the hold wanted.
+     */
+    it('walks on through a fight nothing fights, from its start', async () => {
+      const walk = new Walker(config, queue, {
+        notice: (message) => notices.push(message),
+        stateNow: () => fighting(1, 1)
+      });
+      walk.start(ROUTE, at(1, 1));
+      await vi.advanceTimersByTimeAsync(50);
+      sent.length = 0;
+      walk.onCharacter(fighting(1, 1));
+      await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+      // No hold: the step already on the wire is still what it waits for.
+      expect(walk.progress.hold).toBeNull();
+      expect(walk.walking).toBe(true);
+      expect(notices).toContain(t('automation.walk.reasonWalkingThroughFight'));
       walk.dispose();
     });
   });
@@ -3735,6 +3812,7 @@ describe('a fight on the way', () => {
     const asked: string[] = [];
     let current = at(1, 1);
     const walk = new Walker(config, queue, {
+      willFight: () => true,
       notice: (m) => notices.push(m),
       stateNow: () => current,
       pendingMoves: () => inFlight,
@@ -3770,6 +3848,7 @@ describe('a fight on the way', () => {
     let inFlight = 0;
     let current = at(1, 1);
     const walk = new Walker(config, queue, {
+      willFight: () => true,
       notice: (m) => notices.push(m),
       stateNow: () => current,
       pendingMoves: () => inFlight
@@ -3847,7 +3926,7 @@ describe('a fight on the way', () => {
     const walk = new Walker(
       { ...config, movement: { ...config.movement, openDoors: true, openTries: 1 } },
       queue,
-      { notice: (m) => notices.push(m), stateNow: () => current }
+      { willFight: () => true, notice: (m) => notices.push(m), stateNow: () => current }
     );
     walk.start(ROUTE, at(1, 1));
     await vi.advanceTimersByTimeAsync(50);
@@ -3934,6 +4013,7 @@ describe('a fight on the way', () => {
   it('sneaks again before walking on, for a character configured to', async () => {
     let current = at(1, 1);
     const walk = new Walker({ ...config, movement: { ...config.movement, sneak: true } }, queue, {
+      willFight: () => true,
       notice: (m) => notices.push(m),
       stateNow: () => current
     });
@@ -3980,7 +4060,7 @@ describe('a fight on the way', () => {
     const walk = new Walker(
       { ...config, health: { ...config.health, restBelow: 0.5, restTo: 0 } },
       queue,
-      { notice: (m) => notices.push(m), stateNow: () => current }
+      { willFight: () => true, notice: (m) => notices.push(m), stateNow: () => current }
     );
     walk.start(ROUTE, at(1, 1));
     await vi.advanceTimersByTimeAsync(50);

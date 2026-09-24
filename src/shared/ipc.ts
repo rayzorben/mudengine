@@ -391,11 +391,11 @@ export interface ProfileEditable {
    * vocabulary. See `LoginConfig.steps`.
    */
   login: LoginStepDraft[];
-  /** Resolved, so inherited values show. */
+  /** Resolved, so inherited values show; `penalties` alone is this character's own, null where it inherits. */
   hangUp: {
     enabled: boolean;
     belowHealth: number;
-    onlyWhenClean: boolean;
+    penalties: boolean | null;
     onPlayerInRoom: boolean;
   };
   retreat: {
@@ -559,6 +559,13 @@ export const Send = {
   clientReady: 'client:ready',
   /** Bytes typed by the user, already assembled into a line or raw key. */
   input: 'session:input',
+  /**
+   * A talk-box line that stands for several commands (`src/shared/macro.ts`),
+   * as typed: main parses it again and queues each command (todo 04).
+   */
+  macro: 'session:macro',
+  /** Drop what is still waiting of the talk box's lines. */
+  dropMacro: 'session:macro:drop',
   /** Terminal geometry changed; drives Telnet NAWS. */
   resize: 'session:resize',
   /**
@@ -1052,6 +1059,10 @@ export interface IpcApi {
 
   clientReady(): void;
   input(session: SessionId, data: string): void;
+  /** A talk-box line of several commands, paced by main (todo 04). */
+  macro(session: SessionId, line: string): void;
+  /** Drop what is still waiting of the talk box's lines. */
+  dropMacro(session: SessionId): void;
   resize(session: SessionId, size: TerminalSize): void;
   /** This window started or stopped showing the diagnostics line feed. */
   diagnostics(on: boolean): void;

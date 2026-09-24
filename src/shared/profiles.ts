@@ -153,6 +153,7 @@ function resolveServer(
   login: LoginStep[];
   database: string;
   mobRules: MobRule[];
+  hangPenalties: boolean | null;
 } | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
@@ -162,7 +163,8 @@ function resolveServer(
           name: found.name,
           login: found.login,
           database: found.database,
-          mobRules: found.mobRules
+          mobRules: found.mobRules,
+          hangPenalties: found.hangPenalties
         }
       : null;
   }
@@ -193,6 +195,7 @@ function resolveServer(
       // to inherit — the character's own, over the global one, is the whole of
       // it. Same reasoning as `login` above.
       mobRules: [],
+      hangPenalties: null,
       target: {
         host,
         port,
@@ -267,6 +270,40 @@ export function ownMobRules(raw: Record<string, unknown>): MobRule[] {
   if (!isRecord(combat)) return [];
   const rows = combat['mobRules'];
   return Array.isArray(rows) ? normalizeMobRules(rows) : [];
+}
+
+/**
+ * The realm's answer to whether a hang-up is charged, under a character that
+ * gives none (todo 01). A character's own file is read raw for the reason
+ * `ownMobRules` is: after `overlay` an inherited value and a stated one look
+ * alike.
+ */
+function withRealmHangPenalties(
+  config: AppConfig,
+  realm: boolean | null,
+  raw: Record<string, unknown>
+): AppConfig {
+  if (realm === null || ownHangPenalties(raw) !== null) return config;
+  const safety = config.automation.safety;
+  return {
+    ...config,
+    automation: {
+      ...config.automation,
+      safety: { ...safety, hangUp: { ...safety.hangUp, penalties: realm } }
+    }
+  };
+}
+
+/** A character's own `penalties`, or null where its file leaves it to the realm. */
+export function ownHangPenalties(raw: Record<string, unknown>): boolean | null {
+  const automation = raw['automation'];
+  if (!isRecord(automation)) return null;
+  const safety = automation['safety'];
+  if (!isRecord(safety)) return null;
+  const hangUp = safety['hangUp'];
+  if (!isRecord(hangUp)) return null;
+  const penalties = hangUp['penalties'];
+  return typeof penalties === 'boolean' ? penalties : null;
 }
 
 /**
@@ -390,10 +427,14 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
-      config: withRealmMobRules(
-        normalizeConfig(overlay(baseSource, patch)),
-        base.automation.combat.mobRules,
-        server.mobRules,
+      config: withRealmHangPenalties(
+        withRealmMobRules(
+          normalizeConfig(overlay(baseSource, patch)),
+          base.automation.combat.mobRules,
+          server.mobRules,
+          raw
+        ),
+        server.hangPenalties,
         raw
       )
     }

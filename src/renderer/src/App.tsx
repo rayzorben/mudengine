@@ -574,6 +574,9 @@ interface CardContext {
   /** The tab's own name for the character, for the Self card before the sheet prints. */
   profileName: string;
   onSend?(line: string): void;
+  /** A talk-box line of several commands, and dropping what is left of one; addressed. */
+  onMacro(line: string): void;
+  dropMacro(): void;
 }
 
 /** What the loop builder needs of the client, built once per character and kept. */
@@ -621,6 +624,8 @@ interface AddressedActions {
   setGangpath(on: boolean): void;
   setSupplies(items: SupplyItem[]): void;
   send(line: string): void;
+  macro(line: string): void;
+  dropMacro(): void;
 }
 
 /**
@@ -1038,6 +1043,11 @@ function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // offline character is a box that silently does nothing, and the
           // backlog is still worth reading without one.
           onSend={ctx.inGame ? ctx.onSend : undefined}
+          onMacro={ctx.inGame ? ctx.onMacro : undefined}
+          macroQueued={
+            view.automation.queue.pending.filter((intent) => intent.typed === true).length
+          }
+          onDropMacro={ctx.dropMacro}
           onSelect={ctx.selectPlayer}
           // The `original` layout quotes the realm's whole sentence, so the
           // names in it are found the way the Alerts card finds them — through
@@ -4974,7 +4984,9 @@ export default function App() {
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
         setSupplies: (items) =>
           void api.setSupplies(sid, items).then((refused) => sayRefusalRef.current(sid)(refused)),
-        send: (line) => void api.input(sid, `${line}\r`)
+        send: (line) => void api.input(sid, `${line}\r`),
+        macro: (line) => api.macro(sid, line),
+        dropMacro: () => api.dropMacro(sid)
       };
       boundCache.current.set(sid, bound);
       return bound;
@@ -5156,7 +5168,9 @@ export default function App() {
         toolbarPinned: toolbarPins.pinned,
         pinToolbarButton: toolbarPins.toggle,
         nameIndex: nameIndexes[sid] ?? null,
-        onSend: shown ? sayOnChannel : bound.send
+        onSend: shown ? sayOnChannel : bound.send,
+        onMacro: bound.macro,
+        dropMacro: bound.dropMacro
       };
     },
     [

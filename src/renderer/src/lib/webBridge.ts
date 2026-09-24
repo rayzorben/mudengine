@@ -159,6 +159,8 @@ export function createWebBridge(): IpcApi {
 
     clientReady: () => send(Send.clientReady),
     input: (session, data) => send(Send.input, session, data),
+    macro: (session, line) => send(Send.macro, session, line),
+    dropMacro: (session) => send(Send.dropMacro, session),
     resize: (session, size) => send(Send.resize, session, size),
     diagnostics: (on) => send(Send.diagnostics, on),
     debugFeed: (on) => send(Send.debugFeed, on),

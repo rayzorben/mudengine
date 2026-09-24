@@ -748,6 +748,22 @@ export default function GlobalSettings({
                 automation({ combat: { ...draft.automation.combat, enabled: value } })
               }
             />
+            <div className="settings-inline">
+              <NumberField
+                hint={t('settings.combat.defendAfterRoundsHint')}
+                label={t('settings.combat.defendAfterRounds')}
+                name="global-defend-after-rounds"
+                onChange={(value) =>
+                  automation({
+                    combat: {
+                      ...draft.automation.combat,
+                      defendAfterRounds: Number.parseInt(value, 10) || 0
+                    }
+                  })
+                }
+                value={String(draft.automation.combat.defendAfterRounds)}
+              />
+            </div>
             <CheckField
               checked={draft.automation.combat.retaliate}
               hint={t('settings.combat.hitBackHint')}
@@ -1180,11 +1196,12 @@ export default function GlobalSettings({
                 />
               </div>
               <CheckField
-                checked={draft.automation.hangUp.onlyWhenClean}
-                label={t('settings.health.hangUpCleanLabel')}
-                name="global-hangup-clean"
+                checked={draft.automation.hangUp.penalties}
+                hint={t('settings.health.hangPenaltiesHint')}
+                label={t('settings.health.hangPenaltiesLabel')}
+                name="global-hang-penalties"
                 onChange={(value) =>
-                  automation({ hangUp: { ...draft.automation.hangUp, onlyWhenClean: value } })
+                  automation({ hangUp: { ...draft.automation.hangUp, penalties: value } })
                 }
               />
               <CheckField

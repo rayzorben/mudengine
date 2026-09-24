@@ -55,6 +55,8 @@ export interface PendingIntent {
   priority: Priority;
   /** Why it was proposed. This is the trace. */
   reason?: string;
+  /** The player's own line, paced: a talk-box line of several commands (todo 04). */
+  typed?: boolean;
 }
 
 export interface QueueSnapshot {

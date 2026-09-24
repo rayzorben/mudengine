@@ -55,7 +55,8 @@ describe('a saved server', () => {
       loops: [],
       database: '',
       // Absent above: a realm rules nothing until somebody playing it says so.
-      mobRules: []
+      mobRules: [],
+      hangPenalties: null
     });
   });
 
@@ -494,6 +495,8 @@ describe('a character', () => {
         hideForOpener: false,
         // Stated above, and the one direction MegaMUD's own default is not.
         politeAttacks: true,
+        // Absent above: the shipped figure, since 0 would mean never defend.
+        defendAfterRounds: 2,
         maxMobs: 3,
         refreshRounds: 3
       });

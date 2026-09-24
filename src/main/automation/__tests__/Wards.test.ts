@@ -145,6 +145,17 @@ describe('keeping a room’s ward up', () => {
     expect(sent).toEqual(['use waterskin', 'use waterskin']);
   });
 
+  /* logs/2026-09-23_17-08-46_festus: a use at 18:04, a death at 18:08, the heat at 18:15. */
+  it('takes a death as the end of every ward it used', () => {
+    const wards = make();
+    wards.beforeStep('12/300', standing([carried('waterskin')]));
+    expect(sent).toEqual(['use waterskin']);
+    clock += 600 * 1000;
+    wards.died();
+    wards.beforeStep('12/300', standing([carried('waterskin')]));
+    expect(sent).toEqual(['use waterskin', 'use waterskin']);
+  });
+
   it('says once that nothing carried casts the ward, and asks again no sooner than the retry floor', () => {
     const wards = make();
     wards.beforeStep('12/300', standing([carried('torch')]));

@@ -170,6 +170,14 @@ export interface WalkerEvents {
    */
   wardFor?(to: RoomId, state: CharacterState): void;
   /**
+   * Whether auto-combat will actually fight here (`AutoCombat.wouldFight`),
+   * where the switches say only what could. A declined journey reads on and
+   * fights nothing. See `canEndAFight`.
+   */
+  willFight?(): boolean;
+  /** Whether the session's escape is in flight or cooling down; the walk holds for it. */
+  escaping?(): boolean;
+  /**
    * Whether a light would be readied for the room the character is standing in
    * — asked before the walk gives up on a room it cannot read.
    *
@@ -612,15 +620,6 @@ export class Walker {
    */
   private resumeAfterFight = true;
   /**
-   * Whether the client could have ended a fight when this hold was taken.
-   *
-   * The hold's own reason, kept so its **withdrawal** can be noticed: a
-   * configuration that never could fight is the stock one and holds as it
-   * always has, bounded by `fightHoldMs`. Cleared when it is acted on, so one
-   * hold produces one decision and one line.
-   */
-  private fightHeldCouldEnd = false;
-  /**
    * Whether this walk is owed back after the connection is lost and regained.
    *
    * True for a route the **player** asked for, for `resumeAfterFight`'s
@@ -712,6 +711,8 @@ export class Walker {
    */
   private escaped = false;
   private escapedAt = 0;
+  /** The walk-through notice has been said on this walk. See `answerFight`. */
+  private saidWalkingThrough = false;
   /*
    * There was a `recent` here — the last few steps *this walker* confirmed —
    * and it is gone with its only reader, `retreatFrom`.
@@ -1113,13 +1114,13 @@ export class Walker {
     // An escape belongs to the walk that ran away. A fresh route is the player
     // asking again, from here, with that already taken into account.
     this.escaped = false;
+    this.saidWalkingThrough = false;
     // After the refusals, so a walk that was declined does not leave the next
     // one — which may be a plain one — inheriting this one's silence.
     this.quiet = quiet;
     this.asked = asked;
     this.holdWhenHurt = holdWhenHurt;
     this.resumeAfterFight = resumeAfterFight;
-    this.fightHeldCouldEnd = false;
     this.resumeAfterLoss = resumeAfterLoss;
     this.shortest = shortest;
     /*
@@ -1277,6 +1278,7 @@ export class Walker {
     this.stepSent = false;
     this.leftMobsBehind = false;
     this.escaped = false;
+    this.saidWalkingThrough = false;
     this.quiet = false;
     this.holdWhenHurt = true;
     this.resumeAfterFight = true;
@@ -1345,7 +1347,17 @@ export class Walker {
    * of the escape — holding it is the one thing it must not do.
    */
   noteEscaped(): void {
-    if (this.status !== 'walking' || !this.resumeAfterFight || this.escaped) return;
+    if (this.status !== 'walking' || !this.resumeAfterFight) return;
+    /*
+     * The escape is the move now. A walk-through step still queued behind it,
+     * or the next one the exemption would send, is a second move from a room
+     * being left, so the exemption goes and the fight hold takes the walk,
+     * cancelling what is queued; `answerFight` keeps it while the escape is in
+     * flight (2026-09-23, on review).
+     */
+    this.leavingAFight = false;
+    this.holdForFight();
+    if (this.escaped) return;
     this.escaped = true;
     this.escapedAt = Date.now();
   }
@@ -3458,28 +3470,22 @@ export class Walker {
    */
   private answerFight(): boolean {
     /*
-     * **The reason for waiting has been withdrawn** — todo 03, *"turning auto
-     * combat off during attack should continue even if attacking"*.
-     *
-     * A fight hold waits for one of three endings and the client owns two of
-     * them: auto-combat kills the monster, or the retreat walks out. Turning
-     * one of those off *while the hold is running* is the player saying stop
-     * fighting this — and on this realm walking out of the room is the only
-     * way to break combat (there is no `flee`; the retreat does exactly this
-     * unasked), so carrying on is not abandoning the character in a fight, it
-     * is ending it.
-     *
-     * **Only when it could end it when the hold began.** A configuration that
-     * never could is the stock one, and holding there — bounded by
-     * `fightHoldMs` — is a settled decision from a separate report about a
-     * route abandoned two steps into twenty-one. This is the *transition*, and
-     * nothing else.
-     *
-     * Re-asked every `holdMs` through `reaskAfter`, so the switch flipping
-     * mid-fight is answered within a beat and a half.
+     * **A route waits out a fight only while something is fighting it.** On
+     * this realm walking out of the room is the only way to break combat
+     * (there is no `flee`), so where auto-combat will not fight — switched
+     * off, the journey declined, a Run it — carrying on is not abandoning the
+     * character in a fight, it is ending it, and the route is kept. Holding
+     * there used to be the stock configuration's rule, bounded by
+     * `fightHoldMs`, and it was two minutes of standing in the blows and then
+     * the route stopped anyway (2026-09-23, Festus among the thugs). Asked
+     * whenever the hold is: at the fight's start, and every `holdMs` through
+     * `reaskAfter`, so the switch going off mid-fight walks on within a beat.
      */
-    if (this.hold === 'fight' && this.fightHeldCouldEnd && !this.canEndAFight()) {
-      this.fightHeldCouldEnd = false;
+    // Never past the escape's own move: while it is in flight the walk holds.
+    if (this.resumeAfterFight && this.events.escaping?.() === true && this.holdForFight()) {
+      return true;
+    }
+    if (this.resumeAfterFight && !this.canEndAFight()) {
       /*
        * **`leavingAFight`, and it has to be**: returning false alone left
        * `hold` set to `fight`, so the caller took the resume path, cleared it,
@@ -3499,7 +3505,12 @@ export class Walker {
       // `resumeAfterFight` is false for a loop's leg, so this branch is a
       // player's route by construction; `quiet` is still read, because it is
       // the player's own answer for their own walk.
-      if (!this.quiet) this.events.notice?.(t('automation.walk.reasonWalkingThroughFight'));
+      // Once a walk: a follower swinging in every room of a corridor is one
+      // decision, not a line per step.
+      if (!this.quiet && !this.saidWalkingThrough) {
+        this.events.notice?.(t('automation.walk.reasonWalkingThroughFight'));
+      }
+      this.saidWalkingThrough = true;
       return false;
     }
     if (this.holdForFight()) return true;
@@ -3512,28 +3523,22 @@ export class Walker {
   }
 
   /**
-   * Whether anything this client runs would end a fight around this walk.
+   * Whether auto-combat will end a fight around this walk, which is the one
+   * reason worth standing still for (see `answerFight`).
    *
-   * Three endings, and the client owns two of them: auto-combat kills the
-   * monster, and the retreat walks the character out. (The third is the
-   * character dying, which stops the walk anyway.) Read off the switches
-   * rather than off what is happening, because the question is *will this
-   * fight end*, which nothing on the wire answers.
-   *
-   * `engage: none` with `retaliate` on still ends a fight the character is
-   * **in** — hitting back is the half that cannot start one — so either is
-   * enough. The master switch gates both, as it gates everything.
-   *
-   * Deliberately not asked of the party's assist or defend: those end somebody
-   * *else's* fight and only while a leader is in the room, which is too many
-   * conditions to fold into a bound. Reading them as unable is the safe
-   * direction here, and the only cost is the two-minute bound coming back.
+   * The session answers live (`WalkerEvents.willFight`): the switches say only
+   * what could fight, and a journey the player declined reads on and fights
+   * nothing. Without it, the switches: `combat` on, and either `retaliate` or
+   * any `engage`, since hitting back ends a fight the character is in. The
+   * retreat is not counted: it ends a fight by walking out too, only later and
+   * hurt, which is no reason to stand in the blows first.
    */
   private canEndAFight(): boolean {
     if (!this.config.enabled) return false;
+    const fights = this.events.willFight?.();
+    if (fights !== undefined) return fights;
     const combat = this.config.combat;
-    if (combat.enabled && (combat.retaliate || combat.engage !== 'none')) return true;
-    return this.config.safety.retreat.enabled;
+    return combat.enabled && (combat.retaliate || combat.engage !== 'none');
   }
 
   private holdForFight(): boolean {
@@ -3556,8 +3561,6 @@ export class Walker {
     }
     if (this.hold !== 'fight') {
       this.fightHeldSince = Date.now();
-      // What this hold is waiting for. See `answerFight`.
-      this.fightHeldCouldEnd = this.canEndAFight();
       /*
        * The step's own deadlines are the wire's, not the fight's: a step sent
        * into a round that is now being fought is not a step the server failed

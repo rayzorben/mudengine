@@ -220,6 +220,12 @@ export interface Server {
    * for a monster wins, and a monster only the realm names still counts.
    */
   mobRules: MobRule[];
+  /**
+   * Whether a hang-up here is charged, for every character playing here that
+   * does not say for itself; null leaves it to the options file. See
+   * `HangUpConfig.penalties`.
+   */
+  hangPenalties: boolean | null;
 }
 
 export interface FontConfig {
@@ -591,21 +597,22 @@ export interface HangUpConfig {
   /** Fraction of maximum health below which hanging up is considered. */
   belowHealth: number;
   /**
-   * Refuse while the client can see a reason the disconnect would be penalised.
+   * Whether this realm charges for a hang-up at all (todo 01).
    *
-   * **On by default, and turning it off is a decision about a character.** The
-   * client can see four of the five conditions; with this off it will hang up
-   * anyway, into a penalty it can often predict. Off is for a realm where PvP
-   * is disabled or the penalty is not configured, which the client cannot
-   * detect and the player can know.
+   * Where it does, hanging up is refused while the client can see a reason it
+   * would be charged; where it does not, it hangs up below `belowHealth`.
+   * **Off by default**: a PvE realm charges nothing. Paradigm's realm menu
+   * states it (`Hang Penalties 25%`), and what it said outranks this; a
+   * realm's own `server.yaml` (`hangPenalties`) outranks the options file,
+   * and a character's own file outranks its realm.
    */
-  onlyWhenClean: boolean;
+  penalties: boolean;
   /**
    * Also hang up when a player is in the room, at any health.
    *
    * Off by default. It is the PvP panic button, and it is also the one most
-   * likely to fire during the five-minute window — so it is the setting that
-   * most needs `onlyWhenClean` left on.
+   * likely to fire during the five-minute window, which is where a realm's
+   * penalty bites.
    */
   onPlayerInRoom: boolean;
 }
@@ -802,6 +809,15 @@ export interface CombatConfig {
    * this (`user.coffee`, `onMobAttacking`).
    */
   retaliate: boolean;
+  /**
+   * Lend auto-combat to a character hit for this many rounds without moving,
+   * while it is off or the journey declined it. 0 never does.
+   *
+   * *Off* means do not open fights; it never meant stand there and be killed.
+   * `CombatLease` turns the switch on in the character's file and hands it
+   * back on the next arrival in another room (todo 00, 2026-09-23).
+   */
+  defendAfterRounds: number;
   /**
    * Leave alone a monster somebody **outside the party** is already fighting.
    *
@@ -2585,7 +2601,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       hangUp: {
         enabled: false,
         belowHealth: 0.15,
-        onlyWhenClean: true,
+        penalties: false,
         onPlayerInRoom: false
       },
       retreat: {
@@ -2610,6 +2626,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       hideForOpener: false,
       engage: 'hostile',
       retaliate: true,
+      defendAfterRounds: 2,
       politeAttacks: false,
       maxMobs: 0,
       refreshRounds: 3,
@@ -3295,7 +3312,8 @@ function normalizeServer(value: unknown): Server | null {
      * reported.
      */
     database: str(value['database'], ''),
-    mobRules: normalizeMobRules(value['mobRules'])
+    mobRules: normalizeMobRules(value['mobRules']),
+    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null
   };
 }
 
@@ -4134,6 +4152,7 @@ function normalizeCombat(value: unknown): CombatConfig {
     hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),
     engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
     retaliate: bool(raw['retaliate'], d.retaliate),
+    defendAfterRounds: int(raw['defendAfterRounds'], d.defendAfterRounds, 0, 20),
     politeAttacks: bool(raw['politeAttacks'], d.politeAttacks),
     // Capped where the retreat guard is, for the same reason: a room holding more
     // than twenty things is not a number anybody is tuning against.
@@ -4247,13 +4266,7 @@ function normalizeSafety(value: unknown): SafetyConfig {
     hangUp: {
       enabled: bool(hangUp['enabled'], d.enabled),
       belowHealth: fraction(hangUp['belowHealth'], d.belowHealth),
-      /*
-       * Defaults to *true* whatever the file says is missing, and that
-       * asymmetry is deliberate: every other boolean here defaults to the
-       * cautious value because caution is cheap, and this one defaults to the
-       * cautious value because the alternative can cost a character.
-       */
-      onlyWhenClean: bool(hangUp['onlyWhenClean'], d.onlyWhenClean),
+      penalties: bool(hangUp['penalties'], d.penalties),
       onPlayerInRoom: bool(hangUp['onPlayerInRoom'], d.onPlayerInRoom)
     },
     pvp: {

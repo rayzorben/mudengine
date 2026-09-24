@@ -27,6 +27,7 @@ import {
 import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
 import type { Block } from '@shared/blocks';
+import { parseMacro } from '@shared/macro';
 
 export interface ConversationCardProps extends CardChrome {
   /** What this character's card carries (`isTalkBlock`), oldest first. */
@@ -45,6 +46,15 @@ export interface ConversationCardProps extends CardChrome {
    * backlog without a composer, rather than a box that silently does nothing.
    */
   onSend?(line: string): void;
+  /**
+   * A line of several commands (`parseMacro`), handed to main as typed, which
+   * parses it again and paces it by the prompt (todo 04). With `onSend`.
+   */
+  onMacro?(line: string): void;
+  /** How many of the box's commands are still waiting their turn in main. */
+  macroQueued?: number;
+  /** Drops them. */
+  onDropMacro?(): void;
   /**
    * The name on a line clicked: the Player flyout on them, beside the line.
    * Usually the speaker; on this character's own receipts (`--- Telepath Sent
@@ -395,6 +405,11 @@ interface ComposerProps {
   picker: ComposerPicker | null;
   /** Sends a line — `ConversationCardProps.onSend`. Absent offline, and the box with it. */
   send?(line: string): void;
+  /** A line of several commands — `ConversationCardProps.onMacro`. */
+  macro?(line: string): void;
+  /** Commands still waiting from this box, and the press that drops them. */
+  queued: number;
+  drop?(): void;
 }
 
 /**
@@ -408,7 +423,7 @@ interface ComposerProps {
  * the box. A key pressed here now redraws a form of two controls; the figures
  * are in `mudengine-ui` under *the window redraws what changed*.
  */
-function Composer({ picker, send }: ComposerProps) {
+function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
   const [draft, setDraft] = useState('');
   /*
    * What has been said from this box, newest first, and where the arrows are
@@ -441,7 +456,13 @@ function Composer({ picker, send }: ComposerProps) {
        * back* into *nudge the server*.
        */
       if (draft.trim().length === 0) return;
-      send(draft);
+      /*
+       * Several commands in one line (todo 04): `;` between them, `2d,6s` for
+       * repeats. Handed to main whole, which parses it again and sends one a
+       * prompt. Only this box: a channel's message may carry a semicolon.
+       */
+      if (macro !== undefined && parseMacro(draft) !== null) macro(draft);
+      else send(draft);
     } else {
       /*
        * Verbatim still, and with a channel in front of it when one is needed.
@@ -637,6 +658,24 @@ function Composer({ picker, send }: ComposerProps) {
         spellCheck={false}
         value={draft}
       />
+      {/*
+        What is still waiting of a line of several commands, and the one way to
+        take it back: a path gone wrong at its third step would otherwise walk
+        the other twelve. A press drops them; the caret stays where it was.
+      */}
+      {queued > 0 && drop !== undefined && (
+        <button
+          className="conversation-queued"
+          onClick={drop}
+          onMouseDown={keepFocus}
+          title={t('cards.talk.dropQueuedHint')}
+          type="button"
+        >
+          {queued === 1
+            ? t('cards.talk.queued.one', { count: queued })
+            : t('cards.talk.queued.many', { count: queued })}
+        </button>
+      )}
     </form>
   );
 }
@@ -661,6 +700,9 @@ function Composer({ picker, send }: ComposerProps) {
 function ConversationCard({
   messages,
   onSend,
+  onMacro,
+  macroQueued = 0,
+  onDropMacro,
   onSelect,
   character,
   names,
@@ -1102,7 +1144,13 @@ function ConversationCard({
   const content = (
     <>
       {feed}
-      <Composer picker={channels ? { channel, options, point } : null} send={onSend} />
+      <Composer
+        drop={onDropMacro}
+        macro={onMacro}
+        picker={channels ? { channel, options, point } : null}
+        queued={macroQueued}
+        send={onSend}
+      />
     </>
   );
   /*

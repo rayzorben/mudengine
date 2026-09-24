@@ -501,7 +501,8 @@ ui:
     #               {count}.
     #   shop        A shop's shelf, in place of `list`: {items} is one row per
     #               thing sold -- {item} {item.quantity} {item.price} as the
-    #               counter said it, {item.cost} in copper, {item.afford}
+    #               counter said it, {item.priceLong} the same on the coin
+    #               ladder (5 runic, 3 gold), {item.cost} in copper, {item.afford}
     #               (`short` when it is more than the purse holds) {item.short}
     #               {item.usable} (the reason this character may not wear it)
     #               {item.wearable} {item.note} {item.basePrice} and the
@@ -546,7 +547,7 @@ ui:
         template: |
           {table header}
           {for item in items}
-          {bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.price}  {item.afford}  {item.usable}  {item.icon}
+          {bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}
           {/for}
           {/table}
       - name: Party
@@ -1634,6 +1635,12 @@ automation:
     # every limit below.
     retaliate: true
 
+    # With auto-combat off, or a route run with it off, being hit for this many
+    # rounds without moving turns it on until you next arrive in another room.
+    # Off means do not start fights; it never meant stand there and be killed.
+    # Flips the switch in this file, both ways. 0 never does.
+    defendAfterRounds: 2
+
     # Leave alone a monster somebody outside your party is already fighting --
     # MegaMUD's PoliteAttacks, under its own name and in its own direction. On,
     # a monster a stranger was seen swinging at in the last minute is left to
@@ -1806,6 +1813,10 @@ automation:
     # into itself a minute earlier. So the escape is always a DIRECTION, and
     # if there is no direction to send, nothing is sent and it says so.
     #
+    # Only while something is taking the character somewhere: a route, a loop,
+    # an errand, a quest run. Once a route has arrived, the character stays
+    # where it is and says so: the room it arrived in is the one you asked for.
+    #
     # Off, like everything automated: a client that starts running away on its
     # own the first time you open it is a client deciding when a fight is lost,
     # and that is your call until you say otherwise.
@@ -1884,18 +1895,21 @@ automation:
       # Fraction of maximum health below which hanging up is considered.
       belowHealth: 0.15
 
-      # Refuse while the client can see a reason the disconnect would be
-      # penalised, and say so in the terminal rather than declining quietly.
+      # Whether this realm charges for a hang-up at all. Off: a PvE realm charges
+      # nothing, so below `belowHealth` the client simply hangs up. On, it
+      # refuses while it can see a reason the disconnect would be charged, and
+      # says so in the terminal rather than declining quietly.
       #
-      # Leave this on. The client can see four of the five conditions; with it
-      # off it will hang up anyway, into a penalty it could often have
-      # predicted. Off is for a realm where PvP is disabled or the penalty is
-      # not configured -- which the client cannot detect and you can know.
-      onlyWhenClean: true
+      # Paradigm's realm menu states it (`Hang Penalties 25%` under the PvP
+      # realm), and what the menu said outranks this. A realm's own
+      # `server.yaml` can say `hangPenalties: true` for every character playing
+      # there, and a character's own file outranks its realm. MajorMUD says
+      # nothing, so there this setting is the answer.
+      penalties: false
 
       # Also hang up when a player is in the room, at any health. Off: this is
-      # the setting most likely to fire inside the five-minute window, so it is
-      # the one that most needs `onlyWhenClean` left on.
+      # the setting most likely to fire inside the five-minute window, which is
+      # where a realm's penalty bites.
       onPlayerInRoom: false
 
     # What to do the moment a player opens on you -- `<Name> moves to attack

@@ -57,6 +57,8 @@ const api: IpcApi = {
 
   clientReady: () => ipcRenderer.send(Send.clientReady),
   input: (session: SessionId, data: string) => ipcRenderer.send(Send.input, session, data),
+  macro: (session: SessionId, line: string) => ipcRenderer.send(Send.macro, session, line),
+  dropMacro: (session: SessionId) => ipcRenderer.send(Send.dropMacro, session),
   resize: (session: SessionId, size: TerminalSize) => ipcRenderer.send(Send.resize, session, size),
   diagnostics: (on: boolean) => ipcRenderer.send(Send.diagnostics, on),
   debugFeed: (on: boolean) => ipcRenderer.send(Send.debugFeed, on),

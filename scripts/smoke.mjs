@@ -238,6 +238,15 @@ const writeProfiles = () => {
       '    retreat:',
       '      enabled: true',
       '      belowHealth: 0.1',
+      /*
+       * No defence lease (todo 00). The fixture scripts two volleys of blows
+       * at a character standing still with auto-combat off, which is exactly
+       * what lends it -- and the lend writes the switch into this file, so the
+       * settings checks below found it already on. `CombatLease.test.ts` and
+       * `SessionManager.test.ts` own the behaviour.
+       */
+      '  combat:',
+      '    defendAfterRounds: 0',
       ''
     ].join('\n'),
     'utf8'
@@ -5575,6 +5584,51 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       /(^|\r|\n)l\r/.test(sent) && !sent.includes('gos'),
       'so `l` looks in the room rather than being said to the realm',
       JSON.stringify(sent.slice(0, 40))
+    );
+  }
+
+  {
+    /*
+     * And a semicolon makes one line several commands, a count in front of one
+     * repeats it (todo 04). Paced by the prompt in main, and this host answers
+     * few commands with one, so the wait is the queue reclaiming its credit.
+     */
+    const before = Buffer.concat(received).length;
+    await evaluate(`
+      (() => {
+        const input = document.querySelector('.conversation-say input');
+        input.focus();
+        const set = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        ).set;
+        set.call(input, 'smile;2wave');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await valued('.conversation-say input', 'smile;2wave');
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    });
+    const waves = (sent) => (sent.match(/(^|\r|\n)wave\r/g) ?? []).length;
+    const sent = await readUntil(
+      async () => Buffer.concat(received).subarray(before).toString('latin1'),
+      (sent) => waves(sent) === 2,
+      200
+    );
+    check(
+      /(^|\r|\n)smile\r/.test(sent) && waves(sent) === 2 && !sent.includes(';'),
+      'a semicolon sends each command in turn, and 2wave waves twice',
+      JSON.stringify(sent.slice(0, 60))
     );
   }
 
@@ -12700,6 +12754,24 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * `CharacterTracker.rememberTheWayBack` writes nothing down for a move whose
    * two ends are the same room.
    */
+  /*
+   * On a lap, because only a character the client is taking somewhere runs
+   * (todo 03, 2026-09-23): standing still, it stays and says so. The fight
+   * from the Combat section is still on, and a lap waits a fight out, so the
+   * lap starts without a step and the escape is the only move this section
+   * sends. The Navigation card naming it running is the positive control.
+   */
+  const lapStarted = await evaluate(`window.mudengine.startLoop('${SESSION}', 'Smoke loop')`);
+  await waitFor(async () =>
+    evaluate(
+      `(() => { const text = document.querySelector('.navigation-card')?.innerText ?? ''; return /Smoke loop/.test(text) && /running|fighting|resting/i.test(text); })()`
+    )
+  );
+  check(
+    lapStarted === null,
+    'a lap is running for the escape to run on',
+    JSON.stringify(lapStarted)
+  );
   const chunksBefore = received.length;
   const bytesBefore = Buffer.concat(received).length;
   liveSockets[0]?.write(Buffer.from('\x1b[1;32m[HP=20/MA=50]:\x1b[0m\x1b[79D\x1b[K', 'latin1'));
@@ -12751,6 +12823,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       ),
     /Also here: Nathaniel/,
     { prompt: true }
+  );
+  // The lap was only somewhere for the escape to run from: stopped before it
+  // plans a leg, as every other section leaves the character.
+  await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
+  await waitFor(async () =>
+    evaluate(
+      `!/running|fighting|resting/i.test(document.querySelector('.navigation-card')?.innerText ?? '')`
+    )
   );
 
   /*

@@ -218,6 +218,11 @@ export const RULES: Rule[] = [
   },
   { type: 'prompt-selection', pattern: /^Please enter your selection:/ },
   { type: 'prompt-realm', pattern: /^Please select a realm:/ },
+  {
+    type: 'realm-listed',
+    pattern: /^\[(?<number>\d+)\] \. (?<name>.+?) \([^)]*\) \[ (?<mode>PvE|PvP Enabled) \]\s*$/
+  },
+  { type: 'realm-hang-penalty', pattern: /^\s*\. \. Hang Penalties (?<percent>\d+)%\s*$/ },
   { type: 'prompt-character', pattern: /^Please select a character:/ },
   { type: 'prompt-menu', pattern: /^\[(?<realm>MAJORMUD|PARADIGM)\]:/ },
   { type: 'login-failed', pattern: /^Invalid username\/password!/ },

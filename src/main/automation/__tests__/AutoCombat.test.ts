@@ -741,6 +741,26 @@ describe('refusing to start one', () => {
     expect(sent).toEqual(['a giant rat']);
   });
 
+  /*
+   * The decline is the journey's and ends with it (2026-09-23). `acting` read
+   * it bare, so a journey declined and then ended beside a switch that reads
+   * on left the character refusing every fight until a reload happened to
+   * clear it, and saying nothing.
+   */
+  it('ends the decline with the journey, so a switch that reads on fights again', () => {
+    const auto = make(combat({ enabled: true }));
+    auto.noteWalking(true);
+    auto.declineWhileTravelling();
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+    auto.noteWalking(false);
+    expect(auto.willFight).toBe(true);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
   /* And the decline is reported for that half second, not only obeyed. */
   it('reports the decline while the switch still reads on, and sends nothing', () => {
     const auto = make(combat({ enabled: true }));
@@ -815,6 +835,41 @@ describe('refusing to start one', () => {
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual(['a giant rat']);
+  });
+
+  /*
+   * `CombatLease` lent the switch and handed it back (todo 00): the off edge
+   * that follows is the lease's, so the journey is put back as it was when
+   * the switch was lent — declined after a *Run it*, fighting on a route.
+   */
+  it('puts a declined journey back declined when the lease hands the switch back', () => {
+    const auto = make(combat({ enabled: false }));
+    auto.noteWalking(true);
+    auto.declineWhileTravelling();
+    // Lent: the reload reads on and the journey fights.
+    auto.configure(combat({ enabled: true }), true);
+    expect(auto.journeyDeclined).toBe(false);
+    auto.leaseReturned(true);
+    auto.configure(combat({ enabled: false }), true, undefined, undefined, true);
+    expect(auto.journeyDeclined).toBe(true);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('leaves a route that was fighting still fighting when the lease hands the switch back', () => {
+    const auto = make(combat({ enabled: true }));
+    auto.noteWalking(true);
+    auto.leaseReturned(false);
+    auto.configure(combat({ enabled: false }), true, undefined, undefined, true);
+    expect(auto.journeyDeclined).toBe(false);
+    auto.onCharacter(state({ room }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+    // Nothing is left over: the player's own off edge declines as it always did.
+    auto.configure(combat({ enabled: true }), true);
+    auto.configure(combat({ enabled: false }), true);
+    expect(auto.journeyDeclined).toBe(true);
   });
 
   /* Turning it back on mid-journey answers in the other direction too. */

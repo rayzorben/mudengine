@@ -9295,6 +9295,29 @@ tr:hover .row-action.worn,
   outline: none;
 }
 
+/*
+ * What is still waiting of a line of several commands, and the press that
+ * drops it. The picker's tonal pill on the other side of the box: a count
+ * that can be acted on, not a second primary action.
+ */
+.conversation-queued {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-card) - 6px);
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-hi));
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 5px 8px;
+  transition: background var(--dur-control) var(--ease-out);
+  white-space: nowrap;
+}
+
+.conversation-queued:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+}
+
 /* ----------------------------------------------------------------- realm */
 
 /*

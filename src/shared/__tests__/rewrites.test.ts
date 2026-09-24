@@ -462,6 +462,47 @@ describe('the other listings', () => {
     expect(drawn[0]?.segments.find((s) => s.text.startsWith('short'))?.fg).toBe('brightRed');
   });
 
+  /*
+   * Todo 01 (2026-09-23): `50000 gold crowns` asks the reader to do the
+   * ladder's arithmetic. Platinum is a hundred gold and runic a hundred
+   * platinum (`COPPER_PER`), so the quote is carried up to the richest coin.
+   */
+  it('puts a price on the coin ladder, and keeps the counter words it cannot carry', () => {
+    const row = (price: string, cost: number | null) => ({
+      name: 'rope',
+      quantity: 1,
+      price,
+      cost,
+      note: null,
+      item: wireItem('rope'),
+      effects: NO_EFFECTS,
+      verdict: equipVerdict(wireItem('rope'), UNKNOWN_WEARER, t)
+    });
+    const drawn = renderRewrite(
+      design('shop', '{for item in items}{item.priceLong}\n{/for}'),
+      {
+        entity: 'shop',
+        figures: FIGURES,
+        rows: [
+          row('200 platinum pieces', 2_000_000),
+          row('50003 gold crowns', 5_000_300),
+          row('10 silver nobles', 100),
+          row('Free', 0),
+          row('3 trade beads', null)
+        ]
+      },
+      BANDS,
+      t
+    );
+    expect(drawn.map(plainOf)).toEqual([
+      '2 runic',
+      '5 runic, 3 gold',
+      '1 gold',
+      'Free',
+      '3 trade beads'
+    ]);
+  });
+
   it("colours a member's health by the bands and names the flag", () => {
     const drawn = renderRewrite(
       design('party', '{for members}{name} {health} {state}{if resting}*{/if}\n{/for}'),

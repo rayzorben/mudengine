@@ -99,6 +99,15 @@ export interface Intent {
    */
   keepsLink?: boolean;
   /**
+   * The player's own line, paced rather than written at once: one command of
+   * a talk-box line that stands for several (todo 04). Sent through
+   * `SessionManager.send`, the path a keystroke takes, so it is observed and
+   * recorded as the player's; queued because the realm queues fifteen, warns
+   * to twenty and drops the rest (`GMUDInGameState.cs:37`), and automation
+   * spends from the same fifteen.
+   */
+  typed?: boolean;
+  /**
    * The command has just been written to the socket.
    *
    * For a proposer whose own deadline measures the **server's** silence. The
@@ -195,8 +204,9 @@ export class CommandQueue {
    * by the acknowledgement timeout on the way in, since anything older than
    * that has been answered or written off.
    *
-   * Only automation's: the player's own typing never comes through this class,
-   * which is what makes `resendLast` unable to replay something a person typed.
+   * Only what this queue sent: the player's own typing never comes through
+   * this class, so `resendLast` cannot replay a keystroke. A talk-box line of
+   * several (`Intent.typed`) does, and is put back like any other.
    */
   private recentlySent: Array<{ intent: Queued; at: number }> = [];
   /**
@@ -295,7 +305,8 @@ export class CommandQueue {
          */
         command: intent.secret === true ? MASKED_COMMAND : intent.command,
         priority: intent.priority,
-        ...(intent.reason === undefined ? {} : { reason: intent.reason })
+        ...(intent.reason === undefined ? {} : { reason: intent.reason }),
+        ...(intent.typed === true ? { typed: true } : {})
       }))
     };
   }
@@ -376,8 +387,10 @@ export class CommandQueue {
    * **Only what this queue sent, and only what the server named.** The caller
    * passes the command the status line echoed; a mismatch means the fumbled
    * command was not the one in flight — the player typed one — and nothing is
-   * put back. The player's own input never comes through this class at all,
-   * which is the other half of *not manual user commands*.
+   * put back. The player's typing never comes through this class, which is
+   * the other half of *not manual user commands*; a talk-box line of several
+   * does (`Intent.typed`), and a fumbled one is put back as a walk's step is,
+   * or the rest of the line walks from the wrong room.
    *
    * Returns whether anything was put back, so the caller can say so.
    */

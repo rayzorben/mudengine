@@ -368,6 +368,17 @@ notices:
         'Picking and bashing locked doors are now settings, and were written into {count} file with
         the paragraph that explains them. Both are off, which is what the client was already doing.
         {fileList}'
+    hangPenalties:
+      one:
+        '"hangUp.onlyWhenClean" became "hangUp.penalties" in {count} file: whether the realm
+        charges for a hang-up. The options file says no (a PvE realm), a character inherits its
+        realm, and Paradigm''s realm menu answers for itself. Set it under Health › Auto-Hangup, or
+        per realm; the backup beside each file has the old answer. {fileList}'
+      many:
+        '"hangUp.onlyWhenClean" became "hangUp.penalties" in {count} files: whether the realm
+        charges for a hang-up. The options file says no (a PvE realm), a character inherits its
+        realm, and Paradigm''s realm menu answers for itself. Set it under Health › Auto-Hangup, or
+        per realm; the backup beside each file has the old answer. {fileList}'
     wardsMoved:
       many:
         '"automation.movement.useWards" moved to "automation.health.useWards" in {count} files and
@@ -881,6 +892,13 @@ terminal:
     copy: Copy
     copyLink: Copy link
     paste: Paste
+  # A plain Enter the window saw and this console never sent (todo 00): where
+  # the caret was, and the key's code, which tells an input method (229) apart.
+  enterNotTaken: 'That Enter did not reach the game: the caret was on {where} (key code {code}).'
+  enterWhere:
+    console: this console, which did not take it
+    elsewhere: another character's console
+    nowhere: nothing
   fontNotFixedPitch: "{fontName} is not fixed-pitch ('{widest}' is wider than '{narrowest}') — maps
     and frames will not align."
   jumpToLatest: Jump to latest ↓
@@ -1117,6 +1135,7 @@ rewrites:
     gang: Gang
     flags: Flags
     quantity: Qty
+    priceLong: Price
     cost: Copper
     afford: Purse
     usable: Usable
@@ -1251,6 +1270,7 @@ rewrites:
     gang: The gang the roster names.
     flags: The roster's status letters.
     quantity: How many the counter has.
+    priceLong: The counter's price on the coin ladder, richest coins first, such as 5 runic, 3 gold.
     cost: The price in copper.
     afford: Says short when the price is more than the purse holds.
     short: Whether the price is more than the purse holds.
@@ -2802,8 +2822,14 @@ cards:
     messageInputAria: Say something
     # With a channel showing; the openers that go somewhere else are listed.
     messagePlaceholder: message, or start with . " > / gos auc br - gb bg
-    # The shipped box: what is typed is what is sent, channel word and all.
-    messagePlaceholderAsTyped: sent as typed — gos to gossip, l to look
+    # The shipped box: what is typed is what is sent, channel word and all,
+    # and a semicolon between commands sends each in turn (todo 04).
+    messagePlaceholderAsTyped: sent as typed — gos to gossip, l to look, s;2d,3n for several
+    # A line of several commands still going out, one a prompt; pressing drops the rest.
+    queued:
+      one: '{count} queued · drop'
+      many: '{count} queued · drop'
+    dropQueuedHint: Drop the commands still waiting from this box
     # The direction on this character's own receipts: `telepath to Brackle`.
     sentTo: to
     title: Talk
@@ -3171,6 +3197,10 @@ settings:
     engageNone: Retaliate Only
     hitBack: Retaliate When Attacked
     hitBackHint: Swings at whatever is already swinging at this character. Cannot open a fight.
+    defendAfterRounds: Defend After Rounds
+    defendAfterRoundsHint:
+      With auto-combat off, rounds of being hit without moving before it is turned on until you
+      next arrive in another room. 0 never does.
     politeAttacks: Polite Attacks
     politeAttacksHint:
       MegaMUD's Polite Attacks. On, a monster somebody outside your party is already fighting is
@@ -3280,7 +3310,9 @@ settings:
     retreatHint:
       Walking out of the fight breaks combat and carries none of the penalty a disconnect does.
       There is no flee command on this server family, so the way out is always a direction — the
-      one you came in by where that is known, and an exit of this room otherwise.
+      one you came in by where that is known, and an exit of this room otherwise. Only while
+      something is taking the character somewhere (a route, a loop, an errand, a quest run);
+      once a route has arrived, it stays where it is.
     retreatLabel: Auto-Retreat
     retreatLegend: Auto-Retreat
     retreatStrategyHint:
@@ -3291,14 +3323,18 @@ settings:
     safeHavenHint: Named as a loop stop is, with the map/room so a shared name is not guessed at.
     safeHavenLabel: Safe Room / Retreat Room
     safeHavenPlaceholder: Newhaven, Town Gates 1/2150
-    hangUpCleanHint: Leave this on. The five-minute PvP window is invisible on screen.
-    hangUpCleanLabel: Refuse Likely Penalties
+    hangPenaltiesHint: Whether this realm charges for a hang-up; Paradigm's realm menu says so itself, and that outranks this.
+    hangPenaltiesLabel: Hang Penalties
+    hangPenaltiesGlobal: As Global says
+    hangPenaltiesRealm: As the realm says
+    hangPenaltiesYes: Charged
+    hangPenaltiesNo: Not charged
     hangUpLabel: Auto-Hangup / Emergency Disconnect
     hangUpLegend: Auto-Hangup
     hangUpOnPlayer: Hangup on Player Sighting
     hangUpWarning:
-      An unclean disconnect costs a share of maximum health, and at low health it kills — use
-      Auto-Retreat.
+      On a realm with hang penalties, an unclean disconnect costs a share of maximum health, and
+      at low health it kills — use Auto-Retreat.
     meditateBelowHint: Sends med below this. Ignored for a class with no mana.
     meditateBelowLabel: Meditate If Below Mana %
     outnumberedHint: A health threshold notices being swarmed too late. 0 never.
@@ -4095,6 +4131,19 @@ session:
     noWay: 'No way back to the previous room: {reason}'
     nothingBehind: No confirmed move to go back over — the client has not seen this character move yet.
     notInRealm: This character is not in the realm.
+  macro:
+    dropped:
+      one: Dropped the {count} command still waiting from the talk box.
+      many: Dropped the {count} commands still waiting from the talk box.
+    droppedDied:
+      one: 'Dropped the {count} command still waiting from the talk box: you were killed, and the realm has moved you.'
+      many: 'Dropped the {count} commands still waiting from the talk box: you were killed, and the realm has moved you.'
+    held: 'Not sending that line: {reason}.'
+    offline: 'Not sending that line: this character is not connected.'
+    reason: 'From the talk box: {line}'
+    tooMany: 'Not sending that line: it stands for {count} commands, and one line may stand for {limit} at most.'
+    restHeld: 'Not sending the rest of that line, from {command} on: {reason}.'
+    restRefused: 'Not sending the rest of that line, from {command} on: the queue would not take it.'
   move:
     alreadyMoving: This character is already moving.
     noSuchLoop: There is no loop called {name}.
@@ -4145,7 +4194,17 @@ session:
     whyMortallyWounded: 'on the ground at {hp} health'
     escapeNoExit:
       'Not running: {why}, but this room has named no exit and there is nothing behind us to
-      retrace. Standing and fighting.'
+      retrace. {then}'
+    # Every exit the room printed leads back into a room this character has
+    # just run out of (`ranFrom`); {directions} names them.
+    escapeOnlyBack:
+      one: 'Not running: {why}, but the only way out, {directions}, leads back to the room just run from. {then}'
+      many: 'Not running: {why}, but every way out ({directions}) leads back to a room just run from. {then}'
+    escapeOnlyBackReason: every exit leads back to a room just run from
+    escapeStanding: Standing and fighting.
+    escapeStaying: 'Not running: {why}, but nothing is taking this character anywhere, so it stays where it is. {then}'
+    escapeStayingReason: nothing is taking this character anywhere
+    escapeNotFighting: 'Not fighting: auto-combat is off.'
     escapeNoExitReason: no exit known from this room
     escapeOpening: 'The {barrier} {direction} is shut: opening it and running again.'
     escapeUnanswered: nothing answered the escape in time
@@ -4159,10 +4218,12 @@ session:
     retreatPlanned: 'Retreating to {room}: {stepCount} steps.'
     retreatRefused: 'Could not retreat to {room}: {reason}'
     retreatUnplaced: 'Not retreating to {room}: the room never resolved after the move.'
-    hangingUp: 'Hanging up: {why}. Penalty likely — {reasons}.'
     hangUpRefused: Not hanging up — {why}. {reasons}. Disconnecting now would be penalised; walk out instead.
     hangingUpClean: 'Hanging up: {why}.'
-    penaltyLikely: 'penalty likely: {reasons}'
+    hangingUpUncharged: 'Hanging up: {why}. {realm} charges nothing for a hang-up, by its own realm menu.'
+    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm charges nothing for a hang-up.'
+    realmCharges: '{realm} charges {percent}% for a hang-up, by its realm menu.'
+    realmChargesNothing: '{realm} charges nothing for a hang-up, by its realm menu.'
     pvpAlertReason: 'safety: telling the gang about {attacker}'
     pvpAlerted: 'Telling the gang: {attacker} is attacking.'
     pvpNoGang: 'Not telling anyone about {attacker}: the roster shows you in no gang.'
@@ -4413,6 +4474,22 @@ automation:
     lentForHold: 'Held with auto-combat off: turning it on until the hold wears off.'
     returnedAfterHold: 'The hold wore off: auto-combat back off, walking on.'
     backOnArrival: 'Arrived: auto-combat back on.'
+    # Todo 00 (2026-09-23): hit and not moving with auto-combat off lends it
+    # until the next arrival in another room.
+    lentForDefence:
+      one: 'Hit for {rounds} round and not moving, with auto-combat off: turning it on until you move.'
+      many: 'Hit for {rounds} rounds and not moving, with auto-combat off: turning it on until you move.'
+    defendBecause: 'rounds hit without moving, with auto-combat off: {rounds}'
+    defendUnwritable: "auto-combat could not be turned on in the character's file"
+    returnedAfterMove: 'Moved: auto-combat back off.'
+    returnedAfterDeath: 'Killed: auto-combat back off.'
+    returnedAfterLeaving: 'Left the realm: auto-combat back off.'
+    returnedAfterLoss: 'Connection lost: auto-combat back off.'
+    returnedAfterClose: 'Disconnected: auto-combat back off.'
+    # The file refused handing the lent switch back; tried again each state.
+    returnStuck: "Auto-combat was lent and could not be turned back off in the character's file. Trying again; turn it off by hand if this stays."
+    returnUnwritable: "auto-combat could not be turned back off in the character's file"
+    returnedAtReset: 'New session: auto-combat back off.'
     # Todo 06: *Run it* is turn off, go -- said at the start, and again where the
     # run is picked up after a lost connection or an errand.
     runningCombatOff: 'Running it: auto-combat is off, and stays off until you turn it back on.'
@@ -4947,7 +5024,7 @@ automation:
     reasonUnlocking: unlocking the {barrier} to {stepName} with the key you are carrying
     reasonLever: “{phrase}” to open the hidden way to {stepName}
     reasonWalkingThroughFight:
-      Nothing is set to fight or run, so this route walks on through the fight rather than waiting
+      Auto-combat is not fighting this, so the route walks on through the fight rather than waiting
       for it to end — which is also how it ends.
     reasonRereading: reading the room again for the hidden way to {stepName}
     reasonSearching: searching for the hidden way to {stepName}

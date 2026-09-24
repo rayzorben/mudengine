@@ -163,7 +163,9 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/Walker.ts',
       'src/main/automation/AutoCombat.ts',
       // The spellbook ask reads its own refusal and the level-up line.
-      'src/main/automation/Routines.ts'
+      'src/main/automation/Routines.ts',
+      // What the realm menu says a hang-up costs (todo 01).
+      'src/main/session/RealmMenu.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))
       .map((file) => fs.readFileSync(path.resolve(file), 'utf8'))
