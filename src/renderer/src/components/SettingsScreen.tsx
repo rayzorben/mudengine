@@ -33,7 +33,7 @@ import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { barOf, figureOf, fractionOf, percentOf } from '../lib/form';
+import { barOf, figureOf, fractionOf, joinNames, percentOf, splitNames } from '../lib/form';
 import {
   begin,
   canRedo,
@@ -490,6 +490,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'movement-stealth', label: t('settings.movement.stealthLegend') },
     { id: 'movement-light', label: t('settings.movement.lightLegend') },
     { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
+    { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
     { id: 'movement-carry', label: t('settings.movement.carryLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
@@ -642,6 +643,8 @@ interface CharacterForm {
   walkWhileBlind: boolean;
   walkWhilePoisoned: boolean;
   fightOnArrival: boolean;
+  /** Ways and places routes keep out of. See `MovementConfig`. */
+  keepOutOf: string[];
   /** Bend down for a key an exit of this room needs. */
   collectKeys: boolean;
   /** Going hunting on its own — `automation.hunting`. */
@@ -818,6 +821,7 @@ function formOf(entry: ProfileEditable): CharacterForm {
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     fightOnArrival: entry.movement.fightOnArrival,
+    keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
@@ -1024,6 +1028,7 @@ function draftOf(form: CharacterForm): ProfileDraft {
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
       fightOnArrival: form.fightOnArrival,
+      keepOutOf: form.keepOutOf,
       collectKeys: form.collectKeys
     },
     hunting: {
@@ -1336,6 +1341,7 @@ function emptyForm(
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
     fightOnArrival: movement.fightOnArrival,
+    keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
@@ -3981,6 +3987,19 @@ export default function SettingsScreen({
                           label={t('settings.movement.fightOnArrival')}
                           name="fight-on-arrival"
                           onChange={(value) => patch({ fightOnArrival: value })}
+                        />
+                      </fieldset>
+
+                      <fieldset className="settings-menus" data-fieldset="movement-keep-out">
+                        <legend>{t('settings.movement.keepOutLegend')}</legend>
+                        <TextField
+                          hint={t('settings.movement.keepOutOfHint')}
+                          label={t('settings.movement.keepOutOf')}
+                          name="keep-out-of"
+                          onChange={(value) => patch({ keepOutOf: splitNames(value) })}
+                          placeholder={t('settings.movement.keepOutOfPlaceholder')}
+                          value={joinNames(form.keepOutOf)}
+                          wide
                         />
                       </fieldset>
 

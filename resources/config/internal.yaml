@@ -843,6 +843,12 @@ tuning:
     # move resolves in about one, and past this the refusal is a real one.
     errandHandoverMs: 15000
 
+    # How long the item errand waits after saying the phrase that summons a
+    # monster which drops what the way needs -- `touch statue`, and the statue
+    # has to die. A summons is a fight before it is an item, so minutes. A
+    # handover is read off a pack listing instead and needs no clock of its own.
+    errandAskMs: 180000
+
     # How long a walk stands still for a condition before spending one step to
     # find out whether it is over.
     #
@@ -985,6 +991,11 @@ tuning:
     # one: a couple of rounds either works or the phrase is not what the realm
     # claims. A search is a skill check the realm expects to fail sometimes.
     leverTries: 2
+
+    # How many levers-behind-levers one walk will fetch: a gate met on the way
+    # to a lever sends the walk for that lever first. Five deep is the deepest
+    # chain reported; this bounds a realm whose data loops.
+    leverErrandDepth: 8
 
     # How long a walk stands at a shut door it could not force before running
     # the whole ladder — open, pick, bash — again.
@@ -1396,6 +1407,12 @@ tuning:
     # that differs is expected to be dearer — that is why it was not the plan —
     # and past this it is a tour rather than a choice.
     anotherWayLonger: 0.5
+
+    # How many times the walk to the nearest place a key is had is counted when
+    # a way through its door is weighed against the way round: 2 is there and
+    # back. A drop is a fight and a chance on top, so this is a floor under the
+    # errand, not its cost.
+    keyFetchTrips: 2
 
     # How many of a consumable a quest's plan buys against a room spell on the
     # way, where the realm says using one stops the spell. A waterskin is three

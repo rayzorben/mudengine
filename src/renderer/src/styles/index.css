@@ -7564,6 +7564,57 @@ button.quest-plan-back {
 }
 
 /*
+ * The way through what the player keeps out of and the way round it (todo
+ * 806): two cards side by side, one question, the pick drawn tonal — never a
+ * fill, since Walk is the panel's one filled control — and never a border
+ * colour.
+ */
+.route-choice {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  padding: 4px 0 8px;
+}
+
+.route-choice-ask {
+  color: var(--text-lo);
+  grid-column: 1 / -1;
+}
+
+.route-way {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--ink-raised) var(--tone-strong), transparent);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: auto;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.route-way:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.route-way[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+.route-way-cost {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+/* The errand a refused way offers when its keys alone would open it: the one
+   action under the refusal, so it is the filled control, as Walk is above. */
+.route-fetch {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/*
  * The alternatives, offered rather than substituted: which of the routes to
  * walk is a judgement about the character's own state that the panel cannot
  * make. A disclosure on its own row above the steps — closed, one line

@@ -566,7 +566,10 @@ describe('conversation, movement, items', () => {
 
   it('reads movement failures', () => {
     expectType('There is no exit in that direction!', 'direction-failed');
-    expectType('The door is closed in that direction!', 'direction-failed');
+    expect(expectType('The door is closed!', 'direction-failed')['barrier']).toBe('door');
+    expect(expectType('The gate is closed!', 'direction-failed')['barrier']).toBe('gate');
+    // `l n` at a shut door (Door.cs:98): a look's refusal, not the move's.
+    expectType('The door is closed in that direction!', 'peek-failed');
     // A refused *look* is not a refused move: the walker acts on the other one.
     expect(expectType('There are no exits to the south!', 'peek-failed')['direction']).toBe(
       'south'

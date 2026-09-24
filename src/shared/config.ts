@@ -1657,7 +1657,9 @@ export interface MovementConfig {
    *
    * Gated on the realm's picklocks number within `PICK_MARGIN`. Tried before
    * bashing when both are available, because a failed pick costs a command and
-   * a failed bash costs a command and some health.
+   * a failed bash costs a command and some health. The router reads this and
+   * `bashDoors` too (`Traveller.forcing`): a lock only a switched-off skill
+   * opens is planned round, never into.
    */
   pickLocks: boolean;
   /** How many picks, before the route gives up on the barrier. */
@@ -1761,6 +1763,16 @@ export interface MovementConfig {
    * toolbar shows it.
    */
   fightOnArrival: boolean;
+  /**
+   * Ways and places routes keep out of, in the realm's own words (todo 806):
+   * a word a way's script phrase says (`go vortex`), or a room's name does
+   * (the Negative Power Plane). Configuration, not code: which places a
+   * player shuns is theirs, and a realm's name for one is data. The route
+   * panel offers a way that crosses one beside the way round it and the
+   * player picks; a walk nobody is watching is planned round them
+   * (`Traveller.keepOut`) unless it starts or ends inside one.
+   */
+  keepOutOf: string[];
   /**
    * Walk on while poisoned. Off, the walk waits the poison out — MegaMUD's
    * `IgnorePoison` default. A cure under `spells.cures` ends the wait sooner.
@@ -2714,6 +2726,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       fightOnArrival: true,
+      keepOutOf: ['vortex', 'Negative Power Plane'],
       collectKeys: true
     },
     hunting: {
@@ -3371,6 +3384,17 @@ function normalizeServers(value: unknown): Server[] {
   return servers;
 }
 
+/** A list with case-insensitive repeats dropped, the first spelling kept. */
+function uniqueWords(words: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return words.filter((word) => {
+    const key = word.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function stringList(value: unknown, fallback: string[]): string[] {
   if (typeof value === 'string') return value.trim() ? [value.trim()] : fallback;
   if (!Array.isArray(value)) return fallback;
@@ -3921,6 +3945,9 @@ function normalizeMovement(value: unknown): MovementConfig {
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
+    // One word once, however it was spelt: two spellings of one word are one
+    // place kept out of.
+    keepOutOf: uniqueWords(stringList(raw['keepOutOf'], d.keepOutOf)),
     collectKeys: bool(raw['collectKeys'], d.collectKeys)
   };
 }

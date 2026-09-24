@@ -5183,6 +5183,88 @@ describe('what this character costs to move', () => {
      */
     expect(traveller.packKnown).toBe(false);
   });
+
+  /*
+   * And which of the two door skills the walker will spend: it picks only
+   * under Auto-Pick Locks and bashes only under Auto-Bash Doors, so a route
+   * planned on a switched-off skill walks up to a door and stops there. The
+   * lap's traveller is the same statement, so a leg is priced alike.
+   */
+  it('tells the router which door skills the walker may use', () => {
+    const world = tabled();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: false,
+      onEnterRealm: [],
+      rules: [],
+      movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false, bashDoors: true }
+    });
+    expect(manager.travellerNow(manager.character).forcing).toEqual({ pick: false, bash: true });
+    expect(manager.lapTraveller(manager.character).forcing).toEqual({ pick: false, bash: true });
+  });
+
+  /*
+   * And the ways and places routes keep out of (todo 806), from the file, with
+   * nothing allowed: only a route the player chose on the panel may cross one,
+   * and never a lap's leg.
+   */
+  /*
+   * A way through what the player keeps out of is walked only once they have
+   * picked it over the way round (todo 806, on review): the palette's *Go to*
+   * walked the way through unasked. The panel takes `keptOut` off the way it
+   * walks; anything still carrying it is a choice nobody made.
+   */
+  it('refuses to walk a way through what is kept out of that nobody chose', () => {
+    const world = tabled();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: false,
+      onEnterRealm: [],
+      rules: []
+    });
+    const round: Route = { steps: [], cost: 0, blocked: true };
+    const through: Route = {
+      steps: [
+        {
+          from: '1/1',
+          to: '3/1',
+          direction: 'portal',
+          command: 'go vortex',
+          name: 'Black Wasteland',
+          requirement: null,
+          dark: false,
+          keptOut: 'vortex'
+        }
+      ],
+      cost: 1,
+      blocked: false,
+      keptOut: { words: ['vortex'], round }
+    };
+    expect(manager.walkPlan(through)).toEqual({ refused: expect.stringContaining('vortex') });
+    expect(manager.collectThenWalk([{ id: 1, name: 'rope' }], through)).toContain('vortex');
+  });
+
+  it('tells the router what to keep out of', () => {
+    const world = tabled();
+    const { sink } = collect();
+    manager = new SessionManager(sink, world, {
+      ...DEFAULT_CONFIG.automation,
+      enabled: false,
+      onEnterRealm: [],
+      rules: [],
+      movement: { ...DEFAULT_CONFIG.automation.movement, keepOutOf: ['vortex'] }
+    });
+    expect(manager.travellerNow(manager.character).keepOut).toEqual({
+      words: ['vortex'],
+      allowed: []
+    });
+    expect(manager.lapTraveller(manager.character).keepOut).toEqual({
+      words: ['vortex'],
+      allowed: []
+    });
+  });
 });
 
 /*

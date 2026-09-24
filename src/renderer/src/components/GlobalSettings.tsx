@@ -186,6 +186,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'movement-stealth', label: t('settings.movement.stealthLegend') },
     { id: 'movement-light', label: t('settings.movement.lightLegend') },
     { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
+    { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
     { id: 'movement-carry', label: t('settings.movement.carryLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
@@ -1757,6 +1758,23 @@ export default function GlobalSettings({
                 onChange={(value) =>
                   automation({ movement: { ...draft.automation.movement, fightOnArrival: value } })
                 }
+              />
+            </fieldset>
+
+            <fieldset className="settings-menus" data-fieldset="movement-keep-out">
+              <legend>{t('settings.movement.keepOutLegend')}</legend>
+              <TextField
+                hint={t('settings.movement.keepOutOfHint')}
+                label={t('settings.movement.keepOutOf')}
+                name="global-keep-out-of"
+                onChange={(value) =>
+                  automation({
+                    movement: { ...draft.automation.movement, keepOutOf: splitNames(value) }
+                  })
+                }
+                placeholder={t('settings.movement.keepOutOfPlaceholder')}
+                value={joinNames(draft.automation.movement.keepOutOf)}
+                wide
               />
             </fieldset>
 

@@ -112,6 +112,7 @@ import {
   asRoomIds,
   asRoomReference,
   asRoute,
+  COLLECT_ITEMS_MAX,
   EMPTY_LOOP_DRAFT,
   roomId,
   type MobPlaces,
@@ -1652,21 +1653,30 @@ function registerIpc(): void {
    * Collect what a door wants, then walk the way through it (todo 07).
    *
    * Parsed, not trusted, for `walk:start`'s reason — this turns into commands
-   * on a socket — and the item is checked as narrowly as the route: an id and
-   * a name, both of which the realm gave the window in the first place.
+   * on a socket — and each item is checked as narrowly as the route: an id and
+   * a name, both of which the realm gave the window in the first place. One
+   * bad entry refuses the lot: an errand that silently dropped an item would
+   * walk into the door that item opens.
    */
   handle(
     Invoke.collectThenWalk,
-    (_caller, session: SessionId, item: unknown, payload: unknown, run: unknown) => {
+    (_caller, session: SessionId, items: unknown, payload: unknown, run: unknown) => {
       const slot = host?.get(session);
       if (!slot) return t('app.session.notConnected');
       const route = asRoute(payload);
       if (!route) return t('app.route.invalidPayload');
-      const asked = item as { id?: unknown; name?: unknown } | null;
-      const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
-      const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
-      if (id === null || name.length === 0) return t('app.route.invalidPayload');
-      return slot.manager.collectThenWalk({ id, name }, route, run === true);
+      if (!Array.isArray(items) || items.length === 0 || items.length > COLLECT_ITEMS_MAX) {
+        return t('app.route.invalidPayload');
+      }
+      const wanted: Array<{ id: number; name: string }> = [];
+      for (const item of items) {
+        const asked = item as { id?: unknown; name?: unknown } | null;
+        const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
+        const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
+        if (id === null || name.length === 0) return t('app.route.invalidPayload');
+        wanted.push({ id, name });
+      }
+      return slot.manager.collectThenWalk(wanted, route, run === true);
     }
   );
   /*

@@ -1160,6 +1160,28 @@ export interface DropPlace {
   mob: string;
   /** How many moves from where the character stood, for the sentence. */
   steps: number;
+  /**
+   * The monster this room places whose death summons the dropper, where the
+   * realm places the dropper nowhere itself (todo 806): the dying slaver
+   * leader is the slaver leader's death spell. Absent for a placed dropper.
+   */
+  via?: string;
+}
+
+/**
+ * A room where saying something gets an item (todo 806): a script's handover
+ * (`ask sleazy shopkeeper orb`, or a phrase said in the room) or a room script
+ * that summons a monster which drops it (`touch statue`). `WorldGraph.itemAsks`.
+ */
+export interface ItemAsk {
+  room: RoomId;
+  roomName: string;
+  /** What is said there, ready to send. */
+  say: string;
+  /** The dropper the phrase summons, where it is a summons rather than a handover. */
+  summons?: string;
+  /** How many moves from where the character stood, for the sentence. */
+  steps: number;
 }
 
 /** One monster whose drop list names an item, and whether the realm places it. */
@@ -2603,6 +2625,20 @@ export interface RouteStep {
    */
   deadly?: boolean;
   /**
+   * The word from `movement.keepOutOf` this step crosses (todo 806) — into a
+   * room whose name says it, or by a way whose script phrase does — as the
+   * player wrote it. Set whether or not this walk may cross it, so the step
+   * says so and a walk the player chose can cross it again after a redraw.
+   */
+  keptOut?: string;
+  /**
+   * Whether this step enters a lair the router could not weigh — an unread
+   * bar, a monster its arithmetic cannot price — so what walking it costs is
+   * unknown rather than nothing (todo 806). Absent where there is no lair or
+   * it was weighed.
+   */
+  lairUnweighed?: true;
+  /**
    * What that pass is expected to take in hit points — `danger` before the
    * division by the health the route was planned at. The walker's rest before
    * a trap reserves this much beyond the trap's damage; a share of a bar read
@@ -3021,6 +3057,12 @@ export type RouteBlock =
       /** Null while the sheet is unread; never zero standing in for unknown. */
       picklocks: number | null;
       strength: number | null;
+      /**
+       * The skills this door names that the walker is switched off from using
+       * (*Auto-Pick Locks*, *Auto-Bash Doors*), said as a setting, because a
+       * figure well over the door's reads as a contradiction.
+       */
+      switchedOff?: Array<'picklocks' | 'strength'>;
       keyId?: number;
       itemName?: string;
       /**
@@ -3067,6 +3109,18 @@ export type RouteBlock =
       atLeast?: number;
       atMost?: number;
     }
+  | {
+      /**
+       * A way or a place `movement.keepOutOf` keeps walks out of (todo 806),
+       * on the only way there. `word` is the list's own, as the player wrote
+       * it, because that is what they would change.
+       */
+      kind: 'keptOut';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      word: string;
+    }
   /** No path at all, gates ignored: the two rooms are not joined in the data. */
   | { kind: 'unreachable' };
 
@@ -3085,6 +3139,7 @@ export const ROUTE_BLOCK_KINDS = [
   'born',
   'quest',
   'door',
+  'keptOut',
   'unreachable'
 ] as const;
 
@@ -3252,16 +3307,24 @@ export function describeBlock(block: RouteBlock): string {
         if (block.strength === null) unread.push('strength');
         else have.push(`${block.strength} strength`);
       }
+      const off = (block.switchedOff ?? []).map((skill) =>
+        skill === 'picklocks' ? 'picking locks' : 'bashing doors'
+      );
       const mine = [
         have.length > 0 ? `you have ${have.join(' and ')}` : null,
         unread.length > 0
           ? `your ${unread.join(' and ')} ${unread.length === 1 ? 'is' : 'are'} not known yet`
+          : null,
+        off.length > 0
+          ? `${off.join(' and ')} ${off.length === 1 ? 'is' : 'are'} switched off`
           : null
       ]
         .filter((part) => part !== null)
         .join(', ');
       return `${block.name} is locked — needs ${opens.join(' or ')}; ${mine}`;
     }
+    case 'keptOut':
+      return `${block.name} is kept out of — "${block.word}" is on your Keep Out Of list`;
     case 'unreachable':
       return 'No way there at all — the realm data joins no path between the two';
   }
@@ -3292,6 +3355,7 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
     case 'toll':
     case 'born':
     case 'quest':
+    case 'keptOut':
     case 'unreachable':
       return null;
   }
@@ -3391,6 +3455,30 @@ export interface Route {
    * on any route not planned for a reader.
    */
   another?: Route;
+  /**
+   * The way through a door this character holds no key for, planned as
+   * though it did (todo 805) — where fetching the key and walking through
+   * beats the way round by `tuning.world.alternativeMinSteps`, the fetch
+   * priced in (`WorldGraph.keyedWay`). On a refused route, the way the pack
+   * would open once it held what refused it. Its `needs` names what to fetch;
+   * the errand fetches them before it is walked. Absent on any route not
+   * planned for a reader.
+   */
+  unlocks?: Route;
+  /**
+   * What this way assumes is in the pack and is not — set on an `unlocks`
+   * route only. Walking it without them walks into a locked door, so the
+   * press that walks it collects them first (`itemsWanted`).
+   */
+  needs?: Array<{ id: number; name: string }>;
+  /**
+   * What this way crosses that `movement.keepOutOf` names, and the way round
+   * it (todo 806) — set on a route planned for a reader whose way through
+   * crosses a word this walk may not. The two are offered side by side and
+   * the player picks one; nothing walks until they have. `round` is refused
+   * where there is no way round.
+   */
+  keptOut?: { words: string[]; round: Route };
 }
 
 /**
@@ -3432,7 +3520,32 @@ export function demandsOf(route: Route): Map<string, string> {
 }
 
 /**
- * The first item this way asks for, to go and fetch before walking it.
+ * The one item an edge demands be carried, or null where it demands none.
+ *
+ * Two of the realm's columns state one, and from *is this thing in the pack*
+ * they are the same fact: `Key: 1124` is a lock and `Item: 191` a hidden
+ * exit's own action, which is `Requirement.keyId`'s own reading one layer up.
+ * A hidden exit states it on the action rather than on the requirement, so
+ * both are looked at, the requirement first.
+ *
+ * One, and the first: an exit wanting two items is a shape neither shipped
+ * realm writes, and inventing an answer for it is the guess this file refuses.
+ */
+export function itemDemanded(requirement: Requirement | null): number | null {
+  if (requirement === null) return null;
+  if (requirement.keyId !== undefined) return requirement.keyId;
+  for (const action of requirement.actions ?? []) {
+    if (action.item !== undefined) return action.item;
+  }
+  return null;
+}
+
+/** The most items one collect-then-walk may name: a payload bound, for IPC. */
+export const COLLECT_ITEMS_MAX = 16;
+
+/**
+ * Everything this way asks for, to go and fetch before walking it — each item
+ * once, in the order the errand fetches them.
  *
  * **What this plan crosses before what its rooms cast**: a door the walker
  * will stop dead at outranks a spell that only hurts on the way past. `walls`
@@ -3440,20 +3553,59 @@ export function demandsOf(route: Route): Map<string, string> {
  * is what a *cheaper* way needed, which is a different route and so a
  * different errand, and that way is offered as `carrying` where there is one.
  *
- * One rather than all of them: the errand collects one thing at a time, and a
- * second door is a second press. The panel's own sentences name every item, so
- * what is being fetched is never a surprise.
+ * **All of them, not the first** (2026-09-23, todo 804): a way through three
+ * keyed doors fetched the first key and walked into the second door.
  */
-export function itemWanted(route: Route): { id: number; name: string } | null {
-  for (const wall of route.walls ?? []) {
-    const item = blockItem(wall);
-    if (item !== null) return item;
-  }
+export function itemsWanted(route: Route): Array<{ id: number; name: string }> {
+  const wanted = new Map<number, { id: number; name: string }>();
+  const add = (item: { id: number; name: string } | null): void => {
+    if (item !== null && !wanted.has(item.id))
+      wanted.set(item.id, { id: item.id, name: item.name });
+  };
+  for (const item of needsAlong(route)) add(item);
+  for (const wall of route.walls ?? []) add(blockItem(wall));
+  /*
+   * A room spell's `needs` are **alternatives** — any one of them stops it
+   * (`hazardAvoided`): the river's log raft, skiff, canoe and punt. So one per
+   * spell, the first, and none where another spell's pick already stops it.
+   */
   for (const hazard of route.hazards ?? []) {
-    const item = hazard.needs[0];
-    if (item !== undefined) return { id: item.id, name: item.name };
+    if (hazard.needs.some((item) => wanted.has(item.id))) continue;
+    add(hazard.needs[0] ?? null);
   }
-  return null;
+  return [...wanted.values()];
+}
+
+/**
+ * What a way planned as though the pack held it (`Route.needs`) wants for a
+ * door among **its own** steps: a prefix of that way (*Walk here*) that stops
+ * short of the door wants nothing for it. Required, where `itemsWanted`'s
+ * walls and spells are the reader's to tick.
+ */
+export function needsAlong(route: Route): Array<{ id: number; name: string }> {
+  const demanded = new Set(route.steps.map((step) => itemDemanded(step.requirement)));
+  return (route.needs ?? []).filter((item) => demanded.has(item.id));
+}
+
+/**
+ * The way the player picked, with the choice taken off it (todo 806): main
+ * walks no route still carrying `keptOut`, since that is a choice nobody made.
+ */
+export function chosenWay(route: Route): Route {
+  if (route.keptOut === undefined) return route;
+  const way = { ...route };
+  delete way.keptOut;
+  return way;
+}
+
+/**
+ * The `movement.keepOutOf` words this way crosses, each once (todo 806) —
+ * what a walk the player chose may cross again when it is planned afresh.
+ */
+export function crossedWords(route: Route): string[] {
+  return [
+    ...new Set(route.steps.flatMap((step) => (step.keptOut === undefined ? [] : [step.keptOut])))
+  ];
 }
 
 /**
