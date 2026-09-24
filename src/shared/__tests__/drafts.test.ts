@@ -284,6 +284,9 @@ describe('a character', () => {
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         fightOnArrival: true,
+        // A list the payload did not send keeps the shipped words, since an
+        // empty one is a choice and a missing one is not.
+        keepOutOf: ['vortex', 'Negative Power Plane'],
         // Except the one that is on by default and whose absence would switch
         // it off, which is the health block's rule two assertions down: a
         // payload that failed to send the field must not mean `false`.
@@ -354,6 +357,7 @@ describe('a character', () => {
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         fightOnArrival: true,
+        keepOutOf: ['vortex', 'Negative Power Plane'],
         // The shipped default, for the same reason `restBelow` keeps 0.35
         // here: a nonsense block must not silently switch off something that
         // ships on.

@@ -438,23 +438,33 @@ export class Walker {
    */
   private levered = 0;
   /**
-   * The lever this walk has gone to fetch, and the journey it interrupted.
+   * The levers this walk has gone to fetch, and the journey each interrupted.
    *
    * A route that reaches a gate it cannot open asks the realm what does open
    * it (`leversFor`); where the answer is a lever in another room, the walk
    * **goes and pulls it** and then plans on to where it was going. That is one
-   * errand, held here, and it is the reason the arrival at the lever's room is
-   * not an arrival: `ended` must not fire, or a loop reading it would book the
-   * leg as arrived and advance to the next stop while the gate is still shut.
+   * errand, and it is the reason the arrival at the lever's room is not an
+   * arrival: `ended` must not fire, or a loop reading it would book the leg as
+   * arrived and advance to the next stop while the gate is still shut.
    *
-   * Null for every walk that is not fetching one, which is nearly all of them.
+   * **A stack, because a lever can be behind a lever** (todo 807): a gate met
+   * on an errand's way pushes an errand of its own, whose `back` is the room
+   * the errand beneath was walking to — so its arrival there is that errand's,
+   * handed down by `finishErrand`, and never the journey's. The top is the one
+   * in hand; `tuning.walk.leverErrandDepth` bounds it and `detoured` spends
+   * each gate once. Empty for nearly every walk.
    */
-  private errand: {
+  private errands: Array<{
     /** The lever rooms still to visit, in the order they are to be visited. */
     rooms: Array<{ at: RoomId; say: string[] }>;
     back: RoomId;
     backName: string;
-  } | null = null;
+  }> = [];
+
+  /** The errand in hand: the top of the stack, or null. */
+  private get errand(): (typeof this.errands)[number] | null {
+    return this.errands.at(-1) ?? null;
+  }
   /**
    * The exits this walk has already made that errand for, `from|direction`.
    *
@@ -1095,7 +1105,7 @@ export class Walker {
      * that was interrupted, which this replaces.
      */
     this.forgetLock();
-    this.errand = null;
+    this.errands = [];
     this.detoured.clear();
     this.leverSaid = false;
     // A health hold belongs to the walk that was waiting, not to the next one:
@@ -1244,7 +1254,7 @@ export class Walker {
      * `start` clears it too, and both are here because a stopped walk that is
      * never restarted must leave nothing armed.
      */
-    this.errand = null;
+    this.errands = [];
     // `this.quiet` is the whole walk's silence and `quiet` is this stop's; a
     // loop's leg ending is already reported by the loop, which says what it
     // decided to do about it rather than merely that a walk ended.
@@ -1301,7 +1311,7 @@ export class Walker {
      * being part of that reset when a lock had to survive a barrier round.
      */
     this.forgetLock();
-    this.errand = null;
+    this.errands = [];
     this.detoured.clear();
     this.leverSaid = false;
     this.publish();
@@ -2016,23 +2026,18 @@ export class Walker {
     if (route === null) return false;
     if (step.direction === 'portal') return false;
     /*
-     * **Never while an errand is already running**, which is the one guard
-     * that keeps this from eating the journey it was sent to serve.
-     *
-     * `detoured` is keyed by the *gate*, so a second gate met on the errand's
-     * own route passes it — and `back` is taken from the route in flight,
-     * which during an errand is the way to the lever rather than the way to
-     * where the player asked to go. So the original destination is silently
-     * replaced by a lever room, and arriving there fires `ended(true)`: the
-     * exact false arrival this rung exists to avoid, a loop booking a leg it
-     * never walked. For a set it is worse still, because the outer round is
-     * abandoned half-pulled and the passage stays shut, which is the
-     * all-or-nothing rule broken from the inside.
-     *
-     * A gate on the way to a lever is left to the ladder that was already
-     * there: open, force, and then the barrier hold. One errand at a time.
+     * **An errand met on an errand's way is pushed, never swapped in** (todo
+     * 807). `back` is taken from the route in flight, which during an errand
+     * is the way to the outer errand's lever room rather than to where the
+     * player asked to go — and that is the right place to come back to,
+     * because the outer errand is still on the stack beneath and takes the
+     * arrival there as its own. Swapping it in (the old single slot) made the
+     * lever room the journey's destination and fired `ended(true)` on reaching
+     * it, a loop booking a leg it never walked, so a second gate was left to
+     * the barrier ladder and a chain of five levers lapped its rooms until the
+     * rounds ran out. Bounded by depth; `detoured` spends each gate once.
      */
-    if (this.errand !== null) return false;
+    if (this.errands.length >= tuning().walk.leverErrandDepth) return false;
     const key = `${step.from}|${step.direction}`;
     if (this.detoured.has(key)) return false;
     const levers = this.events.leversFor?.(step.from, step.direction) ?? [];
@@ -2121,11 +2126,11 @@ export class Walker {
     const pulling = rooms.get(best.at)!;
     const destination = route.steps.at(-1)!;
     this.detoured.add(key);
-    this.errand = {
+    this.errands.push({
       rooms: [{ at: best.at, say: pulling.map((lever) => lever.say) }],
       back: destination.to,
       backName: destination.name
-    };
+    });
     if (!this.quiet) {
       this.events.notice?.(
         t('automation.walk.leverFetching', {
@@ -2178,8 +2183,10 @@ export class Walker {
     if (errand === null) return false;
     const done = errand.rooms.shift();
     if (done === undefined) {
-      this.errand = null;
-      return false;
+      // An errand with nothing left to pull: its arrival, like the branch
+      // below, is the errand beneath's where there is one (todo 807).
+      this.errands.pop();
+      return this.errand === null ? false : this.finishErrand(state);
     }
     /*
      * The levers go out before the fight is consulted, deliberately. They are
@@ -2214,12 +2221,12 @@ export class Walker {
     }
     const on = this.events.replan?.(to, this.shortest);
     if (on === undefined || typeof on === 'string') {
-      this.errand = null;
+      this.errands = [];
       this.stop(on ?? t('automation.walk.refusalNoRoute'));
       return true;
     }
     if (on.blocked) {
-      this.errand = null;
+      this.errands = [];
       this.stop(on.reason ?? t('automation.walk.refusalNoRoute'));
       return true;
     }
@@ -2236,12 +2243,18 @@ export class Walker {
        * the cost of being wrong about "cannot happen" here is an `ended(true)`
        * for a journey that has not finished.
        */
-      this.errand = null;
-      if (next === undefined) return false;
-      this.errand = { ...errand, rooms: errand.rooms };
-      return this.finishErrand(state);
+      if (next !== undefined) return this.finishErrand(state);
+      /*
+       * The last lever of a nested errand pulled where its way back begins:
+       * that room is the one the errand beneath was walking to, so this is
+       * its arrival, handed down — never the journey's (todo 807).
+       */
+      this.errands.pop();
+      return this.errand === null ? false : this.finishErrand(state);
     }
-    if (next === undefined) this.errand = null;
+    // Walking back: the way to `back` is the errand beneath's own walk, and
+    // arriving is its arrival, or the journey's where there is none.
+    if (next === undefined) this.errands.pop();
     this.walked += this.index;
     this.route = on;
     this.index = 0;
@@ -2350,7 +2363,7 @@ export class Walker {
     const opening = first as Route;
     const destination = route.steps.at(-1)!;
     this.detoured.add(key);
-    this.errand = { rooms: chain, back: destination.to, backName: destination.name };
+    this.errands.push({ rooms: chain, back: destination.to, backName: destination.name });
     if (!this.quiet) {
       this.events.notice?.(
         t('automation.walk.leverRun', { roomCount: chain.length, stepName: step.name })

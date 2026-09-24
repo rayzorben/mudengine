@@ -2569,16 +2569,40 @@ cards:
       carrying: 'Carrying {itemList}, {stepCount} steps'
       viaItem: 'Using {itemList}, {stepCount} steps — saves {savedCount}'
       another: 'A different way, {stepCount} steps — {freshCount} rooms not on the plan'
+      keyed: 'Fetching {itemList} first, then {stepCount} steps'
     showing:
       round: the way round
       carrying: the way with the items
       viaItem: the way using an item
       another: the different way
+      keyed: the way through, fetched first
+      keptOut: the way round
     usedHere: 'here, in {roomName}'
     spendsOnce: single use
     spendsUses: '{useCount} uses'
     spendsForever: unlimited uses
     collectFirst: Collect {itemName} first
+    keptOut:
+      ask: 'This way crosses {wordList}, which you keep out of. Choose a way:'
+      groupAria: 'The way through {wordList}, or the way round it'
+      through: 'Through {wordList}'
+      round: Round it
+      roundFetching: 'Round it, fetching {itemList} first'
+      noRound: No way round
+      chooseFirst: Choose the way through or the way round first.
+      deadly: 'expected to kill you at {roomName}'
+      noLairs: no lairs on the way
+      unweighed:
+        one: 1 lair not weighed
+        many: '{count} lairs not weighed'
+      spells:
+        one: 1 room spell
+        many: '{count} room spells'
+    stepKeptOut: 'kept out: {word}'
+    stepKeptOutTitle: On your Keep Out Of list
+    collectRequiredTooltip: This way is planned as though the pack held it, so it is fetched first.
+    fetchThenWalk: 'Get {itemName}, then walk'
+    fetchThenWalkTooltip: The way the pack would open once it holds this, walked after fetching it.
     stopShort: Stop before entering
     stopShortTooltip: Walk as far as {roomName} and stop there
     stepSkipped: not walked
@@ -3545,6 +3569,12 @@ settings:
     stealthLegend: Stealth
     lightLegend: Light
     afflictionsLegend: Afflictions
+    keepOutLegend: Keeping Out
+    keepOutOf: Keep Out Of
+    keepOutOfHint:
+      Words for a way or a place, as the realm writes them — a route you ask for that crosses one
+      is shown beside the way round and you choose; loops, errands and quest runs go round.
+    keepOutOfPlaceholder: 'vortex, Negative Power Plane'
     carryLegend: What It Carries
     loopsNote: These belong to this character alone. Loops for everyone who plays a realm go on that
       realm’s page; loops for every character go on the Global page.
@@ -4271,6 +4301,8 @@ session:
     tooWide: "The status line you designed comes to {cells} cells and the prompt row holds {max}, so
       the realm's own line is drawn instead. Shorten it on the Status Line section in settings."
   walk:
+    keptOutDemand: 'crossing {word}, which you keep out of'
+    keptOutChoose: 'This way crosses {wordList}, which you keep out of: choose the way through or the way round on the route panel.'
     claimLapsed:
       Nothing answered “{command}” in {seconds}s, so the client has given up waiting for it and is
       taking the room on screen as where you are. Running away, walking a route and running a loop
@@ -4341,6 +4373,16 @@ automation:
     refusalNotBought: '{item} was not bought, so the route is not being walked.'
     refusalNotInRealm: This character is not in the realm.
     refusalRouteRefused: 'The way is open now, but the route did not start: {why}'
+    several: 'This way needs {items}; collecting each in turn before walking it.'
+    asking: 'Going to {room}, {steps} steps away, to say "{say}" for {item}.'
+    askingHere: 'Saying "{say}" here in {room} for {item}.'
+    reasonSay: 'collecting: {command}'
+    reasonPackAfter: 'collecting: did it hand the item over?'
+    refusalNotReached: 'Not collecting: the walk to {room} ended somewhere else.'
+    refusalAskedNothing: 'Said "{say}", and no {item} came of it; the way that needed it is not being walked.'
+    refusalPackUnread: 'Asked for the pack after the handover and nothing answered, so it is not known whether it came.'
+    refusalUnsent: 'Could not say "{say}": it never went out, so the way that needed it is not being walked.'
+    summonedBy: '{mob}, summoned when {summoner} dies'
     stoppedGotIt: 'the pack holds {item}'
     whyLeftRealm: the realm was left
   # Keeping a room's ward up off a carried item -- `Wards` (todo 105).

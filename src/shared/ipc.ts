@@ -1115,14 +1115,14 @@ export interface IpcApi {
     confirmed: number | null
   ): Promise<MovementStart>;
   /**
-   * Go and get the item this route's door needs, then walk the route.
+   * Go and get what this route needs — every item, in turn — then walk it.
    *
-   * Resolves to why it could not start, or null. The item is one the route
-   * itself named (`Route.hazards[].needs`), by the realm's own id and name.
+   * Resolves to why it could not start, or null. The items are the ones the
+   * route itself named (`itemsWanted`), by the realm's own ids and names.
    */
   collectThenWalk(
     session: SessionId,
-    item: { id: number; name: string },
+    items: Array<{ id: number; name: string }>,
     route: Route,
     run?: boolean
   ): Promise<string | null>;

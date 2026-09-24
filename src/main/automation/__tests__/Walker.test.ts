@@ -12,7 +12,7 @@ import {
 } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { AutomationConfig, MovementConfig } from '../../../shared/config';
-import type { RemoteLever, Route, RouteStep } from '../../../shared/world';
+import type { Direction, RemoteLever, Route, RouteStep } from '../../../shared/world';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { wireExit } from '../../../shared/entities';
 
@@ -4685,38 +4685,81 @@ describe('a way something else opens', () => {
   });
 
   /*
-   * **One errand at a time.** `detoured` is keyed by the *gate*, so a second
-   * gate met on the errand's own route passes every other guard — and `back` is
-   * taken from the route in flight, which during an errand is the way to the
-   * lever rather than the way the player asked to go. Without this the original
-   * destination is silently replaced by a lever room and arriving there fires
-   * `ended(true)`: the false arrival this whole rung exists to avoid, a loop
-   * booking a leg it never walked.
+   * **A lever behind a lever** (todo 807). The Treetops chain five of them: the
+   * walk met a second gate on its way to the first lever, could not start
+   * another errand, and lapped the same rooms until its rounds ran out. A gate
+   * met on an errand's way is pushed onto it, and the invariant the old single
+   * slot protected holds: no lever room's arrival is the journey's, and the
+   * inner errand's arrival is never read as the outer one's.
    */
-  it('does not start a second errand while one is running', () => {
-    const { walk, asked, ends, arrive } = withLevers([LEVER], { '1/9': TO_LEVER, '1/2': BACK });
+  it('fetches a lever that is itself behind a lever, and arrives only at the end', () => {
+    const step = (from: string, to: string, direction: Direction, name: string): RouteStep => ({
+      from,
+      to,
+      direction,
+      command: direction,
+      name,
+      requirement: null,
+      dark: false
+    });
+    const route = (...steps: RouteStep[]): Route => ({ cost: steps.length, blocked: false, steps });
+    // 1/1 -e-> 1/2 is the gate; its lever is in the Guardroom, 1/1 -w-> 1/9 —
+    // and that way is shut too, by a chain in the Cellar, 1/1 -s-> 1/7.
+    const plans: Record<string, Route> = {
+      '1/1>1/9': route(step('1/1', '1/9', 'w', 'Guardroom')),
+      '1/1>1/7': route(step('1/1', '1/7', 's', 'Cellar')),
+      '1/7>1/9': route(step('1/7', '1/1', 'n', 'Inner Gate'), step('1/1', '1/9', 'w', 'Guardroom')),
+      '1/9>1/2': BACK
+    };
+    const levers: Record<string, RemoteLever[]> = {
+      e: [LEVER],
+      w: [{ at: '1/7', roomName: 'Cellar', say: 'pull chain' }]
+    };
+    const ends: Array<[boolean, string | null]> = [];
+    let here = 1;
+    const walk = new Walker(
+      { ...config, movement: { ...config.movement, openDoors: true, openTries: 1 } },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        leversFor: (_from, direction) => levers[direction] ?? [],
+        stateNow: () => at(1, here),
+        replan: (to) => plans[`1/${here}>${to}`] ?? 'no route',
+        ended: (arrived, reason) => ends.push([arrived, reason])
+      }
+    );
+    const arrive = (room: number): void => {
+      here = room;
+      walk.onCharacter(at(1, room));
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+    };
+    const locked = (): void => {
+      walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+      vi.advanceTimersByTime(200);
+      walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+    };
+
     walk.start(GATED, at(1, 1));
-    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
-    vi.advanceTimersByTime(200);
-    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
-    vi.advanceTimersByTime(200);
-    expect(asked).toEqual(['1/9']);
+    locked();
+    expect(moves(sent)).toEqual(['e', 'open e', 'w']);
+    // The way to the Guardroom is shut as well: fetch the chain first.
+    locked();
+    expect(moves(sent).slice(-2)).toEqual(['open w', 's']);
 
-    // A second gate on the way to the lever. It gets the ordinary ladder --
-    // open, force, then the barrier hold -- and no second errand.
-    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
-    vi.advanceTimersByTime(200);
-    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
-    vi.advanceTimersByTime(200);
-
-    expect(asked).toEqual(['1/9']);
-    expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
-    expect(ends).toEqual([]);
-
-    // And the errand the walk is still on finishes as itself.
+    // The Cellar is the inner errand's room: its chain, and back towards the
+    // Guardroom — not the outer lever, and not an arrival.
+    arrive(7);
+    expect(moves(sent).slice(-2)).toEqual(['pull chain', 'n']);
+    expect(moves(sent)).not.toContain('pull lever');
+    arrive(1);
     arrive(9);
-    vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
-    expect(asked).toEqual(['1/9', '1/2']);
+    // The Guardroom is the outer errand's: its lever, then the way on.
+    expect(moves(sent).slice(-2)).toEqual(['pull lever', 'e']);
+    expect(ends).toEqual([]);
+    arrive(1);
+    arrive(2);
+    expect(ends).toEqual([[true, null]]);
     walk.dispose();
   });
 

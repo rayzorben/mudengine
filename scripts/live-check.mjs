@@ -268,6 +268,20 @@ try {
   fs.cpSync(path.join(profilesDir, who.id), path.join(RUN_DIR, 'profiles', who.id), {
     recursive: true
   });
+  /*
+   * And connected on launch, in this copy only: *reaches the realm on its
+   * own* is the first check, and a character named with `--as` whose own file
+   * says `autoConnect: false` never dialled, so every check after it failed
+   * for a reason that was not the client's (2026-09-23). The player's file is
+   * untouched; the copy is edited through `parseDocument` so its comments stay.
+   */
+  const copied = path.join(RUN_DIR, 'profiles', who.id, 'profile.yaml');
+  const document = YAML.parseDocument(fs.readFileSync(copied, 'utf8'));
+  if (document.get('autoConnect') !== true) {
+    document.set('autoConnect', true);
+    fs.writeFileSync(copied, document.toString(), 'utf8');
+    console.log(`   note  ${who.id} does not connect on launch; this run's copy of it does`);
+  }
   if (fs.existsSync(home.globalLoops)) {
     fs.cpSync(home.globalLoops, path.join(RUN_DIR, 'global', 'loops'), { recursive: true });
   }
@@ -665,10 +679,7 @@ if (runHome === home.root) {
     reached = (pending?.sent ?? []).some((entry) => entry.command === 'pro');
     if (!reached) await sleep(500);
   }
-  check(
-    reached,
-    'and the arbiter puts it on the wire'
-  );
+  check(reached, 'and the arbiter puts it on the wire');
 }
 
 // ------------------------------------------------------ assert: the password

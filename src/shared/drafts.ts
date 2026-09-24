@@ -467,6 +467,8 @@ export interface ProfileDraft {
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
     fightOnArrival: boolean;
+    /** Ways and places routes keep out of. See `MovementConfig`. */
+    keepOutOf: string[];
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
     collectKeys: boolean;
   };
@@ -943,6 +945,15 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
       // `!== false`: on unless it was turned off. See the field.
       fightOnArrival: movement['fightOnArrival'] !== false,
+      // A list or nothing: a payload that failed to send it keeps the shipped
+      // words, as `useWards` keeps the shipped answer — an empty list is a
+      // choice, and a missing one is not.
+      keepOutOf: Array.isArray(movement['keepOutOf'])
+        ? (movement['keepOutOf'] as unknown[])
+            .filter((word): word is string => typeof word === 'string')
+            .map((word) => word.trim())
+            .filter((word) => word.length > 0)
+        : [...DEFAULT_CONFIG.automation.movement.keepOutOf],
       lightDimRooms: movement['lightDimRooms'] === true,
       extinguishInLight: movement['extinguishInLight'] === true,
       // Off unless said: it walks the character back to where it died.

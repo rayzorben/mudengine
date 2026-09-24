@@ -16,6 +16,13 @@
  * the counter is the confirmation*.
  */
 import type { CommandQueue } from './CommandQueue';
+import {
+  AFTER_WORD,
+  noteListing as answers,
+  packAfter,
+  packCheck,
+  type PackCheck
+} from './PackAfter';
 import { fightIsRunning } from './Walker';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -151,48 +158,10 @@ type Phase =
       pack: PackCheck;
     };
 
-/**
- * Reading the pack after a script was asked for something.
- *
- * A script's `giveitem` and `takeitem` print nothing that names the item
- * (`TextBlockPart.cs:132`): the sentence is the realm author's prose, so no
- * broadcast keeps the pack true across one and only a listing asked for
- * **after** the act can say what it did — told apart from anybody else's by
- * the command the server echoes before it. See `mudengine-automation` › *A
- * handover is read off a listing asked for after it*.
- */
-interface PackCheck {
-  /** When the act went out; null while it waits in the queue. */
-  sentAt: number | null;
-  /** When the first listing was asked for, which the whole wait is bounded from. */
-  askingSince: number | null;
-  /** When one was last asked for, and how many times the queue took one. */
-  asked: number | null;
-  askedTimes: number;
-  /** Whether the run's own listing has gone out, and whether it has been answered. */
-  listSent: boolean;
-  answered: boolean;
-}
-
-const packCheck = (sentAt: number | null = null): PackCheck => ({
-  sentAt,
-  askingSince: null,
-  asked: null,
-  askedTimes: 0,
-  listSent: false,
-  answered: false
-});
-
 /** The key the act goes out under, so a run that stops can take it back. */
 const ACT_KEY = 'quests:act';
-/** And the listing asked after it, under its own key and in its own spelling. */
+/** And the listing asked after it, under its own key and in `AFTER_WORD`. */
 const AFTER_KEY = 'quests:after';
-/**
- * `Commands.cs`' own long word for `i`. Nothing else in this client asks with
- * it — the entry probe, the deposit and the run's first read all send `i` —
- * so the server's echo of it names the run's listing and nobody else's.
- */
-const AFTER_WORD = 'inventory';
 
 interface Run {
   plan: QuestPlan;
@@ -1156,38 +1125,19 @@ export class QuestRunner {
     }
   }
 
-  /**
-   * The pack as the act left it: `read` once a listing asked for after the
-   * act has landed, `waiting` while one is owed — asked for here, `replyMs`
-   * apart — and `unanswered` once `listingAsks` of them went unanswered.
-   * The act is the answer only once it is on the wire, so nothing is asked
-   * before; the queue keeps the `i` behind it, and the server answers in turn.
-   */
+  /** The pack as the act left it — `packAfter`, asked through the run's own key. */
   private packAfter(pack: PackCheck): 'read' | 'waiting' | 'unanswered' {
-    if (pack.answered) return 'read';
     const now = this.now();
-    if (pack.sentAt === null) return 'waiting';
-    const { replyMs, listingAsks } = tuning().quests;
-    if (pack.asked !== null && now - pack.asked < replyMs) return 'waiting';
-    // Counted in asks the queue took, and bounded in time from the first as
-    // well: a queue that refuses every ask would otherwise count none of them.
-    pack.askingSince ??= now;
-    if (pack.askedTimes >= listingAsks || now - pack.askingSince > replyMs * listingAsks) {
-      return 'unanswered';
-    }
-    // A refused enqueue is *not now*, never *never* (todo 113), as for `abil`.
-    const queued = this.queue.enqueue({
-      command: AFTER_WORD,
-      priority: 'probe',
-      coalesceKey: AFTER_KEY,
-      expiresAt: now + tuning().quests.expiresMs,
-      reason: t('automation.quests.reasonPackAfter'),
-      onSent: () => void (pack.listSent = true)
-    });
-    if (!queued) return 'waiting';
-    pack.asked = now;
-    pack.askedTimes += 1;
-    return 'waiting';
+    return packAfter(pack, now, (onSent) =>
+      this.queue.enqueue({
+        command: AFTER_WORD,
+        priority: 'probe',
+        coalesceKey: AFTER_KEY,
+        expiresAt: now + tuning().quests.expiresMs,
+        reason: t('automation.quests.reasonPackAfter'),
+        onSent
+      })
+    );
   }
 
   /**
@@ -1202,8 +1152,7 @@ export class QuestRunner {
       phase?.kind === 'confirming' || (phase?.kind === 'fetching' && phase.how === 'handover')
         ? phase.pack
         : null;
-    if (pack === null || !pack.listSent) return;
-    if (answering?.trim().toLowerCase() === AFTER_WORD) pack.answered = true;
+    answers(pack, answering);
   }
 
   /** Whether the act is still waiting in the queue to go out. */

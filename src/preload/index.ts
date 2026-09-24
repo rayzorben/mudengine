@@ -76,8 +76,8 @@ const api: IpcApi = {
   walkRoute: (session, route, run) => ipcRenderer.invoke(Invoke.walkRoute, session, route, run),
   startMoving: (session, loop, confirmed) =>
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
-  collectThenWalk: (session, item, route, run) =>
-    ipcRenderer.invoke(Invoke.collectThenWalk, session, item, route, run),
+  collectThenWalk: (session, items, route, run) =>
+    ipcRenderer.invoke(Invoke.collectThenWalk, session, items, route, run),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),

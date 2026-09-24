@@ -1398,6 +1398,15 @@ export const RULES: Rule[] = [
    * the server's own word and is kept as printed.
    */
   { type: 'peek-failed', pattern: /^There are no exits to the (?<direction>[a-z]+)!/ },
+  /*
+   * `The door is closed in that direction!` — the same refusal at a shut door:
+   * `Door.TryLookThroughExit` (Door.cs:98), where a move prints `The door is
+   * closed!` (Door.cs:112). Every sighting answers `l <direction>`: captures/002
+   * line 1695 and 003 line 2 (MajorMUD), and `2026-09-23_09-33-51_festus.log`
+   * 12454–12456, where `n` got the short sentence and `l n` this one. Read as
+   * a refused move, a player's look at a shut door stopped a walk.
+   */
+  { type: 'peek-failed', pattern: /^The door is closed in that direction!/ },
   { type: 'direction-failed', pattern: /^There is no exit in that direction!/ },
   /*
    * The barrier is captured because the two `direction-failed` shapes are not
@@ -1408,7 +1417,7 @@ export const RULES: Rule[] = [
    */
   {
     type: 'direction-failed',
-    pattern: /^The (?<barrier>door|gate|portcullis) is closed(?: in that direction)?!/
+    pattern: /^The (?<barrier>door|gate|portcullis) is closed!/
   },
   /*
    * `You may not go through this exit!` — a gate on alignment or level, not a

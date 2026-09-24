@@ -4193,6 +4193,16 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
       if (
         addKeys(
           document,
+          ['automation', 'movement'],
+          [['keepOutOf', [...DEFAULT_CONFIG.automation.movement.keepOutOf]]],
+          KEEP_OUT_OF_COMMENT
+        )
+      ) {
+        changed = true;
+      }
+      if (
+        addKeys(
+          document,
           ['automation', 'combat'],
           [['defendAfterRounds', 2]],
           DEFEND_AFTER_ROUNDS_COMMENT
@@ -4491,6 +4501,12 @@ const NOTIFY_WEAR_OFF_COMMENT = ` Tell the party member who blessed you when the
 const FIGHT_ON_ARRIVAL_COMMENT = ` Turn auto-combat back on when a route you asked for arrives: walking
  with it off is how you get somewhere without fighting on the way, and on
  arrival that reason is gone. Flips the switch in this file.`;
+
+const KEEP_OUT_OF_COMMENT = ` Ways and places routes keep out of, in the realm's own words: a way whose
+ script phrase says one (\`go vortex\`), or a room whose name does. A route
+ you ask for that crosses one is shown beside the way round it, and you
+ choose; a walk nobody is watching is planned round them, and refused out
+ loud where there is no way round, unless it starts or ends inside one.`;
 
 const DEFEND_AFTER_ROUNDS_COMMENT = ` With auto-combat off, or a route run with it off, being hit for this many
  rounds without moving turns it on until you next arrive in another room.
@@ -6122,6 +6138,10 @@ function theTuningBlockGainedKeys(
      * somebody who plays a realm with different pacing would want to raise.
      */
     addKey('walk', 'followSettleMs', DEFAULT_INTERNAL.tuning.walk.followSettleMs);
+    // How long an item errand waits on a summons it asked for (todo 806).
+    addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
+    // And how many levers-behind-levers one walk will fetch (todo 807).
+    addKey('walk', 'leverErrandDepth', DEFAULT_INTERNAL.tuning.walk.leverErrandDepth);
     /*
      * And the eight this file had fallen behind by (2026-09-23, on review).
      *
@@ -6157,6 +6177,12 @@ function theTuningBlockGainedKeys(
     addKey('world', 'anotherWayPenalty', DEFAULT_INTERNAL.tuning.world.anotherWayPenalty);
     addKey('world', 'anotherWayLonger', DEFAULT_INTERNAL.tuning.world.anotherWayLonger);
     addKey('world', 'hazardSupplyCount', DEFAULT_INTERNAL.tuning.world.hazardSupplyCount);
+    /*
+     * What a key's fetch is weighed at against the way round (2026-09-23,
+     * todo 805): the one number that decides whether a locked door is offered
+     * as an errand or left to the long way.
+     */
+    addKey('world', 'keyFetchTrips', DEFAULT_INTERNAL.tuning.world.keyFetchTrips);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

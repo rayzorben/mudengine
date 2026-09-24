@@ -835,6 +835,17 @@ automation:
     # the toolbar shows it.
     fightOnArrival: true
 
+    # Ways and places routes keep out of, in the realm's own words: a way whose
+    # script phrase says one (`go vortex`), or a room whose name does (the
+    # Negative Power Plane). A route you ask for that crosses one is shown
+    # beside the way round it, and you choose which to walk. A walk nobody is
+    # watching -- a loop's leg, an item errand, a quest run, a hunt -- is
+    # planned round them, and refused out loud where there is no way round,
+    # unless it starts or ends inside one. Empty keeps out of nothing.
+    keepOutOf:
+      - vortex
+      - Negative Power Plane
+
     # The key to the door in front of you.
     #
     # A keyed exit with no key and nothing a picklock can do about it is a wall

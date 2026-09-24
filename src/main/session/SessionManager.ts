@@ -68,6 +68,7 @@ import {
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand, type ItemSources } from '../automation/ItemErrand';
 import { QuestRunner } from '../automation/QuestRunner';
+import { AFTER_WORD } from '../automation/PackAfter';
 import { EquipmentManager } from '../automation/EquipmentManager';
 import { bareName, sameItem } from '../../shared/items';
 import { chargedInCopper } from '../../shared/coins';
@@ -82,6 +83,7 @@ import {
   asDirection,
   hazardAvoided,
   nameAnswersTo,
+  crossedWords,
   newDemands,
   parseLair,
   roomAddress,
@@ -121,6 +123,9 @@ import { preferredEdges } from '../world/loopDraft';
 const NO_EDGES: ReadonlySet<string> = new Set();
 /** `escapeRefusalSaid` for a character nothing is taking anywhere, which no room key can equal. */
 const STAYING = '\0staying';
+/** The item errand's phrase and the listing asked after it, so both can be taken back. */
+const COLLECT_SAY_KEY = 'collect:say';
+const COLLECT_AFTER_KEY = 'collect:after';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
@@ -832,6 +837,15 @@ export class SessionManager {
    */
   private journey: { to: RoomId; name: string; run: boolean } | null = null;
   /**
+   * The kept-out words the player chose to cross to reach one room (todo 806):
+   * a route asked for through a way `movement.keepOutOf` names, picked on the
+   * panel over the way round. Tied to the destination rather than the walk,
+   * so a stop, a resume, an errand or a lost connection plans the way again
+   * as the player chose it; replaced by the next route asked for, cleared on
+   * arrival, and never lent to a lap's leg. See `planFromHere`.
+   */
+  private crossing: { to: RoomId; words: readonly string[] } | null = null;
+  /**
    * A route the player asked for that a supply errand went shopping instead of.
    *
    * The errand's own reason for existing is that the character is about to go
@@ -845,7 +859,13 @@ export class SessionManager {
    * `WalkerEvents.destination` as `journey` is — the errand's own legs each
    * fire it, and clearing there would forget the route the moment it was owed.
    */
-  private errandOwes: { to: RoomId; name: string; run: boolean } | null = null;
+  private errandOwes: {
+    to: RoomId;
+    name: string;
+    run: boolean;
+    /** The kept-out words the owed route crossed, which the player chose. */
+    crossing: readonly string[];
+  } | null = null;
   /**
    * A back press that is being walked: the room it is going back to, and the
    * trail entry it is walking back over.
@@ -1472,6 +1492,8 @@ export class SessionManager {
         }
         // Whether the player asked for this walk, before anything replans.
         this.combatLease.onWalkEnded(arrived, this.walkAsked, this.walkRun);
+        // Arrived, the choice to cross is spent: see `crossing`.
+        if (arrived && this.walkAsked) this.crossing = null;
         this.walkAsked = false;
         this.walkRun = false;
         this.settleStepBack(arrived);
@@ -1554,7 +1576,13 @@ export class SessionManager {
        * purse and the edges this session has seen refused, and the walker
        * holds a route and a queue and deliberately not the world.
        */
-      replan: (to, shortest) => this.planFromHere(to, {}, shortest),
+      replan: (to, shortest) =>
+        this.planFromHere(
+          to,
+          {},
+          shortest,
+          this.walkAsked && !shortest ? this.allowingFor(to) : []
+        ),
       // Under a timed spell the way in cast, the walk moves and does nothing
       // else (todo 104). The fact is the realm's; see `underTimedSpell`.
       moveOnly: (state) => this.underTimedSpell(state) !== null,
@@ -2083,8 +2111,19 @@ export class SessionManager {
            */
           const owed = route.steps.at(-1);
           if (owed === undefined) return null;
-          const plan = this.planFromHere(owed.to, { alternatives: true });
-          if (typeof plan === 'string') return plan;
+          const drawn = this.planFromHere(
+            owed.to,
+            { alternatives: true },
+            false,
+            crossedWords(route)
+          );
+          if (typeof drawn === 'string') return drawn;
+          /*
+           * A way through something the player kept out of and did not choose
+           * to cross is not walked unwatched: the way round is, where there
+           * is one (todo 806).
+           */
+          const plan = drawn.keptOut === undefined ? drawn : drawn.keptOut.round;
           if (plan.blocked) return plan.reason ?? t('automation.walk.refusalNoRoute');
           // Said rather than passed over in silence: a lap that ended on the
           // owed room itself is a journey nobody has to walk, and *nothing
@@ -2094,7 +2133,63 @@ export class SessionManager {
         },
         // The player's own list is what makes a found key worth keeping.
         kept: (name) =>
-          this.automationConfig.supplies.items.some((row) => nameAnswersTo(name, row.name))
+          this.automationConfig.supplies.items.some((row) => nameAnswersTo(name, row.name)),
+        /*
+         * To the room where the item is asked for (todo 806), as a leg: the
+         * lap stopped out loud first, one movement at a time, and standing
+         * there already is nothing to walk rather than a refusal.
+         */
+        walkTo: (room) => {
+          if (roomAddress(this.tracker.current.room) === room) return null;
+          if (this.loops.progress.status === 'running') {
+            this.loops.stop(t('session.loop.stoppedForRoute'));
+            this.walker.stop(t('session.loop.stoppedForRoute'));
+          }
+          const plan = this.planFromHere(room);
+          if (typeof plan === 'string') return plan;
+          if (plan.blocked) return plan.reason ?? t('automation.walk.refusalNoRoute');
+          if (plan.steps.length === 0) return null;
+          return this.walker.start(plan, this.tracker.current, {
+            quiet: false,
+            asked: false,
+            holdWhenHurt: true,
+            resumeAfterFight: true,
+            whileFighting: false,
+            resumeAfterLoss: false
+          });
+        },
+        walking: () => this.walker.walking,
+        // The phrase in the `probe` band, as the quest run's act, and seen by
+        // the quest book like any act this client sends for the player.
+        say: (command, onSent) =>
+          this.queue.enqueue({
+            command,
+            priority: 'probe',
+            coalesceKey: COLLECT_SAY_KEY,
+            // Lapses as the quest run's act does, so a phrase that never goes
+            // out ends the errand rather than holding it (`saying`).
+            expiresAt: Date.now() + tuning().quests.expiresMs,
+            reason: t('automation.collect.reasonSay', { command }),
+            onSent: () => {
+              onSent();
+              this.noteQuestSaid(command);
+            }
+          }),
+        listPack: (onSent) =>
+          this.queue.enqueue({
+            command: AFTER_WORD,
+            priority: 'probe',
+            coalesceKey: COLLECT_AFTER_KEY,
+            expiresAt: Date.now() + tuning().quests.expiresMs,
+            reason: t('automation.collect.reasonPackAfter'),
+            onSent
+          }),
+        saying: () => this.queue.queued((intent) => intent.coalesceKey === COLLECT_SAY_KEY),
+        takeBack: () =>
+          this.queue.cancel(
+            (intent) =>
+              intent.coalesceKey === COLLECT_SAY_KEY || intent.coalesceKey === COLLECT_AFTER_KEY
+          )
       },
       {
         notice: (message) => this.sink.notice(message),
@@ -2142,7 +2237,7 @@ export class SessionManager {
         buy: (row) => this.supplies.fetch(row, this.tracker.current),
         buying: () => this.supplies.current !== null,
         restock: (to, later) => this.questRestock(to, later),
-        hunt: (item) => this.itemErrand.collect(item, null, this.tracker.current),
+        hunt: (item) => this.itemErrand.collect([item], null, this.tracker.current),
         hunting: () => this.itemErrand.running,
         abandonErrands: (reason) => {
           this.supplies.abandon(reason);
@@ -3209,6 +3304,8 @@ export class SessionManager {
         );
         this.journey = null;
       }
+      // And the choice to cross, which was about that realm's rooms.
+      this.crossing = null;
     }
     if (!this.loops.carried) {
       this.loops.reset();
@@ -3653,7 +3750,7 @@ export class SessionManager {
     }
     if (journey !== null) {
       this.journey = null;
-      const route = this.planFromHere(journey.to);
+      const route = this.planFromHere(journey.to, {}, false, this.allowingFor(journey.to));
       const refused = typeof route === 'string' ? route : this.startAsked(route, journey.run);
       if (refused !== null) {
         this.sink.notice(
@@ -3695,9 +3792,10 @@ export class SessionManager {
     this.playerMove = null;
     // A journey owed across a loss is owed to a character standing in the
     // realm; one who walked out to the menu has ended it. So is a route a
-    // supply errand is shopping on behalf of.
+    // supply errand is shopping on behalf of, and the choice to cross it.
     this.journey = null;
     this.errandOwes = null;
+    this.crossing = null;
 
     // The loop before the walker: stopping a walk calls `ended`, and a loop
     // still running would book that as a failed leg on its way out.
@@ -4575,8 +4673,10 @@ export class SessionManager {
      */
     if (batch?.type === 'user-inventory') {
       this.deposit.onListing(this.tracker.current);
-      // And the quest run, which reads only the listing its own ask answered.
+      // And the quest run and the item errand, which read only the listing
+      // their own ask answered.
       this.questRunner.noteListing(this.answering);
+      this.itemErrand.noteListing(this.answering);
     }
 
     /*
@@ -5381,11 +5481,22 @@ export class SessionManager {
    * relearning — and the purse is exactly the argument it was left out of
    * once already. `shortest` is a lap's leg: see `lapTraveller`.
    */
-  private planFromHere(to: RoomId, options: RouteOptions = {}, shortest = false): Route | string {
+  private planFromHere(
+    to: RoomId,
+    options: RouteOptions = {},
+    shortest = false,
+    /**
+     * The kept-out words this plan may cross: nothing, unless the caller is
+     * planning the player's own journey again (`allowingFor`).
+     */
+    allowing: readonly string[] = []
+  ): Route | string {
     const state = this.tracker.current;
     const here = state.room;
     if (here.map === null || here.number === null) return t('session.loop.unknownRoom');
-    const traveller = shortest ? this.lapTraveller(state) : this.travellerNow(state);
+    const traveller = shortest
+      ? this.lapTraveller(state)
+      : this.travellerNow(state, true, allowing);
     const plan =
       this.world?.route(roomId(here.map, here.number), to, traveller, options) ??
       t('session.loop.noRealmData');
@@ -5421,6 +5532,16 @@ export class SessionManager {
    * and it is the plan that is read rather than the route walked: a leg, a
    * resume and the panel's own press all come through here.
    */
+  /**
+   * What the player chose to cross to reach `to` (`crossing`), for the plans
+   * that are their journey again — a stop resumed, a connection picked back
+   * up, the walker's own redraws of an asked walk. Nothing else is lent it:
+   * a quest leg or an errand bound for the same room is still unwatched.
+   */
+  private allowingFor(to: RoomId): readonly string[] {
+    return this.crossing?.to === to ? this.crossing.words : [];
+  }
+
   private askCountersFor(route: Route): void {
     const state = this.tracker.current;
     if (state.abilities !== null) return;
@@ -5439,12 +5560,26 @@ export class SessionManager {
    * the builder, whose drafts plan plainly so what is drawn is what the
    * reduction reproduces.
    */
-  travellerNow(state: CharacterState, preferring = true): Traveller {
+  travellerNow(
+    state: CharacterState,
+    preferring = true,
+    /** Kept-out words this walk may cross anyway. See `planFromHere`. */
+    allowing: readonly string[] = []
+  ): Traveller {
     const pack = this.packContents(state);
     return {
       level: state.progress.level ?? null,
       strength: state.progress.strength ?? null,
       pickSkill: state.progress.picklocks ?? undefined,
+      // And which of the two the walker will spend: a door planned on a skill
+      // whose switch is off is a door the walk stops at.
+      forcing: {
+        pick: this.automationConfig.movement.pickLocks,
+        bash: this.automationConfig.movement.bashDoors
+      },
+      // And the ways and places routes keep out of (todo 806): pruned for a
+      // walk nobody watches, offered beside the way round on the panel.
+      keepOut: { words: this.automationConfig.movement.keepOutOf, allowed: allowing },
       wealth: state.inventory.wealth,
       /*
        * The join between the sheet's word and the realm's row id, made here
@@ -6166,11 +6301,15 @@ export class SessionManager {
     const world = this.world;
     const state = this.tracker.current;
     const here = roomAddress(state.room);
-    if (world === undefined || here === null) return { shops: [], droppers: [], lairs: [] };
-    const shops = world.buyingPlaces(item.id, here, to, this.travellerNow(state));
+    if (world === undefined || here === null)
+      return { shops: [], asks: [], droppers: [], lairs: [] };
+    const traveller = this.travellerNow(state);
+    const shops = world.buyingPlaces(item.id, here, to, traveller);
+    // And where saying something gets it, walked as the counter is (todo 806).
+    const asks = world.itemAsks(item.id, here, traveller);
     const { maxLoopRooms, clusterRadius } = tuning().hunting;
     const ring = { rooms: maxLoopRooms, radius: clusterRadius };
-    return { shops, ...world.droppingPlaces(item, here, this.lapTraveller(state), ring) };
+    return { shops, asks, ...world.droppingPlaces(item, here, this.lapTraveller(state), ring) };
   }
 
   /**
@@ -7735,12 +7874,29 @@ export class SessionManager {
    * Collect what the way needs, then walk it (todo 07).
    *
    * The one door for *collect it first* — the route panel's tick beside its
-   * *Walk it*, offered on whichever way is on screen where that way names an
-   * item (`itemWanted`). The errand reports its own refusal back to the window
-   * that pressed, because a person is looking at the answer.
+   * *Walk it*, offered on whichever way is on screen where that way names
+   * items (`itemsWanted`) — every one of them, fetched in turn. The errand
+   * reports its own refusal back to the window that pressed, because a person
+   * is looking at the answer.
    */
-  collectThenWalk(item: { id: number; name: string }, route: Route, run = false): string | null {
-    return this.itemErrand.collect(item, route, this.tracker.current, run);
+  collectThenWalk(
+    items: Array<{ id: number; name: string }>,
+    route: Route,
+    run = false
+  ): string | null {
+    return this.unchosen(route) ?? this.itemErrand.collect(items, route, this.tracker.current, run);
+  }
+
+  /**
+   * Why a way through what the player keeps out of cannot be walked yet, or
+   * null (todo 806). The panel drops `keptOut` once the player picks between
+   * the way through and the way round, so a route still carrying it is one
+   * nobody chose — the palette's *Go to*, or anything else that walks a plan
+   * it did not read — and walking it would make the choice for them.
+   */
+  private unchosen(route: Route): string | null {
+    if (route.keptOut === undefined) return null;
+    return t('session.walk.keptOutChoose', { wordList: route.keptOut.words.join(', ') });
   }
 
   /**
@@ -7779,6 +7935,8 @@ export class SessionManager {
    * again.
    */
   walkPlan(route: Route, run = false): WalkStart {
+    const unchosen = this.unchosen(route);
+    if (unchosen !== null) return { refused: unchosen };
     const here = roomAddress(this.tracker.current.room);
     const start = route.steps[0]?.from ?? null;
     /*
@@ -7791,13 +7949,21 @@ export class SessionManager {
     const destination = route.steps[route.steps.length - 1]!.to;
     // Drawn for a reader, like the plan it replaces: the panel shows this one,
     // and a plan without its walls and hazards would compare as asking less.
-    const plan = this.planFromHere(destination, { alternatives: true });
+    const plan = this.planFromHere(destination, { alternatives: true }, false, crossedWords(route));
     if (typeof plan === 'string') return { refused: plan };
     if (plan.blocked) return { refused: plan.reason ?? t('automation.walk.refusalNoRoute') };
     if (plan.steps.length === 0) return { refused: t('automation.walk.alreadyThere') };
 
     const wandered = this.stepsBetween(start, here);
-    const demands = newDemands(route, plan);
+    /*
+     * And a way from here through something kept out of that the pressed way
+     * did not cross is a choice the player has not made (todo 806): the panel
+     * shows both again.
+     */
+    const demands = [
+      ...newDemands(route, plan),
+      ...(plan.keptOut?.words ?? []).map((word) => t('session.walk.keptOutDemand', { word }))
+    ];
     if (demands.length > 0 || wandered === null || wandered > tuning().walk.replanDriftSteps) {
       return { replanned: { route: plan, wandered, demands } };
     }
@@ -7871,6 +8037,10 @@ export class SessionManager {
       this.walkRun = false;
       return this.walker.progress.reason ?? t('automation.walk.stoppedAtStart');
     }
+    // What this route crosses that `keepOutOf` names, the player having chosen
+    // it on the panel over the way round: planned again the same way later.
+    const last = route.steps.at(-1);
+    this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
     if (!run) return null;
     if (!this.combatLease.run()) {
       const reason = t('automation.combat.runRefused');
@@ -7905,7 +8075,9 @@ export class SessionManager {
     const errand = this.supplies.considerBeforeRoute(this.tracker.current);
     if (errand === null) return this.startAsked(route, run);
     const last = route.steps.at(-1);
-    if (last !== undefined) this.errandOwes = { to: last.to, name: last.name, run };
+    if (last !== undefined) {
+      this.errandOwes = { to: last.to, name: last.name, run, crossing: crossedWords(route) };
+    }
     this.sink.notice(
       t('session.supplies.beforeRoute', {
         item: errand.item.name,
@@ -8157,7 +8329,7 @@ export class SessionManager {
   private resumeRoute(confirmed: number | null): MovementStart {
     const owed = this.walker.unfinished;
     if (owed === null) return { refused: t('session.move.nothingToResume') };
-    const plan = this.planFromHere(owed.to);
+    const plan = this.planFromHere(owed.to, {}, false, this.allowingFor(owed.to));
     if (typeof plan === 'string') return { refused: plan };
     const wandered = plan.steps.length - owed.left;
     if (this.tooFar(wandered, confirmed)) {
@@ -8217,7 +8389,7 @@ export class SessionManager {
     const owed = this.errandOwes;
     if (owed === null) return;
     this.errandOwes = null;
-    const route = this.planFromHere(owed.to);
+    const route = this.planFromHere(owed.to, {}, false, owed.crossing);
     const refused = typeof route === 'string' ? route : this.startAsked(route, owed.run);
     this.sink.notice(
       refused === null || refused === undefined
@@ -8251,6 +8423,8 @@ export class SessionManager {
     // With it goes the route it was shopping on behalf of — a death is the
     // player's cue to decide what happens next, not the client's.
     this.errandOwes = null;
+    // And the choice to cross on the way there: the next journey asks again.
+    this.crossing = null;
     this.supplies.abandon(t('session.supplies.abandonedDied'));
     // And the walk to a trainer, on exactly the same terms (todo 21).
     this.trainLevel.abandon();

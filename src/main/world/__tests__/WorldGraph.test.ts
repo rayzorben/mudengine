@@ -21,8 +21,9 @@ import {
   blockItem,
   describeBlock,
   hazardAvoided,
-  itemWanted,
+  itemsWanted,
   lairsAlong,
+  needsAlong,
   landingRooms
 } from '../../../shared/world';
 import { roomId } from '../../../shared/world';
@@ -1616,6 +1617,57 @@ describe('the shipped realm data', () => {
    * since respawned. The ring is the cheapest placement and what lies within
    * `hunting.clusterRadius` of it, walked out from the first.
    */
+  /*
+   * Todo 806, the fork's three items on the way into the Dark-Elf Castle, each
+   * of which read as having no source: a dropper only ever summoned, found
+   * where its summoner lives; a handover; and a room script that summons the
+   * dropper and asks nothing else.
+   */
+  it.runIf(has)('finds an item had by a summoner, a handover or a summoning script', () => {
+    const festus: Traveller = { level: 45, packKnown: true, keys: [] };
+    const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
+    const talisman = realm!.itemIdNamed('amber talisman')!;
+    const found = realm!.droppingPlaces({ id: talisman }, roomId(1, 1076), festus, ring);
+    expect(found.droppers).toEqual([{ mob: 'dying slaver leader', placed: 0 }]);
+    expect(found.lairs.length).toBeGreaterThan(0);
+    expect(found.lairs[0]).toMatchObject({ mob: 'dying slaver leader', via: 'slaver leader' });
+    const moldy = realm!.itemAsks(realm!.itemIdNamed('moldy key')!, roomId(1, 1076), festus);
+    expect(moldy[0]).toMatchObject({ room: '8/486', say: 'ask sleazy shopkeeper orb' });
+    const gate = realm!.itemAsks(realm!.itemIdNamed('gate key')!, roomId(1, 1076), festus);
+    expect(gate[0]).toMatchObject({
+      room: '8/461',
+      say: 'touch statue',
+      summons: 'obsidian statue'
+    });
+  });
+
+  /*
+   * And the way there (todo 806): through two vortexes and the Plane, or round
+   * by the moat once those keys are fetched — and the choice is the player's.
+   */
+  it.runIf(has)('offers the moat beside the vortexes to the Dark-Elf Castle', () => {
+    const traveller: Traveller = {
+      level: 45,
+      packKnown: true,
+      keys: [],
+      strength: 80,
+      pickSkill: 0,
+      keepOut: { words: ['vortex', 'Negative Power Plane'] }
+    };
+    const read = realm!.route(roomId(1, 1076), roomId(8, 560), traveller, { alternatives: true });
+    expect(read.keptOut?.words).toEqual(['vortex', 'Negative Power Plane']);
+    expect(read.keptOut?.round.blocked).toBe(true);
+    const moat = read.keptOut!.round.unlocks!;
+    expect(moat.steps.some((step) => step.keptOut !== undefined)).toBe(false);
+    expect(moat.needs?.map((item) => item.name)).toEqual(
+      expect.arrayContaining(['gate key', 'moldy key'])
+    );
+    // Unwatched, the walk is refused rather than sent through the Plane.
+    const unwatched = realm!.route(roomId(1, 1076), roomId(8, 560), traveller);
+    expect(unwatched.blocked).toBe(true);
+    expect(unwatched.blocks?.some((block) => block.kind === 'keptOut')).toBe(true);
+  });
+
   it.runIf(has)('keeps the stops within one ring of the nearest placement', () => {
     const festus: Traveller = { level: 21, packKnown: true, keys: [] };
     const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
@@ -3707,6 +3759,46 @@ describe('what a door costs to force', () => {
     // these as ordinary, and the walker forces them for the same reason.
     expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBe(12);
   });
+
+  /*
+   * The walker picks only under *Auto-Pick Locks* and bashes only under
+   * *Auto-Bash Doors*, so a skill it will not spend is no way through: a
+   * route planned on it walks up to the lock and stops. Absent is both.
+   */
+  it('credits only the skills the walker is allowed to use', () => {
+    const bashOnly = { pick: false, bash: true };
+    const pickOnlyForcing = { pick: true, bash: false };
+    expect(edgePenalty(door(30), { strength: 150, forcing: pickOnlyForcing })!).toBeGreaterThan(
+      100_000
+    );
+    expect(edgePenalty(door(30), { strength: 150, forcing: bashOnly })).toBe(12);
+    expect(edgePenalty(door(30), { pickSkill: 150, forcing: bashOnly })!).toBeGreaterThan(100_000);
+    expect(edgePenalty(door(30), { pickSkill: 150, forcing: pickOnlyForcing })).toBe(12);
+    // A lock a picklock may open, picking switched off: a wall, and the key
+    // still opens it.
+    const keyed: Requirement = {
+      kind: 'key',
+      raw: 'Key: 7 [or 30 picklocks]',
+      keyId: 7,
+      pickDifficulty: 30
+    };
+    expect(edgePenalty(keyed, { pickSkill: 150, forcing: bashOnly })!).toBeGreaterThan(100_000);
+    expect(edgePenalty(keyed, { pickSkill: 150, keys: [7], forcing: bashOnly })).toBe(4);
+  });
+
+  it('says which skill is switched off rather than that it is lacking', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Door [30 picklocks/strength]' } } },
+      { m: 1, r: 2, n: 'Vault', x: { w: { m: 1, r: 1 } } }
+    ]);
+    const route = graph.route('1/1', '1/2', {
+      strength: 150,
+      pickSkill: 0,
+      forcing: { pick: true, bash: false }
+    });
+    expect(route.walls?.[0]).toMatchObject({ kind: 'door', switchedOff: ['strength'] });
+    expect(describeBlock(route.walls![0]!)).toContain('bashing doors is switched off');
+  });
 });
 
 describe('an edge the live server refused', () => {
@@ -4048,6 +4140,13 @@ describe('describeBlock', () => {
       atLeast: 1,
       atMost: 999
     },
+    keptOut: {
+      kind: 'keptOut',
+      at: '3/731',
+      to: '8/978',
+      name: 'Negative Power Plane',
+      word: 'Negative Power Plane'
+    },
     unreachable: { kind: 'unreachable' }
   };
 
@@ -4110,7 +4209,7 @@ describe('describeBlock', () => {
   });
 });
 
-describe('itemWanted', () => {
+describe('itemsWanted', () => {
   const route = (over: Partial<Route>): Route => ({
     steps: [],
     cost: 0,
@@ -4143,21 +4242,322 @@ describe('itemWanted', () => {
   it('names what a plan crossing a keyed door wants, with no alternative to hang it on', () => {
     // The reported case: the only way to the bank is through the lock, so
     // there is no `carrying` route and the plan itself is the errand.
-    expect(itemWanted(route({ walls: [door] }))).toEqual({ id: 593, name: 'black serpent key' });
+    expect(itemsWanted(route({ walls: [door] }))).toEqual([{ id: 593, name: 'black serpent key' }]);
   });
 
   it('puts the door the walker stops at before the spell it merely walks past', () => {
-    expect(itemWanted(route({ walls: [door], hazards: [raft] }))?.name).toBe('black serpent key');
+    expect(itemsWanted(route({ walls: [door], hazards: [raft] }))[0]?.name).toBe(
+      'black serpent key'
+    );
+  });
+
+  /*
+   * Every one, not the first (todo 804): a way through three keyed doors
+   * fetched the first key and walked into the second.
+   */
+  it('lists everything the way wants, each once, doors before spells', () => {
+    const gate: RouteBlock = { ...door, at: '1/5', to: '1/6', keyId: 170, itemName: 'iron key' };
+    expect(itemsWanted(route({ walls: [door, gate, door], hazards: [raft] }))).toEqual([
+      { id: 593, name: 'black serpent key' },
+      { id: 170, name: 'iron key' },
+      { id: 41, name: 'log raft' }
+    ]);
+    expect(itemsWanted(route({}))).toEqual([]);
+  });
+
+  /*
+   * A room spell's `needs` are alternatives — any one stops it (on review):
+   * the river's raft, skiff, canoe and punt. One per spell, not all four.
+   */
+  it('asks for one of the things that stop a spell, not every one', () => {
+    const river = { ...raft, needs: [...raft.needs, { id: 42, name: 'wooden skiff' }] };
+    expect(itemsWanted(route({ hazards: [river] }))).toEqual([{ id: 41, name: 'log raft' }]);
+  });
+
+  it('asks for a keyed way’s keys only where its own steps reach the door', () => {
+    const keyed = route({
+      steps: [
+        { from: '1/1', to: '1/2', requirement: null },
+        { from: '1/2', to: '1/3', requirement: { kind: 'key', raw: 'Key: 593', keyId: 593 } }
+      ] as unknown as Route['steps'],
+      needs: [{ id: 593, name: 'black serpent key' }]
+    });
+    expect(needsAlong(keyed)).toEqual([{ id: 593, name: 'black serpent key' }]);
+    expect(needsAlong({ ...keyed, steps: keyed.steps.slice(0, 1) })).toEqual([]);
   });
 
   it('reads a hazard when nothing walls the way', () => {
-    expect(itemWanted(route({ hazards: [raft] }))).toEqual({ id: 41, name: 'log raft' });
+    expect(itemsWanted(route({ hazards: [raft] }))).toEqual([{ id: 41, name: 'log raft' }]);
   });
 
   it('asks for nothing on account of what a cheaper way needed', () => {
     // `blocks` on a walkable plan is another route's errand, and that route is
     // offered as `carrying` where there is one.
-    expect(itemWanted(route({ blocks: [door] }))).toBeNull();
+    expect(itemsWanted(route({ blocks: [door] }))).toEqual([]);
+  });
+});
+
+/*
+ * A locked door and the long way round (todo 805). The router walls or prunes
+ * a door the character holds no key for, and a wall loses to any way round
+ * however long — so the key that opens it has to be weighed, fetch and all.
+ */
+describe('a way only a key opens', () => {
+  const lacking: Traveller = { keys: [], packKnown: true, level: 9 };
+  /**
+   * Start → Hall → Vault through a door `Key: 1124`, or thirty rooms round;
+   * the key is sold `shopAt` rooms north of the start. `gate` puts a second
+   * condition on the Hall's way into the vault; `round` false drops the way
+   * round, so the door is the only way.
+   */
+  const vault = (shopAt: number | null, opts: { gate?: string; round?: boolean } = {}) => {
+    const round = opts.round ?? true;
+    const rooms: Array<Record<string, unknown>> = [
+      {
+        m: 1,
+        r: 1,
+        n: 'Start',
+        x: {
+          e: { m: 1, r: 2, i: 'Key: 1124' },
+          ...(round ? { s: { m: 1, r: 100 } } : {}),
+          ...(shopAt === null ? {} : { n: { m: 1, r: 200 } })
+        }
+      },
+      {
+        m: 1,
+        r: 2,
+        n: 'Hall',
+        x: { w: { m: 1, r: 1 }, e: { m: 1, r: 3, ...(opts.gate ? { i: opts.gate } : {}) } }
+      },
+      { m: 1, r: 3, n: 'Vault', x: { w: { m: 1, r: 2 } } }
+    ];
+    if (round) {
+      for (let i = 0; i < 30; i += 1) {
+        rooms.push({
+          m: 1,
+          r: 100 + i,
+          n: 'Long Way',
+          x: {
+            n: { m: 1, r: i === 0 ? 1 : 100 + i - 1 },
+            s: i === 29 ? { m: 1, r: 3 } : { m: 1, r: 100 + i + 1 }
+          }
+        });
+      }
+    }
+    for (let i = 0; i < (shopAt ?? 0); i += 1) {
+      rooms.push({
+        m: 1,
+        r: 200 + i,
+        n: 'Lane',
+        x: {
+          s: { m: 1, r: i === 0 ? 1 : 200 + i - 1 },
+          ...(i < shopAt! - 1 ? { n: { m: 1, r: 200 + i + 1 } } : {})
+        },
+        ...(i === shopAt! - 1 ? { s: 1 } : {})
+      });
+    }
+    return makeWorld(rooms, {
+      items: [{ id: 1124, n: 'angular key' }],
+      shops: [{ id: 1, n: 'Locksmith', items: [1124], markup: 0 }]
+    });
+  };
+
+  it('offers the way through the door when the key is near enough to fetch', () => {
+    const route = vault(1).route('1/1', '1/3', lacking, { alternatives: true });
+    expect(route.steps).toHaveLength(31);
+    expect(route.unlocks?.steps.map((step) => step.command)).toEqual(['e', 'e']);
+    expect(route.unlocks?.needs).toEqual([{ id: 1124, name: 'angular key' }]);
+    // What pressing it collects, and that a prefix short of the door wants nothing.
+    expect(itemsWanted(route.unlocks!)).toEqual([{ id: 1124, name: 'angular key' }]);
+    expect(itemsWanted({ ...route.unlocks!, steps: [] })).toEqual([]);
+    // Only for a reader: a loop's leg does not go on errands.
+    expect(vault(1).route('1/1', '1/3', lacking).unlocks).toBeUndefined();
+  });
+
+  it('prices the fetch, so a key further off than the way round is not offered', () => {
+    expect(vault(20).route('1/1', '1/3', lacking, { alternatives: true }).unlocks).toBeUndefined();
+  });
+
+  it('offers nothing for a key nobody can fetch', () => {
+    expect(
+      vault(null).route('1/1', '1/3', lacking, { alternatives: true }).unlocks
+    ).toBeUndefined();
+  });
+
+  it('carries the way the key opens beside a refusal', () => {
+    const route = vault(1, { round: false }).route('1/1', '1/3', lacking, { alternatives: true });
+    expect(route.blocked).toBe(true);
+    expect(route.unlocks?.blocked).toBe(false);
+    expect(route.unlocks?.steps.map((step) => step.command)).toEqual(['e', 'e']);
+    expect(itemsWanted(route.unlocks!)).toEqual([{ id: 1124, name: 'angular key' }]);
+  });
+
+  it('offers nothing where the key would not be enough', () => {
+    const route = vault(1, { round: false, gate: 'Level: 20 to 999' }).route(
+      '1/1',
+      '1/3',
+      lacking,
+      {
+        alternatives: true
+      }
+    );
+    expect(route.blocked).toBe(true);
+    expect(route.unlocks).toBeUndefined();
+  });
+});
+
+/*
+ * The ways and places a player keeps out of (todo 806): a word a way's script
+ * phrase says, or a room's name does. Walked unwatched, they prune; planned
+ * for a reader, the way through and the way round are offered side by side.
+ */
+describe('ways and places kept out of', () => {
+  const vortex = { words: ['vortex'] };
+  /**
+   * From the Mossy Tunnel, `go vortex` reaches the goal in two moves through
+   * the Black Wasteland; the way round is thirteen. `round` false drops it.
+   */
+  const tunnel = (round = true): WorldGraph => {
+    const rooms: Array<Record<string, unknown>> = [
+      {
+        m: 1,
+        r: 1,
+        n: 'Mossy Tunnel',
+        x: round ? { s: { m: 1, r: 100 } } : {},
+        cmd: [{ say: ['go vortex', 'enter vortex'], to: '3/1' }]
+      },
+      { m: 3, r: 1, n: 'Black Wasteland', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Goal', x: {} }
+    ];
+    if (round) {
+      for (let i = 0; i < 12; i += 1) {
+        rooms.push({
+          m: 1,
+          r: 100 + i,
+          n: 'Long Way',
+          x: {
+            n: { m: 1, r: i === 0 ? 1 : 100 + i - 1 },
+            s: i === 11 ? { m: 1, r: 2 } : { m: 1, r: 100 + i + 1 }
+          }
+        });
+      }
+    }
+    return makeWorld(rooms);
+  };
+
+  it('plans round a way kept out of, for a walk nobody is watching', () => {
+    const route = tunnel().route('1/1', '1/2', { keepOut: vortex });
+    expect(route.blocked).toBe(false);
+    expect(route.steps).toHaveLength(13);
+    expect(route.steps.some((step) => step.command === 'go vortex')).toBe(false);
+    // Without the list, the vortex is two moves.
+    expect(tunnel().route('1/1', '1/2').steps).toHaveLength(2);
+  });
+
+  it('offers the way through beside the way round, for a reader', () => {
+    const route = tunnel().route('1/1', '1/2', { keepOut: vortex }, { alternatives: true });
+    expect(route.steps.map((step) => step.command)).toEqual(['go vortex', 'e']);
+    expect(route.steps[0]!.keptOut).toBe('vortex');
+    expect(route.keptOut?.words).toEqual(['vortex']);
+    expect(route.keptOut?.round.steps).toHaveLength(13);
+  });
+
+  it('walks through where the player chose to, and still says so on the step', () => {
+    const route = tunnel().route('1/1', '1/2', {
+      keepOut: { words: ['vortex'], allowed: ['vortex'] }
+    });
+    expect(route.steps).toHaveLength(2);
+    expect(route.keptOut).toBeUndefined();
+    expect(route.steps[0]!.keptOut).toBe('vortex');
+  });
+
+  it('refuses out loud where there is no way round, naming the word once', () => {
+    const refused = tunnel(false).route('1/1', '1/2', { keepOut: vortex });
+    expect(refused.blocked).toBe(true);
+    expect(refused.blocks?.filter((block) => block.kind === 'keptOut')).toEqual([
+      { kind: 'keptOut', at: '1/1', to: '3/1', name: 'Black Wasteland', word: 'vortex' }
+    ]);
+    // And the reader is shown the only way, with no way round beside it.
+    const read = tunnel(false).route('1/1', '1/2', { keepOut: vortex }, { alternatives: true });
+    expect(read.blocked).toBe(false);
+    expect(read.keptOut?.round.blocked).toBe(true);
+  });
+
+  it('lets a walk that starts or ends inside a place cross it', () => {
+    const plane = makeWorld([
+      { m: 1, r: 1, n: 'Portal Cave', x: { e: { m: 8, r: 1 } } },
+      { m: 8, r: 1, n: 'Negative Power Plane', x: { e: { m: 8, r: 2 } } },
+      { m: 8, r: 2, n: 'Negative Power Plane', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Far Side', x: {} }
+    ]);
+    const keepOut = { words: ['Negative Power Plane'] };
+    expect(plane.route('1/1', '8/2', { keepOut }).blocked).toBe(false);
+    expect(plane.route('8/1', '1/2', { keepOut }).blocked).toBe(false);
+    expect(plane.route('1/1', '1/2', { keepOut }).blocked).toBe(true);
+  });
+
+  /*
+   * The way through's alternatives are offered without the two cards, so none
+   * of them may cross what the player keeps out of (on review): the way round
+   * a deadly lair on the plan went through the vortex.
+   */
+  it('keeps the alternatives out of it', () => {
+    // Through a room whose spell hurts is two steps; round it by the vortex,
+    // twenty-one; round it the long way, thirty.
+    const chain = (map: number, from: number, count: number, name: string, end: string) =>
+      Array.from({ length: count }, (_, i) => ({
+        m: map,
+        r: from + i,
+        n: name,
+        x: {
+          e:
+            i === count - 1
+              ? { m: Number(end.split('/')[0]), r: Number(end.split('/')[1]) }
+              : { m: map, r: from + i + 1 }
+        }
+      }));
+    const graph = makeWorld([
+      {
+        m: 1,
+        r: 1,
+        n: 'Mossy Tunnel',
+        x: { e: { m: 1, r: 2 }, s: { m: 1, r: 100 } },
+        cmd: [{ say: ['go vortex'], to: '3/1' }]
+      },
+      ...chain(3, 1, 20, 'Black Wasteland', '1/3'),
+      { m: 1, r: 2, n: 'Scalding Pool', x: { e: { m: 1, r: 3 } } },
+      { m: 1, r: 3, n: 'Goal', x: {} },
+      ...chain(1, 100, 29, 'Long Way', '1/3')
+    ]);
+    const hazard = (room: WorldRoom): number | null =>
+      room.name === 'Scalding Pool' ? 0.05 : null;
+    const plain = graph.route('1/1', '1/3', { hazard }, { alternatives: true });
+    expect(plain.steps.map((step) => step.to)).toEqual(['1/2', '1/3']);
+    // Without the list, the way round the pool is the vortex.
+    expect(plain.otherWay?.steps[0]?.command).toBe('go vortex');
+    const kept = graph.route('1/1', '1/3', { keepOut: vortex, hazard }, { alternatives: true });
+    // The plan crosses nothing kept out of, and its way round keeps out too.
+    expect(kept.steps.map((step) => step.to)).toEqual(['1/2', '1/3']);
+    expect(kept.keptOut).toBeUndefined();
+    expect(kept.otherWay?.steps).toHaveLength(30);
+    for (const other of [kept.otherWay, kept.another, kept.carrying, kept.viaItem]) {
+      expect(other?.steps.some((step) => step.command === 'go vortex') ?? false).toBe(false);
+    }
+  });
+
+  it('says a lair it could not weigh is not weighed', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'A', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Den', x: {}, lair: '(Max 1): 7,[1-1-1-1]' }
+    ]);
+    const step = graph.route('1/1', '1/2', { danger: () => null }).steps[0]!;
+    expect(step.lairUnweighed).toBe(true);
+    expect(step.danger).toBeUndefined();
+  });
+
+  it('keeps the neighbourhood out of it too', () => {
+    expect(tunnel().withinSteps('1/1', 3, { keepOut: vortex }).has('3/1')).toBe(false);
+    expect(tunnel().withinSteps('1/1', 3, {}).has('3/1')).toBe(true);
   });
 });
 

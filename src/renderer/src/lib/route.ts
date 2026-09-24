@@ -43,7 +43,8 @@ export function stepSignature(step: RouteStep): string {
       : step.deadly === true
         ? 'deadly'
         : String(Math.max(1, Math.round(step.danger * 100)));
-  return [step.name, gate, hazard, lair].join('|');
+  // And the kept-out word, so a step wearing it keeps its own row (todo 806).
+  return [step.name, gate, hazard, lair, step.keptOut ?? ''].join('|');
 }
 
 /** Consecutive steps with one signature, as runs, in order. */

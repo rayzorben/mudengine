@@ -3027,10 +3027,10 @@ export default function App() {
     (route: Route, run: boolean) => api.walkRoute(session, route, run),
     [api, session]
   );
-  /** *Collect it first*, from the route panel's alternative that needs one (todo 07). */
+  /** *Collect it first*, from the route panel, for every item the way names (todo 07). */
   const collectThenWalk = useCallback(
-    (item: { id: number; name: string }, route: Route, run: boolean) =>
-      api.collectThenWalk(session, item, route, run),
+    (items: Array<{ id: number; name: string }>, route: Route, run: boolean) =>
+      api.collectThenWalk(session, items, route, run),
     [api, session]
   );
 
@@ -3088,6 +3088,9 @@ export default function App() {
               // already stood in says so. Opening it is the honest answer, and
               // it is the same surface every other room click reaches.
               if (route.blocked || route.steps.length === 0) return route;
+              // And a way through what the player keeps out of: the panel is
+              // where the way through and the way round are chosen between.
+              if (route.keptOut !== undefined) return route;
               /*
                * The plan was drawn from here a moment ago, so main has nothing
                * to redraw — but if the character moved in that moment it comes
