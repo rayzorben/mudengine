@@ -25,7 +25,7 @@ describe('the realm’s number for a thing', () => {
   /*
    * The refuse-rather-than-guess rule applied to a figure. `iron key` is
    * three rows, and printing one of their numbers would be the same coin toss
-   * `WorldGraph.oneRowNamed` declines to make about a keyed door.
+   * `Catalogue.oneRowNamed` declines to make about a keyed door.
    */
   it('refuses to pick one of several, and says how many there are', () => {
     expect(entityNumber({ ids: [1141, 2175, 2176] })).toBeNull();

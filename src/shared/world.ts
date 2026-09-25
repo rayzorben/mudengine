@@ -15,6 +15,7 @@ import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
 import type { AlignmentCost, MobDisposition } from './mobs';
 import type { Verdict } from './verdict';
+import type { RowPeace } from './mobRules';
 import type { Denomination } from './character';
 
 /** The ten directions the game uses. */
@@ -208,13 +209,18 @@ export function scatters(landing: Landing): boolean {
   return landing.high > landing.low;
 }
 
+/** Whether two readings of a chain's teleport are the same answer. */
+export function sameLanding(a: Landing, b: Landing): boolean {
+  return a.map === b.map && a.low === b.low && a.high === b.high;
+}
+
 /**
  * Every room the roll can name, in the realm's own numbering.
  *
  * The range as stated, **not** filtered against any realm: this file holds no
  * realm and inventing one here would make the answer depend on which world is
  * loaded. A caller with the data drops the numbers it has no room for — which
- * `WorldGraph.scatterDoors` does, because the mean it takes has to be over
+ * `Router.scatterDoors` does, because the mean it takes has to be over
  * outcomes that exist, and `resolveRoom` does, because a room the file lacks
  * cannot be the one the server just described.
  */
@@ -439,11 +445,11 @@ export interface Requirement {
    * **`openableHere` is the gate, not this field.** A list with an `at` on any
    * member is a lever the character has to walk to, which the *router* still
    * does not plan; it is here so the client can say where it is. Everything
-   * priced or sent in place — `edgePenalty`, the chip, `Walker.pullLevers` —
+   * priced or sent in place — `edgePenalty`, the chip, `Levers.pullLevers` —
    * asks `openableHere` first, and 150 exits answer yes. See `parseAction` for
    * where the data was hiding.
    *
-   * Walking to a lever elsewhere is `RemoteLever` and `Walker.fetchLever`,
+   * Walking to a lever elsewhere is `RemoteLever` and `Levers.fetchLever`,
    * which read the *rooms'* own commands rather than this field — and have to,
    * because 25 of the 225 gated exits state no action at all.
    */
@@ -1028,7 +1034,7 @@ export type ItemHandover = {
   /**
    * What the way to that room demands be carried, outermost frontier first.
    *
-   * Joined by the **quest book** alone (`WorldGraph.joinStep`), which is the
+   * Joined by the **quest book** alone (`QuestPlanner.joinStep`), which is the
    * one reader: the Reference card's `Given by` row is a lead and this is an
    * errand list, and a sweep per handover on every lookup would be paid for by
    * nobody. Absent where the realm leaves the place open, and where no room is
@@ -1653,6 +1659,12 @@ export interface WorldLookup {
    * key, because *unknown* is an answer the card draws.
    */
   verdicts?: Record<string, Verdict>;
+  /**
+   * This character's own row saying each monster named does not attack first
+   * (`peaceOf`, todo 818), by the monster's name: shown beside the realm's
+   * disposition, never instead of it. Absent where no row makes the claim.
+   */
+  rowPeace?: Record<string, RowPeace>;
   /**
    * Where each shop named in a returned item's `Sold by` row is, by the shop's
    * name lower-cased.
@@ -2300,7 +2312,7 @@ export interface WorldRoom {
  * Everything the realm knows about one room, resolved, for a room nobody is
  * standing in.
  *
- * `CharacterTracker` attaches the shop, the lair, the script and the room's
+ * `RoomTracker.attachRealm` attaches the shop, the lair, the script and the room's
  * spell to the room the character *is* in, and every card that wanted them got
  * them for free. A room on the map or on a route list has none of that: the
  * map cell carries a name, its exits and two booleans, which is enough to draw
@@ -2381,7 +2393,7 @@ export interface RoomCommand {
    * teleport is where you land and the cast is *holding breath*, 25 ticks
    * that end in `drowning`, which ends in death. The landing was read since
    * format 29 and the spell was narration, so eleven underwater rooms were a
-   * free corridor to the router and the plan. Read by `WorldGraph.corridorsAlong`.
+   * free corridor to the router and the plan. Read by `WorldGraph.corridorsOn`.
    */
   casts?: number;
   /** What it wants, in the realm's own words. */
@@ -2426,7 +2438,7 @@ export interface RoomCommand {
  * levers is two levers to pull; a count smaller than the levers found, or no
  * count at all, names *alternatives* — the reported gate says `Door` and has a
  * lever in each Guardroom flanking it, and the wire settled which reading is
- * right: one pull raised it. `Walker.fetchLever` is where that is acted on.
+ * right: one pull raised it. `Levers.fetchLever` is where that is acted on.
  */
 export interface RemoteLever {
   /** The room it is pulled in. Equal to the exit's own room for 171 of 225. */
@@ -2674,7 +2686,7 @@ export interface RouteStep {
    * **A plan cannot continue through one, so this is always the last step.**
    * `to` is the room the journey is *for* rather than the room this move
    * reaches, because that is what the rest of the plan was priced against —
-   * the arithmetic behind `moves` is `WorldGraph.scatterCosts`, and it prices
+   * the arithmetic behind `moves` is `Router.scatterCosts`, and it prices
    * exactly *and then the client carries on from wherever you land*. The
    * walker reads it as permission to be surprised (`Walker.scattered`): an
    * arrival anywhere in `landing` is this step working, and the answer is to
@@ -2725,7 +2737,7 @@ export interface RouteScatter {
    * units, so a lair in the maze goes into that figure — 19.7 against a
    * level-20 character where the walk is nine moves. The route's `cost` is
    * where the priced number belongs, and this is the one the reader is shown
-   * (`WorldGraph.scatterMoves`).
+   * (`Router.scatterMoves`).
    */
   moves: number;
 }
@@ -2849,7 +2861,7 @@ export function trapsAlong(steps: readonly RouteStep[]): { count: number; worst:
 /**
  * The trap a step walks through, or null: the one requirement on a route that
  * is neither opened nor paid nor refused, and the one the walker rests before
- * (`Walker.holdForTrap`, `automation.health.restBeforeTraps`).
+ * (`Holds.holdForTrap`, `automation.health.restBeforeTraps`).
  *
  * A `Spell Trap:` exit counts too, and did not until its spell was read (todo
  * 00, 2026-09-06). It is a trap by the server's own reckoning —
@@ -3459,7 +3471,7 @@ export interface Route {
    * The way through a door this character holds no key for, planned as
    * though it did (todo 805) — where fetching the key and walking through
    * beats the way round by `tuning.world.alternativeMinSteps`, the fetch
-   * priced in (`WorldGraph.keyedWay`). On a refused route, the way the pack
+   * priced in (`Router.keyedWay`). On a refused route, the way the pack
    * would open once it held what refused it. Its `needs` names what to fetch;
    * the errand fetches them before it is walked. Absent on any route not
    * planned for a reader.

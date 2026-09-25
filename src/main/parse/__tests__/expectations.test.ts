@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { BlockType } from '../../../shared/blocks';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 import { Expectations, lookTarget, type CommandContext } from '../expectations';
@@ -547,5 +548,112 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     memory.observeCommand('n', inGame);
     expect(memory.answeredInOrder()).toEqual([]);
     expect(memory.moves).toBe(1);
+  });
+});
+
+/*
+ * Todo 767: the claim a bare Enter filed, asked after by whoever sent it. The
+ * floor read after a kill closes on it, where counting rooms let one already
+ * on the wire answer for it.
+ */
+describe('the claim a bare Enter filed', () => {
+  it('is owed until a room takes it, and a room taking the one ahead leaves it owed', () => {
+    const memory = new Expectations();
+    memory.noteReread(true);
+    const ahead = memory.lastReread!;
+    memory.noteReread(true);
+    const mine = memory.lastReread!;
+    memory.shift();
+    expect(ahead.owed()).toBe(false);
+    expect(mine.owed()).toBe(true);
+    memory.shift();
+    expect(mine.owed()).toBe(false);
+  });
+
+  it('is closed by a refusal that proves its room is not coming', () => {
+    const memory = new Expectations();
+    memory.noteReread(true);
+    const read = memory.lastReread!;
+    memory.observeCommand('e', inGame);
+    expect(read.owed()).toBe(true);
+    memory.shiftRefused();
+    expect(read.owed()).toBe(false);
+  });
+
+  it('is none outside the realm, where a menu answers the Enter', () => {
+    const memory = new Expectations();
+    memory.noteReread(true);
+    expect(memory.lastReread).not.toBeNull();
+    memory.noteReread(false);
+    expect(memory.lastReread).toBeNull();
+    expect(memory.count).toBe(1);
+  });
+});
+
+/*
+ * Todo 768: a `sys go` queues no claim, so the refusals that say it moved
+ * nobody disarm its coordinates directly, and a portal's are its own room's.
+ * Todo 769: a player's `Your command had no effect.` too, paired by the echo.
+ */
+describe('a sys go the realm refused', () => {
+  const heard = (memory: Expectations, type: BlockType, text: string): void =>
+    memory.heard({ type, text });
+  const NO_EFFECT = 'Your command had no effect.';
+
+  it('disarms its coordinates on the realm’s refusal, and on its words said out loud', () => {
+    const memory = new Expectations();
+    memory.observeCommand('sys go 2 5', inGame);
+    expect(memory.promised).toEqual({ map: 2, number: 5 });
+    heard(memory, 'sys-refused', 'Incorrect syntax');
+    expect(memory.promised).toBeNull();
+
+    memory.observeCommand('sys go 2 5', inGame);
+    memory.refused('st');
+    expect(memory.promised).toEqual({ map: 2, number: 5 });
+    memory.refused('sys go 2 5');
+    expect(memory.promised).toBeNull();
+  });
+
+  it('leaves a portal’s coordinates to its own room', () => {
+    const memory = new Expectations();
+    memory.hintTeleport('dive pit', 2, 5);
+    memory.observeCommand('dive pit', inGame);
+    heard(memory, 'sys-refused', 'Incorrect syntax');
+    heard(memory, 'command-no-effect', NO_EFFECT);
+    expect(memory.promised).toEqual({ map: 2, number: 5 });
+  });
+
+  it('disarms them on no effect echoed against the go, or with nothing echoed since', () => {
+    const memory = new Expectations();
+    memory.observeCommand('sys go 1 297', inGame);
+    heard(memory, 'status-line', '[HP=34]:sys go 1 297');
+    heard(memory, 'status-line', '[HP=34]:');
+    heard(memory, 'command-no-effect', NO_EFFECT);
+    expect(memory.promised).toBeNull();
+
+    memory.observeCommand('sys go 1 297', inGame);
+    heard(memory, 'command-no-effect', NO_EFFECT);
+    expect(memory.promised).toBeNull();
+  });
+
+  it('leaves them to no effect echoed against another command', () => {
+    const memory = new Expectations();
+    heard(memory, 'status-line', '[HP=34]:aa rat');
+    memory.observeCommand('sys go 1 297', inGame);
+    heard(memory, 'command-no-effect', NO_EFFECT);
+    expect(memory.promised).toEqual({ map: 1, number: 297 });
+    // Positive control: its own echo, then the same sentence, is the go's.
+    heard(memory, 'status-line', '[HP=34]:sys go 1 297');
+    heard(memory, 'command-no-effect', NO_EFFECT);
+    expect(memory.promised).toBeNull();
+  });
+
+  it('forgets the echo with everything else', () => {
+    const memory = new Expectations();
+    heard(memory, 'status-line', '[HP=34]:aa rat');
+    memory.forget();
+    memory.observeCommand('sys go 1 297', inGame);
+    heard(memory, 'command-no-effect', NO_EFFECT);
+    expect(memory.promised).toBeNull();
   });
 });

@@ -58,6 +58,18 @@ export function int(value: unknown, fallback: number, min: number, max: number):
 }
 
 /**
+ * A figure the wire printed, read as the integer it is: a rule's group, a
+ * listing's cell, a prompt's field. Null where it is absent or holds no digits,
+ * never zero (`CLAUDE.md` › *Null is not zero*). Unlike `int` above there is no
+ * fallback and no range: what the server said is the answer.
+ */
+export function figure(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * The human sentence inside a caught `unknown`.
  *
  * `catch` hands over `unknown`, and the expression to get a message out of it

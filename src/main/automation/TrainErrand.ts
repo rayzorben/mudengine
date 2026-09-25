@@ -21,6 +21,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
 import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
+import type { SessionModule } from './Module';
 
 export interface TrainPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -58,7 +59,7 @@ type Phase =
 
 const ACTION = 'train level';
 
-export class TrainErrand {
+export class TrainErrand implements SessionModule {
   private phase: Phase = { kind: 'idle' };
   /**
    * The level the last attempt was made at, so one level is one attempt.

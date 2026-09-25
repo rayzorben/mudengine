@@ -51,6 +51,7 @@ const session = new SessionManager(
         rows: block.rows?.length
       });
     },
+    players: () => {},
     character: (state) => {
       if (current) current.online = [...state.online];
     },
@@ -58,15 +59,16 @@ const session = new SessionManager(
     telnet: () => {},
     notice: () => {}
   },
-  undefined,
-  // Nothing standing: this measures what these commands cause, and an idle
-  // routine firing mid-run would put its own lines in the capture.
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    // Nothing standing: this measures what these commands cause, and an idle
+    // routine firing mid-run would put its own lines in the capture.
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

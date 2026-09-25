@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import type { CardId, CardLayoutApi, FloatState } from '../hooks/useCardLayout';
+import type { CardId, CardLayoutApi, FloatState } from '../lib/cards';
 import { t } from '../lib/i18n';
 
 export interface FloatLayerProps {

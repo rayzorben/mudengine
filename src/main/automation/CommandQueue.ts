@@ -37,6 +37,17 @@ import { tuning } from '../app/tuning';
 
 export { PRIORITY, type Priority, type QueueSnapshot };
 
+/**
+ * Why `offer` took nothing, gate by gate in the order it asks: a screen that
+ * is not a command prompt, no socket, automation switched off, a deadline
+ * already past, a word the realm does not have. A proposer that must say why
+ * nothing went out reads this rather than guessing (todo 767).
+ */
+export type QueueRefusal = 'held' | 'offline' | 'switched-off' | 'expired' | 'unavailable';
+
+/** What became of an intent offered: queued, folded into the same intent already waiting, or refused. */
+export type Offered = 'queued' | 'joined' | QueueRefusal;
+
 export interface Intent {
   command: string;
   priority: Priority;
@@ -85,7 +96,7 @@ export interface Intent {
    * and the password went down verbatim behind it. A flag on the intent
    * travels with the command it is about, so nothing can come between them.
    *
-   * `SessionManager.reportable` is still the one choke point; this only tells
+   * `Publisher.reportable` is still the one choke point; this only tells
    * it the answer without asking it to guess.
    */
   secret?: boolean;
@@ -313,18 +324,24 @@ export class CommandQueue {
 
   /**
    * Offers an intent. Returns false when it was dropped — disabled, a
-   * duplicate of something already queued, or past its expiry.
+   * duplicate of something already queued, or past its expiry. `offer` says
+   * which.
    */
   enqueue(intent: Intent): boolean {
+    return this.offer(intent) === 'queued';
+  }
+
+  /** Offers an intent, and says what became of it. See `Offered`. */
+  offer(intent: Intent): Offered {
     // Ahead of the `user` exemption every other gate here makes: a person's
     // toolbar press is a command for the realm too, and the realm is not what
     // is listening.
-    if (this.held !== null) return false;
-    if (this.events.connected?.() === false) return false;
+    if (this.held !== null) return 'held';
+    if (this.events.connected?.() === false) return 'offline';
     if (!this.config.enabled && intent.priority !== 'user' && intent.keepsLink !== true) {
-      return false;
+      return 'switched-off';
     }
-    if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return false;
+    if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return 'expired';
     /*
      * A word this realm does not have. Refused rather than sent, and said out
      * loud by whoever answered — a safety feature that silently declines is
@@ -332,7 +349,7 @@ export class CommandQueue {
      * broadcasting a command into a room full of people*.
      */
     if (intent.priority !== 'user' && this.events.unavailable?.(intent.command) === true) {
-      return false;
+      return 'unavailable';
     }
 
     if (intent.coalesceKey !== undefined) {
@@ -352,14 +369,14 @@ export class CommandQueue {
           if (intent.expiresAt === undefined) delete existing.expiresAt;
           else existing.expiresAt = Math.max(existing.expiresAt, intent.expiresAt);
         }
-        return false;
+        return 'joined';
       }
     }
 
     this.seq += 1;
     this.pending.push({ ...intent, seq: this.seq, enqueuedAt: Date.now() });
     this.pump();
-    return true;
+    return 'queued';
   }
 
   /**

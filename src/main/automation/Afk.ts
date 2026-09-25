@@ -37,12 +37,13 @@ import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AfkConfig } from '../../shared/config';
+import type { SessionModule } from './Module';
 
 export interface AfkEvents {
   notice?(message: string): void;
 }
 
-export class Afk {
+export class Afk implements SessionModule {
   /** When the player last typed into this session, or entered the realm. Null until either. */
   private attendedAt: number | null = null;
   /** When each sender was last told, by lower-cased name. */

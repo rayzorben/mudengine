@@ -1010,6 +1010,18 @@ export const RULES: Rule[] = [
     pattern: /^(?<attacker>[A-Z][\w'-]*) moves to attack (?<target>.+?)[.!]$/
   },
   /*
+   * A guard stepping in front of the monster this character attacked, sent
+   * only to the attacker (`AttackCommand.cs:342`, `Player.cs:6138`): both are
+   * the realm's names, bare, and no full stop ends it. Paradigm's wire (four
+   * sessions, 2026-09-12..19) and sixteen lines in seven captures. Above the
+   * talk rules, so neither name may carry a colon or a quote and no stop may
+   * end it: a player's gossip of the phrase is talk, not a guard (763, review).
+   */
+  {
+    type: 'mob-protects',
+    pattern: /^(?<guard>[^\s:"][^:"]*?) moves to protect (?<ward>[^:".!?]*[^\s:".!?])$/
+  },
+  /*
    * A swing between two other parties that did not land. The verb is the
    * weapon's, the weapon suffix is an item name, and both are realm data; the
    * frame is `<who> <verb> at <whom>[ with <its> <weapon>]!`. `You ... at` is
@@ -1508,7 +1520,7 @@ export const RULES: Rule[] = [
    * `door`, `gate` and `portcullis` for one frame. Anchoring on the word
    * `door` was harmless while the step went out behind every `open` anyway —
    * the direction's own refusal took the next rung — and stopped being so when
-   * `Walker.sendOpen` started waiting for this sentence, because a *gate*'s
+   * `Barriers.sendOpen` started waiting for this sentence, because a *gate*'s
    * success would then have matched nothing. The player's own transcript is
    * the wire's word on the substitution (`The gate is closed!`, `The gate is
    * locked.`, `You bashed the gate open.`, live 2026-09-05); only `door` has
@@ -1581,7 +1593,7 @@ export const RULES: Rule[] = [
   },
   /*
    * `Your torch has been returned to its proper place` — an item carrying
-   * `Remove@Maint` taken out of the pack by the cleanup (`GMUDServer.cs:445`),
+   * `Remove@Maint` taken out of the pack by the cleanup (`GMUDServer.cs:449`),
    * no full stop, from the source: the two dozen items that carry the flag
    * are quest props nobody on the test realm has held through a cleanup. An
    * item with its own `DestructMessage` prints that row instead, which the
@@ -1621,6 +1633,19 @@ export const RULES: Rule[] = [
 
   /* ---------------------------------------------------------- failure */
   { type: 'command-no-effect', pattern: /^Your command had no effect\./ },
+  /*
+   * A `sys` command's refusals, `sys go`'s three (`SysCommand.cs`
+   * `GotoCommand`; the last two shared by other subcommands): a room that does
+   * not exist, a malformed one, and a mudop on a live realm
+   * (`ProductionNotAllowed`). All three on orohost's wire:
+   * `logs/2026-08-30_20-57-36_main.log:757`, `2026-08-27_23-45-31_main.log:429`,
+   * `2026-09-19_00-44-05_vaelor2.log:591`. Anchored at both ends: `Incorrect
+   * syntax or player not found` (`sys move`'s, source only) is not claimed (766).
+   */
+  {
+    type: 'sys-refused',
+    pattern: /^(?:Map and\/or Room not found|Incorrect syntax|Command not allowed in live realm\.)$/
+  },
   /*
    * The command was thrown away before the server even looked at it.
    *
@@ -1732,6 +1757,13 @@ export const RULES: Rule[] = [
     pattern:
       /^You picked up (?<count>\d+) (?<coin>copper farthings?|silver nobles?|gold crowns?|platinum pieces?|runic coins?)\.?$/
   },
+  /*
+   * Somebody else's coins name no count and, on GreaterMUD, end without a full
+   * stop (`GetCommand.cs:106`: `" picks up some ", PluralCoinName`; orohost wire,
+   * `logs/2026-09-07_21-49-00_festus:7463`). MajorMUD's has one
+   * (`captures/019`:185). Before the item rule, which wants the stop (todo 757).
+   */
+  { type: 'player-gets', pattern: /^(?<player>\w+) picks up (?<item>some \w+(?: \w+)?)\.?$/ },
   { type: 'player-gets', pattern: /^(?<player>\w+) picks up (?<item>.+)\./ },
   { type: 'player-gets', pattern: /^You took (?:(?<count>\d+) )?(?<item>.+)\./ },
   { type: 'player-drops', pattern: /^(?<player>\w+) drops (?<item>.+)\./ },
@@ -1779,9 +1811,11 @@ export const RULES: Rule[] = [
     type: 'user-buys',
     // `for nothing` is the free purchase's own spelling, captured live beside
     // `for 0 copper farthings` (2026-09-01, a scroll of minor healing): both
-    // are on the wire and the second was read while the first was not.
+    // are on the wire and the second was read while the first was not. The
+    // coin is any on the ladder: MajorMUD quotes `30 gold crowns` and `1
+    // platinum piece` (bearfather, `2026-09-17_16-16-56_soul:1027,1213`; 815).
     pattern:
-      /^You just bought (?:(?<quantity>\d+) )?(?<item>[\w ]+) for (?:(?<price>\d+) copper farthings|nothing)\.$/
+      /^You just bought (?:(?<quantity>\d+) )?(?<item>[\w ]+) for (?:(?<price>\d+) (?<coin>[a-z]+(?: [a-z]+)?)|nothing)\.$/
   },
   /*
    * Selling, captured beside the buying line it mirrors:
@@ -2810,8 +2844,11 @@ export const BATCH_RULES: BatchRule[] = [
        * against `Mana:` is the sheet saying which listing this character owns
        * (`pow` against `sp`), the same fact the status line's `KAI=`/`MA=`
        * states — and the sheet says it even on a realm whose prompt omits it.
+       * The star is `HasManaAdder`, an item or effect raising the maximum
+       * (GreaterMUD `Player.cs:3700`, `:7088`; `captures/214`:10), printed on
+       * either word; nothing reads it yet, so it is passed over (todo 801).
        */
-      /^(?:(?<resourceWord>Mana|Kai):\s+(?<mana>\d+)\/(?<manaMax>\d+))?\s*(?:Spellcasting:\s+(?<spellcasting>\d+)\s+)?Traps:\s+(?<traps>\d+)/,
+      /^(?:(?<resourceWord>Mana|Kai):\s+(?:\*\s*)?(?<mana>\d+)\/(?<manaMax>\d+))?\s*(?:Spellcasting:\s+(?<spellcasting>\d+)\s+)?Traps:\s+(?<traps>\d+)/,
       /^\s*Picklocks:\s+(?<picklocks>\d+)/,
       /^Strength:\s+(?<strength>\d+)\s+Agility:\s+(?<agility>\d+)\s+Tracking:\s+(?<tracking>\d+)/,
       // Captured from the live server; the ported qualifiers did not have these.

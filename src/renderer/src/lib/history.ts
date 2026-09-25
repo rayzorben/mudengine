@@ -63,6 +63,15 @@ export function replace<T>(history: History<T>, present: T): History<T> {
   return { ...history, present };
 }
 
+/**
+ * Whether two form values say the same thing, as `record` asks: the test the
+ * server and client forms use, which are plain drafts, and the character
+ * form's through `sameForm`.
+ */
+export function sameJson<T>(a: T, b: T): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function canUndo<T>(history: History<T>): boolean {
   return history.past.length > 0;
 }

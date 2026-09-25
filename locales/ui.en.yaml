@@ -143,10 +143,12 @@ notices:
       'A supplies block was written into {file} — the things a character keeps in stock and where
       it buys them. Empty, so nothing changes until an item is added.'
     conditionWaitsStated:
-      one: 'Walking on while blind or poisoned is a setting, off by default, and was written into
-        {count} file with the paragraph that explains it: {fileList}'
-      many: 'Walking on while blind or poisoned is a setting, off by default, and was written into
-        {count} files with the paragraph that explains it: {fileList}'
+      one: 'Whether a route or a loop walks on while blind, poisoned or confused is a setting per
+        condition, off by default. {keys} was written into {count} file with the paragraph that
+        explains it: {fileList}'
+      many: 'Whether a route or a loop walks on while blind, poisoned or confused is a setting per
+        condition, off by default. {keys} was written into {count} files with the paragraph that
+        explains it: {fileList}'
     keyPickupStated:
       one:
         'Picking up a key an exit of the room needs, when it is lying on that floor, is a setting --
@@ -245,6 +247,9 @@ notices:
         'New settings — dropping junk, banking the purse, defending the party, the crowd spell and
         the reaction to a player attacking — were written into {count} file with the paragraphs
         that explain them. All off, which is what the client was already doing. {fileList}'
+    teleportStated:
+      '"automation.safety.fleeGoto" was written into {file}, off: a last-ditch teleport below
+      Auto-Retreat. Its command is each realm''s own, on the realm''s settings page.'
     markStated:
       '"ui.showLogo" was written into {file}, on: the client draws its own mark at the left of the
       status rail. Turn it off there or on the MudEngine page in settings.'
@@ -574,6 +579,11 @@ notices:
         '{count} character files moved into directories of their own, so each can carry loops of its
         own.'
       one: 1 character file moved into a directory of its own, so it can carry loops of its own.
+    freedomCureStated:
+      many: 'A Freedom spell, cast when the character is held where it stands, was added blank to
+        the cures of {count} files: {fileList}'
+      one: 'A Freedom spell, cast when the character is held where it stands, was added blank to
+        the cures of {count} file: {fileList}'
     trapRest:
       many: 'Resting before a trap was added to {count} files, at 45%: a walk now waits until
         health covers the trap ahead and leaves that share of the bar after it. {fileList}'
@@ -956,6 +966,7 @@ toolbar:
   disconnect: Disconnect
   drop: Auto-Drop Junk
   retreat: Auto-Retreat (Combat)
+  fleeGoto: Auto-Teleport (Last Resort)
   gangpath: Allow Remotes on Gangpath
   hangUp: Auto-Hangup (Panic Disconnect)
   healParty: Auto-Heal Party Members
@@ -1008,6 +1019,7 @@ tabs:
     markBlind: blind
     markHeld: held
     markPoisoned: poisoned
+    markConfused: confused
     markShopping: shopping
     markResting: resting
     markRestingTo: resting to {percent}%
@@ -2031,6 +2043,7 @@ cards:
       statusBlind: blind
       statusHeld: held
       statusPoisoned: poisoned
+      statusConfused: confused
       statusOffline: offline
       statusResting: resting
       statusRunning: running
@@ -2303,6 +2316,9 @@ cards:
       spawnsLabel: Spawns in
       temperLabel: Disposition / Aggression
       temperUncertainNote: ' — the world data disagrees with itself'
+      # Todo 818: the character's own row, beside the realm's word.
+      temperRowFriend: ' — your row calls it a friend, and the automation follows the row'
+      temperRowNotHostile: ' — your row says it does not attack first, and the automation follows the row'
       temperUnknown: not stated in the world data
     notFound: The world data does not name it.
     race:
@@ -2339,7 +2355,7 @@ cards:
     title: Reference
   room:
     actions:
-      askLocationTooltip: Ask the realm where you are (rm, quietly)
+      askLocationTooltip: Ask the realm where you are, quietly
     badge:
       ambiguousMatches: '{count} matches'
       ambiguousTooltip: several rooms share this name and exit set
@@ -2407,6 +2423,14 @@ cards:
       alignCostUncertainChip: −10 align?
       alwaysCostly: attacking it costs you 10 alignment
       charmedChip: charmed
+      # Todo 818: the character's row says it does not attack first, shown
+      # beside the realm's disposition rather than instead of it.
+      rowFriendChip: friend (row)
+      rowNotHostileChip: not hostile (row)
+      rowSays: 'Your row says {target} does not attack first; the automation believes it.'
+      rowOverRealm:
+        'Your row says {target} does not attack first, though the realm says it attacks on sight.
+        The automation follows the row.'
       dependsOnStanding: '{word} — depends on your standing, which is not known'
       hostileUncertainChip: hostile?
       player: a player
@@ -3192,11 +3216,25 @@ settings:
     mobRuleNameAria: 'Monster for rule {number}'
     mobRuleNamePlaceholder: Monster name
     mobRuleNever: Never Attack — leave it alone
+    # Todo 818: MegaMUD's relationships beside Avoid, and its Not Hostile.
+    mobRuleFriend: Friend — never attack, never a threat
+    mobRuleEscape: Escape — run while it is here
+    mobRuleHangup: Hang Up — disconnect while it is here
+    mobRuleNotHostile: Not hostile
+    mobRuleNotHostileHint:
+      It does not attack first, whatever the realm says; rested beside, and opened on only at
+      engage all.
+    # Todo 816: how a banded row fights its monster.
+    mobRuleNoBackstab: No backstab
+    mobRuleSpellAria: 'Spell for monster {number}'
+    mobRuleSpellPlaceholder: Attack spell — blank for the usual
+    mobRuleTimes: Casts (0 = no limit)
+    mobRuleTimesAria: 'Most casts at monster {number}'
     mobRuleNote:
-      One row per monster you care about. Never Attack is refused before anything else; the
-      other five are the order the rest are attacked in, and where one of these is in the room
-      the band decides outright and the usual weighing is skipped. Anything unlisted counts as
-      Default.
+      One row per monster you care about. Never Attack, Friend, Escape and Hang Up are never
+      opened on; Escape and Hang Up act under Auto-Retreat and Auto-Hangup. The other five are the
+      order the rest are attacked in, and where one of these is in the room the band decides
+      outright and the usual weighing is skipped. Anything unlisted counts as Default.
     mobRuleRemoveAria: 'Remove rule {number}'
     mobRuleRemoveTitle: Remove this monster
     mobRuleTreatAria: 'How monster {number} is treated'
@@ -3347,6 +3385,17 @@ settings:
     safeHavenHint: Named as a loop stop is, with the map/room so a shared name is not guessed at.
     safeHavenLabel: Safe Room / Retreat Room
     safeHavenPlaceholder: Newhaven, Town Gates 1/2150
+    fleeGotoLabel: Auto-Teleport
+    fleeGotoHint:
+      Below Auto-Retreat, the realm's own teleport, sent mid-fight once the walk out has had its
+      turn. On GreaterMUD sys is a sysop's command; a player is told it had no effect, and it is
+      not sent again that connection.
+    fleeGotoCommandLabel: Teleport Command
+    fleeGotoCommandHint: Sent exactly as written. Empty uses the realm's own.
+    fleeGotoRealmHint:
+      This realm's teleport, sent exactly as written — GreaterMUD sys go 1 297, MajorMUD sys goto
+      silvermere. Empty states none; a character may state its own.
+    fleeGotoCommandPlaceholder: sys go 1 297
     hangPenaltiesHint: Whether this realm charges for a hang-up; Paradigm's realm menu says so itself, and that outranks this.
     hangPenaltiesLabel: Hang Penalties
     hangPenaltiesGlobal: As Global says
@@ -3432,6 +3481,12 @@ settings:
       spent standing up, because the next command you wanted does that for free.
   hint:
     ariaLabel: What this does
+  # How a realm is asked where you stand (todo 811): the realm's form, and a character's own.
+  locate:
+    label: Locate Command
+    hint: The command that asks this realm where you are standing. None asks nothing, and the room is worked out from what you walk into.
+    none: None, never ask
+    realm: As the realm says
   login:
     addStep: Add a menu
     legend: Login Menus, This Character
@@ -3540,6 +3595,10 @@ settings:
     walkWhilePoisonedHint:
       Off, a route or a loop stands still until the poison runs its course — MegaMUD's IgnorePoison
       default. Paralysis always holds; a step while held is refused.
+    walkWhileConfused: Walk While Confused
+    walkWhileConfusedHint:
+      Off, a route or a loop stands still until the confusion wears off — MegaMUD's IgnoreConfusion
+      default. A confused character's commands can be thrown away.
     fightOnArrival: Auto-Combat On at Arrival
     fightOnArrivalHint:
       Turns auto-combat back on when a route you asked for arrives, since walking with it off is how
@@ -3884,9 +3943,10 @@ settings:
       their client recasts at once instead of on its clock. Both ends must run mudengine.
     cureBlindnessLabel: Cure Blindness Spell
     cureDiseaseLabel: Cure Disease Spell
+    cureFreedomLabel: Freedom Spell
     cureLegend: Cures
-    cureNote: Cast the moment the game says you are blinded, poisoned or diseased, and again after
-      thirty seconds if it still shows. A blank field does nothing. A field is greyed out when
+    cureNote: Cast the moment the game says you are blinded, poisoned, diseased or held where you
+      stand, and again after thirty seconds if it still shows. A blank field does nothing. A field is greyed out when
       your spellbook has nothing that cures it.
     curePoisonLabel: Cure Poison Spell
     cureHint: The spell to cast when this lands on you. Blank does nothing.
@@ -4141,6 +4201,22 @@ session:
     locateUnavailable:
       This realm has no “{command}” command, so it was said out loud rather than answered. The
       client will work out where it is from the rooms it walks into instead.
+    # The Room card's locate button, pressed where the realm has no word (todo 811).
+    locateNone:
+      Nothing was asked, because this realm has no command that says where you are standing. Its
+      Locate Command setting says none, or it refused the one it had.
+    # The locate ask the queue refused (todo 767), one sentence per reason.
+    locateHeld:
+      Nothing was asked where you are standing, because a screen that is not the command prompt is
+      open.
+    locateOffline:
+      Nothing was asked where you are standing, because there is no connection to ask on.
+    locateSwitchedOff: Nothing was asked where you are standing, because Automation is switched off.
+    locateExpired:
+      Nothing was asked where you are standing, because the ask expired before it could be sent.
+    # Goto or Loop pressed in an unplaced room asked first, and the answer did
+    # not place the character in time; the plan then answers for itself.
+    locateUnresolved: 'Asked the realm where you are with “{command}”; no room was placed within {seconds}s.'
     noRealmData: No realm data.
     stoppedDied: you were killed, and the realm has moved you
     stoppedForLoop: you started a loop
@@ -4222,6 +4298,8 @@ session:
       'Mortally wounded: the realm refuses every command until this character is up. Nothing is
       being sent. Someone in the room can aid it.'
     whyMortallyWounded: 'on the ground at {hp} health'
+    # Before any status line has stated the figure: null is not zero.
+    whyMortallyWoundedUnread: 'on the ground, health not yet read'
     escapeNoExit:
       'Not running: {why}, but this room has named no exit and there is nothing behind us to
       retrace. {then}'
@@ -4248,6 +4326,16 @@ session:
     retreatPlanned: 'Retreating to {room}: {stepCount} steps.'
     retreatRefused: 'Could not retreat to {room}: {reason}'
     retreatUnplaced: 'Not retreating to {room}: the room never resolved after the move.'
+    # The last-ditch teleport (todo 813): {command} is the realm's own, literally.
+    teleporting: 'Teleporting out with {command}: {why}.'
+    teleportReason: 'safety: teleport, {why}'
+    teleportRefused: 'The realm refused {command}: {answer}'
+    teleportNot: 'Not teleporting: {why}, but {refused}.'
+    teleportUnstated: no teleport command is stated for this realm or character
+    teleportRefusedBefore: the realm refused {command} earlier this connection
+    teleportDropped: 'Not waiting on {command} any longer: the character was killed or left the realm.'
+    teleportDroppedReason: left the realm before it was answered
+    teleportGaveUp: 'No room came back from {command} within {seconds}s; the teleport is given up.'
     hangUpRefused: Not hanging up — {why}. {reasons}. Disconnecting now would be penalised; walk out instead.
     hangingUpClean: 'Hanging up: {why}.'
     hangingUpUncharged: 'Hanging up: {why}. {realm} charges nothing for a hang-up, by its own realm menu.'
@@ -4263,6 +4351,18 @@ session:
     whyAttackers: '{count} attackers'
     whyCompany: Player present in room (PvP abort)
     whyPvp: '{attacker} opened on you'
+    # Todo 818: a monster's row says to escape it, or to hang up on it.
+    whyDreaded: '{mob} is here, and its row says to escape'
+    whyStalker: '{mob} is here, and its row says to hang up'
+    # {why} is one of the two above and {reason} the switch's own word below,
+    # so the notice and the trace cannot say different things.
+    escapeSwitchedOff: 'Not running: {why}, but {reason}.'
+    retreatOffReason: Auto-Retreat is off
+    hangUpSwitchedOff: 'Not hanging up: {why}, but {reason}.'
+    hangUpOffReason: Auto-Hangup is off
+    # Out of a fight there is nothing to stand and fight: nothing is opened
+    # beside a monster a row says to escape (`AutoCombat.besideStance`).
+    escapeNotOpening: Nothing is opened beside it.
   realm:
     commandUnavailable:
       This realm has no “{command}” command, so it was said out loud in the room rather than
@@ -4381,6 +4481,11 @@ automation:
     refusalNotReached: 'Not collecting: the walk to {room} ended somewhere else.'
     refusalAskedNothing: 'Said "{say}", and no {item} came of it; the way that needed it is not being walked.'
     refusalPackUnread: 'Asked for the pack after the handover and nothing answered, so it is not known whether it came.'
+    # The pack listed again and again after the phrase (todo 814), never with the item.
+    refusalHandoverUnlisted:
+      'Said "{say}", and for {seconds}s after it the pack never listed {item}. A handover can
+      leave a quest flag rather than something carried; the way that needed it is not being
+      walked.'
     refusalUnsent: 'Could not say "{say}": it never went out, so the way that needed it is not being walked.'
     summonedBy: '{mob}, summoned when {summoner} dies'
     stoppedGotIt: 'the pack holds {item}'
@@ -4540,6 +4645,8 @@ automation:
     reasonArrivalUnplaced: 'auto-combat: something walked in the realm data could not place'
     reasonRefresh: 'auto-combat: re-reading the room'
     reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the AE spell'
+    # Todo 816: the server repeats the spell each round; spent, the round changes to {verb}.
+    reasonRoundMelee: 'auto-combat: {spell} is spent or out of reach, back to {verb}'
     reasonRoundSpell: 'auto-combat: round spell'
     refusedAlreadyFighting: already fighting {target}
     # Something already swung at is still standing here. `aa` switches target,
@@ -4547,6 +4654,24 @@ automation:
     # between `*Combat Off*` and `*Combat Engaged*` is where it used to happen.
     refusedEngagedWith: 'already swinging at {target}, which is still here'
     refusedNever: '{target} is set to never attack'
+    # Todo 818: the other stances, and the row's Not Hostile.
+    refusedFriend: '{target} is a friend, by its row'
+    refusedEscapeRow: '{target} is one to escape, by its row'
+    refusedHangupRow: '{target} is one to hang up on, by its row'
+    refusedBesideEscape: '{target} is here and its row says to escape, so no fight is opened beside it'
+    refusedBesideHangup: '{target} is here and its row says to hang up, so no fight is opened beside it'
+    refusedRowNotHostile: 'the row for {target} says it does not attack first, and engage is not all'
+    refusedRowNotHostileOverRealm:
+      'the row for {target} says it does not attack first, though the realm says it does, and
+      engage is not all'
+    overrideFriend:
+      'The row for {target} calls it a friend, though the realm says it attacks on sight.
+      Following the row: it is never attacked, and it is rested beside and left out of the
+      threats.'
+    overrideNotHostile:
+      'The row for {target} says it does not attack first, though the realm says it does.
+      Following the row: it is opened on only at engage all, and it is rested beside and left out
+      of the threats.'
     # The realm lists {guard} as moving to protect {target}, and the server
     # hands a blow at {target} to it; {why} is the guard's own refusal.
     refusedGuarded: '{guard} protects {target} and is refused itself: {why}'
@@ -4585,6 +4710,8 @@ automation:
     whyHitBackGuard: 'hitting back: {target} protects {ward}, so it goes first'
     whyInRoom: in the room
     whyStillOn: 'still on {target}: one target at a time, until it is dead'
+    # Todo 816: a monster's row withholds the backstab opener.
+    whyNoBackstab: '{why}; no backstab, as the row for {target} says'
     whyRanked: 'first of {count} here: your priority list ranks {target} {band}'
     whyRankedAlone: 'your priority list ranks {target} {band}'
     whyRankedOver: 'first of {count} here: your priority list ranks {other} {band}'
@@ -4593,6 +4720,11 @@ automation:
     costBound: 'up to {rounds} rounds and {cost} hp to kill'
     costEstimate: 'about {rounds} rounds and {cost} hp to kill'
     spellIneffective: '{spell} has no effect here; casting {fallback} instead for this fight.'
+    # Todo 816: a cast answered by its own result before any engagement is instant.
+    spellInstant: '{spell} is an instant spell: it engages nothing, so it no longer opens a fight and is cast each round instead.'
+    spellInstantRemembered: '{spell} answered instantly on this realm before: it engages nothing, so it opens no fight and is cast each round instead.'
+    spellInstantUnkept: '{spell} is an instant spell: it engages nothing, so it no longer opens a fight and is cast each round instead. Neither the spellbook nor the realm names it for certain, so this is not kept past the connection.'
+    spellNotInstant: '{spell} engaged after all: it is a combat spell, so it is no longer held instant on this realm and opens fights again.'
     spellIneffectiveArea: '{spell} has no effect here; the combat spell carries this fight.'
     spellIneffectiveNoFallback: '{spell} has no effect here, and no fallback spell is set; the round attacks carry this fight.'
     whyUnweighed: 'first of {count} here: the realm cannot weigh {target}, and unknown is not safe'
@@ -4615,8 +4747,8 @@ automation:
     reason: 'blessing: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
   cure:
-    reason: 'cure: {affliction}'
-    derived: 'Curing {affliction} with {spell}, the cheapest spell in the book that does.'
+    reason: 'cure: {cure}'
+    derived: 'Casting {spell} as the {cure} cure, the cheapest spell in the book that is one.'
   spells:
     choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): its least roll finishes what is left of the target.'
     choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast, {cost} mana): the hardest hitter the pool can pay for.'
@@ -4886,6 +5018,8 @@ automation:
     # A supply the pack is under the ceiling of, found rather than bought.
     reasonStocking: 'loot: {item} here, {have} carried of {max} kept'
     reasonWorth: 'loot: {item} is over the value threshold'
+    # The room read again after a kill: items drop without a word (todo 814).
+    reasonFloorAfterKill: 'loot: reading the floor for what the kill dropped'
   party:
     reasonAssist: 'assist: {leader} is fighting {target}'
     reasonDefend: 'defend: {target} is attacking {member}'
@@ -5024,6 +5158,7 @@ automation:
     holdingBlind: Blind; waiting here until you can see again.
     holdingHeld: Held fast; waiting here until you can move again.
     holdingPoisoned: Poisoned; waiting here until it runs its course.
+    holdingConfused: Confused; waiting here until your head clears.
     afflictionResumed: The condition has passed; walking on.
     holdingDark: Too dark to tell where this is; waiting for a light.
     lightResumed: The room can be read again; walking on.
@@ -5059,6 +5194,11 @@ automation:
     stoppedAtStart: the walk stopped before its first step went out
     reasonNotSent: '{command} never left the client'
     reasonNudge: forcing an answer after {command}
+    # A portal left from a pitch-black room is not nudged: nothing in a dark reprint
+    # tells the Enter's answer from the landing (todo 808).
+    noNudgeUnseen:
+      'No Enter behind {command}: the room is too dark to tell its reprint from the landing, so the
+      walk waits for the portal.'
     reasonOpening: opening the {barrier} to {stepName}
     reasonPicking: picking the {barrier} to {stepName}
     reasonPlayerTookOver: you moved the character yourself
@@ -5078,6 +5218,9 @@ automation:
     sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the sheet says 0), so the server refuses every attempt. Sneak Before Each Step is ignored for this session.'
     reasonStepping: walking to {stepName}
     reasonTimeout: nothing came back after {command}
+    # A step on the wire when the character dropped: refused there, and handed
+    # no state, so not a silence (todo 764).
+    reasonGrounded: 'you dropped to the ground with {command} on the wire, and nothing is walked from there'
     reasonWrongRoom: Off path / Navigation desync ({roomName}).
     refusalDisabled: Automation is disabled.
     refusalInCombat: You are in combat, so I will not walk out of the fight.

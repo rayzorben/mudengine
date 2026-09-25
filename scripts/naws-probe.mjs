@@ -108,14 +108,13 @@ function openSession({ cols, rows }, login, automation) {
       data: (chunk) => raw.push(chunk.text),
       line: (line) => lines.push(line),
       block: () => {},
+      players: () => {},
       character: () => {},
       state: () => {},
       telnet: (event) => telnet.push(event),
       notice: (message) => notices.push(message)
     },
-    undefined,
-    automation,
-    login
+    { automation, login }
   );
 
   session.resize({ cols, rows });

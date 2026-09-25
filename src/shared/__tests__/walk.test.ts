@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { stillFled, type FledRoom } from '../walk';
+import { EMPTY_CHARACTER, NO_AFFLICTIONS } from '../character';
+import { DEFAULT_CONFIG } from '../config';
+import {
+  afflictionHolding,
+  isAfflictionHold,
+  portalLeftUnseen,
+  stillFled,
+  type FledRoom
+} from '../walk';
 
 /*
  * The rooms an escape must not run back into, and *when* that list forgets.
@@ -56,5 +64,69 @@ describe('the rooms still too recently fled to go back into', () => {
     const rooms = [fled('1/3', 1_000)];
     stillFled(rooms, 99_000, 10_000);
     expect(rooms).toHaveLength(1);
+  });
+});
+
+/*
+ * The one predicate the walker and the loop both ask. Confusion joined it in
+ * todo 809 as MegaMUD's `IgnoreConfusion`, whose default waits.
+ */
+describe('which stated condition stands a walk still', () => {
+  const movement = DEFAULT_CONFIG.automation.movement;
+
+  it('waits confusion out by default', () => {
+    expect(afflictionHolding({ ...NO_AFFLICTIONS, confused: 'yes' }, movement)).toBe('confused');
+  });
+
+  it('walks on confused when the switch says so', () => {
+    expect(
+      afflictionHolding(
+        { ...NO_AFFLICTIONS, confused: 'yes' },
+        { ...movement, walkWhileConfused: true }
+      )
+    ).toBeNull();
+  });
+
+  it('does not hold on a confusion nobody has stated', () => {
+    expect(afflictionHolding(NO_AFFLICTIONS, movement)).toBeNull();
+    expect(afflictionHolding({ ...NO_AFFLICTIONS, confused: 'no' }, movement)).toBeNull();
+  });
+
+  it('still holds for a held character, whatever the switches say', () => {
+    expect(
+      afflictionHolding(
+        { ...NO_AFFLICTIONS, held: 'yes', confused: 'yes' },
+        { ...movement, walkWhileConfused: true }
+      )
+    ).toBe('held');
+  });
+
+  it('counts confusion among the holds a card names as a condition', () => {
+    expect(isAfflictionHold('confused')).toBe(true);
+    expect(isAfflictionHold('health')).toBe(false);
+    expect(isAfflictionHold(null)).toBe(false);
+  });
+});
+
+/* A portal left unseen is not nudged: a dark or blind reprint names nothing (todo 808). */
+describe('portalLeftUnseen', () => {
+  const lit = { ...EMPTY_CHARACTER, room: { ...EMPTY_CHARACTER.room, light: null } };
+  const portal = { direction: 'portal' as const };
+
+  it('is a portal step from a blinding room or a blind character', () => {
+    expect(portalLeftUnseen(portal, { ...lit, room: { ...lit.room, light: 'pitch black' } })).toBe(
+      true
+    );
+    expect(
+      portalLeftUnseen(portal, { ...lit, afflictions: { ...lit.afflictions, blind: 'yes' } })
+    ).toBe(true);
+  });
+
+  it('is not a lit room, an ordinary step, or a state nobody has', () => {
+    expect(portalLeftUnseen(portal, lit)).toBe(false);
+    expect(
+      portalLeftUnseen({ direction: 'n' }, { ...lit, room: { ...lit.room, light: 'pitch black' } })
+    ).toBe(false);
+    expect(portalLeftUnseen(portal, undefined)).toBe(false);
   });
 });

@@ -42,6 +42,7 @@ function planner(over: Partial<LoopPlanner> = {}) {
     // without a realm behind it.
     roomOf: (stop) => (stop.name === 'Arena' ? '1/10' : stop.name === 'Road' ? '1/11' : null),
     hereNow: () => '1/1',
+    onTheGround: () => false,
     ...over
   };
   return { planner: base, walked };
@@ -185,7 +186,8 @@ describe('starting a loop', () => {
       restInFlight: () => false,
       walking: () => false,
       roomOf: () => null,
-      hereNow: () => '1/1'
+      hereNow: () => '1/1',
+      onTheGround: () => false
     };
     const runner = new LoopRunner(p, {});
     // The loop believed no fight was on; the walker knew better.
@@ -476,6 +478,86 @@ describe('losing its place', () => {
     expect(walked).toEqual(['Arena']);
   });
 
+  /*
+   * Todo 759, `logs/2026-09-16_09-47-24_festus.mudcap.jsonl` t=13378496: a
+   * move answered 56s late landed unplaced, followed by eight status lines in
+   * one read. The ask armed `waiting`, every status line is a state change,
+   * so each re-planned from the same unplaced room and asked again: five
+   * `rm`s in 3ms, exactly `maxLocates`, before the first could be answered.
+   */
+  it('asks once and waits for the answer, however many lines arrive before it', () => {
+    let located = 0;
+    let at: string | null = null;
+    const { planner: p, walked } = planner({
+      routeTo: (stop) => (at === null ? 'I cannot tell which room you are in.' : route(stop.name)),
+      hereNow: () => at
+    });
+    const runner = new LoopRunner(p, { locate: () => (located += 1) });
+    runner.start(loop, state());
+    expect(located).toBe(1);
+    for (let line = 0; line < 7; line += 1) runner.onCharacter(state());
+    expect(located).toBe(1);
+    expect(walked).toEqual([]);
+    // Positive control: the answer places the character, and that line plans
+    // the leg at once rather than waiting out the backstop.
+    at = '1/1';
+    runner.onCharacter(state());
+    expect(walked).toEqual(['Arena']);
+    // And the backstop is put down with the ask, or it plans the leg twice.
+    vi.advanceTimersByTime(2_600);
+    expect(walked).toEqual(['Arena']);
+    expect(located).toBe(1);
+  });
+
+  /*
+   * Todo 762: a lap started where the client cannot place the character runs
+   * and asks, so the press reports it started. It used to hand back *I cannot
+   * tell which room you are in* as a refusal over a lap that went on retrying.
+   */
+  it('reports a lap started unplaced as started, since it runs and asks', () => {
+    let located = 0;
+    const { planner: p } = planner({ routeTo: () => 'I cannot tell which room you are in.' });
+    const runner = new LoopRunner(p, { locate: () => (located += 1) });
+    expect(runner.start(loop, state())).toBeNull();
+    expect(located).toBe(1);
+    expect(runner.progress.status).toBe('running');
+    // And a resume from an unplaced room says the same thing.
+    runner.stop('paused');
+    expect(runner.resume(state())).toBeNull();
+    expect(located).toBe(2);
+    expect(runner.progress.status).toBe('running');
+  });
+
+  /*
+   * Todo 764, pinned: on MajorMUD the realm has no locate word, so the ask
+   * sends nothing (`Claims.askWhereIAm` answers null) and each one is a wait
+   * of `locateWaitMs` for a room block to place the character — dead
+   * reckoning's fallback, which costs no command. One wait per ask, the whole
+   * budget, then the lap stops and says why. The test above is the control:
+   * a room placing it mid-wait plans at once.
+   */
+  it('waits locateWaitMs per ask where the realm has no word, then stops out loud', () => {
+    const { locateWaitMs: wait, maxLocates } = DEFAULT_INTERNAL.tuning.loop;
+    let asks = 0;
+    const { planner: p, walked } = planner({
+      routeTo: () => 'I cannot tell which room you are in.',
+      hereNow: () => null
+    });
+    const runner = new LoopRunner(p, { locate: () => void (asks += 1) });
+    expect(runner.start(loop, state())).toBeNull();
+    for (let ask = 1; ask <= maxLocates; ask += 1) {
+      expect(asks).toBe(ask);
+      vi.advanceTimersByTime(wait - 1);
+      expect(asks).toBe(ask);
+      expect(runner.progress.status).toBe('running');
+      vi.advanceTimersByTime(1);
+    }
+    expect(asks).toBe(maxLocates);
+    expect(walked).toEqual([]);
+    expect(runner.progress.status).toBe('stopped');
+    expect(runner.progress.reason).toContain('I cannot tell which room you are in.');
+  });
+
   it('gives up after enough unanswered asks', () => {
     let located = 0;
     const { planner: p } = planner({
@@ -486,6 +568,49 @@ describe('losing its place', () => {
     for (let i = 0; i < 12; i += 1) vi.advanceTimersByTime(2_600);
     expect(located).toBe(5);
     expect(runner.progress.status).toBe('stopped');
+  });
+});
+
+/*
+ * A character lying mortally wounded is handed no state, so nothing reaches
+ * `onCharacter` to hold the lap, and its own clocks went on: the dwell lapsed
+ * and walked a step the server refuses (`MoveCommand`) (todo 760).
+ */
+describe('on the ground', () => {
+  it('lets the dwell lapse without leaving, and walks on once up', () => {
+    let down = false;
+    const { planner: p, walked } = planner({ onTheGround: () => down });
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, state());
+    runner.onWalkEnded(true, null, state());
+    expect(walked).toEqual(['Arena']);
+    down = true;
+    vi.advanceTimersByTime(120_000);
+    expect(walked).toEqual(['Arena']);
+    expect(runner.progress.stop).toBe(1);
+    // Positive control: up, and the next line takes the lap to the next stop.
+    down = false;
+    runner.onCharacter(state());
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
+  it('plans nothing on the locate retry either', () => {
+    let down = false;
+    let at: string | null = null;
+    const { planner: p, walked } = planner({
+      routeTo: (stop) => (at === null ? 'I cannot tell which room you are in.' : route(stop.name)),
+      hereNow: () => at,
+      onTheGround: () => down
+    });
+    const runner = new LoopRunner(p, { locate: () => undefined });
+    runner.start(loop, state());
+    down = true;
+    at = '1/1';
+    vi.advanceTimersByTime(2_600);
+    expect(walked).toEqual([]);
+    down = false;
+    runner.onCharacter(state());
+    expect(walked).toEqual(['Arena']);
   });
 });
 
@@ -503,6 +628,65 @@ describe('losing its place mid-walk', () => {
     // The rm answered; the same stop is planned again.
     vi.advanceTimersByTime(2_600);
     expect(walked).toEqual(['Arena', 'Arena']);
+  });
+
+  /*
+   * Todo 767: a step nothing answered is probed (`Claims`' stale probe, 3s),
+   * `Location:` places the character by the realm's own coordinates, and the
+   * walk still ends *nothing came back* at its 8s deadline. The ask here read
+   * the walker's sentence, never the room, so a second `rm` went out to repeat
+   * coordinates the realm had just stated. Planned again from them instead.
+   */
+  it('asks nothing when the realm has already stated the room', () => {
+    const room = (resolvedBy: 'coordinates' | 'movement'): CharacterState =>
+      state({
+        room: { ...structuredClone(EMPTY_CHARACTER).room, map: 1, number: 1, resolvedBy }
+      });
+    const lost = t('automation.walk.reasonTimeout', { command: 'n' });
+    let located = 0;
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, { locate: () => (located += 1) });
+    runner.start(loop, state());
+    runner.onWalkEnded(false, lost, room('coordinates'));
+    expect(located).toBe(0);
+    expect(walked).toEqual(['Arena', 'Arena']);
+    expect(runner.progress.status).toBe('running');
+    // The positive control: a room only inferred, and the same ending asks.
+    runner.onWalkEnded(false, lost, room('movement'));
+    expect(located).toBe(1);
+    expect(walked).toEqual(['Arena', 'Arena']);
+  });
+
+  /*
+   * Stated before the step, and the step's probe not yet answered: the room is
+   * still `coordinates`, but the claim is owed, so the lap waits it out rather
+   * than planning from the room the step may have left (review, todo 767).
+   */
+  it('waits out a step still owed even where the room was stated before it', () => {
+    let owed = true;
+    let located = 0;
+    const { planner: p, walked } = planner({ moveInFlight: () => owed });
+    const runner = new LoopRunner(p, { locate: () => (located += 1) });
+    owed = false;
+    runner.start(loop, state());
+    owed = true;
+    const stated = state({
+      room: {
+        ...structuredClone(EMPTY_CHARACTER).room,
+        map: 1,
+        number: 1,
+        resolvedBy: 'coordinates'
+      }
+    });
+    runner.onWalkEnded(false, t('automation.walk.reasonTimeout', { command: 'n' }), stated);
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.loop.locateWaitMs * 3);
+    expect(walked).toEqual(['Arena']);
+    expect(located).toBe(0);
+    // The claim settles, and the next beat plans from where it left the character.
+    owed = false;
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.loop.locateWaitMs);
+    expect(walked).toEqual(['Arena', 'Arena']);
+    expect(located).toBe(0);
   });
 });
 
@@ -984,14 +1168,27 @@ describe('a move still on the wire', () => {
     expect(walked).toEqual(['Arena']);
   });
 
-  it('asks the realm where it is when nothing lands', () => {
+  /*
+   * Todo 764: the move's own claim asks (`Claims`' stale probe), and the
+   * backstop asking as well sent a second `rm` for one silence. The lap waits
+   * the claim out, however long, and plans once it is settled.
+   */
+  it('leaves a move nothing answers to its own probe, and plans once it is settled', () => {
+    let inFlight = true;
     const located: number[] = [];
-    const { planner: p } = planner({ moveInFlight: () => true });
+    const { planner: p, walked } = planner({ moveInFlight: () => inFlight });
     const runner = new LoopRunner(p, { locate: () => located.push(1) });
     runner.start(loop, state());
 
-    vi.advanceTimersByTime(3_000);
-    expect(located).toHaveLength(1);
+    vi.advanceTimersByTime(30_000);
+    expect(located).toHaveLength(0);
+    expect(walked).toEqual([]);
+    expect(runner.progress.status).toBe('running');
+    // Positive control: the claim written off on a quiet wire, and the next
+    // backstop plans the leg with no line to wake it.
+    inFlight = false;
+    vi.advanceTimersByTime(2_600);
+    expect(walked).toEqual(['Arena']);
   });
 });
 
@@ -1351,7 +1548,7 @@ describe('waiting out a condition between legs', () => {
    * ending. The pattern is fixed; this is what makes the next unread ending a
    * pause rather than a deadlock.
    */
-  it.each(['poisoned', 'blind'] as const)(
+  it.each(['poisoned', 'blind', 'confused'] as const)(
     'plans the next leg again once a %s hold has stood long enough',
     (condition) => {
       let clock = 1_000_000;
@@ -1364,7 +1561,7 @@ describe('waiting out a condition between legs', () => {
         afflictions: { ...EMPTY_CHARACTER.afflictions, [condition]: 'yes' }
       });
       runner.onCharacter(stuck);
-      expect(runner.progress.hold).toBe(condition === 'blind' ? 'blind' : 'poisoned');
+      expect(runner.progress.hold).toBe(condition);
       runner.onCharacter(stuck);
       expect(walked.length).toBe(legs);
 
@@ -1374,6 +1571,36 @@ describe('waiting out a condition between legs', () => {
       expect(walked.length).toBeGreaterThan(legs);
     }
   );
+
+  /* Confusion, MegaMUD's `IgnoreConfusion` (todo 809): the same wait, said the same way. */
+  it('holds the lap while confused, says so, and lets go when it clears', () => {
+    const { planner: p, walked } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    runner.configure(DEFAULT_CONFIG.automation.health, DEFAULT_CONFIG.automation.movement);
+    runner.start(loop, state());
+    const legs = walked.length;
+    runner.onCharacter(state({ afflictions: { ...EMPTY_CHARACTER.afflictions, confused: 'yes' } }));
+    expect(runner.progress).toMatchObject({ status: 'running', hold: 'confused' });
+    expect(notices).toContain(t('automation.loops.afflicted'));
+    vi.advanceTimersByTime(5_000);
+    expect(walked.length).toBe(legs);
+    runner.onCharacter(state({ afflictions: { ...EMPTY_CHARACTER.afflictions, confused: 'no' } }));
+    expect(runner.progress.hold).toBeNull();
+    expect(notices).toContain(t('automation.loops.afflictionOver'));
+  });
+
+  it('walks on confused when the movement block says so', () => {
+    const { planner: p } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure(DEFAULT_CONFIG.automation.health, {
+      ...DEFAULT_CONFIG.automation.movement,
+      walkWhileConfused: true
+    });
+    runner.start(loop, state());
+    runner.onCharacter(state({ afflictions: { ...EMPTY_CHARACTER.afflictions, confused: 'yes' } }));
+    expect(runner.progress.hold).toBeNull();
+  });
 
   it('walks on blind when the movement block says so', () => {
     const { planner: p } = planner();

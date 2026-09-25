@@ -4,7 +4,7 @@ import { chord } from '../lib/platform';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { ConnectionState, TerminalSize } from '@shared/types';
-import type { Density, DensityPreference } from '../hooks/useDensity';
+import type { Density, DensityPreference } from '@shared/config';
 import { useMeter, type Pressure, type StreamMeter } from '../hooks/useStreamPressure';
 import { tuning } from '../lib/tuning';
 

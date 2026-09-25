@@ -1,5 +1,6 @@
 import type { Block } from './blocks';
 import type { CharacterState } from './character';
+import type { PlayerRegistry } from './players';
 
 /**
  * What a debug record is about.
@@ -150,6 +151,19 @@ export function describeStateChange(before: CharacterState, after: CharacterStat
 }
 
 /**
+ * Who the registry learned something about, by name — its push's half of
+ * `describeStateChange`. By identity: `observe` replaces a record only when it
+ * changed, so a record that is not the same object is exactly a record that
+ * moved, and a push with nothing different in it names nobody.
+ */
+export function describePlayersChange(before: PlayerRegistry, after: PlayerRegistry): string[] {
+  if (before === after) return [];
+  return Object.entries(after)
+    .filter(([key, record]) => before[key] !== record)
+    .map(([, record]) => record.name);
+}
+
+/**
  * The saved bug report, as text.
  *
  * Plain text with fixed columns rather than JSON, and that is a decision about
@@ -161,7 +175,7 @@ export function describeStateChange(before: CharacterState, after: CharacterStat
  *
  * **It carries no password**, and that is a property of what it is given
  * rather than of anything here: every outbound command reaches a record
- * through `SessionManager.reportable`, which is the one place this client
+ * through `Publisher.reportable`, which is the one place this client
  * redacts. Nothing in this function can put one back, and nothing in it should
  * try to take one out — a second redactor is a second thing to keep correct.
  */

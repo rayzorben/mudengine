@@ -39,7 +39,8 @@ export interface StatsCardProps extends CardChrome {
   session: SessionId;
   /**
    * The reading every figure is a difference from, or null for the whole
-   * session. Owned by `App` rather than by this card — see `onReset`.
+   * session. Owned by the window's views (`useSessionViews`) rather than by
+   * this card — see `onReset`.
    */
   baseline: CombatTally | null;
   /** Re-base to the totals as they stand now. */
@@ -374,15 +375,15 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * that has since restarted is discarded below rather than producing negative
    * counts.
    *
-   * **The baseline is `App`'s, not this card's** (todo 01, 2026-09-06). It was
-   * remembered here, per character, and that could not answer *starting a loop
-   * resets the statistics*: this card ships **put away**, so on most rails it
-   * is not mounted when a lap begins, and a card that re-based on mount would
+   * **The baseline is the views', not this card's** (todo 01, 2026-09-06). It
+   * was remembered here, per character, and that could not answer *starting a
+   * loop resets the statistics*: this card ships **put away**, so on most rails
+   * it is not mounted when a lap begins, and a card that re-based on mount would
    * wipe however much of the lap had already happened. Whatever re-bases has to
-   * be running whether or not anything is drawn, and that is `App`, which holds
-   * every session's view and hears the loop push for all of them. There is
-   * still exactly **one** baseline, written by the button and by the lap alike,
-   * so neither has to be compared against the other.
+   * be running whether or not anything is drawn, and that is `useSessionViews`,
+   * which holds every session's view and hears the loop push for all of them.
+   * There is still exactly **one** baseline, written by the button and by the
+   * lap alike, so neither has to be compared against the other.
    */
   /*
    * A baseline from another series cannot be subtracted from this one. The

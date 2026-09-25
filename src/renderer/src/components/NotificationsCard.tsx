@@ -3,10 +3,10 @@ import { memo, useEffect, useRef } from 'react';
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column, type Facet } from './CardTable';
 import NamedText from './NamedText';
+import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
-import type { CharacterState } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
 import { SEVERITIES, type Notice, type Severity } from '@shared/notifications';
 
@@ -17,7 +17,12 @@ export interface NotificationsCardProps extends CardChrome {
   session: SessionId;
   /** The console's name index for this character, so the names in a line are controls. */
   names?: NameIndex | null;
-  character?: CharacterState;
+  /**
+   * This character's own name, which a sentence prints as text rather than a
+   * control. The name and not the character: a status line replaces the
+   * character, and this card would redraw its whole list for it (todo 744).
+   */
+  self: string | null;
   inspect?(name: string, anchor: HTMLElement): void;
   onSelect?(name: string, anchor: PopoverAnchor): void;
 }
@@ -47,11 +52,6 @@ const LEVELS: readonly Facet[] = SEVERITIES.map((severity) => ({
 /** How each level is ranked, so sorting by it puts the loudest at one end. */
 const RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
 
-/** `hh:mm:ss`, because the record is read against when something happened. */
-function clock(at: number): string {
-  return new Date(at).toLocaleTimeString(undefined, { hour12: false });
-}
-
 /**
  * What has just happened that is worth knowing.
  *
@@ -72,7 +72,7 @@ function NotificationsCard({
   notices,
   session,
   names = null,
-  character,
+  self,
   inspect,
   onSelect,
   ...card
@@ -154,10 +154,10 @@ function NotificationsCard({
       // text readable as one run for copy and for the harness.
       cell: (notice) => (
         <span className="alert-text">
-          {names && character && inspect && onSelect ? (
+          {names && inspect && onSelect ? (
             <NamedText
               index={names}
-              self={character.name}
+              self={self}
               inspect={inspect}
               onSelect={onSelect}
               text={notice.text}

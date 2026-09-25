@@ -26,6 +26,7 @@ import {
 } from '@shared/talk';
 import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
+import type { PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
 import { parseMacro } from '@shared/macro';
 
@@ -65,6 +66,8 @@ export interface ConversationCardProps extends CardChrome {
   onSelect?(name: string, anchor: PopoverAnchor): void;
   /** Whose card this is, for the test of which names are people, and which is this character. */
   character?: CharacterState;
+  /** That character's registry, pushed apart from it: the other half of the same test. */
+  players: PlayerRegistry;
   /**
    * The console's own name index, for the `original` layout.
    *
@@ -705,6 +708,7 @@ function ConversationCard({
   onDropMacro,
   onSelect,
   character,
+  players,
   names,
   inspect,
   session,
@@ -894,21 +898,21 @@ function ConversationCard({
    * Who is a person, keyed by value — see `People`. The key is every fact
    * `isKnownPlayer` and `isOwnName` read, so the closure below is stale only
    * in ways those two cannot observe; the `phasesKey` in `App.tsx` is the
-   * same shape for the same reason.
+   * same shape for the same reason. The registry's names are joined only when
+   * the registry is replaced, which a status line no longer does.
    */
+  const registryKey = useMemo(() => Object.keys(players).join('\n'), [players]);
   const peopleKey =
     character === undefined
       ? null
-      : [
-          character.name ?? '',
-          ...Object.keys(character.players),
-          ...character.online.map((entry) => entry.name)
-        ].join('\n');
+      : [character.name ?? '', registryKey, ...character.online.map((entry) => entry.name)].join(
+          '\n'
+        );
   const people = useMemo<People | null>(
     () =>
       character === undefined
         ? null
-        : { self: character.name, known: (name) => isKnownPlayer(character, name) },
+        : { self: character.name, known: (name) => isKnownPlayer(players, character, name) },
     // The character is deliberately not a dependency: it is a new object on
     // every status line, and the key already says when what is read off it moved.
     [peopleKey]

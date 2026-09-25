@@ -70,6 +70,7 @@ import type { SuppliesConfig, SupplyItem } from '../../shared/config';
 import { bareName } from '../../shared/items';
 import { carriedCount } from '../../shared/supplies';
 import { nameAnswersTo, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
+import type { SessionModule } from './Module';
 
 export interface SupplyPlanner {
   /** Where the character is, or null while it is not placed. */
@@ -143,7 +144,7 @@ export interface Errand {
 /** What the errand asks a counter or a vault, withdrawn when it walks on before the answer. */
 const ERRAND_ASKS = new Set(['supplies:list', 'supplies:bank', 'supplies:withdraw']);
 
-export class Supplies {
+export class Supplies implements SessionModule {
   private errand: Errand | null = null;
   /** Items refused recently, and until when they are left alone. */
   private readonly retryAt = new Map<string, number>();

@@ -414,6 +414,12 @@ export type BlockType =
    */
   | 'player-attacks'
   /**
+   * `<guard> moves to protect <ward>` — the monster this character attacked
+   * has a guard, which took the attack (`AttackCommand.cs:342`, source), so
+   * the fight is the guard's. Only the attacker is sent it.
+   */
+  | 'mob-protects'
+  /**
    * A swing between two other parties — a player at a monster, a monster at a
    * player — that did not land. `Cercio swings at massive ice dragon!`,
    * `The giant wasp lunges at Caligula!`, and the armour-turned-it form
@@ -708,6 +714,14 @@ export type BlockType =
    */
   | 'command-refused'
   /**
+   * `Map and/or Room not found`, `Incorrect syntax`, `Command not allowed in
+   * live realm.` — the realm refusing a `sys` command, `sys go`'s three among
+   * them (`SysCommand.cs` `GotoCommand`; all three on orohost's wire). Not
+   * `command-refused`: each refuses the command echoed, not whatever was
+   * sent. See `FleeGoto.settle`.
+   */
+  | 'sys-refused'
+  /**
    * `Please be more specific.  You could have meant any of these:` — a look or
    * a command whose argument reached more than one thing.
    *
@@ -944,6 +958,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'spell-ineffective': 'combat',
   'user-gain-experience': 'combat',
   'player-attacks': 'combat',
+  'mob-protects': 'combat',
   'player-misses': 'combat',
   'spell-refused': 'combat',
   'spell-cast': 'combat',
@@ -1019,6 +1034,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'command-no-effect': 'failure',
   'command-fumbled': 'failure',
   'command-refused': 'failure',
+  'sys-refused': 'failure',
   'target-missing': 'failure',
   'target-ambiguous': 'failure',
   'open-failed': 'failure',

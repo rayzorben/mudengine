@@ -81,18 +81,25 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { CharacterState, PartyMember } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
-import { castsBare, resolveSpell, spellCost, spellTargeting } from '../../shared/spellcraft';
+import {
+  castsBare,
+  healFloor,
+  resolveSpell,
+  spellCost,
+  spellTargeting
+} from '../../shared/spellcraft';
 import { canPayFor } from './mana';
 import { chooseHealSpell, type HealAim, type HealChoice } from '../../shared/spellchoice';
 import { prowessSheetOf } from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /** The key a target's cooldown and its in-progress heal are filed under. */
 const SELF = '@self';
 
-export class AutoHeal {
+export class AutoHeal implements SessionModule {
   private lastCastAt = new Map<string, number>();
   /**
    * Targets a heal has started on and not yet finished.
@@ -408,20 +415,7 @@ export class AutoHeal {
       return false;
     }
     const { healTo } = this.config;
-    /*
-     * A different floor in a fight, when one is set.
-     *
-     * MegaMUD's `HpHealAtt%`, and its own documentation says why: a heal cast
-     * at 80% mid-fight is a round spent not hitting anything, and the round is
-     * what the fight is made of. 0 means *use the ordinary floor for both*,
-     * which is what this module did before the field existed — so the default
-     * changes nothing.
-     */
-    const healBelow =
-      inCombat && this.config.healBelowInCombat > 0
-        ? this.config.healBelowInCombat
-        : this.config.healBelow;
-    if (fraction < healBelow) {
+    if (fraction < healFloor(this.config, inCombat)) {
       this.healing.add(key);
       return true;
     }

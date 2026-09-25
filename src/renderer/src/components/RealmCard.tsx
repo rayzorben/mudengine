@@ -6,12 +6,22 @@ import type { PopoverAnchor } from '../lib/popover';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column, type Facet } from './CardTable';
-import { isHostile, type Adventurer, type CharacterState } from '@shared/character';
+import { isHostile, type Adventurer } from '@shared/character';
 import { playerKey } from '@shared/players';
 import type { SessionId } from '@shared/ipc';
 
+/*
+ * The three slices the card reads, never the character: a status line replaces
+ * the character, and the roster would be sorted and its table redrawn for it
+ * (todo 744). `online` holds still between equal listings (`keepRoster`).
+ */
 export interface RealmCardProps extends CardChrome {
-  character: CharacterState;
+  /** The roster, as the realm listed it. */
+  online: readonly Adventurer[];
+  /** This character's own name, whose row is not a control. */
+  self: string | null;
+  /** Whether the character is in the realm, which decides what an empty roster says. */
+  inGame: boolean;
   /** Which character's roster this is, so its filters and its sort are remembered per character. */
   session: SessionId;
   /** The name the Player flyout is about, lower-cased, so this row can say so. */
@@ -111,11 +121,19 @@ function order(a: Adventurer, b: Adventurer): number {
  * card on that person, which is where anything beyond the three columns here
  * lives.
  */
-function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCardProps) {
-  const roster = useMemo(() => [...character.online].sort(order), [character.online]);
+function RealmCard({
+  online,
+  self: name,
+  inGame,
+  session,
+  subject,
+  onSelect,
+  ...chrome
+}: RealmCardProps) {
+  const roster = useMemo(() => [...online].sort(order), [online]);
   const hostile = roster.filter((entry) => isHostile(entry.alignment)).length;
   /* The `who` listing includes the character reading it. See the name column. */
-  const self = character.name === null ? null : playerKey(character.name);
+  const self = name === null ? null : playerKey(name);
 
   /*
    * The badge reports the actionable number, not the total. "Two hostile" is
@@ -209,11 +227,7 @@ function RealmCard({ character, session, subject, onSelect, ...chrome }: RealmCa
         caption={t('cards.realm.caption')}
         className="realm-list"
         columns={columns}
-        empty={
-          character.phase === 'in-game'
-            ? t('cards.realm.emptyInGame')
-            : t('cards.realm.emptyOffline')
-        }
+        empty={inGame ? t('cards.realm.emptyInGame') : t('cards.realm.emptyOffline')}
         facetOf={standing}
         facets={STANDINGS}
         find={t('cards.realm.findPlaceholder')}

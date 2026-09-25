@@ -55,6 +55,7 @@ import type { Block } from '../../shared/blocks';
 import { resolveSpell, spellCost } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /** One key per blessing per person, so a party of four is four clocks. */
 function clockKey(entry: BlessingConfig, target: string): string {
@@ -71,7 +72,42 @@ function partyClockSeconds(entry: BlessingConfig): number {
   return entry.fallbackSeconds ?? 300;
 }
 
-export class Blessings {
+/** What the clocks read besides their configuration, named (todo 760). */
+export interface BlessingsDeps {
+  /** The clock; `Date.now` when omitted. */
+  readonly now?: () => number;
+  /**
+   * The observed duration of this character's own cast of a spell, in
+   * seconds — `Belongings.recallSpellDurations`, read through a callback
+   * so the store can arrive after construction. Null is *never measured*,
+   * which falls back to `blessWatchdogMs`; omitted, nothing is.
+   *
+   * The one thing here that is genuinely not realm data: it is measured off
+   * this character's own wire, which is why it stays its own callback while
+   * the id and the abbreviation folded into `realmSpell`.
+   */
+  readonly learnedDuration?: (spell: string) => number | null;
+  /**
+   * The realm's own row for a spell it names, whole; omitted, the realm names
+   * none.
+   *
+   * The entity rather than a projection of it. This module wanted two facts
+   * off the same row — the id, to tell a configured `bles` from a recorded
+   * `bless`, and the abbreviation, which is the word a cast sends — and was
+   * given two callbacks for them; anything wanting a third would have got a
+   * third. See `resolveSpell`.
+   */
+  readonly realmSpell?: (name: string) => WorldSpell | null;
+  /**
+   * Whether the character is on the ground (`Grounded.down`). The tick
+   * recasts from the last state it was handed, and a character down is
+   * handed none, so it asks (todo 755). Required: a construction that forgot
+   * it would read a character down as standing.
+   */
+  readonly onTheGround: () => boolean;
+}
+
+export class Blessings implements SessionModule {
   private timer: NodeJS.Timeout | null = null;
   private state: CharacterState | null = null;
   /** When each clock last had its cast proposed — `clockKey` → epoch ms. */
@@ -88,33 +124,21 @@ export class Blessings {
    */
   private lastProposalAt = 0;
 
+  private readonly now: () => number;
+  private readonly learnedDuration: (spell: string) => number | null;
+  private readonly realmSpell: (name: string) => WorldSpell | null;
+  private readonly onTheGround: () => boolean;
+
   constructor(
     private config: SpellsConfig,
     private enabled: boolean,
     private readonly queue: CommandQueue,
-    private readonly now: () => number = () => Date.now(),
-    /**
-     * The observed duration of this character's own cast of a spell, in
-     * seconds — `Belongings.recallSpellDurations`, read through a callback
-     * so the store can arrive after construction. Null is *never measured*,
-     * which falls back to `blessWatchdogMs`.
-     *
-     * The one thing here that is genuinely not realm data: it is measured off
-     * this character's own wire, which is why it stays its own callback while
-     * the id and the abbreviation folded into `realmSpell`.
-     */
-    private readonly learnedDuration: (spell: string) => number | null = () => null,
-    /**
-     * The realm's own row for a spell it names, whole.
-     *
-     * The entity rather than a projection of it. This module wanted two facts
-     * off the same row — the id, to tell a configured `bles` from a recorded
-     * `bless`, and the abbreviation, which is the word a cast sends — and was
-     * given two callbacks for them; anything wanting a third would have got a
-     * third. See `resolveSpell`.
-     */
-    private readonly realmSpell: (name: string) => WorldSpell | null = () => null
+    deps: BlessingsDeps
   ) {
+    this.now = deps.now ?? (() => Date.now());
+    this.learnedDuration = deps.learnedDuration ?? (() => null);
+    this.realmSpell = deps.realmSpell ?? (() => null);
+    this.onTheGround = deps.onTheGround;
     // The toolbar's Auto-Bless switch, under the master one — as `configure`
     // folds it, so the first pass and every later one agree.
     this.enabled = enabled && config.autoBless;
@@ -258,9 +282,20 @@ export class Blessings {
 
   /** One pass over the list; the interval calls it, and so does every state change. */
   check(): void {
+    const state = this.standingInRealm();
+    if (state !== null) this.propose(state, false);
+  }
+
+  /**
+   * The state to propose from, or null: switched on, in the realm and not on
+   * the ground. One gate for the tick and for `check`, which a peer's
+   * `@bless-expired` reaches through `Remotes` ahead of the session's own
+   * (todo 760): the two copies had drifted, and only the tick asked.
+   */
+  private standingInRealm(): CharacterState | null {
     const state = this.state;
-    if (!this.enabled || !state || state.phase !== 'in-game') return;
-    this.propose(state, false);
+    if (!this.enabled || !state || state.phase !== 'in-game' || this.onTheGround()) return null;
+    return state;
   }
 
   /**
@@ -449,8 +484,8 @@ export class Blessings {
        * fight can recast. Priority against the heal is meaningless on a tick
        * where nothing else is being decided.
        */
-      const state = this.state;
-      if (!this.enabled || !state || state.phase !== 'in-game') return;
+      const state = this.standingInRealm();
+      if (state === null) return;
       this.propose(state, true);
       this.propose(state, false);
     }, tuning().spells.buffTickMs);

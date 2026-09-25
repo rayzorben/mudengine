@@ -55,15 +55,18 @@ const session = new SessionManager(
       blocksBySeq.set(block.seq, types);
       if ('rows' in block) batches.push({ after: provokedBy, type: block.type, rows: block.rows });
     },
+    players: () => {},
     character: () => {},
     state: () => {},
     telnet: () => {},
     notice: (message) => console.log(`   [client] ${message}`),
     automation: () => {}
   },
-  world,
-  { ...profile.config.automation, enabled: false },
-  profile.config.connection.login
+  {
+    world,
+    automation: { ...profile.config.automation, enabled: false },
+    login: profile.config.connection.login
+  }
 );
 session.resize({ cols: 80, rows: 24 });
 

@@ -20,7 +20,10 @@ import {
   type Requirement
 } from '../../shared/world';
 import { t } from '../app/i18n';
-import type { WorldGraph } from './WorldGraph';
+import type { RoomIndex } from './RoomIndex';
+
+/** What naming an obstacle reads of the realm: an item's name, a room's, a draw's size. */
+type Names = Pick<RoomIndex, 'item' | 'landingCount' | 'byId'>;
 
 /**
  * A copper figure in the realm's own coin words.
@@ -87,7 +90,7 @@ function levels(requirement: Requirement): string | null {
  * hidden exit's lever: the phrase alone reads as a free lever, and the server
  * answers `You don't have crowbar to use!` without one.
  */
-function leverSays(levers: readonly RemoteLever[], graph: WorldGraph): string | null {
+function leverSays(levers: readonly RemoteLever[], graph: Names): string | null {
   const lever = levers[0];
   if (lever === undefined) return null;
   /*
@@ -105,7 +108,7 @@ function leverSays(levers: readonly RemoteLever[], graph: WorldGraph): string | 
 
 export function describeObstacle(
   requirement: Requirement,
-  graph: WorldGraph,
+  graph: Names,
   /**
    * The levers that open this step without leaving the room
    * (`WorldGraph.leversHere`), for the callers that know which step this is.
@@ -266,7 +269,7 @@ export function describeObstacle(
        * A lever somewhere else is the one case with a real second half, and it
        * is the half somebody acts on: *the lever for this is in 1/1339* is a
        * place to walk to, where *hidden* is a shrug. The router still does not
-       * plan that detour — `Walker.fetchLever` walks it when the server refuses
+       * plan that detour — `Levers.fetchLever` walks it when the server refuses
        * the step — so this is what a person reads before deciding to, and it is
        * why the exit is not written off on a refusal.
        */

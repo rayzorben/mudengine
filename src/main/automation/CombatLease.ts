@@ -33,6 +33,7 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { SessionModule } from './Module';
 
 export interface CombatLeaseEvents {
   /** Write the combat switch into the character's file; whether it was written. */
@@ -66,7 +67,7 @@ export interface DefendFacts {
 /** Why a lease ended without an arrival. */
 export type LeaseEnd = 'died' | 'left' | 'lost' | 'closed';
 
-export class CombatLease {
+export class CombatLease implements SessionModule {
   private enabled = true;
   private master = true;
   private retaliate = true;

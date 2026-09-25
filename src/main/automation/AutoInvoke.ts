@@ -54,6 +54,7 @@ import { nameAnswersTo, type WorldItem, type WorldSpell } from '../../shared/wor
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CommandQueue } from './CommandQueue';
+import type { SessionModule } from './Module';
 
 /** What this needs of the realm and of the character, injected as functions. */
 export interface InvokeSources {
@@ -73,7 +74,7 @@ export interface InvokeSources {
   spellNamed(name: string): WorldSpell | null;
 }
 
-export class AutoInvoke {
+export class AutoInvoke implements SessionModule {
   /** When each item was last asked, so a proposal in flight is not repeated. */
   private readonly askedAt = new Map<string, number>();
 

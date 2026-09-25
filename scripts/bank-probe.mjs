@@ -75,6 +75,7 @@ const session = new SessionManager(
     block: (block) => {
       current?.blocks.push({ type: block.type, groups: block.groups ?? {} });
     },
+    players: () => {},
     character: (state) => {
       character = state;
       if (current) {
@@ -86,15 +87,16 @@ const session = new SessionManager(
     telnet: () => {},
     notice: () => {}
   },
-  undefined,
-  // Nothing standing: an idle routine firing mid-run would put its own lines
-  // and its own answers inside the capture.
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    // Nothing standing: an idle routine firing mid-run would put its own lines
+    // and its own answers inside the capture.
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

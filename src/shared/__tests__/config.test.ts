@@ -13,10 +13,9 @@ import {
   resolveUiFonts,
   targetFromConfig,
   toCssFontStack,
-  mergeMobRules,
-  normalizeMobRules,
   type AppConfig
 } from '../config';
+import { mergeMobRules, mobRuleFor, normalizeMobRules, treated } from '../mobRules';
 import { DENOMINATIONS } from '../character';
 
 describe('normalizeRewrites', () => {
@@ -185,7 +184,11 @@ describe('normalizeConfig', () => {
         // Empty for the same reason the menus are: a realm ranks nothing until
         // somebody playing it says so.
         mobRules: [],
-        hangPenalties: null
+        hangPenalties: null,
+        // Asked with `rm` until it says it has no such word (todo 811).
+        locate: 'rm',
+        // No teleport until the realm's own is written (todo 813).
+        fleeGoto: ''
       }
     ]);
   });
@@ -592,21 +595,45 @@ describe('the way out of a fight', () => {
   });
 });
 
+/* The teleport below the retreat (todo 813): off, between the two floors, no command. */
+describe('the last-ditch teleport', () => {
+  const fleeGoto = (raw: unknown) =>
+    normalizeConfig({ automation: { safety: { fleeGoto: raw } } }).automation.safety.fleeGoto;
+
+  it('ships off, under the retreat’s floor and over the hang-up’s, stating no command', () => {
+    const shipped = fleeGoto(undefined);
+    expect(shipped).toEqual({ enabled: false, belowHealth: 0.2, command: '' });
+    const safety = normalizeConfig({}).automation.safety;
+    expect(shipped.belowHealth).toBeLessThan(safety.retreat.belowHealth);
+    expect(shipped.belowHealth).toBeGreaterThan(safety.hangUp.belowHealth);
+  });
+
+  it('keeps the command literally, trimmed, and clamps the floor', () => {
+    expect(fleeGoto({ command: '  sys goto silvermere ' }).command).toBe('sys goto silvermere');
+    // A figure over 1 is a percentage, as every threshold here reads one.
+    expect(fleeGoto({ belowHealth: 15 }).belowHealth).toBe(0.15);
+    expect(fleeGoto({ enabled: 'yes' }).enabled).toBe(false);
+  });
+});
+
 describe('cures and blessings', () => {
   const spells = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { spells: raw } }).automation.spells;
 
   it('ships with no cure, no blessing, and the notification off', () => {
-    expect(spells({}).cures).toEqual({ blindness: '', poison: '', disease: '' });
+    expect(spells({}).cures).toEqual({ blindness: '', poison: '', disease: '', freedom: '' });
     expect(spells({}).blessings).toEqual([]);
     expect(spells({}).notifyPartyOnWearOff).toBe(false);
   });
 
   it('trims a cure name and ignores one it does not know', () => {
-    expect(spells({ cures: { poison: ' cure poison ', paralysis: 'x' } }).cures).toEqual({
+    expect(
+      spells({ cures: { poison: ' cure poison ', freedom: ' free ', paralysis: 'x' } }).cures
+    ).toEqual({
       blindness: '',
       poison: 'cure poison',
-      disease: ''
+      disease: '',
+      freedom: 'free'
     });
   });
 
@@ -864,5 +891,65 @@ describe('the monster list, merged across scopes rather than replaced', () => {
         { mob: 'the rat', treat: 'last' }
       ])
     ).toEqual([{ mob: 'rat', treat: 'first' }]);
+  });
+});
+
+/* Todo 816: how a banded row fights its monster, on the row rather than a second list. */
+describe('how a row says to fight its monster', () => {
+  it('reads the spell, its casts and no backstab off a banded row', () => {
+    expect(
+      normalizeMobRules([
+        {
+          mob: 'orc shaman',
+          treat: 'first',
+          cast: { spell: ' magic missile ', times: 2 },
+          noBackstab: true
+        }
+      ])
+    ).toEqual([
+      {
+        mob: 'orc shaman',
+        treat: 'first',
+        cast: { spell: 'magic missile', times: 2 },
+        noBackstab: true
+      }
+    ]);
+  });
+
+  it('writes nothing a row does not say', () => {
+    expect(normalizeMobRules([{ mob: 'rat', treat: 'low', noBackstab: 'yes' }])).toEqual([
+      { mob: 'rat', treat: 'low' }
+    ]);
+  });
+
+  /* A cast of nothing is not a cast; a count past MegaMUD's own 99 is 99. */
+  it('drops a cast naming no spell and clamps its count', () => {
+    expect(normalizeMobRules([{ mob: 'rat', treat: 'low', cast: { times: 3 } }])).toEqual([
+      { mob: 'rat', treat: 'low' }
+    ]);
+    expect(
+      normalizeMobRules([{ mob: 'rat', treat: 'low', cast: { spell: 'mmis', times: 500 } }])
+    ).toEqual([{ mob: 'rat', treat: 'low', cast: { spell: 'mmis', times: 99 } }]);
+  });
+
+  /* A monster left alone is fought with nothing. */
+  it('carries no way of fighting a monster it leaves alone', () => {
+    expect(
+      normalizeMobRules([{ mob: 'town guard', treat: 'never', cast: { spell: 'mmis', times: 1 } }])
+    ).toEqual([{ mob: 'town guard', treat: 'never' }]);
+    const row = { mob: 'rat', treat: 'low' as const, cast: { spell: 'mmis', times: 1 } };
+    expect(treated(row, 'never')).toEqual({ mob: 'rat', treat: 'never' });
+    expect(treated(row, 'first')).toEqual({ ...row, treat: 'first' });
+  });
+
+  it('keeps the narrowest scope’s row whole when merging', () => {
+    const own = { mob: 'rat', treat: 'high' as const, cast: { spell: 'mmis', times: 1 } };
+    expect(mergeMobRules([{ mob: 'rat', treat: 'low' }], [], [own])).toEqual([own]);
+  });
+
+  it('finds the row for a monster however the room spells it', () => {
+    const rows = normalizeMobRules([{ mob: 'giant rat', treat: 'last' }]);
+    expect(mobRuleFor(rows, 'The Giant Rat')?.treat).toBe('last');
+    expect(mobRuleFor(rows, 'rat')).toBeUndefined();
   });
 });

@@ -3,6 +3,8 @@ import Advanced from './Advanced';
 import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
+import FleeGotoFields from './FleeGotoFields';
+import ConditionWaitFields from './ConditionWaitFields';
 import MobRuleList from './MobRuleList';
 import GearSetList from './GearSetList';
 import PotionList from './PotionList';
@@ -55,7 +57,7 @@ import type { StreamEncoding } from '@shared/types';
  * Both edit the same draft and save through the same call, because they are
  * one file; only which sections are offered differs.
  *
- * Built to the same test the character form is (see `SettingsScreen`'s doc
+ * Built to the same test the character form is (see `CharacterForm`'s doc
  * comment): **a section exists when there is a typed block behind it**, not
  * because the nouns sort cleanly.
  *
@@ -154,7 +156,7 @@ type Section =
  * genuinely differ: Global has no wrapper fieldset around the round spell, its
  * Combat fieldsets are not gated on the switch, and its three Alerts fieldsets
  * are in a different order. A shared table would have to be wrong for one of
- * them. See `SECTION_FIELDSETS` in `SettingsScreen`.
+ * them. See `SECTION_FIELDSETS` in `CharacterForm`.
  */
 const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   appearance: [{ id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }],
@@ -915,6 +917,7 @@ export default function GlobalSettings({
               <MobRuleList
                 known={[]}
                 namePrefix="global-mob-rule"
+                spells={realmSpells}
                 onChange={(rows) =>
                   automation({ combat: { ...draft.automation.combat, mobRules: rows } })
                 }
@@ -1170,6 +1173,28 @@ export default function GlobalSettings({
                   wide
                 />
               )}
+              {/* The command is the realm's own, so Global states none (todo 813). */}
+              <FleeGotoFields
+                bar={(typed) => barOfHealth(fraction(typed))}
+                form={{
+                  fleeGoto: draft.automation.fleeGoto.enabled,
+                  fleeGotoBelow: String(percent(draft.automation.fleeGoto.belowHealth)),
+                  fleeGotoCommand: draft.automation.fleeGoto.command
+                }}
+                namePrefix="global-"
+                patch={(change) =>
+                  automation({
+                    fleeGoto: {
+                      ...draft.automation.fleeGoto,
+                      ...(change.fleeGoto === undefined ? {} : { enabled: change.fleeGoto }),
+                      ...(change.fleeGotoBelow === undefined
+                        ? {}
+                        : { belowHealth: fraction(change.fleeGotoBelow) })
+                    }
+                  })
+                }
+                withoutCommand
+              />
             </fieldset>
 
             <fieldset className="settings-menus" data-fieldset="health-hangup">
@@ -1730,25 +1755,12 @@ export default function GlobalSettings({
 
             <fieldset className="settings-menus" data-fieldset="movement-afflictions">
               <legend>{t('settings.movement.afflictionsLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.walkWhileBlind}
-                hint={t('settings.movement.walkWhileBlindHint')}
-                label={t('settings.movement.walkWhileBlind')}
-                name="global-walk-while-blind"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, walkWhileBlind: value } })
+              <ConditionWaitFields
+                namePrefix="global-"
+                onChange={(waits) =>
+                  automation({ movement: { ...draft.automation.movement, ...waits } })
                 }
-              />
-              <CheckField
-                checked={draft.automation.movement.walkWhilePoisoned}
-                hint={t('settings.movement.walkWhilePoisonedHint')}
-                label={t('settings.movement.walkWhilePoisoned')}
-                name="global-walk-while-poisoned"
-                onChange={(value) =>
-                  automation({
-                    movement: { ...draft.automation.movement, walkWhilePoisoned: value }
-                  })
-                }
+                value={draft.automation.movement}
               />
               <CheckField
                 checked={draft.automation.movement.fightOnArrival}

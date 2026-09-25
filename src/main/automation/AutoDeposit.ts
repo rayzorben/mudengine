@@ -61,6 +61,7 @@ import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { BankingConfig } from '../../shared/config';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /** The one `i` this module ever proposes; a second request rides the first. */
 const COUNT_KEY = 'auto-deposit-count';
@@ -95,7 +96,7 @@ interface PendingDeposit {
   refreshed: boolean;
 }
 
-export class AutoDeposit {
+export class AutoDeposit implements SessionModule {
   private lastAt = 0;
   /**
    * The listing figure the last ask was composed from.

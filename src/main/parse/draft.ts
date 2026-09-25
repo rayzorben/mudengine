@@ -13,9 +13,9 @@
  * to reset two fields by hand are one `discard()` now, and the shape a
  * completed room takes is built in one place.
  *
- * Resolving the completed room against the realm data stays with the tracker:
- * that asks the realm graph, the expectation queue and the previous room,
- * which are the tracker's to hold.
+ * Resolving the completed room against the realm data is `RoomTracker`'s
+ * (`room.ts`), which owns this draft: that asks the realm graph, the
+ * expectation queue and the previous room, which are its to be handed.
  */
 import { emptyRoom, type Room, type RoomOccupant } from '../../shared/character';
 import type { CurrencyEntity, ExitEntity, ItemEntity } from '../../shared/entities';
@@ -36,7 +36,7 @@ export class RoomDraft {
 
   /**
    * `You notice … here.` — already hydrated, because resolving a name against
-   * the realm asks the world graph, which is the tracker's to hold.
+   * the realm asks the world graph, which is `RoomTracker`'s to hold.
    */
   items(items: ItemEntity[]): void {
     this.draft.items = items;

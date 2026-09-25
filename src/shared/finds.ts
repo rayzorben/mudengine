@@ -80,6 +80,33 @@ export interface Find {
 export type Sighting = Omit<Find, 'room' | 'seen' | 'hits' | 'searched'>;
 
 /**
+ * Where what a `search` turns up in this realm is written down.
+ *
+ * The same seam `RealmMemory` is, for the same reason: this is the session
+ * layer, it says what was found, and the file handling belongs to whoever
+ * decided where the file goes. The implementation is `FindBook`.
+ *
+ * Realm-keyed rather than character-keyed — a room hiding a rusty key is a fact
+ * about the world, like a shop's stock — so one store answers for every
+ * character on a realm. It is handed over at construction beside `memory`,
+ * which is the record it most resembles and which keys the same way.
+ */
+export interface RealmFinds {
+  /** Counts one search of a room and writes down what it turned up. Returns the first sightings. */
+  search(room: RoomId, found: readonly Sighting[]): Find[];
+  /** Strikes one out by its `findKey`. Whether there was one to strike. */
+  forget(key: string): boolean;
+  readonly all: readonly Find[];
+}
+
+/** A realm nothing is written down for, which is what every test wants. */
+export const NO_FINDS: RealmFinds = {
+  search: () => [],
+  forget: () => false,
+  all: []
+};
+
+/**
  * How often a search of its room turns this up, 0–1; null before its room's
  * first counted search.
  *

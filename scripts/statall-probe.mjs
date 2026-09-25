@@ -100,6 +100,7 @@ const session = new SessionManager(
     block: (block) => {
       current?.blocks.push({ type: block.type });
     },
+    players: () => {},
     character: () => {},
     state: () => {},
     // A socket the server closed is reported, not dialled back: a probe has
@@ -109,15 +110,17 @@ const session = new SessionManager(
     telnet: () => {},
     notice: (message) => console.log(`   [client] ${message}`)
   },
-  world,
-  /*
-   * Nothing automated: a reading probe must not open a fight on whatever is
-   * standing in the room, and an idle routine firing mid-run would put its
-   * own lines inside the capture. The login automator is `connection.login`,
-   * not automation, so the character still logs itself in.
-   */
-  { ...profile.config.automation, enabled: false, rules: [] },
-  profile.config.connection.login
+  {
+    world,
+    /*
+     * Nothing automated: a reading probe must not open a fight on whatever is
+     * standing in the room, and an idle routine firing mid-run would put its
+     * own lines inside the capture. The login automator is `connection.login`,
+     * not automation, so the character still logs itself in.
+     */
+    automation: { ...profile.config.automation, enabled: false, rules: [] },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

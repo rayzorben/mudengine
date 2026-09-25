@@ -2,12 +2,8 @@ import type { SupplyList } from './SupplyControls';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import ReferenceDetail, {
-  entryNumber,
-  entryWord,
-  flattenLookup,
-  type ReferenceEntry
-} from './ReferenceDetail';
+import ReferenceDetail from './ReferenceDetail';
+import { entryNumber, entryWord, flattenLookup, type ReferenceEntry } from '../lib/reference';
 import EntityNumber from './EntityNumber';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import type { RealmFamily } from '@shared/character';

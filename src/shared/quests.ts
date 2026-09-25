@@ -315,7 +315,7 @@ export interface QuestErrand {
  * list and the card draws exactly this list, and a step whose walk names a
  * fifth thing the rows above it do not is two readings of one fact.
  *
- * **The step's own, never a route's.** `WorldGraph.itemsDemanded` merges every
+ * **The step's own, never a route's.** `QuestPlanner.itemsDemanded` merges every
  * class's route, which is the right answer for *where does this come from* —
  * an item on one route is still an item somebody has to find. It is the wrong
  * answer for a walk: a Warrior does not fetch the Mage's component, and a

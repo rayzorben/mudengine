@@ -56,8 +56,23 @@ describe('a saved server', () => {
       database: '',
       // Absent above: a realm rules nothing until somebody playing it says so.
       mobRules: [],
-      hangPenalties: null
+      hangPenalties: null,
+      // And asked with `rm`, what every realm was asked before (todo 811).
+      locate: 'rm',
+      // And no teleport: it is never guessed (todo 813).
+      fleeGoto: ''
     });
+  });
+
+  it('takes the realm’s teleport as typed, trimmed and bounded', () => {
+    expect(asServerDraft({ ...good, fleeGoto: ' sys go 1 297 ' })?.fleeGoto).toBe('sys go 1 297');
+    expect(asServerDraft({ ...good, fleeGoto: 42 })?.fleeGoto).toBe('');
+    expect(asServerDraft({ ...good, fleeGoto: 'x'.repeat(300) })?.fleeGoto).toHaveLength(120);
+  });
+
+  it('takes the realm’s locate word, and reads one it does not know as `rm`', () => {
+    expect(asServerDraft({ ...good, locate: 'none' })?.locate).toBe('none');
+    expect(asServerDraft({ ...good, locate: 'sys-status' })?.locate).toBe('rm');
   });
 
   /*
@@ -227,6 +242,12 @@ describe('a character', () => {
     expect(draft?.login).toEqual([]);
   });
 
+  it('takes its own locate word, and reads anything else as "as the realm says"', () => {
+    expect(asProfileDraft({ ...good, locate: 'none' })?.locate).toBe('none');
+    expect(asProfileDraft({ ...good, locate: '' })?.locate).toBeNull();
+    expect(asProfileDraft({ ...good, locate: 'sys-status' })?.locate).toBeNull();
+  });
+
   it('refuses anything that is not a mapping', () => {
     expect(asProfileDraft(null)).toBeNull();
     expect(asProfileDraft('vaelor')).toBeNull();
@@ -283,6 +304,7 @@ describe('a character', () => {
         recoverGearFloor: 0,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
+        walkWhileConfused: false,
         fightOnArrival: true,
         // A list the payload did not send keeps the shipped words, since an
         // empty one is a choice and a missing one is not.
@@ -310,11 +332,38 @@ describe('a character', () => {
         healTo: 0,
         healParty: false,
         minMana: 0.2,
-        cures: { blindness: '', poison: '', disease: '' },
+        cures: { blindness: '', poison: '', disease: '', freedom: '' },
         blessings: [],
         notifyPartyOnWearOff: false,
         autoBless: true,
         invokeItems: false
+      });
+    });
+
+    // The condition waits carry through the payload a window sends (todo 809).
+    it('takes each condition wait the form switched on', () => {
+      const draft = asProfileDraft({
+        ...good,
+        movement: { walkWhileBlind: true, walkWhilePoisoned: true, walkWhileConfused: true }
+      });
+      expect(draft?.movement).toMatchObject({
+        walkWhileBlind: true,
+        walkWhilePoisoned: true,
+        walkWhileConfused: true
+      });
+    });
+
+    // The fourth cure carries through as the other three do (todo 810).
+    it('takes the Freedom cure the form named, trimmed', () => {
+      const draft = asProfileDraft({
+        ...good,
+        spells: { cures: { poison: 'cure poison', freedom: ' freedom ' } }
+      });
+      expect(draft?.spells.cures).toEqual({
+        blindness: '',
+        poison: 'cure poison',
+        disease: '',
+        freedom: 'freedom'
       });
     });
 
@@ -356,6 +405,7 @@ describe('a character', () => {
         recoverGearFloor: 0,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
+        walkWhileConfused: false,
         fightOnArrival: true,
         keepOutOf: ['vortex', 'Negative Power Plane'],
         // The shipped default, for the same reason `restBelow` keeps 0.35
@@ -379,7 +429,7 @@ describe('a character', () => {
         autoChoose: false,
         attackCasts: 0,
         areaCasts: 0,
-        cures: { blindness: '', poison: '', disease: '' },
+        cures: { blindness: '', poison: '', disease: '', freedom: '' },
         blessings: [],
         notifyPartyOnWearOff: false,
         autoBless: true,

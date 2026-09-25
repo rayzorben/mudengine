@@ -23,11 +23,10 @@ import {
   normalizeTrain,
   type RewritesUiConfig,
   type BlessingTarget,
+  type Cure,
   type DensityPreference,
   type EngagePolicy,
   type RetreatStrategy,
-  normalizeMobRules,
-  type MobRule,
   POTION_WHENS,
   type PotionRule,
   type PotionWhen,
@@ -35,6 +34,7 @@ import {
   type EncumbranceGate,
   type TabsPreference
 } from './config';
+import { normalizeMobRules, type MobRule } from './mobRules';
 import { DENOMINATIONS, type Denomination } from './character';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
@@ -46,6 +46,7 @@ import {
 
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
+import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 
 /**
  * A load gate as the draft carries it: a closed union, so an unrecognised word
@@ -156,6 +157,10 @@ export interface ServerDraft {
   mobRules: MobRule[];
   /** Whether a hang-up here is charged; null leaves it to the options file. See `Server.hangPenalties`. */
   hangPenalties: boolean | null;
+  /** How this realm is asked where a character stands. See `Server.locate`. */
+  locate: LocateWord;
+  /** This realm's teleport, literally; empty states none. See `Server.fleeGoto`. */
+  fleeGoto: string;
 }
 
 /**
@@ -165,7 +170,7 @@ export interface ServerDraft {
  * override in its own file. Deliberately **not** the whole file: `automation.
  * rules` and `automation.events` are lists of expressions with comments
  * explaining why, which is what YAML is genuinely good at and what this screen
- * has never covered. The rule is the one `SettingsScreen` states: a section
+ * has never covered. The rule is the one `CharacterForm` states: a section
  * exists when there is a typed block behind it, not because the nouns sort
  * cleanly — and a form field for a rule would be a second representation of
  * something the template already says better.
@@ -231,6 +236,7 @@ export interface GlobalDraft {
     /** The options file's answer is a plain yes or no: there is nothing above it. */
     hangUp: Omit<ProfileDraft['hangUp'], 'penalties'> & { penalties: boolean };
     retreat: ProfileDraft['retreat'];
+    fleeGoto: ProfileDraft['fleeGoto'];
     pvp: ProfileDraft['pvp'];
     combat: ProfileDraft['combat'];
     party: ProfileDraft['party'];
@@ -303,11 +309,7 @@ export type ServerChoice =
  * at, and the screen exists for the parts it is not.
  */
 /** One curative spell per affliction the client can see; blank casts nothing. */
-export interface CuresDraft {
-  blindness: string;
-  poison: string;
-  disease: string;
-}
+export type CuresDraft = Record<Cure, string>;
 
 /** A blessing kept up by events with a clock behind it; see `BlessingConfig`. */
 export interface BlessingDraft {
@@ -363,6 +365,8 @@ export interface ProfileDraft {
    * others on that BBS, which in practice means a different character slot.
    */
   login: LoginStepDraft[];
+  /** This character's own locate word; null leaves it to the realm. See `Profile.locate`. */
+  locate: LocateWord | null;
   /**
    * Hanging up to escape — see `HangUpConfig`, and read it before turning this
    * on. On this server family a panic disconnect is one of the more reliable
@@ -385,6 +389,8 @@ export interface ProfileDraft {
     strategy: RetreatStrategy;
     safeHavenRoom: string;
   };
+  /** The teleport below the retreat; an empty `command` follows the realm. See `FleeGotoConfig`. */
+  fleeGoto: { enabled: boolean; belowHealth: number; command: string };
   /** What to do the moment a player opens on this character — `automation.safety.pvp`. */
   pvp: { notifyGang: boolean; action: PvpAction };
   /**
@@ -466,6 +472,7 @@ export interface ProfileDraft {
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
+    walkWhileConfused: boolean;
     fightOnArrival: boolean;
     /** Ways and places routes keep out of. See `MovementConfig`. */
     keepOutOf: string[];
@@ -704,7 +711,9 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     // boundary. `normalizeMobRules` is the same coercion the config file goes
     // through, so a row means one thing whichever door it arrived at.
     mobRules: normalizeMobRules(value['mobRules']),
-    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null
+    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
+    locate: asLocateWord(value['locate']) ?? DEFAULT_LOCATE,
+    fleeGoto: text(value['fleeGoto']).slice(0, 120)
   };
 }
 
@@ -765,6 +774,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
 
   const hangUp = isRecord(value['hangUp']) ? value['hangUp'] : {};
   const retreat = isRecord(value['retreat']) ? value['retreat'] : {};
+  const fleeGoto = isRecord(value['fleeGoto']) ? value['fleeGoto'] : {};
   const pvp = isRecord(value['pvp']) ? value['pvp'] : {};
   const combat = isRecord(value['combat']) ? value['combat'] : {};
   const health = isRecord(value['health']) ? value['health'] : {};
@@ -796,6 +806,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       : PROFILE_ACCENTS[0],
     theme: isThemePreference(value['theme']) ? value['theme'] : '',
     login: asLoginSteps(value['login']),
+    locate: asLocateWord(value['locate']),
     hangUp: {
       enabled: hangUp['enabled'] === true,
       // Clamped rather than refused: a fraction outside the range is a slider
@@ -817,6 +828,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         ? (retreat['strategy'] as RetreatStrategy)
         : 'step-back',
       safeHavenRoom: text(retreat['safeHavenRoom']).slice(0, 80)
+    },
+    fleeGoto: {
+      enabled: fleeGoto['enabled'] === true,
+      belowHealth: unit(fleeGoto['belowHealth']),
+      command: text(fleeGoto['command']).slice(0, 120)
     },
     pvp: {
       notifyGang: pvp['notifyGang'] === true,
@@ -943,6 +959,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // Off by default, MegaMUD's own: a blank field waits the condition out.
       walkWhileBlind: movement['walkWhileBlind'] === true,
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
+      walkWhileConfused: movement['walkWhileConfused'] === true,
       // `!== false`: on unless it was turned off. See the field.
       fightOnArrival: movement['fightOnArrival'] !== false,
       // A list or nothing: a payload that failed to send it keeps the shipped
@@ -1242,6 +1259,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       },
       hangUp: { ...asIf.hangUp, penalties: asIf.hangUp.penalties === true },
       retreat: asIf.retreat,
+      fleeGoto: asIf.fleeGoto,
       pvp: asIf.pvp,
       combat: asIf.combat,
       party: asIf.party,
@@ -1389,13 +1407,14 @@ function engagePolicy(value: unknown): EngagePolicy {
   return ENGAGE_POLICIES.includes(value as EngagePolicy) ? (value as EngagePolicy) : 'hostile';
 }
 
-/** The three cure names, trimmed and bounded like every other spell name here. */
+/** The cure names, trimmed and bounded like every other spell name here. */
 function asCures(value: unknown): CuresDraft {
   const raw = isRecord(value) ? value : {};
   return {
     blindness: text(raw['blindness']).slice(0, 40),
     poison: text(raw['poison']).slice(0, 40),
-    disease: text(raw['disease']).slice(0, 40)
+    disease: text(raw['disease']).slice(0, 40),
+    freedom: text(raw['freedom']).slice(0, 40)
   };
 }
 

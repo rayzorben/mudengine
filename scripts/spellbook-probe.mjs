@@ -49,22 +49,28 @@ const session = new SessionManager(
       current?.lines.push({ text: line.plain, tag: line.tag ?? null });
     },
     block: (block) => {
-      current?.blocks.push({ type: block.type, groups: block.groups ?? {}, rows: block.rows?.length });
+      current?.blocks.push({
+        type: block.type,
+        groups: block.groups ?? {},
+        rows: block.rows?.length
+      });
     },
+    players: () => {},
     character: () => {},
     state: () => {},
     telnet: () => {},
     notice: () => {}
   },
-  undefined,
-  // Nothing standing: an idle routine firing mid-run would put its own lines
-  // and its own answers inside the capture.
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    // Nothing standing: an idle routine firing mid-run would put its own lines
+    // and its own answers inside the capture.
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

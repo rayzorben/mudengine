@@ -64,6 +64,7 @@ function open(profile) {
         const entry = seen.find((row) => row.seq === block.seq);
         if (entry) entry.types.push(block.type);
       },
+      players: () => {},
       character: (character) => {
         state.character = character;
       },
@@ -71,13 +72,15 @@ function open(profile) {
       telnet: () => {},
       notice: () => {}
     },
-    world,
     {
-      ...profile.config.automation,
-      idle: { ...profile.config.automation.idle, enabled: false },
-      rules: []
-    },
-    profile.config.connection.login
+      world,
+      automation: {
+        ...profile.config.automation,
+        idle: { ...profile.config.automation.idle, enabled: false },
+        rules: []
+      },
+      login: profile.config.connection.login
+    }
   );
   state.session.resize({ cols: 80, rows: 24 });
   return state;
@@ -200,7 +203,8 @@ async function main() {
     if (exit) {
       await say(one, exit.direction, 3000);
       await say(one, OPPOSITE[exit.direction], 3000);
-    } else console.log(`  no open step for the leader to take: ${JSON.stringify(roomOf(one).exits)}`);
+    } else
+      console.log(`  no open step for the leader to take: ${JSON.stringify(roomOf(one).exits)}`);
   }
   await say(two, 'backrank'); //         a rank change, which the roster shows
   await say(one, 'party');

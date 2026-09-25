@@ -50,7 +50,7 @@ beforeEach(() => {
     },
     { send: (command) => sent.push(command) }
   );
-  engine = new RuleEngine(queue);
+  engine = new RuleEngine(queue, { onTheGround: () => false });
 });
 
 afterEach(() => {
@@ -109,10 +109,33 @@ describe('reading state', () => {
     };
 
     // The guard attacks outlaws; the shopkeeper attacks nobody.
-    expect(countThreats(outlaw)).toBe(2);
+    expect(countThreats(outlaw, [])).toBe(2);
     // With no listing to say how the realm ranks this character, the guard is
     // unknown rather than harmless — and unknown is not counted.
-    expect(countThreats({ ...EMPTY_CHARACTER, room })).toBe(1);
+    expect(countThreats({ ...EMPTY_CHARACTER, room }, [])).toBe(1);
+  });
+
+  /*
+   * Todo 818: a row saying a monster does not attack first is believed —
+   * `friend`, or a band's *Not Hostile* — by the count and by the guard field
+   * the rules read. The control is the same room with no rows, and a row that
+   * makes no such claim.
+   */
+  it('leaves out what a row says does not attack first', () => {
+    const room = {
+      ...EMPTY_CHARACTER.room,
+      occupants: [mob('giant rat', 'hostile'), mob('thug', 'hostile'), mob('orc', 'hostile')]
+    };
+    const here: CharacterState = { ...EMPTY_CHARACTER, phase: 'in-game', room };
+    const rows = [
+      { mob: 'giant rat', treat: 'friend' as const },
+      { mob: 'thug', treat: 'default' as const, notHostile: true },
+      { mob: 'orc', treat: 'first' as const }
+    ];
+    expect(countThreats(here, [])).toBe(3);
+    expect(countThreats(here, rows)).toBe(1);
+    expect(readField('threats', here, { mobRules: rows })).toBe(1);
+    expect(readField('threats', here)).toBe(3);
   });
 });
 
@@ -224,13 +247,67 @@ describe('firing', () => {
   };
 
   it('fires when every guard holds', () => {
-    engine.load([restRule]);
+    engine.load([restRule], []);
     engine.onState(vitals({ hp: 20, hpMax: 100 }));
     expect(sent).toEqual(['rest']);
   });
 
+  /*
+   * A `timer` rule fires from the last state it was handed, and a character on
+   * the ground is handed none, so the clock asks (todo 755).
+   */
+  it('fires a timer rule only while the character is not on the ground', () => {
+    let down = true;
+    engine.dispose();
+    engine = new RuleEngine(queue, { onTheGround: () => down });
+    engine.load([{ ...restRule, when: { kind: 'timer', everyMs: 1000 } }], []);
+    engine.onState({ ...vitals({ hp: 20, hpMax: 100 }) });
+    sent.length = 0;
+    vi.advanceTimersByTime(3_000);
+    expect(sent).toEqual([]);
+    down = false;
+    vi.advanceTimersByTime(1_000);
+    expect(sent).toEqual(['rest']);
+  });
+
+  /*
+   * Todo 764: the port is required, as in every other module that gained it
+   * (760), so a construction cannot forget it and read a character down as
+   * standing. Proven by the typecheck, which rejects the directive below the
+   * day the port goes back to optional.
+   */
+  it('cannot be built without saying whether the character is on the ground', () => {
+    // @ts-expect-error — `onTheGround` is a required part of the port.
+    const forgot = new RuleEngine(queue, { notice: () => undefined });
+    forgot.dispose();
+    expect(RuleEngine.length).toBe(2);
+  });
+
+  /* And a block rule, which fires on a line the grounded character still reads. */
+  it('fires a block rule only while the character is not on the ground', () => {
+    let down = true;
+    engine.dispose();
+    engine = new RuleEngine(queue, { onTheGround: () => down });
+    engine.load([{ ...restRule, when: { kind: 'block', type: 'mob-hits' } }], []);
+    engine.onState({ ...vitals({ hp: 20, hpMax: 100 }) });
+    const blow = {
+      type: 'mob-hits',
+      seq: 1,
+      at: Date.now(),
+      domain: 'game',
+      groups: {}
+    } as unknown as Block;
+    engine.onBlock(blow);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    down = false;
+    engine.onBlock(blow);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['rest']);
+  });
+
   it('does not fire when a guard fails, and says which', () => {
-    engine.load([restRule]);
+    engine.load([restRule], []);
     engine.onState(
       stateWith({ inCombat: true, vitals: { ...EMPTY_CHARACTER.vitals, hp: 20, hpMax: 100 } })
     );
@@ -241,13 +318,13 @@ describe('firing', () => {
   it('never fires outside the realm', () => {
     // Rules describe what to do about a situation; at a login menu there is not
     // one, and sending `rest` to a password prompt is worse than doing nothing.
-    engine.load([restRule]);
+    engine.load([restRule], []);
     engine.onState({ ...vitals({ hp: 1, hpMax: 100 }), phase: 'authenticating' });
     expect(sent).toEqual([]);
   });
 
   it('respects a cooldown', () => {
-    engine.load([{ ...restRule, cooldownMs: 5000 }]);
+    engine.load([{ ...restRule, cooldownMs: 5000 }], []);
     const hurt = vitals({ hp: 20, hpMax: 100 });
     engine.onState(hurt);
     engine.onState(hurt);
@@ -259,16 +336,19 @@ describe('firing', () => {
   });
 
   it('fires on a block trigger and interpolates its captures', () => {
-    engine.load([
-      {
-        name: 'fight back',
-        enabled: true,
-        when: { kind: 'block', type: 'mob-hits' },
-        if: [],
-        then: [{ command: 'attack {attacker}', priority: 'combat' }],
-        cooldownMs: 0
-      }
-    ]);
+    engine.load(
+      [
+        {
+          name: 'fight back',
+          enabled: true,
+          when: { kind: 'block', type: 'mob-hits' },
+          if: [],
+          then: [{ command: 'attack {attacker}', priority: 'combat' }],
+          cooldownMs: 0
+        }
+      ],
+      []
+    );
     engine.onState(stateWith({}));
     engine.onBlock(block('mob-hits', { attacker: 'orc rogue' }));
     expect(sent).toEqual(['attack orc rogue']);
@@ -276,16 +356,19 @@ describe('firing', () => {
 
   it('sends nothing when a placeholder cannot be filled', () => {
     // Typing `attack {target}` into the game is worse than doing nothing.
-    engine.load([
-      {
-        name: 'fight back',
-        enabled: true,
-        when: { kind: 'block', type: 'mob-hits' },
-        if: [],
-        then: [{ command: 'attack {target}', priority: 'combat' }],
-        cooldownMs: 0
-      }
-    ]);
+    engine.load(
+      [
+        {
+          name: 'fight back',
+          enabled: true,
+          when: { kind: 'block', type: 'mob-hits' },
+          if: [],
+          then: [{ command: 'attack {target}', priority: 'combat' }],
+          cooldownMs: 0
+        }
+      ],
+      []
+    );
     engine.onState(stateWith({}));
     engine.onBlock(block('mob-hits', { attacker: 'orc' }));
     expect(sent).toEqual([]);
@@ -300,17 +383,23 @@ describe('firing', () => {
   it('says once that a matched rule had nothing to fill its placeholder with', () => {
     const notices: string[] = [];
     engine.dispose();
-    engine = new RuleEngine(queue, { notice: (message) => notices.push(message) });
-    engine.load([
-      {
-        name: 'fight back',
-        enabled: true,
-        when: { kind: 'block', type: 'mob-hits' },
-        if: [],
-        then: [{ command: 'attack {target}', priority: 'combat' }],
-        cooldownMs: 0
-      }
-    ]);
+    engine = new RuleEngine(queue, {
+      notice: (message) => notices.push(message),
+      onTheGround: () => false
+    });
+    engine.load(
+      [
+        {
+          name: 'fight back',
+          enabled: true,
+          when: { kind: 'block', type: 'mob-hits' },
+          if: [],
+          then: [{ command: 'attack {target}', priority: 'combat' }],
+          cooldownMs: 0
+        }
+      ],
+      []
+    );
     engine.onState(stateWith({}));
     engine.onBlock(block('mob-hits', { attacker: 'orc' }));
     engine.onBlock(block('mob-hits', { attacker: 'orc' }));
@@ -328,16 +417,19 @@ describe('firing', () => {
   it('fires mid-round, shortly after a combat message', () => {
     // Inside a round rather than between rounds — the one piece of timing
     // knowledge worth taking from tproxy.
-    engine.load([
-      {
-        name: 'mid round',
-        enabled: true,
-        when: { kind: 'mid-round' },
-        if: [],
-        then: [{ command: 'bash', priority: 'combat' }],
-        cooldownMs: 0
-      }
-    ]);
+    engine.load(
+      [
+        {
+          name: 'mid round',
+          enabled: true,
+          when: { kind: 'mid-round' },
+          if: [],
+          then: [{ command: 'bash', priority: 'combat' }],
+          cooldownMs: 0
+        }
+      ],
+      []
+    );
     engine.onState(stateWith({}));
     engine.onBlock(block('user-hits', {}));
     expect(sent).toEqual([]);
@@ -347,13 +439,13 @@ describe('firing', () => {
   });
 
   it('keeps a trace of what it did and why', () => {
-    engine.load([restRule]);
+    engine.load([restRule], []);
     engine.onState(vitals({ hp: 20, hpMax: 100 }));
     expect(engine.firings.at(-1)).toMatchObject({ rule: 'rest when hurt', commands: ['rest'] });
   });
 
   it('does nothing before any state has been seen', () => {
-    engine.load([restRule]);
+    engine.load([restRule], []);
     engine.onBlock(block('mob-hits', {}));
     expect(sent).toEqual([]);
   });

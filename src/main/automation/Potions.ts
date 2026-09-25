@@ -38,6 +38,7 @@ import type { CharacterState } from '../../shared/character';
 import type { HealthConfig, PotionRule, PotionVerb } from '../../shared/config';
 import { nameAnswersTo } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /**
  * What a proposal is *for*, which is what the cooldown and the coalescing key
@@ -47,7 +48,7 @@ import { tuning } from '../app/tuning';
  */
 type Kind = string;
 
-export class Potions {
+export class Potions implements SessionModule {
   private lastAt = new Map<Kind, number>();
 
   constructor(

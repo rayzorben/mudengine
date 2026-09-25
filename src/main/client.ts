@@ -34,13 +34,14 @@ import { WorldMemory } from './world/WorldMemory';
 import { FindBook } from './world/FindBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
-import type { RealmMemory } from './session/SessionManager';
+import type { RealmMemory } from '../shared/memory';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
+import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import {
   dropAllPlan,
   equip,
@@ -56,12 +57,12 @@ import {
 } from '../shared/gear';
 import { Belongings, peekSpellbook } from './session/Belongings';
 import type { BelongingsSink } from '../shared/belongings';
-import { NO_LORE, type MobLore } from '../shared/lore';
+import { NO_LORE, type RealmLoreView } from '../shared/lore';
 import { SpellMessageBook, spellLoreOf, type SpellLore } from '../shared/spell-messages';
 import { loadSpellMessages } from './world/SpellMessages';
 import { loadShippedSentences } from './world/ShippedSentences';
 import type { ShippedSentences } from '../shared/sentences';
-import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
+import { NO_PLAYERS, NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
@@ -71,7 +72,8 @@ import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
 import type { HuntingAdvice } from '../shared/hunting';
-import { SessionHost } from './session/SessionHost';
+import { playPlaced } from './session/Play';
+import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
 import { quitGuard, type QuitAnswer } from './app/quit';
@@ -100,6 +102,7 @@ import {
 import { DEFAULT_INTERNAL } from '../shared/internal';
 import { isRemoteName, REMOTE_NAMES, type RemoteGrant, type RemoteName } from '../shared/remotes';
 import type { Profile } from '../shared/profiles';
+import { DEFAULT_LOCATE } from '../shared/locate';
 import type { SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -336,14 +339,14 @@ function worldFor(id: SessionId): WorldGraph | undefined {
 }
 
 /**
- * What is known about the monsters this character will meet.
+ * What is known about the monsters this character will meet, and its attack spells.
  *
  * Keyed on the realm rather than on the character: how much health a giant rat
  * has is a fact about the world, so four characters on one realm share what any
  * of them learns and none of them inherits another realm's monsters. See
  * `RealmLore`.
  */
-function loreFor(id: SessionId): MobLore {
+function loreFor(id: SessionId): RealmLoreView {
   const world = worldFor(id);
   // Before the store exists there is nothing to learn from and nowhere to
   // learn to, which is the honest answer rather than a reason to throw.
@@ -1283,6 +1286,9 @@ function createHost(): SessionHost {
     // profiles are watched, so a captured snapshot would pin every session to
     // the values it started with.
     configFor,
+    // The realm's word for where am I, read through for `configFor`'s reason;
+    // a session whose file went keeps the unstated answer, as its config does.
+    locateFor: (id) => profileFor(id)?.locate ?? DEFAULT_LOCATE,
     /*
      * Whether a lost connection is dialled back, per character, read through
      * for the reason `configFor` is: profiles are watched, so switching it off
@@ -1568,19 +1574,29 @@ function registerIpc(): void {
   };
 
   /*
+   * The session, placed first where its realm can say (todo 812, `Locating`),
+   * then looked up afresh: the wait may outlive the tab. A room still unplaced
+   * is refused by the plan in its own words, as it was before.
+   */
+  const placedFirst = async (session: SessionId): Promise<SessionSlot | undefined> => {
+    await host?.get(session)?.manager.locating.placed();
+    return host?.get(session);
+  };
+
+  /*
    * One remembered set of drafts per session, so a pick costs its own leg
    * rather than a plan of the whole way from scratch on main's thread.
    */
   const drafts = new Map<SessionId, LoopDraftCache>();
 
-  handle(Invoke.routeTo, (_caller, session: SessionId, map: number, room: number) => {
-    const manager = host?.get(session)?.manager;
+  handle(Invoke.routeTo, async (_caller, session: SessionId, map: number, room: number) => {
     // This character's realm, not the client's: routing against the wrong one
     // sends somebody to a room that does not exist.
     const world = worldFor(session);
     if (!world || world.size === 0) {
       return { steps: [], cost: 0, blocked: true, reason: t('app.route.noRealmData') };
     }
+    const manager = (await placedFirst(session))?.manager;
     const here = manager?.character.room;
     if (!here || here.map === null || here.number === null) {
       // Routing from an unknown position would be a guess dressed as a plan.
@@ -1693,9 +1709,12 @@ function registerIpc(): void {
    */
   handle(
     Invoke.startMoving,
-    (_caller, session: SessionId, loop: unknown, confirmed: unknown): MovementStart => {
-      const slot = host?.get(session);
-      if (!slot) return { refused: t('app.session.notConnected') };
+    async (
+      _caller,
+      session: SessionId,
+      loop: unknown,
+      confirmed: unknown
+    ): Promise<MovementStart> => {
       if (loop !== null && typeof loop !== 'string') return { refused: t('app.loop.invalidName') };
       /*
        * `confirmed` is the **figure** the window was shown and the player
@@ -1704,7 +1723,9 @@ function registerIpc(): void {
        * agreed to*, which is the safe reading of a malformed payload.
        */
       const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
-      return slot.manager.startMoving(loop, agreed);
+      // Refused first where no room would change the answer, then placed (`Play`, todo 762).
+      const answer = await playPlaced(() => host?.get(session)?.manager, loop, agreed);
+      return answer ?? { refused: t('app.session.notConnected') };
     }
   );
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
@@ -1730,12 +1751,14 @@ function registerIpc(): void {
     Invoke.listLoops,
     (_caller, session: SessionId) => host?.get(session)?.manager.loopList ?? []
   );
-  handle(Invoke.startLoop, (_caller, session: SessionId, name: unknown) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
+  handle(Invoke.startLoop, async (_caller, session: SessionId, name: unknown) => {
     if (typeof name !== 'string') return t('app.loop.invalidName');
-    const loop = slot.manager.loopNamed(name);
+    // Found before the wait: a name that is no loop is not worth an `rm`.
+    if (!host?.get(session)) return t('app.session.notConnected');
+    const loop = host.get(session)?.manager.loopNamed(name);
     if (!loop) return t('app.loop.notFound', { name });
+    const slot = await placedFirst(session);
+    if (!slot) return t('app.session.notConnected');
     // Through the manager: one movement at a time, so a lap starting takes the
     // character off whatever route it was walking, out loud.
     const answer = slot.manager.startLoop(loop);
@@ -1756,11 +1779,11 @@ function registerIpc(): void {
    * this is the runner's own shape rather than a new capability. Parsed, not
    * trusted: it crossed the wire.
    */
-  handle(Invoke.runLoop, (_caller, session: SessionId, loop: unknown) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
+  handle(Invoke.runLoop, async (_caller, session: SessionId, loop: unknown) => {
     const parsed = asLoop(loop);
     if (parsed === null) return t('app.loop.invalidLoop');
+    const slot = await placedFirst(session);
+    if (!slot) return t('app.session.notConnected');
     const answer = slot.manager.startLoop(parsed);
     return 'refused' in answer ? answer.refused : null;
   });
@@ -1941,6 +1964,7 @@ function registerIpc(): void {
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
+      players: manager?.players ?? NO_PLAYERS,
       walk: manager?.walker.progress ?? IDLE_WALK,
       loop: manager?.loops.progress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
@@ -2199,7 +2223,8 @@ function registerIpc(): void {
       hp: world.itemsServing('hp').map((item) => item.name),
       poisoned: world.itemsServing('poisoned').map((item) => item.name),
       blind: world.itemsServing('blind').map((item) => item.name),
-      diseased: world.itemsServing('diseased').map((item) => item.name)
+      diseased: world.itemsServing('diseased').map((item) => item.name),
+      held: world.itemsServing('held').map((item) => item.name)
     };
   });
   /*
@@ -2328,13 +2353,22 @@ function registerIpc(): void {
      * manager (a stale id) has no character to weigh against and gets none.
      */
     const verdicts = host?.get(session)?.manager.appraise(found.mobs.map((mob) => mob.name)) ?? {};
+    // And the character's own row where it says one does not attack first,
+    // for the card to show beside the realm's temper (todo 818).
+    const rules = configFor(session).automation.combat.mobRules;
+    const rowPeace: Record<string, RowPeace> = {};
+    for (const mob of found.mobs) {
+      const peace = rowPeaceFor(rules, mob.name);
+      if (peace !== null) rowPeace[mob.name] = peace;
+    }
     return {
       ...found,
       ...(Object.keys(learned).length > 0 ? { learned } : {}),
       ...(Object.keys(fights).length > 0 ? { fights } : {}),
       ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
       ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
-      ...(Object.keys(verdicts).length > 0 ? { verdicts } : {})
+      ...(Object.keys(verdicts).length > 0 ? { verdicts } : {}),
+      ...(Object.keys(rowPeace).length > 0 ? { rowPeace } : {})
     };
   });
 
@@ -2352,6 +2386,15 @@ function registerIpc(): void {
     if (typeof command !== 'string' || !/^[a-z]{1,8}$/.test(command)) return false;
     return host?.get(session)?.manager.ask(command) ?? false;
   });
+
+  /*
+   * The Room card's locate (todo 811). Nothing crosses but the session: main
+   * chooses the realm's word, and a realm with none refuses out loud.
+   */
+  handle(
+    Invoke.locate,
+    (_caller, session: SessionId) => host?.get(session)?.manager.locating.ask() ?? false
+  );
 
   /*
    * A gear button: the kit back on, all of it on, all of it off, or one item.

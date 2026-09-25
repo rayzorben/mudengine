@@ -23,6 +23,7 @@ import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import { commandOf } from '../../shared/commands';
 import type { CombatConfig } from '../../shared/config';
+import type { SessionModule } from './Module';
 
 export interface StealthEvents {
   notice?(message: string): void;
@@ -57,7 +58,7 @@ export interface StealthEvents {
 /** Past this the move roll gains nothing (`Exits.cs:149` clamps at 100). */
 const WALKING_STEALTH_CEILING = 100;
 
-export class AutoStealth {
+export class AutoStealth implements SessionModule {
   /** When the shadows were last asked for, so a failed roll retries at a stated rate. */
   private askedAt = 0;
   /** Whether *Stealth 0* has been said this session. */

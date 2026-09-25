@@ -290,9 +290,9 @@ export class Classifier {
    * The receipt the server answers with (`--- Telepath Sent to Soul ---`)
    * confirms the send and names the resolved recipient, and nothing else: the
    * body is never echoed, so this slot is the only record of what was
-   * actually said. One slot, the shape the attack-command binding takes and
-   * for the same reason — where two addressed messages are in flight at once,
-   * the earlier receipt goes unbound rather than bound to the wrong words.
+   * actually said. One slot, so that where two addressed messages are in
+   * flight at once the earlier receipt goes unbound rather than bound to the
+   * wrong words.
    */
   private addressed: { sigil: '/' | '>'; name: string; body: string } | null = null;
   /**
@@ -833,7 +833,7 @@ export class Classifier {
    * only one; several left standing are kept as `mobs`, `|`-separated, and
    * named by nothing — refused rather than guessed, and the experience line
    * that follows this character's own kill can still say which
-   * (`CharacterTracker.deathSentenceBefore`).
+   * (`DeathSentence.before`).
    */
   private asDeathSentence(line: StreamLine, text: string, block: Block): Block {
     if (!this.deaths || block.type !== 'unknown') return block;

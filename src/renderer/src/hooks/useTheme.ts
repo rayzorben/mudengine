@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useOverridablePreference } from './usePreference';
+import type { UseTheme } from '../lib/theme';
 import {
   consolePaletteFor,
   consoleThemeFor,
@@ -51,27 +52,6 @@ function apply(theme: Theme, console: TerminalPalette): void {
 
   root.dataset['theme'] = theme.id;
   root.dataset['appearance'] = theme.appearance;
-}
-
-export interface UseTheme {
-  /** The resolved theme: chrome tokens plus the terminal palette. */
-  theme: Theme;
-  /**
-   * The sixteen the **console** paints with: the theme's own palette unless a
-   * light chrome was asked to leave the console dark, or the player named one
-   * of `TERMINAL_THEMES` outright, which outranks both.
-   */
-  consolePalette: TerminalPalette;
-  /** What was asked for, which may be `theme`. */
-  consolePreference: ConsolePalette;
-  /** What was asked for, which may be `system`. */
-  preference: ThemePreference;
-  /** Advances through system -> each registered theme, and persists. */
-  cycle: () => void;
-  /** Pick one by name — the palette's per-theme commands. */
-  choose: (preference: ThemePreference) => void;
-  /** Pick a console palette by name — the palette's per-palette commands. */
-  chooseConsole: (preference: ConsolePalette) => void;
 }
 
 /**

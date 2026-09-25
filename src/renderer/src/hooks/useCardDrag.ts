@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { insertionIndex } from '../lib/reorder';
 import { snapTarget, type SnapBox, type SnapSide } from '../lib/snap';
-import type { CardId, CardLayoutApi, Lane } from './useCardLayout';
+import type { CardId, CardLayoutApi, Lane } from '../lib/cards';
 import { tuning } from '../lib/tuning';
 
 /**

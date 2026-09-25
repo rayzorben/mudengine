@@ -11,13 +11,15 @@ import type { VitalsUiConfig } from '@shared/config';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { isKnownPlayer, isSelf, PlayerName } from '../lib/players';
-import { playerKey } from '@shared/players';
+import { playerKey, type PlayerRegistry } from '@shared/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord, meterValue } from '../lib/vitals';
 import { tuning } from '../lib/tuning';
 
 export interface PartyCardProps extends CardChrome {
   character: CharacterState;
+  /** The registry, pushed apart from the character: which names are people. */
+  players: PlayerRegistry;
   thresholds: VitalsUiConfig;
   /** A member's name clicked: the Player flyout on them, beside the row. */
   onSelect?(name: string, anchor: PopoverAnchor): void;
@@ -135,6 +137,7 @@ function Bar({
  */
 function PartyCard({
   character,
+  players,
   thresholds,
   onSelect,
   subject = null,
@@ -227,7 +230,7 @@ function PartyCard({
                           This character's own row stays text: its numbers are on
                           the Vitals card. */}
                       <span className="party-name" data-leader={isHead(member)}>
-                        {onSelect && isKnownPlayer(character, member.name) ? (
+                        {onSelect && isKnownPlayer(players, character, member.name) ? (
                           <PlayerName
                             className="name"
                             name={member.name}

@@ -7049,14 +7049,19 @@ button.quest-plan-back {
   padding: 2px 3px;
 }
 
-.blessing-detail {
+.blessing-detail,
+.settings-mob-rules .mob-rule-detail {
   flex-wrap: wrap;
-  padding-left: 52px;
   font-size: 0.85em;
   color: var(--text-lo-quiet);
 }
 
-.blessing-detail label {
+.blessing-detail {
+  padding-left: 52px;
+}
+
+.blessing-detail label,
+.settings-mob-rules .mob-rule-detail label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -7300,6 +7305,19 @@ button.quest-plan-back {
   width: auto;
 }
 
+/* How a banded row fights its monster (todo 816): the spell, its casts, no
+   backstab — the blessing row's detail line, laid out as one. */
+.settings-mob-rules .mob-rule-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.settings-mob-rules .mob-rule-detail .spell-picker {
+  flex: 1 1 12em;
+}
+
 /* A text field with the character's own book under it. */
 .spell-picker {
   position: relative;
@@ -7351,17 +7369,19 @@ button.quest-plan-back {
 }
 
 /*
- * The three cures as one three-column row, label over field — a fixed count,
- * unlike the auto-fill field grid, because these are one sentence read
- * across: what cures blindness, poison, disease.
+ * The cures as one row, a column each, label over field — one column per
+ * cure however many there are, unlike the auto-fill field grid, because these
+ * are one sentence read across: what cures blindness, poison, disease, a hold.
  */
 .settings-cures {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: var(--field-gap);
 }
 
-.blessing-detail input.number {
+.blessing-detail input.number,
+.settings-mob-rules .mob-rule-detail input.number {
   width: 56px;
   flex: 0 0 auto;
 }

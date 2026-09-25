@@ -1,16 +1,12 @@
 import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
 import type { AutomationSnapshot } from '@shared/automation';
 
 export interface AutomationCardProps extends CardChrome {
   automation: AutomationSnapshot;
-}
-
-/** `hh:mm:ss`, because a trace is read against when something happened. */
-function clock(at: number): string {
-  return new Date(at).toLocaleTimeString(undefined, { hour12: false });
 }
 
 /**

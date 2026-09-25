@@ -5,8 +5,8 @@
  * and the main process produces it, and `shared/` is the only module both may
  * import. Dependency-free, like everything else here.
  */
-import type { RoomId } from './world';
-import type { Afflictions } from './character';
+import type { RoomId, RouteStep } from './world';
+import { isBlinding, type Afflictions, type CharacterState } from './character';
 import type { MovementConfig } from './config';
 
 export type WalkStatus =
@@ -123,17 +123,32 @@ export interface WalkProgress {
 }
 
 /**
- * Why a walk is standing still. `blind`, `held` and `poisoned` are the
- * afflictions the server has stated and the walk waits out — MegaMUD's
- * `IgnoreBlind` / `IgnorePoison` defaults, which wait — see
- * `afflictionHolding`. `held` is also taken for a hold the client could not
+ * The afflictions the server has stated that stand a walk still, as the walk
+ * and the loop both carry them (`WalkHold`, `LoopHold`) — see
+ * `afflictionHolding`. The list is the union's runtime half: a reader asking
+ * *is this hold a condition?* asks `isAfflictionHold`, so a fourth condition
+ * reaches every such reader by being added here.
+ */
+export const AFFLICTION_HOLDS = ['blind', 'held', 'poisoned', 'confused'] as const;
+export type AfflictionHold = (typeof AFFLICTION_HOLDS)[number];
+
+/** Whether a walk's or a loop's hold is a stated affliction being waited out. */
+export function isAfflictionHold(hold: string | null): hold is AfflictionHold {
+  return (AFFLICTION_HOLDS as readonly (string | null)[]).includes(hold);
+}
+
+/**
+ * Why a walk is standing still. `blind`, `held`, `poisoned` and `confused`
+ * are the afflictions the server has stated and the walk waits out —
+ * MegaMUD's `IgnoreBlind` / `IgnorePoison` / `IgnoreConfusion` defaults,
+ * which wait — see `afflictionHolding`. `held` is also taken for a hold the client could not
  * *name*: a step answered by a spell onset and then silence is a step
  * `CheckForHoldPerson` refused, whatever the realm says about that spell
- * (`Walker.onsetAnsweredStep`).
+ * (`Holds.onsetAnsweredStep`).
  *
  * `trap` is the step ahead firing a trap the character is not yet fit to
  * take: the walk rests to the figure `automation.health.restBeforeTraps`
- * names and then steps through — `Walker.holdForTrap`. A health hold by
+ * names and then steps through — `Holds.holdForTrap`. A health hold by
  * another floor, drawn as resting.
  *
  * `resting` is a `rest` on the wire whose answer has not come back yet: the
@@ -148,21 +163,32 @@ export interface WalkProgress {
  * failed are mostly temporary — the character is too hurt to spend another
  * bash, the lock wanted one more roll, somebody else is about to walk through
  * — and a route that ends at a door has to be noticed and asked for again by
- * hand. See `Walker.holdAtBarrier`.
+ * hand. See `Barriers.holdAtBarrier`.
  */
 export type WalkHold =
   | 'health'
   | 'fight'
   | 'trap'
-  | 'blind'
-  | 'held'
-  | 'poisoned'
+  | AfflictionHold
   | 'barrier'
   | 'searching'
   | 'resting'
   /** A room too dark to read, while the light that fixes it is on its way. */
   | 'dark'
   | null;
+
+/**
+ * The switches that let a walk go on through a stated condition, in the
+ * template's order — the runtime half of `ConditionWaits`, read by the
+ * settings pages and the migration that writes them into older files, so a
+ * condition added to `afflictionHolding` reaches both. Paralysis has none.
+ */
+export const CONDITION_WAIT_KEYS = [
+  'walkWhileBlind',
+  'walkWhilePoisoned',
+  'walkWhileConfused'
+] as const satisfies readonly (keyof MovementConfig)[];
+export type ConditionWaits = Pick<MovementConfig, (typeof CONDITION_WAIT_KEYS)[number]>;
 
 /**
  * Which stated affliction stands a walk still, or null.
@@ -176,19 +202,22 @@ export type WalkHold =
  * all of them (`CheckForHoldPerson`); see `CharacterState.afflictions.held`.
  * How long the hold may stand before one step is spent finding out whether
  * it is over is `tuning.walk.heldFallbackMs`, taken by both readers.
- * Blindness and poison hold unless the player says otherwise — `walkWhileBlind`,
- * `walkWhilePoisoned` — because a blind character walking into a lair cannot
- * read the room it arrives in and misses every swing, and MegaMUD's own
- * defaults wait both out. Disease is not a movement matter and is left to the
- * cure. `unknown` never holds: nobody having said is not *yes*.
+ * Blindness, poison and confusion hold unless the player says otherwise —
+ * `walkWhileBlind`, `walkWhilePoisoned`, `walkWhileConfused` — because a blind
+ * character walking into a lair cannot read the room it arrives in and misses
+ * every swing, a confused one may have any step thrown away on the spell's
+ * roll (`CheckConfusion`) so the walk spends commands for nothing, and MegaMUD's
+ * own defaults wait all three out. Disease is not a movement matter and is
+ * left to the cure. `unknown` never holds: nobody having said is not *yes*.
  */
 export function afflictionHolding(
   afflictions: Afflictions,
-  movement: Pick<MovementConfig, 'walkWhileBlind' | 'walkWhilePoisoned'>
-): 'blind' | 'held' | 'poisoned' | null {
+  movement: ConditionWaits
+): AfflictionHold | null {
   if (afflictions.held === 'yes') return 'held';
   if (afflictions.blind === 'yes' && !movement.walkWhileBlind) return 'blind';
   if (afflictions.poisoned === 'yes' && !movement.walkWhilePoisoned) return 'poisoned';
+  if (afflictions.confused === 'yes' && !movement.walkWhileConfused) return 'confused';
   return null;
 }
 
@@ -224,6 +253,19 @@ export function stillFled(fled: readonly FledRoom[], now: number, forgetMs: numb
   return fled.filter((entry) => now - entry.at < forgetMs);
 }
 
+/**
+ * Whether an escape landed: a named room that is not the one it left, by name
+ * or by coordinates. The one reading for the walked escape
+ * (`Travel.settleEscape`) and the teleport (`FleeGoto`, todo 813).
+ */
+export function landed(
+  room: Pick<CharacterState['room'], 'name' | 'map' | 'number'>,
+  before: Pick<CharacterState['room'], 'name' | 'map' | 'number'>
+): boolean {
+  if (room.name === null) return false;
+  return room.name !== before.name || room.map !== before.map || room.number !== before.number;
+}
+
 export const IDLE_WALK: WalkProgress = {
   status: 'idle',
   asked: true,
@@ -237,3 +279,19 @@ export const IDLE_WALK: WalkProgress = {
   reason: null,
   hold: null
 };
+
+/**
+ * A portal step taken from a room nothing can be seen in, which the walker
+ * does not nudge (todo 808). The room reader takes a reprint naming the room
+ * being left as the portal not yet landed, but a dark block names nothing, so
+ * from a blinding room the Enter's answer would spend the script's promise as
+ * the landing. 72 of the 165 scripted room commands in the shipped MajorMUD
+ * data start in a blinding room. A blind character sees no room either.
+ */
+export function portalLeftUnseen(
+  step: Pick<RouteStep, 'direction'> | undefined,
+  state: Pick<CharacterState, 'room' | 'afflictions'> | undefined
+): boolean {
+  if (step?.direction !== 'portal' || state === undefined) return false;
+  return isBlinding(state.room.light) || state.afflictions.blind === 'yes';
+}

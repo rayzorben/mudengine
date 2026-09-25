@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CHARACTER } from '../character';
 import {
   clip,
+  describePlayersChange,
   describeStateChange,
   formatDebugReport,
   summariseBlock,
@@ -10,6 +11,7 @@ import {
   type DebugRecord
 } from '../debug';
 import type { Block } from '../blocks';
+import { NO_PLAYERS, observe } from '../players';
 
 /*
  * The bits of the debug trace that decide something, tested where the decision
@@ -128,6 +130,19 @@ describe('what the state became', () => {
   });
 });
 
+describe('what the registry learned', () => {
+  /* By identity, which is what `observe` keeps: the record that moved is named. */
+  it('names who changed, and nobody when nothing did', () => {
+    const one = observe(NO_PLAYERS, 'Soul', 1, { gang: 'Valor' });
+    const two = observe(one, 'Rand', 2);
+    expect(describePlayersChange(NO_PLAYERS, one)).toEqual(['Soul']);
+    expect(describePlayersChange(one, two)).toEqual(['Rand']);
+    expect(describePlayersChange(two, two)).toEqual([]);
+    // A sighting that says nothing new hands the same registry back.
+    expect(describePlayersChange(two, observe(two, 'Soul', 3))).toEqual([]);
+  });
+});
+
 describe('the saved bug report', () => {
   const record = (over: Partial<DebugRecord>): DebugRecord => ({
     seq: 1,
@@ -187,7 +202,7 @@ describe('the saved bug report', () => {
    * somebody else, so the check is not "does the formatter redact" — it must
    * not, and does not — but that what it is *given* is already redacted. Here
    * that is asserted end to end from the shape the recorder produces:
-   * `SessionManager.reportable` replaces a password with a fixed-width mask
+   * `Publisher.reportable` replaces a password with a fixed-width mask
    * before any record is built, so the mask is what the report can contain.
    */
   it('carries whatever mask the manager put in, and never a password', () => {

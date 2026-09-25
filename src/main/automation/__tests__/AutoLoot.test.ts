@@ -11,6 +11,9 @@ import {
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
+import { REREAD_ROOM } from '../../../shared/commands';
+import { tuning } from '../../app/tuning';
+import { CharacterTracker } from '../../parse/CharacterTracker';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -45,11 +48,31 @@ function state(over: Partial<CharacterState['vitals']> = {}): CharacterState {
 
 let sent: string[];
 let queue: CommandQueue;
+/**
+ * The claims the commands sent are waiting on, filed as the session files
+ * them: a bare Enter through `observeReread`, anything else as a command. The
+ * floor read closes on the claim its own Enter filed (todo 767).
+ */
+let tracker: CharacterTracker;
+
+/** A queue whose sends reach the tracker as `SessionManager`'s do. */
+function queueOf(config: AutomationConfig): CommandQueue {
+  return new CommandQueue(config, {
+    send: (command) => {
+      sent.push(command);
+      if (command.length > 0) tracker.observeCommand(command);
+      else tracker.observeReread();
+    }
+  });
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  tracker = new CharacterTracker();
+  // In the realm, where an Enter files a claim on the room it reprints.
+  tracker.apply({ ...block('status-line'), text: '[HP=80/KAI=5]:' });
+  queue = queueOf(automation);
 });
 
 afterEach(() => {
@@ -61,10 +84,21 @@ afterEach(() => {
 const NO_SUPPLIES: SuppliesConfig = { enabled: false, items: [] };
 
 let notices: string[] = [];
+/** On the ground, as `Grounded.down` answers it (todo 760). */
+let down = false;
+/** Under a timed spell the way in cast, as the session answers it (todo 765). */
+let passage = false;
 
 const make = (config: LootConfig, enabled = true, supplies = NO_SUPPLIES): AutoLoot => {
   notices = [];
-  return new AutoLoot(config, supplies, enabled, queue, undefined, (m) => notices.push(m));
+  down = false;
+  passage = false;
+  return new AutoLoot(config, supplies, enabled, queue, {
+    notice: (m) => notices.push(m),
+    onTheGround: () => down,
+    moveOnly: () => passage,
+    rereads: tracker
+  });
 };
 
 /**
@@ -78,16 +112,38 @@ const REALM: Record<string, { price?: number; encumbrance?: number }> = {
   'rusty nail': { price: 0, encumbrance: 1 }
 };
 const withRealm = (config: LootConfig): AutoLoot =>
-  new AutoLoot(config, NO_SUPPLIES, true, queue, (name) => ({
-    ...wireItem(name),
-    ...(REALM[name.toLowerCase()] ?? {}),
-    source: REALM[name.toLowerCase()] === undefined ? 'wire' : 'hybrid'
-  }));
+  new AutoLoot(config, NO_SUPPLIES, true, queue, {
+    realmItem: (name) => ({
+      ...wireItem(name),
+      ...(REALM[name.toLowerCase()] ?? {}),
+      source: REALM[name.toLowerCase()] === undefined ? 'wire' : 'hybrid'
+    }),
+    onTheGround: () => false,
+    moveOnly: () => false,
+    rereads: tracker
+  });
 const drain = (): void => void vi.advanceTimersByTime(500);
 
 describe('coins on the floor', () => {
   it('picks up coins the moment they land', () => {
     const auto = make(loot({ coins: true }));
+    auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
+    drain();
+    expect(sent).toEqual(['get gold']);
+  });
+
+  /*
+   * The session hands every block to the loot ahead of its own gate, so coins
+   * dropping beside a character lying mortally wounded reached the wire as a
+   * `get` the server refuses (`GetCommand`) (todo 760).
+   */
+  it('takes nothing off the floor while the character is on the ground', () => {
+    const auto = make(loot({ coins: true }));
+    down = true;
+    auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
+    drain();
+    expect(sent).toEqual([]);
+    down = false;
     auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
     drain();
     expect(sent).toEqual(['get gold']);
@@ -670,5 +726,208 @@ describe('putting cash back on the floor', () => {
     auto.onCharacter(carrying({ copper: 15 }));
     drain();
     expect(sent).toEqual(['drop 15 copper']);
+  });
+});
+
+/*
+ * A monster's items reach the floor in silence — `Mob.Death` tells the cash to
+ * whoever targeted it and `DropAllItems` adds the rest with no word — so the
+ * room is read again after a kill, and only while the loot has an item to look
+ * for (todo 814).
+ */
+describe('reading the floor after a kill', () => {
+  const kill = (): Block => block('user-gain-experience', { exp: '775' });
+  /** A block as the session hands it on: the modules first, then the tracker. */
+  const hear = (auto: AutoLoot, heard: Block): void => {
+    auto.onBlock(heard, state());
+    tracker.apply(heard);
+  };
+
+  it('asks for the room once something it was paid for died', () => {
+    const auto = make(loot({ items: ['rusty key'] }));
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual(['']);
+    expect(auto.floorInFlight).toBe(true);
+  });
+
+  // Coins say so as they land; with nothing but coins on the list, a kill is not asked about.
+  it('spends nothing where the loot takes only what announces itself', () => {
+    const auto = make(loot({ coins: true }));
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual([]);
+    expect(auto.floorInFlight).toBe(false);
+    // The positive control: an errand wanting something turns the same kill into a read.
+    auto.alsoTake('black star key');
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual(['']);
+  });
+
+  it('asks nothing with automation off', () => {
+    const auto = make(loot({ items: ['rusty key'] }), false);
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual([]);
+    expect(auto.floorInFlight).toBe(false);
+  });
+
+  it('asks for a supply only while the pack is under its ceiling', () => {
+    const torches = (count: number): CharacterState => {
+      const base = state();
+      return {
+        ...base,
+        inventory: {
+          ...base.inventory,
+          items: Array.from({ length: count }, () => wireItem('torch'))
+        }
+      };
+    };
+    const auto = make(loot(), true, {
+      enabled: true,
+      items: [{ name: 'torch', min: 2, max: 4, shop: '', at: null }]
+    });
+    auto.onBlock(kill(), torches(4));
+    drain();
+    expect(sent).toEqual([]);
+    auto.onBlock(kill(), torches(3));
+    drain();
+    expect(sent).toEqual(['']);
+  });
+
+  it('is in flight until the reprint it asked for has been read, then takes what it lists', () => {
+    const auto = make(loot({ items: ['rusty key'] }));
+    auto.onBlock(kill(), state());
+    drain();
+    hear(auto, block('room-name', { name: 'Dark Cave, Tunnel' }));
+    hear(auto, block('room-items', { items: 'rusty key, 12 silver nobles' }));
+    expect(auto.floorInFlight).toBe(true);
+    hear(auto, block('room-exits', { exits: 'west' }));
+    expect(auto.floorInFlight).toBe(false);
+    drain();
+    expect(sent).toEqual(['', 'get rusty key']);
+  });
+
+  // Never a wait on the walk that nothing ends: the window lapses by itself.
+  it('lets go of the wait once the read is no longer worth having', () => {
+    const auto = make(loot({ items: ['rusty key'] }));
+    auto.onBlock(kill(), state());
+    drain();
+    expect(auto.floorInFlight).toBe(true);
+    vi.advanceTimersByTime(tuning().loot.expiresMs);
+    expect(auto.floorInFlight).toBe(false);
+  });
+
+  // A dark room answers with no exits; the next kill's read is not owed the last one's.
+  it('carries nothing owed past a read whose room never came', () => {
+    const auto = make(loot({ items: ['rusty key'] }));
+    auto.onBlock(kill(), state());
+    drain();
+    vi.advanceTimersByTime(tuning().loot.expiresMs);
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual(['', '']);
+    expect(auto.floorInFlight).toBe(true);
+    // The first read's claim is written off on its own clock (`Claims.settle`), so
+    // the next room is the second read's.
+    vi.advanceTimersByTime(tuning().parse.staleMoveMs - tuning().loot.expiresMs);
+    expect(tracker.expireStaleClaims(Date.now())).toHaveLength(1);
+    expect(auto.floorInFlight).toBe(true);
+    hear(auto, block('room-exits', { exits: 'west' }));
+    expect(auto.floorInFlight).toBe(false);
+  });
+
+  /*
+   * Todo 765: the walk wakes on the read closing now, and a step (movement
+   * band) outranks a queued `get` (probe band), so a take the reprint produced
+   * that is still waiting for credit keeps the read in flight, or the step
+   * would put it in the next room.
+   */
+  it('stays in flight while a take its reprint produced is still queued', () => {
+    queue.dispose();
+    queue = queueOf({ ...automation, pacing: { ...automation.pacing, window: 1 } });
+    const auto = make(loot({ items: ['rusty key'] }));
+    auto.onBlock(kill(), state());
+    expect(sent).toEqual(['']);
+    hear(auto, block('room-items', { items: 'rusty key' }));
+    hear(auto, block('room-exits', { exits: 'west' }));
+    // The read is answered; its take waits for the prompt's credit.
+    expect(sent).toEqual(['']);
+    expect(auto.floorInFlight).toBe(true);
+    queue.notePrompt();
+    expect(sent).toEqual(['', 'get rusty key']);
+    expect(auto.floorInFlight).toBe(false);
+  });
+
+  /*
+   * Todo 765: under a timed spell the walk moves and does nothing else
+   * (`parts/walking.md`, the corridor), and the loot's block path escaped the
+   * stand-down its state path has: a read and a `get` behind a step that no
+   * longer waits for them land in the next room.
+   */
+  it('asks nothing and takes nothing under a timed spell', () => {
+    const auto = make(loot({ items: ['rusty key'] }));
+    passage = true;
+    auto.onBlock(kill(), state());
+    auto.onBlock(block('room-items', { items: 'rusty key' }), state());
+    drain();
+    expect(sent).toEqual([]);
+    expect(auto.floorInFlight).toBe(false);
+    // The positive control: out of the passage, the same blocks read and take.
+    passage = false;
+    auto.onBlock(kill(), state());
+    auto.onBlock(block('room-items', { items: 'rusty key' }), state());
+    drain();
+    expect(sent).toEqual(['', 'get rusty key']);
+  });
+
+  it('does not read a reprint it has not asked for yet as its answer', () => {
+    // A window of one, already spent: the read waits in the queue.
+    queue.dispose();
+    queue = queueOf({ ...automation, pacing: { ...automation.pacing, window: 1 } });
+    const auto = make(loot({ items: ['rusty key'] }));
+    queue.enqueue({ command: 'l', priority: 'user' });
+    auto.onBlock(kill(), state());
+    expect(sent).toEqual(['l']);
+    // The look's own room lands first: not the floor read's answer.
+    hear(auto, block('room-exits', { exits: 'west' }));
+    expect(auto.floorInFlight).toBe(true);
+  });
+
+  /*
+   * Todo 767: sent, the read still closes on its own reprint — the room the
+   * tracker says answered its bare Enter — and not on one already on the
+   * wire. Auto-combat's refresh went out first and its room landed after the
+   * read did; counted here, that room closed the read and the walk stepped
+   * before the listing the read asked for had been read.
+   */
+  it('closes on its own reprint, not on a room asked for ahead of it', () => {
+    const auto = make(loot({ items: ['rusty key'] }));
+    queue.enqueue({ command: REREAD_ROOM, priority: 'probe', coalesceKey: 'combat:refresh' });
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual(['', '']);
+    // The refresh's room: an answer, and not the read's.
+    hear(auto, block('room-name', { name: 'Dark Cave' }));
+    hear(auto, block('room-exits', { exits: 'west' }));
+    expect(auto.floorInFlight).toBe(true);
+    // The positive control: the read's own reprint closes it, and its listing is taken.
+    hear(auto, block('room-name', { name: 'Dark Cave' }));
+    hear(auto, block('room-items', { items: 'rusty key' }));
+    hear(auto, block('room-exits', { exits: 'west' }));
+    expect(auto.floorInFlight).toBe(false);
+    drain();
+    expect(sent).toEqual(['', '', 'get rusty key']);
+  });
+
+  // Outside the realm an Enter is answered by a menu, so a read sent there owes nothing.
+  it('waits on nothing for a read whose Enter filed no claim', () => {
+    tracker.reset();
+    const auto = make(loot({ items: ['rusty key'] }));
+    auto.onBlock(kill(), state());
+    drain();
+    expect(sent).toEqual(['']);
+    expect(auto.floorInFlight).toBe(false);
   });
 });

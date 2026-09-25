@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   chargedInCopper,
+  coinsInCopper,
   COPPER_PER,
   counterPriceInCopper,
+  currencyOf,
   currencyOfCode,
-  quotedInCopper
+  quotedInCopper,
+  takeCoins
 } from '../coins';
 
 /*
@@ -35,6 +38,20 @@ describe('the coin ladder', () => {
         quotedInCopper('51 platinum pieces')! +
         quotedInCopper('118 gold crowns')!
     ).toBe(65_521_800);
+  });
+});
+
+/* MajorMUD's training receipt, bearfather's wire (todo 745). */
+describe('coinsInCopper', () => {
+  it('sums each part up the ladder, and reads nothing as zero', () => {
+    expect(coinsInCopper(['5 silver nobles'])).toBe(50);
+    expect(coinsInCopper(['1 gold crown', '5 silver nobles'])).toBe(150);
+    expect(coinsInCopper(['nothing'])).toBe(0);
+  });
+
+  it('is unknown when any part is unreadable, or when nothing was listed', () => {
+    expect(coinsInCopper(['1 gold crown', '3 bronze bits'])).toBeNull();
+    expect(coinsInCopper([])).toBeNull();
   });
 });
 
@@ -88,5 +105,18 @@ describe("a counter's price", () => {
     expect(chargedInCopper(500, 70)).toBe(480);
     expect(chargedInCopper(500, 40)).toBe(510);
     expect(chargedInCopper(500, null)).toBe(550);
+  });
+});
+
+/* Coins picked up off the floor (todo 746). */
+describe('takeCoins', () => {
+  it('takes a count off one denomination, floored at none', () => {
+    const floor = currencyOf({ silver: 3, gold: 1 });
+    expect(takeCoins(floor, 'silver', 2)).toMatchObject({ silver: 1, gold: 1, totalCopper: 110 });
+    expect(takeCoins(floor, 'silver', 5)).toMatchObject({ silver: 0, gold: 1 });
+  });
+
+  it('leaves a floor nothing has stated unstated', () => {
+    expect(takeCoins(null, 'silver', 3)).toBeNull();
   });
 });

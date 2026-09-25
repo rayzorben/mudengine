@@ -25,14 +25,14 @@
  */
 import {
   DEFAULT_CONFIG,
-  mergeMobRules,
-  normalizeMobRules,
   normalizeConfig,
   type AppConfig,
   type LoginStep,
-  type MobRule,
+  type SafetyConfig,
   type Server
 } from './config';
+import { mergeMobRules, normalizeMobRules, type MobRule } from './mobRules';
+import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import type { ConnectionTarget } from './types';
 import { isRecord, str } from './values';
 
@@ -85,6 +85,13 @@ export interface Profile {
    * settings screen could not keep the two honest. See `Server.database`.
    */
   database: string;
+  /**
+   * How this character asks its realm where it stands: its own `locate:`, else
+   * the realm's, else `rm` — resolved the way the login script is, a
+   * character's own replacing its realm's. Beside `database` rather than in
+   * `config` for that field's reason. See `shared/locate.ts`.
+   */
+  locate: LocateWord;
   /** Dial this character when the client starts. */
   autoConnect: boolean;
   /**
@@ -154,6 +161,8 @@ function resolveServer(
   database: string;
   mobRules: MobRule[];
   hangPenalties: boolean | null;
+  locate: LocateWord;
+  fleeGoto: string;
 } | null {
   if (typeof value === 'string') {
     const found = byName(servers, value);
@@ -164,7 +173,9 @@ function resolveServer(
           login: found.login,
           database: found.database,
           mobRules: found.mobRules,
-          hangPenalties: found.hangPenalties
+          hangPenalties: found.hangPenalties,
+          locate: found.locate,
+          fleeGoto: found.fleeGoto
         }
       : null;
   }
@@ -196,6 +207,10 @@ function resolveServer(
       // it. Same reasoning as `login` above.
       mobRules: [],
       hangPenalties: null,
+      // The realm declaration, spelled out inline, may say it as `database` may.
+      locate: asLocateWord(value['locate']) ?? DEFAULT_LOCATE,
+      // And its teleport, which is as much a fact about the place.
+      fleeGoto: str(value['fleeGoto'], '').trim(),
       target: {
         host,
         port,
@@ -273,37 +288,54 @@ export function ownMobRules(raw: Record<string, unknown>): MobRule[] {
 }
 
 /**
- * The realm's answer to whether a hang-up is charged, under a character that
- * gives none (todo 01). A character's own file is read raw for the reason
- * `ownMobRules` is: after `overlay` an inherited value and a stated one look
- * alike.
+ * The realm's answer to one `automation.safety` key, under a character that
+ * gives none: whether a hang-up is charged (todo 01), the teleport's command
+ * (todo 813). A character's own is read raw for the reason `ownMobRules` is:
+ * after `overlay` an inherited value and a stated one look alike. Null on
+ * either side leaves the config as the options file and the character made it.
  */
-function withRealmHangPenalties(
+function withRealmSafety<B extends keyof SafetyConfig, K extends keyof SafetyConfig[B]>(
   config: AppConfig,
-  realm: boolean | null,
-  raw: Record<string, unknown>
+  block: B,
+  key: K,
+  realm: SafetyConfig[B][K] | null,
+  own: unknown
 ): AppConfig {
-  if (realm === null || ownHangPenalties(raw) !== null) return config;
+  if (realm === null || own !== null) return config;
   const safety = config.automation.safety;
-  return {
-    ...config,
-    automation: {
-      ...config.automation,
-      safety: { ...safety, hangUp: { ...safety.hangUp, penalties: realm } }
-    }
-  };
+  const changed = { ...safety, [block]: { ...safety[block], [key]: realm } } as SafetyConfig;
+  return { ...config, automation: { ...config.automation, safety: changed } };
 }
 
 /** A character's own `penalties`, or null where its file leaves it to the realm. */
 export function ownHangPenalties(raw: Record<string, unknown>): boolean | null {
-  const automation = raw['automation'];
-  if (!isRecord(automation)) return null;
-  const safety = automation['safety'];
-  if (!isRecord(safety)) return null;
-  const hangUp = safety['hangUp'];
-  if (!isRecord(hangUp)) return null;
-  const penalties = hangUp['penalties'];
+  const penalties = ownSafety(raw, 'hangUp', 'penalties');
   return typeof penalties === 'boolean' ? penalties : null;
+}
+
+/** A character's own teleport command, or null where its file leaves it to the realm. */
+export function ownFleeGotoCommand(raw: Record<string, unknown>): string | null {
+  const command = ownSafety(raw, 'fleeGoto', 'command');
+  return typeof command === 'string' && command.trim().length > 0 ? command.trim() : null;
+}
+
+/** One key of one `automation.safety` block, as the character's own file states it. */
+function ownSafety(raw: Record<string, unknown>, block: string, key: string): unknown {
+  const automation = raw['automation'];
+  if (!isRecord(automation)) return undefined;
+  const safety = automation['safety'];
+  if (!isRecord(safety)) return undefined;
+  const found = safety[block];
+  return isRecord(found) ? found[key] : undefined;
+}
+
+/**
+ * A character's own locate word, or null where its file leaves it to the
+ * realm — a word this client does not know included, since it was never a
+ * choice the form could show.
+ */
+export function ownLocate(raw: Record<string, unknown>): LocateWord | null {
+  return asLocateWord(raw['locate']);
 }
 
 /**
@@ -419,6 +451,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       target,
       serverName: server.name,
       database: server.database,
+      locate: ownLocate(raw) ?? server.locate,
       autoConnect: raw['autoConnect'] === true,
       // `!== false`, not `=== true`: this one is on unless the file says
       // otherwise. See the field.
@@ -427,15 +460,23 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
       // it runs exactly once.
-      config: withRealmHangPenalties(
-        withRealmMobRules(
-          normalizeConfig(overlay(baseSource, patch)),
-          base.automation.combat.mobRules,
-          server.mobRules,
-          raw
+      config: withRealmSafety(
+        withRealmSafety(
+          withRealmMobRules(
+            normalizeConfig(overlay(baseSource, patch)),
+            base.automation.combat.mobRules,
+            server.mobRules,
+            raw
+          ),
+          'hangUp',
+          'penalties',
+          server.hangPenalties,
+          ownHangPenalties(raw)
         ),
-        server.hangPenalties,
-        raw
+        'fleeGoto',
+        'command',
+        server.fleeGoto.length > 0 ? server.fleeGoto : null,
+        ownFleeGotoCommand(raw)
       )
     }
   };
@@ -444,17 +485,18 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
 /**
  * Strips the keys that describe the character itself, leaving the overlay.
  *
- * `server`, `account` and `login` are resolved into `connection:` above; `name`,
- * `accent`, `autoConnect` and `autoReconnect` are properties of the profile
- * rather than of the client. Leaving them in would put keys into the merged
- * config that `normalizeConfig` does not know, which is harmless but
- * misleading to read.
+ * `server`, `account` and `login` are resolved into `connection:` above, and
+ * `locate` into the profile beside it; `name`, `accent`, `autoConnect` and
+ * `autoReconnect` are properties of the profile rather than of the client.
+ * Leaving them in would put keys into the merged config that `normalizeConfig`
+ * does not know, which is harmless but misleading to read.
  */
 function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknown> {
-  const { server, account, login, name, accent, autoConnect, autoReconnect, ...rest } = raw;
+  const { server, account, login, locate, name, accent, autoConnect, autoReconnect, ...rest } = raw;
   void server;
   void account;
   void login;
+  void locate;
   void name;
   void accent;
   void autoConnect;

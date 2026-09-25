@@ -1,17 +1,23 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 import { t } from '../lib/i18n';
-import { ago, place, PlayerName } from '../lib/players';
+import { ago, AGO_GRAIN_SECONDS, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column, type Facet } from './CardTable';
-import type { CharacterState } from '@shared/character';
-import { knownPlayers, playerKey, type PlayerRecord } from '@shared/players';
+import { knownPlayers, playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import type { SessionId } from '@shared/ipc';
 
 export interface PlayersCardProps extends CardChrome {
-  character: CharacterState;
+  /**
+   * The registry, and not the character: a status line replaces the character
+   * and not this, so the listing redraws when somebody's record moves and not
+   * ten times a second in a fight (todo 730).
+   */
+  players: PlayerRegistry;
+  /** Whether the character is in the realm, for what an empty listing says. */
+  inGame: boolean;
   /** Which character's knowledge this is, so its filters and sort are remembered per character. */
   session: SessionId;
   /** The name the Player flyout is about, lower-cased, so this row can say so. */
@@ -73,9 +79,28 @@ function groupOf(record: PlayerRecord): string {
  * detail of its own beyond the three columns, deliberately: this card answers
  * *who*, and the card it opens answers *what about them*.
  */
-function PlayersCard({ character, session, subject, onSelect, ...chrome }: PlayersCardProps) {
-  const players = useMemo(() => knownPlayers(character.players), [character.players]);
-  const now = character.updatedAt ?? 0;
+function PlayersCard({
+  players: registry,
+  inGame,
+  session,
+  subject,
+  onSelect,
+  ...chrome
+}: PlayersCardProps) {
+  const players = useMemo(() => knownPlayers(registry), [registry]);
+  /*
+   * The ages are this card's own clock, since nothing it is handed moves on a
+   * status line (`mudengine-ui` › *a number that ticks is not state*): read
+   * afresh when a record moves, and stepped at `ago`'s finest grain between,
+   * so `just now` does not stand for minutes through a quiet fight.
+   */
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!inGame) return;
+    const timer = window.setInterval(() => setTick((n) => n + 1), AGO_GRAIN_SECONDS * 1000);
+    return () => window.clearInterval(timer);
+  }, [inGame]);
+  const now = useMemo(() => Date.now(), [registry, tick]);
   const asking = players.filter((record) => record.commandsSent > 0).length;
 
   /*
@@ -158,11 +183,7 @@ function PlayersCard({ character, session, subject, onSelect, ...chrome }: Playe
         caption={t('cards.players.caption')}
         className="player-list"
         columns={columns}
-        empty={
-          character.phase === 'in-game'
-            ? t('cards.players.emptyInGame')
-            : t('cards.realm.emptyOffline')
-        }
+        empty={inGame ? t('cards.players.emptyInGame') : t('cards.realm.emptyOffline')}
         facetOf={groupOf}
         facets={GROUPS}
         find={t('cards.realm.findPlaceholder')}

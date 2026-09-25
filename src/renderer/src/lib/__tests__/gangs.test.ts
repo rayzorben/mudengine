@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { knownGangs, membersOf } from '../gangs';
 import { EMPTY_CHARACTER, type Adventurer, type CharacterState } from '@shared/character';
-import { playerKey, type PlayerRecord } from '@shared/players';
+import { NO_PLAYERS, playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 
 const NOW = 1_700_000_000_000;
 
@@ -48,8 +48,12 @@ function adventurer(over: Partial<Adventurer> & { name: string }): Adventurer {
   } as Adventurer;
 }
 
-function character(over: Partial<CharacterState> = {}): CharacterState {
-  return { ...EMPTY_CHARACTER, ...over };
+/** The registry and the character it is pushed beside, in the order the readers take them. */
+function character(
+  over: Partial<CharacterState> & { players?: PlayerRegistry } = {}
+): [PlayerRegistry, CharacterState] {
+  const { players = NO_PLAYERS, ...state } = over;
+  return [players, { ...EMPTY_CHARACTER, ...state }];
 }
 
 /*
@@ -66,7 +70,7 @@ describe('who is known to be in a gang', () => {
         [playerKey('Rend')]: record({ name: 'Rend', gang: 'Valor', level: 12, gangRank: 'Leader' })
       }
     });
-    expect(membersOf(state, 'Valor').map((row) => [row.name, row.level, row.rank])).toEqual([
+    expect(membersOf(...state, 'Valor').map((row) => [row.name, row.level, row.rank])).toEqual([
       ['Rend', 12, 'Leader']
     ]);
   });
@@ -78,7 +82,7 @@ describe('who is known to be in a gang', () => {
       players: { [playerKey('Rend')]: record({ name: 'Rend', gang: 'Valor', level: 12 }) },
       online: [adventurer({ name: 'Rend', gang: 'Valor' })]
     });
-    const [row] = membersOf(state, 'Valor');
+    const [row] = membersOf(...state, 'Valor');
     expect(row?.online).toBe(true);
     // And everything the listing established is kept.
     expect(row?.level).toBe(12);
@@ -87,7 +91,7 @@ describe('who is known to be in a gang', () => {
   /* Useful before any button is pressed rather than empty until one is. */
   it('falls back to the roster for somebody no listing has covered', () => {
     const state = character({ online: [adventurer({ name: 'Soul', gang: 'Valor' })] });
-    const [row] = membersOf(state, 'Valor');
+    const [row] = membersOf(...state, 'Valor');
     expect(row).toMatchObject({ name: 'Soul', online: true, rosterOnly: true, level: null });
   });
 
@@ -95,12 +99,12 @@ describe('who is known to be in a gang', () => {
      about case. */
   it('matches the gang case-insensitively', () => {
     const state = character({ online: [adventurer({ name: 'Soul', gang: 'valor' })] });
-    expect(membersOf(state, 'VALOR')).toHaveLength(1);
+    expect(membersOf(...state, 'VALOR')).toHaveLength(1);
   });
 
   it('says nothing about a gang nothing has named', () => {
     const state = character({ online: [adventurer({ name: 'Soul', gang: 'Valor' })] });
-    expect(membersOf(state, 'Rhudaur')).toEqual([]);
+    expect(membersOf(...state, 'Rhudaur')).toEqual([]);
   });
 
   /*
@@ -115,7 +119,7 @@ describe('who is known to be in a gang', () => {
       online: [adventurer({ name: 'Vaelor', gang: 'Valor' })],
       players: { [playerKey('Rend')]: record({ name: 'Rend', gang: 'Valor' }) }
     });
-    const rows = membersOf(state, 'Valor');
+    const rows = membersOf(...state, 'Valor');
     expect(rows.map((row) => row.name).sort()).toEqual(['Rend', 'Vaelor']);
     expect(rows.find((row) => row.name === 'Vaelor')?.self).toBe(true);
   });
@@ -133,7 +137,7 @@ describe('who is known to be in a gang', () => {
         adventurer({ name: 'Rend', gang: 'Rhudaur' })
       ]
     });
-    expect(membersOf(state, 'Rhudaur').map((row) => row.name)).toEqual(['Rend']);
+    expect(membersOf(...state, 'Rhudaur').map((row) => row.name)).toEqual(['Rend']);
   });
 
   /* Who is on is the question a gang is looked up for, so they lead. */
@@ -145,12 +149,12 @@ describe('who is known to be in a gang', () => {
         [playerKey('Mia')]: record({ name: 'Mia', gang: 'Valor', online: true })
       }
     });
-    expect(membersOf(state, 'Valor').map((row) => row.name)).toEqual(['Mia', 'Zed', 'Abe']);
+    expect(membersOf(...state, 'Valor').map((row) => row.name)).toEqual(['Mia', 'Zed', 'Abe']);
   });
 
   it('answers nothing for a blank gang', () => {
     const state = character({ online: [adventurer({ name: 'Soul', gang: 'Valor' })] });
-    expect(membersOf(state, '   ')).toEqual([]);
+    expect(membersOf(...state, '   ')).toEqual([]);
   });
 });
 
@@ -160,7 +164,7 @@ describe('the gangs a character has heard of', () => {
       players: { [playerKey('Rend')]: record({ name: 'Rend', gang: 'Rhudaur' }) },
       online: [adventurer({ name: 'Soul', gang: 'Valor' })]
     });
-    expect(knownGangs(state)).toEqual(['Rhudaur', 'Valor']);
+    expect(knownGangs(...state)).toEqual(['Rhudaur', 'Valor']);
   });
 
   /* One gang, not two links for it, whatever case the two sources used. */
@@ -169,7 +173,7 @@ describe('the gangs a character has heard of', () => {
       players: { [playerKey('Rend')]: record({ name: 'Rend', gang: 'valor' }) },
       online: [adventurer({ name: 'Soul', gang: 'Valor' })]
     });
-    expect(knownGangs(state)).toEqual(['Valor']);
+    expect(knownGangs(...state)).toEqual(['Valor']);
   });
 
   /* This character's own gang is a gang like any other, and the one printed
@@ -179,10 +183,10 @@ describe('the gangs a character has heard of', () => {
       name: 'Vaelor',
       online: [adventurer({ name: 'Vaelor', gang: 'Valor' })]
     });
-    expect(knownGangs(state)).toEqual(['Valor']);
+    expect(knownGangs(...state)).toEqual(['Valor']);
   });
 
   it('is empty when nothing has named one', () => {
-    expect(knownGangs(character())).toEqual([]);
+    expect(knownGangs(...character())).toEqual([]);
   });
 });

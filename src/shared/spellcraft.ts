@@ -24,10 +24,12 @@
  * which is erased — see the module-cycle rule in `CLAUDE.md`: a type-only cycle
  * is harmless where a value cycle is not. `abilities.ts` is a value import and
  * safe for the other half of that rule: it imports nothing, so it cannot be
- * the far side of a cycle.
+ * the far side of a cycle. `config.ts` (`CURES`) is safe by the same test:
+ * it imports nothing from here, which `module-cycle.test.ts` holds.
  */
 
 import { HAZARD_ABILITY } from './abilities';
+import { CURES, type Cure, type SpellsConfig } from './config';
 import type { WorldSpell } from './world';
 
 /**
@@ -163,24 +165,28 @@ const POISON = 19;
 const BLIND_USER = 107;
 const REMOVES_SPELL = 122;
 const HEALS = 18;
+/**
+ * `Freedom`: `Spell.cs` strips every active effect whose spell carries
+ * `HoldPerson` (74), the one test `CheckForHoldPerson` makes, and prints each
+ * one's wear-off line — so the cure is for exactly what `held` records, and
+ * its success is the hold's own ending. A presence claim: all eight rows that
+ * carry it state zero.
+ */
+const FREEDOM = 81;
 
 export type AbilityPairs = ReadonlyArray<readonly [number, number]>;
 
 /**
  * Whether a book of known spells can answer each cure the client automates.
  *
- * `poison` and `blindness` are positive claims from unambiguous marks;
+ * `poison`, `blindness` and `freedom` are positive claims from unambiguous marks;
  * `disease` is the negative gate described above — true means *might*, false
  * means *certainly not*. The caller passes one ability list per known spell,
  * with `undefined` standing for a spell the realm does not name (a derivative
  * realm, a spell learned from the level-up line): an unnameable spell keeps
  * every gate open, because "the realm cannot say" must never disable a cure.
  */
-export interface CureGates {
-  poison: boolean;
-  blindness: boolean;
-  disease: boolean;
-}
+export type CureGates = Record<Cure, boolean>;
 
 /**
  * What a single spell *serves*, for offering items that could be used on it
@@ -197,16 +203,18 @@ export interface CureGates {
  * realm states `RemovesSpell`, a generic dispel, so a row carrying it *might*
  * end a disease. Offered, and it is why the list for disease is long.
  *
- * `held` serves nothing: no capture names a spell that ends a hold, and
- * `Cures` has never had a slot for it.
+ * `held` is the `Freedom` mark, on a spell and on the items that cast one.
  */
-export function spellServes(abilities: AbilityPairs | undefined): {
+export interface SpellServes {
   hp: boolean;
   poisoned: boolean;
   blind: boolean;
   diseased: boolean;
-} {
-  const serves = { hp: false, poisoned: false, blind: false, diseased: false };
+  held: boolean;
+}
+
+export function spellServes(abilities: AbilityPairs | undefined): SpellServes {
+  const serves = { hp: false, poisoned: false, blind: false, diseased: false, held: false };
   if (abilities === undefined) return serves;
   for (const [id, value] of abilities) {
     if (id === HEALS) serves.hp = true;
@@ -214,24 +222,33 @@ export function spellServes(abilities: AbilityPairs | undefined): {
     if (id === DISPELL_MAGIC && value === POISON) serves.poisoned = true;
     if (id === DISPELL_MAGIC && value === BLIND_USER) serves.blind = true;
     if (id === REMOVES_SPELL) serves.diseased = true;
+    if (id === FREEDOM) serves.held = true;
   }
   return serves;
 }
 
+/**
+ * The condition each cure answers: the settings word (*poison*) to the wire's
+ * state and `spellServes`' flag (*poisoned*). One map, read by `Cures` and by
+ * the cure fields, so the two cannot disagree.
+ */
+export const CURE_CONDITION: Readonly<Record<Cure, Exclude<keyof SpellServes, 'hp'>>> = {
+  blindness: 'blind',
+  poison: 'poisoned',
+  disease: 'diseased',
+  freedom: 'held'
+};
+
+/** `spellServes` over the book, except that a spell the realm cannot name opens every gate. */
 export function cureGates(spells: ReadonlyArray<AbilityPairs | undefined>): CureGates {
-  let poison = false;
-  let blindness = false;
-  let disease = false;
+  const gates: CureGates = { blindness: false, poison: false, disease: false, freedom: false };
   for (const abilities of spells) {
-    if (abilities === undefined) return { poison: true, blindness: true, disease: true };
-    for (const [id, value] of abilities) {
-      if (id === CURE_POISON) poison = true;
-      if (id === DISPELL_MAGIC && value === POISON) poison = true;
-      if (id === DISPELL_MAGIC && value === BLIND_USER) blindness = true;
-      if (id === REMOVES_SPELL) disease = true;
-    }
+    if (abilities === undefined)
+      return { blindness: true, poison: true, disease: true, freedom: true };
+    const serves = spellServes(abilities);
+    for (const cure of CURES) if (serves[CURE_CONDITION[cure]]) gates[cure] = true;
   }
-  return { poison, blindness, disease };
+  return gates;
 }
 
 /**
@@ -383,4 +400,22 @@ export function castsOnOthers(targeting: SpellTargeting): boolean {
  */
 export function castsBare(targeting: SpellTargeting): boolean {
   return targeting === 'self' || targeting === 'party';
+}
+
+/**
+ * The health share below which a heal is cast: a different floor in a fight,
+ * when one is set.
+ *
+ * MegaMUD's `HpHealAtt%`, and its own documentation says why: a heal cast at
+ * 80% mid-fight is a round spent not hitting anything, and the round is what
+ * the fight is made of. 0 means *use the ordinary floor for both*, which is
+ * what the heal did before the field existed, so the default changes nothing.
+ * Read by `AutoHeal` and by the fight the room appraisal runs, which must heal
+ * as the automation would.
+ */
+export function healFloor(
+  spells: Pick<SpellsConfig, 'healBelow' | 'healBelowInCombat'>,
+  inCombat: boolean
+): number {
+  return inCombat && spells.healBelowInCombat > 0 ? spells.healBelowInCombat : spells.healBelow;
 }

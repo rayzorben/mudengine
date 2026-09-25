@@ -45,6 +45,7 @@ import { homePaths } from './lib/home.mjs';
 // Replaying against a copy of it would grade the copy.
 const { Classifier } = await import('../src/main/parse/Classifier.ts');
 const { CharacterTracker } = await import('../src/main/parse/CharacterTracker.ts');
+const { replayLine } = await import('../src/main/parse/lineActs.ts');
 const { WorldGraph } = await import('../src/main/world/WorldGraph.ts');
 
 const args = process.argv.slice(2);
@@ -71,8 +72,18 @@ const files = fs
   .filter((name) => name.endsWith('.mudcap.jsonl'))
   .sort();
 
+/*
+ * The capture's clock. A claim is stamped by `Date.now()` and written off
+ * after `staleMoveMs` of it, so on the wall clock a replay that runs a session
+ * in a second writes nothing off, and how much it writes off depends on the
+ * machine. Each line is replayed at the moment it was recorded.
+ */
+let replayAt = 0;
+Date.now = () => replayAt;
+
 const score = { asked: 0, agreed: 0, wrong: 0, ambiguous: 0, lost: 0 };
 const failures = [];
+const faults = [];
 let rooms = 0;
 let commands = 0;
 
@@ -93,57 +104,26 @@ for (const name of files) {
 
   const classifier = new Classifier();
   const tracker = new CharacterTracker(world);
+  const startedAt = Date.parse(events.find((event) => event.k === 'meta')?.startedAt ?? '');
+  const base = Number.isFinite(startedAt) ? startedAt : 0;
   let seq = 0;
   let placed = false;
 
-  for (const event of events) {
-    if (event.k === 'out') {
-      // Both, and in this order, because `SessionManager` does both: what a
-      // line *is* depends on the command before it.
-      classifier.observeCommand(event.s);
-      tracker.observeCommand(event.s);
-      commands += 1;
-      continue;
-    }
-    if (event.k !== 'line') continue;
-
-    seq += 1;
-    let classified;
-    try {
-      classified = classifier.classify({
-        seq,
-        at: event.t,
-        text: event.raw ?? event.s,
-        plain: event.s,
-        terminator: event.term ?? 'newline'
-      });
-    } catch {
-      continue;
-    }
-
-    const block = classified.block;
-    if (block.type === 'room-exits') rooms += 1;
-
-    if (block.type !== 'user-profile') {
-      try {
-        tracker.apply(block, classified.batch?.rows);
-      } catch {
-        // A parser fault costs a line, never the replay: the same guarantee
-        // `publishLine` gives the terminal.
-      }
-      continue;
-    }
-
+  /*
+   * The answer key, graded where the client meets it and then withheld.
+   * Returns whether the tracker may have it: the opening fix, and every fix
+   * under `--anchor`.
+   */
+  const grade = (block, at) => {
     const map = Number(block.groups['map']);
     const room = Number(block.groups['room']);
-    if (!Number.isFinite(map) || !Number.isFinite(room)) continue;
+    if (!Number.isFinite(map) || !Number.isFinite(room)) return false;
 
     if (!placed) {
       // The opening fix. Nothing to grade against, and from here on the client
       // has a room — the precondition everything below rests on.
       placed = true;
-      tracker.apply(block, classified.batch?.rows);
-      continue;
+      return true;
     }
 
     const belief = tracker.current.room;
@@ -152,7 +132,7 @@ for (const name of files) {
       if (belief.ambiguous > 1) score.ambiguous += 1;
       else score.lost += 1;
       failures.push(
-        `${name} t=${event.t}  no room named (candidates ${belief.ambiguous})` +
+        `${name} t=${at}  no room named (candidates ${belief.ambiguous})` +
           `  — server says ${map},${room} "${world.get(map, room)?.name ?? '?'}"`
       );
     } else if (belief.map === map && belief.number === room) {
@@ -160,12 +140,53 @@ for (const name of files) {
     } else {
       score.wrong += 1;
       failures.push(
-        `${name} t=${event.t}  believed ${belief.map},${belief.number} "${belief.name}"` +
+        `${name} t=${at}  believed ${belief.map},${belief.number} "${belief.name}"` +
           ` by ${belief.resolvedBy} — server says ${map},${room} "${world.get(map, room)?.name ?? '?'}"`
       );
     }
+    return anchor;
+  };
 
-    if (anchor) tracker.apply(block, classified.batch?.rows);
+  for (const event of events) {
+    replayAt = base + event.t;
+    if (event.k === 'out') {
+      // Both, and in this order, because `SessionManager` does both: what a
+      // line *is* depends on the command before it.
+      classifier.observeCommand(event.s);
+      tracker.observeCommand(event.s, replayAt);
+      commands += 1;
+      continue;
+    }
+    if (event.k !== 'line') continue;
+
+    seq += 1;
+    try {
+      // The line, the listing it closed, its tails, `collecting`, and the
+      // claims settled: the client's own sequence (`lineActs.ts`).
+      replayLine(
+        classifier,
+        tracker,
+        {
+          seq,
+          at: replayAt,
+          text: event.raw ?? event.s,
+          plain: event.s,
+          terminator: event.term ?? 'newline'
+        },
+        (act) => {
+          if (act.block.type === 'room-exits') rooms += 1;
+          return act.block.type !== 'user-profile' || grade(act.block, event.t);
+        }
+      );
+    } catch (error) {
+      // A fault costs a line, never the replay: the same guarantee
+      // `publishLine` gives the terminal. Counted and said, since the grading
+      // runs inside the same call and a position lost to it is a smaller
+      // `asked` and nothing more.
+      faults.push(
+        `${name} t=${event.t}  ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 }
 
@@ -182,6 +203,9 @@ console.log(`    agreed      ${score.agreed}\t${of(score.agreed)}`);
 console.log(`    WRONG ROOM  ${score.wrong}\t${of(score.wrong)}`);
 console.log(`    ambiguous   ${score.ambiguous}\t${of(score.ambiguous)}`);
 console.log(`    lost        ${score.lost}\t${of(score.lost)}`);
+if (faults.length > 0) {
+  console.log(`\n  lines lost to a fault: ${faults.length}, the first: ${faults[0]}`);
+}
 
 if (failures.length > 0) {
   console.log('\n  where it did not agree:');

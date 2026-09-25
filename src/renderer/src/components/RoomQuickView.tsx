@@ -17,7 +17,7 @@
  * **Opened by a pointer resting on a room, not by a click.** Reading what is
  * in a lair is the reason to look at the map at all, and a click is already
  * spoken for — it plans the way there. The dwell and the linger are the
- * caller's (`App.tsx`), which owns the one-panel-at-a-time rule.
+ * caller's (`useSlideOuts`), which owns the one-panel-at-a-time rule.
  *
  * The one action is the walk: it is the thing to do *about* a room, it belongs
  * where the reader has just decided to do it, and it is the affordance the

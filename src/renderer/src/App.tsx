@@ -9,1132 +9,94 @@ import {
   type ReactNode
 } from 'react';
 
-import CommandPalette, { type Command, type Found } from './components/CommandPalette';
-import { entryWord, flattenLookup, entryNumber } from './components/ReferenceDetail';
-import type { IconName } from './components/Icon';
-import { entityNumber } from '@shared/entities';
-import AutomationCard from './components/AutomationCard';
-import LinkCard from './components/LinkCard';
-import MapCard from './components/MapCard';
-import SearchBar, { type SearchResult } from './components/SearchBar';
-import RoomCard from './components/RoomCard';
+import CommandPalette, { type Command } from './components/CommandPalette';
+import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
 import CardPicker from './components/CardPicker';
 import FloatLayer from './components/FloatLayer';
-import NotificationsCard from './components/NotificationsCard';
-import CombatCard from './components/CombatCard';
-import PartyCard from './components/PartyCard';
-import RealmCard from './components/RealmCard';
-import PlayerFlyout, { type PlayerAsked } from './components/PlayerFlyout';
-import GangFlyout, { type GangAsked } from './components/GangFlyout';
-import { canRestore, type GearAction } from '@shared/gear';
-import { knownGangs } from './lib/gangs';
-import { ago, knownPlayerNames, presentPlayerNames } from './lib/players';
-import { NameIndex } from './lib/names';
-import PlayersCard from './components/PlayersCard';
-import GangCard from './components/GangCard';
-import SettingsScreen, {
-  SETTINGS_DEFAULTS,
-  SETTINGS_GLOBAL,
-  SETTINGS_MANAGE_SERVERS,
-  SETTINGS_NEW_CHARACTER
-} from './components/SettingsScreen';
+import PinnedFloats from './components/PinnedFloats';
+import SettingsScreen from './components/SettingsScreen';
 import StandbyCard from './components/StandbyCard';
-import StatsCard from './components/StatsCard';
-import ConversationCard from './components/ConversationCard';
-import BanksCard from './components/BanksCard';
-import QuestCard from './components/QuestCard';
-import HuntingCard from './components/HuntingCard';
-import InventoryCard from './components/InventoryCard';
-import SessionCard from './components/SessionCard';
 import SessionTerminal from './components/SessionTerminal';
-import ReferenceCard from './components/ReferenceCard';
-import ReferencePopover, { type Asked } from './components/ReferencePopover';
-import RoomQuickView, { type RoomAsked } from './components/RoomQuickView';
-import { ownAlignment } from './components/LairList';
+import SlideOuts from './components/SlideOuts';
 import TabRail, { type RailSide } from './components/TabRail';
-
-/** How the panes divide the slate. */
-type PaneFlow = 'rows' | 'columns';
 
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
-import StreamCard from './components/StreamCard';
-import VitalsCard from './components/VitalsCard';
-import SelfCard from './components/SelfCard';
-import type { SupplyList } from './components/SupplyControls';
 import LoopsModal from './components/LoopsModal';
 import HomeBrowser from './components/HomeBrowser';
-import { registerRealmPicker } from './lib/pickers';
-import LoopBuilderCard, {
-  type BuilderDestination,
-  type BuilderSeed
-} from './components/LoopBuilderCard';
-import ToolbarCard from './components/ToolbarCard';
-import { TOOLBAR_ACTIONS, type ToolbarSubject } from './lib/toolbar';
+import { TOOLBAR_ACTIONS } from './lib/toolbar';
 import { useToolbarPins } from './hooks/useToolbarPins';
-import { recallStatsBase, rememberStatsBase } from './hooks/useRemembered';
-import NavigationCard from './components/NavigationCard';
 import { type TerminalHandle } from './components/TerminalView';
 import { useConfig } from './hooks/useConfig';
+import { useConnection } from './hooks/useConnection';
+import { useDiagnosticFeeds } from './hooks/useDiagnosticFeeds';
+import { useNameIndexes } from './hooks/useNameIndexes';
+import { useNavigationVisible } from './hooks/useNavigationVisible';
 import {
-  cardLabel,
-  hidesWhenEmpty,
-  useCardLayout,
-  DEFAULT_FLOAT,
-  HIDES_WHEN_EMPTY,
-  NO_CARD_SETTINGS,
-  type CardId,
-  type CardLayoutApi,
-  type CardSettings,
-  type Lane
-} from './hooks/useCardLayout';
-import type { CardChrome } from './components/BentoCard';
-import type { AppConfig } from '@shared/config';
-import type { IpcApi } from '@shared/ipc';
-import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
+  measureAbove,
+  measureBelow,
+  measureRail,
+  measureTabs,
+  usePaneRanges
+} from './hooks/usePaneRanges';
+import { useCardLayout } from './hooks/useCardLayout';
+import { cardLabel, type Lane } from './lib/cards';
+import { useCardChrome } from './hooks/useCardChrome';
+import { useCardContext } from './hooks/useCardContext';
+import { useCardRenderers } from './hooks/useCardRenderers';
 import { usePaneWidths } from './hooks/usePaneWidths';
+import { useLoopBuilder } from './hooks/useLoopBuilder';
+import { useLoopsModal } from './hooks/useLoopsModal';
+import { useMovement } from './hooks/useMovement';
+import { usePanes } from './hooks/usePanes';
+import { useProfileReaders } from './hooks/useProfileReaders';
+import { useRoutePanel } from './hooks/useRoutePanel';
+import { useSearchBar } from './hooks/useSearchBar';
+import { useSettingsScreen } from './hooks/useSettingsScreen';
+import { useRouteOpeners } from './hooks/useRouteOpeners';
+import { useShownRealm } from './hooks/useShownRealm';
+import { useSlideOuts } from './hooks/useSlideOuts';
+import { EMPTY_VIEW, useSessionViews } from './hooks/useSessionViews';
 import { usePinnedCommands } from './hooks/usePins';
 import { Splitter } from './components/Splitter';
-import {
-  CONSOLE_COLUMNS as MIN_COLUMNS,
-  CONSOLE_ROWS,
-  DOCK_RANGE,
-  RAIL_RANGE,
-  TAB_RAIL_RANGE,
-  ceilingFor,
-  type SplitRange
-} from './lib/splitter';
 import { useCardDrag } from './hooks/useCardDrag';
+import { useCommandPalette } from './hooks/useCommandPalette';
+import { useHomeBrowser } from './hooks/useHomeBrowser';
 import { useCardResize } from './hooks/useCardResize';
 import { reordered } from './lib/reorder';
 import { useDensity } from './hooks/useDensity';
+import { useAlerts } from './hooks/useAlerts';
 import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useOverridablePreference } from './hooks/usePreference';
 import { useTheme } from './hooks/useTheme';
-import { useStreamPressure, ZERO_METER, type StreamMeter } from './hooks/useStreamPressure';
+import { useStreamPressure } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
-import { loopRows, type LoopChoice, type LoopDestination, type LoopHere } from './lib/loops';
-import { chord } from './lib/platform';
-import type { PopoverAnchor } from './lib/popover';
-import { playerKey } from '@shared/players';
+import { paletteCommands, paletteKeys, type PaletteDeps } from './lib/palette';
+import { paletteFind } from './lib/paletteFind';
 import {
-  automationSwitches,
   AUTOMATION_SWITCH_NAMES,
-  DEFAULT_CONFIG,
   resolveTerminalFonts,
   resolveUiFonts,
-  targetFromServer,
-  toCssFontStack,
-  type AutomationSwitches,
-  type RemotesConfig,
-  type SupplyItem
+  toCssFontStack
 } from '@shared/config';
-import type { RemoteName } from '@shared/remotes';
-import { EMPTY_CHARACTER, ownGang, packRows, type CharacterState } from '@shared/character';
 import { figuresOf, type StatlineFigures } from '@shared/statline';
-import { IDLE_WALK, type WalkProgress } from '@shared/walk';
 import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
-import type { HuntingRoom } from '@shared/hunting';
-import { NO_LOOP, type Loop, type LoopProgress } from '@shared/loops';
-import { movementOf, type MovementConfirm } from '@shared/movement';
-import type { CombatTally } from '@shared/tally';
-import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
-import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
-import {
-  IDLE_QUEST_RUN,
-  type QuestRunProgress,
-  type QuestWatched,
-  type RoomAsk
-} from '@shared/quests';
-import type { Block } from '@shared/blocks';
-import { isTalkBlock } from '@shared/talk';
-import type { Discovery } from '@shared/memory';
-import { roomsWithFinds, type Find } from '@shared/finds';
+import { roomsWithFinds } from '@shared/finds';
+import { movementOf } from '@shared/movement';
+import { IDLE_QUEST_RUN } from '@shared/quests';
 import type { Addressed, ResetNotice } from '@shared/ipc';
 import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
-import {
-  linkNotices,
-  alertQuiet,
-  mayNotice,
-  noticeFor,
-  partyNotices,
-  roomNotices,
-  rosterNotices,
-  namedNotices,
-  vitalNotices,
-  watchNotices,
-  walkNotices,
-  wanted,
-  type AlertQuiet,
-  type Notice
-} from '@shared/notifications';
-import {
-  asRoomReference,
-  roomAddress,
-  roomId,
-  type LoopDraft,
-  type RoomId,
-  type Route,
-  type WorldNames,
-  type WorldRoom
-} from '@shared/world';
-import type { LocalMap } from '@shared/map';
-import {
-  NO_SESSION,
-  type AttachSnapshot,
-  type ProfileSummary,
-  type Revealed,
-  type SessionId,
-  type SessionSummary
-} from '@shared/ipc';
-import type {
-  ConnectionState,
-  ConnectionTarget,
-  StreamLine,
-  TelnetEvent,
-  TerminalActionName,
-  TerminalSize
-} from '@shared/types';
-import { setTuning, tuning } from './lib/tuning';
-
-const INITIAL_STATE: ConnectionState = {
-  phase: 'idle',
-  target: null,
-  connectedAt: null,
-  detail: null,
-  endedBy: null,
-  negotiated: {
-    localEnabled: [],
-    remoteEnabled: [],
-    binary: false,
-    suppressGoAhead: false,
-    remoteEcho: false
-  }
-};
-
-/**
- * What this window knows about one character.
- *
- * Held per session rather than only for the one on screen, because the tab rail
- * reports vitals, room and current action for characters whose terminals it is
- * not showing — that is the whole reason the rail is worth having. The coalesced
- * channels already reach every window for every session, so this is a matter of
- * keeping what arrives rather than of asking for more.
- */
-interface SessionView {
-  state: ConnectionState;
-  character: CharacterState;
-  walk: WalkProgress;
-  loop: LoopProgress;
-  automation: AutomationSnapshot;
-  /** The room appraised — *can I fight this?* — beside the character it is about. */
-  verdict: RoomVerdict;
-  /** What the things standing in the room answer to, for this character. See `asksHere`. */
-  asks: RoomAsk[];
-  /**
-   * The Combat Stats card's baseline: the totals every figure on it is a
-   * difference from, or null for the whole session.
-   *
-   * Held here rather than in the card because the card ships **put away**, and
-   * what re-bases it has to be running whether or not anything is drawn — a lap
-   * beginning is a moment, not a render. One value, written by the card's Reset
-   * button and by the lap alike, so neither has to outrank the other.
-   */
-  statsBase: CombatTally | null;
-  lines: StreamLine[];
-  telnet: TelnetEvent[];
-  /**
-   * What has been said, per character.
-   *
-   * The terminal carries every line, but it carries *everything* — a telepath
-   * scrolls out of reach behind a combat burst within seconds, which is exactly
-   * when nobody can go looking for it. Kept here so a second view of the same
-   * stream can hold it.
-   */
-  talk: Block[];
-  /**
-   * What is worth knowing, ranked.
-   *
-   * Derived here rather than in main because it is a *reading* of facts that
-   * already arrive, not a new fact: main publishes blocks and character state,
-   * and turning those into "this deserves an alert" is presentation. Adding an
-   * IPC channel for it would mean a second place that has to agree about what
-   * counts as urgent.
-   */
-  notices: Notice[];
-  /**
-   * What has been raised while nobody was looking at this character.
-   *
-   * The point of running four characters is that three of them are unattended,
-   * and the point of a tab rail is that it reports on the ones whose terminal
-   * is not on screen. Vitals and walk state already reach it; *alerts* did not,
-   * so a hostile arriving in an unattended character's room raised nothing
-   * anybody would see.
-   *
-   * Cleared when the character is put on screen, because that is what "seen"
-   * means. Counted rather than kept: the notices themselves are already in
-   * `notices`, and a tab has room for a number.
-   */
-  unseen: { critical: number; warning: number; latest: string | null };
-  /**
-   * What this character has found that the realm data does not have.
-   *
-   * Per character rather than per realm, like the file it comes from: two
-   * characters on one realm have been to different places, and the record is a
-   * record of where *this* one has been.
-   */
-  learned: Discovery[];
-  /**
-   * What a `search` has turned up in this realm.
-   *
-   * Per **realm** rather than per character, unlike `learned` above it: that a
-   * room hides a rusty key is a fact about the world, so every character
-   * dialling the realm reads the same log. See `src/shared/finds.ts`.
-   */
-  finds: Find[];
-  /**
-   * The rank each quest has been *seen* to reach, from what this character was
-   * watched doing this session.
-   *
-   * Nothing on the wire announces a counter moving, so this is the character's
-   * own action and nothing more — the quest book ranks it under the realm's own
-   * count *as of when that was read* and above the mark somebody set by hand.
-   * See `questReading` for how the three are ranked, `stepSaid` for the line
-   * typed at an asker, `stepKilled` for the monster a step is owned by.
-   */
-  questSaid: QuestWatched;
-  /** How a run of a quest's plan is going, or how the last one ended. */
-  questRun: QuestRunProgress;
-}
-
-/**
- * A filesystem path shortened for a hint: the home directory as `~`, and the
- * middle elided once the whole thing outgrows a palette row. The two ends are
- * what identify a path — where it lives and what it is called.
- */
-function shortPath(full: string, limit = 44): string {
-  const home = /^\/home\/[^/]+|^\/Users\/[^/]+/.exec(full)?.[0];
-  const tilde = home ? `~${full.slice(home.length)}` : full;
-  if (tilde.length <= limit) return tilde;
-  const parts = tilde.split('/');
-  const tail = parts.slice(-2).join('/');
-  const head = parts.slice(0, 2).join('/');
-  return `${head}/…/${tail}`;
-}
-
-/*
- * A laid-out element's box, for the splitter arithmetic. Measured from the
- * DOM, never a constant — the same rule the column floor follows.
- */
-function widthOf(selector: string, fallback: number): number {
-  return document.querySelector<HTMLElement>(selector)?.getBoundingClientRect().width ?? fallback;
-}
-function heightOf(selector: string, fallback: number): number {
-  return document.querySelector<HTMLElement>(selector)?.getBoundingClientRect().height ?? fallback;
-}
-/*
- * What each splitter measures, as functions it calls when a gesture starts
- * rather than figures computed on every render of the window: a
- * `getBoundingClientRect` in a render is a forced layout, three panes' worth
- * per commit.
- */
-const measureTabs = (): number => widthOf('.workspace > .tab-rail', TAB_RAIL_RANGE.min);
-const measureRail = (): number => widthOf('.workspace > .rail', RAIL_RANGE.min);
-const measureAbove = (): number => heightOf('.dock-above > .card', DOCK_RANGE.min);
-const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_RANGE.min);
+import { type ProfileSummary, type SessionId, type SessionSummary } from '@shared/ipc';
+import type { ConnectionState, TerminalActionName, TerminalSize } from '@shared/types';
+import { setTuning } from './lib/tuning';
 
 /** No characters loaded: one empty list, so the rail's props hold still while it is empty. */
 const NO_SESSIONS: SessionSummary[] = [];
-/** A character whose file names no supplies. One list, so a card's props hold still. */
-const NO_SUPPLIES: SupplyItem[] = [];
-
-/**
- * The totals as they stand, written down as the Combat Stats card's baseline.
- *
- * The one writer for the button and the lap alike, so neither has to be
- * compared against the other — and written down beside the layout, because
- * main's totals outlive the launch and the reading they are subtracted from
- * has to as well, or a launch silently undid the last press or the lap.
- */
-function rebased(session: SessionId, view: SessionView): CombatTally {
-  rememberStatsBase(session, view.character.tally);
-  return view.character.tally;
-}
-
-const EMPTY_VIEW: SessionView = {
-  state: INITIAL_STATE,
-  character: EMPTY_CHARACTER,
-  walk: IDLE_WALK,
-  loop: NO_LOOP,
-  automation: EMPTY_AUTOMATION,
-  verdict: EMPTY_ROOM_VERDICT,
-  asks: [],
-  statsBase: null,
-  lines: [],
-  telnet: [],
-  talk: [],
-  notices: [],
-  unseen: { critical: 0, warning: 0, latest: null },
-  learned: [],
-  finds: [],
-  questSaid: {},
-  questRun: IDLE_QUEST_RUN
-};
-
-/**
- * Folds new notices into the unseen count for a character.
- *
- * A character on screen has seen them by definition, so nothing accumulates for
- * the one being played — the count exists for the other three. `info` is not
- * counted: a tab that lights up for somebody arriving in the realm is a tab
- * nobody reads, and the whole value of the mark is that it is rare.
- */
-function missed(
-  current: SessionView['unseen'],
-  raised: Notice[],
-  shown: boolean
-): SessionView['unseen'] {
-  if (shown) return current.critical === 0 && current.warning === 0 ? current : EMPTY_UNSEEN;
-  const worth = raised.filter((notice) => notice.severity !== 'info');
-  if (worth.length === 0) return current;
-  return {
-    critical: current.critical + worth.filter((n) => n.severity === 'critical').length,
-    warning: current.warning + worth.filter((n) => n.severity === 'warning').length,
-    // The newest, for the tab's title: a number says how much and this says what.
-    latest: worth[worth.length - 1]!.text
-  };
-}
-
-const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
-
-/** Keeps a log bounded without reallocating it on every append. */
-/**
- * Where a room's quick view hangs, from whatever named the room.
- *
- * A row of the route list is an `HTMLElement` and anchors as itself. A room on
- * a map is an SVG group, and `PopoverAnchor`'s element half is an
- * `HTMLElement` for the placement arithmetic it does — so it anchors as a box
- * and the element it was measured in, the same shape a word in the console
- * takes and for the same reason: xterm paints cells, and neither has an
- * `HTMLElement` of its own. `within` is the window the picture is drawn in —
- * one selector, because every map in the client is drawn in a `MapView` — so a
- * scroll of what is underneath it dismisses and a scroll of anything else does
- * not. A route list's own row is an `HTMLElement` and never reaches here.
- */
-function roomAnchor(at: Element): PopoverAnchor {
-  if (at instanceof HTMLElement) return at;
-  const within = at.closest('.map-view');
-  return {
-    box: at.getBoundingClientRect(),
-    within: within instanceof HTMLElement ? within : document.body
-  };
-}
-
-function capped<T>(log: T[], entry: T, limit: number): T[] {
-  const next = [...log, entry];
-  return next.length > limit ? next.slice(-limit) : next;
-}
-
-/**
- * Everything a card reads, gathered so one function draws a card for *any*
- * character — the shown one, or one whose float is pinned in view.
- */
-interface CardContext {
-  session: SessionId;
-  chrome: CardChrome;
-  character: CharacterState;
-  view: SessionView;
-  inGame: boolean;
-  thresholds: AppConfig['ui']['vitals'];
-  /**
-   * Whether the Navigation card is worth the space it takes: something walked
-   * or looped recently enough to still be news, or loops to start.
-   */
-  navigationVisible: boolean;
-  size: TerminalSize;
-  /** The throughput readout for this character — a store the Session card subscribes to. */
-  meter: StreamMeter;
-  quiet: boolean;
-  ask(command: string): void;
-  /**
-   * A gear button, addressed at this character.
-   *
-   * Not `ask`: that takes a bare verb of at most eight lowercase letters and
-   * no argument, which is exactly what lets it accept a string from here. Main
-   * holds the pack, the loadout and the realm's word on what can be worn, so
-   * what crosses is an action from a closed list. See `shared/gear.ts`.
-   */
-  gear(action: GearAction, item?: string): void;
-  forget(discovery: Discovery): void;
-  /** Strikes a find out of the realm's log. See `RoomCard`'s Finds face. */
-  forgetFind(find: Pick<Find, 'room' | 'name'>): void;
-  inspect(name: string, anchor: HTMLElement): void;
-  loadWearer(): ReturnType<IpcApi['wearer']>;
-  loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
-  lookupName(query: string): ReturnType<IpcApi['lookup']>;
-  /** Null for a character not shown: the route panel is the shown one's. */
-  chooseOnMap: ((map: number, room: number) => void) | null;
-  /**
-   * A room pointed at on the map, and the pointer leaving it. Null for a
-   * character not shown, for `chooseOnMap`'s reason: the panel asks that
-   * character's realm and a float belongs to somebody else.
-   */
-  peekRoom: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
-  endPeek: (() => void) | null;
-  /** The same panel from a `map/room` string, which is how the realm writes it. */
-  goToRoom(room: string): void;
-  /**
-   * The realm's quest book, **addressed** and asked for by the card itself.
-   *
-   * Data rather than a call was the first shape, and it was the one thing in
-   * this object that was not addressed: a pinned float belonging to a
-   * character on another `world.database` listed the *shown* character's
-   * quests, and the card then wrote that realm's quest ids into this
-   * character's hidden-and-ranked store. Every other world query here is a
-   * bound call for exactly that reason.
-   */
-  loadQuests(): ReturnType<IpcApi['questBook']>;
-  /**
-   * The order the step this character is on fetches its items in — addressed
-   * for the book's own reason, and because the walk starts where *this*
-   * character is standing and is priced against what it can get through.
-   */
-  loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
-  /** The plan to reach one step, from where this character stands — addressed, like the errand. */
-  loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
-  /** Run that plan (todo 102), and stop it. Addressed like the plan. */
-  runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
-  stopRun(): void;
-  /** Where to hunt from where this character stands — addressed, like the book. */
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
-  /**
-   * Walks a loop the Hunting card built, filed nowhere or under this
-   * character — the builder's own save, offered for the *shown* character
-   * only, since a lap started on a pinned float's character is a character
-   * walked away while somebody watches another.
-   */
-  runHunt: ((loop: Loop, destination: LoopDestination) => void) | null;
-  /** Opens the builder on a loop the Hunting card drew, named; the shown character's only. */
-  createHunt: ((rooms: HuntingRoom[], name: string) => void) | null;
-  /**
-   * When the configuration last reloaded, so the book is asked for again.
-   *
-   * A character can be pointed at a different realm by an edit to the options
-   * file, and `loadedAt` is what moves when it is. The same number for every
-   * session, because the file is one file.
-   */
-  realmAt: number;
-  /**
-   * The loop builder's calls, addressed at the shown character — it plans
-   * on that realm and files into that scope — and null on a pinned float,
-   * where the card is not drawn at all rather than drawn for the wrong one.
-   */
-  builder: BuilderApi | null;
-  /** Bring the builder out, from the Map card's own action. Null with `builder`. */
-  openBuilder: (() => void) | null;
-  /** Re-base the Combat Stats card to this character's totals as they stand. */
-  resetStats(): void;
-  /**
-   * The Navigation card's transport. `startMoving` takes the picker's choice,
-   * or null where there is none; `loops` is the character's own list to pick
-   * from — null on a pinned float, whose list belongs to the shown character.
-   */
-  loops: ReadonlyArray<{ name: string; stops: number }> | null;
-  startMoving(loop: string | null): void;
-  stopMoving(): void;
-  startLoop(name: string): void;
-  skipLoop(): void;
-  reverseLoop(): void;
-  /** Whose Player flyout is open from one of this character's listings, lower-cased, or null. */
-  subject: string | null;
-  /** The console's name index for this character, or null before the realm's names arrive. */
-  nameIndex: NameIndex | null;
-  /** A name clicked on the Realm or Players card, and where, for the flyout to open beside. */
-  selectPlayer(name: string, anchor: PopoverAnchor): void;
-  /** This character's resolved `automation.remotes`, for the Gang card. */
-  remotes: RemotesConfig;
-  /** The toolbar: this character's own switches, and what its buttons do. */
-  toolbar: ToolbarSubject;
-  /** Which toolbar buttons are on the row, and the control that moves one. */
-  toolbarPinned: ReadonlySet<string>;
-  pinToolbarButton(id: string): void;
-  /** The gang's whole list, and whether the gangpath is answered on. */
-  setGangRemotes(remotes: RemoteName[]): void;
-  setGangpath(on: boolean): void;
-  /**
-   * This character's supplies list and the write, for the Self card and the
-   * item panel — resolved per character like `remotes`, and addressed.
-   */
-  supplies: SupplyList;
-  /** The tab's own name for the character, for the Self card before the sheet prints. */
-  profileName: string;
-  onSend?(line: string): void;
-  /** A talk-box line of several commands, and dropping what is left of one; addressed. */
-  onMacro(line: string): void;
-  dropMacro(): void;
-}
-
-/** What the loop builder needs of the client, built once per character and kept. */
-interface BuilderApi {
-  characterName: string;
-  realmName: string;
-  search(query: string): Promise<WorldRoom[]>;
-  loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
-  draft(rooms: RoomId[]): Promise<LoopDraft>;
-  save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
-  /** A loop to open drawn — the Hunting card's — or null for an empty map. */
-  seed: BuilderSeed | null;
-}
-
-/**
- * The addressed callbacks a card receives — the always-addressed ones (`gear`,
- * `selectPlayer`, the gang writes) and every one a pinned float gets in place
- * of the shown character's. Built once per character and cached (`boundFor` in
- * `App`), because every card is memoised and a fresh closure per render
- * defeats that wholesale — which was most of what a state flush cost.
- */
-interface AddressedActions {
-  ask(command: string): void;
-  forget(discovery: Discovery): void;
-  forgetFind(find: Pick<Find, 'room' | 'name'>): void;
-  gear(action: GearAction, item?: string): void;
-  loadWearer(): ReturnType<IpcApi['wearer']>;
-  loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
-  lookupName(query: string): ReturnType<IpcApi['lookup']>;
-  loadQuests(): ReturnType<IpcApi['questBook']>;
-  loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
-  loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
-  runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
-  stopRun(): void;
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
-  startMoving(loop: string | null): void;
-  stopMoving(): void;
-  /** Re-base the Combat Stats card to this character's totals as they stand. */
-  resetStats(): void;
-  startLoop(name: string): void;
-  skipLoop(): void;
-  reverseLoop(): void;
-  selectPlayer(name: string, anchor: PopoverAnchor): void;
-  setGangRemotes(remotes: RemoteName[]): void;
-  setGangpath(on: boolean): void;
-  setSupplies(items: SupplyItem[]): void;
-  send(line: string): void;
-  macro(line: string): void;
-  dropMacro(): void;
-}
-
-/**
- * Whether a card that *can* be empty holds its place while it is.
- *
- * One test for the five cards that have an "is there anything to say" answer,
- * rather than the five different hard-coded ones they each grew: Party and
- * Navigation took themselves off the rail, Combat did until todo 04, and Gang
- * and Banks never did. `HIDES_WHEN_EMPTY` carries what each one did before as
- * its default, so nothing moved on anybody's rail — what changed is that the
- * other answer is now reachable, from the card's own gear.
- */
-function emptyCardHidden(chrome: CardChrome, id: CardId, hasSomethingToSay: boolean): boolean {
-  if (hasSomethingToSay) return false;
-  return hidesWhenEmpty(chrome.settings?.value ?? NO_CARD_SETTINGS, id);
-}
-
-/** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
-function cardElement(id: CardId, ctx: CardContext): ReactNode {
-  const { chrome, character, view } = ctx;
-  switch (id) {
-    case 'self':
-      return (
-        <SelfCard
-          {...chrome}
-          character={character}
-          gear={ctx.gear}
-          inspect={ctx.inspect}
-          loadWearer={ctx.loadWearer}
-          profileName={ctx.profileName}
-          session={ctx.session}
-          /*
-            Addressed at `sid` like the gang's list — and null on a pinned
-            float only for the *write*: the list is drawn from its own
-            character's summary, and a control that wrote the shown
-            character's file from another character's card would be the
-            failure every addressed field here exists to refuse.
-          */
-          supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
-          suppliesOn={ctx.toolbar.switches.supplies}
-        />
-      );
-    case 'vitals':
-      return (
-        <VitalsCard
-          {...chrome}
-          ask={ctx.ask}
-          character={character}
-          session={ctx.session}
-          thresholds={ctx.thresholds}
-        />
-      );
-    case 'room':
-      return (
-        <RoomCard
-          {...chrome}
-          ask={ctx.ask}
-          character={character}
-          session={ctx.session}
-          forget={ctx.forget}
-          inspect={ctx.inspect}
-          learned={view.learned}
-          finds={view.finds}
-          // Null on a character not shown: the route panel belongs to the one
-          // on screen, which is the rule `chooseOnMap` beside it already states.
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
-          forgetFind={ctx.forgetFind}
-          verdict={view.verdict}
-          asks={view.asks}
-        />
-      );
-    case 'map':
-      // A map of nowhere states nothing.
-      return character.room.map === null ? null : (
-        <MapCard
-          {...chrome}
-          character={character}
-          // The realm's find log, not this character's: a room a second
-          // character searched is marked here too.
-          finds={view.finds}
-          load={ctx.loadMap}
-          // This character's own route and lap, drawn over its own
-          // neighbourhood — a pinned float belongs to somebody else.
-          loop={view.loop}
-          onBuild={ctx.openBuilder}
-          /* A pointer resting on a room opens the realm's answer about it —
-             including what its lair spawns, which is the question the glyph has
-             raised since the map was drawn. Null on a float, which has no realm
-             of its own to ask. */
-          onPeek={ctx.peekRoom}
-          onPeekEnd={ctx.endPeek}
-          walk={view.walk}
-        />
-      );
-    case 'builder':
-      /*
-       * The shown character's only: it plans on that realm and files into
-       * that scope, and a pinned float of it for somebody else would be a
-       * map whose every click asked the wrong realm. Nothing is drawn there
-       * rather than a card that refuses on every click.
-       */
-      return ctx.builder === null ? null : (
-        <LoopBuilderCard
-          {...chrome}
-          character={character}
-          characterName={ctx.builder.characterName}
-          draft={ctx.builder.draft}
-          // The realm's find log, as the Map card takes it: where searching has
-          // turned something up is a reason to route a lap through a room.
-          finds={view.finds}
-          loadMap={ctx.builder.loadMap}
-          /* The same quick view every other map has — the same panel, the same
-             button — so the lair a room is worth picking for says what is in
-             it, and the way there is offered where it is offered everywhere. */
-          onPeek={ctx.peekRoom}
-          onPeekEnd={ctx.endPeek}
-          realmName={ctx.builder.realmName}
-          save={ctx.builder.save}
-          search={ctx.builder.search}
-          seed={ctx.builder.seed}
-        />
-      );
-    case 'navigation':
-      // An idle walker and an idle loop are not conditions, and a card that
-      // always says "nothing" is chrome. One test for both halves, so the card
-      // does not appear for one face and vanish for the other — and it is the
-      // same test every other emptiable card takes, so it can be turned off.
-      if (emptyCardHidden(chrome, id, ctx.navigationVisible)) return null;
-      return (
-        <NavigationCard
-          {...chrome}
-          character={character}
-          loop={view.loop}
-          loops={ctx.loops}
-          onChoose={ctx.chooseOnMap}
-          onReverseLoop={ctx.reverseLoop}
-          onSkipLoop={ctx.skipLoop}
-          onStart={ctx.startMoving}
-          onStop={ctx.stopMoving}
-          walk={view.walk}
-        />
-      );
-    case 'notifications':
-      return (
-        <NotificationsCard
-          {...chrome}
-          character={character}
-          inspect={ctx.inspect}
-          names={ctx.nameIndex}
-          notices={view.notices}
-          onSelect={ctx.selectPlayer}
-          session={ctx.session}
-        />
-      );
-    case 'realm':
-      return (
-        <RealmCard
-          {...chrome}
-          character={character}
-          onSelect={ctx.selectPlayer}
-          session={ctx.session}
-          subject={ctx.subject}
-        />
-      );
-    case 'players':
-      return (
-        <PlayersCard
-          {...chrome}
-          character={character}
-          onSelect={ctx.selectPlayer}
-          session={ctx.session}
-          subject={ctx.subject}
-        />
-      );
-    case 'gang':
-      /*
-       * Held whether or not this character is in one, by default: the card
-       * carries the `@` permission grid, which is worth reaching whatever the
-       * roster last said, and `ownGang` is `undefined` until something has
-       * asked. Somebody who only wants it while there is a gang says so on the
-       * gear — and a gang is learned from the wire, so that is a card which can
-       * come and go on its own.
-       */
-      if (emptyCardHidden(chrome, id, ownGang(character) != null)) return null;
-      return (
-        <GangCard
-          {...chrome}
-          ask={ctx.ask}
-          character={character}
-          onSelect={ctx.selectPlayer}
-          onSetGangRemotes={ctx.setGangRemotes}
-          onSetGangpath={ctx.setGangpath}
-          remotes={ctx.remotes}
-          session={ctx.session}
-          subject={ctx.subject}
-        />
-      );
-    case 'party':
-      // Only while there is one, by default: a card that always says
-      // "travelling alone" is chrome, and it sits above the rest of the rail.
-      // Somebody who would rather it held its place says so on its gear.
-      if (emptyCardHidden(chrome, id, character.party.members.length > 0)) return null;
-      return (
-        <PartyCard
-          {...chrome}
-          ask={ctx.ask}
-          character={character}
-          onSelect={ctx.selectPlayer}
-          subject={ctx.subject}
-          thresholds={ctx.thresholds}
-        />
-      );
-    case 'combat': {
-      /*
-       * Drawn whether or not there is a fight, unless this character has asked
-       * otherwise.
-       *
-       * It used to be the other way round and unconditionally so: the card
-       * arrived when a fight began and left when it ended, which on a busy
-       * route is several times a minute — and every card below it on the rail
-       * moved each time. That is the churn a fixed card exists to prevent,
-       * done to the rail by the rail's own contents, and it made the controls
-       * under it a moving target while a fight was the exact thing somebody
-       * was reacting to.
-       *
-       * So the default is *always show* — the card has something true to say
-       * either way, and it says `Nothing is fighting you` rather than nothing
-       * at all. The other answer is on the card's own gear.
-       */
-      const fighting = character.inCombat || character.combat.attackers.length > 0;
-      if (emptyCardHidden(chrome, id, fighting)) return null;
-      return (
-        <CombatCard
-          {...chrome}
-          character={character}
-          inspect={ctx.inspect}
-          onSelect={ctx.selectPlayer}
-          verdict={view.verdict}
-        />
-      );
-    }
-    case 'inventory':
-      return (
-        <InventoryCard
-          {...chrome}
-          character={character}
-          gear={ctx.gear}
-          inspect={ctx.inspect}
-          loadWearer={ctx.loadWearer}
-          session={ctx.session}
-        />
-      );
-    case 'banks':
-      /*
-       * Unconditional, unlike Party and Combat. Those say nothing at all when
-       * the character is alone or idle; this one has something true to say
-       * either way — a vault's balance, or that no vault has been asked, which
-       * is the answer to "where is my money" for a character who has banked
-       * nowhere. It is put away by default instead, so the rail is not spent on
-       * it until somebody asks for it — and somebody who wants it on the rail
-       * only once a counter has answered says so on its gear.
-       */
-      if (emptyCardHidden(chrome, id, character.banks.length > 0)) return null;
-      return <BanksCard {...chrome} character={character} />;
-    case 'quests':
-      /*
-       * Unconditional, like the vaults: a realm that scripts no quests is a
-       * fact the card states, and an empty book is the honest answer for a
-       * derivative whose text blocks chain nothing. Put away by default
-       * instead, so the rail is not spent on it until somebody asks.
-       */
-      return (
-        <QuestCard
-          {...chrome}
-          /*
-            So the reader's own route through a step is the marked one. The
-            long chains state fifteen — a class each, with a different reward —
-            and exactly one of them belongs to whoever is reading.
-          */
-          characterClass={character.className}
-          /*
-            And its race and level, so the book can sink what this character
-            cannot do. The three together are what the realm gates a quest on
-            and the client holds a matching fact for; alignment is a number in
-            the gate and a word on the roster, so it is left to the side chips.
-          */
-          characterLevel={character.progress.level}
-          characterRace={character.race}
-          /*
-            And what is in its pack, so a step's shopping list can be ticked.
-            `packRows` and not the items themselves: the realm's row is what a
-            step names, the join is main's, and null is *nobody has listed the
-            pack* — which ticks nothing rather than crossing everything off.
-          */
-          carrying={packRows(character.inventory)}
-          /*
-            And where it stands, so an open plan is asked again from wherever
-            the character has walked to since it was drawn. Null is unplaced,
-            which the plan says as itself.
-          */
-          here={roomAddress(character.room)}
-          /*
-            And whether a walk or a lap is moving it, so an open plan holds its
-            ground until the walk ends rather than being asked at every room.
-          */
-          moving={movementOf(view.walk, view.loop).moving}
-          /*
-            The realm's own count of each quest counter, where the realm has a
-            command that prints one. It outranks the marks the player has left
-            on the track, which is why it is handed to the card rather than
-            merged into them: a mark is a preference on this machine and this
-            is a fact about the character.
-          */
-          counters={character.abilities}
-          /*
-            And what this character has been *seen* to do this session, which is
-            the third reading and sits between the two above: better evidence
-            than a mark somebody left by hand, and no evidence at all beside the
-            realm's own count. See `stepSaid`.
-          */
-          said={view.questSaid}
-          onGoTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
-          /*
-            Addressed like the Reference card's: the panel it opens is the
-            *shown* character's, and a step's item and NPC are realm data. On a
-            pinned float belonging to a character on another `world.database`
-            the name would be resolved against the wrong realm, so it stays
-            text there — a control bound to nowhere is worse than none.
-          */
-          /*
-            And the order the step it is on fetches its items in, solved from
-            where this character is standing. Addressed for the book's reason
-            and priced for this character's — a walk chosen for somebody else
-            is one this character may not be able to take.
-          */
-          loadErrand={ctx.loadErrand}
-          loadPlan={ctx.loadPlan}
-          /*
-            And the run of that plan (todo 102): pressed on the card, carried
-            by main, drawn from the progress main pushes for this character.
-          */
-          run={view.questRun}
-          runPlan={ctx.runPlan}
-          stopRun={ctx.stopRun}
-          loadQuests={ctx.loadQuests}
-          onName={ctx.chooseOnMap === null ? null : ctx.inspect}
-          realmAt={ctx.realmAt}
-          session={ctx.session}
-        />
-      );
-    case 'hunting':
-      /*
-       * Unconditional, like the quests: a realm with no lair within reach is a
-       * fact the card states. Put away by default; the palette's *Where should
-       * I hunt?* brings it out. Addressed like the book, and its two actions
-       * are the shown character's only, for `chooseOnMap`'s reason.
-       */
-      return (
-        <HuntingCard
-          {...chrome}
-          chooseOnMap={ctx.chooseOnMap}
-          createLoop={ctx.chooseOnMap === null ? null : ctx.createHunt}
-          hereKey={
-            character.room.map === null || character.room.number === null
-              ? null
-              : `${character.room.map}/${character.room.number}`
-          }
-          loadHunting={ctx.loadHunting}
-          runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
-          session={ctx.session}
-        />
-      );
-    case 'stats':
-      /*
-       * Unconditional: it has something true to say from the first blow, and
-       * *nothing yet* is itself the answer for a character that has not swung.
-       * It is put away by default instead, so the rail is not spent on it.
-       */
-      return (
-        <StatsCard
-          {...chrome}
-          baseline={view.statsBase}
-          character={character}
-          onReset={ctx.resetStats}
-          session={ctx.session}
-        />
-      );
-    case 'reference':
-      return (
-        <ReferenceCard
-          {...chrome}
-          level={character.progress.level}
-          lookup={ctx.lookupName}
-          /*
-            Addressed like `lookup` and `onRoom` beside it: the panel it opens
-            is the *shown* character's, and this card's whole content is realm
-            data. On a pinned float belonging to a character on another
-            `world.database`, a monster clicked in `Dropped by` would otherwise
-            be resolved against the wrong realm — so it stays text there, which
-            is what a control bound to nowhere should be.
-          */
-          onName={ctx.chooseOnMap === null ? null : ctx.inspect}
-          onRoom={ctx.chooseOnMap}
-          realm={character.realm}
-          supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
-        />
-      );
-    case 'conversation':
-      return (
-        <ConversationCard
-          {...chrome}
-          messages={view.talk}
-          session={ctx.session}
-          // Only while there is somewhere for it to go. A composer on an
-          // offline character is a box that silently does nothing, and the
-          // backlog is still worth reading without one.
-          onSend={ctx.inGame ? ctx.onSend : undefined}
-          onMacro={ctx.inGame ? ctx.onMacro : undefined}
-          macroQueued={
-            view.automation.queue.pending.filter((intent) => intent.typed === true).length
-          }
-          onDropMacro={ctx.dropMacro}
-          onSelect={ctx.selectPlayer}
-          // The `original` layout quotes the realm's whole sentence, so the
-          // names in it are found the way the Alerts card finds them — through
-          // the console's own index, so the two cannot disagree about what is
-          // a name.
-          inspect={ctx.inspect}
-          names={ctx.nameIndex}
-          character={character}
-        />
-      );
-    case 'session':
-      return <SessionCard {...chrome} meter={ctx.meter} size={ctx.size} state={view.state} />;
-    case 'link':
-      return (
-        <LinkCard
-          {...chrome}
-          events={view.telnet}
-          negotiated={view.state.negotiated}
-          quiet={ctx.quiet}
-        />
-      );
-    case 'toolbar':
-      return (
-        <ToolbarCard
-          {...chrome}
-          onPinButton={ctx.pinToolbarButton}
-          pinnedButtons={ctx.toolbarPinned}
-          subject={ctx.toolbar}
-        />
-      );
-    case 'automation':
-      return <AutomationCard {...chrome} automation={view.automation} />;
-    case 'stream':
-      return <StreamCard {...chrome} lines={view.lines} quiet={ctx.quiet} />;
-    default: {
-      /*
-       * Exhaustive, and a compile error if it stops being.
-       *
-       * A card id in the vocabulary with no case here would render nothing,
-       * for ever, while still appearing in the picker and the palette as
-       * something to add — a control that does nothing and says nothing.
-       * The same shape as a guard field the parser does not know and a
-       * block type nothing produces; this one the type system can catch.
-       */
-      const unreachable: never = id;
-      return unreachable;
-    }
-  }
-}
-
-/**
- * Another character's pinned floats, drawn over the console beside the shown
- * character's. A component per character rather than a loop of hooks: each
- * layout is that character's own, read by the same hook the rail uses.
- */
-function PinnedFloats({
-  sid,
-  boxRef,
-  render,
-  onStreamFloat
-}: {
-  sid: SessionId;
-  boxRef: React.RefObject<HTMLElement>;
-  render(id: CardId, sid: SessionId, layout: CardLayoutApi): ReactNode;
-  /** Whether this character's pinned floats include the Stream card. */
-  onStreamFloat(sid: SessionId, has: boolean): void;
-}) {
-  const layout = useCardLayout(sid);
-  /*
-   * Reported upward because the line feed is per *window*: only this component
-   * reads this character's layout, and the window-level interest has to count
-   * a pinned stream float or it would quietly freeze with the rail closed.
-   */
-  const hasStream = layout.floats.some((float) => float.pinned === true && float.id === 'stream');
-  useEffect(() => {
-    onStreamFloat(sid, hasStream);
-    return () => onStreamFloat(sid, false);
-  }, [sid, hasStream, onStreamFloat]);
-  return (
-    <FloatLayer
-      boxRef={boxRef}
-      layout={layout}
-      only={(float) => float.pinned === true}
-      render={(id) => render(id, sid, layout)}
-    />
-  );
-}
 
 export default function App() {
   const api = window.mudengine;
@@ -1148,35 +110,56 @@ export default function App() {
    */
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
-  const [views, setViews] = useState<Record<SessionId, SessionView>>({});
+
+  const { config, path: configPath, loadedAt } = useConfig();
+
+  const [size, setSize] = useState<TerminalSize>({ cols: 80, rows: 24 });
 
   /**
-   * The characters on screen, one per pane, and which pane the keyboard is
-   * talking to.
+   * Every mounted terminal, by character.
    *
-   * Flat and at most four: a recursive split tree needs a layout algebra, drag
-   * handles and a serialisation format, and pays that back for someone tiling
-   * six documents rather than watching four characters. See docs/profiles.md
-   * §7.3.
+   * They all stay mounted (see `SessionTerminal`), so this is how the window
+   * reaches the one it is showing — to focus it, to search it, or to print an
+   * engine message into it.
    */
-  const [paneIds, setPaneIds] = useState<SessionId[]>([]);
-  const [focusedPane, setFocusedPane] = useState(0);
+  const terminals = useRef(new Map<SessionId, TerminalHandle>());
+  /** A sentence into one character's console: a refusal, said where it applies. */
+  const noticeTo = useCallback((sid: SessionId, message: string): void => {
+    terminals.current.get(sid)?.notice(message);
+  }, []);
 
   /**
-   * The panes, filtered to characters that are still loaded.
+   * Close a character's tab.
    *
-   * Derived rather than corrected in place: a character closing while it is on
-   * screen must not leave a pane pointing at an id nothing answers to, and
-   * there is always at least one pane while there is at least one character.
+   * Refused while it is connected, and it says so rather than asking. The
+   * character is right there in the command strip with a Disconnect button, and
+   * a confirmation dialog for something one click away is a dialog people learn
+   * to dismiss without reading — which is exactly the wrong habit for the one
+   * gesture that can drop a character in a dangerous room.
    */
-  const panes = useMemo(() => {
-    const live = paneIds.filter((id) => sessions.some((entry) => entry.id === id));
-    if (live.length > 0) return live;
-    return sessions.length > 0 ? [sessions[0]!.id] : [];
-  }, [paneIds, sessions]);
+  const closeSession = useCallback(
+    (id: SessionId) => {
+      void api.unloadProfile(id).then((refused) => {
+        if (refused) noticeTo(id, t('notices.session.closeRefused', { refusalReason: refused }));
+      });
+    },
+    [api, noticeTo]
+  );
 
-  const paneAt = Math.min(focusedPane, Math.max(0, panes.length - 1));
-  const session = panes[paneAt] ?? NO_SESSION;
+  /** The characters on screen, one per pane, and which pane the keyboard is talking to. */
+  const {
+    panes,
+    paneAt,
+    session,
+    paneFlow,
+    layersRef,
+    showSession,
+    stepSession,
+    focusPane,
+    addPane,
+    turnPanes,
+    closePane
+  } = usePanes(sessions, size.cols, noticeTo);
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;
@@ -1197,24 +180,13 @@ export default function App() {
    */
   const [profilesKnown, setProfilesKnown] = useState(false);
 
+  /** What each fact arriving for a character is worth saying, by the player's own rows. */
+  const alerts = useAlerts(config.ui.vitals, config.ui.alerts);
+  /** The facts about every character, kept for every character. */
+  const { views, patchView, applySnapshot, resetStats } = useSessionViews(api, alerts, panes);
+
   const view = views[session] ?? EMPTY_VIEW;
-  const { state, character, walk, automation, lines } = view;
-  const telnetEvents = view.telnet;
-  const [size, setSize] = useState<TerminalSize>({ cols: 80, rows: 24 });
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  // Stable, because the status rail is memoised and an arrow here re-drew it
-  // on every commit of the window.
-  const openPalette = useCallback(() => setPaletteOpen(true), []);
-  /*
-   * The Loops modal. A plain `useState`, deliberately not a remembered
-   * preference: it is a thing reached for, used and put down — the shape the
-   * diagnostics rail settled on — and a modal that reopened itself on every
-   * launch because somebody once looked at it is chrome nobody asked for.
-   */
-  const [loopsOpen, setLoopsOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [routeOpen, setRouteOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { state, character, walk, automation } = view;
   /**
    * The client thinks the character in the realm is not the one its records are
    * about, and is asking.
@@ -1225,68 +197,7 @@ export default function App() {
    * noticed*.
    */
   const [resetAsked, setResetAsked] = useState<Addressed<ResetNotice> | null>(null);
-  /**
-   * The character has wandered a long way from what it was walking, and play
-   * is asking before it walks it back. Null while nothing has been asked.
-   *
-   * Held in the window rather than in main, like `resetAsked` beside it: main
-   * decided there was a question (it is the only side that can measure the
-   * distance) and this is the window holding it until somebody answers. The
-   * loop the picker named goes with it, so pressing *walk it* presses exactly
-   * the play that was pressed.
-   */
-  const [wandered, setWandered] = useState<
-    ({ session: SessionId; loop: string | null } & MovementConfirm) | null
-  >(null);
-  /*
-   * Which character the settings screen opens on.
-   *
-   * `null` means "wherever it was", which is what `Ctrl/Cmd ,` and the palette
-   * want — reopening the screen on the character you were last editing. A tab's
-   * own menu names one, because "edit *this* character" is the whole point of
-   * reaching it from the tab rather than from the palette.
-   */
-  const [settingsAt, setSettingsAt] = useState<string | null>(null);
-  /** A destination picked off the map, planned when the panel opens. */
-  const [routeTarget, setRouteTarget] = useState<WorldRoom | null>(null);
-  /** A room name clicked in the console that named more than one room. */
-  const [routeSearch, setRouteSearch] = useState<string | null>(null);
-  const [searchResult, setSearchResult] = useState<SearchResult | undefined>(undefined);
-  /** The name last clicked on a card, and where, so the answer can open beside it. */
-  const [asked, setAsked] = useState<Asked | null>(null);
-  /**
-   * The Player flyout: whose it is about, which character's listing it was
-   * opened from, and where on screen. One at a time, like the reference
-   * slide-out, and **not** remembered across launches, unlike a card's
-   * filters: a filter is a standing choice and is remembered, a find is a
-   * question being asked right now and is not — and a clicked name is a find.
-   * The registry it names dies with the session anyway
-   * (`src/shared/players.ts`), so a stored name would point at nobody on every
-   * launch.
-   */
-  const [flyout, setFlyout] = useState<PlayerAsked | null>(null);
-  /**
-   * The Gang flyout, on the same terms as the Player one and mutually exclusive
-   * with it: a gang's panel is clicked *through* to a person's, and two panels
-   * hanging off two names is two things to put away and no way to say which
-   * Escape means.
-   */
-  const [gangFlyout, setGangFlyout] = useState<GangAsked | null>(null);
-  /**
-   * The room quick view: which room, where its panel hangs, and whether a
-   * click nailed it down.
-   *
-   * The fourth panel, on the same one-at-a-time terms as the other three. What
-   * is different is how it opens: a pointer resting on a room rather than a
-   * click on a name, so it also carries `settled` — a hovered panel goes when
-   * the pointer leaves it and the room, and a clicked one stays until it is
-   * dismissed like any other.
-   */
-  const [peek, setPeek] = useState<RoomAsked | null>(null);
-  /** The linger: the pointer has left, and the panel goes unless it comes back. */
-  const linger = useRef<number | undefined>(undefined);
 
-  const { config, path: configPath, loadedAt } = useConfig();
   const [internalConfig, setInternalConfig] = useState<InternalConfig>(DEFAULT_INTERNAL);
   useEffect(() => {
     /*
@@ -1335,123 +246,6 @@ export default function App() {
      */
   }, [api, session, loadedAt, profiles]);
 
-  /*
-   * The shipped shelf, fetched the first time the modal is opened and kept.
-   *
-   * Not at launch: it is four hundred and twenty loops, and most sessions
-   * never open this — the same reason the settings screen asks for it on the
-   * Movement tab rather than carrying it in the snapshot. Kept afterwards
-   * because the file is inside the application and changes only when the
-   * application does, which is `LoopCatalogue`'s own reason for reading it
-   * once.
-   */
-  const [catalogue, setCatalogue] = useState<Loop[] | null>(null);
-  useEffect(() => {
-    if (!loopsOpen || catalogue !== null) return;
-    let stale = false;
-    void api
-      .loopCatalogue()
-      .then((list) => {
-        if (!stale) setCatalogue(list);
-      })
-      .catch((error: unknown) => {
-        /*
-         * An empty shelf, said out loud, rather than "Reading the loops…" for
-         * ever. `LoopCatalogue` already answers a missing file with an empty
-         * list, so reaching here means the call itself failed — and a modal
-         * left spinning is a feature that looks broken with nothing anywhere
-         * saying why. The character's own loops are still listed, which is
-         * what makes an empty shelf usable rather than fatal.
-         */
-        if (stale) return;
-        setCatalogue([]);
-        terminals.current
-          .get(session)
-          ?.notice(t('loops.catalogueFailed', { reason: String(error) }));
-      });
-    return () => {
-      stale = true;
-    };
-  }, [api, loopsOpen, catalogue, session]);
-
-  /*
-   * The shelf and this character's own, as the rows the modal draws.
-   *
-   * Memoised on both, so a status line republishing `character` does not
-   * rebuild four hundred rows — the reason `phasesKey` is memoised on its own
-   * beside the palette's commands.
-   */
-  const loopChoices = useMemo(() => loopRows(catalogue ?? [], loops), [catalogue, loops]);
-
-  /*
-   * Where this character is, for the sections the modal draws above the areas.
-   *
-   * `view.loop.name` outlives the run it named — `stopped` keeps it, which is
-   * the same reason the Navigation card's Loop face keeps showing a loop after
-   * it has ended — so this is *the last loop walked*, not *the loop running*,
-   * which is the one somebody reaching for this modal most often wants back.
-   * Null before a session has run one, and the section is then simply absent.
-   *
-   * The room is taken from the tracker as it stands: the name the server
-   * printed and the coordinates the client resolved, each independently null.
-   * Neither is repaired here — a room the client has not placed matches no
-   * stop, which is right, because "I do not know where you are" must not come
-   * out as "every loop starts here". Memoised on the three values rather than
-   * on `character`, so a status line arriving twice a second does not re-group
-   * four hundred rows.
-   */
-  const loopHere = useMemo<LoopHere>(
-    () => ({
-      recent: view.loop.name,
-      roomName: character.room.name,
-      at:
-        character.room.map === null || character.room.number === null
-          ? null
-          : { map: character.room.map, room: character.room.number }
-    }),
-    [view.loop.name, character.room.name, character.room.map, character.room.number]
-  );
-
-  /*
-   * The live thresholds, readable from a subscription registered once.
-   *
-   * The block and character subscriptions are set up for the window's lifetime
-   * and must not be torn down and rebuilt every time the options file is saved
-   * — a resubscribe drops whatever arrives in the gap. A ref lets the handler
-   * read the current value without becoming a dependency of it.
-   */
-  const vitalsRef = useRef(config.ui.vitals);
-  vitalsRef.current = config.ui.vitals;
-  /*
-   * What this character wants to be alerted about, read the same way and for
-   * the same reason: the subscriptions below are registered once for the
-   * window's lifetime and must not be torn down every time the options file is
-   * saved.
-   */
-  const alertsRef = useRef(config.ui.alerts);
-  alertsRef.current = config.ui.alerts;
-  /*
-   * When each character's alert rows last fired, so a row can stay quiet for
-   * a while afterwards (todo 03).
-   *
-   * A ref rather than state: nothing is drawn from it, it changes on every
-   * notice, and re-rendering the client because a row's clock moved is the
-   * churn the renderer measurements exist to keep out. One map per character,
-   * made on first use, keyed by the row's place in the list so two rows on one
-   * event keep separate clocks.
-   *
-   * Never pruned, and it does not need to be: it holds one entry per row that
-   * has fired, per character this window has seen, which is bounded by the
-   * character list and is a handful of numbers.
-   */
-  const quietRef = useRef(new Map<string, AlertQuiet>());
-  const quietFor = useCallback((id: string): AlertQuiet => {
-    const had = quietRef.current.get(id);
-    if (had) return had;
-    const fresh = alertQuiet();
-    quietRef.current.set(id, fresh);
-    return fresh;
-  }, []);
   const { density, preference, cycle } = useDensity(config.ui.density);
   /*
    * The shown character's theme, when its file states one; the options file's
@@ -1460,74 +254,9 @@ export default function App() {
    */
   const characterTheme = profiles.find((profile) => profile.id === session)?.theme;
 
-  /**
-   * One character's resolved `automation.remotes`, for the Player flyout and
-   * the Gang card.
-   *
-   * Off the *profile*, not off `config`: a character states this sparsely over
-   * the options file, and the global block alone would tell a pinned float that
-   * somebody is trusted when the character it belongs to trusts nobody. The
-   * float rule — every control on it bound to its own character — is the same
-   * reason `theme` is read this way.
-   *
-   * A character with no summary yet falls back to the shipped default, which
-   * trusts nobody: an unknown permission must never read as an allowance.
-   */
-  const remotesFor = useCallback(
-    (id: SessionId): RemotesConfig =>
-      profiles.find((profile) => profile.id === id)?.remotes ?? DEFAULT_CONFIG.automation.remotes,
-    [profiles]
-  );
-  /**
-   * This character's supplies list, resolved, and its display name — read the
-   * way `remotesFor` is and for its reason: a list drawn off the global block
-   * would show every character the same one.
-   */
-  const suppliesFor = useCallback(
-    (id: SessionId): SupplyItem[] =>
-      profiles.find((profile) => profile.id === id)?.supplies.items ?? NO_SUPPLIES,
-    [profiles]
-  );
-  const profileNameFor = useCallback(
-    (id: SessionId): string => profiles.find((profile) => profile.id === id)?.name ?? id,
-    [profiles]
-  );
-  /**
-   * This character's own automation switches, resolved, for the toolbar.
-   *
-   * Read the same way and for the same reason as `remotesFor`: a character
-   * states these sparsely over the options file, so the global block alone
-   * would draw a pinned float's toolbar with the *shown* character's answers.
-   *
-   * A character with no summary yet falls back to the shipped default, which
-   * has everything off — the safe direction, and the same one an unknown
-   * permission takes.
-   */
-  const switchesFor = useCallback(
-    (id: SessionId): AutomationSwitches =>
-      profiles.find((profile) => profile.id === id)?.switches ??
-      automationSwitches(DEFAULT_CONFIG.automation),
-    [profiles]
-  );
-  /**
-   * The ceiling this character rests to, resolved, for the rail's mark.
-   *
-   * Read the same way and for the same reason as `remotesFor` and
-   * `switchesFor`: the rail reports on the characters nobody is looking at, so
-   * a figure taken from the global block would say the same thing for all four
-   * whatever their own files state.
-   *
-   * A character with no summary yet falls back to **0**, and deliberately not
-   * to the shipped default. 0 draws the bare word `resting`, which is the
-   * modest claim; the shipped ceiling is 0.7, and drawing `resting to 70%` for
-   * a character whose file has not arrived would put a specific figure on a tab
-   * on the strength of a guess. Unknown is not the reassuring answer, and here
-   * the reassuring answer is the precise one.
-   */
-  const restToFor = useCallback(
-    (id: SessionId): number => profiles.find((profile) => profile.id === id)?.restTo ?? 0,
-    [profiles]
-  );
+  /** Each character's own resolved settings, off its profile. */
+  const { remotesFor, suppliesFor, profileNameFor, switchesFor, restToFor } =
+    useProfileReaders(profiles);
   /**
    * What this character's percentages are percentages *of*, for the settings
    * screen's fields.
@@ -1607,24 +336,6 @@ export default function App() {
    */
   const [debugOpen, setDebugOpen] = useState(false);
 
-  /**
-   * Characters other than the shown one whose *pinned* floats include the
-   * Stream card. The per-line feed is sent only while something in this window
-   * shows it (see `wantsLineFeed`), and a pinned stream float is the one
-   * consumer the shown character's layout cannot answer for — uncounted, it
-   * would quietly freeze whenever the rail was closed.
-   */
-  const [pinnedStreams, setPinnedStreams] = useState<ReadonlySet<SessionId>>(() => new Set());
-  const noteStreamFloat = useCallback((sid: SessionId, has: boolean) => {
-    setPinnedStreams((prev) => {
-      if (prev.has(sid) === has) return prev;
-      const next = new Set(prev);
-      if (has) next.add(sid);
-      else next.delete(sid);
-      return next;
-    });
-  }, []);
-
   /** Same precedence as density and theme: remembered, overridden by the file. */
   const [tabSide, setTabSide] = useOverridablePreference<RailSide>(
     'mudengine.tabs',
@@ -1648,20 +359,6 @@ export default function App() {
   const railSide: 'left' | 'right' = tabSide === 'right' ? 'left' : 'right';
 
   /**
-   * Stacked or side by side.
-   *
-   * Stacked is the default because rows are cheap and columns are not: the
-   * console needs 80 of them and no server in this family will format to fewer.
-   * That is the opposite of the browser convention, and it follows from the
-   * game rather than from taste.
-   */
-  const [paneFlow, setPaneFlow] = useOverridablePreference<PaneFlow>(
-    'mudengine.panes',
-    'rows',
-    (value): value is PaneFlow => value === 'rows' || value === 'columns'
-  );
-
-  /**
    * How this character's rail is arranged, remembered per character.
    *
    * Which cards are on it, in what order, which have been lifted off onto the
@@ -1678,90 +375,23 @@ export default function App() {
    */
   const widths = usePaneWidths();
   const [resizing, setResizing] = useState(false);
-  const rangeFor = useCallback(
-    (which: 'rail' | 'tabs' | 'above' | 'below'): SplitRange => {
-      const box = layersRef.current;
-      if (which === 'above' || which === 'below') {
-        // A strip takes rows from the console; it keeps its own floor of them.
-        const current = heightOf(`.dock-${which} > .card`, DOCK_RANGE.min);
-        if (!box || size.rows <= 0) return DOCK_RANGE;
-        return ceilingFor(
-          DOCK_RANGE,
-          current,
-          box.clientHeight,
-          box.clientHeight / size.rows,
-          CONSOLE_ROWS
-        );
-      }
-      const base = which === 'rail' ? RAIL_RANGE : TAB_RAIL_RANGE;
-      const current = widthOf(
-        which === 'rail' ? '.workspace > .rail' : '.workspace > .tab-rail',
-        base.min
-      );
-      if (!box || size.cols <= 0) return base;
-      return ceilingFor(base, current, box.clientWidth, box.clientWidth / size.cols);
-    },
-    [size.cols, size.rows]
-  );
   const workspaceRef = useRef<HTMLDivElement>(null);
   const drag = useCardDrag(cards, workspaceRef);
 
-  /*
-   * Read through refs by the cached chrome and callback bundles below, which
-   * are built once and must not go stale: a closure that captured `cards` or
-   * `drag` by value would act on the layout as it stood when the card was
-   * first drawn. The render-time assignment is the pattern `TerminalView`'s
-   * handlers already use.
-   */
-  const cardsRef = useRef(cards);
-  cardsRef.current = cards;
-  const dragRef = useRef(drag);
-  dragRef.current = drag;
   // The corner grip on a rail card, the same shape as the float's: one axis,
-  // stored as a fraction of the rail. Through a ref for the reason `dragRef`
-  // is — a card's chrome is cached and must not close over a stale gesture.
+  // stored as a fraction of the rail.
   const resize = useCardResize(cards);
-  const resizeRef = useRef(resize);
-  resizeRef.current = resize;
-  // A put-away card's row is a handle too (see `CardPicker`); through the
-  // ref so the picker's props hold still between drags.
-  const grabCard = useCallback(
-    (id: CardId, event: React.PointerEvent<HTMLElement>) =>
-      dragRef.current.begin(id, event, { fromControl: true }),
-    []
-  );
-  /**
-   * A put-away card brought out over the console rather than onto the rail —
-   * the second control on every row of the picker's list.
-   *
-   * Centred on the workspace, from the float's own shipped size, so no pixel
-   * or fraction constant is invented for the position. Two cards floated in a
-   * row land on each other; the second is `raise`d above the first, which is
-   * both visible and what a person who just asked for it expects to see.
-   * Cascading them would need a step nothing measures.
-   */
-  const floatCard = useCallback((id: CardId) => {
-    cardsRef.current.lift(id, {
-      x: (1 - DEFAULT_FLOAT.w) / 2,
-      y: (1 - DEFAULT_FLOAT.h) / 2
-    });
-    cardsRef.current.raise(id);
-  }, []);
 
-  /*
-   * What each splitter reads when a gesture or a key needs the pane's width,
-   * and the range it is clamped to. Stable callbacks, because the splitters
-   * are memoised and an arrow per render redrew all of them on every commit;
-   * the measuring itself moved out of the render path with them — see
-   * `Splitter`.
-   */
-  const rangeForTabs = useCallback(() => rangeFor('tabs'), [rangeFor]);
-  const rangeForRail = useCallback(() => rangeFor('rail'), [rangeFor]);
-  const rangeForAbove = useCallback(() => rangeFor('above'), [rangeFor]);
-  const rangeForBelow = useCallback(() => rangeFor('below'), [rangeFor]);
-  const resetTabs = useCallback(() => widths.setTabs(Number.NaN), [widths.setTabs]);
-  const resetAbove = useCallback(() => widths.setAbove(Number.NaN), [widths.setAbove]);
-  const resetBelow = useCallback(() => widths.setBelow(Number.NaN), [widths.setBelow]);
+  /** What each splitter measures, and the range a drag of it may move within. */
+  const {
+    rangeForTabs,
+    rangeForRail,
+    rangeForAbove,
+    rangeForBelow,
+    resetTabs,
+    resetAbove,
+    resetBelow
+  } = usePaneRanges(layersRef, size, widths);
 
   const { pressure, meter, record, reset } = useStreamPressure();
 
@@ -1821,42 +451,15 @@ export default function App() {
     root.setProperty('--font-terminal', terminalFonts);
   }, [uiFonts, config.ui.font.size, terminalFonts]);
 
-  /**
-   * The terminal's handle, published once xterm has mounted. Chunks that arrive
-   * before then are buffered rather than dropped, so nothing is lost if the
-   * main process pushes during the first paint.
-   */
-  /**
-   * Every mounted terminal, by character.
-   *
-   * They all stay mounted (see `SessionTerminal`), so this is how the window
-   * reaches the one it is showing — to focus it, to search it, or to print an
-   * engine message into it.
-   */
-  const terminals = useRef(new Map<SessionId, TerminalHandle>());
   /** Bumped when a terminal registers or leaves, so effects can react to it. */
   const [handleTick, setHandleTick] = useState(0);
   const pendingNotices = useRef<string[]>([]);
 
   /** The character on screen, for callbacks that must not go stale. */
-  /**
-   * Which characters are on screen right now.
-   *
-   * A set rather than a single id, because a split shows several at once and
-   * all of them count as seen. Read through a ref for the same reason
-   * `vitalsRef` is: these subscriptions are registered for the window's
-   * lifetime and must not be rebuilt every time somebody changes tab.
-   */
-  const shownRef = useRef<Set<SessionId>>(new Set());
-
   const activeRef = useRef(session);
   useEffect(() => {
     activeRef.current = session;
   }, [session]);
-
-  /** For the line-feed catch-up, which must not re-run on a roster push. */
-  const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
 
   const registerHandle = useCallback((id: SessionId, handle: TerminalHandle | null) => {
     if (handle) terminals.current.set(id, handle);
@@ -1898,60 +501,83 @@ export default function App() {
     });
   }, [activeTerminal]);
 
-  /**
-   * A directory of the client's, drawn in the window.
-   *
-   * Two things open it. Revealing a path — the options file, the characters
-   * folder, the logs — answers `listed` from a host that has no file manager
-   * to open on the machine the files are on, and the listing is what the
-   * window shows instead of nothing. And the realm picker in web mode: the
-   * bridge asks the window for one (`lib/pickers.ts`) because the disk being
-   * chosen from is the client's, and `pick` is the promise it is waiting on.
-   */
-  const [browsing, setBrowsing] = useState<{
-    start: string | null;
-    pick: ((file: string | null) => void) | null;
-    /** The dialog control holding the caret when the browser was asked for, if any. */
-    opener: HTMLElement | null;
-  } | null>(null);
-
   /*
-   * The browser hands the caret back to the dialog that asked for it, and only
-   * otherwise to the terminal: the settings screen is still up behind a realm
-   * picker, and a caret sent past it into the game left that screen deaf to
-   * its own Escape (2026-09-07). `mudengine-ui` § Focus lives in the terminal.
+   * The modals that hold the caret and hand it back on their own exit, each
+   * with the state it owns (todo 732).
    */
-  const openBrowser = useCallback(
-    (start: string | null, pick: ((file: string | null) => void) | null) => {
-      const active = document.activeElement;
-      const opener =
-        active instanceof HTMLElement && active.closest('[role="dialog"]') !== null ? active : null;
-      setBrowsing({ start, pick, opener });
-    },
-    []
-  );
+  const {
+    open: paletteOpen,
+    openPalette,
+    close: closePalette,
+    toggle: togglePalette
+  } = useCommandPalette(returnFocus);
+  const {
+    open: routeOpen,
+    destination: routeTarget,
+    search: routeSearch,
+    close: closeRoute,
+    openOn: openRouteOn,
+    openCold: openRoute,
+    toggleCold: toggleRoute
+  } = useRoutePanel(returnFocus);
+  const {
+    open: searchOpen,
+    result: searchResult,
+    setResult: setSearchResult,
+    openSearch,
+    close: closeSearch,
+    toggle: toggleSearch,
+    run: runSearch
+  } = useSearchBar(activeTerminal, returnFocus);
+  const {
+    open: loopsOpen,
+    toggle: toggleLoops,
+    close: closeLoops,
+    loading: loopsLoading,
+    rows: loopChoices,
+    here: loopHere
+  } = useLoopsModal({
+    api,
+    session,
+    loops,
+    recent: view.loop.name,
+    room: character.room,
+    returnFocus,
+    say: noticeTo
+  });
 
-  const closeBrowser = useCallback(() => {
-    const opener = browsing?.opener ?? null;
-    setBrowsing(null);
-    if (opener !== null && opener.isConnected) window.requestAnimationFrame(() => opener.focus());
-    else returnFocus();
-  }, [browsing, returnFocus]);
+  /** What the shown character asks its realm. */
+  const {
+    searchRooms,
+    walkRoute,
+    collectThenWalk,
+    loadMap,
+    loadRoomBrief,
+    loadWearer,
+    lookupName,
+    ask,
+    forget,
+    routeTo
+  } = useShownRealm({ api, session });
+  /** The route panel opened on a room pointed at, by a map, a name or a quest step. */
+  const { chooseOnMap, chooseRoomNamed, goToRoom } = useRouteOpeners({ api, session, openRouteOn });
+  /**
+   * Where this realm's find log says something was turned up, for the route
+   * panel's picture — the mark the Map card draws from the same log.
+   *
+   * Here rather than inside the panel because the panel belongs to the
+   * character on screen and nothing else; a *card* computes its own, addressed
+   * at the character it was drawn for, which is the rule every other world
+   * fact in this file follows.
+   */
+  const foundRooms = useMemo(() => [...roomsWithFinds(view.finds)], [view.finds]);
 
-  /** Reveal through the host, and show the listing where the host could not open one. */
-  const reveal = useCallback(
-    (ask: () => Promise<Revealed>) => {
-      void ask().then((revealed) => {
-        if (revealed.how === 'listed') openBrowser(revealed.path, null);
-      });
-    },
-    [openBrowser]
-  );
+  /** The panels that hang off a name, one at a time. */
+  const slideOuts = useSlideOuts(session, chooseOnMap);
+  const { asked, flyout, inspect, selectPlayer, selectGang, peekRoom, peekPlanned, endPeek } =
+    slideOuts;
 
-  useEffect(() => {
-    registerRealmPicker(() => new Promise((resolve) => openBrowser(null, resolve)));
-    return () => registerRealmPicker(null);
-  }, [openBrowser]);
+  const { browsing, close: closeBrowser, reveal } = useHomeBrowser(returnFocus);
 
   /**
    * Say the client is ready exactly once.
@@ -1989,109 +615,6 @@ export default function App() {
   }, [session, handleTick]);
 
   /**
-   * View patches queue and flush together, at most every
-   * `tuning.chromeFlushMs` — chrome must never be able to pace the stream.
-   *
-   * Applying each push as its own state update re-rendered every card on the
-   * rail per pushed fact, and on a busy realm that is many times a second: the
-   * renderer spent its whole budget redrawing chrome and the console's own
-   * writes — the player's echoed keystrokes among them — queued behind it.
-   * Leading edge, so a lone change still paints at once; the sweep behind it
-   * catches whatever a burst adds. One queue for every caller, because a
-   * direct write landing between queued patches would apply them out of the
-   * order they were pushed in.
-   */
-  const pendingPatches = useRef(new Map<SessionId, Array<(view: SessionView) => SessionView>>());
-  const patchTimer = useRef<number | null>(null);
-  const flushPatches = useCallback(() => {
-    const batch = pendingPatches.current;
-    if (batch.size === 0) return;
-    pendingPatches.current = new Map();
-    setViews((prev) => {
-      const next = { ...prev };
-      for (const [id, patches] of batch) {
-        next[id] = patches.reduce((view, patch) => patch(view), next[id] ?? EMPTY_VIEW);
-      }
-      return next;
-    });
-  }, []);
-  const patchView = useCallback(
-    (id: SessionId, patch: (view: SessionView) => SessionView) => {
-      const batch = pendingPatches.current;
-      const queued = batch.get(id);
-      if (queued) queued.push(patch);
-      else batch.set(id, [patch]);
-      if (patchTimer.current !== null) return;
-      flushPatches();
-      patchTimer.current = window.setTimeout(() => {
-        patchTimer.current = null;
-        flushPatches();
-      }, tuning().chromeFlushMs);
-    },
-    [flushPatches]
-  );
-  useEffect(
-    () => () => {
-      if (patchTimer.current !== null) window.clearTimeout(patchTimer.current);
-    },
-    []
-  );
-
-  const applySnapshot = useCallback(
-    (id: SessionId, snapshot: AttachSnapshot) => {
-      patchView(id, (was) => ({
-        state: snapshot.state,
-        character: snapshot.character,
-        walk: snapshot.walk,
-        loop: snapshot.loop,
-        automation: snapshot.automation,
-        verdict: snapshot.verdict,
-        asks: snapshot.asks,
-        /*
-         * Carried, not reset. A snapshot is this window attaching to a session
-         * that was already running, and main's totals are the same monotonic
-         * ones the baseline was taken from — so a reading this window had
-         * survives the attach — and one written down before the launch is
-         * read back here, since main's totals outlive the launch too. A
-         * baseline older than the *totals* is a different matter and is
-         * discarded by the card's own `stale` test.
-         */
-        statsBase: was.statsBase ?? recallStatsBase(id),
-        lines: snapshot.lines.slice(-tuning().lineLogLimit),
-        telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
-        // The conversation log's tail: main keeps what was said on disk, so a
-        // restart restores the Talk card instead of starting it empty.
-        talk: snapshot.talk.slice(-tuning().talkLimit),
-        notices: [],
-        // A window that has just attached has not missed anything: the
-        // backscroll it replays is the record, and a count of alerts raised
-        // before it existed is a number nobody can act on.
-        unseen: { critical: 0, warning: 0, latest: null },
-        learned: snapshot.learned,
-        finds: snapshot.finds,
-        questSaid: snapshot.questSaid,
-        questRun: snapshot.questRun
-      }));
-    },
-    [patchView]
-  );
-
-  /*
-   * Putting a character on screen is what "seen" means, so its unseen count
-   * clears here rather than on a click: a split that brings a second character
-   * up, a pane closing, and a tab switch are all the same event as far as
-   * having looked at it is concerned.
-   */
-  useEffect(() => {
-    shownRef.current = new Set(panes);
-    for (const id of panes) {
-      patchView(id, (v) =>
-        v.unseen.critical === 0 && v.unseen.warning === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }
-      );
-    }
-  }, [panes, patchView]);
-
-  /**
    * Throughput is reported for the character being watched.
    *
    * The status rail describes the slate in front of you; summing four
@@ -2104,75 +627,15 @@ export default function App() {
     [record]
   );
 
-  /**
-   * Whether anything in this window is showing the per-line diagnostics feed.
-   *
-   * `Push.line` is the one push that arrives at stream rate, and only the
-   * Stream card reads it — hidden by default — so main sends it only while
-   * this window has declared interest. Opening the feed re-asks for the
-   * retained lines rather than replaying the pushes missed while it was
-   * closed.
-   */
-  const wantsLineFeed = railOpen || cards.floatOf('stream') !== undefined || pinnedStreams.size > 0;
-  /*
-   * And the debug feed, which is a *second* flag.
-   *
-   * It produces several records per framed line where `Push.line` produces
-   * one, and only `DebugView` subscribes to it — so a window with the
-   * diagnostics rail open, or a pinned Stream float, must not be sent records
-   * nothing in it reads. Told to main on its own edge, and told immediately:
-   * unlike the line feed there is no flap to wait out, because nothing else in
-   * the window can ask for this one.
-   */
-  useEffect(() => {
-    api.debugFeed(debugOpen);
-    return () => api.debugFeed(false);
-  }, [api, debugOpen]);
-  /**
-   * Whether main currently has this window's feed on. A tab switch away from
-   * a character with a pinned stream float reads as *off* for one commit —
-   * the float's report lands a commit later — and acting on that flap would
-   * stop the feed and re-fetch every session per switch. So the on edge is
-   * immediate and skips the catch-up when the feed never actually stopped,
-   * and the off edge waits out a flap before standing down.
-   */
-  const feedOnRef = useRef(false);
-  useEffect(() => {
-    if (wantsLineFeed) {
-      const wasOn = feedOnRef.current;
-      feedOnRef.current = true;
-      api.diagnostics(true);
-      if (wasOn) return;
-      for (const entry of sessionsRef.current) {
-        const sid = entry.id;
-        void api.getLines(sid).then((lines) =>
-          patchView(sid, (v) => {
-            /*
-             * The fetch is a snapshot of a *growing* log, so it must not
-             * replace outright: a line pushed while the fetch was in the air
-             * is applied ahead of this patch, and replacing dropped it from
-             * the one card whose job is to be the faithful record of framing.
-             * Everything at or before the fetch's newest line is superseded
-             * by the fetch; everything after it is kept. `at` guards the seam
-             * too, because `seq` restarts per connection and a stale line
-             * from an older session can carry a higher one.
-             */
-            const fetched = lines.slice(-tuning().lineLogLimit);
-            const newest = fetched[fetched.length - 1];
-            if (!newest) return v;
-            const tail = v.lines.filter((line) => line.seq > newest.seq && line.at >= newest.at);
-            return { ...v, lines: [...fetched, ...tail].slice(-tuning().lineLogLimit) };
-          })
-        );
-      }
-      return;
-    }
-    const settle = window.setTimeout(() => {
-      feedOnRef.current = false;
-      api.diagnostics(false);
-    }, tuning().chromeFlushMs);
-    return () => window.clearTimeout(settle);
-  }, [api, wantsLineFeed, patchView]);
+  /** The per-line and debug feeds, sent only while something here shows them. */
+  const noteStreamFloat = useDiagnosticFeeds({
+    api,
+    sessions,
+    railOpen,
+    streamFloating: cards.floatOf('stream') !== undefined,
+    debugOpen,
+    patchView
+  });
 
   /**
    * Reclaim focus when the window comes back, but only if nothing in the
@@ -2188,200 +651,15 @@ export default function App() {
     return () => window.removeEventListener('focus', onWindowFocus);
   }, [returnFocus]);
 
-  /**
-   * Facts about every character, kept for every character.
-   *
-   * These channels are addressed but not filtered: the tab rail draws vitals
-   * and current action for characters this window is not showing, which is the
-   * point of the rail. They are coalesced and low-rate, so keeping all of them
-   * costs a state update per change rather than per line.
+  /*
+   * What arrives about the client and its roster rather than about a
+   * character's facts, which `useSessionViews` keeps.
    */
   useEffect(() => {
     const off = [
-      api.onState(({ session: id, payload }) =>
-        patchView(id, (v) => {
-          /*
-           * A character that has left the realm without anybody here asking:
-           * the link dropped, or the low-health hang-up acted for a player who
-           * was not there. `endedBy` is the fact, decided in main, because the
-           * alternative is comparing a translated sentence.
-           */
-          const raised = wanted(
-            alertsRef.current,
-            linkNotices(v.state, payload, Date.now(), t),
-            quietFor(id)
-          );
-          return {
-            ...v,
-            state: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
-            unseen: missed(v.unseen, raised, shownRef.current.has(id))
-          };
-        })
-      ),
-      api.onCharacter(({ session: id, payload }) =>
-        patchView(id, (v) => {
-          /*
-           * The one genuinely urgent thing in a MUD is a number, and the server
-           * never announces it — it prints a smaller figure in a status line
-           * that has printed a hundred already. So the alert comes from the
-           * *crossing*, which needs the previous state, which is exactly what a
-           * patch has in hand.
-           *
-           * Thresholds come from the live config through a ref: this
-           * subscription is registered once for the window's lifetime and must
-           * not be torn down and rebuilt every time the options file is saved.
-           */
-          const raised = wanted(
-            alertsRef.current,
-            [
-              ...vitalNotices(v.character, payload, vitalsRef.current, t),
-              // And the player's own numeric watches, on their own figures and
-              // in their own direction (todo 29). Beside the client's three
-              // levels rather than inside them: *above 80% mana* is a thing
-              // somebody wants and a level cannot say.
-              ...watchNotices(v.character, payload, alertsRef.current.rules, t),
-              // And the named ones: an item or a person the player is waiting
-              // for, wherever it turned up.
-              ...namedNotices(v.character, payload, alertsRef.current.rules, t),
-              // Who is in the realm is the other thing that arrives as a state
-              // change rather than as a line worth alerting on: an arrival is a
-              // name, and what the realm thinks of them lands with the next
-              // listing. Both moments are worth reporting and they are not the
-              // same moment.
-              ...rosterNotices(v.character, payload, t),
-              // A hostile in the *room* is not the same fact as one in the realm,
-              // and it is raised from the room because the line that says
-              // somebody walked in does not say what they are.
-              ...roomNotices(v.character, payload, t),
-              /*
-               * And somebody in the party in trouble, which is the reason the
-               * roster matters: three of four characters are unattended, and the
-               * one being watched is not usually the one that is dying.
-               */
-              ...partyNotices(v.character, payload, vitalsRef.current.hp, t)
-            ],
-            quietFor(id)
-          );
-          return {
-            ...v,
-            character: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
-            unseen: missed(v.unseen, raised, shownRef.current.has(id))
-          };
-        })
-      ),
-      api.onWalk(({ session: id, payload }) =>
-        patchView(id, (v) => {
-          // The route reaching where it was going: the one piece of good news
-          // kept, because it is the moment somebody who walked away wants.
-          const raised = wanted(
-            alertsRef.current,
-            // The lap is handed in because a lap never arrives: while it is the
-            // movement, the walk underneath is its own footwork.
-            walkNotices(v.walk, payload, v.loop, Date.now(), t),
-            quietFor(id)
-          );
-          return {
-            ...v,
-            walk: payload,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
-            unseen: missed(v.unseen, raised, shownRef.current.has(id))
-          };
-        })
-      ),
-      api.onLoop(({ session: id, payload }) =>
-        patchView(id, (v) => ({
-          ...v,
-          loop: payload,
-          /*
-           * A lap that has just begun re-bases the Combat Stats card — todo
-           * 01, *"starting a loop should reset combat statistics; restarting a
-           * loop should not"*.
-           *
-           * `lapBegunAt` is the moment the run first stood on the loop, which
-           * is what makes both halves of that sentence one test: `start` clears
-           * it and the first stop reached sets it, while `resume` leaves it
-           * exactly as it was, so a restart moves nothing here. And it is the
-           * *lap* rather than the button, so the twenty-eight steps out from
-           * town are not counted as a stretch the loop earned nothing over.
-           *
-           * The totals as they stand at that instant, which is the same value
-           * the Reset button writes — main's own totals are untouched either
-           * way, so this is a reading being re-based and never data being lost.
-           */
-          statsBase:
-            payload.lapBegunAt !== null && payload.lapBegunAt !== v.loop.lapBegunAt
-              ? rebased(id, v)
-              : v.statsBase
-        }))
-      ),
-      api.onLearned(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, learned: payload }))
-      ),
-      api.onFinds(({ session: id, payload }) => patchView(id, (v) => ({ ...v, finds: payload }))),
-      api.onQuestSaid(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, questSaid: payload }))
-      ),
-      api.onQuestRun(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, questRun: payload }))
-      ),
       // Not folded into a view: it is a question about a character rather than
       // a fact about one, and it is answered once.
       api.onCharacterReset((message) => setResetAsked(message)),
-      api.onAutomation(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, automation: payload }))
-      ),
-      api.onVerdict(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, verdict: payload }))
-      ),
-      api.onAsks(({ session: id, payload }) => patchView(id, (v) => ({ ...v, asks: payload }))),
-      api.onTelnet(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, telnet: capped(v.telnet, payload, tuning().telnetLogLimit) }))
-      ),
-      api.onLine(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, lines: capped(v.lines, payload, tuning().lineLogLimit) }))
-      ),
-      // Facts, read two more ways. Nothing is asked of the server for either:
-      // both are second views of the block feed the terminal already carries.
-      api.onBlock(({ session: id, payload }) => {
-        const conversation = isTalkBlock(payload);
-        // Cheap first: most lines are neither, and reaching into the character's
-        // state for every one of them would put work on the block feed's hot
-        // path for nothing.
-        if (!conversation && !mayNotice(payload)) return;
-        patchView(id, (v) => {
-          /*
-           * Inside the patch, because one notice depends on who threw the
-           * punch: a blow from a monster is the weather, and the same blow from
-           * a *player* opens the five-minute window in which hanging up kills.
-           * The roster that tells them apart is on the view being patched.
-           */
-          const raised = wanted(
-            alertsRef.current,
-            [noticeFor(payload, t, v.character)],
-            quietFor(id)
-          );
-          return {
-            ...v,
-            talk: conversation ? capped(v.talk, payload, tuning().talkLimit) : v.talk,
-            notices: raised.reduce(
-              (log, notice) => capped(log, notice, tuning().noticeLimit),
-              v.notices
-            ),
-            unseen: missed(v.unseen, raised, shownRef.current.has(id))
-          };
-        });
-      }),
       // A notice with no session is about the client rather than a character —
       // an options file that failed to parse belongs to nobody — and still has
       // to be seen, so it is shown wherever the player is looking.
@@ -2399,7 +677,7 @@ export default function App() {
     ];
 
     return () => off.forEach((unsubscribe) => unsubscribe());
-  }, [api, patchView]);
+  }, [api]);
 
   /*
    * The roster is pushed on `clientReady`, but a window that reloads can listen
@@ -2410,75 +688,27 @@ export default function App() {
     void api.listSessions().then(setSessions);
   }, [api]);
 
-  /*
-   * A character is step one; there is no "before you have one".
-   *
-   * With no characters there is no session and no console, so the client's only
-   * job is to help make one — and the way in is the new-character form, opened
-   * here rather than described in a notice somebody has to find. The anonymous
-   * session this replaced was retired 2026-08-29 (see `NO_SESSION`).
-   *
-   * It used to be offered **once per launch** and was closeable, on the
-   * reasoning that closing it is a choice. It is not one: behind it is an empty
-   * window with no rail, no tab and nothing that says what to do, which is
-   * where a fresh installation put somebody who clicked outside the form. So
-   * while there is no character the screen is open and `required`, and the
-   * latch that made the offer once is gone with the choice it was protecting.
-   */
   const mustMakeCharacter = profilesKnown && profiles.length === 0 && sessions.length === 0;
-  useEffect(() => {
-    if (!mustMakeCharacter) return;
-    setSettingsAt(SETTINGS_NEW_CHARACTER);
-    setSettingsOpen(true);
-  }, [mustMakeCharacter]);
+  const {
+    open: settingsOpen,
+    openAt: settingsAt,
+    close: closeSettings,
+    openSettings,
+    editCharacter,
+    newCharacter,
+    manageServers,
+    editGlobal,
+    editDefaults
+  } = useSettingsScreen(mustMakeCharacter, returnFocus);
 
-  /**
-   * The HUD appears on its own, without the diagnostics rail.
-   *
-   * Vitals and Room are what the player reads while playing; putting them
-   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
-   * is therefore present whenever there is *either* HUD content or diagnostics
-   * to show, and each half decides for itself.
-   */
-  /**
-   * Whether the Navigation card is still worth the space it takes.
-   *
-   * A walk or a loop in progress always is. A *finished* walk is news for a
-   * moment and clutter after it — and the card sits above the rest of the
-   * rail, so it moves everything below it for as long as it stays.
-   * `clearAfterSeconds: 0` keeps it, for anyone who would rather dismiss it
-   * themselves.
-   */
-  const [walkStale, setWalkStale] = useState(false);
-  const finished = walk.status === 'arrived' || walk.status === 'stopped';
-  const clearAfter = config.automation.walk.clearAfterSeconds;
-
-  useEffect(() => {
-    setWalkStale(false);
-    if (!finished || clearAfter <= 0) return;
-    // Keyed on the outcome as well as the status, so a second walk that ends
-    // the same way still gets its own moment on screen.
-    const timer = window.setTimeout(() => setWalkStale(true), clearAfter * 1000);
-    return () => window.clearTimeout(timer);
-  }, [finished, clearAfter, walk.reason, walk.destination, walk.done]);
-
-  /*
-   * Either half is reason enough, because they are one card.
-   *
-   * The walk half fades once it has been finished for `clearAfterSeconds`. The
-   * loop half is a set of *controls*, so it shows while there is something to
-   * control: a loop running, paused or just stopped, or a character in the
-   * realm with loops of its own to start. With neither half the card is chrome,
-   * and null.
-   *
-   * One test rather than two, because two would let the card appear for one
-   * face and disappear for the other — which on a rail is every control below
-   * it moving while somebody reaches for one.
-   */
-  const navigationVisible =
-    (walk.status !== 'idle' && !walkStale) ||
-    view.loop.status !== 'idle' ||
-    (character.phase === 'in-game' && loops.length > 0);
+  /** Whether the Navigation card is worth the space it takes. */
+  const navigationVisible = useNavigationVisible(
+    walk,
+    view.loop,
+    character.phase === 'in-game',
+    loops.length,
+    config.automation.walk.clearAfterSeconds
+  );
 
   const inGame = character.phase === 'in-game';
   /*
@@ -2494,112 +724,38 @@ export default function App() {
    * So the rail keeps its space and says what it is waiting for instead.
    */
   const hudOpen = hudPreference === 'on';
+  /**
+   * The HUD appears on its own, without the diagnostics rail.
+   *
+   * Vitals and Room are what the player reads while playing; putting them
+   * behind a toggle labelled "diagnostics" meant they were never seen. The rail
+   * is therefore present whenever there is *either* HUD content or diagnostics
+   * to show, and each half decides for itself.
+   */
   const railVisible = hudOpen || railOpen;
 
   const connected = state.phase === 'connected';
   const busy = state.phase === 'connecting' || state.phase === 'closing';
 
-  /**
-   * Dial the character being shown.
-   *
-   * No address: where a character connects is a property of the character, and
-   * it lives in that character's file. A target is passed only by the palette's
-   * saved-server entries, which are the ad-hoc path.
-   */
-  const dial = useCallback(
-    (id: SessionId, target?: ConnectionTarget) => {
-      // Only this character's history: a reconnect on one must not wipe what
-      // the tab rail is reporting about the others.
-      patchView(id, (v) => ({ ...v, telnet: [], lines: [], character: EMPTY_CHARACTER }));
-      // The throughput meter reads the character on screen, so it is cleared
-      // only when that is the one being dialled — a reconnect on an unattended
-      // character must not blank the readout for the one being watched.
-      if (id === activeRef.current) reset();
-      void api.connect(id, target);
-    },
-    [api, patchView, reset]
-  );
-
-  const hangUp = useCallback((id: SessionId) => void api.disconnect(id), [api]);
-
-  const handleConnect = useCallback(
-    (target?: ConnectionTarget) => dial(session, target),
-    [dial, session]
-  );
-
-  const handleDisconnect = useCallback(() => hangUp(session), [hangUp, session]);
-
-  /**
-   * Dial or hang up a character from its own tab.
-   *
-   * Addressed, and deliberately not `toggleConnection`: the rail reports on the
-   * characters nobody is looking at, so the one being connected is usually not
-   * the one on screen — and a button that quietly acted on the *shown*
-   * character would disconnect the wrong one, which on this realm costs
-   * something (docs/greatermud/combat.md).
-   *
-   * Refused while a dial or a close is already in flight. `connect()` in main
-   * refuses a second attempt itself, so this is about the button rather than
-   * the socket: one that stays pressable through a fifteen-second dial reads as
-   * one that did nothing.
-   */
-  const toggleSessionConnection = useCallback(
-    (id: SessionId) => {
-      const phase = views[id]?.state.phase ?? 'idle';
-      if (phase === 'connecting' || phase === 'closing') return;
-      /*
-       * **A retry pending counts as connected for this button**, because the
-       * question it answers is *is something dialling this character* and
-       * during a ladder's wait the phase is `closed`. Without it the dial
-       * offered Connect while a reconnect ran to its 999,999th attempt, and
-       * nothing anywhere in the client meant *stop trying* — with a bad
-       * password going out every fifteen seconds if the realm hangs up on one.
-       */
-      if (phase === 'connected' || (sessions.find((s) => s.id === id)?.retrying ?? false)) {
-        hangUp(id);
-      } else dial(id);
-    },
-    [dial, hangUp, sessions, views]
-  );
-
-  /**
-   * Show a different character.
-   *
-   * Sends nothing. The state is already here — every character's facts arrive
-   * whether or not its terminal is on screen — so a switch is a change of view
-   * and never a command. A bare Enter to "refresh" would be a command the player
-   * did not type, and in this game a bare Enter is a full room description that
-   * re-triggers everything listening for one.
-   */
-  const showSession = useCallback(
-    (id: SessionId) => {
-      // Already on screen? Then this is a request to type at it, not to move it.
-      const at = panes.indexOf(id);
-      if (at >= 0) {
-        setFocusedPane(at);
-        return;
-      }
-      setPaneIds(panes.map((current, index) => (index === paneAt ? id : current)));
-    },
-    [paneAt, panes]
-  );
+  /** Dialling and hanging up, the shown character's and any tab's own. */
+  const { dial, hangUp, handleConnect, toggleSessionConnection, toggleConnection } = useConnection({
+    api,
+    session,
+    shown: activeRef,
+    sessions,
+    views,
+    patchView,
+    connected,
+    reset
+  });
 
   /*
    * The alerts worth saying outside the window, for a player who has gone and
-   * done something else. Built from what actually landed in each character's
-   * log rather than raised where the notices are folded in: that happens inside
-   * a state updater, and a notification has to happen exactly once.
+   * done something else. Read from what actually landed in each character's
+   * log (`views`) rather than raised where the notices are folded in: that
+   * happens inside a state updater, and a notification has to happen exactly
+   * once.
    */
-  const alertSubjects = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(views).map(([id, view]) => [
-          id,
-          { notices: view.notices, name: view.character.name }
-        ])
-      ),
-    [views]
-  );
   const openAlerted = useCallback(
     (id: SessionId) => {
       // The window first: a tab switched behind a window nobody can see is a
@@ -2618,7 +774,7 @@ export default function App() {
     [activeTerminal]
   );
   useDesktopAlerts({
-    subjects: alertSubjects,
+    subjects: views,
     // The player's own rows, and the only thing that decides what is raised
     // outside the window: a row marked `notify`, and its own `whileFocused`.
     rules: config.ui.alerts.rules,
@@ -2655,214 +811,8 @@ export default function App() {
     [api]
   );
 
-  const stepSession = useCallback(
-    (delta: number) => {
-      if (sessions.length < 2) return;
-      const at = sessions.findIndex((entry) => entry.id === session);
-      const next = sessions[(at + delta + sessions.length) % sessions.length];
-      if (next) showSession(next.id);
-    },
-    [session, sessions, showSession]
-  );
-
-  /** The element the panes divide, so a split can be measured before it is made. */
-  const layersRef = useRef<HTMLDivElement | null>(null);
-
-  /**
-   * How many columns each pane would get if the slate were divided `count` ways
-   * side by side.
-   *
-   * Arithmetic on a *measured* cell width, never on a constant. There is no
-   * minimum-pane-width in pixels anywhere in this path and there cannot be:
-   * display scaling differs per user, a window can be dragged to a monitor with
-   * another scale factor, and the terminal font size is a setting. The live
-   * terminal's own geometry is the only honest source for what a column costs.
-   *
-   * A prediction only — once the split lands each pane measures itself for real
-   * and reality wins. This exists to avoid making the mess, not to be believed
-   * afterwards.
-   */
-  const columnsIfSplit = useCallback(
-    (count: number): number | null => {
-      const box = layersRef.current;
-      if (!box || size.cols <= 0) return null;
-      const cell = box.clientWidth / size.cols;
-      if (!Number.isFinite(cell) || cell <= 0) return null;
-      // The gaps between panes are not available to any of them.
-      const gap = 8 * (count - 1);
-      return Math.floor((box.clientWidth - gap) / count / cell);
-    },
-    [size.cols]
-  );
-
-  /**
-   * The one gate on going side by side: predicts the split, and when each
-   * console would fall under the floor, prints the caller's refusal into the
-   * shown terminal. True means refused, so the caller stands down. Shared by
-   * `addPane` and `turnPanes` because the arithmetic and the reporting must
-   * not drift apart — only the remedy clause differs.
-   */
-  const refuseNarrowSplit = useCallback(
-    (count: number, message: (columns: number) => string): boolean => {
-      const predicted = columnsIfSplit(count);
-      if (predicted === null || predicted >= MIN_COLUMNS) return false;
-      terminals.current.get(session)?.notice(message(predicted));
-      return true;
-    },
-    [columnsIfSplit, session]
-  );
-
-  /**
-   * Put another character on screen beside this one.
-   *
-   * Refused when the slate cannot carry it side by side, with the only two
-   * remedies there are: stack instead, or use a smaller terminal font. There is
-   * no third — the server never negotiates NAWS, so "tell it we are narrower"
-   * is not a thing that exists.
-   */
-  const addPane = useCallback(
-    (id: SessionId) => {
-      if (panes.length >= tuning().maxPanes || panes.includes(id)) return;
-
-      if (
-        paneFlow === 'columns' &&
-        refuseNarrowSplit(panes.length + 1, (columns) =>
-          t('notices.panes.splitTooNarrowStack', { columns, minColumns: MIN_COLUMNS })
-        )
-      ) {
-        return;
-      }
-
-      setPaneIds([...panes, id]);
-      setFocusedPane(panes.length);
-    },
-    [paneFlow, panes, refuseNarrowSplit]
-  );
-
-  /**
-   * Turn the split, if the slate can carry it.
-   *
-   * Guarded for the same reason `addPane` is, and it is the same gate: asking
-   * for side by side is a deliberate action, so it is refused with a reason
-   * rather than granted and then complained about. Turning *back* to stacked is
-   * always allowed — it can only ever give a console more room.
-   *
-   * This is not the same case as a split that drifts under the floor because
-   * the window was dragged narrower. That one is reported and never corrected:
-   * a layout that reorganises itself under someone's hands mid-combat is a
-   * hazard, and the status rail says `narrow` instead.
-   */
-  const turnPanes = useCallback(
-    (next: PaneFlow) => {
-      if (
-        next === 'columns' &&
-        panes.length > 1 &&
-        refuseNarrowSplit(panes.length, (columns) =>
-          t('notices.panes.splitTooNarrowKeep', { columns, minColumns: MIN_COLUMNS })
-        )
-      ) {
-        return;
-      }
-      setPaneFlow(next);
-    },
-    [panes.length, refuseNarrowSplit, setPaneFlow]
-  );
-
-  const closePane = useCallback(() => {
-    if (panes.length < 2) return;
-    setPaneIds(panes.filter((_, index) => index !== paneAt));
-    setFocusedPane(Math.max(0, paneAt - 1));
-  }, [paneAt, panes]);
-
   /** The banner's Stop, addressed at the pane's own character; one function for every pane. */
   const stopRunFor = useCallback((sid: SessionId) => void api.questStop(sid), [api]);
-
-  const focusPane = useCallback(
-    (id: SessionId) => {
-      const at = panes.indexOf(id);
-      if (at >= 0) setFocusedPane(at);
-    },
-    [panes]
-  );
-
-  /**
-   * Close a character's tab.
-   *
-   * Refused while it is connected, and it says so rather than asking. The
-   * character is right there in the command strip with a Disconnect button, and
-   * a confirmation dialog for something one click away is a dialog people learn
-   * to dismiss without reading — which is exactly the wrong habit for the one
-   * gesture that can drop a character in a dangerous room.
-   */
-  const closeSession = useCallback(
-    (id: SessionId) => {
-      void api.unloadProfile(id).then((refused) => {
-        if (refused) {
-          terminals.current
-            .get(id)
-            ?.notice(t('notices.session.closeRefused', { refusalReason: refused }));
-        }
-      });
-    },
-    [api]
-  );
-
-  /**
-   * @param movesFocus Set by a command that is taking focus somewhere itself;
-   *   every other route out of the palette hands it back to the terminal.
-   */
-  const closePalette = useCallback(
-    (movesFocus = false) => {
-      setPaletteOpen(false);
-      if (!movesFocus) returnFocus();
-    },
-    [returnFocus]
-  );
-
-  const togglePalette = useCallback(() => {
-    if (paletteOpen) closePalette();
-    else setPaletteOpen(true);
-  }, [paletteOpen, closePalette]);
-
-  /*
-   * The Loops modal, which holds the caret while it is open and hands it back
-   * on every exit — a surface that takes typed input, like the palette, and
-   * unlike the diagnostics rail.
-   */
-  const closeLoops = useCallback(() => {
-    setLoopsOpen(false);
-    returnFocus();
-  }, [returnFocus]);
-
-  /*
-   * Only for a character that exists.
-   *
-   * Everything the modal does is addressed at one: it files into that
-   * character's scope, starts a loop on its session and reports a refusal into
-   * its console. With `NO_SESSION` there is no console for the refusal to
-   * reach, so the whole gesture would fail in silence — which is the one
-   * outcome "say it out loud" forbids. A client with no characters has one
-   * job, and it is not this.
-   */
-  const toggleLoops = useCallback(() => {
-    if (loopsOpen) closeLoops();
-    else if (session !== NO_SESSION) setLoopsOpen(true);
-  }, [loopsOpen, closeLoops, session]);
-
-  /*
-   * And it goes away if the character does while it is open.
-   *
-   * Guarding only the *opening* leaves the modal up when the last tab is
-   * closed or a profile file is deleted — `session` becomes `NO_SESSION`
-   * underneath it, and every row then addresses nobody. Nothing is written
-   * wrongly (main refuses an absent owner, and `startLoop` finds no session),
-   * but the refusals are spoken into a console that does not exist, so a click
-   * would do nothing and say nothing. A guard on entry and none on the state
-   * is half a rule.
-   */
-  useEffect(() => {
-    if (loopsOpen && session === NO_SESSION) closeLoops();
-  }, [loopsOpen, session, closeLoops]);
 
   /**
    * The rail takes no typed input, so opening it leaves focus in the terminal
@@ -2870,10 +820,6 @@ export default function App() {
    */
   const toggleRail = useCallback(() => setRailOpen((open) => !open), []);
 
-  /**
-   * Search is a dialog that takes typed input, so closing it hands focus back
-   * to the terminal — the same contract the palette honours.
-   */
   /**
    * The debug view's three doors into main, bundled once.
    *
@@ -2896,25 +842,6 @@ export default function App() {
     setDebugOpen(false);
     returnFocus();
   }, [returnFocus]);
-
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    setSearchResult(undefined);
-    activeTerminal()?.search('', 'next');
-    returnFocus();
-  }, [activeTerminal, returnFocus]);
-
-  const toggleSearch = useCallback(() => {
-    if (searchOpen) closeSearch();
-    else setSearchOpen(true);
-  }, [searchOpen, closeSearch]);
-
-  const runSearch = useCallback(
-    (query: string, direction: 'next' | 'previous') => {
-      activeTerminal()?.search(query, direction);
-    },
-    [activeTerminal]
-  );
 
   /**
    * Stable callbacks for the settings screen.
@@ -2953,406 +880,12 @@ export default function App() {
     [api, reveal]
   );
 
-  /**
-   * Settings is a form, so it hands the keyboard back to the game on the way
-   * out — Escape, the close button, or a click on the scrim. The one surface
-   * that holds the caret while a character is standing somewhere is the one
-   * that has to be reliable about giving it back.
-   */
-  const closeSettings = useCallback(() => {
-    // Nothing to hand the keyboard back *to*: there is no console behind this
-    // screen until there is a character. The screen draws no close and answers
-    // no Escape while that holds; this is the same refusal at the palette's
-    // and the shortcut's door.
-    if (mustMakeCharacter) return;
-    setSettingsOpen(false);
-    returnFocus();
-  }, [mustMakeCharacter, returnFocus]);
-
-  /** Open settings wherever it was — the palette and the shortcut. */
-  const openSettings = useCallback(() => {
-    setSettingsAt(null);
-    setSettingsOpen(true);
-  }, []);
-
-  /** Open settings on one named character — a tab's own menu. */
-  const editCharacter = useCallback((id: SessionId) => {
-    setSettingsAt(id);
-    setSettingsOpen(true);
-  }, []);
-
-  /** Open settings on an empty character — the `+` at the head of the rail. */
-  const newCharacter = useCallback(() => {
-    setSettingsAt(SETTINGS_NEW_CHARACTER);
-    setSettingsOpen(true);
-  }, []);
-
-  /** Open settings straight to the servers list — the palette's own way in. */
-  const manageServers = useCallback(() => {
-    setSettingsAt(SETTINGS_MANAGE_SERVERS);
-    setSettingsOpen(true);
-  }, []);
-
-  /**
-   * Open settings on the client's own — the gear at the head of the tab rail.
-   *
-   * Beside the `+` because that is where somebody already is when they want to
-   * change something about the client rather than about a character, and
-   * because a settings screen reachable only by a chord is one most people
-   * never find. Also in the palette, for the same reason.
-   */
-  const editGlobal = useCallback(() => {
-    setSettingsAt(SETTINGS_GLOBAL);
-    setSettingsOpen(true);
-  }, []);
-
-  /** And the other half of that file: what a new realm and character start with. */
-  const editDefaults = useCallback(() => {
-    setSettingsAt(SETTINGS_DEFAULTS);
-    setSettingsOpen(true);
-  }, []);
-
-  /** Route planning is a dialog that types, so it hands focus back on close. */
-  const closeRoute = useCallback(() => {
-    setRouteOpen(false);
-    returnFocus();
-  }, [returnFocus]);
-
-  // Addressed: this character's realm, not the client's.
-  const searchRooms = useCallback(
-    (query: string) => api.searchRooms(session, query),
-    [api, session]
-  );
-  const walkRoute = useCallback(
-    (route: Route, run: boolean) => api.walkRoute(session, route, run),
-    [api, session]
-  );
-  /** *Collect it first*, from the route panel, for every item the way names (todo 07). */
-  const collectThenWalk = useCallback(
-    (items: Array<{ id: number; name: string }>, route: Route, run: boolean) =>
-      api.collectThenWalk(session, items, route, run),
-    [api, session]
-  );
-
-  /**
-   * Every room the palette's query reaches, as rows that walk there.
-   *
-   * The palette used to search one flat list of the client's own commands, so
-   * the one thing somebody types a place name into a search box wanting — to go
-   * there — was the one thing it could not answer. `Ctrl/Cmd K`, `1 297` or
-   * `bank of god`, Enter, and the character is walking.
-   *
-   * **This is the one path that walks without the plan being read first**, and
-   * it is deliberate rather than an oversight of the rule the map click keeps.
-   * The difference is what was chosen: a map click is a click on a picture, and
-   * the easiest possible way to send a character somewhere by accident; this
-   * row was typed, read and picked out of a list that names the room and its
-   * reference. What cannot be walked still opens the panel — a blocked route
-   * has conditions to read, and a refusal has a reason — so nothing silently
-   * fails, and stopping is a keystroke away either way.
-   *
-   * The rows are `transient`: they exist for as long as the query, and a shelf
-   * entry naming one would be a row nobody could reach from the shelf.
-   */
-  const findRooms = useCallback(
-    async (query: string): Promise<Command[]> => {
-      const rooms = await api.searchRooms(session, query);
-      const now = Date.now();
-      return rooms.map((room) => ({
-        id: `goto:${roomId(room.map, room.room)}`,
-        icon: 'route' as const,
-        transient: true,
-        label: t('palette.navigate.gotoLabel', { roomName: room.name }),
-        /*
-         * A room already walked to says so, and says when.
-         *
-         * Main puts the recent ones on top; without the hint saying which they
-         * are, the reordering is invisible and reads as the realm answering in
-         * a different order each time. The id stays on the row either way --
-         * it is how two rooms of the same name are told apart, and dropping it
-         * for the very rows most likely to be duplicates would be backwards.
-         */
-        hint:
-          room.visitedAt === null
-            ? roomId(room.map, room.room)
-            : t('palette.navigate.gotoVisitedHint', {
-                roomReference: roomId(room.map, room.room),
-                agoText: ago(room.visitedAt, now)
-              }),
-        run: () => {
-          void api
-            .routeTo(session, room.map, room.room)
-            .then(async (route) => {
-              // Nothing to walk, or nothing that *can* be walked: the panel is
-              // where a blocked route states its conditions and where a room
-              // already stood in says so. Opening it is the honest answer, and
-              // it is the same surface every other room click reaches.
-              if (route.blocked || route.steps.length === 0) return route;
-              // And a way through what the player keeps out of: the panel is
-              // where the way through and the way round are chosen between.
-              if (route.keptOut !== undefined) return route;
-              /*
-               * The plan was drawn from here a moment ago, so main has nothing
-               * to redraw — but if the character moved in that moment it comes
-               * back redrawn, and the panel is where a plan is read. Opening it
-               * plans afresh from here, which is the same answer arrived at by
-               * the surface that exists to show one.
-               */
-              const answer = await api.walkRoute(session, route);
-              return 'started' in answer ? null : route;
-            })
-            .then((unwalked) => {
-              if (unwalked === null) return;
-              setRouteTarget(room);
-              setRouteSearch(null);
-              setRouteOpen(true);
-            })
-            .catch(() => {
-              // A route that could not be planned at all: the panel says why,
-              // rather than a click that does nothing.
-              setRouteTarget(room);
-              setRouteSearch(null);
-              setRouteOpen(true);
-            });
-        }
-      }));
-    },
-    [api, session]
-  );
-  /*
-   * `radius` is optional and passed straight through: the Map card measures
-   * its own box and asks for what it can show, while the route panel — whose
-   * map is a fixed strip in a fixed panel — takes main's default.
-   */
-  const loadMap = useCallback(
-    (map: number, room: number, radius?: number) => api.localMap(session, map, room, radius),
-    [api, session]
-  );
-  /**
-   * The realm's whole answer about one room, for the quick view.
-   *
-   * Addressed like every other world query: two characters may be on two
-   * realms, and a room id means different rooms on each.
-   */
-  const loadRoomBrief = useCallback(
-    (room: RoomId) => {
-      const at = asRoomReference(room);
-      // A room id that is not a `map/room` pair names no room at all, which is
-      // the same answer as a realm that does not hold it.
-      return at === null ? Promise.resolve(null) : api.roomBrief(session, at.map, at.room);
-    },
-    [api, session]
-  );
-  /** Who this character is, for deciding what the pack may put on. */
-  const loadWearer = useCallback(() => api.wearer(session), [api, session]);
-  const lookupName = useCallback((query: string) => api.lookup(session, query), [api, session]);
-  /** The pointer reached the panel: it is being read, so it stays. */
-  const holdPeek = useCallback(() => window.clearTimeout(linger.current), []);
-  const dismissPeek = useCallback(() => {
-    window.clearTimeout(linger.current);
-    setPeek(null);
-  }, []);
-  useEffect(() => () => window.clearTimeout(linger.current), []);
-  /*
-   * And it goes when the character does. The panel hangs off the map, which
-   * stays on screen through a tab switch — so a room read on one character's
-   * realm would have been redrawn from the *next* character's, under the same
-   * `map/room` badge and possibly a different world entirely. Every other
-   * panel is addressed at the session it was opened from; this one is opened
-   * from the shown character's map, so switching is the dismissal.
-   */
-  useEffect(() => dismissPeek(), [session, dismissPeek]);
-
-  /**
-   * A name clicked on a card, asking what the realm knows about it.
-   *
-   * Opens a slide-out beside the name rather than a card on the rail: the
-   * person wants to read and put it away, and a card somewhere else on the
-   * screen is the wrong shape for that. Stamped so the same name clicked
-   * twice still lands; the second click replaces the first panel.
-   */
-  const inspect = useCallback(
-    (name: string, anchor: HTMLElement) => {
-      setFlyout(null);
-      setGangFlyout(null);
-      dismissPeek();
-      setAsked({ name, anchor });
-    },
-    [dismissPeek]
-  );
-  const dismissAsked = useCallback(() => setAsked(null), []);
-  /** A probe asked for from a card, through the arbiter. */
-  const ask = useCallback(
-    (command: string) => {
-      void api.ask(session, command);
-    },
-    [api, session]
-  );
-  /**
-   * A name clicked in the console. The console has no element to anchor to
-   * — xterm paints cells — so it hands up the box of the cells instead.
-   */
-  const inspectAt = useCallback(
-    (name: string, anchor: PopoverAnchor) => {
-      setFlyout(null);
-      setGangFlyout(null);
-      dismissPeek();
-      setAsked({ name, anchor });
-    },
-    [dismissPeek]
-  );
-
-  /**
-   * What the realm knows by a name typed into the palette: a monster, an item,
-   * a spell, offered as rows that open the same quick view a clicked name does.
-   *
-   * The palette lists commands and never the realm's population — but that
-   * rule is about the *shelf*: a row per monster while browsing is a wall. A
-   * typed query is a different question, and these rows exist only for as
-   * long as it does (`transient`), under their own heading below the rooms.
-   * Choosing one puts the panel where the palette stood, because the name it
-   * answers for was never drawn anywhere else on screen.
-   */
-  const findInRealm = useCallback(
-    async (query: string): Promise<Command[]> => {
-      const entries = flattenLookup(await api.lookup(session, query));
-      return entries.slice(0, tuning().paletteFoundRows).map((entry, index) => {
-        const kindWord = entryWord(entry);
-        const number = entityNumber(entryNumber(entry));
-        const icon: IconName =
-          entry.kind === 'mob'
-            ? 'sword'
-            : entry.kind === 'spell'
-              ? 'bolt'
-              : entry.kind === 'item'
-                ? 'bag'
-                : 'users';
-        return {
-          // Position, not name: the realm holds two `maelstrom` rows and four
-          // `void sphere` rows, and a keyed list handed a duplicate keeps a corpse.
-          id: `lookup:${entry.kind}:${index}`,
-          icon,
-          transient: true,
-          label: t('palette.navigate.lookupLabel', { name: entry.name }),
-          hint:
-            number === null
-              ? kindWord
-              : t('palette.navigate.lookupNumberHint', { kindWord, number: String(number) }),
-          run: (from?: PopoverAnchor) => {
-            // A hotkey has no box to hand over; the palette always does.
-            inspectAt(
-              entry.name,
-              from ?? {
-                box: {
-                  top: 0,
-                  right: window.innerWidth / 2,
-                  bottom: 0,
-                  left: window.innerWidth / 2
-                },
-                within: document.body
-              }
-            );
-          }
-        };
-      });
-    },
-    [api, session, inspectAt]
-  );
-  /** Both answers to a typed query, rooms first: Enter on a room query means what it did. */
+  /** What a typed query reaches past the commands (`lib/paletteFind.ts`). */
   const findFromPalette = useCallback(
-    async (query: string): Promise<Found[]> => {
-      const [rooms, realm] = await Promise.all([findRooms(query), findInRealm(query)]);
-      return [
-        { key: 'rooms', label: t('palette.groups.found'), items: rooms },
-        { key: 'realm', label: t('palette.groups.realm'), items: realm }
-      ];
-    },
-    [findRooms, findInRealm]
+    (query: string) => paletteFind(query, { api, session, openRouteOn, inspect }),
+    [api, session, openRouteOn, inspect]
   );
 
-  /**
-   * A name clicked on a listing: open the Player flyout on that person, beside
-   * the listing that was clicked.
-   *
-   * Addressed at the character whose card was clicked rather than at the shown
-   * one, because a pinned float belongs to somebody else — the flyout reads
-   * *that* character's registry and writes *that* character's permissions.
-   * One slide-out at a time: opening this puts away the realm's answer about
-   * an item, and vice versa, because two panels hanging off two names is two
-   * things to put away and no way to tell which Escape means.
-   */
-  const selectPlayer = useCallback(
-    (sid: SessionId, name: string, anchor: PopoverAnchor) => {
-      setAsked(null);
-      setGangFlyout(null);
-      dismissPeek();
-      setFlyout({ session: sid, name, anchor });
-    },
-    [dismissPeek]
-  );
-  const dismissFlyout = useCallback(() => setFlyout(null), []);
-
-  /**
-   * One of the three questions put to a player, from the flyout hanging off
-   * their name.
-   *
-   * Addressed at the character whose listing was clicked, not the shown one —
-   * `PlayerAsked.session`, the rule every other control on that panel follows,
-   * and the reason a pinned float can carry it at all. The refusal lands in
-   * *that* character's console for the same reason the lap's does: a sentence
-   * about a character belongs in front of the character it is about.
-   *
-   * This was three palette commands per person (todo 04): with a realm's
-   * roster loaded, a hundred rows of *Ask X for their Y* stood between the
-   * palette's own filter and every other command in the client. The palette
-   * lists commands; who to ask is an argument, and an argument belongs beside
-   * its subject.
-   */
-  const askPlayer = useCallback(
-    (name: string, remote: RemoteName) => {
-      const sid = flyout?.session ?? null;
-      if (sid === null) return;
-      void api.askRemote(sid, name, remote).then((sent) => {
-        if (!sent) terminals.current.get(sid)?.notice(t('cards.player.ask.refused', { name }));
-      });
-    },
-    [api, flyout]
-  );
-
-  /**
-   * A gang clicked — in the console, or on the person whose gang it is.
-   *
-   * A gang is an entity like a person or an item: it is printed in the `who`
-   * listing's own column, and it was the one recognisable thing on that line
-   * that opened nothing. Addressed at the character whose surface was clicked,
-   * because the membership is read out of *that* character's roster and
-   * registry, and a pinned float belongs to somebody else.
-   */
-  const selectGang = useCallback(
-    (sid: SessionId, name: string, anchor: PopoverAnchor) => {
-      setAsked(null);
-      setFlyout(null);
-      dismissPeek();
-      setGangFlyout({ session: sid, name, anchor });
-    },
-    [dismissPeek]
-  );
-  const dismissGangFlyout = useCallback(() => setGangFlyout(null), []);
-
-  /**
-   * A room's name clicked in the console: the route panel, on that room.
-   *
-   * The question about a room you are not standing in is *how do I get there*,
-   * which is the panel the map and the Route face already open — so a room is
-   * the one recognised name that does not answer with a readout.
-   *
-   * **A name is not an address.** The realm has 3,779 distinct room names over
-   * 55,806 rooms, so most name several places — thirteen Town Gates, two Mossy
-   * Tunnels — and picking one of them would be the guess this project refuses,
-   * with a walk at the end of it. So the *name* goes to the panel and the panel
-   * lists what it matched; a name matching exactly one room opens on that room,
-   * which is what the search field there already does with a typed name.
-   */
   /*
    * A console button main runs, addressed to the character whose terminal it
    * was pressed in — not to the focused pane, which may be a different one.
@@ -3366,552 +899,38 @@ export default function App() {
     void api.terminalAct(sid, action);
   }, []);
 
-  const chooseRoomNamed = useCallback(
-    (name: string) => {
-      void api.searchRooms(session, name).then((rooms) => {
-        // Exactly one room, and it is the one meant. Anything else — several
-        // rooms sharing the name, or none — is left to the panel's own list
-        // rather than resolved here, where there is nothing to show the reader.
-        const exact = rooms.filter((room) => room.name.toLowerCase() === name.toLowerCase());
-        const one = exact.length === 1 ? exact[0]! : null;
-        setRouteTarget(one);
-        // Several rooms share the name, or the realm has none: the panel opens
-        // searching for it rather than on a room nobody chose.
-        setRouteSearch(one === null ? name : null);
-        setRouteOpen(true);
-      });
-    },
-    [api, session]
-  );
-  /**
-   * The people each character knows, for its console to recognise — the
-   * registry and the roster, by the server's spelling. Keyed by value: a
-   * state push arrives through structured clone, so the arrays are fresh
-   * references per status line and the joined names are what stays equal.
-   */
-  const knownPlayersKey = useMemo(
-    () =>
-      Object.entries(views)
-        .map(
-          ([id, view]) =>
-            `${id}\u0001${knownPlayerNames(view.character).join('\u0000')}\u0003${presentPlayerNames(view.character).join('\u0000')}`
-        )
-        .join('\u0002'),
-    // Rebuilt when a state push lands, not on every render: the traversal is
-    // every registry and every roster, and a card interaction is not news
-    // about either.
-    [views]
-  );
-  const knownPlayers = useMemo<Record<SessionId, { known: string[]; present: string[] }>>(() => {
-    const out: Record<SessionId, { known: string[]; present: string[] }> = {};
-    if (knownPlayersKey.length === 0) return out;
-    const split = (names: string | undefined): string[] =>
-      names === undefined || names.length === 0 ? [] : names.split('\u0000');
-    for (const entry of knownPlayersKey.split('\u0002')) {
-      const [id, lists] = entry.split('\u0001');
-      if (id === undefined) continue;
-      // Everyone known, then the ones in the realm now — see `NameIndex.setPlayers`.
-      const [known, present] = (lists ?? '').split('\u0003');
-      out[id as SessionId] = { known: split(known), present: split(present) };
-    }
-    return out;
-  }, [knownPlayersKey]);
-  /**
-   * The gangs each character has heard of, folded the same way the people are.
-   *
-   * A joined string rather than an array of arrays, for the reason
-   * `knownPlayersKey` is one: the memo below has to be keyed on the *contents*,
-   * and a fresh array every render would rebuild the index on every status
-   * line. The traversal is the roster and the registry, so it is done once here
-   * rather than per hover.
-   */
-  const knownGangsKey = useMemo(
-    () =>
-      Object.entries(views)
-        .map(([id, view]) => `${id}\u0001${knownGangs(view.character).join('\u0000')}`)
-        .join('\u0002'),
-    [views]
-  );
-  const gangsBySession = useMemo<Record<SessionId, string[]>>(() => {
-    const out: Record<SessionId, string[]> = {};
-    if (knownGangsKey.length === 0) return out;
-    for (const entry of knownGangsKey.split('\u0002')) {
-      const [id, list] = entry.split('\u0001');
-      if (id === undefined) continue;
-      out[id as SessionId] = list === undefined || list.length === 0 ? [] : list.split('\u0000');
-    }
-    return out;
-  }, [knownGangsKey]);
+  /** The console's own name index, per character. */
+  const nameIndexes = useNameIndexes(api, sessions, views);
 
-  /**
-   * Every name this character's realm knows, for the console to recognise.
-   *
-   * Once per realm rather than per hover: the list is a few thousand words
-   * and the link provider is asked on every row the pointer crosses. Keyed on
-   * the session because two characters may be on two realms.
-   */
-  const [names, setNames] = useState<Record<SessionId, WorldNames>>({});
-  useEffect(() => {
-    let live = true;
-    for (const entry of sessions) {
-      if (names[entry.id]) continue;
-      void api.names(entry.id).then((found) => {
-        if (live) setNames((current) => ({ ...current, [entry.id]: found }));
-      });
-    }
-    return () => {
-      live = false;
-    };
-  }, [api, names, sessions]);
-  /**
-   * The player striking a found way out, because it was not one.
-   *
-   * Main answers with the whole record over the same push that learning
-   * uses, so every window showing the card sees the row go.
-   */
-  const forget = useCallback(
-    (discovery: { from: string; command: string }) => {
-      void api.forget(session, discovery);
-    },
-    [api, session]
-  );
-  /**
-   * A room clicked on the map opens the route panel with the plan already on
-   * screen. It does not walk: a map click is the easiest possible way to send a
-   * character somewhere by accident, so the steps still get read first.
-   */
-  const chooseOnMap = useCallback(
-    (map: number, room: number) => {
-      /*
-       * Resolved before it opens. The panel's head states the realm's facts
-       * about the destination -- its name, a shop, a lair, the exits -- and a
-       * bare pair carries none, so the head used to open blank on this path.
-       * A `map/room` query is answered by the index, exactly one room or
-       * none; a room the realm does not have opens as the bare pair, which
-       * the panel then reports rather than guessing at.
-       */
-      void api.searchRooms(session, `${map}/${room}`).then((rooms) => {
-        const found = rooms.find((match) => match.map === map && match.room === room);
-        setRouteTarget(found ?? { map, room, name: '', exits: [] });
-        // A pair names exactly one room, so nothing is left ambiguous here —
-        // and a name left over from an earlier click would seed the field
-        // against the room this one settled.
-        setRouteSearch(null);
-        setRouteOpen(true);
-      });
-    },
-    [api, session]
-  );
+  /** Moving a character, and the question play may answer with. */
+  const {
+    sayRefusal,
+    startMovingIn,
+    stepBackIn,
+    startMoving,
+    stopMoving,
+    startLoop,
+    skipLoop,
+    reverseLoop,
+    runChosenLoop,
+    runHunt,
+    wandered,
+    stay,
+    walkOn
+  } = useMovement({ api, session, profiles, returnFocus, say: noticeTo });
 
-  /**
-   * Where this realm's find log says something was turned up, for the route
-   * panel's picture — the mark the Map card draws from the same log.
-   *
-   * Here rather than inside the panel because the panel belongs to the
-   * character on screen and nothing else; a *card* computes its own, addressed
-   * at the character it was drawn for, which is the rule every other world
-   * fact in this file follows.
-   */
-  const foundRooms = useMemo(() => [...roomsWithFinds(view.finds)], [view.finds]);
-
-  /**
-   * The map's one action on a room: plan the way there, which is what a
-   * room's bare click used to do on its own. One definition, because the Map
-   * card and the route panel's map are the same picture and a reader who has
-   * learnt the button on one has learnt it on the other.
-   */
-  const walkTo = useCallback(
-    (room: RoomId): RoomAsked['act'] => ({
-      label: t('cards.roomPeek.walkToButton'),
-      hint: t('cards.roomPeek.walkToTooltip'),
-      run: () => {
-        const to = asRoomReference(room);
-        setPeek(null);
-        if (to !== null) chooseOnMap(to.map, to.room);
-      }
-    }),
-    [chooseOnMap]
-  );
-  /**
-   * Put the room's panel up, whoever asked for it.
-   *
-   * **One panel at a time, like the other three**: opening this puts away the
-   * realm's answer about an item, a person or a gang. Written once because
-   * three surfaces open it — the map, the route panel, the loop builder — and
-   * a fourth that forgot to put the flyout away would be two panels on screen
-   * claiming the one slot.
-   *
-   * What differs between them is the *action* on the panel and nothing else,
-   * so that is all each caller decides.
-   */
-  const openPeek = useCallback((asked: RoomAsked) => {
-    window.clearTimeout(linger.current);
-    setAsked(null);
-    setFlyout(null);
-    setGangFlyout(null);
-    setPeek(asked);
-  }, []);
-  /**
-   * A pointer came to rest on a room of a map, or clicked one: open the
-   * realm's answer about it beside the room.
-   *
-   * The map has drawn a lair glyph since the realm data was indexed and
-   * nothing could say what was in it — the Room card's face is about the room
-   * the character is *standing in*. This is that face for a room on the map,
-   * and the way there is a button on it rather than the room's bare click,
-   * which used to send a character somewhere on one mis-click.
-   *
-   * **The Map card's, the loop builder's, one panel with one button** (todo
-   * 2026-09-14). The builder's was given `act: null` first, on the argument
-   * that a click there is a pick and *Plan route* opens a dialog over the float
-   * being drawn on. That was wrong twice over: it left the builder's rooms
-   * with the way-there offered nowhere at all — the `<title>` still said
-   * *Route to …*, which is the affordance a button is supposed to be — and a
-   * panel that is the same panel everywhere except for its one control is two
-   * panels. Parity is the rule; the surface decides what a **click** means and
-   * nothing else.
-   */
-  const peekRoom = useCallback(
-    (room: RoomId, at: SVGGElement, settled: boolean) => {
-      openPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room) });
-    },
-    [openPeek, walkTo]
-  );
-  /**
-   * The pointer left the room, or the panel. A hovered panel goes after the
-   * linger; a settled one — one somebody clicked — stays, because they said so.
-   *
-   * The linger exists because the panel is a thing to *read*: one that vanished
-   * while the hand was travelling the twenty pixels towards it would be
-   * unreachable by pointer.
-   */
-  const endPeek = useCallback(() => {
-    window.clearTimeout(linger.current);
-    linger.current = window.setTimeout(
-      () => setPeek((open) => (open === null || open.settled ? open : null)),
-      tuning().roomPeekLingerMs
-    );
-  }, []);
-  /**
-   * A room on a plan pointed at or clicked — a row of the route list, or a
-   * room on the panel's own map, which is the Map card's picture drawn under
-   * the head. The same panel, with the route list's own action where the room
-   * is a step of the plan: *walk here* — the plan is already on screen, and
-   * stopping short at a room is what picking one of its steps already means.
-   * A neighbour the plan does not pass through gets the map's *plan route*,
-   * which re-plans by name, in the open, rather than nothing: the picture is
-   * there to be read, and a room on it that answers for itself but cannot be
-   * gone to would be the one room on the screen that is.
-   *
-   * A row is hovered rather than clicked, so it does not take the click the
-   * row uses to pick a step; the panel therefore goes on the linger like the
-   * map's does. A room on the map settles on a click, as it does on the card.
-   */
-  const peekPlanned = useCallback(
-    (room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null) => {
-      openPeek({
-        room,
-        anchor: roomAnchor(at),
-        settled,
-        // It hangs off something inside the route panel, so it is in front of
-        // that panel's scrim rather than behind it. See `RoomAsked.overDialog`.
-        overDialog: true,
-        act:
-          walkHere === null
-            ? walkTo(room)
-            : {
-                label: t('cards.roomPeek.walkHereButton'),
-                hint: t('cards.roomPeek.walkHereTooltip'),
-                run: () => {
-                  setPeek(null);
-                  walkHere();
-                }
-              }
-      });
-    },
-    [openPeek, walkTo]
-  );
-
-  /**
-   * The same panel, opened from a `map/room` string.
-   *
-   * The quest book states where a step's NPC stands as the realm writes it, so
-   * it holds the pair as text rather than as two numbers. Parsed through
-   * `asRoomReference`, which is the **one** parser a `map/room` string has —
-   * a second spelling of it is what `WalkProgress` already refuses — and a
-   * string that is not one opens nothing rather than guessing at a room.
-   *
-   * `useCallback` rather than an arrow at the call site: `QuestCard` is
-   * memoised, and a prop built in a render is a memo defeated.
-   */
-  const goToRoom = useCallback(
-    (room: string) => {
-      const at = asRoomReference(room);
-      if (at !== null) chooseOnMap(at.map, at.room);
-    },
-    [chooseOnMap]
-  );
-  const stopMoving = useCallback(() => {
-    // One stop for both: main works out whether it is a lap or a route, and
-    // stops the leg with the lap — a stopped walk under a live loop is a walk
-    // the loop would just restart. Neither forgets where it was.
-    void api.stopMoving(session);
-    // The rail takes no typed input, so a click in it must not keep the caret:
-    // stopping is exactly the moment you want to be able to type.
-    returnFocus();
-  }, [api, returnFocus, session]);
-  /*
-   * The lap's other controls, each handing the caret back like every click in
-   * the rail. A refusal — nothing looping, a plain loop asked to turn round —
-   * is said in the console of the character it was about, the same way the
-   * palette's loop command reports one.
-   */
-  const sayRefusal = useCallback(
-    (sid: SessionId) => (refused: string | null) => {
-      if (refused) terminals.current.get(sid)?.notice(refused);
-    },
-    []
-  );
-  /**
-   * Start a loop chosen from the modal, and keep it where the player said.
-   *
-   * **Filed first, then started, and the order is not an accident.**
-   * `loop:start` resolves a name against the character's *own* resolved
-   * options, which is the same list the palette and the card start from — a
-   * loop that has never been written into a scope this character reads is a
-   * name main answers `notFound` to. So the write has to land, and the store
-   * has to have re-read it, before the start is asked for.
-   *
-   * `Don't keep it` takes the other channel entirely: `loop:run` hands the
-   * loop over whole, so nothing is written and nothing has to be cleaned up
-   * afterwards. Filing one in order to start it and then deleting it would be
-   * a write into the user's tree on the one path that promised not to make
-   * one.
-   *
-   * **A row that is only *held* is already on disk and is started by name.**
-   * `loop:list` reports one as a name and a stop *count*, never its stops, so
-   * there is no loop to hand over and nothing to file — `loop:start` resolves
-   * it exactly as the palette and the card do. The first version of this
-   * invented empty stops to make such a row look like a shelf loop, and
-   * `asLoops` then dropped them: the client refused the player's own
-   * hand-written loop as one it could not file, which is a false claim about
-   * their data as well as a loop that did not walk.
-   *
-   * Either way the outcome is said out loud in the character's own console —
-   * a loop quietly filed somewhere is a file somebody finds a fortnight later
-   * with no memory of asking for it.
-   */
-  const runChosenLoop = useCallback(
-    (choice: LoopChoice, destination: LoopDestination) => {
-      const say = sayRefusal(session);
-      const said = (message: string) => terminals.current.get(session)?.notice(message);
-
-      void (async () => {
-        // Already on disk: nothing to write, whatever the destination says.
-        if (choice.kind === 'by-name') {
-          const refused = await api.startLoop(session, choice.name);
-          say(refused);
-          if (refused === null) said(t('loops.startedKept', { loopName: choice.name }));
-          return;
-        }
-
-        const { loop } = choice;
-        if (destination === 'none') {
-          const refused = await api.runLoop(session, loop);
-          say(refused);
-          if (refused === null) said(t('loops.startedOnly', { loopName: loop.name }));
-          return;
-        }
-
-        const owner =
-          destination === 'server'
-            ? (profiles.find((profile) => profile.id === session)?.serverName ?? null)
-            : session;
-        const refused = await api.addLoop(destination, owner, loop);
-        if (refused !== null) {
-          say(refused);
-          return;
-        }
-        const started = await api.startLoop(session, loop.name);
-        say(started);
-        if (started === null) said(t('loops.startedKept', { loopName: loop.name }));
-      })();
-    },
-    [api, profiles, sayRefusal, session]
-  );
-
-  /** A loop the Hunting card built: the same two outcomes as the builder's save. */
-  const runHunt = useCallback(
-    (loop: Loop, destination: LoopDestination) => {
-      runChosenLoop({ kind: 'loop', loop }, destination);
-      returnFocus();
-    },
-    [returnFocus, runChosenLoop]
-  );
-
-  const startLoop = useCallback(
-    (name: string) => {
-      void api.startLoop(session, name).then(sayRefusal(session));
-      returnFocus();
-    },
-    [api, returnFocus, sayRefusal, session]
-  );
-
-  /**
-   * Bring the loop builder out.
-   *
-   * As a **float**, sized to most of the workspace, the first time: a map
-   * somebody clicks rooms on wants more of the screen than a rail slot, and
-   * the float is the one placement whose height is the player's. Already on
-   * screen, it is raised if floating and otherwise left where the player put
-   * it — the arrangement is theirs. Refused with no character, for the
-   * reason the Loops modal is: everything it does is addressed at one.
-   */
-  const openBuilder = useCallback(() => {
-    if (session === NO_SESSION) return;
-    if (!cards.isShown('builder')) cards.lift('builder', { x: 0.03, y: 0.04 }, { w: 0.6, h: 0.9 });
-    else if (cards.floatOf('builder') !== undefined) cards.raise('builder');
-    returnFocus();
-  }, [cards, returnFocus, session]);
-
-  /*
-   * A loop the Hunting card drew, handed to the builder as picks closed on
-   * the first room, with its name offered (todo 00, 2026-09-13). The seed is
-   * a request and not a state of the builder: the card takes it once, and
-   * from there the picks are its own to edit, undo and file.
-   */
-  const [builderSeed, setBuilderSeed] = useState<BuilderSeed | null>(null);
-  const createHunt = useCallback(
-    (rooms: HuntingRoom[], name: string) => {
-      const ids = rooms.map((room) => room.id);
-      const first = ids[0];
-      if (first === undefined || ids.length < 2) return;
-      setBuilderSeed({ picks: [...ids, first], name, stamp: Date.now() });
-      openBuilder();
-    },
-    [openBuilder]
-  );
-
-  /**
-   * The picks of a loop being built, planned on this character's realm.
-   * Addressed like every world query.
-   */
-  const draftLoop = useCallback((rooms: RoomId[]) => api.draftLoop(session, rooms), [api, session]);
-
-  /**
-   * File a built loop where the builder's chip says, and say so in the
-   * character's own console — the rule `runChosenLoop` keeps for a loop the
-   * shelf files. The owner is the character for its own scope and its realm
-   * for the realm's, exactly as the modal resolves them; the two must agree
-   * or a loop filed from one surface is invisible to the other.
-   */
-  const saveDraftLoop = useCallback(
-    async (loop: Loop, destination: BuilderDestination): Promise<string | null> => {
-      const owner =
-        destination === 'server'
-          ? (profiles.find((profile) => profile.id === session)?.serverName ?? null)
-          : destination === 'global'
-            ? null
-            : session;
-      const refused = await api.addLoop(destination, owner, loop);
-      if (refused === null) {
-        terminals.current
-          .get(session)
-          ?.notice(t('cards.builder.savedNotice', { loopName: loop.name }));
-      }
-      return refused;
-    },
-    [api, profiles, session]
-  );
-
-  const builderRealmName = profiles.find((profile) => profile.id === session)?.serverName ?? '';
-  const builderCharacterName = character.name ?? session;
-  const builderApi = useMemo<BuilderApi>(
-    () => ({
-      characterName: builderCharacterName,
-      realmName: builderRealmName,
-      search: searchRooms,
-      loadMap,
-      draft: draftLoop,
-      save: saveDraftLoop,
-      seed: builderSeed
-    }),
-    [
-      builderCharacterName,
-      builderRealmName,
-      searchRooms,
-      loadMap,
-      draftLoop,
-      saveDraftLoop,
-      builderSeed
-    ]
-  );
-  /*
-   * Play, for any character — the float's own as well as the shown one.
-   *
-   * Three answers and one of them is a question: main measures how far the
-   * character has wandered from whatever it was walking, and past
-   * `tuning.walk.resumeAskSteps` it asks rather than walking it back across
-   * the realm. The window holds the question until somebody answers it, and
-   * pressing play again with `confirmed` is the answer. See `MovementPrompt`.
-   */
-  const startMovingIn = useCallback(
-    (sid: SessionId, loop: string | null, confirmed: number | null) => {
-      void api.startMoving(sid, loop, confirmed).then((answer) => {
-        if ('confirm' in answer) {
-          setWandered({ session: sid, loop, ...answer.confirm });
-          return;
-        }
-        if ('refused' in answer) sayRefusal(sid)(answer.refused);
-      });
-    },
-    [api, sayRefusal]
-  );
-  const startMoving = useCallback(
-    (loop: string | null) => {
-      startMovingIn(session, loop, null);
-      returnFocus();
-    },
-    [returnFocus, session, startMovingIn]
-  );
-  /*
-   * Back, for any character: one room the way it came.
-   *
-   * Answers like play, and for the same reason — the way back is not always
-   * one step, and a press that quietly became a fourteen-step journey round a
-   * one-way corridor would be this gesture meaning something nobody intended.
-   * The window holds that question in `wandered`, whose `kind` says which of
-   * the two presses is owed the answer.
-   */
-  const stepBackIn = useCallback(
-    (sid: SessionId, confirmed: number | null) => {
-      void api.stepBack(sid, confirmed).then((answer) => {
-        if ('confirm' in answer) {
-          setWandered({ session: sid, loop: null, ...answer.confirm });
-          return;
-        }
-        if ('refused' in answer) sayRefusal(sid)(answer.refused);
-      });
-    },
-    [api, sayRefusal]
-  );
-  const skipLoop = useCallback(() => {
-    void api.skipLoopStop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
-  const reverseLoop = useCallback(() => {
-    void api.reverseLoop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
-  const routeTo = useCallback(
-    (room: { map: number; room: number }) => api.routeTo(session, room.map, room.room),
-    [api, session]
-  );
-
-  const toggleConnection = useCallback(() => {
-    if (connected) handleDisconnect();
-    else handleConnect();
-  }, [connected, handleConnect, handleDisconnect]);
+  /** The loop builder, addressed at the shown character. */
+  const { openBuilder, createHunt, builderApi } = useLoopBuilder({
+    api,
+    session,
+    profiles,
+    cards,
+    characterName: character.name,
+    search: searchRooms,
+    loadMap,
+    returnFocus,
+    say: noticeTo
+  });
 
   const handleInput = useCallback((id: SessionId, data: string) => api.input(id, data), [api]);
 
@@ -3941,6 +960,8 @@ export default function App() {
     [api]
   );
 
+  const toggleDebug = useCallback(() => setDebugOpen((open) => !open), []);
+
   /*
    * Each character's connection phase, memoised by **value**: the palette's
    * commands read only the phase out of `views`, and listing `views` itself
@@ -3965,829 +986,75 @@ export default function App() {
   }, [phasesKey]);
 
   /*
-   * The console's own index, per character, for the cards that quote the
-   * server's sentences: built when the realm's names arrive and re-fed the
-   * people when they change, so a card and the console cannot disagree about
-   * what is a name. `knownPlayers` is value-keyed, so this reruns when the
-   * people change and not on every status line.
+   * The palette's commands (`lib/palette.ts`), rebuilt when something they
+   * read moves and not otherwise.
    */
-  const realmIndexes = useMemo<Record<SessionId, NameIndex>>(() => {
-    const out: Record<SessionId, NameIndex> = {};
-    for (const [id, found] of Object.entries(names)) out[id as SessionId] = new NameIndex(found);
-    return out;
-  }, [names]);
-  /*
-   * The people change while the realm's names do not — every arrival and
-   * departure, against a realm index of thousands of names that is built
-   * once — so they are set onto each index in place rather than the index
-   * being rebuilt. The same objects go to the console and to the cards, which
-   * is what makes "the console's own index" literally true rather than two
-   * instances fed the same inputs.
-   */
-  const nameIndexes = useMemo<Record<SessionId, NameIndex>>(() => {
-    for (const [id, index] of Object.entries(realmIndexes)) {
-      const people = knownPlayers[id as SessionId];
-      index.setPlayers(people?.known ?? [], people?.present ?? []);
-      // Set in place beside the people and for the same reason: a gang changes
-      // when a `who` lands, and the realm's thousands of names do not.
-      index.setGangs(gangsBySession[id as SessionId] ?? []);
-    }
-    return realmIndexes;
-  }, [realmIndexes, knownPlayers, gangsBySession]);
-
-  const commands = useMemo<Command[]>(
-    () => [
-      /*
-       * Grouped, not just ordered. Twenty-odd flat commands read as one wall
-       * of text, and the settings screen was buried in exactly that wall until
-       * it earned a name people actually search for — grouping is the other
-       * half of being found: once typing has narrowed the list, which cluster
-       * a survivor came from is the fastest way to tell "this is the one" from
-       * "keep reading". `Command.group` decides the border CommandPalette
-       * draws; declaring same-group commands adjacent here is what keeps that
-       * border one unbroken box instead of several, because a filtered list
-       * only ever removes entries, never reorders them.
-       */
-
-      /*
-       * Character: everything about a specific character or the roster of
-       * them. First, and named for what somebody is looking for.
-       *
-       * Settings was twenty-sixth and called "Characters and servers…", below
-       * every card, pane and window command — so the one screen you go to in
-       * order to *add a character* was both out of sight and unsearchable,
-       * because the palette matched on labels and no label contained the word
-       * `settings`, `config` or `add`. That is the whole reason it could not
-       * be found.
-       */
-      {
-        id: 'settings',
-        icon: 'settings' as const,
-        label: t('palette.character.settingsLabel'),
-        hint: chord(','),
-        group: 'character',
-        keywords: [
-          'settings',
-          'setting',
-          'configuration',
-          'config',
-          'preferences',
-          'options',
-          'account',
-          'character',
-          'profile',
-          'server',
-          'bbs',
-          'realm',
-          'login',
-          'password',
-          'credentials',
-          'add',
-          'new',
-          'create',
-          'edit',
-          'delete',
-          'remove'
-        ],
-        // Takes the caret itself: it is a form, and the focus policy says a
-        // surface that takes typed input takes focus and hands it back on exit.
-        movesFocus: true,
-        run: openSettings
-      },
-      /*
-       * A realm -- the server a character plays on -- is not a character's own
-       * setting: it has a directory of its own because more than one character
-       * plays on the same one, so it earns its own entry rather than living
-       * only inside a character's form. Same reasoning as `settings` above,
-       * and the same fix: named by what somebody actually types, not by what
-       * the client calls it.
-       */
-      {
-        id: 'servers',
-        icon: 'server' as const,
-        label: t('palette.character.serversLabel'),
-        group: 'character',
-        keywords: [
-          'realm',
-          'realms',
-          'bbs',
-          'server',
-          'servers',
-          'host',
-          'port',
-          'telnet',
-          'mud',
-          'add',
-          'new',
-          'edit'
-        ],
-        movesFocus: true,
-        run: manageServers
-      },
-      /*
-       * The client's own settings — the file every character inherits from.
-       *
-       * Its own entry beside the other two, and named by what somebody types
-       * rather than by what the client calls it: `font`, `theme`, `logging`
-       * and `encoding` are all in here and none of them is a character or a
-       * server, so neither of the entries above would ever have found them.
-       */
-      {
-        id: 'settings-client',
-        icon: 'settings' as const,
-        label: t('palette.character.settingsClientLabel'),
-        group: 'character',
-        keywords: [
-          'mudengine',
-          'client',
-          'options',
-          'preferences',
-          'font',
-          'theme',
-          'density',
-          'terminal',
-          'console',
-          'scrollback',
-          'logging',
-          'capture',
-          'records',
-          'appearance',
-          'advanced'
-        ],
-        movesFocus: true,
-        run: editGlobal
-      },
-      /*
-       * The other half of the same file, and a separate entry because it is a
-       * separate question. "Make the console bigger" and "stop every new
-       * character resting at 60%" have nothing to do with each other, and one
-       * row covering both is how neither gets found.
-       */
-      {
-        id: 'settings-defaults',
-        icon: 'settings' as const,
-        label: t('palette.character.settingsDefaultsLabel'),
-        group: 'character',
-        keywords: [
-          'global',
-          'defaults',
-          'default',
-          'new',
-          'template',
-          'combat',
-          'health',
-          'spells',
-          'movement',
-          'alerts',
-          'encoding',
-          'cp437',
-          'menus',
-          'world',
-          'database'
-        ],
-        movesFocus: true,
-        run: editDefaults
-      },
-      {
-        id: 'connection',
-        icon: connected ? ('stop' as const) : ('play' as const),
-        label: connected
-          ? t('palette.character.disconnectLabel')
-          : t('palette.character.connectLabel'),
-        // Named, because with several characters loaded "connect" is ambiguous
-        // and the answer is always "the one you are looking at".
-        hint: `${sessions.find((e) => e.id === session)?.name ?? session} · ${chord('Enter')}`,
-        group: 'character',
-        run: toggleConnection
-      },
-      // Saved realms, so the common case is not retyping a host and port.
-      ...config.servers.map((server) => ({
-        id: `server:${server.name}`,
-        icon: 'play' as const,
-        label: t('palette.character.connectRealmLabel', { realmName: server.name }),
-        hint: `${server.host}:${server.port}`,
-        group: 'character' as const,
-        run: () => handleConnect(targetFromServer(server))
-      })),
-      // Switching characters, and opening ones that have been closed. Only
-      // offered when there is a choice to make.
-      ...(sessions.length > 1
-        ? sessions
-            .filter((entry) => entry.id !== session)
-            .map((entry) => ({
-              id: `show:${entry.id}`,
-              icon: 'user' as const,
-              label: t('palette.character.showLabel', { characterName: entry.name }),
-              hint: phases[entry.id] ?? t('palette.character.showIdleStatus'),
-              group: 'character' as const,
-              run: () => showSession(entry.id)
-            }))
-        : []),
-      ...profiles
-        .filter((profile) => !profile.loaded)
-        .map((profile) => ({
-          id: `open:${profile.id}`,
-          icon: 'login' as const,
-          label: t('palette.character.openLabel', { characterName: profile.name }),
-          hint: `${profile.target.host}:${profile.target.port}`,
-          group: 'character' as const,
-          run: () => void api.loadProfile(profile.id)
-        })),
-      ...(showTabs
-        ? [
-            {
-              id: 'close',
-              icon: 'close' as const,
-              label: t('palette.character.closeLabel', {
-                characterName: sessions.find((e) => e.id === session)?.name ?? session
-              }),
-              hint: connected ? t('palette.character.closeDisconnectFirstHint') : undefined,
-              group: 'character' as const,
-              run: () => closeSession(session)
-            }
-          ]
-        : []),
-      /*
-       * Moving a character to a window of its own, and back.
-       *
-       * A command and not a drag, deliberately: Electron has no built-in
-       * for dragging a tab between windows, and doing it properly means a
-       * hand-rolled drag session, a drop protocol between windows and a
-       * fallback for the drag that ends over nothing. This is the whole
-       * capability minus the gesture, and the gesture can follow now that
-       * the capability is proven (docs/profiles.md §7.4).
-       *
-       * The session does not move — nothing here touches a socket.
-       *
-       * Not offered in a browser tab, which has no second window to move
-       * anything into: main refuses each of these there with a reason, and
-       * the command is withheld as well, because a command that is found and
-       * does nothing is worse than one that cannot be found.
-       */
-      ...(showTabs && api.host !== 'web'
-        ? [
-            {
-              id: 'popout',
-              icon: 'popout' as const,
-              label: t('palette.character.popoutLabel', {
-                characterName: sessions.find((e) => e.id === session)?.name ?? session
-              }),
-              hint: sessions.length > 1 ? undefined : t('palette.character.popoutOnlyHint'),
-              group: 'character' as const,
-              movesFocus: true,
-              run: () => {
-                void api.popOut(session).then((refused) => {
-                  if (refused !== null) activeTerminal()?.notice(refused);
-                });
-              }
-            },
-            {
-              id: 'popin',
-              icon: 'popin' as const,
-              label: t('palette.character.popinLabel', {
-                characterName: sessions.find((e) => e.id === session)?.name ?? session
-              }),
-              group: 'character' as const,
-              run: () => {
-                void api.popIn(session);
-              }
-            },
-            {
-              /*
-               * Main does this, not the renderer: a window's roster is only
-               * what it holds tabs for, so it cannot ask for the characters it
-               * has lost sight of — which is exactly the ones this is for.
-               */
-              id: 'gather',
-              icon: 'users' as const,
-              label: t('palette.character.gatherLabel'),
-              group: 'character' as const,
-              run: () => {
-                void api.gatherWindows();
-              }
-            }
-          ]
-        : []),
-
-      // Navigate: getting somewhere, in the room graph or in the backscroll.
-      {
-        id: 'route',
-        icon: 'route' as const,
-        label: t('palette.navigate.routeLabel'),
-        hint: chord('G'),
-        group: 'navigate',
-        // The panel takes the caret itself.
-        movesFocus: true,
-        run: () => {
-          setRouteTarget(null);
-          // Opened cold from the palette: neither a room nor a name is meant,
-          // so a seed left by an earlier console click does not survive.
-          setRouteSearch(null);
-          setRouteOpen(true);
-        }
-      },
-      /*
-       * Where a loop is drawn. Beside the route, because it is the same
-       * gesture on the same map with a file at the end of it. Its id is
-       * deliberately not `loop:…` — the shipped shelf pins `loop:*`, and
-       * pinned it sorted above the Route command, so typing `route` opened
-       * the builder on Enter (the smoke run caught it) — and its keywords
-       * are the words nothing else has earned: `route` is the panel's and
-       * `loop` is the shelf's.
-       */
-      {
-        id: 'builder:open',
-        icon: 'flag' as const,
-        label: t('palette.navigate.buildLabel'),
-        group: 'navigate' as const,
-        keywords: ['build', 'create', 'draw', 'make', 'new', 'waypoint', 'path', 'editor'],
-        run: openBuilder
-      },
-      /*
-       * The question an evening starts with, and the one the client could
-       * price all along and never did (todo 05). Brings the Hunting card out;
-       * the card asks main from where the character stands.
-       */
-      {
-        id: 'hunt:where',
-        icon: 'search' as const,
-        label: t('palette.navigate.huntLabel'),
-        group: 'navigate' as const,
-        keywords: [
-          'hunt',
-          'hunting',
-          'where',
-          'lair',
-          'exp',
-          'experience',
-          'grind',
-          'rate',
-          'spot'
-        ],
-        run: () => cards.show('hunting')
-      },
-      {
-        id: 'search',
-        icon: 'search' as const,
-        label: t('palette.navigate.searchLabel'),
-        hint: chord('F'),
-        group: 'navigate',
-        keywords: ['find', 'search', 'backscroll', 'scrollback', 'history'],
-        // The bar takes the caret itself, so the automatic return would fight it.
-        movesFocus: true,
-        run: () => setSearchOpen(true)
-      },
-
-      // View: how the client presents itself, rather than what it is doing.
-      {
-        id: 'rail',
-        icon: 'activity' as const,
-        label: railOpen
-          ? t('palette.view.hideDiagnosticsLabel')
-          : t('palette.view.showDiagnosticsLabel'),
-        hint: chord('D', true),
-        group: 'view',
-        run: toggleRail
-      },
-      {
-        id: 'debug',
-        icon: 'terminal' as const,
-        label: debugOpen ? t('palette.view.hideDebugLabel') : t('palette.view.showDebugLabel'),
-        hint: t('palette.view.debugHint'),
-        group: 'view',
-        /*
-         * `bug` is the word somebody types and `debug` is what the client
-         * calls it; `raw`, `ansi`, `parse` and `trace` are what they are
-         * actually looking for when they do not know either.
-         */
-        keywords: ['debug', 'bug', 'report', 'raw', 'ansi', 'parse', 'trace', 'diagnose'],
-        run: () => setDebugOpen((open) => !open)
-      },
-      {
-        id: 'jump',
-        icon: 'jumpDown' as const,
-        label: t('palette.view.jumpLabel'),
-        hint: chord('L', true),
-        group: 'view',
-        run: () => activeTerminal()?.jumpToLatest()
-      },
-      {
-        id: 'hud',
-        icon: 'layout' as const,
-        label:
-          hudPreference === 'on'
-            ? t('palette.view.hideCardsLabel')
-            : t('palette.view.showCardsLabel'),
-        hint: inGame ? undefined : t('palette.view.hudNotInRealmHint'),
-        group: 'view',
-        keywords: ['hud', 'cards', 'rail', 'panel'],
-        run: () => setHudPreference(hudPreference === 'on' ? 'off' : 'on')
-      },
-      {
-        id: 'density',
-        icon: 'density' as const,
-        label: t('palette.view.densityLabel'),
-        hint: preference === 'auto' ? t('palette.view.densityAutoHint', { density }) : density,
-        group: 'view',
-        keywords: ['density', 'compact', 'comfortable', 'spacing', 'size'],
-        run: cycle
-      },
-      {
-        id: 'focus',
-        icon: 'terminal' as const,
-        label: t('palette.view.focusLabel'),
-        group: 'view',
-        keywords: ['focus', 'terminal', 'console', 'caret', 'cursor'],
-        run: () => activeTerminal()?.focus()
-      },
-      /*
-       * The shelf itself, above the loops this character already has.
-       *
-       * A command as well as a chord and a button, for the reason the palette
-       * exists: `Ctrl/Cmd L` is invisible to somebody who has not read the
-       * documentation, and `loop`, `grind` and `walk` are what they type. It
-       * `movesFocus`, because the modal takes the caret — the opt-out
-       * `Command` provides for exactly this, and without it the automatic
-       * return would undo the focus move the moment the palette closed.
-       */
-      {
-        id: 'loop:open',
-        icon: 'loop' as const,
-        label: t('loops.paletteLabel'),
-        group: 'navigate' as const,
-        /*
-         * Deliberately not `route`. A keyword is what somebody types looking
-         * for a thing, and `route` is what they type looking for the *route
-         * panel* — which is a different command that has owned that word since
-         * before this one existed. This command is pinned by the shipped
-         * `loop:*` pattern, so it sorts above the shelf's other rows: claiming
-         * `route` as well put it above the Route command itself and Enter
-         * opened the wrong thing. A keyword is only free if nothing else has
-         * earned it.
-         */
-        keywords: ['loop', 'loops', 'grind', 'walk', 'shelf', 'megamud', 'area'],
-        movesFocus: true,
-        // Through the toggle, so the "a character exists" guard is stated once
-        // rather than once per way in.
-        run: toggleLoops
-      },
-      // Loops: the loop a character walks to gain levels. Asked of the
-      // session rather than read off the global config, because a profile
-      // overlay replaces `automation.loops` — the global list is the wrong
-      // answer for any character that states its own.
-      ...loops.map((loop) => ({
-        id: `loop:${loop.name}`,
-        icon: 'route' as const,
-        label: t('palette.navigate.loopLabel', { loopName: loop.name }),
-        hint:
-          loop.stops === 1
-            ? t('palette.navigate.loopStopsHint.one', { stopCount: loop.stops })
-            : t('palette.navigate.loopStopsHint.many', { stopCount: loop.stops }),
-        keywords: ['loop', 'grind', 'walk'],
-        group: 'navigate' as const,
-        run: () => {
-          void api.startLoop(session, loop.name).then((refused) => {
-            if (refused) terminals.current.get(session)?.notice(refused);
-          });
-        }
-      })),
-      /*
-       * Stop, whichever of the two is running — and only while one is: a stop
-       * for a character standing still is a control that does nothing, which
-       * is worse than none. One command rather than the two it replaced, for
-       * the reason the toolbar has one button: *stop* means the same thing
-       * whether the character is routing or looping.
-       */
-      ...(movementOf(view.walk, view.loop).moving
-        ? [
-            {
-              id: 'move:stop',
-              icon: 'stop' as const,
-              label: t('palette.navigate.moveStopLabel'),
-              hint: t('palette.navigate.moveStopHint'),
-              keywords: ['loop', 'walk', 'route', 'stop', 'halt', 'move'],
-              group: 'navigate' as const,
-              run: () => void api.stopMoving(session)
-            }
-          ]
-        : []),
-      {
-        id: 'theme',
-        icon: 'theme' as const,
-        label: t('palette.view.themeCycleLabel'),
-        hint:
-          themePreference === 'system'
-            ? t('palette.view.themeCycleSystemHint', { themeLabel: theme.label })
-            : theme.label,
-        group: 'view',
-        run: cycleTheme
-      },
-      // One command per theme, so a theme is *chosen* rather than cycled to
-      // through fifteen others. Findable by its own name and by "theme".
-      ...THEME_PREFERENCES.filter((entry) => entry !== themePreference).map((entry) => ({
-        id: `theme:${entry}`,
-        icon: 'theme' as const,
-        label:
-          entry === 'system'
-            ? t('palette.view.themeFollowSystemLabel')
-            : t('palette.view.themeLabel', { themeLabel: THEMES[entry].label }),
-        hint: entry === 'system' ? t('palette.view.themeSystemHint') : THEMES[entry].appearance,
-        keywords: ['theme', 'colour', 'color', 'scheme', 'appearance'],
-        group: 'view' as const,
-        run: () => chooseTheme(entry)
-      })),
-      // One per console palette, alongside the theme commands rather than
-      // buried under them: the console is the surface the player spends the
-      // evening reading, and "make the game's colours pop" is not a request
-      // anybody should have to find a settings page to make.
-      ...CONSOLE_PALETTES.filter((entry) => entry !== consolePreference).map((entry) => ({
-        id: `console:${entry}`,
-        icon: 'terminal' as const,
-        label:
-          entry === 'theme'
-            ? t('palette.view.consolePaletteFollowLabel')
-            : t('palette.view.consolePaletteLabel', {
-                paletteLabel: TERMINAL_THEMES[entry].label
-              }),
-        hint:
-          entry === 'theme'
-            ? t('palette.view.consolePaletteFollowHint')
-            : TERMINAL_THEMES[entry].appearance,
-        keywords: ['console', 'terminal', 'palette', 'ansi', 'colour', 'color'],
-        group: 'view' as const,
-        run: () => chooseConsole(entry)
-      })),
-      ...(showTabs
-        ? [
-            {
-              id: 'tabside',
-              icon: 'columns' as const,
-              /*
-               * One row that cycles left → top → right, labelled with where
-               * the next press puts the rail and hinted with what that costs.
-               *
-               * A row per placement was the alternative and is what the theme
-               * commands do — but a theme has sixteen values and no order,
-               * while this has three that are literally one control moved
-               * around a window. Three rows would put two dead ones in the
-               * `view` group at all times, and the group is already the
-               * longest in the palette.
-               *
-               * The keywords carry what the label cannot: a cycle's label only
-               * ever names the *next* stop, so without them somebody typing
-               * `right` would find this row only one press in three — and a
-               * command nobody can find does not exist.
-               */
-              label:
-                tabSide === 'top'
-                  ? t('palette.view.tabsOnRightLabel')
-                  : tabSide === 'left'
-                    ? t('palette.view.tabsOnTopLabel')
-                    : t('palette.view.tabsOnLeftLabel'),
-              hint:
-                tabSide === 'top'
-                  ? t('palette.view.tabsTopHint')
-                  : tabSide === 'left'
-                    ? t('palette.view.tabsLeftHint')
-                    : t('palette.view.tabsRightHint'),
-              keywords: ['tabs', 'left', 'right', 'top', 'side', 'edge', 'rail', 'mirror', 'swap'],
-              group: 'view' as const,
-              run: () =>
-                setTabSide(tabSide === 'left' ? 'top' : tabSide === 'top' ? 'right' : 'left')
-            }
-          ]
-        : []),
-      {
-        id: 'config',
-        icon: 'fileText' as const,
-        label: t('palette.view.configLabel'),
-        // The full path stretched the palette into a sideways scroll; the two
-        // ends are what identify a path, so the middle is what goes.
-        hint: shortPath(configPath),
-        group: 'view',
-        // `reveal` was the label until it stopped being one; somebody who
-        // learned it should still find the row. A label is how a thing reads,
-        // keywords are how it is found.
-        keywords: ['reveal', 'open', 'yaml', 'file', 'folder', 'config', 'options'],
-        run: () => reveal(() => api.revealConfig())
-      },
-      {
-        id: 'profiles',
-        icon: 'users' as const,
-        label: t('palette.view.profilesLabel'),
-        hint:
-          sessions.length > 0
-            ? t('palette.view.profilesLoadedHint', { count: sessions.length })
-            : t('palette.view.profilesNoneHint'),
-        group: 'view',
-        keywords: ['reveal', 'open', 'folder', 'profiles', 'characters'],
-        run: () => reveal(() => api.revealProfiles())
-      },
-      {
-        id: 'logs',
-        icon: 'folder' as const,
-        label: t('palette.view.logsLabel'),
-        hint: config.logging.enabled ? undefined : t('palette.view.logsNotKeptHint'),
-        group: 'view',
-        keywords: ['reveal', 'open', 'folder', 'logs', 'records', 'transcript'],
-        run: () => reveal(() => api.revealLogs())
-      },
-
-      // Layout: what is on screen and how it is arranged -- panes and cards.
-      // Panes: only ever offered when there is something to put in one.
-      ...(panes.length < tuning().maxPanes
-        ? sessions
-            .filter((entry) => !panes.includes(entry.id))
-            .map((entry) => ({
-              id: `pane:${entry.id}`,
-              icon: 'split' as const,
-              label: t('palette.layout.splitLabel', { characterName: entry.name }),
-              hint:
-                paneFlow === 'columns'
-                  ? t('palette.layout.splitSideBySideHint')
-                  : t('palette.layout.splitStackedHint'),
-              group: 'layout' as const,
-              run: () => addPane(entry.id)
-            }))
-        : []),
-      ...(panes.length > 1
-        ? [
-            {
-              id: 'unsplit',
-              icon: 'close' as const,
-              label: t('palette.layout.unsplitLabel'),
-              hint: t('palette.layout.unsplitPanesHint', { paneCount: panes.length }),
-              group: 'layout' as const,
-              run: closePane
-            },
-            {
-              id: 'paneflow',
-              icon: 'columns' as const,
-              label:
-                paneFlow === 'rows'
-                  ? t('palette.layout.panesSideBySideLabel')
-                  : t('palette.layout.panesStackedLabel'),
-              hint:
-                paneFlow === 'rows'
-                  ? t('palette.layout.paneflowNeedsColumnsHint', { minColumns: MIN_COLUMNS })
-                  : t('palette.layout.paneflowRowsCheapHint'),
-              group: 'layout' as const,
-              run: () => turnPanes(paneFlow === 'rows' ? 'columns' : 'rows')
-            }
-          ]
-        : []),
-      // Bringing a card back. Only the ones actually put away, so the palette
-      // does not list six things that are already on screen.
-      ...cards.away.map((id: CardId) => ({
-        id: `card:${id}`,
-        icon: 'plus' as const,
-        label: t('palette.layout.showCardLabel', { cardName: cardLabel(id) }),
-        hint: t('palette.layout.showCardHint'),
-        group: 'layout' as const,
-        run: () => cards.show(id)
-      })),
-      /*
-       * Whether each card that can be empty holds its place while it is.
-       *
-       * The same switch the card's own gear carries, in the place people look
-       * for things by typing a word — `combat`, `hide`, `party`. Offered only
-       * for a card that is actually on screen somewhere: for one that has been
-       * put away it is a setting about a card that is not there, the palette
-       * already has a row for bringing it back, and a card that is away has no
-       * gear to reach either.
-       */
-      ...(Object.keys(HIDES_WHEN_EMPTY) as CardId[])
-        .filter((id) => cards.isShown(id))
-        .map((id) => {
-          const hides = hidesWhenEmpty(cards.settingsOf(id), id);
-          return {
-            id: `card:${id}:autohide`,
-            icon: 'layout' as const,
-            label: hides
-              ? t('palette.layout.cardAlwaysLabel', { cardName: cardLabel(id) })
-              : t('palette.layout.cardHideEmptyLabel', { cardName: cardLabel(id) }),
-            hint: hides
-              ? t('palette.layout.cardAlwaysHint')
-              : t('palette.layout.cardHideEmptyHint'),
-            keywords: ['card', 'hide', 'empty', 'autohide', 'show'],
-            group: 'layout' as const,
-            /*
-             * Written only where it differs from this card's own default and
-             * cleared where it agrees, so what is stored is what somebody
-             * actually chose. A value that happens to equal the default is a
-             * key that outlives the default it agreed with.
-             */
-            run: () =>
-              cards.setSettings(id, {
-                autoHide: !hides === HIDES_WHEN_EMPTY[id] ? undefined : !hides
-              })
-          };
-        }),
-      // The way out of a rail that has been dragged into a corner. Kept in the
-      // palette rather than on the rail: it is reached once, by someone who
-      // already knows they want it. A rail rolled flat is that corner too, so
-      // it counts — `reset` puts the rolled cards back open with the rest of
-      // the arrangement.
-      ...(cards.floats.length > 0 || cards.away.length > 0 || cards.rolled.length > 0
-        ? [
-            {
-              id: 'cards:reset',
-              icon: 'reset' as const,
-              label: t('palette.layout.resetCardsLabel'),
-              hint: t('palette.layout.resetCardsHint'),
-              group: 'layout' as const,
-              run: () => cards.reset()
-            }
-          ]
-        : []),
-      // A rail dragged somewhere awkward, put back to the density's default.
-      ...(widths.rail !== null ||
-      widths.tabs !== null ||
-      widths.above !== null ||
-      widths.below !== null
-        ? [
-            {
-              id: 'layout:widths-reset',
-              icon: 'reset' as const,
-              label: t('palette.layout.widthsResetLabel'),
-              hint: t('palette.layout.widthsResetHint'),
-              keywords: ['resize', 'splitter', 'divider', 'width', 'rail', 'column'],
-              group: 'layout' as const,
-              run: () => widths.reset()
-            }
-          ]
-        : [])
-    ],
-    /*
-     * Everything the list is built from, and it has to be everything.
-     *
-     * `loops` and `view.loop.status` were both missing, and the fetch side was
-     * healthy the whole time: `config:changed` bumps `loadedAt`, the `listLoops`
-     * effect refires, main resolves the list live off the SessionManager, the
-     * new list lands in state -- and this memo simply never reran. So an *added*
-     * loop stayed absent until something unrelated forced a rebuild (switching
-     * character, opening a pane), and a *removed* one lingered in the stale
-     * array, still matching the shipped `loop:*` pattern and still drawn pinned.
-     * There is no second source of truth to add here; `loop:list` was already
-     * correct and already being asked.
-     *
-     * `widths` was missing for the same reason and nobody had reported it yet:
-     * `layout:widths-reset` is offered only while some pane has been dragged off
-     * its default, so the command appeared and disappeared a render late.
-     * Listed by value rather than as the object, because `usePaneWidths` returns
-     * a fresh literal every render -- depending on it would rebuild forty
-     * commands per render and quietly turn this memo off.
-     */
-    [
-      api,
-      reveal,
-      config.servers,
-      sessions,
-      profiles,
-      showTabs,
-      phases,
-      cards,
-      panes,
-      paneFlow,
-      turnPanes,
-      addPane,
-      closePane,
-      session,
-      showSession,
-      closeSession,
-      connected,
-      tabSide,
-      setTabSide,
-      activeTerminal,
-      config.logging.enabled,
-      hudPreference,
-      setHudPreference,
-      inGame,
-      configPath,
-      handleConnect,
-      railOpen,
-      toggleRail,
-      debugOpen,
-      preference,
-      density,
-      cycle,
+  // A boolean, so a walk's every step does not rebuild the list (todo 754).
+  const moving = movementOf(view.walk, view.loop).moving;
+  const paletteDeps: PaletteDeps = {
+    api,
+    session,
+    sessions,
+    profiles,
+    servers: config.servers,
+    phases,
+    showTabs,
+    connected,
+    inGame,
+    moving,
+    loops,
+    configPath,
+    loggingEnabled: config.logging.enabled,
+    railOpen,
+    debugOpen,
+    hud: hudPreference,
+    setHud: setHudPreference,
+    density,
+    densityPreference: preference,
+    cycleDensity: cycle,
+    theme: {
       theme,
-      themePreference,
-      cycleTheme,
-      toggleConnection,
-      openSettings,
-      manageServers,
-      editGlobal,
-      editDefaults,
-      loops,
-      view.loop.status,
-      widths.rail,
-      widths.tabs,
-      widths.above,
-      widths.below,
-      widths.reset
-    ]
-  );
+      preference: themePreference,
+      consolePreference,
+      cycle: cycleTheme,
+      choose: chooseTheme,
+      chooseConsole
+    },
+    tabSide,
+    setTabSide,
+    panes,
+    paneFlow,
+    addPane,
+    closePane,
+    turnPanes,
+    cards,
+    widths: {
+      rail: widths.rail,
+      tabs: widths.tabs,
+      above: widths.above,
+      below: widths.below,
+      reset: widths.reset
+    },
+    openSettings,
+    manageServers,
+    editGlobal,
+    editDefaults,
+    toggleConnection,
+    connect: handleConnect,
+    showSession,
+    closeSession,
+    openRoute,
+    openBuilder,
+    openSearch,
+    toggleRail,
+    toggleDebug,
+    toggleLoops,
+    reveal,
+    terminal: activeTerminal,
+    say: noticeTo
+  };
+  // Keyed on every field it is handed (`paletteKeys`), so none can be left out.
+  const commands = useMemo<Command[]>(() => paletteCommands(paletteDeps), paletteKeys(paletteDeps));
 
   /**
    * The shelf at the top of the palette: what `internal.yaml` ships, as
@@ -4836,14 +1103,7 @@ export default function App() {
     },
     { key: 'Tab', mod: true, run: () => stepSession(1) },
     { key: 'Tab', mod: true, shift: true, run: () => stepSession(-1) },
-    {
-      key: 'g',
-      mod: true,
-      run: () => {
-        setRouteTarget(null);
-        setRouteOpen((open) => !open);
-      }
-    },
+    { key: 'g', mod: true, run: toggleRoute },
     /*
      * Escape dismisses the topmost thing that is open, and is registered only
      * while something is. The palette handles its own Escape because it holds
@@ -4916,531 +1176,76 @@ export default function App() {
       : [])
   ]);
 
-  /*
-   * Read through refs by the cached bundles below, so a bundle built on the
-   * first render cannot hold a stale flyout opener or refusal reporter.
-   */
-  const selectPlayerRef = useRef(selectPlayer);
-  selectPlayerRef.current = selectPlayer;
-  const sayRefusalRef = useRef(sayRefusal);
-  sayRefusalRef.current = sayRefusal;
-  const startMovingRef = useRef(startMovingIn);
-  startMovingRef.current = startMovingIn;
-  const stepBackRef = useRef(stepBackIn);
-  stepBackRef.current = stepBackIn;
-
-  /**
-   * Re-base one character's Combat Stats card to its totals as they stand.
-   *
-   * The same write the lap makes on `onLoop`, so the button and the loop
-   * cannot disagree about what a baseline is; main's totals are untouched by
-   * either, which is what makes both safe.
-   */
-  const resetStats = useCallback(
-    (sid: SessionId) => patchView(sid, (v) => ({ ...v, statsBase: rebased(sid, v) })),
-    [patchView]
+  /** Everything a card reads, addressed to one character. */
+  const { contextFor, suppliesBundle } = useCardContext({
+    api,
+    session,
+    sessions,
+    thresholds: config.ui.vitals,
+    navigationVisible,
+    size,
+    meter,
+    pressure,
+    realmAt: loadedAt,
+    flyout,
+    nameIndexes,
+    loops,
+    toolbarPins,
+    remotesFor,
+    switchesFor,
+    suppliesFor,
+    profileNameFor,
+    ask,
+    forget,
+    inspect,
+    loadWearer,
+    loadMap,
+    lookupName,
+    chooseOnMap,
+    peekRoom,
+    endPeek,
+    goToRoom,
+    runHunt,
+    createHunt,
+    builder: builderApi,
+    openBuilder,
+    startMoving,
+    stopMoving,
+    startLoop,
+    skipLoop,
+    reverseLoop,
+    send: sayOnChannel,
+    openLoops: toggleLoops,
+    dial,
+    hangUp,
+    sayRefusal,
+    startMovingIn,
+    stepBackIn,
+    selectPlayer,
+    resetStats
+  });
+  /** The chrome every card wears, and a put-away card's handles. */
+  const { chromeFor, pinnedChrome, grabCard, floatCard } = useCardChrome(
+    cards,
+    drag,
+    resize,
+    returnFocus,
+    theme
   );
-  const resetStatsRef = useRef(resetStats);
-  resetStatsRef.current = resetStats;
-
-  /**
-   * The addressed callbacks for one character, built once and kept.
-   *
-   * `contextFor` used to write these inline, which handed every card a fresh
-   * function per prop per render — and a memoised card whose props never
-   * compare equal is not memoised at all. Everything captured is either the
-   * bridge and the id, which never change, or read through a ref.
-   */
-  const boundCache = useRef(new Map<SessionId, AddressedActions>());
-  const boundFor = useCallback(
-    (sid: SessionId): AddressedActions => {
-      const cached = boundCache.current.get(sid);
-      if (cached) return cached;
-      const bound: AddressedActions = {
-        ask: (command) => void api.ask(sid, command),
-        forget: (discovery) => void api.forget(sid, discovery),
-        forgetFind: (find) => void api.forgetFind(sid, find),
-        gear: (action, item) => void api.gear(sid, action, item),
-        loadWearer: () => api.wearer(sid),
-        loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
-        lookupName: (query) => api.lookup(sid, query),
-        loadQuests: () => api.questBook(sid),
-        loadErrand: (block) => api.questErrand(sid, block),
-        loadPlan: (block, marked) => api.questPlan(sid, block, marked),
-        runPlan: (block, marked) => api.questRun(sid, block, marked),
-        stopRun: () => void api.questStop(sid),
-        loadHunting: (measure) => api.huntingGrounds(sid, measure),
-        startMoving: (loop) => startMovingRef.current(sid, loop, null),
-        stopMoving: () => void api.stopMoving(sid),
-        // Through a ref like `selectPlayer` beside it: this one changes state
-        // in `App` rather than sending anything, and the bound object has to
-        // stay the same object across renders or every card's memo is defeated.
-        resetStats: () => resetStatsRef.current(sid),
-        startLoop: (name) =>
-          void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
-        skipLoop: () =>
-          void api.skipLoopStop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
-        reverseLoop: () =>
-          void api.reverseLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
-        selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
-        setGangRemotes: (remotes) => void api.setGangRemotes(sid, remotes),
-        setGangpath: (on) => void api.setRemoteGangpath(sid, on),
-        setSupplies: (items) =>
-          void api.setSupplies(sid, items).then((refused) => sayRefusalRef.current(sid)(refused)),
-        send: (line) => void api.input(sid, `${line}\r`),
-        macro: (line) => api.macro(sid, line),
-        dropMacro: () => api.dropMacro(sid)
-      };
-      boundCache.current.set(sid, bound);
-      return bound;
-    },
-    [api]
-  );
-
-  // A closed character's bundle must not linger for ever; the roster is the
-  // authority on who is loaded.
-  useEffect(() => {
-    const keep = new Set(sessions.map((entry) => entry.id));
-    for (const sid of boundCache.current.keys()) {
-      if (!keep.has(sid)) boundCache.current.delete(sid);
-    }
-  }, [sessions]);
-
-  /**
-   * The supplies list and its writer as one object, kept for as long as the
-   * list is.
-   *
-   * `contextFor` built `{ items, save }` inline, which handed the Self card
-   * and the reference panel a fresh object on every render of the window —
-   * and a memoised card whose props never compare equal is not memoised at
-   * all. Measured with `npm run profile:ui` (2026-09-04): it was one of the
-   * two props re-rendering a card on every commit, idle included.
-   */
-  const suppliesCache = useRef(
-    new Map<
-      SessionId,
-      {
-        items: SupplyItem[];
-        save: AddressedActions['setSupplies'];
-        bundle: { items: SupplyItem[]; save: AddressedActions['setSupplies'] };
-      }
-    >()
-  );
-  const suppliesBundle = useCallback(
-    (sid: SessionId): { items: SupplyItem[]; save: AddressedActions['setSupplies'] } => {
-      const items = suppliesFor(sid);
-      const save = boundFor(sid).setSupplies;
-      const cached = suppliesCache.current.get(sid);
-      if (cached && cached.items === items && cached.save === save) return cached.bundle;
-      const bundle = { items, save };
-      suppliesCache.current.set(sid, { items, save, bundle });
-      return bundle;
-    },
-    [boundFor, suppliesFor]
-  );
-
-  /**
-   * Everything a card reads, addressed to one character.
-   *
-   * One builder for the shown character's cards and for another character's
-   * pinned floats, so a field added for one cannot be forgotten for the other
-   * — `view.loop` went stale in exactly that gap. The shown character keeps
-   * the behaviours a float must not borrow: the route panel (it plans for the
-   * shown realm), the throughput meter (it reports the character being
-   * watched), the Navigation card's put-away timer, and the stop controls that hand
-   * the caret back.
-   *
-   * Every function handed out here is identity-stable — the shown character's
-   * own callbacks, or the cached bundle — because the cards are memoised. The
-   * one exception is `toolbar`: its subject embeds live state and is rebuilt
-   * per render, which is why `ToolbarCard` is deliberately not memoised.
-   */
-  const contextFor = useCallback(
-    (sid: SessionId, v: SessionView, chrome: CardChrome): CardContext => {
-      const shown = sid === session;
-      const bound = boundFor(sid);
-      return {
-        session: sid,
-        chrome,
-        character: v.character,
-        view: v,
-        inGame: v.character.phase === 'in-game',
-        thresholds: config.ui.vitals,
-        navigationVisible: shown
-          ? navigationVisible
-          : v.walk.status !== 'idle' || v.loop.status !== 'idle',
-        size,
-        meter: shown ? meter : ZERO_METER,
-        quiet: pressure === 'high',
-        ask: shown ? ask : bound.ask,
-        forget: shown ? forget : bound.forget,
-        forgetFind: bound.forgetFind,
-        inspect,
-        gear: bound.gear,
-        loadWearer: shown ? loadWearer : bound.loadWearer,
-        loadMap: shown ? loadMap : bound.loadMap,
-        lookupName: shown ? lookupName : bound.lookupName,
-        chooseOnMap: shown ? chooseOnMap : null,
-        peekRoom: shown ? peekRoom : null,
-        endPeek: shown ? endPeek : null,
-        goToRoom,
-        loadQuests: bound.loadQuests,
-        loadErrand: bound.loadErrand,
-        loadPlan: bound.loadPlan,
-        runPlan: bound.runPlan,
-        stopRun: bound.stopRun,
-        loadHunting: bound.loadHunting,
-        runHunt: shown ? runHunt : null,
-        createHunt: shown ? createHunt : null,
-        realmAt: loadedAt,
-        builder: shown ? builderApi : null,
-        openBuilder: shown ? openBuilder : null,
-        startMoving: shown ? startMoving : bound.startMoving,
-        stopMoving: shown ? stopMoving : bound.stopMoving,
-        // Addressed always: a pinned float's Reset re-bases that character's
-        // card, never the one being watched.
-        resetStats: bound.resetStats,
-        // The shown character's list is the only one the renderer holds; a
-        // float's own loops are not asked for, so it offers no picker.
-        loops: shown ? loops : null,
-        startLoop: shown ? startLoop : bound.startLoop,
-        skipLoop: shown ? skipLoop : bound.skipLoop,
-        reverseLoop: shown ? reverseLoop : bound.reverseLoop,
-        subject: flyout !== null && flyout.session === sid ? playerKey(flyout.name) : null,
-        selectPlayer: bound.selectPlayer,
-        /*
-         * Addressed at `sid`, never at the shown character, for the reason
-         * every other addressed field here is: a pinned float belongs to
-         * somebody else, and a Gang card that wrote the shown character's
-         * permissions would hand a stranger the wrong character's gang.
-         */
-        remotes: remotesFor(sid),
-        setGangRemotes: bound.setGangRemotes,
-        setGangpath: bound.setGangpath,
-        supplies: suppliesBundle(sid),
-        profileName: profileNameFor(sid),
-        /*
-         * Addressed like everything else here. A pinned float's toolbar
-         * belongs to its own character — a master switch that turned
-         * automation off on whoever happened to be on screen would be the
-         * exact failure the tab rail's dial button records, applied to a row
-         * of eight buttons at once.
-         */
-        toolbar: {
-          switches: switchesFor(sid),
-          connected: v.state.phase === 'connected',
-          // The same reading the rail's `inGame` makes, because the toolbar is
-          // the one card drawn on both sides of it.
-          inRealm: v.character.phase === 'in-game',
-          dialling: v.state.phase === 'connecting' || v.state.phase === 'closing',
-          // One reading of the two progresses, shared with the Navigation
-          // card, so the button and the card cannot disagree about whether
-          // this character is going anywhere.
-          movement: movementOf(v.walk, v.loop),
-          /*
-           * The same function main will run when the button is pressed, over
-           * the same two facts — so a button that is lit is a button that will
-           * do something, and one that is greyed is greyed because there is
-           * nothing in the pack to put back.
-           */
-          canRestoreGear: canRestore(v.character.loadout, v.character.inventory.items),
-          restoreGear: () => void api.gear(sid, 'restore'),
-          setSwitch: (name, on) =>
-            void api.setAutomationSwitch(sid, name, on).then(sayRefusal(sid)),
-          connect: () => dial(sid),
-          disconnect: () => hangUp(sid),
-          // The picker is the card's; the toolbar presses play on whatever
-          // this character was last walking.
-          startMoving: () => startMovingIn(sid, null, null),
-          stopMoving: shown ? stopMoving : () => void api.stopMoving(sid),
-          stepBack: () => stepBackIn(sid, null),
-          /*
-           * The modal is the shown character's, like the route panel: it files
-           * into a scope and starts a loop, and both are addressed at whoever
-           * it was opened for. On a pinned float the button opens it for the
-           * character on screen rather than for the float's own — so it is
-           * `null` there and the button is not drawn, which is the rule a
-           * control bound to nowhere already follows in this client.
-           */
-          openLoops: shown ? toggleLoops : null,
-          openBuilder: shown ? openBuilder : null
-        },
-        // Per client, not per character: which buttons somebody keeps to hand
-        // is a fact about the person at the keyboard, so every character's
-        // toolbar draws the same row with its own answers on it.
-        toolbarPinned: toolbarPins.pinned,
-        pinToolbarButton: toolbarPins.toggle,
-        nameIndex: nameIndexes[sid] ?? null,
-        onSend: shown ? sayOnChannel : bound.send,
-        onMacro: bound.macro,
-        dropMacro: bound.dropMacro
-      };
-    },
-    [
-      api,
-      ask,
-      boundFor,
-      builderApi,
-      meter,
-      chooseOnMap,
-      goToRoom,
-      openBuilder,
-      profileNameFor,
-      suppliesBundle,
-      config.ui.vitals,
-      forget,
-      inspect,
-      loadWearer,
-      loadMap,
-      flyout,
-      lookupName,
-      pressure,
-      remotesFor,
-      switchesFor,
-      toolbarPins,
-      dial,
-      hangUp,
-      sayRefusal,
-      sayOnChannel,
-      selectPlayer,
-      session,
-      size,
-      startMoving,
-      startMovingIn,
-      stopMoving,
-      navigationVisible,
-      loops,
-      startLoop,
-      skipLoop,
-      reverseLoop,
-      sayRefusal
-    ]
-  );
-
-  /**
-   * One card, wherever it is.
-   *
-   * The rail and the float layer render from the same function on purpose:
-   * dragging a card out of the rail must not change what it *is*, and two
-   * copies of this switch would drift the moment one of them gained a prop.
-   * The chrome — close, drag handle, translucency — is assembled here too, so
-   * every card gets the same set without listing it eleven times.
-   *
-   * Returns `null` for a card with nothing honest to say yet: a map of nowhere
-   * and a walk that is not happening are cards that state nothing, which
-   * docs/ui-design.md §3.2 does not allow.
-   */
-  /**
-   * The chrome for a card, cached so its identity is stable across renders.
-   *
-   * Every card is memoised, and memoisation is only as good as the props: a
-   * fresh `onClose` per render re-rendered every card per state flush, which
-   * is the very cost the flush exists to avoid. The closures read the layout
-   * and the drag machine through refs, so a cached handle never acts on a
-   * stale layout; the object is rebuilt only when something a card *draws*
-   * changes — dragging, floating, solidity, pinned — or when `returnFocus`
-   * itself moves, the one captured value the refs do not cover: a cache that
-   * kept the old one would hand the caret back through a stale closure for
-   * the life of the window, with nothing failing.
-   */
-  const chromeCache = useRef(
-    new Map<
-      CardId,
-      { key: string; focus: () => void; settings: CardSettings; chrome: CardChrome }
-    >()
-  );
-  const chromeFor = useCallback(
-    (id: CardId): CardChrome => {
-      const floating = cardsRef.current.floatOf(id);
-      const dragging = dragRef.current.state?.id === id && dragRef.current.state.live;
-      // Which lane, and how tall it was dragged there: both part of the key,
-      // because a card docked from a strip onto the rail gains the grip and a
-      // resized one is drawn at its new height on the next commit, not later.
-      const lane = cardsRef.current.laneOf(id);
-      const height = cardsRef.current.heightOf(id);
-      // Part of the key for the reason the height is: the glyph in the heading
-      // states which way the press goes, and a chrome cached across a roll
-      // would go on offering the way the card has just come.
-      const rolled = cardsRef.current.isRolled(id);
-      const key = floating
-        ? `float:${floating.solidity}:${floating.pinned === true}:${dragging}:${theme.id}:${rolled}`
-        : `rail:${dragging}:${theme.id}:${lane ?? ''}:${height ?? ''}:${rolled}`;
-      /*
-       * Compared by identity rather than folded into the string key. The store
-       * hands back the very object it holds — the shared empty one for a card
-       * nothing has been set on — and replaces it only for the card that
-       * changed, so identity is exact. Spelling each field into the key would
-       * be a list to keep in step with `CardSettings`, and the symptom of
-       * forgetting one is a card that ignores a setting until something else
-       * happens to invalidate its chrome.
-       */
-      const settings = cardsRef.current.settingsOf(id);
-      const cached = chromeCache.current.get(id);
-      if (
-        cached &&
-        cached.key === key &&
-        cached.focus === returnFocus &&
-        cached.settings === settings
-      )
-        return cached.chrome;
-      const chrome: CardChrome = {
-        cardId: id,
-        onClose: () => cardsRef.current.hide(id),
-        onGrab: (event: React.PointerEvent<HTMLElement>) => dragRef.current.begin(id, event),
-        dragging,
-        // Every card's copy menu takes the caret and gives it back here.
-        returnFocus,
-        /*
-         * Rolled up to its heading, and the way back down. On every card and
-         * in every placement: a card is rolled where it stands, so nothing
-         * here depends on which lane it is in or on whether it floats.
-         */
-        rolled,
-        onRoll: (next: boolean) => cardsRef.current.roll(id, next),
-        settings: {
-          id,
-          value: settings,
-          appearance: theme.appearance,
-          clientTheme: theme.id,
-          onChange: (change) => cardsRef.current.setSettings(id, change)
-        },
-        ...(floating
-          ? {
-              translucency: {
-                solidity: floating.solidity,
-                onChange: (solidity: number) => cardsRef.current.setSolidity(id, solidity)
-              },
-              pinned: floating.pinned === true,
-              onPin: (next: boolean) => cardsRef.current.pin(id, next)
-            }
-          : {}),
-        /*
-         * The corner grip, on the rail only: a float has its own, and a
-         * docked strip is sized by its splitter. The height rides along where
-         * one has been dragged, and its absence means the card's own.
-         */
-        ...(lane === 'rail'
-          ? {
-              ...(height !== undefined ? { height } : {}),
-              onResize: (event: React.PointerEvent<HTMLElement>) =>
-                resizeRef.current.begin(id, event),
-              onResizeReset: () => cardsRef.current.resetHeight(id)
-            }
-          : {})
-      };
-      chromeCache.current.set(id, { key, focus: returnFocus, settings, chrome });
-      return chrome;
-    },
-    // The theme is a real dependency and not only part of the key: the palette
-    // picker offers the half of the registry that matches what the client is
-    // wearing, so a card whose chrome was built under the old one would go on
-    // offering dark palettes to a light client.
-    [returnFocus, theme]
-  );
-
-  const renderCard = useCallback(
-    (id: CardId): ReactNode => {
-      // Diagnostics are still a group, toggled together by the rail shortcut.
-      // A card the player has *floated* is exempt: lifting it off the rail is
-      // an explicit request to keep it in view.
-      const floating = cards.floatOf(id);
-      const diagnostic =
-        id === 'session' || id === 'link' || id === 'automation' || id === 'stream';
-      if (diagnostic && !railOpen && !floating) return null;
-      if (!diagnostic && !hudOpen && !floating) return null;
-      /*
-       * Nothing to read until the character is actually in the realm; the
-       * standby card says so once, for the whole rail, rather than per card.
-       *
-       * **The toolbar is the exception** (todo 02): it is the one card that is
-       * not a reading. It carries the dial, and every switch on it writes that
-       * character's own file — which is exactly what somebody does while a
-       * character is sitting at the menu or hung up. Taking it away at that
-       * moment removes the control that puts the character back. What it does
-       * *not* do is offer commands there: `ToolbarSubject.inRealm` greys those,
-       * because a row that changes shape under the pointer is the worse of the
-       * two complaints (`ToolbarButton.disabled`).
-       */
-      if (!diagnostic && id !== 'toolbar' && !inGame) return null;
-
-      return cardElement(id, contextFor(session, view, chromeFor(id)));
-    },
-    /*
-     * `view`'s consumed fields are enumerated rather than the object listed,
-     * so a push that only touches bookkeeping does not rebuild every card.
-     */
-    [
-      automation,
-      cards,
-      character,
-      chromeFor,
-      contextFor,
-      drag,
-      hudOpen,
-      inGame,
-      lines,
-      railOpen,
-      session,
-      state,
-      telnetEvents,
-      view.learned,
-      // The Navigation card reads loop progress through `view`, so it is a
-      // real dependency — omitted, the card kept a stale closure whenever a
-      // loop push landed in a render where nothing else here moved. Same
-      // defect the `commands` memo had with `view.loop.status`.
-      view.loop,
-      view.notices,
-      view.talk,
-      walk
-    ]
-  );
-
-  /**
-   * A pinned float belonging to a character that is *not* shown.
-   *
-   * Every callback is bound to that character, never to the shown one: a
-   * Talk card pinned from the healer sends as the healer. What it cannot do
-   * is be dragged by its header — the drag machine belongs to the shown
-   * character's rail — so it moves once that character is shown.
-   */
-  const renderPinned = useCallback(
-    (id: CardId, sid: SessionId, layout: CardLayoutApi): ReactNode => {
-      const floating = layout.floatOf(id);
-      if (!floating) return null;
-      const v = views[sid] ?? EMPTY_VIEW;
-      const diagnostic =
-        id === 'session' || id === 'link' || id === 'automation' || id === 'stream';
-      const live = v.character.phase === 'in-game';
-      if (!diagnostic && !live) return null;
-      const chrome: CardChrome = {
-        cardId: id,
-        onClose: () => layout.hide(id),
-        returnFocus,
-        // That character's own settings, read and written through that
-        // character's own layout — a pinned float belongs to somebody else,
-        // and the rest of this object is addressed the same way.
-        settings: {
-          id,
-          value: layout.settingsOf(id),
-          appearance: theme.appearance,
-          clientTheme: theme.id,
-          onChange: (change) => layout.setSettings(id, change)
-        },
-        translucency: {
-          solidity: floating.solidity,
-          onChange: (solidity: number) => layout.setSolidity(id, solidity)
-        },
-        pinned: true,
-        onPin: (next: boolean) => layout.pin(id, next),
-        // Read and written through that character's own layout, like the
-        // settings above: a pinned float belongs to somebody else.
-        rolled: layout.isRolled(id),
-        onRoll: (next: boolean) => layout.roll(id, next)
-      };
-      return cardElement(id, contextFor(sid, v, chrome));
-    },
-    [contextFor, returnFocus, theme, views]
-  );
+  /** One card, wherever it is: the shown character's, or another's pinned float. */
+  const { renderCard, pinnedFor } = useCardRenderers({
+    cards,
+    drag,
+    railOpen,
+    hudOpen,
+    inGame,
+    session,
+    view,
+    views,
+    contextFor,
+    chromeFor,
+    pinnedChrome
+  });
 
   /*
    * Where a dragged card would land on the rail, or null if it would not.
@@ -5625,7 +1430,7 @@ export default function App() {
                   onFocusPane={focusPane}
                   onHandle={registerHandle}
                   onInput={handleInput}
-                  onInspect={inspectAt}
+                  onInspect={inspect}
                   onChooseRoom={chooseRoomNamed}
                   onAct={actInConsole}
                   onResize={handleResize}
@@ -5766,7 +1571,7 @@ export default function App() {
               boxRef={workspaceRef}
               key={entry.id}
               onStreamFloat={noteStreamFloat}
-              render={renderPinned}
+              render={pinnedFor(entry.id)}
               sid={entry.id}
             />
           ))}
@@ -5823,82 +1628,19 @@ export default function App() {
         )}
       </div>
 
-      {/*
-        What the realm knows about a clicked name, beside the name. One at a
-        time; the next click replaces it, Escape or a click elsewhere closes it.
-      */}
-      {asked !== null && (
-        <ReferencePopover
-          asked={asked}
-          level={character.progress.level}
-          lookup={lookupName}
-          onDismiss={dismissAsked}
-          /*
-            A shop in `Sold by` opens the route panel, and this panel goes with
-            it: one thing open at a time is the rule both slide-outs already
-            keep, and two panels hanging off one click is two things to put
-            away with no way to say which Escape means.
-          */
-          onName={inspect}
-          onRoom={(map, room) => {
-            dismissAsked();
-            chooseOnMap(map, room);
-          }}
-          realm={character.realm}
-          supplies={suppliesBundle(session)}
-        />
-      )}
-
-      {/*
-        What the realm knows about a room nobody is standing in, beside the
-        room. Opened by a pointer resting on a room on the map; the way there
-        is a button on it, which is the affordance the room's bare click used
-        to be.
-      */}
-      {peek !== null && (
-        <RoomQuickView
-          asked={peek}
-          load={loadRoomBrief}
-          mine={ownAlignment(character)}
-          onDismiss={dismissPeek}
-          onPointerEnter={holdPeek}
-          onPointerLeave={endPeek}
-        />
-      )}
-
-      {/*
-        One other person, beside the listing they were clicked on. Drawn from the
-        clicked character's own registry and permissions, which is why it takes a
-        session rather than reading the shown character's.
-      */}
-      {flyout !== null && (
-        <PlayerFlyout
-          asked={flyout}
-          character={(views[flyout.session] ?? EMPTY_VIEW).character}
-          inspect={inspect}
-          onAsk={askPlayer}
-          onDismiss={dismissFlyout}
-          onGrant={(name, grant) => void api.setRemoteGrant(flyout.session, name, grant)}
-          onSelectGang={(gang, anchor) => selectGang(flyout.session, gang, anchor)}
-          remotes={remotesFor(flyout.session)}
-          returnFocus={returnFocus}
-        />
-      )}
-
-      {/*
-        One gang, beside wherever its name was clicked, and read out of the same
-        character's roster and registry. Every member's name is itself a control
-        that opens the panel above on them: an entity carries through.
-      */}
-      {gangFlyout !== null && (
-        <GangFlyout
-          asked={gangFlyout}
-          character={(views[gangFlyout.session] ?? EMPTY_VIEW).character}
-          onDismiss={dismissGangFlyout}
-          onSelectPlayer={selectPlayer}
-          returnFocus={returnFocus}
-        />
-      )}
+      <SlideOuts
+        api={api}
+        character={character}
+        chooseOnMap={chooseOnMap}
+        loadRoomBrief={loadRoomBrief}
+        lookup={lookupName}
+        remotesFor={remotesFor}
+        returnFocus={returnFocus}
+        say={noticeTo}
+        slot={slideOuts}
+        supplies={suppliesBundle(session)}
+        views={views}
+      />
 
       <StatusRail
         action={action}
@@ -5960,7 +1702,7 @@ export default function App() {
       <LoopsModal
         characterName={character.name ?? session}
         here={loopHere}
-        loading={catalogue === null}
+        loading={loopsLoading}
         loops={loopChoices}
         onChoose={runChosenLoop}
         onClose={closeLoops}
@@ -5998,20 +1740,8 @@ export default function App() {
           wandered?.session ??
           ''
         }
-        onStay={() => {
-          setWandered(null);
-          returnFocus();
-        }}
-        onWalk={() => {
-          const asked = wandered;
-          setWandered(null);
-          // The figure that was on screen goes back with the answer: agreeing
-          // to a journey is agreeing to *that* journey, and main asks again if
-          // it has grown while the dialog stood.
-          if (asked?.kind === 'back') stepBackIn(asked.session, asked.steps);
-          else if (asked) startMovingIn(asked.session, asked.loop, asked.steps);
-          returnFocus();
-        }}
+        onStay={stay}
+        onWalk={walkOn}
       />
       <ResetPrompt
         characterName={

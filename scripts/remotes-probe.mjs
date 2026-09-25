@@ -73,15 +73,14 @@ function open(profile) {
         if (text.trim().length > 0) state.lines.push(text);
       },
       block: () => {},
+      players: () => {},
       character: () => {},
       state: () => {},
       telnet: () => {},
       notice: (message) => state.notices.push(message),
       command: (command) => state.sent.push(command)
     },
-    world,
-    automation,
-    profile.config.connection.login
+    { world, automation, login: profile.config.connection.login }
   );
   state.session.resize({ cols: 80, rows: 24 });
   return state;
@@ -231,7 +230,7 @@ async function main() {
       member?.vitals != null,
       member?.vitals
         ? `${member.name}: ${member.vitals.hp}/${member.vitals.hpMax}` +
-          (member.vitals.mana === null ? '' : `, ${member.vitals.mana}/${member.vitals.manaMax}`)
+            (member.vitals.mana === null ? '' : `, ${member.vitals.mana}/${member.vitals.manaMax}`)
         : 'no vitals recorded'
     );
   } else {
@@ -244,7 +243,8 @@ async function main() {
   const afterKill = answerer.sent.slice(beforeKill);
   check(
     '@kill is refused rather than obeyed',
-    afterKill.some((c) => /\{no: /.test(c)) && !afterKill.some((c) => /^(a|att|attack|k|kill)\b/i.test(c)),
+    afterKill.some((c) => /\{no: /.test(c)) &&
+      !afterKill.some((c) => /^(a|att|attack|k|kill)\b/i.test(c)),
     afterKill.join(' | ') || 'nothing sent'
   );
 
@@ -273,7 +273,9 @@ async function main() {
   answerer.session.dispose();
 
   const failed = results.filter((r) => !r.ok);
-  console.log(failed.length === 0 ? '\nAll remote checks passed.\n' : `\n${failed.length} check(s) failed.\n`);
+  console.log(
+    failed.length === 0 ? '\nAll remote checks passed.\n' : `\n${failed.length} check(s) failed.\n`
+  );
   process.exit(failed.length === 0 ? 0 : 1);
 }
 

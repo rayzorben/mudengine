@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useOverridablePreference } from './usePreference';
 import { tuning } from '../lib/tuning';
+import type { Density, DensityPreference } from '@shared/config';
 
 /**
  * Adaptive information density for the chrome.
@@ -10,8 +11,6 @@ import { tuning } from '../lib/tuning';
  * persists. Density never touches the terminal font — changing that would
  * change the character grid, and therefore what the server is told over NAWS.
  */
-export type DensityPreference = 'auto' | 'comfortable' | 'compact';
-export type Density = 'comfortable' | 'compact';
 
 const STORAGE_KEY = 'mudengine.density';
 const CYCLE: DensityPreference[] = ['auto', 'comfortable', 'compact'];

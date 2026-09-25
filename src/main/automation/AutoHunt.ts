@@ -27,6 +27,7 @@ import type { HealthConfig, HuntingAutomationConfig, WalkConfig } from '../../sh
 import { huntLoop, type HuntingAdvice, type HuntingSpot } from '../../shared/hunting';
 import type { Loop } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
+import type { SessionModule } from './Module';
 
 export interface HuntPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -92,7 +93,7 @@ type Phase =
 
 const ACTION = 'hunt';
 
-export class AutoHunt {
+export class AutoHunt implements SessionModule {
   private phase: Phase = { kind: 'idle' };
   /** When the survey was last asked for, so a status line is not a sweep. */
   private surveyedAt = 0;

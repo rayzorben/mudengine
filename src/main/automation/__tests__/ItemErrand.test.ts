@@ -531,21 +531,103 @@ describe('collecting what saying something gets', () => {
     expect(walked).toEqual([OWED]);
   });
 
-  it('says nothing came of it when the listing after the phrase lacks the item', () => {
+  /*
+   * A script may `adddelay` before its `giveitem` (`mine ore`: `adddelay 10`
+   * then `giveitem 1162`, Textblocks 2622), so the listing asked straight after
+   * the phrase can come back before the item does (todo 814).
+   */
+  it('asks again while it waits, and a later listing of its own finds the item', () => {
     sources = { shops: [], ...dropped([]), asks: [SHOPKEEPER] };
-    const auto = asking();
-    auto.collect([MOLDY], OWED, ready());
     at = '8/486';
+    let clock = 0;
+    const auto = asking({}, () => clock);
+    auto.collect([MOLDY], OWED, ready());
     auto.onCharacter(ready());
     sentHooks.shift()!();
     auto.onCharacter(ready());
     sentHooks.shift()!();
     auto.noteListing('inventory');
     auto.onCharacter(ready());
+    // The first listing lacked it: still waiting, and not asked again at once.
+    expect(auto.running).toBe(true);
+    expect(decisions).toHaveLength(0);
+    expect(listed).toBe(1);
+    clock += tuning().quests.replyMs - 1;
+    auto.onCharacter(ready());
+    expect(listed).toBe(1);
+    // The positive control: a beat later it is asked again.
+    clock += 2;
+    auto.onCharacter(ready());
+    expect(listed).toBe(2);
+    sentHooks.shift()!();
+    // Somebody else's `i` does not settle it; its own does.
+    auto.noteListing('i');
+    auto.onCharacter(ready());
+    expect(auto.running).toBe(true);
+    auto.noteListing('inventory');
+    auto.onCharacter(carrying('moldy key'));
+    expect(walked).toEqual([OWED]);
+  });
+
+  /*
+   * Paradigm's Commander Markus *hands you the box (which you hide in a safe
+   * place)* (`2026-09-07_21-49-00_festus.log`): a handover can be a quest flag
+   * the pack never lists, so the wait ends, and says so.
+   */
+  it('gives up once the wait is spent, and says a handover may not be an item', () => {
+    sources = { shops: [], ...dropped([]), asks: [SHOPKEEPER] };
+    at = '8/486';
+    let clock = 0;
+    const auto = asking({}, () => clock);
+    auto.collect([MOLDY], OWED, ready());
+    auto.onCharacter(ready());
+    sentHooks.shift()!();
+    const answer = (): void => {
+      auto.onCharacter(ready());
+      while (sentHooks.length > 0) sentHooks.shift()!();
+      auto.noteListing('inventory');
+      auto.onCharacter(ready());
+    };
+    answer();
+    // The first listing lacked it and the window is not spent: still waiting.
+    expect(auto.running).toBe(true);
+    expect(listed).toBe(1);
+    /*
+     * Todo 765: bounded by how late a script's `giveitem` can land
+     * (`walk.handoverDelayMs`), not by the summons' minutes: the next ask
+     * already comes after the longest `adddelay`, and was once fifteen asks.
+     */
+    expect(tuning().quests.replyMs).toBeGreaterThanOrEqual(tuning().walk.handoverDelayMs);
+    clock += tuning().quests.replyMs;
+    answer();
+    expect(listed).toBe(2);
     expect(walked).toHaveLength(0);
     expect(auto.running).toBe(false);
     expect(decisions.at(-1)).toMatchObject({ action: 'collect', acted: false });
-    expect(notices.at(-1)).toContain('no moldy key came of it');
+    expect(notices.at(-1)).toContain('moldy key');
+    expect(notices.at(-1)).toContain('quest flag');
+  });
+
+  // A quiet wire sends no state, so the session's clock drives the asking.
+  it('asks again off the clock when nothing arrives', () => {
+    sources = { shops: [], ...dropped([]), asks: [SHOPKEEPER] };
+    at = '8/486';
+    let clock = 0;
+    const auto = asking({}, () => clock);
+    auto.collect([MOLDY], OWED, ready());
+    // Not said yet: the clock does not say it for the walk.
+    auto.tick(ready());
+    expect(said).toEqual([]);
+    auto.onCharacter(ready());
+    sentHooks.shift()!();
+    auto.tick(ready());
+    expect(listed).toBe(1);
+    sentHooks.shift()!();
+    auto.noteListing('inventory');
+    auto.tick(ready());
+    clock += tuning().quests.replyMs;
+    auto.tick(ready());
+    expect(listed).toBe(2);
   });
 
   it('waits on a summons for its loot, and gives up on the clock', () => {

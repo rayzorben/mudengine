@@ -2,7 +2,7 @@ import { flyoutAnchor, isSelf } from './players';
 import { t } from './i18n';
 import type { PopoverAnchor } from './popover';
 import { ownGang, type CharacterState } from '@shared/character';
-import { playerKey, type PlayerRecord } from '@shared/players';
+import { playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 
 /**
  * A gang is an entity, and this is what the client knows about one.
@@ -66,12 +66,16 @@ export interface Member {
  * Case-insensitively throughout, because a gang name is typed by whoever
  * founded it and the server is inconsistent about case.
  */
-export function membersOf(character: CharacterState, gang: string): Member[] {
+export function membersOf(
+  players: PlayerRegistry,
+  character: CharacterState,
+  gang: string
+): Member[] {
   const wanted = gang.trim().toLowerCase();
   if (wanted.length === 0) return [];
   const rows = new Map<string, Member>();
 
-  for (const record of Object.values(character.players)) {
+  for (const record of Object.values(players)) {
     if (record.gang === null || record.gang.toLowerCase() !== wanted) continue;
     rows.set(playerKey(record.name), {
       ...fromRecord(record),
@@ -144,7 +148,7 @@ export function membersOf(character: CharacterState, gang: string): Member[] {
  * This character's own gang is included: it is a gang like any other, and the
  * one whose name is printed most often.
  */
-export function knownGangs(character: CharacterState): string[] {
+export function knownGangs(players: PlayerRegistry, character: CharacterState): string[] {
   const found = new Map<string, string>();
   const note = (name: string | null | undefined): void => {
     if (typeof name !== 'string') return;
@@ -153,7 +157,7 @@ export function knownGangs(character: CharacterState): string[] {
     found.set(gang.toLowerCase(), gang);
   };
 
-  for (const record of Object.values(character.players)) note(record.gang);
+  for (const record of Object.values(players)) note(record.gang);
   for (const entry of character.online) note(entry.gang);
   const own = ownGang(character);
   if (typeof own === 'string') note(own);

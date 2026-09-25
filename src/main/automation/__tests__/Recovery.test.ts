@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
-import { Recovery } from '../Recovery';
+import { Recovery, type RecoverySettings } from '../Recovery';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import type { MobRule } from '../../../shared/mobRules';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 const automation: AutomationConfig = {
@@ -92,8 +93,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** What a reload hands `Recovery`, around the block under test. */
+const settings = (
+  health: HealthConfig,
+  enabled = true,
+  party = DEFAULT_CONFIG.automation.party,
+  mobRules: MobRule[] = []
+): RecoverySettings => ({ health, enabled, party, combat: { mobRules } });
+
 const make = (config: HealthConfig, enabled = true): Recovery =>
-  new Recovery(config, enabled, queue);
+  new Recovery(settings(config, enabled), queue);
 
 /** Runs the queue's pacing forward so whatever was proposed reaches `sent`. */
 const drain = (): void => void vi.advanceTimersByTime(500);
@@ -265,7 +274,7 @@ describe('resting while poisoned', () => {
   });
 
   const onGreaterMud = (config: HealthConfig, said: string[] = []): Recovery =>
-    new Recovery(config, true, queue, undefined, {
+    new Recovery(settings(config), queue, {
       notice: (message) => void said.push(message),
       poisonRefusesRest: () => true
     });
@@ -343,7 +352,7 @@ describe('resting while poisoned', () => {
     expect(sent).toEqual(['rest']);
     sent.length = 0;
 
-    new Recovery(health({ restBelow: 0.5 }), true, queue, undefined, {
+    new Recovery(settings(health({ restBelow: 0.5 })), queue, {
       poisonRefusesRest: () => false
     }).onCharacter(state({ hp: 20, hpMax: 100, ...poisoned() }));
     drain();
@@ -656,12 +665,15 @@ describe('resting with the leader', () => {
     threatened: {}
   });
   const withLeader = (): Recovery =>
-    new Recovery({ ...DEFAULT_CONFIG.automation.health }, true, queue, {
-      assistLeader: false,
-      defendParty: false,
-      restWithLeader: true,
-      askForHealBelow: 0
-    });
+    new Recovery(
+      settings({ ...DEFAULT_CONFIG.automation.health }, true, {
+        assistLeader: false,
+        defendParty: false,
+        restWithLeader: true,
+        askForHealBelow: 0
+      }),
+      queue
+    );
 
   it('rests when the leader rests', () => {
     withLeader().onCharacter(state({ hp: 100, hpMax: 100, party: together({ state: 'resting' }) }));
@@ -708,7 +720,7 @@ describe('resting with the leader', () => {
         party: together({ state: 'resting' })
       })
     );
-    new Recovery({ ...DEFAULT_CONFIG.automation.health }, true, queue).onCharacter(
+    new Recovery(settings({ ...DEFAULT_CONFIG.automation.health }), queue).onCharacter(
       state({ hp: 100, hpMax: 100, party: together({ state: 'resting' }) })
     );
     drain();
@@ -728,7 +740,7 @@ describe('a verb the realm refuses', () => {
 
   it('stops proposing med once the realm says it had no effect, and says so once', () => {
     const notices: string[] = [];
-    const recovery = new Recovery(health({ meditateBelow: 0.3 }), true, queue, undefined, {
+    const recovery = new Recovery(settings(health({ meditateBelow: 0.3 })), queue, {
       notice: (message) => notices.push(message)
     });
     recovery.onCharacter(low());
@@ -823,5 +835,47 @@ describe('a figure a walk is waiting for', () => {
     recovery.onCharacter(state({ hp: 100, hpMax: 165 }));
     drain();
     expect(sent).toEqual([]);
+  });
+});
+
+/*
+ * Todo 818: MegaMUD's *Not Hostile* is for resting in the room before the
+ * fight, and a `friend` will not attack at all. A row saying so is believed
+ * over the realm's `hostile`; the control is the same room with no row.
+ */
+describe('resting beside what a row says does not attack first', () => {
+  const thug = (): CharacterState['room'] => {
+    const room = withMob('thug');
+    room.occupants = room.occupants.map((who) => ({ ...who, disposition: 'hostile' as const }));
+    return room;
+  };
+  const hurt = () => state({ hp: 20, hpMax: 100, room: thug() });
+
+  it('does not rest beside a monster the realm says attacks on sight', () => {
+    new Recovery(settings(health({ restBelow: 0.5 })), queue).onCharacter(hurt());
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('rests beside it when its row says it does not attack first', () => {
+    const rows: MobRule[] = [{ mob: 'thug', treat: 'default', notHostile: true }];
+    new Recovery(
+      settings(health({ restBelow: 0.5 }), true, DEFAULT_CONFIG.automation.party, rows),
+      queue
+    ).onCharacter(hurt());
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('rests beside a friend, and a reload brings the row in', () => {
+    const recovery = new Recovery(settings(health({ restBelow: 0.5 })), queue);
+    recovery.configure(
+      settings(health({ restBelow: 0.5 }), true, DEFAULT_CONFIG.automation.party, [
+        { mob: 'thug', treat: 'friend' }
+      ])
+    );
+    recovery.onCharacter(hurt());
+    drain();
+    expect(sent).toEqual(['rest']);
   });
 });

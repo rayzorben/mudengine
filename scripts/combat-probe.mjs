@@ -144,6 +144,7 @@ const session = new SessionManager(
         });
       }
     },
+    players: () => {},
     character: (state) => {
       for (const who of state.room.occupants) {
         occupants.set(who.name.toLowerCase(), {
@@ -162,28 +163,28 @@ const session = new SessionManager(
     notice: (message) => console.log(`   [client] ${message}`),
     automation: () => {}
   },
-  world,
-  /*
-   * The character's own automation block, verbatim, with one change: the idle
-   * keep-alive is off, because a probe that measures which commands the client
-   * chooses to send should not have a housekeeping timer in the middle of it.
-   */
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false }
-  },
-  profile.config.connection.login,
-  undefined,
-  undefined,
-  /*
-   * And the fights go in the same file the app writes.
-   *
-   * The probe drives the real `SessionManager`, so these are real fights by a
-   * real character — there is no reason for them to be less of a record than
-   * the ones a play session produces, and every reason for the two to be
-   * comparable.
-   */
-  fights
+    world,
+    /*
+     * The character's own automation block, verbatim, with one change: the idle
+     * keep-alive is off, because a probe that measures which commands the client
+     * chooses to send should not have a housekeeping timer in the middle of it.
+     */
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false }
+    },
+    login: profile.config.connection.login,
+    /*
+     * And the fights go in the same file the app writes.
+     *
+     * The probe drives the real `SessionManager`, so these are real fights by a
+     * real character — there is no reason for them to be less of a record than
+     * the ones a play session produces, and every reason for the two to be
+     * comparable.
+     */
+    fights
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

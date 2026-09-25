@@ -55,9 +55,10 @@ import {
   type MovementConfig,
   type WalkConfig
 } from '../../shared/config';
-import { afflictionHolding } from '../../shared/walk';
+import { afflictionHolding, type AfflictionHold } from '../../shared/walk';
 import type { RoomId, Route } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /**
  * The walk failures that are really location-trust failures — the character
@@ -141,9 +142,16 @@ export interface LoopPlanner {
    * in the beat between two steps of that walk.
    */
   walking(): boolean;
+  /**
+   * Whether the character is on the ground (`Grounded.down`). The lap's own
+   * timers — the dwell, the locate retry, the rest's beat — plan and walk on
+   * a clock, and a character down is handed no state to hold them with
+   * (todo 760); `MoveCommand` refuses every step there.
+   */
+  onTheGround(): boolean;
 }
 
-export class LoopRunner {
+export class LoopRunner implements SessionModule {
   private loop: Loop | null = null;
   /**
    * Where each of this run's stops is, by stop index — resolved once at
@@ -198,24 +206,32 @@ export class LoopRunner {
   private fighting = false;
   /** Consecutive locate requests without a plan; bounded by MAX_LOCATES. */
   private locates = 0;
+  /**
+   * A locate is out: while the character is unplaced only its answer (the
+   * character placed) or the backstop timer re-plans, never the next status
+   * line (todo 759). Ends with the timer, so every path that puts the timer
+   * down ends it too.
+   */
+  private asked = false;
   /** Holding for health; see `health.restBelow`. */
   private hurt = false;
   /**
-   * Holding for a stated affliction — blind, held or poisoned — between legs;
-   * see `afflictionHolding`. The walker holds the step *within* a leg on the
-   * same predicate, so the two cannot disagree about whether to move.
+   * Holding for a stated affliction — blind, held, poisoned or confused —
+   * between legs; see `afflictionHolding`. The walker holds the step *within*
+   * a leg on the same predicate, so the two cannot disagree about whether to
+   * move.
    */
-  private afflicted: 'blind' | 'held' | 'poisoned' | null = null;
+  private afflicted: AfflictionHold | null = null;
   /**
    * When the hold above began, whichever affliction it is for. Null otherwise.
    *
-   * The lap needs the bound `Walker.holdForAffliction` takes for the same
+   * The lap needs the bound `Holds.holdForAffliction` takes for the same
    * reason and cannot borrow it: the walker's probe is the step it re-sends,
    * and a lap held **between** legs is walking nothing to probe with. So the
    * release here is a release into the next leg, whose first step is that
    * probe — and whose own hold takes a fresh window if the server refuses it.
    *
-   * **All three, not just `held`** (todo 23, 2026-09-12). The bound was
+   * **Every condition, not just `held`** (todo 23, 2026-09-12). The bound was
    * written for `held` and the argument never depended on which condition it
    * was: any stated affliction whose *ending* the client cannot read holds the
    * lap for ever. Measured — a poisoned character stood at full health in a
@@ -849,6 +865,16 @@ export class LoopRunner {
      * because the stop is fine; the character is what needs finding.
      */
     if (why !== null && LOST.test(why) && this.locates < tuning().loop.maxLocates) {
+      /*
+       * Unless the realm has already said where (todo 767): the step's stale
+       * probe is a `rm`, and its `Location:` placed the character before the
+       * walk's deadline ended it *nothing came back*. Asked on the sentence,
+       * a second `rm` repeated the coordinates; planned from them instead.
+       */
+      if (state.room.resolvedBy === 'coordinates') {
+        this.advance(false);
+        return;
+      }
       this.retryAfterLocate();
       return;
     }
@@ -950,10 +976,11 @@ export class LoopRunner {
     }
     /*
      * A condition the server has stated holds the lap between legs — MegaMUD's
-     * `IgnoreBlind` / `IgnorePoison` defaults. Before the health hold, because
-     * a poisoned character under `restBelow` is resting *and* waiting, and the
-     * chip should say the thing that will still be true when the health is
-     * back. The edge is published and said once each way.
+     * `IgnoreBlind` / `IgnorePoison` / `IgnoreConfusion` defaults. Before the
+     * health hold, because a poisoned character under `restBelow` is resting
+     * *and* waiting, and the chip should say the thing that will still be
+     * true when the health is back. The edge is published and said once each
+     * way.
      */
     const affliction = afflictionHolding(state.afflictions, this.movement);
     /* The bound, and why the lap takes one of its own — see `heldSince`. */
@@ -1021,6 +1048,16 @@ export class LoopRunner {
       this.step();
       return;
     }
+    /*
+     * The answer to a locate is the character placed. Any other line is not
+     * it: re-planned on each, the same unplaced room asked again, and eight
+     * status lines in one read put five `rm`s on the wire before the first
+     * was answered (todo 759).
+     */
+    if (this.asked) {
+      if (this.planner.hereNow() === null) return;
+      this.clearTimer();
+    }
     if (!this.waiting) return;
     this.waiting = false;
     this.advance(false);
@@ -1045,7 +1082,7 @@ export class LoopRunner {
      * walk, into a realm where an unknown command is said out loud in the room.
      * `waiting` is what `noteErrandOver` hands back to `onCharacter`.
      */
-    if (this.errand || this.offline) {
+    if (this.standingAside()) {
       this.waiting = true;
       return null;
     }
@@ -1102,10 +1139,15 @@ export class LoopRunner {
        * fact one `rm` away. Ask, wait for the answer to resolve the room, and
        * try the same stop again — measured live, this exact recovery is what
        * kept the overnight driver grinding, and it belongs in the client.
+       *
+       * **Not a refusal**, so none is returned (todo 762): the lap is running
+       * and asking, and `start` handing this string back had the press report
+       * *I cannot tell which room you are in* over a lap that went on
+       * retrying. The budget running out is `fail`'s, which is said.
        */
       if (/cannot tell/i.test(route) && this.locates < tuning().loop.maxLocates) {
         this.retryAfterLocate();
-        return route;
+        return null;
       }
       return this.fail(route);
     }
@@ -1163,8 +1205,12 @@ export class LoopRunner {
    * The retry is ordinarily the arriving room itself: it changes character
    * state, `onCharacter` sees the loop still waiting, and the leg is planned
    * with the room correct. The timer is only the backstop for a move the
-   * server swallowed, and it falls through to the same bounded `rm` a lost
-   * plan asks for — the same missing fact, so the same budget.
+   * server swallowed, and **it asks nothing** (todo 764): the move's own claim
+   * does, `Claims`' stale probe at `parse.staleProbeMs`, and is written off
+   * on its own clock. This asked too, on its own key, and coalescing stops at
+   * the socket, so one silence cost two `rm`s. It waits the claim out, and
+   * plans once it is settled; a room still unplaced then asks as any lost
+   * plan does.
    */
   private waitToBePlaced(): null {
     this.waiting = true;
@@ -1174,8 +1220,8 @@ export class LoopRunner {
       // `waiting` false means the room landed and the loop has already moved
       // on; this timer is then a leftover with nothing to say.
       if (this.status !== 'running' || this.fighting || this.offline || !this.waiting) return;
-      if (this.planner.moveInFlight() && this.locates < tuning().loop.maxLocates) {
-        this.retryAfterLocate();
+      if (this.planner.moveInFlight()) {
+        this.waitToBePlaced();
         return;
       }
       this.waiting = false;
@@ -1198,7 +1244,7 @@ export class LoopRunner {
      * the server swallowed spends the whole `maxLocates` budget asking where a
      * character that was never lost is standing.
      */
-    if (this.errand || this.offline) {
+    if (this.standingAside()) {
       this.waiting = true;
       return;
     }
@@ -1206,8 +1252,10 @@ export class LoopRunner {
     this.events.locate?.();
     this.waiting = true;
     this.clearTimer();
+    this.asked = true;
     this.timer = setTimeout(() => {
       this.timer = null;
+      this.asked = false;
       if (this.status !== 'running' || this.fighting || this.offline) return;
       this.waiting = false;
       this.advance(false);
@@ -1278,7 +1326,7 @@ export class LoopRunner {
     // is done. The errand was missing, and it is the one of the four that is
     // *started* by the character standing still — `Supplies.consider` refuses
     // while anything else has it — so a dwell is where it always begins.
-    if (this.fighting || this.hurt || this.escaped || this.errand || this.offline) return;
+    if (this.fighting || this.hurt || this.escaped || this.standingAside()) return;
     this.lingering = false;
     this.waiting = false;
     this.step();
@@ -1376,7 +1424,18 @@ export class LoopRunner {
     return state.room.occupants.some((occupant) => occupant.kind !== 'player');
   }
 
+  /**
+   * Something else has the character, so the lap plans and asks nothing: an
+   * errand, a lost socket, or the ground, which no line reaches `onCharacter`
+   * to hold (todo 760). One reading for the three ways a timer reaches the
+   * lap: `advance`, `retryAfterLocate` and the dwell's `onDwellElapsed`.
+   */
+  private standingAside(): boolean {
+    return this.errand || this.offline || this.planner.onTheGround();
+  }
+
   private clearTimer(): void {
+    this.asked = false;
     if (this.timer === null) return;
     clearTimeout(this.timer);
     this.timer = null;

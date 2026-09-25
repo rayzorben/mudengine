@@ -36,17 +36,20 @@ import {
 } from '@shared/notifications';
 import type { SessionId } from '@shared/ipc';
 
-/** The part of a character's view this reads. */
+/**
+ * The part of a character's view this reads, so the views themselves are
+ * handed over (`useSessionViews`) rather than a copy reshaped per flush.
+ */
 export interface AlertSubject {
-  /** The character's alerts, oldest first, as `App` keeps them. */
+  /** The character's alerts, oldest first, as `useSessionViews` keeps them. */
   notices: Notice[];
   /** Whose they are, for the notification's title. Null before the realm says. */
-  name: string | null;
+  character: { name: string | null };
 }
 
 export interface DesktopAlertsOptions {
   /** Every character this window is drawing, by session id. */
-  subjects: Record<SessionId, AlertSubject>;
+  subjects: Readonly<Record<SessionId, AlertSubject>>;
   /**
    * The player's own alert rows, and the only thing that decides this
    * (2026-09-13). A row claiming a notice and marked `notify` raises it; its
@@ -197,10 +200,11 @@ export function useDesktopAlerts({
       if (raise === undefined || kind === undefined) continue;
       rested.current.set(`${id}:${kind}`, now);
 
+      const { name } = subject.character;
       const title =
-        subject.name === null
+        name === null
           ? t('notices.desktopAlerts.untitled')
-          : t('notices.desktopAlerts.title', { name: subject.name });
+          : t('notices.desktopAlerts.title', { name });
       try {
         const shown = new Notification(title, { body: raise.text, tag: id });
         shown.onclick = () => {

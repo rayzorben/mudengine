@@ -356,7 +356,7 @@ describe('edgePenalty', () => {
    * The other kind of hidden exit, once the levers are read — todo 01.
    *
    * A passage this room can open costs the commands, exactly as a searchable
-   * one costs the search: `Walker.pullLevers` sends them, so the route is
+   * one costs the search: `Levers.pullLevers` sends them, so the route is
    * priced through it rather than around it. 150 of the shipped realm's gated
    * exits are that shape.
    */
@@ -1802,7 +1802,7 @@ describe('the shipped realm data', () => {
    * exit is real and it was shut; what the console said was that the realm data
    * had promised an exit that does not exist.
    *
-   * This is the shape `Walker.runLeverSet` walks: a **set**, because the stated
+   * This is the shape `Levers.runLeverSet` walks: a **set**, because the stated
    * count matches the levers found, ordered by `Requirement.actions`, which is
    * the only place the realm's own order survives.
    */
@@ -2717,7 +2717,7 @@ describe('the levers that open an exit', () => {
     /*
      * A lever somewhere else leaves the wall standing, which is the settled
      * answer and not an oversight: this planner does not plan the detour —
-     * `Walker.fetchLever` makes it when the server refuses the step, so a gate
+     * `Levers.fetchLever` makes it when the server refuses the step, so a gate
      * found open is found open and a lap pays for the errand once.
      */
     it('leaves it a wall when the word is said somewhere else', () => {
@@ -5486,7 +5486,7 @@ describe('the order a step fetches its items in', () => {
 
     /**
      * The session's own arithmetic, in miniature: every room spell prices as
-     * a discouragement, summons included (`SessionManager.roomHazard`), so
+     * a discouragement, summons included (`Errands.roomHazard`), so
      * `RouteHazard.share` is non-null for the summons and the plan has to
      * read the spell's facts to drop it, never the share.
      */

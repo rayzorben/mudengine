@@ -23,7 +23,7 @@
  * is realm data, and captures/024's realm renames the runic coin outright. A
  * denomination this table does not name yields null — unknown, never zero.
  */
-import { DENOMINATIONS, type Denomination } from './character';
+import { coinNamed, DENOMINATIONS, type Denomination } from './character';
 import type { CurrencyEntity } from './entities';
 
 export const COPPER_PER: Readonly<Record<Denomination, number>> = {
@@ -45,10 +45,27 @@ export function quotedInCopper(quoted: string): number | null {
   const match = /^(\d[\d,]*)\s+([a-z]+)\b/i.exec(text);
   if (!match) return null;
   const amount = Number(match[1]!.replace(/,/g, ''));
-  const word = match[2]!.toLowerCase();
-  const denomination = DENOMINATIONS.find((name) => name === word);
+  const denomination = coinNamed(match[2]!);
   if (denomination === undefined || !Number.isFinite(amount)) return null;
   return amount * COPPER_PER[denomination];
+}
+
+/**
+ * A price said as a list of coins, each part up the ladder: MajorMUD's
+ * training receipt, `1 gold crown, 5 silver nobles` (todo 745), handed over
+ * already split. `nothing` is zero, as `Free` is. A part this client cannot
+ * read makes the whole unknown rather than a smaller figure.
+ */
+export function coinsInCopper(parts: readonly string[]): number | null {
+  if (parts.length === 1 && /^nothing$/i.test(parts[0]!.trim())) return 0;
+  if (parts.length === 0) return null;
+  let total = 0;
+  for (const part of parts) {
+    const copper = quotedInCopper(part);
+    if (copper === null) return null;
+    total += copper;
+  }
+  return total;
 }
 
 /**
@@ -151,8 +168,25 @@ export function addCoins(
   which: Denomination,
   count: number
 ): CurrencyEntity {
+  return shifted(cash, which, Math.max(0, Math.trunc(count)));
+}
+
+/**
+ * A count off one denomination, floored at none: coins picked up off the
+ * floor (todo 746). A floor nothing has stated stays unstated.
+ */
+export function takeCoins(
+  cash: CurrencyEntity | null,
+  which: Denomination,
+  count: number
+): CurrencyEntity | null {
+  return cash === null ? null : shifted(cash, which, -Math.max(0, Math.trunc(count)));
+}
+
+/** One denomination moved by `delta`; `currencyOf` floors every count at none. */
+function shifted(cash: CurrencyEntity | null, which: Denomination, delta: number): CurrencyEntity {
   const counts: Partial<Record<Denomination, number>> = {};
   for (const name of DENOMINATIONS) counts[name] = cash?.[name] ?? 0;
-  counts[which] = (counts[which] ?? 0) + Math.max(0, Math.trunc(count));
+  counts[which] = (counts[which] ?? 0) + delta;
   return currencyOf(counts);
 }

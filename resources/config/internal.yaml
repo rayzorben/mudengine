@@ -87,7 +87,7 @@ palette:
 # block replaces the default list whole.
 #
 # Names are button ids. The switches are `automation` (the master), `combat`,
-# `retaliate`, `retreat`, `hangUp`, `loot`, `drop`,
+# `retaliate`, `retreat`, `fleeGoto`, `hangUp`, `loot`, `drop`,
 # `search`, `autoDeposit`, `openDoors`, `pickLocks`, `bashDoors`, `sneak`,
 # `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
 # `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,
@@ -281,6 +281,12 @@ tuning:
     # recorded sessions of 2026-09-06, median 3ms behind the blow and slowest
     # 41ms.
     procWindowMs: 1000
+
+    # How long an attack stays owed a *Combat Engaged*: the backstop for a
+    # refused attack no later echo retires. Measured over 105,052 recorded
+    # engagements: wrong bindings flat at 28 from 1s to 4s, unbound 79 at 1s
+    # and 20 at 4s; with no end, 172 wrong. The longest before wrong rises.
+    engageBindMs: 4000
 
     # Remembered attackers in one fight. The names matter, not the count.
     maxAttackers: 12
@@ -846,8 +852,16 @@ tuning:
     # How long the item errand waits after saying the phrase that summons a
     # monster which drops what the way needs -- `touch statue`, and the statue
     # has to die. A summons is a fight before it is an item, so minutes. A
-    # handover is read off a pack listing instead and needs no clock of its own.
+    # handover's own wait is handoverDelayMs, below.
     errandAskMs: 180000
+
+    # How late a script's giveitem can land after its phrase, and so how long a
+    # handover's pack listing is asked again for: the longest adddelay before a
+    # giveitem in GreaterMUD's own scripts (mine, ten seconds; five others wait
+    # two). GreaterMUD answers a listing asked meanwhile only after the delay,
+    # so this is the margin for a server whose order is unmeasured. Past it the
+    # errand says the handover may have been a quest flag the pack never lists.
+    handoverDelayMs: 10000
 
     # How long a walk stands still for a condition before spending one step to
     # find out whether it is over.
@@ -1152,6 +1166,18 @@ tuning:
     # 150ms after the last byte; this is the bound for a server that stalls in
     # the middle of one.
     rewriteHoldMs: 2000
+
+    # How long a Goto or a Loop pressed where the client cannot place the
+    # character waits for the answer to the locate word (rm) before it plans
+    # anyway, and is refused as before. The probe can wait behind the three
+    # commands the pacing window lets out, each about a movement round
+    # (1,239ms measured), so three rounds and a margin.
+    locateResolveMs: 4000
+
+    # How long the locate word (rm), once asked for, is worth sending while it
+    # waits its turn, for whichever asker raised it: a lost loop, a scattered
+    # walk, a Goto, the Room card. Past it the question is stale.
+    locateExpiresMs: 10000
 
     # Records the debug window keeps, and therefore how far back a bug report
     # reaches.

@@ -88,9 +88,10 @@ import {
 import { t } from '../app/i18n';
 import { CLIENT_NAME, CLIENT_VERSION } from '../app/version';
 import { bareName, countedLabel } from '../../shared/items';
-import { playerKey } from '../../shared/players';
+import { playerKey, type PlayerRecord } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /**
  * The standing refusals, spoken to the sender and shown to the player.
@@ -224,6 +225,12 @@ export interface RemoteEvents {
    */
   progress?(): { walk: WalkProgress; loop: LoopProgress };
   /**
+   * What the registry holds about somebody, for the wording of a question
+   * (`ask`). Asked at the moment, as `progress` is: the registry is the
+   * tracker's and is not on the state. Absent or null is nothing known.
+   */
+  peer?(who: string): PlayerRecord | null;
+  /**
    * A party member this character blessed says the spell wore off —
    * `@bless-expired <spell>`, mudengine's own peer extension. Reported to
    * `Blessings`, which recasts on the event instead of waiting out its clock;
@@ -277,7 +284,7 @@ interface Outstanding {
   at: number;
 }
 
-export class Remotes {
+export class Remotes implements SessionModule {
   /** Whether this character was resting at the last state change. See `onCharacter`. */
   private resting = false;
 
@@ -450,8 +457,7 @@ export class Remotes {
      * question: an upgrade is offered only on evidence.
      */
     const better = EXTENDED_REMOTES[name];
-    const upgraded =
-      better !== undefined && state.players[playerKey(who)]?.extendedRemotes === 'yes';
+    const upgraded = better !== undefined && this.events.peer?.(who)?.extendedRemotes === 'yes';
     const wanted = upgraded ? better! : name;
 
     let carried = argument;
@@ -479,9 +485,9 @@ export class Remotes {
    *
    * The fallback path's door, and it has to be a different one from `ask`:
    * what `ask` reads to decide the wording is the registry, and the registry
-   * is written by the very event the fallback raises — from outside this
-   * module, a state push later. Re-entering `ask` there would upgrade the
-   * question again off the state it was refused on, for ever.
+   * is written by the very event the fallback raises — outside this module,
+   * by whoever holds it (`peer`). Re-entering `ask` there would upgrade the
+   * question again for ever on a holder that had not yet written it.
    */
   private send(who: string, name: RemoteName, argument?: string): boolean {
     const body = argument === undefined ? `@${name}` : `@${name} ${argument}`;
@@ -525,7 +531,7 @@ export class Remotes {
        * is a fact about the player and is kept realm-wide, so a party that
        * re-forms all evening asks nobody twice.
        */
-      if (state.players[playerKey(member.name)]?.client == null) {
+      if (this.events.peer?.(member.name)?.client == null) {
         this.ask(member.name, 'version', state);
       }
     }

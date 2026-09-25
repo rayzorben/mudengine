@@ -1,26 +1,13 @@
 /**
- * Who else is in the realm, in the room's party, and what they said about
- * themselves: the roster, the party, and the numbers another client answers
- * with — as pure functions, `state in → state out`.
- *
- * Lifted out of `CharacterTracker` on 2026-08-29 the way the inventory cluster
- * was: none of these reads or writes a field of the tracker's own, so the
- * move is a file move with no behaviour risk, and it takes fourteen cases and
- * their four helpers out of a `reduce` that had seventy-seven. The one part of
- * this cluster that *does* need the tracker — re-reading the room's occupants
- * against a fresh roster, which asks the realm's monster table — stays there,
- * and `rosterFrom` hands it the roster.
- *
- * The decisions are the tracker's, restated where they bite:
- *
- * - **A listing replaces; a broadcast maintains.** `who` is authoritative and
- *   replaces the roster outright; an arrival adds one entry marked
- *   `provisional`, because it carries a name and nothing else, and guessing
- *   an alignment is the guess that gets somebody killed on a PvP realm.
- * - **A party of one is no party**, and an invitation still on the card is
- *   the one exception — the moment the player is watching for an answer.
- * - **Another client's `{HP=…}` is a quotation** that lands on the party
- *   member it names and in the registry, and touches nothing else.
+ * Who else is here, as pure folds, `state in → state out`: the roster, the
+ * party, the gang and the numbers another client quotes. Out of
+ * `CharacterTracker` on 2026-08-29 as a file move, since none of it reads a
+ * tracker field. Re-reading the room against a fresh roster asks the realm,
+ * so it is the room's (`RoomTracker.rereadOccupants`) and `withRoster` hands
+ * it the roster. A fold that writes the registry takes it beside the state
+ * and hands both halves back (`PresenceFold`) to `Company` (`company.ts`),
+ * which keeps it. A listing replaces and a broadcast maintains, and a party
+ * of one is no party: `mudengine-wire` › `parts/character.md`.
  */
 import {
   ALIGNMENTS,
@@ -31,10 +18,21 @@ import {
   type Alignment,
   type CharacterState,
   type PartyActivity,
-  type PartyMember
+  type PartyMember,
+  type RoomOccupant
 } from '../../shared/character';
 import { parseRemoteReply } from '../../shared/remotes';
-import { observe, type WornItem } from '../../shared/players';
+import { observe, type PlayerRegistry, type WornItem } from '../../shared/players';
+import { figure } from '../../shared/values';
+
+/**
+ * A fold that writes the registry as well as the state: `state` null where the
+ * state did not move, `players` the same registry where no record did.
+ */
+export interface PresenceFold {
+  state: CharacterState | null;
+  players: PlayerRegistry;
+}
 
 /** The listing's alignment column, or null for anything unrecognised. */
 function isAlignment(value: string | undefined): value is Alignment {
@@ -43,12 +41,17 @@ function isAlignment(value: string | undefined): value is Alignment {
 
 /** `62%` as a fraction in [0, 1]; null when the listing printed none. */
 export function percent(value: string | undefined): number | null {
-  if (value === undefined) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed / 100)) : null;
+  const parsed = figure(value);
+  return parsed === null ? null : Math.min(1, Math.max(0, parsed / 100));
 }
 
-/** A member the announcements added: a name, and nothing a listing would have said. */
+/**
+ * A member the announcements added: a name, and nothing a listing would have
+ * said. They keep the roster *approximately* true between listings, the way
+ * arrival broadcasts keep the realm roster true, but carry no health — so a
+ * member added this way has none until the next `party`. Null is the honest
+ * answer and the card says so.
+ */
 export function member(name: string, over: Partial<PartyMember> = {}): PartyMember {
   return {
     name,
@@ -109,9 +112,28 @@ export function rosterFrom(rows: Array<Record<string, string>> | undefined): Adv
 }
 
 /**
- * `<name> just entered the Realm.` — realm-wide, and **not** room occupancy.
- * Provisional: the announcement carries a name and no alignment, and an
- * alignment is not guessed at.
+ * A `who` listing: authoritative, so it replaces the roster outright rather
+ * than merging — somebody absent from it has left. The room's occupants are
+ * re-read against the new roster too (`reread`, the room's: it asks the realm
+ * table), because `Also here:` routinely arrives before the first listing. A
+ * listing that read no row changes nothing, and is not asked to.
+ */
+export function withRoster(
+  s: CharacterState,
+  rows: Array<Record<string, string>> | undefined,
+  reread: (roster: Adventurer[]) => RoomOccupant[]
+): CharacterState | null {
+  const roster = rosterFrom(rows);
+  if (roster.length === 0) return null;
+  return { ...s, online: roster, room: { ...s.room, occupants: reread(roster) } };
+}
+
+/**
+ * `<name> just entered the Realm.` — realm-wide, and **not** room occupancy:
+ * `room.occupants` comes from `Also here:` and nothing else, and somebody
+ * entering the realm put in this room is how a client decides to run from a
+ * person on the other side of the map. Provisional: the announcement carries
+ * a name and no alignment, and an alignment is not guessed at.
  */
 export function withArrival(s: CharacterState, name: string | undefined): CharacterState | null {
   if (!name || s.online.some((entry) => entry.name === name)) return null;
@@ -253,16 +275,15 @@ export function raceAndClassAtEnd(clause: string | undefined): {
  * spelling is the one that matches a roster row.
  */
 export function withDescription(
-  s: CharacterState,
+  players: PlayerRegistry,
   name: string | undefined,
   clause: string | undefined,
   at: number
-): CharacterState | null {
-  if (!name) return null;
+): PlayerRegistry {
+  if (!name) return players;
   const { race, className } = raceAndClassAtEnd(clause);
-  if (race === null || className === null) return null;
-  const players = observe(s.players, name, at, { race, className });
-  return players === s.players ? null : { ...s, players };
+  if (race === null || className === null) return players;
+  return observe(players, name, at, { race, className });
 }
 
 /**
@@ -285,11 +306,12 @@ export function withDescription(
  */
 export function withGangListing(
   s: CharacterState,
+  registry: PlayerRegistry,
   gang: string | undefined,
   count: string | undefined,
   rows: Array<Record<string, string>> | undefined,
   at: number
-): CharacterState | null {
+): PresenceFold {
   const named = gang?.trim() || null;
   /*
    * The header's count against the rows that parsed.
@@ -306,10 +328,10 @@ export function withGangListing(
    * listing that lost a row and said nothing is exactly the silent-shrink
    * failure the party roster already has scar tissue from.
    */
-  const expected = Number.parseInt(count ?? '', 10);
+  const expected = figure(count);
   const read = (rows ?? []).length;
-  const short = Number.isFinite(expected) && expected !== read ? expected : null;
-  let players = s.players;
+  const short = expected !== null && expected !== read ? expected : null;
+  let players = registry;
   for (const row of rows ?? []) {
     /*
      * Filed under the **first name alone**, which is the whole of a player's
@@ -326,12 +348,11 @@ export function withGangListing(
     const name = row['name'];
     if (!name) continue;
     const { race, className } = raceAndClass(row['who']);
-    const level = Number.parseInt(row['level'] ?? '', 10);
     players = observe(players, name, at, {
       gang: named,
       online: row['online'] !== undefined,
       // `null` where the row could not be read, never a zero: see `PlayerRecord`.
-      level: Number.isFinite(level) ? level : null,
+      level: figure(row['level']),
       race,
       className,
       // The listing is authoritative about the gang, so a member it prints
@@ -340,10 +361,23 @@ export function withGangListing(
       gangRank: row['rank'] ?? null
     });
   }
-  if (players === s.players && s.gangListing?.short === short && s.gangListing?.gang === named) {
-    return null;
+  if (players === registry && s.gangListing?.short === short && s.gangListing?.gang === named) {
+    return { state: null, players };
   }
-  return { ...s, players, gangListing: { gang: named, expected: read, short, at } };
+  return { state: { ...s, gangListing: { gang: named, expected: read, short, at } }, players };
+}
+
+/**
+ * `gb` answered by a character in no gang. It settles the one thing the Gang
+ * card cannot otherwise distinguish: `ownGang` is `undefined` while nobody has
+ * said and `null` for a stated absence, and the difference is what the card
+ * draws as "type who" versus "there is nothing to configure". A `who` row
+ * settles it too, but this arrives first.
+ */
+export function withNoGang(s: CharacterState, at: number): CharacterState | null {
+  return s.gangListing?.gang === null
+    ? null
+    : { ...s, gangListing: { gang: null, expected: 0, short: null, at } };
 }
 
 /**
@@ -367,14 +401,15 @@ export function withGangListing(
  */
 export function withGangJoined(
   s: CharacterState,
+  players: PlayerRegistry,
   name: string | undefined,
   at: number
-): CharacterState | null {
+): PresenceFold {
   const gang = ownGang(s);
   // Nothing has said which gang this character is in, so nothing can be said
   // about somebody joining it. `undefined` here is not `null`: see `ownGang`.
-  if (!name || gang === undefined || gang === null) return null;
-  return withGangMembership(s, name, gang, at);
+  if (!name || gang === undefined || gang === null) return { state: null, players };
+  return withGangMembership(s, players, name, gang, at);
 }
 
 /**
@@ -388,14 +423,17 @@ export function withGangJoined(
  */
 export function withGangLeft(
   s: CharacterState,
+  players: PlayerRegistry,
   name: string | undefined,
   named: string | undefined,
   at: number
-): CharacterState | null {
+): PresenceFold {
   const gang = ownGang(s);
-  if (!name || gang === undefined || gang === null) return null;
-  if (named === undefined || named.trim().toLowerCase() !== gang.toLowerCase()) return null;
-  return withGangMembership(s, name, null, at);
+  if (!name || gang === undefined || gang === null) return { state: null, players };
+  if (named === undefined || named.trim().toLowerCase() !== gang.toLowerCase()) {
+    return { state: null, players };
+  }
+  return withGangMembership(s, players, name, null, at);
 }
 
 /**
@@ -407,11 +445,12 @@ export function withGangLeft(
  */
 function withGangMembership(
   s: CharacterState,
+  registry: PlayerRegistry,
   name: string,
   gang: string | null,
   at: number
-): CharacterState | null {
-  const players = observe(s.players, name, at, { gang });
+): PresenceFold {
+  const players = observe(registry, name, at, { gang });
 
   const index = s.online.findIndex((entry) => entry.name.toLowerCase() === name.toLowerCase());
   let online = s.online;
@@ -420,15 +459,14 @@ function withGangMembership(
     online[index] = { ...online[index]!, gang };
   }
 
-  if (players === s.players && online === s.online) return null;
-  return { ...s, players, online };
+  return { state: online === s.online ? null : { ...s, online }, players };
 }
 
 /**
  * The equipment block from a `look` at somebody, filed against them.
  *
  * The name comes from the `[ Name ] (Gang)` line the server prints immediately
- * above it, which the tracker holds — not from the look queue. The two would
+ * above it, which `Company` holds — not from the look queue. The two would
  * usually agree and the printed one is better: it is what the *server* decided
  * the typed name meant, so an abbreviation, a name modifier and an ambiguous
  * target are all already resolved by the only party entitled to resolve them.
@@ -438,12 +476,12 @@ function withGangMembership(
  * somebody can hit you with, made from another player's kit.
  */
 export function withEquipment(
-  s: CharacterState,
+  players: PlayerRegistry,
   name: string | null,
   rows: Array<Record<string, string>> | undefined,
   at: number
-): CharacterState | null {
-  if (name === null) return null;
+): PlayerRegistry {
+  if (name === null) return players;
   const worn: WornItem[] = [];
   for (const row of rows ?? []) {
     const item = row['item']?.trim();
@@ -466,8 +504,7 @@ export function withEquipment(
    * an empty list rather than as null, which means nobody has looked. The two
    * draw differently and the difference is the whole of the absence rule.
    */
-  const players = observe(s.players, name, at, { equipment: worn, equipmentAt: at });
-  return players === s.players ? null : { ...s, players };
+  return observe(players, name, at, { equipment: worn, equipmentAt: at });
 }
 
 /** `just left the Realm` / `just disconnected`: off the roster, and only the roster. */
@@ -477,7 +514,10 @@ export function withoutPlayer(s: CharacterState, name: string | undefined): Char
 }
 
 /**
- * The party listing, or the one-row listing a lone character gets.
+ * The party listing, or the one-row listing a lone character gets: the one
+ * place another character's health is visible, for a command rather than a
+ * second connection. Authoritative, so it replaces what was there: somebody
+ * absent from it has left.
  *
  * A party of one is no party and the client reports none — except while an
  * invitation is out, which is the moment the player is watching for an
@@ -515,23 +555,36 @@ export function withPartyListing(
 /**
  * Another client's `{HP=…}` answer, on any conversation channel: a quotation
  * that lands in the registry and, when the speaker is in the party, on their
- * row — the numbers, and the percentage they imply.
+ * row — the numbers, and the percentage they imply — and touches nothing else.
+ *
+ * `Syntax telepaths: {HP=4434/4434,MA=516/516}` (captures/123) and
+ * `/Sackhunter {HP=600/600}` (captures/055): the only thing on this server
+ * that states another character's numbers rather than a percentage, for a
+ * telepath rather than a command from the budget walking and fighting spend.
+ *
+ * **Kept for anybody, and put on the Party card only for a member.** The two
+ * are different questions and used to be conflated: a reply from a stranger
+ * was dropped entirely, because the only place to put it was the party roster,
+ * and inventing a member out of a chat message would put somebody on the Party
+ * card who never joined. The registry is not the roster, so the numbers are
+ * kept there for everybody and the roster is touched only for a member.
  */
 export function withRemoteVitals(
   s: CharacterState,
+  registry: PlayerRegistry,
   who: string | undefined,
   message: string | undefined,
   at: number
-): CharacterState | null {
-  if (who === undefined || message === undefined) return null;
+): PresenceFold {
+  if (who === undefined || message === undefined) return { state: null, players: registry };
   const reply = parseRemoteReply(message);
-  if (reply === null || reply.kind !== 'vitals') return null;
+  if (reply === null || reply.kind !== 'vitals') return { state: null, players: registry };
 
   const vitals = { hp: reply.hp, hpMax: reply.hpMax, mana: reply.mana, manaMax: reply.manaMax };
-  const players = observe(s.players, who, at, { vitals, vitalsAt: at, online: true });
+  const players = observe(registry, who, at, { vitals, vitalsAt: at, online: true });
 
   const index = s.party.members.findIndex((held) => held.name.toLowerCase() === who.toLowerCase());
-  if (index === -1) return players === s.players ? null : { ...s, players };
+  if (index === -1) return { state: null, players };
 
   const members = s.party.members.map((held, position) =>
     position === index
@@ -546,7 +599,7 @@ export function withRemoteVitals(
         }
       : held
   );
-  return { ...s, players, party: { ...s.party, members } };
+  return { state: { ...s, party: { ...s.party, members } }, players };
 }
 
 /** `You are following <leader>.` */
@@ -557,7 +610,20 @@ export function withFollowing(
   return leader ? { ...s, party: { ...s.party, following: leader } } : null;
 }
 
-/** An invitation out: on the card from the moment it goes, under its own heading. */
+/**
+ * An invitation this character sent: on the card from the moment it goes,
+ * under its own heading.
+ *
+ * `invite` offers and `join` accepts, so this is not a party yet — but it is
+ * the moment the player is watching for an answer, and the card had nothing to
+ * say about it: the invitee appeared only once they accepted, and the listing
+ * in between was read as a party of one. `withJoined` turns the same entry
+ * into a member and `withLeft` takes it off when the offer is withdrawn.
+ *
+ * The outgoing sentence only. The incoming one names a `leader` — the person
+ * who invited *this* character — and being invited is not being in a party:
+ * nothing has been accepted, and the roster that would say so is the leader's.
+ */
 export function withInvited(s: CharacterState, player: string | undefined): CharacterState | null {
   if (!player || s.party.members.some((entry) => entry.name === player)) return null;
   return {
@@ -622,7 +688,10 @@ export function withRank(
 
 /**
  * `<player> stops to rest.` / `kneels to meditate`: the flag between listings,
- * for a member. Nothing announces standing up, so only a listing clears it.
+ * for a member — the sentence is said about anybody in the room. **Nothing
+ * says a rest has ended**, on the wire or in 214 captures, so only a listing
+ * clears it: the safe direction, since a member believed to be resting is one
+ * this client will not assume has answered.
  */
 export function withResting(
   s: CharacterState,

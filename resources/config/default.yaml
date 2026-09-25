@@ -143,6 +143,11 @@ connection:
 # be stated per character, which was the same answer written out once per
 # character on that realm and as many places for it to drift.
 #
+# And its `locate:` key -- how the client asks where you are standing: `rm`,
+# which is what a realm with no key gets, or `none` for a realm with no such
+# command, where nothing is asked and the room is worked out from what you walk
+# into. A character may state its own in its `profile.yaml`.
+#
 # The settings screen writes them, and `resources/servers/` ships Paradigm's
 # six -- four game realms on port 2323 and two test realms on 2324, differing
 # only in the realm number their `login:` script answers with. There is
@@ -828,6 +833,14 @@ automation:
     walkWhileBlind: false
     walkWhilePoisoned: false
 
+    # And confusion -- MegaMUD's IgnoreConfusion, whose default (0) waits it
+    # out too. A confused character's commands are thrown away before the
+    # server reads them, each on a roll the spell's own strength sets ("You
+    # fumble in confusion!"), so a step taken confused may be spent for
+    # nothing. Off, a route or a loop stands still until the confusion wears
+    # off, and says so.
+    walkWhileConfused: false
+
     # Turn auto-combat back on when a route you asked for arrives. The usual
     # reason to walk with it off is to get somewhere without fighting on the
     # way, and on arrival that reason is gone. A loop's leg and an errand are
@@ -1481,6 +1494,11 @@ automation:
     # it spends mana on a reading you did not type.
     autoChoose: false
 
+    # The spell to attack with. Blank casts nothing. It opens the fight in
+    # place of `combat.attack` (after a `bs` or `ju` opener, which still goes
+    # first), and the server casts it every round from then on by itself, so
+    # a round sends nothing more while it does: only `combat.attack`, once,
+    # when the spell is capped, has no effect, or the mana runs short.
     attack: ''
 
     # The spell for a crowded room -- MegaMUD's MultAttack. When at least
@@ -1509,8 +1527,8 @@ automation:
     # 0 is no limit. MegaMUD's own default is 1: open with the spell, then let
     # the melee round carry the fight, which is what a caster with a small
     # pool wants for a night's grinding. Counted on the server's confirmation
-    # (a cast that fizzles is not one), and a new target starts the count
-    # again.
+    # of each cast it repeats (a cast that fizzles is not one), and a new
+    # target starts the count again.
     attackCasts: 0
     areaCasts: 0
 
@@ -1584,12 +1602,16 @@ automation:
     # `The dizzying poison runs its course.`, `You are inflicted with a hideous
     # rotting disease!` / `The disease dies down.`. Cast bare once per onset
     # (a targetless cast lands on you), again after thirty seconds if the condition is still
-    # stated. Blank casts nothing. Paralysis (`Your legs are paralyzed!`) is
-    # tracked and has no cure here: no capture names a spell that ends it.
+    # stated. Blank casts nothing. `freedom` is MegaMUD's Freedom, for a
+    # character held where it stands -- `Your legs are paralyzed!`, a net, a
+    # knockdown: whatever the realm marks `HoldPerson`. The realm's `freedom`
+    # and `cure paralysis` end every such hold, and the hold's own ending
+    # (`You can move again!`) is how the client knows it worked.
     cures:
       blindness: ''
       poison: ''
       disease: ''
+      freedom: ''
 
     # Blessings kept up on this character and the party, in priority order --
     # the first entry is recast first when several are down. The spell names
@@ -1734,16 +1756,34 @@ automation:
     # How named monsters are treated -- MegaMUD's Attack Priority List and its
     # avoid list, as one row per monster.
     #
-    # Six treatments: never, first, high, default, low, last. `never` is the
-    # refusal -- that monster is not attacked automatically at all -- and the
-    # other five are the order the rest are attacked in. A monster no row names
-    # is `default`, so this is somewhere to add the one that matters rather
-    # than a ranking of the realm.
+    # Nine treatments. Four are MegaMUD's relationships, and none of them is
+    # ever opened on: `never` (its Avoid) is left alone, not even hit back;
+    # `friend` will not attack you, so it is never hit back either, and it is
+    # not a threat -- rested beside, left out of `threats`; `escape` is run
+    # from while it is here, under `safety.retreat` and only while the client
+    # is taking the character somewhere; `hangup` hangs up while it is here,
+    # under `safety.hangUp` and the realm's penalty. Nothing is opened beside
+    # an `escape` or `hangup` monster, and one that swings is hit back. The
+    # other five -- first, high, default, low, last -- are the order the rest
+    # are attacked in. A monster no row names is `default`, so this is
+    # somewhere to add the one that matters rather than a ranking of the realm.
     #
     #   mobRules:
     #     - { mob: town guard, treat: never }
     #     - { mob: gnoll shaman, treat: first }
     #     - { mob: giant rat, treat: last }
+    #
+    # A banded row may also say how its monster is fought -- MegaMUD's monster
+    # table. `cast` is the spell that opens on it in place of the attack verb,
+    # cast at most `times` times (0 is no limit) before the character's own
+    # spells and then `attack` carry the fight; `noBackstab` keeps the `bs`
+    # opener for something else; `notHostile` says it does not attack first,
+    # whatever the realm says -- it is rested beside and opened on only at
+    # `engage: all`, and the Room and Reference cards show both words:
+    #
+    #     - { mob: gnoll shaman, treat: first, cast: { spell: harm, times: 2 } }
+    #     - { mob: black bear, treat: default, noBackstab: true }
+    #     - { mob: old hermit, treat: default, notHostile: true }
     #
     # Where a banded monster is in the room the band decides outright and the
     # client's own weighing is skipped -- which is the point: a ranking the
@@ -1877,6 +1917,29 @@ automation:
       # For safe-haven: a room named the way a loop stop names one, with the
       # `map/room` so a name several rooms share is not guessed at.
       safeHavenRoom: ''
+
+    # The last-ditch escape, below the retreat: the realm's own teleport, sent
+    # mid-fight once the walk out has had its turn. Never above retreat's
+    # belowHealth while the retreat is on, and never across its move.
+    #
+    # The command is written out literally because every realm spells it its
+    # own way -- GreaterMUD `sys go 1 297`, MajorMUD `sys goto silvermere`.
+    # Say it once for the realm (`fleeGoto: sys go 1 297` in its server.yaml);
+    # a character's own `command` here replaces the realm's. This file's is
+    # used only where neither says one, and empty everywhere sends nothing.
+    #
+    # On GreaterMUD `sys` is a sysop's command: a player is answered `Your
+    # command had no effect.`, said in the terminal, and not sent again that
+    # connection. A sysop lands at once, mid-fight, and the fight ends.
+    fleeGoto:
+      enabled: false
+
+      # Fraction of maximum health at or below which the teleport goes out --
+      # under the retreat's, above the hang-up's.
+      belowHealth: 0.2
+
+      # Empty follows the realm.
+      command: ''
 
     # Hanging up to escape.
     #

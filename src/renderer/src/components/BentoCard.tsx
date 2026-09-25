@@ -15,7 +15,8 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { writeClipboard } from '../lib/clipboard';
 import CardSettingsPopup from './CardSettings';
-import { floatAlphas, type CardId, type CardSettings } from '../hooks/useCardLayout';
+import { floatAlphas } from '../hooks/useCardLayout';
+import type { CardId, CardSettings } from '../lib/cards';
 import { THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import { readable, useCopyMenu } from '../hooks/useCopyMenu';
 

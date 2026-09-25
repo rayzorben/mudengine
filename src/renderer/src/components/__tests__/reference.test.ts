@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { entryKey, flattenLookup } from '../ReferenceDetail';
+import { entryKey, flattenLookup } from '../../lib/reference';
 // The reading moved into `src/shared/abilities.ts` with `readEffects` when the
 // console's own rewrites wanted the same answer (todo 14); the safety decision
 // it holds is unchanged and is still asserted here.

@@ -137,7 +137,7 @@ export interface ItemEntity {
   /**
    * The realm's row for this kind of thing — **the first one, where the name
    * holds several**, because that is the row the shops reference
-   * (`WorldGraph.itemsByName`).
+   * (`Catalogue.itemsByName`).
    *
    * So it is not what to *print* as this thing's number: see `ids` and
    * `entityNumber`.

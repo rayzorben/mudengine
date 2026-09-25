@@ -26,7 +26,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const pairArg = process.argv[process.argv.indexOf('--pair') + 1];
 const wanted = process.argv.includes('--pair') && pairArg ? pairArg.split(',') : null;
 const local = localProfiles().filter((p) => wanted === null || wanted.includes(p.id));
-if (local.length < 2) skip(`need two characters on ${HOST}:${PORT} with credentials; found ${local.length}.`);
+if (local.length < 2)
+  skip(`need two characters on ${HOST}:${PORT} with credentials; found ${local.length}.`);
 const ordered = wanted ? wanted.map((id) => local.find((p) => p.id === id)).filter(Boolean) : local;
 const [attackerProfile, victimProfile] = ordered;
 
@@ -50,6 +51,7 @@ function open(profile) {
         types.push(block.type);
         blocksBySeq.set(block.seq, types);
       },
+      players: () => {},
       character: () => {},
       state: () => {},
       telnet: () => {},
@@ -58,9 +60,11 @@ function open(profile) {
         if (snapshot?.safety) safety.push(snapshot.safety);
       }
     },
-    world,
-    { ...profile.config.automation, enabled: false },
-    profile.config.connection.login
+    {
+      world,
+      automation: { ...profile.config.automation, enabled: false },
+      login: profile.config.connection.login
+    }
   );
   session.resize({ cols: 80, rows: 24 });
   return {
@@ -114,7 +118,9 @@ async function main() {
   await wait(3000);
   const roomOf = (who) => who.session.character.room;
   const nameOf = (who) => who.session.character.name ?? who.profile.id;
-  console.log(`  ${nameOf(attacker)} in ${roomOf(attacker).name}, ${nameOf(victim)} in ${roomOf(victim).name}`);
+  console.log(
+    `  ${nameOf(attacker)} in ${roomOf(attacker).name}, ${nameOf(victim)} in ${roomOf(victim).name}`
+  );
 
   // Walk the victim to the attacker over open steps, and remember the way back.
   const back = [];
@@ -162,7 +168,8 @@ async function main() {
   console.log(`  attackers: ${JSON.stringify(victim.session.character.combat.attackers)}`);
   console.log(`  inCombat: ${victim.session.character.inCombat}`);
   if (hang) console.log(`  hang-up assessment: ${JSON.stringify(hang)}`);
-  if (victim.safety.length > 0) console.log(`  last safety snapshot: ${JSON.stringify(victim.safety.at(-1))}`);
+  if (victim.safety.length > 0)
+    console.log(`  last safety snapshot: ${JSON.stringify(victim.safety.at(-1))}`);
 
   for (const step of back) if (step) await victim.say(step, 900);
   fs.mkdirSync('out', { recursive: true });

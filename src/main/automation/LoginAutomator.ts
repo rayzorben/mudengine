@@ -48,6 +48,7 @@ import { commandOf } from '../../shared/commands';
 import { credentialsNamed, fillLogin, type Credential } from '../../shared/login';
 import { isPrompt, type Block } from '../../shared/blocks';
 import type { LoginConfig, LoginStep } from '../../shared/config';
+import type { SessionModule } from './Module';
 
 export interface LoginEvents {
   notice?(message: string): void;
@@ -83,7 +84,7 @@ function sameScript(before: readonly LoginStep[], after: readonly LoginStep[]): 
   );
 }
 
-export class LoginAutomator {
+export class LoginAutomator implements SessionModule {
   /** Menu rows already used this connection, by index. */
   private used = new Set<number>();
   /**

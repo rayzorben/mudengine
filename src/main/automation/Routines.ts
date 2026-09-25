@@ -55,12 +55,23 @@ import type { Block, BlockType } from '../../shared/blocks';
 import { REFRESH, staleAfter, type StaleFact } from '../../shared/staleness';
 import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 export interface RoutineEvents {
   notice?(message: string): void;
+  /**
+   * Whether the character is on the ground (`Grounded.down`), for the two
+   * drains, which keep what they owe until it is up (todo 760); the idle
+   * tick and the fan-out ahead of `act`'s gate are handed no state. Not the
+   * keep-alive, which serves the connection, nor the one-shot asks (`st`,
+   * `pro`, `par`, the spellbook), which the server answers on the ground and
+   * which would be lost. Required: a construction that forgot it would read a
+   * character down as standing.
+   */
+  onTheGround(): boolean;
 }
 
-export class Routines {
+export class Routines implements SessionModule {
   /** Whether the realm-entry probe has already run this session. */
   private probed = false;
   /** Whether the character is in the realm: the only time the idle clock runs. */
@@ -126,7 +137,7 @@ export class Routines {
   constructor(
     private config: AutomationConfig,
     private readonly queue: CommandQueue,
-    private readonly events: RoutineEvents = {}
+    private readonly events: RoutineEvents
   ) {}
 
   configure(config: AutomationConfig): void {
@@ -362,7 +373,8 @@ export class Routines {
      * refresh the roster*, and it only ever governed this by accident of one
      * timer serving both.
      */
-    if (!this.config.enabled) return;
+    // Down, the flag waits for the character to be up (todo 760).
+    if (!this.config.enabled || this.events.onTheGround()) return;
     const since = Date.now() - this.rosterAskedAt;
     if (since < tuning().queue.rosterAskMs) return;
 
@@ -406,7 +418,7 @@ export class Routines {
    * character into the Caves of Chaos on 2026-09-15.
    *
    * **Asked when the question is live, not on the way in** (`askBook`'s shape,
-   * and `SessionManager.askCountersFor` is the caller): a plan that crosses
+   * and `Errands.askCountersFor` is the caller): a plan that crosses
    * one of those gates. A listing is not free of consequence even though the
    * command is — a *complete* one enumerates, so it settles **every** counter,
    * and the quest book stops offering its nodes as controls the moment one
@@ -559,7 +571,7 @@ export class Routines {
   /**
    * A sentence nothing recognised may have ended a buff, and the stat sheet
    * is what says which — it prints each active effect's own start sentence
-   * at its foot, so `CharacterTracker.readSheet` can drop what is gone,
+   * at its foot, so `EffectTracker.readSheet` can drop what is gone,
    * settle a pending ending, or take back a lesson the wire contradicts.
    *
    * Asked for on the tracker's word (`takeSheetRequest`), never on the shape
@@ -644,6 +656,8 @@ export class Routines {
    */
   private lookAt(): void {
     if (!this.config.enabled || !this.config.talk.lookAtPlayers) return;
+    // Down, the names wait for the character to be up (todo 760).
+    if (this.events.onTheGround()) return;
     if (Date.now() - this.lookedAtAt < tuning().queue.lookAskMs) return;
 
     // Marked spent before the send, like the roster flag, so a look still held

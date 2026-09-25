@@ -2,7 +2,7 @@
  * Looking for what the room does not print.
  *
  * The realm hides exits — 249 of the shipped realm's are `Hidden/Searchable`,
- * and `WorldGraph.edgePenalty` prices one at "costs the search" precisely
+ * and `Router.edgePenalty` prices one at "costs the search" precisely
  * because the router expects somebody to spend it. `Walker` spends it
  * **reactively**: a step it planned through a hidden edge is refused, and it
  * answers with `search <direction>` and the step again. That covers the exits
@@ -59,6 +59,7 @@ import type { CharacterState } from '../../shared/character';
 import type { SearchConfig } from '../../shared/config';
 import { tuning } from '../app/tuning';
 import { fightIsRunning } from './Walker';
+import type { SessionModule } from './Module';
 
 /**
  * How this client addresses the room it is standing in, for the purpose of
@@ -93,7 +94,7 @@ function whereIsThis(state: CharacterState): string | null {
   return `${arrival}@${name}|${exits.map((exit) => exit.direction).join(',')}`;
 }
 
-export class AutoSearch {
+export class AutoSearch implements SessionModule {
   /** The room last searched, as `whereIsThis` addresses it. */
   private room: string | null = null;
   /** How many searches have gone out for that room. */

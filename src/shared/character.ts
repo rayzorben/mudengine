@@ -25,7 +25,6 @@ import type { ExperienceTable } from './experience';
 import type { Direction, RoomCommand, WorldLair, WorldShop, WorldSpell } from './world';
 import type { WoundBand } from './wounds';
 import type { StatedSheet } from './stated';
-import { NO_PLAYERS, type PlayerRegistry } from './players';
 import { NO_TALLY, type CombatTally } from './tally';
 
 /**
@@ -614,6 +613,20 @@ export const DENOMINATIONS = ['runic', 'platinum', 'gold', 'silver', 'copper'] a
 
 export type Denomination = (typeof DENOMINATIONS)[number];
 
+/** The denomination a word names, or undefined for one the ladder does not (a realm's renamed coin). */
+function denominationOf(word: string): Denomination | undefined {
+  return DENOMINATIONS.find((name) => name === word);
+}
+
+/**
+ * The denomination a coin noun names: its first word only (`gold` of `gold
+ * crowns`, `Runic` of `Runic Coins`), because the rest is realm data and a
+ * realm that renames a coin stops being counted rather than being guessed.
+ */
+export function coinNamed(noun: string): Denomination | undefined {
+  return denominationOf(noun.trim().split(/\s+/)[0]?.toLowerCase() ?? '');
+}
+
 /**
  * How many of each the listing named.
  *
@@ -808,10 +821,10 @@ export interface Progress {
  *
  * It is part of the character model as far as every caller is concerned, so
  * moving the file must not move anybody's import. It moved because it was the
- * *value* `players.ts` imported from here while this file imports `NO_PLAYERS`
- * from there — a cycle that left `EMPTY_CHARACTER.players` undefined for
- * whichever module the bundler evaluated second. `./alignment` has the whole
- * account.
+ * *value* `players.ts` imported from here while this file imported `NO_PLAYERS`
+ * from there (the registry was a field here until todo 730) — a cycle that
+ * left `EMPTY_CHARACTER.players` undefined for whichever module the bundler
+ * evaluated second. `./alignment` has the whole account.
  */
 export { ALIGNMENTS, isHostile } from './alignment';
 export type { Alignment } from './alignment';
@@ -1255,9 +1268,9 @@ export interface GangListing {
  * `at` is when this figure was last made true, and it is load-bearing rather
  * than decorative. A `bank` states it; a deposit or a withdrawal made in the
  * same room then *maintains* it, which is the standing shape here and is what
- * `CharacterTracker.creditVault` does — the sentence names no bank, but the
- * `bank` that answered in this room did, and the room has not changed. What
- * nothing can maintain is another session, another character, or interest, so
+ * `Ledger.creditVault` (`parse/ledger.ts`) does — the sentence names no bank,
+ * but the `bank` that answered in this room did, and the room has not changed.
+ * What nothing can maintain is another session, another character, or interest, so
  * a balance is still a reading from a moment that may already have moved. A
  * card shows the time beside the figure so a stale number reads as stale
  * instead of as current.
@@ -1293,12 +1306,13 @@ export function bankKey(name: string): string {
 
 /**
  * The balance this character's record holds for a bank row: by the shop id
- * the header printed, else by the name through `bankKey`, since one realm
- * prints no id and the two spell the article differently. Null is a vault
- * nobody has asked, never an empty one.
+ * the header printed, searched across every row first, else by the name
+ * through `bankKey`, since one realm prints no id (a null id matches no row
+ * by id) and the two spell the article differently. Null is a vault nobody
+ * has asked, never an empty one.
  */
 export function balanceOf(
-  shop: { id: number; name: string },
+  shop: { id: number | null; name: string },
   banks: readonly BankBalance[]
 ): BankBalance | null {
   const byId = banks.find((bank) => bank.shop !== null && bank.shop === shop.id);
@@ -1443,22 +1457,6 @@ export interface CharacterState {
    */
   attributeSpans: AttributeSpans | null;
   /**
-   * Everything known about other players, kept between sightings.
-   *
-   * `online` above is *who is in the realm now* and is replaced wholesale by
-   * the next listing; this is what has been learned about each of them and
-   * survives their walking out of the room. See `src/shared/players.ts` for why
-   * the two are separate rather than one richer roster: the roster is a
-   * listing the server maintains and this is an accumulation the client keeps,
-   * and merging them would mean every `who` erased the accumulation.
-   *
-   * Seeded from, and kept in, the realm's player book (`PlayerBook`): the
-   * facts about each of them outlive the session and are shared by every
-   * character dialling the same realm. What is this session's own — whether
-   * *it* has seen them online, whether they are in *its* party — is not.
-   */
-  players: PlayerRegistry;
-  /**
    * Whether a fight is on.
    *
    * Kept as its own field beside `combat.engaged` because they answer different
@@ -1559,7 +1557,6 @@ export const EMPTY_CHARACTER: CharacterState = {
     meditating: false
   },
   room: emptyRoom(),
-  players: NO_PLAYERS,
   progress: {
     level: null,
     exp: null,

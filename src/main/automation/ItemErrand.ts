@@ -28,7 +28,8 @@ import type { SupplyItem } from '../../shared/config';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
 import type { BuyingPlace, DropSources, ItemAsk, RoomId, Route } from '../../shared/world';
-import { noteListing, packAfter, packCheck, type PackCheck } from './PackAfter';
+import { noteListing, packAfter, packAgain, packCheck, type PackCheck } from './PackAfter';
+import type { SessionModule } from './Module';
 
 /**
  * Where the realm says an item comes from: the counters, and the lairs with
@@ -116,9 +117,9 @@ type Phase =
   | { kind: 'hunting'; item: Wanted; rest: Wanted[]; owes: Route | null; run: boolean }
   /**
    * Going to say something for it (todo 806): walking to `place`, then —
-   * `said` — waiting for the pack to hold it: a handover read off a listing
-   * asked after the phrase (`pack`), a summons off the loot that follows the
-   * fight, for `walk.errandAskMs`.
+   * `said` — waiting for the pack to hold it: a handover read off listings
+   * asked after the phrase for `walk.handoverDelayMs` (`pack`, todos 814,
+   * 765), a summons off the loot that follows the fight for `walk.errandAskMs`.
    */
   | {
       kind: 'asking';
@@ -145,7 +146,7 @@ type Phase =
 
 const ACTION = 'collect';
 
-export class ItemErrand {
+export class ItemErrand implements SessionModule {
   private phase: Phase = { kind: 'idle' };
 
   constructor(
@@ -523,9 +524,42 @@ export class ItemErrand {
       if (this.now() - pack.sentAt >= tuning().walk.errandAskMs) this.fail(item, nothing);
       return;
     }
-    const read = packAfter(pack, this.now(), (onSent) => this.planner.listPack(onSent));
-    if (read === 'read') this.fail(item, nothing);
-    else if (read === 'unanswered') this.fail(item, t('automation.collect.refusalPackUnread'));
+    const now = this.now();
+    const read = packAfter(pack, now, (onSent) => this.planner.listPack(onSent));
+    if (read === 'unanswered') {
+      this.fail(item, t('automation.collect.refusalPackUnread'));
+      return;
+    }
+    if (read !== 'read') return;
+    /*
+     * Our own listing lacks it. Asked again while a script could still be
+     * holding its `giveitem` behind an `adddelay` (todo 814, `packAgain`),
+     * which is `walk.handoverDelayMs` and not the summons' minutes: fifteen
+     * asks became at most two (todo 765). Past it, said as what it may be — a
+     * handover that leaves a quest flag rather than anything the pack lists
+     * (Paradigm's Commander Markus *hands you the box (which you hide in a
+     * safe place)*, `2026-09-07_21-49-00_festus.log`).
+     */
+    if (now - pack.sentAt < tuning().walk.handoverDelayMs) {
+      this.phase = { ...phase, pack: packAgain(pack, now) };
+      return;
+    }
+    this.fail(
+      item,
+      t('automation.collect.refusalHandoverUnlisted', {
+        item: item.name,
+        say: place.say,
+        seconds: Math.round((now - pack.sentAt) / 1000)
+      })
+    );
+  }
+
+  /**
+   * The session's clock, for the asking phase alone: a listing asked again,
+   * and the wait given up, lapse on a quiet wire that brings no state.
+   */
+  tick(state: CharacterState): void {
+    if (this.phase.kind === 'asking' && this.phase.said) this.onCharacter(state);
   }
 
   /** A listing landed, answering `answering` — the handover's, if it is ours. */

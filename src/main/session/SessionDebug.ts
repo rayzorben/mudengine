@@ -3,6 +3,7 @@ import type { CharacterState } from '../../shared/character';
 import { EMPTY_CHARACTER } from '../../shared/character';
 import {
   clip,
+  describePlayersChange,
   describeStateChange,
   summariseBlock,
   visible,
@@ -10,6 +11,7 @@ import {
   type DebugRecord
 } from '../../shared/debug';
 import type { AutomationSnapshot } from '../../shared/automation';
+import { NO_PLAYERS, type PlayerRegistry } from '../../shared/players';
 import type { ConnectionState, StreamLine, TelnetEvent } from '../../shared/types';
 import { tuning } from '../app/tuning';
 
@@ -27,7 +29,7 @@ import { tuning } from '../app/tuning';
  * live (*classify, feed, then act*).
  *
  * That is also what makes it safe with credentials. **Every outbound command
- * reaches `command()` already through `SessionManager.reportable`**, which is
+ * reaches `command()` already through `Publisher.reportable`**, which is
  * the one place this client redacts a password — the capture and the decision
  * trace take the same value. Nothing here redacts anything, because a second
  * redactor is a second thing that can be wrong, and the one that is wrong is
@@ -55,6 +57,8 @@ export class SessionDebug {
    * push genuinely is *everything so far became known*.
    */
   private character: CharacterState = EMPTY_CHARACTER;
+  /** The registry as of the last record, for `players`' reason `character` is kept. */
+  private registry: PlayerRegistry = NO_PLAYERS;
 
   constructor(private readonly emit: (record: DebugRecord) => void) {}
 
@@ -121,6 +125,14 @@ export class SessionDebug {
     this.character = state;
     if (changes.length === 0) return;
     this.push('state', `${changes.length} changed`, changes.join(', '));
+  }
+
+  /** Who the registry learned something about, as a change: `characterState`'s rule. */
+  players(registry: PlayerRegistry): void {
+    const changed = describePlayersChange(this.registry, registry);
+    this.registry = registry;
+    if (changed.length === 0) return;
+    this.push('state', `${changed.length} players`, clip(changed.join(', ')));
   }
 
   /**

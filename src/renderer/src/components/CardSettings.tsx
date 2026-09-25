@@ -1,10 +1,5 @@
 import Popup, { type MenuAnchor } from './Popup';
-import {
-  hidesWhenEmpty,
-  HIDES_WHEN_EMPTY,
-  type CardId,
-  type CardSettings
-} from '../hooks/useCardLayout';
+import { hidesWhenEmpty, HIDES_WHEN_EMPTY, type CardId, type CardSettings } from '../lib/cards';
 import { t } from '../lib/i18n';
 import { themesOfAppearance, THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import { DEFAULT_MAP_DENSITY } from '@shared/map';

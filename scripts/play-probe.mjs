@@ -144,6 +144,7 @@ const session = new SessionManager(
       if (MONSTER_BLOCKS.has(block.type)) sawMonster += 1;
       if (BLOW_BLOCKS.has(block.type)) blows += 1;
     },
+    players: () => {},
     character: (state) => {
       lastState = state;
     },
@@ -155,18 +156,18 @@ const session = new SessionManager(
       if (snapshot?.safety?.length) log('safety', JSON.stringify(snapshot.safety.at(-1)));
     }
   },
-  world,
   {
-    ...profile.config.automation,
-    enabled: true,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    loot: { coins: true, items: [] },
-    health: { restBelow: 0.5, meditateBelow: 0 }
-  },
-  profile.config.connection.login,
-  undefined,
-  undefined,
-  fights
+    world,
+    automation: {
+      ...profile.config.automation,
+      enabled: true,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      loot: { coins: true, items: [] },
+      health: { restBelow: 0.5, meditateBelow: 0 }
+    },
+    login: profile.config.connection.login,
+    fights
+  }
 );
 session.resize({ cols: 80, rows: 24 });
 

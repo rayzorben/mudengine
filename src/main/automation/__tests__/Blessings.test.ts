@@ -16,6 +16,9 @@ const automation: AutomationConfig = {
   pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
 };
 
+/** A character standing: the ground gate's answer when a test is not about it. */
+const standing = { onTheGround: (): boolean => false };
+
 const armour: BlessingConfig = {
   spell: 'protection',
   target: 'self',
@@ -79,7 +82,7 @@ afterEach(() => {
 
 describe('keeping a blessing up on this character', () => {
   it('casts on entering the realm, by name, and again when the wire says it wore off', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter(state());
     expect(sent).toEqual(['protection']);
 
@@ -97,12 +100,31 @@ describe('keeping a blessing up on this character', () => {
   });
 
   /*
+   * The clock recasts from the last state it was handed, and a character on
+   * the ground is handed none, so it asks (todo 755): nothing goes out while
+   * down, and the recast the clock owed goes once the character is up.
+   */
+  it('recasts nothing on the clock while the character is on the ground', () => {
+    let down = false;
+    const blessings = new Blessings(spells([armour]), true, queue, { onTheGround: () => down });
+    blessings.onCharacter(state());
+    expect(sent).toEqual(['protection']);
+    down = true;
+    vi.advanceTimersByTime(120_000);
+    expect(sent).toHaveLength(1);
+    down = false;
+    vi.advanceTimersByTime(120_000);
+    expect(sent.length).toBeGreaterThan(1);
+    blessings.dispose();
+  });
+
+  /*
    * `You feel lucky!` is five spells, and a buff established from that
    * sentence alone is named for one and carries the rest: a configured
    * blessing among the rest is up, and is not recast on the retry floor.
    */
   it('is held by a buff that names the blessing only as a candidate', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter(
       state({
         buffs: [{ spell: 'chant', by: null, appliedAt: Date.now(), candidates: ['protection'] }]
@@ -115,7 +137,7 @@ describe('keeping a blessing up on this character', () => {
 
   /* Before anything has been measured, the shipped watchdog is the clock. */
   it('expires an unread ending by the shipped watchdog when nothing is measured', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     const applied = Date.now();
     blessings.onCharacter(
       state({ buffs: [{ spell: 'protection', by: null, appliedAt: applied }] })
@@ -133,9 +155,10 @@ describe('keeping a blessing up on this character', () => {
    * 60s measured fires at 75s, not at 60.
    */
   it('expires an unread ending by the measured duration plus slack', () => {
-    const blessings = new Blessings(spells([armour]), true, queue, undefined, (spell) =>
-      spell === 'protection' ? 60 : null
-    );
+    const blessings = new Blessings(spells([armour]), true, queue, {
+      ...standing,
+      learnedDuration: (spell) => (spell === 'protection' ? 60 : null)
+    });
     blessings.onCharacter(
       state({ buffs: [{ spell: 'protection', by: null, appliedAt: Date.now() }] })
     );
@@ -147,13 +170,13 @@ describe('keeping a blessing up on this character', () => {
   });
 
   it('waits out a fight unless the entry allows it, and waits under its own mana floor', () => {
-    const patient = new Blessings(spells([{ ...armour, inCombat: false }]), true, queue);
+    const patient = new Blessings(spells([{ ...armour, inCombat: false }]), true, queue, standing);
     patient.onCharacter(state({ inCombat: true }));
     vi.advanceTimersByTime(10_000);
     expect(sent).toEqual([]);
     patient.dispose();
 
-    const fighter = new Blessings(spells([armour]), true, queue);
+    const fighter = new Blessings(spells([armour]), true, queue, standing);
     fighter.onCharacter(state({ inCombat: true }, { mana: 10 }));
     vi.advanceTimersByTime(10_000);
     expect(sent).toEqual([]);
@@ -164,12 +187,12 @@ describe('keeping a blessing up on this character', () => {
 
   /* Unknown is not plenty: a caster whose sheet has not arrived waits for it. */
   it('waits for a mana maximum when the floor needs one', () => {
-    const floored = new Blessings(spells([armour]), true, queue);
+    const floored = new Blessings(spells([armour]), true, queue, standing);
     floored.onCharacter(state({}, { mana: null, manaMax: null }));
     expect(sent).toEqual([]);
     floored.dispose();
 
-    const free = new Blessings(spells([{ ...armour, minMana: 0 }]), true, queue);
+    const free = new Blessings(spells([{ ...armour, minMana: 0 }]), true, queue, standing);
     free.onCharacter(state({}, { mana: null, manaMax: null }));
     expect(sent).toEqual(['protection']);
     free.dispose();
@@ -177,7 +200,7 @@ describe('keeping a blessing up on this character', () => {
 
   it('recasts one at a time, top of the list first', () => {
     const shield: BlessingConfig = { ...armour, spell: 'mage shield' };
-    const blessings = new Blessings(spells([armour, shield]), true, queue);
+    const blessings = new Blessings(spells([armour, shield]), true, queue, standing);
     blessings.onCharacter(state());
     // Both are down; one proposal per pass, highest priority first.
     expect(sent).toEqual(['protection']);
@@ -192,7 +215,7 @@ describe('keeping a blessing up on this character', () => {
 
   it('proposes a prioritized entry from the urgent pass and not the normal one', () => {
     const first: BlessingConfig = { ...armour, prioritizeOverHeal: true };
-    const blessings = new Blessings(spells([first]), true, queue);
+    const blessings = new Blessings(spells([first]), true, queue, standing);
     blessings.onCharacter(state());
     expect(sent).toEqual([]);
     blessings.urgent(state());
@@ -203,7 +226,7 @@ describe('keeping a blessing up on this character', () => {
   /* The master switch gates every entry point, the urgent pass included. */
   it('never casts from the urgent pass with automation off', () => {
     const first: BlessingConfig = { ...armour, prioritizeOverHeal: true };
-    const blessings = new Blessings(spells([first]), false, queue);
+    const blessings = new Blessings(spells([first]), false, queue, standing);
     blessings.urgent(state());
     expect(sent).toEqual([]);
     blessings.dispose();
@@ -211,7 +234,7 @@ describe('keeping a blessing up on this character', () => {
 
   /* A self cast goes out bare, so it needs no name at all. */
   it('casts on itself before the character name has arrived', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter({ ...state(), name: null });
     expect(sent).toEqual(['protection']);
     blessings.dispose();
@@ -219,7 +242,7 @@ describe('keeping a blessing up on this character', () => {
 
   /* And the word is the realm's short name, when either source can say it. */
   it('casts by the short word when the spellbook can name it', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     const listed = state();
     listed.spellbook = [{ name: 'protection', short: 'prot', level: null, cost: null }];
     blessings.onCharacter(listed);
@@ -238,14 +261,10 @@ describe('keeping a blessing up on this character', () => {
     // is: `spellNamed` answers the same row for the name and the abbreviation.
     const row = { id: 7, name: 'bless', short: 'bles' };
     const short: BlessingConfig = { ...armour, spell: 'bles' };
-    const blessings = new Blessings(
-      spells([short]),
-      true,
-      queue,
-      undefined,
-      () => null,
-      (name) => (['bles', 'bless'].includes(name.toLowerCase()) ? row : null)
-    );
+    const blessings = new Blessings(spells([short]), true, queue, {
+      ...standing,
+      realmSpell: (name) => (['bles', 'bless'].includes(name.toLowerCase()) ? row : null)
+    });
     blessings.onCharacter(state({ buffs: [{ spell: 'bless', by: null, appliedAt: Date.now() }] }));
     vi.advanceTimersByTime(10_000);
     expect(sent).toEqual([]);
@@ -253,7 +272,7 @@ describe('keeping a blessing up on this character', () => {
   });
 
   it('stops its clock out of the realm and forgets on reset', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter(state());
     expect(sent).toHaveLength(1);
     blessings.onCharacter({ ...state(), phase: 'unknown' });
@@ -266,7 +285,7 @@ describe('keeping a blessing up on this character', () => {
   });
 
   it('is off with automation off', () => {
-    const blessings = new Blessings(spells([armour]), false, queue);
+    const blessings = new Blessings(spells([armour]), false, queue, standing);
     blessings.onCharacter(state());
     vi.advanceTimersByTime(120_000);
     expect(sent).toEqual([]);
@@ -276,7 +295,12 @@ describe('keeping a blessing up on this character', () => {
   /* The toolbar's own switch, under the master one (todo 04). */
   it('is off with auto-bless off, and comes back when it is turned on', () => {
     const first: BlessingConfig = { ...armour, prioritizeOverHeal: true };
-    const blessings = new Blessings({ ...spells([first]), autoBless: false }, true, queue);
+    const blessings = new Blessings(
+      { ...spells([first]), autoBless: false },
+      true,
+      queue,
+      standing
+    );
     blessings.onCharacter(state());
     blessings.urgent(state());
     vi.advanceTimersByTime(120_000);
@@ -299,7 +323,7 @@ describe('blessing the party', () => {
   };
 
   it('casts on listed members but never itself or an invitee, one at a time', () => {
-    const blessings = new Blessings(spells([bless]), true, queue);
+    const blessings = new Blessings(spells([bless]), true, queue, standing);
     const roster = state({
       party: {
         following: 'Soul',
@@ -331,7 +355,7 @@ describe('blessing the party', () => {
   });
 
   it('holds a party blessing during a fight unless the entry allows it', () => {
-    const blessings = new Blessings(spells([bless]), true, queue);
+    const blessings = new Blessings(spells([bless]), true, queue, standing);
     blessings.onCharacter(state({ inCombat: true, party: party('Soul') }));
     vi.advanceTimersByTime(10_000);
     expect(sent).toEqual([]);
@@ -339,7 +363,7 @@ describe('blessing the party', () => {
   });
 
   it('casts on nobody with no party', () => {
-    const blessings = new Blessings(spells([bless]), true, queue);
+    const blessings = new Blessings(spells([bless]), true, queue, standing);
     blessings.onCharacter(state());
     vi.advanceTimersByTime(5_000);
     expect(sent).toEqual([]);
@@ -347,7 +371,7 @@ describe('blessing the party', () => {
   });
 
   it('restarts a member clock from the confirmed cast, and recasts at once on @bless-expired', () => {
-    const blessings = new Blessings(spells([bless]), true, queue);
+    const blessings = new Blessings(spells([bless]), true, queue, standing);
     blessings.onCharacter(state({ party: party('Soul') }));
     expect(sent).toEqual(['bless Soul']);
 
@@ -365,8 +389,28 @@ describe('blessing the party', () => {
     blessings.dispose();
   });
 
+  /*
+   * The peer's word arrives through `Remotes`, ahead of the session's ground
+   * gate, and the last state this module holds is the one standing (todo 760).
+   */
+  it('casts nothing on a peer expiry while the character is on the ground', () => {
+    let down = false;
+    const blessings = new Blessings(spells([bless]), true, queue, { onTheGround: () => down });
+    blessings.onCharacter(state({ party: party('Soul') }));
+    expect(sent).toEqual(['bless Soul']);
+    vi.advanceTimersByTime(10_000);
+    down = true;
+    blessings.onPeerExpired('Soul', 'bless');
+    expect(sent).toEqual(['bless Soul']);
+    // Positive control: the mark waits, and the first pass standing casts it.
+    down = false;
+    blessings.onCharacter(state({ party: party('Soul') }));
+    expect(sent).toEqual(['bless Soul', 'bless Soul']);
+    blessings.dispose();
+  });
+
   it('ignores a peer expiry naming no configured blessing', () => {
-    const blessings = new Blessings(spells([bless]), true, queue);
+    const blessings = new Blessings(spells([bless]), true, queue, standing);
     blessings.onCharacter(state({ party: party('Soul') }));
     sent.length = 0;
     vi.advanceTimersByTime(10_000);
@@ -384,19 +428,19 @@ describe('telling the caster a blessing wore off', () => {
     });
 
   it('telepaths @bless-expired to a listed member who cast it, only with the switch on', () => {
-    const quiet = new Blessings(spells([], false), true, queue);
+    const quiet = new Blessings(spells([], false), true, queue, standing);
     quiet.onBlock(block('user-buff-expired', { spell: 'bless' }), withBuff('Soul'));
     expect(sent).toEqual([]);
     quiet.dispose();
 
-    const telling = new Blessings(spells([], true), true, queue);
+    const telling = new Blessings(spells([], true), true, queue, standing);
     telling.onBlock(block('user-buff-expired', { spell: 'bless' }), withBuff('Soul'));
     expect(sent).toEqual(['/Soul @bless-expired bless']);
     telling.dispose();
   });
 
   it('says nothing about its own casts or a caster who left the party', () => {
-    const blessings = new Blessings(spells([], true), true, queue);
+    const blessings = new Blessings(spells([], true), true, queue, standing);
     blessings.onBlock(
       block('user-buff-expired', { spell: 'bless' }),
       state({ party: party('Soul'), buffs: [{ spell: 'bless', by: null, appliedAt: Date.now() }] })
@@ -423,7 +467,7 @@ describe('a blessing the pool cannot pay for', () => {
     name.toLowerCase() === 'way of the owl' || name.toLowerCase() === 'owl' ? realm : null;
 
   it('is not proposed, and no clock is spent on it', () => {
-    const blessings = new Blessings(spells([owl]), true, queue, undefined, () => null, table);
+    const blessings = new Blessings(spells([owl]), true, queue, { ...standing, realmSpell: table });
     blessings.onCharacter(state({}, { mana: 1, manaMax: 30 }));
     expect(sent).toEqual([]);
 
@@ -443,7 +487,10 @@ describe('a blessing the pool cannot pay for', () => {
      per member. */
   it('proposes for nobody in the party either', () => {
     const forParty: BlessingConfig = { ...owl, target: 'party' };
-    const blessings = new Blessings(spells([forParty]), true, queue, undefined, () => null, table);
+    const blessings = new Blessings(spells([forParty]), true, queue, {
+      ...standing,
+      realmSpell: table
+    });
     blessings.onCharacter(state({ party: party('Soul', 'Yang') }, { mana: 1, manaMax: 30 }));
     expect(sent).toEqual([]);
     blessings.dispose();
@@ -457,14 +504,10 @@ describe('a blessing the pool cannot pay for', () => {
    */
   it('still casts a spell nothing has priced', () => {
     const unpriced: BlessingConfig = { ...armour, minMana: 0 };
-    const blessings = new Blessings(
-      spells([unpriced]),
-      true,
-      queue,
-      undefined,
-      () => null,
-      () => null
-    );
+    const blessings = new Blessings(spells([unpriced]), true, queue, {
+      ...standing,
+      realmSpell: () => null
+    });
     blessings.onCharacter(state({}, { mana: 1, manaMax: 30 }));
     expect(sent).toEqual(['protection']);
     blessings.dispose();
@@ -473,7 +516,7 @@ describe('a blessing the pool cannot pay for', () => {
   /* The character's own listing outranks the realm table: it is the wire's
      word on what *this* character pays. */
   it("takes the cost from the character's own listing before the realm table", () => {
-    const blessings = new Blessings(spells([owl]), true, queue, undefined, () => null, table);
+    const blessings = new Blessings(spells([owl]), true, queue, { ...standing, realmSpell: table });
     blessings.onCharacter(
       state(
         { spellbook: [{ name: 'way of the owl', short: 'owl', level: 3, cost: 9 }] },
@@ -493,7 +536,7 @@ describe("the server's own countdown", () => {
    * three and a half minutes after it had gone.
    */
   it('recasts when the stated countdown runs out, not on the watchdog', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     const applied = Date.now();
     blessings.onCharacter(
       state({
@@ -510,14 +553,11 @@ describe("the server's own countdown", () => {
 
   /* A stated countdown outranks a measured duration, being the live answer. */
   it('outranks the measured duration', () => {
-    const blessings = new Blessings(
-      spells([armour]),
-      true,
-      queue,
-      () => Date.now(),
+    const blessings = new Blessings(spells([armour]), true, queue, {
+      ...standing,
       // Measured at ten minutes; the server says thirty seconds.
-      () => 600
-    );
+      learnedDuration: () => 600
+    });
     const applied = Date.now();
     blessings.onCharacter(
       state({
@@ -537,7 +577,7 @@ describe('a cast that failed', () => {
    * (30s) as though the cast might still be in flight.
    */
   it('is retried on the next round rather than after the retry floor', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter(state());
     expect(sent).toEqual(['protection']);
 
@@ -556,7 +596,7 @@ describe('a cast that failed', () => {
 
   /* An offensive cast that failed names its target and is not a blessing. */
   it('ignores a failure that names a target', () => {
-    const blessings = new Blessings(spells([armour]), true, queue);
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter(state());
     vi.advanceTimersByTime(7000);
     blessings.onBlock(block('spell-failed', { spell: 'protection', target: 'Covenant' }), state());

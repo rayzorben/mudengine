@@ -6275,7 +6275,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
        * This is the assertion the four deleted IPC channels were replaced by:
        * standing in a shop, the pushed `CharacterState` already carries the
        * realm's whole shop — its name and every line of its stock — because
-       * `CharacterTracker.attachRealm` joined it the moment the room resolved.
+       * `RoomTracker.attachRealm` joined it the moment the room resolved.
        * Nothing was asked for, and the card that draws it makes no round trip.
        */
       const roomShop = await evaluate(`
@@ -12751,7 +12751,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * put back afterwards, so the escape is one bounded episode instead of a move
    * every three seconds for the rest of the run. The move is answered with the
    * room again: this one-room host's honest reply, and
-   * `CharacterTracker.rememberTheWayBack` writes nothing down for a move whose
+   * `Trail.rememberTheWayBack` writes nothing down for a move whose
    * two ends are the same room.
    */
   /*
@@ -12875,7 +12875,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   /*
    * And which way out, and how it knew. The reason reads
    * `health at 24% — n (printed)`: the direction it sent and the rung of
-   * `SessionManager.wayOut` that answered. Both halves matter -- the direction
+   * `Travel.wayOut` that answered. Both halves matter -- the direction
    * is the thing that moves the character, and the rung is what lets somebody
    * reading the console tell *retracing the way we came* from *taking the only
    * exit listed*.
@@ -15229,9 +15229,10 @@ if (logFiles[0]) {
    * fed, so it is the one place the withheld line must be absent from.
    */
   /*
-   * The Room card's action asks `rm` through the arbiter — the same path
-   * every automated command takes — so the fake host must receive a second
-   * `rm`, and the console must be spared its answer exactly as before.
+   * The Room card's action asks through the arbiter in the realm's own word
+   * (`Invoke.locate`, todo 811) — `rm` here, the realm stating none — so the
+   * fake host must receive a second `rm`, and the console must be spared its
+   * answer exactly as before.
    */
   const rmBefore = (
     Buffer.concat(received)
@@ -15240,13 +15241,13 @@ if (logFiles[0]) {
   ).length;
   const asked = await evaluate(`
     (() => {
-      const button = document.querySelector('.room-card .card-action[aria-label*="rm"]');
+      const button = document.querySelector('.room-card .card-action[data-action="locate"]');
       if (!button) return false;
       button.click();
       return true;
     })()
   `);
-  check(asked, "the Room card offers to ask 'rm' quietly");
+  check(asked, 'the Room card offers to ask where you are, quietly');
   await readUntil(
     async () =>
       (
@@ -15304,7 +15305,7 @@ if (logFiles[0]) {
   /*
    * A password this run types at a real prompt, and the mask the client is
    * required to write down instead of it. The mask's width is fixed on purpose
-   * (`SessionManager.reportable`), so the length is not recorded either.
+   * (`Publisher.reportable`), so the length is not recorded either.
    */
   const SECRET = 'hunter2-not-in-any-file';
   const MASK = '\u2022'.repeat(8);
@@ -15424,7 +15425,7 @@ if (logFiles[0]) {
    * *no password in it* is the claim it lives or dies on — and a claim about a
    * string that was never sent is no claim at all. The fake host prints the
    * realm's own prompt (`patterns.ts`: `Please enter your password:`), which is
-   * what arms `SessionManager.awaitingPassword`, and the answer goes down the
+   * what arms `Publisher.awaitingPassword`, and the answer goes down the
    * path a keystroke takes so it passes through `reportable` exactly as a
    * player's would.
    */

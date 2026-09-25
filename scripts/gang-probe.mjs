@@ -83,7 +83,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { SessionManager } from '../src/main/session/SessionManager.ts';
-import { HOST, PORT, localProfile, localProfileNamed, nothing, skip, target } from './lib/local-realm.mjs';
+import {
+  HOST,
+  PORT,
+  localProfile,
+  localProfileNamed,
+  nothing,
+  skip,
+  target
+} from './lib/local-realm.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -94,7 +102,9 @@ const arg = (flag) => {
 
 const partner = arg('--to');
 if (!partner || !/^[A-Za-z][\w'-]*$/.test(partner)) {
-  console.error('\nusage: npm run probe:gang -- --to <character running MegaMUD> [--join <gang>] [--leave]\n');
+  console.error(
+    '\nusage: npm run probe:gang -- --to <character running MegaMUD> [--join <gang>] [--leave]\n'
+  );
   process.exit(2);
 }
 
@@ -148,24 +158,26 @@ const session = new SessionManager(
     block: (block) => {
       current?.blocks.push({ type: block.type, groups: block.groups ?? {} });
     },
+    players: () => {},
     character: () => {},
     state: () => {},
     telnet: () => {},
     notice: (message) => current?.notices.push(message)
   },
-  undefined,
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    /*
-     * This character must not answer anything itself: the measurement is what
-     * the *server* says about a gang changing, and a reply of ours in the
-     * middle of it would be a line in the record that this run put there.
-     */
-    remotes: { enabled: false, gangpath: false, gang: [], players: {} },
-    rules: []
-  },
-  profile.config.connection.login
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      /*
+       * This character must not answer anything itself: the measurement is what
+       * the *server* says about a gang changing, and a reply of ours in the
+       * middle of it would be a line in the record that this run put there.
+       */
+      remotes: { enabled: false, gangpath: false, gang: [], players: {} },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

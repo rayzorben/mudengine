@@ -14,9 +14,17 @@ import {
   withoutPlayer,
   raceAndClass,
   raceAndClassAtEnd,
-  withDescription
+  withDescription,
+  withNoGang,
+  withRoster
 } from '../presence';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  type Adventurer,
+  type CharacterState,
+  type RoomOccupant
+} from '../../../shared/character';
+import { NO_PLAYERS } from '../../../shared/players';
 
 /*
  * The cluster lifted out of `CharacterTracker` on 2026-08-29. The behaviour is
@@ -128,14 +136,16 @@ describe('the party', () => {
       ],
       false
     )!;
-    const answered = withRemoteVitals(two, 'Soul', '{HP=200/400,MA=10/20}', 5)!;
-    const soul = answered.party.members.find((m) => m.name === 'Soul')!;
+    const answered = withRemoteVitals(two, NO_PLAYERS, 'Soul', '{HP=200/400,MA=10/20}', 5);
+    const soul = answered.state!.party.members.find((m) => m.name === 'Soul')!;
     expect(soul.vitals).toEqual({ hp: 200, hpMax: 400, mana: 10, manaMax: 20 });
     expect(soul.health).toBe(0.5);
     expect(soul.mana).toBe(0.5);
     expect(answered.players['soul']?.vitalsAt).toBe(5);
-    // Not a reply: nothing changes.
-    expect(withRemoteVitals(two, 'Soul', 'hello there', 6)).toBeNull();
+    // Not a reply: nothing changes, on either half.
+    const chat = withRemoteVitals(two, NO_PLAYERS, 'Soul', 'hello there', 6);
+    expect(chat.state).toBeNull();
+    expect(chat.players).toBe(NO_PLAYERS);
   });
 });
 
@@ -151,7 +161,7 @@ describe('the gang listing', () => {
   ];
 
   it('files a level, a race and a class against each member', () => {
-    const after = withGangListing(state(), 'Valor', '2', ROWS, 10)!;
+    const after = withGangListing(state(), NO_PLAYERS, 'Valor', '2', ROWS, 10);
     expect(after.players['vaelor']).toMatchObject({
       name: 'Vaelor',
       gang: 'Valor',
@@ -170,7 +180,7 @@ describe('the gang listing', () => {
    * under two keys and drew them as two members of the same gang.
    */
   it('files a member under the first name alone, as every other listing does', () => {
-    const after = withGangListing(state(), 'Valor', '2', ROWS, 10)!;
+    const after = withGangListing(state(), NO_PLAYERS, 'Valor', '2', ROWS, 10);
     expect(after.players['soul']).toMatchObject({
       name: 'Soul',
       level: 1,
@@ -188,11 +198,12 @@ describe('the gang listing', () => {
   it('records a member who is not logged in, as offline rather than absent', () => {
     const after = withGangListing(
       state(),
+      NO_PLAYERS,
       'Valor',
       '3',
       [...ROWS, { name: 'Offliner', level: '7', who: 'Human Warrior' }],
       10
-    )!;
+    );
     expect(after.players['offliner']).toMatchObject({ online: false, level: 7 });
   });
 
@@ -203,23 +214,26 @@ describe('the gang listing', () => {
    * that was never read.
    */
   it('takes a member offline when a later listing stops marking them online', () => {
-    const on = withGangListing(state(), 'Valor', '2', ROWS, 10)!;
+    const on = withGangListing(state(), NO_PLAYERS, 'Valor', '2', ROWS, 10);
     expect(on.players['vaelor']?.online).toBe(true);
     const off = withGangListing(
-      on,
+      on.state!,
+      on.players,
       'Valor',
       '1',
       [{ name: 'Vaelor', level: '29', who: 'Half-Ogre Mystic' }],
       20
-    )!;
+    );
     expect(off.players['vaelor']?.level).toBe(29);
     expect(off.players['vaelor']?.online).toBe(false);
   });
 
-  // Nothing changed is nothing published: the registry rides on every push.
-  it('returns null when the same listing arrives twice', () => {
-    const once = withGangListing(state(), 'Valor', '2', ROWS, 10)!;
-    expect(withGangListing(once, 'Valor', '2', ROWS, 20)).toBeNull();
+  // Nothing changed is nothing published, on either push.
+  it('returns null and the same registry when the same listing arrives twice', () => {
+    const once = withGangListing(state(), NO_PLAYERS, 'Valor', '2', ROWS, 10);
+    const twice = withGangListing(once.state!, once.players, 'Valor', '2', ROWS, 20);
+    expect(twice.state).toBeNull();
+    expect(twice.players).toBe(once.players);
   });
 
   it("reads the realm's one two-word race without eating the class", () => {
@@ -269,18 +283,53 @@ describe('withDescription', () => {
   });
 
   it('files the pair in the registry under the name the sentence carries', () => {
-    const after = withDescription(state(), 'Trickster', 'muscular Nekojin Ranger', 100)!;
-    expect(after.players['trickster']).toMatchObject({
+    const after = withDescription(NO_PLAYERS, 'Trickster', 'muscular Nekojin Ranger', 100);
+    expect(after['trickster']).toMatchObject({
       name: 'Trickster',
       race: 'Nekojin',
       className: 'Ranger'
     });
     // Nothing changed is nothing published, as everywhere else in the cluster.
-    expect(withDescription(after, 'Trickster', 'muscular Nekojin Ranger', 200)).toBeNull();
+    expect(withDescription(after, 'Trickster', 'muscular Nekojin Ranger', 200)).toBe(after);
   });
 
   it('writes nothing when the clause did not come out as the frame says', () => {
-    expect(withDescription(state(), 'Trickster', 'Ranger', 100)).toBeNull();
-    expect(withDescription(state(), undefined, 'muscular Nekojin Ranger', 100)).toBeNull();
+    expect(withDescription(NO_PLAYERS, 'Trickster', 'Ranger', 100)).toBe(NO_PLAYERS);
+    expect(withDescription(NO_PLAYERS, undefined, 'muscular Nekojin Ranger', 100)).toBe(NO_PLAYERS);
+  });
+});
+
+describe('a gang nobody is in', () => {
+  it('is stated once, and restating it moves nothing', () => {
+    const none = withNoGang(state(), 5);
+    expect(none?.gangListing).toEqual({ gang: null, expected: 0, short: null, at: 5 });
+    expect(withNoGang(none!, 6)).toBeNull();
+  });
+});
+
+describe('a who listing re-reads the room against the roster it replaces', () => {
+  const ROWS = [{ name: 'Soul', alignment: 'Good' }];
+
+  it('asks the room nothing for a listing that read no row', () => {
+    const asked: string[][] = [];
+    const s = state();
+    const reread = (roster: Adventurer[]): [] => {
+      asked.push(roster.map((entry) => entry.name));
+      return [];
+    };
+    expect(withRoster(s, [], reread)).toBeNull();
+    expect(asked).toEqual([]);
+  });
+
+  it('hands the room the new roster, once, and keeps what it answers', () => {
+    const asked: string[][] = [];
+    const answer: RoomOccupant[] = [];
+    const after = withRoster(state(), ROWS, (roster) => {
+      asked.push(roster.map((entry) => entry.name));
+      return answer;
+    });
+    expect(asked).toEqual([['Soul']]);
+    expect(after?.online.map((entry) => entry.name)).toEqual(['Soul']);
+    expect(after?.room.occupants).toBe(answer);
   });
 });

@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 const make = (events: ScheduledEvent[], enabled = true): Events =>
-  new Events(events, enabled, queue, () => clock);
+  new Events(events, enabled, queue, { onTheGround: () => false, now: () => clock });
 const drain = () => void vi.advanceTimersByTime(500);
 
 describe('a timed event', () => {
@@ -50,6 +50,21 @@ describe('a timed event', () => {
     drain();
     expect(sent).toEqual([]);
     clock += 2_000;
+    events.check();
+    drain();
+    expect(sent).toEqual(['party']);
+  });
+
+  /* Fed no state while down, so the clock asks (todo 755). */
+  it('holds while the character is on the ground, and sends once it is up', () => {
+    let down = true;
+    const events = new Events(roster, true, queue, { onTheGround: () => down, now: () => clock });
+    events.onCharacter(state());
+    clock += 61_000;
+    events.check();
+    drain();
+    expect(sent).toEqual([]);
+    down = false;
     events.check();
     drain();
     expect(sent).toEqual(['party']);

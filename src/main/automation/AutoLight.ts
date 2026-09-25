@@ -60,6 +60,7 @@ import {
   type CarriedLight,
   type LightChoice
 } from '../../shared/light';
+import type { SessionModule } from './Module';
 
 export interface LightEvents {
   notice?(message: string): void;
@@ -77,7 +78,7 @@ export interface StepAhead {
   light: number | undefined;
 }
 
-export class AutoLight {
+export class AutoLight implements SessionModule {
   /** The last decision's key, so an unchanged answer is not recorded again. */
   private lastKey: string | null = null;
   /** The room an extinguish was last proposed in, so a listing repeat does not re-propose. */
@@ -200,7 +201,7 @@ export class AutoLight {
   /**
    * Whether a light would be readied for the room the character is standing in
    * — the walker's question, asked before it gives up on a room it cannot
-   * read (`Walker.holdForLight`).
+   * read (`Holds.holdForLight`).
    *
    * **The pack, not what has been proposed.** `SessionManager.onCharacter`
    * runs the walker before this module, so on the status line that carries the
