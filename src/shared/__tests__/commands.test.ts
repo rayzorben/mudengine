@@ -10,7 +10,7 @@
  * an options template and a hangup refusal that recommended it by name, and
  * every one of those repeated it without anything checking.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -22,6 +22,7 @@ import {
   movementEffect,
   opensStatScreen
 } from '../commands';
+import { sourceFiles } from './sources';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 
@@ -32,18 +33,6 @@ const ROOT = join(import.meta.dirname, '..', '..', '..');
  */
 function withoutComments(code: string): string {
   return code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
-}
-
-/** Every `.ts`/`.tsx` under a directory, tests excluded. */
-function sourceFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === '__tests__') continue;
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...sourceFiles(path));
-    else if (/\.tsx?$/.test(entry.name)) out.push(path);
-  }
-  return out;
 }
 
 describe('words that are not commands', () => {

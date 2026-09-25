@@ -744,6 +744,24 @@ export function breaksStealth(input: string): boolean {
 export const REREAD_ROOM = '';
 
 /**
+ * The claim one `REREAD_ROOM` filed on the room its answer reprints, asked
+ * after by whoever sent it: owed until the tracker takes it off the queue,
+ * with the room block that answered it or with nothing (a refusal behind it,
+ * the write-off, a locate, a death). The tracker says which claim a room
+ * answered, so a sender waiting on its own reprint reads that rather than
+ * counting rooms: a reprint already on the wire answers the claim ahead of
+ * it (todo 767).
+ */
+export interface RereadClaim {
+  owed(): boolean;
+}
+
+/** Where the latest bare Enter's claim is read: null when it filed none, outside the realm. */
+export interface RereadClaims {
+  readonly lastReread: RereadClaim | null;
+}
+
+/**
  * Commands in the table above that the **MajorMUD lineage does not have**.
  *
  * Two realms ship in this client and they are not the same server. Sending a
@@ -848,7 +866,7 @@ export const GREATERMUD_ONLY: ReadonlySet<CommandName> = new Set([
  * realm data gives 1/2620 `s → 1/2619` and `e → 1/2625`, and the server had
  * just printed `Obvious exits: south, east`. So the escape sends a
  * **direction**, always, and never a word invented for the purpose — see
- * `SessionManager.escape`.
+ * `Travel.escape`.
  *
  * This list exists so the mistake cannot be made twice quietly.
  * `commands.test.ts` asserts every word in it is absent from `COMMAND_WORDS`

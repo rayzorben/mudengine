@@ -191,6 +191,7 @@ const session = new SessionManager(
     block: (block) => {
       current?.blocks.push({ type: block.type, groups: block.groups ?? {} });
     },
+    players: () => {},
     character: (state) => {
       online = state.online.map((who) => who.name);
     },
@@ -198,16 +199,18 @@ const session = new SessionManager(
     telnet: () => {},
     notice: () => {}
   },
-  world,
-  // Nothing standing, and this character must not itself answer `@` commands
-  // the partner might send back: the measurement is what *MegaMUD* says.
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    remotes: { ...profile.config.automation.remotes, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    world,
+    // Nothing standing, and this character must not itself answer `@` commands
+    // the partner might send back: the measurement is what *MegaMUD* says.
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      remotes: { ...profile.config.automation.remotes, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

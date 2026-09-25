@@ -18,8 +18,8 @@ import {
   learnSlot,
   loreMaximum,
   type LearnedDeath,
-  type MobLore,
   type MobLoreEntry,
+  type RealmLoreView,
   type SlotLoreEntry
 } from '../../shared/lore';
 import { rowNameOf } from '../../shared/mobs';
@@ -91,6 +91,17 @@ interface LoreFile {
    * {@link LearnedEffect}. Optional for the same reason `slots` is.
    */
   effects?: Record<string, Record<string, LearnedEffect>>;
+  /**
+   * The attack spells each realm answered instantly, keyed by the realm's name
+   * for the spell (todo 820). See `InstantSpellLore`. Optional for the same
+   * reason `slots` is.
+   */
+  instants?: Record<string, Record<string, LearnedInstant>>;
+}
+
+/** When a realm first answered a cast of one attack spell instantly. */
+interface LearnedInstant {
+  at: number;
 }
 
 /** What one realm taught about one spell's sentences. Either half may be absent. */
@@ -121,6 +132,8 @@ export class RealmLore {
   private readonly deathIndex = new Map<string, Map<string, string[]>>();
   /** What each realm worked out about unnameable effects. See `ledgerFor`. */
   private readonly effects = new Map<string, Map<string, LearnedEffect>>();
+  /** The attack spells each realm answered instantly, by spell. See `LoreFile.instants`. */
+  private readonly instants = new Map<string, Map<string, LearnedInstant>>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
@@ -134,7 +147,7 @@ export class RealmLore {
    * a monster and must not be able to ask about a *realm* — which is the door
    * through which a character on one realm would read another's monsters.
    */
-  forRealm(realm: string, world: WorldGraph | undefined): MobLore {
+  forRealm(realm: string, world: WorldGraph | undefined): RealmLoreView {
     const key = realmKey(realm);
     return {
       maximumFor: (name, at) => this.maximumFor(key, world, name, at ?? null),
@@ -164,8 +177,43 @@ export class RealmLore {
           rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined),
           text,
           at
-        )
+        ),
+      isInstantSpell: (spell) => this.isInstant(key, spell),
+      observeInstantSpell: (spell, at) => this.observeInstant(key, spell, at),
+      forgetInstantSpell: (spell) => this.forgetInstant(key, spell)
     };
+  }
+
+  /* ------------------------------------------------------------ instants */
+
+  private isInstant(realm: string, spell: string): boolean {
+    this.load();
+    return this.instants.get(realm)?.has(spellKey(spell)) ?? false;
+  }
+
+  /**
+   * The wire answered a cast of this spell instantly. Written once: the first
+   * answer is the lesson, and a spell already held does not dirty the file.
+   * Said by the caller (`AttackSpells.noteInstant`), which knows what it
+   * changes about the fight.
+   */
+  private observeInstant(realm: string, spell: string, at: number): void {
+    const key = spellKey(spell);
+    if (key.length === 0 || this.isInstant(realm, spell)) return;
+    let table = this.instants.get(realm);
+    if (!table) {
+      table = new Map();
+      this.instants.set(realm, table);
+    }
+    table.set(key, { at });
+    this.schedule();
+  }
+
+  /** The wire engaged on a spell held instant: the lesson was a misread. Said by the caller. */
+  private forgetInstant(realm: string, spell: string): void {
+    this.load();
+    if (this.instants.get(realm)?.delete(spellKey(spell)) !== true) return;
+    this.schedule();
   }
 
   /* -------------------------------------------------------------- deaths */
@@ -574,14 +622,11 @@ export class RealmLore {
     this.suspended = false;
 
     const file = parsed as Partial<LoreFile>;
-    for (const [realm, entries] of Object.entries(file.realms ?? {})) {
-      if (typeof entries !== 'object' || entries === null) continue;
-      const table = new Map<string, MobLoreEntry>();
-      for (const [name, value] of Object.entries(entries)) {
-        const entry = readEntry(value);
-        if (entry) table.set(mobKey(name), entry);
-      }
-      this.learned.set(realmKey(realm), table);
+    for (const [realm, table] of readTables(file.realms, (name, value) => {
+      const entry = readEntry(value);
+      return entry ? [mobKey(name), entry] : null;
+    })) {
+      this.learned.set(realm, table);
     }
     for (const [realm, entries] of Object.entries(file.slots ?? {})) {
       if (typeof entries !== 'object' || entries === null) continue;
@@ -593,33 +638,30 @@ export class RealmLore {
       }
       this.slots.set(realmKey(realm), table);
     }
-    for (const [realm, entries] of Object.entries(file.deaths ?? {})) {
-      if (typeof entries !== 'object' || entries === null) continue;
-      const table = new Map<string, LearnedDeath>();
-      for (const [name, value] of Object.entries(entries)) {
-        const entry = readDeathEntry(value);
-        if (entry && mobKey(name).length > 0) table.set(mobKey(name), entry);
-      }
-      this.deaths.set(realmKey(realm), table);
-      this.indexDeaths(realmKey(realm));
+    for (const [realm, table] of readTables(file.deaths, (name, value) => {
+      const entry = readDeathEntry(value);
+      return entry && mobKey(name).length > 0 ? [mobKey(name), entry] : null;
+    })) {
+      this.deaths.set(realm, table);
+      this.indexDeaths(realm);
     }
-    for (const [realm, entries] of Object.entries(file.spells ?? {})) {
-      if (typeof entries !== 'object' || entries === null) continue;
-      const table = new Map<string, LearnedSpellMessages>();
-      for (const [name, value] of Object.entries(entries)) {
-        const entry = readSpellEntry(value);
-        if (entry && spellKey(name).length > 0) table.set(spellKey(name), entry);
-      }
-      this.spells.set(realmKey(realm), table);
+    for (const [realm, table] of readTables(file.spells, (name, value) => {
+      const entry = readSpellEntry(value);
+      return entry && spellKey(name).length > 0 ? [spellKey(name), entry] : null;
+    })) {
+      this.spells.set(realm, table);
     }
-    for (const [realm, entries] of Object.entries(file.effects ?? {})) {
-      if (typeof entries !== 'object' || entries === null) continue;
-      const table = new Map<string, LearnedEffect>();
-      for (const [text, value] of Object.entries(entries)) {
-        const entry = readEffectEntry(value, text);
-        if (entry) table.set(effectKey(entry.text), entry);
-      }
-      this.effects.set(realmKey(realm), table);
+    for (const [realm, table] of readTables(file.effects, (text, value) => {
+      const entry = readEffectEntry(value, text);
+      return entry ? [effectKey(entry.text), entry] : null;
+    })) {
+      this.effects.set(realm, table);
+    }
+    for (const [realm, table] of readTables(file.instants, (name, value) => {
+      const entry = readInstantEntry(value);
+      return entry && spellKey(name).length > 0 ? [spellKey(name), entry] : null;
+    })) {
+      this.instants.set(realm, table);
     }
   }
 
@@ -649,11 +691,7 @@ export class RealmLore {
     if (this.suspended || !this.dirty) return;
     this.dirty = false;
 
-    const realms: LoreFile['realms'] = {};
-    for (const [realm, entries] of this.learned) {
-      if (entries.size === 0) continue;
-      realms[realm] = Object.fromEntries([...entries].sort(([a], [b]) => (a < b ? -1 : 1)));
-    }
+    const realms = writeTables(this.learned);
 
     const slots: NonNullable<LoreFile['slots']> = {};
     for (const [realm, table] of this.slots) {
@@ -663,23 +701,10 @@ export class RealmLore {
       );
     }
 
-    const spells: NonNullable<LoreFile['spells']> = {};
-    for (const [realm, table] of this.spells) {
-      if (table.size === 0) continue;
-      spells[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
-    }
-
-    const deaths: NonNullable<LoreFile['deaths']> = {};
-    for (const [realm, table] of this.deaths) {
-      if (table.size === 0) continue;
-      deaths[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
-    }
-
-    const effects: NonNullable<LoreFile['effects']> = {};
-    for (const [realm, table] of this.effects) {
-      if (table.size === 0) continue;
-      effects[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
-    }
+    const spells = writeTables(this.spells);
+    const deaths = writeTables(this.deaths);
+    const effects = writeTables(this.effects);
+    const instants = writeTables(this.instants);
 
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -693,7 +718,8 @@ export class RealmLore {
             ...(Object.keys(slots).length > 0 ? { slots } : {}),
             ...(Object.keys(spells).length > 0 ? { spells } : {}),
             ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
-            ...(Object.keys(effects).length > 0 ? { effects } : {})
+            ...(Object.keys(effects).length > 0 ? { effects } : {}),
+            ...(Object.keys(instants).length > 0 ? { instants } : {})
           } satisfies LoreFile,
           null,
           2
@@ -738,6 +764,47 @@ const EMPTY_ANSWER = { max: null, source: null, span: null } as const;
 function isModifierOf(filed: string, row: string): boolean {
   const space = filed.indexOf(' ');
   return space > 0 && filed.slice(space + 1) === row;
+}
+
+/**
+ * One per-realm section of the file, read: each realm's rows through `row`,
+ * which answers the key to file one under and its entry, or null to skip it.
+ * A section or a realm whose value is not an object is skipped whole: the file
+ * is somebody's to edit, and its declared shape is a hope.
+ */
+function readTables<V>(
+  section: unknown,
+  row: (name: string, value: unknown) => readonly [string, V] | null
+): Map<string, Map<string, V>> {
+  const tables = new Map<string, Map<string, V>>();
+  if (typeof section !== 'object' || section === null) return tables;
+  for (const [realm, entries] of Object.entries(section)) {
+    if (typeof entries !== 'object' || entries === null) continue;
+    const table = new Map<string, V>();
+    for (const [name, value] of Object.entries(entries)) {
+      const read = row(name, value);
+      if (read) table.set(read[0], read[1]);
+    }
+    tables.set(realmKey(realm), table);
+  }
+  return tables;
+}
+
+/** One per-realm section of the file, written: empty realms left out, rows by name. */
+function writeTables<V>(tables: Map<string, Map<string, V>>): Record<string, Record<string, V>> {
+  const out: Record<string, Record<string, V>> = {};
+  for (const [realm, table] of tables) {
+    if (table.size === 0) continue;
+    out[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
+  }
+  return out;
+}
+
+/** When a realm answered a spell instantly, or null when the row is not one. */
+function readInstantEntry(value: unknown): LearnedInstant | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { at } = value as Record<string, unknown>;
+  return { at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
 }
 
 /** One learned death sentence, or null when the row holds none. */

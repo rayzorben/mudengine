@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { sourceFiles as sources } from './sources';
+
 /**
  * A pattern built at runtime is compiled at runtime — every time the line
  * that builds it runs.
@@ -27,7 +29,7 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
     because:
       'the exact status-line matcher is generated from the template `pro` reports, which ' +
       'is only known at runtime; built once per report in `statlineMatcher`, held by ' +
-      '`CharacterTracker`, and never called in a per-line path'
+      '`StatusLine` (`parse/sheet.ts`), and never called in a per-line path'
   },
   'src/shared/messages.ts': {
     count: 1,
@@ -44,19 +46,6 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'and cached by string in `compileRegex`'
   }
 };
-
-function sources(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name !== '__tests__' && entry.name !== 'node_modules') out.push(...sources(full));
-    } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
-      out.push(full);
-    }
-  }
-  return out;
-}
 
 describe('runtime-built regular expressions', () => {
   it('are built once, at module load, and each is listed with its reason', () => {

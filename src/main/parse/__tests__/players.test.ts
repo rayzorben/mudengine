@@ -420,8 +420,9 @@ describe('the party half', () => {
 
 describe('republishing only when something changed', () => {
   /*
-   * The registry rides on every state push. A new object per line of somebody
-   * else's chat would redraw every card in the client on their conversation.
+   * The registry is pushed whenever its identity moves. A new object per line
+   * of somebody else's chat would redraw every card that lists people on
+   * their conversation.
    */
   it('returns the same registry when a sighting says nothing new', () => {
     const first = fold(
@@ -509,7 +510,7 @@ describe('an @health answer is kept for anybody, not only the party', () => {
   it('keeps the figures for somebody outside the party', () => {
     const track = tracker();
     track.apply(reply('Rend', '{HP=600/600}'));
-    const record = track.current.players['rend'];
+    const record = track.players['rend'];
     expect(record?.vitals).toMatchObject({ hp: 600, hpMax: 600 });
     expect(record?.vitalsAt).toBe(9_000);
     // And does not invent a party member out of a chat message.
@@ -519,13 +520,13 @@ describe('an @health answer is kept for anybody, not only the party', () => {
   it('records the mana half only when the answer carried it', () => {
     const track = tracker();
     track.apply(reply('Rend', '{HP=600/600}'));
-    expect(track.current.players['rend']?.vitals?.mana).toBeNull();
+    expect(track.players['rend']?.vitals?.mana).toBeNull();
   });
 
   it('does not file this character answering itself', () => {
     const track = tracker();
     track.apply(reply('Rend', '{HP=1/1}'));
-    expect(Object.keys(track.current.players)).toEqual(['rend']);
+    expect(Object.keys(track.players)).toEqual(['rend']);
   });
 });
 

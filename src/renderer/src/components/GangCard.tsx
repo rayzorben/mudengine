@@ -8,13 +8,15 @@ import { membersOf, type Member } from '../lib/gangs';
 import { PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { ownGang, type CharacterState } from '@shared/character';
-import { playerKey } from '@shared/players';
+import { playerKey, type PlayerRegistry } from '@shared/players';
 import type { RemotesConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import { ACTIONABLE_REMOTES, type RemoteName, type RemoteStance } from '@shared/remotes';
 
 export interface GangCardProps extends CardChrome {
   character: CharacterState;
+  /** The character's registry, pushed apart from it; `bg` writes the members' rows there. */
+  players: PlayerRegistry;
   /** Which character's table this is, so its sort is remembered per character. */
   session: SessionId;
   /** This character's resolved `automation.remotes`. */
@@ -112,6 +114,7 @@ export interface GangCardProps extends CardChrome {
  */
 function GangCard({
   character,
+  players,
   session,
   remotes,
   onSetGangRemotes,
@@ -130,8 +133,8 @@ function GangCard({
    * flyout disagreeing about who is in a gang.
    */
   const members = useMemo<Member[]>(
-    () => (gang === undefined || gang === null ? [] : membersOf(character, gang)),
-    [character, gang]
+    () => (gang === undefined || gang === null ? [] : membersOf(players, character, gang)),
+    [players, character, gang]
   );
 
   /* Whether anything here came from a `bg` listing, which is what the level,

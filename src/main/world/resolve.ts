@@ -31,6 +31,9 @@ import type { Direction, RoomId, WorldRoom } from '../../shared/world';
 import { roomId } from '../../shared/world';
 import type { WorldGraph } from './WorldGraph';
 
+/** The three lookups resolution makes: a name, an address, a placed room. */
+export type ResolveGraph = Pick<WorldGraph, 'byId' | 'get' | 'findByName'>;
+
 export interface ResolveInput {
   /** Room name as parsed from the stream. */
   name: string;
@@ -118,7 +121,7 @@ function sameExits(a: readonly Direction[], b: readonly string[]): boolean {
   return left.every((value, index) => value === right[index]);
 }
 
-export function resolveRoom(graph: WorldGraph, input: ResolveInput): Resolution {
+export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolution {
   const named = graph.findByName(input.name);
 
   /*
@@ -311,7 +314,7 @@ export function resolveRoom(graph: WorldGraph, input: ResolveInput): Resolution 
  * the answer rather than a case to fall through on. De-duplicated: two exits
  * of one room can lead to the same place.
  */
-function neighbours(graph: WorldGraph, from: RoomId, name: string): WorldRoom[] {
+function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[] {
   const origin = graph.byId(from);
   if (!origin) return [];
 
@@ -365,7 +368,7 @@ function neighbours(graph: WorldGraph, from: RoomId, name: string): WorldRoom[] 
  * inference is sound but nothing corroborated the arrival except agreement
  * about the dark, and `confidence` exists to carry exactly that difference.
  */
-export function resolveByDeadReckoning(graph: WorldGraph, input: DeadReckonInput): Resolution {
+export function resolveByDeadReckoning(graph: ResolveGraph, input: DeadReckonInput): Resolution {
   const from = graph.byId(input.previous);
   const exit = from?.exits.find((candidate) => candidate.direction === input.moved);
   if (!exit) return { ...NONE, candidates: [] };
@@ -406,7 +409,7 @@ export function resolveByDeadReckoning(graph: WorldGraph, input: DeadReckonInput
  * The only source that is not inference. Kept separate so a caller can prefer
  * it over anything this module derives.
  */
-export function resolveFromCoordinates(graph: WorldGraph, map: number, room: number): Resolution {
+export function resolveFromCoordinates(graph: ResolveGraph, map: number, room: number): Resolution {
   const found = graph.get(map, room);
   if (!found) return { ...NONE, candidates: [] };
   return { room: found, method: 'coordinates', candidates: [found], confidence: 1 };

@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SessionId } from '@shared/ipc';
 import { UNCATEGORISED, type Loop } from '@shared/loops';
 
-import { groupLoops, LOOP_DESTINATIONS, LOOP_SECTIONS, loopRows, NOWHERE } from '../loops';
+import {
+  groupLoops,
+  LOOP_DESTINATIONS,
+  LOOP_SECTIONS,
+  loopOwner,
+  loopRows,
+  NOWHERE
+} from '../loops';
 
 /** A shelf loop, named the way every one of MegaMUD's 420 is. */
 const loop = (name: string, stops = 2): Loop => ({
@@ -337,5 +345,23 @@ describe('the sections above the areas', () => {
   it('narrows a section by the query like any other group', () => {
     const groups = groupLoops(rows, 'volcano', inArena);
     expect(groups.map((group) => group.section)).toEqual(['waypoint']);
+  });
+});
+
+/* The modal and the builder file through one reading, or a loop filed from
+   one is filed under an owner the other never looks in. */
+describe('who a filed loop belongs to', () => {
+  const hero = 'hero' as SessionId;
+  const profiles = [{ id: hero, serverName: 'Paradigm' }];
+
+  it('is the character for its own scope, its realm for the realm, nobody globally', () => {
+    expect(loopOwner('profile', hero, profiles)).toBe(hero);
+    expect(loopOwner('server', hero, profiles)).toBe('Paradigm');
+    expect(loopOwner('global', hero, profiles)).toBeNull();
+  });
+
+  /* Unknown is not the reassuring answer: no summary, no realm to file under. */
+  it('names no realm for a character whose summary has not arrived', () => {
+    expect(loopOwner('server', hero, [])).toBeNull();
   });
 });

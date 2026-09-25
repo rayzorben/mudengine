@@ -1,24 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import zlib from 'node:zlib';
 
 import { WorldGraph } from '../WorldGraph';
+import { worldOf } from './realmFile';
 import { draftLoop, LoopDraftCache, preferredEdges, reduceWaypoints } from '../loopDraft';
-
-function makeWorld(rooms: Array<Record<string, unknown>>): WorldGraph {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-draft-'));
-  const file = path.join(dir, 'rooms.jsonl.gz');
-  const header = JSON.stringify({ v: 1, source: 'test', rooms: rooms.length, generatedAt: 'x' });
-  fs.writeFileSync(
-    file,
-    zlib.gzipSync([header, ...rooms.map((r) => JSON.stringify(r))].join('\n') + '\n')
-  );
-  const graph = WorldGraph.load(file);
-  fs.rmSync(dir, { recursive: true, force: true });
-  return graph;
-}
 
 /** A corridor of `count` rooms on map 1, joined both ways. */
 function corridor(count: number): Array<Record<string, unknown>> {
@@ -50,18 +34,18 @@ function square(): Array<Record<string, unknown>> {
 
 describe('planning a hand-built loop', () => {
   it('is empty for no picks', () => {
-    expect(draftLoop(makeWorld(corridor(3)), [])).toEqual({ legs: [], path: [], waypoints: [] });
+    expect(draftLoop(worldOf(corridor(3)), [])).toEqual({ legs: [], path: [], waypoints: [] });
   });
 
   it('is one waypoint and no legs for a single pick', () => {
-    const draft = draftLoop(makeWorld(corridor(3)), ['1/2']);
+    const draft = draftLoop(worldOf(corridor(3)), ['1/2']);
     expect(draft.legs).toEqual([]);
     expect(draft.path).toEqual(['1/2']);
     expect(draft.waypoints).toEqual([{ id: '1/2', name: 'Room 2' }]);
   });
 
   it('routes each pair of picks in order and joins the path', () => {
-    const draft = draftLoop(makeWorld(corridor(5)), ['1/1', '1/3', '1/5']);
+    const draft = draftLoop(worldOf(corridor(5)), ['1/1', '1/3', '1/5']);
     expect(draft.legs.map((leg) => [leg.from, leg.to])).toEqual([
       ['1/1', '1/3'],
       ['1/3', '1/5']
@@ -72,7 +56,7 @@ describe('planning a hand-built loop', () => {
   /* The reduction: a pick the planner would walk through anyway is a click
      made on the way to somewhere, not a place. */
   it('drops a pick in the middle of a corridor the planner walks anyway', () => {
-    const draft = draftLoop(makeWorld(corridor(5)), ['1/1', '1/3', '1/5']);
+    const draft = draftLoop(worldOf(corridor(5)), ['1/1', '1/3', '1/5']);
     expect(draft.waypoints.map((stop) => stop.id)).toEqual(['1/1', '1/5']);
   });
 
@@ -95,7 +79,7 @@ describe('planning a hand-built loop', () => {
   it('keeps a pick where the walk is a choice', () => {
     // Round the square the long way: 1 → 2 → 4 → 3. From 1 the planner
     // reaches 3 in one step south, so a waypoint has to hold the detour.
-    const graph = makeWorld(square());
+    const graph = worldOf(square());
     const draft = draftLoop(graph, ['1/1', '1/2', '1/4', '1/3']);
     expect(draft.path).toEqual(['1/1', '1/2', '1/4', '1/3']);
     expect(draft.waypoints.length).toBeGreaterThan(2);
@@ -105,7 +89,7 @@ describe('planning a hand-built loop', () => {
   });
 
   it('closes a loop back to its first pick and keeps the closing waypoint', () => {
-    const graph = makeWorld(square());
+    const graph = worldOf(square());
     const draft = draftLoop(graph, ['1/1', '1/2', '1/4', '1/3', '1/1']);
     expect(draft.path).toEqual(['1/1', '1/2', '1/4', '1/3', '1/1']);
     const ids = draft.waypoints.map((stop) => stop.id);
@@ -122,7 +106,7 @@ describe('planning a hand-built loop', () => {
       { m: 1, r: 3, n: 'C', x: { e: { m: 1, r: 4 } } },
       { m: 1, r: 4, n: 'D', x: { w: { m: 1, r: 3 } } }
     ];
-    const draft = draftLoop(makeWorld(rooms), ['1/1', '1/2', '1/3', '1/4']);
+    const draft = draftLoop(worldOf(rooms), ['1/1', '1/2', '1/3', '1/4']);
     expect(draft.legs).toHaveLength(2);
     expect(draft.legs[1]?.route.blocked).toBe(true);
     expect(draft.path).toEqual(['1/1', '1/2']);
@@ -130,7 +114,7 @@ describe('planning a hand-built loop', () => {
   });
 
   it('names a waypoint the realm knows, and falls back to its id', () => {
-    const draft = draftLoop(makeWorld(corridor(2)), ['1/1', '1/2']);
+    const draft = draftLoop(worldOf(corridor(2)), ['1/1', '1/2']);
     expect(draft.waypoints).toEqual([
       { id: '1/1', name: 'Room 1' },
       { id: '1/2', name: 'Room 2' }
@@ -140,15 +124,15 @@ describe('planning a hand-built loop', () => {
 
 describe('reducing a path to waypoints', () => {
   it('is nothing for nothing', () => {
-    expect(reduceWaypoints(makeWorld(corridor(2)), [])).toEqual([]);
+    expect(reduceWaypoints(worldOf(corridor(2)), [])).toEqual([]);
   });
 
   it('keeps both ends of a two-room path', () => {
-    expect(reduceWaypoints(makeWorld(corridor(2)), ['1/1', '1/2'])).toEqual(['1/1', '1/2']);
+    expect(reduceWaypoints(worldOf(corridor(2)), ['1/1', '1/2'])).toEqual(['1/1', '1/2']);
   });
 
   it('reduces a straight corridor to its ends', () => {
-    const graph = makeWorld(corridor(6));
+    const graph = worldOf(corridor(6));
     expect(reduceWaypoints(graph, ['1/1', '1/2', '1/3', '1/4', '1/5', '1/6'])).toEqual([
       '1/1',
       '1/6'
@@ -156,7 +140,7 @@ describe('reducing a path to waypoints', () => {
   });
 
   it('is a single room for a single room', () => {
-    expect(reduceWaypoints(makeWorld(corridor(2)), ['1/1'])).toEqual(['1/1']);
+    expect(reduceWaypoints(worldOf(corridor(2)), ['1/1'])).toEqual(['1/1']);
   });
 });
 
@@ -170,7 +154,7 @@ describe('the corridors a character prefers', () => {
           : null;
 
   it('is nothing for loops that do not prefer', () => {
-    const graph = makeWorld(corridor(3));
+    const graph = worldOf(corridor(3));
     const found = preferredEdges(
       graph,
       [{ name: 'plain', stops: [{ room: 'Room 1 1/1' }, { room: 'Room 3 1/3' }] }],
@@ -182,7 +166,7 @@ describe('the corridors a character prefers', () => {
   });
 
   it('keeps every step of a preferred route, both ways', () => {
-    const graph = makeWorld(corridor(3));
+    const graph = worldOf(corridor(3));
     const found = preferredEdges(
       graph,
       [
@@ -200,7 +184,7 @@ describe('the corridors a character prefers', () => {
   });
 
   it('closes a ring with the leg from its last stop to its first', () => {
-    const graph = makeWorld(square());
+    const graph = worldOf(square());
     const found = preferredEdges(
       graph,
       [
@@ -221,7 +205,7 @@ describe('the corridors a character prefers', () => {
 
   /* A stop the realm cannot settle leaves the whole route out, and names it. */
   it('leaves a route with an unsettled stop out, and says which', () => {
-    const graph = makeWorld(corridor(3));
+    const graph = worldOf(corridor(3));
     const found = preferredEdges(
       graph,
       [{ name: 'lost', stops: [{ room: 'Room 1 1/1' }, { room: 'Nowhere' }], prefer: true }],
@@ -234,7 +218,7 @@ describe('the corridors a character prefers', () => {
 
   /* Derived plainly: a preference handed in must not shape the route it derives. */
   it('derives each route without any preference in force', () => {
-    const graph = makeWorld(square());
+    const graph = worldOf(square());
     const found = preferredEdges(
       graph,
       [
@@ -261,7 +245,7 @@ describe('drafts remembered between picks', () => {
   /* The property: a draft carried forward from a shorter one is the draft
      from scratch, pick for pick. */
   it('answers an extended list exactly as a fresh draft would', () => {
-    const graph = makeWorld(square());
+    const graph = worldOf(square());
     const cache = new LoopDraftCache();
     const picks = ['1/1', '1/2', '1/4', '1/3', '1/1'];
     for (let length = 1; length <= picks.length; length += 1) {
@@ -271,7 +255,7 @@ describe('drafts remembered between picks', () => {
   });
 
   it('answers a list it has seen from memory, which is what an undo is', () => {
-    const graph = makeWorld(corridor(6));
+    const graph = worldOf(corridor(6));
     const cache = new LoopDraftCache();
     const longer = cache.draft(graph, ['1/1', '1/3', '1/6']);
     const shorter = cache.draft(graph, ['1/1', '1/3']);
@@ -286,7 +270,7 @@ describe('drafts remembered between picks', () => {
       { m: 1, r: 2, n: 'B', x: { w: { m: 1, r: 1 } } },
       { m: 1, r: 3, n: 'C', x: {} }
     ];
-    const graph = makeWorld(rooms);
+    const graph = worldOf(rooms);
     const cache = new LoopDraftCache();
     const blocked = cache.draft(graph, ['1/1', '1/3']);
     expect(blocked.legs[0]?.route.blocked).toBe(true);
@@ -297,8 +281,8 @@ describe('drafts remembered between picks', () => {
 
   it('forgets a draft when the realm underneath it changes', () => {
     const cache = new LoopDraftCache();
-    const first = cache.draft(makeWorld(corridor(3)), ['1/1', '1/3']);
-    const other = makeWorld([
+    const first = cache.draft(worldOf(corridor(3)), ['1/1', '1/3']);
+    const other = worldOf([
       { m: 1, r: 1, n: 'A', x: { s: { m: 1, r: 3 } } },
       { m: 1, r: 3, n: 'C', x: { n: { m: 1, r: 1 } } }
     ]);
@@ -308,7 +292,7 @@ describe('drafts remembered between picks', () => {
   });
 
   it('is bounded', () => {
-    const graph = makeWorld(corridor(3));
+    const graph = worldOf(corridor(3));
     const cache = new LoopDraftCache(2);
     const a = cache.draft(graph, ['1/1']);
     cache.draft(graph, ['1/2']);

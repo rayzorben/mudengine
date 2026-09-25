@@ -9,6 +9,7 @@
  * as a string union in `rules.ts` — which is the same mistake as holding two
  * representations of a direction: the two agree until one of them is edited.
  */
+import type { CharacterState } from './character';
 import type { RuleFiring } from './rules';
 
 /**
@@ -41,7 +42,7 @@ export type Priority = keyof typeof PRIORITY;
  * What a command carrying a credential is shown and written down as.
  *
  * Fixed width, so the length is not recorded either. Here rather than beside
- * either reader because there are two — the record (`SessionManager.reportable`,
+ * either reader because there are two — the record (`Publisher.reportable`,
  * for the capture and the sent log) and the *queue*, whose pending intents the
  * Automation card and the status rail draw while they wait their turn. A
  * password that is masked in one and printed in the other is a password
@@ -112,7 +113,7 @@ export interface SentCommand {
  */
 export interface SafetyDecision {
   at: number;
-  /** `retreat` or `hang up`. */
+  /** What was decided, in a word: `retreat`, `teleport`, `hang up`, `stand down` and the like. */
   action: string;
   /** What prompted it — the health, the number of attackers. */
   because: string;
@@ -120,6 +121,25 @@ export interface SafetyDecision {
   acted: boolean;
   /** Why it refused, when it did. */
   refused?: string;
+}
+
+/**
+ * How hurt the character is, as a fraction of maximum, for both safety nets:
+ * the escape (`Travel.considerEscape`) and the hang-up.
+ *
+ * Unknown is not zero: a maximum that has not arrived yet must never trip a
+ * safety net, for the same reason it must never paint a bar red — so an
+ * unknown number is `null`, never a fraction that looks dire.
+ */
+export function healthFraction(state: CharacterState): number | null {
+  return state.vitals.hp !== null && state.vitals.hpMax
+    ? state.vitals.hp / state.vitals.hpMax
+    : null;
+}
+
+/** The rounded percentage a safety notice reports, e.g. `43%`. */
+export function percentText(fraction: number): string {
+  return `${Math.round(fraction * 100)}%`;
 }
 
 /**

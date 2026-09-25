@@ -30,6 +30,7 @@
 
 import { fileSlug } from './files';
 import type { RoomId } from './world';
+import type { AfflictionHold } from './walk';
 
 /** One place a loop visits, named the way a person would say it. */
 export interface LoopStop {
@@ -520,9 +521,7 @@ export type LoopHold =
    */
   | 'resting'
   /** Waiting out a stated affliction before the next leg — see `afflictionHolding` in `walk.ts`. */
-  | 'blind'
-  | 'held'
-  | 'poisoned'
+  | AfflictionHold
   | null;
 
 export interface LoopProgress {

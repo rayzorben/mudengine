@@ -300,6 +300,16 @@ const TUNING_DEFAULTS = {
      * magnitude above that and still a fifth of a combat round.
      */
     procWindowMs: 1000,
+    /**
+     * How long an attack stays owed a `*Combat Engaged*` (`OwedAttacks`, todos
+     * 802 and 763): the backstop for a refused attack no later echo retires.
+     * **Measured** over 105,052 recorded engagements, scored by the first blow
+     * this character landed after each (94,904 have one): with the echo
+     * retiring, 28 bound wrongly from 1 s to 4 s and 29 from 5 s, while the
+     * unbound fell 79, 41, 33, 23, 20, 16 at 1, 1.5, 2, 3, 4, 5 s; without an
+     * end, 172 wrong. The longest before the wrong ones rise.
+     */
+    engageBindMs: 4000,
     /** Remembered attackers in one fight. The names matter, not the count. */
     maxAttackers: 12,
     /** Monsters tracked in one fight. The oldest ledger is dropped. */
@@ -1120,10 +1130,23 @@ const TUNING_DEFAULTS = {
      * How long the item errand waits after saying the phrase that summons a
      * monster which drops the item (todo 806) — `touch statue`, and the statue
      * has to die. A summons is a fight before it is an item, so minutes; past
-     * it the errand says nothing came of it and walks nowhere. A handover is
-     * bounded by its pack listing instead (`PackAfter`).
+     * it the errand says nothing came of it and walks nowhere. A handover's
+     * own wait is `handoverDelayMs`.
      */
     errandAskMs: 180_000,
+    /**
+     * How late a script's `giveitem` can land after its phrase, which bounds
+     * how long a handover's own listing is asked again for (todo 765): the
+     * longest `adddelay` before a `giveitem` in GreaterMUD's official
+     * Textblocks, `mine` (block 2622), of 1,684 `giveitem` lines with their
+     * `text` chains followed; five wait two seconds and the rest none. The
+     * server holds a listing asked meanwhile behind the delay
+     * (`ProcessCommandQueue` waits on the current command), so on GreaterMUD
+     * the first answer is already the pack after it: this is the margin for
+     * a server whose order is unmeasured. Past it, the item may be a quest
+     * flag (todo 814).
+     */
+    handoverDelayMs: 10_000,
     /**
      * How long a walk stands still for a condition before spending one step
      * to find out whether it is over.
@@ -1291,7 +1314,7 @@ const TUNING_DEFAULTS = {
      * room, rather than only after a search that succeeded.
      *
      * A found exit joins the room's own `Obvious exits:` line, and that line is
-     * what `Walker.mustSearchFirst` reads to decide the exit is there — but the
+     * what `Barriers.mustSearchFirst` reads to decide the exit is there — but the
      * server prints `You found an exit to the south!` and **does not reprint
      * the room**. So the walk went on searching a room whose exit it had
      * already found, reported off the wire as todo 03: eleven `search s`, seven
@@ -1306,7 +1329,7 @@ const TUNING_DEFAULTS = {
     searchRecheckEvery: 3,
     /**
      * How many rounds of levers one action-gated exit is worth — format 23's
-     * other kind of hidden exit (`Walker.pullLevers`).
+     * other kind of hidden exit (`Levers.pullLevers`).
      *
      * Counted where a search is paced, and the difference is what the data
      * says: the realm names the exact phrase that opens this one, so a couple
@@ -1530,6 +1553,21 @@ const TUNING_DEFAULTS = {
      * the same span a sent command waits for its acknowledgement.
      */
     rewriteHoldMs: 2000,
+    /**
+     * How long a Goto or a Loop pressed in an unplaced room waits for the
+     * locate word's answer before it plans anyway, and is refused as it always
+     * was (todo 812, `Locating`). Derived, not measured for `rm` itself: the
+     * probe can queue behind the three commands the pacing window lets out,
+     * and one movement round measured 1,239ms, so three rounds and a margin.
+     */
+    locateResolveMs: 4000,
+    /**
+     * How long the locate ask (`Claims.askWhereIAm`) is worth sending while it
+     * waits in the queue, for whichever of its askers raised it — a lost lap,
+     * a scattered walk, a Goto, the Room card (todo 762). Past it the question
+     * is stale: a room has arrived or the asker has stopped waiting.
+     */
+    locateExpiresMs: 10_000,
     /**
      * Records the debug window keeps, and therefore how far back a bug report
      * reaches.
@@ -1940,7 +1978,7 @@ const TUNING_DEFAULTS = {
     errandPlaces: 3,
     /**
      * How many rooms one of the errand solver's sweeps may settle before it
-     * gives that origin up (`WorldGraph.sweepTo`).
+     * gives that origin up (`Router.sweepTo`).
      *
      * `scatterSweepRooms`' bound, one solve across, and for its reason: the
      * sweep stops on its own the moment every room it was asked about is
@@ -1952,7 +1990,7 @@ const TUNING_DEFAULTS = {
     errandSweepRooms: 60_000,
     /**
      * How many rooms one backward sweep of the scatter solve may settle before
-     * it gives that figure up (`WorldGraph.sweepBack`).
+     * it gives that figure up (`Router.sweepBack`).
      *
      * The sweep stops on its own the moment every room it was asked about is
      * settled, and a scatter's landings sit inside the maze the scatter
@@ -1980,7 +2018,7 @@ const TUNING_DEFAULTS = {
     scatterTolerance: 0.0001,
     /**
      * How many destinations' *move* figures are kept before the lot is thrown
-     * away (`WorldGraph.scatterMoves`).
+     * away (`Router.scatterMoves`).
      *
      * The figure a reader is shown depends on the destination alone, never on
      * the character, so it is worth keeping across a session — and a

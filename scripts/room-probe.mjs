@@ -57,6 +57,7 @@ const session = new SessionManager(
         groups: JSON.stringify(block.groups ?? {}).slice(0, 70)
       });
     },
+    players: () => {},
     character: (state) => {
       const room = state.room;
       const key = `${room.map}/${room.number}/${room.name}/${room.resolvedBy}/${room.ambiguous}`;
@@ -76,14 +77,16 @@ const session = new SessionManager(
     telnet: () => {},
     notice: () => {}
   },
-  world,
-  // No standing routines: this measures what commands *here* cause.
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    world,
+    // No standing routines: this measures what commands *here* cause.
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

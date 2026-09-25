@@ -2,8 +2,9 @@
  * Folding what the wire says about other players into the registry.
  *
  * `state in -> state out`, twelve lines of it pure: this depends on none of
- * `CharacterTracker`'s private fields and is called from one place, `apply`,
- * *after* the reducer has run. That placement is the whole design.
+ * `CharacterTracker`'s private fields and is called from one place, `apply`
+ * (through `Company.track`), *after* the reducer has run. That placement is
+ * the whole design.
  *
  * ## Why it reads the state rather than the 74 cases
  *
@@ -80,8 +81,9 @@ const SPOKEN = new Set<string>([
 /**
  * Fold one block, and the state it produced, into the registry.
  *
- * Returns the **same registry** when nothing changed, so `apply` can use
- * identity to decide whether anything is worth republishing — see `observe`.
+ * Returns the **same registry** when nothing changed, so `Publisher.players`
+ * can use identity to decide whether anything is worth republishing — see
+ * `observe`.
  */
 export function trackPlayers(
   registry: PlayerRegistry,

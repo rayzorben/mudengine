@@ -2,11 +2,10 @@ import { SupplyControl, type SupplyList } from './SupplyControls';
 import { Fragment, useState } from 'react';
 import EntityNumber from './EntityNumber';
 import { t } from '../lib/i18n';
-import type { Numbered } from '@shared/entities';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
+import type { RowPeace } from '@shared/mobRules';
 import { readEffects, type AbilityTable } from '@shared/abilities';
-import { ITEM_KIND_WORD } from '@shared/items';
 import type { RealmFamily } from '@shared/character';
 import type { Verdict } from '@shared/verdict';
 import { asRoomReference, roomId } from '@shared/world';
@@ -18,53 +17,13 @@ import type {
   ShopPlace,
   WorldClass,
   WorldItem,
-  WorldLookup,
   WorldMob,
   WorldRace,
   WorldSpell
 } from '@shared/world';
 import type { MobLoreEntry } from '@shared/lore';
 import type { FightSummary } from '@shared/fights';
-
-/** One thing the realm answered with, whatever kind of thing it is. */
-export type ReferenceEntry =
-  | {
-      kind: 'mob';
-      name: string;
-      mob: WorldMob;
-      learned: MobLoreEntry | null;
-      fights: FightSummary | null;
-      /** *Can I fight this?* — against the character as it stands; null when the realm cannot weigh it. */
-      verdict: Verdict | null;
-      /** Where the realm puts it; null where it puts it nowhere. See `MobPlaces`. */
-      places: MobPlaces | null;
-    }
-  | { kind: 'item'; name: string; item: WorldItem }
-  | { kind: 'spell'; name: string; spell: WorldSpell }
-  | { kind: 'race'; name: string; race: WorldRace }
-  | { kind: 'class'; name: string; className: WorldClass };
-
-export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
-  return [
-    ...found.mobs.map((mob): ReferenceEntry => ({
-      kind: 'mob',
-      name: mob.name,
-      mob,
-      learned: found.learned?.[mob.name] ?? null,
-      fights: found.fights?.[mob.name] ?? null,
-      verdict: found.verdicts?.[mob.name] ?? null,
-      places: found.mobPlaces?.[mob.name] ?? null
-    })),
-    ...found.items.map((item): ReferenceEntry => ({ kind: 'item', name: item.name, item })),
-    ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
-    ...found.races.map((race): ReferenceEntry => ({ kind: 'race', name: race.name, race })),
-    ...found.classes.map((entry): ReferenceEntry => ({
-      kind: 'class',
-      name: entry.name,
-      className: entry
-    }))
-  ];
-}
+import { entryNumber, entryWord, type ReferenceEntry } from '../lib/reference';
 
 /** A mean as a figure: whole above ten, one decimal below, never a rounded-away zero. */
 function figure(mean: number): string {
@@ -76,65 +35,6 @@ export function mobHealth(mob: WorldMob): string {
   return mob.span
     ? t('cards.reference.mob.healthRange', { low: mob.span[0], high: mob.span[1] })
     : t('cards.reference.mob.healthSingle', { hp: mob.hp });
-}
-
-/**
- * The word in the chip beside a name: what kind of thing this is.
- *
- * An item says which *kind* of item when the realm knows — armour, weapon,
- * scroll — because "item" beside a broadsword is a label that says nothing.
- */
-export function entryWord(entry: ReferenceEntry): string {
-  if (entry.kind === 'mob') return t('cards.reference.kind.monster');
-  if (entry.kind === 'spell') return t('cards.reference.kind.spell');
-  if (entry.kind === 'race') return t('cards.reference.kind.race');
-  if (entry.kind === 'class') return t('cards.reference.kind.class');
-  return entry.item.kind === undefined
-    ? t('cards.reference.kind.item')
-    : ITEM_KIND_WORD[entry.item.kind];
-}
-
-/**
- * What identifies one row of the matches list.
- *
- * The realm names two spells `maelstrom` and two `magic armour` — its own rows
- * disagree about the level and one lookup returns both — so kind and name is
- * not a unique key. React handed a duplicate key loses the ability to delete
- * the older of the pair: the row stays in the document after the answer that
- * held it has gone. Typing `ma` and then narrowing to `magic miss` left those
- * two dead rows sitting above the two-row answer, with the highlight correctly
- * on a live row and the pointer over a corpse — which reads as the selection
- * being off by two.
- *
- * The position in the answer is what this list is addressed by everywhere else
- * — the highlight is an index, and hovering points at one — so it is what a row
- * is keyed by too, and a realm that repeats a name cannot break it.
- */
-export function entryKey(entry: ReferenceEntry, index: number): string {
-  return `${index}:${entry.kind}:${entry.name}`;
-}
-
-/**
- * The realm row a match is, whichever kind of thing it is.
- *
- * Four of the five kinds are looked up *as rows* and answer with their own
- * number: two spells named `maelstrom` come back as two entries, and four
- * `void sphere` rows as four. A monster is the exception — the fold is by
- * name, so it answers with `ids` and with the `row` a room settled it to.
- */
-export function entryNumber(entry: ReferenceEntry): Numbered {
-  switch (entry.kind) {
-    case 'mob':
-      return entry.mob;
-    case 'item':
-      return entry.item;
-    case 'spell':
-      return entry.spell;
-    case 'race':
-      return entry.race;
-    case 'class':
-      return entry.className;
-  }
 }
 
 /** The one figure a list row carries: the one that says how big it is. */
@@ -304,6 +204,12 @@ function placedChoose(room: string): string {
   return t('cards.reference.item.placedChooseTitle', { room });
 }
 
+/** The Reference card's words for each claim a row can make (todo 818); a new claim must be worded. */
+const TEMPER_ROW: Record<RowPeace, () => string> = {
+  friend: () => t('cards.reference.mob.temperRowFriend'),
+  'not-hostile': () => t('cards.reference.mob.temperRowNotHostile')
+};
+
 /**
  * What one monster is, spelled out. The same facts the Room card compresses
  * into chips, given the space to be sentences — this is the detail.
@@ -314,6 +220,7 @@ function MobDetail({
   fights,
   verdict,
   places,
+  peace,
   realm,
   classNames,
   onRoom,
@@ -324,6 +231,7 @@ function MobDetail({
   fights: FightSummary | null;
   verdict: Verdict | null;
   places: MobPlaces | null;
+  peace: RowPeace | null;
   realm: RealmFamily | null;
   classNames: Record<number, string>;
   onRoom: ((map: number, room: number) => void) | null;
@@ -482,6 +390,8 @@ function MobDetail({
         {mob.uncertain && (
           <span className="quiet">{t('cards.reference.mob.temperUncertainNote')}</span>
         )}
+        {/* The character's own row, beside the realm's word (todo 818). */}
+        {peace !== null && <span className="quiet">{TEMPER_ROW[peace]()}</span>}
       </dd>
       {mob.costly !== 'never' && (
         <>
@@ -1501,6 +1411,7 @@ export default function ReferenceDetail({
           mob={entry.mob}
           onResize={onResize}
           onRoom={onRoom}
+          peace={entry.peace}
           places={entry.places}
           realm={realm}
           verdict={entry.verdict}

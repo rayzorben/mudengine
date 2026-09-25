@@ -21,6 +21,7 @@ import type { Discovery } from './memory';
 import type { Find } from './finds';
 import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
+import type { PlayerRegistry } from './players';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
 import type {
@@ -64,9 +65,10 @@ import type {
 } from './config';
 import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './drafts';
 import type { RemoteGrant, RemoteName } from './remotes';
-import type { CureGates, SpellTargeting } from './spellcraft';
+import type { CureGates, SpellServes, SpellTargeting } from './spellcraft';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
+import type { LocateWord } from './locate';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
@@ -211,6 +213,8 @@ export interface AttachSnapshot {
   lines: StreamLine[];
   state: ConnectionState;
   character: CharacterState;
+  /** The registry when the window attached; `Push.players` carries every change after. */
+  players: PlayerRegistry;
   walk: WalkProgress;
   loop: LoopProgress;
   automation: AutomationSnapshot;
@@ -352,13 +356,13 @@ export interface SpellOption {
    * ability rows, carried so a picker can offer only the spells that answer
    * the question it is asking (todo 00).
    *
-   * The three cure fields all drew the whole spellbook before this, so *Cure
+   * The cure fields all drew the whole spellbook before this, so *Cure
    * Poison* offered every spell the character knows and the blindness field
    * only looked filtered because its **gate** happened to close more often.
    * Absent for a realm this build cannot read the columns of, which every
    * reader treats as *offer it anyway*: unknown must never empty a picker.
    */
-  serves?: { hp: boolean; poisoned: boolean; blind: boolean; diseased: boolean };
+  serves?: SpellServes;
 }
 
 export interface ProfileEditable {
@@ -391,6 +395,8 @@ export interface ProfileEditable {
    * vocabulary. See `LoginConfig.steps`.
    */
   login: LoginStepDraft[];
+  /** This character's own locate word, from the file as written; null where it follows its realm. */
+  locate: LocateWord | null;
   /** Resolved, so inherited values show; `penalties` alone is this character's own, null where it inherits. */
   hangUp: {
     enabled: boolean;
@@ -407,6 +413,8 @@ export interface ProfileEditable {
     strategy: RetreatStrategy;
     safeHavenRoom: string;
   };
+  /** Resolved; `command` alone is this character's own, empty where it follows the realm. */
+  fleeGoto: { enabled: boolean; belowHealth: number; command: string };
   /** What to do when a player opens on this character. Resolved, like the two above. */
   pvp: { notifyGang: boolean; action: PvpAction };
   /**
@@ -904,6 +912,12 @@ export const Invoke = {
   /** A probe command asked for from a card, sent through the arbiter. */
   ask: 'session:ask',
   /**
+   * The Room card's locate button (todo 811). Its own channel rather than
+   * `ask('rm')`, so main chooses the realm's word (`locate:`, `none` refused
+   * out loud) and it shares the one locate ask's coalesce key.
+   */
+  locate: 'session:locate',
+  /**
    * A gear button: put the kit back on, put it all on, take it all off, or one
    * item.
    *
@@ -976,6 +990,12 @@ export const Push = {
   block: 'session:block',
   /** Character and room state, on change. */
   character: 'session:character',
+  /**
+   * What is known about the other players, whole, when it changed — never
+   * with the character: the registry grows with the realm (1,200 players cost
+   * 6.75ms to clone, each side, per status line) and moves far less often.
+   */
+  players: 'session:players',
   /** Route-walk progress, on change. */
   walk: 'walk:progress',
   loop: 'loop:progress',
@@ -1414,6 +1434,8 @@ export interface IpcApi {
   names(session: SessionId): Promise<WorldNames>;
   /** Whether the arbiter took it. */
   ask(session: SessionId, command: string): Promise<boolean>;
+  /** Asks the realm where the character stands, in its own word. False is a refusal already said. */
+  locate(session: SessionId): Promise<boolean>;
   /** A gear button. Resolves to how many commands were queued. See the channel. */
   gear(session: SessionId, action: GearAction, item?: string): Promise<number>;
   /** A console button main runs. Whether it was taken; a refusal says so itself. */
@@ -1432,6 +1454,7 @@ export interface IpcApi {
   onDebug(handler: (message: Addressed<DebugRecord>) => void): () => void;
   onBlock(handler: (message: Addressed<Block>) => void): () => void;
   onCharacter(handler: (message: Addressed<CharacterState>) => void): () => void;
+  onPlayers(handler: (message: Addressed<PlayerRegistry>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;

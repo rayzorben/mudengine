@@ -2,6 +2,7 @@ import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import { ownAlignment, type Adventurer, type CharacterState } from '../../shared/character';
 import { attacksOnSight } from '../../shared/mobs';
+import type { SessionModule } from './Module';
 
 /**
  * Whether pulling the plug would be safe, and why not.
@@ -87,7 +88,7 @@ export interface HangUpEvents {
   pvpBlow?(attacker: string, at: number): void;
 }
 
-export class HangUpWatch {
+export class HangUpWatch implements SessionModule {
   /** Last time a player hit this character, or this character hit a player. */
   private lastPvpAt: number | null = null;
   /** Last time a mob hit or swung at this character. */

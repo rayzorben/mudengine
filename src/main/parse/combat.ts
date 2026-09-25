@@ -6,14 +6,14 @@
  * the roster — and the first that is not pure, because a fight has a memory
  * the published state deliberately does not carry: the running damage tally
  * per monster (`Ledger`), which is what a health bar, a suspected death and
- * the lore's estimates are all read off, and the one-slot binding between an
- * attack command and the `*Combat Engaged*` that confirms it. Both live here
- * and nowhere else. Everything a case needs from the rest of the character is
+ * the lore's estimates are all read off, and the binding of an attack command
+ * to the `*Combat Engaged*` that confirms it, over the queue in `owed.ts`.
+ * Everything a case needs from the rest of the character is
  * passed in: the state, the time, the names the classifier vouched for.
  *
- * Two things stay with the tracker on purpose. Putting an attacker into the
+ * Two things stay out of this file on purpose. Putting an attacker into the
  * room's occupant list asks the realm's monster table and the roster, which
- * is the tracker's classification path, so it is injected (`withOccupant`).
+ * is the room's classification path (`room.ts`), so it is injected (`withOccupant`).
  * And the queue of `look <mob>` targets is the command path's — shared with
  * the room's expectation machinery — so the tracker binds a wound sentence to
  * its look and hands the name in.
@@ -29,11 +29,13 @@ import {
   type Room,
   type TargetHealth
 } from '../../shared/character';
+import type { Block } from '../../shared/blocks';
 import type { FightRecord, FightSink } from '../../shared/fights';
 import type { MobLore } from '../../shared/lore';
 import { mobKey, nameAnswersTo, roomAddress, roomId, type RoomId } from '../../shared/world';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
+import { OwedAttacks } from './owed';
 
 /**
  * What one monster has taken in the fight currently running.
@@ -156,7 +158,7 @@ function struck(combat: Combat, at: number, blow: { by?: string; at?: string }):
  * Exact wins outright, because the C# clears its accumulated candidates on one.
  *
  * The **look** path does not come through here: its argument is resolved when
- * the command goes out (`CharacterTracker.occupantNamed`, reached through
+ * the command goes out (`occupantNamed`, `shared/aim.ts`, reached through
  * `CommandContext`), because the room a look asked about is the room the player
  * was looking at and the answer arrives some rounds later. An attack's
  * engagement comes back immediately, so resolving it here is the same room.
@@ -179,7 +181,7 @@ export interface FightSources {
   fights: FightSink;
   /**
    * Puts a name into the room's occupant list, classified against the realm
-   * and the roster — the tracker's, because classification asks the realm's
+   * and the roster — the room's (`RoomTracker`), because classification asks the realm's
    * monster table. Returns the room unchanged when the name is already there.
    */
   withOccupant(state: CharacterState, name: string): Room;
@@ -197,17 +199,22 @@ export class FightTracker {
   private ledgers = new Map<string, Ledger>();
 
   /**
-   * What the last command would attack, exactly as typed after the verb.
+   * The attacks sent and not yet answered (`owed.ts`), one consumed per
+   * `*Combat Engaged*`: the server confirming an attack found its mark, and
+   * the earliest the client can know what it is fighting — the damage line the
+   * target used to wait for arrives a swing later, and a round-verb or a rule
+   * reading `{target}` in between was handed nothing.
    *
-   * One slot, consumed by `*Combat Engaged*`, which is the server confirming
-   * the attack found its mark and is the earliest the client can know what it
-   * is fighting — the damage line the target used to wait for arrives a swing
-   * later, and a round-verb or a rule reading `{target}` in between was
-   * handed nothing. Any other command overwrites the slot, because an
-   * engagement two commands after the attack is an attribution nobody can
-   * make — the same one-slot rule `unmodelled` follows.
+   * **A queue, because the server answers in order** (todo 802): every attack
+   * that finds its mark prints one engagement (`AttackCommand.cs:405`), so each
+   * engagement answers the oldest attack still owed one. Not only an attack
+   * engages: a non-instant attack spell prints one too (`Spell.cs:2090`), so a
+   * cast at a listed monster is owed one (`attackAim`, todo 816); a cast at
+   * nobody enters no queue (todo 763 measured that trade). Against the echo over
+   * every recorded engagement, the one slot this replaced bound 1,237 wrongly;
+   * the queue let go by age alone, 271; retired by the echo as well, 67.
    */
-  private attacking: string | null = null;
+  private readonly owed = new OwedAttacks();
 
   /**
    * The monster a death sentence has just taken out of the room, by key.
@@ -264,7 +271,7 @@ export class FightTracker {
    * proc window, with one of its `allowance` procs still unclaimed — the round
    * half of reading an unattributed damage line as a weapon proc. The realm
    * half is the caller's, and `allowance` is what it found; see
-   * `CharacterTracker.readsAsProc`.
+   * `readsAsProc` (`proc.ts`).
    */
   /**
    * A line arrived between this character's blow and any proc it might have
@@ -283,13 +290,35 @@ export class FightTracker {
     return at >= landed.at && at - landed.at <= window;
   }
 
+  /** An attack went out at `at`, sent as `command`, naming `aimed` or (a bare verb) nothing. */
+  noteAttack(aimed: string | null, command: string, at: number): void {
+    this.owed.sent(command, aimed, at);
+  }
+
+  /** Every block, for the echo and the prompt that settle an owed attack (`OwedAttacks.heard`). */
+  heard(block: Pick<Block, 'type' | 'text'>): void {
+    this.owed.heard(block);
+  }
+
   /**
-   * A command went out. An attack with a named target arms the engagement
-   * binding; anything else clears it — an engagement two commands after the
-   * attack is an attribution nobody can make.
+   * `guard moves to protect ward`, sent only to the attacker: the server makes
+   * the guard this character's target (`AttackCommand.cs:342-347`,
+   * `Player.cs:6136-6141`). Before the engagement — a melee attack, and
+   * GreaterMUD's spells — the attack owed on the ward is now the guard's, or
+   * the guard is owed at the head when nothing names the ward (a cast); after
+   * it — MajorMUD's spells, captures/005 and 136 — the fight is retargeted.
+   * An owed guard the character cannot hit is answered by no engagement
+   * (`Your weapon has no effect against this monster!`), so nothing binds.
    */
-  noteCommand(attacking: string | null): void {
-    this.attacking = attacking;
+  guarded(s: CharacterState, guard: string, ward: string, at: number): CharacterState | null {
+    if (this.owed.redirect(guard, ward)) return null;
+    if (!s.combat.engaged) {
+      this.owed.stepIn(guard, ward, at);
+      return null;
+    }
+    const target = resolveAgainstRoom(s, guard);
+    const health = this.healthFor(target, at, roomAddress(s.room));
+    return { ...s, combat: { ...s.combat, target, health } };
   }
 
   /**
@@ -299,7 +328,7 @@ export class FightTracker {
    */
   forget(): void {
     this.ledgers.clear();
-    this.attacking = null;
+    this.owed.forget();
     this.landed = null;
     this.fell = null;
   }
@@ -321,15 +350,15 @@ export class FightTracker {
        */
       this.settleFight(s, at);
       /*
-       * `attacking` deliberately survives this. Re-attacking — or
+       * The owed attacks deliberately survive this. Re-attacking — or
        * switching targets — makes the server print `*Combat Off*` and
        * `*Combat Engaged*` as one answer to one command, and consuming
-       * the slot on the Off half left the Engaged half nothing to bind.
+       * an entry on the Off half left the Engaged half nothing to bind.
        * The client then believed it had no target, proposed the same
        * attack again on the very next state change, and the server
        * answered with another pair: a self-sustaining loop at round-trip
        * speed, captured live 2026-08-26. An Engaged is only ever the
-       * answer to an attack command, so a slot armed across an unrelated
+       * answer to an attack command, so an entry kept across an unrelated
        * Off can never bind to an engagement that command did not cause.
        */
       return { ...s, inCombat: false, combat: NO_COMBAT };
@@ -344,10 +373,10 @@ export class FightTracker {
      * listing has placed is kept as typed: the server just confirmed the
      * thing exists, and the damage lines that follow correct any
      * spelling. An existing target is never overwritten — the engagement
-     * of a fight already in progress says nothing new.
+     * of a fight already in progress says nothing new, though it still
+     * answers its attack.
      */
-    const aimed = this.attacking;
-    this.attacking = null;
+    const aimed = this.owed.answer(at);
     if (s.combat.target !== null || aimed === null) {
       return { ...s, inCombat: true, combat: { ...s.combat, engaged: true } };
     }

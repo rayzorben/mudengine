@@ -1,7 +1,7 @@
 import { keepFocus } from './focus';
 import { t } from './i18n';
 import type { PopoverAnchor } from './popover';
-import { playerKey, type PlayerRecord } from '@shared/players';
+import { playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import type { CharacterState } from '@shared/character';
 
 /**
@@ -17,6 +17,9 @@ import type { CharacterState } from '@shared/character';
  * count of minutes falls, and what a room this client could not resolve is
  * allowed to claim.
  */
+
+/** `ago`'s finest step, the first minute's ten-second buckets: a readout of it need redraw no oftener. */
+export const AGO_GRAIN_SECONDS = 10;
 
 /**
  * How long ago, in the coarsest unit that is still true.
@@ -51,9 +54,11 @@ export function ago(at: number, now: number): string {
   // state push that draws it, and "in 2 seconds" is the readout claiming
   // something impossible.
   const seconds = Math.max(0, Math.floor((now - at) / 1000));
-  if (seconds < 10) return t('players.sighting.justNow');
+  if (seconds < AGO_GRAIN_SECONDS) return t('players.sighting.justNow');
   if (seconds < 60) {
-    return t('players.sighting.secondsAgo', { seconds: Math.floor(seconds / 10) * 10 });
+    return t('players.sighting.secondsAgo', {
+      seconds: Math.floor(seconds / AGO_GRAIN_SECONDS) * AGO_GRAIN_SECONDS
+    });
   }
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return t('players.sighting.minutesAgo', { minutes });
@@ -87,6 +92,9 @@ export function place(record: PlayerRecord): string {
     : t('players.sighting.unplacedRoom');
 }
 
+/** What the name tests read off the character beside the registry: its own name and the roster. */
+type Roster = Pick<CharacterState, 'name' | 'online'>;
+
 /**
  * Every person this character has a record of, by the server's spelling —
  * the registry (offline people included: a name seen an hour ago is still a
@@ -94,8 +102,8 @@ export function place(record: PlayerRecord): string {
  * minus this character, whose own name is not a question. Sorted, so the same
  * set is the same list and a consumer keyed on its join does not churn.
  */
-export function knownPlayerNames(character: CharacterState): string[] {
-  return playerNames(character, () => true);
+export function knownPlayerNames(players: PlayerRegistry, character: Roster): string[] {
+  return playerNames(players, character, () => true);
 }
 
 /**
@@ -103,17 +111,18 @@ export function knownPlayerNames(character: CharacterState): string[] {
  * the registry, and the roster. The console lets these outrank a realm name of
  * the same spelling and lets everybody else yield to it — see `NameIndex`.
  */
-export function presentPlayerNames(character: CharacterState): string[] {
-  return playerNames(character, (record) => record.online);
+export function presentPlayerNames(players: PlayerRegistry, character: Roster): string[] {
+  return playerNames(players, character, (record) => record.online);
 }
 
 function playerNames(
-  character: CharacterState,
+  players: PlayerRegistry,
+  character: Roster,
   include: (record: PlayerRecord) => boolean
 ): string[] {
   const self = character.name?.toLowerCase() ?? null;
   const names = new Map<string, string>();
-  for (const record of Object.values(character.players)) {
+  for (const record of Object.values(players)) {
     if (include(record)) names.set(record.name.toLowerCase(), record.name);
   }
   for (const entry of character.online) names.set(entry.name.toLowerCase(), entry.name);
@@ -129,10 +138,14 @@ function playerNames(
  * person here, and gets the realm's answer, which for a stranger says the
  * realm knows nothing — never that they are safe.
  */
-export function isKnownPlayer(character: CharacterState, name: string): boolean {
+export function isKnownPlayer(
+  players: PlayerRegistry,
+  character: Pick<CharacterState, 'online'>,
+  name: string
+): boolean {
   const key = playerKey(name);
   if (key.length === 0) return false;
-  if (key in character.players) return true;
+  if (key in players) return true;
   return character.online.some((entry) => playerKey(entry.name) === key);
 }
 

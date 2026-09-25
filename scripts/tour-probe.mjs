@@ -65,18 +65,21 @@ const session = new SessionManager(
       types.push(block.type);
       blocksBySeq.set(block.seq, types);
     },
+    players: () => {},
     character: () => {},
     state: () => {},
     telnet: () => {},
     notice: () => {}
   },
-  world,
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    world,
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

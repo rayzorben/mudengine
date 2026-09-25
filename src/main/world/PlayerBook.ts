@@ -19,7 +19,7 @@ import { tuning } from '../app/tuning';
 /**
  * What this client knows about the other players on each realm.
  *
- * The registry on `CharacterState.players` used to die with the session, on
+ * The player registry (`CharacterTracker.players`) used to die with the session, on
  * the reasoning that the server says everything in it again for free. It does
  * not: `look <player>` is the only source of what somebody wears and it costs
  * a command each time, and the Worn tab said *nobody has looked at Soul yet*

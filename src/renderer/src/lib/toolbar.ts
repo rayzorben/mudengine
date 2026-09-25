@@ -73,6 +73,8 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   retaliate: 'shield',
   autoBless: 'sparkle',
   retreat: 'run',
+  // Skip: the teleport jumps past the walk the retreat would have taken.
+  fleeGoto: 'skip',
   hangUp: 'unplug',
   loot: 'coins',
   /*
@@ -132,6 +134,8 @@ function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.autoBless');
     case 'retreat':
       return t('toolbar.retreat');
+    case 'fleeGoto':
+      return t('toolbar.fleeGoto');
     case 'hangUp':
       return t('toolbar.hangUp');
     case 'loot':

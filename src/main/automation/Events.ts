@@ -14,26 +14,47 @@ import { dueAt, type ScheduledEvent } from '../../shared/events';
 import type { CommandQueue } from './CommandQueue';
 import type { CharacterState } from '../../shared/character';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
-export class Events {
+/**
+ * What the clock reads besides its configuration, named (todo 760).
+ *
+ * No notice hook. One was wired from `SessionManager` and never called from
+ * here for as long as it existed — an event held during a fight fires after
+ * it, which is the configured behaviour rather than a decline worth
+ * announcing. A callback nothing calls reads as though the client speaks
+ * when it does not.
+ */
+export interface EventsDeps {
+  /**
+   * Whether the character is on the ground (`Grounded.down`). The clock sends
+   * from the last state it was handed, and a character down is handed none
+   * (todo 755). Required: a construction that forgot it would read a
+   * character down as standing.
+   */
+  readonly onTheGround: () => boolean;
+  /** The clock; `Date.now` when omitted. */
+  readonly now?: () => number;
+}
+
+export class Events implements SessionModule {
   private timer: NodeJS.Timeout | null = null;
   private state: CharacterState | null = null;
   private startedAt = 0;
   private readonly last = new Map<string, number>();
 
+  private readonly onTheGround: () => boolean;
+  private readonly now: () => number;
+
   constructor(
     private events: ScheduledEvent[],
     private enabled: boolean,
     private readonly queue: CommandQueue,
-    /*
-     * No notice hook. One was wired from `SessionManager` and never called from
-     * here for as long as it existed — an event held during a fight fires after
-     * it, which is the configured behaviour rather than a decline worth
-     * announcing. A callback nothing calls reads as though the client speaks
-     * when it does not.
-     */
-    private readonly now: () => number = () => Date.now()
-  ) {}
+    deps: EventsDeps
+  ) {
+    this.onTheGround = deps.onTheGround;
+    this.now = deps.now ?? (() => Date.now());
+  }
 
   configure(events: ScheduledEvent[], enabled: boolean): void {
     this.events = events;
@@ -65,7 +86,7 @@ export class Events {
   /** Checked from the timer; separated so a test can drive it directly. */
   check(): void {
     const state = this.state;
-    if (!this.enabled || !state || state.phase !== 'in-game') return;
+    if (!this.enabled || !state || state.phase !== 'in-game' || this.onTheGround()) return;
     const now = this.now();
     for (const event of this.events) {
       if (state.inCombat && event.inCombat !== true) continue;

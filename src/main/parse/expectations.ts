@@ -8,9 +8,9 @@
  * next room block answers; the looks a wound sentence answers; the one
  * command that might be a text exit nobody wrote down; the walker's hint that
  * a command is a move; where a `sys go` said it was going; whether the player
- * asked to leave; and what the last command named. Seven slots, one memory,
- * because a room, a fight and a menu each consume a different one and none may
- * see the others'.
+ * asked to leave; what the last command named; and which command the realm
+ * last echoed. Eight slots, one memory, because a room, a fight and a menu
+ * each consume a different one and none may see the others'.
  *
  * Two things the tracker keeps, and this class is handed: whether the
  * character is in the realm (an unmodelled command is only worth remembering
@@ -20,14 +20,16 @@
  * `reset` and `leaveRealm` used to disagree about which of these a new
  * session or a closed socket cleared — the queue and the looks, but not the
  * hint, the teleport, the unmodelled command or the aim — and nothing said
- * why. Settled when this moved: `forget` clears all seven. Every one of them
+ * why. Settled when this moved: `forget` clears all eight. Every one of them
  * is a claim about the *next* thing the server says, and after a reset or a
  * disconnect the next thing the server says answers nothing this client sent.
  */
 import type { Direction, RoomId } from '../../shared/world';
 import { mobKey } from '../../shared/world';
-import { commandOf, movementEffect } from '../../shared/commands';
+import { commandOf, movementEffect, type RereadClaim } from '../../shared/commands';
+import type { Block } from '../../shared/blocks';
 import { tuning } from '../app/tuning';
+import { answeringAfter, EchoSince } from './echo';
 
 /**
  * What the next room block is expected to be an answer to.
@@ -109,6 +111,15 @@ type Expectation = (
  * a claim enters the queue. See `expire` for what it is for.
  */
 type Claim = Expectation & { at: number; probedAt?: number };
+
+/**
+ * A scripted teleport the walker hinted (`hintTeleport`): a move no exit
+ * names and no cast-exit landing rides on. One reading for the queue's
+ * `portalOwed` and the room reader's guard (todo 808).
+ */
+export function isPortalClaim(claim: Expectation | null | undefined): boolean {
+  return claim?.kind === 'move' && claim.direction === null && claim.landing === undefined;
+}
 
 /** One claim the client has given up on, and whether anything waited on it. */
 export interface LapsedClaim {
@@ -271,8 +282,15 @@ export class Expectations {
   private typedUntil = 0;
   /** Whether the player asked to leave the realm and nothing has cancelled it. */
   private leaving = false;
-  /** Where the last `sys go` said it was going, until a room answers it. */
-  private teleport: { map: number; number: number } | null = null;
+  /**
+   * Where the last `sys go` said it was going, until a room answers it; with
+   * the `sys go` itself and the echoes since it went, since it queues no
+   * claim, so its refusal can disarm it (`refused`, `heard`: todos 768, 769).
+   * A portal's promise carries none.
+   */
+  private teleport: { map: number; number: number; go?: EchoSince } | null = null;
+  /** Which command the realm's echo says the lines after it answer (`answeringAfter`). */
+  private answering: string | null = null;
   /** The walker's word that a command is a scripted teleport. See `hintTeleport`. */
   private hintedTeleport: { command: string; map: number; number: number } | null = null;
   /** The walker's word that a command walks an exit whose cast moves you. */
@@ -331,6 +349,18 @@ export class Expectations {
    * reads it as `aimed`.
    */
   private aimedAt: string | null = null;
+  /**
+   * The claim the latest bare Enter filed, asked after by whoever sent it
+   * (`lastReread`), or null when it filed none. Read in the same call that
+   * sent it: the queue's `onSent` runs straight after the send that filed it.
+   */
+  private reread: RereadClaim | null = null;
+  /**
+   * What the last `Location:` settled ahead of itself, until the session
+   * takes it to say (`takeSettledByLocate`). An outbox, not a claim about the
+   * next thing the server says, so `forget` leaves it to be said.
+   */
+  private settled: LapsedClaim[] = [];
 
   /**
    * The walker is about to send `command`, and knows it is a move.
@@ -537,8 +567,10 @@ export class Expectations {
         this.unmodelled = null;
         this.pending = [];
         this.looking = [];
-        const target = SYS_GOTO.exec(command.trim());
-        this.teleport = target ? { map: Number(target[1]), number: Number(target[2]) } : null;
+        const target = SYS_GOTO.exec(trimmed);
+        this.teleport = target
+          ? { map: Number(target[1]), number: Number(target[2]), go: new EchoSince(trimmed) }
+          : null;
         /*
          * A teleport moves the character further than any step, but it is not
          * a *step*: nothing in the realm data connects here to there, so a
@@ -599,19 +631,26 @@ export class Expectations {
    * and routing the nudge through `observeCommand` would have fixed it by
    * breaking two other things.
    *
-   * They are one class **here** and not everywhere: the block answering a
-   * re-read still spends an armed teleport promise (`takeTeleport`, which any
-   * named room block takes before anything decides whose it is), and only
-   * `Walker.nudge` refuses to send behind a portal for that reason. Unchanged
-   * by this — an unattributed reprint spent it before too — and narrow, since
-   * the other three senders need a fight, an unplaceable arrival or 45s of
-   * silence to fire at all.
+   * Nor does its answer spend an armed teleport promise any more: a named
+   * block takes one only once the portal's own move has been answered
+   * (`portalOwed`, todo 808), so the walker nudges a stalled portal as it
+   * nudges any other step, save one left from a room it cannot see.
    *
    * Not queued outside the realm: a menu answers an Enter with a menu.
    */
   noteReread(inGame: boolean): void {
-    if (!inGame) return;
-    this.push({ kind: 'reread', command: '' });
+    if (!inGame) {
+      this.reread = null;
+      return;
+    }
+    const claim = this.push({ kind: 'reread', command: '' });
+    // Owed while it is on the queue: whatever takes it off, a room or not, closes it.
+    this.reread = { owed: () => this.pending.includes(claim) };
+  }
+
+  /** The claim the latest bare Enter filed; null when it filed none. See `reread`. */
+  get lastReread(): RereadClaim | null {
+    return this.reread;
   }
 
   /**
@@ -626,11 +665,13 @@ export class Expectations {
   }
 
   /** Stamped here, so no caller can queue a claim with no clock on it. */
-  private push(expectation: Expectation): void {
-    this.pending.push({ ...expectation, at: Date.now() });
+  private push(expectation: Expectation): Claim {
+    const claim: Claim = { ...expectation, at: Date.now() };
+    this.pending.push(claim);
     // A queue this deep means the client has already lost track; keeping more
     // would only make it wrong for longer.
     if (this.pending.length > tuning().parse.maxPendingMoves) this.pending.shift();
+    return claim;
   }
 
   /** How many commands are still waiting on a room. */
@@ -760,6 +801,18 @@ export class Expectations {
     }
     this.answeredAt = Date.now();
     return dropped;
+  }
+
+  /** `Location:` came: what it settled is kept for the session to say. See `answeredInOrder`. */
+  located(): void {
+    this.settled.push(...this.answeredInOrder());
+  }
+
+  /** The claims a `Location:` answer proved unanswerable, taken once. */
+  takeSettledByLocate(): LapsedClaim[] {
+    const settled = this.settled;
+    this.settled = [];
+    return settled;
   }
 
   /**
@@ -934,6 +987,8 @@ export class Expectations {
     if (this.hinted?.command === text) this.hinted = null;
     if (this.hintedTeleport?.command === text) this.hintedTeleport = null;
     if (this.hintedCast?.command === text) this.hintedCast = null;
+    // A `sys go` said out loud moved nobody, and queued no claim to match (todo 768).
+    if (this.teleport?.go?.command === text) this.teleport = null;
     /*
      * A re-read cannot be refused, so one queued ahead of the command this
      * names is one whose room block never arrived — the same reading
@@ -981,9 +1036,66 @@ export class Expectations {
     return text;
   }
 
+  /** Where a `sys go` or a portal said it was going, left in place. */
+  get promised(): { map: number; number: number } | null {
+    return this.teleport === null ? null : { map: this.teleport.map, number: this.teleport.number };
+  }
+
+  /**
+   * Whether a portal's move is still waiting on its room — the move its
+   * promise was armed beside (`hintTeleport`). A cast exit's landing rides on
+   * its own claim and is not one. While it waits, no other block may spend
+   * the promise (todo 808).
+   */
+  get portalOwed(): boolean {
+    return this.pending.some(isPortalClaim);
+  }
+
+  /**
+   * A reprint of the room being left, while a portal is owed and an Enter is
+   * queued behind it. Either the reprint is unasked and the portal will still
+   * land, or it is the Enter's answer and the portal was answered by no room;
+   * nothing on the wire tells them apart (808, review). The Enter goes and the
+   * portal's claim stays: in the first case the Enter's real answer reads as a
+   * second look, in the second the probe or the write-off settles the claim,
+   * and both spend the promise.
+   */
+  answerRereadBehind(): void {
+    if (this.pending[1]?.kind === 'reread') this.pending.splice(1, 1);
+  }
+
+  /**
+   * Every block, for the two answers that say a `sys go` moved nobody; left
+   * armed, its coordinates placed the next dark room there.
+   *
+   * `sys-refused` (a room it lacks, bad syntax, a live realm; todo 768) only
+   * ever answers a `sys` command, and answers come in order, so while a go's
+   * coordinates are armed it is that go's. An earlier `sys` still unanswered
+   * would cost the go its coordinates, never place a wrong room.
+   *
+   * `Your command had no effect.` is a player's answer to any `sys` (todo 769,
+   * `probe:goto`), and to an attack, a cast, a look, so it is the go's only
+   * paired by the echo since it went (`EchoSince`, `FleeGoto`'s reading).
+   * Unechoed is the go's: a typed command's letters are echoed before it is
+   * sent. Its holes: an earlier command echoed after a typed go takes the go's
+   * answer (the promise waits for a room, as before), and a bare prompt
+   * repainted after an attack's echo, just before the go, gives the attack's
+   * refusal to the go (its room resolves by name). Neither places a wrong room.
+   */
+  heard(block: Pick<Block, 'type' | 'text'>): void {
+    const go = this.teleport?.go;
+    if (go !== undefined) {
+      go.heard(block, this.answering);
+      if (block.type === 'sys-refused' || (block.type === 'command-no-effect' && go.answers)) {
+        this.teleport = null;
+      }
+    }
+    this.answering = answeringAfter(block, this.answering);
+  }
+
   /** Where a `sys go` said it was going, consumed by the room that answers it. */
   takeTeleport(): { map: number; number: number } | null {
-    const said = this.teleport;
+    const said = this.promised;
     this.teleport = null;
     return said;
   }
@@ -1035,7 +1147,7 @@ export class Expectations {
    * The same clearing as `forget`, minus the two slots a death does not touch:
    * `leaving` is a request the player made and dying does not withdraw it, and
    * `aimedAt` is read only by `Your command had no effect.`, which cannot
-   * follow a death.
+   * follow a death. Nor the echo (`answering`), which is the wire's.
    */
   died(): void {
     this.pending = [];
@@ -1057,6 +1169,7 @@ export class Expectations {
   /** A new session, or the realm left: nothing sent is still waiting on anything. */
   forget(): void {
     this.pending = [];
+    this.reread = null;
     this.leaving = false;
     this.teleport = null;
     this.looking = [];
@@ -1066,5 +1179,6 @@ export class Expectations {
     this.hintedCast = null;
     this.aimedAt = null;
     this.typing = null;
+    this.answering = null;
   }
 }

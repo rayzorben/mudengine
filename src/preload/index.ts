@@ -28,6 +28,7 @@ import type { Discovery } from '../shared/memory';
 import type { Find } from '../shared/finds';
 import type { ResetNotice } from '../shared/ipc';
 import type { CharacterState } from '../shared/character';
+import type { PlayerRegistry } from '../shared/players';
 import type { DebugRecord } from '../shared/debug';
 import type { ConfigSnapshot } from '../shared/config';
 import type { InternalConfig } from '../shared/internal';
@@ -150,6 +151,7 @@ const api: IpcApi = {
   forgetCharacter: (session) => ipcRenderer.invoke(Invoke.forgetCharacter, session),
   names: (session) => ipcRenderer.invoke(Invoke.names, session),
   ask: (session, command) => ipcRenderer.invoke(Invoke.ask, session, command),
+  locate: (session) => ipcRenderer.invoke(Invoke.locate, session),
   gear: (session, action, item) => ipcRenderer.invoke(Invoke.gear, session, action, item),
   terminalAct: (session, action) => ipcRenderer.invoke(Invoke.terminalAct, session, action),
   askRemote: (session, who, name) => ipcRenderer.invoke(Invoke.askRemote, session, who, name),
@@ -161,6 +163,7 @@ const api: IpcApi = {
   onDebug: (handler) => subscribe<Addressed<DebugRecord>>(Push.debug, handler),
   onBlock: (handler) => subscribe<Addressed<Block>>(Push.block, handler),
   onCharacter: (handler) => subscribe<Addressed<CharacterState>>(Push.character, handler),
+  onPlayers: (handler) => subscribe<Addressed<PlayerRegistry>>(Push.players, handler),
   onWalk: (handler) => subscribe<Addressed<WalkProgress>>(Push.walk, handler),
   onLoop: (handler) => subscribe<Addressed<LoopProgress>>(Push.loop, handler),
   onAutomation: (handler) => subscribe<Addressed<AutomationSnapshot>>(Push.automation, handler),

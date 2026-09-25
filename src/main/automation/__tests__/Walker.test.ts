@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
-import { Walker, type WalkerEvents } from '../Walker';
-import { DEFAULT_CONFIG } from '../../../shared/config';
+import { Walker } from '../Walker';
+import type { WalkerEvents } from '../walk/ports';
+import { CONFIG as config, ROUTE, at, moves, useRigs } from '../walk/__tests__/walking';
 import {
   EMPTY_CHARACTER,
   NO_AFFLICTIONS,
@@ -18,67 +19,6 @@ import { wireExit } from '../../../shared/entities';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
 
-const config: AutomationConfig = {
-  ...DEFAULT_CONFIG.automation,
-  pacing: { window: 4, minGapMs: 0, ackTimeoutMs: 1000 },
-  walk: { stepTimeoutMs: 5000, clearAfterSeconds: 15, minExpPerHour: 0 },
-  /*
-   * Every door switch **off** here, whatever ships (`openDoors` and `bashDoors`
-   * became on by default 2026-09-07). These tests are about the barrier ladder
-   * under stated switches — which rung answers, in what order, and what it says
-   * when it declines — so each one turns on exactly what it is about and a test
-   * that turns nothing on is asserting the refusal. Inheriting the shipped
-   * defaults would make half of them assert the other branch by accident. What
-   * the client *ships* with is asserted in `src/shared/__tests__/config.test.ts`.
-   */
-  movement: {
-    ...DEFAULT_CONFIG.automation.movement,
-    openDoors: false,
-    bashDoors: false,
-    pickLocks: false
-  }
-};
-
-/** Three rooms in a line: 1/1 -e-> 1/2 -e-> 1/3. */
-const ROUTE: Route = {
-  cost: 2,
-  blocked: false,
-  steps: [
-    {
-      from: '1/1',
-      to: '1/2',
-      direction: 'e',
-      command: 'e',
-      name: 'Second Room',
-      requirement: null,
-      dark: false
-    },
-    {
-      from: '1/2',
-      to: '1/3',
-      direction: 'e',
-      command: 'e',
-      name: 'Third Room',
-      requirement: null,
-      dark: false
-    }
-  ]
-};
-
-/** A character standing in `map/number`, in the realm. */
-function at(
-  map: number | null,
-  number: number | null,
-  over: Partial<CharacterState> = {}
-): CharacterState {
-  return {
-    ...structuredClone(EMPTY_CHARACTER),
-    phase: 'in-game',
-    ...over,
-    room: { ...structuredClone(EMPTY_CHARACTER.room), map, number, ...(over.room ?? {}) }
-  };
-}
-
 /**
  * The walk's nudge, as it appears in `sent`: one bare Enter to make the server
  * say something after a command has gone unanswered for `walk.nudgeAfterMs`.
@@ -88,13 +28,6 @@ function at(
  * be blind to a runaway exactly where a door ladder sends the most commands.
  */
 const NUDGE = '';
-
-/**
- * What went somewhere, minus the nudge — for the one assertion that is about
- * a route *not* sending its second step, where the nudge's presence or absence
- * says nothing either way.
- */
-const moves = (commands: string[]): string[] => commands.filter((command) => command.length > 0);
 
 const block = (type: string, groups: Record<string, string> = {}): Block =>
   ({
@@ -112,19 +45,17 @@ let notices: string[];
 let queue: CommandQueue;
 let walker: Walker;
 
+/*
+ * The shared rig, read through this file's own variables: a test swaps
+ * `sent` for a fresh array and `walker` for one built its own way, so the
+ * queue sends into whichever `sent` is current and the `walker` standing at
+ * the end is disposed with the rig's.
+ */
+const walkerOn = useRigs();
 beforeEach(() => {
-  vi.useFakeTimers();
-  sent = [];
-  notices = [];
-  queue = new CommandQueue(config, { send: (command) => sent.push(command) });
-  walker = new Walker(config, queue, { notice: (m) => notices.push(m) });
+  ({ sent, notices, queue, walker } = walkerOn({}, config, (command) => sent.push(command)));
 });
-
-afterEach(() => {
-  walker.dispose();
-  queue.dispose();
-  vi.useRealTimers();
-});
+afterEach(() => walker.dispose());
 
 describe('refusing to start', () => {
   /* The room on the books is the one the character is leaving, so this route's
@@ -703,6 +634,37 @@ describe('stopping', () => {
     expect(sent.filter((command) => command.length === 0)).toEqual(['']);
   });
 
+  /*
+   * Todo 764: a character that drops with a step on the wire is refused every
+   * step (`MoveCommand`) and handed no state, so the walk's own clock nudged
+   * and then stopped as *nothing came back*, which blames the server for a
+   * silence the ground explains. The test above is the positive control: the
+   * rig answers standing, and that walk nudges.
+   */
+  it('neither nudges nor blames the server when the character drops mid-step', () => {
+    let down = false;
+    walker = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      onTheGround: () => down
+    });
+    walker.start(ROUTE, at(1, 1));
+    expect(moves(sent)).toEqual(['e']);
+    down = true;
+    vi.advanceTimersByTime(6000);
+    expect(sent).toEqual(['e']);
+    expect(walker.progress.status).toBe('stopped');
+    expect(walker.progress.reason).toBe(t('automation.walk.reasonGrounded', { command: 'e' }));
+  });
+
+  // A construction that does not say the character is standing is not read as standing.
+  it('sends no nudge on a character nobody said is standing', () => {
+    walker = new Walker(config, queue, { notice: (m) => notices.push(m) });
+    walker.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(6000);
+    expect(sent).toEqual(['e']);
+    expect(walker.progress.reason).toBe(t('automation.walk.reasonTimeout', { command: 'e' }));
+  });
+
   it('drops the nudge when the answer arrives before it goes out', () => {
     /*
      * An arriving room consumes the expectation queue, so a reprint landing
@@ -792,7 +754,7 @@ describe('stopping', () => {
      * queue was free has no such moment.
      */
     const held = new CommandQueue(config, { send: (command) => sent.push(command) });
-    const w = new Walker(config, held, {});
+    const w = new Walker(config, held, { onTheGround: () => false });
     held.noteTyping(true);
     w.start(ROUTE, at(1, 1));
 
@@ -814,7 +776,7 @@ describe('stopping', () => {
      * the line closes, and both windows start again from then.
      */
     const held = new CommandQueue(config, { send: (command) => sent.push(command) });
-    const w = new Walker(config, held, {});
+    const w = new Walker(config, held, { onTheGround: () => false });
     w.start(ROUTE, at(1, 1));
     expect(sent).toEqual(['e']);
     held.noteTyping(true);
@@ -917,13 +879,13 @@ describe('stopping', () => {
     });
   });
 
-  it('never nudges behind a portal, which has no reprint discriminator', () => {
+  it('nudges a stalled portal step as it nudges any other', () => {
     /*
-     * `takeTeleport()` spends the promise unconditionally and only then
-     * decides whether to apply it, so a reprint of the room being left would
-     * throw away the coordinates the script stated — and the real arrival
-     * would then resolve by name alone, which across 293 rooms called Sewer
-     * Tunnel is the ambiguity this client refuses to guess at.
+     * The reprint the Enter asks for cannot spend the coordinates the script
+     * stated any more: a block naming the room being left, while the portal's
+     * destination is named otherwise, is the step not having landed yet, and
+     * the promise waits for the real arrival (todo 808; the tracker's own
+     * tests, `a scripted teleport the walker hinted`).
      */
     const PORTAL: Route = {
       ...ROUTE,
@@ -932,9 +894,34 @@ describe('stopping', () => {
     walker.start(PORTAL, at(1, 1));
     expect(sent).toEqual(['go crimson portal']);
 
-    vi.advanceTimersByTime(3000);
-    // No Enter behind it; the step waits out its own deadline instead.
+    vi.advanceTimersByTime(TUNING.walk.nudgeAfterMs + 1);
+    expect(sent).toEqual(['go crimson portal', NUDGE]);
+    expect(walker.progress.status).toBe('walking');
+  });
+
+  /*
+   * Except from a room nothing can be seen in: a dark reprint names nothing,
+   * so the Enter's answer would still be taken as the landing (todo 808,
+   * review). Said, and the step is left to its own deadline.
+   */
+  it('does not nudge a portal step left from a pitch-black room, and says so', () => {
+    const dark = at(1, 1, {
+      room: { ...EMPTY_CHARACTER.room, map: 1, number: 1, light: 'pitch black' }
+    });
+    walker = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => dark
+    });
+    const PORTAL: Route = {
+      ...ROUTE,
+      steps: [{ ...ROUTE.steps[0]!, direction: 'portal', command: 'go crimson portal' }]
+    };
+    walker.start(PORTAL, dark);
     expect(sent).toEqual(['go crimson portal']);
+
+    vi.advanceTimersByTime(TUNING.walk.nudgeAfterMs + 1);
+    expect(sent).toEqual(['go crimson portal']);
+    expect(notices.some((n) => n.includes('too dark'))).toBe(true);
     expect(walker.progress.status).toBe('walking');
   });
 
@@ -1044,7 +1031,7 @@ describe('a door in the way', () => {
    * Reported 2026-09-06: two bone keys in the pack, a hundred and forty-three
    * on the floor, and the walk bashed the locked door six times without ever
    * trying the key. The rung goes above pick and bash and answers to neither
-   * switch — see `Walker.force`.
+   * switch — see `Barriers.force`.
    */
   it('uses the key it is carrying rather than bashing the door', () => {
     const walk = new Walker(
@@ -1137,7 +1124,7 @@ describe('a door in the way', () => {
 
   /*
    * The step is no longer queued behind the `open`: the two answers that
-   * decide the next rung come back first (`Walker.sendOpen`). It goes out on
+   * decide the next rung come back first (`Barriers.sendOpen`). It goes out on
    * the door opening — or, as here, on the deadline that stands in for a
    * success sentence this client did not read.
    */
@@ -1194,7 +1181,7 @@ describe('a door in the way', () => {
   /*
    * A locked gate answers the same way every time, so the budget runs out —
    * and with nothing else turned on the walk **holds** rather than ending. It
-   * is a shut door, not a broken route: see `Walker.holdAtBarrier`.
+   * is a shut door, not a broken route: see `Barriers.holdAtBarrier`.
    */
   it('holds after the tries it was given, and says so once', () => {
     const open = withMovement({ openDoors: true, openTries: 1 });
@@ -1450,7 +1437,9 @@ describe('a locked barrier in the way', () => {
 
   const forcing = (over: Partial<AutomationConfig['movement']>): Walker =>
     new Walker({ ...config, movement: { ...config.movement, ...over } }, queue, {
-      notice: (m) => notices.push(m)
+      notice: (m) => notices.push(m),
+      // Standing: these walks are nudged, which only a character up may be (todo 764).
+      onTheGround: () => false
     });
 
   /** The character standing at 1/1 with a stat sheet the walker has seen. */
@@ -3281,6 +3270,72 @@ describe('a rest whose answer has not come back', () => {
   });
 });
 
+/*
+ * The room read again after a kill, and the step that used to beat it (todo
+ * 814). Items drop without a word, so the loot reads the floor off a reprint;
+ * a step sent first puts the `get` that reprint earns in the next room.
+ */
+describe('a floor read whose answer has not come back', () => {
+  const walkerReading = (): { walk: Walker; land: () => void } => {
+    let reading = true;
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => at(1, 1),
+      floorInFlight: () => reading
+    });
+    return {
+      walk,
+      land: () => {
+        reading = false;
+      }
+    };
+  };
+
+  it('holds the step until the floor has been read', async () => {
+    const { walk } = walkerReading();
+    expect(walk.start(ROUTE, at(1, 1))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.status).toBe('walking');
+    walk.dispose();
+  });
+
+  // The positive control: the window closing lets the step go with nothing to nudge it.
+  it('steps once the read has landed', async () => {
+    const { walk, land } = walkerReading();
+    walk.start(ROUTE, at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    land();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * Todo 765: the hold was re-asked only on its `walk.holdMs` beat, so a read
+   * answered in a tenth of a second still cost up to a second and a half per
+   * kill. The first block after it closes brings the beat forward.
+   */
+  it('steps on the read closing, not on the next beat', async () => {
+    const { walk, land } = walkerReading();
+    walk.start(ROUTE, at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    // A block while the read is still out wakes nothing.
+    walk.onBlock(block('room-items'));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent).toEqual([]);
+    land();
+    walk.onBlock(block('status-line'));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent).toEqual(['e']);
+    // And once: the beat it replaced does not send the step a second time.
+    await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs * 2);
+    expect(moves(sent)).toEqual(['e']);
+    walk.dispose();
+  });
+});
+
 describe('walking while hurt', () => {
   /** A character at a stated fraction of full health, standing in 1/1. */
   const hurt = (fraction: number): CharacterState => {
@@ -4194,9 +4249,43 @@ describe('waiting out a condition', () => {
     walk.dispose();
   });
 
+  /*
+   * Confusion, MegaMUD's `IgnoreConfusion` (todo 809): each command a confused
+   * character sends may be thrown away before the server reads it, so a step
+   * is a gamble the walk would spend and send again.
+   */
+  it('holds the step while confused, says so, and walks on when it clears', async () => {
+    const { walk, become } = walkerWith({});
+    expect(walk.start(ROUTE, afflicted({ confused: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.status).toBe('walking');
+    expect(walk.progress.hold).toBe('confused');
+    expect(notices).toContain(t('automation.walk.holdingConfused'));
+    become(afflicted({ confused: 'no' }));
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERNAL.tuning.walk.holdMs + 600);
+    expect(walk.progress.hold).toBeNull();
+    expect(sent).toHaveLength(1);
+    expect(notices).toContain(t('automation.walk.afflictionResumed'));
+    walk.dispose();
+  });
+
+  it('walks on confused when told to', async () => {
+    const { walk } = walkerWith({ walkWhileConfused: true });
+    expect(walk.start(ROUTE, afflicted({ confused: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sent).toHaveLength(1);
+    expect(walk.progress.hold).toBeNull();
+    walk.dispose();
+  });
+
   /* No switch for paralysis: a step while held is a command spent to be refused. */
   it('always waits while held, whatever the switches say', async () => {
-    const { walk } = walkerWith({ walkWhileBlind: true, walkWhilePoisoned: true });
+    const { walk } = walkerWith({
+      walkWhileBlind: true,
+      walkWhilePoisoned: true,
+      walkWhileConfused: true
+    });
     expect(walk.start(ROUTE, afflicted({ held: 'yes' }))).toBeNull();
     await vi.advanceTimersByTimeAsync(600);
     expect(sent).toEqual([]);

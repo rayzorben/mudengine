@@ -22,8 +22,11 @@ import { fileSlug } from '../../shared/files';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
+import { asLocateWord, DEFAULT_LOCATE } from '../../shared/locate';
 import {
+  ownFleeGotoCommand,
   ownHangPenalties,
+  ownLocate,
   ownMobRules,
   PROFILE_ACCENTS,
   resolveProfile,
@@ -287,6 +290,11 @@ export class SettingsEditor {
           document.deleteIn(['login']);
         }
 
+        // Its own locate word, or null to follow the realm: cleared only when
+        // the form could have shown it, as the theme above is.
+        if (draft.locate !== null) document.setIn(['locate'], draft.locate);
+        else if (asLocateWord(document.get('locate')) !== null) document.deleteIn(['locate']);
+
         /*
          * The two escapes, written whenever the character has anything to say
          * about them — which now includes saying *no*.
@@ -310,6 +318,20 @@ export class SettingsEditor {
             whenOutnumbered: draft.retreat.whenOutnumbered,
             strategy: draft.retreat.strategy,
             safeHavenRoom: draft.retreat.safeHavenRoom
+          });
+        }
+
+        // The teleport on the retreat's rule; an empty command writes no key,
+        // which is what follows the realm (todo 813).
+        if (
+          creating ||
+          draft.fleeGoto.enabled ||
+          document.hasIn(['automation', 'safety', 'fleeGoto'])
+        ) {
+          document.setIn(['automation', 'safety', 'fleeGoto'], {
+            enabled: draft.fleeGoto.enabled,
+            belowHealth: draft.fleeGoto.belowHealth,
+            ...(draft.fleeGoto.command.length > 0 ? { command: draft.fleeGoto.command } : {})
           });
         }
 
@@ -747,12 +769,13 @@ export class SettingsEditor {
         /*
          * And the realm's own rules for its monsters, on the same rule: an
          * empty list is what a realm with no key already has, so the key is
-         * removed rather than written as `[]`.
+         * removed rather than written as `[]`. Rows as the draft parsed them,
+         * which states only what each row says (`normalizeMobRules`).
          */
         if (draft.mobRules.length > 0) {
           document.setIn(
             ['mobRules'],
-            draft.mobRules.map((row) => ({ mob: row.mob, treat: row.treat }))
+            draft.mobRules.map((row) => ({ ...row }))
           );
         } else if (document.hasIn(['mobRules'])) {
           document.deleteIn(['mobRules']);
@@ -762,6 +785,15 @@ export class SettingsEditor {
         // options file, so null removes the key rather than writing one.
         if (draft.hangPenalties !== null) document.setIn(['hangPenalties'], draft.hangPenalties);
         else if (document.hasIn(['hangPenalties'])) document.deleteIn(['hangPenalties']);
+
+        // And how it is asked where you stand: `rm` is what no key gives, so
+        // it is removed, and only a word the form could have shown.
+        if (draft.locate !== DEFAULT_LOCATE) document.setIn(['locate'], draft.locate);
+        else if (asLocateWord(document.get('locate')) !== null) document.deleteIn(['locate']);
+
+        // And its teleport, literally: empty states none, so no key.
+        if (draft.fleeGoto.length > 0) document.setIn(['fleeGoto'], draft.fleeGoto);
+        else if (document.hasIn(['fleeGoto'])) document.deleteIn(['fleeGoto']);
       },
       verify: (value) => {
         const server = asServer(value, id);
@@ -943,6 +975,7 @@ export class SettingsEditor {
           onPlayerInRoom: config.automation.safety.hangUp.onPlayerInRoom
         },
         retreat: retreatOf(config.automation.safety.retreat),
+        fleeGoto: { ...config.automation.safety.fleeGoto },
         pvp: { ...config.automation.safety.pvp },
         combat: { ...config.automation.combat },
         party: { ...config.automation.party },
@@ -1051,6 +1084,7 @@ export class SettingsEditor {
         set(['automation', 'walk'], { ...draft.automation.walk });
         set(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
         set(['automation', 'safety', 'retreat'], { ...draft.automation.retreat });
+        set(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
         set(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
         set(['automation', 'combat'], { ...draft.automation.combat });
         set(['automation', 'party'], { ...draft.automation.party });
@@ -1181,6 +1215,8 @@ export class SettingsEditor {
               }))
               .filter((step) => step.when.length > 0)
           : [],
+        // Its own, read raw for `login`'s reason: the resolved one may be the realm's.
+        locate: ownLocate(record),
         /*
          * Falling back to the shipped defaults rather than to numbers written
          * out here. A default restated in a second place is a default that goes
@@ -1196,6 +1232,11 @@ export class SettingsEditor {
         retreat: retreatOf(
           effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
         ),
+        // Its own command, read raw: the resolved one may be the realm's.
+        fleeGoto: {
+          ...(effective?.automation.safety.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto),
+          command: ownFleeGotoCommand(record) ?? ''
+        },
         pvp: effective?.automation.safety.pvp ?? DEFAULT_CONFIG.automation.safety.pvp,
         /*
          * The resolved combat block, except for the monster list, which is
@@ -1380,8 +1421,10 @@ function blank(id: string): ProfileEditable {
     username: '',
     hasPassword: false,
     login: [],
+    locate: null,
     hangUp: { ...DEFAULT_CONFIG.automation.safety.hangUp, penalties: null },
     retreat: retreatOf(DEFAULT_CONFIG.automation.safety.retreat),
+    fleeGoto: DEFAULT_CONFIG.automation.safety.fleeGoto,
     pvp: DEFAULT_CONFIG.automation.safety.pvp,
     combat: DEFAULT_CONFIG.automation.combat,
     party: DEFAULT_CONFIG.automation.party,

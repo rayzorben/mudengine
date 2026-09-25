@@ -606,6 +606,11 @@ describe('conversation, movement, items', () => {
   it('reads item actions', () => {
     expect(expectType('You took a rusty dagger.', 'player-gets')['item']).toBe('a rusty dagger');
     expect(expectType('Rayzor picks up a torch.', 'player-gets')['player']).toBe('Rayzor');
+    // Somebody else's coins: GreaterMUD ends it without a stop (todo 757).
+    expect(expectType('Kenwood picks up some silver nobles', 'player-gets')).toMatchObject({
+      player: 'Kenwood',
+      item: 'some silver nobles'
+    });
     expect(
       expectType('You just bought 2 healing potion for 40 copper farthings.', 'user-buys')
     ).toMatchObject({ quantity: '2', item: 'healing potion', price: '40' });
@@ -1071,8 +1076,8 @@ describe('the receipt for an addressed message carries what was said', () => {
   });
 
   it('leaves the earlier of two in flight unbound rather than misquoted', () => {
-    // One slot, the attack-command binding's shape: the second send overwrote
-    // the first, so the first receipt states the send with no body invented.
+    // One slot: the second send overwrote the first, so the first receipt
+    // states the send with no body invented.
     const next = sends('/soul hi', '/brack yo');
     expect(next('--- Telepath Sent to Soul ---').groups['sent']).toBeUndefined();
     expect(next('--- Telepath Sent to Brackle ---').groups['sent']).toBe('yo');
@@ -1470,6 +1475,42 @@ describe('combat, anchored on the frame', () => {
     ).toBe('everyone in the room');
   });
 
+  /*
+   * The guard's sentence, which only the attacker is sent (`AttackCommand.cs:342`,
+   * `Player.cs:6138`): no article and no full stop on either side. Paradigm's
+   * wire (`2026-09-12_20-41-11_festus`), captures/089 (a ward with a title) and
+   * captures/040 (after the prompt, where the tail is read on its own).
+   */
+  it('reads a guard stepping in front of its ward', () => {
+    expect(
+      expectType('thin wild dog moves to protect nasty wild dog', 'mob-protects')
+    ).toMatchObject({ guard: 'thin wild dog', ward: 'nasty wild dog' });
+    expect(
+      expectType('vampire elder moves to protect Ozrinom the Vampire Lord', 'mob-protects')
+    ).toMatchObject({ guard: 'vampire elder', ward: 'Ozrinom the Vampire Lord' });
+    const tails = new Classifier(NAMES).classify(
+      line('[HP=201/MA=66]:ice golem moves to protect ice sorceress')
+    ).tails;
+    expect(tails?.map((tail) => [tail.type, tail.groups['guard']])).toEqual([
+      ['mob-protects', 'ice golem']
+    ]);
+  });
+
+  /* Talk quoting the phrase is talk, and a stopped line is scenery (763, review). */
+  it('does not read talk or a stopped line as a guard stepping in', () => {
+    for (const text of [
+      'Soul gossips: the golem moves to protect the queen',
+      'Soul says "ant moves to protect queen"',
+      'Soul telepaths: x moves to protect y',
+      'The statue moves to protect the gate.'
+    ]) {
+      expect(
+        new Classifier().classify({ seq: 1, at: 1, text, plain: text, terminator: 'newline' }).block
+          .type
+      ).not.toBe('mob-protects');
+    }
+  });
+
   it('reads a miss between two other parties, with or without a weapon', () => {
     expect(expectType('Cercio swings at massive ice dragon!', 'player-misses')).toMatchObject({
       attacker: 'Cercio',
@@ -1542,6 +1583,39 @@ describe('combat, anchored on the frame', () => {
       damage: '8',
       kind: 'fire'
     });
+  });
+});
+
+/*
+ * `sys go`'s three refusals (`SysCommand.cs` `GotoCommand`), each off
+ * orohost's wire: a bad room (`logs/2026-08-30_20-57-36_main.log:757`), a
+ * malformed one (`2026-08-27_23-45-31_main.log:429`) and a mudop on a live
+ * realm (`2026-09-19_00-44-05_vaelor2.log:591`, glued to the prompt).
+ */
+describe('a sysop command the realm refuses', () => {
+  it('reads all three of the teleport’s refusals', () => {
+    for (const text of [
+      'Map and/or Room not found',
+      'Incorrect syntax',
+      'Command not allowed in live realm.'
+    ]) {
+      expectType(text, 'sys-refused');
+    }
+    const tails = new Classifier(NAMES).classify(
+      line('[HP=33/MA=22]:Command not allowed in live realm.')
+    ).tails;
+    expect(tails?.map((tail) => tail.type)).toEqual(['sys-refused']);
+  });
+
+  it('does not read the sentence quoted, or a sibling that is not the teleport’s', () => {
+    // Positive control: the bare sentence is read.
+    expectType('Map and/or Room not found', 'sys-refused');
+    for (const text of [
+      'Soul says "Map and/or Room not found"',
+      'Incorrect syntax or player not found'
+    ]) {
+      expect(classify(text).type, text).not.toBe('sys-refused');
+    }
   });
 });
 

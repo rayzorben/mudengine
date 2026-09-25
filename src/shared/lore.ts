@@ -207,8 +207,42 @@ export interface LearnedDeath {
   at: number;
 }
 
+/**
+ * Which attack spells a realm's wire has answered instantly (todo 820).
+ *
+ * The server engages on a combat spell and breaks the fight on an instant one
+ * (`Spell.IsCombatSpell`, `Spell.cs:1971`), and no realm `.mdb` carries the
+ * `Spell Type` that says which, so the wire teaches it: a cast answered by its
+ * own result before any engagement (`AttackSpells.noteInstant`). A fact about
+ * the realm, so it outlives the connection that paid the opening to learn it.
+ * Keyed by the realm's name for the spell; an unheard spell is not instant,
+ * which is the reading that costs one opening rather than the one that
+ * forbids a spell ever opening.
+ */
+export interface InstantSpellLore {
+  /** Whether this realm has answered a cast of the spell, by its name, instantly. */
+  isInstantSpell(spell: string): boolean;
+  /** The realm answered a cast of the spell, by its name, instantly. */
+  observeInstantSpell(spell: string, at: number): void;
+  /** The realm engaged on a cast of the spell, by its name: whatever was held was a misread. */
+  forgetInstantSpell(spell: string): void;
+}
+
+/** A realm that has taught nothing about its spells, and keeps nothing. */
+export const NO_INSTANT_SPELLS: InstantSpellLore = {
+  isInstantSpell: () => false,
+  observeInstantSpell: () => {},
+  forgetInstantSpell: () => {}
+};
+
+/**
+ * One realm's lore as a session is handed it: the monsters' half for the
+ * parser, the spells' half for the fight, each consumer typed to its own.
+ */
+export type RealmLoreView = MobLore & InstantSpellLore;
+
 /** A lore that knows nothing and learns nothing. The zero-realm client. */
-export const NO_LORE: MobLore = {
+export const NO_LORE: RealmLoreView = {
   maximumFor: () => ({ max: null, source: null, span: null }),
   observe: () => {},
   learnedFor: () => null,
@@ -216,7 +250,8 @@ export const NO_LORE: MobLore = {
   slotWordsFor: () => [],
   observeSlot: () => {},
   deathOf: () => [],
-  observeDeath: () => {}
+  observeDeath: () => {},
+  ...NO_INSTANT_SPELLS
 };
 
 /**

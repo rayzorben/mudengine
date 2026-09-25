@@ -13,6 +13,7 @@
  * template, and the matcher is built from what `pro` reports.
  */
 import type { CharacterState } from './character';
+import { figure } from './values';
 
 /** The figures a prompt can carry, as the realm's wildcards render them. */
 export interface StatlineReading {
@@ -135,12 +136,6 @@ export function statlineMatcher(template: string): RegExp | null {
   } catch {
     return null;
   }
-}
-
-function figure(value: string | undefined): number | null {
-  if (value === undefined) return null;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : null;
 }
 
 /** The figures off a prompt, by the matcher its template built; null when it does not match. */

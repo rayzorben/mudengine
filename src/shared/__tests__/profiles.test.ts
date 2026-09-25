@@ -127,6 +127,95 @@ describe('who says a hang-up is charged', () => {
   });
 });
 
+/*
+ * The teleport below the retreat, literally: the character, then its realm, then
+ * the options file (todo 813). Each realm spells it its own way.
+ */
+describe('who says what the last-ditch teleport sends', () => {
+  const realm = (fleeGoto?: string, global = '') => ({
+    servers: [
+      {
+        name: 'Bearfather',
+        host: 'bbs.bearfather.net',
+        port: 23,
+        ...(fleeGoto === undefined ? {} : { fleeGoto })
+      }
+    ],
+    automation: { safety: { fleeGoto: { enabled: true, command: global } } }
+  });
+  const command = (raw: Record<string, unknown>, config: unknown): string =>
+    resolve({ server: 'Bearfather', ...raw }, config).config.automation.safety.fleeGoto.command;
+  const own = (value: string) => ({ automation: { safety: { fleeGoto: { command: value } } } });
+
+  it('takes the realm’s where the character states none, over the options file', () => {
+    expect(command({}, realm('sys go 1 297', 'sys goto silvermere'))).toBe('sys go 1 297');
+    expect(command(own(''), realm('sys go 1 297'))).toBe('sys go 1 297');
+  });
+
+  it('takes the character’s over its realm', () => {
+    expect(command(own('sys goto silvermere'), realm('sys go 1 297'))).toBe('sys goto silvermere');
+  });
+
+  it('falls to the options file where neither states one, and that ships empty', () => {
+    expect(command({}, realm(undefined, 'sys go 1 297'))).toBe('sys go 1 297');
+    expect(
+      resolve({ server: 'GreaterMUD (local)' }).config.automation.safety.fleeGoto.command
+    ).toBe('');
+  });
+
+  it('reads one off an address spelled out inline', () => {
+    const inline = { server: { host: 'bbs.test', port: 23, fleeGoto: 'sys goto silvermere' } };
+    expect(resolve(inline).config.automation.safety.fleeGoto.command).toBe('sys goto silvermere');
+  });
+});
+
+/* The realm's word for where am I: the character, then its realm, then `rm` (todo 811). */
+describe('who says how the realm is asked where you stand', () => {
+  const realm = (locate?: string) => ({
+    servers: [
+      {
+        name: 'Bearfather',
+        host: 'bbs.bearfather.net',
+        port: 23,
+        ...(locate === undefined ? {} : { locate })
+      }
+    ]
+  });
+  const locate = (raw: Record<string, unknown>, config: unknown) =>
+    resolve({ server: 'Bearfather', ...raw }, config).locate;
+
+  it('takes the realm’s word where the character states none', () => {
+    expect(locate({}, realm('none'))).toBe('none');
+    expect(locate({}, realm('rm'))).toBe('rm');
+  });
+
+  it('is `rm` where neither says, which is what every realm was asked before', () => {
+    expect(locate({}, realm())).toBe('rm');
+  });
+
+  it('takes the character over its realm, as its own login script does', () => {
+    expect(locate({ locate: 'rm' }, realm('none'))).toBe('rm');
+    expect(locate({ locate: 'none' }, realm('rm'))).toBe('none');
+  });
+
+  it('reads a word it does not know as unstated, so the realm answers', () => {
+    // `sys-status` is the fork's, held (todo 811): not a value this client has.
+    expect(locate({ locate: 'sys-status' }, realm('none'))).toBe('none');
+    expect(locate({}, realm('sys-status'))).toBe('rm');
+  });
+
+  it('reads one off an address spelled out inline', () => {
+    const inline = { server: { host: 'bbs.test', port: 23, locate: 'none' } };
+    expect(resolve(inline).locate).toBe('none');
+  });
+
+  it('keeps the key out of the options the character runs under', () => {
+    expect(resolve({ server: 'Bearfather', locate: 'none' }, realm()).config).not.toHaveProperty(
+      'locate'
+    );
+  });
+});
+
 describe('resolveProfile', () => {
   it('resolves a server named in the options file', () => {
     const profile = resolve({ server: 'GreaterMUD (local)' });

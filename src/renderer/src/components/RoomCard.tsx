@@ -7,6 +7,7 @@ import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
 import { exitsUnseen, lightNote } from '../lib/room';
 import Icon from './Icon';
+import RowPeaceChip from './RowPeaceChip';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText, ownAlignment } from './LairList';
@@ -45,12 +46,14 @@ export interface RoomCardProps extends CardChrome {
    * is one that is eventually ignored.
    */
   forget?(discovery: Pick<Discovery, 'from' | 'command'>): void;
-  /**
-   * Sends a probe through the arbiter — `rm`, to ask the realm where the
-   * character is. Quiet in the console when `internal.yaml` says so; this is
-   * the button that exercises that.
-   */
+  /** Sends a probe through the arbiter: a word the room answers to. */
   ask?(command: string): void;
+  /**
+   * Asks the realm where the character is, in the realm's own word, which main
+   * chooses (todo 811); a realm with none refuses out loud. Quiet in the
+   * console when `internal.yaml` says so.
+   */
+  locate?(): void;
   /**
    * Ways through the realm this character has found that the realm data does
    * not have.
@@ -106,7 +109,7 @@ function sortExits(exits: RoomExit[]): RoomExit[] {
  * Where you are standing.
  *
  * A room only appears once the `Obvious exits:` line has completed it — see
- * `CharacterTracker`. A partially assembled room is worse than the previous
+ * `RoomTracker.exits` (`parse/room.ts`). A partially assembled room is worse than the previous
  * one, because it looks current.
  */
 function RoomCard({
@@ -115,6 +118,7 @@ function RoomCard({
   inspect,
   forget,
   ask,
+  locate,
   asks,
   learned,
   finds,
@@ -156,7 +160,7 @@ function RoomCard({
    * room resolved — they crossed the wire on demand only because the room was
    * a bag of strings when they were added.
    *
-   * `CharacterTracker.attachRealm` now joins them at the point the room is
+   * `RoomTracker.attachRealm` now joins them at the point the room is
    * placed, so this is a field read. The card draws the right thing on its
    * first paint, there is no flash of a room without its shop, and switching
    * characters cannot show one character's stock beside another's room.
@@ -290,13 +294,13 @@ function RoomCard({
         ) : undefined
       }
       actions={
-        ask && character.phase === 'in-game'
+        locate && character.phase === 'in-game'
           ? [
               {
-                id: 'rm',
+                id: 'locate',
                 label: t('cards.room.actions.askLocationTooltip'),
                 icon: 'search',
-                run: () => ask('rm')
+                run: () => locate()
               }
             ]
           : undefined
@@ -823,6 +827,8 @@ function RoomBody({
                               : t('cards.realm.facet.hostile')}
                           </span>
                         )}
+                        {/* And the player's own row, beside the realm's word (todo 818). */}
+                        <RowPeaceChip character={character} name={who.name} verdict={verdict} />
                         {/*
                         Not a fight cost but a standing one, and the server
                         charges it in silence — which is why it is on the card
@@ -1092,7 +1098,7 @@ function Learned({
  * they are worth drawing.
  *
  * **The phrase is a control, and it sends the realm's own word verbatim.** Down
- * `ask`, the same path the Room card's `rm` takes, so the tracker observes it
+ * `ask`, the same path the card's own typed commands take, so the tracker observes it
  * and a walk in progress stands down — a second route to the socket is a second
  * copy of all of that. Only the *first* spelling is offered: a script writes
  * four ways to say one thing and offering all four is four controls for one

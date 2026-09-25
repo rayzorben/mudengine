@@ -27,6 +27,7 @@ import {
   type GearSituation,
   type GearPlan
 } from '../../shared/gear';
+import type { SessionModule } from './Module';
 
 export interface EquipmentSources {
   /** Which slot the realm says an item goes in, by name, or null. */
@@ -39,7 +40,7 @@ export interface EquipmentEvents {
   notice?(message: string): void;
 }
 
-export class EquipmentManager {
+export class EquipmentManager implements SessionModule {
   /** The set last dressed for, by name, so an unchanged situation sends nothing. */
   private wearing: string | null = null;
   /** When each command was last proposed, so one the server swallowed is not resent per line. */

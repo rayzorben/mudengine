@@ -531,6 +531,51 @@ describe('the round combat macro', () => {
  * defaults it — the mark is drawn either way — but a setting absent from the
  * file is one nobody reading the file can find.
  */
+/*
+ * The last-ditch teleport (todo 813) is a block inside `automation.safety`,
+ * which `reconcileWithTemplate` never reaches into: without this step the
+ * setting is invisible in every options file that predates it.
+ */
+describe('the teleport below the retreat', () => {
+  const SAFETY =
+    'automation:\n  safety:\n    retreat:\n      enabled: false\n    hangUp:\n      enabled: false\n';
+  const fleeGoto = (): unknown =>
+    (
+      (parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+        'safety'
+      ] as Record<string, unknown>
+    )['fleeGoto'];
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated off, beside the retreat, with the template’s paragraph', () => {
+    fs.writeFileSync(home.options, SAFETY, 'utf8');
+    migrate(true);
+    expect(fleeGoto()).toEqual({ enabled: false, belowHealth: 0.2, command: '' });
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect(text.indexOf('fleeGoto')).toBeGreaterThan(text.indexOf('retreat'));
+    expect(text.indexOf('fleeGoto')).toBeLessThan(text.indexOf('hangUp'));
+    expect(text).toMatch(/sys goto silvermere/);
+  });
+
+  it('leaves a file that already states it alone, and runs once', () => {
+    fs.writeFileSync(
+      home.options,
+      `${SAFETY}    fleeGoto:\n      enabled: true\n      belowHealth: 0.1\n`,
+      'utf8'
+    );
+    migrate(true);
+    migrate(true);
+    expect(fleeGoto()).toEqual({ enabled: true, belowHealth: 0.1 });
+    // Positive control: the same run states it where it is missing.
+    fs.writeFileSync(home.options, SAFETY, 'utf8');
+    migrate(true);
+    expect(fleeGoto()).toMatchObject({ enabled: false });
+  });
+});
+
 describe('the mark in the status rail', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });
@@ -2369,6 +2414,8 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       'followSettleMs',
       // How long an item errand waits on a summons it asked for (todo 806).
       'errandAskMs',
+      // And how late a handover's item can land (todo 765).
+      'handoverDelayMs',
       // And how deep a walk fetches levers behind levers (todo 807).
       'leverErrandDepth',
       // How long a walk waits in a room too dark to read for the light that
@@ -2428,6 +2475,7 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       lightWaitMs: DEFAULT_INTERNAL.tuning.walk.lightWaitMs,
       followSettleMs: DEFAULT_INTERNAL.tuning.walk.followSettleMs,
       errandAskMs: DEFAULT_INTERNAL.tuning.walk.errandAskMs,
+      handoverDelayMs: DEFAULT_INTERNAL.tuning.walk.handoverDelayMs,
       leverErrandDepth: DEFAULT_INTERNAL.tuning.walk.leverErrandDepth
     });
     expect(text).toContain("longer than this realm's own slowest answer");
@@ -4486,8 +4534,9 @@ describe('waiting a condition out', () => {
     );
   });
 
-  it('writes the pair into a movement block that lacks it, with the paragraph', () => {
-    migrate();
+  it('writes the waits into a movement block that lacks them, with the paragraphs', () => {
+    // The paragraphs are the template's own, read from it.
+    migrate(true);
     const movement = (
       parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
     )['movement'] as Record<string, unknown>;
@@ -4496,21 +4545,57 @@ describe('waiting a condition out', () => {
     expect(movement).toMatchObject({
       openDoors: true,
       walkWhileBlind: false,
-      walkWhilePoisoned: false
+      walkWhilePoisoned: false,
+      walkWhileConfused: false
     });
     const text = fs.readFileSync(profile(), 'utf8');
     expect(text).toContain('# doors');
     expect(text).toContain('IgnoreBlind');
+    expect(text).toContain('IgnoreConfusion');
     // The half the defaults refuse to make configurable, which is the reason
     // the paragraph travels with the keys.
     expect(text).toContain('Paralysis always holds');
-    expect(said.some((m) => m.includes('blind or poisoned'))).toBe(true);
+    expect(
+      said.some((m) => m.includes('walkWhileBlind, walkWhilePoisoned, walkWhileConfused was'))
+    ).toBe(true);
+  });
+
+  /*
+   * Confusion joined the run on 2026-09-24 (todo 809), into files that
+   * already state the pair: beside it, with its own paragraph, and the pair's
+   * untouched.
+   */
+  it('writes the confusion wait beside a stated pair, with its own paragraph', () => {
+    fs.writeFileSync(
+      profile(),
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    # the pair\n    walkWhileBlind: true\n    walkWhilePoisoned: true\n    fightOnArrival: true\n',
+      'utf8'
+    );
+    migrate(true);
+    const text = fs.readFileSync(profile(), 'utf8');
+    const movement = (parse(text)['automation'] as Record<string, unknown>)['movement'] as Record<
+      string,
+      unknown
+    >;
+    expect(movement).toMatchObject({
+      walkWhileBlind: true,
+      walkWhilePoisoned: true,
+      walkWhileConfused: false
+    });
+    const keys = Object.keys(movement);
+    expect(keys.indexOf('walkWhileConfused')).toBe(keys.indexOf('walkWhilePoisoned') + 1);
+    expect(text).toContain('# the pair');
+    expect(text).toContain('IgnoreConfusion');
+    // The pair's paragraph is not written a second time above the third key.
+    expect(text).not.toContain('Paralysis always holds');
+    // Naming only the key it wrote: the pair was already the player's.
+    expect(said.some((m) => m.includes('. walkWhileConfused was written'))).toBe(true);
   });
 
   it('leaves a stated key alone and does not run twice', () => {
     fs.writeFileSync(
       profile(),
-      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhileBlind: true\n    walkWhilePoisoned: true\n',
+      'server: GreaterMUD (local)\nautomation:\n  movement:\n    walkWhileBlind: true\n    walkWhilePoisoned: true\n    walkWhileConfused: true\n',
       'utf8'
     );
     migrate();
@@ -4519,7 +4604,8 @@ describe('waiting a condition out', () => {
       parse(fs.readFileSync(profile(), 'utf8'))['automation'] as Record<string, unknown>
     )['movement'] as Record<string, unknown>;
     expect(movement['walkWhileBlind']).toBe(true);
-    expect(said.filter((m) => m.includes('blind or poisoned'))).toHaveLength(0);
+    expect(movement['walkWhileConfused']).toBe(true);
+    expect(said.filter((m) => m.includes('blind, poisoned or confused'))).toHaveLength(0);
   });
 
   it('leaves a file with no movement block alone', () => {
@@ -5898,5 +5984,61 @@ ${login}`,
     realm("login:\n  - when: 'or (C)ontinue'\n    send: '{password}'\n");
     migrate();
     expect(server()['login']).toEqual([{ when: 'or (C)ontinue', send: '{password}' }]);
+  });
+});
+
+/*
+ * The fourth cure (`statedTheFreedomCure`, todo 810): a key inside a `cures:`
+ * block the file already states reaches nobody through the template, so a
+ * block listing three would go on saying nothing about the fourth.
+ */
+describe('the Freedom cure is stated', () => {
+  const cures = (file: string): Record<string, unknown> =>
+    (
+      parse(fs.readFileSync(file, 'utf8')) as {
+        automation: { spells: { cures: Record<string, unknown> } };
+      }
+    ).automation.spells.cures;
+
+  const write = (file: string, body: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `automation:\n  spells:\n${body}`, 'utf8');
+  };
+
+  it('writes it blank, directly after disease, into a profile, and says so', () => {
+    const profile = home.profile('festus').file;
+    write(
+      profile,
+      "    cures:\n      blindness: ''\n      poison: cure poison\n      disease: ''\n    blessings: []\n"
+    );
+    migrate();
+    const stated = cures(profile);
+    expect(stated).toEqual({ blindness: '', poison: 'cure poison', disease: '', freedom: '' });
+    expect(Object.keys(stated)).toEqual(['blindness', 'poison', 'disease', 'freedom']);
+    expect(said.join('\n')).toMatch(/Freedom/);
+    expect(said.join('\n')).toContain(profile);
+  });
+
+  it('never overwrites a stated spell, never adds a block the file lacks, and runs twice safely', () => {
+    const named = home.profile('soul').file;
+    write(named, '    cures:\n      freedom: free\n');
+    // A file stating `spells:` without `cures:` takes the whole default and is left alone.
+    write(home.options, '    minMana: 0.15\n');
+    migrate();
+    expect(cures(named)).toEqual({ freedom: 'free' });
+    const options = parse(fs.readFileSync(home.options, 'utf8')) as {
+      automation: { spells: Record<string, unknown> };
+    };
+    expect(options.automation.spells['cures']).toBeUndefined();
+    expect(said.join('\n')).not.toMatch(/Freedom/);
+
+    const bare = home.profile('yang').file;
+    write(bare, "    cures:\n      blindness: ''\n");
+    migrate();
+    const once = fs.readFileSync(bare, 'utf8');
+    expect(cures(bare)).toEqual({ blindness: '', freedom: '' });
+    migrate();
+    expect(fs.readFileSync(bare, 'utf8')).toBe(once);
+    expect(said.join('\n')).not.toMatch(/Freedom/);
   });
 });

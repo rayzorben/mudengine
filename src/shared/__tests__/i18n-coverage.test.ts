@@ -9,12 +9,13 @@
  * that looks maintained and is dead). Both directions are walked from the
  * sources themselves, so neither list can drift from the code it describes.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { asUiDict, flattenDict } from '../i18n';
+import { sourceFiles } from './sources';
 
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 
@@ -56,17 +57,6 @@ const DYNAMIC_CALLS: readonly { file: string; prefix: string; reason: string }[]
       'asserts every one is described.'
   }
 ];
-
-function sourceFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...sourceFiles(path));
-    else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.test.ts')) out.push(path);
-  }
-  return out;
-}
 
 /** Light comment stripping, so a key quoted in a doc comment is not "usage". */
 function stripComments(code: string): string {

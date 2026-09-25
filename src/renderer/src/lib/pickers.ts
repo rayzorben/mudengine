@@ -6,8 +6,8 @@
  * the files are on — and a `<input type="file">` would browse the viewer's
  * instead: a different operation wearing the same label. So the web bridge
  * asks the window to draw a picker over `Invoke.browseHome`, and this is the
- * seam it asks through. `App.tsx` registers one while it is mounted; the
- * bridge is not React and must not reach into it.
+ * seam it asks through. `useHomeBrowser` registers one while the window is
+ * mounted; the bridge is not React and must not reach into it.
  */
 export type RealmPicker = () => Promise<string | null>;
 

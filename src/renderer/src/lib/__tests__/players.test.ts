@@ -125,7 +125,11 @@ describe('the people a character knows', () => {
   /* Offline people included: a name seen an hour ago is still a name the
      console should recognise when it is printed again. */
   it('is the registry and the roster, minus the character itself, sorted', () => {
-    const names = knownPlayerNames({
+    const registry = {
+      soul: seen({ name: 'Soul', online: false }),
+      rand: seen({ name: 'Rand' })
+    };
+    const names = knownPlayerNames(registry, {
       ...EMPTY_CHARACTER,
       name: 'vaelor',
       online: [
@@ -138,11 +142,7 @@ describe('the people a character knows', () => {
           provisional: false
         },
         { name: 'Rand', alignment: null, title: null, flags: null, gang: null, provisional: false }
-      ],
-      players: {
-        soul: seen({ name: 'Soul', online: false }),
-        rand: seen({ name: 'Rand' })
-      }
+      ]
     });
     expect(names).toEqual(['Rand', 'Soul']);
   });
@@ -153,20 +153,20 @@ describe('whether a name on a card is a person', () => {
     ...EMPTY_CHARACTER,
     online: [
       { name: 'Rand', alignment: null, title: null, flags: null, gang: null, provisional: true }
-    ],
-    players: { soul: seen({ name: 'Soul', online: false }) }
+    ]
   };
+  const registry = { soul: seen({ name: 'Soul', online: false }) };
 
   it('is, for the roster and for the registry, whatever the case', () => {
-    expect(isKnownPlayer(character, 'rand')).toBe(true);
-    expect(isKnownPlayer(character, 'SOUL')).toBe(true);
+    expect(isKnownPlayer(registry, character, 'rand')).toBe(true);
+    expect(isKnownPlayer(registry, character, 'SOUL')).toBe(true);
   });
 
   /* A stranger is not a person here: the realm's answer says it knows nothing,
      which is the honest thing to open, and never that they are safe. */
   it('is not, for a name nobody has listed', () => {
-    expect(isKnownPlayer(character, 'orc rogue')).toBe(false);
-    expect(isKnownPlayer(character, 'Nathaniel')).toBe(false);
-    expect(isKnownPlayer(character, '')).toBe(false);
+    expect(isKnownPlayer(registry, character, 'orc rogue')).toBe(false);
+    expect(isKnownPlayer(registry, character, 'Nathaniel')).toBe(false);
+    expect(isKnownPlayer(registry, character, '')).toBe(false);
   });
 });

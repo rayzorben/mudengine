@@ -31,7 +31,7 @@ function drawn(source: string): string[] {
 }
 
 describe.each([
-  ['SettingsScreen.tsx', ['realm-mob-rules', 'realm-hang-penalties']],
+  ['CharacterForm.tsx', [] as string[]],
   ['GlobalSettings.tsx', [] as string[]]
 ])('%s', (file, notNavigable) => {
   const source = read(file);
@@ -49,8 +49,8 @@ describe.each([
 
   /*
    * The other direction, minus the fieldsets that are deliberately not jump
-   * targets: the Realms page has no sections at all (`sections={[]}`), so its
-   * monster-rules fieldset has no rail to be listed in.
+   * targets. The Realms page has no sections at all (`sections={[]}`), so
+   * `ServerForm.tsx` has no rail to list its fieldsets in and is not here.
    */
   it('offers a jump target for every fieldset it tags', () => {
     const stray = drawn(source).filter(

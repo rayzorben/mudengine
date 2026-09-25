@@ -3,10 +3,10 @@
  *
  * A heal is chosen by a number; a cure is chosen by the server saying a
  * condition is on this character, which the tracker keeps as a three-state
- * flag (`CharacterState.afflictions`) set and cleared only by the wire. Three
- * conditions have a cure spell to configure: blindness, poison and disease.
- * Paralysis is tracked too and has none here, because no capture names a
- * spell that ends it and a spell name from memory is a command said out loud.
+ * flag (`CharacterState.afflictions`) set and cleared only by the wire. Four
+ * conditions have a cure spell to configure: blindness, poison, disease, and
+ * a hold (`freedom`, todo 810), whose success is the hold's own wear-off line
+ * (`Spell.cs` prints it on the way out), so no sentence of its own is read.
  *
  * ## Once per onset, then patiently
  *
@@ -26,24 +26,23 @@
 import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
-import type { Affliction, Afflictions, CharacterState } from '../../shared/character';
-import type { SpellsConfig } from '../../shared/config';
-import { cureGates, resolveSpell, spellCost, spellTargeting } from '../../shared/spellcraft';
+import type { Affliction, CharacterState } from '../../shared/character';
+import { CURES, type Cure, type SpellsConfig } from '../../shared/config';
+import {
+  CURE_CONDITION,
+  cureGates,
+  resolveSpell,
+  spellCost,
+  spellTargeting
+} from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /** How long a cure that changed nothing is trusted before it is tried again. */
 export const RETRY_MS = 30_000;
 
-type Cure = keyof SpellsConfig['cures'];
-const FLAG: Record<Cure, keyof Afflictions> = {
-  blindness: 'blind',
-  poison: 'poisoned',
-  disease: 'diseased'
-};
-const CURES: readonly Cure[] = ['blindness', 'poison', 'disease'];
-
-export class Cures {
+export class Cures implements SessionModule {
   private lastCastAt = new Map<Cure, number>();
   private previous = new Map<Cure, Affliction>();
   /** The cures derived from the book and said, once each. */
@@ -99,7 +98,7 @@ export class Cures {
     if (best === null) return '';
     if (this.saidDerived.get(cure) !== best.name) {
       this.saidDerived.set(cure, best.name);
-      this.events.notice?.(t('automation.cure.derived', { affliction: cure, spell: best.name }));
+      this.events.notice?.(t('automation.cure.derived', { cure, spell: best.name }));
     }
     return best.name;
   }
@@ -107,7 +106,7 @@ export class Cures {
   onCharacter(state: CharacterState): void {
     if (!this.enabled || state.phase !== 'in-game') return;
     for (const cure of CURES) {
-      const current = state.afflictions[FLAG[cure]];
+      const current = state.afflictions[CURE_CONDITION[cure]];
       const before = this.previous.get(cure);
       this.previous.set(cure, current);
       if (current !== 'yes') continue;
@@ -136,7 +135,7 @@ export class Cures {
         priority: 'combat',
         coalesceKey: `cure:${cure}`,
         expiresAt: at + tuning().spells.cureExpiresMs,
-        reason: t('automation.cure.reason', { affliction: cure })
+        reason: t('automation.cure.reason', { cure })
       });
     }
   }

@@ -43,14 +43,21 @@ const session = new SessionManager(
     data: () => {},
     line: () => {},
     block: () => {},
+    players: () => {},
     character: () => {},
     state: () => {},
     telnet: () => {},
     notice: (message) => notices.push(message)
   },
-  world,
-  { ...profile.config.automation, idle: { ...profile.config.automation.idle, enabled: false }, rules: [] },
-  profile.config.connection.login
+  {
+    world,
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 session.resize({ cols: 80, rows: 24 });
 
@@ -165,9 +172,7 @@ async function finish(started) {
   session.dispose();
   const failed = results.filter((r) => !r.ok);
   console.log(
-    failed.length === 0
-      ? '\nAll dark checks passed.\n'
-      : `\n${failed.length} check(s) failed.\n`
+    failed.length === 0 ? '\nAll dark checks passed.\n' : `\n${failed.length} check(s) failed.\n`
   );
   process.exit(failed.length === 0 ? 0 : 1);
 }

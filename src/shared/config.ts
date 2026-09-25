@@ -21,6 +21,7 @@ import { bool, int, isRecord, str } from './values';
 import { asEvents, type ScheduledEvent } from './events';
 import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
+import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 /*
  * `DENOMINATIONS` is the one *value* this module takes from `character.ts`, and
  * it is safe: nothing under `character.ts` imports `config.ts` back, so the
@@ -50,7 +51,7 @@ import {
 } from './notifications';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
-import { mobKey } from './world';
+import { normalizeMobRules, type MobRule } from './mobRules';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
@@ -58,8 +59,10 @@ import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 import { isAnsiColour, type ColourBand } from './template';
 import { DEFAULT_REWRITES, isRewriteEntity, type RewriteDesign, type VitalBands } from './rewrites';
 
-/** Chrome density, mirroring the `useDensity` preference. */
+/** Chrome density, as `ui.density` states it and the palette cycles it. */
 export type DensityPreference = 'auto' | 'comfortable' | 'compact';
+/** What `useDensity` resolves `auto` to for the window it measures. */
+export type Density = Exclude<DensityPreference, 'auto'>;
 
 /**
  * Which edge the character tabs sit on.
@@ -226,6 +229,16 @@ export interface Server {
    * `HangUpConfig.penalties`.
    */
   hangPenalties: boolean | null;
+  /**
+   * How this realm is asked where a character stands: `rm`, or `none` for a
+   * realm with no such word. A character may state its own. See `shared/locate.ts`.
+   */
+  locate: LocateWord;
+  /**
+   * This realm's teleport for the last-ditch escape, literally (`sys go 1
+   * 297`); empty states none. A character's own replaces it. See `FleeGotoConfig`.
+   */
+  fleeGoto: string;
 }
 
 export interface FontConfig {
@@ -662,7 +675,7 @@ export interface RetreatConfig {
   /**
    * How far to go, **not** how to choose the exit.
    *
-   * Choosing the exit is `SessionManager.escape`'s ladder and is not
+   * Choosing the exit is `Travel.escape`'s ladder and is not
    * configurable, because every rung of it is strictly better than the one
    * below and nobody would knowingly pick a worse one: retrace the trail
    * first, then an exit the realm data says leads back onto it, then any exit
@@ -682,6 +695,27 @@ export interface RetreatConfig {
    * candidates, exactly as a loop stop is. Empty is none.
    */
   safeHavenRoom: string;
+}
+
+/**
+ * The last-ditch escape below `retreat` (todo 813): the realm's own teleport,
+ * sent mid-fight in the emergency band, written out **literally** because each
+ * realm implementation spells it differently — GreaterMUD `sys go 1 297`,
+ * MajorMUD `sys goto silvermere` — and it is never derived. The realm's
+ * `server.yaml` (`fleeGoto:`) states the command; a character's own `command`
+ * replaces it, and this file's is used only where neither states one.
+ *
+ * Off by default. On GreaterMUD `sys` is a sysop's tool (`SysCommand.cs:196`);
+ * a player is answered `Your command had no effect.`, read as a refusal.
+ * Never above `retreat.belowHealth` while the retreat is on: the walked escape
+ * has the first word. See `FleeGoto`.
+ */
+export interface FleeGotoConfig {
+  enabled: boolean;
+  /** Fraction of maximum health at or below which the teleport is sent. */
+  belowHealth: number;
+  /** The literal command; empty follows the realm, and none anywhere sends nothing. */
+  command: string;
 }
 
 /**
@@ -1208,7 +1242,7 @@ export interface LootConfig {
  * Searching every room the character arrives in, unasked.
  *
  * The realm hides exits — 249 of them in the shipped data are
- * `Hidden/Searchable` — and `WorldGraph.edgePenalty` already prices one at
+ * `Hidden/Searchable` — and `Router.edgePenalty` already prices one at
  * "costs the search", so a route may be planned through a corridor nobody has
  * looked for yet. `Walker` searches *reactively*, when a step it planned is
  * refused; this is the other half, and it is the half that finds an exit
@@ -1463,7 +1497,7 @@ export interface HealthConfig {
    * through a trap into a fight on the health the trap left it. Capped at the
    * maximum: a trap that takes more than the bar holds is walked at full
    * health, which is the most anything here can do about it. Read by
-   * `Walker.holdForTrap`; `Recovery` sits the character down to the figure
+   * `Holds.holdForTrap`; `Recovery` sits the character down to the figure
    * the walk names, on this switch alone — `restBelow: 0` does not turn it
    * off, since the two are two decisions.
    */
@@ -1548,49 +1582,6 @@ export type PotionWhen = (typeof POTION_WHENS)[number];
 
 export const POTION_VERBS = ['drink', 'use'] as const;
 export type PotionVerb = (typeof POTION_VERBS)[number];
-
-/**
- * One monster, and how the automation treats it.
- *
- * The row shape of the monster list. `mob` is a `mobKey` — lowercased, the
- * leading article stripped — because that is the one spelling the wire ever
- * uses and the same normalisation the old flat `avoid` list always applied.
- */
-export interface MobRule {
-  /** The monster, keyed the way the wire spells it. */
-  mob: string;
-  /** Left alone, or the band it is attacked in. See `MOB_TREATMENTS`. */
-  treat: MobTreatment;
-}
-
-/**
- * The five bands, ordered exactly as they are attacked.
- *
- * The array's order **is** the ranking — `MOB_PRIORITIES.indexOf` is what
- * sorts a room — so these are never reordered for readability, and nothing
- * that is not a rank ever joins them. `default` is the middle on purpose:
- * `high` and `low` are defined against it, and a monster nobody listed is in
- * it, which is what makes the list something you add one row to rather than a
- * ranking of every monster in the realm.
- */
-export const MOB_PRIORITIES = ['first', 'high', 'default', 'low', 'last'] as const;
-export type MobPriorityBand = (typeof MOB_PRIORITIES)[number];
-
-/**
- * What a row may say: leave it alone, or where it comes in the order.
- *
- * Two kinds of fact in one closed union, deliberately — a refusal and a rank —
- * because they are answers to one question a player asks about one monster,
- * and because holding them apart is what made *never attack* a second list
- * that merged by different rules. `never` is first because it is read first:
- * `AutoCombat.choose` declines on it before anything is ranked at all. It is
- * **not** in `MOB_PRIORITIES`, so no ranking can ever sort on it.
- */
-export const MOB_TREATMENTS = ['never', ...MOB_PRIORITIES] as const;
-export type MobTreatment = (typeof MOB_TREATMENTS)[number];
-
-/** Where an unlisted monster sits: the middle band, and the reason it exists. */
-export const DEFAULT_MOB_PRIORITY: MobPriorityBand = 'default';
 
 /**
  * Walking, beyond the mechanics of a route — MegaMUD's **Movement**.
@@ -1780,6 +1771,13 @@ export interface MovementConfig {
    */
   walkWhilePoisoned: boolean;
   /**
+   * Walk on while confused. Off, the walk waits the confusion out — MegaMUD's
+   * `IgnoreConfusion` default. A confused character's commands are thrown
+   * away at random before the server reads them (`CheckConfusion`), so every
+   * step is a gamble the walk would otherwise spend and re-send.
+   */
+  walkWhileConfused: boolean;
+  /**
    * Pick up a key an exit of this room needs, when it is lying on the floor of
    * it — and only then.
    *
@@ -1873,6 +1871,14 @@ export interface TrainConfig {
 }
 
 /**
+ * The cures the client automates, one per condition the tracker keeps a flag
+ * for and a spell can end — MegaMUD's `BlindCmd`, `PoisonCmd`, `DiseaseCmd`
+ * and `FreedomCmd`. `freedom` answers `held` (todo 810).
+ */
+export const CURES = ['blindness', 'poison', 'disease', 'freedom'] as const;
+export type Cure = (typeof CURES)[number];
+
+/**
  * Casting — MegaMUD's **Spells** tab.
  *
  * MegaMUD's spell handling is a table per spell with a condition each, and
@@ -1907,6 +1913,10 @@ export interface SpellsConfig {
    * `c pressure points` answers `You do not know how to cast pressure.`).
    * The configured value stays the readable whole name, or an
    * abbreviation; `castWord` resolves it when the cast goes out.
+   *
+   * It opens the fight in place of `combat.attack`, and the server casts it
+   * every round from then on by itself, so a round sends only a change of
+   * action (todo 816, `AttackSpells`).
    */
   attack: string;
   /**
@@ -2063,10 +2073,10 @@ export interface SpellsConfig {
    * onset (a targetless cast lands on the caster), and again after thirty seconds while the server
    * still says the condition is on — a cure it answers with nothing leaves the
    * flag where it was, and casting once per status line would spend the
-   * fight's budget on it. Blank casts nothing. Paralysis is tracked (`held`)
-   * and has no cure here: no capture names a spell that ends it.
+   * fight's budget on it. Blank casts nothing. `freedom` is cast while the
+   * character is held (paralysis, a net, a knockdown: every `HoldPerson`).
    */
-  cures: { blindness: string; poison: string; disease: string };
+  cures: Record<Cure, string>;
   /**
    * The blessings kept up on this character and on the party it travels with,
    * in priority order — index 0 is recast first when several are down.
@@ -2142,6 +2152,7 @@ export interface BlessingConfig {
 export interface SafetyConfig {
   hangUp: HangUpConfig;
   retreat: RetreatConfig;
+  fleeGoto: FleeGotoConfig;
   pvp: PvpConfig;
 }
 
@@ -2625,6 +2636,9 @@ export const DEFAULT_CONFIG: AppConfig = {
         strategy: 'step-back',
         safeHavenRoom: ''
       },
+      // Off, and between the retreat's floor and the hang-up's, so the
+      // teleport has its turn before the panic button. See `FleeGotoConfig`.
+      fleeGoto: { enabled: false, belowHealth: 0.2, command: '' },
       pvp: { notifyGang: false, action: 'none' }
     },
     // Off, like every other thing the client would do without being asked. The
@@ -2725,6 +2739,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       recoverGearFloor: 2,
       walkWhileBlind: false,
       walkWhilePoisoned: false,
+      walkWhileConfused: false,
       fightOnArrival: true,
       keepOutOf: ['vortex', 'Negative Power Plane'],
       collectKeys: true
@@ -2758,7 +2773,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       healParty: false,
       invokeItems: false,
       minMana: 0.15,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true
@@ -2799,6 +2814,7 @@ export const AUTOMATION_SWITCHES = {
   retaliate: ['combat', 'retaliate'],
   autoBless: ['spells', 'autoBless'],
   retreat: ['safety', 'retreat', 'enabled'],
+  fleeGoto: ['safety', 'fleeGoto', 'enabled'],
   hangUp: ['safety', 'hangUp', 'enabled'],
   loot: ['loot', 'coins'],
   drop: ['drop', 'enabled'],
@@ -3326,7 +3342,9 @@ function normalizeServer(value: unknown): Server | null {
      */
     database: str(value['database'], ''),
     mobRules: normalizeMobRules(value['mobRules']),
-    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null
+    hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
+    locate: asLocateWord(value['locate']) ?? DEFAULT_LOCATE,
+    fleeGoto: str(value['fleeGoto'], '').trim()
   };
 }
 
@@ -3944,6 +3962,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
+    walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),
     fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
     // One word once, however it was spelt: two spellings of one word are one
     // place kept out of.
@@ -4095,7 +4114,8 @@ function normalizeCures(value: unknown): SpellsConfig['cures'] {
   return {
     blindness: str(raw['blindness'], '').trim(),
     poison: str(raw['poison'], '').trim(),
-    disease: str(raw['disease'], '').trim()
+    disease: str(raw['disease'], '').trim(),
+    freedom: str(raw['freedom'], '').trim()
   };
 }
 
@@ -4196,85 +4216,14 @@ function normalizeCombat(value: unknown): CombatConfig {
   };
 }
 
-/**
- * Monster rows, keyed the way the wire spells the name.
- *
- * Keyed here rather than at every comparison, so `Giant Rat`, `giant rat` and
- * `the giant rat` in a config file are one row and match the one thing the
- * stream ever calls it. Bounded at 64, because a list this long is a rule file
- * written in the wrong place.
- *
- * A row naming no monster is dropped rather than defaulted, as a potion rule
- * and a supply row are: it could only ever match nothing. A treatment the
- * table does not know is dropped too — the runtime half of a closed union —
- * rather than falling back to `default`, which would silently turn a typo into
- * a row that reads as deliberate and does nothing. A typo in `never` is the
- * case that argues hardest for dropping it: defaulted, it would read as *leave
- * this alone* and attack it.
- *
- * The **first** row for a monster wins: these rows are merged across three
- * scopes by `mergeMobRules` before they get here, so by this point the
- * narrowest scope's row is already in front and anything behind it is the
- * broader scope it overrode.
- */
-export function normalizeMobRules(value: unknown): MobRule[] {
-  const rows: MobRule[] = [];
-  if (!Array.isArray(value)) return rows;
-  const seen = new Set<string>();
-  for (const entry of value) {
-    if (!isRecord(entry)) continue;
-    const mob = mobKey(String(entry['mob'] ?? ''));
-    if (mob.length === 0 || seen.has(mob)) continue;
-    const treat = str(entry['treat'], DEFAULT_MOB_PRIORITY).trim() as MobTreatment;
-    if (!MOB_TREATMENTS.includes(treat)) continue;
-    seen.add(mob);
-    rows.push({ mob, treat });
-    if (rows.length >= 64) break;
-  }
-  return rows;
-}
-
-/**
- * One monster list from several scopes, with the narrower winning per monster.
- *
- * The one list in `automation:` that is merged rather than replaced, and the
- * exception is deliberate. `overlay` replaces an array wholesale because a
- * character that restates `automation.rules` means *those* rules — but a
- * monster list is addressed by monster, exactly as loops are addressed by
- * name, so the same argument that made `mergeLoops` additive applies: a
- * character that wants the realm's ranking plus one row of its own should not
- * have to restate the realm's, and would have no way to keep the copy in step.
- *
- * Removing a broader scope's row is therefore done by **overriding** it —
- * naming the monster again at `default`, which is what "follow the game logic"
- * already means — rather than by deleting it, which is the trade `mergeNamed`
- * makes everywhere else it is used.
- *
- * Lists are given broadest first; the first row for a monster wins, so callers
- * pass global, then realm, then character.
- */
-export function mergeMobRules(...lists: readonly (readonly MobRule[])[]): MobRule[] {
-  const rows: MobRule[] = [];
-  const seen = new Set<string>();
-  // Reversed: the narrowest scope is stated last and has to arrive first, so
-  // that `normalizeMobRules`' first-wins rule keeps it.
-  for (const list of [...lists].reverse()) {
-    for (const row of list) {
-      const mob = mobKey(row.mob);
-      if (mob.length === 0 || seen.has(mob)) continue;
-      seen.add(mob);
-      rows.push({ mob, treat: row.treat });
-    }
-  }
-  return rows;
-}
-
 function normalizeSafety(value: unknown): SafetyConfig {
   const raw = isRecord(value) ? value : {};
   const hangUp = isRecord(raw['hangUp']) ? raw['hangUp'] : {};
   const retreat = isRecord(raw['retreat']) ? raw['retreat'] : {};
   const pvp = isRecord(raw['pvp']) ? raw['pvp'] : {};
+  const fleeGoto = isRecord(raw['fleeGoto']) ? raw['fleeGoto'] : {};
   const f = DEFAULT_CONFIG.automation.safety.retreat;
+  const g = DEFAULT_CONFIG.automation.safety.fleeGoto;
   const d = DEFAULT_CONFIG.automation.safety.hangUp;
   const p = DEFAULT_CONFIG.automation.safety.pvp;
   return {
@@ -4289,6 +4238,11 @@ function normalizeSafety(value: unknown): SafetyConfig {
       cooldownMs: int(retreat['cooldownMs'], f.cooldownMs, 1000, 60_000),
       strategy: oneOf<RetreatStrategy>(retreat['strategy'], RETREAT_STRATEGIES, f.strategy),
       safeHavenRoom: str(retreat['safeHavenRoom'], f.safeHavenRoom).trim()
+    },
+    fleeGoto: {
+      enabled: bool(fleeGoto['enabled'], g.enabled),
+      belowHealth: fraction(fleeGoto['belowHealth'], g.belowHealth),
+      command: str(fleeGoto['command'], g.command).trim()
     },
     hangUp: {
       enabled: bool(hangUp['enabled'], d.enabled),

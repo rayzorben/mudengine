@@ -20,6 +20,7 @@ import type { MovementConfig } from '../../shared/config';
 import { restorePlan } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
 import { roomId, type RoomId, type Route } from '../../shared/world';
+import type { SessionModule } from './Module';
 
 export interface RecoveryPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -47,7 +48,7 @@ type Phase =
 
 const ACTION = 'recover gear';
 
-export class GearRecovery {
+export class GearRecovery implements SessionModule {
   /** The death last acted on, so one death is one attempt. */
   private handled: number | null = null;
   /**

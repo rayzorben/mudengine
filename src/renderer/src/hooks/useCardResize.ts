@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { CardId, CardLayoutApi } from './useCardLayout';
+import type { CardId, CardLayoutApi } from '../lib/cards';
 
 export interface CardResize {
   /** The card being resized, while the grip is held. */

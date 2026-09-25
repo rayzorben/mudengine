@@ -218,7 +218,7 @@ const PROMPT_PASSED = /\][^\s]|\]\s+\S/;
  * Where the prompt is one `STATUS_LINE` accepts, the flush's own early return
  * already released it; where it is not — `[hp=` lower-cased, captures/076, 43
  * times — the buffer read as a prompt still opening and waited
- * `promptHoldMs`. Because `armIdleFlush` re-arms on every chunk, each further
+ * `promptHoldMs`. Because `Paint.armIdleFlush` re-arms on every chunk, each further
  * byte from the realm pushed that deadline out again, so on a talkative realm
  * the broadcast reached the Talk card seconds late, or not until the room
  * went quiet. Once the bracket has closed and something follows it, there is

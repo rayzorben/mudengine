@@ -56,8 +56,9 @@ import type { DropConfig } from '../../shared/config';
 import { bareName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
-export class AutoDrop {
+export class AutoDrop implements SessionModule {
   /** Names already asked to drop, lower case, until the pack stops listing them. */
   private asked = new Set<string>();
 

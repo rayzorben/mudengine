@@ -69,22 +69,25 @@ const session = new SessionManager(
         rows: block.rows?.length
       });
     },
-    character: (state) => {
-      if (current) current.players = { ...state.players };
+    character: () => {},
+    // The registry is its own push (todo 730), whole on every change.
+    players: (registry) => {
+      if (current) current.players = { ...registry };
     },
     state: () => {},
     telnet: () => {},
     notice: () => {}
   },
-  undefined,
-  // Nothing standing: an idle routine firing mid-run would put its own lines
-  // and its own answers inside the capture.
   {
-    ...profile.config.automation,
-    idle: { ...profile.config.automation.idle, enabled: false },
-    rules: []
-  },
-  profile.config.connection.login
+    // Nothing standing: an idle routine firing mid-run would put its own lines
+    // and its own answers inside the capture.
+    automation: {
+      ...profile.config.automation,
+      idle: { ...profile.config.automation.idle, enabled: false },
+      rules: []
+    },
+    login: profile.config.connection.login
+  }
 );
 
 session.resize({ cols: 80, rows: 24 });

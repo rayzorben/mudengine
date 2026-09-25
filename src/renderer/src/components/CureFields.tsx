@@ -1,17 +1,13 @@
 import SpellField from './SpellPicker';
 import { t } from '../lib/i18n';
+import { CURES, type Cure } from '@shared/config';
+import type { CuresDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
-import type { CureGates } from '@shared/spellcraft';
-
-export interface CuresValue {
-  blindness: string;
-  poison: string;
-  disease: string;
-}
+import { CURE_CONDITION, type CureGates } from '@shared/spellcraft';
 
 export interface CureFieldsProps {
-  cures: CuresValue;
-  onChange(cures: CuresValue): void;
+  cures: CuresDraft;
+  onChange(cures: CuresDraft): void;
   spells: readonly SpellOption[];
   /**
    * What the realm says the book can cure — null while no book has been
@@ -21,20 +17,23 @@ export interface CureFieldsProps {
   namePrefix: string;
 }
 
-const CURES = ['blindness', 'poison', 'disease'] as const;
-
-/**
- * Which `spellServes` flag each field's own question reads.
- *
- * The names differ on purpose and are not derivable from one another: the
- * settings vocabulary is the condition as a player says it (*poison*), the
- * wire's is the state the character is in (*poisoned*).
- */
-const SERVES: Record<(typeof CURES)[number], 'blind' | 'poisoned' | 'diseased'> = {
-  blindness: 'blind',
-  poison: 'poisoned',
-  disease: 'diseased'
-};
+/** Each field's label; exhaustive, so a fifth cure is a compile error until it has one. */
+function labelOf(cure: Cure): string {
+  switch (cure) {
+    case 'blindness':
+      return t('settings.spells.cureBlindnessLabel');
+    case 'poison':
+      return t('settings.spells.curePoisonLabel');
+    case 'disease':
+      return t('settings.spells.cureDiseaseLabel');
+    case 'freedom':
+      return t('settings.spells.cureFreedomLabel');
+    default: {
+      const unreachable: never = cure;
+      return unreachable;
+    }
+  }
+}
 
 /**
  * The spells this realm says would end that condition.
@@ -46,24 +45,24 @@ const SERVES: Record<(typeof CURES)[number], 'blind' | 'poisoned' | 'diseased'> 
  * says none of them serves leaves the field empty, which is the true answer —
  * the gate beside it has already said the book cannot cure this.
  */
-function serving(spells: readonly SpellOption[], cure: (typeof CURES)[number]): SpellOption[] {
-  const flag = SERVES[cure];
+function serving(spells: readonly SpellOption[], cure: Cure): SpellOption[] {
+  const flag = CURE_CONDITION[cure];
   return spells.filter((spell) => spell.serves === undefined || spell.serves[flag]);
 }
 
 /**
- * The three cures as one three-column row of label-over-field pairs, drawn by
- * both settings forms.
+ * The cures as one row of label-over-field pairs, drawn by both settings
+ * forms.
  *
  * **Each field offers only the spells the realm says end its own condition**
- * (todo 00). All three drew the whole book before, so *Cure Poison* listed
+ * (todo 00). The first three drew the whole book before, so *Cure Poison* listed
  * every spell the character knows; blindness only looked filtered because its
  * gate closes more often. `spellServes` is the one reading, shared with the
- * item picker, and a spell the realm cannot place is offered by all three.
+ * item picker, and a spell the realm cannot place is offered by every field.
  *
  * A field is disabled — with the reason in its hint — when the character's
  * book has been read and the realm marks nothing in it as curing that
- * condition. Blindness and poison are the realm's own unambiguous marks;
+ * condition. Blindness, poison and a hold are the realm's own unambiguous marks;
  * disease is only the negative gate (`shared/spellcraft.ts` has the whole
  * argument), and everything stays enabled while the book is unread, because
  * "the client has not looked" is not "the character cannot".
@@ -84,13 +83,7 @@ export default function CureFields({
             disabled={closed}
             hint={closed ? t('settings.spells.cureClosedHint') : t('settings.spells.cureHint')}
             key={cure}
-            label={
-              cure === 'blindness'
-                ? t('settings.spells.cureBlindnessLabel')
-                : cure === 'poison'
-                  ? t('settings.spells.curePoisonLabel')
-                  : t('settings.spells.cureDiseaseLabel')
-            }
+            label={labelOf(cure)}
             name={`${namePrefix}-cure-${cure}`}
             onChange={(value) => onChange({ ...cures, [cure]: value })}
             spells={serving(spells, cure)}

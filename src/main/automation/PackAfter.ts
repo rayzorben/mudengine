@@ -72,6 +72,19 @@ export function packAfter(
 }
 
 /**
+ * A read that found the pack without the thing, to be asked again (todo 814).
+ *
+ * A script may `adddelay` before its `giveitem` — `mine ore` waits ten seconds
+ * (`Textblocks.sql`, block 2622), `summon shard` two — so the listing asked
+ * straight after the act can land before the item does. The fresh check keeps
+ * the act's moment and asks nothing until `quests.replyMs` after this answer;
+ * how long to go on asking is the caller's.
+ */
+export function packAgain(pack: PackCheck, now: number): PackCheck {
+  return { ...packCheck(pack.sentAt), asked: now };
+}
+
+/**
  * A pack listing landed, answering the command the server echoed before it
  * (`SessionManager.answering`). Only the asker's own spelling, sent after its
  * act, is the answer: an `i` somebody else sent before the act can land after

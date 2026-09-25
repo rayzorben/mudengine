@@ -31,18 +31,20 @@ function open(profile) {
       data: () => {},
       line: () => {},
       block: (block) => blocks.push(block),
+      players: () => {},
       character: () => {},
       state: () => {},
       telnet: () => {},
       notice: () => {}
     },
-    undefined,
     {
-      ...profile.config.automation,
-      idle: { ...profile.config.automation.idle, enabled: false },
-      rules: []
-    },
-    profile.config.connection.login
+      automation: {
+        ...profile.config.automation,
+        idle: { ...profile.config.automation.idle, enabled: false },
+        rules: []
+      },
+      login: profile.config.connection.login
+    }
   );
   session.resize({ cols: 80, rows: 24 });
   return { session, blocks, name: profile.name };

@@ -2,10 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createElement, type MutableRefObject } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAutoSave, type AutoSave } from '../useAutoSave';
+import { mount } from './mount';
 
 /*
  * The form stands in for a character's, and the file for its profile: one
@@ -48,7 +49,7 @@ const DELAY = 700;
 
 describe('switching what is being edited before the delay has run', () => {
   let dir: string;
-  let renderer: ReactTestRenderer | null = null;
+  const probe = mount();
   const out: MutableRefObject<AutoSave | null> = { current: null };
 
   const fileOf = (identity: string): string => join(dir, `${identity}.json`);
@@ -63,25 +64,16 @@ describe('switching what is being edited before the delay has run', () => {
 
   const render = (identity: string, value: Form, write: Write, enabled = true): void => {
     const element = createElement(Probe, { identity, value, write, out, enabled });
-    if (renderer === null) {
-      act(() => {
-        renderer = create(element);
-      });
-    } else {
-      const live = renderer;
-      act(() => live.update(element));
-    }
+    probe.render(element);
   };
 
   beforeEach(() => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.useFakeTimers();
     dir = mkdtempSync(join(tmpdir(), 'mudengine-autosave-'));
   });
 
   afterEach(() => {
-    if (renderer !== null) act(() => renderer?.unmount());
-    renderer = null;
+    probe.unmount();
     out.current = null;
     vi.useRealTimers();
     rmSync(dir, { recursive: true, force: true });
@@ -234,7 +226,7 @@ describe('switching what is being edited before the delay has run', () => {
 
 describe('taking the form away before the delay has run', () => {
   let dir: string;
-  let renderer: ReactTestRenderer | null = null;
+  const probe = mount();
   const out: MutableRefObject<AutoSave | null> = { current: null };
   const fileOf = (identity: string): string => join(dir, `${identity}.json`);
   const writeNow: Write = (identity, value) => {
@@ -243,25 +235,16 @@ describe('taking the form away before the delay has run', () => {
   };
   const render = (identity: string, value: Form, enabled: boolean): void => {
     const element = createElement(Probe, { identity, value, write: writeNow, out, enabled });
-    if (renderer === null) {
-      act(() => {
-        renderer = create(element);
-      });
-    } else {
-      const live = renderer;
-      act(() => live.update(element));
-    }
+    probe.render(element);
   };
 
   beforeEach(() => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.useFakeTimers();
     dir = mkdtempSync(join(tmpdir(), 'mudengine-autosave-'));
   });
 
   afterEach(() => {
-    if (renderer !== null) act(() => renderer?.unmount());
-    renderer = null;
+    probe.unmount();
     out.current = null;
     vi.useRealTimers();
     rmSync(dir, { recursive: true, force: true });

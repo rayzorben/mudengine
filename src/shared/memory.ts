@@ -80,6 +80,21 @@ export interface Discovery {
 }
 
 /**
+ * Somewhere to keep what a character learns about its realm.
+ *
+ * Narrow on purpose: the session layer decides *when* something has been
+ * learned and says so, and knows nothing about where it is written down. The
+ * implementation is `WorldMemory` in `src/main/world/`.
+ */
+export interface RealmMemory {
+  /** Records it, or returns null if this was already known. */
+  learn(discovery: Discovery): Discovery | null;
+  /** Strikes one out by its `discoveryKey`. Whether there was one to strike. */
+  forget(key: string): boolean;
+  readonly all: readonly Discovery[];
+}
+
+/**
  * The identity of an observation, for keeping one copy of it.
  *
  * Keyed on the walk rather than on its outcome, so walking the same new exit

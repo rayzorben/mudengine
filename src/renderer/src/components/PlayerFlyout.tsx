@@ -21,7 +21,7 @@ import {
   type RemoteGrant,
   type RemoteName
 } from '@shared/remotes';
-import { playerKey, type PlayerRecord } from '@shared/players';
+import { recordOf, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import { titleReading } from '@shared/titles';
 
 /**
@@ -44,6 +44,8 @@ export interface PlayerFlyoutProps {
   asked: PlayerAsked;
   /** The character whose listing was clicked — not necessarily the shown one. */
   character: CharacterState;
+  /** That character's registry, which is pushed apart from it. */
+  players: PlayerRegistry;
   /**
    * How that character's remote answering is configured — `automation.remotes`,
    * resolved for it. The whole block rather than only this person's grant: the
@@ -60,7 +62,7 @@ export interface PlayerFlyoutProps {
    * rather than local state: a permission somebody set by clicking and lost on
    * relaunch is one they will not trust enough to use. The **whole** grant,
    * because *Allow all* is one press and twenty writes would be twenty rewrites
-   * of the same file racing each other. See `App.tsx`.
+   * of the same file racing each other. See `SlideOuts`.
    */
   onGrant(name: string, grant: RemoteGrant): void;
   /**
@@ -68,7 +70,7 @@ export interface PlayerFlyoutProps {
    *
    * The same control every other item name in the client is, and it replaces
    * this panel rather than opening beside it — one panel at a time, which is
-   * `inspect`'s own rule in `App.tsx` and the reason clicking through never
+   * `inspect`'s own rule in `useSlideOuts` and the reason clicking through never
    * leaves two things to put away.
    *
    * The stats are deliberately **not** inlined here. A `PlayerRecord` is
@@ -160,6 +162,7 @@ type Face = 'player' | 'equipment' | 'access';
 export default function PlayerFlyout({
   asked,
   character,
+  players,
   remotes,
   onGrant,
   onSelectGang,
@@ -171,9 +174,9 @@ export default function PlayerFlyout({
   const [face, setFace] = useState<Face>('player');
   const copy = useCopyMenu();
 
-  // A direct lookup: `playerKey` is what the registry files a name under.
-  const record = character.players[playerKey(asked.name)] ?? null;
-  const now = character.updatedAt ?? 0;
+  const record = recordOf(players, asked.name);
+  // Read at the draw, which follows the character's pushes and the registry's alike.
+  const now = Date.now();
 
   /*
    * Whether this person shares this character's gang, read **once** and handed

@@ -22,6 +22,9 @@
  * seam is a hairline, the hit area is 24px wide whatever the density's gap.
  */
 
+/** How the panes divide the slate: stacked, or side by side. */
+export type PaneFlow = 'rows' | 'columns';
+
 export interface SplitRange {
   /** Narrowest the pane may be dragged, in CSS px. */
   min: number;

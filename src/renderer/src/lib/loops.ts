@@ -8,6 +8,8 @@
  * has no DOM for.
  */
 import { loopCategory, splitStop, UNCATEGORISED, type Loop, type LoopScope } from '@shared/loops';
+import { record, type History } from './history';
+import type { ProfileSummary, SessionId } from '@shared/ipc';
 
 /**
  * Where a chosen loop is kept, once it has been started.
@@ -29,6 +31,23 @@ export type LoopDestination = Extract<LoopScope, 'profile' | 'server'> | 'none';
  * where a picked loop almost always belongs.
  */
 export const LOOP_DESTINATIONS: readonly LoopDestination[] = ['profile', 'server', 'none'];
+
+/**
+ * Who a loop filed into a scope belongs to: the character for its own, its
+ * realm for the realm's, nobody for the global one. The Loops modal and the
+ * builder both file through this, since a loop filed from one surface under
+ * another owner is invisible to the other.
+ */
+export function loopOwner(
+  scope: LoopScope,
+  session: SessionId,
+  profiles: readonly Pick<ProfileSummary, 'id' | 'serverName'>[]
+): string | null {
+  if (scope === 'server') {
+    return profiles.find((profile) => profile.id === session)?.serverName ?? null;
+  }
+  return scope === 'global' ? null : session;
+}
 
 /**
  * What choosing a row asks for: a loop to file, or a name already on disk.
@@ -380,4 +399,31 @@ function shortName(name: string, category: string): string {
   const rest = name.slice(prefix.length).trim();
   // A loop called exactly `Sewers:` would otherwise become a blank row.
   return rest.length > 0 ? rest : name;
+}
+
+/**
+ * Puts a loop on a form, or takes it off — matched by name.
+ *
+ * By name because that is how a loop is addressed everywhere else: the palette
+ * starts one by name and `loopNamed` finds it by name, so two called the same
+ * thing are already one to everything that runs them. One helper for all three
+ * forms that hold loops, so a fix to the matching has one place to land.
+ */
+export function withLoopToggled<T extends { loops: Loop[] }>(
+  current: History<T> | null,
+  loop: Loop,
+  same: (a: T, b: T) => boolean
+): History<T> | null {
+  if (current === null) return current;
+  const has = current.present.loops.some((entry) => entry.name === loop.name);
+  return record(
+    current,
+    {
+      ...current.present,
+      loops: has
+        ? current.present.loops.filter((entry) => entry.name !== loop.name)
+        : [...current.present.loops, loop]
+    },
+    same
+  );
 }

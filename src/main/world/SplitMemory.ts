@@ -1,5 +1,4 @@
-import type { Discovery } from '../../shared/memory';
-import type { RealmMemory } from '../session/SessionManager';
+import type { Discovery, RealmMemory } from '../../shared/memory';
 import type { WorldMemory } from './WorldMemory';
 
 /**

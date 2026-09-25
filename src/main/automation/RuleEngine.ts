@@ -16,10 +16,11 @@ import {
   type CharacterState,
   type RoomOccupant
 } from '../../shared/character';
-import { attacksOnSight } from '../../shared/mobs';
+import { attacksFirst, type MobRule } from '../../shared/mobRules';
 import { playersHere } from './HangUp';
 import type { Guard, Rule, RuleFiring } from '../../shared/rules';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /** Block types that mean a combat round is in progress. */
 const COMBAT_BLOCKS = new Set(['user-hits', 'mob-hits', 'mob-misses', 'combat-status']);
@@ -52,27 +53,42 @@ export function countMobs(occupants: readonly RoomOccupant[]): number {
  * rather than harmless, and an unknown is not counted — the same direction
  * `playersHere` errs in, and for the same reason: this guard decides whether to
  * act, and acting on a guess is worse than not acting.
+ *
+ * **A row that says a monster does not attack first is believed** (todo 818):
+ * `friend`, or MegaMUD's *Not Hostile*, whose whole purpose is resting in the
+ * room before attacking it (`attacksFirst`). The Room card shows the realm's
+ * disposition beside the row's, and the override is said once.
  */
-export function countThreats(state: CharacterState): number {
+export function countThreats(state: CharacterState, rules: readonly MobRule[]): number {
   const mine = ownAlignment(state);
   return state.room.occupants.filter(
-    (who) => who.kind === 'mob' && attacksOnSight(who.disposition, mine) === true
+    (who) => who.kind === 'mob' && attacksFirst(who, mine, rules) === true
   ).length;
+}
+
+/**
+ * What a guard can ask that the character's state cannot answer: whether a
+ * hang-up looks clean (a five-minute window nothing on screen shows), and the
+ * monster rows `threats` believes.
+ */
+export interface GuardFacts {
+  hangUpClean?: boolean;
+  mobRules?: readonly MobRule[];
 }
 
 /**
  * Reads a guard field out of state. `undefined` means "not known".
  *
- * `extra` carries what state alone cannot answer — currently whether a hangup
- * looks clean, which depends on a five-minute window nothing on screen shows.
- * Absent, that guard reads as unknown rather than as `true`, and an unknown
- * value fails every comparison except `!=`: a rule that would hang up "when it
- * is safe" must not fire because nobody told it whether it was.
+ * `extra` carries what state alone cannot answer (`GuardFacts`). Absent, a
+ * hang-up guard reads as unknown rather than as `true`, and an unknown value
+ * fails every comparison except `!=`: a rule that would hang up "when it is
+ * safe" must not fire because nobody told it whether it was. Absent rows are
+ * no rows, and `threats` is the realm's reading alone.
  */
 export function readField(
   field: string,
   state: CharacterState,
-  extra?: { hangUpClean?: boolean }
+  extra?: GuardFacts
 ): number | string | boolean | undefined {
   const { vitals, progress, room, inventory } = state;
   switch (field) {
@@ -97,7 +113,7 @@ export function readField(
     case 'mobs':
       return countMobs(room.occupants);
     case 'threats':
-      return countThreats(state);
+      return countThreats(state, extra?.mobRules ?? []);
     case 'players':
       return playersHere(state).length;
     case 'hostiles': {
@@ -192,11 +208,7 @@ export function readField(
  * as zero is how a bot decides it is on 0% health and runs from a fight it was
  * winning — the same reason `CharacterState` is nullable throughout.
  */
-export function testGuard(
-  guard: Guard,
-  state: CharacterState,
-  extra?: { hangUpClean?: boolean }
-): boolean {
+export function testGuard(guard: Guard, state: CharacterState, extra?: GuardFacts): boolean {
   const actual = readField(guard.field, state, extra);
   if (actual === undefined) return guard.op === '!=';
 
@@ -227,20 +239,34 @@ export function testGuard(
 }
 
 /** Fills `{name}` from the triggering block's captures, then from state. */
-export function interpolate(template: string, block: Block | null, state: CharacterState): string {
+export function interpolate(
+  template: string,
+  block: Block | null,
+  state: CharacterState,
+  extra?: GuardFacts
+): string {
   return template.replace(/\{([\w.]+)\}/g, (whole, name: string) => {
     const captured = block?.groups[name];
     if (captured !== undefined) return captured;
-    const field = readField(name, state);
+    const field = readField(name, state, extra);
     return field === undefined ? whole : String(field);
   });
 }
 
 export interface RuleEngineEvents {
   notice?(message: string): void;
+  /**
+   * Whether the character is on the ground (`Grounded.down`): a rule fires
+   * from the last state it was handed, on a block, the mid-round clock or its
+   * own timer, and a character down is handed none (todo 755). Required, as
+   * in every port that gates on it (todo 764): a construction that forgot it
+   * read a character down as standing. The walker's is the one optional
+   * exception, where only `false` is standing (`parts/walking.md`).
+   */
+  onTheGround(): boolean;
 }
 
-export class RuleEngine {
+export class RuleEngine implements SessionModule {
   private rules: Rule[] = [];
   private readonly lastFired = new Map<string, number>();
   private readonly trace: RuleFiring[] = [];
@@ -258,6 +284,8 @@ export class RuleEngine {
    * was.
    */
   private extra: { hangUpClean?: boolean } = {};
+  /** The monster rows the `threats` field believes (`countThreats`), as last loaded. */
+  private mobRules: readonly MobRule[] = [];
   /**
    * Rules already reported as matching with nothing to send.
    *
@@ -268,16 +296,20 @@ export class RuleEngine {
 
   constructor(
     private readonly queue: CommandQueue,
-    private readonly events: RuleEngineEvents = {}
+    private readonly events: RuleEngineEvents
   ) {}
 
   get firings(): RuleFiring[] {
     return [...this.trace];
   }
 
-  /** Replaces the rule set. Timers are rebuilt, cooldowns are kept. */
-  load(rules: Rule[]): void {
+  /**
+   * Replaces the rule set, and the monster rows its `threats` field reads.
+   * Timers are rebuilt, cooldowns are kept.
+   */
+  load(rules: Rule[], mobRules: readonly MobRule[]): void {
     this.rules = rules.filter((rule) => rule.enabled);
+    this.mobRules = mobRules;
     this.rearmTimers();
   }
 
@@ -356,12 +388,15 @@ export class RuleEngine {
     // situation yet, and firing would be acting on nothing.
     if (!state) return;
     if (state.phase !== 'in-game') return;
+    // On the ground the state here is the last one standing (todo 755).
+    if (this.events.onTheGround()) return;
 
     const now = Date.now();
     const since = now - (this.lastFired.get(rule.name) ?? -Infinity);
     if (since < rule.cooldownMs) return;
 
-    const failed = rule.if.find((guard) => !testGuard(guard, state, this.extra));
+    const facts: GuardFacts = { ...this.extra, mobRules: this.mobRules };
+    const failed = rule.if.find((guard) => !testGuard(guard, state, facts));
     if (failed) {
       this.record({
         at: now,
@@ -375,7 +410,7 @@ export class RuleEngine {
     const commands: string[] = [];
     let unresolved: string | null = null;
     for (const action of rule.then) {
-      const command = interpolate(action.command, block, state).trim();
+      const command = interpolate(action.command, block, state, facts).trim();
       // An unresolved placeholder means the capture the rule wanted was not
       // there. Sending the template verbatim would type `attack {target}` into
       // the game, which is worse than doing nothing.

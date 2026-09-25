@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { Classifier } from '../Classifier';
+import { actsOf, applyAct, readLine } from '../lineActs';
 import { CharacterTracker } from '../CharacterTracker';
 import { WorldGraph } from '../../world/WorldGraph';
 
@@ -41,15 +42,14 @@ function feeder(world?: WorldGraph): {
   let seq = 0;
   const feed = (text: string): void => {
     seq += 1;
-    const { block, batch } = classifier.classify({
+    const line = {
       seq,
       at: 1_700_000_000_000 + seq,
       text,
       plain: text,
-      terminator: 'newline'
-    });
-    tracker.apply(block);
-    if (batch) tracker.apply(batch, batch.rows);
+      terminator: 'newline' as const
+    };
+    for (const act of actsOf(readLine(classifier, line))) applyAct(tracker, act);
   };
   const pack = (line: string): void => {
     feed(line);

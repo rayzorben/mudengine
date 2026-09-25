@@ -1,7 +1,19 @@
+import { fieldHintId } from './FormField';
+import { Hint } from './Hint';
 import Icon from './Icon';
 import NameCombo from './NameCombo';
+import { SpellCombo } from './SpellPicker';
 import { t } from '../lib/i18n';
-import { MOB_TREATMENTS, type MobRule, type MobTreatment } from '@shared/config';
+import {
+  isBanded,
+  MOB_CAST_MOST,
+  MOB_TREATMENTS,
+  treated,
+  type MobRule,
+  type MobTreatment
+} from '@shared/mobRules';
+import { int } from '@shared/values';
+import type { SpellOption } from '@shared/ipc';
 
 export interface MobRuleListProps {
   rows: readonly MobRule[];
@@ -16,6 +28,8 @@ export interface MobRuleListProps {
    * own realm.
    */
   known: readonly string[];
+  /** The spells a row's own attack spell is picked from; empty offers none, and typing works. */
+  spells: readonly SpellOption[];
   /** Distinguishes the two forms' controls for the harnesses and for labels. */
   namePrefix: string;
   onChange(rows: MobRule[]): void;
@@ -40,15 +54,22 @@ export interface MobRuleListProps {
  * add one row rather than a ranking of the realm. Every refusal still applies
  * before any band: a band says which of the monsters worth attacking to
  * attack, never that one is worth attacking.
+ *
+ * A banded row may also say how its monster is fought (todo 816): the spell
+ * that opens on it and how many times it is cast, and no backstab; and that
+ * it does not attack first (todo 818), which the Room and Reference cards
+ * show beside the realm's disposition. A stance (`never`, `friend`, `escape`,
+ * `hangup`) carries none of that, so choosing one takes them off (`treated`).
  */
 export default function MobRuleList({
   rows,
   known,
+  spells,
   namePrefix,
   onChange
 }: MobRuleListProps): React.JSX.Element {
-  const update = (index: number, change: Partial<MobRule>) =>
-    onChange(rows.map((entry, at) => (at === index ? { ...entry, ...change } : entry)));
+  const replace = (index: number, row: MobRule) =>
+    onChange(rows.map((entry, at) => (at === index ? row : entry)));
 
   /**
    * Whether an earlier row already names this monster.
@@ -75,7 +96,7 @@ export default function MobRuleList({
                 <NameCombo
                   ariaLabel={t('settings.combat.mobRuleNameAria', { number: index + 1 })}
                   name={`${namePrefix}-${index}-mob`}
-                  onChange={(value) => update(index, { mob: value })}
+                  onChange={(value) => replace(index, { ...row, mob: value })}
                   options={known}
                   placeholder={t('settings.combat.mobRuleNamePlaceholder')}
                   value={row.mob}
@@ -83,7 +104,9 @@ export default function MobRuleList({
                 <select
                   aria-label={t('settings.combat.mobRuleTreatAria', { number: index + 1 })}
                   name={`${namePrefix}-${index}-treat`}
-                  onChange={(event) => update(index, { treat: event.target.value as MobTreatment })}
+                  onChange={(event) =>
+                    replace(index, treated(row, event.target.value as MobTreatment))
+                  }
                   value={row.treat}
                 >
                   {MOB_TREATMENTS.map((treat) => (
@@ -107,6 +130,66 @@ export default function MobRuleList({
                   {t('settings.combat.mobRuleDuplicate')}
                 </p>
               )}
+              {isBanded(row) && (
+                <div className="mob-rule-detail">
+                  <SpellCombo
+                    ariaLabel={t('settings.combat.mobRuleSpellAria', { number: index + 1 })}
+                    name={`${namePrefix}-${index}-spell`}
+                    onChange={(spell) =>
+                      replace(index, { ...row, cast: { spell, times: row.cast?.times ?? 0 } })
+                    }
+                    placeholder={t('settings.combat.mobRuleSpellPlaceholder')}
+                    spells={spells}
+                    value={row.cast?.spell ?? ''}
+                  />
+                  <label>
+                    <span>{t('settings.combat.mobRuleTimes')}</span>
+                    <input
+                      aria-label={t('settings.combat.mobRuleTimesAria', { number: index + 1 })}
+                      className="number"
+                      disabled={(row.cast?.spell ?? '').trim().length === 0}
+                      inputMode="numeric"
+                      name={`${namePrefix}-${index}-times`}
+                      onChange={(event) =>
+                        replace(index, {
+                          ...row,
+                          cast: {
+                            spell: row.cast?.spell ?? '',
+                            times: int(event.target.value, 0, 0, MOB_CAST_MOST)
+                          }
+                        })
+                      }
+                      value={row.cast?.times ?? 0}
+                    />
+                  </label>
+                  <label className="blessing-check">
+                    <input
+                      checked={row.noBackstab === true}
+                      name={`${namePrefix}-${index}-no-backstab`}
+                      onChange={(event) =>
+                        replace(index, { ...row, noBackstab: event.target.checked })
+                      }
+                      type="checkbox"
+                    />
+                    <span>{t('settings.combat.mobRuleNoBackstab')}</span>
+                  </label>
+                  <label className="blessing-check">
+                    <input
+                      aria-describedby={fieldHintId(`${namePrefix}-${index}-not-hostile`)}
+                      checked={row.notHostile === true}
+                      name={`${namePrefix}-${index}-not-hostile`}
+                      onChange={(event) =>
+                        replace(index, { ...row, notHostile: event.target.checked })
+                      }
+                      type="checkbox"
+                    />
+                    <span>{t('settings.combat.mobRuleNotHostile')}</span>
+                    <Hint id={fieldHintId(`${namePrefix}-${index}-not-hostile`)}>
+                      {t('settings.combat.mobRuleNotHostileHint')}
+                    </Hint>
+                  </label>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -126,10 +209,13 @@ export default function MobRuleList({
 /**
  * One literal `t()` per treatment, never a key built from the value:
  * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic key
- * would be an unexempted dynamic call and six keys nothing is seen to read.
+ * would be an unexempted dynamic call and nine keys nothing is seen to read.
  */
 const TREATMENT_WORD: Record<MobTreatment, () => string> = {
   never: () => t('settings.combat.mobRuleNever'),
+  friend: () => t('settings.combat.mobRuleFriend'),
+  escape: () => t('settings.combat.mobRuleEscape'),
+  hangup: () => t('settings.combat.mobRuleHangup'),
   first: () => t('settings.combat.mobRuleFirst'),
   high: () => t('settings.combat.mobRuleHigh'),
   default: () => t('settings.combat.mobRuleDefault'),

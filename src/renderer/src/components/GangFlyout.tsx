@@ -11,7 +11,7 @@ import { PlayerName } from '../lib/players';
 import { type PopoverAnchor } from '../lib/popover';
 import { ownGang, type CharacterState } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
-import { playerKey } from '@shared/players';
+import { playerKey, type PlayerRegistry } from '@shared/players';
 
 /**
  * A gang somebody clicked, whose character's console or listing it was, and
@@ -31,6 +31,8 @@ export interface GangFlyoutProps {
   asked: GangAsked;
   /** The character whose console or listing was clicked — not necessarily the shown one. */
   character: CharacterState;
+  /** That character's registry, which is pushed apart from it. */
+  players: PlayerRegistry;
   /** A member's name clicked: the Player flyout on them, replacing this. */
   onSelectPlayer(session: SessionId, name: string, anchor: PopoverAnchor): void;
   onDismiss(): void;
@@ -83,13 +85,17 @@ export interface GangFlyoutProps {
 export default function GangFlyout({
   asked,
   character,
+  players,
   onSelectPlayer,
   onDismiss,
   returnFocus
 }: GangFlyoutProps) {
   const copy = useCopyMenu();
 
-  const members = useMemo(() => membersOf(character, asked.name), [character, asked.name]);
+  const members = useMemo(
+    () => membersOf(players, character, asked.name),
+    [players, character, asked.name]
+  );
   const online = members.filter((row) => row.online).length;
   /* Whether any of it came from a `bg` listing rather than from `who` alone. */
   const listed = members.some((row) => !row.rosterOnly);

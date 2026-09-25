@@ -59,6 +59,7 @@ import { directoryNames } from './dirs';
 import { discoveryKey, type Discovery } from '../../shared/memory';
 import { realmKey } from '../world/RealmLore';
 import type { ShippedWorld } from '../../shared/worlds';
+import { CONDITION_WAIT_KEYS } from '../../shared/walk';
 
 export interface MigrationOptions {
   home: Home;
@@ -196,7 +197,7 @@ function migrateAll(options: MigrationOptions): void {
   theLoopSettlesAfterAnEscape(home, note, options.internalTemplate);
   statedAutoReconnect(home, note);
   statedTheLightAndSupplies(home, note);
-  statedTheConditionWaits(home, note);
+  statedTheConditionWaits(home, note, options.template);
   statedTheKeyPickup(home, note);
   theTuningBlockGainedKeys(home, note, options.internalTemplate);
   theGmudRealmLeft(home, note);
@@ -241,6 +242,8 @@ function migrateAll(options: MigrationOptions): void {
   theAccountJoinedTheScript(home, note);
   thePagerRepeats(home, note);
   theHangPenaltyIsTheRealms(home, note);
+  statedTheTeleport(home, note, options.template);
+  statedTheFreedomCure(home, note);
 }
 
 /**
@@ -3428,6 +3431,76 @@ function theHangPenaltyIsTheRealms(home: Home, note: (message: string) => void):
 }
 
 /**
+ * The last-ditch teleport below the retreat (2026-09-24, todo 813): the
+ * template's `fleeGoto` block, comments and all, into the options file's
+ * `automation.safety` beside `retreat`, since `reconcileWithTemplate` reaches
+ * no deeper than a top-level block. Off, as shipped; the command is left to
+ * each realm's `server.yaml`, so no realm file is touched. Idempotent: a map
+ * key already there is left alone.
+ */
+function statedTheTeleport(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const source = templateOf(template)?.getIn(['automation', 'safety'], true);
+  const shipped = isMap(source)
+    ? source.items.find((item) => keyText(item as Pair) === 'fleeGoto')
+    : undefined;
+  if (shipped === undefined || !isMap(shipped.value)) return;
+
+  let stated = false;
+  edit(home.options, (document) => {
+    const safety = document.getIn(['automation', 'safety'], true);
+    if (!isMap(safety) || safety.has('fleeGoto')) return false;
+    const pair = document.createPair('fleeGoto', null) as Pair;
+    pair.value = (shipped.value as YAMLMap).clone();
+    const comment = isScalar(shipped.key) ? shipped.key.commentBefore : undefined;
+    if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
+    const at = safety.items.findIndex((item) => keyText(item as Pair) === 'retreat');
+    if (at === -1) safety.items.push(pair);
+    else safety.items.splice(at + 1, 0, pair);
+    stated = true;
+    return true;
+  });
+
+  if (stated) note(t('notices.migration.teleportStated', { file: home.options }));
+}
+
+/**
+ * The fourth cure (2026-09-24, todo 810): `spells.cures.freedom`, blank, into
+ * every file whose `cures:` block predates it, after `disease`, so a block
+ * listing three says the fourth exists. A file stating no `cures:` takes the
+ * whole default and is left alone.
+ * Idempotent: a key stays added whatever its value.
+ */
+function statedTheFreedomCure(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const cures = document.getIn(['automation', 'spells', 'cures'], true);
+      if (!isMap(cures) || cures.has('freedom')) return false;
+      const pair = document.createPair('freedom', DEFAULT_CONFIG.automation.spells.cures.freedom);
+      const at = cures.items.findIndex((item) => keyText(item as Pair) === 'disease');
+      if (at === -1) cures.items.push(pair);
+      else cures.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.freedomCureStated.one', params)
+      : t('notices.migration.freedomCureStated.many', params)
+  );
+}
+
+/**
  * `movement.useWards` becomes `health.useWards`, and it is turned **on**
  * (2026-09-22, todo 02).
  *
@@ -4741,11 +4814,6 @@ const LIGHT_COMMENT = ` Light, before the dark -- MegaMUD's AutoLight.
  the light out again in a room that does not need it, while nothing is walking
  the character, so a torch lasts the sewer rather than the walk to it.`;
 
-const CONDITION_WAIT_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [
-  ['walkWhileBlind', false],
-  ['walkWhilePoisoned', false]
-];
-
 const KEY_PICKUP_DEFAULTS: ReadonlyArray<readonly [string, boolean]> = [['collectKeys', true]];
 
 /** The template's own words for it, so the two files read alike. */
@@ -4763,18 +4831,6 @@ const KEY_PICKUP_COMMENT = ` The key to the door in front of you.
  holds a name that can only be that row -- the realm has three \`iron key\`s,
  and a door opened on a coin toss is the confidently wrong answer the router
  refuses everywhere else. One \`get\` per key per room, said out loud.`;
-
-/** The template's own words for the pair, so the two files read alike. */
-const CONDITION_WAIT_COMMENT = `
- Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
- defaults (0) wait the condition out before the script goes on. Off, a
- route or a loop stands still while the server says the character is
- blind or poisoned, and walks on when it says the condition has passed;
- the card and the tab say which condition it is waiting out. A blind
- character cannot read the room it walks into and misses every swing.
- Paralysis always holds -- a step while held is a command spent to be
- refused -- and disease is left to the cure. A cure spell under \`spells:\`
- ends the wait sooner.`;
 
 const SUPPLIES_COMMENT = ` Keeping the pack stocked -- MegaMUD's Must Have Minimum.
 
@@ -5780,10 +5836,21 @@ function statedTheLightAndSupplies(home: Home, note: (message: string) => void):
  * The key-into-a-map shape, so it is idempotent against somebody who has since
  * set either to `true` — a key stays added whatever its value. Nothing stated
  * is overwritten.
+ *
+ * `walkWhileConfused` joined the run on 2026-09-24 (todo 809) into files that
+ * already state the pair, so each key is written beside the wait before it,
+ * with the paragraph the template puts above it (`CONDITION_WAIT_KEYS` is the
+ * list, in the template's order), and the notice names the keys it wrote.
  */
-function statedTheConditionWaits(home: Home, note: (message: string) => void): void {
+function statedTheConditionWaits(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const comments = templateComments(template, 'automation');
   const stated: string[] = [];
+  const written = new Set<string>();
 
   for (const file of files) {
     edit(file, (document) => {
@@ -5791,23 +5858,38 @@ function statedTheConditionWaits(home: Home, note: (message: string) => void): v
       if (!isMap(movement)) return false;
 
       let changed = false;
-      let first: Pair | null = null;
-      for (const [key, value] of CONDITION_WAIT_DEFAULTS) {
-        if (movement.has(key)) continue;
-        const pair = document.createPair(key, value) as Pair;
-        movement.items.push(pair);
-        if (first === null) first = pair;
-        changed = true;
+      let previous: string | null = null;
+      for (const key of CONDITION_WAIT_KEYS) {
+        if (!movement.has(key)) {
+          const pair = document.createPair(key, DEFAULT_CONFIG.automation.movement[key]) as Pair;
+          // Beside the wait before it, so the three read as the template's run.
+          const at =
+            previous === null
+              ? -1
+              : movement.items.findIndex(
+                  (item) => isScalar(item.key) && String(item.key.value) === previous
+                );
+          if (at === -1) movement.items.push(pair);
+          else movement.items.splice(at + 1, 0, pair);
+          const comment = comments.get(`automation.movement.${key}`);
+          if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
+          written.add(key);
+          changed = true;
+        }
+        previous = key;
       }
       if (!changed) return false;
-      if (first !== null && isScalar(first.key)) first.key.commentBefore = CONDITION_WAIT_COMMENT;
       stated.push(file);
       return true;
     });
   }
 
   if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
+  const params = {
+    count: stated.length,
+    keys: CONDITION_WAIT_KEYS.filter((key) => written.has(key)).join(', '),
+    fileList: stated.join(', ')
+  };
   note(
     stated.length === 1
       ? t('notices.migration.conditionWaitsStated.one', params)
@@ -6090,6 +6172,10 @@ function theTuningBlockGainedKeys(
     addKey('session', 'sentenceHoldMs', DEFAULT_INTERNAL.tuning.session.sentenceHoldMs);
     /* How long a listing the client redraws waits for its prompt (2026-09-10, todo 99). */
     addKey('session', 'rewriteHoldMs', DEFAULT_INTERNAL.tuning.session.rewriteHoldMs);
+    /* How long a Goto or a Loop waits for the locate word's answer (todo 812). */
+    addKey('session', 'locateResolveMs', DEFAULT_INTERNAL.tuning.session.locateResolveMs);
+    /* And how long its ask is worth sending, once a literal in `Claims` (todo 762). */
+    addKey('session', 'locateExpiresMs', DEFAULT_INTERNAL.tuning.session.locateExpiresMs);
     /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
     addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
     addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
@@ -6140,6 +6226,8 @@ function theTuningBlockGainedKeys(
     addKey('walk', 'followSettleMs', DEFAULT_INTERNAL.tuning.walk.followSettleMs);
     // How long an item errand waits on a summons it asked for (todo 806).
     addKey('walk', 'errandAskMs', DEFAULT_INTERNAL.tuning.walk.errandAskMs);
+    // And how late a handover's item can land, once that window's minutes (todo 765).
+    addKey('walk', 'handoverDelayMs', DEFAULT_INTERNAL.tuning.walk.handoverDelayMs);
     // And how many levers-behind-levers one walk will fetch (todo 807).
     addKey('walk', 'leverErrandDepth', DEFAULT_INTERNAL.tuning.walk.leverErrandDepth);
     /*

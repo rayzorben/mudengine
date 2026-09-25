@@ -29,6 +29,7 @@ import {
   type TrainedAttribute,
   type TrainingPlan
 } from '../../shared/training';
+import type { SessionModule } from './Module';
 
 export interface StatScreenPlanner {
   /** Whether the room the character stands in is a trainer's. */
@@ -218,7 +219,7 @@ type Phase =
       stopped: string | null;
     };
 
-export class StatScreen {
+export class StatScreen implements SessionModule {
   private phase: Phase = { kind: 'idle' };
   /** The `train stats` this proposed and has not yet seen answered. */
   private proposed = false;

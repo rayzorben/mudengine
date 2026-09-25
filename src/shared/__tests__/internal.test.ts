@@ -5,6 +5,7 @@ import YAML from 'yaml';
 import ts from 'typescript';
 
 import { DEFAULT_INTERNAL, normalizeInternal, pinnedMatches } from '../internal';
+import { sourceFiles } from './sources';
 
 /*
  * The shipped `internal.yaml` and `DEFAULT_INTERNAL` are the two halves of one
@@ -183,8 +184,7 @@ describe('the tuning block', () => {
    */
   it('has a reader for every key', () => {
     const sources = ['src/main', 'src/renderer', 'src/shared']
-      .flatMap((dir) => walk(path.resolve(dir)))
-      .filter((file) => /\.tsx?$/.test(file) && !file.includes('__tests__'))
+      .flatMap((dir) => sourceFiles(path.resolve(dir)))
       .map((file) => fs.readFileSync(file, 'utf8'))
       .join('\n');
 
@@ -237,9 +237,7 @@ describe('the tuning block', () => {
     expect(barePeriods(probe)).toEqual([1, 2]);
 
     const offenders: string[] = [];
-    const files = walk(path.resolve('src')).filter(
-      (file) => /\.tsx?$/.test(file) && !file.includes('__tests__') && !/\.test\.tsx?$/.test(file)
-    );
+    const files = sourceFiles(path.resolve('src'));
     for (const file of files) {
       const text = fs.readFileSync(file, 'utf8');
       // A file without the word has no call to walk.
@@ -258,14 +256,6 @@ describe('the tuning block', () => {
     expect(offenders).toEqual([]);
   });
 });
-
-/** Every file under a directory, recursively. */
-function walk(dir: string): string[] {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-    return entry.isDirectory() ? walk(full) : [full];
-  });
-}
 
 /** The line of every `setInterval` in a file whose period is literals through and through. */
 function barePeriods(source: ts.SourceFile): number[] {

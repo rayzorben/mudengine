@@ -292,7 +292,7 @@ export type StopPlace = ReturnType<typeof splitStop>;
  * work.
  */
 export function preferredEdges(
-  graph: WorldGraph,
+  graph: Pick<WorldGraph, 'route'>,
   loops: readonly Loop[],
   resolve: (stop: StopPlace) => RoomId | null,
   traveller: Traveller

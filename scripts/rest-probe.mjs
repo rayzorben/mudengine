@@ -112,6 +112,7 @@ const session = new SessionManager(
     data: () => {},
     line: (line) => lines.push(line.plain.replace(/\s+$/, '')),
     block: () => {},
+    players: () => {},
     character: () => {},
     command: () => {},
     state: () => {},
@@ -119,13 +120,14 @@ const session = new SessionManager(
     notice: (message) => console.log(`   [client] ${message}`),
     automation: () => {}
   },
-  undefined,
   {
-    ...profile.config.automation,
-    // Nothing else may send while this is measuring which command did what.
-    enabled: false
-  },
-  profile.config.connection.login
+    automation: {
+      ...profile.config.automation,
+      // Nothing else may send while this is measuring which command did what.
+      enabled: false
+    },
+    login: profile.config.connection.login
+  }
 );
 session.resize({ cols: 80, rows: 24 });
 

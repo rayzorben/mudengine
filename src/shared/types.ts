@@ -30,7 +30,8 @@ export function sameTarget(a: ConnectionTarget, b: ConnectionTarget): boolean {
   return a.host.toLowerCase() === b.host.toLowerCase() && a.port === b.port;
 }
 
-const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
+/** Every `StreamEncoding`, the union's runtime half. */
+export const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 
 /**
  * Narrows a payload that crossed the bridge into a `ConnectionTarget`, or

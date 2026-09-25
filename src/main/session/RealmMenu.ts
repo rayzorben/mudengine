@@ -9,6 +9,7 @@
  * how you die, not how you escape*.
  */
 import type { Block } from '../../shared/blocks';
+import type { SessionModule } from '../automation/Module';
 
 /** The realm chosen off a menu that said what a hang-up costs there. */
 export interface RealmHangPenalty {
@@ -23,7 +24,7 @@ interface Listed {
   percent: number | null;
 }
 
-export class RealmMenu {
+export class RealmMenu implements SessionModule {
   private readonly listed = new Map<string, Listed>();
   private latest: Listed | null = null;
   private asking = false;

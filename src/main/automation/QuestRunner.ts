@@ -49,6 +49,7 @@ import {
   type RoomId,
   type Route
 } from '../../shared/world';
+import type { SessionModule } from './Module';
 
 export interface QuestRunPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -187,7 +188,7 @@ interface Run {
 
 const ACTION = 'quest';
 
-export class QuestRunner {
+export class QuestRunner implements SessionModule {
   private run: Run | null = null;
   /** Whether a lap was held for this run, and so is owed back. */
   private heldLap = false;

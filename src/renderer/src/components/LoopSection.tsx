@@ -23,6 +23,12 @@ export interface LoopSectionProps {
   onDonePicking(): void;
 }
 
+/** The shelf behind the list: one per screen, handed whole to a form that draws one. */
+export type LoopShelf = Pick<
+  LoopSectionProps,
+  'catalogue' | 'picking' | 'onOpenPicker' | 'onDonePicking'
+>;
+
 /**
  * The loops one scope owns, as a list with a shelf behind it.
  *

@@ -7,7 +7,10 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { SET_STATLINE } from '../../../shared/statline';
 
 /** Nothing sends: what matters here is what was *queued* and in which band. */
-function make(overrides: Partial<AutomationConfig> = {}): {
+function make(
+  overrides: Partial<AutomationConfig> = {},
+  ground: { down: boolean } = { down: false }
+): {
   routines: Routines;
   queue: CommandQueue;
   notices: string[];
@@ -25,7 +28,10 @@ function make(overrides: Partial<AutomationConfig> = {}): {
     { send: () => {} }
   );
   return {
-    routines: new Routines(config, queue, { notice: (m) => notices.push(m) }),
+    routines: new Routines(config, queue, {
+      notice: (m) => notices.push(m),
+      onTheGround: () => ground.down
+    }),
     queue,
     notices
   };
@@ -408,7 +414,7 @@ describe('reading the quest counters', () => {
   /*
    * Not on the way in: a complete listing settles *every* counter, so it takes
    * the quest book's own nodes away from the player. The caller is a plan that
-   * crosses a gate written on one (`SessionManager.askCountersFor`).
+   * crosses a gate written on one (`Errands.askCountersFor`).
    */
   it('asks nothing until something needs the counters', () => {
     const { routines, queue } = make();
@@ -815,5 +821,51 @@ describe('owning the status line', () => {
     const off = make({ enabled: false });
     off.routines.askProfile();
     expect(sent(off.queue)).toEqual([]);
+  });
+});
+
+/*
+ * A character lying mortally wounded is fed no state, so what is asked here
+ * comes from a block ahead of the session's gate or from the idle tick (todo
+ * 760). The two drains stand down on `Grounded.down` and ask once the
+ * character is up; the keep-alive goes on, since it serves the link and the
+ * server's idle clock is the socket's (`TGSSocket.lastDataReceived`, reset by
+ * any byte, refused command or not).
+ */
+describe('on the ground', () => {
+  const commandsIn = (queue: CommandQueue): string[] =>
+    queue.snapshot.pending.map((intent) => intent.command);
+  const talk = { ...DEFAULT_CONFIG.automation.talk, lookAtPlayers: true };
+
+  it('drains neither the roster nor the looks on the idle tick, but keeps the link', () => {
+    const ground = { down: false };
+    const { routines, queue } = make(
+      { idle: { enabled: true, afterSeconds: 5, command: '' }, onEnterRealm: [], talk },
+      ground
+    );
+    routines.onCharacter(inRealm);
+    ground.down = true;
+    routines.onRosterUnknown();
+    routines.onPlayersHere(['Durnan']);
+    vi.advanceTimersByTime(6000);
+    expect(commandsIn(queue)).toEqual(['']);
+
+    // Positive control: up again, the next tick drains what waited.
+    ground.down = false;
+    vi.advanceTimersByTime(6000);
+    expect(commandsIn(queue)).toEqual(expect.arrayContaining(['who', 'look durnan']));
+  });
+
+  /*
+   * Exempt, and the exemption is the point: the server answers `par`, `st`
+   * and `pro` on the ground, and each is asked once off a request the
+   * tracker has already handed over, so standing it down would lose it.
+   */
+  it('still asks what the server answers there, once', () => {
+    const { routines, queue } = make({}, { down: true });
+    routines.onPartyChanged();
+    routines.askSheet(1_000);
+    routines.askProfile();
+    expect(commandsIn(queue)).toEqual([DEFAULT_CONFIG.automation.onPartyChange, 'st', 'pro']);
   });
 });

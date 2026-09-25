@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  CARDS,
   DEFAULT_FLOAT,
   docked,
   floatAlphas,
-  hidesWhenEmpty,
-  HIDES_WHEN_EMPTY,
   lifted,
   normalizeLayout,
   raised,
-  RAIL_HEIGHT,
-  type CardId
+  RAIL_HEIGHT
 } from '../useCardLayout';
+import { CARDS, hidesWhenEmpty, HIDES_WHEN_EMPTY, type CardId } from '../../lib/cards';
 
 const ALL: CardId[] = CARDS.map((card) => card.id);
 

@@ -420,7 +420,7 @@ describe('safety', () => {
   });
 
   /*
-   * The record, not the wire. `SessionManager.reportable` arms on a
+   * The record, not the wire. `Publisher.reportable` arms on a
    * `prompt-password` block and falls back to an exact match against the
    * configured password — neither of which covers a realm this client does not
    * recognise answered with `{user} {password}`. The module doing the filling

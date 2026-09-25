@@ -76,6 +76,7 @@ import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import { sameItem } from '../../shared/items';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /** A thing the realm says an exit of the room being stood in demands. */
 export interface KeyedWay {
@@ -124,7 +125,7 @@ export interface KeySources {
   idOf(name: string): number | null;
 }
 
-export class AutoKeys {
+export class AutoKeys implements SessionModule {
   /** Where the last decision was taken, so leaving a room re-arms the memory. */
   private askedIn: string | null = null;
   /** The rows already asked for in this room. */

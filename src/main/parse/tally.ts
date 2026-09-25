@@ -14,10 +14,10 @@
  * measurement altering the thing it measures.
  */
 import type { Block } from '../../shared/blocks';
-import { DENOMINATIONS, type Denomination } from '../../shared/character';
-import type { CharacterState } from '../../shared/character';
+import { coinNamed, type CharacterState } from '../../shared/character';
 import { COPPER_PER } from '../../shared/coins';
 import { blowKind, withArrival, withBlow, withSample, type CombatTally } from '../../shared/tally';
+import { figure } from '../../shared/values';
 import { tuning } from '../app/tuning';
 
 /** `You` and this character's own name are the same swing, said to two audiences. */
@@ -27,9 +27,9 @@ function isSelf(who: string | undefined, state: CharacterState): boolean {
   return state.name !== null && who.toLowerCase() === state.name.toLowerCase();
 }
 
+/** A figure added to a total: one the line did not state adds nothing. */
 function int(value: string | undefined): number {
-  const found = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(found) ? found : 0;
+  return figure(value) ?? 0;
 }
 
 /**
@@ -43,13 +43,11 @@ function int(value: string | undefined): number {
  * bitten by (`src/shared/__tests__/module-cycle.test.ts`). Main may import
  * both; neither shared module gains an edge.
  *
- * Only the first word of the noun is read (`gold` of `gold crowns`), the rule
- * `quotedInCopper` already states: the noun is realm data and a derivative
- * renames the runic coin outright.
+ * Only the first word of the noun is read (`coinNamed`): the noun is realm
+ * data and a derivative renames the runic coin outright.
  */
 function inCopper(count: number, noun: string | undefined): number {
-  const word = (noun ?? '').trim().toLowerCase().split(/\s+/)[0] ?? '';
-  const denomination = DENOMINATIONS.find((name): name is Denomination => name === word);
+  const denomination = coinNamed(noun ?? '');
   return denomination === undefined ? 0 : count * COPPER_PER[denomination];
 }
 
@@ -67,7 +65,7 @@ export function trackTally(
   before: CharacterState,
   /**
    * Whether this block was read as a chance-on-hit off this character's own
-   * gear — see `CharacterTracker.readsAsProc`.
+   * gear — see `readsAsProc` (`proc.ts`).
    *
    * Handed in rather than derived, because the one thing that can attribute
    * such a line is the realm's item row and the round it landed in, and

@@ -1,7 +1,7 @@
 /**
  * Everything the realm knows about one room, for a room nobody is standing in.
  *
- * `CharacterTracker` resolves the shop, the lair, the script and the spell onto
+ * `RoomTracker.attachRealm` resolves the shop, the lair, the script and the spell onto
  * the room the character *is* in, and every card reads them from the character
  * it was handed. A room on the map or on a route list gets none of that — a
  * `MapCell` carries a name, its exits and two booleans — so the lair glyph

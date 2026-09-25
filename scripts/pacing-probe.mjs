@@ -47,20 +47,22 @@ function open(profile) {
       data: (chunk) => raw.push(chunk.text),
       line: () => {},
       block: () => {},
+      players: () => {},
       character: () => {},
       state: () => {},
       telnet: () => {},
       notice: () => {}
     },
-    undefined,
-    // Nothing standing may send commands of its own into a measurement.
     {
-      ...profile.config.automation,
-      idle: { ...profile.config.automation.idle, enabled: false },
-      onEnterRealm: [],
-      rules: []
-    },
-    profile.config.connection.login
+      // Nothing standing may send commands of its own into a measurement.
+      automation: {
+        ...profile.config.automation,
+        idle: { ...profile.config.automation.idle, enabled: false },
+        onEnterRealm: [],
+        rules: []
+      },
+      login: profile.config.connection.login
+    }
   );
   session.resize({ cols: 80, rows: 24 });
   return { session, state };

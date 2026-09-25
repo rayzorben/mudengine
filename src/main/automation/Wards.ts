@@ -43,6 +43,7 @@ import {
   type WorldItem,
   type WorldSpell
 } from '../../shared/world';
+import type { SessionModule } from './Module';
 
 export interface WardSources {
   /** The room's own spell and what it does, or null where it casts nothing the reader could follow. */
@@ -61,7 +62,7 @@ export interface WardEvents {
 /** One tick of a spell's duration, on the server's own clock. */
 const TICK_MS = EFFECT_TICK_SECONDS * 1000;
 
-export class Wards {
+export class Wards implements SessionModule {
   /** When each ward this module used lapses, by spell, on the client's own clock. */
   private readonly until = new Map<number, number>();
   /** When each ward was last asked for, so a use the server swallowed is not repeated per line. */

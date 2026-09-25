@@ -25,90 +25,17 @@
  *
  * Pure, and therefore directly testable without a stream.
  */
-import type {
-  BankBalance,
-  CarriedItem,
-  CharacterState,
-  Denomination
-} from '../../shared/character';
-import { bankKey, DENOMINATIONS } from '../../shared/character';
+import type { CarriedItem, CharacterState, Coins, Denomination } from '../../shared/character';
+import { coinNamed, DENOMINATIONS } from '../../shared/character';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { bareName, countedName, sameItem } from '../../shared/items';
-
-/**
- * A purchase or a sale moving the purse, in the copper the server quoted.
- *
- * `You just bought crystal flask for 980 copper farthings.` and
- * `You sold crystal flask for 275 copper farthings.` both state an **exact
- * figure in copper**, which is the same unit `Wealth:` is normalised into — so
- * unlike a coin pick-up, where the denomination counts move and the total is
- * left for the next listing to restate, there is nothing to convert and no
- * guess to make. The item already moves between the pack and the shop; the
- * money did not, so a shop trip left the purse describing the character as it
- * was before it.
- *
- * **An unknown purse stays unknown.** Adding to or subtracting from `null`
- * would claim this transaction was the whole of it — the refusal the coin
- * pick-up already makes, for the same reason. And the figure is floored at
- * zero: a sale recorded against a stale total must never produce a negative
- * purse, which is a number no readout can mean anything by.
- *
- * The per-denomination counts are deliberately *not* touched. The server does
- * not say which coins it took or gave, and inventing a breakdown that adds up
- * to the right total would be a claim about the purse the wire never made; the
- * next `i` states all five.
- */
-export function withSpend(s: CharacterState, copper: number): CharacterState | null {
-  const wealth = s.inventory.wealth;
-  if (wealth === null || !Number.isFinite(copper) || copper === 0) return null;
-  return { ...s, inventory: { ...s.inventory, wealth: Math.max(0, wealth + copper) } };
-}
-
-/**
- * Records what one bank just said, leaving every other bank alone.
- *
- * **A merge, against this state's own habit.** Every other listing here is
- * authoritative and replaces what it found; `bank` is authoritative about the
- * vault the character is standing in and silent about all the others, so
- * replacing would empty six banks on the word of a command that named one.
- *
- * Matched on the realm's shop id where both sides have one — the only stable
- * key, because the printed name varies by realm — and on the folded name
- * otherwise. An entry that gains an id later (the character banks the same
- * vault on a realm that prints one) matches by name and keeps the id.
- */
-export function withBankBalance(s: CharacterState, said: BankBalance): CharacterState {
-  const key = bankKey(said.name);
-  /*
-   * The id is searched across the **whole** list before the name is considered
-   * at all, and the two passes are why.
-   *
-   * One pass with the choice made per entry takes the first row that matches
-   * *either* rule, and an unided row whose name folds the same way sits ahead
-   * of the ided row for the same vault — so `Bank of Godfrey (#8)` arriving
-   * against a list holding both matched the unided one, updated it, and left
-   * the ided row behind. Two rows, one id, one name, two figures, and the
-   * card's total counting the vault twice on the one card whose whole subject
-   * is money. A character read on GreaterMUD, reconnected to a realm that
-   * prints the id, then re-read walks straight through it.
-   */
-  const byId = said.shop === null ? -1 : s.banks.findIndex((held) => held.shop === said.shop);
-  const index = byId === -1 ? s.banks.findIndex((held) => bankKey(held.name) === key) : byId;
-
-  if (index === -1) return { ...s, banks: [...s.banks, said] };
-
-  const banks = s.banks.map((held, at) =>
-    at === index ? { ...said, shop: said.shop ?? held.shop } : held
-  );
-  return { ...s, banks };
-}
 
 /**
  * The entries of a listing of **things**, which this server separates with
  * commas and never with `and`, each with its trailing full stop taken off.
  * Shared by the tracker and the console's rewrite of the same listing.
  *
- * The tracker's `list` (for prose) splits on ` and ` too, and that is wrong wherever an item's own name
+ * `list` below (for prose) splits on ` and ` too, and that is wrong wherever an item's own name
  * contains the word: the shipped realm has two — `rope and grapple` and `black
  * and white serpent ring` — and the first is the item 157 of its exits are
  * gated on, so the router could never see one in a pack that held it. Both
@@ -129,6 +56,15 @@ export function itemList(value: string | undefined): string[] {
   if (!value) return [];
   return value
     .split(',')
+    .map((entry) => entry.trim().replace(/\.$/, ''))
+    .filter((entry) => entry.length > 0);
+}
+
+/** Splits a comma/`and` separated list, each entry trimmed and its closing full stop dropped. */
+export function list(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/,| and /)
     .map((entry) => entry.trim().replace(/\.$/, ''))
     .filter((entry) => entry.length > 0);
 }
@@ -203,12 +139,32 @@ export function parseCoinEntry(
   if (!match?.groups) return null;
   const count = Number(match.groups['count']);
   if (!Number.isFinite(count)) return null;
-  // The first word is the denomination; the noun after it is realm data and is
-  // not depended on beyond telling a coin from an item. A realm that renames
-  // one simply stops being counted, which is the safe direction.
-  const word = match.groups['coin']!.split(' ')[0]!.toLowerCase();
-  const denomination = DENOMINATIONS.find((name) => name === word);
+  const denomination = coinNamed(match.groups['coin']!);
   return denomination === undefined ? null : { denomination, count };
+}
+
+/**
+ * The five counts a listing that enumerates the purse states: each coin it
+ * named, and **zero** for every denomination it did not. An entry that is not
+ * a coin (null) says nothing about the purse. Read by the pack listing and by
+ * `wealth`'s one line (`ledger.ts`).
+ *
+ * That is the one place coins depart from "null is not zero", and the
+ * departure is what makes the maintained shape work at all: a listing
+ * establishes the counts and the pick-up sentences keep them true until the
+ * next one, which they can only do from a number. Before any listing every
+ * count is null — nobody has said — and a pick-up then leaves it null rather
+ * than claiming the coins picked up were the whole purse. Zero is still never
+ * *drawn*; the row shows what is there (`mudengine-wire` › *Coins are five
+ * facts*).
+ */
+export function coinsListed(entries: ReadonlyArray<ReturnType<typeof parseCoinEntry>>): Coins {
+  const coins = Object.fromEntries(DENOMINATIONS.map((name) => [name, 0])) as Record<
+    Denomination,
+    number | null
+  >;
+  for (const coin of entries) if (coin) coins[coin.denomination] = coin.count;
+  return coins;
 }
 
 export function parseCarriedEntries(entry: string): CarriedItem[] {

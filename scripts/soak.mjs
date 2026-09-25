@@ -253,6 +253,7 @@ class Driver {
         data: () => {},
         line: (line) => this.onLine(line),
         block: (block) => this.onBlock(block),
+        players: () => {},
         character: () => {},
         command: (command, origin) => log(role, 'sent', command, { origin }),
         state: (state) => log(role, 'link', state.phase),
@@ -266,63 +267,63 @@ class Driver {
           if (decision) log(role, 'safety', JSON.stringify(decision));
         }
       },
-      this.world,
       {
-        ...profile.config.automation,
-        enabled: true,
-        // The idle probe would spend commands on `l` all night; the run's own
-        // loop asks for what it needs when it needs it.
-        idle: { ...profile.config.automation.idle, enabled: false },
-        loot: { coins: true, items: [] },
-        combat: {
-          ...profile.config.automation.combat,
+        world: this.world,
+        automation: {
+          ...profile.config.automation,
           enabled: true,
-          retaliate: true
-          // A route fights on the way of its own accord since todo 00, so
-          // there is no third switch to set here.
-        },
-        health: { ...profile.config.automation.health, restBelow: 0.5 },
-        /*
-         * Running away is on, and that is a decision about the *characters*
-         * rather than about the measurement.
-         *
-         * These are the player's own, one of them level 28 with forty million
-         * experience on it, and an eight-hour unattended run is exactly the
-         * shape of evening that ends with everything on the temple floor.
-         * Walking out costs nothing a hangup does not cost far more of
-         * (docs/greatermud/combat.md), and the escape path is worth measuring
-         * in its own right — a client that never runs away all night has not
-         * proved that it would. Which is precisely how the `flee` defect
-         * survived: the escape *fired* every evening and the command it sent
-         * did nothing, and no unattended run could tell the difference.
-         */
-        safety: {
-          ...profile.config.automation.safety,
-          retreat: {
-            ...profile.config.automation.safety.retreat,
+          // The idle probe would spend commands on `l` all night; the run's own
+          // loop asks for what it needs when it needs it.
+          idle: { ...profile.config.automation.idle, enabled: false },
+          loot: { coins: true, items: [] },
+          combat: {
+            ...profile.config.automation.combat,
             enabled: true,
-            belowHealth: Math.max(0.3, profile.config.automation.safety.retreat.belowHealth)
+            retaliate: true
+            // A route fights on the way of its own accord since todo 00, so
+            // there is no third switch to set here.
+          },
+          health: { ...profile.config.automation.health, restBelow: 0.5 },
+          /*
+           * Running away is on, and that is a decision about the *characters*
+           * rather than about the measurement.
+           *
+           * These are the player's own, one of them level 28 with forty million
+           * experience on it, and an eight-hour unattended run is exactly the
+           * shape of evening that ends with everything on the temple floor.
+           * Walking out costs nothing a hangup does not cost far more of
+           * (docs/greatermud/combat.md), and the escape path is worth measuring
+           * in its own right — a client that never runs away all night has not
+           * proved that it would. Which is precisely how the `flee` defect
+           * survived: the escape *fired* every evening and the command it sent
+           * did nothing, and no unattended run could tell the difference.
+           */
+          safety: {
+            ...profile.config.automation.safety,
+            retreat: {
+              ...profile.config.automation.safety.retreat,
+              enabled: true,
+              belowHealth: Math.max(0.3, profile.config.automation.safety.retreat.belowHealth)
+            }
+          },
+          /*
+           * The feature this run exists to exercise hardest, and the reason the
+           * transcript that started it exists: a route that stops at a locked
+           * door stops the loop, and a loop that stops is an evening lost.
+           */
+          movement: {
+            ...profile.config.automation.movement,
+            openDoors: true,
+            openTries: 2,
+            pickLocks: true,
+            pickTries: 3,
+            bashDoors: true,
+            bashTries: 3
           }
         },
-        /*
-         * The feature this run exists to exercise hardest, and the reason the
-         * transcript that started it exists: a route that stops at a locked
-         * door stops the loop, and a loop that stops is an evening lost.
-         */
-        movement: {
-          ...profile.config.automation.movement,
-          openDoors: true,
-          openTries: 2,
-          pickLocks: true,
-          pickTries: 3,
-          bashDoors: true,
-          bashTries: 3
-        }
-      },
-      profile.config.connection.login,
-      undefined,
-      undefined,
-      this.fights
+        login: profile.config.connection.login,
+        fights: this.fights
+      }
     );
     this.session.resize({ cols: 80, rows: 24 });
     // Owned, and unref'd: a pending verdict must never be the thing keeping

@@ -80,5 +80,10 @@ export function useToolbarPins(patterns: readonly string[], ids: readonly string
     [patterns, ids]
   );
 
-  return { pinned, toggle };
+  /*
+   * One object for as long as the row and its control are, because the card
+   * context lists it: a fresh pair per render rebuilt every card's context,
+   * and so every pinned float, on every commit of the window (todo 761).
+   */
+  return useMemo(() => ({ pinned, toggle }), [pinned, toggle]);
 }

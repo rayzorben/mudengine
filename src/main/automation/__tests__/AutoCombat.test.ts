@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { AutoCombat } from '../AutoCombat';
 import type { EngageDecision } from '../../../shared/automation';
@@ -22,6 +25,8 @@ import { GUARDED_BY_ABILITY } from '../../../shared/guards';
 import { WEAPON_HAND } from '../../../shared/items';
 import type { RealmFamily } from '../../../shared/realm';
 import type { MobAttack, WorldSpell } from '../../../shared/world';
+import type { InstantSpellLore } from '../../../shared/lore';
+import { RealmLore } from '../../world/RealmLore';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -125,9 +130,12 @@ let sent: string[];
 let notices: string[];
 let decisions: EngageDecision[];
 let queue: CommandQueue;
+/** On the ground, as `Grounded.down` answers it (todo 760). */
+let down: boolean;
 
 beforeEach(() => {
   vi.useFakeTimers();
+  down = false;
   sent = [];
   notices = [];
   decisions = [];
@@ -145,7 +153,9 @@ function make(
   spells?: SpellsConfig,
   realmClass?: () => { combat: number | null; magery: number | null; family: RealmFamily | null },
   /** Whether the class can get into the shadows; undefined is unknown (todo 28). */
-  canHide?: () => boolean | null
+  canHide?: () => boolean | null,
+  /** What the realm's wire taught about its attack spells (todo 820). */
+  instants?: InstantSpellLore
 ): AutoCombat {
   return new AutoCombat(
     config,
@@ -154,11 +164,13 @@ function make(
     {
       notice: (m) => notices.push(m),
       decided: (decision) => decisions.push(decision),
-      ...(canHide === undefined ? {} : { canHide })
+      ...(canHide === undefined ? {} : { canHide }),
+      onTheGround: () => down
     },
     spells ?? DEFAULT_CONFIG.automation.spells,
     undefined,
-    realmClass
+    realmClass,
+    instants
   );
 }
 
@@ -1322,6 +1334,36 @@ describe('what to swing with', () => {
     expect(sent).toEqual(['']);
   });
 
+  /*
+   * A monster goes on hitting a character lying mortally wounded, and each
+   * blow arms the round clock, which ticks on the last state the session
+   * handed over: the one standing (todo 760). Down, the round sends nothing;
+   * up, the same blows are rounds again.
+   */
+  it('keeps no rounds while the character is on the ground', () => {
+    const auto = make(combat({ engage: 'none', refreshRounds: 1 }));
+    auto.onCharacter(
+      state({
+        room,
+        inCombat: true,
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'giant rat' }
+      })
+    );
+    down = true;
+    for (let round = 0; round < 3; round += 1) {
+      auto.onBlock(block('mob-hits'));
+      vi.advanceTimersByTime(200);
+    }
+    drain();
+    expect(sent).toEqual([]);
+
+    down = false;
+    auto.onBlock(block('mob-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual(['']);
+  });
+
   it('never re-reads the room when it was not asked to', () => {
     const auto = make(combat({ engage: 'none', refreshRounds: 0 }));
     auto.onCharacter(
@@ -1656,7 +1698,7 @@ describe('casting in a fight', () => {
       combat({ engage: 'none' }),
       true,
       queue,
-      { notice: (m) => notices.push(m) },
+      { notice: (m) => notices.push(m), onTheGround: () => down },
       { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 },
       realm
     );
@@ -1700,7 +1742,7 @@ describe('casting in a fight', () => {
       combat({ engage: 'none' }),
       true,
       queue,
-      { notice: (m) => notices.push(m), needBook: () => (asked += 1) },
+      { notice: (m) => notices.push(m), needBook: () => (asked += 1), onTheGround: () => down },
       { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 }
     );
     const fight = state({
@@ -1736,13 +1778,34 @@ describe('casting in a fight', () => {
       healParty: false,
       invokeItems: false,
       minMana: 0.15,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChoose: false
     });
     auto.onCharacter(fighting());
+    auto.onBlock(block('user-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual(['ma giant rat']);
+  });
+
+  /* The refused half of a round on the ground: the cast (`CastCommand`, todo 760). */
+  it('casts nothing while the character is on the ground, and casts once up', () => {
+    const auto = make(combat({ engage: 'none', refreshRounds: 0 }), true, {
+      ...DEFAULT_CONFIG.automation.spells,
+      attack: 'ma',
+      autoChoose: false,
+      minMana: 0
+    });
+    auto.onCharacter(fighting());
+    down = true;
+    auto.onBlock(block('user-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual([]);
+    down = false;
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
@@ -1766,7 +1829,7 @@ describe('casting in a fight', () => {
       healParty: false,
       invokeItems: false,
       minMana: 0,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
@@ -1798,7 +1861,7 @@ describe('casting in a fight', () => {
       healParty: false,
       invokeItems: false,
       minMana: 0.9,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
@@ -1829,7 +1892,7 @@ describe('casting in a fight', () => {
       healParty: false,
       invokeItems: false,
       minMana: 0.9,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
@@ -1868,7 +1931,7 @@ describe('casting in a fight', () => {
       healParty: false,
       invokeItems: false,
       minMana: 0,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
@@ -1913,7 +1976,7 @@ describe('casting in a fight', () => {
       healParty: false,
       invokeItems: false,
       minMana: 0.15,
-      cures: { blindness: '', poison: '', disease: '' },
+      cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
@@ -1964,7 +2027,10 @@ describe('casting in a fight', () => {
       expect(notices.some((line) => line.includes('mmis'))).toBe(true);
     });
 
-    it('leaves the fight to the round attacks with no fallback, and says so once', () => {
+    /* The server goes on casting a spell with no effect for as long as it is
+       the character's attack, so with no fallback the round changes to the
+       attack verb — once, and said once. */
+    it('hands the fight to the attack verb with no fallback, and says so once', () => {
       const auto = make(rounds(), true, spells());
       auto.onCharacter(crowded(1));
       auto.onBlock(block('user-hits'));
@@ -1975,28 +2041,33 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['ma giant rat']);
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['ma giant rat', 'a giant rat']);
       expect(notices.filter((line) => line.includes('no effect'))).toHaveLength(1);
     });
 
-    /* MegaMUD's MaxCastCnt, counted on the server's confirmation: a fizzle is
-       not a cast, and the round after one casts again. */
+    /* MegaMUD's MaxCastCnt, counted on the server's own repeats: a fizzle is
+       not a cast and needs nothing sent, since the server casts again next
+       round by itself (todo 816); the cap spent, the round changes to `a`. */
     it('stops casting after the configured casts per target', () => {
       const auto = make(rounds(), true, spells({ attackCasts: 1 }));
       auto.onCharacter(crowded(1));
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
+      auto.onBlock(block('combat-status', { status: 'Engaged' }));
       auto.onBlock(block('spell-failed'));
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
       auto.onBlock(block('spell-cast', { caster: 'You', spell: 'ma', target: 'giant rat' }));
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
+      expect(sent).toEqual(['ma giant rat', 'a giant rat']);
     });
 
     /* A heal confirmed in the same window is a different spell and spends
@@ -2011,9 +2082,11 @@ describe('casting in a fight', () => {
       auto.onBlock(block('user-hits'));
       vi.advanceTimersByTime(200);
       drain();
-      expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
+      expect(sent).toEqual(['ma giant rat']);
     });
 
+    /* The fight over — an Off that answers no attack — the next monster's
+       fight is its own, with the whole cap to spend. */
     it('starts the count again on a new target', () => {
       const auto = make(rounds(), true, spells({ attackCasts: 1 }));
       auto.onCharacter(crowded(1));
@@ -2021,6 +2094,7 @@ describe('casting in a fight', () => {
       vi.advanceTimersByTime(200);
       drain();
       auto.onBlock(block('spell-cast', { caster: 'You', spell: 'ma', target: 'giant rat' }));
+      auto.onBlock(block('combat-status', { status: 'Off' }), null);
       const next = crowded(1);
       auto.onCharacter({ ...next, combat: { ...next.combat, target: 'kobold thief' } });
       auto.onBlock(block('user-hits'));
@@ -2104,6 +2178,359 @@ describe('casting in a fight', () => {
       drain();
       expect(sent).toEqual(['ma giant rat']);
     });
+  });
+});
+
+/*
+ * Todo 816: an attack spell opens the fight in place of `a`, and the server
+ * casts it every round from then on — GreaterMUD wire, vaelor2 2026-09-01:
+ * `harm k`, `*Combat Off*`, `*Combat Engaged*`, then `You cast harm at tall
+ * kobold thief for 15 damage!` twice in the next round, nothing typed.
+ */
+describe('an attack spell opens the fight', () => {
+  const caster = (over: Partial<SpellsConfig> = {}): SpellsConfig => ({
+    ...DEFAULT_CONFIG.automation.spells,
+    attack: 'harm',
+    autoChoose: false,
+    minMana: 0,
+    ...over
+  });
+  const fights = (over: Partial<CombatConfig> = {}) => combat({ refreshRounds: 0, ...over });
+  const room = { ...EMPTY_CHARACTER.room, occupants: [mob('tall kobold thief', 'hostile')] };
+  const vitals = (mana: number) => ({
+    ...EMPTY_CHARACTER.vitals,
+    mana,
+    manaMax: 100,
+    manaType: 'MA' as const
+  });
+  const standing = (mana = 40) => state({ room, vitals: vitals(mana) });
+  const fighting = (mana = 40) =>
+    state({
+      room,
+      vitals: vitals(mana),
+      inCombat: true,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'tall kobold thief' }
+    });
+  /** One of the server's own casts, as the wire prints it: a blow. */
+  const repeat = (auto: AutoCombat, spell = 'harm') =>
+    auto.onBlock(
+      block('user-hits', {
+        attacker: 'You',
+        line: `cast ${spell} at tall kobold thief`,
+        damage: '15'
+      })
+    );
+  const round = () => {
+    vi.advanceTimersByTime(200);
+    drain();
+  };
+  /** The engagement the opener's cast is answered with, and the state it leaves. */
+  const engaged = (auto: AutoCombat, mana = 40) => {
+    auto.onBlock(block('combat-status', { status: 'Engaged' }));
+    auto.onCharacter(fighting(mana));
+  };
+
+  it('casts at the monster instead of attacking it', () => {
+    const auto = make(fights(), true, caster());
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief']);
+  });
+
+  it('sends nothing more while the server repeats the spell', () => {
+    const auto = make(fights(), true, caster());
+    auto.onCharacter(standing());
+    drain();
+    engaged(auto);
+    for (let i = 0; i < 3; i += 1) {
+      repeat(auto);
+      round();
+    }
+    expect(sent).toEqual(['harm tall kobold thief']);
+  });
+
+  it("counts the server's repeats toward the cap, then changes to the attack verb once", () => {
+    const auto = make(fights(), true, caster({ attackCasts: 2 }));
+    auto.onCharacter(standing());
+    drain();
+    engaged(auto);
+    repeat(auto);
+    round();
+    expect(sent).toEqual(['harm tall kobold thief']);
+    repeat(auto);
+    round();
+    auto.onBlock(block('user-hits'));
+    round();
+    expect(sent).toEqual(['harm tall kobold thief', 'a tall kobold thief']);
+  });
+
+  /* A cast into a fight answers `*Combat Off*` and `*Combat Engaged*`: the
+     Off is its own, so neither the count nor the engage cooldown goes. */
+  it('keeps the count and the cooldown through its own re-engagement', () => {
+    const auto = make(fights(), true, caster({ attackCasts: 2 }));
+    auto.onCharacter(standing());
+    drain();
+    engaged(auto);
+    repeat(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'harm tall kobold thief');
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief']);
+    engaged(auto);
+    repeat(auto);
+    round();
+    expect(sent).toEqual(['harm tall kobold thief', 'a tall kobold thief']);
+  });
+
+  /* `DoMagicRound` casts nothing a round the pool cannot pay for, and the
+     character would stand in the fight doing nothing. */
+  it('changes to the attack verb when the mana floor is reached', () => {
+    const auto = make(fights(), true, caster({ minMana: 0.3 }));
+    auto.onCharacter(standing(60));
+    drain();
+    engaged(auto, 20);
+    repeat(auto);
+    round();
+    expect(sent).toEqual(['harm tall kobold thief', 'a tall kobold thief']);
+  });
+
+  it('opens with the class opener, and the round changes to the spell', () => {
+    const auto = make(fights({ opener: 'bs' }), true, caster());
+    auto.onCharacter(standing());
+    drain();
+    auto.onCharacter(fighting());
+    auto.onBlock(block('user-hits'));
+    round();
+    expect(sent).toEqual(['bs tall kobold thief', 'harm tall kobold thief']);
+  });
+
+  it('does not backstab a monster its row says not to', () => {
+    const rules = [{ mob: 'tall kobold thief', treat: 'default' as const, noBackstab: true }];
+    const auto = make(fights({ opener: 'bs', mobRules: rules }));
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['a tall kobold thief']);
+  });
+
+  it('fights a monster with the spell its row names, at most as often as it says', () => {
+    const rules = [
+      { mob: 'tall kobold thief', treat: 'default' as const, cast: { spell: 'mmis', times: 1 } }
+    ];
+    const auto = make(fights({ mobRules: rules }), true, caster());
+    auto.onCharacter(standing());
+    drain();
+    auto.onCharacter(fighting());
+    repeat(auto, 'mmis');
+    round();
+    expect(sent).toEqual(['mmis tall kobold thief', 'harm tall kobold thief']);
+  });
+
+  /* A bare cast names nobody for the engagement to bind. */
+  it('never opens with the room spell', () => {
+    const auto = make(
+      fights(),
+      true,
+      caster({ attack: '', areaAttack: 'pclo', areaMinMobs: 1, areaMinMana: 0 })
+    );
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['a tall kobold thief']);
+  });
+
+  /* The player's spell is theirs: with nothing configured, a round must not
+     put the character back on melee (816 review). */
+  it("leaves the player's own spell alone with none configured", () => {
+    const auto = make(fights(), true, caster({ attack: '' }));
+    const book = [{ name: 'harm', short: 'harm', level: 1, cost: 1 }];
+    auto.onCharacter({ ...fighting(), spellbook: book });
+    auto.noteUserCommand('harm tall');
+    auto.onBlock(block('user-hits'));
+    round();
+    auto.onBlock(block('user-hits'));
+    round();
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * An instant spell breaks the fight it is cast into and engages nothing
+   * (`Player.cs:6044-6049`), so its Off is no re-engagement: the monster is
+   * owed its attack back at once (todo 03). A combat spell's Off is followed
+   * by its engagement, which keeps the cooldown (the control).
+   */
+  describe('a cast whose Off the next line explains', () => {
+    const book = [
+      { name: 'hold person', short: 'hold', level: 1, cost: 1 },
+      { name: 'harm', short: 'harm', level: 1, cost: 1 }
+    ];
+    const opened = (auto: AutoCombat) => {
+      auto.onCharacter({ ...standing(), spellbook: book });
+      drain();
+      auto.onCharacter({ ...fighting(), spellbook: book });
+    };
+
+    it('re-engages at once after an instant spell cast into the fight', () => {
+      const auto = make(fights());
+      opened(auto);
+      auto.onBlock(block('combat-status', { status: 'Off' }), 'hold tall kobold thief');
+      auto.onBlock(
+        block('spell-cast', { caster: 'You', spell: 'hold person', target: 'tall kobold thief' })
+      );
+      auto.onCharacter({ ...standing(), spellbook: book });
+      drain();
+      expect(sent).toEqual(['a tall kobold thief', 'a tall kobold thief']);
+    });
+
+    it('keeps the cooldown when the engagement follows', () => {
+      const auto = make(fights());
+      opened(auto);
+      auto.onBlock(block('combat-status', { status: 'Off' }), 'harm tall kobold thief');
+      auto.onBlock(block('status-line'));
+      auto.onBlock(block('combat-status', { status: 'Engaged' }));
+      auto.onCharacter({ ...standing(), spellbook: book });
+      drain();
+      expect(sent).toEqual(['a tall kobold thief']);
+    });
+  });
+
+  /* A cast answered by its own result before any engagement is instant: it
+     no longer opens a fight, and is cast each round instead. */
+  it('learns an instant attack spell from its answer, and stops opening with it', () => {
+    const book = [{ name: 'hold person', short: 'hold', level: 1, cost: 1 }];
+    const auto = make(fights(), true, caster({ attack: 'hold person' }));
+    auto.onCharacter({ ...standing(), spellbook: book });
+    drain();
+    expect(sent).toEqual(['hold tall kobold thief']);
+    auto.onBlock(
+      block('spell-cast', { caster: 'You', spell: 'hold person', target: 'tall kobold thief' })
+    );
+    expect(notices.some((line) => line.includes('instant'))).toBe(true);
+    const rat = {
+      ...EMPTY_CHARACTER.room,
+      name: 'A Lane',
+      occupants: [mob('small rat', 'hostile')]
+    };
+    auto.onCharacter(state({ room: rat, vitals: vitals(40), spellbook: book }));
+    drain();
+    expect(sent).toEqual(['hold tall kobold thief', 'a small rat']);
+    const onRat = state({
+      room: rat,
+      vitals: vitals(40),
+      spellbook: book,
+      inCombat: true,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'small rat' }
+    });
+    auto.onCharacter(onRat);
+    auto.onBlock(block('user-hits'));
+    round();
+    auto.onBlock(block('user-hits'));
+    round();
+    expect(sent).toEqual([
+      'hold tall kobold thief',
+      'a small rat',
+      'hold small rat',
+      'hold small rat'
+    ]);
+  });
+
+  it('keeps opening with a spell whose engagement answers it', () => {
+    const book = [{ name: 'harm', short: 'harm', level: 1, cost: 1 }];
+    const auto = make(fights(), true, caster());
+    auto.onCharacter({ ...standing(), spellbook: book });
+    drain();
+    auto.onBlock(block('combat-status', { status: 'Engaged' }));
+    repeat(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), null);
+    const rat = {
+      ...EMPTY_CHARACTER.room,
+      name: 'A Lane',
+      occupants: [mob('small rat', 'hostile')]
+    };
+    auto.onCharacter(state({ room: rat, vitals: vitals(40), spellbook: book }));
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief', 'harm small rat']);
+    expect(notices.some((line) => line.includes('instant'))).toBe(false);
+  });
+
+  /*
+   * Todo 820: what the wire taught is the realm's, kept in `RealmLore` beside
+   * the death sentences, so the one misjudged opening is paid once per realm
+   * rather than once per connection. Each `launch` is a fresh store over the
+   * same file, as the next start of the client is.
+   */
+  describe('an instant spell, remembered per realm', () => {
+    const book = [
+      { name: 'hold person', short: 'hold', level: 1, cost: 1 },
+      { name: 'harm', short: 'harm', level: 1, cost: 1 }
+    ];
+    let dir: string;
+    let file: string;
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-instants-'));
+      file = path.join(dir, 'mob-lore.json');
+    });
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const launch = () => new RealmLore({ file, saveDelayMs: 0 });
+    /** One connection: a fresh unit opening on the kobold, and what it sent. */
+    const connect = (lore: RealmLore, attack: string): { auto: AutoCombat; opened: string[] } => {
+      sent = [];
+      const auto = make(
+        fights(),
+        true,
+        caster({ attack }),
+        undefined,
+        undefined,
+        lore.forRealm('greatermud', undefined)
+      );
+      auto.onCharacter({ ...standing(), spellbook: book });
+      drain();
+      return { auto, opened: [...sent] };
+    };
+    /** The first connection pays the one opening and learns the spell instant. */
+    const learnHold = (): void => {
+      const lore = launch();
+      const { auto, opened } = connect(lore, 'hold person');
+      expect(opened).toEqual(['hold tall kobold thief']);
+      auto.onBlock(
+        block('spell-cast', { caster: 'You', spell: 'hold person', target: 'tall kobold thief' })
+      );
+      lore.flush();
+    };
+
+    it('opens the next connection with the melee verb, and says why once', () => {
+      learnHold();
+      notices = [];
+      const { auto, opened } = connect(launch(), 'hold person');
+      expect(opened).toEqual(['a tall kobold thief']);
+      auto.onCharacter({ ...fighting(), spellbook: book });
+      auto.onBlock(block('user-hits'));
+      round();
+      const said = notices.filter((line) => line.includes('hold person'));
+      expect(said).toHaveLength(1);
+      expect(said[0]).toMatch(/instant/);
+    });
+
+    it('still opens with a spell this realm never answered instantly (the control)', () => {
+      learnHold();
+      expect(connect(launch(), 'harm').opened).toEqual(['harm tall kobold thief']);
+    });
+
+    it('is forgotten with the realm lore, when the player deletes the file', () => {
+      learnHold();
+      expect(fs.existsSync(file)).toBe(true);
+      fs.rmSync(file);
+      expect(connect(launch(), 'hold person').opened).toEqual(['hold tall kobold thief']);
+    });
+  });
+
+  it('takes a spell the player cast as what the server repeats', () => {
+    const auto = make(fights(), true, caster());
+    const book = [{ name: 'harm', short: 'harm', level: 1, cost: 1 }];
+    auto.onCharacter({ ...fighting(), spellbook: book });
+    auto.noteUserCommand('harm tall');
+    auto.onBlock(block('user-hits'));
+    round();
+    expect(sent).toEqual([]);
   });
 });
 
@@ -3121,5 +3548,203 @@ describe('a monster that protects another', () => {
       combat({ mobRules: [{ mob: 'orc lieutenant', treat: 'never' }] })
     );
     expect(sent).toEqual([]);
+  });
+});
+
+/*
+ * Todo 818: MegaMUD's relationships as rows of `combat.mobRules` beside the
+ * bands — friend, escape, hang up — and its *Not Hostile* on a banded row.
+ * Each refusal has its control: the same room with no row.
+ */
+describe('a row that says what a monster is', () => {
+  const room = (...occupants: RoomOccupant[]) => ({ ...EMPTY_CHARACTER.room, occupants });
+  const rows = (...mobRules: CombatConfig['mobRules']) => combat({ mobRules });
+  const swungAtBy = (name: string, ...occupants: RoomOccupant[]) =>
+    state({
+      room: room(...occupants),
+      inCombat: true,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: [name] }
+    });
+
+  it('opens on a monster no row names (the control)', () => {
+    const auto = make(combat());
+    auto.onCharacter(state({ room: room(mob('giant rat', 'hostile')) }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
+  it('never opens on a friend, and says why', () => {
+    const auto = make(rows({ mob: 'giant rat', treat: 'friend' }));
+    auto.onCharacter(state({ room: room(mob('giant rat', 'hostile')) }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual(['giant rat — giant rat is a friend, by its row']);
+  });
+
+  it('does not hit a friend back, and does hit back one it would escape', () => {
+    const friendly = make(rows({ mob: 'giant rat', treat: 'friend' }));
+    friendly.onCharacter(swungAtBy('giant rat', mob('giant rat', 'hostile')));
+    drain();
+    expect(sent).toEqual([]);
+
+    const dreaded = make(rows({ mob: 'black ooze', treat: 'escape' }));
+    dreaded.onCharacter(swungAtBy('black ooze', mob('black ooze', 'hostile')));
+    drain();
+    expect(sent).toEqual(['a black ooze']);
+  });
+
+  /* MegaMUD's Flee: *any other monsters are ignored* while it stands here. */
+  it('opens nothing beside a monster whose row says to escape or hang up', () => {
+    const fled = make(rows({ mob: 'black ooze', treat: 'escape' }));
+    fled.onCharacter(
+      state({ room: room(mob('giant rat', 'hostile'), mob('black ooze', 'hostile')) })
+    );
+    const hung = make(rows({ mob: 'stalker', treat: 'hangup' }));
+    hung.onCharacter(state({ room: room(mob('giant rat', 'hostile'), mob('stalker', 'hostile')) }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      'giant rat — black ooze is here and its row says to escape, so no fight is opened beside it',
+      'giant rat — stalker is here and its row says to hang up, so no fight is opened beside it'
+    ]);
+  });
+
+  /* MegaMUD's Not Hostile: opened on only by *Attack Non-Hostiles*, `engage: all`. */
+  it('does not open on a monster its row says does not attack first, and says both words', () => {
+    const auto = make(rows({ mob: 'thug', treat: 'default', notHostile: true }));
+    auto.onCharacter(state({ room: room(mob('thug', 'hostile')) }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      'thug — the row for thug says it does not attack first, though the realm says it does, and engage is not all'
+    ]);
+  });
+
+  it('opens on it at engage all', () => {
+    const auto = make(
+      combat({ engage: 'all', mobRules: [{ mob: 'thug', treat: 'default', notHostile: true }] })
+    );
+    auto.onCharacter(state({ room: room(mob('thug', 'hostile')) }));
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  /* A joiner is one certain to attack on sight: the row says this one will not. */
+  it('does not bring in a monster its row says does not attack first when hitting back', () => {
+    const ogre = fighter('orc warrior', 60, [bite(20, 60, 90)]);
+    const rat = fighter('giant rat', 20, [bite(1, 3, 20)]);
+    const bitten = () =>
+      state({
+        inCombat: true,
+        room: room(ogre, rat),
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['giant rat'] }
+      });
+    make(combat({ engage: 'hostile' })).onCharacter(bitten());
+    make(rows({ mob: 'orc warrior', treat: 'default', notHostile: true })).onCharacter(bitten());
+    drain();
+    expect(sent).toEqual(['a orc warrior', 'a giant rat']);
+  });
+
+  /* Hitting back is not opening, and bringing in what has not swung is (818, on review). */
+  it('brings nothing in beside a monster it would escape', () => {
+    const ogre = fighter('orc warrior', 60, [bite(20, 60, 90)]);
+    const ooze = fighter('black ooze', 20, [bite(1, 3, 20)]);
+    const bitten = () =>
+      state({
+        inCombat: true,
+        room: room(ogre, ooze),
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['black ooze'] }
+      });
+    make(combat({ engage: 'hostile' })).onCharacter(bitten());
+    make(rows({ mob: 'black ooze', treat: 'escape' })).onCharacter(bitten());
+    drain();
+    expect(sent).toEqual(['a orc warrior', 'a black ooze']);
+  });
+});
+
+/*
+ * 816's review, taken in 818: the backstab trace names the row only when the
+ * row was the hold, not a spent or a refused opener.
+ */
+describe('why a backstab did not open', () => {
+  const noBackstab = [{ mob: 'giant rat', treat: 'default' as const, noBackstab: true }];
+  const rat = () =>
+    state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] } });
+  let said: string[];
+  const reasons = () => said;
+  beforeEach(() => {
+    said = [];
+    queue.dispose();
+    queue = new CommandQueue(automation, {
+      send: (command, intent) => {
+        sent.push(command);
+        said.push(intent.reason ?? '');
+      }
+    });
+  });
+
+  it('says the row withheld it, where it did', () => {
+    const auto = make(combat({ opener: 'bs', mobRules: noBackstab }));
+    auto.onCharacter(rat());
+    expect(reasons().some((reason) => reason.includes('no backstab, as the row'))).toBe(true);
+  });
+
+  it('does not blame the row for a backstab the realm refused', () => {
+    const auto = make(combat({ opener: 'bs', mobRules: noBackstab }));
+    auto.onBlock(block('attack-refused', { skill: 'backstab' }));
+    auto.onCharacter(rat());
+    expect(reasons()).toHaveLength(1);
+    expect(reasons().some((reason) => reason.includes('no backstab, as the row'))).toBe(false);
+  });
+});
+
+/*
+ * 816's review, taken in 818: a combat spell's Off and its Engaged can have a
+ * guard's `moves to protect`, a prompt or any broadcast between them
+ * (`Player.cs:6083-6188`); only the cast's own result, or the server moving on
+ * to another command, says the fight broke.
+ */
+describe('what follows a cast’s Off', () => {
+  const book = [
+    { name: 'hold person', short: 'hold', level: 1, cost: 1 },
+    { name: 'harm', short: 'harm', level: 1, cost: 1 }
+  ];
+  const kobold = { ...EMPTY_CHARACTER.room, occupants: [mob('tall kobold thief', 'hostile')] };
+  const standing = () => state({ room: kobold, spellbook: book });
+  const opened = (auto: AutoCombat) => {
+    auto.onCharacter(standing());
+    drain();
+    auto.onCharacter(
+      state({
+        room: kobold,
+        spellbook: book,
+        inCombat: true,
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'tall kobold thief' }
+      })
+    );
+  };
+  const broadcast = () =>
+    ({ ...block('player-arrives'), domain: 'room', text: 'Rend walks into the room.' }) as Block;
+
+  it('keeps the fight through a broadcast before the engagement', () => {
+    const auto = make(combat({ refreshRounds: 0 }));
+    opened(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'harm tall kobold thief');
+    auto.onBlock(broadcast(), null);
+    auto.onBlock(block('combat-status', { status: 'Engaged' }), null);
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['a tall kobold thief']);
+  });
+
+  it('reads the fight as broken when the server answers the next command with none', () => {
+    const auto = make(combat({ refreshRounds: 0 }));
+    opened(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'hold tall kobold thief');
+    auto.onBlock(broadcast(), null);
+    auto.onBlock(block('unknown'), 'l');
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['a tall kobold thief', 'a tall kobold thief']);
   });
 });

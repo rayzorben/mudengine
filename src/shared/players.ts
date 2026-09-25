@@ -71,7 +71,7 @@
  */
 
 // From `./alignment` and deliberately not from `./character`: importing a
-// value from there while it imports `NO_PLAYERS` from here is the cycle that
+// value from there while it imported `NO_PLAYERS` from here is the cycle that
 // left `EMPTY_CHARACTER.players` undefined. See `./alignment`.
 import { ALIGNMENTS, type Alignment } from './alignment';
 import type { ItemEntity, PlayerEntity } from './entities';
@@ -294,6 +294,11 @@ export function playerKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/** What the registry holds about `name`, filed the one way every name is, or null. */
+export function recordOf(registry: PlayerRegistry, name: string): PlayerRecord | null {
+  return registry[playerKey(name)] ?? null;
+}
+
 /**
  * The pronoun the realm writes where a name would go, and which is nobody.
  *
@@ -363,9 +368,9 @@ export function newPlayer(name: string, at: number): PlayerRecord {
  *
  * Immutable, and it returns the **same object** when nothing changed, so a
  * caller can use identity to decide whether to republish. That is not a
- * micro-optimisation: the registry rides on every state push, and a new object
- * per line of chat would redraw every card in the client on somebody else's
- * conversation.
+ * micro-optimisation: the registry is pushed whole whenever its identity moves
+ * (`Push.players`), and a new object per line of chat would redraw every card
+ * that lists people on somebody else's conversation.
  *
  * **A later sighting never erases an earlier fact with an absence.** A player
  * seen in a room tells us where they are and nothing about their alignment, so
@@ -549,7 +554,7 @@ export function offlineUnlisted(
  * moving every timestamp to the moment of a disconnect would say everyone was
  * seen at once, erasing the ordering the card is sorted by.
  */
-export function allOffline(registry: PlayerRegistry, _at: number): PlayerRegistry {
+export function allOffline(registry: PlayerRegistry): PlayerRegistry {
   const entries = Object.entries(registry);
   if (!entries.some(([, record]) => record.online)) return registry;
   return Object.fromEntries(
@@ -644,7 +649,7 @@ export function mergeFacts<T extends PlayerFacts>(base: T, incoming: PlayerFacts
  * a card has. The realm's book keeps the later time (`mergeFacts` returns a
  * fresh record for it) but treats it as nothing to write for or tell anyone
  * about — a party listing that moved thirty clocks would otherwise rewrite the
- * file and push every other character's whole state, every few seconds.
+ * file and push every other character's whole registry, every few seconds.
  */
 export function sameFacts(a: PlayerFacts, b: PlayerFacts): boolean {
   return (

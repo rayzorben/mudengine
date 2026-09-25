@@ -10,6 +10,7 @@ import type { Block } from '../../../shared/blocks';
 import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
 import type { WalkProgress } from '../../../shared/walk';
 import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
+import { NO_PLAYERS, recordOf, type PlayerRegistry } from '../../../shared/players';
 
 /**
  * Every name these tests speak as.
@@ -86,6 +87,8 @@ let peers: Remotes;
 let clients: string[];
 let placed: string[];
 let comebacks: string[];
+/** What the registry holds, read through `peer` as the session's tracker is. */
+let registry: PlayerRegistry;
 /** Whether the fixture's `comeBack` says a walk started. See the block below. */
 let walks = true;
 
@@ -97,10 +100,12 @@ beforeEach(() => {
   clients = [];
   placed = [];
   comebacks = [];
+  registry = NO_PLAYERS;
   walks = true;
   queue = new CommandQueue(config, { send: (command) => sent.push(command) });
   peers = new Remotes(config, queue, {
     notice: (m) => notices.push(m),
+    peer: (who) => recordOf(registry, who),
     commanded: (from, raw) => commanded.push(`${from}:${raw}`),
     clientNamed: (from, client, extended) => clients.push(`${from}:${client ?? '-'}:${extended}`),
     placed: (from, map, room, name) => placed.push(`${from}:${map}/${room}:${name ?? '-'}`),
@@ -1141,9 +1146,9 @@ describe('a channel this client never answers on, from somebody with no grant', 
  * and the moment one of them fails the plain wording goes instead.
  */
 describe('talking to another one of these clients', () => {
-  /** A registry entry saying what is known about somebody's client. */
-  const knowing = (name: string, extended: 'unknown' | 'yes' | 'no'): Partial<CharacterState> => ({
-    players: {
+  /** A registry entry saying what is known about somebody's client, held where `peer` reads. */
+  const knowing = (name: string, extended: 'unknown' | 'yes' | 'no'): void => {
+    registry = {
       [name.toLowerCase()]: {
         name,
         alignment: null,
@@ -1170,8 +1175,8 @@ describe('talking to another one of these clients', () => {
         lastCommand: null,
         lastCommandAt: null
       }
-    }
-  });
+    };
+  };
 
   const inRoom = (map: number, number: number, name: string): Partial<CharacterState> => ({
     room: { ...structuredClone(EMPTY_CHARACTER.room), map, number, name }
@@ -1184,7 +1189,8 @@ describe('talking to another one of these clients', () => {
   });
 
   it('asks the extended question only of somebody who said they run this client', () => {
-    peers.ask('Soul', 'where', who(knowing('Soul', 'yes')));
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'where', who());
     drain();
     expect(sent).toEqual(['/Soul @where-room']);
   });
@@ -1214,8 +1220,27 @@ describe('talking to another one of these clients', () => {
     expect(clients).toEqual([]);
   });
 
+  // The positive control is `asks every member of the party for its numbers`.
+  it('does not ask a party member which client it runs once the registry has said', () => {
+    knowing('Soul', 'yes');
+    const soul = { name: 'Soul', className: null, health: null, mana: null, rank: null };
+    peers.askParty(
+      who({
+        party: {
+          engaged: {},
+          threatened: {},
+          following: null,
+          members: [{ ...soul, activity: null, invited: false, vitals: null }]
+        }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['/Soul @health']);
+  });
+
   it('reads where a peer said it is standing, by address', () => {
-    peers.ask('Soul', 'where', who(knowing('Soul', 'yes')));
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'where', who());
     drain();
     peers.onBlock(said('conversation-telepath', 'Soul', '{1/2150 Town Gates}'), who());
     expect(placed).toEqual(['Soul:1/2150:Town Gates']);
@@ -1228,21 +1253,20 @@ describe('talking to another one of these clients', () => {
    * vocabulary, so it can only ever be about an extended question.
    */
   it('falls back to the plain wording when the extended one is refused', () => {
-    peers.ask('Rand', 'where', who(knowing('Rand', 'yes')));
+    knowing('Rand', 'yes');
+    peers.ask('Rand', 'where', who());
     drain();
     expect(sent).toEqual(['/Rand @where-room']);
 
-    peers.onBlock(
-      said('conversation-telepath', 'Rand', '{command invalid or not allowed}'),
-      who(knowing('Rand', 'yes'))
-    );
+    peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
     drain();
     expect(sent).toEqual(['/Rand @where-room', '/Rand @where']);
     expect(clients).toEqual(['Rand:-:no']);
   });
 
   it('falls back when nothing comes back at all, and says so', () => {
-    peers.ask('Rand', 'where', who(knowing('Rand', 'yes')));
+    knowing('Rand', 'yes');
+    peers.ask('Rand', 'where', who());
     drain();
     /*
      * The positive control: the sweep really runs on this side of the deadline
@@ -1250,12 +1274,12 @@ describe('talking to another one of these clients', () => {
      * seconds, so the clock is read from here rather than from the ask.
      */
     vi.advanceTimersByTime(20_000);
-    peers.onCharacter(who(knowing('Rand', 'yes')));
+    peers.onCharacter(who());
     drain();
     expect(sent).toEqual(['/Rand @where-room']);
 
     vi.advanceTimersByTime(10_000);
-    peers.onCharacter(who(knowing('Rand', 'yes')));
+    peers.onCharacter(who());
     drain();
     expect(sent).toEqual(['/Rand @where-room', '/Rand @where']);
     expect(clients).toEqual(['Rand:-:no']);
@@ -1281,13 +1305,15 @@ describe('talking to another one of these clients', () => {
   });
 
   it('carries this character’s own address out with @comeback-room', () => {
-    peers.ask('Soul', 'comeback', who({ ...knowing('Soul', 'yes'), ...inRoom(1, 2150, 'Gates') }));
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'comeback', who(inRoom(1, 2150, 'Gates')));
     drain();
     expect(sent).toEqual(['/Soul @comeback-room 1/2150']);
   });
 
   it('sends no @comeback-room from a room the realm data has not placed', () => {
-    peers.ask('Soul', 'comeback', who(knowing('Soul', 'yes')));
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'comeback', who());
     drain();
     expect(sent).toEqual([]);
     expect(notices.join(' ')).toContain('no address');

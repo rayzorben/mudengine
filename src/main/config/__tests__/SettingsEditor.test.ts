@@ -44,6 +44,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   accent: 'cyan',
   theme: '',
   login: [],
+  locate: null,
   hangUp: { enabled: false, belowHealth: 0.15, penalties: null, onPlayerInRoom: false },
   retreat: {
     enabled: false,
@@ -53,6 +54,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
     strategy: 'step-back',
     safeHavenRoom: ''
   },
+  fleeGoto: { enabled: false, belowHealth: 0.2, command: '' },
   pvp: { notifyGang: false, action: 'none' },
   // The shipped defaults, so a draft that says nothing about combat writes no
   // `combat:` block at all -- which is the behaviour the tests below assert.
@@ -339,6 +341,8 @@ describe('servers, one directory each', () => {
     database: '',
     mobRules: [],
     hangPenalties: null,
+    locate: 'rm',
+    fleeGoto: '',
     ...draft
   });
 
@@ -365,6 +369,59 @@ describe('servers, one directory each', () => {
     editor.saveServer('Bearfather', server({ hangPenalties: null }));
     expect(new ServerStore(home).all[0]!.server.hangPenalties).toBeNull();
     expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('hangPenalties');
+  });
+
+  /* A row says how its monster is fought (todo 816), and the realm's file keeps all of it. */
+  it('writes a monster row whole, and nothing a row does not say', () => {
+    const file = home.server('bearfather').file;
+    editor.saveServer(
+      null,
+      server({
+        mobRules: [
+          {
+            mob: 'orc shaman',
+            treat: 'first',
+            cast: { spell: 'harm', times: 2 },
+            noBackstab: true
+          },
+          { mob: 'town guard', treat: 'never' }
+        ]
+      })
+    );
+    expect(new ServerStore(home).all[0]!.server.mobRules).toEqual([
+      { mob: 'orc shaman', treat: 'first', cast: { spell: 'harm', times: 2 }, noBackstab: true },
+      { mob: 'town guard', treat: 'never' }
+    ]);
+    expect(parse(fs.readFileSync(file, 'utf8'))['mobRules']).toEqual([
+      { mob: 'orc shaman', treat: 'first', cast: { spell: 'harm', times: 2 }, noBackstab: true },
+      { mob: 'town guard', treat: 'never' }
+    ]);
+  });
+
+  /* How the realm is asked where you stand (todo 811): `rm` is the unstated answer, so no key. */
+  it('writes the realm\u2019s locate word only when it is not `rm`', () => {
+    const file = home.server('bearfather').file;
+    editor.saveServer(null, server({ locate: 'none' }));
+    expect(new ServerStore(home).all[0]!.server.locate).toBe('none');
+    expect(parse(fs.readFileSync(file, 'utf8'))['locate']).toBe('none');
+    editor.saveServer('Bearfather', server({ locate: 'rm' }));
+    expect(new ServerStore(home).all[0]!.server.locate).toBe('rm');
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('locate');
+    // A word this client does not know was never on the form, so saving leaves it.
+    fs.appendFileSync(file, 'locate: sys-status\n', 'utf8');
+    editor.saveServer('Bearfather', server({ locate: 'rm' }));
+    expect(parse(fs.readFileSync(file, 'utf8'))['locate']).toBe('sys-status');
+  });
+
+  /* The realm's teleport, literally (todo 813): stated when typed, no key when empty. */
+  it('writes the realm\u2019s teleport command only when it states one', () => {
+    const file = home.server('bearfather').file;
+    editor.saveServer(null, server({ fleeGoto: 'sys go 1 297' }));
+    expect(new ServerStore(home).all[0]!.server.fleeGoto).toBe('sys go 1 297');
+    expect(parse(fs.readFileSync(file, 'utf8'))['fleeGoto']).toBe('sys go 1 297');
+    editor.saveServer('Bearfather', server({ fleeGoto: '' }));
+    expect(new ServerStore(home).all[0]!.server.fleeGoto).toBe('');
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('fleeGoto');
   });
 
   it('updates one in place rather than adding a second', () => {
@@ -458,7 +515,9 @@ describe('servers, one directory each', () => {
       loops: [],
       database: '',
       mobRules: [],
-      hangPenalties: null
+      hangPenalties: null,
+      locate: 'rm',
+      fleeGoto: ''
     });
     expect(servers()).toEqual([
       { id: 'greatermud-local', name: 'GreaterMUD (local)', host: '127.0.0.1' }
@@ -532,7 +591,9 @@ describe('credentials in the messages', () => {
       loops: [],
       database: '',
       mobRules: [],
-      hangPenalties: null
+      hangPenalties: null,
+      locate: 'rm',
+      fleeGoto: ''
     });
     for (const file of fs.readdirSync(dir)) {
       if (!fs.statSync(path.join(dir, file)).isFile()) continue;
@@ -941,7 +1002,9 @@ describe('the loops a character owns', () => {
       loops: [arena],
       database: '',
       mobRules: [],
-      hangPenalties: null
+      hangPenalties: null,
+      locate: 'rm',
+      fleeGoto: ''
     });
     editor.saveProfile('vaelor', draft());
 
@@ -1022,7 +1085,9 @@ describe('filing one loop from the Loops modal', () => {
       loops: [],
       database: '',
       mobRules: [],
-      hangPenalties: null
+      hangPenalties: null,
+      locate: 'rm',
+      fleeGoto: ''
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });
     const store = new LoopStore(home);
@@ -1078,6 +1143,57 @@ describe('a character theme', () => {
     fs.writeFileSync(file, `server: GreaterMUD (local)\nui:\n  theme: slate\n`, 'utf8');
     expect(editor.saveProfile('vaelor', draft({ theme: '' }))).toEqual({ ok: true });
     expect((read('vaelor')['ui'] as Record<string, unknown>)['theme']).toBe('slate');
+  });
+});
+
+/* A character's own locate word over its realm's (todo 811), seeded and saved as its own. */
+describe('a character\u2019s own locate word', () => {
+  it('writes `locate`, clears one the form showed, and leaves one it could not', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `server: GreaterMUD (local)\n`, 'utf8');
+    const own = () => editor.snapshot().characters.find((entry) => entry.id === 'vaelor')?.locate;
+    expect(own()).toBeNull();
+    expect(editor.saveProfile('vaelor', draft({ locate: 'none' }))).toEqual({ ok: true });
+    expect(read('vaelor')['locate']).toBe('none');
+    expect(own()).toBe('none');
+    expect(editor.saveProfile('vaelor', draft({ locate: null }))).toEqual({ ok: true });
+    expect(read('vaelor')).not.toHaveProperty('locate');
+    fs.writeFileSync(file, `server: GreaterMUD (local)\nlocate: sys-status\n`, 'utf8');
+    expect(editor.saveProfile('vaelor', draft({ locate: null }))).toEqual({ ok: true });
+    expect(read('vaelor')['locate']).toBe('sys-status');
+  });
+});
+
+/* A character's own teleport over its realm's (todo 813), seeded and saved as its own. */
+describe('a character\u2019s own teleport command', () => {
+  it('writes `command` only when stated, and never seeds the realm\u2019s as its own', () => {
+    const realm = home.server('greatermud-local').file;
+    fs.mkdirSync(path.dirname(realm), { recursive: true });
+    fs.writeFileSync(
+      realm,
+      'name: GreaterMUD (local)\nhost: gmud-tgs\nport: 2427\nfleeGoto: sys go 1 297\n',
+      'utf8'
+    );
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `server: GreaterMUD (local)\n`, 'utf8');
+    const own = () => editor.snapshot().characters.find((entry) => entry.id === 'vaelor')?.fleeGoto;
+    // The realm states one, and the form's field is still this character's own: empty.
+    expect(own()?.command).toBe('');
+    const safety = () =>
+      (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)['safety'];
+
+    const stated = { enabled: true, belowHealth: 0.1, command: 'sys goto silvermere' };
+    expect(editor.saveProfile('vaelor', draft({ fleeGoto: stated }))).toEqual({ ok: true });
+    expect(safety()?.['fleeGoto']).toEqual(stated);
+    expect(own()?.command).toBe('sys goto silvermere');
+
+    expect(editor.saveProfile('vaelor', draft({ fleeGoto: { ...stated, command: '' } }))).toEqual({
+      ok: true
+    });
+    expect(safety()?.['fleeGoto']).toEqual({ enabled: true, belowHealth: 0.1 });
+    expect(own()?.command).toBe('');
   });
 });
 
@@ -1437,7 +1553,7 @@ describe('what the spell pickers are offered', () => {
           asked.push({ id, host: target.host, port: target.port });
           return {
             spellbook: [{ name: 'way of the swan', short: 'swan', targeting: 'self' as const }],
-            cureGates: { poison: true, blindness: false, disease: false }
+            cureGates: { poison: true, blindness: false, disease: false, freedom: false }
           };
         },
         realm: () => [{ name: 'minor healing', short: 'mihe', targeting: 'friendly' as const }]
@@ -1448,7 +1564,12 @@ describe('what the spell pickers are offered', () => {
     expect(found?.spellbook).toEqual([
       { name: 'way of the swan', short: 'swan', targeting: 'self' }
     ]);
-    expect(found?.cureGates).toEqual({ poison: true, blindness: false, disease: false });
+    expect(found?.cureGates).toEqual({
+      poison: true,
+      blindness: false,
+      disease: false,
+      freedom: false
+    });
     expect(snapshot.realmSpells).toEqual([
       { name: 'minor healing', short: 'mihe', targeting: 'friendly' }
     ]);

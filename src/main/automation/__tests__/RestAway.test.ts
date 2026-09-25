@@ -98,7 +98,7 @@ afterEach(() => {
 });
 
 const make = (config = health(), over: Partial<RestAwayPlanner> = {}, enabled = true): RestAway =>
-  new RestAway(config, enabled, queue, planner(over), {
+  new RestAway({ health: config, enabled, combat: { mobRules: [] } }, queue, planner(over), {
     notice: (m) => notices.push(m),
     decided: (d) => decisions.push(d)
   });

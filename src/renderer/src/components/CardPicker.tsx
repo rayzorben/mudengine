@@ -2,7 +2,7 @@ import { useEffect, useState, type PointerEvent } from 'react';
 
 import Icon from './Icon';
 import Popup from './Popup';
-import { cardLabel, type CardId } from '../hooks/useCardLayout';
+import { cardLabel, type CardId } from '../lib/cards';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 

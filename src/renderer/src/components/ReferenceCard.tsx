@@ -3,14 +3,14 @@ import { memo, useEffect, useMemo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import EntityNumber from './EntityNumber';
-import ReferenceDetail, {
-  entryFigure,
+import ReferenceDetail, { entryFigure } from './ReferenceDetail';
+import {
   entryKey,
   entryNumber,
   entryWord,
   flattenLookup,
   type ReferenceEntry
-} from './ReferenceDetail';
+} from '../lib/reference';
 import { useListNavigation } from '../hooks/useListNavigation';
 import type { RealmFamily } from '@shared/character';
 import { t } from '../lib/i18n';

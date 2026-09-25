@@ -9,6 +9,7 @@ import {
   rankByPriority,
   rankByVerdict,
   roomVerdictKey,
+  rowPeaceIn,
   targetOf,
   verdictFor,
   wieldedWeapon,
@@ -17,7 +18,7 @@ import {
 import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobEntity } from '../entities';
-import type { MobRule, MobTreatment } from '../config';
+import type { MobRule, MobTreatment } from '../mobRules';
 import type { MobAttack } from '../world';
 import { EMPTY_CHARACTER } from '../character';
 
@@ -340,6 +341,25 @@ describe('the room, appraised', () => {
     );
     expect(roomVerdictKey(one())).toBe(roomVerdictKey(one()));
     expect(roomVerdictKey(one())).not.toBe(roomVerdictKey(tougher));
+  });
+
+  /* Todo 818: a row's claim is drawn beside the realm's word, so it is pushed. */
+  it('keys on a row that says a monster does not attack first, and finds it by name', () => {
+    const plain = appraiseRoom(
+      [occupant('thug', fighter('thug'))],
+      player,
+      weights,
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    const told = {
+      ...plain,
+      monsters: plain.monsters.map((entry) => ({ ...entry, peace: 'not-hostile' as const }))
+    };
+    expect(roomVerdictKey(told)).not.toBe(roomVerdictKey(plain));
+    expect(rowPeaceIn(told, 'thug')).toBe('not-hostile');
+    expect(rowPeaceIn(plain, 'thug')).toBeNull();
   });
 });
 

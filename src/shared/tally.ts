@@ -50,7 +50,7 @@
  * spell's own message with the target and the number substituted in and names
  * **nobody** — `A shining spark strikes cave worm for 3 damage!` — so it is
  * read from the realm's item row and the round it landed in rather than off
- * the line. See `CharacterTracker.readsAsProc`.
+ * the line. See `readsAsProc` (`src/main/parse/proc.ts`).
  */
 export type BlowKind = 'melee' | 'critical' | 'backstab' | 'spell' | 'proc';
 

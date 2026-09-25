@@ -98,8 +98,15 @@ import type { CommandQueue } from './CommandQueue';
 import { countThreats } from './RuleEngine';
 import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
-import { DEFAULT_CONFIG, type HealthConfig, type PartyConfig } from '../../shared/config';
+import {
+  type AutomationConfig,
+  type CombatConfig,
+  type HealthConfig,
+  type PartyConfig
+} from '../../shared/config';
+import type { MobRule } from '../../shared/mobRules';
 import { tuning } from '../app/tuning';
+import type { SessionModule } from './Module';
 
 /**
  * Whether the fight the combat flag names is in *this* room.
@@ -142,7 +149,7 @@ import { tuning } from '../app/tuning';
  * **But an empty pair does not mean the fight is over**, and reading it that
  * way was wrong for three cases a review caught before this shipped:
  *
- * - **A fight opened with a spell, or with a bare `a`.** `noteCommand` binds a
+ * - **A fight opened with a spell, or with a bare `a`.** `observeCommand` binds a
  *   target only for `ATTACK_COMMANDS` *with an argument*, and `Cast` is in
  *   neither set — so a caster's whole opening round has the flag up, no
  *   target and no attacker. That is this realm's mystics, which is to say the
@@ -174,7 +181,12 @@ export function fightIsHere(state: CharacterState): boolean {
   return state.room.occupants.length > 0;
 }
 
-export class Recovery {
+/** What a reload hands `Recovery`: its block, the master switch, the party, and the monster rows. */
+export type RecoverySettings = Pick<AutomationConfig, 'health' | 'enabled' | 'party'> & {
+  combat: Pick<CombatConfig, 'mobRules'>;
+};
+
+export class Recovery implements SessionModule {
   private state: CharacterState | null = null;
   /**
    * When a proposed `rest` stops being trusted to be in flight.
@@ -216,7 +228,7 @@ export class Recovery {
    * A figure a walk is waiting on, in hit points, or null.
    *
    * The walker stands still before a trap until health covers it
-   * (`Walker.holdForTrap`, `automation.health.restBeforeTraps`), and that
+   * (`Holds.holdForTrap`, `automation.health.restBeforeTraps`), and that
    * figure is above `restBelow` by construction — so nothing here would sit
    * the character down to it. Handed in by the session on every state rather
    * than remembered across one: a guard on a state is not a memory of having
@@ -257,10 +269,8 @@ export class Recovery {
   private proposed: { command: string; until: number } | null = null;
 
   constructor(
-    private config: HealthConfig,
-    private enabled: boolean,
+    private settings: RecoverySettings,
     private readonly queue: CommandQueue,
-    private party: PartyConfig = DEFAULT_CONFIG.automation.party,
     private readonly events: {
       notice?(message: string): void;
       /**
@@ -274,10 +284,25 @@ export class Recovery {
     } = {}
   ) {}
 
-  configure(config: HealthConfig, enabled: boolean, party?: PartyConfig): void {
-    this.config = config;
-    this.enabled = enabled;
-    if (party) this.party = party;
+  configure(settings: RecoverySettings): void {
+    this.settings = settings;
+  }
+
+  private get config(): HealthConfig {
+    return this.settings.health;
+  }
+
+  private get enabled(): boolean {
+    return this.settings.enabled;
+  }
+
+  private get party(): PartyConfig {
+    return this.settings.party;
+  }
+
+  /** The monster rows: a monster one says does not attack first is rested beside (`countThreats`). */
+  private get mobRules(): readonly MobRule[] {
+    return this.settings.combat.mobRules;
   }
 
   reset(): void {
@@ -406,7 +431,7 @@ export class Recovery {
      * road above the arena, where the monsters wander up — rest, attacked,
      * fight, rest, all evening. A rest about to be broken is a command spent.
      */
-    if (countThreats(state) > 0) return;
+    if (countThreats(state, this.mobRules) > 0) return;
 
     if (this.wantsRest(hp, hpMax) && !this.refused.has('rest')) {
       /*

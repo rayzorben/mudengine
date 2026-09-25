@@ -8,6 +8,7 @@
  */
 import { vitalLevel, type VitalLevel, type VitalThresholds } from '@shared/character';
 import type { EncumbranceGate } from '@shared/config';
+import { LOCATE_WORDS, locateCommand, type LocateWord } from '@shared/locate';
 import { t } from './i18n';
 
 /**
@@ -103,3 +104,22 @@ export function splitNames(value: string): string[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 }
+
+/** A three-way answer as the select spells it: blank leaves it to the scope above. */
+export function penaltiesChoice(value: boolean | null): string {
+  return value === null ? '' : value ? 'yes' : 'no';
+}
+
+export function penaltiesOf(choice: string): boolean | null {
+  return choice === 'yes' ? true : choice === 'no' ? false : null;
+}
+
+/**
+ * How a realm is asked where you stand, one row per word (todo 811), so the
+ * realm's select and a character's cannot disagree. `rm` is the realm's own
+ * word, so it is shown as the realm spells it.
+ */
+export const LOCATE_OPTIONS = (): Array<{ value: LocateWord; label: string }> =>
+  LOCATE_WORDS.map((word) => ({ value: word, label: locateLabel(word) }));
+
+const locateLabel = (word: LocateWord): string => locateCommand(word) ?? t('settings.locate.none');

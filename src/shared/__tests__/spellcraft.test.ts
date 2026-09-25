@@ -9,6 +9,7 @@ import {
   holdsMovement,
   resolveSpell,
   spellCost,
+  spellServes,
   spellTargeting,
   type AbilityPairs,
   type CastableSpell
@@ -63,6 +64,13 @@ const cureDisease: AbilityPairs = [
   [122, 362]
 ];
 const magicMissile: AbilityPairs = [[17, 0]];
+/* `freedom` (70) and `cure paralysis` (160) state this pair and nothing else. */
+const freedom: AbilityPairs = [[81, 0]];
+/* `remove bonds` (447), the diamond-studded ring's cast: the mark beside its message. */
+const removeBonds: AbilityPairs = [
+  [81, 0],
+  [120, 1348]
+];
 const minorHealing: AbilityPairs = [
   [18, 0],
   [108, 0]
@@ -73,11 +81,22 @@ describe('cureGates', () => {
     expect(cureGates([curePoison, magicMissile])).toEqual({
       poison: true,
       blindness: false,
-      disease: true
+      disease: true,
+      freedom: false
     });
-    expect(cureGates([cureBlindness])).toEqual({ poison: false, blindness: true, disease: false });
+    expect(cureGates([cureBlindness])).toEqual({
+      poison: false,
+      blindness: true,
+      disease: false,
+      freedom: false
+    });
     // antidote's marks without the direct CurePoison row still say poison.
-    expect(cureGates([[[73, 19]]])).toEqual({ poison: true, blindness: false, disease: false });
+    expect(cureGates([[[73, 19]]])).toEqual({
+      poison: true,
+      blindness: false,
+      disease: false,
+      freedom: false
+    });
   });
 
   it('opens disease only through the negative gate — any RemovesSpell carrier', () => {
@@ -85,14 +104,43 @@ describe('cureGates', () => {
     expect(cureGates([magicMissile, minorHealing]).disease).toBe(false);
   });
 
+  /*
+   * `Freedom` (81): `Spell.cs` strips every active effect whose spell carries
+   * `HoldPerson` — the one test `CheckForHoldPerson` makes — so the mark is the
+   * cure for exactly what `held` records. Whatever its value: all eight rows
+   * state zero.
+   */
+  it('opens freedom on the realm’s Freedom mark, and on nothing else', () => {
+    expect(cureGates([freedom]).freedom).toBe(true);
+    expect(cureGates([magicMissile, removeBonds]).freedom).toBe(true);
+    expect(cureGates([curePoison, cureBlindness, cureDisease, minorHealing]).freedom).toBe(false);
+  });
+
   it('closes every gate on an empty book and opens them all for a spell the realm cannot name', () => {
-    expect(cureGates([])).toEqual({ poison: false, blindness: false, disease: false });
+    expect(cureGates([])).toEqual({
+      poison: false,
+      blindness: false,
+      disease: false,
+      freedom: false
+    });
     // One unnameable spell means the realm cannot say, and unknown never disables.
     expect(cureGates([magicMissile, undefined])).toEqual({
       poison: true,
       blindness: true,
-      disease: true
+      disease: true,
+      freedom: true
     });
+  });
+});
+
+describe('spellServes', () => {
+  it('says a Freedom-marked row serves a hold, and a heal or a cure for poison does not', () => {
+    expect(spellServes(freedom).held).toBe(true);
+    expect(spellServes(removeBonds).held).toBe(true);
+    expect(spellServes(minorHealing)).toMatchObject({ hp: true, held: false });
+    expect(spellServes(curePoison)).toMatchObject({ poisoned: true, held: false });
+    // Unknown serves nothing on the offering side.
+    expect(spellServes(undefined).held).toBe(false);
   });
 });
 
@@ -272,7 +320,7 @@ describe('holdsMovement', () => {
    * A realm that does not say is not a realm that says no — but it answers
    * false all the same, because an unstated hold must never stand a walk
    * still. What catches those is the refusal on the wire: see
-   * `Walker.onsetAnsweredStep`.
+   * `Holds.onsetAnsweredStep`.
    */
   it('answers false for a realm that states nothing, and for no spell at all', () => {
     expect(holdsMovement({})).toBe(false);
