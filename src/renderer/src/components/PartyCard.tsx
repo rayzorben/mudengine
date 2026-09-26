@@ -257,9 +257,7 @@ function PartyCard({
                           shown where the person deciding to help can see it. */}
                       {fightingWord(character, member.name) !== null && (
                         <span className="chip quiet party-fighting">
-                          {t('cards.party.fighting', {
-                            target: fightingWord(character, member.name) ?? ''
-                          })}
+                          {fightingWord(character, member.name)}
                         </span>
                       )}
                       {/* `follow <name>` is how a leader is made on this realm;
@@ -325,14 +323,16 @@ function PartyCard({
   );
 }
 
-/** The monster a member was last seen fighting, or null once the sighting is stale. */
+/** What a member was last seen fighting, as the chip says it, or null once the sighting is stale. */
 function fightingWord(character: CharacterState, name: string): string | null {
   const key = Object.keys(character.party.engaged).find(
     (entry) => entry.toLowerCase() === name.toLowerCase()
   );
   const seen = key === undefined ? undefined : character.party.engaged[key];
   if (!seen || Date.now() - seen.at > tuning().fightingFreshMs) return null;
-  return seen.target;
+  return seen.kind === 'room'
+    ? t('cards.party.fightingRoom')
+    : t('cards.party.fighting', { target: seen.target });
 }
 
 export default memo(PartyCard);

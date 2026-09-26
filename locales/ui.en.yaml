@@ -2001,6 +2001,7 @@ cards:
       middle: Middle
       rankUnknown: Rank unknown
     fighting: 'fighting {target}'
+    fightingRoom: fighting everyone in the room
     followAria: 'Follow {name}'
     followButton: Follow
     leaveAction: Leave Party
@@ -3636,7 +3637,8 @@ settings:
       this client answers with a heal. 0 never asks.
     askHealLabel: Ask for Healing Below %
     assistHint: Attack what the leader (whoever this character follows) was last seen attacking,
-      while it is still in the room. Never a player, and still subject to the combat health limit.
+      while it is still in the room. When the leader attacks everyone in the room, pick a monster
+      the way auto-combat would. Never a player.
     assistLabel: Auto-Assist Leader
     blessingsMoved: 'Blessing the party is now on the Spells tab: one list for yourself and the
       party, in priority order, recast when they wear off, with a backup timer.'
@@ -4863,6 +4865,7 @@ automation:
     reasonFloorAfterKill: 'loot: checking the floor for what the kill dropped'
   party:
     reasonAssist: 'assist: {leader} is fighting {target}'
+    reasonAssistRoom: 'assist: {leader} is attacking everyone in the room; {why}'
     reasonDefend: 'defend: {target} is attacking {member}'
     reasonRestWithLeader: 'resting with {leader}'
     reasonMeditateWithLeader: 'meditating with {leader}'

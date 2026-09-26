@@ -29,10 +29,18 @@ describe('who a blow is from', () => {
 describe('what the others are fighting', () => {
   it('files what a member is fighting, and not what somebody only invited is', () => {
     expect(engagedBy(party(), 'Soul', 'giant rat', 5)?.party.engaged['Soul']).toEqual({
+      kind: 'mob',
       target: 'giant rat',
       at: 5
     });
     expect(engagedBy(party(), 'Rand', 'giant rat', 5)).toBeNull();
+  });
+
+  it('files a member’s area attack as the whole room, and once', () => {
+    const room = engagedBy(party(), 'Soul', 'everyone in the room', 5);
+    expect(room?.party.engaged['Soul']).toEqual({ kind: 'room', at: 5 });
+    expect(engagedBy(room!, 'Soul', 'everyone in the room', 5)).toBeNull();
+    expect(engagedBy(party(), 'Rand', 'everyone in the room', 5)).toBeNull();
   });
 
   it('files what is swinging at a member, and not at somebody only invited', () => {

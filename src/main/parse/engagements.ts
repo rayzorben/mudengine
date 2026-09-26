@@ -6,7 +6,7 @@
  * folds the blow cases in `CharacterTracker.reduce` call. Out of the tracker
  * with todo 723; `mudengine-wire` › `parts/combat.md`.
  */
-import { ownAlignment, type CharacterState } from '../../shared/character';
+import { ownAlignment, type CharacterState, type PartyFight } from '../../shared/character';
 import { attacksOnSight } from '../../shared/mobs';
 import { mobKey } from '../../shared/world';
 
@@ -93,7 +93,9 @@ export function swingingAtMe(s: CharacterState, attacker: string | undefined): s
  * are fighting, for `automation.party.assistLeader`. Only a member — anybody
  * else's fight is a fact about the room and nothing more — and only a target
  * that is not this character and not a person, because a leader swinging at a
- * player is not a fight this client joins. Null when nothing changed.
+ * player is not a fight this client joins. An area attack is filed as the
+ * whole room, for the follower to pick its own monster from. Null when nothing
+ * changed.
  */
 export function engagedBy(
   s: CharacterState,
@@ -102,25 +104,32 @@ export function engagedBy(
   at: number
 ): CharacterState | null {
   if (!attacker || !target || /^you$/i.test(attacker) || /^you$/i.test(target)) return null;
-  // Every monster at once is no one target to assist on: the last one stands.
-  if (isAreaTarget(target)) return null;
   const who = attacker.trim();
   const member = s.party.members.find((entry) => entry.name.toLowerCase() === who.toLowerCase());
   if (!member || member.invited) return null;
-  const mob = target.trim().replace(/[.!]+$/, '');
-  if (
-    s.room.occupants.some(
-      (there) => there.kind === 'player' && there.name.toLowerCase() === mob.toLowerCase()
-    )
-  ) {
-    return null;
-  }
+  const fight = partyFight(s, target, at);
+  if (fight === null) return null;
   const held = s.party.engaged[member.name];
-  if (held && held.target === mob && held.at === at) return null;
+  if (held && sameFight(held, fight)) return null;
   return {
     ...s,
-    party: { ...s.party, engaged: { ...s.party.engaged, [member.name]: { target: mob, at } } }
+    party: { ...s.party, engaged: { ...s.party.engaged, [member.name]: fight } }
   };
+}
+
+/** What a member's swing at `target` files: the whole room, one monster, or nothing for a person. */
+function partyFight(s: CharacterState, target: string, at: number): PartyFight | null {
+  if (isAreaTarget(target)) return { kind: 'room', at };
+  const mob = target.trim().replace(/[.!]+$/, '');
+  const person = s.room.occupants.some(
+    (there) => there.kind === 'player' && there.name.toLowerCase() === mob.toLowerCase()
+  );
+  return person ? null : { kind: 'mob', target: mob, at };
+}
+
+function sameFight(a: PartyFight, b: PartyFight): boolean {
+  if (a.at !== b.at) return false;
+  return a.kind === 'room' ? b.kind === 'room' : b.kind === 'mob' && a.target === b.target;
 }
 
 /**
@@ -189,7 +198,7 @@ function claim(s: CharacterState, who: string, mob: string, at: number): Charact
  * An area attack's target, `<Name> moves to attack everyone in the room.`
  * (`Player.cs:6169`, `Spell.cs:2131`; wire, Killa in
  * `logs/2026-09-13_22-38-55_festus`): every monster the room lists, never a
- * monster named for the phrase (todo 747).
+ * monster named for the phrase (todos 747, 756).
  */
 function isAreaTarget(target: string): boolean {
   return /^everyone in the room[.!]?$/i.test(target.trim());

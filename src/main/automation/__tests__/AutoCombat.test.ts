@@ -3037,7 +3037,14 @@ describe('fighting what the leader fights', () => {
   const following = (target: string, at = Date.now()) => ({
     following: 'Soul',
     members: [member('Vaelor'), member('Soul')],
-    engaged: { Soul: { target, at } },
+    engaged: { Soul: { kind: 'mob' as const, target, at } },
+    threatened: {}
+  });
+  /* The leader attacked everyone in the room: no monster named (todo 756). */
+  const followingRoom = (at = Date.now()) => ({
+    following: 'Soul',
+    members: [member('Vaelor'), member('Soul')],
+    engaged: { Soul: { kind: 'room' as const, at } },
     threatened: {}
   });
 
@@ -3097,6 +3104,49 @@ describe('fighting what the leader fights', () => {
     );
     vi.advanceTimersByTime(500);
     expect(sent).toEqual([]);
+  });
+
+  it('picks its own monster when the leader attacks everyone in the room', () => {
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
+    auto.configure(
+      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
+      true,
+      undefined,
+      party
+    );
+    auto.onCharacter(
+      state({
+        party: followingRoom(),
+        room: {
+          ...EMPTY_CHARACTER.room,
+          occupants: [mob('kobold child', 'passive'), mob('cave bear', 'hostile')]
+        }
+      })
+    );
+    vi.advanceTimersByTime(500);
+    // The same policy auto-combat opens a fight with: the passive child is left.
+    expect(sent).toEqual(['a cave bear']);
+  });
+
+  it('says why when the leader attacks the room and nothing there is worth a swing', () => {
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
+    auto.configure(
+      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
+      true,
+      undefined,
+      party
+    );
+    auto.onCharacter(
+      state({
+        party: followingRoom(),
+        room: { ...EMPTY_CHARACTER.room, occupants: [mob('kobold child', 'passive')] }
+      })
+    );
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `kobold child — ${t('automation.combat.refusedNotHostile', { target: 'kobold child' })}`
+    ]);
   });
 
   it('is off unless asked', () => {

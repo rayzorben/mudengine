@@ -7,7 +7,7 @@
  * every move reaches it whoever sent it; read only by the escape and the back
  * button (`Travel`), through the tracker's `trail`, `wayBackFrom` and
  * `retraced` — `mudengine-automation` › `parts/safety.md` › *The way back is
- * the tracker's*. Whether the menu should let go of it: todo 752.
+ * the tracker's*. Kept across the realm's menu (todo 752).
  */
 import type { CharacterState, Room } from '../../shared/character';
 import { roomId, type Direction, type RoomId, type TrailStep } from '../../shared/world';
@@ -33,7 +33,8 @@ export class Trail {
    * A back step gives its entry up again (`retraced`). Cleared by a reset — a
    * new connection — and by a death, because the realm moves a dead character
    * to its area's temple along no edge and the trail out of the room it died
-   * in leads back to whatever killed it.
+   * in leads back to whatever killed it. The realm's menu keeps it: a
+   * character standing at the menu is still in the room it logged off in.
    */
   get steps(): readonly TrailStep[] {
     return this.backtrail;

@@ -9673,7 +9673,10 @@ describe('what a party member was last seen fighting', () => {
   it('records the leader’s target from an opening on a monster', () => {
     const tracker = play([...inParty, 'Soul moves to attack giant rat!']);
     expect(tracker.current.party.following).toBe('Soul');
-    expect(tracker.current.party.engaged['Soul']?.target).toBe('giant rat');
+    expect(tracker.current.party.engaged['Soul']).toMatchObject({
+      kind: 'mob',
+      target: 'giant rat'
+    });
   });
 
   it('ignores somebody outside the party, and a blow on this character', () => {
@@ -11396,7 +11399,10 @@ describe('what a stranger was last seen fighting', () => {
       'Rend moves to attack you!'
     ]);
     expect(tracker.current.combat.claimed).toEqual({});
-    expect(tracker.current.party.engaged['Soul']?.target).toBe('giant rat');
+    expect(tracker.current.party.engaged['Soul']).toMatchObject({
+      kind: 'mob',
+      target: 'giant rat'
+    });
   });
 
   /*
@@ -11436,14 +11442,15 @@ describe('what a stranger was last seen fighting', () => {
     expect(after.current.tally.dealt).toEqual(before.current.tally.dealt);
   });
 
-  /* A leader's area attack is no one target to assist on; the last one stands. */
-  it('keeps the leader’s last target through an area attack', () => {
+  /* A leader's area attack names no monster: the fight is the whole room, for
+     the follower to pick its own from (todo 756). */
+  it('records the leader’s area attack as the whole room', () => {
     const tracker = play([
       ...inParty,
       'Soul moves to attack giant rat!',
       'Soul moves to attack everyone in the room.'
     ]);
-    expect(tracker.current.party.engaged['Soul']?.target).toBe('giant rat');
+    expect(tracker.current.party.engaged['Soul']?.kind).toBe('room');
     expect(tracker.current.combat.claimed).toEqual({});
   });
 
