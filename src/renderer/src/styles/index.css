@@ -4325,31 +4325,6 @@ button.quest-plan-back {
 }
 
 /*
- * The client's own mark, at the head of the status rail.
- *
- * Sized from the type rather than in pixels, for the reason every fixed height
- * in a card has just stopped being one: `--font-ui-base` is written at runtime
- * from `ui.font.size`, so a mark measured against the default chrome would be
- * the wrong size for anybody who changed it — and here it would also stop
- * matching the line of text it sits beside. `1.6em` of `--font-micro` is the
- * line box that line already has, so the mark takes no height of its own and
- * turning it off gives back no space.
- *
- * The rail's `gap` is 14px, which is a lot beside a round mark, so the mark
- * pulls the next segment back to the spacing a heading uses.
- */
-.app-mark {
-  background-image: url('../assets/logo.png');
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: contain;
-  flex: 0 0 auto;
-  height: 1.6em;
-  margin-right: -6px;
-  width: 1.6em;
-}
-
-/*
  * Connect and disconnect, in the segment that already states the condition.
  * A button, but not a loud one: this is chrome reporting a state that happens
  * to be actionable, not the primary action of a screen.
@@ -8470,6 +8445,61 @@ button.lookup:focus-visible {
 ) {
   margin-block: -0.2em;
   padding-block: 0.2em;
+}
+
+/*
+ * The head of the card rail: the put-away chip at the left, the client's mark
+ * at the right. One band tall (`--topbar-h`), the band the chip already fills,
+ * so the mark adds no height while anything is put away.
+ */
+.card-rail-head {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--gap);
+  min-height: var(--topbar-h);
+}
+
+/*
+ * The mark and its version, clipped to one line: the version wraps onto a
+ * second line when the rail is too narrow for both, and that line is cut off.
+ * So "if it fits" is decided by the browser's own measurement rather than a
+ * breakpoint; the tooltip carries the version either way.
+ */
+.app-mark {
+  align-content: flex-start;
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  gap: 0 6px;
+  height: var(--topbar-h);
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 4px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Sized from the band, not in pixels, so it follows `ui.font.size`. */
+.app-mark-glyph {
+  background-image: url('../assets/logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  flex: 0 0 auto;
+  height: calc(var(--topbar-h) * 0.85);
+  width: calc(var(--topbar-h) * 0.85);
+}
+
+.app-mark-version {
+  line-height: var(--topbar-h);
+  white-space: nowrap;
 }
 
 /*

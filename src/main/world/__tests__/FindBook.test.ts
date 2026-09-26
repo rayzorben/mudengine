@@ -7,6 +7,8 @@ import { FindBook } from '../FindBook';
 import { findKey, findRate, type Sighting } from '../../../shared/finds';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
+import { t } from '../../app/i18n';
+import { complaint } from './complaint';
 
 let dir = '';
 let file = '';
@@ -24,6 +26,10 @@ afterEach(() => {
 });
 
 const book = (): FindBook => new FindBook(file, 'greatermud', (m) => said.push(m));
+
+/** What the book says of a file that is not a find log. */
+const invalid = (): string =>
+  t('notices.world.finds.invalidFile', { fileName: path.basename(file) });
 
 const ROOM = '1/2150';
 
@@ -166,7 +172,7 @@ describe('the file', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ version: 99, realm: 'greatermud', finds: [] }), 'utf8');
     expect(book().all).toHaveLength(0);
-    expect(said.join(' ')).toMatch(/not a find log/);
+    expect(said).toContain(invalid());
     expect(fs.existsSync(file)).toBe(true);
   });
 
@@ -178,7 +184,7 @@ describe('the file', () => {
       'utf8'
     );
     expect(book().all).toHaveLength(0);
-    expect(said.join(' ')).toMatch(/not a find log/);
+    expect(said).toContain(invalid());
     expect(fs.existsSync(file)).toBe(true);
   });
 
@@ -191,7 +197,7 @@ describe('the file', () => {
       'utf8'
     );
     expect(book().all).toHaveLength(0);
-    expect(said.join(' ')).toMatch(/not a find log/);
+    expect(said).toContain(invalid());
   });
 
   it('brings a version 1 log up once, with no rate for what it held', () => {
@@ -203,7 +209,7 @@ describe('the file', () => {
     const store = book();
     // Nine finds and no count of the searches that missed: no rate, not 100%.
     expect(store.all).toMatchObject([{ seen: 9, hits: 0, searched: 0 }]);
-    expect(said.join(' ')).toMatch(/now counts searches/);
+    expect(said).toContain(t('notices.world.finds.upgraded', { fileName: path.basename(file) }));
     expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe(original);
 
     close(store);
@@ -214,7 +220,12 @@ describe('the file', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '{ this is not json', 'utf8');
     expect(book().all).toHaveLength(0);
-    expect(said.join(' ')).toMatch(/Could not read/);
+    expect(said).toContain(
+      t('notices.world.finds.readError', {
+        fileName: path.basename(file),
+        message: complaint(() => JSON.parse('{ this is not json'))
+      })
+    );
     expect(fs.existsSync(file)).toBe(true);
   });
 

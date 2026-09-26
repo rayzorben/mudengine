@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Reconnect } from '../Reconnect';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { t } from '../../app/i18n';
 import { setTuning } from '../../app/tuning';
 import type { ConnectionState, ConnectionTarget } from '../../../shared/types';
 
@@ -160,7 +161,7 @@ describe('a lost connection', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(2);
-    expect(notices.at(-1)).toMatch(/Press Connect/);
+    expect(notices.at(-1)).toBe(t('session.reconnect.gaveUp'));
   });
 
   it('leaves a connection alone once it is up again', async () => {
@@ -185,7 +186,7 @@ describe('a connection that ended rather than dropped', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(0);
-    expect(notices.join(' ')).toMatch(/left the realm/);
+    expect(notices).toContain(t('session.reconnect.leftRealm'));
   });
 
   it('is not dialled again when the realm refused the login', async () => {
@@ -196,7 +197,7 @@ describe('a connection that ended rather than dropped', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(0);
-    expect(notices.join(' ')).toMatch(/refused the login/);
+    expect(notices).toContain(t('session.reconnect.loginRefused'));
   });
 
   it('says nothing at all when the character never asked for this', async () => {
@@ -283,7 +284,7 @@ describe('something else taking the connection over', () => {
     enabled = false;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(1);
-    expect(notices.join(' ')).toMatch(/switched off/);
+    expect(notices).toContain(t('session.reconnect.switchedOff'));
     expect(reconnect.pending).toBe(false);
   });
 
@@ -317,7 +318,7 @@ describe('something else taking the connection over', () => {
     drop(reconnect, 1_000);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(3);
-    expect(notices.join(' ')).toMatch(/stopped dialling/);
+    expect(notices).toContain(t('session.reconnect.keptDropping', { count: 3 }));
   });
 
   /* And an outage never flaps: it refuses or never answers, so it never gets a
@@ -335,7 +336,7 @@ describe('something else taking the connection over', () => {
       await vi.advanceTimersByTimeAsync(wait);
     }
     expect(dials.length).toBeGreaterThanOrEqual(6);
-    expect(notices.join(' ')).not.toMatch(/stopped dialling/);
+    expect(notices).not.toContain(t('session.reconnect.keptDropping', { count: 2 }));
   });
 
   /* The rail draws it and the tab's dial acts on it, so it has to be told. */

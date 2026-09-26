@@ -6,6 +6,7 @@ import { WorldGraph } from '../WorldGraph';
 import { worldOf } from './realmFile';
 import { localMap } from '../localMap';
 import { layoutMap } from '../../../shared/map';
+import { phrase } from '../../app/copyMatch';
 
 /** Where the map put a room, or undefined if it did not place it. */
 const at = (map: ReturnType<typeof localMap>, id: string) =>
@@ -184,7 +185,7 @@ describe('against the shipped realm data', () => {
       // Where to get one...
       expect(door?.detail).toContain('Sheriff Lionheart');
       // ...and the way through without it.
-      expect(door?.detail).toMatch(/pick\/bash \d+/);
+      expect(door?.detail).toMatch(phrase('map.obstacle.pickOrBash'));
       // The realm's own words survive for anything not modelled.
       expect(door?.raw).toContain('Key:');
       /*
@@ -201,7 +202,7 @@ describe('against the shipped realm data', () => {
     const map = localMap(realm!, '1/297', 1);
     const vault = map.cells.find((entry) => entry.id === '1/297')?.blocked?.['w'];
     expect(vault?.kind).toBe('door');
-    expect(vault?.detail).toMatch(/pick\/bash \d+/);
+    expect(vault?.detail).toMatch(phrase('map.obstacle.pickOrBash'));
   });
 
   it.runIf(realm !== null && realm.size > 0)(
@@ -213,7 +214,7 @@ describe('against the shipped realm data', () => {
       const spoken = map.cells
         .flatMap((cell) => Object.values(cell.blocked ?? {}))
         .find((block) => block.kind === 'text');
-      if (spoken) expect(spoken.detail).toMatch(/^Say: /);
+      if (spoken) expect(spoken.detail).toMatch(phrase('map.obstacle.sayCommand'));
     }
   );
 });

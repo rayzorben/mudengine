@@ -660,6 +660,8 @@ export default function BentoCard({
       ref={frame}
       data-card-theme={worn}
       data-dragging={dragging ? 'true' : undefined}
+      // The face shown, by id, so a harness reads it without its English.
+      data-face={tabs?.[at]?.id}
       data-rolled={rolled ? 'true' : undefined}
       onContextMenu={copy.onContextMenu}
       /*
@@ -727,6 +729,7 @@ export default function BentoCard({
                   aria-pressed={filter.on}
                   className="crumb"
                   data-active={filter.on ? 'true' : 'false'}
+                  data-filter={filter.id}
                   disabled={filter.disabled === true}
                   key={filter.id}
                   onClick={filter.toggle}
@@ -746,6 +749,7 @@ export default function BentoCard({
                   aria-selected={index === at}
                   className="crumb"
                   data-active={index === at ? 'true' : 'false'}
+                  data-tab={tab.id}
                   key={tab.id}
                   onClick={() => show(index)}
                   // A card is read, never typed into: switching its face must
@@ -878,7 +882,12 @@ export default function BentoCard({
             // fits, and matching that on the English word `More` would stop
             // finding folds the moment somebody reworded the label.
             data-action="more"
-            onClick={(event) => setMore((open) => (open ? null : event.currentTarget))}
+            // Read before the updater, which may run after dispatch has
+            // nulled `currentTarget` (see `CardPicker`).
+            onClick={(event) => {
+              const button = event.currentTarget;
+              setMore((open) => (open ? null : button));
+            }}
             onMouseDown={keepFocus}
             title={t('cards.chrome.more')}
             type="button"

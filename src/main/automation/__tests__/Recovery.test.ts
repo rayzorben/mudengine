@@ -294,7 +294,7 @@ describe('resting while poisoned', () => {
       recovery.onCharacter(state({ hp: 20 - i, hpMax: 100, ...poisoned() }));
       drain();
     }
-    expect(said.filter((line) => /rest a poisoned/i.test(line))).toHaveLength(1);
+    expect(said.filter((line) => line === t('automation.recovery.restPoisoned'))).toHaveLength(1);
   });
 
   /* The positive control: the same character, once the poison is stated gone. */
@@ -338,7 +338,7 @@ describe('resting while poisoned', () => {
     drain();
     recovery.onCharacter(state({ hp: 20, hpMax: 100, ...poisoned() }));
     drain();
-    expect(said.filter((line) => /rest a poisoned/i.test(line))).toHaveLength(2);
+    expect(said.filter((line) => line === t('automation.recovery.restPoisoned'))).toHaveLength(2);
   });
 
   /*

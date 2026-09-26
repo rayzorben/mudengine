@@ -351,13 +351,11 @@ export interface UiConfig {
    */
   showHud: boolean;
   /**
-   * The client's own mark, in the status rail.
+   * The client's own mark and version, at the head of the card rail.
    *
    * On by default: this is the one place the client says what it is, and a
-   * brand nobody ever sees is the same as none. Off is offered because a status
-   * rail is a line of facts about the session and somebody may not want a mark
-   * on it — not because the mark is in the way of anything, which it is not:
-   * it takes the height the line already has.
+   * brand nobody ever sees is the same as none. Off is offered for taste, not
+   * room: it shares the band the put-away chip already takes.
    */
   showLogo: boolean;
   /** How the console is painted when the chrome is light. See `ConsoleUiConfig`. */

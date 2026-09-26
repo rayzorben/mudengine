@@ -12,7 +12,7 @@ import {
 import CommandPalette, { type Command } from './components/CommandPalette';
 import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
-import CardPicker from './components/CardPicker';
+import CardRailHead from './components/CardRailHead';
 import FloatLayer from './components/FloatLayer';
 import PinnedFloats from './components/PinnedFloats';
 import SettingsScreen from './components/SettingsScreen';
@@ -1238,7 +1238,6 @@ export default function App() {
     drag,
     railOpen,
     hudOpen,
-    inGame,
     session,
     view,
     views,
@@ -1526,20 +1525,18 @@ export default function App() {
           <div className="rail">
             {/*
               Adding one back, at the top of the rail where the gap it leaves
-              is. Only lists what is actually put away, so it is a control that
-              disappears when there is nothing to do with it.
+              is, beside the client's own mark (`CardRailHead`).
             */}
-            {cards.away.length > 0 && (
-              <CardPicker
-                cards={cards.away}
-                dragging={drag.state?.live === true}
-                onAdd={cards.show}
-                onFloat={floatCard}
-                // A row is a handle as well as a button: dragged onto the
-                // console it floats there, into the rail it lands there.
-                onGrab={grabCard}
-              />
-            )}
+            <CardRailHead
+              away={cards.away}
+              dragging={drag.state?.live === true}
+              onAdd={cards.show}
+              onFloat={floatCard}
+              // A row is a handle as well as a button: dragged onto the
+              // console it floats there, into the rail it lands there.
+              onGrab={grabCard}
+              showLogo={config.ui.showLogo}
+            />
 
             {/*
               The rail says what it is waiting for rather than emptying out.
@@ -1652,7 +1649,6 @@ export default function App() {
         onOpenPalette={openPalette}
         onToggleConnection={toggleConnection}
         pressure={pressure}
-        showLogo={config.ui.showLogo}
         size={size}
         state={state}
       />

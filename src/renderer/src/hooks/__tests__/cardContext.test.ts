@@ -162,7 +162,6 @@ describe('useCardRenderers.pinnedFor', () => {
     drag: { state: null, begin: noop },
     railOpen: false,
     hudOpen: true,
-    inGame: true,
     session: SHOWN,
     contextFor: () => ({}) as CardContext,
     chromeFor: () => chrome,

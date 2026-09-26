@@ -132,6 +132,8 @@ function ToolbarKey({ button }: { button: ToolbarButton }) {
     <button
       aria-pressed={toggle ? button.on : undefined}
       className={`toolbar-key${button.on ? ' on' : ''}`}
+      // The button's id, so a harness finds it without its English.
+      data-button={button.id}
       disabled={button.disabled === true}
       onClick={button.run}
       // Clicked, never typed into: refusing the mouse's attempt to park the

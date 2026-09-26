@@ -1,6 +1,6 @@
 /**
  * Which card is drawn, and from what: the rail's gates (the diagnostics
- * group, the HUD, a character not yet in the realm) over `cardElement`, for
+ * group, the HUD) over `cardElement`, for
  * the shown character's lanes and floats and for another character's pinned
  * floats.
  *
@@ -27,7 +27,6 @@ export interface CardRendererInputs {
   drag: CardDrag;
   railOpen: boolean;
   hudOpen: boolean;
-  inGame: boolean;
   /** The character on screen, and its view. */
   session: SessionId;
   view: SessionView;
@@ -55,7 +54,6 @@ export function useCardRenderers({
   drag,
   railOpen,
   hudOpen,
-  inGame,
   session,
   view,
   views,
@@ -75,9 +73,9 @@ export function useCardRenderers({
    * The chrome — close, drag handle, translucency — is assembled here too, so
    * every card gets the same set without listing it eleven times.
    *
-   * Returns `null` for a card with nothing honest to say yet: a map of nowhere
-   * and a walk that is not happening are cards that state nothing, which
-   * docs/ui-design.md §3.2 does not allow.
+   * Returns `null` for a card its group has hidden. A card is **not** taken
+   * away when the character leaves the realm: it keeps its place and the last
+   * true things it said, and the standby card says why nothing is moving.
    */
   const renderCard = useCallback(
     (id: CardId): ReactNode => {
@@ -88,20 +86,6 @@ export function useCardRenderers({
       const diagnostic = isDiagnosticCard(id);
       if (diagnostic && !railOpen && !floating) return null;
       if (!diagnostic && !hudOpen && !floating) return null;
-      /*
-       * Nothing to read until the character is actually in the realm; the
-       * standby card says so once, for the whole rail, rather than per card.
-       *
-       * **The toolbar is the exception** (todo 02): it is the one card that is
-       * not a reading. It carries the dial, and every switch on it writes that
-       * character's own file — which is exactly what somebody does while a
-       * character is sitting at the menu or hung up. Taking it away at that
-       * moment removes the control that puts the character back. What it does
-       * *not* do is offer commands there: `ToolbarSubject.inRealm` greys those,
-       * because a row that changes shape under the pointer is the worse of the
-       * two complaints (`ToolbarButton.disabled`).
-       */
-      if (!diagnostic && id !== 'toolbar' && !inGame) return null;
 
       return cardElement(id, contextFor(session, view, chromeFor(id)));
     },
@@ -117,7 +101,6 @@ export function useCardRenderers({
       contextFor,
       drag,
       hudOpen,
-      inGame,
       lines,
       railOpen,
       session,
@@ -157,9 +140,6 @@ export function useCardRenderers({
     (id: CardId, sid: SessionId, v: SessionView, layout: CardLayoutApi): ReactNode => {
       const floating = layout.floatOf(id);
       if (!floating) return null;
-      const diagnostic = isDiagnosticCard(id);
-      const live = v.character.phase === 'in-game';
-      if (!diagnostic && !live) return null;
       return cardElement(id, contextFor(sid, v, pinnedChrome(id, layout, floating)));
     },
     [contextFor, pinnedChrome]

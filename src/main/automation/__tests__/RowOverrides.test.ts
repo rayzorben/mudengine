@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { RowOverrides, type RowOverridesSettings } from '../RowOverrides';
+import { t } from '../../app/i18n';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { classifyOccupant, type MobDisposition } from '../../../shared/mobs';
 import type { MobRule } from '../../../shared/mobRules';
@@ -41,8 +42,8 @@ describe('a row overruling the realm', () => {
     overrides.onCharacter(state);
     overrides.onCharacter(state);
     expect(notices).toHaveLength(2);
-    expect(notices[0]).toMatch(/giant rat calls it a friend, though the realm says it attacks/);
-    expect(notices[1]).toMatch(/thug says it does not attack first, though the realm says it does/);
+    expect(notices[0]).toBe(t('automation.combat.overrideFriend', { target: 'giant rat' }));
+    expect(notices[1]).toBe(t('automation.combat.overrideNotHostile', { target: 'thug' }));
     overrides.reset();
     overrides.onCharacter(state);
     expect(notices).toHaveLength(4);

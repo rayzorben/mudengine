@@ -82,8 +82,12 @@ export default function CardPicker({ cards, onAdd, onFloat, onGrab, dragging }: 
         data-card-picker="true"
         // Toggled: the chip is the way out of the list as well as the way in,
         // and `Popup` deliberately does not count a press on its own anchor as
-        // a click-away.
-        onClick={(event) => setOpen((shown) => (shown ? null : event.currentTarget))}
+        // a click-away. The chip is read before the updater: React may run it
+        // after dispatch, when `event.currentTarget` is already null.
+        onClick={(event) => {
+          const chip = event.currentTarget;
+          setOpen((shown) => (shown ? null : chip));
+        }}
         // The rail takes no typed input, so it never takes the caret.
         onMouseDown={keepFocus}
         title={t('cards.picker.tooltip')}

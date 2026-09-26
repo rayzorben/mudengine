@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, type AutomationConfig, type TrainConfig } from '../../.
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { Route, TrainerChoice } from '../../../shared/world';
+import { t } from '../../app/i18n';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -113,11 +114,32 @@ const make = (config = train(), over: Partial<TrainPlanner> = {}, enabled = true
 
 const drain = (): void => void vi.advanceTimersByTime(500);
 
+/* What the errand says, built from the same copy it reads. */
+const going = (trainer: TrainerChoice): string =>
+  t('automation.train.going', {
+    room: trainer.roomName,
+    steps: ROUTE.steps.length,
+    cost: trainer.cost.toLocaleString()
+  });
+const poor = (purse: number): string =>
+  t('automation.train.refusalPoor', {
+    cost: TITAN.cost.toLocaleString(),
+    purse: purse.toLocaleString(),
+    trainer: TITAN.name
+  });
+const skippedOne = (trainer: TrainerChoice, why: string): string =>
+  t('automation.train.skippedOne', { trainer: trainer.name, room: trainer.roomName, why });
+const unreachable = (why: string): string =>
+  t('automation.train.refusalUnreachable', {
+    level: 30,
+    skipped: [skippedOne(TITAN, why), skippedOne(AMAZON, why)].join('; ')
+  });
+
 describe('going to collect the level', () => {
   it('walks to the cheapest trainer that will take this character', () => {
     make().onCharacter(owed());
     expect(walked).toHaveLength(1);
-    expect(notices.join('\n')).toContain('Training Area');
+    expect(notices).toContain(going(TITAN));
   });
 
   /*
@@ -163,8 +185,7 @@ describe('going to collect the level', () => {
     const base = owed();
     make().onCharacter({ ...base, inventory: { ...base.inventory, wealth: 3_324 } });
     expect(walked).toEqual([]);
-    expect(notices.join('\n')).toContain('88,450');
-    expect(notices.join('\n')).toContain('3,324');
+    expect(notices).toContain(poor(3_324));
     expect(decisions.at(-1)?.acted).toBe(false);
   });
 
@@ -177,7 +198,7 @@ describe('going to collect the level', () => {
     errand.onCharacter(broke);
     errand.onCharacter({ ...base, inventory: { ...base.inventory, wealth: 50_000 } });
     expect(walked).toEqual([]);
-    expect(notices.filter((line) => /carries/.test(line))).toHaveLength(1);
+    expect(notices).toEqual([poor(3_324)]);
     errand.onCharacter({ ...base, inventory: { ...base.inventory, wealth: 88_450 } });
     expect(walked).toHaveLength(1);
   });
@@ -198,7 +219,7 @@ describe('going to collect the level', () => {
     expect(sent).toEqual(['train']);
     const base = owed();
     errand.onCharacter({ ...base, progress: { ...base.progress, level: 31, expNeeded: 12000 } });
-    expect(notices.join('\n')).toContain('31');
+    expect(notices).toContain(t('automation.train.levelled', { level: 31 }));
     expect(decisions.at(-1)?.acted).toBe(true);
   });
 
@@ -295,12 +316,12 @@ describe('going to collect the level', () => {
   it('refuses rather than substituting when the chosen trainer no longer takes it', () => {
     make(train({ trainer: 999 })).onCharacter(owed());
     expect(walked).toEqual([]);
-    expect(notices.join('\n')).toMatch(/no longer takes/i);
+    expect(notices).toContain(t('automation.train.refusalTrainerStale', { level: 30 }));
   });
 
   it('walks to the trainer the player chose, not the cheapest', () => {
     make(train({ trainer: AMAZON.shop })).onCharacter(owed());
-    expect(notices.join('\n')).toContain("Elders' Council Chambers");
+    expect(notices).toContain(going(AMAZON));
   });
 
   it('says so once per level when the realm offers nowhere', () => {
@@ -308,7 +329,7 @@ describe('going to collect the level', () => {
     errand.onCharacter(owed());
     errand.onCharacter(owed());
     errand.onCharacter(owed());
-    expect(notices.filter((line) => /names no trainer/i.test(line))).toHaveLength(1);
+    expect(notices).toEqual([t('automation.train.refusalNowhere', { level: 30 })]);
   });
 
   /* One level is one attempt: a refusal does not repeat every status line. */
@@ -317,7 +338,7 @@ describe('going to collect the level', () => {
     const errand = make(train(), { routeTo: () => 'no route' });
     errand.onCharacter(base);
     errand.onCharacter(base);
-    expect(notices.filter((line) => /Nothing walked/i.test(line))).toHaveLength(1);
+    expect(notices).toEqual([unreachable('no route')]);
   });
 
   /*
@@ -336,10 +357,10 @@ describe('going to collect the level', () => {
   it('skips a trainer no route reaches and walks to the next, saying which it skipped', () => {
     make(train(), { routeTo: (room) => (room === '3/542' ? BLOCKED : ROUTE) }).onCharacter(owed());
     expect(walked).toEqual([ROUTE]);
-    const said = notices.join('\n');
-    expect(said).toMatch(/Skipping.*Titan Trainer.*No way there at all/);
-    expect(said).toContain("Elders' Council Chambers");
-    expect(said).not.toContain('0 steps');
+    expect(notices).toEqual([
+      t('automation.train.skipping', { skipped: skippedOne(TITAN, 'No way there at all') }),
+      going(AMAZON)
+    ]);
   });
 
   it('refuses once when no trainer can be reached, naming every one, and plans nothing more from that room', () => {
@@ -354,8 +375,7 @@ describe('going to collect the level', () => {
     errand.onCharacter(owed());
     errand.onCharacter(owed());
     expect(walked).toEqual([]);
-    expect(notices.filter((line) => /no trainer .* can be walked to/i.test(line))).toHaveLength(1);
-    expect(notices.join('\n')).toMatch(/Titan Trainer.*Amazon trainer/);
+    expect(notices).toEqual([unreachable('No way there at all')]);
     // Two trainers, planned once each; the two later status lines planned nothing.
     expect(planned).toBe(2);
     expect(decisions.at(-1)?.acted).toBe(false);
@@ -381,7 +401,7 @@ describe('going to collect the level', () => {
     errand.onCharacter(owed());
     // Three rooms inside the clock: planned once, said once.
     expect(planned).toBe(2);
-    expect(notices.filter((line) => /can be walked to/i.test(line))).toHaveLength(1);
+    expect(notices).toEqual([unreachable('No way there at all')]);
     here = '8/915';
     vi.advanceTimersByTime(61_000);
     errand.onCharacter(owed());
@@ -391,7 +411,7 @@ describe('going to collect the level', () => {
     errand.onCharacter(owed());
     // Another room and the clock passed: planned again; same outcome, nothing new said.
     expect(planned).toBe(4);
-    expect(notices.filter((line) => /can be walked to/i.test(line))).toHaveLength(1);
+    expect(notices).toEqual([unreachable('No way there at all')]);
   });
 
   it('says a changed outcome, once', () => {
@@ -404,18 +424,18 @@ describe('going to collect the level', () => {
     here = '1/2150';
     reason = 'Crypt is locked — needs bone key';
     errand.onCharacter(owed());
-    const said = notices.filter((line) => /can be walked to/i.test(line));
-    expect(said).toHaveLength(2);
-    expect(said[1]).toContain('bone key');
+    expect(notices).toEqual([
+      unreachable('No way there at all'),
+      unreachable('Crypt is locked — needs bone key')
+    ]);
   });
 
   it('never substitutes for a chosen trainer that cannot be reached', () => {
     make(train({ trainer: TITAN.shop }), { routeTo: () => BLOCKED }).onCharacter(owed());
     expect(walked).toEqual([]);
-    const said = notices.join('\n');
-    expect(said).toMatch(/Could not walk to Training Area.*No way there at all/);
-    expect(said).not.toContain("Elders' Council Chambers");
-    expect(said).not.toContain('0 steps');
+    expect(notices).toEqual([
+      t('automation.train.refusalNoRoute', { room: TITAN.roomName, why: 'No way there at all' })
+    ]);
   });
 
   it('holds a running lap and gives it back when the errand ends', () => {
@@ -438,7 +458,7 @@ describe('going to collect the level', () => {
     drain();
     vi.advanceTimersByTime(11_000);
     errand.onCharacter(owed());
-    expect(notices.join('\n')).toMatch(/did not move/i);
+    expect(notices).toContain(t('automation.train.refusalUnanswered', { trainer: TITAN.name }));
     expect(decisions.at(-1)?.acted).toBe(false);
   });
 });

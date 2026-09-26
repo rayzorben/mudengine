@@ -46,6 +46,14 @@ import path from 'node:path';
 import { execSync, spawn, spawnSync } from 'node:child_process';
 
 import { analyse, loadMapper, spread } from './lib/cpuprofile.mjs';
+// The palette row is typed for by its dictionary key, never its wording (run
+// under `scripts/lib/register.mjs`); a key the dictionary lacks throws.
+import { copyOf } from '../src/main/app/copyMatch.ts';
+
+/** The palette's row that shows the Talk card, as the palette labels it. */
+const SHOW_TALK = copyOf('palette.layout.showCardLabel', {
+  cardName: copyOf('cards.talk.title')
+});
 
 const IAC = 255,
   WILL = 251,
@@ -1062,7 +1070,7 @@ async function openTalk() {
     const el = document.querySelector('.palette input');
     if (!el) return false;
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'Show card: Talk');
+    set.call(el, ${JSON.stringify(SHOW_TALK)});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()`);
@@ -1070,7 +1078,7 @@ async function openTalk() {
   await sleep(250);
   const found = await evaluate(`(() => {
     const row = [...document.querySelectorAll('.palette li')]
-      .find((li) => li.innerText.includes('Show card: Talk'));
+      .find((li) => li.innerText.includes(${JSON.stringify(SHOW_TALK)}));
     if (row) row.click();
     return !!row;
   })()`);

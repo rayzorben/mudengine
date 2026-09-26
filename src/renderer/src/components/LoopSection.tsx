@@ -58,7 +58,7 @@ export default function LoopSection({
   const chosen = new Set(loops.map((loop) => loop.name));
 
   return (
-    <fieldset className="settings-menus">
+    <fieldset className="settings-menus" data-fieldset="loops">
       <legend>{t('settings.loopSection.heading')}</legend>
       {loops.length === 0 ? (
         <p className="settings-note">{t('settings.loopSection.empty')}</p>

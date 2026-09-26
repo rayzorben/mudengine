@@ -13,6 +13,7 @@
     "noImplicitOverride": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,

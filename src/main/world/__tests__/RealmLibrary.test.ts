@@ -6,7 +6,16 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { RealmLibrary } from '../RealmLibrary';
-import { shippedWorldFile, type ArchiveIdentity, type ShippedWorld } from '../../../shared/worlds';
+import { openRealm } from '../RealmSource';
+import { t } from '../../app/i18n';
+import { sentence } from '../../app/copyMatch';
+import { complaint } from './complaint';
+import {
+  SHIPPED_WORLD_LABEL,
+  shippedWorldFile,
+  type ArchiveIdentity,
+  type ShippedWorld
+} from '../../../shared/worlds';
 
 let dir = '';
 let shippedDir = '';
@@ -35,6 +44,21 @@ function writeShipped(world: ShippedWorld, rooms: number, archive?: ArchiveIdent
     ...(archive === undefined ? {} : { archive })
   });
 }
+
+/** What the library says while it walks a bundled world nobody confirmed. */
+const automaticNotice = (world: ShippedWorld): string =>
+  t('notices.world.automaticWorld', { world: SHIPPED_WORLD_LABEL[world] });
+
+/** What it says on recognising a named database as a bundled world's archive. */
+const archiveNotice = (file: string, world: ShippedWorld): string =>
+  t('notices.world.archiveIsBundled', { file, world: SHIPPED_WORLD_LABEL[world] });
+
+/** A bundled world's load notice, with its one figure that varies (the time) left open. */
+const loadedNotice = (world: ShippedWorld, rooms: number): RegExp =>
+  sentence('notices.world.shippedLoaded', {
+    rooms: rooms.toLocaleString(),
+    source: SHIPPED_WORLD_LABEL[world]
+  });
 
 const library = (): RealmLibrary =>
   new RealmLibrary({ shippedDir, cacheDir, notify: (message) => notices.push(message) });
@@ -117,14 +141,15 @@ describe('a realm that names no database', () => {
     expect(loaded.graph.size).toBe(3);
     expect(loaded.graph.info.world).toBe('paradigm');
     expect(loaded.problem).toBeUndefined();
-    expect(notices.join(' ')).toMatch(/has not yet said which it runs.*Paradigm/);
+    expect(notices).toContain(automaticNotice('paradigm'));
   });
 
   it("walks the world the realm's own word chose, silently", () => {
     const loaded = library().load('', 'majormud');
     expect(loaded.graph.size).toBe(2);
     expect(loaded.graph.info.world).toBe('majormud');
-    expect(notices.some((notice) => /has not yet said/.test(notice))).toBe(false);
+    expect(notices).not.toContain(automaticNotice('paradigm'));
+    expect(notices).not.toContain(automaticNotice('majormud'));
   });
 
   /* Walking a map the realm has not confirmed is a standing condition, not an
@@ -135,7 +160,7 @@ describe('a realm that names no database', () => {
     realms.load('');
     realms.load('');
     realms.load('');
-    expect(notices.filter((notice) => /has not yet said/.test(notice))).toHaveLength(1);
+    expect(notices.filter((notice) => notice === automaticNotice('paradigm'))).toHaveLength(1);
   });
 
   it('treats whitespace as naming none', () => {
@@ -155,15 +180,19 @@ describe('a realm that names no database', () => {
     realms.load('');
     realms.load('', 'majormud');
     realms.load('majormud');
-    expect(notices.filter((notice) => /rooms from Paradigm/.test(notice))).toHaveLength(1);
-    expect(notices.filter((notice) => /rooms from MajorMUD/.test(notice))).toHaveLength(1);
+    expect(notices.filter((notice) => loadedNotice('paradigm', 3).test(notice))).toHaveLength(1);
+    expect(notices.filter((notice) => loadedNotice('majormud', 2).test(notice))).toHaveLength(1);
   });
 
   it('says so when a bundled world is missing from the resources', () => {
     fs.rmSync(path.join(shippedDir, shippedWorldFile('majormud')));
     const loaded = library().load('majormud');
     expect(loaded.graph.size).toBe(0);
-    expect(notices.join(' ')).toMatch(/no realm data at .*majormud\.jsonl\.gz/);
+    expect(notices).toContain(
+      t('notices.world.shippedMissing', {
+        path: path.join(shippedDir, shippedWorldFile('majormud'))
+      })
+    );
   });
 });
 
@@ -201,7 +230,7 @@ describe('a database that is the archive a bundled world was built from', () => 
     const loaded = library().load(archive);
     expect(loaded.problem).toBeUndefined();
     expect(loaded.graph.info.world).toBe('paradigm');
-    expect(notices.join(' ')).toMatch(/pmud\.zip is the archive the bundled Paradigm world/);
+    expect(notices).toContain(archiveNotice('pmud.zip', 'paradigm'));
     expect(fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : []).toEqual([]);
   });
 
@@ -221,7 +250,7 @@ describe('a database that is the archive a bundled world was built from', () => 
       expect(realms.load(archive).graph.info.world).toBe('paradigm');
     }
 
-    const said = notices.filter((notice) => /is the archive the bundled/.test(notice));
+    const said = notices.filter((notice) => notice === archiveNotice('pmud.zip', 'paradigm'));
     expect(said).toHaveLength(1);
   });
 
@@ -235,7 +264,7 @@ describe('a database that is the archive a bundled world was built from', () => 
     const loaded = library().load(archive);
     // Not recognised, so converted — and this is no archive, so the fallback.
     expect(loaded.problem).toBeDefined();
-    expect(notices.some((notice) => /is the archive the bundled/.test(notice))).toBe(false);
+    expect(notices).not.toContain(archiveNotice('pmud.zip', 'paradigm'));
   });
 });
 
@@ -248,21 +277,35 @@ describe('a realm that cannot be used', () => {
     const loaded = library().load(path.join(dir, 'missing.mdb'), 'majormud');
     expect(loaded.graph.size).toBe(2);
     expect(loaded.problem).toBeDefined();
-    expect(notices.join(' ')).toMatch(/Falling back to the bundled MajorMUD world/);
+    expect(notices).toContain(
+      t('notices.world.fallback', {
+        problem: loaded.problem!,
+        world: SHIPPED_WORLD_LABEL.majormud
+      })
+    );
   });
 
   it('says so every time, not once', () => {
     const realms = library();
+    const { problem } = realms.load(path.join(dir, 'missing.mdb'));
     realms.load(path.join(dir, 'missing.mdb'));
-    realms.load(path.join(dir, 'missing.mdb'));
-    expect(notices.filter((notice) => /Falling back/.test(notice))).toHaveLength(2);
+    const fellBack = t('notices.world.fallback', {
+      problem: problem!,
+      world: SHIPPED_WORLD_LABEL.paradigm
+    });
+    expect(notices.filter((notice) => notice === fellBack)).toHaveLength(2);
   });
 
   it('refuses a file that is not a realm database at all', () => {
     const wrong = path.join(dir, 'notes.txt');
     fs.writeFileSync(wrong, 'hello');
     const loaded = library().load(wrong);
-    expect(loaded.problem).toMatch(/realm database|\.mdb/i);
+    expect(loaded.problem).toBe(
+      t('notices.world.problemConvertFailed', {
+        file: 'notes.txt',
+        reason: complaint(() => openRealm(wrong))
+      })
+    );
     expect(loaded.graph.size).toBe(3);
   });
 

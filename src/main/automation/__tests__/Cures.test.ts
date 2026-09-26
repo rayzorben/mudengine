@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { Cures, RETRY_MS } from '../Cures';
+import { t } from '../../app/i18n';
 import type { WorldSpell } from '../../../shared/world';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import {
@@ -167,7 +168,7 @@ describe('curing by a sentence', () => {
     // The cheapest that cures, cast on the character — never the enemy-targeted bolt.
     expect(sent).toEqual(['anti']);
     expect(said).toHaveLength(1);
-    expect(said[0]).toMatch(/antidote as the poison cure/);
+    expect(said[0]).toBe(t('automation.cure.derived', { cure: 'poison', spell: 'antidote' }));
   });
 
   /*
@@ -240,7 +241,7 @@ describe('curing by a sentence', () => {
     cures.onCharacter({ ...state({ held: 'yes' }), spellbook: book });
     vi.advanceTimersByTime(50);
     expect(sent).toEqual(['free']);
-    expect(said).toEqual([expect.stringMatching(/Casting freedom as the freedom cure/)]);
+    expect(said).toEqual([t('automation.cure.derived', { cure: 'freedom', spell: 'freedom' })]);
   });
 
   it('derives nothing for a hold from a book with no Freedom mark, while it still cures poison', () => {

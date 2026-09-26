@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuestRunner, type QuestRunPlanner } from '../QuestRunner';
 import { CommandQueue } from '../CommandQueue';
 import { tuning } from '../../app/tuning';
+import { t } from '../../app/i18n';
+import { ANY, composes } from '../../app/copyMatch';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
@@ -248,11 +250,21 @@ const make = (over: Partial<QuestRunPlanner> = {}, enabled = true, on = true): Q
 
 const drain = (): void => void vi.advanceTimersByTime(500);
 
+/** The notice a setback says, built from the same copy the runner reads. */
+const heldUp = (why: string, tries = 1): string =>
+  t('automation.quests.heldUp', {
+    why,
+    tries,
+    max: tuning().quests.setbacks,
+    seconds: Math.round(tuning().quests.retryMs / 1000)
+  });
+const refusedWith = (why: string): string => t('automation.quests.refused', { why });
+
 describe('running a quest plan', () => {
   it('refuses while the switch is off, and names it', () => {
     const runner = make({}, true, false);
     const refused = runner.start(plan(STEP_ONE), QUEST, inRealm());
-    expect(refused).toContain('Auto-Quest is off');
+    expect(refused).toBe(t('automation.quests.refusalSwitchedOff'));
     expect(runner.running).toBe(false);
     expect(decisions.at(-1)?.acted).toBe(false);
   });
@@ -287,7 +299,11 @@ describe('running a quest plan', () => {
     expect(runner.progress.status).toBe('done');
     expect(questing).toEqual([true, false]);
     expect(published.at(-1)?.steps).toEqual([
-      { block: 10, state: 'done', words: 'ask Sage hello' }
+      {
+        block: 10,
+        state: 'done',
+        words: t('cards.quests.step.ask', { who: 'Sage', word: 'hello' })
+      }
     ]);
   });
 
@@ -310,7 +326,14 @@ describe('running a quest plan', () => {
     expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
     expect(runner.running).toBe(true);
     expect(runner.progress.phase).toBe('held');
-    expect(notices.at(-1)).toContain('Held up');
+    expect(notices.at(-1)).toBe(
+      heldUp(
+        t('automation.quests.refusalNoRoute', {
+          room: STEP_ONE.at!.place!,
+          why: 'a move is already on the way'
+        })
+      )
+    );
     expect(walked).toHaveLength(0);
 
     // Not a moment sooner than the clock says.
@@ -334,7 +357,17 @@ describe('running a quest plan', () => {
     }
     expect(runner.running).toBe(false);
     expect(runner.progress.status).toBe('stopped');
-    expect(runner.progress.reason).toContain('setbacks in a row');
+    expect(runner.progress.reason).toBe(
+      refusedWith(
+        t('automation.quests.refusalGaveUp', {
+          why: t('automation.quests.refusalNoRoute', {
+            room: STEP_ONE.at!.place!,
+            why: 'a move is already on the way'
+          }),
+          tries: tuning().quests.setbacks
+        })
+      )
+    );
   });
 
   /*
@@ -378,7 +411,7 @@ describe('running a quest plan', () => {
     const runner = make();
     expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
     expect(bought).toEqual(['torch']);
-    expect(notices.some((line) => line.includes('Stocking up on torch'))).toBe(true);
+    expect(notices).toContain(t('automation.quests.stockingUp', { item: 'torch', nth: 1 }));
     expect(walked).toHaveLength(0);
 
     // The counter had four of them, not six. The floor is what mattered.
@@ -457,9 +490,11 @@ describe('running a quest plan', () => {
     const runner = make();
     expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
     expect(bought).toEqual(['torch']);
-    runner.onWalkEnded(false, 'you asked it to', inRealm());
+    runner.onWalkEnded(false, t('session.walk.stoppedByPlayer'), inRealm());
     expect(runner.running).toBe(false);
-    expect(runner.progress.reason).toContain('you asked it to');
+    expect(runner.progress.reason).toBe(
+      t('automation.quests.abandoned', { why: t('automation.quests.whyStopped') })
+    );
   });
 
   /*
@@ -483,7 +518,7 @@ describe('running a quest plan', () => {
     restock = null;
     runner.onCharacter(inRealm());
     expect(runner.running).toBe(true);
-    expect(notices.some((line) => line.includes('Carrying on without torch'))).toBe(true);
+    expect(notices).toContain(t('automation.quests.stockUnfilled', { item: 'torch' }));
     expect(walked).toHaveLength(1);
   });
 
@@ -504,7 +539,9 @@ describe('running a quest plan', () => {
     clock += tuning().quests.waitForMs + 1;
     runner.onCharacter(present);
     expect(runner.progress.phase).toBe('held');
-    expect(notices.at(-1)).toContain('nothing will fight it');
+    expect(notices.at(-1)).toBe(
+      heldUp(t('automation.quests.refusalMobNotFought', { mob: 'orc', nth: 1 }))
+    );
   });
 
   /*
@@ -552,8 +589,9 @@ describe('running a quest plan', () => {
     runner.onCharacter(listed(atSage, 0, clock));
     expect(runner.running).toBe(false);
     expect(runner.progress.status).toBe('stopped');
-    expect(runner.progress.reason).toContain('stayed at 0');
-    expect(decisions.at(-1)?.refused).toContain('stayed at 0');
+    const unmoved = t('automation.quests.refusalCounterUnmoved', { nth: 1, rank: 0, to: 1 });
+    expect(runner.progress.reason).toBe(refusedWith(unmoved));
+    expect(decisions.at(-1)?.refused).toBe(unmoved);
   });
 
   it('buys what the step wants first, then asks again while the roll fails, bounded', () => {
@@ -594,7 +632,9 @@ describe('running a quest plan', () => {
     clock += 100;
     runner.onCharacter(listed(holding, 1, clock));
     expect(runner.running).toBe(false);
-    expect(runner.progress.reason).toContain('never passed');
+    expect(runner.progress.reason).toBe(
+      refusedWith(t('automation.quests.refusalRollFailed', { nth: 1, tries }))
+    );
   });
 
   it('asks a script for an item the plan says is handed over, and reads the pack for it', () => {
@@ -618,7 +658,9 @@ describe('running a quest plan', () => {
     // The handover first, spelled as the room lists him, and nothing else yet.
     expect(sent).toEqual(['ask Master Trader Tolgard favour']);
     expect(runner.progress.phase).toBe('fetching');
-    expect(runner.progress.detail).toContain('heavy box');
+    expect(runner.progress.detail).toBe(
+      t('automation.quests.detailFetching', { item: 'heavy box' })
+    );
     // The script's `giveitem` names nothing on the wire, so the pack is asked
     // for once the ask has gone out — nothing is concluded from silence.
     runner.onCharacter(hall);
@@ -664,7 +706,11 @@ describe('running a quest plan', () => {
     drain();
     expect(sent.filter((command) => command === 'inventory')).toHaveLength(2);
     expect(runner.progress.phase).toBe('fetching');
-    expect(notices.join('\n')).not.toContain('does not hold');
+    // No setback over this handover, whatever the item or the count.
+    const handoverSetback = composes('automation.quests.heldUp', {
+      why: t('automation.quests.refusalHandoverUnanswered', { item: ANY })
+    });
+    expect(notices.filter(handoverSetback)).toEqual([]);
     // Somebody else's `i`, sent before the ask and answered after the run's
     // own went out, lists the pack as it was: not the answer.
     runner.noteListing('i');
@@ -674,7 +720,10 @@ describe('running a quest plan', () => {
     runner.noteListing('inventory');
     runner.onCharacter(hall);
     expect(runner.progress.phase).toBe('held');
-    expect(notices.at(-1)).toContain('heavy box was asked for, and the pack listed after it');
+    // The same matcher finds it once it is said (the positive control).
+    expect(notices.filter(handoverSetback)).toEqual([
+      heldUp(t('automation.quests.refusalHandoverUnanswered', { item: 'heavy box' }))
+    ]);
   });
 
   it('is put down by the player, walk and errands with it', () => {
@@ -686,7 +735,7 @@ describe('running a quest plan', () => {
     expect(stoppedWith).toBe('you asked it to');
     expect(runner.running).toBe(false);
     expect(runner.progress.status).toBe('stopped');
-    expect(notices.at(-1)).toContain('you asked it to');
+    expect(notices.at(-1)).toBe(t('automation.quests.abandoned', { why: 'you asked it to' }));
   });
 
   it('names the run and each step for the banner, in the words the plan rows use', () => {
@@ -699,7 +748,11 @@ describe('running a quest plan', () => {
     // The rank of the quest step the plan was asked for: block 13 is not a
     // quest step, so nothing states one.
     expect(progress.to).toBeNull();
-    expect(progress.steps.map((step) => step.words)).toEqual(['ask Sage hello', 'kill orc', '#13']);
+    expect(progress.steps.map((step) => step.words)).toEqual([
+      t('cards.quests.step.ask', { who: 'Sage', word: 'hello' }),
+      t('cards.quests.step.kill', { who: 'orc' }),
+      '#13'
+    ]);
     expect(progress.steps.map((step) => step.state)).toEqual(['now', 'left', 'left']);
     // And a plan asked for a quest step names the rank it reaches.
     runner.stop('enough');
@@ -776,7 +829,9 @@ describe('running a quest plan', () => {
     queue.cancel(() => true);
     second.onCharacter(hall);
     expect(second.progress.phase).toBe('held');
-    expect(notices.at(-1)).toContain('lapsed in the queue');
+    expect(notices.at(-1)).toBe(
+      heldUp(t('automation.quests.refusalHandoverUnsent', { item: 'heavy box' }))
+    );
     queue.noteTyping(false);
     drain();
     expect(sent).toEqual([]);
@@ -840,6 +895,8 @@ describe('running a quest plan', () => {
     clock += tuning().quests.replyMs + 1;
     runner.onCharacter(atSage);
     expect(runner.running).toBe(false);
-    expect(runner.progress.reason).toContain('nothing on this realm says');
+    expect(runner.progress.reason).toBe(
+      refusedWith(t('automation.quests.refusalUnwatched', { nth: 1 }))
+    );
   });
 });

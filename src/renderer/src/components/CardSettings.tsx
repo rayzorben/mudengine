@@ -233,7 +233,7 @@ export default function CardSettingsPopup({
             is where the picker is asked for. Stored only where it differs from
             the shipped answer, the rule the stamp above states.
           */}
-          <label className="card-settings-check">
+          <label className="card-settings-check" data-setting="talkChannels">
             <input
               checked={value.talkChannels ?? false}
               onChange={(event) => {

@@ -28,6 +28,7 @@ import {
 } from '../../../shared/world';
 import { roomId } from '../../../shared/world';
 import { tuning } from '../../app/tuning';
+import { t } from '../../app/i18n';
 import { questLevel } from '../../../shared/quests';
 import type { QuestStep } from '../../../shared/quests';
 
@@ -422,7 +423,9 @@ describe('routing', () => {
   it('reports an unknown start or destination rather than hanging', () => {
     const graph = makeWorld(corridor(3));
     expect(graph.route('9/9', '1/1').blocked).toBe(true);
-    expect(graph.route('1/1', '9/9').reason).toMatch(/Unknown destination/);
+    expect(graph.route('1/1', '9/9').reason).toBe(
+      t('cards.route.reasons.unknownDestinationRoom', { roomId: '9/9' })
+    );
   });
 
   it('reports no route when none exists', () => {

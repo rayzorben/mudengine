@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ago, isKnownPlayer, knownPlayerNames, place } from '../players';
+import { t } from '../i18n';
 import type { PlayerRecord } from '@shared/players';
 import { EMPTY_CHARACTER } from '@shared/character';
 
@@ -44,8 +45,8 @@ function seen(fields: Partial<PlayerRecord> = {}): PlayerRecord {
  */
 describe('how long ago somebody was seen', () => {
   it('says just now only for the first ten seconds', () => {
-    expect(ago(NOW, NOW)).toBe('just now');
-    expect(ago(NOW - 9_000, NOW)).toBe('just now');
+    expect(ago(NOW, NOW)).toBe(t('players.sighting.justNow'));
+    expect(ago(NOW - 9_000, NOW)).toBe(t('players.sighting.justNow'));
   });
 
   /*
@@ -54,9 +55,9 @@ describe('how long ago somebody was seen', () => {
    * seconds and fifty decides whether following somebody is worth trying.
    */
   it('counts the rest of the minute in tens of seconds', () => {
-    expect(ago(NOW - 10_000, NOW)).toBe('10s ago');
-    expect(ago(NOW - 45_000, NOW)).toBe('40s ago');
-    expect(ago(NOW - 59_000, NOW)).toBe('50s ago');
+    expect(ago(NOW - 10_000, NOW)).toBe(t('players.sighting.secondsAgo', { seconds: 10 }));
+    expect(ago(NOW - 45_000, NOW)).toBe(t('players.sighting.secondsAgo', { seconds: 40 }));
+    expect(ago(NOW - 59_000, NOW)).toBe(t('players.sighting.secondsAgo', { seconds: 50 }));
   });
 
   /*
@@ -64,23 +65,23 @@ describe('how long ago somebody was seen', () => {
    * does not have, and one that reads as a minute spelled wrong.
    */
   it('never says sixty seconds', () => {
-    expect(ago(NOW - 55_000, NOW)).toBe('50s ago');
-    expect(ago(NOW - 60_000, NOW)).toBe('1m ago');
+    expect(ago(NOW - 55_000, NOW)).toBe(t('players.sighting.secondsAgo', { seconds: 50 }));
+    expect(ago(NOW - 60_000, NOW)).toBe(t('players.sighting.minutesAgo', { minutes: 1 }));
   });
 
   it('counts minutes from the minute to the hour', () => {
-    expect(ago(NOW - 90_000, NOW)).toBe('1m ago');
-    expect(ago(NOW - 30 * 60_000, NOW)).toBe('30m ago');
-    expect(ago(NOW - 59 * 60_000, NOW)).toBe('59m ago');
+    expect(ago(NOW - 90_000, NOW)).toBe(t('players.sighting.minutesAgo', { minutes: 1 }));
+    expect(ago(NOW - 30 * 60_000, NOW)).toBe(t('players.sighting.minutesAgo', { minutes: 30 }));
+    expect(ago(NOW - 59 * 60_000, NOW)).toBe(t('players.sighting.minutesAgo', { minutes: 59 }));
   });
 
   it('counts hours, then days, and stops at days', () => {
-    expect(ago(NOW - 90 * 60_000, NOW)).toBe('1h ago');
-    expect(ago(NOW - 23 * 3_600_000, NOW)).toBe('23h ago');
+    expect(ago(NOW - 90 * 60_000, NOW)).toBe(t('players.sighting.hoursAgo', { hours: 1 }));
+    expect(ago(NOW - 23 * 3_600_000, NOW)).toBe(t('players.sighting.hoursAgo', { hours: 23 }));
     // Floored: 30 hours is yesterday morning, and `1d ago` is the honest half
     // of that. Rounding would call it two days.
-    expect(ago(NOW - 30 * 3_600_000, NOW)).toBe('1d ago');
-    expect(ago(NOW - 400 * 24 * 3_600_000, NOW)).toBe('400d ago');
+    expect(ago(NOW - 30 * 3_600_000, NOW)).toBe(t('players.sighting.daysAgo', { days: 1 }));
+    expect(ago(NOW - 400 * 24 * 3_600_000, NOW)).toBe(t('players.sighting.daysAgo', { days: 400 }));
   });
 
   /*
@@ -89,7 +90,7 @@ describe('how long ago somebody was seen', () => {
    * something impossible, so the clamp says the plainly true thing instead.
    */
   it('never claims somebody was seen in the future', () => {
-    expect(ago(NOW + 5_000, NOW)).toBe('just now');
+    expect(ago(NOW + 5_000, NOW)).toBe(t('players.sighting.justNow'));
   });
 });
 
@@ -99,7 +100,9 @@ describe('where somebody was', () => {
   });
 
   it('says a number as a number when there is no name for it', () => {
-    expect(place(seen({ lastRoom: 1124 }))).toBe('room 1124');
+    expect(place(seen({ lastRoom: 1124 }))).toBe(
+      t('players.sighting.roomNumber', { roomNumber: 1124 })
+    );
   });
 
   /*
@@ -108,7 +111,7 @@ describe('where somebody was', () => {
    * card admits it rather than filling one in.
    */
   it('admits it when the only sightings carried no place at all', () => {
-    expect(place(seen({ lastRoomAt: null }))).toBe('not seen in a room');
+    expect(place(seen({ lastRoomAt: null }))).toBe(t('players.sighting.noRoom'));
   });
 
   /*
@@ -117,7 +120,7 @@ describe('where somebody was', () => {
    * not deny the sighting the row above it reports.
    */
   it('says a placed sighting was placed even when the room could not be', () => {
-    expect(place(seen({ lastRoomAt: NOW }))).toBe('a room the client could not place');
+    expect(place(seen({ lastRoomAt: NOW }))).toBe(t('players.sighting.unplacedRoom'));
   });
 });
 

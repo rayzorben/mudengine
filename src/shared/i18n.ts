@@ -64,7 +64,41 @@ export function flattenDict(dict: UiDict, prefix = ''): Map<string, string> {
   return flat;
 }
 
+/** A `{name}` in a dictionary string, captured bare: what `makeT` fills. */
 const PLACEHOLDER = /\{([A-Za-z0-9_]+)\}/g;
+
+/**
+ * A dictionary string cut at its placeholders: the literal runs at even
+ * indices and each placeholder's bare name between them, so nothing reading
+ * copy by its shape re-learns the `{name}` syntax.
+ */
+export function templateParts(template: string): string[] {
+  return template.split(PLACEHOLDER);
+}
+
+/**
+ * Whether `text` is what `template` renders, whatever fills its placeholders.
+ *
+ * For code that must recognise a sentence main itself said, since the words
+ * are the user's to change (2026-09-25): matched by the literal runs in order,
+ * anchored at both ends, so it compiles no pattern and cannot be fooled by a
+ * reworded fragment.
+ */
+export function rendersFrom(template: string, text: string): boolean {
+  const literals = templateParts(template).filter((_, index) => index % 2 === 0);
+  const first = literals[0] ?? '';
+  if (literals.length === 1) return text === first;
+  const last = literals[literals.length - 1] ?? '';
+  const end = text.length - last.length;
+  if (end < first.length || !text.startsWith(first) || !text.endsWith(last)) return false;
+  let at = first.length;
+  for (const middle of literals.slice(1, -1)) {
+    const found = text.indexOf(middle, at);
+    if (found === -1 || found + middle.length > end) return false;
+    at = found + middle.length;
+  }
+  return true;
+}
 
 /**
  * Turn a parsed dictionary into the lookup.

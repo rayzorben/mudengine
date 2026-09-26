@@ -176,6 +176,7 @@ const SMOKE_PATHS = [
   'src/shared/map.ts',
   'src/shared/drafts.ts',
   'src/shared/i18n.ts',
+  'src/shared/regex.ts',
   'src/shared/profiles.ts',
   'src/shared/files.ts',
   'locales/',
@@ -196,6 +197,12 @@ const WEB_SMOKE_PATHS = [
   'src/shared/internal.ts',
   'src/renderer/src/lib/webBridge.ts',
   'src/renderer/src/lib/pickers.ts',
+  // The copy the harness types for, and what finds it (`copyMatch.ts`).
+  'locales/',
+  'src/main/app/i18n.ts',
+  'src/main/app/copyMatch.ts',
+  'src/shared/i18n.ts',
+  'src/shared/regex.ts',
   'scripts/web.mjs',
   'scripts/web-smoke.mjs',
   'scripts/web-smoke-baseline.json',
@@ -471,7 +478,7 @@ if (NARROW) {
     gated(
       'smoke',
       'smoke',
-      [NODE, 'scripts/smoke.mjs'],
+      [NODE, ...REGISTER, 'scripts/smoke.mjs'],
       [...expand([...SMOKE_PATHS, 'scripts/lib']).filter((c) => !isTest(c)), ...CONFIGS]
     )
   );

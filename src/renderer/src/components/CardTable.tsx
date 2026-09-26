@@ -456,6 +456,7 @@ export default function CardTable<Row>({
                 <button
                   aria-pressed={!hidden.has(facet.id)}
                   className="chip toggle"
+                  data-facet={facet.id}
                   data-level={facet.level}
                   data-on={hidden.has(facet.id) ? 'false' : 'true'}
                   key={facet.id}
@@ -516,6 +517,7 @@ export default function CardTable<Row>({
                           : 'none'
                     }
                     className={columnClassName(column)}
+                    data-column={column.id}
                     key={column.id}
                     scope="col"
                   >

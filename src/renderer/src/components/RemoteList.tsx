@@ -140,6 +140,7 @@ export default function RemoteList({
           */}
           <button
             className="chip toggle"
+            data-bulk="allow"
             onClick={() => onSetAll('allow')}
             onMouseDown={keepFocus}
             title={t('remotes.allowAllTitle')}
@@ -149,6 +150,7 @@ export default function RemoteList({
           </button>
           <button
             className="chip toggle"
+            data-bulk="unset"
             onClick={() => onSetAll('unset')}
             onMouseDown={keepFocus}
             title={t('remotes.clearAllTitle')}
@@ -231,6 +233,7 @@ export default function RemoteList({
                       aria-pressed={on}
                       className="chip toggle"
                       data-level="ok"
+                      data-stance="allow"
                       data-on={on ? 'true' : 'false'}
                       onClick={() => onSet(name, on ? 'unset' : 'allow')}
                       onMouseDown={keepFocus}
@@ -243,6 +246,7 @@ export default function RemoteList({
                       aria-pressed={off}
                       className="chip toggle"
                       data-level="critical"
+                      data-stance="deny"
                       data-on={off ? 'true' : 'false'}
                       onClick={() => onSet(name, off ? 'unset' : 'deny')}
                       onMouseDown={keepFocus}

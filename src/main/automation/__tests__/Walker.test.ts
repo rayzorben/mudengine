@@ -327,23 +327,23 @@ describe('refusing to start', () => {
   it('will not walk from a room it cannot identify', () => {
     // Starting from an unknown room makes the first step a guess about which
     // exit is being taken, and every step after it inherits that guess.
-    expect(walker.start(ROUTE, at(null, null))).toMatch(/cannot tell/i);
+    expect(walker.start(ROUTE, at(null, null))).toBe(t('automation.walk.refusalUnknownStart'));
     expect(sent).toEqual([]);
   });
 
   it('will not walk a route that starts somewhere else', () => {
-    expect(walker.start(ROUTE, at(7, 7))).toMatch(/starts somewhere else/i);
+    expect(walker.start(ROUTE, at(7, 7))).toBe(t('automation.walk.refusalStaleRoute'));
     expect(sent).toEqual([]);
   });
 
   it('says so rather than walking when automation is off', () => {
     const off = new Walker({ ...config, enabled: false }, queue, {});
-    expect(off.start(ROUTE, at(1, 1))).toMatch(/disabled/i);
+    expect(off.start(ROUTE, at(1, 1))).toBe(t('automation.walk.refusalDisabled'));
     expect(sent).toEqual([]);
   });
 
   it('treats an empty route as already there', () => {
-    expect(walker.start({ ...ROUTE, steps: [] }, at(1, 1))).toBe('Already there.');
+    expect(walker.start({ ...ROUTE, steps: [] }, at(1, 1))).toBe(t('automation.walk.alreadyThere'));
   });
 });
 
@@ -377,7 +377,9 @@ describe('starting from a rest', () => {
   /* Nothing is done about the rest, so nothing is announced about it. */
   it('says nothing about standing up', () => {
     walker.start(ROUTE, resting());
-    expect(notices.some((notice) => /standing up/i.test(notice))).toBe(false);
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
   });
 
   it('does not send a look when the character is already on its feet', async () => {
@@ -458,7 +460,7 @@ describe('one step at a time', () => {
 
     expect(walker.progress.status).toBe('arrived');
     expect(walker.progress.done).toBe(2);
-    expect(notices.at(-1)).toMatch(/Arrived at Third Room/);
+    expect(notices.at(-1)).toBe(t('automation.walk.arrived', { stepName: 'Third Room' }));
   });
 
   /*
@@ -502,7 +504,9 @@ describe('one step at a time', () => {
     // And the next walk is loud again: silence belongs to the walk that asked
     // for it, not to the walker.
     quiet.start(ROUTE, at(1, 1));
-    expect(notices.at(-1)).toMatch(/Walking 2 steps to Third Room/);
+    expect(notices.at(-1)).toBe(
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    );
   });
 
   it('ignores state changes that are not a room change', () => {
@@ -523,7 +527,9 @@ describe('stopping', () => {
     );
 
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toMatch(/navigation desync/i);
+    expect(walker.progress.reason).toBe(
+      t('automation.walk.reasonWrongRoom', { roomName: 'Elsewhere' })
+    );
     expect(sent).toEqual(['e']);
   });
 
@@ -534,7 +540,7 @@ describe('stopping', () => {
     walker.onBlock(block('direction-failed'));
 
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toMatch(/refused/i);
+    expect(walker.progress.reason).toBe(t('automation.walk.reasonRefused', { command: 'e' }));
   });
 
   /*
@@ -552,8 +558,10 @@ describe('stopping', () => {
     walker.onCharacter(at(1, 1, { inCombat: true }));
 
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toBe('a fight started');
-    expect(notices.join(' ')).toContain('a fight started');
+    expect(walker.progress.reason).toBe(t('automation.walk.reasonCombat'));
+    expect(notices).toContain(
+      t('automation.walk.stopped', { reason: t('automation.walk.reasonCombat') })
+    );
   });
 
   /* A loop narrates its own legs, so this one stays silent — the fact still
@@ -568,7 +576,7 @@ describe('stopping', () => {
     walker.onCharacter(at(1, 1, { inCombat: true }));
 
     expect(notices).toEqual([]);
-    expect(ended).toEqual(['a fight started']);
+    expect(ended).toEqual([t('automation.walk.reasonCombat')]);
   });
 
   /*
@@ -607,7 +615,7 @@ describe('stopping', () => {
     walker.onCharacter(at(null, null, { room: { ...EMPTY_CHARACTER.room, ambiguous: 4 } }));
 
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toMatch(/no longer tell/i);
+    expect(walker.progress.reason).toBe(t('automation.walk.reasonAmbiguous'));
   });
 
   it('asks for a prompt before giving up on a step that produces nothing', () => {
@@ -628,7 +636,7 @@ describe('stopping', () => {
 
     vi.advanceTimersByTime(5000);
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toMatch(/nothing came back/i);
+    expect(walker.progress.reason).toBe(t('automation.walk.reasonTimeout', { command: 'e' }));
     // And exactly one nudge. A second would be the client answering its own
     // silence with more of it.
     expect(sent.filter((command) => command.length === 0)).toEqual(['']);
@@ -712,7 +720,7 @@ describe('stopping', () => {
 
     vi.advanceTimersByTime(5000);
     expect(w.progress.status).toBe('stopped');
-    expect(w.progress.reason).toMatch(/never left the client/i);
+    expect(w.progress.reason).toBe(t('automation.walk.reasonNotSent', { command: 'e' }));
     w.dispose();
     shut.dispose();
   });
@@ -795,7 +803,7 @@ describe('stopping', () => {
     expect(w.progress.status).toBe('walking');
     vi.advanceTimersByTime(5_000);
     expect(w.progress.status).toBe('stopped');
-    expect(w.progress.reason).toMatch(/nothing came back/i);
+    expect(w.progress.reason).toBe(t('automation.walk.reasonTimeout', { command: 'e' }));
     w.dispose();
     held.dispose();
   });
@@ -921,7 +929,7 @@ describe('stopping', () => {
 
     vi.advanceTimersByTime(TUNING.walk.nudgeAfterMs + 1);
     expect(sent).toEqual(['go crimson portal']);
-    expect(notices.some((n) => n.includes('too dark'))).toBe(true);
+    expect(notices).toContain(t('automation.walk.noNudgeUnseen', { command: 'go crimson portal' }));
     expect(walker.progress.status).toBe('walking');
   });
 
@@ -935,7 +943,7 @@ describe('stopping', () => {
 
     expect(sent).toEqual([]);
     expect(w.progress.status).toBe('stopped');
-    expect(w.progress.reason).toMatch(/refused to send/i);
+    expect(w.progress.reason).toBe(t('automation.walk.reasonNotQueued', { command: 'e' }));
     w.dispose();
     off.dispose();
   });
@@ -1192,7 +1200,12 @@ describe('a door in the way', () => {
 
     expect(open.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     expect(sent).toEqual(['e', 'open e']);
-    expect(notices.at(-1)).toContain('gate');
+    expect(notices.at(-1)).toBe(
+      t('automation.walk.barrierHolding', {
+        barrier: 'gate',
+        detail: t('automation.walk.barrierNotAllowed')
+      })
+    );
 
     // And the whole ladder again on its own clock, with no second line about
     // the same shut gate.
@@ -1268,7 +1281,13 @@ describe('a door in the way', () => {
     }
 
     expect(open.progress.status).toBe('stopped');
-    expect(open.progress.reason).toContain('gate');
+    expect(open.progress.reason).toBe(
+      t('automation.walk.reasonBarrier', {
+        barrier: 'gate',
+        command: 'e',
+        detail: t('automation.walk.barrierNotAllowed')
+      })
+    );
     open.dispose();
   });
 
@@ -1560,7 +1579,13 @@ describe('a locked barrier in the way', () => {
     // journey — and it says which door and what it wanted, rather than `the
     // game refused e`.
     expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
-    expect(notices.at(-1)).toContain('door');
+    // The failed rung names no barrier of its own, so the dictionary's word stands in.
+    expect(notices.at(-1)).toBe(
+      t('automation.walk.barrierHolding', {
+        barrier: t('automation.walk.fallbackBarrier'),
+        detail: t('automation.walk.barrierHeld')
+      })
+    );
     walk.dispose();
   });
 
@@ -1587,7 +1612,12 @@ describe('a locked barrier in the way', () => {
 
     expect(sent).toEqual(['e']);
     expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
-    expect(notices.at(-1)).toContain('1000');
+    expect(notices.at(-1)).toBe(
+      t('automation.walk.barrierHolding', {
+        barrier: 'door',
+        detail: t('automation.walk.barrierTooHard', { wanted: 1000, picklocks: 10, strength: 30 })
+      })
+    );
     walk.dispose();
   });
 
@@ -1759,11 +1789,11 @@ describe('sneaking before a route', () => {
     walk.start(ROUTE, noSkill);
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['e']);
-    expect(notices.filter((line) => /no Stealth/.test(line))).toHaveLength(1);
+    expect(notices.filter((line) => line === t('automation.walk.sneakNoSkill'))).toHaveLength(1);
     // The next step asks nothing and says nothing more.
     walk.onCharacter({ ...noSkill, room: { ...noSkill.room, number: 2 } });
     vi.advanceTimersByTime(200);
-    expect(notices.filter((line) => /no Stealth/.test(line))).toHaveLength(1);
+    expect(notices.filter((line) => line === t('automation.walk.sneakNoSkill'))).toHaveLength(1);
     walk.dispose();
   });
 
@@ -2318,10 +2348,18 @@ describe('a hidden exit in the way', () => {
     walk.start(hidden, held);
     vi.advanceTimersByTime(TUNING.walk.searchRetryMs * 4);
     // Four searches, one line: it is not one per round.
-    expect(notices.filter((line) => line.includes('hidden here'))).toHaveLength(1);
+    expect(
+      notices.filter(
+        (line) => line === t('automation.walk.searchHolding', { stepName: 'Second Room' })
+      )
+    ).toHaveLength(1);
 
     vi.advanceTimersByTime(TUNING.walk.searchSayEveryMs);
-    expect(notices.filter((line) => line.includes('hidden here')).length).toBeGreaterThan(1);
+    expect(
+      notices.filter(
+        (line) => line === t('automation.walk.searchHolding', { stepName: 'Second Room' })
+      ).length
+    ).toBeGreaterThan(1);
     walk.dispose();
   });
 
@@ -2834,8 +2872,12 @@ describe('a room the server would not describe', () => {
       at(null, null, { room: { ...structuredClone(EMPTY_CHARACTER.room), light: 'pitch black' } })
     );
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toContain('pitch black');
-    expect(notices.join(' ')).not.toContain('nothing came back');
+    expect(walker.progress.reason).toBe(
+      t('automation.walk.reasonDarkUnresolved', { lightLevel: 'pitch black' })
+    );
+    expect(notices).not.toContain(
+      t('automation.walk.stopped', { reason: t('automation.walk.reasonTimeout', { command: 'e' }) })
+    );
   });
 
   /*
@@ -2858,7 +2900,7 @@ describe('a room the server would not describe', () => {
 
     expect(walk.progress.status).toBe('walking');
     expect(walk.progress.hold).toBe('dark');
-    expect(notices.join(' ')).toContain('waiting for a light');
+    expect(notices).toContain(t('automation.walk.holdingDark'));
 
     // The torch is lit, the look comes back, and the room is the step's answer.
     walk.onCharacter(at(1, 2));
@@ -2882,7 +2924,9 @@ describe('a room the server would not describe', () => {
     vi.advanceTimersByTime(TUNING.walk.lightWaitMs + 50);
 
     expect(walk.progress.status).toBe('stopped');
-    expect(walk.progress.reason).toContain('very dark');
+    expect(walk.progress.reason).toBe(
+      t('automation.walk.reasonDarkUnresolved', { lightLevel: 'very dark' })
+    );
     walk.dispose();
   });
 
@@ -3085,7 +3129,9 @@ describe('one step from a dark room', () => {
     walker.start(DARK_AHEAD, at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
-    expect(notices.join(' ')).toContain('glowing pearl is spent');
+    expect(notices).toContain(
+      t('automation.walk.darkLightSpent', { stepName: 'Third Room', lightName: 'glowing pearl' })
+    );
   });
 
   /* A fact about the pack, not about the step — so it is said once, however
@@ -3100,7 +3146,16 @@ describe('one step from a dark room', () => {
     walker.onCharacter(at(1, 2));
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 3));
-    expect(notices.filter((m) => m.includes('is spent'))).toHaveLength(1);
+    expect(
+      notices.filter(
+        (m) =>
+          m ===
+          t('automation.walk.darkLightSpent', {
+            stepName: 'Third Room',
+            lightName: 'glowing pearl'
+          })
+      )
+    ).toHaveLength(1);
   });
 
   /* The realm says this one itself, on arrival, in every capture that walks
@@ -3113,7 +3168,9 @@ describe('one step from a dark room', () => {
     walker.start(DARK_AHEAD, at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
-    expect(notices.join(' ')).not.toContain('dark');
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
   });
 
   /* And says nothing when there is one, or when nobody can answer. */
@@ -3125,7 +3182,9 @@ describe('one step from a dark room', () => {
     walker.start(DARK_AHEAD, at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
-    expect(notices.join(' ')).not.toContain('dark');
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
   });
 
   it('is quiet when the next step is not into the dark', () => {
@@ -3136,7 +3195,9 @@ describe('one step from a dark room', () => {
     walker.start(ROUTE, at(1, 1));
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
-    expect(notices.join(' ')).not.toContain('spent');
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
   });
 });
 
@@ -3238,7 +3299,7 @@ describe('a rest whose answer has not come back', () => {
   it('says why it paused, because a route that stops looks like a broken client', () => {
     const { walk } = walkerWaiting();
     walk.start(ROUTE, at(1, 1));
-    expect(notices.some((notice) => /rest to land/i.test(notice))).toBe(true);
+    expect(notices).toContain(t('automation.walk.restHolding'));
     walk.dispose();
   });
 
@@ -3411,7 +3472,9 @@ describe('walking while hurt', () => {
     const { walk } = walkerAt(0.5);
     walk.start(ROUTE, hurt(0.3));
     expect(walk.progress.hold).toBe('health');
-    expect(notices.some((notice) => /too hurt to travel/i.test(notice))).toBe(false);
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
     walk.dispose();
   });
 
@@ -3480,7 +3543,9 @@ describe('walking while hurt', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(sent).toEqual(['e']);
     expect(walk.progress.hold).toBeNull();
-    expect(notices.some((notice) => /health is back/i.test(notice))).toBe(false);
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
     walk.dispose();
   });
 
@@ -3852,7 +3917,7 @@ describe('a fight on the way', () => {
     walk.onCharacter(at(1, 3));
 
     expect(walk.progress.status).toBe('arrived');
-    expect(notices.join(' ')).toContain('Arrived at Third Room');
+    expect(notices).toContain(t('automation.walk.arrived', { stepName: 'Third Room' }));
     walk.dispose();
   });
 
@@ -4032,7 +4097,9 @@ describe('a fight on the way', () => {
 
     expect(walk.progress.status).toBe('stopped');
     expect(walk.progress.reason).toBe(t('automation.walk.reasonFightUnending'));
-    expect(notices.join(' ')).toContain('not waiting any longer');
+    expect(notices).toContain(
+      t('automation.walk.stopped', { reason: t('automation.walk.reasonFightUnending') })
+    );
     walk.dispose();
   });
 
@@ -4098,7 +4165,7 @@ describe('a fight on the way', () => {
     // A `safe-haven` retreat, which is the caller this can happen from.
     walk.start(ROUTE, at(1, 1), { holdWhenHurt: false, resumeAfterFight: false });
 
-    expect(notices.join(' ')).toContain('Dropped the walk to Third Room');
+    expect(notices).toContain(t('automation.walk.superseded', { destination: 'Third Room' }));
     walk.dispose();
   });
 
@@ -4572,7 +4639,13 @@ describe('a way something else opens', () => {
     expect(moves(sent)).toEqual(['e', 'open e', 'w']);
     expect(asked).toEqual(['1/9']);
     expect(walk.progress).toMatchObject({ status: 'walking', hold: null });
-    expect(notices.some((line) => line.includes('pull lever'))).toBe(true);
+    expect(notices).toContain(
+      t('automation.walk.leverFetching', {
+        phrase: LEVER.say,
+        roomName: LEVER.roomName,
+        stepName: 'Courtyard'
+      })
+    );
 
     // Arriving at the Guardroom is the middle of the journey: the lever goes
     // out, the way back is planned, and the walk carries on.
@@ -4683,11 +4756,21 @@ describe('a way something else opens', () => {
 
     expect(asked).toEqual([]);
     expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
-    expect(notices.filter((line) => line.includes('different rooms')).length).toBe(1);
+    expect(
+      notices.filter(
+        (line) =>
+          line === t('automation.walk.leversScattered', { stepName: 'Courtyard', roomCount: 2 })
+      ).length
+    ).toBe(1);
     vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 50);
     walk.onBlock(block('direction-failed', { barrier: 'gate' }));
     vi.advanceTimersByTime(200);
-    expect(notices.filter((line) => line.includes('different rooms')).length).toBe(1);
+    expect(
+      notices.filter(
+        (line) =>
+          line === t('automation.walk.leversScattered', { stepName: 'Courtyard', roomCount: 2 })
+      ).length
+    ).toBe(1);
     walk.dispose();
   });
 
@@ -4768,7 +4851,13 @@ describe('a way something else opens', () => {
     walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
     vi.advanceTimersByTime(200);
 
-    expect(notices.some((line) => line.includes('Guardroom'))).toBe(true);
+    expect(notices).toContain(
+      t('automation.walk.leverUnreachable', {
+        phrase: LEVER.say,
+        roomName: LEVER.roomName,
+        reason: 'no route'
+      })
+    );
     expect(walk.progress).toMatchObject({ status: 'walking', hold: 'barrier' });
     walk.dispose();
   });
@@ -4989,7 +5078,17 @@ describe('a way something else opens', () => {
 
       expect(moves(sent)).toEqual(['e']);
       expect(walk.progress.status).toBe('stopped');
-      expect(notices.filter((line) => line.includes('cannot be walked')).length).toBe(1);
+      expect(
+        notices.filter(
+          (line) =>
+            line ===
+            t('automation.walk.leverRunRefused', {
+              stepName: 'Courtyard',
+              roomCount: 2,
+              reason: 'no route'
+            })
+        ).length
+      ).toBe(1);
       // And the corridor is written down as **shut**, not as one the realm data
       // invented: the exit is real and the way is closed.
       expect(asked).toContain('refused:1/1|e:shut');
@@ -5008,7 +5107,17 @@ describe('a way something else opens', () => {
       vi.advanceTimersByTime(200);
 
       expect(moves(sent)).toEqual(['e']);
-      expect(notices.filter((line) => line.includes('cannot be walked')).length).toBe(1);
+      expect(
+        notices.filter(
+          (line) =>
+            line ===
+            t('automation.walk.leverRunRefused', {
+              stepName: 'Courtyard',
+              roomCount: 2,
+              reason: 'no route'
+            })
+        ).length
+      ).toBe(1);
       walk.dispose();
     });
 
@@ -5107,7 +5216,14 @@ describe('resting before a trap', () => {
     expect(walk.progress.hold).toBe('trap');
     // 36 + 0.45 × 165 = 110.25, rounded up: the figure `Recovery` rests to.
     expect(walk.restingFor).toBe(111);
-    expect(notices.some((notice) => /trap of up to 36 damage/i.test(notice))).toBe(true);
+    expect(notices).toContain(
+      t('automation.walk.trapHolding', {
+        stepName: 'Second Room',
+        damage: 36,
+        needed: 111,
+        hp: 100
+      })
+    );
     walk.dispose();
   });
 
@@ -5119,7 +5235,7 @@ describe('resting before a trap', () => {
     expect(sent).toEqual(['e']);
     expect(walk.progress.hold).toBeNull();
     expect(walk.restingFor).toBeNull();
-    expect(notices.some((notice) => /enough health for the trap/i.test(notice))).toBe(true);
+    expect(notices).toContain(t('automation.walk.trapResumed', { stepName: 'Second Room' }));
     walk.dispose();
   });
 
@@ -5299,7 +5415,9 @@ describe('a step that hands the character to a draw', () => {
     expect(asked).toEqual(['9/99']);
     expect(walk.progress.status).toBe('walking');
     expect(moves(sent)).toEqual(['w', 'n']);
-    expect(notices.some((line) => line.includes('asylum'))).toBe(true);
+    expect(notices).toContain(
+      t('automation.walk.scattered', { spellName: LANDING.name, roomName: '9/11' })
+    );
     walk.dispose();
   });
 

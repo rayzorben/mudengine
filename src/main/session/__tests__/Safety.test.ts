@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { t } from '../../app/i18n';
 import { Safety, type SafetyParts } from '../Safety';
 import type { HangUpAssessment } from '../../automation/HangUp';
 import type { SafetyDecision } from '../../../shared/automation';
@@ -97,11 +98,11 @@ describe('hanging up on a monster its row names', () => {
     safety.considerHangingUp(state);
     safety.considerHangingUp(state);
     expect(hungUp).toEqual([]);
-    expect(notices).toEqual([
-      'Not hanging up: stalker is here, and its row says to hang up, but Auto-Hangup is off.'
-    ]);
+    const why = t('session.safety.whyStalker', { mob: 'stalker' });
+    const reason = t('session.safety.hangUpOffReason');
+    expect(notices).toEqual([t('session.safety.hangUpSwitchedOff', { why, reason })]);
     expect(decisions).toEqual([
-      expect.objectContaining({ action: 'hang up', acted: false, refused: 'Auto-Hangup is off' })
+      expect.objectContaining({ action: 'hang up', acted: false, refused: reason })
     ]);
   });
 
@@ -116,7 +117,7 @@ describe('hanging up on a monster its row names', () => {
     expect(decisions.at(-1)).toMatchObject({
       action: 'hang up',
       acted: true,
-      because: 'stalker is here, and its row says to hang up'
+      because: t('session.safety.whyStalker', { mob: 'stalker' })
     });
   });
 

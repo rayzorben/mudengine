@@ -116,7 +116,7 @@ describe('without a session', () => {
     expect(body).toContain('<form method="post" action="/login">');
     expect(body).toContain('name="password"');
     expect(body).not.toContain('<script');
-    expect(body).toContain('not encrypted');
+    expect(body).toBe(loginPage({ wrong: false, cleartext: true }));
   });
 
   it('serves the renderer to nobody', async () => {
@@ -143,7 +143,7 @@ describe('signing in', () => {
     const before = log.length;
     const response = await login('not-it');
     expect(response.status).toBe(401);
-    expect(await response.text()).toContain('That is not the password');
+    expect(await response.text()).toBe(loginPage({ wrong: true, cleartext: true }));
     expect(log.slice(before).some((line) => /refused a sign-in/.test(line))).toBe(true);
   });
 
@@ -203,7 +203,7 @@ describe('signing in', () => {
     });
     expect(forwarded.headers.get('set-cookie') ?? '').not.toContain('Secure');
     const page = await get('/', { 'X-Forwarded-Proto': 'https' });
-    expect(await page.text()).toContain('not encrypted');
+    expect(await page.text()).toBe(loginPage({ wrong: false, cleartext: true }));
 
     const trusting = createWebServer({
       rendererDir: dir,
@@ -228,7 +228,7 @@ describe('signing in', () => {
       const quiet = await fetch(`http://127.0.0.1:${bound.port}/`, {
         headers: { 'X-Forwarded-Proto': 'https' }
       });
-      expect(await quiet.text()).not.toContain('not encrypted');
+      expect(await quiet.text()).toBe(loginPage({ wrong: false, cleartext: false }));
     } finally {
       trusting.close();
     }
@@ -322,8 +322,10 @@ describe('the page and the policy', () => {
   it('draws the sign-in page without a script and says when the link is cleartext', () => {
     const page = loginPage({ wrong: true, cleartext: true });
     expect(page).not.toContain('<script');
-    expect(page).toContain('not encrypted');
-    expect(page).toContain('That is not the password');
-    expect(loginPage({ wrong: false, cleartext: false })).not.toContain('not encrypted');
+    expect(page).toContain('<p class="note">');
+    expect(page).toContain('<p class="wrong">');
+    const plain = loginPage({ wrong: false, cleartext: false });
+    expect(plain).not.toContain('<p class="note">');
+    expect(plain).not.toContain('<p class="wrong">');
   });
 });

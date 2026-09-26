@@ -30,7 +30,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/main/session/SessionManager.ts': 3854,
   'src/main/world/WorldGraph.ts': 2581,
   'src/main/parse/CharacterTracker.ts': 2540,
-  'src/renderer/src/App.tsx': 1790,
+  'src/renderer/src/App.tsx': 1786,
   'src/main/automation/Walker.ts': 2039,
   'src/renderer/src/components/SettingsScreen.tsx': 1287,
   // Out of the screen whole (741), so it may not grow back into a monolith;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { t } from '../../app/i18n';
 import { actionsFor } from '../actions';
 
 describe('an exit the realm names a command for', () => {
@@ -13,7 +14,7 @@ describe('an exit the realm names a command for', () => {
       {
         label: 'go manhole',
         commands: ['go manhole'],
-        title: 'Take exit: go manhole'
+        title: t('terminal.actions.exitTitle', { command: 'go manhole' })
       }
     ]);
   });
@@ -45,9 +46,9 @@ describe('an exit the realm names a command for', () => {
   it('names an action and never a figure', () => {
     expect(actionsFor('bank', [], 123_456)).toEqual([
       {
-        label: 'Deposit All',
+        label: t('terminal.actions.depositAll'),
         act: 'deposit-all',
-        title: 'Read the purse and deposit all of it into this bank vault'
+        title: t('terminal.actions.depositAllTitle')
       }
     ]);
   });
@@ -89,7 +90,7 @@ describe('an exit the realm names a command for', () => {
   it('capitalises a label it wrote and quotes one the realm wrote', () => {
     const [deposit, exit] = actionsFor('bank', ['go manhole'], 500);
 
-    expect(deposit?.label).toBe('Deposit All');
+    expect(deposit?.label).toBe(t('terminal.actions.depositAll'));
     expect(exit?.label).toBe('go manhole');
     expect(exit?.label).toBe(exit?.commands?.[0]);
   });
@@ -105,16 +106,20 @@ describe('taking the vault out', () => {
   it('withdraws what the vault last said it held, then re-reads both', () => {
     expect(actionsFor('bank', [], null, 7984)).toEqual([
       {
-        label: 'Withdraw All',
+        label: t('terminal.actions.withdrawAll'),
         commands: ['withdraw 7984', 'i', 'bank'],
-        title: 'Withdraw all coins from bank vault (7984 copper)'
+        title: t('terminal.actions.withdrawAllTitle', { amount: 7984 })
       }
     ]);
   });
 
   it('offers both when there is money on both sides of the counter', () => {
     const actions = actionsFor('bank', ['go manhole'], 500, 7984);
-    expect(actions.map((a) => a.label)).toEqual(['Deposit All', 'Withdraw All', 'go manhole']);
+    expect(actions.map((a) => a.label)).toEqual([
+      t('terminal.actions.depositAll'),
+      t('terminal.actions.withdrawAll'),
+      'go manhole'
+    ]);
   });
 
   /*
@@ -135,6 +140,6 @@ describe('taking the vault out', () => {
   /* A label we composed, so Capital Case like its neighbour. */
   it('is Capital Case, like every label the client wrote for the console', () => {
     const [withdraw] = actionsFor('bank', [], null, 7984);
-    expect(withdraw?.label).toBe('Withdraw All');
+    expect(withdraw?.label).toBe(t('terminal.actions.withdrawAll'));
   });
 });

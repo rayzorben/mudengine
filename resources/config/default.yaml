@@ -407,12 +407,12 @@ ui:
     keepDark: true
     darkTheme: dark
 
-  # The client's own mark, at the left of the status rail.
+  # The client's own mark and its version, at the top right of the card rail.
   #
   # On by default: it is the one place the client says what it is, and a brand
   # nobody ever sees is the same as none. Turn it off if you would rather the
-  # status rail held nothing but facts about the session -- it is not in the way
-  # of anything either way, since it takes the height that line already has.
+  # rail held nothing but cards -- it is not in the way of anything either way,
+  # since it shares the row of the put-away cards' chip.
   showLogo: true
 
   # What the console draws in place of what the realm printed: a list of

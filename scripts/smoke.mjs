@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test for a built distribution.
  *
- *   npm run build && node scripts/smoke.mjs [--keep-open]
+ *   npm run build && node --import ./scripts/lib/register.mjs scripts/smoke.mjs [--keep-open]
  *
  * Stands up a fake MajorMUD-style host, launches the built app, drives the real
  * UI over the Chrome DevTools Protocol, and asserts on both sides of the wire:
@@ -21,6 +21,57 @@ import { execSync, spawn, spawnSync } from 'node:child_process';
 import { parseDocument } from 'yaml';
 
 import { judgeFailures } from './lib/smoke-baseline.mjs';
+// The UI's own words, read from the dictionary the app renders: a check finds
+// copy by its key, never by its wording (run under `scripts/lib/register.mjs`).
+// A key the dictionary lacks throws, so a renamed key stops the run loudly.
+import {
+  copyOf as copy,
+  isCopy,
+  literalsOf,
+  phrase,
+  phraseOfAny,
+  sentence
+} from '../src/main/app/copyMatch.ts';
+import { escapeRegExp } from '../src/shared/regex.ts';
+
+/*
+ * Every pattern here is case-blind: a CSS `text-transform` reaches
+ * `innerText`, and the case is the stylesheet's to choose.
+ */
+const CASE_BLIND = { flags: 'i' };
+
+/** What a dictionary string renders as, each placeholder matching `fill`. */
+const copyShape = (key, fill) => phrase(key, {}, { ...CASE_BLIND, fill });
+/** The same, filled with `params` where given, or with anything where not. */
+const copyRx = (key, params = {}) => phrase(key, params, CASE_BLIND);
+/**
+ * The same, as the whole of an element's text: `isCopy` in Node, and in a page
+ * string as `${copyWhole(key)}.test(el.innerText.trim())` (it prints as a
+ * regex literal, `/` escaped), so both sides compare by one rule.
+ */
+const copyWhole = (key, params = {}) => sentence(key, params, CASE_BLIND);
+
+/** Any of several dictionary strings, as one pattern. */
+const copyRxAny = (...keys) => phraseOfAny(keys, {}, CASE_BLIND);
+
+/**
+ * The longest run of a dictionary string's own words, placeholders aside: what
+ * to type into a filter to find a row whose filled-in label is not known here.
+ */
+const copyStem = (key) =>
+  literalsOf(key)
+    .map((part) => part.trim())
+    .reduce((longest, part) => (part.length > longest.length ? part : longest), '');
+
+/** A tab's mark counting alerts, one or several. */
+const alertMark = copyRxAny('tabs.tab.alertSingular', 'tabs.tab.alertPlural');
+
+/** A lap the Navigation card reports as under way, in any of its states. */
+const lapGoing = copyRxAny(
+  'cards.navigation.loop.statusRunning',
+  'cards.navigation.loop.statusFighting',
+  'cards.navigation.loop.statusResting'
+);
 
 /** This repository's own version, which is the one a bug report must name. */
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -1373,20 +1424,18 @@ await evaluate(`
     const el = document.querySelector('.palette input');
     if (!el) return false;
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'cycle theme');
+    set.call(el, ${JSON.stringify(copy('palette.view.themeCycleLabel'))});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()
 `);
 await waitFor(async () =>
-  evaluate(
-    `[...document.querySelectorAll('.palette li')].some((li) => /Cycle theme/.test(li.innerText))`
-  )
+  evaluate(`document.querySelector('.palette li[data-command="theme"]') !== null`)
 );
 const wore = await evaluate(`document.documentElement.dataset.theme`);
 await evaluate(`
   (() => {
-    const i = [...document.querySelectorAll('.palette li')].find((li) => /Cycle theme/.test(li.innerText));
+    const i = document.querySelector('.palette li[data-command="theme"]');
     if (i) i.click();
     return true;
   })()
@@ -1601,7 +1650,7 @@ await evaluate(`
     const el = document.querySelector('.palette input');
     if (!el) return false;
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'connect');
+    set.call(el, ${JSON.stringify(copy('palette.character.connectRealmLabel', { realmName: 'Smoke Realm' }))});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()
@@ -1609,15 +1658,14 @@ await evaluate(`
 const profileRows = await readUntil(
   () =>
     evaluate(`
-  [...document.querySelectorAll('.palette li')]
-    .map((li) => li.querySelector('span')?.innerText ?? '')
-    .filter((t) => /^Connect:/.test(t))
+  [...document.querySelectorAll('.palette li[data-command^="server:"]')]
+    .map((li) => li.dataset.command)
     .join(' | ')
 `),
-  (profileRows) => /Connect: Smoke Realm/.test(profileRows)
+  (profileRows) => profileRows.split(' | ').includes('server:Smoke Realm')
 );
 check(
-  /Connect: Smoke Realm/.test(profileRows),
+  profileRows.split(' | ').includes('server:Smoke Realm'),
   'a saved realm is offered in the palette',
   profileRows
 );
@@ -1631,11 +1679,9 @@ await evaluate(`
     return true;
   })()
 `);
-await waitFor(async () =>
-  /Search the console/.test(await evaluate(`document.querySelector('.palette').innerText`))
-);
+await shown('.palette li[data-command="search"]');
 check(
-  /Search the console/.test(await evaluate(`document.querySelector('.palette').innerText`)),
+  await evaluate(`document.querySelector('.palette li[data-command="search"]') !== null`),
   'search is offered in the palette'
 );
 await cdp('Input.dispatchKeyEvent', {
@@ -1677,11 +1723,12 @@ await evaluate(`
     return true;
   })()
 `);
+const searchFound = sentence('terminal.search.matchCount', {}, { ...CASE_BLIND, fill: '\\d+' });
 const count = await readUntil(
   () => evaluate(`document.querySelector('.search-count')?.innerText ?? ''`),
-  (count) => /^\d+\/\d+$/.test(count)
+  (count) => searchFound.test(count)
 );
-check(/^\d+\/\d+$/.test(count), 'search finds the banner text in the backscroll', count);
+check(searchFound.test(count), 'search finds the banner text in the backscroll', count);
 
 await cdp('Input.dispatchKeyEvent', {
   type: 'keyDown',
@@ -1815,7 +1862,12 @@ const meters = await evaluate(`
       const el = document.querySelector(sel);
       if (!el) return null;
       const fill = getComputedStyle(el.querySelector('.fill')).backgroundColor;
-      return { level: el.dataset.level, text: el.innerText.trim(), fill };
+      return {
+        level: el.dataset.level,
+        text: el.innerText.trim(),
+        state: el.querySelector('.meter-state')?.innerText.trim() ?? '',
+        fill
+      };
     };
     return { hp: read('.meter.hp'), mana: read('.meter.mana') };
   })()
@@ -1844,12 +1896,12 @@ check(
 // docs/ui-design.md §6: state is never colour-only. The word is the part a
 // colour-blind player reads, so it is asserted as text, not as a class.
 check(
-  /critical/i.test(meters?.hp?.text ?? ''),
+  isCopy(meters?.hp?.state, 'cards.vitals.level.critical'),
   'the hp meter says so in words as well as in hue',
   meters?.hp?.text
 );
 check(
-  /low/i.test(meters?.mana?.text ?? ''),
+  isCopy(meters?.mana?.state, 'cards.vitals.level.caution'),
   'the mana meter says so in words as well as in hue',
   meters?.mana?.text
 );
@@ -1927,7 +1979,9 @@ check(
  */
 const acting = await evaluate(`document.querySelector('.status-rail .acting')?.innerText ?? null`);
 check(
-  acting === null || /queued|walking|standing down/.test(acting),
+  acting === null ||
+    copyRx('statusRail.action.queued').test(acting) ||
+    copyRx('statusRail.action.walking').test(acting),
   'the rail says what automation is doing, or says nothing at all',
   JSON.stringify(acting)
 );
@@ -1936,7 +1990,10 @@ const status = (await evaluate(`document.querySelector('.status-rail').innerText
   /\s+/g,
   ' '
 );
-const chars = Number.parseInt(status.match(/([\d,]+) chars/)?.[1].replace(/,/g, '') ?? '0', 10);
+const chars = Number.parseInt(
+  status.match(copyShape('statusRail.chars.count', '([\\d,]+)'))?.[1].replace(/,/g, '') ?? '0',
+  10
+);
 check(chars > 100, 'decoded server output reached the renderer', `${chars} chars`);
 
 // The configured point size is only observable in the rendered cell: xterm
@@ -1971,7 +2028,8 @@ const railButtons = await evaluate(
   `[...document.querySelectorAll('.status-rail button')].map((b) => b.innerText.trim()).join('|')`
 );
 check(
-  !/diagnostic/i.test(railButtons),
+  !copyRx('palette.view.showDiagnosticsLabel').test(railButtons) &&
+    !copyRx('palette.view.hideDiagnosticsLabel').test(railButtons),
   'the status rail carries no Diagnostics button',
   railButtons
 );
@@ -2020,33 +2078,28 @@ const readShelf = async () =>
       const shelf = [];
       for (const li of rows.slice(1)) {
         if (heading(li)) break;
-        shelf.push(li.innerText.trim().split('\\n')[0]);
+        shelf.push(li.dataset.command);
       }
       return {
-        first: first ? first.innerText.trim().split('\\n')[0] : '',
+        first: first ? (first.dataset.group ?? '') : '',
         shelf,
-        headings: rows.filter(heading).map((li) => li.innerText.trim().split('\\n')[0]),
-        text: document.querySelector('.palette').innerText
+        headings: rows.filter(heading).map((li) => li.dataset.group),
+        commands: rows.filter((li) => !heading(li)).map((li) => li.dataset.command)
       };
     })()
   `);
 
 const shelfAtRest = await readShelf();
-// `innerText` reports what is *rendered*, and a group heading is uppercased by
-// its own type scale -- so the comparison is on the word, not on its casing.
+// Read by the section's key and each row's command id, never their words.
+check(shelfAtRest.first === 'pinned', 'the palette opens on a pinned section', shelfAtRest.first);
 check(
-  /^pinned$/i.test(shelfAtRest.first),
-  'the palette opens on a pinned section',
-  shelfAtRest.first
-);
-check(
-  shelfAtRest.shelf.some((row) => /Route to room/.test(row)),
+  shelfAtRest.shelf.includes('route'),
   'and the shelf holds what internal.yaml pins',
   shelfAtRest.shelf
 );
 check(
   ['character', 'navigate', 'view', 'layout'].every((group) =>
-    shelfAtRest.headings.some((h) => h.toLowerCase().startsWith(group))
+    shelfAtRest.headings.includes(group)
   ),
   'with every group under it, collapsed to a heading',
   shelfAtRest.headings
@@ -2054,8 +2107,7 @@ check(
 
 const pinClicked = await evaluate(`
   (() => {
-    const row = [...document.querySelectorAll('.palette li')]
-      .find((li) => /Route to room/.test(li.innerText));
+    const row = document.querySelector('.palette li[data-command="route"]');
     const pin = row?.querySelector('.palette-pin');
     if (!pin) return false;
     pin.click();
@@ -2069,14 +2121,14 @@ check(pinClicked, 'every row carries a pin');
  * click as well as after. So the wait is on the unpinning — the shelf losing
  * the row — and the palette is asserted once that has actually happened.
  */
-await waitFor(async () => !/Route to room/.test((await readShelf()).text));
+await waitFor(async () => !(await readShelf()).commands.includes('route'));
 check(
   await evaluate(`!!document.querySelector('.palette')`),
   'unpinning a row does not run the command underneath it'
 );
 const unpinned = await readShelf();
 check(
-  !/Route to room/.test(unpinned.text),
+  !unpinned.commands.includes('route'),
   'an unpinned command leaves the shelf, and its group is collapsed over it',
   unpinned.shelf
 );
@@ -2104,10 +2156,10 @@ await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)
 await shown('.palette');
 const reopened = await readUntil(
   () => readShelf(),
-  (reopened) => !/Route to room/.test(reopened.text)
+  (reopened) => !reopened.commands.includes('route')
 );
 check(
-  !/Route to room/.test(reopened.text),
+  !reopened.commands.includes('route'),
   'and the client remembers it was unpinned',
   reopened.shelf
 );
@@ -2118,27 +2170,19 @@ await evaluate(`
   (() => {
     const el = document.querySelector('.palette input');
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'route');
+    set.call(el, ${JSON.stringify(copy('palette.navigate.routeLabel'))});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()
 `);
-await waitFor(
-  async () =>
-    await evaluate(
-      `[...document.querySelectorAll('.palette li')].some((li) => /Route to room/.test(li.innerText))`
-    )
-);
+await shown('.palette li[data-command="route"]');
 check(
-  await evaluate(
-    `[...document.querySelectorAll('.palette li')].some((li) => /Route to room/.test(li.innerText))`
-  ),
+  await evaluate(`document.querySelector('.palette li[data-command="route"]') !== null`),
   'an unpinned command is still found by typing'
 );
 await evaluate(`
   (() => {
-    const row = [...document.querySelectorAll('.palette li')]
-      .find((li) => /Route to room/.test(li.innerText));
+    const row = document.querySelector('.palette li[data-command="route"]');
     row?.querySelector('.palette-pin')?.click();
     return true;
   })()
@@ -2146,8 +2190,7 @@ await evaluate(`
 // The row saying it is pinned, which is what the shelf below is read for.
 await waitFor(async () =>
   evaluate(`
-    [...document.querySelectorAll('.palette li')]
-      .filter((li) => /Route to room/.test(li.innerText))
+    [...document.querySelectorAll('.palette li[data-command="route"]')]
       .some((li) => li.querySelector('.palette-pin')?.dataset.pinned === 'true')
   `)
 );
@@ -2162,10 +2205,10 @@ await evaluate(`
 `);
 const repinned = await readUntil(
   () => readShelf(),
-  (repinned) => repinned.shelf.some((row) => /Route to room/.test(row))
+  (repinned) => repinned.shelf.includes('route')
 );
 check(
-  repinned.shelf.some((row) => /Route to room/.test(row)),
+  repinned.shelf.includes('route'),
   'and pinning it again puts it back at the top',
   repinned.shelf
 );
@@ -2180,42 +2223,34 @@ await evaluate(`
     return true;
   })()
 `);
-await waitFor(
-  async () =>
-    await evaluate(
-      `[...document.querySelectorAll('.palette li')].some((li) => /Show the options file/.test(li.innerText))`
-    )
-);
+await shown('.palette li[data-command="config"]');
 check(
-  await evaluate(
-    `[...document.querySelectorAll('.palette li')].some((li) => /Show the options file/.test(li.innerText))`
-  ),
+  await evaluate(`document.querySelector('.palette li[data-command="config"]') !== null`),
   'palette offers the options file'
 );
-// Typed, because the next thing this visit reaches for is the toggle.
+// Typed, because the next thing this visit reaches for is the toggle -- by
+// the label it wears now, which says which way it would flip.
+const railBefore = await evaluate(`!!document.querySelector('.link-card')`);
+const railLabel = copy(
+  railBefore ? 'palette.view.hideDiagnosticsLabel' : 'palette.view.showDiagnosticsLabel'
+);
 await evaluate(`
   (() => {
     const el = document.querySelector('.palette input');
     if (!el) return false;
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'diagnostics');
+    set.call(el, ${JSON.stringify(railLabel)});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()
 `);
-await waitFor(async () =>
-  evaluate(
-    `[...document.querySelectorAll('.palette li')].some((li) => /iagnostic/.test(li.innerText))`
-  )
-);
+await shown('.palette li[data-command="rail"]');
 
 // The rail container now persists for the HUD, so what the diagnostics toggle
 // flips is the diagnostic cards, not the rail itself.
-const railBefore = await evaluate(`!!document.querySelector('.link-card')`);
 const opened = await evaluate(`
   (() => {
-    const item = [...document.querySelectorAll('.palette li')]
-      .find((li) => /diagnostics/i.test(li.innerText));
+    const item = document.querySelector('.palette li[data-command="rail"]');
     if (!item) return false;
     item.click();
     return true;
@@ -2283,7 +2318,13 @@ const options = (await evaluate(`document.querySelector('.link-card')?.innerText
   ' '
 );
 check(/SUPPRESS-GO-AHEAD/.test(options), 'SUPPRESS-GO-AHEAD negotiated', options);
-check(/ECHO/.test(options), 'server ECHO detected', options);
+check(
+  await evaluate(
+    `[...document.querySelectorAll('.link-card .flags .chip.on')].some((chip) => ${copyWhole('cards.link.flagEcho')}.test(chip.innerText.trim()))`
+  ),
+  'server ECHO detected',
+  options
+);
 
 // The HUD cards render what the parser produced.
 const vitals = (await evaluate(`document.querySelector('.vitals-card')?.innerText ?? ''`)).replace(
@@ -2305,11 +2346,21 @@ check(/Warrior/.test(vitals), 'vitals card shows the class', vitals.slice(0, 90)
 const trace = (
   await evaluate(`document.querySelector('.automation-card')?.innerText ?? ''`)
 ).replace(/\s+/g, ' ');
-// Case-insensitive: the headings are uppercased in CSS, and `innerText`
-// returns the transformed text rather than the source.
-check(/\bsent\b/i.test(trace), 'the automation card reports what was sent', trace.slice(0, 100));
+// Each heading with the number of rows under it: the heading alone is drawn
+// over an empty trace too, so what is asserted is rows under the Sent one.
+const traceSections = JSON.parse(
+  await evaluate(`JSON.stringify([...document.querySelectorAll('.automation-card .trace-heading')]
+    .map((h) => [h.innerText.trim(), h.nextElementSibling?.querySelectorAll('.row').length ?? 0]))`)
+);
 check(
-  /entering the realm/.test(trace),
+  traceSections.some(
+    ([heading, rows]) => isCopy(heading, 'cards.automation.headings.sent') && rows > 0
+  ),
+  'the automation card reports what was sent',
+  JSON.stringify(traceSections)
+);
+check(
+  copyRx('automation.routines.reasonEnterRealm').test(trace),
   'and why it was sent, not merely that it was',
   trace.slice(0, 160)
 );
@@ -2651,7 +2702,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return {
         badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
         heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
-        exits: (panel.innerText.match(/Ways out/) || []).length,
+        exits: (panel.innerText.match(${copyRx('cards.roomPeek.exitsLabel')}) || []).length,
         walk: panel.querySelector('.peek-actions button')?.innerText ?? '',
         // Beside the room rather than anywhere: it hangs off the room, and
         // placePopover is what decides which side. Checked as an overlap in
@@ -2684,7 +2735,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   // the map can still send anybody anywhere at all. Named for what it does:
   // it lays out a route and walks nothing, which the check below asserts.
   check(
-    peek !== null && /plan route/i.test(peek.walk),
+    peek !== null && copyRx('cards.roomPeek.walkToButton').test(peek.walk),
     'and carries the way there, which the bare click used to be',
     JSON.stringify(peek)
   );
@@ -2791,20 +2842,17 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   // The field, waited for: the palette is a mount, and a value set on a
   // field that is not there yet is typed into nothing.
   await paletteReady();
-  await type('.palette input', 'route');
-  await waitFor(async () =>
-    (
-      await evaluate(
-        `document.querySelector('.palette li[data-active="true"] span')?.innerText ?? ''`
-      )
-    ).includes('Route')
+  await type('.palette input', copy('palette.navigate.routeLabel'));
+  await waitFor(
+    async () =>
+      (await evaluate(
+        `document.querySelector('.palette li[data-active="true"]')?.dataset.command ?? ''`
+      )) === 'route'
   );
   check(
-    (
-      await evaluate(
-        `document.querySelector('.palette li[data-active="true"] span')?.innerText ?? ''`
-      )
-    ).includes('Route'),
+    (await evaluate(
+      `document.querySelector('.palette li[data-active="true"]')?.dataset.command ?? ''`
+    )) === 'route',
     'typing "route" into the palette highlights the route command'
   );
 
@@ -2897,7 +2945,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       (seen) => seen.listed === 0 && /999999/.test(seen.rows[0] ?? '')
     );
     check(
-      missing.length === 1 && /has no room 1\/999999/.test(missing[0]),
+      missing.length === 1 &&
+        copyRx('cards.route.noRoomByReference', { roomRef: '1/999999' }).test(missing[0]),
       'and a reference the realm has no room for says so, rather than blaming the name',
       JSON.stringify(missing)
     );
@@ -2906,7 +2955,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // be numbers, and reading one as a map would send somebody somewhere else.
     const bare = await roomsFor('2141', (seen) => seen.listed > 0);
     check(
-      bare.every((row) => !/has no room/.test(row)),
+      bare.every((row) => !copyRx('cards.route.noRoomByReference').test(row)),
       'while a bare number is still a name search',
       JSON.stringify(bare.slice(0, 3))
     );
@@ -2937,12 +2986,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   );
   check(plan !== null, 'a name and Enter plans a route to the highlighted room', plan);
   check(
-    typeof plan === 'string' && /[1-9]\d* steps?/.test(plan),
+    typeof plan === 'string' && copyShape('cards.route.routeSummary', '[1-9]\\d*').test(plan),
     'and the plan has steps to walk',
     plan
   );
   check(
-    typeof plan === 'string' && !/cost/i.test(plan),
+    // One number, the steps: the router's cost is what it sorted by, not a figure.
+    typeof plan === 'string' && (plan.match(/\d+/g) ?? []).length === 1,
     'and says how far without pricing it',
     plan
   );
@@ -3020,7 +3070,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * somewhere it is not.
    */
   check(
-    typeof thereMap.label === 'string' && /destination/.test(thereMap.label),
+    typeof thereMap.label === 'string' &&
+      copyRx('cards.map.svgAriaLabelDestination').test(thereMap.label),
     'from the destination’s own point of view',
     thereMap.label
   );
@@ -3133,7 +3184,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     stopOffer.offered &&
       stopOffer.held === 'false' &&
       stopOffer.destination.length > 0 &&
-      stopOffer.text.includes('stop before entering'),
+      copyRx('cards.route.stopShort').test(stopOffer.text),
     'the route panel offers to stop before entering the room the way ends in',
     JSON.stringify(stopOffer)
   );
@@ -3227,7 +3278,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(planPeek)
   );
   check(
-    planPeek !== null && /walk here/i.test(planPeek.walk),
+    planPeek !== null && copyRx('cards.roomPeek.walkHereButton').test(planPeek.walk),
     'and its action is to walk only that far, which is what picking the step means',
     JSON.stringify(planPeek)
   );
@@ -3298,15 +3349,15 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(planDestination)
   );
   check(
-    planDestination !== null && /walk here/i.test(planDestination.walk),
+    planDestination !== null && copyRx('cards.roomPeek.walkHereButton').test(planDestination.walk),
     'and the destination offers to walk here, being the last step',
     JSON.stringify(planDestination)
   );
   check(
     planNeighbour !== null &&
       (planNeighbour.onPlan
-        ? /walk here/i.test(planNeighbour.walk)
-        : /plan route/i.test(planNeighbour.walk)),
+        ? copyRx('cards.roomPeek.walkHereButton').test(planNeighbour.walk)
+        : copyRx('cards.roomPeek.walkToButton').test(planNeighbour.walk)),
     'and a neighbour offers what fits it: walk here on the plan, plan route off it',
     JSON.stringify(planNeighbour)
   );
@@ -3378,10 +3429,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   if (!afterWalk.open) {
     const routeHead = await evaluate(
-      `document.querySelector('.navigation-card h2')?.innerText.trim() ?? ''`
+      `document.querySelector('.navigation-card')?.dataset.face ?? ''`
     );
     check(
-      /route/i.test(String(routeHead)),
+      routeHead === 'route',
       'walking a route names the Navigation card for it',
       String(routeHead)
     );
@@ -3612,8 +3663,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     () =>
       evaluate(`
     (() => {
-      const li = [...document.querySelectorAll('.palette li')]
-        .find((entry) => entry.innerText.includes('Loop: Smoke loop'));
+      const li = document.querySelector('.palette li[data-command="loop:Smoke loop"]');
       if (li) li.click();
       return !!li;
     })()
@@ -3654,6 +3704,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         if (!card) return JSON.stringify({ found: false });
         return JSON.stringify({
           found: true,
+          face: card.dataset.face ?? '',
           heading: card.querySelector('h2')?.innerText.trim() ?? '',
           crumbs: [...card.querySelectorAll('.crumb')].map((c) => c.innerText.trim())
         });
@@ -3664,7 +3715,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   // nothing, and `NAVIGATION` over it would leave the card's one question --
   // routing, looping or stopped -- unanswered.
   check(
-    faces.found && /loop/i.test(faces.heading ?? '') && faces.crumbs.length === 0,
+    faces.found &&
+      faces.face === 'loop' &&
+      isCopy(faces.heading, 'cards.navigation.loop.title') &&
+      faces.crumbs.length === 0,
     'starting a loop makes the card the loop, and only the loop',
     JSON.stringify(faces)
   );
@@ -3859,11 +3913,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     (() => {
       const card = document.querySelector('.navigation-card');
       if (!card) return 'no card';
-      return card.querySelector('h2')?.innerText.trim() ?? '';
+      const tabs = [...card.querySelectorAll('.crumb[data-tab]')].map((c) => c.dataset.tab);
+      return [card.dataset.face ?? '', ...tabs].join(',');
     })()
   `);
   check(
-    /loop/i.test(String(soleFace)) && !/route/i.test(String(soleFace)),
+    String(soleFace).split(',')[0] === 'loop' && !String(soleFace).split(',').includes('route'),
     'and the lap never draws a Route face beside it',
     String(soleFace)
   );
@@ -3888,7 +3943,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       const el = document.querySelector('.palette input');
       if (!el) return false;
       const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-      set.call(el, 'Quest Book');
+      set.call(el, ${JSON.stringify(copy('cards.quests.title'))});
       el.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     })()
@@ -3897,8 +3952,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     () =>
       evaluate(`
     (() => {
-      const row = [...document.querySelectorAll('.palette li')]
-        .find((li) => /Quest Book/.test(li.innerText));
+      const row = document.querySelector('.palette li[data-command="card:quests"]');
       if (!row) return 'no palette entry';
       // The row itself, as every other palette check here does. A row carries
       // its own pin control, so a querySelector for a button finds THAT --
@@ -4265,7 +4319,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     JSON.stringify(afterAbil)
   );
   check(
-    /From abil/i.test(afterAbil.head),
+    copyRx('cards.quests.progress.realm').test(afterAbil.head),
     'and the track says the count is the realm’s, not the player’s',
     JSON.stringify(afterAbil.head)
   );
@@ -4599,11 +4653,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   const card = await evaluate(
     `document.querySelector('.navigation-card')?.innerText.replace(/\\s+/g, ' ') ?? ''`
   );
+  const cardFace = await evaluate(`document.querySelector('.navigation-card')?.dataset.face ?? ''`);
   // The card is the lap's and says nothing about the leg it is walking: the
   // route is the mechanism, and reporting the mechanism is reporting the
   // client's own footwork.
   check(
-    !/^ROUTE/i.test(String(card)) && /Smoke loop/.test(String(card)),
+    cardFace === 'loop' && /Smoke loop/.test(String(card)),
     'and the card reports the lap rather than the leg under it',
     card
   );
@@ -4644,13 +4699,17 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       if (!card) return 'no card';
       const picker = card.querySelector('.loop-card-picker');
       return JSON.stringify({
+        face: card.dataset.face ?? '',
         crumbs: [...card.querySelectorAll('.crumb')].map((c) => c.innerText.trim()),
         chosen: picker ? picker.options[picker.selectedIndex]?.text ?? '' : 'no picker'
       });
     })()
   `);
+  const stoppedLap = String(afterStop).startsWith('{') ? JSON.parse(afterStop) : null;
   check(
-    /loop/i.test(String(afterStop)) && /Resume/.test(String(afterStop)),
+    stoppedLap !== null &&
+      stoppedLap.face === 'loop' &&
+      copyRx('cards.navigation.resumeLoopOption').test(stoppedLap.chosen),
     'with the stopped lap named as the thing play would resume',
     String(afterStop)
   );
@@ -4711,14 +4770,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
        * *not offered* about every loop there is.
        */
       await waitFor(async () =>
-        evaluate(
-          `[...document.querySelectorAll('.palette li')].some((entry) => /Loop: Smoke loop/.test(entry.innerText))`
-        )
+        evaluate(`!!document.querySelector('.palette li[data-command="loop:Smoke loop"]')`)
       );
       const seen = await evaluate(`
-        [...document.querySelectorAll('.palette li')].some((entry) =>
-          entry.innerText.includes(${JSON.stringify(`Loop: ${name}`)})
-        )
+        !!document.querySelector(${JSON.stringify(`.palette li[data-command="loop:${name}"]`)})
       `);
       await press('Escape', 'Escape', 27);
       await gone('.palette');
@@ -4924,7 +4979,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      */
     await waitFor(async () =>
       evaluate(
-        `(() => { const text = document.querySelector('.navigation-card')?.innerText ?? ''; return /Smoke loop/.test(text) && /running|fighting|resting/i.test(text); })()`
+        `(() => { const text = document.querySelector('.navigation-card')?.innerText ?? ''; return /Smoke loop/.test(text) && ${lapGoing}.test(text); })()`
       )
     );
     /*
@@ -4943,16 +4998,14 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       String(afterChoice)
     );
     check(
-      /running|fighting|resting/i.test(String(afterChoice)),
+      lapGoing.test(String(afterChoice)),
       'and the card reports it as a loop that is actually running',
       String(afterChoice)
     );
     await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
     // Stopped, as the card reports it: the three words are the lap's own state.
     await waitFor(async () =>
-      evaluate(
-        `!/running|fighting|resting/i.test(document.querySelector('.navigation-card')?.innerText ?? '')`
-      )
+      evaluate(`!${lapGoing}.test(document.querySelector('.navigation-card')?.innerText ?? '')`)
     );
     /*
      * Answer the step the loop's first leg already sent.
@@ -5017,7 +5070,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
 // What belongs on a rail is one player's business — a healer watches different
 // things from a warrior — so the choice is remembered per character.
 {
-  const openCard = async (label) => {
+  // By the card's id and the key its title is under; the words typed are
+  // the palette's own, so the row is found by `data-command` alone.
+  const openCard = async (id, titleKey) => {
+    const label = copy('palette.layout.showCardLabel', { cardName: copy(titleKey) });
     await cdp('Input.dispatchKeyEvent', {
       type: 'keyDown',
       key: 'k',
@@ -5053,14 +5109,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // probe that clicks fires once per poll instead of once.
     await waitFor(async () =>
       evaluate(`
-        [...document.querySelectorAll('.palette li')]
-          .some((li) => li.innerText.includes(${JSON.stringify(label)}))
+        document.querySelector('.palette li[data-command=${JSON.stringify(`card:${id}`)}]') !== null
       `)
     );
     const found = await evaluate(`
       (() => {
-        const row = [...document.querySelectorAll('.palette li')]
-          .find((li) => li.innerText.includes(${JSON.stringify(label)}));
+        const row = document.querySelector('.palette li[data-command=${JSON.stringify(`card:${id}`)}]');
         if (row) row.click();
         return !!row;
       })()
@@ -5098,7 +5152,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     !(await evaluate(`!!document.querySelector('.conversation-card')`)),
     'Talk is not on the rail until it is asked for'
   );
-  check(await openCard('Show card: Talk'), 'and the palette offers it');
+  check(await openCard('conversation', 'cards.talk.title'), 'and the palette offers it');
   check(
     await evaluate(`!!document.querySelector('.conversation-card')`),
     'which puts it on the rail'
@@ -5110,11 +5164,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     )
   ).trim();
   check(
-    /gossip/.test(said) && /rope/.test(said),
+    /anyone selling a rope/.test(said),
     'the conversation feed holds what was said, off the block stream',
     said.slice(0, 90)
   );
-  check(/telepath/.test(said), 'across every channel, not just one', said.slice(0, 90));
+  check(/meet me at the docks/.test(said), 'across every channel, not just one', said.slice(0, 90));
 
   /*
    * The channels are the heading's **toggles** (todo 06), not its faces. A
@@ -5126,8 +5180,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   const toggle = (word) => `
     (() => {
-      const crumb = [...document.querySelectorAll('.conversation-card .crumbs .crumb')]
-        .find((c) => c.innerText.trim().toLowerCase() === '${word}');
+      const crumb = document.querySelector('.conversation-card .crumbs .crumb[data-filter="${word}"]');
       if (!crumb || crumb.disabled) return false;
       crumb.click();
       return true;
@@ -5135,8 +5188,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   `;
   const crumbState = (word) => `
     (() => {
-      const crumb = [...document.querySelectorAll('.conversation-card .crumbs .crumb')]
-        .find((c) => c.innerText.trim().toLowerCase() === '${word}');
+      const crumb = document.querySelector('.conversation-card .crumbs .crumb[data-filter="${word}"]');
       return crumb
         ? { on: crumb.getAttribute('aria-pressed'), disabled: crumb.disabled }
         : null;
@@ -5148,30 +5200,32 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     )) === 'group',
     'the channel row is a group of toggles, not a tablist'
   );
-  const underAll = await evaluate(crumbState('gos'));
+  const underAll = await evaluate(crumbState('gossip'));
   check(
     underAll?.on === 'true' && underAll?.disabled === true,
     'with ALL on, a channel is drawn in its own state and refuses the press',
     JSON.stringify(underAll)
   );
-  check(await evaluate(toggle('all')), 'ALL is the one control that is always live');
+  check(await evaluate(toggle('talk')), 'ALL is the one control that is always live');
   check(
-    (await evaluate(crumbState('gos')))?.disabled === false,
+    (await evaluate(crumbState('gossip')))?.disabled === false,
     'and turning it off hands the row back'
   );
   // Nothing has been muted yet, so the whole stream is still on screen: the
   // master is a master, not a second filter.
   check(
-    /telepath/.test(await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`)),
+    /meet me at the docks/.test(
+      await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`)
+    ),
     'with nothing muted, ALL off shows everything ALL on did'
   );
-  check(await evaluate(toggle('tele')), 'a channel that has spoken earns a toggle');
+  check(await evaluate(toggle('telepath')), 'a channel that has spoken earns a toggle');
   const muted = await readUntil(
     () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => !/telepath/.test(text) && /rope/.test(text)
+    (text) => !/meet me at the docks/.test(text) && /rope/.test(text)
   );
   check(
-    !/telepath/.test(muted) && /rope/.test(muted),
+    !/meet me at the docks/.test(muted) && /rope/.test(muted),
     'turning one off takes that channel alone off the feed',
     muted.slice(0, 120)
   );
@@ -5192,29 +5246,32 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     withoutRealm.slice(0, 160)
   );
   // The master forces them back on without forgetting what was chosen.
-  check(await evaluate(toggle('all')), 'ALL goes back on');
+  check(await evaluate(toggle('talk')), 'ALL goes back on');
   const forced = await readUntil(
     () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => /just entered/.test(text) && /telepath/.test(text)
+    (text) => /just entered/.test(text) && /meet me at the docks/.test(text)
   );
   check(
-    /just entered/.test(forced) && /telepath/.test(forced),
+    /just entered/.test(forced) && /meet me at the docks/.test(forced),
     'and forces every channel back on top of what was muted'
   );
   check(
-    (await evaluate(crumbState('tele')))?.on === 'false',
+    (await evaluate(crumbState('telepath')))?.on === 'false',
     'while the muted one still shows the state it will go back to'
   );
-  check(await evaluate(toggle('all')), 'and ALL off again');
+  check(await evaluate(toggle('talk')), 'and ALL off again');
   const reverted = await readUntil(
     () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => !/telepath/.test(text) && /rope/.test(text)
+    (text) => !/meet me at the docks/.test(text) && /rope/.test(text)
   );
-  check(!/telepath/.test(reverted), 'reverts to what the reader had chosen, not to nothing');
+  check(
+    !/meet me at the docks/.test(reverted),
+    'reverts to what the reader had chosen, not to nothing'
+  );
   // Left as the rest of this run expects to find it.
-  await evaluate(toggle('tele'));
+  await evaluate(toggle('telepath'));
   await evaluate(toggle('realm'));
-  await evaluate(toggle('all'));
+  await evaluate(toggle('talk'));
 
   // The find row is put away until the search glyph in the action column
   // asks for it — the row it used to hold now shows conversation.
@@ -5635,10 +5692,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   /*
    * And the channel is where the option for it is: the card's own gear.
    *
-   * Found by its label rather than by its place in the panel — a control that
-   * has to be counted to is a control nobody can name. Rewording the label
-   * means updating this, which is the bargain every string this harness
-   * asserts makes.
+   * Found by the setting it writes rather than by its place in the panel or
+   * its words — a control that has to be counted to is a control nobody can
+   * name, and the label is the dictionary's to reword.
    */
   await evaluate(
     `(document.querySelector('.conversation-card .card-action[data-action="settings"]')?.click(), true)`
@@ -5648,9 +5704,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     (() => {
       const panel = document.querySelector('.card-settings');
       if (!panel) return 'no panel';
-      const box = [...panel.querySelectorAll('.card-settings-check')].find((label) =>
-        /channel/i.test(label.innerText)
-      );
+      const box = panel.querySelector('.card-settings-check[data-setting="talkChannels"]');
       if (!box) return 'no option';
       const input = box.querySelector('input[type="checkbox"]');
       if (input.checked) return 'already on';
@@ -6039,9 +6093,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await evaluate(`
     (() => {
       const panel = document.querySelector('.card-settings');
-      const box = [...(panel?.querySelectorAll('.card-settings-check') ?? [])].find((label) =>
-        /channel/i.test(label.innerText)
-      );
+      const box = panel?.querySelector('.card-settings-check[data-setting="talkChannels"]');
       box?.querySelector('input[type="checkbox"]')?.click();
       return true;
     })()
@@ -6248,8 +6300,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
        * consumer: it was computed by `shopKind()` and read by nothing. A temple
        * reads TEMPLE and a bank BANK rather than all six reading SHOP.
        */
-      const expected = { temple: 'Temple', tavern: 'Tavern', bank: 'Bank', trainer: 'Trainer' };
-      const wanted = expected[shopRoom.place] ?? (shopRoom.place === 'inn' ? 'Inn' : 'Shop');
+      const kinds = ['temple', 'tavern', 'bank', 'trainer', 'inn'];
+      const wanted = copy(
+        `cards.room.faces.${kinds.includes(shopRoom.place) ? shopRoom.place : 'shop'}`
+      );
       /*
        * Polled for the face, not read once. A finished prompt is framed the
        * moment it arrives (2026-09-11), so the flushed line `hostSays` waits
@@ -6305,7 +6359,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         JSON.stringify({ faces, place: shopRoom.place })
       );
       check(
-        faces[0]?.toLowerCase() === 'room',
+        isCopy(faces[0], 'cards.room.title'),
         'and the Room face stays first, wearing the card’s own title',
         JSON.stringify(faces)
       );
@@ -6317,8 +6371,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       // Switch to the shop face and copy: the clipboard must follow the eye.
       await evaluate(`
         (() => {
-          const face = [...document.querySelectorAll('.room-card .crumb')]
-            .find((c) => c.innerText.trim().toLowerCase() === ${JSON.stringify(wanted.toLowerCase())});
+          const face = document.querySelector('.room-card .crumb[data-tab="shop"]');
           if (face) face.click();
           return !!face;
         })()
@@ -6327,15 +6380,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       // the control for the clipboard reading below.
       await waitFor(async () =>
         evaluate(`
-          [...document.querySelectorAll('.room-card .crumb')]
-            .some((c) => c.dataset.active === 'true' &&
-              c.innerText.trim().toLowerCase() === ${JSON.stringify(wanted.toLowerCase())})
+          document.querySelector('.room-card .crumb[data-tab="shop"]')?.dataset.active === 'true'
         `)
       );
       await evaluate(`
         (() => {
-          const copy = [...document.querySelectorAll('.room-card .card-side button')]
-            .find((b) => /copy/i.test(b.getAttribute('aria-label') ?? b.title ?? ''));
+          const copy = document.querySelector('.room-card .card-side button[data-action="copy"]');
           if (copy) copy.click();
           return !!copy;
         })()
@@ -6430,8 +6480,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
                 // shop's, a few checks above -- so the room's own face is asked
                 // for first. That it has to be is the point: this row is on the
                 // face somebody is looking at, not behind a crumb.
-                const room = [...document.querySelectorAll('.room-card .crumb')]
-                  .find((c) => c.innerText.trim().toLowerCase() === 'room');
+                const room = document.querySelector('.room-card .crumb[data-tab="room"]');
                 if (room && room.getAttribute('aria-selected') !== 'true') room.click();
                 const row = document.querySelector('.room-card .room-answers');
                 if (!row) return '';
@@ -6451,8 +6500,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           () =>
             evaluate(`
               (() => {
-                const face = [...document.querySelectorAll('.room-card .crumb')]
-                  .find((c) => c.innerText.trim().toLowerCase() === 'answers');
+                const face = document.querySelector('.room-card .crumb[data-tab="answers"]');
                 if (!face) return null;
                 face.click();
                 return true;
@@ -6524,7 +6572,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
                 `\x1b[0;35mAlso here: ${askable.who}.\x1b[0m\r\n`
               )
             ),
-          new RegExp(`Also here: ${askable.who.replace(/[.*+?^$()[\]{}|\\]/g, '\\$&')}`),
+          new RegExp(`Also here: ${escapeRegExp(askable.who)}`),
           { prompt: true }
         );
         /*
@@ -6536,8 +6584,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           () =>
             evaluate(`
               (() => {
-                const room = [...document.querySelectorAll('.room-card .crumb')]
-                  .find((c) => c.innerText.trim().toLowerCase() === 'room');
+                const room = document.querySelector('.room-card .crumb[data-tab="room"]');
                 if (room && room.getAttribute('aria-selected') !== 'true') room.click();
                 const row = document.querySelector('.room-card .room-asks');
                 if (!row) return '';
@@ -6547,9 +6594,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           (found) => found.length > 0
         );
         check(
-          offered === `ask ${askable.who} ${askable.say}`,
+          offered === copy('cards.room.asks.command', { who: askable.who, word: askable.say }),
           'and a monster standing in the room offers what it can be asked, as a control',
-          JSON.stringify({ offered, want: `ask ${askable.who} ${askable.say}` })
+          JSON.stringify({
+            offered,
+            want: copy('cards.room.asks.command', { who: askable.who, word: askable.say })
+          })
         );
         check(
           askable.behind.every((word) => !offered.includes(word)),
@@ -6666,7 +6716,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      * screen and satisfy *a row is there* and *an answer is there* perfectly.
      * Five of these run in a row, and four of them read the one before.
      */
-    const names = new RegExp(typed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const names = new RegExp(escapeRegExp(typed), 'i');
     await readUntil(
       () => evaluate(`document.querySelector('.reference-card .reference li')?.innerText ?? ''`),
       (row) => names.test(row)
@@ -6703,12 +6753,16 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   {
     const torch = await detail('torch');
-    check(/Sold by/.test(torch), 'an item names the shops that sell it', torch.slice(0, 200));
+    check(
+      copyRx('cards.reference.item.soldByLabel').test(torch),
+      'an item names the shops that sell it',
+      torch.slice(0, 200)
+    );
 
     const shops = await evaluate(`
       (() => {
         const labels = [...document.querySelectorAll('.reference-card .reference-detail dt')];
-        const label = labels.find((dt) => /Sold by/.test(dt.innerText));
+        const label = labels.find((dt) => ${copyRx('cards.reference.item.soldByLabel')}.test(dt.innerText));
         const row = label && label.nextElementSibling;
         if (!row) return -1;
         return row.querySelectorAll('button.lookup').length;
@@ -6719,7 +6773,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     const opened = await evaluate(`
       (() => {
         const labels = [...document.querySelectorAll('.reference-card .reference-detail dt')];
-        const label = labels.find((dt) => /Sold by/.test(dt.innerText));
+        const label = labels.find((dt) => ${copyRx('cards.reference.item.soldByLabel')}.test(dt.innerText));
         const button = label && label.nextElementSibling &&
           label.nextElementSibling.querySelector('button.lookup');
         if (!button) return false;
@@ -6765,7 +6819,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
 
   const hauberk = await detail('chainmail hauberk');
   check(
-    /Effects/.test(hauberk) && /Stealth/.test(hauberk) && /-5/.test(hauberk),
+    copyRx('cards.reference.item.effectsLabel').test(hauberk) &&
+      /Stealth/.test(hauberk) &&
+      /-5/.test(hauberk),
     'an item states what it does, sign and all',
     hauberk.slice(0, 160)
   );
@@ -6778,12 +6834,15 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   const rat = await detail('giant rat');
   check(
-    /Defence/.test(rat) && /Pursuit/.test(rat) && /100%/.test(rat),
+    copyRx('cards.reference.mob.defenceLabel').test(rat) &&
+      copyRx('cards.reference.mob.followsLabel').test(rat) &&
+      /100%/.test(rat),
     'a monster states its defence and whether it follows you out',
     rat.slice(0, 220)
   );
   check(
-    /HP Regen/.test(rat) && /Experience Value/.test(rat),
+    copyRx('cards.reference.mob.regenLabel').test(rat) &&
+      copyRx('cards.reference.mob.experienceLabel').test(rat),
     'and its regeneration and experience value',
     rat.slice(0, 220)
   );
@@ -6802,7 +6861,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   {
     const messenger = await detail('wounded messenger');
     check(
-      /Lives in/.test(messenger) && /Temple Healer/.test(messenger),
+      copyRx('cards.reference.mob.livesLabel').test(messenger) && /Temple Healer/.test(messenger),
       'a monster names the room the realm puts it in',
       messenger.slice(0, 260)
     );
@@ -6810,7 +6869,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     const opened = await evaluate(`
       (() => {
         const labels = [...document.querySelectorAll('.reference-card .reference-detail dt')];
-        const label = labels.find((dt) => /Lives in/.test(dt.innerText));
+        const label = labels.find((dt) => ${copyRx('cards.reference.mob.livesLabel')}.test(dt.innerText));
         const button = label && label.nextElementSibling &&
           label.nextElementSibling.querySelector('button.lookup');
         if (!button) return false;
@@ -6852,7 +6911,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   {
     const scattered = await detail('giant rat');
     check(
-      /Spawns in/.test(scattered),
+      copyRx('cards.reference.mob.spawnsLabel').test(scattered),
       'a monster the realm scatters names the places it spawns in',
       scattered.slice(0, 260)
     );
@@ -6863,7 +6922,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     const opened = await evaluate(`
       (() => {
         const labels = [...document.querySelectorAll('.reference-card .reference-detail dt')];
-        const label = labels.find((dt) => /Spawns in/.test(dt.innerText));
+        const label = labels.find((dt) => ${copyRx('cards.reference.mob.spawnsLabel')}.test(dt.innerText));
         const button = label && label.nextElementSibling &&
           label.nextElementSibling.querySelector('button.lookup[aria-expanded]');
         if (!button) return false;
@@ -6896,7 +6955,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   // card already open and answers no.
   await gone('.reference-card');
 
-  check(await openCard('Show card: Inventory'), 'Inventory is offered too');
+  check(await openCard('inventory', 'cards.inventory.title'), 'Inventory is offered too');
   check(
     await evaluate(`!!document.querySelector('.inventory-card')`),
     'and appears when asked for'
@@ -7023,7 +7082,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       detail.slice(0, 80)
     );
     check(
-      /damage/i.test(detail) && /weapon/i.test(detail),
+      copyRx('cards.reference.item.weapon.damageLabel').test(detail) && /weapon/i.test(detail),
       'which leads with what a weapon is: its damage',
       detail.slice(0, 120)
     );
@@ -7472,7 +7531,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       `[...document.querySelectorAll('.rail .card')].every((c) =>
         !!c.querySelector('.card-side .card-close') &&
         !!c.querySelector('.card-side .card-action[data-action="settings"]') &&
-        !!c.querySelector('.card-side .card-action[aria-label="Copy this card"]'))`
+        !!c.querySelector('.card-side .card-action[data-action="copy"]'))`
     ),
     'every card on the rail has close, settings and copy in its action column'
   );
@@ -7585,7 +7644,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       JSON.stringify(panel)
     );
     check(
-      panel.active === 'Client',
+      isCopy(panel.active, 'cards.settings.followsClientShort'),
       'with the client theme the one in force until somebody chooses otherwise',
       JSON.stringify(panel)
     );
@@ -7713,7 +7772,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      * a price.
      */
     check(
-      /newbie manual fixed/i.test(floor) && !/"0"/.test(floor),
+      new RegExp(`newbie manual ${escapeRegExp(copy('cards.room.fixedChip'))}`, 'i').test(floor) &&
+        !/"0"/.test(floor),
       'and puts no price on what nobody can pick up',
       floor
     );
@@ -7832,9 +7892,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      * are what keep that from being a card that lies.
      */
     const count = await evaluate(
-      `document.querySelector('.inventory-card .table-count')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`
+      `document.querySelector('.inventory-card .table-count > span')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`
     );
-    check(/1 of \d+/.test(count), 'a narrowed table states both figures', count);
+    check(
+      sentence('table.narrowedCount', { shown: 1 }, { ...CASE_BLIND, fill: '\\d+' }).test(count),
+      'a narrowed table states both figures',
+      count
+    );
 
     /*
      * And the way out that can be *seen*: the clear inside the field.
@@ -7996,9 +8060,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     const sortBy = async (label) =>
       evaluate(`
         (() => {
-          const th = [...document.querySelectorAll('.carried thead th')].find(
-            (h) => h.innerText.trim().toLowerCase().startsWith('${label}')
-          );
+          const th = document.querySelector('.carried thead th[data-column="${label}"]');
           if (!th) return false;
           th.querySelector('button.sort').click();
           return true;
@@ -8011,9 +8073,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await waitFor(async () =>
       evaluate(`
         [...document.querySelectorAll('.carried thead th')].some(
-          (h) =>
-            h.innerText.trim().toLowerCase().startsWith('weight') &&
-            (h.getAttribute('aria-sort') ?? 'none') !== 'none'
+          (h) => h.dataset.column === 'weight' && (h.getAttribute('aria-sort') ?? 'none') !== 'none'
         )
       `)
     );
@@ -8138,7 +8198,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           const card = document.querySelector('.rail .self-card');
           if (!card) return JSON.stringify({ found: false });
           const crumbs = Array.from(card.querySelectorAll('.crumb'));
-          const pack = crumbs.find((crumb) => crumb.textContent.trim().toLowerCase() === 'pack');
+          const pack = card.querySelector('.crumb[data-tab="pack"]');
           if (!pack) return JSON.stringify({ found: false, crumbs: crumbs.map((c) => c.textContent) });
           pack.click();
           return JSON.stringify({ found: true });
@@ -8535,8 +8595,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   );
   await evaluate(`
     (() => {
-      const row = [...document.querySelectorAll('.picker-menu .entry')]
-        .find((c) => /Inventory/i.test(c.innerText));
+      const row = document.querySelector('.picker-menu .entry[data-card-chip="inventory"]');
       if (row) row.click();
       return !!row;
     })()
@@ -9165,10 +9224,10 @@ const willFloat = async () =>
    * *off*, which cannot be confused with a control that does nothing because
    * the value already was what it asked for.
    *
-   * The words come from `locales/ui.en.yaml` (`toolbar.retaliate`); reword
-   * them and this harness is updated in the same change.
+   * Found by the switch's id, never its words: those are the dictionary's
+   * (`toolbar.retaliate`) to reword.
    */
-  const KEY = '.dock-above [data-card="toolbar"] .toolbar-key[title="Retaliate When Attacked"]';
+  const KEY = '.dock-above [data-card="toolbar"] .toolbar-key[data-button="retaliate"]';
   const litBefore = await evaluate(`
     (() => {
       const key = document.querySelector(${JSON.stringify(KEY)});
@@ -9310,14 +9369,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `);
     // The row listed; the click below is a gesture and stays outside the wait.
     await waitFor(async () =>
-      evaluate(
-        `[...document.querySelectorAll('.palette li')].some((li) => /Tabs on/.test(li.innerText))`
-      )
+      evaluate(`!!document.querySelector('.palette li[data-command="tabside"]')`)
     );
     const clicked = await evaluate(`
       (() => {
-        const row = [...document.querySelectorAll('.palette li')]
-          .find((li) => /Tabs on/.test(li.innerText));
+        const row = document.querySelector('.palette li[data-command="tabside"]');
         if (!row) return false;
         row.click();
         return true;
@@ -10002,20 +10058,19 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     await waitFor(async () => (await focusPath()).startsWith('INPUT'));
   };
   /**
-   * Types into the field whose *label* matches, rather than into whichever
-   * input happens to come first.
+   * Types into the field *named* `field` (`FormField`'s `data-field`), rather
+   * than into whichever input happens to come first.
    *
    * A form grows fields, and every one of them shifts every position-based
    * selector below it -- silently, into a different field that also accepts
-   * text. Naming the label is the only version of this that stays true.
+   * text; and a label is the dictionary's to reword. The name is neither.
    */
-  const typeLabelled = async (label, value) =>
+  const typeField = async (field, value) =>
     evaluate(`
       (() => {
-        const field = [...document.querySelectorAll('.settings-form label')]
-          .find((l) => new RegExp(${JSON.stringify(label)}, 'i')
-            .test((l.querySelector('span')?.innerText ?? '').trim()));
-        const input = field?.querySelector('input');
+        const input = document.querySelector(
+          '.settings-form label[data-field=${JSON.stringify(field)}] input'
+        );
         if (!input) return false;
         const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         set.call(input, ${JSON.stringify(value)});
@@ -10083,6 +10138,64 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     return clicked;
   };
 
+  /** Presses a section in the rail by its id, never its words. */
+  const clickSection = async (id) =>
+    evaluate(`
+      (() => {
+        const found = document.querySelector('.settings-nav-section[data-section=${JSON.stringify(id)}]');
+        if (found) found.click();
+        return !!found;
+      })()
+    `);
+  /** The same, then waits for the rail to mark it the one on screen. */
+  const showSection = async (id) => {
+    const clicked = await clickSection(id);
+    await waitFor(async () =>
+      evaluate(
+        `document.querySelector('.settings-nav-section[data-section=${JSON.stringify(id)}]')?.dataset.active === 'true'`
+      )
+    );
+    return clicked;
+  };
+  /** A fieldset's row in the rail, by the `data-fieldset` it scrolls to. */
+  const clickFieldset = async (id) =>
+    evaluate(`
+      (() => {
+        const found = document.querySelector('.settings-nav-fieldset[data-fieldset=${JSON.stringify(id)}]');
+        if (found) found.click();
+        return !!found;
+      })()
+    `);
+
+  /**
+   * The picker's own *new* row, by its class rather than its words: chosen, the
+   * closed control names nobody, so it carries no realm hint under the name.
+   */
+  const pickNew = async () => {
+    await evaluate(`
+      (() => {
+        if (!document.querySelector('.settings-nav-choices')) {
+          document.querySelector('.settings-nav-chosen')?.click();
+        }
+        return true;
+      })()
+    `);
+    await shown('.settings-nav-choices .settings-add');
+    const clicked = await evaluate(`
+      (() => {
+        const add = document.querySelector('.settings-nav-choices .settings-add');
+        if (add) add.click();
+        return !!add;
+      })()
+    `);
+    await waitFor(async () =>
+      evaluate(
+        `!document.querySelector('.settings-nav-choices') && !document.querySelector('.settings-nav-chosen .hint')`
+      )
+    );
+    return clicked;
+  };
+
   /** Waits for the control naming `text` to be the one marked active. */
   const activeText = async (selector, text) =>
     waitFor(async () =>
@@ -10100,9 +10213,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     waitFor(async () =>
       evaluate(`
         (() => {
-          const label = [...document.querySelectorAll('.settings-form label')]
-            .find((l) => /file name/i.test(l.querySelector('span')?.innerText ?? ''));
-          const input = label?.querySelector('input');
+          const input = document.querySelector('.settings-form label[data-field="id"] input');
           return !!input && input.value === '';
         })()
       `)
@@ -10159,13 +10270,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       })()
     `);
     const first = await readUntil(
-      () =>
-        evaluate(
-          `document.querySelector('.palette li[role="option"]')?.innerText?.split('\\n')[0] ?? ''`
-        ),
-      (first) => /settings/i.test(first)
+      () => evaluate(`document.querySelector('.palette li[role="option"]')?.dataset.command ?? ''`),
+      (first) => first === 'settings'
     );
-    check(/settings/i.test(first), 'settings is the first match for its own name', first);
+    check(first === 'settings', 'settings is the first match for its own name', first);
 
     for (const word of ['settings', 'config', 'password', 'add', 'character', 'server']) {
       await evaluate(`
@@ -10182,7 +10290,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       const found = await readUntil(
         () =>
           evaluate(`
-        [...document.querySelectorAll('.palette li')].some((li) => /settings:/i.test(li.innerText))
+        !!document.querySelector('.palette li[data-command="settings"]')
       `),
         (found) => found === true
       );
@@ -10233,7 +10341,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   // Make one.
-  check(await pickInList('new character'), 'it offers a new character');
+  check(await pickNew(), 'it offers a new character');
   await blankForm();
   /*
    * Named by their labels, not by position. `label:nth-of-type(2)` was the
@@ -10242,16 +10350,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * which reads as the form being broken rather than as the harness being
    * brittle.
    */
-  await typeLabelled('file name', 'freshly');
-  await typeLabelled('^name', 'Freshly Made');
+  await typeField('id', 'freshly');
+  await typeField('name', 'Freshly Made');
   await evaluate(`
     (() => {
-      const user = [...document.querySelectorAll('.settings-form label')]
-        .find((l) => /username/i.test(l.querySelector('span')?.innerText ?? ''))
-        ?.querySelector('input');
-      const pass = [...document.querySelectorAll('.settings-form label')]
-        .find((l) => /password/i.test(l.querySelector('span')?.innerText ?? ''))
-        ?.querySelector('input');
+      const user = document.querySelector('.settings-form label[data-field="username"] input');
+      const pass = document.querySelector('.settings-form label[data-field="password"] input');
       const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
       if (user) { set.call(user, 'someone'); user.dispatchEvent(new Event('input', {bubbles:true})); }
       if (pass) { set.call(pass, 'smoke-password'); pass.dispatchEvent(new Event('input', {bubbles:true})); }
@@ -10336,14 +10440,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * the identity -- two characters under one name is not what anybody means --
    * or the password, which the screen was never told.
    */
-  check(await pickInList('new character'), 'a new character to copy into');
+  check(await pickNew(), 'a new character to copy into');
   await blankForm();
   {
     const copied = await evaluate(`
       (() => {
-        const select = [...document.querySelectorAll('.settings-form label')]
-          .find((l) => /copy from/i.test(l.querySelector('span')?.innerText ?? ''))
-          ?.querySelector('select');
+        const select = document.querySelector('.settings-form label[data-field="copy-from"] select');
         if (!select) return 'no copy-from control';
         const option = [...select.options].find((o) => /smoke character/i.test(o.text));
         if (!option) return 'nothing to copy from';
@@ -10359,28 +10461,23 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // the one carried across that nothing else on this form would have set.
     await waitFor(async () =>
       evaluate(`
-        [...document.querySelectorAll('.settings-form label')].some(
-          (l) =>
-            /host/i.test(l.querySelector('span')?.innerText ?? '') &&
-            (l.querySelector('input')?.value ?? '').length > 0
-        )
+        (document.querySelector('.settings-form label[data-field="host"] input')?.value ?? '')
+          .length > 0
       `)
     );
 
     const carried = JSON.parse(
       await evaluate(`
         (() => {
-          const field = (what) =>
-            [...document.querySelectorAll('.settings-form label')]
-              .find((l) => new RegExp(what, 'i').test(l.querySelector('span')?.innerText ?? ''));
-          const inputs = [...document.querySelectorAll('.settings-form input')];
+          const field = (name) =>
+            document.querySelector('.settings-form label[data-field="' + name + '"]');
           return JSON.stringify({
-            id: inputs[0]?.value ?? '(none)',
+            id: field('id')?.querySelector('input')?.value ?? '(none)',
             server:
               document.querySelector('.settings-form label[data-field="realm"] select')?.value ??
               '(none)',
-            password: field('^password')?.querySelector('input')?.value ?? '(none)',
-            select: field('copy from')?.querySelector('select')?.value ?? '(none)'
+            password: field('password')?.querySelector('input')?.value ?? '(none)',
+            select: field('copy-from')?.querySelector('select')?.value ?? '(none)'
           });
         })()
       `)
@@ -10395,9 +10492,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   // A character with nowhere to play is refused where somebody can still fix it,
   // rather than written and then reported and skipped on the next read.
-  check(await pickInList('new character'), 'a second new character');
+  check(await pickNew(), 'a second new character');
   await blankForm();
-  await typeLabelled('file name', 'nowhere');
+  await typeField('id', 'nowhere');
   // Addressed by the field's own name rather than taken as the first select in
   // the form: "Copy From" sits above it once there is a character to copy.
   await evaluate(`
@@ -10429,9 +10526,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       foot: document.querySelector('.settings-foot')?.innerText ?? '',
       id: document.querySelector('.settings-form input')?.value ?? '',
       select: document.querySelector('.settings-form select')?.value ?? '(none)',
-      host: [...document.querySelectorAll('.settings-form label')]
-        .find((l) => /host/i.test(l.querySelector('span')?.innerText ?? ''))
-        ?.querySelector('input')?.value ?? '(no host field)'
+      host: document.querySelector('.settings-form label[data-field="host"] input')?.value ??
+        '(no host field)'
     })`)
   );
   check(
@@ -10462,7 +10558,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * keyed on the label would fail the next time the copy is improved, which is
    * not what it is trying to catch.
    */
-  check(await clickText('.settings-nav-section', 'spells'), 'its Spells section is reachable');
+  check(await clickSection('spells'), 'its Spells section is reachable');
   await waitFor(
     async () =>
       (await evaluate(
@@ -10480,7 +10576,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and blessing from an item can be switched on there'
   );
 
-  check(await showCrumb('.settings-nav-section', 'health'), 'its Health section is reachable');
+  check(await showSection('health'), 'its Health section is reachable');
 
   /*
    * A fieldset in the rail is an address, and pressing one moves the *form*.
@@ -10535,10 +10631,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     check(hidden === true, 'the potion fieldset starts off the foot of the form');
 
     const railBefore = await railTop();
-    check(
-      await clickText('.settings-nav-fieldset', 'when to use an item'),
-      'its potion fieldset is a rail row'
-    );
+    check(await clickFieldset('health-potions'), 'its potion fieldset is a rail row');
     /*
      * What "in view" means, measured on the geometry rather than on
      * `scrollTop`: the fieldset ends up inside the form's own box.
@@ -10792,40 +10885,42 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await capture('smoke-settings-health.png', 'the Health page, whose fields share a column');
 
   const warning = await evaluate(`
-    ([...document.querySelectorAll('.settings-menus')]
-      .find((f) => /auto-hangup/i.test(f.querySelector('legend')?.innerText ?? ''))
-      ?.innerText ?? '')
+    document.querySelector('.settings-form fieldset[data-fieldset="health-hangup"] .settings-warn')
+      ?.innerText ?? ''
   `);
   /*
    * One sentence, in the open. The rule this screen now follows is that an
    * explanation goes behind a hint mark -- and a *warning* about something that
    * can cost a character does not, because a warning nobody sees until
-   * afterwards is not a warning. So the assertion is that it still says what it
-   * costs and still names the escape, not that it says it at length.
+   * afterwards is not a warning. So the assertion is that the warning is drawn
+   * in the open, whole, beside the setting -- its words are the dictionary's.
    */
   check(
-    /maximum/i.test(warning) && /kills/i.test(warning),
+    copyRx('settings.health.hangUpWarning').test(warning),
     'the hangup setting says what it costs',
     warning.slice(0, 160)
   );
-  check(/auto-retreat/i.test(warning), 'and names the escape that actually works');
 
   /* And that escape is on the same screen, above it: the safe option is the
-     one somebody should meet first. */
+     one somebody should meet first. Read by each fieldset's id. */
   const escapes = JSON.parse(
     await evaluate(`
-      JSON.stringify([...document.querySelectorAll('.settings-menus legend')]
-        .map((l) => l.innerText.trim()))
+      JSON.stringify([...document.querySelectorAll('.settings-form fieldset[data-fieldset]')]
+        .map((f) => f.dataset.fieldset))
     `)
   );
   check(
-    escapes.some((legend) => /auto-retreat/i.test(legend)),
+    escapes.includes('health-retreat') && escapes.includes('health-hangup'),
+    'and names the escape that actually works',
+    JSON.stringify(escapes)
+  );
+  check(
+    escapes.includes('health-retreat'),
     'and running away is offered too',
     JSON.stringify(escapes)
   );
   check(
-    escapes.findIndex((l) => /auto-retreat/i.test(l)) <
-      escapes.findIndex((l) => /auto-hangup/i.test(l)),
+    escapes.indexOf('health-retreat') < escapes.indexOf('health-hangup'),
     'and it comes first, because it is the one that works'
   );
   /*
@@ -10835,8 +10930,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * "Rest if below".
    */
   check(
-    escapes.findIndex((l) => /recover/i.test(l)) <
-      escapes.findIndex((l) => /auto-retreat/i.test(l)),
+    escapes.includes('health-recover') &&
+      escapes.indexOf('health-recover') < escapes.indexOf('health-retreat'),
     'with recovering above both, because it comes first in a fight going wrong',
     JSON.stringify(escapes)
   );
@@ -10860,7 +10955,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * in a grid that has one creates an implicit third and pushes the row out of
    * the dialog, which is the failure the media-query floor exists to prevent.
    */
-  check(await showCrumb('.settings-nav-section', 'movement'), 'its Movement section is reachable');
+  check(await showSection('movement'), 'its Movement section is reachable');
   const switches = JSON.parse(
     await evaluate(`
       JSON.stringify([...document.querySelectorAll('.settings-form .settings-check')].map((el) => {
@@ -10921,8 +11016,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    */
   const doorSwitch = `
     (() => {
-      const box = [...document.querySelectorAll('.settings-check')]
-        .find((l) => /auto-open doors/i.test(l.innerText));
+      const box = document.querySelector('.settings-check[data-field="open-doors"]');
       const input = box?.querySelector('input');
       if (!input) return 'missing';
       return String(input.checked);
@@ -10932,8 +11026,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(doorsWere !== 'missing', 'opening doors on the way is a switch on this page', doorsWere);
   await evaluate(`
     (() => {
-      const box = [...document.querySelectorAll('.settings-check')]
-        .find((l) => /auto-open doors/i.test(l.innerText));
+      const box = document.querySelector('.settings-check[data-field="open-doors"]');
       box?.querySelector('input')?.click();
       return true;
     })()
@@ -10954,8 +11047,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   if (doorsNow !== 'true') {
     await evaluate(`
       (() => {
-        const box = [...document.querySelectorAll('.settings-check')]
-          .find((l) => /auto-open doors/i.test(l.innerText));
+        const box = document.querySelector('.settings-check[data-field="open-doors"]');
         box?.querySelector('input')?.click();
         return true;
       })()
@@ -10965,8 +11057,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   const paired = JSON.parse(
     await evaluate(`
       (() => {
-        const box = [...document.querySelectorAll('.settings-check')]
-          .find((l) => /auto-open doors/i.test(l.innerText));
+        const box = document.querySelector('.settings-check[data-field="open-doors"]');
         const tries = document.querySelector('[data-field="open-tries"]');
         if (!box || !tries) return JSON.stringify({ found: false });
         const a = box.getBoundingClientRect();
@@ -11003,11 +11094,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * hangup one, and ticking the box reaches this character's own file rather
    * than only the options file everybody inherits.
    */
-  check(await showCrumb('.settings-nav-section', 'remotes'), 'its Remotes section is reachable');
+  check(await showSection('remotes'), 'its Remotes section is reachable');
   const answering = await evaluate(`
-    ([...document.querySelectorAll('.settings-menus')]
-      .find((f) => /answering other players/i.test(f.querySelector('legend')?.innerText ?? ''))
-      ?.innerText ?? '')
+    document.querySelector('.settings-form fieldset[data-fieldset="remotes"] .settings-warn')
+      ?.innerText ?? ''
   `);
   /*
    * In the open, not behind a hint mark, for the reason the hangup warning is:
@@ -11021,20 +11111,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * would be the screen describing a client that no longer exists.
    */
   check(
-    /answers nobody/i.test(answering) && /granted/i.test(answering),
+    copyRx('settings.remotes.channelWarning').test(answering),
     'the remotes setting says in the open that the switch alone answers nobody',
     answering.slice(0, 200)
-  );
-  check(
-    /@kill/i.test(answering) && /refused/i.test(answering),
-    'and names what it will never do whatever the switch says'
   );
 
   check(
     await evaluate(`
       (() => {
-        const box = [...document.querySelectorAll('.settings-check')]
-          .find((l) => /enable remote control/i.test(l.innerText));
+        const box = document.querySelector('.settings-check[data-field="remotes-enabled"]');
         const input = box?.querySelector('input');
         if (!input || input.checked) return false;
         input.click();
@@ -11089,12 +11174,22 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `),
     'the gang grid lists the whole @ vocabulary, not only the answerable part'
   );
+  // Read off the rows rather than the warning's words: `@kill` and `@hangup`
+  // are listed, and are never a control, whatever the switch says.
+  check(
+    await evaluate(`
+      [...document.querySelectorAll('.remote-list[data-mode="gang"] .remote-rows > li')]
+        .filter((li) => ['@kill', '@hangup'].includes(li.querySelector('.remote-name')?.innerText))
+        .map((li) => li.dataset.settable)
+        .join(',') === 'false,false'
+    `),
+    'and names what it will never do whatever the switch says'
+  );
   check(
     await evaluate(`
       (() => {
         const list = document.querySelector('.remote-list[data-mode="gang"]');
-        const button = [...(list?.querySelectorAll('.remote-list-bulk button') ?? [])]
-          .find((b) => /allow all/i.test(b.innerText));
+        const button = list?.querySelector('.remote-list-bulk button[data-bulk="allow"]');
         if (!button) return false;
         button.click();
         return true;
@@ -11123,18 +11218,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * it says what it will and will not do, because the refusals are the part
    * nobody would guess: never a player, at any setting.
    */
-  check(await clickText('.settings-nav-section', 'combat'), 'its Combat section is reachable');
+  check(await clickSection('combat'), 'its Combat section is reachable');
   const fighting = await readUntil(
     () =>
       evaluate(`
-    ([...document.querySelectorAll('.settings-menus')]
-      .find((f) => /^attack$/i.test((f.querySelector('legend')?.innerText ?? '').trim()))
-      ?.innerText ?? '')
+    document.querySelector('.settings-form fieldset[data-fieldset="combat-attack"] .settings-warn')
+      ?.innerText ?? ''
   `),
-    (fighting) => /never on a player/i.test(fighting)
+    (fighting) => copyRx('settings.combat.openWarning').test(fighting)
   );
   check(
-    /never on a player/i.test(fighting),
+    copyRx('settings.combat.openWarning').test(fighting),
     'the combat setting says it will never attack a player',
     fighting.slice(0, 200)
   );
@@ -11148,8 +11242,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(
     await evaluate(`
       (() => {
-        const box = [...document.querySelectorAll('.settings-check')]
-          .find((l) => /auto-attack/i.test(l.innerText));
+        const box = document.querySelector('.settings-check[data-field="combat"]');
         const input = box?.querySelector('input');
         if (!input || input.checked) return false;
         input.click();
@@ -11160,26 +11253,22 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   await waitFor(async () =>
     evaluate(`
-      [...document.querySelectorAll('.settings-check')]
-        .find((l) => /auto-attack/i.test(l.innerText))
+      document.querySelector('.settings-check[data-field="combat"]')
         ?.querySelector('input')?.checked === true
     `)
   );
   const verbs = JSON.parse(
     await evaluate(`
-      JSON.stringify([...document.querySelectorAll('.settings-menus legend')]
-        .map((l) => l.innerText.trim()))
+      JSON.stringify([...document.querySelectorAll('.settings-form fieldset[data-fieldset]')]
+        .map((f) => f.dataset.fieldset))
     `)
   );
   check(
-    verbs.some((legend) => /^attacks$/i.test(legend)),
+    verbs.includes('combat-attacks'),
     'and switching it on offers what to swing with',
     JSON.stringify(verbs)
   );
-  check(
-    verbs.some((legend) => /^monsters$/i.test(legend)),
-    'and what the realm’s own columns refuse'
-  );
+  check(verbs.includes('combat-monsters'), 'and what the realm’s own columns refuse');
 
   /*
    * And the monster list beside it (todo 01, 104). Three assertions, because
@@ -11190,16 +11279,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * down rules it was only inheriting.
    */
   check(
-    verbs.some((legend) => /monster rules/i.test(legend)),
+    verbs.includes('combat-mob-rules'),
     'and one row per monster for how to treat it',
     JSON.stringify(verbs)
   );
   const ranking = await evaluate(`
     (() => {
-      const box = [...document.querySelectorAll('.settings-menus')]
-        .find((f) => /monster rules/i.test((f.querySelector('legend')?.innerText ?? '')));
+      const box = document.querySelector('.settings-form fieldset[data-fieldset="combat-mob-rules"]');
       if (!box) return 'no monster rules fieldset';
-      const add = [...box.querySelectorAll('button')].find((b) => /add a monster/i.test(b.innerText));
+      const add = box.querySelector('button.add-step');
       if (!add) return 'no add button';
       const before = box.querySelectorAll('.mob-rule-line').length;
       add.click();
@@ -11211,8 +11299,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     () =>
       evaluate(`
     (() => {
-      const box = [...document.querySelectorAll('.settings-menus')]
-        .find((f) => /monster rules/i.test((f.querySelector('legend')?.innerText ?? '')));
+      const box = document.querySelector('.settings-form fieldset[data-fieldset="combat-mob-rules"]');
       const row = box?.querySelector('.mob-rule-line');
       if (!row) return 'no row';
       const bands = [...(row.querySelector('select')?.options ?? [])].map((o) => o.value);
@@ -11230,9 +11317,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   // assertion reads the same form.
   await evaluate(`
     (() => {
-      const box = [...document.querySelectorAll('.settings-menus')]
-        .find((f) => /monster rules/i.test((f.querySelector('legend')?.innerText ?? '')));
-      const remove = box?.querySelector('.mob-rule-line button[aria-label^="Remove"]');
+      const box = document.querySelector('.settings-form fieldset[data-fieldset="combat-mob-rules"]');
+      const remove = box?.querySelector(${JSON.stringify(
+        `.mob-rule-line button[aria-label=${JSON.stringify(copy('settings.combat.mobRuleRemoveAria', { number: 1 }))}]`
+      )});
       if (remove) remove.click();
       return true;
     })()
@@ -11241,8 +11329,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   // this run does not save, but a later assertion reads the same form.
   await evaluate(`
     (() => {
-      const box = [...document.querySelectorAll('.settings-check')]
-        .find((l) => /auto-attack/i.test(l.innerText));
+      const box = document.querySelector('.settings-check[data-field="combat"]');
       const input = box?.querySelector('input');
       if (input?.checked) input.click();
       return true;
@@ -11250,8 +11337,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   `);
   await waitFor(async () =>
     evaluate(`
-      [...document.querySelectorAll('.settings-check')]
-        .find((l) => /auto-attack/i.test(l.innerText))
+      document.querySelector('.settings-check[data-field="combat"]')
         ?.querySelector('input')?.checked === false
     `)
   );
@@ -11270,15 +11356,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * another takes it off -- because every one of those is a step where a
    * feature stops being reachable.
    */
-  check(await showCrumb('.settings-nav-section', 'movement'), 'its Movement section is reachable');
+  check(await showSection('movement'), 'its Movement section is reachable');
   {
     const legends = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-menus legend')].map((l) => l.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-form fieldset[data-fieldset]')].map((f) => f.dataset.fieldset))`
       )
     );
     check(
-      legends.some((legend) => /^loops$/i.test(legend)),
+      legends.includes('loops'),
       'the Movement section offers this character’s loops',
       JSON.stringify(legends)
     );
@@ -11296,7 +11382,16 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       JSON.stringify(already)
     );
 
-    check(await clickText('.settings-menus button', 'add a loop'), 'the shelf can be opened');
+    check(
+      await evaluate(`
+        (() => {
+          const add = document.querySelector('fieldset[data-fieldset="loops"] button.add-step');
+          if (add) add.click();
+          return !!add;
+        })()
+      `),
+      'the shelf can be opened'
+    );
     // The catalogue crosses IPC on the first open; four hundred loops out of
     // a file, so it is not instant.
     const shelved = await readUntil(
@@ -11359,14 +11454,23 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       JSON.stringify(await listed())
     );
 
-    check(await clickText('.loop-picker button', 'done'), 'the shelf puts itself away');
+    check(
+      await evaluate(`
+        (() => {
+          const done = document.querySelector('.loop-picker-head > button');
+          if (done) done.click();
+          return !!done;
+        })()
+      `),
+      'the shelf puts itself away'
+    );
     await waitFor(async () => await evaluate(`!document.querySelector('.loop-picker')`));
     check(await evaluate(`!document.querySelector('.loop-picker')`), 'and it is gone');
   }
 
   // The realm database, which is what makes a character on a derivative able to
   // route at all -- back in Profile, where "Realm data" lives.
-  check(await showCrumb('.settings-nav-section', 'character'), 'back to Character');
+  check(await showSection('profile'), 'back to Character');
   /*
    * The menus on the way in, as a list rather than four named fields.
    *
@@ -11380,15 +11484,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * answer written out four times with four places to drift.
    */
   {
-    check(await showCrumb('.settings-head .crumb', 'realms'), 'the Realms page is reachable');
+    check(
+      await showCrumb('.settings-head .crumb', copy('settings.crumbs.realms')),
+      'the Realms page is reachable'
+    );
 
     const legends = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-menus legend')].map((l) => l.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-form fieldset[data-fieldset]')].map((f) => f.dataset.fieldset))`
       )
     );
     check(
-      legends.some((legend) => /menus/i.test(legend)),
+      legends.includes('realm-login'),
       'a realm says how to get through its menus',
       JSON.stringify(legends)
     );
@@ -11400,8 +11507,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     check(
       await evaluate(`
         (() => {
-          const add = [...document.querySelectorAll('.settings-menus button')]
-            .find((b) => /add a menu/i.test(b.innerText));
+          const add = document.querySelector('fieldset[data-fieldset="realm-login"] button.add-step');
           if (!add) return false;
           add.click();
           return true;
@@ -11459,11 +11565,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      */
     const serverLegends = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-menus legend')].map((l) => l.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-form fieldset[data-fieldset]')].map((f) => f.dataset.fieldset))`
       )
     );
     check(
-      serverLegends.some((legend) => /^loops$/i.test(legend)),
+      serverLegends.includes('loops'),
       'and offers the loops every character playing there walks',
       JSON.stringify(serverLegends)
     );
@@ -11483,7 +11589,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'a realm can be pointed at its own world database'
     );
 
-    check(await showCrumb('.settings-head .crumb', 'characters'), 'back to the characters');
+    check(
+      await showCrumb('.settings-head .crumb', copy('settings.crumbs.characters')),
+      'back to the characters'
+    );
   }
 
   // The page arriving is the positive control: without it, "no world database
@@ -11544,7 +11653,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and no field explains itself in prose beside the value any more'
   );
 
-  check(await clickText('.settings-nav-section', 'alerts'), 'its Alerts section is reachable');
+  check(await clickSection('alerts'), 'its Alerts section is reachable');
   /*
    * The player's own rows, which are the only place alerts are configured
    * (todo 02). It asserted a severity floor and eleven mute checkboxes until
@@ -11559,8 +11668,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     () =>
       evaluate(`
     (() => {
-      const box = [...document.querySelectorAll('.settings-menus')]
-        .find((f) => /your own alerts/i.test((f.querySelector('legend')?.innerText ?? '').trim()));
+      const box = document.querySelector('.settings-form fieldset[data-fieldset="alerts-rules"]');
       if (!box) return 'no alert rules fieldset';
       const rows = [...box.querySelectorAll('.settings-alerts > li')];
       return JSON.stringify({
@@ -11665,8 +11773,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(
     /"labelled":true/.test(switched) &&
       /"named":true/.test(switched) &&
-      /"enabled"/.test(switched) &&
-      /"order"/.test(switched),
+      isCopy(JSON.parse(switched).heads?.[0], 'settings.alerts.columnEnabled') &&
+      (JSON.parse(switched).heads ?? []).some((head) =>
+        isCopy(head, 'settings.alerts.columnOrder')
+      ),
     'and the switch is a bare box under an Enabled heading, named for a screen reader',
     switched
   );
@@ -11712,14 +11822,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // More than one group, however many digits that is: `[2-9]` read "11" as a
     // single digit and failed on a picker that was right.
     /"groups":(?:[2-9]|\d{2,})/.test(offered) &&
-      /you die/i.test(offered) &&
-      /a player attacks you/i.test(offered),
+      copyRx('settings.alerts.event.died').test(offered) &&
+      copyRx('settings.alerts.event.attacked').test(offered),
     'and names events in plain English, grouped',
     offered
   );
 
   await capture('smoke-settings-alerts.png', 'the Alerts rows, lined up in their columns');
-  check(await showCrumb('.settings-nav-section', 'character'), 'and back to Character');
+  check(await showSection('profile'), 'and back to Character');
 
   /*
    * The client's own settings, and the defaults a new realm or character
@@ -11733,11 +11843,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * reaches the YAML on disk, which is the path a form can quietly not have.
    */
   {
-    check(await showCrumb('.settings-head .crumb', 'mudengine'), 'the MudEngine page is reachable');
+    check(
+      await showCrumb('.settings-head .crumb', copy('settings.crumbs.mudEngine')),
+      'the MudEngine page is reachable'
+    );
 
     const sections = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-nav-section')].map((c) => c.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-nav-section')].map((c) => c.dataset.section))`
       )
     );
     /*
@@ -11749,9 +11862,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * store for a MudEngine-level page to hold.
      */
     check(
-      sections.some((name) => /appearance/i.test(name)) &&
-        sections.some((name) => /records/i.test(name)) &&
-        !sections.some((name) => /accounts|combat|realm|character/i.test(name)),
+      sections.includes('appearance') &&
+        sections.includes('records') &&
+        !sections.some((id) => ['accounts', 'combat', 'realm', 'profile'].includes(id)),
       'and holds the client itself, and nothing about a realm or a character',
       JSON.stringify(sections)
     );
@@ -11780,9 +11893,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // the first section and its effect is visible in the client afterwards.
     await evaluate(`
       (() => {
-        const label = [...document.querySelectorAll('.settings-form label')]
-          .find((l) => /size, px/i.test(l.innerText));
-        const input = label?.querySelector('input');
+        const input = document.querySelector('.settings-form label[data-field="global-font-size"] input');
         if (!input) return false;
         const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         set.call(input, '17');
@@ -11806,10 +11917,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * to wait for the words rather than for the file.
      */
     const says = await readUntil(
-      () => evaluate(`document.querySelector('.settings-saving')?.innerText ?? ''`),
-      (text) => /saved/i.test(text)
+      () =>
+        evaluate(
+          `JSON.stringify({ state: document.querySelector('.settings-saving')?.dataset.state ?? '', text: document.querySelector('.settings-saving')?.innerText ?? '' })`
+        ).then(JSON.parse),
+      (now) => now.state === 'saved'
     );
-    check(/saved/i.test(says), 'and the form says so, since there is no click to tie it to');
+    check(
+      says.state === 'saved' && copyRx('settings.formActions.saved').test(says.text),
+      'and the form says so, since there is no click to tie it to',
+      JSON.stringify(says)
+    );
     // The user's own file, patched rather than replaced: the comments in it are
     // the documentation, and there is only one of these.
     // Patched, never replaced: this file is the annotated template somebody
@@ -11826,18 +11944,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * setting written into the file that nothing reads is a checkbox somebody
      * ticks and then waits to see work. So the mark is checked in the DOM
      * *and* the file is checked for the key, and then it is turned back on —
-     * the screen is a sibling of the status rail rather than a replacement for
-     * it, so the rail stays mounted while this runs.
+     * the screen is a sibling of the workspace rather than a replacement for
+     * it, so the card rail stays mounted while this runs.
      */
     check(
-      await evaluate(`!!document.querySelector('.status-rail .app-mark')`),
-      'the client draws its own mark in the status rail by default'
+      await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`),
+      'the client draws its own mark at the head of the card rail by default'
     );
     const markSwitch = `
       (() => {
-        const label = [...document.querySelectorAll('.settings-form label')]
-          .find((l) => /mudengine mark/i.test(l.innerText));
-        const box = label?.querySelector('input[type="checkbox"]');
+        const box = document.querySelector(
+          '.settings-form label[data-field="global-show-logo"] input[type="checkbox"]'
+        );
         if (!box) return false;
         box.click();
         return true;
@@ -11854,17 +11972,19 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * setting written into a file that nothing reads is the failure it exists
      * to catch.
      */
-    await gone('.status-rail .app-mark');
+    await gone('.card-rail-head .app-mark');
     check(
-      !(await evaluate(`!!document.querySelector('.status-rail .app-mark')`)),
+      !(await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`)),
       'and the mark actually goes'
     );
     // Back on, so the screenshots below and the rest of the run see the client
     // as it ships.
     check(await evaluate(markSwitch), 'and the switch turns it back on');
-    await waitFor(async () => await evaluate(`!!document.querySelector('.status-rail .app-mark')`));
+    await waitFor(
+      async () => await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`)
+    );
     check(
-      await evaluate(`!!document.querySelector('.status-rail .app-mark')`),
+      await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`),
       'and the mark comes back'
     );
 
@@ -11877,11 +11997,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * are starting values reads as a second, contradictory set of live
      * settings.
      */
-    check(await showCrumb('.settings-head .crumb', 'global'), 'the Global page is reachable');
+    check(
+      await showCrumb('.settings-head .crumb', copy('settings.crumbs.global')),
+      'the Global page is reachable'
+    );
 
     const defaults = JSON.parse(
       await evaluate(
-        `JSON.stringify([...document.querySelectorAll('.settings-nav-section')].map((c) => c.innerText.trim()))`
+        `JSON.stringify([...document.querySelectorAll('.settings-nav-section')].map((c) => c.dataset.section))`
       )
     );
     /*
@@ -11891,14 +12014,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * with nothing under it is a control that does nothing.
      */
     check(
-      defaults.some((name) => /realm/i.test(name)) &&
-        !defaults.some((name) => /^character$/i.test(name)) &&
-        defaults.some((name) => /combat/i.test(name)),
+      defaults.includes('realm') && !defaults.includes('profile') && defaults.includes('combat'),
       'and offers what a new realm and a new character start with',
       JSON.stringify(defaults)
     );
     check(
-      /starting values/i.test(
+      copyRx('settings.global.startingValuesNote').test(
         await evaluate(`document.querySelector('.settings-form .settings-note')?.innerText ?? ''`)
       ),
       'and says outright that they are starting values, copied when you make one'
@@ -11909,7 +12030,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // wording that drifted between them gets noticed.
     await capture('smoke-defaults.png', 'the Global page');
 
-    check(await showCrumb('.settings-head .crumb', 'characters'), 'back to the characters again');
+    check(
+      await showCrumb('.settings-head .crumb', copy('settings.crumbs.characters')),
+      'back to the characters again'
+    );
   }
 
   // Worth looking at while it is open, rather than after it has closed.
@@ -11957,9 +12081,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * it has to reach the file, or it would put the form back and leave the
      * disk holding the mistake.
      */
-    const button = (label) => `
-      [...document.querySelectorAll('.settings-actions button')]
-        .find((b) => /${label}/i.test(b.innerText))
+    const button = (action) => `
+      document.querySelector('.settings-actions button[data-action="${action}"]')
     `;
     check(
       await evaluate(`!${button('undo')}.disabled`),
@@ -12287,7 +12410,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       (() => {
         const tab = [...document.querySelectorAll('.tab-rail .tab')]
           .find((t) => t.dataset.phase === 'connected');
-        return tab?.querySelector('.dial')?.getAttribute('aria-label')?.startsWith('Disconnect') ?? false;
+        const label = tab?.querySelector('.dial')?.getAttribute('aria-label') ?? '';
+        return ${copyRx('tabs.tab.dialDisconnectAria')}.test(label);
       })()
     `),
     'and offers to disconnect the character that is in the realm'
@@ -12373,8 +12497,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await evaluate(
     `(document.querySelector('.tab-rail .new-character:not(.rail-settings)').click(), true)`
   );
-  const onBlank = `/new character/i.test(
-    document.querySelector('.settings-nav-chosen')?.innerText ?? ''
+  // Blank by what the form draws, not by the picker's words: a character being
+  // made is the only one with an empty file-name field, and names no realm.
+  const onBlank = `(
+    !!document.querySelector('.settings-nav-chosen') &&
+    !document.querySelector('.settings-nav-chosen .hint') &&
+    document.querySelector('.settings-form label[data-field="id"] input')?.value === ''
   )`;
   await waitFor(async () => await evaluate(onBlank));
   check(await evaluate(onBlank), 'the + opens settings on a blank character');
@@ -12417,6 +12545,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         leader: li.querySelector('.party-name')?.dataset.leader ?? '',
         klass: li.querySelector('.party-class')?.innerText.trim() ?? '',
         health: li.querySelector('.party-meter.hp')?.innerText.trim() ?? '',
+        healthValue: li.querySelector('.party-meter.hp .party-meter-value')?.innerText.trim() ?? '',
         level: li.querySelector('.party-meter.hp')?.dataset.level ?? '',
         mana: li.querySelector('.party-meter.mana')?.innerText.trim() ?? '',
         activity: li.querySelector('.party-activity')?.innerText.trim() ?? '',
@@ -12438,7 +12567,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(members)
   );
   check(
-    members.some((m) => m.klass === 'Paladin' && m.rank === 'back' && /back/i.test(m.rankHead)),
+    members.some(
+      (m) =>
+        m.klass === 'Paladin' && m.rank === 'back' && isCopy(m.rankHead, 'cards.party.groups.back')
+    ),
     'and their class and where they stand, under a heading naming the rank',
     JSON.stringify(members)
   );
@@ -12461,7 +12593,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * so the whole phrase is asserted -- and localised: `4,434`, not `4434`.
    */
   check(
-    members.some((m) => m.name.startsWith('Soul') && /40% of 4,434/.test(m.health)),
+    members.some(
+      (m) =>
+        m.name.startsWith('Soul') &&
+        copyRx('cards.party.ofMax', { percent: 40, max: '4,434' }).test(m.health)
+    ),
     'and, once that member answered @health, the maximum beside the percentage',
     JSON.stringify(members.map((m) => m.health))
   );
@@ -12550,14 +12686,20 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   /* §6: the level is a word as well as a hue, on the card somebody decides
      whether to heal off. */
   check(
-    members.some((m) => m.level === 'caution' && /low/i.test(m.health)),
+    members.some(
+      (m) =>
+        m.level === 'caution' &&
+        new RegExp(`\\s${escapeRegExp(copy('cards.vitals.level.caution'))}$`, 'i').test(
+          m.healthValue
+        )
+    ),
     'and says in words that somebody is hurt',
     JSON.stringify(members)
   );
 
   // The badge reports the number somebody acts on, not the number of members.
   check(
-    /together|hurt/i.test(
+    copyRxAny('cards.party.badge.together', 'cards.party.badge.hurt').test(
       await evaluate(`document.querySelector('.party-card .badge')?.innerText ?? ''`)
     ),
     'and the badge reports something actionable'
@@ -12607,6 +12749,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
           target: card.querySelector('.combat-name .name')?.innerText.trim() ?? '',
           provenance: card.querySelector('.combat-name .hint')?.innerText.trim() ?? '',
           meter: meter?.querySelector('.meter-label')?.innerText.replace(/\\s+/g, ' ').trim() ?? '',
+          state: meter?.querySelector('.meter-state')?.innerText.trim() ?? '',
           level: meter?.dataset.level ?? '',
           // The split line's own geometry, which is the only thing that proves
           // the damage overlay was actually laid over the depleted part of the
@@ -12637,7 +12780,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(fight)
   );
   check(
-    /world data/.test(fight.provenance ?? ''),
+    copyRxAny('cards.combat.provenance.worldData', 'cards.combat.provenance.worldDataRange').test(
+      fight.provenance ?? ''
+    ),
     'and says where that number came from rather than implying it',
     JSON.stringify(fight)
   );
@@ -12648,7 +12793,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * one scale read under pressure beats two.
    */
   check(
-    fight.level === 'caution' && /\blow\b/i.test(fight.meter ?? ''),
+    fight.level === 'caution' && isCopy(fight.state, 'cards.vitals.level.caution'),
     'and states the condition in a word as well as a hue',
     JSON.stringify(fight)
   );
@@ -12663,7 +12808,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(fight)
   );
   check(
-    /Dealt: 12/.test(fight.mine ?? '') && fight.others === '',
+    copyRx('cards.combat.damage.mine', { damage: 12 }).test(fight.mine ?? '') &&
+      fight.others === '',
     'and counts this character’s damage, with no legend for a colour nobody used',
     JSON.stringify(fight)
   );
@@ -12680,14 +12826,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await capture('smoke-combat.png', 'the Combat card');
   /* Being fought by two things is a different fact from fighting one, and it is
      the one that decides whether to keep swinging. */
+  // The row by its heading's words as the dictionary has them, whatever they are.
+  const onYouRow =
+    Object.entries(fight.rows ?? {}).find(([head]) =>
+      isCopy(head, 'cards.combat.readout.onYou')
+    )?.[1] ?? '';
   check(
-    /orc rogue/.test(fight.rows?.['Attacking'] ?? '') &&
-      /giant rat/.test(fight.rows?.['Attacking'] ?? ''),
+    /orc rogue/.test(onYouRow) && /giant rat/.test(onYouRow),
     'and everything that is hitting back',
     JSON.stringify(fight)
   );
   check(
-    /2 attacking/i.test(fight.badge ?? ''),
+    copyRx('cards.combat.badge.onYou', { count: 2 }).test(fight.badge ?? ''),
     'and the badge reports the number that decides something',
     JSON.stringify(fight)
   );
@@ -12697,7 +12847,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * everything, which is why sneaking is checked after the fight ends below.
    */
   check(
-    /combat/i.test(
+    copyRx('cards.vitals.badge.combat').test(
       await evaluate(`document.querySelector('.vitals-card .badge')?.innerText ?? ''`)
     ),
     'and Vitals says combat, which outranks everything else it could say'
@@ -12764,7 +12914,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   const lapStarted = await evaluate(`window.mudengine.startLoop('${SESSION}', 'Smoke loop')`);
   await waitFor(async () =>
     evaluate(
-      `(() => { const text = document.querySelector('.navigation-card')?.innerText ?? ''; return /Smoke loop/.test(text) && /running|fighting|resting/i.test(text); })()`
+      `(() => { const text = document.querySelector('.navigation-card')?.innerText ?? ''; return /Smoke loop/.test(text) && ${lapGoing}.test(text); })()`
     )
   );
   check(
@@ -12828,9 +12978,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   // plans a leg, as every other section leaves the character.
   await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
   await waitFor(async () =>
-    evaluate(
-      `!/running|fighting|resting/i.test(document.querySelector('.navigation-card')?.innerText ?? '')`
-    )
+    evaluate(`!${lapGoing}.test(document.querySelector('.navigation-card')?.innerText ?? '')`)
   );
 
   /*
@@ -12843,7 +12991,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         const card = document.querySelector('.automation-card');
         if (!card) return '[]';
         const headings = [...card.querySelectorAll('.trace-heading')];
-        const safety = headings.find((h) => /safety/i.test(h.innerText));
+        const safety = headings.find((h) => ${copyRx('cards.automation.headings.safety')}.test(h.innerText));
         if (!safety) return '[]';
         return JSON.stringify([...safety.nextElementSibling.querySelectorAll('.row')].map((r) => ({
           action: r.querySelector('.trace-command')?.innerText ?? '',
@@ -12868,7 +13016,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `${JSON.stringify(decisions)} — ${traceShape}`
   );
   check(
-    decisions.some((entry) => /health at \d+%/i.test(entry.why)),
+    decisions.some((entry) => copyShape('session.safety.whyHealth', '\\d+%').test(entry.why)),
     'and why it decided to',
     `${JSON.stringify(decisions)} — ${traceShape}`
   );
@@ -13073,7 +13221,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(kinds)
   );
   check(
-    !kinds.includes('Backstab') && !kinds.includes('Cast'),
+    !kinds.includes(copy('cards.stats.kind.backstab')) &&
+      !kinds.includes(copy('cards.stats.kind.cast')),
     'and draws no row for a kind this character has never used',
     JSON.stringify(kinds)
   );
@@ -13137,11 +13286,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         return true;
       })()
     `);
-  const tool = (title) =>
+  // By the dictionary key its title is under: the words are the dictionary's.
+  const tool = (key) =>
     evaluate(`
       (() => {
         const button = [...document.querySelectorAll('.loop-builder-card .builder-tools button')]
-          .find((b) => (b.getAttribute('title') ?? '').startsWith(${JSON.stringify(title)}));
+          .find((b) => b.getAttribute('title') === ${JSON.stringify(copy(key))});
         if (!button || button.disabled) return false;
         button.click();
         return true;
@@ -13245,7 +13395,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         return {
           badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
           heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
-          exits: (panel.innerText.match(/Ways out/) || []).length,
+          exits: (panel.innerText.match(${copyRx('cards.roomPeek.exitsLabel')}) || []).length,
           actions: panel.querySelectorAll('.peek-actions button').length,
           walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
         };
@@ -13263,7 +13413,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(builderPeek)
   );
   check(
-    builderPeek !== null && builderPeek.actions === 1 && /plan route/i.test(builderPeek.walk),
+    builderPeek !== null &&
+      builderPeek.actions === 1 &&
+      copyRx('cards.roomPeek.walkToButton').test(builderPeek.walk),
     'and carries the same one action the Map card’s panel carries',
     JSON.stringify(builderPeek)
   );
@@ -13360,13 +13512,13 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(state)
   );
   check(
-    state !== null && state.save === 'Save Route' && state.saveEnabled,
+    state !== null && state.save === copy('cards.builder.saveRoute') && state.saveEnabled,
     'a way with two ends saves as a route',
     JSON.stringify(state)
   );
 
   // Undo takes the pick back; redo brings it back.
-  check(await tool('Undo'), 'undo is offered once there is something to undo');
+  check(await tool('cards.builder.undo'), 'undo is offered once there is something to undo');
   state = await readUntil(
     builder,
     (state) => state !== null && state.waypoints === 1 && state.picks === 0
@@ -13376,7 +13528,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'undo takes the last pick back',
     JSON.stringify(state)
   );
-  check(await tool('Redo'), 'and redo is offered after it');
+  check(await tool('cards.builder.redo'), 'and redo is offered after it');
   state = await readUntil(builder, (state) => state !== null && state.waypoints === 2);
   check(
     state !== null && state.waypoints === 2,
@@ -13385,7 +13537,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   // Start over keeps the start and nothing else, as a step undo can take back.
-  check(await tool('Start over'), 'start over is offered once there is a way to take back');
+  check(
+    await tool('cards.builder.startOver'),
+    'start over is offered once there is a way to take back'
+  );
   state = await readUntil(
     builder,
     (state) => state !== null && state.waypoints === 1 && state.start === 1 && state.picks === 0
@@ -13395,7 +13550,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'start over leaves the start room picked and nothing else',
     JSON.stringify(state)
   );
-  check(await tool('Undo'), 'and it is one step of history');
+  check(await tool('cards.builder.undo'), 'and it is one step of history');
   state = await readUntil(builder, (state) => state !== null && state.waypoints === 2);
   check(state !== null && state.waypoints === 2, 'undo puts the way back', JSON.stringify(state));
 
@@ -13403,10 +13558,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(await clickRoom(rooms.here), 'the start is still on the picture and can be clicked again');
   state = await readUntil(
     builder,
-    (state) => state !== null && state.save === 'Save Loop' && state.saveEnabled
+    (state) => state !== null && state.save === copy('cards.builder.saveLoop') && state.saveEnabled
   );
   check(
-    state !== null && state.save === 'Save Loop' && state.saveEnabled,
+    state !== null && state.save === copy('cards.builder.saveLoop') && state.saveEnabled,
     'clicking the start again closes the loop, and the save says so',
     JSON.stringify(state)
   );
@@ -13429,10 +13584,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   state = await readUntil(
     builder,
-    (state) => state !== null && state.status !== null && /Saved/.test(state.status)
+    (state) =>
+      state !== null && state.status !== null && copyRx('cards.builder.saved').test(state.status)
   );
   check(
-    state !== null && state.status !== null && /Saved/.test(state.status),
+    state !== null && state.status !== null && copyRx('cards.builder.saved').test(state.status),
     'saving says so on the card',
     JSON.stringify(state)
   );
@@ -13521,7 +13677,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * name and nothing else, and the reassuring guess is the dangerous one.
    */
   check(
-    roster.some((entry) => entry.unknown && /unknown/i.test(entry.align)),
+    roster.some((entry) => entry.unknown && copyRx('cards.realm.facet.unknown').test(entry.align)),
     'somebody who only walked in is shown as unknown, not assumed harmless',
     JSON.stringify(roster)
   );
@@ -13529,7 +13685,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   // And the hostile one is what the badge reports, because that is the number
   // somebody acts on.
   check(
-    /hostile/i.test(
+    copyRx('cards.realm.badge.hostile').test(
       await evaluate(`document.querySelector('.realm-card .badge')?.innerText ?? ''`)
     ),
     'the badge reports the actionable number rather than a total'
@@ -13627,9 +13783,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     })()
   `);
   const perPerson = await evaluate(
-    `JSON.stringify([...document.querySelectorAll('.palette li')]
-       .map((li) => li.innerText.replace(/\\s+/g, ' ').trim())
-       .filter((text) => /^Ask /.test(text)))`
+    // A command of the client's own carries a pin; a row the search found for
+    // the name does not. One naming this person would be a command per person.
+    `JSON.stringify([...document.querySelectorAll('.palette li[data-command]')]
+       .filter((li) => li.querySelector('.palette-pin') && li.innerText.includes('Rayth'))
+       .map((li) => li.dataset.command))`
   );
   check(
     perPerson === '[]',
@@ -13678,7 +13836,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   /* A sighting with no room attached says so rather than showing a blank or a
      zero, which would read as a room this client had placed them in. */
   check(
-    known.some((entry) => /not seen in a room/i.test(entry.where)),
+    known.some((entry) => copyRx('players.sighting.noRoom').test(entry.where)),
     'and says where it has not seen somebody, rather than leaving it blank',
     JSON.stringify(known)
   );
@@ -13853,7 +14011,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
        .map((b) => b.innerText.trim()))`
   );
   check(
-    /health/i.test(asks) && /where/i.test(asks) && /come back/i.test(asks),
+    ['cards.player.ask.health', 'cards.player.ask.where', 'cards.player.ask.comeback'].every(
+      (key) => JSON.parse(asks).some((label) => isCopy(label, key))
+    ),
     'the flyout is where a player is asked for their health, where they are, and to come back',
     asks
   );
@@ -13864,18 +14024,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * unit test can assert.
    */
   const faces = await evaluate(
-    `JSON.stringify([...document.querySelectorAll('.player-flyout .crumb')].map((c) => c.innerText))`
+    `JSON.stringify([...document.querySelectorAll('.player-flyout .crumb')].map((c) => c.dataset.tab))`
   );
   check(
-    /player/i.test(faces) && /access/i.test(faces),
+    JSON.parse(faces).includes('player') && JSON.parse(faces).includes('access'),
     'the flyout offers its own face and an Access face',
     faces
   );
 
   const openedAccess = await evaluate(`
     (() => {
-      const crumbs = [...document.querySelectorAll('.player-flyout .crumb')];
-      const access = crumbs.find((c) => /access/i.test(c.innerText));
+      const access = document.querySelector('.player-flyout .crumb[data-tab="access"]');
       if (!access) return false;
       access.click();
       return true;
@@ -13884,8 +14043,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check(openedAccess, 'the Access face opens');
   await waitFor(async () =>
     evaluate(`
-      [...document.querySelectorAll('.player-flyout .crumb')]
-        .some((c) => c.dataset.active === 'true' && /access/i.test(c.innerText))
+      document.querySelector('.player-flyout .crumb[data-tab="access"]')?.dataset.active === 'true'
     `)
   );
 
@@ -13898,10 +14056,21 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * The two states need different actions from the reader: "off entirely" and
    * "on, and this person has been granted nothing".
    */
+  // The value beside the `answering` heading, as the whole of its text.
+  const answering = JSON.parse(
+    await evaluate(`
+      JSON.stringify([...document.querySelectorAll('.player-flyout dt')]
+        .map((dt) => [dt.innerText.trim(), dt.nextElementSibling?.innerText.trim() ?? '']))
+    `)
+  ).find(([term]) => isCopy(term, 'cards.player.access.answering'))?.[1];
   check(
-    /off for this character|nothing yet|of \d+/i.test(access),
+    [
+      copyWhole('cards.player.access.off'),
+      copyWhole('cards.player.access.nothingAllowed'),
+      sentence('cards.player.access.allowedValue', {}, { ...CASE_BLIND, fill: '\\d+' })
+    ].some((shape) => shape.test(answering ?? '')),
     'and states whether this person is currently getting through',
-    access.slice(0, 240)
+    `${answering} :: ${access.slice(0, 240)}`
   );
 
   /* Whose access it is. The heading says `Player` and the name is on the
@@ -13919,10 +14088,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    */
   const stances = await evaluate(
     `JSON.stringify([...document.querySelectorAll('.remote-stance button')]
-       .slice(0, 2).map((b) => b.innerText))`
+       .slice(0, 2).map((b) => b.dataset.stance))`
   );
   check(
-    /allow/i.test(stances) && /deny/i.test(stances),
+    JSON.parse(stances).includes('allow') && JSON.parse(stances).includes('deny'),
     'and offers allow and deny per @ command rather than one decision per person',
     stances
   );
@@ -13936,8 +14105,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     (() => {
       const row = [...document.querySelectorAll('.remote-rows > li')]
         .find((li) => li.querySelector('.remote-name')?.innerText === '@health');
-      const button = [...(row?.querySelectorAll('.remote-stance button') ?? [])]
-        .find((b) => /deny/i.test(b.innerText));
+      const button = row?.querySelector('.remote-stance button[data-stance="deny"]');
       if (!button) return false;
       button.click();
       return true;
@@ -13957,7 +14125,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     lit = await evaluate(`
       (() => {
         const on = document.querySelector('.remote-stance button[data-on="true"]');
-        return !!on && /deny/i.test(on.innerText);
+        return !!on && on.dataset.stance === 'deny';
       })()
     `);
     if (!lit) await sleep(100);
@@ -14130,7 +14298,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     rows
   );
   check(
-    alerts.some((a) => a.level === 'info' && /entered the Realm/i.test(a.text)),
+    alerts.some((a) => a.level === 'info' && copyRx('cards.alerts.realm.entered').test(a.text)),
     'and somebody arriving is the record, not an emergency'
   );
 
@@ -14154,8 +14322,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   // Filtering, so someone who does not want the record does not get it.
   await evaluate(`
     (() => {
-      const chip = [...document.querySelectorAll('.alert-card .chip.toggle')]
-        .find((c) => /info/i.test(c.innerText));
+      const chip = document.querySelector('.alert-card .chip.toggle[data-facet="info"]');
       if (chip) chip.click();
       return !!chip;
     })()
@@ -14217,9 +14384,13 @@ check(
 {
   await evaluate(`(document.querySelector('.terminal-cell textarea')?.focus(), true)`);
   const before = await waitFor(async () => (await focusPath()) === 'terminal' && 'terminal');
+  // Whichever face is not on screen: the one the click moves to.
+  const otherFace = await evaluate(
+    `document.querySelector('.room-card .crumb[data-tab][data-active="false"]')?.dataset.tab ?? ''`
+  );
   await evaluate(`
     (() => {
-      const tab = [...document.querySelectorAll('.room-card .crumb')].find((t) => /how/i.test(t.innerText));
+      const tab = document.querySelector('.room-card .crumb[data-tab=${JSON.stringify(otherFace)}]');
       if (!tab) return false;
       // A real click, mousedown first: that is the event that moves focus, and
       // the one the guard refuses.
@@ -14237,7 +14408,7 @@ check(
    */
   await waitFor(async () =>
     evaluate(
-      `[...document.querySelectorAll('.room-card .crumb')].some((t) => /how/i.test(t.innerText) && t.dataset.active === 'true')`
+      `document.querySelector('.room-card .crumb[data-tab=${JSON.stringify(otherFace)}]')?.dataset.active === 'true'`
     )
   );
   check(
@@ -14251,15 +14422,14 @@ check(
   // next one for a reason nobody can see.
   await evaluate(`
     (() => {
-      const tab = [...document.querySelectorAll('.room-card .crumb')].find((t) => /room/i.test(t.innerText));
+      const tab = document.querySelector('.room-card .crumb[data-tab="room"]');
       if (tab) tab.click();
       return true;
     })()
   `);
   await waitFor(async () =>
     evaluate(`
-      [...document.querySelectorAll('.room-card .crumb')]
-        .some((t) => t.dataset.active === 'true' && /room/i.test(t.innerText))
+      document.querySelector('.room-card .crumb[data-tab="room"]')?.dataset.active === 'true'
     `)
   );
 }
@@ -14425,14 +14595,14 @@ check(
   const gotoRow = await readUntil(
     () =>
       evaluate(`
-    [...document.querySelectorAll('.palette li')]
-      .map((li) => li.innerText.replace(/\\s+/g, ' ').trim())
-      .find((text) => /^Goto:/.test(text)) ?? ''
+    [...document.querySelectorAll('.palette li[data-command^="goto:"]')]
+      .map((li) => li.dataset.command)
+      .join(' | ')
   `),
-    (gotoRow) => /^Goto: .+1\/2141$/.test(gotoRow)
+    (gotoRow) => gotoRow.split(' | ').includes('goto:1/2141')
   );
   check(
-    /^Goto: .+1\/2141$/.test(gotoRow),
+    gotoRow.split(' | ').includes('goto:1/2141'),
     'a room reference typed into the palette offers a row that walks there',
     JSON.stringify(gotoRow)
   );
@@ -14447,11 +14617,16 @@ check(
     })()
   `);
   const byName = await readUntil(
-    () => evaluate(`document.querySelector('.palette')?.innerText ?? ''`),
-    (byName) => /Goto: Newhaven, Weapons Shop/.test(byName)
+    () =>
+      evaluate(`
+    [...document.querySelectorAll('.palette li[data-command^="goto:"]')]
+      .map((li) => li.innerText.replace(/\\s+/g, ' ').trim())
+      .join(' | ')
+  `),
+    (byName) => /Newhaven, Weapons Shop/.test(byName)
   );
   check(
-    /Goto: Newhaven, Weapons Shop/.test(byName),
+    /Newhaven, Weapons Shop/.test(byName),
     'and a partial room name does too',
     byName.slice(0, 120)
   );
@@ -14597,12 +14772,13 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
   // console's menu there are other entries here that do work, and a dead row
   // would only be in the way.
   check(
-    entries.some((e) => /copy line/i.test(e)) && entries.some((e) => /copy card/i.test(e)),
+    entries.some((e) => isCopy(e, 'cards.copyMenu.copyLine')) &&
+      entries.some((e) => isCopy(e, 'cards.copyMenu.copyCard')),
     'offering the line under the pointer and the whole card',
     JSON.stringify(entries)
   );
   check(
-    !entries.some((e) => /^copy$/i.test(e)),
+    !entries.some((e) => isCopy(e, 'cards.copyMenu.copy')),
     'and not offering a Copy that would copy nothing',
     JSON.stringify(entries)
   );
@@ -14615,7 +14791,7 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
   await evaluate(`
     (() => {
       const entry = [...document.querySelectorAll('.popup-menu .entry')]
-        .find((b) => /copy card/i.test(b.innerText));
+        .find((b) => ${copyWhole('cards.copyMenu.copyCard')}.test(b.innerText.trim()));
       if (entry) entry.click();
       return !!entry;
     })()
@@ -14668,8 +14844,7 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
      */
     const clicked = await evaluate(`
       (() => {
-        const crumb = [...document.querySelectorAll('.room-card .crumb')]
-          .find((t) => /found/i.test(t.innerText));
+        const crumb = document.querySelector('.room-card .crumb[data-tab="learned"]');
         if (!crumb) return false;
         crumb.click();
         return true;
@@ -14678,8 +14853,7 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
     if (clicked) {
       await waitFor(async () =>
         evaluate(`
-          [...document.querySelectorAll('.room-card .crumb')]
-            .some((t) => t.dataset.active === 'true' && /found/i.test(t.innerText))
+          document.querySelector('.room-card .crumb[data-tab="learned"]')?.dataset.active === 'true'
         `)
       );
     }
@@ -14693,9 +14867,7 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
    * walks is what says a room has something the map is missing.
    */
   check(
-    !(await evaluate(
-      `[...document.querySelectorAll('.room-card .crumb')].some((t) => /found/i.test(t.innerText))`
-    )),
+    !(await evaluate(`!!document.querySelector('.room-card .crumb[data-tab="learned"]')`)),
     'the Room card offers no Found face while nothing has been found here'
   );
 
@@ -14768,21 +14940,23 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
   check(/Hidden Hollow/.test(learned), 'beside where it led', learned.slice(0, 200));
   // A word as well as a hue: a missing edge and a missing room are different
   // facts, and only the second is unroutable.
-  check(/new room/i.test(learned), 'and says which kind of gap it is', learned.slice(0, 200));
+  check(
+    copyRx('cards.room.found.newRoomChip').test(learned),
+    'and says which kind of gap it is',
+    learned.slice(0, 200)
+  );
 
   // And put the card back on its first face, for the same reason.
   await evaluate(`
     (() => {
-      const crumb = [...document.querySelectorAll('.room-card .crumb')]
-        .find((t) => /^room$/i.test(t.innerText.trim()));
+      const crumb = document.querySelector('.room-card .crumb[data-tab="room"]');
       if (crumb) crumb.click();
       return true;
     })()
   `);
   await waitFor(async () =>
     evaluate(`
-      [...document.querySelectorAll('.room-card .crumb')]
-        .some((t) => t.dataset.active === 'true' && /^room$/i.test(t.innerText.trim()))
+      document.querySelector('.room-card .crumb[data-tab="room"]')?.dataset.active === 'true'
     `)
   );
 }
@@ -14874,8 +15048,7 @@ log('     viewport', viewport, '-> density', resolvedDensity);
  */
 const tabbed = await evaluate(`
   (() => {
-    const tab = [...document.querySelectorAll('.link-card .crumb')]
-      .find((t) => /traffic/i.test(t.innerText));
+    const tab = document.querySelector('.link-card .crumb[data-tab="traffic"]');
     if (tab) tab.click();
     return !!tab;
   })()
@@ -14896,9 +15069,7 @@ check(/\bGA\b/.test(telnetLog), 'GA prompt marker observed in the Telnet log');
 // removed once the room resolved reliably, and a face nobody opens costs a pill
 // on every room. What survives is the badge saying how the room was resolved.
 check(
-  !(await evaluate(
-    `[...document.querySelectorAll('.room-card .crumb')].some((t) => /how/i.test(t.innerText))`
-  )),
+  !(await evaluate(`!!document.querySelector('.room-card .crumb[data-tab="how"]')`)),
   'the Room card no longer offers a How face'
 );
 const why = await evaluate(
@@ -14906,7 +15077,10 @@ const why = await evaluate(
 );
 check(
   typeof why === 'string' &&
-    /resolved by (coordinates|movement|unique-name|exit-signature)/.test(why),
+    copyShape(
+      'cards.room.badge.resolvedByTooltip',
+      '(coordinates|movement|unique-name|exit-signature)'
+    ).test(why),
   'and its badge still says which evidence answered',
   why
 );
@@ -14967,11 +15141,12 @@ check(
     }
   };
 
-  const clickEntry = (pattern) =>
+  // By the dictionary key of its label, matched whole.
+  const clickEntry = (key) =>
     evaluate(`
       (() => {
         const entry = [...document.querySelectorAll('.popup-menu .entry')]
-          .find((b) => ${pattern}.test(b.innerText));
+          .find((b) => ${copyWhole(key)}.test(b.innerText.trim()));
         if (!entry || entry.disabled) return false;
         entry.click();
         return true;
@@ -14990,10 +15165,15 @@ check(
   check(await rightClick(), 'right-clicking the console opens a menu');
   const cold = await readUntil(
     () => menuEntries(),
-    (cold) => cold.length === 2 && /copy/i.test(cold[0]?.label) && /paste/i.test(cold[1]?.label)
+    (cold) =>
+      cold.length === 2 &&
+      isCopy(cold[0]?.label, 'terminal.contextMenu.copy') &&
+      isCopy(cold[1]?.label, 'terminal.contextMenu.paste')
   );
   check(
-    cold.length === 2 && /copy/i.test(cold[0]?.label) && /paste/i.test(cold[1]?.label),
+    cold.length === 2 &&
+      isCopy(cold[0]?.label, 'terminal.contextMenu.copy') &&
+      isCopy(cold[1]?.label, 'terminal.contextMenu.paste'),
     'offering Copy and Paste',
     JSON.stringify(cold)
   );
@@ -15089,7 +15269,7 @@ check(
   // a probe, or the row is pressed twice. Spelled out rather than through
   // `shown()`, which a `const shown` in this block shadows.
   await waitFor(async () => evaluate(`!!document.querySelector('.popup-menu')`));
-  check(await clickEntry('/copy/i'), 'Copy is clickable');
+  check(await clickEntry('terminal.contextMenu.copy'), 'Copy is clickable');
   const copied = await readUntil(
     () => evaluate(`window.mudengine.pasteText()`),
     (copied) => typeof copied === 'string' && copied.trim().length > 0
@@ -15126,7 +15306,7 @@ check(
   const beforePaste = Buffer.concat(received).length;
   await rightClick();
   await waitFor(async () => evaluate(`!!document.querySelector('.popup-menu')`));
-  check(await clickEntry('/paste/i'), 'Paste is clickable');
+  check(await clickEntry('terminal.contextMenu.paste'), 'Paste is clickable');
   await sentSince(beforePaste, (sent) => sent.includes(pasted));
   check(
     Buffer.concat(received).subarray(beforePaste).includes(Buffer.from(pasted, 'latin1')),
@@ -15329,8 +15509,7 @@ if (logFiles[0]) {
     () =>
       evaluate(`
     (() => {
-      const row = [...document.querySelectorAll('.palette li')]
-        .find((li) => /debug window/i.test(li.innerText));
+      const row = document.querySelector('.palette li[data-command="debug"]');
       if (!row) return false;
       row.click();
       return true;
@@ -15445,8 +15624,8 @@ if (logFiles[0]) {
   // The bug report itself.
   const wrote = await evaluate(`
     (() => {
-      const button = [...document.querySelectorAll('.debug-head .card-action')]
-        .find((b) => /bug report/i.test(b.title ?? ''));
+      // The head's one action that is not its close.
+      const button = document.querySelector('.debug-head .card-action:not(.card-close)');
       if (!button) return false;
       button.click();
       return true;
@@ -15467,7 +15646,7 @@ if (logFiles[0]) {
   if (reports[0]) {
     const report = fs.readFileSync(path.join(LOG_DIR, reports[0]), 'utf8');
     check(
-      /mudengine debug report/.test(report) && /platform +linux|darwin|win32/.test(report),
+      copyRx('app.debug.reportTitle').test(report) && /platform +linux|darwin|win32/.test(report),
       'naming the build and the platform it came from',
       report.slice(0, 200)
     );
@@ -15800,7 +15979,7 @@ if (jumpShown) {
     await waitFor(async () =>
       evaluate(`
         [...document.querySelectorAll('.tab')].some(
-          (t) => t.dataset.active !== 'true' && /alert/i.test(t.querySelector('.mark')?.innerText ?? '')
+          (t) => t.dataset.active !== 'true' && ${alertMark}.test(t.querySelector('.mark')?.innerText ?? '')
         )
       `)
     );
@@ -15819,7 +15998,7 @@ if (jumpShown) {
     const watched = tabs.find((tab) => tab.active);
 
     check(
-      /alert/i.test(quiet?.mark ?? ''),
+      alertMark.test(quiet?.mark ?? ''),
       'an alert on an unattended character reaches its tab',
       JSON.stringify(tabs)
     );
@@ -15834,7 +16013,7 @@ if (jumpShown) {
     /* Seen is seen: the character being looked at raises nothing, because
        whatever happened is already on its Alerts card. */
     check(
-      !/alert/i.test(watched?.mark ?? ''),
+      !alertMark.test(watched?.mark ?? ''),
       'and the character being watched raises nothing',
       JSON.stringify(watched)
     );
@@ -15851,12 +16030,12 @@ if (jumpShown) {
       socket.write(Buffer.from('\x1b[0;36m*Combat Off*\r\nSneaking...\r\n', 'latin1'));
     }
     await waitFor(async () =>
-      /sneaking/i.test(
+      copyRx('cards.vitals.badge.sneaking').test(
         await evaluate(`document.querySelector('.vitals-card .badge')?.innerText ?? ''`)
       )
     );
     check(
-      /sneaking/i.test(
+      copyRx('cards.vitals.badge.sneaking').test(
         await evaluate(`document.querySelector('.vitals-card .badge')?.innerText ?? ''`)
       ),
       'and once the fight is over, Vitals says the character is moving unseen',
@@ -15873,14 +16052,14 @@ if (jumpShown) {
     `);
     await waitFor(
       async () =>
-        !/alert/i.test(
+        !alertMark.test(
           await evaluate(
             `document.querySelector('.tab[data-active="true"] .mark')?.innerText ?? ''`
           )
         )
     );
     check(
-      !/alert/i.test(
+      !alertMark.test(
         await evaluate(`document.querySelector('.tab[data-active="true"] .mark')?.innerText ?? ''`)
       ),
       'and clears once somebody looks at it'
@@ -15907,9 +16086,7 @@ if (jumpShown) {
     })()
   `);
   await waitFor(async () =>
-    evaluate(
-      `[...document.querySelectorAll('.palette li')].some((li) => /Tabs on/.test(li.innerText))`
-    )
+    evaluate(`!!document.querySelector('.palette li[data-command="tabside"]')`)
   );
 
   /*
@@ -15923,8 +16100,7 @@ if (jumpShown) {
     if ((await evaluate(`document.querySelector('.tab-rail')?.dataset.side`)) === 'left') break;
     await evaluate(`
       (() => {
-        const row = [...document.querySelectorAll('.palette li')]
-          .find((li) => /Tabs on/.test(li.innerText));
+        const row = document.querySelector('.palette li[data-command="tabside"]');
         if (row) row.click();
         return !!row;
       })()
@@ -15949,9 +16125,7 @@ if (jumpShown) {
       })()
     `);
     await waitFor(async () =>
-      evaluate(
-        `[...document.querySelectorAll('.palette li')].some((li) => /Tabs on/.test(li.innerText))`
-      )
+      evaluate(`!!document.querySelector('.palette li[data-command="tabside"]')`)
     );
   }
   check(
@@ -16076,15 +16250,12 @@ if (jumpShown) {
     })()
   `);
   await waitFor(async () =>
-    evaluate(
-      `[...document.querySelectorAll('.palette li')].some((li) => /Tabs on top/.test(li.innerText))`
-    )
+    evaluate(`!!document.querySelector('.palette li[data-command="tabside"]')`)
   );
 
   await evaluate(`
     (() => {
-      const row = [...document.querySelectorAll('.palette li')]
-        .find((li) => /Tabs on top/.test(li.innerText));
+      const row = document.querySelector('.palette li[data-command="tabside"]');
       if (row) row.click();
       return !!row;
     })()
@@ -16099,7 +16270,13 @@ if (jumpShown) {
    * rows are cheap: the smoke window is 1100px wide and two 80-column consoles
    * do not fit beside each other in it -- which is the case the gate exists for.
    */
-  const split = async (label) => {
+  // Typed by the dictionary's words for `key`; chosen by the row's command id,
+  // or the first whose id starts with it when it ends in a colon.
+  const split = async (key, command) => {
+    const label = copyStem(key);
+    const pick = command.endsWith(':')
+      ? `li[data-command^=${JSON.stringify(command)}]`
+      : `li[data-command=${JSON.stringify(command)}]`;
     await evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'k', ctrlKey: true, bubbles: true
     })), true)`);
@@ -16115,23 +16292,17 @@ if (jumpShown) {
         return true;
       })()
     `);
-    await waitFor(async () =>
-      evaluate(`
-        [...document.querySelectorAll('.palette li')]
-          .some((li) => li.innerText.includes(${JSON.stringify(label)}))
-      `)
-    );
+    await shown(`.palette ${pick}`);
     return evaluate(`
       (() => {
-        const row = [...document.querySelectorAll('.palette li')]
-          .find((li) => ${JSON.stringify(label)} && li.innerText.includes(${JSON.stringify(label)}));
+        const row = document.querySelector(${JSON.stringify(`.palette ${pick}`)});
         if (row) row.click();
         return !!row;
       })()
     `);
   };
 
-  await split('Split: also show');
+  await split('palette.layout.splitLabel', 'pane:');
   const panes = await readUntil(
     () =>
       evaluate(`
@@ -16172,7 +16343,7 @@ if (jumpShown) {
    * refuse and say why: the server never negotiates NAWS, so there is no third
    * remedy where it reformats to a narrower console.
    */
-  await split('Panes side by side');
+  await split('palette.layout.panesSideBySideLabel', 'paneflow');
   // The client's answer, either way: it splits, or it refuses and says why.
   // Which one is the check's business, so the wait is on it having answered.
   await stable(async () =>
@@ -16206,7 +16377,7 @@ if (jumpShown) {
   await stable(async () =>
     evaluate(`document.querySelector('.status-rail .metric b')?.innerText ?? ''`)
   );
-  await split('Panes side by side');
+  await split('palette.layout.panesSideBySideLabel', 'paneflow');
   await readUntil(
     () => evaluate(`document.querySelector('.terminal-layers')?.dataset.flow ?? ''`),
     (flow) => flow === 'columns'
@@ -16237,12 +16408,12 @@ if (jumpShown) {
   );
 
   // Back to stacked and one pane for the rest of the run.
-  await split('Panes stacked');
+  await split('palette.layout.panesStackedLabel', 'paneflow');
   await readUntil(
     () => evaluate(`document.querySelector('.terminal-layers')?.dataset.flow ?? ''`),
     (flow) => flow === 'rows'
   );
-  await split('Close this pane');
+  await split('palette.layout.unsplitLabel', 'unsplit');
   await waitFor(
     async () =>
       (await evaluate(`document.querySelectorAll('.terminal-layer[data-shown="true"]').length`)) ===
@@ -16357,7 +16528,7 @@ if (jumpShown) {
       const el = document.querySelector('.palette input');
       if (!el) return false;
       const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-      set.call(el, 'window');
+      set.call(el, ${JSON.stringify(copyStem('palette.character.popoutLabel'))});
       el.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     })()
@@ -16366,8 +16537,7 @@ if (jumpShown) {
     () =>
       evaluate(`
     (() => {
-      const row = [...document.querySelectorAll('.palette li')]
-        .find((li) => /Move to a new window/.test(li.innerText));
+      const row = document.querySelector('.palette li[data-command="popout"]');
       if (row) row.click();
       return row ? row.innerText : '';
     })()
@@ -16452,21 +16622,19 @@ if (jumpShown) {
       const el = document.querySelector('.palette input');
       if (!el) return false;
       const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-      set.call(el, 'window');
+      set.call(el, ${JSON.stringify(copyStem('palette.character.gatherLabel'))});
       el.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     })()
   `);
   await waitFor(async () =>
     evaluate(`
-      [...document.querySelectorAll('.palette li')]
-        .some((li) => /every character into this window/i.test(li.innerText))
+      !!document.querySelector('.palette li[data-command="gather"]')
     `)
   );
   await evaluate(`
     (() => {
-      const row = [...document.querySelectorAll('.palette li')]
-        .find((li) => /every character into this window/i.test(li.innerText));
+      const row = document.querySelector('.palette li[data-command="gather"]');
       if (row) row.click();
       return !!row;
     })()
@@ -16612,6 +16780,14 @@ if (jumpShown) {
   );
 }
 
+/** The cards on the rail, by id and in order: what a hang-up must leave alone. */
+const railCards = async () =>
+  JSON.parse(
+    await evaluate(
+      `JSON.stringify([...document.querySelectorAll('.rail [data-card]')].map((c) => c.dataset.card))`
+    )
+  );
+const railBeforeHangUp = await railCards();
 await evaluate(`(window.mudengine.disconnect('${SESSION}'), true)`);
 const closed = await readUntil(
   () =>
@@ -16649,21 +16825,27 @@ check(
   )
 );
 /*
- * The bug this check found: the phase stayed `in-game` after the socket closed,
- * so the HUD went on reporting vitals and a room for a character that was gone.
- * It was invisible while the rail disappeared along with the connection.
+ * And every card stays where the player put it (2026-09-25): a hang-up is not
+ * a reason to rearrange the rail. The cards keep the last true things they
+ * said; `leaveRealm()` has already dropped what a closed socket makes untrue
+ * (the room, the fight), and the standby card above says nothing is moving.
  */
-check(
-  !(await evaluate(`!!document.querySelector('.rail .vitals-card')`)),
-  'and stops reporting vitals for a character that is no longer in the realm'
-);
+{
+  const after = await railCards();
+  check(
+    railBeforeHangUp.length >= 3 &&
+      JSON.stringify(after.filter((id) => railBeforeHangUp.includes(id))) ===
+        JSON.stringify(railBeforeHangUp),
+    'and keeps every card in place rather than closing them',
+    `${JSON.stringify(railBeforeHangUp)} -> ${JSON.stringify(after)}`
+  );
+}
 /*
- * The toolbar is the one card that stays (todo 02).
+ * The toolbar stays too (todo 02), and is the one with controls to keep.
  *
- * Every other card is a reading of a character that is no longer there; this
- * one carries the dial that puts them back, and switches that write the
- * character's own file whether or not anything is connected. What it must not
- * do is go on offering commands: the transport, the step back and the dressing
+ * It carries the dial that puts the character back, and switches that write
+ * the character's own file whether or not anything is connected. What it must
+ * not do is go on offering commands: the transport, the step back and the dressing
  * all want a room to send from, so they are greyed rather than taken away.
  */
 /*
@@ -16676,11 +16858,10 @@ const offlineToolbar = await evaluate(`
   (() => {
     const card = document.querySelector('[data-card="toolbar"]');
     if (!card) return JSON.stringify({ found: false });
-    const key = (title) =>
-      [...card.querySelectorAll('.toolbar-key')].find((b) => b.title === title) ?? null;
-    const dial = key('Connect');
-    const back = key('Step Back One Room');
-    const move = key('Start Moving / Resume') ?? key('Stop Moving');
+    const key = (id) => card.querySelector('.toolbar-key[data-button="' + id + '"]');
+    const dial = key('connect');
+    const back = key('move:back');
+    const move = key('move:toggle');
     return JSON.stringify({
       found: true,
       keys: card.querySelectorAll('.toolbar-key:not(.toolbar-more)').length,

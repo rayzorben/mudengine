@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { HangUpWatch, MOB_ENGAGED_MS, PVP_WINDOW_MS, playersHere } from '../HangUp';
+import { t } from '../../app/i18n';
 import {
   EMPTY_CHARACTER,
   type Adventurer,
@@ -50,7 +51,7 @@ describe('whether hanging up would be penalised', () => {
     const watch = new HangUpWatch();
     const result = watch.assess(state({ inCombat: true }), T0);
     expect(result.clean).toBe(false);
-    expect(result.reasons.join(' ')).toContain('combat');
+    expect(result.reasons).toContain(t('automation.hangUp.reasonInCombat'));
   });
 
   it('refuses while something in the room is still swinging', () => {
@@ -161,8 +162,7 @@ describe('whether hanging up would be penalised', () => {
       T0
     );
     expect(result.clean).toBe(false);
-    expect(result.reasons.join(' ')).toMatch(/kobold/);
-    expect(result.reasons.join(' ')).toMatch(/may attack/);
+    expect(result.reasons).toContain(t('automation.hangUp.reasonMobUnplaced', { names: 'kobold' }));
   });
 
   it('does not count a player standing in the room as a monster reason', () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { t } from '../i18n';
 
 import {
   compareCells,
@@ -216,9 +217,9 @@ describe('narrowed', () => {
   });
 
   it('states both figures the moment anything is hidden', () => {
-    expect(narrowed(3, 40)).toBe('3 of 40');
+    expect(narrowed(3, 40)).toBe(t('table.narrowedCount', { shown: 3, total: 40 }));
     // Including nothing at all: an empty table with a filter set has to say
     // why it is empty, or it is a card lying about what is carried.
-    expect(narrowed(0, 40)).toBe('0 of 40');
+    expect(narrowed(0, 40)).toBe(t('table.narrowedCount', { shown: 0, total: 40 }));
   });
 });

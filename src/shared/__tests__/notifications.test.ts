@@ -304,7 +304,14 @@ describe('a vital that has just got worse', () => {
     };
     const raised = vitalNotices(before, after, BOUNDS, t);
     expect(raised).toHaveLength(1);
-    expect(raised[0]!.text).toContain('Mana');
+    expect(raised[0]!.text).toBe(
+      t('cards.alerts.vitals.crossing', {
+        label: t('cards.alerts.vitals.manaLabel'),
+        level: 'critical',
+        current: 10,
+        max: 100
+      })
+    );
   });
 
   /* A class with no mana is absence, not zero, and absence never alarms. */

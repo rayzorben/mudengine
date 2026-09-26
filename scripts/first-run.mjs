@@ -26,14 +26,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 
+// The UI's own words, from the dictionary the app renders (run under
+// `scripts/lib/register.mjs`): the form is found by its key, never its wording.
+import { phrase, sentence } from '../src/main/app/copyMatch.ts';
+
+/*
+ * What the settings screen's character picker says it is showing: its own
+ * label for a new character while the new-character form is open.
+ */
+const NEW_CHARACTER = sentence('settings.characters.new', {}, { flags: 'i' });
+const PICKER_SHOWS_NEW = `[...document.querySelectorAll('.settings-nav-chosen .settings-name')]
+  .some((el) => ${NEW_CHARACTER}.test(el.innerText.trim()))`;
+
 /*
  * The realm a new character starts on, read from the shipped character template
  * rather than from `src/shared/config.ts`.
  *
- * This harness runs on plain node with no `tsx` behind it, so it cannot import
- * the constant -- and it does not need to: `shipped.test.ts` asserts the two
- * are the same string, so the template is the constant by another name and
- * reading it here costs no loader.
+ * `shipped.test.ts` asserts the two are the same string, so the template is
+ * the constant by another name, and reading the file keeps this check about
+ * what ships rather than about what the source says ships.
  */
 const DEFAULT_REALM_NAME = String(
   YAML.parse(fs.readFileSync(path.resolve('resources/config/profile.default.yaml'), 'utf8'))
@@ -227,11 +238,7 @@ check(
   'the settings screen opened by itself'
 );
 check(
-  (await evaluate(
-    `!!document.querySelector('.settings-form') &&
-     [...document.querySelectorAll('.settings h1, .settings h2, .settings legend, .settings button')]
-       .some((el) => /new character/i.test(el.innerText))`
-  )) === true,
+  (await evaluate(`!!document.querySelector('.settings-form') && ${PICKER_SHOWS_NEW}`)) === true,
   'on the new-character form'
 );
 check(
@@ -239,9 +246,19 @@ check(
   'and the caret is in it'
 );
 
-/* Nothing is connected, and nothing tried to be. */
-const phase = await evaluate(`document.querySelector('.status-rail')?.innerText ?? ''`);
-check(/idle|closed|not connected/i.test(phase), 'nothing dialled on its own', phase.slice(0, 80));
+/* Nothing is connected, and nothing tried to be: read off the dot's phase, a
+   class from the closed `ConnectionState['phase']` union, not its label. */
+const phases = JSON.parse(
+  await evaluate(
+    `JSON.stringify([...document.querySelectorAll('.status-rail .dot')].map((dot) => [...dot.classList]))`
+  )
+);
+check(
+  phases.length > 0 &&
+    phases.every((classes) => classes.includes('idle') || classes.includes('closed')),
+  'nothing dialled on its own',
+  JSON.stringify(phases)
+);
 
 /*
  * And there is no way out of it, because there is nowhere to go.
@@ -312,19 +329,15 @@ check(
  */
 const said = output.join('');
 /*
- * Matched on the sentence the client actually says. It was `/no characters
- * yet/`, which is the *key's* name (`app.onboarding.noCharactersYet`) and not
- * its copy — the string had been reworded to "No characters configured…" with
- * this line left behind, so the check had been red on a clean tree. That is the
- * rule CLAUDE.md states about `smoke.mjs` applied to the other harness: a
- * string a harness asserts is not reworded without updating the harness in the
- * same change.
+ * Matched on the dictionary's sentence by its key, whatever it currently
+ * says: it was matched on English twice, and each rewording of the copy left
+ * the check red on a clean tree. The sentence is also the instruction (the
+ * shortcut that reopens the screen), so one match covers both.
  */
-check(/no characters configured/i.test(said), 'the client says there are no characters configured');
 check(
-  /settings|ctrl|\u2318/i.test(said),
-  'and how to add one',
-  said.split('\n').find((line) => /no characters/i.test(line))
+  phrase('app.onboarding.noCharactersYet', {}, { flags: 'i' }).test(said),
+  'the client says there are no characters configured, and how to add one',
+  said.slice(0, 200)
 );
 
 /*
@@ -352,18 +365,14 @@ check(
   'settings stays open on its shortcut'
 );
 check(
-  (await evaluate(
-    `[...document.querySelectorAll('.settings-list button')].some((b) => /new character/i.test(b.innerText))`
-  )) === true,
+  (await evaluate(`!!document.querySelector('.settings-form') && ${PICKER_SHOWS_NEW}`)) === true,
   'and offers to make the first character'
 );
 /* The template ships saved realms, so the first character has somewhere to
    play without anybody typing an address. */
 check(
   (await evaluate(
-    `[...document.querySelectorAll('.settings-form select option')].length > 0 ||
-     (() => { const b = [...document.querySelectorAll('.settings-list button')]
-        .find((x) => /new character/i.test(x.innerText)); if (b) b.click(); return true; })()`
+    `document.querySelectorAll('.settings-form label[data-field="realm"] select option').length > 0`
   )) === true,
   'with somewhere to play already listed'
 );

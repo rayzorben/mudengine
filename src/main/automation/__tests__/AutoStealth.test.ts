@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { notesOf } from '../../app/copyMatch';
 
 import { AutoStealth, type StealthEvents } from '../AutoStealth';
 import { CommandQueue } from '../CommandQueue';
@@ -124,7 +125,7 @@ describe('standing still in an empty room', () => {
     stealth.onCharacter(noSkill);
     drain();
     expect(sent).toEqual([]);
-    expect(notices.filter((line) => /no Stealth/.test(line))).toHaveLength(1);
+    expect(notesOf(notices, 'automation.stealth.noSkill')).toHaveLength(1);
   });
 
   it('does nothing across a move in flight, an escape, or a refused opener', () => {

@@ -394,7 +394,13 @@ export default function CommandPalette({
             {blocks.map((block) => (
               <Fragment key={block.key}>
                 {block.label !== null && (
-                  <li aria-hidden="true" className="palette-group-label" role="presentation">
+                  <li
+                    aria-hidden="true"
+                    className="palette-group-label"
+                    // The section's key, so a harness reads it without its English.
+                    data-group={block.key}
+                    role="presentation"
+                  >
                     {block.toggles ? (
                       <button
                         className="palette-group-toggle"

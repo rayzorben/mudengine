@@ -562,8 +562,8 @@ export function useCardContext({
         toolbar: {
           switches: switchesFor(sid),
           connected: v.state.phase === 'connected',
-          // The same reading the rail's `inGame` makes, because the toolbar is
-          // the one card drawn on both sides of it.
+          // The same reading the cards' `inGame` makes: every card stays
+          // through a hang-up, and only what would send a command greys.
           inRealm: v.character.phase === 'in-game',
           dialling: v.state.phase === 'connecting' || v.state.phase === 'closing',
           // One reading of the two progresses, shared with the Navigation
