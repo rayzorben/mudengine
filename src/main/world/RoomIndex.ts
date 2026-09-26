@@ -59,8 +59,8 @@ export interface RoomIndex {
   readonly spendsByEdge: ReadonlyMap<PortalExit, Omit<RouteInvocation, 'at'>>;
   /** The items that teleport from wherever the character stands, as edges. */
   itemLandings(): ReadonlyArray<PortalExit>;
-  /** The levers that open this step without leaving the room, or none. */
-  leversHere(from: RoomId, direction: string): readonly RemoteLever[];
+  /** Every lever that opens this step, wherever it is (todo 837). */
+  leversFor(room: RoomId, direction: string): readonly RemoteLever[];
   /** What a room's own spell does to whoever stands in it, for this level. */
   hazardOf(room: WorldRoom, level?: number | null): SpellHazard | null;
   /** The timed passages a route walks into. */

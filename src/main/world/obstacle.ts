@@ -17,7 +17,8 @@ import {
   scatters,
   type MapObstacle,
   type RemoteLever,
-  type Requirement
+  type Requirement,
+  type RoomId
 } from '../../shared/world';
 import { t } from '../app/i18n';
 import type { RoomIndex } from './RoomIndex';
@@ -80,7 +81,7 @@ function levels(requirement: Requirement): string | null {
  *
  * A door's lever is never on its own requirement — `buildRealm` writes
  * `Requirement.actions` only for an exit that states `Needs N Actions`, and a
- * `Door` states nothing of the kind — so `WorldGraph.leversHere` is the only
+ * `Door` states nothing of the kind — so `WorldGraph.leversFor` is the only
  * join and the caller makes it. 28 exits in Paradigm and 27 in stock are
  * priced past every character's reach and open to a phrase; without this the
  * plan reads `Door, pick/bash 1000` and sends a player after a skill nobody in
@@ -90,37 +91,63 @@ function levels(requirement: Requirement): string | null {
  * hidden exit's lever: the phrase alone reads as a free lever, and the server
  * answers `You don't have crowbar to use!` without one.
  */
-function leverSays(levers: readonly RemoteLever[], graph: Names): string | null {
-  const lever = levers[0];
+function leverSays(opening: LeverOpening | null, graph: Names): string | null {
+  if (opening === null) return null;
+  // One pulled where the step starts is the one to name; otherwise the walk's.
+  const lever = opening.levers.find((each) => each.at === opening.from) ?? opening.levers[0];
   if (lever === undefined) return null;
+  const itemName =
+    lever.item === undefined
+      ? undefined
+      : (graph.item(lever.item)?.name ?? t('map.obstacle.itemUnknown'));
   /*
    * Its own words rather than `hiddenLever`'s, which lead with *Hidden* — a
    * door is not hidden, it is shut, and a chip reading `Hidden — "use crowbar"
    * here` about the Slum Street warehouse door names the wrong thing before it
-   * names the right one.
+   * names the right one. A lever in another room names that room (todo 837).
    */
-  if (lever.item === undefined) return t('map.obstacle.leverSay', { phrase: lever.say });
-  return t('map.obstacle.leverSayItem', {
-    phrase: lever.say,
-    itemName: graph.item(lever.item)?.name ?? t('map.obstacle.itemUnknown')
-  });
+  if (lever.at !== opening.from) {
+    return itemName === undefined
+      ? t('map.obstacle.leverSayThere', { phrase: lever.say, roomName: lever.roomName })
+      : t('map.obstacle.leverSayThereItem', {
+          phrase: lever.say,
+          roomName: lever.roomName,
+          itemName
+        });
+  }
+  if (itemName === undefined) return t('map.obstacle.leverSay', { phrase: lever.say });
+  return t('map.obstacle.leverSayItem', { phrase: lever.say, itemName });
+}
+
+/** A step's levers (`WorldGraph.leversFor`) and the room the step leaves from. */
+export interface LeverOpening {
+  from: RoomId;
+  levers: readonly RemoteLever[];
+}
+
+/** The levers that open the step `direction` out of `from`, for `describeObstacle`. */
+export function leverOpening(
+  index: Pick<RoomIndex, 'leversFor'>,
+  from: RoomId,
+  direction: string
+): LeverOpening {
+  return { from, levers: index.leversFor(from, direction) };
 }
 
 export function describeObstacle(
   requirement: Requirement,
   graph: Names,
   /**
-   * The levers that open this step without leaving the room
-   * (`WorldGraph.leversHere`), for the callers that know which step this is.
-   * Empty for the map's own cells and anything else asking about a
+   * The levers that open this step, wherever they are pulled, for the callers
+   * that know which step this is. Null for anything asking about a
    * requirement rather than about a move.
    */
-  here: readonly RemoteLever[] = []
+  opening: LeverOpening | null = null
 ): MapObstacle {
   const kind = requirement.kind;
   const force = forcing(requirement);
   const window = levels(requirement);
-  const opens = kind === 'door' || kind === 'key' ? leverSays(here, graph) : null;
+  const opens = kind === 'door' || kind === 'key' ? leverSays(opening, graph) : null;
 
   /*
    * The chip. Short enough to sit beside a room name on a route step, and

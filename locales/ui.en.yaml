@@ -2906,6 +2906,8 @@ map:
     leverOrForced: '{opens}, or force it: {forcing}'
     leverSay: '"{phrase}" here'
     leverSayItem: '"{phrase}" here, needs {itemName}'
+    leverSayThere: '"{phrase}" in {roomName}'
+    leverSayThereItem: '"{phrase}" in {roomName}, needs {itemName}'
     levelRestricted: Level restricted
     locked: 'Locked: needs {itemName}{source}{pickClause}'
     needsItem: 'Needs an item: {itemName}'
@@ -3323,7 +3325,8 @@ settings:
       and at low health it kills. Use Auto-Run instead.
     meditateBelowHint: Sends med below this. Ignored for a class with no mana.
     meditateBelowLabel: Meditate If Below Mana %
-    meditateToHint: Sends med again after something interrupts it, and holds a walk or loop, until mana
+    meditateToHint:
+      Sends med again after something interrupts it, and holds a walk or loop, until mana
       reaches this. 0 meditates once and walks on a little above Meditate If Below. Raised to
       Meditate If Below if it is lower.
     meditateToLabel: Keep Meditating To Mana %
@@ -3679,7 +3682,8 @@ settings:
     legend: Leading and Following
     parAfterRoundHint: Send par after every combat round, in a party.
     parAfterRoundLabel: Send PAR After Combat Round
-    parSecondsHint: How often to send par in a fight, in seconds; twice as long out of one. 0 sends it
+    parSecondsHint:
+      How often to send par in a fight, in seconds; twice as long out of one. 0 sends it
       only when the party changes.
     parSecondsLabel: Par Frequency
     remotesLegend: Party @ commands

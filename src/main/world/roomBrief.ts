@@ -15,7 +15,7 @@
  */
 import type { RealmFamily } from '../../shared/realm';
 import type { RoomBrief, RoomBriefExit, RoomId } from '../../shared/world';
-import { describeObstacle } from './obstacle';
+import { describeObstacle, leverOpening } from './obstacle';
 import type { WorldGraph } from './WorldGraph';
 
 /**
@@ -65,7 +65,7 @@ export function roomBrief(
             obstacle: describeObstacle(
               exit.requirement,
               graph,
-              graph.leversHere(id, exit.direction)
+              leverOpening(graph, id, exit.direction)
             )
           })
     };

@@ -2718,16 +2718,62 @@ describe('the levers that open an exit', () => {
     });
 
     /*
-     * A lever somewhere else leaves the wall standing, which is the settled
-     * answer and not an oversight: this planner does not plan the detour —
-     * `Levers.fetchLever` makes it when the server refuses the step, so a gate
-     * found open is found open and a lap pays for the errand once.
+     * A lever somewhere else prices the walk to it and back (todo 837), which
+     * `Levers.fetchLever` makes when the server refuses the step; it was a
+     * wall, and kept the Fungus Forest from Black House.
      */
-    it('leaves it a wall when the word is said somewhere else', () => {
-      const route = barred('1/9').route('1/1', '1/2', { packKnown: true });
-      expect(route.blocked).toBe(false);
-      expect(route.cost).toBeGreaterThan(tuning().world.wallCost);
+    it('is priced as the walk to the word said somewhere else and back', () => {
+      const here = barred('1/1').route('1/1', '1/2', { packKnown: true });
+      const elsewhere = barred('1/9').route('1/1', '1/2', { packKnown: true });
+      expect(elsewhere.blocked).toBe(false);
+      expect(elsewhere.walls ?? []).toEqual([]);
+      expect(elsewhere.cost).toBeGreaterThan(here.cost);
+      expect(elsewhere.cost).toBeLessThan(tuning().world.wallCost);
+      // And the step names the room the word is said in.
+      expect(elsewhere.steps[0]?.obstacle?.label).toBe(
+        t('map.obstacle.leverSayThere', { phrase: 'lift portcullis', roomName: 'Guardroom' })
+      );
+    });
+
+    /*
+     * Levers with no count are alternatives, as `Levers.fetchLever` walks them:
+     * one room is visited, the cheapest there and back. 1/8 is a pit with no
+     * way out, so a lever there opens nothing for this character.
+     */
+    const levered = (leverRooms: readonly string[]): WorldGraph => {
+      const lever = (room: string): object =>
+        leverRooms.includes(room)
+          ? { cmd: [{ say: ['lift portcullis'], opens: { room: '1/1', direction: 'w' } }] }
+          : {};
+      return makeWorld([
+        {
+          m: 1,
+          r: 1,
+          n: 'Pathway',
+          x: {
+            w: { m: 1, r: 2, i: 'Door [1000 picklocks/strength]' },
+            e: { m: 1, r: 9 },
+            n: { m: 1, r: 8 },
+            s: { m: 1, r: 7 }
+          }
+        },
+        { m: 1, r: 2, n: 'Beyond', x: {} },
+        { m: 1, r: 7, n: 'Barracks', x: { n: { m: 1, r: 1 } }, ...lever('1/7') },
+        { m: 1, r: 8, n: 'Pit', x: {}, ...lever('1/8') },
+        { m: 1, r: 9, n: 'Guardroom', x: { w: { m: 1, r: 1 } }, ...lever('1/9') }
+      ]);
+    };
+
+    it('leaves it a wall when the only lever room has no way back', () => {
+      const route = levered(['1/8']).route('1/1', '1/2', { packKnown: true });
       expect(route.walls?.length).toBe(1);
+    });
+
+    it('takes another lever room when one is kept out of or has no way back', () => {
+      const graph = levered(['1/7', '1/8', '1/9']);
+      const route = graph.route('1/1', '1/2', { packKnown: true, avoid: new Set(['1/9']) });
+      expect(route.blocked).toBe(false);
+      expect(route.walls ?? []).toEqual([]);
     });
   });
 

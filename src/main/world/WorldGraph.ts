@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 
-import { describeObstacle } from './obstacle';
+import { describeObstacle, leverOpening } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
@@ -375,7 +375,7 @@ export class WorldGraph {
       portalsByRoom: this.portals,
       spendsByEdge: this.spends,
       itemLandings: () => this.itemLandings(),
-      leversHere: (from, direction) => this.leversHere(from, direction),
+      leversFor: (room, direction) => this.leversFor(room, direction),
       hazardOf: (room, level) => catalogue.hazardOf(room, level),
       corridorsOn: (steps) => this.corridorsOn(steps),
       sourceRooms: (item) => this.sourceRooms(item),
@@ -647,8 +647,8 @@ export class WorldGraph {
             match.requirement,
             this,
             from === null || from === undefined
-              ? []
-              : this.leversHere(roomId(from.map, from.room), match.direction)
+              ? null
+              : leverOpening(this, roomId(from.map, from.room), match.direction)
           );
           const key = match.requirement.keyId;
           if (key !== undefined) {
@@ -1905,29 +1905,10 @@ export class WorldGraph {
    *
    * Empty for the ordinary exit, which is 225 of the shipped realm's exits
    * away from all of them. The caller decides what to do with several: all in
-   * one room is an errand, spread over rooms is a journey this client does not
-   * plan.
+   * one room is an errand, spread over rooms a walk to each (`Router.leverDetour`).
    */
   leversFor(room: RoomId, direction: string): readonly RemoteLever[] {
     return this.levers.get(leverKey(room, direction)) ?? NO_LEVERS;
-  }
-
-  /**
-   * The levers that open this step **without leaving the room**, and nothing
-   * where any of them is elsewhere.
-   *
-   * `openableHere`'s question asked of a step rather than of a requirement,
-   * because a door's levers are never on its requirement: `buildRealm` writes
-   * `Requirement.actions` only for an exit that states `Needs N Actions`, and
-   * a `Door` states nothing of the kind. Public because the *chip* has to ask
-   * it too — a plan that says `Door, pick/bash 1000` about a door the client
-   * knows opens to `use crowbar` sends a player after a skill nobody has.
-   */
-  leversHere(from: RoomId, direction: string): readonly RemoteLever[] {
-    const levers = this.leversFor(from, direction);
-    // Levers **elsewhere** leave the wall standing: this planner does not plan
-    // the detour, `Levers.fetchLever` makes it when the server refuses.
-    return levers.length > 0 && levers.every((lever) => lever.at === from) ? levers : NO_LEVERS;
   }
 
   /** Every quest this realm scripts, with its items and rooms joined on — `QuestPlanner.quests`. */

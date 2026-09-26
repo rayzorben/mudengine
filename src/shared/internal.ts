@@ -1915,6 +1915,14 @@ const TUNING_DEFAULTS = {
      */
     keyFetchTrips: 2,
     /**
+     * The most a walk to a door's lever in another room and back may cost
+     * before the door is priced as the wall it was (todo 837). The Grand
+     * Stair door's detour to 7/152 prices at about 57, with a hidden exit and
+     * a lair on the way; this allows one several times that and bars a walk
+     * across the realm to open one door.
+     */
+    leverDetourCost: 500,
+    /**
      * How many of a consumable a quest's plan buys against a room spell on
      * the way, where the realm says using one stops the spell.
      *

@@ -28,7 +28,7 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
  */
 const CEILINGS: Readonly<Record<string, number>> = {
   'src/main/session/SessionManager.ts': 3851,
-  'src/main/world/WorldGraph.ts': 2581,
+  'src/main/world/WorldGraph.ts': 2562,
   'src/main/parse/CharacterTracker.ts': 2540,
   'src/renderer/src/App.tsx': 1786,
   'src/main/automation/Walker.ts': 2039,
