@@ -153,6 +153,35 @@ export interface SpellMessageRow {
   start: string | null;
   /** Printed when the effect ends. */
   stop: string | null;
+  /** The message record both sentences come from (`desc_msg_id`, `DescMsg`), where the file says. */
+  message?: number;
+}
+
+/**
+ * The shipped rows, and the same sentences again under this realm's name for
+ * every spell whose message record the file holds (todo 824).
+ *
+ * The file names each row as one server's Spells table does, and a realm built
+ * on it may rename a spell and keep the record: Paradigm's `vile ward` carries
+ * `unholy aura`'s. The record is the realm's own statement of which sentences
+ * a spell prints, so it is what joins the two. `realm` is record → the realm's
+ * spell names carrying it (`WorldGraph.spellsByMessage(DESC_MESSAGE_ABILITY)`).
+ */
+export function withRealmSpellNames(
+  rows: readonly SpellMessageRow[],
+  realm: ReadonlyMap<number, readonly string[]>
+): SpellMessageRow[] {
+  const named = new Set(rows.map((row) => spellKey(row.spell)));
+  const joined = [...rows];
+  for (const row of rows) {
+    if (row.message === undefined) continue;
+    for (const spell of realm.get(row.message) ?? []) {
+      if (named.has(spellKey(spell))) continue;
+      named.add(spellKey(spell));
+      joined.push({ spell, start: row.start, stop: row.stop, message: row.message });
+    }
+  }
+  return joined;
 }
 
 /**
@@ -218,6 +247,7 @@ export function parseSpellMessagesCsv(text: string): SpellMessageRow[] {
   const spellAt = column('spell_name');
   const startAt = column('start');
   const stopAt = column('stop');
+  const messageAt = column('desc_msg_id');
   if (spellAt < 0 || startAt < 0 || stopAt < 0) return [];
 
   const rows: SpellMessageRow[] = [];
@@ -226,10 +256,13 @@ export function parseSpellMessagesCsv(text: string): SpellMessageRow[] {
     if (spell.length === 0) continue;
     const start = (record[startAt] ?? '').trim();
     const stop = (record[stopAt] ?? '').trim();
+    const cell = messageAt < 0 ? '' : (record[messageAt] ?? '').trim();
+    const message = cell.length > 0 ? Number(cell) : NaN;
     rows.push({
       spell,
       start: start.length > 0 ? start : null,
-      stop: stop.length > 0 ? stop : null
+      stop: stop.length > 0 ? stop : null,
+      ...(Number.isInteger(message) ? { message } : {})
     });
   }
   return rows;

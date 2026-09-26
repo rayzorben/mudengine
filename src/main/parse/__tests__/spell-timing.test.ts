@@ -4,6 +4,7 @@ import { Classifier } from '../Classifier';
 import { actsOf, applyAct, readLine } from '../lineActs';
 import { CharacterTracker } from '../CharacterTracker';
 import { WorldGraph } from '../../world/WorldGraph';
+import { DESC_MESSAGE_ABILITY } from '../../../shared/abilities';
 import { Blessings } from '../../automation/Blessings';
 import { CommandQueue } from '../../automation/CommandQueue';
 import { DEFAULT_CONFIG, type BlessingConfig } from '../../../shared/config';
@@ -11,6 +12,7 @@ import {
   parseSpellMessagesCsv,
   SpellMessageBook,
   spellLoreOf,
+  withRealmSpellNames,
   type SpellLore
 } from '../../../shared/spell-messages';
 import fs from 'node:fs';
@@ -366,5 +368,26 @@ describe('a knockdown, through the shipped table and realm', () => {
       feed(release);
       expect(tracker.current.afflictions.held, release).toBe('no');
     }
+  });
+});
+
+/*
+ * Paradigm renames `unholy aura` to `vile ward` and keeps its message record
+ * (`DescMsg`), so the shipped sentences name the realm's spell too (todo 824).
+ */
+describe("a renamed spell, through the shipped table and the realm's message records", () => {
+  it('reads the stock sentence as the renamed spell', () => {
+    const world = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    const rows = parseSpellMessagesCsv(
+      fs.readFileSync(path.resolve('resources/world/spell-messages.csv'), 'utf8')
+    );
+    const start = rows.find((row) => row.spell === 'unholy aura')?.start ?? null;
+    expect(start).not.toBeNull();
+    const book = SpellMessageBook.fromRows(
+      withRealmSpellNames(rows, world.spellsByMessage(DESC_MESSAGE_ABILITY))
+    );
+    expect(book.match(start!)?.starts).toEqual(
+      expect.arrayContaining(['unholy aura', 'vile ward'])
+    );
   });
 });
