@@ -40,6 +40,13 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'so each is compiled once when the shipped table is read (`MessageBook.add`) and held; ' +
       'the per-line path runs only the compiled ones a word index selects (todo 109)'
   },
+  'src/shared/coins.ts': {
+    count: 1,
+    because:
+      "a realm's renamed coins are configuration (`coins:`, todo 830, 2026-09-26), so the " +
+      'one pattern that reads them back is built from the words when `coinReader` is made, ' +
+      'once per realm, and held by `Vocabulary`'
+  },
   'src/main/app/copyMatch.ts': {
     count: 1,
     because:

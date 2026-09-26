@@ -27,7 +27,7 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
  * (702), was taken back by its carve-out (740).
  */
 const CEILINGS: Readonly<Record<string, number>> = {
-  'src/main/session/SessionManager.ts': 3854,
+  'src/main/session/SessionManager.ts': 3852,
   'src/main/world/WorldGraph.ts': 2581,
   'src/main/parse/CharacterTracker.ts': 2540,
   'src/renderer/src/App.tsx': 1786,

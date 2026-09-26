@@ -108,8 +108,7 @@ import {
 } from '../shared/config';
 import { DEFAULT_INTERNAL } from '../shared/internal';
 import { isRemoteName, REMOTE_NAMES, type RemoteGrant, type RemoteName } from '../shared/remotes';
-import type { Profile } from '../shared/profiles';
-import { DEFAULT_LOCATE } from '../shared/locate';
+import { UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
 import type { SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
@@ -1313,7 +1312,7 @@ function createHost(): SessionHost {
     configFor,
     // The realm's word for where am I, read through for `configFor`'s reason;
     // a session whose file went keeps the unstated answer, as its config does.
-    locateFor: (id) => profileFor(id)?.locate ?? DEFAULT_LOCATE,
+    wordsFor: (id) => profileFor(id) ?? UNSTATED_REALM_WORDS,
     /*
      * Whether a lost connection is dialled back, per character, read through
      * for the reason `configFor` is: profiles are watched, so switching it off

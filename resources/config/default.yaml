@@ -148,6 +148,11 @@ connection:
 # command, where nothing is asked and the room is worked out from what you walk
 # into. A character may state its own in its `profile.yaml`.
 #
+# Its `coins:` block names a coin the realm renamed, singular, by coin:
+# `coins: { runic: dime bag }`. A coin it does not name keeps its usual
+# name. The client reads the realm's word as that coin, counts it and picks
+# it up by it (`get dime`). A character may state its own, coin by coin.
+#
 # The settings screen writes them, and `resources/servers/` ships Paradigm's
 # six -- four game realms on port 2323 and two test realms on 2324, differing
 # only in the realm number their `login:` script answers with. There is

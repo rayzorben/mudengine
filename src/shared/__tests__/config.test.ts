@@ -187,6 +187,7 @@ describe('normalizeConfig', () => {
         hangPenalties: null,
         // Asked with `rm` until it says it has no such word (todo 811).
         locate: 'rm',
+        coins: {},
         // No teleport until the realm's own is written (todo 813).
         fleeGoto: ''
       }

@@ -1,3 +1,6 @@
+import { DENOMINATIONS } from '../../../shared/character';
+import { coinReader, STOCK_COIN } from '../../../shared/coins';
+import { parseCoinEntry } from '../inventory';
 import { describe, expect, it } from 'vitest';
 
 import { SpellMessageBook, spellLoreOf } from '../../../shared/spell-messages';
@@ -3350,5 +3353,37 @@ describe('arrivals and departures', () => {
       'room-description',
       'room-description'
     ]);
+  });
+});
+
+/* Todo 830: a realm's renamed coins, read back to the stock ones where the server names them. */
+describe('renamed coins', () => {
+  const reader = coinReader({ runic: 'dime bag' });
+  const read = (plain: string) =>
+    new Classifier(
+      NAMES,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => reader
+    ).classify(line(plain)).block;
+
+  it("reads a pickup of the realm's coin as the stock one", () => {
+    expect(read('You picked up 3 dime bags')).toMatchObject({
+      type: 'user-gets-coins',
+      groups: { count: '3', coin: 'runic coins' }
+    });
+  });
+
+  it('leaves a coin named in speech as it was said', () => {
+    expect(read('Soul says "selling 3 dime bags"').groups['message']).toBe('selling 3 dime bags');
+  });
+
+  // The stock phrases the reader writes are the ones the coin rules read.
+  it.each(DENOMINATIONS)('reads every stock %s phrase', (coin) => {
+    expect(parseCoinEntry(`2 ${STOCK_COIN[coin]}s`)).toEqual({ denomination: coin, count: 2 });
+    expect(classify(`You picked up 2 ${STOCK_COIN[coin]}s`).type).toBe('user-gets-coins');
   });
 });

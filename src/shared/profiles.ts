@@ -32,6 +32,7 @@ import {
   type Server
 } from './config';
 import { mergeMobRules, normalizeMobRules, type MobRule } from './mobRules';
+import { asCoinNames, type CoinNames } from './coins';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import type { ConnectionTarget } from './types';
 import { isRecord, str } from './values';
@@ -92,6 +93,11 @@ export interface Profile {
    * `config` for that field's reason. See `shared/locate.ts`.
    */
   locate: LocateWord;
+  /**
+   * The realm's own words for the coins it renamed, the character's own
+   * `coins:` over its realm's, coin by coin (todo 830). See `CoinNames`.
+   */
+  coins: CoinNames;
   /** Dial this character when the client starts. */
   autoConnect: boolean;
   /**
@@ -162,6 +168,7 @@ function resolveServer(
   mobRules: MobRule[];
   hangPenalties: boolean | null;
   locate: LocateWord;
+  coins: CoinNames;
   fleeGoto: string;
 } | null {
   if (typeof value === 'string') {
@@ -175,6 +182,7 @@ function resolveServer(
           mobRules: found.mobRules,
           hangPenalties: found.hangPenalties,
           locate: found.locate,
+          coins: found.coins,
           fleeGoto: found.fleeGoto
         }
       : null;
@@ -209,6 +217,7 @@ function resolveServer(
       hangPenalties: null,
       // The realm declaration, spelled out inline, may say it as `database` may.
       locate: asLocateWord(value['locate']) ?? DEFAULT_LOCATE,
+      coins: asCoinNames(value['coins']),
       // And its teleport, which is as much a fact about the place.
       fleeGoto: str(value['fleeGoto'], '').trim(),
       target: {
@@ -328,6 +337,15 @@ function ownSafety(raw: Record<string, unknown>, block: string, key: string): un
   const found = safety[block];
   return isRecord(found) ? found[key] : undefined;
 }
+
+/** What a realm calls things, read by the session through `Vocabulary`: its locate word and its coins. */
+export type RealmWords = Pick<Profile, 'locate' | 'coins'>;
+
+/** A realm that states no words of its own: asked with `rm`, and the stock coins. */
+export const UNSTATED_REALM_WORDS: RealmWords = Object.freeze({
+  locate: DEFAULT_LOCATE,
+  coins: {}
+});
 
 /**
  * A character's own locate word, or null where its file leaves it to the
@@ -452,6 +470,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       serverName: server.name,
       database: server.database,
       locate: ownLocate(raw) ?? server.locate,
+      coins: { ...server.coins, ...asCoinNames(raw['coins']) },
       autoConnect: raw['autoConnect'] === true,
       // `!== false`, not `=== true`: this one is on unless the file says
       // otherwise. See the field.
@@ -492,11 +511,23 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
  * does not know, which is harmless but misleading to read.
  */
 function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknown> {
-  const { server, account, login, locate, name, accent, autoConnect, autoReconnect, ...rest } = raw;
+  const {
+    server,
+    account,
+    login,
+    locate,
+    coins,
+    name,
+    accent,
+    autoConnect,
+    autoReconnect,
+    ...rest
+  } = raw;
   void server;
   void account;
   void login;
   void locate;
+  void coins;
   void name;
   void accent;
   void autoConnect;

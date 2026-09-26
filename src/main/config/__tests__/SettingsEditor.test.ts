@@ -342,6 +342,7 @@ describe('servers, one directory each', () => {
     mobRules: [],
     hangPenalties: null,
     locate: 'rm',
+    coins: {},
     fleeGoto: '',
     ...draft
   });
@@ -517,6 +518,7 @@ describe('servers, one directory each', () => {
       mobRules: [],
       hangPenalties: null,
       locate: 'rm',
+      coins: {},
       fleeGoto: ''
     });
     expect(servers()).toEqual([
@@ -593,6 +595,7 @@ describe('credentials in the messages', () => {
       mobRules: [],
       hangPenalties: null,
       locate: 'rm',
+      coins: {},
       fleeGoto: ''
     });
     for (const file of fs.readdirSync(dir)) {
@@ -1004,6 +1007,7 @@ describe('the loops a character owns', () => {
       mobRules: [],
       hangPenalties: null,
       locate: 'rm',
+      coins: {},
       fleeGoto: ''
     });
     editor.saveProfile('vaelor', draft());
@@ -1087,6 +1091,7 @@ describe('filing one loop from the Loops modal', () => {
       mobRules: [],
       hangPenalties: null,
       locate: 'rm',
+      coins: {},
       fleeGoto: ''
     });
     expect(editor.addLoop('server', 'GreaterMUD (local)', sewers)).toEqual({ ok: true });

@@ -14,7 +14,9 @@ import type { Errands } from './Errands';
 import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import { commandOf, GREATERMUD_ONLY, type CommandName } from '../../shared/commands';
-import { DEFAULT_LOCATE, locateCommand, type LocateWord } from '../../shared/locate';
+import { coinReader, type CoinNames, type CoinReader } from '../../shared/coins';
+import { locateCommand } from '../../shared/locate';
+import { UNSTATED_REALM_WORDS, type RealmWords } from '../../shared/profiles';
 import {
   familiesDisagree,
   familyToldBy,
@@ -25,17 +27,17 @@ import {
 
 /**
  * Who else is told when the family is read, the realm data it is weighed
- * against, and the realm's stated locate word, read through so a reload lands.
+ * against, and the realm's own words (locate, coins), read through so a reload lands.
  */
 export interface VocabularyParts {
   readonly tracker: Pick<CharacterTracker, 'useFamily'>;
   readonly errands: Pick<Errands, 'forgetFitness'>;
   readonly world: Pick<WorldGraph, 'info'> | undefined;
-  readonly locate: () => LocateWord;
+  readonly words: () => RealmWords;
 }
 
-/** What a session built without the setting reads: a realm that states none, `rm`. */
-export const UNSTATED_LOCATE: VocabularyParts['locate'] = () => DEFAULT_LOCATE;
+/** What a session built without the setting reads: a realm that states none, `rm` and the stock coins. */
+export const UNSTATED_WORDS: VocabularyParts['words'] = () => UNSTATED_REALM_WORDS;
 
 /** What the session that built this answers for it. */
 export interface VocabularySession {
@@ -48,7 +50,9 @@ export class Vocabulary {
   private readonly tracker: VocabularyParts['tracker'];
   private readonly errands: VocabularyParts['errands'];
   private readonly world: VocabularyParts['world'];
-  private readonly locate: VocabularyParts['locate'];
+  private readonly words: VocabularyParts['words'];
+  /** The coin reader for the last `coins:` seen, rebuilt only when a reload hands a new one. */
+  private coinsFor: { names: CoinNames; reader: CoinReader } | null = null;
   /**
    * Which lineage's arithmetic *this server* runs, once the wire has said so.
    *
@@ -110,7 +114,7 @@ export class Vocabulary {
     this.tracker = parts.tracker;
     this.errands = parts.errands;
     this.world = parts.world;
-    this.locate = parts.locate;
+    this.words = parts.words;
   }
 
   /** Which lineage's arithmetic the server runs, or null until the wire has said. */
@@ -126,9 +130,16 @@ export class Vocabulary {
    * `unavailable`, and two copies of one fact agree until one is edited.
    */
   get locateWord(): string | null {
-    const command = locateCommand(this.locate());
+    const command = locateCommand(this.words().locate);
     const name = command === null ? null : commandOf(command);
     return name !== null && this.unavailable.has(name) ? null : command;
+  }
+
+  /** This realm's renamed coins, both ways (`coinReader`, todo 830). */
+  get coins(): CoinReader {
+    const names = this.words().coins;
+    if (this.coinsFor?.names !== names) this.coinsFor = { names, reader: coinReader(names) };
+    return this.coinsFor.reader;
   }
 
   /**
@@ -227,7 +238,7 @@ export class Vocabulary {
     if (this.unavailable.has(name)) return true;
     // A realm set to have no locate word is asked nothing by automation, the
     // entry list's `rm` included; the player's own typing is not gated (811).
-    if (name === 'Room' && locateCommand(this.locate()) === null) return true;
+    if (name === 'Room' && locateCommand(this.words().locate) === null) return true;
     if (this.serverFamily !== 'majormud' || !GREATERMUD_ONLY.has(name)) return false;
     this.unavailable.add(name);
     this.sayUnavailable(name, command);

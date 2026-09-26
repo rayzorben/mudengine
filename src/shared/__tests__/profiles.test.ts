@@ -454,3 +454,30 @@ describe('the mob priority list, across global, realm and character', () => {
     expect(rules(profile)).toEqual([{ mob: 'red dragon', treat: 'last' }]);
   });
 });
+
+/* Todo 830: what the realm calls its coins, the character's own over it coin by coin. */
+describe('who says what the realm calls its coins', () => {
+  const realm = (coins?: Record<string, string>) => ({
+    servers: [
+      {
+        name: 'Snakepits',
+        host: 'orohost',
+        port: 2427,
+        ...(coins === undefined ? {} : { coins })
+      }
+    ]
+  });
+  const coins = (raw: Record<string, unknown>, config: unknown) =>
+    resolve({ server: 'Snakepits', ...raw }, config).coins;
+
+  it("takes the realm's names, and none where neither says", () => {
+    expect(coins({}, realm({ runic: 'dime bag' }))).toEqual({ runic: 'dime bag' });
+    expect(coins({}, realm())).toEqual({});
+  });
+
+  it('takes the character over its realm, coin by coin', () => {
+    expect(
+      coins({ coins: { runic: 'krabby patty' } }, realm({ runic: 'dime bag', gold: 'doubloon' }))
+    ).toEqual({ runic: 'krabby patty', gold: 'doubloon' });
+  });
+});

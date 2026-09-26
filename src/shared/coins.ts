@@ -25,6 +25,7 @@
  */
 import { coinNamed, DENOMINATIONS, type Denomination } from './character';
 import type { CurrencyEntity } from './entities';
+import { escapeRegExp } from './regex';
 
 export const COPPER_PER: Readonly<Record<Denomination, number>> = {
   copper: 1,
@@ -189,4 +190,76 @@ function shifted(cash: CurrencyEntity | null, which: Denomination, delta: number
   for (const name of DENOMINATIONS) counts[name] = cash?.[name] ?? 0;
   counts[which] = (counts[which] ?? 0) + delta;
   return currencyOf(counts);
+}
+
+/**
+ * Each coin's own name as the stock server prints it (`MoneyContainer.cs`),
+ * singular: the phrase a realm's renamed coin is read back to.
+ */
+export const STOCK_COIN: Readonly<Record<Denomination, string>> = {
+  runic: 'runic coin',
+  platinum: 'platinum piece',
+  gold: 'gold crown',
+  silver: 'silver noble',
+  copper: 'copper farthing'
+};
+
+/**
+ * A realm's own words for the coins it renamed, singular, by denomination
+ * (`coins: { runic: dime bag }`, captures/024). A coin it does not name keeps
+ * the stock name; nothing is guessed (todo 830).
+ */
+export type CoinNames = Partial<Record<Denomination, string>>;
+
+/** A `coins:` block as the file states it: a word per coin it names, lower-cased; anything else dropped. */
+export function asCoinNames(value: unknown): CoinNames {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const names: CoinNames = {};
+  for (const coin of DENOMINATIONS) {
+    const word = record[coin];
+    if (typeof word === 'string' && word.trim().length > 0) names[coin] = word.trim().toLowerCase();
+  }
+  return names;
+}
+
+/** A realm's coin names in both directions. See `coinReader`. */
+export interface CoinReader {
+  /** The line with each renamed coin read back to its stock name, plural kept. */
+  toStock(line: string): string;
+  /** The word that picks a coin up here: the first of the realm's name, else the denomination. */
+  word(coin: Denomination): string;
+}
+
+/**
+ * Built once per realm's `coins:`, so the one pattern is compiled once
+ * (`compiled-patterns.test.ts`). Only a name after a count is read, as every
+ * coin sentence prints one (`4 dime bags`), so `crown of thorns` stays itself
+ * on a realm that calls gold a crown; longest name first, so `dime bag` wins
+ * over `dime`. The plural is the name plus `s` (captures/024), unmeasured for
+ * any other. A realm that renames nothing reads every line as it came.
+ */
+export function coinReader(names: CoinNames): CoinReader {
+  const renamed = DENOMINATIONS.filter((coin) => names[coin] !== undefined).sort(
+    (a, b) => names[b]!.length - names[a]!.length
+  );
+  const stockOf = new Map(renamed.map((coin) => [names[coin]!, STOCK_COIN[coin]]));
+  const pattern =
+    renamed.length === 0
+      ? null
+      : new RegExp(
+          `\\b(\\d+ )(${renamed.map((coin) => escapeRegExp(names[coin]!)).join('|')})(s?)\\b`,
+          'gi'
+        );
+  return {
+    toStock: (line) =>
+      pattern === null
+        ? line
+        : line.replace(
+            pattern,
+            (_match, count: string, name: string, plural: string) =>
+              `${count}${stockOf.get(name.toLowerCase()) ?? name}${plural}`
+          ),
+    word: (coin) => names[coin]?.split(/\s+/)[0] ?? coin
+  };
 }

@@ -10,6 +10,7 @@ import Icon from './Icon';
 import LoginStepRows from './LoginStepRows';
 import FormField, { NumberField, SelectField, TextField } from './FormField';
 import Advanced from './Advanced';
+import CoinNameFields from './CoinNameFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
 import MobRuleList from './MobRuleList';
 
@@ -208,6 +209,9 @@ export default function ServerForm({
             value={draft.locate}
           />
         </div>
+
+        {/* What the realm calls its coins, where it renamed them (todo 830). */}
+        <CoinNameFields coins={draft.coins} onChange={(coins) => onChange({ ...draft, coins })} />
       </fieldset>
 
       {/*
