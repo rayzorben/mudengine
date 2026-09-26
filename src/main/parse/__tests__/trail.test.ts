@@ -108,7 +108,7 @@ describe('what lets go of the trail', () => {
     expect(tracker.trail).toEqual([]);
   });
 
-  // Pinned as it stood before 724; whether the menu should let go of it is todo 752.
+  // The character logs back in where it logged off, so the menu keeps the trail (todo 752).
   it('never at a closed socket or the menu, which keep where the character came from', () => {
     const closed = walked();
     closed.leaveRealm(T + 5);

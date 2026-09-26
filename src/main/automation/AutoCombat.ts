@@ -177,6 +177,9 @@ type Choice =
   | { target: string; because: string; considered?: undefined; why?: undefined }
   | { target: null; because?: undefined; considered: string; why: string };
 
+/** The leader's fight to join: one monster, or the whole room when the leader attacked everyone in it. */
+type Assist = { kind: 'mob'; name: string; leader: string } | { kind: 'room'; leader: string };
+
 /**
  * The word a refusal names, and every spelling the realm accepts for it.
  *
@@ -549,14 +552,15 @@ export class AutoCombat implements SessionModule {
   };
 
   /**
-   * The leader's target, when it is a monster standing in this room.
+   * The leader's target, when it is a monster standing in this room, or the
+   * whole room when the leader attacked everyone in it.
    *
    * `party.engaged` is what the server last said the leader hit; the sighting
    * has to be fresh and the monster still listed, or a follower would swing at
    * something that left with the fight. Never a player — the leader may be in
    * a PvP fight, and that is theirs — and never something a row leaves alone.
    */
-  private assistTarget(state: CharacterState): { name: string; leader: string } | null {
+  private assistTarget(state: CharacterState): Assist | null {
     if (!this.party.assistLeader) return null;
     const leader = state.party.following;
     if (leader === null) return null;
@@ -565,12 +569,34 @@ export class AutoCombat implements SessionModule {
     );
     const seen = key === undefined ? undefined : state.party.engaged[key];
     if (!seen || Date.now() - seen.at > tuning().combat.assistFreshMs) return null;
+    if (seen.kind === 'room') return { kind: 'room', leader };
     const wanted = mobKey(seen.target);
     const there = state.room.occupants.find(
       (who) => who.kind === 'mob' && mobKey(who.name) === wanted
     );
     if (!there || this.leftAlone(wanted) || this.isPlayer(state, there.name)) return null;
-    return { name: there.name, leader };
+    return { kind: 'mob', name: there.name, leader };
+  }
+
+  /**
+   * The monster to join the leader's fight on. An area attack names none, so
+   * the follower picks its own from the room by the same policy it opens a
+   * fight with, and a room that policy will not have is declined with its
+   * reason (todo 756).
+   */
+  private assisting(state: CharacterState, assist: Assist): Choice | null {
+    if (assist.kind === 'mob') {
+      return {
+        target: assist.name,
+        because: t('automation.party.reasonAssist', { leader: assist.leader, target: assist.name })
+      };
+    }
+    const own = this.choose(state);
+    if (own === null || own.target === null) return own;
+    return {
+      target: own.target,
+      because: t('automation.party.reasonAssistRoom', { leader: assist.leader, why: own.because })
+    };
   }
 
   /**
@@ -1573,13 +1599,7 @@ export class AutoCombat implements SessionModule {
     const joined = assist ?? defend;
     const choice: Choice | null =
       assist !== null
-        ? {
-            target: assist.name,
-            because: t('automation.party.reasonAssist', {
-              leader: assist.leader,
-              target: assist.name
-            })
-          }
+        ? this.assisting(state, assist)
         : defend !== null
           ? {
               target: defend.name,

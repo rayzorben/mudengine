@@ -1114,6 +1114,13 @@ export function partyActivity(flag: string | undefined): PartyActivity | null {
   return { state: 'unknown', flag };
 }
 
+/**
+ * What a member was seen fighting: one monster as the room spelled it, or the
+ * whole room at once (`<Name> moves to attack everyone in the room.`), which
+ * names no monster (todo 756).
+ */
+export type PartyFight = { kind: 'mob'; target: string; at: number } | { kind: 'room'; at: number };
+
 export interface Party {
   /**
    * Who this character is following, or null when leading or alone.
@@ -1135,7 +1142,7 @@ export interface Party {
    * about fights; the assist reads it through `following`, and only while the
    * monster is still in the room and the sighting is fresh.
    */
-  engaged: Record<string, { target: string; at: number }>;
+  engaged: Record<string, PartyFight>;
   /**
    * The monster last seen attacking each member, keyed like `engaged` and from
    * the same volunteered sentences read the other way round — the attacker a
