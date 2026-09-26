@@ -326,6 +326,12 @@ export default function RoutePanel({
   const [target, setTarget] = useState<WorldRoom | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   /**
+   * The room a plan is being drawn to, until it lands or fails (todo 838). A
+   * plan across Paradigm takes a median 184ms and up to 714ms, so the panel
+   * says it is working; `--delay-planning` keeps a quick one from flashing.
+   */
+  const [planningTo, setPlanningTo] = useState<WorldRoom | null>(null);
+  /**
    * The plan main drew again, and which plan it was drawn to replace.
    *
    * Held with the route it describes rather than cleared by an effect, because
@@ -454,6 +460,34 @@ export default function RoutePanel({
     return () => window.cancelAnimationFrame(id);
   }, [open]);
 
+  /**
+   * Plans a route to `room`, landing the answer only while it is still the
+   * latest plan: every plan, a close and a withdrawn destination bump
+   * `planning`, so an older answer is disowned and never clears or sets
+   * `planningTo` behind a newer one.
+   */
+  const plan = useCallback(
+    (room: WorldRoom): void => {
+      planning.current += 1;
+      const mine = planning.current;
+      setTarget(room);
+      setRefused(null);
+      setPlanningTo(room);
+      void onRoute(room)
+        .then((answer) => {
+          if (planning.current !== mine) return;
+          setRoute(answer);
+          setPlanningTo(null);
+        })
+        .catch((error) => {
+          if (planning.current !== mine) return;
+          setRefused(errorMessage(error));
+          setPlanningTo(null);
+        });
+    },
+    [onRoute]
+  );
+
   /*
    * A destination handed in from outside is planned straight away, so opening
    * the panel from a map click shows the steps rather than an empty search.
@@ -467,20 +501,12 @@ export default function RoutePanel({
    */
   useEffect(() => {
     if (!open || destination === null) return;
-    let live = true;
-    setTarget(destination);
-    setRefused(null);
-    void onRoute(destination)
-      .then((plan) => {
-        if (live) setRoute(plan);
-      })
-      .catch((error) => {
-        if (live) setRefused(errorMessage(error));
-      });
+    plan(destination);
     return () => {
-      live = false;
+      planning.current += 1;
+      setPlanningTo(null);
     };
-  }, [open, destination, onRoute]);
+  }, [open, destination, plan]);
 
   /*
    * A name handed in with no room settled: type it into the field for the
@@ -501,6 +527,7 @@ export default function RoutePanel({
       setRoute(null);
       setTarget(null);
       setRefused(null);
+      setPlanningTo(null);
     }
   }, [open]);
 
@@ -591,17 +618,7 @@ export default function RoutePanel({
    * otherwise land the abandoned plan on top of whatever replaced it.
    */
   const choose = (room: WorldRoom): void => {
-    planning.current += 1;
-    const mine = planning.current;
-    setTarget(room);
-    setRefused(null);
-    void onRoute(room)
-      .then((plan) => {
-        if (planning.current === mine) setRoute(plan);
-      })
-      .catch((error) => {
-        if (planning.current === mine) setRefused(errorMessage(error));
-      });
+    plan(room);
   };
 
   /*
@@ -854,6 +871,13 @@ export default function RoutePanel({
             rather than inside any single branch: a route or search that failed
             outright has no result area of its own to say so in. */}
           {refused && <div className="route-refused">{refused}</div>}
+
+          {planningTo !== null && (
+            <div className="route-planning" role="status">
+              <span aria-hidden="true" className="dot planning" />
+              {t('cards.route.planning', { roomName: planningTo.name })}
+            </div>
+          )}
 
           {/* The plan was drawn again from here, and this is what changed about
             it. Drawn only while the plan on screen is still that one: anything

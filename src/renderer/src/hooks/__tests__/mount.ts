@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
 /**
  * A hook's probe component, mounted on the first `render` and re-rendered in
@@ -8,6 +8,8 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
  */
 export interface Mount {
   render(element: ReactElement): void;
+  /** The mounted tree, for a component test to find what it drew. */
+  root(): ReactTestInstance;
   unmount(): void;
 }
 
@@ -25,6 +27,10 @@ export function mount(): Mount {
       } else {
         act(() => live.update(element));
       }
+    },
+    root() {
+      if (renderer === null) throw new Error('nothing is mounted');
+      return renderer.root;
     },
     unmount() {
       const live = renderer;

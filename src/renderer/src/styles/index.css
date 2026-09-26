@@ -4395,9 +4395,34 @@ button.quest-plan-back {
 .dot.connecting,
 .dot.negotiating,
 .dot.resolving,
-.dot.closing {
+.dot.closing,
+.dot.planning {
   animation: dot-pulse 1.6s var(--ease-inout) infinite;
   background: var(--pending);
+}
+
+/*
+ * A route being planned (todo 838). Drawn at once but shown only after
+ * `--delay-planning`, so a plan that lands sooner never flashes; the delay
+ * holds under reduced motion, which shortens durations, not delays.
+ */
+.route-planning {
+  align-items: center;
+  animation: route-planning-shown 0s linear var(--delay-planning) both;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+@keyframes route-planning-shown {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
 }
 
 @keyframes dot-pulse {

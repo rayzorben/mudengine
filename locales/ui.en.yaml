@@ -2565,6 +2565,7 @@ cards:
     foldTooltip: Show the {count} rooms this row stands for
     unfoldTooltip: Fold these rooms back into one row
     foldCount: '×{count}'
+    planning: 'Planning a route to {roomName}…'
     redrawn: You have moved since this plan was made, so this is the way from where you are now.
       Check it and press Walk it again.
     redrawnWandered:
