@@ -50,6 +50,7 @@
  */
 import type { CharacterState } from '../../shared/character';
 import { bareName, itemInvocation } from '../../shared/items';
+import { sameSpell } from '../../shared/spellcraft';
 import { nameAnswersTo, type WorldItem, type WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -164,18 +165,12 @@ export class AutoInvoke implements SessionModule {
     // a spell with no duration is not a blessing.
     if (spell === null || spell.duration === undefined || spell.duration <= 0) return null;
 
-    /*
-     * Already up, under its own name or any the establishing sentence could
-     * have meant. Compared by the realm's **id** rather than by words, which
-     * is what `Blessings.sameSpell` resolves to and the reason it does: the
-     * server prints a spell's whole name where a configuration may hold a
-     * short one.
-     */
+    // Already up, under its own name or any the establishing sentence could
+    // have meant (`sameSpell`: the server prints the whole name).
     const held = state.buffs.some((buff) =>
-      [buff.spell, ...(buff.candidates ?? [])].some((candidate) => {
-        if (candidate.trim().toLowerCase() === spell.name.trim().toLowerCase()) return true;
-        return this.sources.spellNamed(candidate)?.id === spell.id;
-      })
+      [buff.spell, ...(buff.candidates ?? [])].some((candidate) =>
+        sameSpell(candidate, spell.name, state.spellbook, this.sources.spellNamed)
+      )
     );
     return held ? null : spell;
   }

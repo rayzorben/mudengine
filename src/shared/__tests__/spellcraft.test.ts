@@ -8,12 +8,14 @@ import {
   cureGates,
   holdsMovement,
   resolveSpell,
+  sameSpell,
   spellCost,
   spellServes,
   spellTargeting,
   type AbilityPairs,
   type CastableSpell
 } from '../spellcraft';
+import type { WorldSpell } from '../world';
 
 /* The live `powers` listing's own rows (2026-09-01), quoted rather than invented. */
 const book: CastableSpell[] = [
@@ -326,5 +328,50 @@ describe('holdsMovement', () => {
     expect(holdsMovement({})).toBe(false);
     expect(holdsMovement(null)).toBe(false);
     expect(holdsMovement(undefined)).toBe(false);
+  });
+});
+
+/* Todo 829: Blessings, AutoInvoke and AttackSpells share one same-spell check. */
+describe('sameSpell', () => {
+  const listed: CastableSpell[] = [
+    { name: 'bless', short: 'bles' },
+    { name: 'pressure points', short: 'pres' }
+  ];
+  const realm = (name: string): WorldSpell | null =>
+    ({
+      bless: { id: 14, name: 'bless', short: 'bles' },
+      bles: { id: 14, name: 'bless', short: 'bles' },
+      'protection from evil': { id: 9, name: 'protection from evil', short: 'prev' },
+      prev: { id: 9, name: 'protection from evil', short: 'prev' },
+      'blessed light': { id: 40, name: 'blessed light', short: 'blig' },
+      // Two spells the realm gives one short, and a spell it renamed.
+      'resist cold': { id: 6, name: 'resist cold', short: 'rcol' },
+      'ice shield': { id: 7, name: 'ice shield', short: 'rcol' },
+      'unholy aura': { id: 50, name: 'vile ward', short: 'vwar' },
+      'vile ward': { id: 50, name: 'vile ward', short: 'vwar' }
+    })[name.trim().toLowerCase()] ?? null;
+
+  it.each([
+    ['bless', 'bless', true],
+    ['BLESS ', 'bless', true],
+    // The short word the book lists, and the whole name the server prints.
+    ['bles', 'bless', true],
+    ['pres', 'pressure points', true],
+    // The realm's short name with no book at all.
+    ['prev', 'protection from evil', true],
+    // Same first letters, another spell.
+    ['bless', 'blessed light', false],
+    ['bles', 'blessed light', false],
+    ['pressure points', 'protection from evil', false],
+    ['resist cold', 'ice shield', false],
+    ['unholy aura', 'vile ward', true]
+  ])('%s and %s: %s', (a, b, same) => {
+    expect(sameSpell(a, b, listed, realm)).toBe(same);
+    expect(sameSpell(b, a, listed, realm)).toBe(same);
+  });
+
+  it('falls back to the words where nothing names either', () => {
+    expect(sameSpell('mystery', 'Mystery', null)).toBe(true);
+    expect(sameSpell('mystery', 'myst', null)).toBe(false);
   });
 });
