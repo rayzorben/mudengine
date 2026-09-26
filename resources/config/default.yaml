@@ -1858,6 +1858,33 @@ automation:
     # tuning.remotes.healAskAgainMs while still under it. 0 never asks.
     askForHealBelow: 0
 
+    # Leading, stop the loop while a member in the room is under this share of
+    # health, as a follower's @wait does -- MegaMUD's Wait For Party Members.
+    # 0 waits for nobody's health.
+    waitBelow: 0
+
+    # Leading, give up a wait and walk on after this many minutes -- MegaMUD's
+    # If Leading Wait No Longer Than. 0 waits until everyone is ready.
+    waitMinutes: 2
+
+    # Leading, walk on through a follower's @wait. A member under waitBelow
+    # still stops the loop.
+    ignoreWait: false
+
+    # Following, leave the leader's @party commands unanswered.
+    ignoreParty: false
+
+    # Telepath @health to a member who joins -- MegaMUD's Request Party Health.
+    askHealth: true
+
+    # In a party, send par every this many seconds in a fight and twice that
+    # out of one -- MegaMUD's Par Frequency. 0 sends it only when the party
+    # changes.
+    parSeconds: 0
+
+    # In a party, send par after every combat round.
+    parAfterRound: false
+
   # Keeping a character alive, rather than playing it.
   safety:
     # Running away.

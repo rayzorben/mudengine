@@ -50,8 +50,16 @@
 import type { LoopProgress } from '../../shared/loops';
 import type { WalkProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
-import { gangOnRoster, joinedTheParty, ownGang, type CharacterState } from '../../shared/character';
-import type { AutomationConfig, RemotesConfig } from '../../shared/config';
+import {
+  gangOnRoster,
+  joinedTheParty,
+  inAParty,
+  leaderOf,
+  ownGang,
+  partyMembers,
+  type CharacterState
+} from '../../shared/character';
+import { stillFor, type AutomationConfig, type RemotesConfig } from '../../shared/config';
 import {
   EXTENDED_REMOTES,
   REMOTES,
@@ -284,9 +292,17 @@ interface Outstanding {
   at: number;
 }
 
+/** Whether the leader this character follows is resting or meditating, by the party listing. */
+function leaderResting(state: CharacterState): boolean {
+  const doing = leaderOf(state)?.activity?.state;
+  return doing === 'resting' || doing === 'meditating';
+}
+
 export class Remotes implements SessionModule {
   /** Whether this character was resting at the last state change. See `onCharacter`. */
   private resting = false;
+  /** Whether this character's own walk stood still for each vital at the last state (`stillFor`). */
+  private readonly still = { health: false, mana: false };
 
   /** Questions sent and not yet answered, by player. See {@link Outstanding}. */
   private readonly asked = new Map<string, Outstanding>();
@@ -524,7 +540,8 @@ export class Remotes implements SessionModule {
     for (const member of state.party.members) {
       if (member.invited) continue;
       if (me !== null && member.name.toLowerCase() === me) continue;
-      this.ask(member.name, 'health', state);
+      // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
+      if (this.config.party.askHealth) this.ask(member.name, 'health', state);
       /*
        * And which client they run, once, because it decides the wording of
        * every question after this one. Only while nothing has said: the answer
@@ -553,7 +570,26 @@ export class Remotes implements SessionModule {
   onCharacter(state: CharacterState): void {
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     this.askForHeal(state);
-    const resting = state.vitals.resting || state.vitals.meditating;
+    const margin = tuning().loop.resumeMarginWhenUncapped;
+    for (const vital of ['health', 'mana'] as const) {
+      this.still[vital] = stillFor(
+        vital,
+        state.vitals,
+        this.config.health,
+        this.still[vital],
+        margin
+      );
+    }
+    /*
+     * Sitting down, or under the floors a walk of its own stands still at
+     * (`stillFor`, todo 831), in a fight or out of one: the leader waits for a
+     * follower that is hurt, whatever a particular walk would do. Not while the
+     * leader is resting itself: that rest is its own, and `restWithLeader`
+     * keeps the party with it.
+     */
+    const resting =
+      !leaderResting(state) &&
+      (state.vitals.resting || state.vitals.meditating || this.still.health || this.still.mana);
     const was = this.resting;
     this.resting = resting;
     if (was === resting) return;
@@ -711,6 +747,8 @@ export class Remotes implements SessionModule {
   /** Forgotten with the connection: a fresh session has said nothing to anybody. */
   reset(): void {
     this.resting = false;
+    this.still.health = false;
+    this.still.mana = false;
     this.asked.clear();
     this.askedForHealAt = null;
     this.wantsHeal = false;
@@ -1079,6 +1117,11 @@ export class Remotes implements SessionModule {
         // The leader telling every follower to do something — the same as
         // `@do`, minus the acknowledgement, which no capture shows for it.
         if (command.argument === null) return;
+        // MegaMUD's *Ignore @party If Following* (todo 831).
+        if (this.config.party.ignoreParty) {
+          this.events.notice?.(t('automation.remotes.ignoredParty', { from }));
+          return;
+        }
         this.queue.enqueue({
           command: command.argument,
           priority: 'movement',
@@ -1249,6 +1292,11 @@ export class Remotes implements SessionModule {
          * a request: a follower saying it cannot keep up, and the same follower
          * saying it can again. Reported to whoever is walking; nothing is sent.
          */
+        // MegaMUD's *Ignore @wait If Leading* (todo 831); a hurt member still stops the lap.
+        if (command.name === 'wait' && this.config.party.ignoreWait) {
+          this.events.notice?.(t('automation.remotes.ignoredWait', { from }));
+          return;
+        }
         this.events.pace?.(from, command.name === 'ok');
         this.events.notice?.(
           command.name === 'ok'
@@ -1293,18 +1341,6 @@ export class Remotes implements SessionModule {
     }
     this.reply(from, body, prefix);
   }
-}
-
-/** Everybody besides this character who has joined its party, by name. */
-function partyMembers(state: CharacterState): string[] {
-  const me = state.name?.toLowerCase() ?? null;
-  return state.party.members
-    .filter((member) => !member.invited && member.name.toLowerCase() !== me)
-    .map((member) => member.name);
-}
-
-function inAParty(state: CharacterState): boolean {
-  return partyMembers(state).length > 0;
 }
 
 /**

@@ -667,6 +667,7 @@ describe('resting with the leader', () => {
   const withLeader = (): Recovery =>
     new Recovery(
       settings({ ...DEFAULT_CONFIG.automation.health }, true, {
+        ...DEFAULT_CONFIG.automation.party,
         assistLeader: false,
         defendParty: false,
         restWithLeader: true,

@@ -31,6 +31,8 @@ import {
   type PotionRule,
   type PotionWhen,
   type PvpAction,
+  type PartyConfig,
+  PARTY_RANGES,
   type EncumbranceGate,
   type TabsPreference
 } from './config';
@@ -437,12 +439,7 @@ export interface ProfileDraft {
    * never been near this screen keeps a file with none of them in it.
    */
   /** Following somebody — `automation.party`. Off, and why, in `PartyConfig`. */
-  party: {
-    assistLeader: boolean;
-    defendParty: boolean;
-    restWithLeader: boolean;
-    askForHealBelow: number;
-  };
+  party: PartyConfig;
   health: {
     restBelow: number;
     restTo: number;
@@ -894,7 +891,23 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       assistLeader: party['assistLeader'] === true,
       defendParty: party['defendParty'] === true,
       restWithLeader: party['restWithLeader'] === true,
-      askForHealBelow: unit(party['askForHealBelow'])
+      askForHealBelow: unit(party['askForHealBelow']),
+      waitBelow: unit(party['waitBelow']),
+      waitMinutes: clamp(
+        party['waitMinutes'],
+        ...PARTY_RANGES.waitMinutes,
+        DEFAULT_CONFIG.automation.party.waitMinutes
+      ),
+      ignoreWait: party['ignoreWait'] === true,
+      ignoreParty: party['ignoreParty'] === true,
+      // On unless said off: it is what the client has always done.
+      askHealth: party['askHealth'] !== false,
+      parSeconds: clamp(
+        party['parSeconds'],
+        ...PARTY_RANGES.parSeconds,
+        DEFAULT_CONFIG.automation.party.parSeconds
+      ),
+      parAfterRound: party['parAfterRound'] === true
     },
     health: {
       /*

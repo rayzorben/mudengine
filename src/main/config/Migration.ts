@@ -245,6 +245,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheTeleport(home, note, options.template);
   statedTheFreedomCure(home, note);
   statedTheMeditateCeiling(home, note, options.template);
+  statedThePartyPacing(home, note, options.template);
 }
 
 /**
@@ -2688,7 +2689,7 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
   // Beside `restBelow` rather than at the end of the block: the two are one
   // pair and a ceiling filed under the potions reads as a third unrelated
   // threshold.
-  const stated = stateInHealth(home, 'restTo', 0, 'restBelow', REST_TO_COMMENT);
+  const stated = stateIn(home, HEALTH_BLOCK, 'restTo', 0, 'restBelow', REST_TO_COMMENT);
   if (stated.length === 0) return;
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(
@@ -2699,14 +2700,18 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
 }
 
 /**
- * One key into `automation.health` of every file that states the block
- * without it: at `value`, with `comment` above it, directly after its partner
- * `after`, or appended where the file states the partner nowhere. Nothing
- * stated is overwritten, and a file that inherits its health settings is left
- * alone. Returns the files written, for the step's own notice.
+ * One key into a block (`automation.health`, `automation.party`) of every file
+ * that states the block without it: at `value`, with `comment` above it,
+ * directly after its partner `after`, or appended where the file states the
+ * partner nowhere. Nothing stated is overwritten, and a file that inherits the
+ * block is left alone. Returns the files written, for the step's own notice.
  */
-function stateInHealth(
+const HEALTH_BLOCK = ['automation', 'health'] as const;
+const PARTY_BLOCK = ['automation', 'party'] as const;
+
+function stateIn(
   home: Home,
+  block: readonly string[],
   key: string,
   value: unknown,
   after: string,
@@ -2716,18 +2721,55 @@ function stateInHealth(
   const stated: string[] = [];
   for (const file of files) {
     edit(file, (document) => {
-      const block = document.getIn(['automation', 'health'], true);
-      if (!isMap(block) || block.has(key)) return false;
+      const map = document.getIn([...block], true);
+      if (!isMap(map) || map.has(key)) return false;
       const pair = document.createPair(key, value) as Pair;
       if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
-      const at = block.items.findIndex((item) => keyText(item) === after);
-      if (at === -1) block.items.push(pair);
-      else block.items.splice(at + 1, 0, pair);
+      const at = map.items.findIndex((item) => keyText(item) === after);
+      if (at === -1) map.items.push(pair);
+      else map.items.splice(at + 1, 0, pair);
       stated.push(file);
       return true;
     });
   }
   return stated;
+}
+
+/**
+ * MegaMUD's party settings (todo 831) into every file that states `party:`
+ * without them, at the shipped values and with the template's comments, in
+ * the template's order after `askForHealBelow`.
+ */
+function statedThePartyPacing(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'automation');
+  const d = DEFAULT_CONFIG.automation.party;
+  const keys = [
+    ['waitBelow', d.waitBelow],
+    ['waitMinutes', d.waitMinutes],
+    ['ignoreWait', d.ignoreWait],
+    ['ignoreParty', d.ignoreParty],
+    ['askHealth', d.askHealth],
+    ['parSeconds', d.parSeconds],
+    ['parAfterRound', d.parAfterRound]
+  ] as const;
+  const stated = new Set<string>();
+  let after = 'askForHealBelow';
+  for (const [key, value] of keys) {
+    const comment = comments.get(`automation.party.${key}`);
+    for (const file of stateIn(home, PARTY_BLOCK, key, value, after, comment)) stated.add(file);
+    after = key;
+  }
+  if (stated.size === 0) return;
+  const params = { count: stated.size, fileList: [...stated].join(', ') };
+  note(
+    stated.size === 1
+      ? t('notices.migration.partyPacing.one', params)
+      : t('notices.migration.partyPacing.many', params)
+  );
 }
 
 /**
@@ -2740,8 +2782,9 @@ function statedTheMeditateCeiling(
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const stated = stateInHealth(
+  const stated = stateIn(
     home,
+    HEALTH_BLOCK,
     'meditateTo',
     DEFAULT_CONFIG.automation.health.meditateTo,
     'meditateBelow',
@@ -2767,8 +2810,9 @@ function statedTheMeditateCeiling(
  * file states neither partner.
  */
 function statedTheTrapRest(home: Home, note: (message: string) => void): void {
-  const stated = stateInHealth(
+  const stated = stateIn(
     home,
+    HEALTH_BLOCK,
     'restBeforeTraps',
     DEFAULT_CONFIG.automation.health.restBeforeTraps,
     'restTo',

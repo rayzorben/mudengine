@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_CHARACTER,
+  membersBelow,
   joinedTheParty,
   ratio,
   vitalLevel,
@@ -108,5 +109,48 @@ describe('joinedTheParty', () => {
     expect(joinedTheParty(EMPTY_CHARACTER, 'Rend')).toBe(false);
     expect(joinedTheParty(withParty(member('Soul')), null)).toBe(false);
     expect(joinedTheParty(withParty(member('Soul')), '   ')).toBe(false);
+  });
+});
+
+/* Todo 831: whom a leader waits for. */
+describe('membersBelow', () => {
+  const member = (name: string, health: number | null, invited = false) => ({
+    name,
+    className: null,
+    health,
+    mana: null,
+    rank: null,
+    activity: null,
+    invited,
+    vitals: null
+  });
+  const party = (members: ReturnType<typeof member>[], here: string[]): CharacterState => {
+    const state = structuredClone(EMPTY_CHARACTER);
+    return {
+      ...state,
+      name: 'Vaelor',
+      party: { ...state.party, members },
+      room: {
+        ...state.room,
+        occupants: here.map((name) => ({ ...state.room.occupants[0]!, name }))
+      }
+    } as CharacterState;
+  };
+
+  it('names members here under the line, and nobody else', () => {
+    const state = party(
+      [
+        member('Vaelor', 0.1),
+        member('Soul', 0.3),
+        member('Yang', 0.9),
+        member('Festus', 0.2),
+        member('Rend', 0.1, true),
+        member('Death', null)
+      ],
+      ['Vaelor', 'Soul', 'Yang', 'Rend', 'Death']
+    );
+    // Festus walked out; Rend was only invited; Death's health is unstated.
+    expect(membersBelow(state, 0.5)).toEqual(['Soul']);
+    expect(membersBelow(state, 0)).toEqual([]);
   });
 });

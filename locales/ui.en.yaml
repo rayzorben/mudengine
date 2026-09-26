@@ -506,6 +506,10 @@ notices:
     profilesFolded:
       many: '{count} character files moved into their own folders, so each can hold its own loops.'
       one: 1 character file moved into its own folder, so it can hold its own loops.
+    partyPacing:
+      many: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {count}
+        files: {fileList}"
+      one: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {fileList}"
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
@@ -3651,6 +3655,9 @@ settings:
     askHealHint: Say @heal in the room below this, while in a party. A member running MegaMUD or
       this client answers with a heal. 0 never asks.
     askHealLabel: Ask for Healing Below %
+    askHealthHint: Telepath @health to a member who joins, so their health is known before they
+      are hurt.
+    askHealthLabel: Request Party Health
     assistHint: Attack what the leader (whoever this character follows) was last seen attacking,
       while it is still in the room. When the leader attacks everyone in the room, pick a monster
       the way auto-combat would. Never a player.
@@ -3661,9 +3668,20 @@ settings:
       fight came to the party, so this ignores Attack Target Selection. Never a player.
     defendLabel: Auto-Defend Party
     healLegend: Healing
+    ignorePartyHint: Leave the leader's @party commands unanswered. @party makes every follower send
+      a command at once, and is easy to abuse.
+    ignorePartyLabel: Ignore @party If Following
+    ignoreWaitHint: Leading, walk on through a follower's @wait. A member under Wait For Party
+      Members still stops the loop.
+    ignoreWaitLabel: Ignore @wait If Leading
     healNote: A member's @heal is answered by Auto-Heal Party Members on the Spells page, when @heal
       is checked under Party @ commands below.
-    legend: Following
+    legend: Leading and Following
+    parAfterRoundHint: Send par after every combat round, in a party.
+    parAfterRoundLabel: Send PAR After Combat Round
+    parSecondsHint: How often to send par in a fight, in seconds; twice as long out of one. 0 sends it
+      only when the party changes.
+    parSecondsLabel: Par Frequency
     remotesLegend: Party @ commands
     remotesNote: What anyone who has **joined** this party may ask this character for. An invitation
       nobody accepted is not membership, and a Deny on someone by name still overrides this.
@@ -3672,6 +3690,12 @@ settings:
       switch is on the Remotes page.
     restHint: Only out of combat, like every rest. Meditates only for a class with mana.
     restLabel: Rest With Leader
+    waitBelowHint: Leading, stop the loop while a member in the room is under this share of health,
+      as a follower's @wait does. 0 waits for nobody's health.
+    waitBelowLabel: Wait For Party Members HP %
+    waitMinutesHint: Leading, give up a wait and walk on after this many minutes. 0 waits until
+      everyone is ready.
+    waitMinutesLabel: Wait No Longer Than (minutes)
     warning: It is not yet known whether the game limits commands per connection or per computer.
       These settings make a second automated character useful; turning them on means testing that
       yourself.
@@ -4079,6 +4103,8 @@ session:
     unknownRoom: The client cannot tell which room you are in.
     unknownStopName: The world data has no room called {name}.
     pausedForRemote: '{who} asked the party to wait'
+    pausedForHealth: 'Waiting for {who}, under Wait For Party Members'
+    partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.
   # The toolbar's back button: one room back the way the character came.
@@ -4899,6 +4925,8 @@ automation:
   remotes:
     followerReady: '{from} is ready.'
     followerWait: '{from} asked the party to wait.'
+    ignoredParty: 'Not running @party from {from}: Ignore @party If Following is on.'
+    ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
     dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
     getAllCapped: '{from} sent @get-all; took the first {max} of {total} listed.'
@@ -4986,6 +5014,7 @@ automation:
     reasonEnterRealm: entering the realm
     reasonIdle: idle
     reasonPartyChanged: the party changed
+    reasonPar: Par Frequency
     reasonLookAtPlayer: Looking at someone this character has not seen before
     reasonRosterUnknown: a name appeared that the who list does not explain
     reasonSpellbook: reading the spellbook

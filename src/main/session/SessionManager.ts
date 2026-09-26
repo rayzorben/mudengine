@@ -936,9 +936,8 @@ export class SessionManager {
         notice: (message) => this.sink.notice(message),
         // The choice found no book read: the routines ask once (todo 09).
         needBook: () => this.routines.askBook(this.tracker.current),
-        // The round beat, for the one thing that rides it without being a
-        // cast: the equipment manager's off-round invocation (todo 00).
-        round: (state) => this.gear.round(state),
+        // The round beat: the gear's off-round invocation (todo 00), the party listing (831).
+        round: (state) => [this.gear, this.routines].forEach((it) => it.round(state)),
         /*
          * The trace, not the console. A refusal to open a fight is not news
          * the *game's* surface should carry — it happens in every corridor and
@@ -3249,9 +3248,9 @@ export class SessionManager {
       // And the key to a way out of this room, off this room's floor.
       this.keys.onCharacter(state);
       this.events.onCharacter(state);
-      // Telling a party leader this character has sat down, and that it is up
-      // again. A fact about this character, so it goes out with the others.
+      // Telling a leader this character sat down or stood up; and, leading, whom to wait for.
       this.remotes.onCharacter(state);
+      this.travel.watchParty(state);
       // Running away first, walked and then the realm's teleport (todo 813): both cost
       // nothing, where an unclean disconnect is penalised and can kill outright.
       this.travel.considerEscape(state);

@@ -1774,3 +1774,43 @@ export function ownAlignment(state: CharacterState): Alignment | null {
   const mine = state.name.toLowerCase();
   return state.online.find((entry) => entry.name.toLowerCase() === mine)?.alignment ?? null;
 }
+
+/**
+ * The party members standing here under `share` of their health, by name
+ * (todo 831): what a leader waits for (`PartyConfig.waitBelow`). Not this
+ * character, not an invitation nobody accepted, and not a member who has
+ * walked out of the room, who has stood up. An unstated health is not low.
+ */
+export function membersBelow(state: CharacterState, share: number): string[] {
+  if (share <= 0) return [];
+  const here = new Set(state.room.occupants.map((who) => who.name.toLowerCase()));
+  return joinedMembers(state)
+    .filter((member) => here.has(member.name.toLowerCase()))
+    .filter((member) => member.health !== null && member.health < share)
+    .map((member) => member.name);
+}
+
+/** Everybody besides this character who has joined its party: an invitation is not membership. */
+function joinedMembers(state: CharacterState): PartyMember[] {
+  const self = state.name?.toLowerCase() ?? null;
+  return state.party.members.filter(
+    (member) => !member.invited && member.name.toLowerCase() !== self
+  );
+}
+
+/** The same, by name. */
+export function partyMembers(state: CharacterState): string[] {
+  return joinedMembers(state).map((member) => member.name);
+}
+
+/** Whether anybody besides this character has joined its party. */
+export function inAParty(state: CharacterState): boolean {
+  return joinedMembers(state).length > 0;
+}
+
+/** The party member this character follows, from the party listing, or undefined. */
+export function leaderOf(state: CharacterState): PartyMember | undefined {
+  const leader = state.party.following?.toLowerCase();
+  if (leader === undefined) return undefined;
+  return state.party.members.find((member) => member.name.toLowerCase() === leader);
+}

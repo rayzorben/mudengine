@@ -544,12 +544,7 @@ export class AutoCombat implements SessionModule {
   }
 
   /** What the party's leader is fighting, if this character follows one and is told to help. */
-  private party: PartyConfig = {
-    assistLeader: false,
-    defendParty: false,
-    restWithLeader: false,
-    askForHealBelow: 0
-  };
+  private party: PartyConfig = DEFAULT_CONFIG.automation.party;
 
   /**
    * The leader's target, when it is a monster standing in this room, or the

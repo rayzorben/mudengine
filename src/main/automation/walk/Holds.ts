@@ -18,12 +18,7 @@ import {
 import { roomAddress, trapOn, type RoomId, type RouteStep } from '../../../shared/world';
 import type { Block } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
-import {
-  holdsForVital,
-  resumeAtHealth,
-  resumeAtMana,
-  type AutomationConfig
-} from '../../../shared/config';
+import { stillFor, type AutomationConfig } from '../../../shared/config';
 import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -892,14 +887,8 @@ export class Holds {
     if (!this.holdWhenHurt) return null;
     const { health } = this.config;
     const margin = tuning().loop.resumeMarginWhenUncapped;
-    const { hp, hpMax, mana, manaMax } = state.vitals;
-    const resumeHp = resumeAtHealth(health, margin);
-    if (holdsForVital(hp, hpMax, health.restBelow, resumeHp, this.hold === 'health')) {
-      return 'health';
-    }
-    const resumeMana = resumeAtMana(health, margin);
-    if (holdsForVital(mana, manaMax, health.meditateBelow, resumeMana, this.hold === 'mana')) {
-      return 'mana';
+    for (const vital of ['health', 'mana'] as const) {
+      if (stillFor(vital, state.vitals, health, this.hold === vital, margin)) return vital;
     }
     return null;
   }

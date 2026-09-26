@@ -30,6 +30,7 @@ import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
+import { PartyWait } from './PartyWait';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
 import {
@@ -334,26 +335,8 @@ export class Travel implements SessionModule {
   private walkAsked = false;
   /** And whether it was asked for with *Run it*: auto-combat off, and left off (todo 06). */
   private walkRun = false;
-  /**
-   * Followers who said `@wait` and have not yet said `@ok`, lower-cased.
-   *
-   * A set, not a flag: two followers may fall behind independently, and the
-   * loop walks on only when the *last* of them has stood back up. Forgotten on
-   * connect — a reconnect is a new session, and a `@wait` from the old one
-   * must not hold a loop nobody asked it to.
-   */
-  private readonly waitingFollowers = new Set<string>();
-  /**
-   * Whether the loop's current pause is this session's own answer to `@wait`.
-   *
-   * `@ok` may only resume what `@wait` stopped: a stop the player chose from
-   * the Loop card is theirs to end, and a follower's `@ok` walking a
-   * hand-stopped loop away would be somebody else's typing moving this
-   * character. Cleared the moment the loop is seen in any state but `stopped`,
-   * because however the hold ended — resumed here, resumed by hand, started
-   * afresh, reset — the claim is spent.
-   */
-  private pausedForFollowers = false;
+  /** Who the party waits for, and the one clock on it (todo 831). See `PartyWait`. */
+  private readonly partyWait: PartyWait;
 
   constructor(
     parts: TravelParts,
@@ -372,6 +355,13 @@ export class Travel implements SessionModule {
     this.hunt = parts.hunt;
     this.itemErrand = parts.itemErrand;
     this.questRunner = parts.questRunner;
+    this.partyWait = new PartyWait({
+      pauseLap: (why) => this.pauseLap(why),
+      lapStopped: () => this.loops.progress.status === 'stopped',
+      resumeLap: (who) => this.resumeLap(who),
+      notice: (message) => this.session.notice(message),
+      waitMinutes: () => this.automationConfig.party.waitMinutes
+    });
   }
 
   private get automationConfig(): AutomationConfig {
@@ -633,26 +623,37 @@ export class Travel implements SessionModule {
    * never touches the walker.
    */
   pace(who: string, ready: boolean): void {
-    const follower = who.toLowerCase();
-    if (!ready) {
-      this.waitingFollowers.add(follower);
-      if (this.loops.progress.status !== 'running') return;
-      /*
-       * The lap before the leg, not after: `walker.stop` reports `ended`
-       * synchronously, and on a loop still *running* that is a counted
-       * failure — "skipping the stop" and a fresh leg planned, for a walk
-       * nothing went wrong with. Stopped first, the runner reads the
-       * ending as what it is: a leg the stop ended.
-       */
-      this.loops.stop(t('session.loop.pausedForRemote', { who }));
-      this.pausedForFollowers = true;
-      this.walker.stop(t('session.loop.pausedForRemote', { who }));
-      return;
-    }
-    this.waitingFollowers.delete(follower);
-    if (this.waitingFollowers.size > 0) return;
-    if (!this.pausedForFollowers || this.loops.progress.status !== 'stopped') return;
-    this.pausedForFollowers = false;
+    this.partyWait.pace(who, ready, 'asked');
+  }
+
+  /** Leading, whom the party waits for on their health. See `PartyWait.onCharacter`. */
+  watchParty(state: CharacterState): void {
+    const { enabled, party } = this.automationConfig;
+    this.partyWait.onCharacter(state, enabled ? party.waitBelow : 0);
+  }
+
+  /** The session is closing: nothing may walk on for a wait it held. */
+  dispose(): void {
+    this.partyWait.forget();
+  }
+
+  /** Stops a running lap for the party, saying why; false where no lap was running. See `PartyWait`. */
+  private pauseLap(why: string): boolean {
+    if (this.loops.progress.status !== 'running') return false;
+    /*
+     * The lap before the leg, not after: `walker.stop` reports `ended`
+     * synchronously, and on a loop still *running* that is a counted
+     * failure — "skipping the stop" and a fresh leg planned, for a walk
+     * nothing went wrong with. Stopped first, the runner reads the
+     * ending as what it is: a leg the stop ended.
+     */
+    this.loops.stop(why);
+    this.walker.stop(why);
+    return true;
+  }
+
+  /** Walks a lap the party stopped on again. See `PartyWait`. */
+  private resumeLap(who: string): void {
     /*
      * Through `startMoving`, not straight at the runner: this is a second
      * door onto the resume, and the wander check exists precisely because
@@ -683,7 +684,7 @@ export class Travel implements SessionModule {
    * the call survives this line.
    */
   noteLap(progress: LoopProgress): void {
-    if (progress.status !== 'stopped') this.pausedForFollowers = false;
+    this.partyWait.noteLap(progress);
   }
 
   /**
@@ -691,8 +692,7 @@ export class Travel implements SessionModule {
    * ended must not hold a loop nobody asked it to.
    */
   forgetFollowers(): void {
-    this.waitingFollowers.clear();
-    this.pausedForFollowers = false;
+    this.partyWait.forget();
   }
 
   /**
@@ -952,7 +952,7 @@ export class Travel implements SessionModule {
   private goingSomewhere(): boolean {
     return (
       this.session.movement().moving ||
-      this.pausedForFollowers ||
+      this.partyWait.holding ||
       this.retreat !== null ||
       this.supplies.current !== null ||
       this.trainLevel.busy ||
@@ -2095,7 +2095,7 @@ export class Travel implements SessionModule {
      * A running lap is stopped; one already stopped **restates** why.
      *
      * The second half is not tidiness. `stop` is idempotent, so an
-     * already-stopped lap took nothing from a death — and `pausedForFollowers`
+     * already-stopped lap took nothing from a death — and the party's wait
      * is only spent when a publish shows the lap in some state other than
      * `stopped`, which a skipped `stop()` never produces. A `@wait`, a death,
      * and then `@ok` therefore walked the character out of the temple on a
@@ -2104,7 +2104,7 @@ export class Travel implements SessionModule {
      */
     if (this.loops.progress.status === 'running') this.loops.stop(t('session.loop.stoppedDied'));
     else this.loops.restate(t('session.loop.stoppedDied'));
-    this.pausedForFollowers = false;
+    this.partyWait.end();
     // And an errand: the shop it was walking to is several maps away now.
     // With it goes the route it was shopping on behalf of — a death is the
     // player's cue to decide what happens next, not the client's.

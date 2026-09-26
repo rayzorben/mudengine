@@ -47,6 +47,7 @@
  * longer the only one. See CLAUDE.md "Every listing is seeded by a command and
  * maintained for free".
  */
+import { PartyListing } from './PartyListing';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
@@ -134,11 +135,16 @@ export class Routines implements SessionModule {
   /** The wrong-book correction has run, so it can only run once. */
   private bookCorrected = false;
 
+  /** The party listing on its clock and after a round (todo 831). See `PartyListing`. */
+  private readonly partyListing: PartyListing;
+
   constructor(
     private config: AutomationConfig,
     private readonly queue: CommandQueue,
     private readonly events: RoutineEvents
-  ) {}
+  ) {
+    this.partyListing = new PartyListing(queue, () => this.config);
+  }
 
   configure(config: AutomationConfig): void {
     this.config = config;
@@ -159,7 +165,13 @@ export class Routines implements SessionModule {
     this.bookCorrected = false;
     this.lastSent = Date.now();
     this.inRealm = false;
+    this.partyListing.reset();
     this.stopIdle();
+  }
+
+  /** A combat round has come round: the party listing, where it is asked for then. */
+  round(state: CharacterState): void {
+    this.partyListing.afterRound(state);
   }
 
   /**
@@ -237,6 +249,8 @@ export class Routines implements SessionModule {
      * busiest path in the client.
      */
     this.askRoster();
+    // And the party listing on its clock (todo 831).
+    this.partyListing.onCharacter(state);
   }
 
   /**
