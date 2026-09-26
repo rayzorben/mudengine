@@ -30,6 +30,7 @@ import { MARK_GLYPH } from './marks';
 import { GLYPH_CELLS } from '@shared/template';
 import { sliceLines, splitMarks } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
+import { silenceQueries } from '../lib/terminalQueries';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
 export interface TerminalHandle {
@@ -365,6 +366,9 @@ export default function TerminalView({
 
     const fit = new FitAddon();
     fitRef.current = fit;
+    // The terminal answers no query a server sends and turns on no reporting
+    // mode: xterm's answer would be typed into the game (todo 832).
+    silenceQueries(term);
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
     /*
