@@ -2465,6 +2465,34 @@ export interface RemoteLever {
   item?: number;
 }
 
+/**
+ * A gate's levers grouped by the room each is pulled in, in the realm's order,
+ * and whether every room must be visited or any one will do.
+ *
+ * A set spread over rooms is a round of them, and the realm's own count says
+ * it is a set: `Needs N Actions` with N levers over several rooms. A smaller
+ * count, or none, names alternatives (a lever on each side of a gate). The
+ * walk (`Levers.fetchLever`) and its price (`Router.leverDetour`) both read
+ * this, so the plan prices the walk that is made.
+ */
+export interface LeverRooms {
+  rooms: ReadonlyMap<RoomId, readonly RemoteLever[]>;
+  everyRoom: boolean;
+}
+
+export function leverRooms(
+  levers: readonly RemoteLever[],
+  actionsNeeded: number | undefined
+): LeverRooms {
+  const rooms = new Map<RoomId, RemoteLever[]>();
+  for (const lever of levers) {
+    const held = rooms.get(lever.at);
+    if (held) held.push(lever);
+    else rooms.set(lever.at, [lever]);
+  }
+  return { rooms, everyRoom: rooms.size > 1 && actionsNeeded === levers.length };
+}
+
 /** `map/room`, the key used everywhere. */
 export type RoomId = string;
 
@@ -3084,7 +3112,7 @@ export type RouteBlock =
        * A door's lever is not on the door — `buildRealm` writes
        * `Requirement.actions` only for an exit that states `Needs N Actions`
        * — so this is the lever index joined at the step
-       * (`WorldGraph.leversHere`), and it is carried here because the block is
+       * (`WorldGraph.leversFor`), and it is carried here because the block is
        * what the panel's headline is written from. Without it the head of the
        * plan said *needs 1000 picklocks; your picklocks are not known yet*
        * while the chip on that same row said *"use crowbar" here*: two

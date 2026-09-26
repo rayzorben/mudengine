@@ -1456,6 +1456,10 @@ tuning:
     # errand, not its cost.
     keyFetchTrips: 2
 
+    # The most a walk to a door's lever in another room and back may cost before
+    # the door is a wall again. The Grand Stair door's lever walk prices at about 57.
+    leverDetourCost: 500
+
     # How many of a consumable a quest's plan buys against a room spell on the
     # way, where the realm says using one stops the spell. A waterskin is three
     # uses and its spell lasts 600 ticks, the desert crossing is 64 rooms each

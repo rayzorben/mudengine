@@ -11,7 +11,7 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import { describeObstacle } from './obstacle';
+import { describeObstacle, leverOpening } from './obstacle';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
@@ -24,11 +24,13 @@ import {
   hazardAvoided,
   itemDemanded,
   landingRooms,
+  leverRooms,
   openableHere,
   roomId,
   sameLanding,
   type Direction,
   type Landing,
+  type RemoteLever,
   type Requirement,
   type RoomId,
   type Route,
@@ -390,6 +392,12 @@ function plainWords(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()} `;
+}
+
+/** The levers a walk to a door's levers pulls, and the walk's cost there and back. */
+interface LeverWalk {
+  pulled: readonly RemoteLever[];
+  detour: number;
 }
 
 /** A traveller's kept-out words, each with its matchable form. */
@@ -1133,6 +1141,10 @@ export class Router {
    * ordinary path, which it does not touch.
    */
   private landingReachable: ReadonlySet<RoomId> | null = null;
+  /** Each door's lever detour, per traveller, so a search sweeps a door once. See `leverDetour`. */
+  private readonly leverDetours = new WeakMap<Traveller, Map<string, LeverWalk | null>>();
+  /** Whether a lever detour is being swept, so the sweep prices none of its own. */
+  private pricingLever = false;
 
   constructor(private readonly index: RoomIndex) {
     // Held rather than asked for: read on every edge of every search, and the
@@ -1639,7 +1651,8 @@ export class Router {
       // same way or the two disagree about what the plan crosses.
       const walled =
         edgeWall(step.requirement, traveller) !== null &&
-        this.leverPrice(step.from, step.direction, traveller) === null;
+        this.leverPrice(step.from, step.direction, step.requirement?.actionsNeeded, traveller) ===
+          null;
       if (walled || traveller.refused?.has(edge) === true) {
         walls.add(edge);
       }
@@ -2655,7 +2668,8 @@ export class Router {
      */
     const penalty =
       priced !== null && priced >= tuning().world.wallCost
-        ? (this.leverPrice(from, exit.direction, traveller) ?? walled)
+        ? (this.leverPrice(from, exit.direction, exit.requirement?.actionsNeeded, traveller) ??
+          walled)
         : walled;
 
     // A portal costs its penalty over a plain step, so the router prefers
@@ -3044,7 +3058,10 @@ export class Router {
         const wall = edgeWall(exit.requirement, traveller);
         // Named as a wall only where nothing here opens it, the reading
         // `stepCost` priced it by. `Levers.pullLevers` sends the phrase.
-        if (wall !== null && this.leverPrice(prev, exit.direction, traveller) === null) {
+        if (
+          wall !== null &&
+          this.leverPrice(prev, exit.direction, exit.requirement?.actionsNeeded, traveller) === null
+        ) {
           const item = wall.keyId === undefined ? undefined : this.index.item(wall.keyId);
           const off = switchedOff(wall, traveller);
           blocks.unshift({
@@ -3059,7 +3076,7 @@ export class Router {
             ...(off.length === 0 ? {} : { switchedOff: off }),
             ...(wall.keyId === undefined ? {} : { keyId: wall.keyId }),
             ...(item === undefined ? {} : { itemName: item.name }),
-            ...this.leverSaying(prev, exit.direction)
+            ...this.leverSaying(prev, exit.direction, exit.requirement?.actionsNeeded)
           });
         }
       }
@@ -3142,7 +3159,7 @@ export class Router {
                 this.index,
                 // A door's lever is not on the door: the step is what knows
                 // where it is standing, so the join is made here.
-                this.index.leversHere(prev, exit.direction)
+                leverOpening(this.index, prev, exit.direction)
               )
             }
           : {}),
@@ -3340,7 +3357,7 @@ export class Router {
   /**
    * The word that opens this step here, for the head of the plan.
    *
-   * Asked of `WorldGraph.leversHere` and **not** of `leverPrice`, because this
+   * Asked of the lever index and **not** of `leverPrice`, because this
    * is only reached when the price already said *wall* — and the most useful
    * case of that is a lever whose item the listed pack lacks. *Say "use crowbar"
    * here, carrying crowbar* is the errand; *needs 1000 picklocks, your
@@ -3348,9 +3365,12 @@ export class Router {
    */
   private leverSaying(
     from: RoomId,
-    direction: string
+    direction: string,
+    actionsNeeded: number | undefined
   ): { opensBySaying?: string; opensItemName?: string } {
-    const lever = this.index.leversHere(from, direction)[0];
+    // Read by `leverRooms`, as the price reads it: a lever here among others elsewhere.
+    const { rooms, everyRoom } = leverRooms(this.index.leversFor(from, direction), actionsNeeded);
+    const lever = everyRoom ? undefined : rooms.get(from)?.[0];
     if (lever === undefined) return {};
     const item = lever.item === undefined ? undefined : this.index.item(lever.item);
     return {
@@ -3378,15 +3398,20 @@ export class Router {
    * three copies of *can this be opened from here* agree exactly until one is
    * edited.
    *
-   * Every lever in the room the step leaves from, and the same price
-   * `edgePenalty` puts on a hidden exit in that shape, because `Walker` sends
-   * both the same way — one command per lever, then the step again. Levers
-   * somewhere else leave the wall standing: the detour is still not planned,
-   * it is made reactively by `Levers.fetchLever`.
+   * The levers the walk pulls, and the same price `edgePenalty` puts on a
+   * hidden exit in that shape, because `Walker` sends both the same way: one
+   * command per lever, then the step again. Levers somewhere else add the walk
+   * to them and back (`leverDetour`, todo 837), which `Levers.fetchLever`
+   * makes when the server refuses the step.
    */
-  private leverPrice(from: RoomId, direction: string, traveller: Traveller): number | null {
-    const levers = this.index.leversHere(from, direction);
-    if (levers.length === 0) return null;
+  private leverPrice(
+    from: RoomId,
+    direction: string,
+    actionsNeeded: number | undefined,
+    traveller: Traveller
+  ): number | null {
+    const walk = this.leverDetour(from, direction, actionsNeeded, traveller);
+    if (walk === null) return null;
     /*
      * And the pack decides, exactly as it does for a hidden exit's levers
      * (`actionItemLacking`): `use crowbar` opens the warehouse door at 1/1104
@@ -3397,12 +3422,99 @@ export class Router {
      * route was planned through *hold up talisman* at the cost of a free
      * lever, by a character with no talisman.
      */
-    const open = 25 + 5 * levers.length;
-    const wanted = levers
+    const open = 25 + 5 * walk.pulled.length + walk.detour;
+    const wanted = walk.pulled
       .map((lever) => lever.item)
       .filter((item): item is number => item !== undefined);
     if (wanted.length === 0 || wanted.every((item) => traveller.keys?.includes(item))) return open;
     return traveller.packKnown === true ? null : open + UNEVALUATED;
+  }
+
+  /**
+   * The levers a walk to this door's levers pulls and what the walk costs
+   * there and back, or null where none opens it for this traveller (todo 837).
+   *
+   * Read the way `Levers.fetchLever` walks it (`leverRooms`): a counted set is
+   * a round of its rooms in the realm's order and back; otherwise the room
+   * the step leaves from if a lever is there, else the one cheapest there and
+   * back. Each leg is measured with `sweepTo`, and a walk past
+   * `tuning.world.leverDetourCost`, into a room the traveller avoids, or with
+   * no way there or back, is null. The Grand Stair door at 7/150 opens only
+   * from 7/152, and priced as a wall it kept Black House from the Fungus
+   * Forest. Priced once per door per traveller (`leverDetours`), and a sweep
+   * pricing a walk prices no lever walk of its own, so the walk it finds is
+   * one a character can make without another lever.
+   */
+  private leverDetour(
+    from: RoomId,
+    direction: string,
+    actionsNeeded: number | undefined,
+    traveller: Traveller
+  ): LeverWalk | null {
+    const levers = this.index.leversFor(from, direction);
+    if (levers.length === 0) return null;
+    const { rooms, everyRoom } = leverRooms(levers, actionsNeeded);
+    const here = rooms.get(from);
+    if (!everyRoom && here !== undefined) return { pulled: here, detour: 0 };
+    if (this.pricingLever) return null;
+    const key = `${from}|${direction}`;
+    const known = this.leverDetours.get(traveller) ?? new Map<string, LeverWalk | null>();
+    this.leverDetours.set(traveller, known);
+    if (known.has(key)) return known.get(key) ?? null;
+    this.pricingLever = true;
+    let walk: LeverWalk | null;
+    try {
+      walk = everyRoom
+        ? this.leverRound(from, [...rooms.keys()], levers, traveller)
+        : this.nearestLever(from, rooms, traveller);
+    } finally {
+      this.pricingLever = false;
+    }
+    if (walk !== null && walk.detour > tuning().world.leverDetourCost) walk = null;
+    known.set(key, walk);
+    return walk;
+  }
+
+  /** A counted set's rooms walked in order from `from` and back to it, or null. */
+  private leverRound(
+    from: RoomId,
+    rooms: readonly RoomId[],
+    levers: readonly RemoteLever[],
+    traveller: Traveller
+  ): LeverWalk | null {
+    // A lever in a room this traveller keeps out of is not pulled.
+    if (rooms.some((room) => traveller.avoid?.has(room) === true)) return null;
+    let detour = 0;
+    const stops = [from, ...rooms, from];
+    for (let leg = 1; leg < stops.length; leg += 1) {
+      const cost = this.legCost(stops[leg - 1]!, stops[leg]!, traveller);
+      if (cost === null) return null;
+      detour += cost;
+    }
+    return { pulled: levers, detour };
+  }
+
+  /** Of alternative lever rooms, the one cheapest there and back, or null. */
+  private nearestLever(
+    from: RoomId,
+    rooms: ReadonlyMap<RoomId, readonly RemoteLever[]>,
+    traveller: Traveller
+  ): LeverWalk | null {
+    const open = new Set([...rooms.keys()].filter((room) => traveller.avoid?.has(room) !== true));
+    let best: LeverWalk | null = null;
+    for (const [room, there] of this.sweepTo(from, open, traveller)) {
+      const back = this.legCost(room, from, traveller);
+      if (back === null) continue;
+      const detour = there.cost + back;
+      if (best === null || detour < best.detour) best = { pulled: rooms.get(room)!, detour };
+    }
+    return best;
+  }
+
+  /** The router's cost of the cheapest walk from `start` to `end`, or null. */
+  private legCost(start: RoomId, end: RoomId, traveller: Traveller): number | null {
+    if (start === end) return 0;
+    return this.sweepTo(start, new Set([end]), traveller).get(end)?.cost ?? null;
   }
 
   /**

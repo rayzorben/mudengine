@@ -10,6 +10,7 @@
  * every arrival. The why is `mudengine-automation` › `parts/walking.md`.
  */
 import {
+  leverRooms,
   roomId,
   openableHere,
   type RemoteLever,
@@ -274,32 +275,9 @@ export class Levers {
     const levers = this.events.leversFor?.(step.from, step.direction) ?? [];
     if (levers.length === 0) return false;
 
-    /*
-     * Grouped by the room each is pulled in, in the order the realm listed
-     * them — which is what `specific order` wants and what `any order` does
-     * not care about, so one order serves both.
-     */
-    const rooms = new Map<RoomId, RemoteLever[]>();
-    for (const lever of levers) {
-      const held = rooms.get(lever.at);
-      if (held) held.push(lever);
-      else rooms.set(lever.at, [lever]);
-    }
-
-    /*
-     * **A set spread over rooms is a round of them**, and the realm's own count
-     * is what says it is a set: `buildRealm` writes `Requirement.actions` only
-     * when the stated count matches the levers found, and this is that same
-     * test asked of a journey rather than of a room. Eleven exits of the
-     * shipped realm are `Needs N Actions` with N levers over several rooms —
-     * six across two, two across three, two across four and one across seven.
-     * `runLeverSet` walks them; it was a refusal until todo 04 reported one of
-     * the six (`1/1056` north, two levers, `any order`).
-     */
-    const needed = step.requirement?.actionsNeeded;
-    if (rooms.size > 1 && needed !== undefined && needed === levers.length) {
-      return this.runLeverSet(step, key, rooms.size);
-    }
+    // The set-or-alternatives reading is `leverRooms`; the router prices it the same way.
+    const { rooms, everyRoom } = leverRooms(levers, step.requirement?.actionsNeeded);
+    if (everyRoom) return this.runLeverSet(step, key, rooms.size);
 
     /*
      * Everything else names **alternatives**, and the realm says so two ways:

@@ -25,7 +25,7 @@ import {
   type Vertical
 } from '../../shared/map';
 import { roomId, type Direction, type RoomId } from '../../shared/world';
-import { describeObstacle } from './obstacle';
+import { describeObstacle, leverOpening } from './obstacle';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
 
@@ -80,7 +80,7 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
       blocked[exit.direction] = describeObstacle(
         exit.requirement,
         graph,
-        graph.leversHere(cell.id, exit.direction)
+        leverOpening(graph, cell.id, exit.direction)
       );
     }
     if (Object.keys(blocked).length > 0) cell.blocked = blocked;
@@ -112,7 +112,7 @@ export function localMap(graph: WorldGraph, centre: RoomId, radius = DEFAULT_RAD
               obstacle: describeObstacle(
                 exit.requirement,
                 graph,
-                graph.leversHere(cell.id, exit.direction)
+                leverOpening(graph, cell.id, exit.direction)
               )
             }
           : {})

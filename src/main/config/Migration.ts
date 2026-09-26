@@ -6338,6 +6338,8 @@ function theTuningBlockGainedKeys(
      * as an errand or left to the long way.
      */
     addKey('world', 'keyFetchTrips', DEFAULT_INTERNAL.tuning.world.keyFetchTrips);
+    // And what a door's lever in another room may cost to walk to (todo 837).
+    addKey('world', 'leverDetourCost', DEFAULT_INTERNAL.tuning.world.leverDetourCost);
     // Where a round's blows begin, and how long a heal, blessing or cure
     // holds the next one when none are seen (todo 823).
     addKey('combat', 'roundGapMs', DEFAULT_INTERNAL.tuning.combat.roundGapMs);
