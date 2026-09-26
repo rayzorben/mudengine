@@ -369,6 +369,16 @@ export class CommandQueue {
           if (intent.expiresAt === undefined) delete existing.expiresAt;
           else existing.expiresAt = Math.max(existing.expiresAt, intent.expiresAt);
         }
+        /*
+         * And the proposer is told when it goes (todo 833): the latest
+         * proposal speaks for the intent, as it does for the expiry, so its
+         * `onSent` replaces the waiting one and runs once for one send. Only
+         * for the same command: a joiner whose own command is not the one
+         * waiting is told nothing, since that command is not what goes out.
+         */
+        if (intent.onSent !== undefined && intent.command === existing.command) {
+          existing.onSent = intent.onSent;
+        }
         return 'joined';
       }
     }
