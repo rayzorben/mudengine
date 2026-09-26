@@ -43,6 +43,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import { RoomDraft } from './draft';
 import { isPortalClaim, MOVE_COMMANDS, type Expectations } from './expectations';
 import { itemList, list, parseCoinEntry } from './inventory';
+import { leavesRoom } from './departs';
 
 /** What the wire observed about one thing, beside its name (`WorldGraph.buildItemEntity`). */
 export type ItemObservation = Parameters<WorldGraph['buildItemEntity']>[1];
@@ -234,16 +235,10 @@ export function playerArrives(
 ): CharacterState | null {
   if (!player || s.room.occupants.some((who) => who.name === player)) return null;
   /*
-   * A *player*, said outright rather than classified.
-   *
-   * `<Name> walks into the room from the east.` is composed in
-   * `Player.cs` and nowhere else; a monster's arrival comes out of
-   * `MobType.MoveMessage`, which is realm data and reads nothing like
-   * this (docs/greatermud/messages.md — the text is data, not code). So
-   * the sentence itself is the statement, and running it through the
-   * classifier would only be able to weaken it: somebody who has not
-   * appeared in a listing yet has a capitalised name and nothing else,
-   * which is precisely the `unknown` case.
+   * A *player*, said outright rather than classified: the rule reads only a
+   * capitalised name (a monster's default arrival uses the same words,
+   * `Mob.cs:177`), and somebody who has not appeared in a listing yet has
+   * that name and nothing else, which classifying could only weaken.
    */
   const arrival: RoomOccupant = {
     name: player,
@@ -284,10 +279,11 @@ export function searchFoundNothing(
  * The name in an arrival sentence the realm data could not resolve.
  *
  * `A large lashworm crawls into the room from the above!` leaves
- * `large lashworm crawls`, and the last word is the finite verb — that is
- * positional grammar rather than a verb list, which is the thing
+ * `large lashworm crawls`, and a departure (`A giant crab scurries off to the
+ * north.`) leaves `giant crab scurries`: the last word is the finite verb.
+ * That is positional grammar rather than a verb list, which is the thing
  * docs/greatermud/messages.md forbids: English puts the verb immediately before
- * `into the room from`, whatever word the realm chose for it.
+ * `into the room from` or `off to the`, whatever word the realm chose.
  *
  * A last resort, used only when neither the room nor the realm's monster table
  * could say. It can be wrong — a two-word verb phrase leaves a word on the
@@ -881,15 +877,23 @@ export class RoomTracker {
     return { ...arrival, room: { ...arrival.room, light } };
   }
 
-  /** `mob-arrives-room`: a monster walking in, classified as `Also here:` would be. */
-  mobArrives(
+  /**
+   * `mob-arrives-room` and `mob-leaves-room`: a monster walking in, classified
+   * as `Also here:` would be, or out. Namesakes are counted as `Also here:`
+   * lists them, one entry each (captures/049), so an arrival always adds one
+   * and a departure takes one (todo 826).
+   */
+  mobMoves(
     s: CharacterState,
-    attacker: string | undefined,
-    line: string | undefined
+    arrives: boolean,
+    g: Readonly<Record<string, string>>
   ): CharacterState | null {
-    const named = attacker ?? trimVerb(line ?? '');
+    const named = g['mob'] ?? g['attacker'] ?? trimVerb(g['line'] ?? '');
     if (named.length === 0) return null;
-    if (s.room.occupants.some((who) => mobKey(who.name) === mobKey(named))) return null;
+    if (!arrives) {
+      const after = leavesRoom(s, mobKey(named), true);
+      return after.room.occupants.length === s.room.occupants.length ? null : after;
+    }
     const [arrival] = this.classify([named], s.online);
     if (arrival === undefined) return null;
     return { ...s, room: { ...s.room, occupants: [...s.room.occupants, arrival] } };

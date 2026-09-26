@@ -571,6 +571,7 @@ export class Classifier {
       const match = rule.pattern.exec(text);
       if (!match) continue;
       if (rule.type === 'room-name' && !looksLikeRoomName(text)) continue;
+      if (this.inDescription && rule.outsideDescription) continue;
       /*
        * Not a room while a listing is being read. A gang name wrapped onto its
        * own line in a columnar `who` — `Khazarad`, the tail of `Dukes of` —

@@ -3171,6 +3171,38 @@ describe('who is in the room, between looks', () => {
     const soul = tracker.current.room.occupants.find((who) => who.name === 'Soul');
     expect(soul?.kind).toBe('player');
   });
+
+  /* Todo 826: every namesake that walks in is counted, and one leaves per departure. */
+  it('counts every namesake that walks in, as Also here: lists them', () => {
+    // captures/049:28-38: two more giant crabs walk in, and the next listing has three.
+    const { tracker, feed } = feeder();
+    feed('[HP=678/738]:');
+    feed('Sandbar');
+    feed('Also here: king crab, giant crab.');
+    feed('Obvious exits: north, south, northeast');
+    feed('giant crab moves into the room from the north.');
+    feed('giant crab moves into the room from the north.');
+    expect(names(tracker.current.room.occupants)).toEqual([
+      'king crab',
+      'giant crab',
+      'giant crab',
+      'giant crab'
+    ]);
+  });
+
+  it('takes one namesake out per departure', () => {
+    // The wire, 2026-09-21_15-27-56_soul.log:1008-1015.
+    const { tracker, feed } = feeder();
+    feed('[HP=61/KAI=5]:');
+    feed('Bank of Godfrey');
+    feed('Also here: big elite guardsman, big elite guardsman.');
+    feed('Obvious exits: north, east');
+    feed('guardsman moves into the room from the north.');
+    feed('big elite guardsman just left to the west.');
+    expect(names(tracker.current.room.occupants)).toEqual(['big elite guardsman', 'guardsman']);
+    feed('big elite guardsman just left to the north.');
+    expect(names(tracker.current.room.occupants)).toEqual(['guardsman']);
+  });
 });
 
 /*
