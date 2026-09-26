@@ -1509,6 +1509,13 @@ export interface HealthConfig {
    */
   meditateBelow: number;
   /**
+   * Keep meditating to this fraction of mana: `restTo` for mana (todo 825).
+   * `meditateBelow` starts a stretch and this carries it on through whatever
+   * breaks it, and a route or a loop held for mana walks on here. 0 is the
+   * single sit-down; never below `meditateBelow`, clamped up as `restTo` is.
+   */
+  meditateTo: number;
+  /**
    * What to use, and when — *use an item of this name when that is true*
    * (todo 19, 2026-09-12; the only potion setting since todo 00).
    *
@@ -2682,6 +2689,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       restNextDoor: true,
       restBeforeTraps: 0.45,
       meditateBelow: 0,
+      meditateTo: 0,
       potions: [],
       useWards: true
     },
@@ -3092,6 +3100,15 @@ function fraction(value: unknown, fallback: number): number {
   if (!Number.isFinite(n) || n < 0) return fallback;
   const asFraction = n > 1 ? n / 100 : n;
   return Math.min(1, Math.max(0, asFraction));
+}
+
+/**
+ * The `to` of a start-and-carry-on pair (`restTo`, `meditateTo`, `healTo`):
+ * clamped up to its `below`, since a line under the floor is two opposite
+ * instructions about one number, and 0 kept as 0, the single sit-down or cast.
+ */
+function ceilingOver(to: number, below: number): number {
+  return to === 0 ? 0 : Math.max(to, below);
 }
 
 function normalizeThresholds(value: unknown, fallback: VitalThresholds): VitalThresholds {
@@ -3740,6 +3757,7 @@ function normalizeHealth(value: unknown): HealthConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.health;
   const restBelow = fraction(raw['restBelow'], d.restBelow);
+  const meditateBelow = fraction(raw['meditateBelow'], d.meditateBelow);
   return {
     restBelow,
     /*
@@ -3748,13 +3766,11 @@ function normalizeHealth(value: unknown): HealthConfig {
      * and stand up at 40%. 0 stays 0 — that is the single sit-down, not a
      * lower bound.
      */
-    restTo: (() => {
-      const to = fraction(raw['restTo'], d.restTo);
-      return to === 0 ? 0 : Math.max(to, restBelow);
-    })(),
+    restTo: ceilingOver(fraction(raw['restTo'], d.restTo), restBelow),
     restNextDoor: bool(raw['restNextDoor'], d.restNextDoor),
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
-    meditateBelow: fraction(raw['meditateBelow'], d.meditateBelow),
+    meditateBelow,
+    meditateTo: ceilingOver(fraction(raw['meditateTo'], d.meditateTo), meditateBelow),
     potions: normalizePotionRules(raw['potions']),
     useWards: bool(raw['useWards'], d.useWards)
   };
@@ -4092,11 +4108,7 @@ function normalizeSpells(value: unknown): SpellsConfig {
      * two opposite instructions about the same number. 0 stays 0 — that is
      * the single-cast answer, not a lower bound.
      */
-    healTo: (() => {
-      const to = fraction(raw['healTo'], d.healTo);
-      const below = fraction(raw['healBelow'], d.healBelow);
-      return to === 0 ? 0 : Math.max(to, below);
-    })(),
+    healTo: ceilingOver(fraction(raw['healTo'], d.healTo), fraction(raw['healBelow'], d.healBelow)),
     healParty: bool(raw['healParty'], d.healParty),
     invokeItems: bool(raw['invokeItems'], d.invokeItems),
     minMana: fraction(raw['minMana'], d.minMana),
@@ -4299,8 +4311,33 @@ function normalizeLogging(value: unknown): LoggingConfig {
  * dependency-free by rule, so nothing in it can reach `tuning()`.
  */
 export function resumeAtHealth(health: HealthConfig, marginWhenUncapped: number): number {
-  if (health.restTo > 0) return health.restTo;
-  return Math.min(1, health.restBelow + marginWhenUncapped);
+  return resumeAt(health.restBelow, health.restTo, marginWhenUncapped);
+}
+
+/** The mana a journey held for mana walks on again at: the same pair, `meditateBelow`/`meditateTo`. */
+export function resumeAtMana(health: HealthConfig, marginWhenUncapped: number): number {
+  return resumeAt(health.meditateBelow, health.meditateTo, marginWhenUncapped);
+}
+
+/**
+ * Whether a journey stays held for a vital (todo 825): under `below` to stop,
+ * and once `held`, under `resume` to stay stopped. An unknown figure or
+ * maximum never holds, and lets a held journey go.
+ */
+export function holdsForVital(
+  value: number | null,
+  max: number | null,
+  below: number,
+  resume: number,
+  held: boolean
+): boolean {
+  if (below <= 0 || value === null || max === null || max <= 0) return false;
+  return value / max < (held ? resume : below);
+}
+
+function resumeAt(below: number, to: number, marginWhenUncapped: number): number {
+  if (to > 0) return to;
+  return Math.min(1, below + marginWhenUncapped);
 }
 
 /** The connection target implied by the config, for the command strip. */

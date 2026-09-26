@@ -243,6 +243,8 @@ describe('the "stand up at" health thresholds', () => {
       // And by `statedTheRestNextDoor`, on.
       restNextDoor: true,
       meditateBelow: 0.3,
+      // And by `statedTheMeditateCeiling`, off.
+      meditateTo: 0,
       // And by `statedTheNewAutomation`, at the default.
       useWards: true
     });
@@ -4102,7 +4104,9 @@ describe('resting before a trap', () => {
       restBeforeTraps: 0.45,
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
-      useWards: true
+      useWards: true,
+      // And by `statedTheMeditateCeiling`, off.
+      meditateTo: 0
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(
@@ -4141,7 +4145,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBeforeTraps: 0.45,
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
-      useWards: true
+      useWards: true,
+      // And by `statedTheMeditateCeiling`, off.
+      meditateTo: 0
     });
   });
 
@@ -4161,7 +4167,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBeforeTraps: 0.45,
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
-      useWards: true
+      useWards: true,
+      // And by `statedTheMeditateCeiling`, off.
+      meditateTo: 0
     });
   });
 
@@ -4174,7 +4182,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBeforeTraps: 0.45,
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
-      useWards: true
+      useWards: true,
+      // And by `statedTheMeditateCeiling`, off.
+      meditateTo: 0
     });
   });
 
@@ -4189,7 +4199,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBeforeTraps: 0.45,
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
-      useWards: true
+      useWards: true,
+      // And by `statedTheMeditateCeiling`, off.
+      meditateTo: 0
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(
@@ -6294,5 +6306,45 @@ describe('the Freedom cure is stated', () => {
         'notices.migration.freedomCureStated.many'
       )
     ).toEqual([]);
+  });
+});
+
+/* `statedTheMeditateCeiling` (todo 825): `meditateTo` beside its partner, with the template's words. */
+describe('Keep Meditating To is stated', () => {
+  const write = (file: string, body: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `automation:\n  health:\n${body}`, 'utf8');
+  };
+
+  it('writes it off, after meditateBelow, with its comment, once', () => {
+    const profile = home.profile('festus').file;
+    write(profile, '    restBelow: 0.4\n    meditateBelow: 0.2\n    useWards: true\n');
+    migrate(true);
+    const text = fs.readFileSync(profile, 'utf8');
+    const health = (parse(text) as { automation: { health: Record<string, unknown> } }).automation
+      .health;
+    const keys = Object.keys(health);
+    expect(keys[keys.indexOf('meditateBelow') + 1]).toBe('meditateTo');
+    expect(health['meditateTo']).toBe(0);
+    expect(text).toContain('Keep meditating to this share of mana');
+    expect(
+      notesOf(
+        said,
+        'notices.migration.meditateCeiling.one',
+        'notices.migration.meditateCeiling.many'
+      )
+    ).toHaveLength(1);
+    migrate(true);
+    expect(fs.readFileSync(profile, 'utf8')).toBe(text);
+  });
+
+  it('never overwrites a stated figure', () => {
+    const profile = home.profile('soul').file;
+    write(profile, '    meditateBelow: 0.2\n    meditateTo: 0.9\n');
+    migrate(true);
+    const health = (
+      parse(fs.readFileSync(profile, 'utf8')) as { automation: { health: Record<string, unknown> } }
+    ).automation.health;
+    expect(health['meditateTo']).toBe(0.9);
   });
 });

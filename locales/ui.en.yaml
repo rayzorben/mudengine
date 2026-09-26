@@ -506,6 +506,9 @@ notices:
     profilesFolded:
       many: '{count} character files moved into their own folders, so each can hold its own loops.'
       one: 1 character file moved into its own folder, so it can hold its own loops.
+    meditateCeiling:
+      many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
+      one: 'Keep Meditating To Mana % was added, off, to {fileList}'
     freedomCureStated:
       many: 'A Freedom spell, cast when the character is held in place, was added blank to the cures
         in {count} files: {fileList}'
@@ -3316,6 +3319,10 @@ settings:
       and at low health it kills. Use Auto-Run instead.
     meditateBelowHint: Sends med below this. Ignored for a class with no mana.
     meditateBelowLabel: Meditate If Below Mana %
+    meditateToHint: Sends med again after something interrupts it, and holds a walk or loop, until mana
+      reaches this. 0 meditates once and walks on a little above Meditate If Below. Raised to
+      Meditate If Below if it is lower.
+    meditateToLabel: Keep Meditating To Mana %
     outnumberedHint: A health threshold notices being swarmed too late. 0 is off.
     outnumberedLabel: Run If Attackers Exceed
     pvpActionHint: What to do about the fight itself. Running happens as soon as the attack is seen,
@@ -4765,6 +4772,8 @@ automation:
     started: 'Looping {loopName}: {stopCount} stops.'
     stopped: 'Loop stopped: {reason}'
     tooHurt: Health below the loop threshold; resting to recover.
+    tooDrained: Mana below the meditate threshold; meditating to recover.
+    manaBack: Mana is back; the loop continues.
     afflicted: Waiting out a condition before the next leg.
     afflictionOver: The condition has passed; the loop continues.
     heldAfterEscape: Ran away; the loop waits here until the fight is over and health is back.

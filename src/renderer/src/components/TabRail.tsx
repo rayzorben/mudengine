@@ -7,8 +7,13 @@ import { reordered } from '../lib/reorder';
 import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
 import type { SessionId, SessionSummary } from '@shared/ipc';
-import { isAfflictionHold, type AfflictionHold, type WalkProgress } from '@shared/walk';
-import type { LoopProgress } from '@shared/loops';
+import {
+  isAfflictionHold,
+  walkIsResting,
+  type AfflictionHold,
+  type WalkProgress
+} from '@shared/walk';
+import { loopIsResting, type LoopProgress } from '@shared/loops';
 import { keepFocus } from '../lib/focus';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { t } from '../lib/i18n';
@@ -216,7 +221,7 @@ function attention(
    */
   if (
     view.loop.status === 'running' &&
-    (view.loop.hold === 'retreated' || view.loop.hold === 'health' || view.loop.hold === 'resting')
+    (view.loop.hold === 'retreated' || loopIsResting(view.loop.hold))
   ) {
     return { level: 'info', label: t('tabs.tab.markRecovering') };
   }
@@ -259,7 +264,7 @@ function attention(
     // `resting` is the beat a step waits for a rest this client has just asked
     // for (todo 14). Short, but a tab reading `walking` for a character that is
     // sitting down is the thing these branches exist to prevent.
-    (view.walk.hold === 'health' || view.walk.hold === 'trap' || view.walk.hold === 'resting')
+    walkIsResting(view.walk.hold)
   ) {
     return { level: 'info', label: t('tabs.tab.markRecovering') };
   }

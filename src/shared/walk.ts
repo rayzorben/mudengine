@@ -167,6 +167,8 @@ export function isAfflictionHold(hold: string | null): hold is AfflictionHold {
  */
 export type WalkHold =
   | 'health'
+  /** Mana under `meditateBelow`, until `meditateTo` (todo 825). */
+  | 'mana'
   | 'fight'
   | 'trap'
   | AfflictionHold
@@ -176,6 +178,15 @@ export type WalkHold =
   /** A room too dark to read, while the light that fixes it is on its way. */
   | 'dark'
   | null;
+
+/**
+ * A walk standing still for the character to be fit to travel, which the
+ * card and the tab draw as resting: health, mana, a trap's floor, or a rest
+ * asked for a beat ago.
+ */
+export function walkIsResting(hold: WalkHold): boolean {
+  return hold === 'health' || hold === 'mana' || hold === 'trap' || hold === 'resting';
+}
 
 /**
  * The switches that let a walk go on through a stated condition, in the

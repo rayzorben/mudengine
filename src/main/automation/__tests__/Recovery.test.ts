@@ -879,3 +879,62 @@ describe('resting beside what a row says does not attack first', () => {
     expect(sent).toEqual(['rest']);
   });
 });
+
+/*
+ * Todo 825: `meditateTo` carries a stretch of meditating as `restTo` carries a
+ * rest, and a stretch of either begins when the figure is seen under its
+ * floor, not only when the character is seen sitting.
+ */
+describe('meditating to a line, and resting to one from the floor', () => {
+  const full = { hp: 100, hpMax: 100 };
+
+  it('meditates under the floor, and again after a break, until the line', () => {
+    const recovery = make(health({ restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 }));
+    recovery.onCharacter(state({ ...full, mana: 20, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['med']);
+    recovery.onCharacter(state({ ...full, mana: 40, manaMax: 100, meditating: true }));
+    // A cast breaks it at 50%: above the floor, under the line.
+    recovery.onCharacter(state({ ...full, mana: 50, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['med', 'med']);
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.rest.askedMs);
+    recovery.onCharacter(state({ ...full, mana: 80, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['med', 'med']);
+  });
+
+  it('carries on to the line from the floor, never having been seen meditating', () => {
+    const recovery = make(health({ restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 }));
+    recovery.onCharacter(state({ ...full, mana: 20, manaMax: 100 }));
+    drain();
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.rest.askedMs);
+    recovery.onCharacter(state({ ...full, mana: 50, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['med', 'med']);
+  });
+
+  it('never meditates on a mana figure with no maximum', () => {
+    const settings = health({ restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 });
+    make(settings).onCharacter(state({ ...full, mana: 20, manaMax: null }));
+    drain();
+    expect(sent).toEqual([]);
+    // The positive control: the same figure with its maximum is meditated on.
+    make(settings).onCharacter(state({ ...full, mana: 20, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('rests to the line after a fight took health under the floor, with no rest seen', () => {
+    const recovery = make(health({ restBelow: 0.5, restTo: 0.9 }));
+    recovery.onCharacter(
+      state({ hp: 30, hpMax: 100, inCombat: true, combat: fighting({ target: 'cave worm' }) })
+    );
+    drain();
+    expect(sent).toEqual([]);
+    // Healed in the fight to 60%: above the floor, under the line.
+    recovery.onCharacter(state({ hp: 60, hpMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+});

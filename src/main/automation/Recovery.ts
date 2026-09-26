@@ -221,9 +221,14 @@ export class Recovery implements SessionModule {
    * Armed by the **wire**, not by the proposal: whoever sat the character down
    * — this module, or the player typing `rest` — the sitting is what `restTo`
    * continues, and a rest the player started is one they want the benefit of.
-   * Cleared the moment health reaches the ceiling, and on `reset`.
+   * Armed too by health seen under `restBelow` (todo 825): a heal that stood
+   * the character up, or a fight in the room, used to leave it standing above
+   * the floor and short of the line. Cleared the moment health reaches the
+   * ceiling, and on `reset`.
    */
   private sitting = false;
+  /** The same for meditating: `meditateBelow` or the wire starts it, `meditateTo` ends it. */
+  private meditatingOn = false;
   /**
    * A figure a walk is waiting on, in hit points, or null.
    *
@@ -309,6 +314,7 @@ export class Recovery implements SessionModule {
     this.state = null;
     this.askedUntil = 0;
     this.sitting = false;
+    this.meditatingOn = false;
     this.needed = null;
     this.refused.clear();
     this.saidPoisoned = false;
@@ -384,13 +390,15 @@ export class Recovery implements SessionModule {
     this.state = state;
     if (!this.enabled) return;
     if (state.phase !== 'in-game') return;
+    const { hp, hpMax, mana, manaMax, resting, meditating } = state.vitals;
+    // A figure seen under its floor starts a stretch, fight or no fight (todo 825).
+    if (this.below(hp, hpMax, this.config.restBelow)) this.sitting = true;
+    if (this.below(mana, manaMax, this.config.meditateBelow)) this.meditatingOn = true;
     // A rest is broken by being attacked, so one sent while something is
     // actually swinging is a command spent to be told so — out of the same
     // budget the fight is being fought with. The flag alone is not that; see
     // `fightIsHere`.
     if (fightIsHere(state)) return;
-
-    const { hp, hpMax, mana, manaMax, resting, meditating } = state.vitals;
 
     /*
      * The poison sentence is said once per stretch of poison, so the memory of
@@ -418,6 +426,7 @@ export class Recovery implements SessionModule {
       // very next line is re-proposed on it.
       this.askedUntil = 0;
       if (resting) this.sitting = true;
+      if (meditating) this.meditatingOn = true;
       return;
     }
     /*
@@ -469,7 +478,7 @@ export class Recovery implements SessionModule {
      * that *has* a figure and is still refused — a mystic's Kai, measured
      * 2026-09-04 — is what `refused` is for.
      */
-    if (this.below(mana, manaMax, this.config.meditateBelow) && !this.refused.has('med')) {
+    if (this.wantsMed(mana, manaMax) && !this.refused.has('med')) {
       this.propose('med', t('automation.recovery.reasonMana'));
       return;
     }
@@ -555,6 +564,16 @@ export class Recovery implements SessionModule {
     if (restTo <= 0 || !this.sitting) return false;
     if (this.below(hp, hpMax, restTo)) return true;
     this.sitting = false;
+    return false;
+  }
+
+  /** `wantsRest` for mana: `meditateBelow` starts a stretch and `meditateTo` carries it (todo 825). */
+  private wantsMed(mana: number | null, manaMax: number | null): boolean {
+    if (this.below(mana, manaMax, this.config.meditateBelow)) return true;
+    const { meditateTo } = this.config;
+    if (meditateTo <= 0 || !this.meditatingOn) return false;
+    if (this.below(mana, manaMax, meditateTo)) return true;
+    this.meditatingOn = false;
     return false;
   }
 

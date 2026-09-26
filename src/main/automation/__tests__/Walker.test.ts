@@ -3600,6 +3600,40 @@ describe('walking while hurt', () => {
     expect(walk.progress.hold).toBeNull();
     walk.dispose();
   });
+
+  /* Todo 825: a route waits for mana as for health, from `meditateBelow` to `meditateTo`. */
+  it('holds for mana under the floor, and walks on at the line', async () => {
+    const drained = (fraction: number | null): CharacterState => {
+      const state = at(1, 1);
+      return {
+        ...state,
+        vitals: {
+          ...state.vitals,
+          hp: 100,
+          hpMax: 100,
+          mana: fraction === null ? 20 : fraction * 100,
+          manaMax: fraction === null ? null : 100
+        }
+      };
+    };
+    let current = drained(0.2);
+    const health = { ...config.health, restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 };
+    const walk = new Walker({ ...config, health }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => current
+    });
+    expect(walk.start(ROUTE, current)).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('mana');
+    current = drained(0.5);
+    await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+    expect(sent).toEqual([]);
+    current = drained(null);
+    await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
 });
 
 /*
