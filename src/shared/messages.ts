@@ -11,6 +11,7 @@
  * The wire, learned per realm, outranks it; this fills what no frame reads.
  */
 import { parseCsv } from './spell-messages';
+import { escapeRegExp } from './regex';
 
 export type MessageKind = 'spell' | 'cast' | 'verbs' | 'commands' | 'other';
 
@@ -77,8 +78,6 @@ interface Template {
  */
 const MIN_LITERAL = 8;
 
-const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 function compile(row: MessageRow, role: 1 | 2 | 3, template: string): Template | null {
   const parts = template.split(/(%[sd])/);
   let source = '^';
@@ -92,7 +91,7 @@ function compile(row: MessageRow, role: 1 | 2 | 3, template: string): Template |
       source += '(-?\\d+)';
       numeric.push(true);
     } else if (part.length > 0) {
-      source += escape(part);
+      source += escapeRegExp(part);
       literal += part.replace(/\s+/g, '').length;
     }
   }

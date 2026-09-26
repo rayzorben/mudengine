@@ -6,11 +6,23 @@ import { DEFAULT_CONFIG, type AutomationConfig, type TrainConfig } from '../../.
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
+import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
   pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
 };
+
+/** Health 70→71 for 5 CP, the one purchase the dump below affords, in the driver's own copy. */
+const HEALTH_71 = t('automation.train.purchase', {
+  attribute: t('automation.train.attribute.health'),
+  from: 70,
+  to: 71,
+  cost: 5
+});
+const SPENDING = t('automation.train.opening', { spent: 5, cp: 10, purchases: HEALTH_71 });
+const echoSeconds = (): number => Math.round(tuning().train.echoMs / 1000);
 
 const NOTHING = { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 };
 const train = (wanted: Partial<TrainConfig['wanted']> = {}, stats = true): TrainConfig => ({
@@ -164,7 +176,7 @@ describe('reading the screen', () => {
     auto.onBlock(block('user-stats-screen', DUMP));
     // Driving: the first Enter past the family name went out.
     expect(wrote.length).toBeGreaterThan(0);
-    expect(notices.some((line) => /Spending/.test(line))).toBe(true);
+    expect(notices).toContain(SPENDING);
   });
 
   it('reads the six limits, the figures, the CP left and which field took focus off the dump', () => {
@@ -235,7 +247,7 @@ describe('deciding to open the screen', () => {
     auto.onBlock(block('command-echo', 'train stats'));
     auto.onBlock(block('user-stats-screen', DUMP));
     expect(wrote.length).toBeGreaterThan(0);
-    expect(notices.some((line) => /Spending/.test(line))).toBe(true);
+    expect(notices).toContain(SPENDING);
   });
 
   it('takes a prompt after the echo as the refusal, and asks again from the next state', () => {
@@ -255,7 +267,7 @@ describe('deciding to open the screen', () => {
     drain();
     auto.noteSent('train stats', 'automation');
     vi.advanceTimersByTime(5_000);
-    expect(notices.some((line) => /nothing answered/.test(line))).toBe(true);
+    expect(notices).toContain(t('automation.train.askUnanswered', { seconds: echoSeconds() }));
     auto.onCharacter(atTheTrainer());
     drain();
     expect(sent).toEqual(['train stats', 'train stats']);
@@ -274,7 +286,15 @@ describe('deciding to open the screen', () => {
     drain();
     expect(sent).toEqual([]);
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatch(/every wanted figure is at or under/);
+    expect(notices[0]).toBe(
+      t('automation.train.nothingWanted', {
+        cp: 10,
+        figures: [
+          `${t('automation.train.attribute.strength')} 90/90`,
+          `${t('automation.train.attribute.health')} 70/70`
+        ].join(', ')
+      })
+    );
     expect(decisions[0]).toMatchObject({ action: 'train stats', acted: false });
   });
 
@@ -283,7 +303,13 @@ describe('deciding to open the screen', () => {
     auto.onCharacter(atTheTrainer({ cp: 5 }));
     drain();
     expect(sent).toEqual([]);
-    expect(notices[0]).toMatch(/Strength, 6 CP/);
+    expect(notices[0]).toBe(
+      t('automation.train.nothingAffordable', {
+        cp: 5,
+        attribute: t('automation.train.attribute.strength'),
+        cost: 6
+      })
+    );
   });
 
   it('is not its business away from a trainer, with no points, or with the switch off', () => {
@@ -304,7 +330,7 @@ describe('driving the screen it opened', () => {
   it('Enters past the name, buys Health 71 for 5 CP where it is focused, Enters to SAVE, and reports', () => {
     const auto = make();
     opened(auto);
-    expect(notices.at(-1)).toMatch(/Spending 5 of 10 CP: Health 70→71 \(5 CP\)/);
+    expect(notices.at(-1)).toBe(SPENDING);
     expect(wrote).toEqual(['\r\n']);
 
     auto.onBlock(block('unknown', ECHO.pastName));
@@ -331,7 +357,7 @@ describe('driving the screen it opened', () => {
       block('user-stats-assigned', 'To prevent accidental suicide or reroll, these commands')
     );
     expect(auto.driving).toBe(false);
-    expect(notices.at(-1)).toBe('Trained: Health 70→71 (5 CP). 5 CP left.');
+    expect(notices.at(-1)).toBe(t('automation.train.saved', { purchases: HEALTH_71, left: 5 }));
     expect(decisions.at(-1)).toMatchObject({ action: 'train stats', acted: true });
   });
 
@@ -360,7 +386,9 @@ describe('driving the screen it opened', () => {
     auto.onBlock(block('unknown', ECHO.typed71));
     // The server disagrees with the reading: the field snaps back to 70.
     auto.onBlock(block('unknown', 'You may not assign that much to Health  70'));
-    expect(notices.at(-1)).toMatch(/refused it — “You may not assign that much to Health”/);
+    expect(notices.at(-1)).toBe(
+      t('automation.train.refused', { sentence: 'You may not assign that much to Health' })
+    );
     expect(wrote.at(-1)).toBe('\r\n');
     auto.onBlock(block('unknown', '  70  10  70  70'));
     auto.onBlock(block('unknown', ECHO.pastCharm.replace('   5', '  10')));
@@ -368,7 +396,7 @@ describe('driving the screen it opened', () => {
     auto.onBlock(block('unknown', ECHO.pastHairColour.replace('  5Black', ' 10Black')));
     auto.onBlock(block('unknown', ECHO.pastEyeColour.replace('  5Black', ' 10Black')));
     auto.onBlock(block('user-stats-assigned'));
-    expect(notices.at(-1)).toBe('The stat screen was saved unchanged. 10 CP left.');
+    expect(notices.at(-1)).toBe(t('automation.train.savedNothing', { left: 10 }));
     expect(decisions.at(-1)).toMatchObject({ acted: false });
   });
 
@@ -377,9 +405,7 @@ describe('driving the screen it opened', () => {
     opened(auto);
     vi.advanceTimersByTime(4000);
     expect(auto.driving).toBe(false);
-    expect(notices.at(-1)).toMatch(
-      /did not answer the last keystroke in 4s.*Enter through to SAVE/
-    );
+    expect(notices.at(-1)).toBe(t('automation.train.lapsed', { seconds: echoSeconds() }));
     // Whatever arrives now is the player's screen.
     auto.onBlock(block('unknown', ECHO.pastName));
     expect(wrote).toEqual(['\r\n']);
@@ -408,7 +434,7 @@ describe('driving the screen it opened', () => {
     // `Focus(0)` drew the given name: the first field is the one it must never Enter past.
     auto.onBlock(block('user-stats-screen', DUMP + 'Vaelor'));
     expect(wrote).toEqual([]);
-    expect(notices.at(-1)).toMatch(/has the name up for editing/);
+    expect(notices.at(-1)).toBe(t('automation.train.notName'));
     expect(auto.driving).toBe(false);
   });
 
@@ -421,8 +447,10 @@ describe('driving the screen it opened', () => {
     auto.onBlock(
       block('user-stats-screen', DUMP.replace('Ninja               10', 'Ninja                4'))
     );
-    expect(notices.at(-1)).toMatch(
-      /Nothing to buy on the stat screen \(the cheapest wanted point costs 5 CP and 4 are left\)/
+    expect(notices.at(-1)).toBe(
+      t('automation.train.leaving', {
+        why: t('automation.train.whyUnaffordable', { cost: 5, left: 4 })
+      })
     );
     expect(wrote).toEqual(['\r\n']);
   });

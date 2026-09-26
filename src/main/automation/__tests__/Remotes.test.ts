@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { Remotes } from '../Remotes';
+import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { wireExit, wireItem } from '../../../shared/entities';
@@ -157,7 +158,7 @@ describe('answering @health', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('no stat sheet');
+    expect(notices).toContain(t('automation.remotes.healthUnknown', { from: 'Soul' }));
   });
 });
 
@@ -173,7 +174,9 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     sent.length = 0;
     asked('@lives', who());
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('does not have that number yet');
+    expect(notices).toContain(
+      t('automation.remotes.answerUnknown', { from: 'Rand', raw: 'lives' })
+    );
   });
 
   it('answers @stats, its own extension, off the stat sheet and not before it', () => {
@@ -191,7 +194,9 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     sent.length = 0;
     asked('@stats', who());
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('does not have that number yet');
+    expect(notices).toContain(
+      t('automation.remotes.answerUnknown', { from: 'Rand', raw: 'stats' })
+    );
   });
 
   it('answers @wealth and @enc from the listing', () => {
@@ -219,7 +224,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     };
     asked('@exp', who());
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('does not have that number yet');
+    expect(notices).toContain(t('automation.remotes.answerUnknown', { from: 'Rand', raw: 'exp' }));
     asked('@where', who({ room }));
     asked('@who', who({ room }));
     asked('@what', who({ room }));
@@ -282,7 +287,9 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     sent.length = 0;
     asked('@have copper ring', who({ inventory: { ...EMPTY_CHARACTER.inventory, items } }));
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('only ever been seen answering for one');
+    expect(notices).toContain(
+      t('automation.remotes.haveUncaptured', { from: 'Rand', item: 'copper ring', count: 2 })
+    );
     sent.length = 0;
     asked('@have ring', who({ inventory: { ...EMPTY_CHARACTER.inventory, items } }));
     expect(sent).toEqual(['/Rand {no}']);
@@ -344,7 +351,7 @@ describe('answering the imperative ones', () => {
     peers.onBlock(said('conversation-telepath', 'Sesub', '@do a ooze'), who());
     drain();
     expect(sent).toEqual(['a ooze', '/Sesub {ok}']);
-    expect(notices.join(' ')).toContain('Remote execution (@do) by Sesub: "a ooze"');
+    expect(notices).toContain(t('automation.remotes.ranDo', { from: 'Sesub', command: 'a ooze' }));
   });
 
   it('joins the sender’s party on @join', () => {
@@ -380,7 +387,7 @@ describe('answering the imperative ones', () => {
     peers.onBlock(said('conversation-local', 'Rend', '@get-all'), who());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('nothing is listed');
+    expect(notices).toContain(t('automation.remotes.getAllEmpty', { from: 'Rend' }));
   });
 
   it('runs what the leader tells the party to run', () => {
@@ -430,7 +437,13 @@ describe('the two it refuses', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatch(/^>Sirkilla \{no: /);
     expect(sent.join(' ')).not.toContain('Gambit');
-    expect(notices.join(' ')).toContain('refused');
+    expect(notices).toContain(
+      t('automation.remotes.refusedUnsupported', {
+        from: 'Sirkilla',
+        raw: 'kill',
+        reason: t('automation.remotes.refusal.kill')
+      })
+    );
   });
 
   it('will not hang up', () => {
@@ -449,7 +462,7 @@ describe('the ones with no captured reply', () => {
     peers.onBlock(said('conversation-telepath', 'Rend', '@seen'), who());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('Unsupported remote command @seen');
+    expect(notices).toContain(t('automation.remotes.unread', { from: 'Rend', raw: 'seen' }));
   });
 });
 
@@ -616,7 +629,9 @@ describe('the channel an answer goes back on', () => {
       peers.onBlock(said(channel, 'Soul', '@health'), hurt());
       drain();
       expect(sent).toEqual([]);
-      expect(notices.join(' ')).toContain('realm-wide');
+      expect(notices).toContain(
+        t('automation.remotes.refusedRealmWide', { from: 'Soul', raw: 'health' })
+      );
     });
 
     /*
@@ -628,7 +643,9 @@ describe('the channel an answer goes back on', () => {
       peers.onBlock(said(channel, 'Soul', '@do who'), hurt());
       drain();
       expect(sent).toEqual([]);
-      expect(notices.join(' ')).toContain('realm-wide');
+      expect(notices).toContain(
+        t('automation.remotes.refusedRealmWide', { from: 'Soul', raw: 'do' })
+      );
     });
 
     it(`does not join a party from ${channel}`, () => {
@@ -642,7 +659,9 @@ describe('the channel an answer goes back on', () => {
       peers.onBlock(said(channel, 'Soul', '@kill Gambit'), hurt());
       drain();
       expect(sent).toEqual([]);
-      expect(notices.join(' ')).toContain('realm-wide');
+      expect(notices).toContain(
+        t('automation.remotes.refusedRealmWide', { from: 'Soul', raw: 'kill' })
+      );
     });
   }
 
@@ -817,7 +836,9 @@ describe('the gate: who may ask, and for what', () => {
     peers.onBlock(said('conversation-telepath', 'Yang', '@do who'), live());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('has not been granted');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', { from: 'Yang', raw: 'do', unresolvedClause: '' })
+    );
   });
 
   it('ignores somebody granted nothing at all', () => {
@@ -837,7 +858,13 @@ describe('the gate: who may ask, and for what', () => {
     peers.onBlock(said('conversation-telepath', 'Rend', '@health'), live());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('Rend has not been granted');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'health',
+        unresolvedClause: ''
+      })
+    );
   });
 
   it('lets a deny beat what the gang grants, and says which', () => {
@@ -848,7 +875,9 @@ describe('the gate: who may ask, and for what', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('denied to Spike');
+    expect(notices).toContain(
+      t('automation.remotes.refusedDenied', { from: 'Spike', raw: 'health' })
+    );
   });
 
   /*
@@ -892,7 +921,13 @@ describe('the gate: who may ask, and for what', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).not.toContain('nothing has said yet');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Spike',
+        raw: 'health',
+        unresolvedClause: ''
+      })
+    );
   });
 
   it('refuses somebody a listing wrote with no gang at all', () => {
@@ -903,7 +938,13 @@ describe('the gate: who may ask, and for what', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).not.toContain('nothing has said yet');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Spike',
+        raw: 'health',
+        unresolvedClause: ''
+      })
+    );
   });
 
   it('cannot decide while the asker is only known from an arrival', () => {
@@ -914,7 +955,13 @@ describe('the gate: who may ask, and for what', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('nothing has said yet');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Spike',
+        raw: 'health',
+        unresolvedClause: t('automation.remotes.unresolvedGang')
+      })
+    );
   });
 
   it('names an unresolved gang so a configured one is not silently refused', () => {
@@ -922,7 +969,13 @@ describe('the gate: who may ask, and for what', () => {
     peers.onBlock(said('conversation-gangpath', 'Spike', '@health'), live());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('nothing has said yet');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Spike',
+        raw: 'health',
+        unresolvedClause: t('automation.remotes.unresolvedGang')
+      })
+    );
   });
 
   /*
@@ -971,7 +1024,13 @@ describe('the gate: who may ask, and for what', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('not on the party listing');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'health',
+        unresolvedClause: t('automation.remotes.notInParty')
+      })
+    );
   });
 
   it('refuses somebody who is in no party with this character', () => {
@@ -979,7 +1038,13 @@ describe('the gate: who may ask, and for what', () => {
     peers.onBlock(said('conversation-telepath', 'Rend', '@health'), live());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('not on the party listing');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'health',
+        unresolvedClause: t('automation.remotes.notInParty')
+      })
+    );
   });
 
   it('lets a deny by name beat what the party grants', () => {
@@ -993,7 +1058,9 @@ describe('the gate: who may ask, and for what', () => {
     );
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('denied to Rend');
+    expect(notices).toContain(
+      t('automation.remotes.refusedDenied', { from: 'Rend', raw: 'health' })
+    );
   });
 
   it('grants only what the party list names, not the rest of the vocabulary', () => {
@@ -1066,7 +1133,9 @@ describe('the gangpath is answered on only when it is switched on', () => {
     peers.onBlock(said('conversation-gangpath', 'Spike', '@health'), together());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('does not answer on the gangpath');
+    expect(notices).toContain(
+      t('automation.remotes.refusedGangpathOff', { from: 'Spike', raw: 'health' })
+    );
   });
 
   /*
@@ -1125,14 +1194,22 @@ describe('a channel this client never answers on, from somebody with no grant', 
     peers.onBlock(said('conversation-gossip', 'Soul', '@health'), live());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('realm-wide');
+    expect(notices).toContain(
+      t('automation.remotes.refusedRealmWide', { from: 'Soul', raw: 'health' })
+    );
   });
 
   it('still refuses an addressed channel out loud, so the refusal is visible', () => {
     peers.configure(ungranted());
     peers.onBlock(said('conversation-telepath', 'Rend', '@health'), live());
     drain();
-    expect(notices.join(' ')).toContain('has not been granted');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'health',
+        unresolvedClause: ''
+      })
+    );
   });
 });
 
@@ -1283,7 +1360,9 @@ describe('talking to another one of these clients', () => {
     drain();
     expect(sent).toEqual(['/Rand @where-room', '/Rand @where']);
     expect(clients).toEqual(['Rand:-:no']);
-    expect(notices.join(' ')).toContain('Nothing came back from Rand');
+    expect(notices).toContain(
+      t('automation.remotes.extendedLapsed', { who: 'Rand', name: 'where' })
+    );
   });
 
   it('answers @where-room with the realm’s own address and the room’s name', () => {
@@ -1316,7 +1395,7 @@ describe('talking to another one of these clients', () => {
     peers.ask('Soul', 'comeback', who());
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('no address');
+    expect(notices).toContain(t('automation.remotes.comebackUnplaced', { who: 'Soul' }));
   });
 
   it('walks to the address somebody sends, and acknowledges only a walk that started', () => {
@@ -1339,7 +1418,7 @@ describe('talking to another one of these clients', () => {
     drain();
     expect(comebacks).toEqual([]);
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('readable map/room');
+    expect(notices).toContain(t('automation.remotes.comebackUnreadable', { from: 'Soul' }));
   });
 });
 
@@ -1400,7 +1479,13 @@ describe('@heal', () => {
     // And not to somebody who is not in the party.
     healer.onBlock(said('conversation-local', 'Rend', '@heal'), inParty(100, 'Soul'));
     expect(wanted).toEqual(['Soul']);
-    expect(notices.join(' ')).toContain('not on the party listing');
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'heal',
+        unresolvedClause: t('automation.remotes.notInParty')
+      })
+    );
   });
 
   it('asks the room once on the crossing, not on every status line', () => {

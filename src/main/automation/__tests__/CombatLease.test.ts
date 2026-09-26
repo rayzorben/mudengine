@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { notesOf } from '../../app/copyMatch';
 
 import { CombatLease, type DefendFacts } from '../CombatLease';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
@@ -350,7 +351,7 @@ describe('hit for rounds without moving, with auto-combat off', () => {
     stuck.defend(inRoom(2), calm);
     stuck.defend(inRoom(2), calm);
     expect(stuck.lending).toBe(true);
-    expect(said.filter((m) => m.includes('could not be turned back off'))).toHaveLength(1);
+    expect(notesOf(said, 'automation.combat.returnStuck')).toHaveLength(1);
     writable = true;
     stuck.defend(inRoom(2), calm);
     expect(flips).toEqual([true, false]);

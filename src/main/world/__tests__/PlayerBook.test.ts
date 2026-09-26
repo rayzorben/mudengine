@@ -5,6 +5,8 @@ import path from 'node:path';
 
 import { PlayerBook, realmAddress } from '../PlayerBook';
 import type { PlayerFacts } from '../../../shared/players';
+import { t } from '../../app/i18n';
+import { complaint } from './complaint';
 
 let dir: string;
 let file: string;
@@ -146,7 +148,12 @@ describe('what a realm knows about its players', () => {
     book.flush();
 
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('will not parse');
+    expect(said[0]).toBe(
+      t('notices.world.players.parseSuspended', {
+        fileName: path.basename(file),
+        message: complaint(() => JSON.parse('{ this is not json'))
+      })
+    );
     expect(fs.readFileSync(file, 'utf8')).toBe('{ this is not json');
     expect(realm.recall()).toHaveLength(2);
   });
@@ -167,7 +174,12 @@ describe('what a realm knows about its players', () => {
     book.flush();
 
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('could not read');
+    expect(said[0]).toBe(
+      t('notices.world.players.readError', {
+        file,
+        message: complaint(() => fs.readFileSync(file, 'utf8'))
+      })
+    );
     expect(fs.statSync(file).isDirectory()).toBe(true);
     expect(fs.existsSync(`${file}.tmp`)).toBe(false);
     expect(realm.recall()).toHaveLength(2);

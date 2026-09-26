@@ -15,7 +15,7 @@
  * the renderer's identical decision.
  */
 import { parse } from 'yaml';
-import { asUiDict, makeT, type UiDict } from '../../shared/i18n';
+import { asUiDict, makeT, rendersFrom, type UiDict } from '../../shared/i18n';
 import source from '../../../locales/ui.en.yaml?raw';
 
 function loadDict(): UiDict {
@@ -35,3 +35,13 @@ function loadDict(): UiDict {
 }
 
 export const t = makeT(loadDict(), (problem) => console.error(`[ui copy] ${problem}`));
+
+/**
+ * Whether `text` is a sentence `key` renders, whatever filled it. A key with no
+ * copy recognises nothing and is reported once by `t`, never thrown: a broken
+ * dictionary still boots (above).
+ */
+export function isSaidBy(key: string, text: string): boolean {
+  const template = t(key);
+  return template !== key && rendersFrom(template, text);
+}

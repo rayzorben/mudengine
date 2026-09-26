@@ -170,7 +170,7 @@ export default function ServerForm({
         WorldGroup front end all differ, and a client with four
         slots cannot describe them at all.
       */}
-      <fieldset className="settings-menus">
+      <fieldset className="settings-menus" data-fieldset="realm-login">
         <legend>{t('settings.realms.loginLegend')}</legend>
         <p className="settings-note">{t('settings.realms.loginNote')}</p>
 

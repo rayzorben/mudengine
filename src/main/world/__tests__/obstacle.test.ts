@@ -6,6 +6,7 @@ import zlib from 'node:zlib';
 
 import { WorldGraph } from '../WorldGraph';
 import { describeObstacle } from '../obstacle';
+import { t } from '../../app/i18n';
 import { parseInstruction } from '../instructions';
 import type { Requirement } from '../../../shared/world';
 
@@ -69,7 +70,9 @@ describe('what an obstacle says, at three lengths', () => {
    */
   it('names the item a lever needs beside its phrase', () => {
     const bare = { ...of('Hidden/Needs 1 Actions, any order'), actions: [{ say: ['pull lever'] }] };
-    expect(describeObstacle(bare, graph).label).toBe('Hidden — “pull lever” here');
+    expect(describeObstacle(bare, graph).label).toBe(
+      t('map.obstacle.hiddenLever', { phrase: 'pull lever' })
+    );
 
     const keyed = {
       ...of('Hidden/Needs 1 Actions, any order'),
@@ -77,11 +80,18 @@ describe('what an obstacle says, at three lengths', () => {
     };
     const chip = describeObstacle(keyed, graph);
     expect(chip.kind).toBe('hidden');
-    expect(chip.label).toBe('Hidden — “hold up talisman” here, needs amber talisman');
+    expect(chip.label).toBe(
+      t('map.obstacle.hiddenLeverItem', { phrase: 'hold up talisman', itemName: 'amber talisman' })
+    );
 
     // An item the realm's index does not name is still said to be wanted.
     const unnamed = { ...keyed, actions: [{ say: ['raise idol'], item: 9999 }] };
-    expect(describeObstacle(unnamed, graph).label).toMatch(/needs .+/);
+    expect(describeObstacle(unnamed, graph).label).toBe(
+      t('map.obstacle.hiddenLeverItem', {
+        phrase: 'raise idol',
+        itemName: t('map.obstacle.itemUnknown')
+      })
+    );
   });
 
   it('quotes a toll in the coin the server charges it in', () => {
@@ -89,23 +99,33 @@ describe('what an obstacle says, at three lengths', () => {
     // gate that records 5 answers `5 gold crowns` on the wire.
     const toll = describe_('Toll: 5');
     expect(toll.kind).toBe('toll');
-    expect(toll.label).toBe('Toll: 5 gold');
-    expect(toll.detail).toContain('5 gold');
+    const fiveGold = t('map.obstacle.gold', { amount: '5' });
+    expect(toll.label).toBe(t('map.obstacle.tollLabel', { price: fiveGold }));
+    expect(toll.detail).toContain(fiveGold);
   });
 
   it('states a level gate as the window the realm wrote', () => {
-    expect(describe_('Level: 66 to 255').label).toBe('Levels 66–255');
+    expect(describe_('Level: 66 to 255').label).toBe(
+      t('map.obstacle.levelRange', { minLevel: 66, maxLevel: 255 })
+    );
     // `999` and `0` are the two ways the realm writes "no limit" — see
     // `parseInstruction`. A gate with only one end says only that end.
-    expect(describe_('Level: 10 to 999').label).toBe('Level 10+');
-    expect(describe_('Level: 0 to 5').label).toBe('Level 5 and under');
+    expect(describe_('Level: 10 to 999').label).toBe(
+      t('map.obstacle.levelMinimum', { minLevel: 10 })
+    );
+    expect(describe_('Level: 0 to 5').label).toBe(t('map.obstacle.levelMaximum', { maxLevel: 5 }));
     // And a gate with neither has nothing to state but that it is one.
-    expect(describe_('Level: 0 to 0').label).toBe('Level restricted');
+    expect(describe_('Level: 0 to 0').label).toBe(t('map.obstacle.levelRestricted'));
   });
 
   it('names the key rather than its number, and the way through without it', () => {
     const locked = describe_('Key: 1124 [or 157 picklocks]');
-    expect(locked.label).toBe('Key: angular key, pick 157');
+    expect(locked.label).toBe(
+      t('map.obstacle.keyLabelForced', {
+        itemName: 'angular key',
+        forcing: t('map.obstacle.pickOnly', { difficulty: 157 })
+      })
+    );
     // The detail has room for where one is found; the chip does not.
     expect(locked.detail).toContain('gate guard');
     expect(locked.label).not.toContain('gate guard');
@@ -119,12 +139,16 @@ describe('what an obstacle says, at three lengths', () => {
    * yield.
    */
   it('offers to bash only where the realm says strength will do', () => {
-    expect(describe_('Door [301 picklocks/strength]').label).toBe('Door, pick/bash 301');
-    expect(describe_('Door [or 157 picklocks]').label).toBe('Door, pick 157');
+    expect(describe_('Door [301 picklocks/strength]').label).toBe(
+      t('map.obstacle.doorLabel', { forcing: t('map.obstacle.pickOrBash', { difficulty: 301 }) })
+    );
+    expect(describe_('Door [or 157 picklocks]').label).toBe(
+      t('map.obstacle.doorLabel', { forcing: t('map.obstacle.pickOnly', { difficulty: 157 }) })
+    );
   });
 
   it('says a bare door is a door', () => {
-    expect(describe_('Door').label).toBe('Door');
+    expect(describe_('Door').label).toBe(t('map.obstacle.door'));
   });
 
   it('keeps a trap damage figure', () => {
@@ -202,7 +226,13 @@ describe('the conditions a scripted way states and nothing can check', () => {
     // — because `detail` is hover-only and the first is not the worst.
     expect(chip.label).toContain('65');
     expect(chip.label).toContain('nexus portal');
-    expect(chip.label).toContain('+2');
+    expect(chip.label).toBe(
+      t('map.obstacle.alsoLabelMore', {
+        label: t('map.obstacle.levelMinimum', { minLevel: 65 }),
+        condition: 'roomitem nexus portal',
+        more: 2
+      })
+    );
     // The line has room for all of them, which is where `summon` is readable.
     expect(chip.detail).toContain('multicoloured sceptre');
     expect(chip.detail).toContain('summon 1009');
@@ -219,13 +249,18 @@ describe('the conditions a scripted way states and nothing can check', () => {
       },
       graph
     );
-    expect(chip.label).toBe('Say: go portal · nomonsters');
+    expect(chip.label).toBe(
+      t('map.obstacle.alsoLabel', {
+        label: t('map.obstacle.sayCommand', { command: 'go portal' }),
+        condition: 'nomonsters'
+      })
+    );
   });
 
   /* An edge that states nothing extra says exactly what it always said. */
   it('adds nothing to an obstacle with none', () => {
     const plain = describeObstacle({ kind: 'door', raw: 'Door' }, graph);
-    expect(plain.label).toBe('Door');
-    expect(plain.detail).toBe('Door');
+    expect(plain.label).toBe(t('map.obstacle.door'));
+    expect(plain.detail).toBe(t('map.obstacle.door'));
   });
 });

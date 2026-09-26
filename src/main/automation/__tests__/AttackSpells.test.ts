@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { AttackSpells, type Action } from '../AttackSpells';
+import { t } from '../../app/i18n';
+import { notesOf } from '../../app/copyMatch';
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
@@ -36,13 +38,21 @@ function unit(): { spells: AttackSpells; notices: string[] } {
  * from it was the latent misread.
  */
 describe('what answers a cast sent while the server repeats a spell', () => {
+  /** Every notice that says a spell is instant, whichever way it was learned. */
+  const INSTANT_VERDICTS = [
+    'automation.combat.spellInstant',
+    'automation.combat.spellInstantUnkept',
+    'automation.combat.spellInstantRemembered'
+  ];
+
   it('does not take the repeat ahead of its Off for the answer', () => {
     const { spells, notices } = unit();
     spells.sent(cast('harm'));
     spells.heard(block('combat-status', { status: 'Engaged' }), null);
     spells.sent(cast('harm'));
     spells.heard(repeat('harm'), null);
-    expect(notices.some((line) => /instant/.test(line))).toBe(false);
+    // No instant verdict of any kind, for any spell: the repeat answers nothing.
+    expect(notesOf(notices, ...INSTANT_VERDICTS)).toEqual([]);
   });
 
   it('reads what follows the Off as the answer (the control)', () => {
@@ -55,7 +65,11 @@ describe('what answers a cast sent while the server repeats a spell', () => {
       block('spell-cast', { caster: 'You', spell: 'hold person', target: 'tall kobold thief' }),
       null
     );
-    expect(notices.some((line) => /hold person is an instant spell/.test(line))).toBe(true);
+    expect(notices).toContain(t('automation.combat.spellInstantUnkept', { spell: 'hold person' }));
+    // And the matcher the test above relies on finds it, and only it.
+    expect(notesOf(notices, ...INSTANT_VERDICTS)).toEqual([
+      t('automation.combat.spellInstantUnkept', { spell: 'hold person' })
+    ]);
   });
 
   it('reads a confirmation out of a fight as the answer, as before', () => {
@@ -65,7 +79,7 @@ describe('what answers a cast sent while the server repeats a spell', () => {
       block('spell-cast', { caster: 'You', spell: 'hold person', target: 'tall kobold thief' }),
       null
     );
-    expect(notices.some((line) => /hold person is an instant spell/.test(line))).toBe(true);
+    expect(notices).toContain(t('automation.combat.spellInstantUnkept', { spell: 'hold person' }));
   });
 });
 
@@ -110,7 +124,7 @@ describe('the name an instant spell is kept under for the realm', () => {
     const { spells, notices } = withLore(lore);
     answered(spells, 'word', null);
     expect(lore.held.size).toBe(0);
-    expect(notices.some((line) => /not kept past the connection/.test(line))).toBe(true);
+    expect(notices).toContain(t('automation.combat.spellInstantUnkept', { spell: 'word' }));
   });
 
   it('keeps the listing’s name for the same word (the control)', () => {
@@ -132,11 +146,11 @@ describe('the name an instant spell is kept under for the realm', () => {
     expect(spells.change(state, { name: 'kobold', entity: null, remaining: null }, 'a')).not.toBe(
       null
     );
-    expect(notices.some((line) => /answered instantly on this realm/.test(line))).toBe(true);
+    expect(notices).toContain(t('automation.combat.spellInstantRemembered', { spell: 'word' }));
     spells.sent(cast('word'));
     spells.heard(block('combat-status', { status: 'Off' }), state);
     spells.heard(block('combat-status', { status: 'Engaged' }), state);
     expect(lore.held.size).toBe(0);
-    expect(notices.some((line) => /engaged after all/.test(line))).toBe(true);
+    expect(notices).toContain(t('automation.combat.spellNotInstant', { spell: 'word' }));
   });
 });

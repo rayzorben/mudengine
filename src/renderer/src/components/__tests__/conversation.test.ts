@@ -5,11 +5,10 @@
  * (`cards.talk.channels.*`, read in ConversationCard.tsx), while the picker's
  * rows read `TALK_CHANNELS[].label` from `src/shared/talk.ts`, which stays
  * dependency-free and cannot read the dictionary. Nothing ties the two tables
- * together at build time, so a rewording of either would silently stop
- * matching the other — the closed-union drift `guard-fields.test.ts` exists
- * for, in words. Each dictionary key is named by the label itself, so one
- * lookup catches both directions: a reworded label misses its key, and a
- * reworded dictionary word no longer equals the label.
+ * together at build time, so a renamed label would silently lose its word —
+ * the closed-union drift `guard-fields.test.ts` exists for. Each dictionary
+ * key is named by the label itself, so a renamed label misses its key. What
+ * the dictionary says for it is the user's to reword, and is never asserted.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,12 +25,12 @@ describe('the Talk card and the picker speak one vocabulary', () => {
   expect(dict, 'locales/ui.en.yaml must parse to a dictionary of strings').not.toBeNull();
   const words = flattenDict(dict ?? {});
 
-  it('names every picker channel by its own label', () => {
+  it('has a word for every picker channel, keyed by its own label', () => {
     for (const channel of TALK_CHANNELS) {
       expect(
         words.get(`cards.talk.channels.${channel.label}`),
         `picker channel '${channel.word}'`
-      ).toBe(channel.label);
+      ).toMatch(/\S/);
     }
   });
 });

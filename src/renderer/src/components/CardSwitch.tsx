@@ -64,7 +64,9 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
         <SelfCard
           {...chrome}
           character={character}
-          gear={ctx.gear}
+          // The pack stays readable after a hang-up; wearing from it does not,
+          // for the reason the composer below gives.
+          gear={ctx.inGame ? ctx.gear : undefined}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
           profileName={ctx.profileName}
@@ -291,7 +293,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
         <InventoryCard
           {...chrome}
           character={character}
-          gear={ctx.gear}
+          gear={ctx.inGame ? ctx.gear : undefined}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
           session={ctx.session}

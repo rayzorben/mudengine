@@ -14,6 +14,7 @@
  */
 import type { CharacterState } from './character';
 import { figure } from './values';
+import { escapeRegExp } from './regex';
 
 /** The figures a prompt can carry, as the realm's wildcards render them. */
 export interface StatlineReading {
@@ -90,8 +91,6 @@ const COLOUR_WILDCARD = /^%f[0-7]/;
  */
 const INVISIBLE = '(?: \\(Invisible\\) )?';
 
-const REGEX_SPECIAL = /[.*+?^${}()|[\]\\/]/g;
-
 /**
  * An exact matcher for a template, or null where none can be built.
  *
@@ -113,7 +112,7 @@ export function statlineMatcher(template: string): RegExp | null {
     const ch = text[i]!;
     if (ch !== '%') {
       if (ch === ']' && text[i + 1] === ':') source += INVISIBLE;
-      source += ch.replace(REGEX_SPECIAL, '\\$&');
+      source += escapeRegExp(ch);
       continue;
     }
     if (COLOUR_WILDCARD.test(text.slice(i))) {

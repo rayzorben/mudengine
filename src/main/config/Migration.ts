@@ -4713,12 +4713,12 @@ const REPLAN_DRIFT_COMMENT = ` How far the character may have strayed from the r
  Counted in the router's own steps, not in map squares. Past this, the new plan
  is put back on screen to be read. 0 asks every time.`;
 
-const SHOW_LOGO_COMMENT = ` The client's own mark, at the left of the status rail.
+const SHOW_LOGO_COMMENT = ` The client's own mark and its version, at the top right of the card rail.
 
  On by default: it is the one place the client says what it is, and a brand
  nobody ever sees is the same as none. Turn it off if you would rather the
- status rail held nothing but facts about the session -- it is not in the way of
- anything either way, since it takes the height that line already has.`;
+ rail held nothing but cards -- it is not in the way of anything either way,
+ since it shares the row of the put-away cards' chip.`;
 
 const REST_TO_COMMENT = ` Keep sitting back down until health reaches this; 0 is the single sit-down at
  the figure above, which is what this client did before the key existed. The

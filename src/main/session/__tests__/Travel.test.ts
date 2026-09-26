@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { t } from '../../app/i18n';
 import { Travel, type TravelParts, type TravelSession } from '../Travel';
 import type { SafetyDecision } from '../../../shared/automation';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
@@ -149,8 +150,10 @@ describe('escaping a monster its row names, out of a fight', () => {
     idle.considerEscape(state);
     expect(sent).toEqual([]);
     expect(notices).toEqual([
-      'Not running: black ooze is here, and its row says to escape, but nothing is taking this ' +
-        'character anywhere, so it stays where it is. Nothing is opened beside it.'
+      t('session.safety.escapeStaying', {
+        why: t('session.safety.whyDreaded', { mob: 'black ooze' }),
+        then: t('session.safety.escapeNotOpening')
+      })
     ]);
   });
 });

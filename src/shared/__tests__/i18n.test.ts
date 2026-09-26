@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asUiDict, flattenDict, makeT } from '../i18n';
+import { asUiDict, flattenDict, makeT, rendersFrom, templateParts } from '../i18n';
 
 describe('asUiDict', () => {
   it('accepts nested sections whose leaves are strings', () => {
@@ -69,5 +69,32 @@ describe('makeT', () => {
   it('leaves text without placeholders alone when params arrive anyway', () => {
     const t = makeT(dict, () => {});
     expect(t('plain', { name: 'unused' })).toBe('Show all');
+  });
+});
+
+describe('rendersFrom', () => {
+  it('recognises a sentence whatever fills its placeholders, and nothing else', () => {
+    const template = 'nothing came back after {command}';
+    expect(rendersFrom(template, 'nothing came back after se')).toBe(true);
+    expect(rendersFrom(template, 'nothing came back after ')).toBe(true);
+    expect(rendersFrom(template, 'something came back after se')).toBe(false);
+    expect(rendersFrom('{who} waits at {where}.', 'Soul waits at the gate.')).toBe(true);
+    expect(rendersFrom('{who} waits at {where}.', 'Soul waits at the gate')).toBe(false);
+  });
+
+  it('holds a placeholder-free sentence to the whole of the text', () => {
+    expect(rendersFrom('a fight started', 'a fight started')).toBe(true);
+    expect(rendersFrom('a fight started', 'a fight started!')).toBe(false);
+  });
+
+  it('keeps each literal run in order and clear of the ending', () => {
+    expect(rendersFrom('{a} to {b} to', 'x to y to')).toBe(true);
+    // The middle run may not borrow the characters the ending needs.
+    expect(rendersFrom('{a} to {b} to', 'x to')).toBe(false);
+    expect(rendersFrom('from {a} via {b} to {c}', 'from x to y via z')).toBe(false);
+  });
+
+  it('cuts at the placeholders the way makeT fills them', () => {
+    expect(templateParts('{a} and {b}!')).toEqual(['', 'a', ' and ', 'b', '!']);
   });
 });

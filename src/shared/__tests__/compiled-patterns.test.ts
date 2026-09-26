@@ -38,6 +38,12 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'so each is compiled once when the shipped table is read (`MessageBook.add`) and held; ' +
       'the per-line path runs only the compiled ones a word index selects (todo 109)'
   },
+  'src/main/app/copyMatch.ts': {
+    count: 1,
+    because:
+      'the UI copy as a pattern, for tests and harnesses only: nothing the app ships imports ' +
+      'it, and each pattern is built from a dictionary string known only when it is read'
+  },
   'src/shared/template.ts': {
     count: 2,
     because:

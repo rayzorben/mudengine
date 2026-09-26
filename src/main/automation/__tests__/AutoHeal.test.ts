@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AutoHeal } from '../AutoHeal';
 import { CommandQueue } from '../CommandQueue';
+import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
 import type { WorldSpell } from '../../../shared/world';
@@ -358,7 +360,7 @@ describe('choosing the heal from the spellbook', () => {
     // The realm names the short word even where this character's book is unread.
     expect(sent).toEqual(['mihe']);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('minor healing');
+    expect(said[0]).toBe(t('automation.heal.noChoice', { spell: 'minor healing' }));
     healer.onCharacter(unread);
     expect(said).toHaveLength(1);
   });
@@ -417,7 +419,7 @@ describe('choosing the heal from the spellbook', () => {
     drain();
     expect(sent).toEqual(['mihe Soul']);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('@health');
+    expect(said[0]).toBe(t('automation.heal.noFiguresParty'));
 
     sent.length = 0;
     const answered = member('Soul', 0.2);
@@ -505,7 +507,7 @@ describe('a member asking for a heal', () => {
     drain();
     expect(sent).toEqual([]);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('mana');
+    expect(said[0]).toBe(t('automation.heal.requestLowMana', { from: 'Yang' }));
   });
 
   it('is one cast, and leaves the ceiling to the thresholds', () => {
@@ -528,7 +530,7 @@ describe('a member asking for a heal', () => {
     drain();
     expect(sent).toEqual([]);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('Heal If Below');
+    expect(said[0]).toBe(t('automation.heal.requestHealOff', { from: 'Yang' }));
   });
 
   /*
@@ -578,7 +580,12 @@ describe('a member asking for a heal', () => {
     drain();
     expect(sent).toEqual(['minor healing', 'minor healing']);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('none went out');
+    expect(said[0]).toBe(
+      t('automation.heal.requestLapsed', {
+        from: 'Yang',
+        seconds: Math.round(tuning().spells.healRequestMs / 1000)
+      })
+    );
   });
 
   it('refuses out loud, once per asker, where nothing would be cast', () => {
@@ -587,19 +594,19 @@ describe('a member asking for a heal', () => {
     off.request('Yang', now);
     off.request('Yang', now);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('Auto-Heal Party Members');
+    expect(said[0]).toBe(t('automation.heal.requestPartyOff', { from: 'Yang' }));
 
     const noSpell = healer({ healPartyWith: '' });
     noSpell.request('Yang', now);
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('no party heal spell');
+    expect(said[0]).toBe(t('automation.heal.requestNoSpell', { from: 'Yang' }));
 
     const stranger = healer();
     stranger.request('Rend', now);
     stranger.onCharacter(state({}, [member('Yang', 0.95)]));
     drain();
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain('not on the party listing');
+    expect(said[0]).toBe(t('automation.heal.requestNotMember', { from: 'Rend' }));
     expect(sent).toEqual([]);
   });
 
@@ -611,6 +618,6 @@ describe('a member asking for a heal', () => {
     auto.onCharacter(state({}, [{ ...member('Rend', 0.95), invited: true }]));
     drain();
     expect(sent).toEqual([]);
-    expect(said[0]).toContain('not on the party listing');
+    expect(said[0]).toBe(t('automation.heal.requestNotMember', { from: 'Rend' }));
   });
 });

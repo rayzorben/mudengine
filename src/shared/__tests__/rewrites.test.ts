@@ -38,6 +38,15 @@ const t = makeT(dict, (problem) => {
 });
 const keys = flattenDict(dict);
 
+/** The coin words the purse is drawn in, read from the same dictionary the renderer draws them from. */
+const COIN = {
+  runic: t('rewrites.coins.runic'),
+  platinum: t('rewrites.coins.platinum'),
+  gold: t('rewrites.coins.gold'),
+  silver: t('rewrites.coins.silver'),
+  copper: t('rewrites.coins.copper')
+};
+
 const plainOf = (line: Drawn): string => line.segments.map((segment) => segment.text).join('');
 
 const BANDS: VitalBands = DEFAULT_CONFIG.ui.rewrites.bands;
@@ -127,7 +136,9 @@ describe('the prompt row', () => {
       BANDS,
       t
     );
-    expect(plainOf(line!)).toBe('Vaelor Vaelor Stone Human Mystic KAI 100/400 None 7 copper zz!');
+    expect(plainOf(line!)).toBe(
+      `Vaelor Vaelor Stone Human Mystic KAI 100/400 None 7 ${COIN.copper} zz!`
+    );
   });
 
   it('is one line: a second line of the template is not drawn', () => {
@@ -264,7 +275,7 @@ describe('the pack', () => {
     const glyphs = drawn.slice(0, 5).map((line) => line.glyphs[0] ?? null);
     expect(glyphs.map((g) => g?.icon ?? null)).toEqual(['worn', 'blocked', 'wear', null, 'wear']);
     expect(glyphs[0]?.commands).toEqual(['remove visored greathelm']);
-    expect(glyphs[1]?.label).toBe('Only Warrior may use this');
+    expect(glyphs[1]?.label).toBe(t('cards.inventory.blocked.byClass', { classList: 'Warrior' }));
     expect(glyphs[1]?.commands).toBeUndefined();
     expect(glyphs[2]?.commands).toEqual(['wear padded gloves']);
     // The unknown item keeps its control: unknown never refuses.
@@ -286,7 +297,7 @@ describe('the pack', () => {
       '{for items}{name}:{speed}:{weaponType}:{realmSlot}:{if wearable}ok{else}{reason}{/if}\n{/for}'
     );
     expect(plainOf(drawn[1]!)).toBe(
-      'golden battleaxe:1100:Slash:Weapon Hand:Only Warrior may use this'
+      `golden battleaxe:1100:Slash:Weapon Hand:${t('cards.inventory.blocked.byClass', { classList: 'Warrior' })}`
     );
     expect(plainOf(drawn[2]!)).toBe('padded gloves:::Hands:ok');
   });
@@ -303,7 +314,11 @@ describe('the pack', () => {
   it('states the keys, the purse on the ladder, the load and the character beside them', () => {
     const drawn = renderRewrite(shipped('inventory'), facts, BANDS, t);
     const text = drawn.map(plainOf);
-    expect(text[0]).toMatch(/Item\s+Wt/);
+    const header = text[0]!;
+    expect(header.indexOf(t('rewrites.labels.item'))).toBeGreaterThanOrEqual(0);
+    expect(header.indexOf(t('rewrites.labels.weight'))).toBeGreaterThan(
+      header.indexOf(t('rewrites.labels.item'))
+    );
     expect(text.at(-3)).toBe('Keys: bone key, bone key');
     /*
      * The realm's own count, not the ladder (todo 04, 2026-09-12). The fixture
@@ -311,14 +326,17 @@ describe('the pack', () => {
      * them, which is exactly the case the bug was: the purse is what the server
      * printed, and the total beside it is the server's own `Wealth:` line.
      */
-    expect(text.at(-2)).toBe('Wealth: 2 gold, 3 silver, 50 copper  (2350 copper)');
+    expect(text.at(-2)).toBe(
+      `Wealth: 2 ${COIN.gold}, 3 ${COIN.silver}, 50 ${COIN.copper}  (2350 copper)`
+    );
     expect(text.at(-1)).toBe('Load: 1744/4128 Medium');
     expect(wealthLong(null, t)).toBe('?');
-    expect(wealthLong(0, t)).toBe('0 copper');
+    expect(wealthLong(0, t)).toBe(`0 ${COIN.copper}`);
     // No count stated at all -- the status line has a total and nothing else,
     // so the ladder is the only answer there is and is still what is drawn.
-    expect(wealthLong(1_010_203, t)).toBe('1 runic, 1 platinum, 2 gold, 3 copper');
-    expect(wealthLong(1_010_203, t, {})).toBe('1 runic, 1 platinum, 2 gold, 3 copper');
+    const ladder = `1 ${COIN.runic}, 1 ${COIN.platinum}, 2 ${COIN.gold}, 3 ${COIN.copper}`;
+    expect(wealthLong(1_010_203, t)).toBe(ladder);
+    expect(wealthLong(1_010_203, t, {})).toBe(ladder);
     /*
      * The transcript from the report: the server said *98 platinum pieces, 22
      * gold crowns, 6573 silver nobles* and `Wealth: 1047930 copper farthings`,
@@ -326,7 +344,7 @@ describe('the pack', () => {
      * money arranged into coins the character does not have.
      */
     expect(wealthLong(1_047_930, t, { platinum: 98, gold: 22, silver: 6573 })).toBe(
-      '98 platinum, 22 gold, 6573 silver'
+      `98 ${COIN.platinum}, 22 ${COIN.gold}, 6573 ${COIN.silver}`
     );
     expect(
       pack('{keyCount} {itemCount} {gold} {encumbrancePercent}% {me.level} {me.hp}').map(plainOf)
@@ -383,10 +401,11 @@ describe('the pack', () => {
       'Tokens: {tokens}'
     ].join('\n');
     const drawn = renderRewrite(design('inventory', template), customFacts, BANDS, t);
+    // The column is as wide as its widest cell, the heading included.
+    const cells = [t('rewrites.labels.name'), 'visored greathelm', 'throwing hammers'];
+    const width = Math.max(...cells.map((cell) => cell.length));
     expect(drawn.map(plainOf)).toEqual([
-      'Name             ',
-      'visored greathelm',
-      'throwing hammers ',
+      ...cells.map((cell) => cell.padEnd(width)),
       'Tokens: token of Silvermere, token of Rhudaur'
     ]);
   });
@@ -413,11 +432,14 @@ describe('the other listings', () => {
       BANDS,
       t
     );
+    // Each column is as wide as its widest cell, the heading included.
+    const names = [t('rewrites.labels.name'), 'Vaelor', 'Rand'];
+    const gangs = [t('rewrites.labels.gang'), 'Mudengine', ''];
+    const nameWidth = Math.max(...names.map((cell) => cell.length));
+    const gangWidth = Math.max(...gangs.map((cell) => cell.length));
     expect(drawn.map(plainOf)).toEqual([
       '2 here',
-      'Name   Gang     ',
-      'Vaelor Mudengine',
-      'Rand            '
+      ...names.map((name, row) => `${name.padEnd(nameWidth)} ${gangs[row]!.padEnd(gangWidth)}`)
     ]);
   });
 
@@ -455,11 +477,13 @@ describe('the other listings', () => {
       BANDS,
       t
     );
+    const short = t('rewrites.shop.short');
+    const only = t('cards.inventory.blocked.byClass', { classList: 'Warrior' });
     expect(drawn.map(plainOf)).toEqual([
-      'golden battleaxe|short|Only Warrior may use this|!',
-      'torch           |     |                         |'
+      `golden battleaxe|${short}|${only}|!`,
+      `${'torch'.padEnd(16)}|${' '.repeat(short.length)}|${' '.repeat(only.length)}|`
     ]);
-    expect(drawn[0]?.segments.find((s) => s.text.startsWith('short'))?.fg).toBe('brightRed');
+    expect(drawn[0]?.segments.find((s) => s.text.startsWith(short))?.fg).toBe('brightRed');
   });
 
   /*
@@ -495,9 +519,9 @@ describe('the other listings', () => {
       t
     );
     expect(drawn.map(plainOf)).toEqual([
-      '2 runic',
-      '5 runic, 3 gold',
-      '1 gold',
+      `2 ${COIN.runic}`,
+      `5 ${COIN.runic}, 3 ${COIN.gold}`,
+      `1 ${COIN.gold}`,
       'Free',
       '3 trade beads'
     ]);
@@ -524,7 +548,7 @@ describe('the other listings', () => {
       BANDS,
       t
     );
-    expect(plainOf(drawn[0]!)).toBe('Soul 35 resting*');
+    expect(plainOf(drawn[0]!)).toBe(`Soul 35 ${t('rewrites.party.resting')}*`);
     expect(drawn[0]?.segments.find((s) => s.text === '35')?.fg).toBe('brightRed');
   });
 

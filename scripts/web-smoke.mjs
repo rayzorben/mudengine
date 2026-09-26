@@ -37,6 +37,10 @@ import path from 'node:path';
 import { localProfile, skip } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
 import { judgeFailures } from './lib/smoke-baseline.mjs';
+// The UI's own words, from the dictionary the app renders (run under
+// `scripts/lib/register.mjs`): a row is typed for by its key, never its wording,
+// and a key the dictionary lacks throws rather than being typed as itself.
+import { copyOf } from '../src/main/app/copyMatch.ts';
 
 const IAC = 255,
   WILL = 251,
@@ -560,16 +564,17 @@ check(
   popOut
 );
 await first.press('k', 'KeyK', 75, 2);
-// The palette takes the keyboard when it mounts; type once it has, never a
-// timer later, and read the rows once the search has drawn one.
+// The palette takes the keyboard when it mounts; open the Character group once
+// it has, never a timer later, and read the rows once the group has drawn one.
+// The group by its key, not by typing a word its labels happen to contain.
 await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.palette')`));
 await first.evaluate(`
   (() => {
-    const el = document.querySelector('.palette input');
-    const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'character');
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
+    const toggle = document.querySelector(
+      '.palette-group-label[data-group="character"] .palette-group-toggle'
+    );
+    if (toggle) toggle.click();
+    return !!toggle;
   })()
 `);
 /*
@@ -606,14 +611,17 @@ await first.evaluate(`
   (() => {
     const el = document.querySelector('.palette input');
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-    set.call(el, 'options file');
+    set.call(el, ${JSON.stringify(copyOf('palette.view.configLabel'))});
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()
 `);
-// Enter takes the highlighted row, so the search has to have drawn it first.
+// Enter takes the highlighted row, so the search has to have drawn it first --
+// and it has to be the options file's, by its id rather than its words.
 await waitFor(() =>
-  first.evaluate(`!!document.querySelector('.palette li[data-command][data-active="true"]')`)
+  first.evaluate(
+    `document.querySelector('.palette li[data-command][data-active="true"]')?.dataset.command === 'config'`
+  )
 );
 await first.press('Enter', 'Enter', 13);
 check(

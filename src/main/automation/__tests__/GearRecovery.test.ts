@@ -7,6 +7,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { SafetyDecision } from '../../../shared/automation';
 import type { Route } from '../../../shared/world';
 import { wireItem } from '../../../shared/entities';
+import { t } from '../../app/i18n';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -118,8 +119,13 @@ describe('noticing the strip', () => {
   it('walks back to where the character died once the pack read since says the kit is gone', () => {
     make().onCharacter(stripped());
     expect(walked).toHaveLength(1);
-    expect(notices[0]).toMatch(/Going back to Ancient Stronghold, Stable/);
-    expect(notices[0]).toMatch(/2 remembered items/);
+    expect(notices[0]).toBe(
+      t('automation.gearRecovery.going', {
+        count: 2,
+        room: 'Ancient Stronghold, Stable',
+        steps: ROUTE.steps.length
+      })
+    );
   });
 
   it('waits for a pack listing taken after the death, and for the sheet', () => {
@@ -160,8 +166,13 @@ describe('noticing the strip', () => {
       stripped({ lastDeath: { map: null, number: null, name: null, at: DIED_AT } })
     );
     expect(decisions.map((d) => d.acted)).toEqual([false, false]);
-    expect(decisions[0]?.refused).toMatch(/no route back/);
-    expect(decisions[1]?.refused).toMatch(/does not know where/);
+    expect(decisions[0]?.refused).toBe(
+      t('automation.gearRecovery.refusalNoRoute', {
+        room: 'Ancient Stronghold, Stable',
+        why: 'no way'
+      })
+    );
+    expect(decisions[1]?.refused).toBe(t('automation.gearRecovery.refusalUnplaced', { count: 2 }));
     expect(walked).toEqual([]);
   });
 
@@ -187,9 +198,13 @@ describe('standing where it died', () => {
       'get silver',
       'get copper'
     ]);
-    expect(notices.at(-1)).toMatch(/Taking 2 from the floor/);
     // The ring was worn all along, so nothing of the kit is missing from the floor.
-    expect(notices.at(-1)).not.toMatch(/not on this floor/);
+    expect(notices.at(-1)).toBe(
+      t('automation.gearRecovery.taking', {
+        count: 2,
+        items: 'ice crystal falchion, crimson cloak'
+      })
+    );
 
     // The pack now holds them (maintained by `You took`), and the dressing follows.
     const dressed = atTheStable();
@@ -229,7 +244,9 @@ describe('standing where it died', () => {
     auto.onCharacter(withOne);
     drain();
     expect(sent.filter((c) => c.startsWith('wear'))).toEqual(['wear crimson cloak']);
-    expect(notices.at(-1)).toMatch(/1 asked for and not taken/);
+    expect(notices.at(-1)).toBe(
+      t('automation.gearRecovery.dressed', { worn: 1, notTaken: 1, missing: 1 })
+    );
   });
 
   it('refuses out loud when nothing of the kit is on the floor', () => {
@@ -240,7 +257,11 @@ describe('standing where it died', () => {
     drain();
     expect(sent).toEqual([]);
     expect(decisions.at(-1)).toMatchObject({ action: 'recover gear', acted: false });
-    expect(decisions.at(-1)?.refused).toMatch(/nothing of the kit/);
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.gearRecovery.refusalNothingHere', {
+        items: 'ice crystal falchion, crimson cloak'
+      })
+    );
   });
 
   it('refuses out loud when the walk back ended somewhere else', () => {
@@ -248,7 +269,12 @@ describe('standing where it died', () => {
     auto.onCharacter(stripped());
     here = '1/101';
     auto.onWalkEnded(false, 'a fight', stripped());
-    expect(decisions.at(-1)?.refused).toMatch(/ended early: a fight/);
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.gearRecovery.refusalNotReached', {
+        room: 'Ancient Stronghold, Stable',
+        why: 'a fight'
+      })
+    );
     expect(sent).toEqual([]);
   });
 });
@@ -273,7 +299,11 @@ describe('the bounds on going back', () => {
   it('refuses at the lives floor, naming both figures', () => {
     withBounds({ recoverGearFloor: 2 }).onCharacter(lives(stripped(), 2));
     expect(walked).toEqual([]);
-    expect(notices.join('\n')).toMatch(/2 lives left/);
+    expect(notices).toContain(
+      t('automation.gearRecovery.refused', {
+        refused: t('automation.gearRecovery.refusalLives', { lives: 2, floor: 2 })
+      })
+    );
     expect(decisions.at(-1)?.acted).toBe(false);
   });
 
@@ -309,7 +339,11 @@ describe('the bounds on going back', () => {
     }
     // Two journeys, then the third refused before walking.
     expect(walked).toHaveLength(2);
-    expect(notices.join('\n')).toMatch(/did not reach it/);
+    expect(notices).toContain(
+      t('automation.gearRecovery.refused', {
+        refused: t('automation.gearRecovery.refusalTries', { tries: 2 })
+      })
+    );
   });
 
   /* A journey that reaches the pile clears the run. */

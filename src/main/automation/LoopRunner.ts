@@ -45,7 +45,7 @@ import {
 } from '../../shared/loops';
 
 export { NO_LOOP, type LoopProgress, type LoopStatus };
-import { t } from '../app/i18n';
+import { isSaidBy, t } from '../app/i18n';
 import { fightIsRunning } from './Walker';
 import type { CharacterState } from '../../shared/character';
 import {
@@ -63,10 +63,11 @@ import type { SessionModule } from './Module';
 /**
  * The walk failures that are really location-trust failures — the character
  * is somewhere, the belief about where is what broke — and one `rm` answers
- * all three. A refused exit or a shut door is *not* here: those are facts
- * about the route, and skipping the stop is the answer.
+ * both. A refused exit or a shut door is *not* here: those are facts about
+ * the route, and skipping the stop is the answer. Matched by key, never by a
+ * word in the copy, which the user rewords at will (2026-09-25).
  */
-const LOST = /no longer tell|somewhere the route did not expect|nothing came back/i;
+const LOST = ['automation.walk.reasonAmbiguous', 'automation.walk.reasonTimeout'] as const;
 
 export interface LoopEvents {
   notice?(message: string): void;
@@ -851,8 +852,8 @@ export class LoopRunner implements SessionModule {
      * `*Combat Off*` arrived — and the substring stopped matching. Nothing
      * broke, because `state.inCombat` is still true on the state that stopped
      * the walk and carries the branch on its own; that is exactly how a half
-     * of a pair rots unnoticed. `LOST` below has the same shape and one of its
-     * three arms is already dead for the same reason.
+     * of a pair rots unnoticed. `LOST` above is matched by key for the same
+     * reason.
      */
     if (fightIsRunning(state) || why === t('automation.walk.reasonCombat')) {
       this.waiting = true;
@@ -864,7 +865,11 @@ export class LoopRunner implements SessionModule {
      * failure — the stop was never reached to fail at — and not skipped,
      * because the stop is fine; the character is what needs finding.
      */
-    if (why !== null && LOST.test(why) && this.locates < tuning().loop.maxLocates) {
+    if (
+      why !== null &&
+      LOST.some((key) => isSaidBy(key, why)) &&
+      this.locates < tuning().loop.maxLocates
+    ) {
       /*
        * Unless the realm has already said where (todo 767): the step's stale
        * probe is a `rm`, and its `Location:` placed the character before the
@@ -1145,7 +1150,7 @@ export class LoopRunner implements SessionModule {
        * *I cannot tell which room you are in* over a lap that went on
        * retrying. The budget running out is `fail`'s, which is said.
        */
-      if (/cannot tell/i.test(route) && this.locates < tuning().loop.maxLocates) {
+      if (route === t('session.loop.unknownRoom') && this.locates < tuning().loop.maxLocates) {
         this.retryAfterLocate();
         return null;
       }

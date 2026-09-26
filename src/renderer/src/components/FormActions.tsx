@@ -46,6 +46,7 @@ export default function FormActions({
     <>
       <button
         className="quiet"
+        data-action="undo"
         disabled={!can.undo}
         onClick={onUndo}
         onMouseDown={keepFocus}
@@ -57,6 +58,7 @@ export default function FormActions({
       </button>
       <button
         className="quiet"
+        data-action="redo"
         disabled={!can.redo}
         onClick={onRedo}
         onMouseDown={keepFocus}

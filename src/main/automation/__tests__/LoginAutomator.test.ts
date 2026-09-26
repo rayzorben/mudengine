@@ -6,6 +6,8 @@ import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import type { LoginConfig } from '../../../shared/config';
 import type { Block, BlockType } from '../../../shared/blocks';
 import type { LineTerminator } from '../../../shared/types';
+import { t } from '../../app/i18n';
+import { notesOf } from '../../app/copyMatch';
 
 /**
  * The two prompts the local server actually prints, verbatim.
@@ -143,7 +145,7 @@ describe('answering the sequence', () => {
 
     expect(sent).toEqual(['Q', 'Q', 'Q']);
     // And never reported as a prompt that came back: coming back is the point.
-    expect(notices.join(' ')).not.toMatch(/came back/i);
+    expect(notesOf(notices, 'automation.login.promptRepeated')).toEqual([]);
   });
 
   it('still answers a menu once, even next to a pager', () => {
@@ -184,7 +186,7 @@ describe('safety', () => {
     vi.advanceTimersByTime(100);
 
     expect(sent).toEqual(['vaelor', 'secret']);
-    expect(notices.join(' ')).toMatch(/rejected/i);
+    expect(notices).toContain(t('automation.login.rejected'));
   });
 
   it('stops rather than answering a prompt that came back', () => {
@@ -195,7 +197,9 @@ describe('safety', () => {
     vi.advanceTimersByTime(50);
 
     expect(sent).toEqual(['vaelor']);
-    expect(notices.join(' ')).toMatch(/came back/i);
+    expect(notices).toContain(
+      t('automation.login.promptRepeated', { promptText: USERNAME.trim() })
+    );
   });
 
   it('never repeats a credential, whatever the row says', () => {
@@ -217,7 +221,9 @@ describe('safety', () => {
     vi.advanceTimersByTime(50);
 
     expect(sent).toEqual(['secret']);
-    expect(notices.join(' ')).toMatch(/came back/i);
+    expect(notices).toContain(
+      t('automation.login.promptRepeated', { promptText: PASSWORD.trim() })
+    );
   });
 
   it('leaves the prompt alone when nothing is configured for it', () => {
@@ -227,7 +233,9 @@ describe('safety', () => {
     partial.onBlock(block('prompt-password', PASSWORD));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toMatch(/finish logging in yourself/i);
+    expect(notices).toContain(
+      t('automation.login.credentialMissing', { credentialType: 'password' })
+    );
   });
 
   /*
@@ -261,7 +269,12 @@ describe('safety', () => {
     typo.onBlock(block('prompt-character', 'Please select a character: '));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toMatch(/\{slot\}/);
+    expect(notices).toContain(
+      t('automation.login.unknownPlaceholder', {
+        placeholder: '{slot}',
+        promptText: 'Please select a character'
+      })
+    );
   });
 
   /*
@@ -328,7 +341,9 @@ describe('safety', () => {
     vi.advanceTimersByTime(50);
 
     expect(sent).toEqual(['secret']);
-    expect(notices.join(' ')).toMatch(/came back/i);
+    expect(notices).toContain(
+      t('automation.login.promptRepeated', { promptText: PASSWORD.trim() })
+    );
   });
 
   /*
@@ -359,7 +374,7 @@ describe('safety', () => {
     vi.advanceTimersByTime(50);
 
     expect(sent).toEqual(['secret']);
-    expect(notices.join(' ')).toMatch(/came back/i);
+    expect(notices).toContain(t('automation.login.promptRepeated', { promptText: 'Password:' }));
   });
 
   /*
@@ -479,7 +494,7 @@ describe('safety', () => {
     vi.advanceTimersByTime(50);
 
     expect(sent).toEqual(['2']);
-    expect(notices.filter((m) => /no row that sends them/i.test(m))).toHaveLength(1);
+    expect(notices.filter((m) => m === t('automation.login.noAccountRow'))).toHaveLength(1);
   });
 
   it('does nothing at all when disabled', () => {
@@ -648,7 +663,7 @@ describe('leaving on purpose', () => {
     login.onBlock(block('prompt-menu', '[PARADIGM]:'));
     vi.advanceTimersByTime(500);
     expect(sent).toEqual([]);
-    expect(notices.filter((m) => m.includes('stands down'))).toHaveLength(1);
+    expect(notices.filter((m) => m === t('automation.login.leftOnPurpose'))).toHaveLength(1);
   });
 
   it('does not stand down for an exit the player broke', () => {
@@ -656,7 +671,7 @@ describe('leaving on purpose', () => {
     login.onBlock(block('user-exits-realm', 'You will exit after a period of silent meditation.'));
     login.observeCommand('break');
     login.onBlock(block('prompt-menu', '[PARADIGM]:'));
-    expect(notices.filter((m) => m.includes('stands down'))).toHaveLength(0);
+    expect(notices.filter((m) => m === t('automation.login.leftOnPurpose'))).toHaveLength(0);
   });
 });
 
@@ -736,7 +751,7 @@ describe('why a lost socket must not be dialled again', () => {
     login.onBlock(block('user-exits-realm', REQUEST, 'newline'));
     login.onBlock(block('prompt-menu', '[PARADIGM]:'));
     expect(login.standDown).toBe('left-realm');
-    expect(notices.filter((m) => m.includes('stands down'))).toHaveLength(2);
+    expect(notices.filter((m) => m === t('automation.login.leftOnPurpose'))).toHaveLength(2);
   });
 
   it('names a refused login, because the way back in from one is a lockout', () => {

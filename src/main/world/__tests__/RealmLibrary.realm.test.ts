@@ -19,7 +19,13 @@ import zlib from 'node:zlib';
 import { RealmLibrary } from '../RealmLibrary';
 import { WorldGraph } from '../WorldGraph';
 import { identityOfArchive, REALM_FORMAT } from '../buildRealm';
-import { SHIPPED_WORLDS, shippedWorldFile, type ShippedWorld } from '../../../shared/worlds';
+import { t } from '../../app/i18n';
+import {
+  SHIPPED_WORLD_LABEL,
+  SHIPPED_WORLDS,
+  shippedWorldFile,
+  type ShippedWorld
+} from '../../../shared/worlds';
 
 /**
  * The realm the repository ships, so this runs on any checkout.
@@ -60,6 +66,10 @@ function writeWorld(file: string, source: string, rooms: number): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, zlib.gzipSync([header, ...lines].join('\n') + '\n'));
 }
+
+/** What the library says as it starts converting a database. */
+const converting = (file: string): string =>
+  t('notices.world.converting', { file: path.basename(file) });
 
 const library = (): RealmLibrary =>
   new RealmLibrary({ shippedDir, cacheDir, notify: (message) => notices.push(message) });
@@ -116,13 +126,13 @@ withRealm('converting a realm somebody chose', () => {
 
   it('converts once and reads the cache after that', () => {
     library().load(REAL_MDB);
-    expect(notices.filter((notice) => /Converting/.test(notice))).toHaveLength(1);
+    expect(notices.filter((notice) => notice === converting(REAL_MDB))).toHaveLength(1);
 
     // A second library, as a second launch would be: the cache is on disk.
     notices = [];
     const loaded = library().load(REAL_MDB);
     expect(loaded.graph.size).toBeGreaterThan(50_000);
-    expect(notices.filter((notice) => /Converting/.test(notice))).toHaveLength(0);
+    expect(notices).not.toContain(converting(REAL_MDB));
   }, 120_000);
 
   it('hands the same graph to two characters on one realm', () => {
@@ -145,7 +155,7 @@ withRealm('converting a realm somebody chose', () => {
     fs.utimesSync(copy, later, later);
     notices = [];
     library().load(copy);
-    expect(notices.filter((notice) => /Converting/.test(notice))).toHaveLength(1);
+    expect(notices.filter((notice) => notice === converting(copy))).toHaveLength(1);
     expect(fs.readdirSync(cacheDir)).toHaveLength(2);
   }, 180_000);
 
@@ -329,7 +339,12 @@ describe('the worlds the client ships', () => {
     expect(loaded.problem).toBeUndefined();
     expect(loaded.graph.info.world).toBe('majormud');
     expect(loaded.graph.size).toBe(26_694);
-    expect(notices.join(' ')).toMatch(/majormud-v1\.11p\.zip is the archive the bundled MajorMUD/);
+    expect(notices).toContain(
+      t('notices.world.archiveIsBundled', {
+        file: path.basename(ARCHIVES.majormud),
+        world: SHIPPED_WORLD_LABEL.majormud
+      })
+    );
     // Nothing was converted: the cache stays empty.
     expect(fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : []).toEqual([]);
   });

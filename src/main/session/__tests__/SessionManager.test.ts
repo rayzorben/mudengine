@@ -17,6 +17,8 @@ import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../..
 import { WorldGraph } from '../../world/WorldGraph';
 import { worldOf } from '../../world/__tests__/realmFile';
 import { t } from '../../app/i18n';
+import { composes } from '../../app/copyMatch';
+import { escapeRegExp } from '../../../shared/regex';
 import { PlayerBook } from '../../world/PlayerBook';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
 import { ABANDON_MS } from '../TerminalFeed';
@@ -34,6 +36,7 @@ import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
 import type { QuestWatched } from '../../../shared/quests';
 import { NO_BELONGINGS } from '../../../shared/belongings';
+import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -139,6 +142,22 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+/** Every sentence an escape says when it moves, one per rung of the ladder. */
+const RUNNING = [
+  'session.safety.escapeRetrace',
+  'session.safety.escapeDoublesBack',
+  'session.safety.escapeKnown',
+  'session.safety.escapePrinted'
+];
+/** Every sentence an escape says when it declines to move. */
+const NOT_RUNNING = [
+  'session.safety.escapeNoExit',
+  'session.safety.escapeOnlyBack.one',
+  'session.safety.escapeOnlyBack.many',
+  'session.safety.escapeStaying',
+  'session.safety.escapeSwitchedOff'
+];
 
 /**
  * The trigger line has been read, and the client has had its chance to act.
@@ -809,9 +828,12 @@ describe("the realm's own word for its data", () => {
     socket.write('[MAJORMUD]: ');
     await until(() => told.length > 0);
     expect(told).toEqual(['majormud']);
-    await until(() => notices.some((notice) => /says it is MajorMUD/.test(notice)));
-    expect(notices.filter((notice) => /says it is MajorMUD/.test(notice))).toHaveLength(1);
-    expect(notices.join(' ')).toMatch(/loaded for this session is Paradigm/);
+    const disagrees = t('session.realm.worldDisagrees', {
+      realm: SHIPPED_WORLD_LABEL.majormud,
+      world: SHIPPED_WORLD_LABEL.paradigm
+    });
+    await until(() => notices.includes(disagrees));
+    expect(notices.filter((notice) => notice === disagrees)).toHaveLength(1);
 
     // The prompt arrives on every line at the menu; the word is told once.
     socket.write('[MAJORMUD]: ');
@@ -832,7 +854,7 @@ describe("the realm's own word for its data", () => {
     socket.write('[PARADIGM]: ');
     await until(() => told.length > 0);
     expect(told).toEqual(['paradigm']);
-    expect(notices.some((notice) => /says it is/.test(notice))).toBe(false);
+    expect(notices.some(composes('session.realm.worldDisagrees'))).toBe(false);
   });
 
   it("says nothing about a player's own database, which names no bundled world", async () => {
@@ -844,7 +866,7 @@ describe("the realm's own word for its data", () => {
 
     socket.write('[MAJORMUD]: ');
     await until(() => told.length > 0);
-    expect(notices.some((notice) => /says it is/.test(notice))).toBe(false);
+    expect(notices.some(composes('session.realm.worldDisagrees'))).toBe(false);
   });
 });
 
@@ -1104,7 +1126,7 @@ describe('the decision trace', () => {
     await until(() => manager!.automation.sent.length > 0);
     const trace = manager!.automation;
     expect(trace.enabled).toBe(true);
-    expect(trace.sent[0]?.reason).toBe('entering the realm');
+    expect(trace.sent[0]?.reason).toBe(t('automation.routines.reasonEnterRealm'));
     expect(DEFAULT_CONFIG.automation.onEnterRealm).toContain(trace.sent[0]?.command);
   });
 
@@ -1386,7 +1408,7 @@ describe('losing the connection', () => {
 
     socket.destroy();
     await until(() => manager!.walker.progress.status === 'stopped');
-    expect(manager.walker.progress.reason).toMatch(/connection closed/i);
+    expect(manager.walker.progress.reason).toBe(t('session.walk.stoppedConnectionClosed'));
   });
 });
 
@@ -1454,6 +1476,19 @@ describe('hanging up to escape', () => {
     await until(() => manager!.character.vitals.hp === 100);
     socket.write('[HP=10]:\r\n');
   };
+  const hangingUp = composes([
+    'session.safety.hangingUpClean',
+    'session.safety.hangingUpUncharged',
+    'session.safety.hangingUpUnchargedSetting'
+  ]);
+  const notHangingUp = composes([
+    'session.safety.hangUpRefused',
+    'session.safety.hangUpSwitchedOff'
+  ]);
+  const inCombat = (text: string | undefined): boolean =>
+    [t('automation.hangUp.reasonInCombat'), t('automation.hangUp.reasonMobEngaged')].some(
+      (reason) => text?.includes(reason) === true
+    );
 
   it('hangs up when health falls and nothing says it would be penalised', async () => {
     const { sink, notices } = collect();
@@ -1461,7 +1496,7 @@ describe('hanging up to escape', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     await hurt(await client());
 
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
+    await until(() => notices.some(hangingUp));
     await until(() => manager?.state.phase === 'closing' || manager?.state.phase === 'closed');
   });
 
@@ -1474,7 +1509,7 @@ describe('hanging up to escape', () => {
     socket.write('[HP=10]:\r\n');
 
     await settled(10);
-    expect(notices.some((notice) => /Hanging up/.test(notice))).toBe(false);
+    expect(notices.some(hangingUp)).toBe(false);
     expect(manager?.state.phase).toBe('connected');
   });
 
@@ -1493,9 +1528,9 @@ describe('hanging up to escape', () => {
     await until(() => manager!.character.combat.blows > 0);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    const refusal = notices.find((notice) => /Not hanging up/.test(notice)) ?? '';
-    expect(refusal).toMatch(/attacking you|combat/);
+    await until(() => notices.some(notHangingUp));
+    const refusal = notices.find(notHangingUp) ?? '';
+    expect(inCombat(refusal)).toBe(true);
     // And it stays connected, which is the part that matters.
     expect(manager?.state.phase).toBe('connected');
   });
@@ -1527,8 +1562,8 @@ describe('hanging up to escape', () => {
     const decision = traces.at(-1)?.safety[0];
     expect(decision?.action).toBe('hang up');
     expect(decision?.acted).toBe(false);
-    expect(decision?.refused).toMatch(/attacking you|combat/);
-    expect(decision?.because).toMatch(/health/);
+    expect(inCombat(decision?.refused)).toBe(true);
+    expect(decision?.because).toBe(t('session.safety.whyHealth', { percent: '10%' }));
   });
 
   it('records the hangup itself, which produces no command to record', async () => {
@@ -1554,8 +1589,8 @@ describe('hanging up to escape', () => {
       socket.write(`[HP=${hp}]:\r\n`);
       await until(() => manager!.character.vitals.hp === hp);
     }
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    expect(notices.filter((notice) => /Not hanging up/.test(notice))).toHaveLength(1);
+    await until(() => notices.some(notHangingUp));
+    expect(notices.filter(notHangingUp)).toHaveLength(1);
   });
 
   /* A realm that charges nothing: below the floor it hangs up, whatever it can see (todo 01). */
@@ -1576,9 +1611,11 @@ describe('hanging up to escape', () => {
     await until(() => manager!.character.combat.blows > 0);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(
-      /Your settings say this realm charges nothing/
+    await until(() => notices.some(hangingUp));
+    expect(notices.find(hangingUp)).toBe(
+      t('session.safety.hangingUpUnchargedSetting', {
+        why: t('session.safety.whyHealth', { percent: '10%' })
+      })
     );
   });
 
@@ -1607,12 +1644,14 @@ describe('hanging up to escape', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     await chooseRealm(socket, '2');
-    await until(() => notices.some((notice) => /Paradigm PVP charges 25%/.test(notice)));
+    await until(() =>
+      notices.includes(t('session.safety.realmCharges', { realm: 'Paradigm PVP', percent: 25 }))
+    );
     knowMaximum(socket);
     socket.write('The orc rogue slashes you for 5 damage!\r\n');
     await until(() => manager!.character.combat.blows > 0);
     socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
+    await until(() => notices.some(notHangingUp));
     expect(manager.state.phase).toBe('connected');
   });
 
@@ -1622,13 +1661,20 @@ describe('hanging up to escape', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     await chooseRealm(socket, '1');
-    await until(() => notices.some((notice) => /Paradigm PVE charges nothing/.test(notice)));
+    await until(() =>
+      notices.includes(t('session.safety.realmChargesNothing', { realm: 'Paradigm PVE' }))
+    );
     knowMaximum(socket);
     socket.write('The orc rogue slashes you for 5 damage!\r\n');
     await until(() => manager!.character.combat.blows > 0);
     socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Hanging up/.test(notice)));
-    expect(notices.find((notice) => /Hanging up/.test(notice))).toMatch(/by its own realm menu/);
+    await until(() => notices.some(hangingUp));
+    expect(notices.find(hangingUp)).toBe(
+      t('session.safety.hangingUpUncharged', {
+        why: t('session.safety.whyHealth', { percent: '10%' }),
+        realm: 'Paradigm PVE'
+      })
+    );
   });
 
   /*
@@ -1651,10 +1697,14 @@ describe('hanging up to escape', () => {
     await until(() => !manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Not hanging up/.test(notice)));
-    const refusal = notices.find((notice) => /Not hanging up/.test(notice)) ?? '';
-    expect(refusal).toMatch(/PvP with Vaelor/);
-    expect(refusal).toMatch(/walk out instead/);
+    await until(() => notices.some(notHangingUp));
+    const refusal = notices.find(notHangingUp) ?? '';
+    expect(refusal).toBe(
+      t('session.safety.hangUpRefused', {
+        why: t('session.safety.whyHealth', { percent: '10%' }),
+        reasons: t('automation.hangUp.reasonPvpNamed', { name: 'Vaelor', minutes: 5 })
+      })
+    );
     expect(manager?.state.phase).toBe('connected');
   });
 
@@ -1665,7 +1715,7 @@ describe('hanging up to escape', () => {
     await hurt(await client());
 
     await settled(10);
-    expect(notices.some((notice) => /anging up/.test(notice))).toBe(false);
+    expect(notices.some((notice) => hangingUp(notice) || notHangingUp(notice))).toBe(false);
     expect(manager?.state.phase).toBe('connected');
   });
 
@@ -1677,7 +1727,7 @@ describe('hanging up to escape', () => {
     await hurt(await client());
 
     await settled(10);
-    expect(notices.some((notice) => /anging up/.test(notice))).toBe(false);
+    expect(notices.some((notice) => hangingUp(notice) || notHangingUp(notice))).toBe(false);
   });
 });
 
@@ -1720,7 +1770,7 @@ describe('running away', () => {
    * cannot. One matcher, so a test asserting *nothing happened* cannot pass
    * because the wording moved to a different rung.
    */
-  const RAN = /Running \w+:|Retreating \w+,|Not running:/;
+  const RAN = composes([...RUNNING, ...NOT_RUNNING]);
 
   /** A room with two ways out of it, which is what an escape needs. */
   const ROOM = 'Rat Cellar\r\nObvious exits: north, south\r\n';
@@ -1756,11 +1806,11 @@ describe('running away', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => RAN.test(notice)));
+    await until(() => notices.some(RAN));
     // North, because it is the first exit the room printed and nothing here is
     // placed — the bottom rung of the ladder, which is still an exit.
     expect(await seen).toMatch(/\bn\r\n/);
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/Running n:/);
+    expect(composes(RUNNING, { direction: 'n' })(notices.find(RAN) ?? '')).toBe(true);
   });
 
   /*
@@ -1781,7 +1831,7 @@ describe('running away', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Not running:/.test(notice)));
+    await until(() => notices.some(composes(NOT_RUNNING)));
     /*
      * No move reached the wire — not a direction, and certainly not a word
      * invented for the purpose.
@@ -1799,7 +1849,7 @@ describe('running away', () => {
     await until(() => traces.some((trace) => trace.safety.length > 0));
     const decision = traces.at(-1)?.safety[0];
     expect(decision).toMatchObject({ action: 'retreat', acted: false });
-    expect(decision?.refused).toMatch(/no exit known/);
+    expect(decision?.refused).toBe(t('session.safety.escapeNoExitReason'));
   });
 
   /* An escape out of combat is a wasted move that puts the character in a room
@@ -1815,7 +1865,7 @@ describe('running away', () => {
     socket.write('[HP=10]:\r\n');
 
     await settled(10);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
+    expect(notices.some(RAN)).toBe(false);
   });
 
   it('does not run above the threshold', async () => {
@@ -1831,7 +1881,7 @@ describe('running away', () => {
     socket.write('[HP=90]:\r\n');
 
     await settled(90);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
+    expect(notices.some(RAN)).toBe(false);
   });
 
   /*
@@ -1863,8 +1913,12 @@ describe('running away', () => {
     await until(() => manager!.character.combat.attackers.length >= 2);
     socket.write('[HP=98]:\r\n');
 
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/^Running \w+: 2 attackers/);
+    await until(() => notices.some(RAN));
+    expect(
+      composes(RUNNING, { why: t('session.safety.whyAttackers', { count: 2 }) })(
+        notices.find(RAN) ?? ''
+      )
+    ).toBe(true);
   });
 
   /* MegaMUD's ManaRun%: a caster with an empty pool is losing whatever the
@@ -1882,8 +1936,12 @@ describe('running away', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=100/100,MA=5/50]:\r\n');
 
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.find((notice) => RAN.test(notice))).toMatch(/^Running \w+: mana at 10%/);
+    await until(() => notices.some(RAN));
+    expect(
+      composes(RUNNING, { why: t('session.safety.whyMana', { percent: '10%' }) })(
+        notices.find(RAN) ?? ''
+      )
+    ).toBe(true);
   });
 
   it('does not count one attacker as being outnumbered', async () => {
@@ -1900,7 +1958,7 @@ describe('running away', () => {
     socket.write('[HP=98]:\r\n');
 
     await settled(98);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
+    expect(notices.some(RAN)).toBe(false);
   });
 
   /*
@@ -1923,8 +1981,8 @@ describe('running away', () => {
       socket.write(`[HP=${hp}]:\r\n`);
       await until(() => manager!.character.vitals.hp === hp);
     }
-    await until(() => notices.some((notice) => RAN.test(notice)));
-    expect(notices.filter((notice) => RAN.test(notice))).toHaveLength(1);
+    await until(() => notices.some(RAN));
+    expect(notices.filter(RAN)).toHaveLength(1);
   });
 
   /* And an escape, which does produce a command, is still recorded as a
@@ -1943,14 +2001,15 @@ describe('running away', () => {
     socket.write('[HP=10]:\r\n');
     // The decision is written on the outcome, not the send (todo 06): the
     // room the move reached is what says the escape acted.
-    await until(() => notices.some((notice) => RAN.test(notice)));
+    await until(() => notices.some(RAN));
     socket.write('Rat Warren\r\nObvious exits: south\r\n');
 
     await until(() => traces.some((trace) => trace.safety.length > 0));
     const decision = traces.at(-1)?.safety[0];
     expect(decision).toMatchObject({ action: 'retreat', acted: true });
-    expect(decision?.because).toMatch(/health at \d+%/);
-    expect(decision?.because).toMatch(/— n \(printed\)$/);
+    expect(decision?.because).toBe(
+      `${t('session.safety.whyHealth', { percent: '10%' })} — n (printed)`
+    );
   });
 
   /*
@@ -1978,7 +2037,7 @@ describe('running away', () => {
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => RAN.test(notice)));
+    await until(() => notices.some(RAN));
     await went;
     socket.write('The door is closed!\r\n');
     // And the prompt behind it: the ladder is two commands, and the second
@@ -1986,7 +2045,9 @@ describe('running away', () => {
     socket.write('[HP=10]:\r\n');
 
     expect(await seen).toMatch(/\bn\r\nopen n\r\nn\r\n/);
-    expect(notices.some((notice) => /door n is shut/.test(notice))).toBe(true);
+    expect(
+      notices.includes(t('session.safety.escapeOpening', { barrier: 'door', direction: 'n' }))
+    ).toBe(true);
     // Not an escape yet: nothing has been recorded as acted.
     expect(traces.flatMap((trace) => trace.safety).some((d) => d.acted)).toBe(false);
   });
@@ -2006,7 +2067,7 @@ describe('running away', () => {
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Running n:/.test(notice)));
+    await until(() => notices.some(composes(RUNNING, { direction: 'n' })));
     await went;
     socket.write('There is no exit in that direction!\r\n');
 
@@ -2015,7 +2076,7 @@ describe('running away', () => {
     const refused = traces.flatMap((trace) => trace.safety).find((d) => d.acted === false);
     expect(refused).toMatchObject({ action: 'retreat', acted: false });
     expect(refused?.refused).toMatch(/no exit in that direction/);
-    expect(notices.some((notice) => /Running s:/.test(notice))).toBe(true);
+    expect(notices.some(composes(RUNNING, { direction: 's' }))).toBe(true);
   });
 
   it('does nothing while it is switched off', async () => {
@@ -2031,7 +2092,7 @@ describe('running away', () => {
     socket.write('[HP=10]:\r\n');
 
     await settled(10);
-    expect(notices.some((notice) => RAN.test(notice))).toBe(false);
+    expect(notices.some(RAN)).toBe(false);
   });
 });
 
@@ -2249,7 +2310,7 @@ describe('the status line the player designed', () => {
      * which run failed was decided by the port allocator rather than by
      * anything the client did.
      */
-    expect(notices.filter((notice) => notice.includes('83 cells'))).toHaveLength(1);
+    expect(notices.filter(composes('session.statline.tooWide', { cells: 83 }))).toHaveLength(1);
   });
 });
 
@@ -2293,10 +2354,14 @@ describe('a listing the player has the client draw', () => {
     const plain = shown.replace(/\x1b\[[0-9;]*m/g, '');
     expect(plain).not.toContain('You are carrying');
     expect(plain).toContain('Keys: bone key');
-    expect(plain).toContain('4 platinum, 70 gold');
+    expect(plain).toContain(`4 ${t('rewrites.coins.platinum')}, 70 ${t('rewrites.coins.gold')}`);
     expect(plain).toContain('6 torch');
     // The header names the columns; the rows line up under them.
-    expect(plain).toMatch(/Item\s+Wt/);
+    expect(plain).toMatch(
+      new RegExp(
+        `${escapeRegExp(t('rewrites.labels.item'))}\\s+${escapeRegExp(t('rewrites.labels.weight'))}`
+      )
+    );
     expect(plain.indexOf('Keys:')).toBeGreaterThan(plain.indexOf('6 torch'));
     expect(plain.lastIndexOf('[HP=148/MA=5]:')).toBeGreaterThan(plain.indexOf('Keys:'));
     // Every carried thing carries the pack card's control, sent as the realm's verb.
@@ -2535,7 +2600,7 @@ describe('placing the character before a plan', () => {
     // Well inside the window: the refusal ended it, not the lapse.
     expect(Date.now() - started).toBeLessThan(tuning().session.locateResolveMs);
     expect(notices).toContain(t('session.loop.locateUnavailable', { command: 'rm' }));
-    expect(notices.some((line) => line.startsWith('Asked the realm where you are'))).toBe(false);
+    expect(notices.some(composes('session.loop.locateUnresolved'))).toBe(false);
   });
 });
 
@@ -2921,7 +2986,7 @@ describe('which way out', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Retreating s, the way we came/.test(notice)));
+    await until(() => notices.some(composes('session.safety.escapeRetrace', { direction: 's' })));
     await until(() => /\bs\r\n/.test(seen()));
   });
 
@@ -2960,15 +3025,11 @@ describe('which way out', () => {
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
-    await until(() =>
-      collected.notices.some((n) => /nothing is taking this character anywhere/.test(n))
-    );
+    await until(() => collected.notices.some(composes('session.safety.escapeStaying')));
     expect(seen()).not.toMatch(/\bs\r\n/);
     socket.write('[HP=9]:\r\n');
     await until(() => manager!.character.vitals.hp === 9);
-    expect(
-      collected.notices.filter((n) => /nothing is taking this character anywhere/.test(n))
-    ).toHaveLength(1);
+    expect(collected.notices.filter(composes('session.safety.escapeStaying'))).toHaveLength(1);
     await until(() => collected.traces.some((trace) => trace.safety.length > 0));
     expect(collected.traces.at(-1)?.safety[0]).toMatchObject({ action: 'retreat', acted: false });
   });
@@ -2982,7 +3043,9 @@ describe('which way out', () => {
     await until(() => manager!.character.room.number === 2);
     socket.write('[HP=10]:\r\n');
     await until(() => /\bs\r\n/.test(seen()));
-    expect(collected.notices.some((n) => /Retreating s, the way we came/.test(n))).toBe(true);
+    expect(
+      collected.notices.some(composes('session.safety.escapeRetrace', { direction: 's' }))
+    ).toBe(true);
   });
 
   /*
@@ -3011,10 +3074,10 @@ describe('which way out', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Running s/.test(notice)));
+    await until(() => notices.some(composes(RUNNING, { direction: 's' })));
     await until(() => /\bs\r\n/.test(seen()));
     expect(seen()).not.toMatch(/\bd\r\n/);
-    expect(notices.some((notice) => /Retreating d/.test(notice))).toBe(false);
+    expect(notices.some(composes('session.safety.escapeRetrace', { direction: 'd' }))).toBe(false);
   });
 
   /*
@@ -3052,9 +3115,7 @@ describe('which way out', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() =>
-      notices.some((notice) => /It doubles back onto the way we came/.test(notice))
-    );
+    await until(() => notices.some(composes('session.safety.escapeDoublesBack')));
   });
 
   /* Nothing behind us at all, but the realm knows where the room's exit goes. */
@@ -3072,9 +3133,7 @@ describe('which way out', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() =>
-      notices.some((notice) => /The realm knows where that exit goes/.test(notice))
-    );
+    await until(() => notices.some(composes('session.safety.escapeKnown')));
     await until(() => /\bs\r\n/.test(seen()));
   });
 
@@ -3097,7 +3156,7 @@ describe('which way out', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /It is the exit the room listed/.test(notice)));
+    await until(() => notices.some(composes('session.safety.escapePrinted')));
     await until(() => /\be\r\n/.test(seen()));
   });
 
@@ -3132,7 +3191,7 @@ describe('which way out', () => {
      */
     socket.write('*Combat Off*\r\n');
     await until(() => !manager!.character.inCombat);
-    expect(notices.some((notice) => /Retreating to Haven Hall/.test(notice))).toBe(false);
+    expect(notices.some(composes('session.safety.retreatPlanned'))).toBe(false);
     /*
      * The room that answers the step out, resolved the way the client resolves
      * one: by dead reckoning from the lair through the move it just made. No
@@ -3141,10 +3200,10 @@ describe('which way out', () => {
      * before the block and leave the reckoning starting from where it landed.
      */
     socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => notices.some((notice) => /Retreating to Haven Hall/.test(notice)));
+    await until(() => notices.some(composes('session.safety.retreatPlanned')));
     // Two souths: the one that got out, and the one that walks home.
     await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
-    expect(notices.find((notice) => /Retreating to Haven Hall/.test(notice))).toMatch(/: 1 step/);
+    expect(notices.some(composes('session.safety.retreatPlanned', { stepCount: 1 }))).toBe(true);
   });
 
   /*
@@ -3187,7 +3246,7 @@ describe('which way out', () => {
     await until(() => manager!.character.room.number === 1);
     socket.write('[HP=9]:\r\n');
     await until(() => /\bs\r\n[\s\S]*\bs\r\n[\s\S]*\bn\r\n/.test(seen()));
-    expect(notices.some((notice) => /nothing is taking this character/.test(notice))).toBe(false);
+    expect(notices.some(composes('session.safety.escapeStaying'))).toBe(false);
   });
 
   /**
@@ -3231,7 +3290,7 @@ describe('which way out', () => {
     socket.write('[HP=9]:\r\n');
     await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
     expect(seen()).not.toMatch(/\bn\r\n/);
-    expect(notices.filter((notice) => /Running |Retreating \w+,/.test(notice))).toHaveLength(2);
+    expect(notices.filter(composes(RUNNING))).toHaveLength(2);
   });
 
   /**
@@ -3269,7 +3328,7 @@ describe('which way out', () => {
     socket.write('You drop to the ground!\r\n');
     await until(() => manager!.character.mortallyWounded);
     socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+    await until(() => notices.includes(t('session.safety.mortallyWounded')));
 
     expect(seen()).toBe(before);
   });
@@ -3301,7 +3360,7 @@ describe('which way out', () => {
     socket.write('Soul drops to the ground!\r\n');
     await until(() => manager!.character.mortallyWounded);
     socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+    await until(() => notices.includes(t('session.safety.mortallyWounded')));
 
     expect(seen()).toBe(before);
   });
@@ -3334,12 +3393,14 @@ describe('which way out', () => {
 
     // Below the retreat's floor, above the teleport's: the retreat's word only.
     socket.write('[HP=25]:\r\n');
-    await until(() => notices.some((notice) => /Not running:/.test(notice)));
+    await until(() => notices.some(composes(NOT_RUNNING)));
     expect(seen()).not.toMatch(/sys go/);
 
     socket.write('[HP=15]:\r\n');
     await until(() => /sys go 1 297\r\n/.test(seen()));
-    expect(notices.some((notice) => /Teleporting out with sys go 1 297/.test(notice))).toBe(true);
+    expect(notices.some(composes('session.safety.teleporting', { command: 'sys go 1 297' }))).toBe(
+      true
+    );
     socket.write('Bank of Godfrey\r\nObvious exits: north, east, closed gate west\r\n');
     await until(() =>
       traces.some((trace) =>
@@ -3362,7 +3423,7 @@ describe('which way out', () => {
     socket.write('You drop to the ground!\r\n');
     await until(() => manager!.character.mortallyWounded);
     socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+    await until(() => notices.includes(t('session.safety.mortallyWounded')));
     expect(seen()).not.toMatch(/sys go/);
 
     // Positive control: up again and still under the floor, it goes.
@@ -3401,7 +3462,7 @@ describe('which way out', () => {
     socket.write('You drop to the ground!\r\n');
     await until(() => manager!.character.mortallyWounded);
     socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+    await until(() => notices.includes(t('session.safety.mortallyWounded')));
 
     const from = ticks.mock.calls.length;
     await until(() => ticks.mock.calls.length >= from + 2);
@@ -3436,7 +3497,7 @@ describe('which way out', () => {
     socket.write('You drop to the ground!\r\n');
     await until(() => manager!.character.mortallyWounded);
     socket.write('[HP=-8]:\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+    await until(() => notices.includes(t('session.safety.mortallyWounded')));
 
     // The prompt behind the coins is the proof they were read while down.
     socket.write('18 gold drop to the ground.\r\n[HP=-7]:\r\n');
@@ -3476,7 +3537,7 @@ describe('which way out', () => {
     await until(() => manager!.character.inCombat);
     socket.write('[HP=10]:\r\n');
 
-    await until(() => notices.some((notice) => /Not running:/.test(notice)));
+    await until(() => notices.some(composes(NOT_RUNNING)));
     await until(() => /\brest\r\n/.test(seen()));
   });
 
@@ -3505,11 +3566,15 @@ describe('which way out', () => {
     socket.write('Haven Hall\r\nObvious exits: north\r\n');
     await until(() => manager!.character.room.name === 'Haven Hall');
     socket.write('*Combat Engaged*\r\n[HP=9]:\r\n');
-    await until(() => notices.some((notice) => notice.includes('leads back')));
+    const onlyBack = composes('session.safety.escapeOnlyBack.one', {
+      directions: 'north',
+      then: t('session.safety.escapeNotFighting')
+    });
+    await until(() => notices.some(onlyBack));
     // Said on the arrival itself or the prompt after it: the figure is either.
-    const refusal = notices.filter((notice) => notice.startsWith('Not running:'));
+    const refusal = notices.filter(composes(NOT_RUNNING));
     expect(refusal).toHaveLength(1);
-    expect(refusal[0]).toContain('the only way out, north, leads back');
+    expect(onlyBack(refusal[0] ?? '')).toBe(true);
     expect(refusal[0]!.endsWith(t('session.safety.escapeNotFighting'))).toBe(true);
 
     // Two more prompts under the floor: nothing said again.
@@ -3517,7 +3582,7 @@ describe('which way out', () => {
     await settled(8);
     socket.write('[HP=7]:\r\n');
     await settled(7);
-    expect(notices.filter((notice) => notice.startsWith('Not running:'))).toHaveLength(1);
+    expect(notices.filter(composes(NOT_RUNNING))).toHaveLength(1);
   });
 
   /* A haven the realm cannot place is refused out loud, and nothing is walked. */
@@ -3540,7 +3605,7 @@ describe('which way out', () => {
     await until(() => /\bs\r\n/.test(seen()));
     socket.write('*Combat Off*\r\n');
     socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => notices.some((notice) => /Could not retreat to Nowhere Hall/.test(notice)));
+    await until(() => notices.some(composes('session.safety.retreatRefused')));
     // The one step out went; no second step followed it.
     expect(seen().replace(/s\r\n/, '')).not.toMatch(/\b[nsew]\r\n/);
   });
@@ -3632,7 +3697,7 @@ describe('the per-line order in act()', () => {
     );
 
     socket.write('The orc rogue slashes you for 1 damage!\r\n');
-    await until(() => notices.some((notice) => /Running n:/.test(notice)));
+    await until(() => notices.some(composes(RUNNING, { direction: 'n' })));
     // Decided inside the same `act()` as the escape, so already on the list.
     expect(proposed()).toContain('n');
     expect(proposed().filter((command) => command.includes('orc rogue'))).toEqual([]);
@@ -3677,7 +3742,7 @@ describe('the per-line order in act()', () => {
     await until(() => manager!.character.inCombat && manager!.character.vitals.hp === 100);
 
     socket.write('You drop to the ground!\r\n');
-    await until(() => notices.some((notice) => /[Mm]ortally wounded/.test(notice)));
+    await until(() => notices.includes(t('session.safety.mortallyWounded')));
     socket.write('[HP=-8]:\r\n');
     await settled(-8);
 
@@ -3790,7 +3855,7 @@ describe('the per-line order in act()', () => {
     await until(() => manager!.character.inCombat);
 
     socket.write('[HP=10]:\r\n');
-    await until(() => notices.some((notice) => /Running n:/.test(notice)));
+    await until(() => notices.some(composes(RUNNING, { direction: 'n' })));
     const healing = (command: string): boolean =>
       command === 'mend' || command.startsWith('drink ');
     expect(proposed().filter(healing)).toEqual([]);
@@ -4069,7 +4134,7 @@ describe('a death stops everything that was going somewhere', () => {
 
     socket.write('You have been killed!\r\n');
     await until(() => manager!.loops.progress.status === 'stopped');
-    expect(manager.loops.progress.reason).toMatch(/killed/i);
+    expect(manager.loops.progress.reason).toBe(t('session.loop.stoppedDied'));
   });
 
   /*
@@ -4158,7 +4223,7 @@ describe('a death stops everything that was going somewhere', () => {
     await until(() => /\bs\r\n/.test(seen()));
 
     socket.write('You have been killed!\r\n');
-    await until(() => notices.some((notice) => /Not retreating to Haven Hall/.test(notice)));
+    await until(() => notices.some(composes('session.safety.retreatDropped')));
 
     /*
      * And the room the realm moved the character into resolves without the
@@ -4168,7 +4233,7 @@ describe('a death stops everything that was going somewhere', () => {
      */
     socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: north, south\r\n');
     await until(() => manager!.character.room.number === 2);
-    expect(notices.some((notice) => /Retreating to Haven Hall/.test(notice))).toBe(false);
+    expect(notices.some(composes('session.safety.retreatPlanned'))).toBe(false);
     // The one step out went; nothing followed it.
     expect(seen().replace(/s\r\n/, '')).not.toMatch(/\b[nsew]\r\n/);
   });
@@ -4805,7 +4870,7 @@ describe('a player opening on this character', () => {
     await until(() => Buffer.concat(received).toString('latin1').includes('bg attacked by Vaelor'));
     const wire = Buffer.concat(received).toString('latin1');
     expect(wire).toContain('[HP=62]');
-    expect(notices.some((notice) => /Telling the gang/.test(notice))).toBe(true);
+    expect(notices.some(composes('session.safety.pvpAlerted'))).toBe(true);
 
     // A blow line per round is one broadcast per window, not one per line.
     socket.write('Vaelor moves to attack you!\r\n');
@@ -4826,7 +4891,7 @@ describe('a player opening on this character', () => {
 
     await attacked(socket);
     await until(() => Buffer.concat(received).toString('latin1').includes('w\r\n'));
-    expect(notices.some((notice) => /Running w:/.test(notice))).toBe(true);
+    expect(notices.some(composes(RUNNING, { direction: 'w' }))).toBe(true);
   });
 
   /*
@@ -4872,7 +4937,7 @@ describe('a player opening on this character', () => {
     const wire = Buffer.concat(received).toString('latin1');
     expect(wire).not.toContain('bg ');
     expect(wire).not.toMatch(/\bw\r\n/);
-    expect(notices.some((notice) => /Telling the gang|Running \w+:/.test(notice))).toBe(false);
+    expect(notices.some(composes(['session.safety.pvpAlerted', ...RUNNING]))).toBe(false);
   });
 });
 
@@ -5071,7 +5136,11 @@ describe('a step the server never answers', () => {
     // Nothing is written back from here on: the positive control for the
     // silence is that the move itself reached the wire.
     await until(() => wire().includes('rm\r\n'));
-    expect(notices.some((notice) => notice.includes('“n”'))).toBe(true);
+    expect(
+      notices.some(
+        composes(['session.walk.claimProbed', 'session.walk.claimLapsed'], { command: 'n' })
+      )
+    ).toBe(true);
     // Probed once: one `rm` answers the question, and a second only spends.
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(wire().split('rm\r\n')).toHaveLength(2);
@@ -5111,12 +5180,20 @@ describe('a step the server never answers', () => {
     await until(() => wire().includes('-need'));
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(wire()).not.toContain('rm\r\n');
-    expect(notices.some((notice) => notice.includes('“n”'))).toBe(false);
+    expect(
+      notices.some(
+        composes(['session.walk.claimProbed', 'session.walk.claimLapsed'], { command: 'n' })
+      )
+    ).toBe(false);
 
     // Positive control: the same silence, the line committed, and the probe.
     manager.send(' gear\r');
     await until(() => wire().includes('rm\r\n'));
-    expect(notices.some((notice) => notice.includes('“n”'))).toBe(true);
+    expect(
+      notices.some(
+        composes(['session.walk.claimProbed', 'session.walk.claimLapsed'], { command: 'n' })
+      )
+    ).toBe(true);
   });
 
   it('gives up on it, and says which step, once', async () => {
@@ -5126,12 +5203,18 @@ describe('a step the server never answers', () => {
     // because what the server owes this client is a fact about the wire.
     await new Promise((resolve) => setTimeout(resolve, life + 50));
     socket.write('[HP=56/MA=12]:' + PROMPT_REPAINT);
-    await until(() => notices.some((notice) => notice.includes('“n”')));
+    await until(() =>
+      notices.some(
+        composes(['session.walk.claimProbed', 'session.walk.claimLapsed'], { command: 'n' })
+      )
+    );
 
-    const said = notices.filter((notice) => notice.includes('“n”'));
+    const said = notices.filter(
+      composes(['session.walk.claimProbed', 'session.walk.claimLapsed'], { command: 'n' })
+    );
     expect(said).toHaveLength(1);
     // Said in whole seconds off the tuning key rather than as a bare number.
-    expect(said[0]).toMatch(/0s/);
+    expect(said[0]).toBe(t('session.walk.claimLapsed', { command: 'n', seconds: 0 }));
   });
 
   /*
@@ -5224,7 +5307,11 @@ describe('a step the server never answers', () => {
 
     // The step goes out and nothing answers it until its claim has lapsed.
     manager.send('n\r');
-    await until(() => notices.some((notice) => notice.includes('“n”')));
+    await until(() =>
+      notices.some(
+        composes(['session.walk.claimProbed', 'session.walk.claimLapsed'], { command: 'n' })
+      )
+    );
     socket.write('Dark Alley\r\nObvious exits: east\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
     await until(() => manager!.character.room.name === 'Dark Alley');
     expect(manager.character.room.number).toBeNull();
@@ -5304,7 +5391,9 @@ describe('a step the server never answers', () => {
     await new Promise((resolve) => setTimeout(resolve, life + 50));
     socket.write('[HP=56/MA=12]:' + PROMPT_REPAINT);
     await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(notices.filter((notice) => notice.includes('given up waiting'))).toEqual([]);
+    expect(
+      notices.filter(composes(['session.walk.claimLapsed', 'session.walk.claimLapsedUntyped']))
+    ).toEqual([]);
   });
 });
 
@@ -5358,7 +5447,11 @@ describe('auto-combat lent to a character hit and not moving', () => {
     socket.write('The slime beast slashes you for 3 damage!\r\n[HP=50/MA=12]:' + PROMPT_REPAINT);
     await until(() => flips.length === 1);
     expect(flips).toEqual([true]);
-    expect(collected.notices.some((n) => n.includes('turning it on until you move'))).toBe(true);
+    expect(
+      collected.notices.some(
+        composes(['automation.combat.lentForDefence.one', 'automation.combat.lentForDefence.many'])
+      )
+    ).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 20));
     socket.write('The slime beast slashes you for 3 damage!\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
     await until(() => wire().includes('slime beast'));
@@ -5801,7 +5894,7 @@ describe('a command this realm has no word for', () => {
     socket.write('You fumble in confusion!\r\n');
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(notices.some((line) => line.includes('threw away'))).toBe(false);
+    expect(notices.some(composes('automation.queue.fumbledResend'))).toBe(false);
   });
 
   /*
@@ -5899,8 +5992,8 @@ describe('a corridor the server refused', () => {
      * the refusal is the data being right; the other sentence would accuse it
      * of the one thing it got correct.
      */
-    await until(() => notices.some((notice) => /shut rather than absent/.test(notice)));
-    expect(notices.some((notice) => /realm data promised/.test(notice))).toBe(false);
+    await until(() => notices.some(composes('session.walk.exitShut')));
+    expect(notices.some(composes('session.walk.exitRefused'))).toBe(false);
 
     /*
      * And now somebody pulls the levers by hand and the room lists the way.
@@ -5911,7 +6004,7 @@ describe('a corridor the server refused', () => {
     socket.write('Stone Hallway\r\nObvious exits: north, south\r\n');
     // Canonical short, as every direction on screen is — it is what the realm
     // database uses and what the refusal above named.
-    await until(() => notices.some((notice) => /The room lists n again/.test(notice)));
+    await until(() => notices.includes(t('session.walk.exitBackOpen', { direction: 'n' })));
   });
 });
 
@@ -6315,11 +6408,11 @@ describe('SessionManager dead link', () => {
     await until(() => drops.length > 0);
     // `null`, not a stand-down: nobody typed their way out, the link died.
     expect(drops).toEqual([null]);
-    expect(notices.some((notice) => /treating the connection as lost/.test(notice))).toBe(true);
+    expect(notices.some(composes('session.connection.deadLink'))).toBe(true);
     expect(manager.state.phase).toBe('closed');
     // This client hung up; the far end closed nothing.
-    expect(notices).toContain('Hung up on a connection that had stopped answering.');
-    expect(notices.some((notice) => /closed by remote host/i.test(notice))).toBe(false);
+    expect(notices).toContain(t('session.connection.hungUp'));
+    expect(notices).not.toContain(t('session.connection.closedByRemote'));
   });
 
   /*
@@ -6337,8 +6430,7 @@ describe('SessionManager dead link', () => {
     expect(manager.ask('rm')).toBe(true);
     manager.send('who\r\n');
     await until(() => drops.length > 0);
-    const dead = (): number =>
-      notices.filter((notice) => /treating the connection as lost/.test(notice)).length;
+    const dead = (): number => notices.filter(composes('session.connection.deadLink')).length;
     expect(dead()).toBe(1);
     // …and refuses one once it has gone, rather than filing it as sent.
     expect(manager.ask('rm')).toBe(false);
@@ -6651,7 +6743,7 @@ describe('starting and stopping a movement', () => {
     expect(manager!.walkPlan(plan)).toEqual({ started: true });
     expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 5 });
     // Said out loud: the steps walked are not the steps that were read.
-    expect(notices.some((line) => line.includes('drawn again from here'))).toBe(true);
+    expect(notices.some(composes('session.walk.replanned'))).toBe(true);
   });
 
   /*
@@ -6680,7 +6772,7 @@ describe('starting and stopping a movement', () => {
     const { world, notices } = await atTheNorthEnd();
     expect(manager!.walkPlan(world.route('1/40', '1/38'))).toEqual({ started: true });
     expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 2 });
-    expect(notices.some((line) => line.includes('drawn again'))).toBe(false);
+    expect(notices.some(composes('session.walk.replanned'))).toBe(false);
   });
 
   /*
@@ -7317,23 +7409,31 @@ describe('running from a monster its row names', () => {
   it('runs from it with Auto-Retreat on, before any fight', async () => {
     const { notices, wire } = await standingBeside(true);
     await until(() => /\bn\r\n/.test(wire()));
-    expect(notices.find((notice) => /Running n:/.test(notice))).toMatch(
-      /black ooze is here, and its row says to escape/
-    );
+    expect(
+      notices.some(
+        composes(RUNNING, {
+          direction: 'n',
+          why: t('session.safety.whyDreaded', { mob: 'black ooze' })
+        })
+      )
+    ).toBe(true);
   });
 
   it('stays with Auto-Retreat off, and says so', async () => {
     const { notices, traces, wire } = await standingBeside(false);
-    await until(() => notices.some((notice) => /Auto-Retreat is off/.test(notice)));
-    expect(notices.filter((notice) => /Auto-Retreat is off/.test(notice))).toEqual([
-      'Not running: black ooze is here, and its row says to escape, but Auto-Retreat is off.'
-    ]);
+    const reason = t('session.safety.retreatOffReason');
+    const switchedOff = t('session.safety.escapeSwitchedOff', {
+      why: t('session.safety.whyDreaded', { mob: 'black ooze' }),
+      reason
+    });
+    await until(() => notices.includes(switchedOff));
+    expect(notices.filter(composes(NOT_RUNNING))).toEqual([switchedOff]);
     expect(wire()).not.toMatch(/\b[nsewud]\r\n/);
     await until(() => traces.some((trace) => trace.safety.length > 0));
     expect(traces.at(-1)?.safety[0]).toMatchObject({
       action: 'retreat',
       acted: false,
-      refused: 'Auto-Retreat is off'
+      refused: reason
     });
   });
 });

@@ -159,7 +159,15 @@ describe('noticing the pack is short', () => {
     const auto = make(p);
     auto.onCharacter(character(2));
     expect(log).toEqual(['hold', 'route:1/2147', 'walk']);
-    expect(notices[0]).toContain('General Store');
+    expect(notices[0]).toBe(
+      t('automation.supplies.going', {
+        item: 'torch',
+        have: 2,
+        min: 3,
+        shop: 'General Store',
+        steps: ROUTE.steps.length
+      })
+    );
     expect(decisions[0]).toMatchObject({ action: 'supplies', acted: true });
     expect(auto.current?.stage).toBe('walking');
   });
@@ -224,7 +232,12 @@ describe('noticing the pack is short', () => {
     expect(log).toEqual([]);
     expect(decisions).toHaveLength(1);
     expect(decisions[0]).toMatchObject({ acted: false });
-    expect(decisions[0]?.refused).toContain('six rooms');
+    expect(decisions[0]?.refused).toBe(
+      t('automation.supplies.refusalNoShop', {
+        item: 'torch',
+        why: 'six rooms are called General Store'
+      })
+    );
     vi.advanceTimersByTime(TUNING.supplies.retryMs + 1);
     auto.onCharacter(character(1));
     expect(decisions).toHaveLength(2);
@@ -265,7 +278,9 @@ describe('at the counter', () => {
     expect(sent).toHaveLength(4);
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
-    expect(notices.at(-1)).toContain('Bought 3 torch');
+    expect(notices.at(-1)).toBe(
+      t('automation.supplies.bought', { count: 3, item: 'torch', shop: 'General Store', have: 5 })
+    );
   });
 
   it('buys straight away when already standing in the shop', () => {
@@ -295,7 +310,9 @@ describe('at the counter', () => {
     drain();
     expect(sent).toEqual(['list']);
     expect(log.at(-1)).toBe('release');
-    expect(decisions.at(-1)?.refused).toContain('does not list torch');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNotSold', { item: 'torch', shop: 'General Store' })
+    );
   });
 
   it('refuses when the quote is more than the purse holds and no bank holds the rest', () => {
@@ -308,8 +325,14 @@ describe('at the counter', () => {
     drain();
     expect(sent).toEqual(['list']);
     // Three at 9,000 each, charm unread and so priced at its floor: ten percent on.
-    expect(decisions.at(-1)?.refused).toContain('29,700 copper');
-    expect(decisions.at(-1)?.refused).toContain('no bank on record');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNoBank', {
+        item: 'torch',
+        owed: (29_700).toLocaleString(),
+        wealth: (5_000).toLocaleString(),
+        short: (24_700).toLocaleString()
+      })
+    );
   });
 
   it('takes a buy the counter never confirms as refused, and says so', () => {
@@ -324,7 +347,9 @@ describe('at the counter', () => {
     vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
-    expect(decisions.at(-1)?.refused).toContain('did not confirm');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalUnconfirmed', { item: 'torch' })
+    );
   });
 });
 
@@ -351,7 +376,9 @@ describe('on the way', () => {
     }
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
-    expect(decisions.at(-1)?.refused).toContain('could not reach');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalUnreachable', { shop: 'General Store', why: 'a shut door' })
+    );
   });
 
   it('is abandoned by a death, and the loop let go', () => {
@@ -454,7 +481,9 @@ describe('what the pack holds over the maximum', () => {
     make(p).onCharacter(holding(6));
     drain();
     expect(sent).toEqual(['drop torch']);
-    expect(notices.join(' ')).toContain('Dropping a spare torch');
+    expect(notices).toContain(
+      t('automation.supplies.surplusDropped', { item: 'torch', have: 6, max: 5 })
+    );
     // A decision somebody will ask about, so it is on the safety trace as an
     // action rather than only in the queue's reason.
     expect(decisions.some((d) => d.action === 'supplies' && d.acted)).toBe(true);
@@ -501,7 +530,9 @@ describe('what the pack holds over the maximum', () => {
     make(p).onCharacter(holding(6, 6));
     drain();
     expect(sent).toEqual([]);
-    expect(notices.join(' ')).toContain('every one is in use');
+    expect(notices).toContain(
+      t('automation.supplies.surplusAllWorn', { item: 'torch', have: 6, max: 5 })
+    );
   });
 
   it('takes the spare rather than the one in use', () => {
@@ -648,7 +679,15 @@ describe('a purse short of the price', () => {
     // Three torches at 500, charm unread: 550 each.
     expect(asked).toEqual([1650]);
     expect(log).toEqual(['hold', 'route:1/2170', 'walk']);
-    expect(notices[0]).toContain('Bank of Godfrey');
+    expect(notices[0]).toBe(
+      t('automation.supplies.toBank', {
+        item: 'torch',
+        owed: (1_650).toLocaleString(),
+        wealth: (0).toLocaleString(),
+        bank: 'Bank of Godfrey',
+        held: (9_000_000).toLocaleString()
+      })
+    );
     expect(decisions[0]).toMatchObject({ action: 'supplies', acted: true });
 
     goTo('1/2170');
@@ -663,7 +702,13 @@ describe('a purse short of the price', () => {
 
     auto.onBlock(block('user-withdraws', { amount: '2650' }), broke());
     expect(log.slice(-2)).toEqual(['route:1/2147', 'walk']);
-    expect(notices.at(-1)).toContain('Withdrew 2650');
+    expect(notices.at(-1)).toBe(
+      t('automation.supplies.withdrew', {
+        amount: '2650',
+        bank: 'Bank of Godfrey',
+        shop: 'General Store'
+      })
+    );
     arrive();
     auto.onWalkEnded(true, null, broke());
     drain();
@@ -710,7 +755,13 @@ describe('a purse short of the price', () => {
     drain();
     expect(sent).toEqual(['bank']);
     expect(log.slice(-2)).toEqual(['route:1/3000', 'walk']);
-    expect(notices.some((n) => n.includes('holds 100 copper'))).toBe(true);
+    expect(notices).toContain(
+      t('automation.supplies.bankShort', {
+        bank: 'Bank of Godfrey',
+        held: (100).toLocaleString(),
+        short: (1_650).toLocaleString()
+      })
+    );
   });
 
   it('refuses when no bank on record holds the rest, and walks nowhere', () => {
@@ -719,7 +770,14 @@ describe('a purse short of the price', () => {
     auto.onCharacter(broke());
     expect(log).toEqual(['hold', 'release']);
     expect(auto.current).toBeNull();
-    expect(decisions.at(-1)?.refused).toContain('1,650 copper');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNoBank', {
+        item: 'torch',
+        owed: (1_650).toLocaleString(),
+        wealth: (0).toLocaleString(),
+        short: (1_650).toLocaleString()
+      })
+    );
   });
 
   it('refuses when the only bank turns out short, naming it', () => {
@@ -731,7 +789,14 @@ describe('a purse short of the price', () => {
     auto.onCharacter(stated(broke(), 100));
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
-    expect(decisions.at(-1)?.refused).toContain('no other bank');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNoOtherBank', {
+        item: 'torch',
+        owed: (1_650).toLocaleString(),
+        wealth: (0).toLocaleString(),
+        short: (1_650).toLocaleString()
+      })
+    );
   });
 
   it('takes a withdrawal the bank never answers as refused', () => {
@@ -745,8 +810,17 @@ describe('a purse short of the price', () => {
     vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
-    expect(notices.some((n) => n.includes('did not pay out'))).toBe(true);
-    expect(decisions.at(-1)?.refused).toContain('no other bank');
+    expect(notices).toContain(
+      t('automation.supplies.refusalNoPayout', { bank: 'Bank of Godfrey' })
+    );
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNoOtherBank', {
+        item: 'torch',
+        owed: (1_650).toLocaleString(),
+        wealth: (0).toLocaleString(),
+        short: (1_650).toLocaleString()
+      })
+    );
   });
 
   it('falls to the next vault when one never states a balance', () => {
@@ -765,7 +839,9 @@ describe('a purse short of the price', () => {
     vi.advanceTimersByTime(TUNING.supplies.buyTimeoutMs + 1);
     expect(auto.current?.stage).toBe('walking');
     expect(log.slice(-2)).toEqual(['route:1/3000', 'walk']);
-    expect(notices.some((n) => n.includes('did not state a balance'))).toBe(true);
+    expect(notices).toContain(
+      t('automation.supplies.refusalNoBalance', { bank: 'Bank of Godfrey' })
+    );
   });
 
   it('does not take a withdrawal the player typed for the one it asked', () => {
@@ -826,6 +902,12 @@ describe('a purse short of the price', () => {
     auto.onWalkEnded(true, null, character(2));
     auto.onCharacter(listed(character(2), '90 gold crowns'));
     expect(auto.current).toBeNull();
-    expect(decisions.at(-1)?.refused).toContain('is quoted at 9,000 copper');
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalCannotAfford', {
+        item: 'torch',
+        price: (9_000).toLocaleString(),
+        wealth: (5_000).toLocaleString()
+      })
+    );
   });
 });

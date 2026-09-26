@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Wards, type WardSources } from '../Wards';
 import { CommandQueue } from '../CommandQueue';
+import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
@@ -78,7 +79,9 @@ describe('keeping a room’s ward up', () => {
   it('uses the carried item before the step into a room its spell would stop', () => {
     make().beforeStep('12/300', standing([carried('waterskin')]));
     expect(sent).toEqual(['use waterskin']);
-    expect(notices.join('\n')).toContain('waterskin');
+    expect(notices).toContain(
+      t('automation.wards.using', { item: 'waterskin', spell: 'waterskin', hazard: 'desert spell' })
+    );
   });
 
   it('does nothing for a room that casts nothing it would stop, or with the switch off', () => {
@@ -94,10 +97,12 @@ describe('keeping a room’s ward up', () => {
     wards.lend(true);
     wards.beforeStep('12/300', standing([carried('waterskin')]));
     expect(sent).toEqual(['use waterskin']);
-    expect(notices.filter((line) => line.includes('is off in the settings'))).toHaveLength(1);
+    expect(notices.filter((line) => line === t('automation.wards.lentForRun'))).toHaveLength(1);
     wards.lend(false);
     wards.lend(false);
-    expect(notices.filter((line) => line.includes('off again'))).toHaveLength(1);
+    expect(notices.filter((line) => line === t('automation.wards.returnedAfterRun'))).toHaveLength(
+      1
+    );
     clock += 2000 * 1000;
     wards.beforeStep('12/300', standing([carried('waterskin')]));
     expect(sent).toEqual(['use waterskin']);
@@ -108,7 +113,7 @@ describe('keeping a room’s ward up', () => {
     const wards = make(health({ useWards: true }));
     wards.lend(true);
     wards.configure(health({ useWards: false }), true);
-    expect(notices.some((line) => line.includes('goes on without wards'))).toBe(true);
+    expect(notices).toContain(t('automation.wards.lendEnded'));
     wards.beforeStep('12/300', standing([carried('waterskin')]));
     expect(sent).toEqual([]);
     // A reload that leaves the switch where it was is not an edit of it.
@@ -161,7 +166,13 @@ describe('keeping a room’s ward up', () => {
     wards.beforeStep('12/300', standing([carried('torch')]));
     wards.beforeStep('12/300', standing([carried('torch')]));
     expect(sent).toEqual([]);
-    expect(notices.filter((line) => line.includes('nothing whose use'))).toHaveLength(1);
+    expect(
+      notices.filter(
+        (line) =>
+          line ===
+          t('automation.wards.nothingCarried', { hazard: 'desert spell', spells: 'waterskin' })
+      )
+    ).toHaveLength(1);
 
     // A use the server swallowed: the clock was never armed, and the floor holds.
     const swallowed = new Wards(

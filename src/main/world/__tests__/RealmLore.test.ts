@@ -7,6 +7,8 @@ import { RealmLore, realmKey } from '../RealmLore';
 import type { WorldGraph } from '../WorldGraph';
 import { mobNameCandidates } from '../../../shared/mobs';
 import { SpellMessageBook } from '../../../shared/spell-messages';
+import { t } from '../../app/i18n';
+import { complaint } from './complaint';
 
 /** The two rows this realm names. */
 const rows: Record<string, { name: string; hp: number; span?: [number, number] }> = {
@@ -191,7 +193,12 @@ describe('keeping what was learned', () => {
     lore.forRealm('gmud.sqlite', world).observe('grue', { damage: 420, killed: true, at: 2 });
     lore.flush();
 
-    expect(said.join(' ')).toContain('will not parse');
+    expect(said).toContain(
+      t('notices.world.lore.parseSuspended', {
+        fileName: path.basename(file),
+        message: complaint(() => JSON.parse('{ this is not json'))
+      })
+    );
     expect(fs.readFileSync(file, 'utf8')).toBe('{ this is not json');
   });
 

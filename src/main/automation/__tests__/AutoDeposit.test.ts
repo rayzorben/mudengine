@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AutoDeposit } from '../AutoDeposit';
 import { CommandQueue } from '../CommandQueue';
+import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, type AutomationConfig, type BankingConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 
@@ -306,7 +307,7 @@ describe('the console’s Deposit All', () => {
     expect(pressed(auto, carrying(190_400))).toBe(false);
     drain();
     expect(sent).toEqual([]);
-    expect(said.join('\n')).toMatch(/not the bank this character banks at/i);
+    expect(said).toContain(t('automation.banking.notYourBank'));
   });
 
   /* And silently on the threshold, for the reason the not-a-bank refusal is
@@ -349,7 +350,7 @@ describe('the console’s Deposit All', () => {
     auto.onListing(carrying(192_600));
     drain();
     expect(sent).toEqual(['i']);
-    expect(said.join('\n')).toMatch(/not the bank this character banks at/i);
+    expect(said).toContain(t('automation.banking.notYourBank'));
   });
 
   it('refuses away from a counter, and says why', () => {

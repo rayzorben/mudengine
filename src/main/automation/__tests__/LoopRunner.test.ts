@@ -56,7 +56,7 @@ describe('starting a loop', () => {
     expect(runner.start(loop, state())).toBeNull();
     expect(walked).toEqual(['Arena']);
     expect(runner.progress).toMatchObject({ status: 'running', name: 'Arena', stop: 1, stops: 2 });
-    expect(notices[0]).toContain('2 stops');
+    expect(notices[0]).toBe(t('automation.loops.started', { loopName: 'Arena', stopCount: 2 }));
   });
 
   it('starts from the stop it is already standing in', () => {
@@ -70,7 +70,7 @@ describe('starting a loop', () => {
   it('refuses outside the realm', () => {
     const { planner: p } = planner();
     expect(new LoopRunner(p, {}).start(loop, state({ phase: 'unknown' }))).toBe(
-      'Not in the realm.'
+      t('automation.loops.refusalNotInRealm')
     );
   });
 
@@ -401,7 +401,9 @@ describe('when it cannot get there', () => {
     // The loop moves on to Road rather than replanning the same failure.
     expect(walked).toEqual(['Arena', 'Road']);
     expect(runner.progress.status).toBe('running');
-    expect(notices.some((m) => m.startsWith('Skipping'))).toBe(true);
+    expect(notices).toContain(
+      t('automation.loops.skippingStop', { stopName: 'Arena', why: 'the game refused s' })
+    );
   });
 
   it('tries the next stop, and gives up after three failures in a row', () => {
@@ -443,7 +445,7 @@ describe('when it cannot get there', () => {
     runner.onCharacter(state({ phase: 'unknown' }));
     expect(runner.progress).toMatchObject({
       status: 'stopped',
-      reason: 'the character left the realm'
+      reason: t('automation.loops.reasonLeftRealm')
     });
   });
 
@@ -465,7 +467,7 @@ describe('losing its place', () => {
     let located = 0;
     let lost = true;
     const { planner: p, walked } = planner({
-      routeTo: (stop) => (lost ? 'I cannot tell which room you are in.' : route(stop.name))
+      routeTo: (stop) => (lost ? t('session.loop.unknownRoom') : route(stop.name))
     });
     const runner = new LoopRunner(p, { locate: () => (located += 1) });
     runner.start(loop, state());
@@ -489,7 +491,7 @@ describe('losing its place', () => {
     let located = 0;
     let at: string | null = null;
     const { planner: p, walked } = planner({
-      routeTo: (stop) => (at === null ? 'I cannot tell which room you are in.' : route(stop.name)),
+      routeTo: (stop) => (at === null ? t('session.loop.unknownRoom') : route(stop.name)),
       hereNow: () => at
     });
     const runner = new LoopRunner(p, { locate: () => (located += 1) });
@@ -516,7 +518,7 @@ describe('losing its place', () => {
    */
   it('reports a lap started unplaced as started, since it runs and asks', () => {
     let located = 0;
-    const { planner: p } = planner({ routeTo: () => 'I cannot tell which room you are in.' });
+    const { planner: p } = planner({ routeTo: () => t('session.loop.unknownRoom') });
     const runner = new LoopRunner(p, { locate: () => (located += 1) });
     expect(runner.start(loop, state())).toBeNull();
     expect(located).toBe(1);
@@ -540,7 +542,7 @@ describe('losing its place', () => {
     const { locateWaitMs: wait, maxLocates } = DEFAULT_INTERNAL.tuning.loop;
     let asks = 0;
     const { planner: p, walked } = planner({
-      routeTo: () => 'I cannot tell which room you are in.',
+      routeTo: () => t('session.loop.unknownRoom'),
       hereNow: () => null
     });
     const runner = new LoopRunner(p, { locate: () => void (asks += 1) });
@@ -555,13 +557,13 @@ describe('losing its place', () => {
     expect(asks).toBe(maxLocates);
     expect(walked).toEqual([]);
     expect(runner.progress.status).toBe('stopped');
-    expect(runner.progress.reason).toContain('I cannot tell which room you are in.');
+    expect(runner.progress.reason).toContain(t('session.loop.unknownRoom'));
   });
 
   it('gives up after enough unanswered asks', () => {
     let located = 0;
     const { planner: p } = planner({
-      routeTo: () => 'I cannot tell which room you are in.'
+      routeTo: () => t('session.loop.unknownRoom')
     });
     const runner = new LoopRunner(p, { locate: () => (located += 1) });
     runner.start(loop, state());
@@ -598,7 +600,7 @@ describe('on the ground', () => {
     let down = false;
     let at: string | null = null;
     const { planner: p, walked } = planner({
-      routeTo: (stop) => (at === null ? 'I cannot tell which room you are in.' : route(stop.name)),
+      routeTo: (stop) => (at === null ? t('session.loop.unknownRoom') : route(stop.name)),
       hereNow: () => at,
       onTheGround: () => down
     });
@@ -622,7 +624,7 @@ describe('losing its place mid-walk', () => {
     runner.start(loop, state());
     expect(walked).toEqual(['Arena']);
     // The walk died of a lost location — the stop itself was never at fault.
-    runner.onWalkEnded(false, 'I can no longer tell which room you are in', state());
+    runner.onWalkEnded(false, t('automation.walk.reasonAmbiguous'), state());
     expect(located).toBe(1);
     expect(runner.progress.status).toBe('running');
     // The rm answered; the same stop is planned again.
@@ -1040,7 +1042,7 @@ describe('the loop card’s controls', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    expect(runner.resume(state())).toMatch(/no stopped loop/i);
+    expect(runner.resume(state())).toBe(t('automation.loops.refusalNotStopped'));
   });
 
   /* Stopping twice is idempotent, and the first reason is the one that stands:
@@ -1087,14 +1089,14 @@ describe('the loop card’s controls', () => {
 
     const plain = new LoopRunner(planner().planner, {});
     plain.start(loop, state());
-    expect(plain.reverse()).toMatch(/bounce/i);
+    expect(plain.reverse()).toBe(t('automation.loops.refusalNotBounce'));
   });
 
   it('refuses every control while nothing is looping', () => {
     const runner = new LoopRunner(planner().planner, {});
-    expect(runner.skip()).toMatch(/nothing is looping/i);
-    expect(runner.reverse()).toMatch(/nothing is looping/i);
-    expect(runner.resume(state())).toMatch(/no stopped loop/i);
+    expect(runner.skip()).toBe(t('automation.loops.refusalNotLooping'));
+    expect(runner.reverse()).toBe(t('automation.loops.refusalNotLooping'));
+    expect(runner.resume(state())).toBe(t('automation.loops.refusalNotStopped'));
   });
 
   /*
@@ -1215,7 +1217,7 @@ describe('an errand', () => {
     expect(runner.progress.hold).toBeNull();
     runner.onCharacter(state());
     expect(walked).toEqual(['Arena', 'Arena']);
-    expect(notices.some((m) => m.includes('shop'))).toBe(true);
+    expect(notices).toContain(t('automation.loops.heldForErrand'));
   });
 
   /* Reported 2026-09-03 as "why does it keep doing rm", and measured in

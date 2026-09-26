@@ -271,6 +271,7 @@ export default function PlayerFlyout({
               aria-selected={face === entry.id}
               className="crumb"
               data-active={face === entry.id ? 'true' : 'false'}
+              data-tab={entry.id}
               key={entry.id}
               onClick={() => setFace(entry.id)}
               onMouseDown={keepFocus}

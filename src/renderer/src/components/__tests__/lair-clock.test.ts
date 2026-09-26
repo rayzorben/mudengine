@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { clockText, lairCopyText } from '../LairList';
 import type { WorldLair, WorldMob } from '@shared/world';
+import { t } from '../../lib/i18n';
 
 /**
  * How often a lair pays, said in a reading a player recognises.
@@ -54,13 +55,13 @@ describe('a lair says how often it fills', () => {
   it('pastes the clock beside the slots, because the face draws both', () => {
     const lair: WorldLair = { max: 2, respawnSeconds: 90, mobs: [mob('gnoll', 40)] };
     const [head] = lairCopyText(lair).split('\n');
-    expect(head).toContain('up to 2 at once');
+    expect(head).toContain(t('cards.room.lair.upTo.many', { max: 2 }));
     expect(head).toContain('1m 30s');
   });
 
   it('and claims no clock for a lair whose data states none', () => {
     const lair: WorldLair = { max: null, respawnSeconds: null, mobs: [mob('gnoll', 40)] };
     const [head] = lairCopyText(lair).split('\n');
-    expect(head).toBe('Lair');
+    expect(head).toBe(t('cards.room.tabs.lair'));
   });
 });

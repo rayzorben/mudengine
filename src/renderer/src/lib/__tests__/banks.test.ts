@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { banksCopyText } from '../../components/BanksCard';
 import { bankCopyText, shopCopyText } from '../../components/ShopFace';
 import { bankKey, type BankBalance } from '@shared/character';
+import { t } from '../i18n';
 
 const bank = (name: string, copper: number, shop: number | null = null): BankBalance => ({
   shop,
@@ -43,10 +44,12 @@ describe('what a Banks card would put on the clipboard', () => {
       bank('Bank of Godfrey', 310_335),
       bank('Bank of Albion', 42)
     ]);
+    const row = (name: string, copper: number): string =>
+      t('cards.banks.copyRow', { name, copper: copper.toLocaleString() });
     expect(text.split('\n').slice(1)).toEqual([
-      'Bank of Godfrey: 310,335 copper coins (cc)',
-      'Bank of Albion: 42 copper coins (cc)',
-      'Rhudaur Bank: 42 copper coins (cc)'
+      row('Bank of Godfrey', 310_335),
+      row('Bank of Albion', 42),
+      row('Rhudaur Bank', 42)
     ]);
   });
 
@@ -56,7 +59,7 @@ describe('what a Banks card would put on the clipboard', () => {
    * savings they may well have.
    */
   it('says nothing about banks that have not spoken', () => {
-    expect(banksCopyText([]).split('\n')).toEqual(['Banks']);
+    expect(banksCopyText([]).split('\n')).toEqual([t('cards.banks.title')]);
   });
 });
 
@@ -98,7 +101,7 @@ describe('copying a bank’s face', () => {
    */
   it('says a vault has not spoken rather than implying it is empty', () => {
     const text = bankCopyText(vault, [], now);
-    expect(text).toContain('Bank of Godfrey');
-    expect(text).not.toContain('0 copper');
+    expect(text).toBe(`Bank of Godfrey\n${t('cards.room.bank.unasked')}`);
+    expect(text).not.toContain(t('cards.room.bank.copper', { copper: (0).toLocaleString() }));
   });
 });

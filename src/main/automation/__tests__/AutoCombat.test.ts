@@ -6,6 +6,8 @@ import path from 'node:path';
 import { AutoCombat } from '../AutoCombat';
 import type { EngageDecision } from '../../../shared/automation';
 import { CommandQueue } from '../CommandQueue';
+import { t } from '../../app/i18n';
+import { ANY, notesOf, sentence } from '../../app/copyMatch';
 import {
   DEFAULT_CONFIG,
   type AutomationConfig,
@@ -210,7 +212,7 @@ describe('opening a fight', () => {
     drain();
     expect(sent).toEqual([]);
     expect(refusals()).toEqual([
-      'giant rat — Rend is already fighting giant rat, and politeAttacks is on'
+      `giant rat — ${t('automation.combat.refusedClaimed', { target: 'giant rat', player: 'Rend' })}`
     ]);
 
     // The default joins, which is MegaMUD's own `PoliteAttacks=0`.
@@ -500,8 +502,14 @@ describe('which one to go for', () => {
     drain();
     const acted = decisions.find((decision) => decision.acted);
     expect(acted?.target).toBe('wererat shaman');
-    expect(acted?.because).toContain('the most dangerous of 2');
-    expect(acted?.because).toContain('40 hp');
+    expect(acted?.because).toMatch(
+      sentence('automation.combat.whyMostDangerous', {
+        count: 2,
+        perRound: ANY,
+        costs: t('automation.combat.costByHealth', { hp: 40 }),
+        hazards: ANY
+      })
+    );
   });
 
   /* The character's own side of the arithmetic: a sheet `prowess` can read, a
@@ -540,8 +548,15 @@ describe('which one to go for', () => {
     auto.onCharacter(swordsman(weighed));
     drain();
     const acted = decisions.find((decision) => decision.acted);
-    expect(acted?.because).toMatch(/up to \d+ rounds and \d+ hp to kill/);
-    expect(acted?.because).not.toContain('40 hp');
+    expect(acted?.because).toMatch(
+      sentence('automation.combat.whyMostDangerous', {
+        count: 2,
+        perRound: ANY,
+        costs: t('automation.combat.costBound', { rounds: ANY, cost: ANY }),
+        hazards: ANY
+      })
+    );
+    expect(acted?.because).not.toContain(t('automation.combat.costByHealth', { hp: 40 }));
   });
 
   /* The monster's own armour reaches the roll. Two fighters alike in every
@@ -781,7 +796,7 @@ describe('refusing to start one', () => {
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
-    expect(refusals()).toEqual(['giant rat — you turned auto-combat off for this journey']);
+    expect(refusals()).toEqual([`giant rat — ${t('automation.combat.refusedDeclinedTravelling')}`]);
   });
 
   /*
@@ -1195,7 +1210,9 @@ describe('what to swing with', () => {
     auto.onCharacter(state({ room, stealth: 'seen' }));
     drain();
     expect(sent).toEqual(['a giant rat']);
-    expect(notices.filter((n) => /sneaking/.test(n))).toHaveLength(1);
+    expect(
+      notices.filter((n) => n === t('automation.combat.openerNeedsStealth', { verb: 'bs' }))
+    ).toHaveLength(1);
   });
 
   /*
@@ -1212,7 +1229,9 @@ describe('what to swing with', () => {
     auto.onCharacter(state({ room, stealth: 'sneaking' }));
     drain();
     expect(sent).toEqual(['a giant rat']);
-    expect(notices.filter((n) => /cannot get into the shadows/i.test(n))).toHaveLength(1);
+    expect(
+      notices.filter((n) => n === t('automation.combat.openerWrongClass', { verb: 'bs' }))
+    ).toHaveLength(1);
   });
 
   /* Unknown class never refuses, the rule every threshold here follows. */
@@ -1480,7 +1499,9 @@ describe('a verb the realm refuses', () => {
     );
     drain();
     expect(sent).toEqual(['bash giant rat', 'a kobold thief']);
-    expect(notices.filter((n) => /bash/i.test(n))).toHaveLength(1);
+    expect(
+      notices.filter((n) => n === t('automation.combat.verbRefused', { verb: 'bash' }))
+    ).toHaveLength(1);
   });
 
   /* The config says `bs`; the realm says `backstab`. Same verb. */
@@ -1544,7 +1565,9 @@ describe('a verb the realm refuses', () => {
       );
       drain();
       expect(sent).toEqual(['a giant rat', 'bs kobold thief']);
-      expect(notices.filter((n) => /no longer in hand/.test(n))).toHaveLength(1);
+      expect(
+        notices.filter((n) => n === t('automation.combat.verbBack', { verb: 'bs' }))
+      ).toHaveLength(1);
     });
 
     /*
@@ -1625,7 +1648,9 @@ describe('what survives what', () => {
     );
     drain();
     expect(sent).toEqual(['a giant rat']);
-    expect(notices.filter((n) => /bash/i.test(n))).toHaveLength(1);
+    expect(
+      notices.filter((n) => n === t('automation.combat.verbRefused', { verb: 'bash' }))
+    ).toHaveLength(1);
   });
 
   /*
@@ -1723,17 +1748,24 @@ describe('casting in a fight', () => {
         { name: 'fire jet', short: 'fjet', level: 6, cost: 5 }
       ]
     });
+    const choseFireJet = sentence('automation.spells.choseHardest', {
+      spell: 'fire jet',
+      min: ANY,
+      max: ANY,
+      expected: ANY,
+      cost: ANY
+    });
     auto.onCharacter(fight);
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
     expect(sent).toEqual(['fjet mutant']);
-    expect(notices.filter((n) => /Casting fire jet/.test(n))).toHaveLength(1);
+    expect(notices.filter((n) => choseFireJet.test(n))).toHaveLength(1);
     // Said once: the next round repeats the choice and not the sentence.
     auto.onBlock(block('user-hits'));
     vi.advanceTimersByTime(200);
     drain();
-    expect(notices.filter((n) => /Casting fire jet/.test(n))).toHaveLength(1);
+    expect(notices.filter((n) => choseFireJet.test(n))).toHaveLength(1);
   });
 
   it('asks for the book once when the choice has none to read', () => {
@@ -1758,7 +1790,7 @@ describe('casting in a fight', () => {
     drain();
     expect(sent).toEqual([]);
     expect(asked).toBe(1);
-    expect(notices.some((n) => /no spellbook to choose from/.test(n))).toBe(true);
+    expect(notices).toContain(t('automation.spells.noBookYet'));
   });
 
   it('casts the attack spell on the mid-round tick', () => {
@@ -2024,7 +2056,9 @@ describe('casting in a fight', () => {
       vi.advanceTimersByTime(200);
       drain();
       expect(sent).toEqual(['ma giant rat', 'mmis giant rat']);
-      expect(notices.some((line) => line.includes('mmis'))).toBe(true);
+      expect(notices).toContain(
+        t('automation.combat.spellIneffective', { spell: 'ma', fallback: 'mmis' })
+      );
     });
 
     /* The server goes on casting a spell with no effect for as long as it is
@@ -2045,7 +2079,11 @@ describe('casting in a fight', () => {
       vi.advanceTimersByTime(200);
       drain();
       expect(sent).toEqual(['ma giant rat', 'a giant rat']);
-      expect(notices.filter((line) => line.includes('no effect'))).toHaveLength(1);
+      expect(
+        notices.filter(
+          (line) => line === t('automation.combat.spellIneffectiveNoFallback', { spell: 'ma' })
+        )
+      ).toHaveLength(1);
     });
 
     /* MegaMUD's MaxCastCnt, counted on the server's own repeats: a fizzle is
@@ -2403,7 +2441,7 @@ describe('an attack spell opens the fight', () => {
     auto.onBlock(
       block('spell-cast', { caster: 'You', spell: 'hold person', target: 'tall kobold thief' })
     );
-    expect(notices.some((line) => line.includes('instant'))).toBe(true);
+    expect(notices).toContain(t('automation.combat.spellInstant', { spell: 'hold person' }));
     const rat = {
       ...EMPTY_CHARACTER.room,
       name: 'A Lane',
@@ -2448,7 +2486,15 @@ describe('an attack spell opens the fight', () => {
     auto.onCharacter(state({ room: rat, vitals: vitals(40), spellbook: book }));
     drain();
     expect(sent).toEqual(['harm tall kobold thief', 'harm small rat']);
-    expect(notices.some((line) => line.includes('instant'))).toBe(false);
+    // No instant verdict of any kind, for any spell: the repeat answers nothing.
+    expect(
+      notesOf(
+        notices,
+        'automation.combat.spellInstant',
+        'automation.combat.spellInstantUnkept',
+        'automation.combat.spellInstantRemembered'
+      )
+    ).toEqual([]);
   });
 
   /*
@@ -2506,8 +2552,9 @@ describe('an attack spell opens the fight', () => {
       auto.onBlock(block('user-hits'));
       round();
       const said = notices.filter((line) => line.includes('hold person'));
-      expect(said).toHaveLength(1);
-      expect(said[0]).toMatch(/instant/);
+      expect(said).toEqual([
+        t('automation.combat.spellInstantRemembered', { spell: 'hold person' })
+      ]);
     });
 
     it('still opens with a spell this realm never answered instantly (the control)', () => {
@@ -2762,7 +2809,9 @@ describe('one target until it is dead', () => {
     auto.onCharacter(swinging(['small saracen raider', 'fat saracen raider']));
     drain();
     expect(sent).toEqual(['aa saracen raider', 'aa saracen raider']);
-    expect(decisions.filter((one) => one.acted).at(-1)?.because).toContain('still on');
+    expect(decisions.filter((one) => one.acted).at(-1)?.because).toBe(
+      t('automation.combat.whyStillOn', { target: 'saracen raider' })
+    );
   });
 
   it('chooses afresh once it is dead', () => {
@@ -2895,7 +2944,7 @@ describe('a typed break', () => {
     expect(sent).toEqual(['a large acid slime']);
 
     auto.noteUserCommand('break');
-    expect(notices.some((m) => m.includes('standing down'))).toBe(true);
+    expect(notices).toContain(t('automation.combat.standDown'));
     // The server answers the break with `*Combat Off*`; the monster is still
     // here and still hostile, and five seconds ago that re-opened the fight.
     vi.advanceTimersByTime(5000);
@@ -3167,7 +3216,7 @@ describe('saying why it did not open a fight', () => {
     auto.onCharacter(room(mob('thug', 'hostile')));
     drain();
     expect(sent).toEqual([]);
-    expect(refusals()).toEqual(['thug — you turned auto-combat off for this journey']);
+    expect(refusals()).toEqual([`thug — ${t('automation.combat.refusedDeclinedTravelling')}`]);
   });
 
   /* A journey nobody declined fights, whichever kind of journey it is. */
@@ -3185,14 +3234,16 @@ describe('saying why it did not open a fight', () => {
     const auto = make(combat({ maxMobs: 1 }));
     auto.onCharacter(room(mob('thug', 'hostile'), mob('nasty thug', 'hostile')));
     drain();
-    expect(refusals()).toEqual(['thug — 2 monsters here, and maxMobs is 1']);
+    expect(refusals()).toEqual([
+      `thug — ${t('automation.combat.refusedMaxMobs', { here: 2, max: 1 })}`
+    ]);
   });
 
   it('names the policy when engage is none', () => {
     const auto = make(combat({ engage: 'none' }));
     auto.onCharacter(room(mob('thug', 'hostile')));
     drain();
-    expect(refusals()).toEqual(['thug — engage is set to none, so nothing is opened unasked']);
+    expect(refusals()).toEqual([`thug — ${t('automation.combat.refusedEngageNone')}`]);
   });
 
   /* The reason belongs to the monster, not to a setting: at `likely` a passive
@@ -3201,14 +3252,18 @@ describe('saying why it did not open a fight', () => {
     const auto = make(combat());
     auto.onCharacter(room(mob('shopkeeper', 'passive')));
     drain();
-    expect(refusals()).toEqual(['shopkeeper — the realm does not say shopkeeper attacks first']);
+    expect(refusals()).toEqual([
+      `shopkeeper — ${t('automation.combat.refusedNotHostile', { target: 'shopkeeper' })}`
+    ]);
   });
 
   it('names a row set to never attack', () => {
     const auto = make(combat({ mobRules: [{ mob: 'thug', treat: 'never' }] }));
     auto.onCharacter(room(mob('thug', 'hostile')));
     drain();
-    expect(refusals()).toEqual(['thug — thug is set to never attack']);
+    expect(refusals()).toEqual([
+      `thug — ${t('automation.combat.refusedNever', { target: 'thug' })}`
+    ]);
   });
 
   /*
@@ -3262,7 +3317,9 @@ describe('saying why it did not open a fight', () => {
     auto.configure(combat({ enabled: false }), true);
     auto.onCharacter(room(mob('shopkeeper', 'passive')));
     drain();
-    expect(refusals()).toEqual(['shopkeeper — you turned auto-combat off for this journey']);
+    expect(refusals()).toEqual([
+      `shopkeeper — ${t('automation.combat.refusedDeclinedTravelling')}`
+    ]);
   });
 
   it('records the fight it did open', () => {
@@ -3379,7 +3436,9 @@ describe('the size of the room and the size of the monster', () => {
     auto.onCharacter(inRoom(known('ancient dragon', { experience: 90_000 })));
     drain();
     expect(sent).toEqual([]);
-    expect(refusals()[0]).toContain('maxMonsterExperience');
+    expect(refusals()[0]).toBe(
+      `ancient dragon — ${t('automation.combat.refusedTooRich', { target: 'ancient dragon', exp: 90_000, cap: 500 })}`
+    );
   });
 
   /* Unranked by the realm is not refused, for `maxTargetHealth`'s reason. */
@@ -3428,7 +3487,7 @@ describe('a monster that protects another', () => {
     fightIn([kobold, shaman([10])]);
     expect(sent).toEqual(['a kobold thief']);
     expect(decisions.find((decision) => decision.acted)?.because).toBe(
-      'kobold thief protects wererat shaman, so it goes first'
+      t('automation.combat.whyGuardFirst', { target: 'kobold thief', ward: 'wererat shaman' })
     );
   });
 
@@ -3450,7 +3509,7 @@ describe('a monster that protects another', () => {
     fightIn([passive(kobold), shaman([10])]);
     expect(sent).toEqual(['a kobold thief']);
     expect(decisions.find((decision) => decision.acted)?.because).toBe(
-      'kobold thief protects wererat shaman, so attacking wererat shaman brings it in; it goes first'
+      t('automation.combat.whyGuardJoins', { target: 'kobold thief', ward: 'wererat shaman' })
     );
   });
 
@@ -3474,7 +3533,11 @@ describe('a monster that protects another', () => {
     );
     expect(sent).toEqual([]);
     expect(refusals()).toContain(
-      'wererat shaman — kobold thief protects wererat shaman and is refused itself: kobold thief is set to never attack'
+      `wererat shaman — ${t('automation.combat.refusedGuarded', {
+        target: 'wererat shaman',
+        guard: 'kobold thief',
+        why: t('automation.combat.refusedNever', { target: 'kobold thief' })
+      })}`
     );
   });
 
@@ -3517,7 +3580,12 @@ describe('a monster that protects another', () => {
     drain();
     expect(sent).toEqual(['a kobold thief']);
     expect(said).toEqual([
-      'auto-combat: hitting back: kobold thief protects wererat shaman, so it goes first'
+      t('automation.combat.reason', {
+        why: t('automation.combat.whyHitBackGuard', {
+          target: 'kobold thief',
+          ward: 'wererat shaman'
+        })
+      })
     ]);
   });
 
@@ -3578,7 +3646,9 @@ describe('a row that says what a monster is', () => {
     auto.onCharacter(state({ room: room(mob('giant rat', 'hostile')) }));
     drain();
     expect(sent).toEqual([]);
-    expect(refusals()).toEqual(['giant rat — giant rat is a friend, by its row']);
+    expect(refusals()).toEqual([
+      `giant rat — ${t('automation.combat.refusedFriend', { target: 'giant rat' })}`
+    ]);
   });
 
   it('does not hit a friend back, and does hit back one it would escape', () => {
@@ -3604,8 +3674,8 @@ describe('a row that says what a monster is', () => {
     drain();
     expect(sent).toEqual([]);
     expect(refusals()).toEqual([
-      'giant rat — black ooze is here and its row says to escape, so no fight is opened beside it',
-      'giant rat — stalker is here and its row says to hang up, so no fight is opened beside it'
+      `giant rat — ${t('automation.combat.refusedBesideEscape', { target: 'black ooze' })}`,
+      `giant rat — ${t('automation.combat.refusedBesideHangup', { target: 'stalker' })}`
     ]);
   });
 
@@ -3616,7 +3686,7 @@ describe('a row that says what a monster is', () => {
     drain();
     expect(sent).toEqual([]);
     expect(refusals()).toEqual([
-      'thug — the row for thug says it does not attack first, though the realm says it does, and engage is not all'
+      `thug — ${t('automation.combat.refusedRowNotHostileOverRealm', { target: 'thug' })}`
     ]);
   });
 
@@ -3670,6 +3740,8 @@ describe('why a backstab did not open', () => {
   const noBackstab = [{ mob: 'giant rat', treat: 'default' as const, noBackstab: true }];
   const rat = () =>
     state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] } });
+  /** Why the rat was picked, before anything is said about the opener. */
+  const ranked = t('automation.combat.whyRankedAlone', { target: 'giant rat', band: 'default' });
   let said: string[];
   const reasons = () => said;
   beforeEach(() => {
@@ -3686,7 +3758,11 @@ describe('why a backstab did not open', () => {
   it('says the row withheld it, where it did', () => {
     const auto = make(combat({ opener: 'bs', mobRules: noBackstab }));
     auto.onCharacter(rat());
-    expect(reasons().some((reason) => reason.includes('no backstab, as the row'))).toBe(true);
+    expect(reasons()).toEqual([
+      t('automation.combat.reason', {
+        why: t('automation.combat.whyNoBackstab', { why: ranked, target: 'giant rat' })
+      })
+    ]);
   });
 
   it('does not blame the row for a backstab the realm refused', () => {
@@ -3694,7 +3770,7 @@ describe('why a backstab did not open', () => {
     auto.onBlock(block('attack-refused', { skill: 'backstab' }));
     auto.onCharacter(rat());
     expect(reasons()).toHaveLength(1);
-    expect(reasons().some((reason) => reason.includes('no backstab, as the row'))).toBe(false);
+    expect(reasons()).toEqual([t('automation.combat.reason', { why: ranked })]);
   });
 });
 
