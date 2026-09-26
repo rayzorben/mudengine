@@ -16,6 +16,7 @@ import {
   type DropConfig,
   type EngagePolicy,
   type LootConfig,
+  type PartyConfig,
   type PotionRule,
   type PvpAction,
   type RetreatStrategy,
@@ -165,12 +166,8 @@ export interface CharacterFields {
   combatPoliteAttacks: boolean;
   combatMaxMobs: string;
   /** Share of current health a fight may be expected to cost, as a percentage string. */
-  /** Following somebody — `automation.party`. */
-  partyAssist: boolean;
-  partyDefend: boolean;
-  partyRest: boolean;
-  /** `party.askForHealBelow`, as a percentage string. */
-  partyAskHeal: string;
+  /** Following somebody, and leading — `automation.party`. See `PartyForm`. */
+  party: PartyForm;
   combatRefresh: string;
   /** The player's own rules for the realm's monsters. See `MobRuleList`. */
   combatMobRules: MobRule[];
@@ -369,10 +366,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     combatDefendAfterRounds: String(entry.combat.defendAfterRounds),
     combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
-    partyAssist: entry.party.assistLeader,
-    partyDefend: entry.party.defendParty,
-    partyRest: entry.party.restWithLeader,
-    partyAskHeal: percent(entry.party.askForHealBelow),
+    party: partyFormOf(entry.party),
     // A percentage on screen and a fraction in the file, like every other
     // threshold here: one representation on disk, the one people think in on
     // the form.
@@ -544,12 +538,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       onPlayerInRoom: form.hangUpOnPlayer
     },
     pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
-    party: {
-      assistLeader: form.partyAssist,
-      defendParty: form.partyDefend,
-      restWithLeader: form.partyRest,
-      askForHealBelow: fractionOf(form.partyAskHeal)
-    },
+    party: partyOf(form.party),
     health: {
       restBelow: fractionOf(form.restBelow),
       restTo: fractionOf(form.restTo),
@@ -839,10 +828,7 @@ export function emptyForm(
     combatDefendAfterRounds: String(combat.defendAfterRounds),
     combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
-    partyAssist: party.assistLeader,
-    partyDefend: party.defendParty,
-    partyRest: party.restWithLeader,
-    partyAskHeal: percent(party.askForHealBelow),
+    party: partyFormOf(party),
     combatRefresh: String(combat.refreshRounds),
     combatMobRules: combat.mobRules.map((row) => ({ ...row })),
     combatMaxTargetHealth: String(combat.maxTargetHealth),
@@ -924,4 +910,39 @@ export function emptyForm(
     statlineControl: statline.control,
     rewrites
   };
+}
+
+/**
+ * The party settings as a form holds them (todo 831): each switch as it is,
+ * each figure as typed, a share of health as a percentage.
+ */
+export type PartyForm = {
+  [K in keyof PartyConfig]: PartyConfig[K] extends boolean ? boolean : string;
+};
+
+export function partyFormOf(party: PartyConfig): PartyForm {
+  return {
+    ...party,
+    askForHealBelow: percent(party.askForHealBelow),
+    waitBelow: percent(party.waitBelow),
+    waitMinutes: String(party.waitMinutes),
+    parSeconds: String(party.parSeconds)
+  };
+}
+
+export function partyOf(form: PartyForm): PartyConfig {
+  return {
+    ...form,
+    askForHealBelow: fractionOf(form.askForHealBelow),
+    waitBelow: fractionOf(form.waitBelow),
+    // A field left empty keeps the shipped figure: 0 here means *wait for ever*.
+    waitMinutes: whole(form.waitMinutes, DEFAULT_CONFIG.automation.party.waitMinutes),
+    parSeconds: whole(form.parSeconds, DEFAULT_CONFIG.automation.party.parSeconds)
+  };
+}
+
+/** A whole number as typed, or `fallback` where nothing readable was typed. */
+function whole(typed: string, fallback: number): number {
+  const number = Number.parseInt(typed, 10);
+  return Number.isFinite(number) ? number : fallback;
 }

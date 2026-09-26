@@ -3029,6 +3029,7 @@ describe('fighting what the leader fights', () => {
     rank: null
   });
   const party = {
+    ...DEFAULT_CONFIG.automation.party,
     assistLeader: true,
     defendParty: false,
     restWithLeader: false,
@@ -3174,6 +3175,7 @@ describe('defending the party', () => {
     rank: null
   });
   const party = {
+    ...DEFAULT_CONFIG.automation.party,
     assistLeader: false,
     defendParty: true,
     restWithLeader: false,

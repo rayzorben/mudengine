@@ -30,11 +30,23 @@ function drawn(source: string): string[] {
   return [...source.matchAll(/data-fieldset="([^"]+)"/g)].map((hit) => hit[1]!);
 }
 
+/**
+ * A form's own source and the shared `…Fields` sections it imports, since one
+ * of those (`PartyFields`, todo 831) draws its fieldsets for both forms.
+ */
+function composed(file: string): string {
+  const source = read(file);
+  const local = [...source.matchAll(/^import \w+(?:, \{[^}]*\})? from '\.\/(\w+Fields)';$/gm)].map(
+    (hit) => `${hit[1]!}.tsx`
+  );
+  return [source, ...local.map(read)].join('\n');
+}
+
 describe.each([
   ['CharacterForm.tsx', [] as string[]],
   ['GlobalSettings.tsx', [] as string[]]
 ])('%s', (file, notNavigable) => {
-  const source = read(file);
+  const source = composed(file);
 
   /* The positive control: a regex that matched nothing would pass everything. */
   it('finds both halves at all', () => {

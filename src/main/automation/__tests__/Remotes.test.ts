@@ -1597,3 +1597,94 @@ describe('@heal', () => {
     expect(sent).toEqual(['.@heal']);
   });
 });
+
+/* Todo 831: MegaMUD's party settings, on both ends of the party. */
+describe('party pacing', () => {
+  let paced: string[];
+  const make = (party: Partial<AutomationConfig['party']>, health = {}): Remotes => {
+    paced = [];
+    return new Remotes(
+      {
+        ...config,
+        party: { ...config.party, ...party },
+        health: { ...config.health, ...health }
+      },
+      queue,
+      {
+        notice: (m) => notices.push(m),
+        pace: (who, ready) => paced.push(`${who}:${ready ? 'ok' : 'wait'}`)
+      }
+    );
+  };
+  const member = (name: string, health: number | null) => ({
+    name,
+    className: null,
+    health,
+    mana: null,
+    rank: null,
+    activity: null,
+    invited: false,
+    vitals: null
+  });
+  it('walks on through @wait under Ignore @wait If Leading, and says so', () => {
+    make({ ignoreWait: true }).onBlock(said('conversation-telepath', 'Soul', '@wait'), who());
+    expect(paced).toEqual([]);
+    expect(notices).toContain(t('automation.remotes.ignoredWait', { from: 'Soul' }));
+    make({}).onBlock(said('conversation-telepath', 'Soul', '@wait'), who());
+    expect(paced).toEqual(['Soul:wait']);
+  });
+
+  it('refuses @party under Ignore @party If Following, and says so', () => {
+    const following = who({
+      party: { engaged: {}, threatened: {}, following: 'Soul', members: [member('Soul', 1)] }
+    });
+    make({ ignoreParty: true }).onBlock(
+      said('conversation-local', 'Soul', '@party stat'),
+      following
+    );
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toContain(t('automation.remotes.ignoredParty', { from: 'Soul' }));
+  });
+
+  it('asks a joining member for @health only under Request Party Health', () => {
+    const party = who({
+      party: { engaged: {}, threatened: {}, following: null, members: [member('Soul', 1)] }
+    });
+    make({ askHealth: false }).askParty(party);
+    drain();
+    expect(sent).not.toContain('/Soul @health');
+    make({ askHealth: true }).askParty(party);
+    drain();
+    expect(sent).toContain('/Soul @health');
+  });
+
+  it("asks the leader to wait when this character's own walk would stand still, not while the leader rests", () => {
+    const follower = (hp: number, leaderResting = false): CharacterState =>
+      who({
+        vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100 },
+        party: {
+          engaged: {},
+          threatened: {},
+          following: 'Soul',
+          members: [
+            {
+              ...member('Soul', 1),
+              activity: leaderResting ? ({ state: 'resting' } as never) : null
+            }
+          ]
+        }
+      });
+    const remotes = make({}, { restBelow: 0.5, restTo: 0.8 });
+    // The leader resting is its own rest; nothing asked.
+    remotes.onCharacter(follower(30, true));
+    drain();
+    expect(sent).toEqual([]);
+    // Up and walking, and this character under its floor: wait, then ok at the line.
+    remotes.onCharacter(follower(30));
+    remotes.onCharacter(follower(60));
+    remotes.onCharacter(follower(85));
+    drain();
+    expect(sent).toEqual(['/Soul @wait', '/Soul @ok']);
+  });
+});

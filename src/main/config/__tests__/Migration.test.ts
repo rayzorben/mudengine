@@ -6348,3 +6348,49 @@ describe('Keep Meditating To is stated', () => {
     expect(health['meditateTo']).toBe(0.9);
   });
 });
+
+/* `statedThePartyPacing` (todo 831): MegaMUD's party settings after askForHealBelow, with the template's words. */
+describe('the party settings are stated', () => {
+  it('writes them in order after askForHealBelow, once, and never over a stated one', () => {
+    const profile = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(profile), { recursive: true });
+    fs.writeFileSync(
+      profile,
+      'automation:\n  party:\n    restWithLeader: true\n    askForHealBelow: 0.4\n    parSeconds: 20\n',
+      'utf8'
+    );
+    migrate(true);
+    const text = fs.readFileSync(profile, 'utf8');
+    const party = (parse(text) as { automation: { party: Record<string, unknown> } }).automation
+      .party;
+    // Other steps add their own keys to the block; these keep the template's order.
+    const mine = new Set([
+      'askForHealBelow',
+      'waitBelow',
+      'waitMinutes',
+      'ignoreWait',
+      'ignoreParty',
+      'askHealth',
+      'parSeconds',
+      'parAfterRound'
+    ]);
+    expect(Object.keys(party).filter((key) => mine.has(key))).toEqual([
+      'askForHealBelow',
+      'waitBelow',
+      'waitMinutes',
+      'ignoreWait',
+      'ignoreParty',
+      'askHealth',
+      'parSeconds',
+      'parAfterRound'
+    ]);
+    expect(party['parSeconds']).toBe(20);
+    expect(party['askHealth']).toBe(true);
+    expect(text).toContain("MegaMUD's Wait For Party Members");
+    expect(
+      notesOf(said, 'notices.migration.partyPacing.one', 'notices.migration.partyPacing.many')
+    ).toHaveLength(1);
+    migrate(true);
+    expect(fs.readFileSync(profile, 'utf8')).toBe(text);
+  });
+});

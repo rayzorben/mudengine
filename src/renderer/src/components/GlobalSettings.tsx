@@ -4,6 +4,8 @@ import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
+import PartyFields from './PartyFields';
+import { partyFormOf, partyOf } from '../lib/characterForm';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import MobRuleList from './MobRuleList';
@@ -1486,55 +1488,12 @@ export default function GlobalSettings({
 
         {shown === 'party' && (
           <>
-            <fieldset className="settings-menus" data-fieldset="party-follow">
-              <legend>{t('settings.party.legend')}</legend>
-              <p className="settings-warn">{t('settings.party.warning')}</p>
-              <CheckField
-                checked={draft.automation.party.assistLeader}
-                hint={t('settings.party.assistHint')}
-                label={t('settings.party.assistLabel')}
-                name="global-party-assist"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, assistLeader: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.defendParty}
-                hint={t('settings.party.defendHint')}
-                label={t('settings.party.defendLabel')}
-                name="global-party-defend"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, defendParty: value } })
-                }
-              />
-              <CheckField
-                checked={draft.automation.party.restWithLeader}
-                hint={t('settings.party.restHint')}
-                label={t('settings.party.restLabel')}
-                name="global-party-rest"
-                onChange={(value) =>
-                  automation({ party: { ...draft.automation.party, restWithLeader: value } })
-                }
-              />
-            </fieldset>
-            <fieldset className="settings-menus" data-fieldset="party-healing">
-              <legend>{t('settings.party.healLegend')}</legend>
-              <p className="settings-note">{t('settings.party.healNote')}</p>
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.party.askHealHint')}
-                  label={t('settings.party.askHealLabel')}
-                  name="global-party-ask-heal"
-                  onChange={(value) =>
-                    automation({
-                      party: { ...draft.automation.party, askForHealBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.party.askForHealBelow)}
-                  value={percent(draft.automation.party.askForHealBelow)}
-                />
-              </div>
-            </fieldset>
+            <PartyFields
+              bands={draft.ui.vitals.hp}
+              namePrefix="global-"
+              onChange={(party) => automation({ party: partyOf(party) })}
+              party={partyFormOf(draft.automation.party)}
+            />
             {/*
             The party's `@` commands, on the Party page rather than beside the
             gang's on Remotes, because this is where somebody is thinking about

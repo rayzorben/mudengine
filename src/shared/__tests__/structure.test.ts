@@ -27,7 +27,7 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
  * (702), was taken back by its carve-out (740).
  */
 const CEILINGS: Readonly<Record<string, number>> = {
-  'src/main/session/SessionManager.ts': 3852,
+  'src/main/session/SessionManager.ts': 3851,
   'src/main/world/WorldGraph.ts': 2581,
   'src/main/parse/CharacterTracker.ts': 2540,
   'src/renderer/src/App.tsx': 1786,
@@ -35,8 +35,9 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/renderer/src/components/SettingsScreen.tsx': 1287,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
-  // rest and meditate fields, shared with the options page (825).
-  'src/renderer/src/components/CharacterForm.tsx': 1869
+  // rest and meditate fields, shared with the options page (825), and the
+  // party's (831).
+  'src/renderer/src/components/CharacterForm.tsx': 1837
 };
 
 /**

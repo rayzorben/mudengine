@@ -2238,6 +2238,27 @@ export interface PartyConfig {
    * still under it; a party member running either client answers with a heal.
    */
   askForHealBelow: number;
+  /**
+   * Leading, stop the lap while a member here is under this share of health,
+   * as a follower's `@wait` stops it (MegaMUD's *Wait For Party Members*,
+   * `PartyWait%`, todo 831). 0 waits for nobody's health.
+   */
+  waitBelow: number;
+  /** Leading, give up a wait and walk on after this many minutes (`PartyWaitMax`). 0 waits for ever. */
+  waitMinutes: number;
+  /** Leading, pay no heed to a follower's `@wait`; a member under `waitBelow` still stops the lap (`IgnoreWait`). */
+  ignoreWait: boolean;
+  /** Following, refuse the leader's `@party <command>` (`IgnoreParty`). */
+  ignoreParty: boolean;
+  /** Ask a member for `@health` when they join (`AskHealth`). */
+  askHealth: boolean;
+  /**
+   * In a party, send `par` every this many seconds in a fight and twice that
+   * out of one (`ParPeriod`). 0 sends it only when the party changes.
+   */
+  parSeconds: number;
+  /** In a party, send `par` after every combat round (`ParAfterRound`). */
+  parAfterRound: boolean;
 }
 
 /**
@@ -2671,7 +2692,19 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     // Off, like everything automated. A client that sits down on its own is one
     // deciding when a fight is over.
-    party: { assistLeader: false, defendParty: false, restWithLeader: false, askForHealBelow: 0 },
+    party: {
+      assistLeader: false,
+      defendParty: false,
+      restWithLeader: false,
+      askForHealBelow: 0,
+      waitBelow: 0,
+      waitMinutes: 2,
+      ignoreWait: false,
+      ignoreParty: false,
+      askHealth: true,
+      parSeconds: 0,
+      parAfterRound: false
+    },
     health: {
       /*
        * The figures `loopPauseBelow` / `loopResumeAt` shipped with, inherited
@@ -4138,6 +4171,12 @@ export const BLESSING_FALLBACK_MIN_S = 30;
 /** More blessings than this is a list nobody typed. */
 const MAX_BLESSINGS = 16;
 
+/** The whole-number party settings' bounds, one statement for the file and the settings screen. */
+export const PARTY_RANGES = {
+  waitMinutes: [0, 120],
+  parSeconds: [0, 3600]
+} as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
+
 function normalizeParty(value: unknown): PartyConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.party;
@@ -4145,7 +4184,14 @@ function normalizeParty(value: unknown): PartyConfig {
     assistLeader: bool(raw['assistLeader'], d.assistLeader),
     defendParty: bool(raw['defendParty'], d.defendParty),
     restWithLeader: bool(raw['restWithLeader'], d.restWithLeader),
-    askForHealBelow: fraction(raw['askForHealBelow'], d.askForHealBelow)
+    askForHealBelow: fraction(raw['askForHealBelow'], d.askForHealBelow),
+    waitBelow: fraction(raw['waitBelow'], d.waitBelow),
+    waitMinutes: int(raw['waitMinutes'], d.waitMinutes, ...PARTY_RANGES.waitMinutes),
+    ignoreWait: bool(raw['ignoreWait'], d.ignoreWait),
+    ignoreParty: bool(raw['ignoreParty'], d.ignoreParty),
+    askHealth: bool(raw['askHealth'], d.askHealth),
+    parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
+    parAfterRound: bool(raw['parAfterRound'], d.parAfterRound)
   };
 }
 
@@ -4337,6 +4383,36 @@ export function holdsForVital(
 ): boolean {
   if (below <= 0 || value === null || max === null || max <= 0) return false;
   return value / max < (held ? resume : below);
+}
+
+/**
+ * Whether this character's own walk stands still for health or for mana
+ * (todo 831): under the vital's floor to stop, and once `held`, under its line
+ * to stay. The one test a route (`Holds`), a lap (`LoopRunner`) and a
+ * follower's `@wait` (`Remotes`) share.
+ */
+export function stillFor(
+  vital: 'health' | 'mana',
+  vitals: { hp: number | null; hpMax: number | null; mana: number | null; manaMax: number | null },
+  health: HealthConfig,
+  held: boolean,
+  marginWhenUncapped: number
+): boolean {
+  return vital === 'health'
+    ? holdsForVital(
+        vitals.hp,
+        vitals.hpMax,
+        health.restBelow,
+        resumeAtHealth(health, marginWhenUncapped),
+        held
+      )
+    : holdsForVital(
+        vitals.mana,
+        vitals.manaMax,
+        health.meditateBelow,
+        resumeAtMana(health, marginWhenUncapped),
+        held
+      );
 }
 
 function resumeAt(below: number, to: number, marginWhenUncapped: number): number {

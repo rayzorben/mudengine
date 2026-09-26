@@ -26,6 +26,7 @@ import CarrySections from './CarrySections';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
+import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
@@ -1137,46 +1138,13 @@ export default function CharacterForm({
 
       {section === 'party' && (
         <>
-          <fieldset className="settings-menus" data-fieldset="party-follow">
-            <legend>{t('settings.party.legend')}</legend>
-            <p className="settings-warn">{t('settings.party.warning')}</p>
-            <CheckField
-              checked={form.partyAssist}
-              hint={t('settings.party.assistHint')}
-              label={t('settings.party.assistLabel')}
-              name="party-assist"
-              onChange={(value) => patch({ partyAssist: value })}
-            />
-            <CheckField
-              checked={form.partyDefend}
-              hint={t('settings.party.defendHint')}
-              label={t('settings.party.defendLabel')}
-              name="party-defend"
-              onChange={(value) => patch({ partyDefend: value })}
-            />
-            <CheckField
-              checked={form.partyRest}
-              hint={t('settings.party.restHint')}
-              label={t('settings.party.restLabel')}
-              name="party-rest"
-              onChange={(value) => patch({ partyRest: value })}
-            />
-          </fieldset>
-          <fieldset className="settings-menus" data-fieldset="party-healing">
-            <legend>{t('settings.party.healLegend')}</legend>
-            <p className="settings-note">{t('settings.party.healNote')}</p>
-            <div className="settings-inline">
-              <NumberField
-                hint={t('settings.party.askHealHint')}
-                label={t('settings.party.askHealLabel')}
-                name="party-ask-heal"
-                onChange={(value) => patch({ partyAskHeal: value })}
-                bar={barOfHealth(form.partyAskHeal)}
-                figure={ofHealth(form.partyAskHeal)}
-                value={form.partyAskHeal}
-              />
-            </div>
-          </fieldset>
+          <PartyFields
+            bands={bands.hp}
+            hpMax={maxima.hpMax}
+            namePrefix=""
+            onChange={(party) => patch({ party })}
+            party={form.party}
+          />
           {/*
             The party's `@` commands, here rather than beside the
             gang's on the Remotes page, because this is where

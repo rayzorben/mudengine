@@ -97,7 +97,7 @@
 import type { CommandQueue } from './CommandQueue';
 import { countThreats } from './RuleEngine';
 import { t } from '../app/i18n';
-import type { CharacterState } from '../../shared/character';
+import { leaderOf, type CharacterState } from '../../shared/character';
 import {
   type AutomationConfig,
   type CombatConfig,
@@ -490,9 +490,7 @@ export class Recovery implements SessionModule {
      * to meditate — a warrior's `med` is answered with a refusal in the room.
      */
     if (!this.party.restWithLeader || state.party.following === null) return;
-    const leader = state.party.members.find(
-      (member) => member.name.toLowerCase() === state.party.following?.toLowerCase()
-    );
+    const leader = leaderOf(state);
     if (leader?.activity?.state === 'resting') {
       if (this.refused.has('rest')) return;
       this.propose('rest', t('automation.party.reasonRestWithLeader', { leader: leader.name }));

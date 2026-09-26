@@ -711,12 +711,24 @@ describe('following somebody', () => {
   const party = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { party: raw } }).automation.party;
 
-  it('ships entirely off', () => {
+  /*
+   * Nothing new sent unasked: every switch off and every figure 0, but for
+   * asking a joining member's @health, which the client always did, and a
+   * time limit on a wait nothing starts (todo 831).
+   */
+  it('ships sending nothing new', () => {
     expect(party({})).toEqual({
       assistLeader: false,
       defendParty: false,
       restWithLeader: false,
-      askForHealBelow: 0
+      askForHealBelow: 0,
+      waitBelow: 0,
+      waitMinutes: 2,
+      ignoreWait: false,
+      ignoreParty: false,
+      askHealth: true,
+      parSeconds: 0,
+      parAfterRound: false
     });
   });
 
@@ -729,11 +741,37 @@ describe('following somebody', () => {
         askForHealBelow: 0.4
       })
     ).toEqual({
+      ...DEFAULT_CONFIG.automation.party,
       assistLeader: true,
       defendParty: true,
       restWithLeader: true,
       askForHealBelow: 0.4
     });
+  });
+
+  // Todo 831: MegaMUD's party settings, with its own units (`PartyWait%=50`, `PartyWaitMax=2`).
+  it('reads the leading and listing settings', () => {
+    expect(
+      party({
+        waitBelow: 50,
+        waitMinutes: 5,
+        ignoreWait: true,
+        ignoreParty: true,
+        askHealth: false,
+        parSeconds: 15,
+        parAfterRound: true
+      })
+    ).toMatchObject({
+      waitBelow: 0.5,
+      waitMinutes: 5,
+      ignoreWait: true,
+      ignoreParty: true,
+      askHealth: false,
+      parSeconds: 15,
+      parAfterRound: true
+    });
+    // Absent is what the client already did: nobody waited for, and @health asked.
+    expect(party({})).toMatchObject({ waitBelow: 0, askHealth: true, parSeconds: 0 });
   });
 
   // MegaMUD states it as a percentage (`PartyAskHeal%=50`), and so will people.

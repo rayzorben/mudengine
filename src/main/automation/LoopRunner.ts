@@ -50,9 +50,8 @@ import { fightIsRunning } from './Walker';
 import type { CharacterState } from '../../shared/character';
 import {
   DEFAULT_CONFIG,
-  holdsForVital,
+  stillFor,
   resumeAtHealth,
-  resumeAtMana,
   type HealthConfig,
   type MovementConfig,
   type WalkConfig
@@ -1367,23 +1366,14 @@ export class LoopRunner implements SessionModule {
   /**
    * Whether the lap waits for health or for mana (todo 825): under the floor
    * to stop and back to the line to go on, one rule for both
-   * (`holdsForVital`). Taken only by a running lap; an unknown figure never
+   * (`stillFor`). Taken only by a running lap; an unknown figure never
    * holds and lets a held lap go.
    */
   private holdForVital(vital: 'health' | 'mana', state: CharacterState): boolean {
-    const { hp, hpMax, mana, manaMax } = state.vitals;
     const was = vital === 'health' ? this.hurt : this.drained;
+    const margin = tuning().loop.resumeMarginWhenUncapped;
     const held =
-      (was || this.status === 'running') &&
-      (vital === 'health'
-        ? holdsForVital(hp, hpMax, this.health.restBelow, this.resumeAt(), was)
-        : holdsForVital(
-            mana,
-            manaMax,
-            this.health.meditateBelow,
-            resumeAtMana(this.health, tuning().loop.resumeMarginWhenUncapped),
-            was
-          ));
+      (was || this.status === 'running') && stillFor(vital, state.vitals, this.health, was, margin);
     if (held === was) return held;
     if (vital === 'health') this.hurt = held;
     else this.drained = held;
