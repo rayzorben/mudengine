@@ -98,7 +98,7 @@ import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
-import { UNSTATED_LOCATE, Vocabulary, type VocabularyParts } from './Vocabulary';
+import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 
 /** The item errand's phrase and the listing asked after it, so both can be taken back. */
 const COLLECT_SAY_KEY = 'collect:say';
@@ -306,8 +306,8 @@ export interface SessionDeps {
    * alone did.
    */
   readonly sentences?: ShippedSentences;
-  /** The realm's locate word (`Profile.locate`), read through so a reload lands. */
-  readonly locate?: VocabularyParts['locate'];
+  /** The realm's own words (`Profile.locate`, `.coins`), read through so a reload lands. */
+  readonly words?: VocabularyParts['words'];
 }
 
 /** A module on the session's list, and the slice of a reload it reads, where it reads one. */
@@ -527,7 +527,7 @@ export class SessionManager {
       spellLore = NO_SPELL_LORE,
       finds = NO_FINDS,
       sentences = NO_SHIPPED_SENTENCES,
-      locate = UNSTATED_LOCATE
+      words = UNSTATED_WORDS
     } = deps;
     this.tracker = new CharacterTracker(
       world,
@@ -551,7 +551,7 @@ export class SessionManager {
       }
     );
     this.vocabulary = new Vocabulary(
-      { tracker: this.tracker, errands: this.errands, world, locate },
+      { tracker: this.tracker, errands: this.errands, world, words },
       {
         locateRefused: () => [this.claims, this.locating].forEach((it) => it.locateRefused()),
         notice: (message) => this.sink.notice(message)
@@ -591,15 +591,10 @@ export class SessionManager {
       (text) => spellLore.match(text),
       /*
        * And how this realm's monsters die: what its own wire taught (todo 04)
-       * **beside** the server's own table, which may name several.
-       *
-       * Both, not the wire instead of the table (2026-09-14). They are not
-       * rivals — a learned name and a shipped one are the same fact at two
-       * granularities — and the one answer the wire had taught hid the four
-       * the table names, which is what let a sentence every dark monk in the
-       * room answers to be read as naming exactly one of them. A sentence
-       * several monsters here could have said is settled by the room or by
-       * nothing; see `Classifier.asDeathSentence`.
+       * **beside** the server's own table, which may name several (2026-09-14):
+       * the one learned answer hid the four the table names, so a sentence every
+       * dark monk in the room answers to read as naming exactly one. The room
+       * settles it or nothing does; see `Classifier.asDeathSentence`.
        */
       (text) => {
         const learned = lore.deathOf?.(text) ?? [];
@@ -612,7 +607,8 @@ export class SessionManager {
       // And, last, the server's own message table, fitted whole (todo 109).
       (text) => sentences.messages.match(text),
       // And the rows a confusing spell prints on a fumble, in the realm's words.
-      (row) => world?.spellsByMessage(CONFUSE_MESSAGE_ABILITY).has(row) ?? false
+      (row) => world?.spellsByMessage(CONFUSE_MESSAGE_ABILITY).has(row) ?? false,
+      () => this.vocabulary.coins
     );
     this.world = world;
     this.promptDesign = new PromptDesign(
@@ -1013,7 +1009,8 @@ export class SessionManager {
       notice: (message) => this.sink.notice(message),
       onTheGround,
       moveOnly,
-      rereads: this.tracker
+      rereads: this.tracker,
+      coinWord: (coin) => this.vocabulary.coins.word(coin)
     });
     /*
      * The light, asked by the walker before every step (`beforeStep`) and by
@@ -1170,6 +1167,7 @@ export class SessionManager {
       this.queue,
       {
         here: () => roomAddress(this.tracker.current.room),
+        coinWord: (coin) => this.vocabulary.coins.word(coin),
         routeTo: (room) => this.errands.planFromHere(room),
         walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
         moveInFlight: () => this.tracker.pendingMoves > 0,

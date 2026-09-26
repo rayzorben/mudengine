@@ -8,6 +8,7 @@
  * because magenta — which breaks on any server with a different scheme, and on
  * every theme a colour-blind player would choose.
  */
+import type { CoinReader } from '../../shared/coins';
 import { domainOf, type Block, type BlockType } from '../../shared/blocks';
 import { commandOf } from '../../shared/commands';
 import {
@@ -231,6 +232,9 @@ const EMOTE_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>([
   'player-misses'
 ]);
 
+/** The rules that read somebody talking; see `Classifier.coinText`. */
+const TALK_RULES = RULES.filter((rule) => domainOf(rule.type) === 'conversation');
+
 export class Classifier {
   private batch: {
     rule: BatchRule;
@@ -380,8 +384,25 @@ export class Classifier {
      * is what makes `You retch uncontrollably!` a thrown-away command rather
      * than a line the table merely explains.
      */
-    private readonly fumbles?: (row: number) => boolean
+    private readonly fumbles?: (row: number) => boolean,
+    /**
+     * The realm's renamed coins read back to the stock names before a line is
+     * matched (`coinReader`, todo 830), so every coin rule reads them as it
+     * reads the stock ones. The terminal is shown the line as it came.
+     */
+    private readonly coins?: () => CoinReader
   ) {}
+
+  /**
+   * The line with the realm's renamed coins read as the stock ones (todo 830),
+   * except where somebody is talking: a coin named in speech is the speaker's
+   * word, and the talk card shows it as said.
+   */
+  private coinText(plain: string): string {
+    const coined = this.coins?.().toStock(plain) ?? plain;
+    if (coined === plain || TALK_RULES.some((rule) => rule.pattern.test(plain))) return plain;
+    return coined;
+  }
 
   /** The type of the listing being collected, or null between listings. */
   get batchType(): BlockType | null {
@@ -445,7 +466,7 @@ export class Classifier {
    * the blow or lose the newer reading of the bar it changed.
    */
   classify(line: StreamLine): { block: Block; batch?: BatchBlock; tails?: Block[] } {
-    const text = line.plain;
+    const text = this.coinText(line.plain);
     const block = this.classifyLine(line, text);
     let batch = this.feedBatch(line, text, block.type);
 

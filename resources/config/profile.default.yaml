@@ -86,6 +86,12 @@ server: Paradigm Game 1 PVE
 # line here replaces the realm's answer for this character only.
 # locate: none
 
+# What the realm calls a coin it renamed, singular, by coin. USUALLY LEAVE THIS
+# OUT: it belongs to the realm (`coins:` in its `server.yaml`), and a coin
+# named here replaces the realm's word for that coin for this character only.
+# coins:
+#   runic: dime bag
+
 # Dial this character when the client starts.
 autoConnect: false
 

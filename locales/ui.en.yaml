@@ -3389,6 +3389,14 @@ settings:
       (Resting), and no command is spent standing up, because your next command does that anyway.
   hint:
     ariaLabel: What this does
+  # What a realm calls the coins it renamed (todo 830): the realm's form.
+  coins:
+    hint: What this realm calls the coin, if it renamed it. Blank is the usual name.
+    copper: Copper Farthing
+    gold: Gold Crown
+    platinum: Platinum Piece
+    runic: Runic Coin
+    silver: Silver Noble
   # How a realm is asked where you stand (todo 811): the realm's form, and a character's own.
   locate:
     label: Locate Command

@@ -15,7 +15,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
-import type { CharacterState } from '../../shared/character';
+import { DENOMINATIONS, type CharacterState, type Denomination } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import { restorePlan } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
@@ -33,6 +33,8 @@ export interface RecoveryPlanner {
   moveInFlight(): boolean;
   walking(): boolean;
   busy(): boolean;
+  /** The word that picks a coin up on this realm (todo 830); omitted, the denomination. */
+  coinWord?(coin: Denomination): string;
 }
 
 export interface RecoveryEvents {
@@ -245,10 +247,10 @@ export class GearRecovery implements SessionModule {
       // And the purse, which the death dropped beside the kit.
       const cash = state.room.cash;
       if (cash !== null) {
-        for (const coin of ['runic', 'platinum', 'gold', 'silver', 'copper'] as const) {
+        for (const coin of DENOMINATIONS) {
           if (cash[coin] <= 0) continue;
           this.queue.enqueue({
-            command: `get ${coin}`,
+            command: `get ${this.planner.coinWord?.(coin) ?? coin}`,
             priority: 'probe',
             coalesceKey: `recover:${coin}`,
             expiresAt: this.now() + expiresMs,

@@ -42,7 +42,7 @@ import {
   type SessionSummary
 } from '../../shared/ipc';
 import type { AppConfig, AutomationSwitch } from '../../shared/config';
-import type { LocateWord } from '../../shared/locate';
+import type { RealmWords } from '../../shared/profiles';
 import type { ConnectionState, ConnectionTarget } from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
@@ -239,11 +239,12 @@ export interface SessionHostOptions {
    */
   configFor: (id: SessionId) => AppConfig;
   /**
-   * How *this character* asks its realm where it stands (`Profile.locate`).
+   * What *this character's* realm calls things: its locate word and its coins
+   * (`Profile.locate`, `.coins`).
    * Read through, like `configFor`, so an edited realm or profile reaches a
    * session already playing.
    */
-  locateFor: (id: SessionId) => LocateWord;
+  wordsFor: (id: SessionId) => RealmWords;
   /**
    * Whether *this character* wants a lost connection dialled back.
    *
@@ -498,7 +499,7 @@ export class SessionHost {
         spellLore: this.options.spellLoreFor?.(id),
         finds: this.options.findsFor?.(id),
         sentences: this.options.sentences?.(),
-        locate: () => this.options.locateFor(id)
+        words: () => this.options.wordsFor(id)
       }
     );
 

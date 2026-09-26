@@ -791,6 +791,10 @@ export class SettingsEditor {
         if (draft.locate !== DEFAULT_LOCATE) document.setIn(['locate'], draft.locate);
         else if (asLocateWord(document.get('locate')) !== null) document.deleteIn(['locate']);
 
+        // And its renamed coins: none stated is the stock names, so no key.
+        if (Object.keys(draft.coins).length > 0) document.setIn(['coins'], draft.coins);
+        else if (document.hasIn(['coins'])) document.deleteIn(['coins']);
+
         // And its teleport, literally: empty states none, so no key.
         if (draft.fleeGoto.length > 0) document.setIn(['fleeGoto'], draft.fleeGoto);
         else if (document.hasIn(['fleeGoto'])) document.deleteIn(['fleeGoto']);

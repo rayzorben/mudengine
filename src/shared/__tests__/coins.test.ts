@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  asCoinNames,
   chargedInCopper,
+  coinReader,
   coinsInCopper,
   COPPER_PER,
   counterPriceInCopper,
@@ -118,5 +120,49 @@ describe('takeCoins', () => {
 
   it('leaves a floor nothing has stated unstated', () => {
     expect(takeCoins(null, 'silver', 3)).toBeNull();
+  });
+});
+
+/* Todo 830: a realm's own words for the coins it renamed, read back to the stock ones. */
+describe('coinReader', () => {
+  const reader = coinReader({ runic: 'dime bag' });
+
+  it("reads a capture's renamed coin as the stock one", () => {
+    // captures/024:260, the snakepits realm, where runic coins are dime bags.
+    expect(
+      reader.toStock('You are carrying 4 dime bags, 48 platinum pieces, 30 gold crowns, 5 silver')
+    ).toBe('You are carrying 4 runic coins, 48 platinum pieces, 30 gold crowns, 5 silver');
+    expect(reader.toStock('You picked up 1 dime bag.')).toBe('You picked up 1 runic coin.');
+  });
+
+  it('leaves the stock names and every other word alone', () => {
+    const line = 'You are carrying 2 runic coins, 16 platinum pieces and a dimension door';
+    expect(reader.toStock(line)).toBe(line);
+    expect(coinReader({}).toStock('4 dime bags')).toBe('4 dime bags');
+  });
+
+  it("names a coin by the realm's word to pick it up, and the stock word otherwise", () => {
+    expect(reader.word('runic')).toBe('dime');
+    expect(reader.word('gold')).toBe('gold');
+  });
+
+  it('reads a coins: block, dropping what names no coin', () => {
+    expect(asCoinNames({ runic: ' Dime Bag ', gold: '', silver: 7, lead: 'slug' })).toEqual({
+      runic: 'dime bag'
+    });
+    expect(asCoinNames('nonsense')).toEqual({});
+  });
+});
+
+describe('coinReader, narrowly', () => {
+  it('reads only a name that follows a count, longest name first', () => {
+    const reader = coinReader({ gold: 'crown', silver: 'dime', runic: 'dime bag' });
+    expect(reader.toStock('a crown of thorns (Head)')).toBe('a crown of thorns (Head)');
+    expect(reader.toStock('You have 2 crowns and 3 dime bags.')).toBe(
+      'You have 2 gold crowns and 3 runic coins.'
+    );
+    expect(reader.toStock('5 dimes drop to the ground.')).toBe(
+      '5 silver nobles drop to the ground.'
+    );
   });
 });

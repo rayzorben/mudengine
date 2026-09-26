@@ -42,7 +42,12 @@ function rig(initial: LocateWord, enabled = true) {
   };
   let claims: Claims | null = null;
   const vocabulary = new Vocabulary(
-    { tracker, errands: { forgetFitness: vi.fn() }, world: undefined, locate: () => word },
+    {
+      tracker,
+      errands: { forgetFitness: vi.fn() },
+      world: undefined,
+      words: () => ({ locate: word, coins: {} })
+    },
     { locateRefused: () => claims?.locateRefused(), notice }
   );
   // The session's wiring: the vocabulary answers the queue's `unavailable`.

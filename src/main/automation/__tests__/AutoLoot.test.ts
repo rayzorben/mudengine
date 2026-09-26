@@ -1,3 +1,4 @@
+import { coinReader } from '../../../shared/coins';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AutoLoot } from '../AutoLoot';
@@ -130,6 +131,20 @@ describe('coins on the floor', () => {
     auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
     drain();
     expect(sent).toEqual(['get gold']);
+  });
+
+  // Todo 830: on a realm that calls runic coins dime bags, `get dime`.
+  it("picks a renamed coin up by the realm's word", () => {
+    const auto = new AutoLoot(loot({ coins: true }), NO_SUPPLIES, true, queue, {
+      onTheGround: () => false,
+      moveOnly: () => false,
+      rereads: tracker,
+      coinWord: (coin) => coinReader({ runic: 'dime bag' }).word(coin)
+    });
+    auto.onBlock(block('room-coins', { count: '4', coin: 'runic' }), state());
+    auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
+    drain();
+    expect(sent).toEqual(['get dime', 'get gold']);
   });
 
   /*

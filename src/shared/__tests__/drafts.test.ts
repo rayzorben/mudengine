@@ -59,8 +59,13 @@ describe('a saved server', () => {
       hangPenalties: null,
       // And asked with `rm`, what every realm was asked before (todo 811).
       locate: 'rm',
+      // And the stock coin names: a renamed one is the player's to state (todo 830).
+      coins: {},
       // And no teleport: it is never guessed (todo 813).
       fleeGoto: ''
+    });
+    expect(asServerDraft({ ...good, coins: { runic: 'Dime Bag', lead: 'slug' } })?.coins).toEqual({
+      runic: 'dime bag'
     });
   });
 

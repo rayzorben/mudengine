@@ -36,6 +36,7 @@ export function emptyServerForm(defaults: GlobalDraft | null): ServerDraft {
     hangPenalties: null,
     // `rm` until somebody says the realm has none: what every realm was asked before.
     locate: DEFAULT_LOCATE,
+    coins: {},
     // No teleport until somebody writes this realm's own: it is never guessed.
     fleeGoto: ''
   };

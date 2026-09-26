@@ -168,6 +168,8 @@ export interface AutoLootDeps {
   readonly moveOnly: (state: CharacterState) => boolean;
   /** The claim a bare Enter filed, which the floor read closes on (`FloorAfterKill`, todo 767). */
   readonly rereads: RereadClaims;
+  /** The word that picks a coin up on this realm (`Vocabulary.coins`, todo 830); omitted, the denomination. */
+  readonly coinWord?: (coin: Denomination) => string;
 }
 
 export class AutoLoot implements SessionModule {
@@ -205,6 +207,7 @@ export class AutoLoot implements SessionModule {
   private readonly notice: (message: string) => void;
   private readonly onTheGround: () => boolean;
   private readonly moveOnly: (state: CharacterState) => boolean;
+  private readonly coinWord: (coin: Denomination) => string;
   /** The room read again after a kill, since items drop unannounced (todo 814). */
   private readonly floor: FloorAfterKill;
 
@@ -225,6 +228,7 @@ export class AutoLoot implements SessionModule {
     this.notice = deps.notice ?? (() => {});
     this.onTheGround = deps.onTheGround;
     this.moveOnly = deps.moveOnly;
+    this.coinWord = deps.coinWord ?? ((coin) => coin);
     this.floor = new FloorAfterKill(queue, deps.rereads, () =>
       queue.queued((intent) => intent.coalesceKey?.startsWith(TAKE_KEY) === true)
     );
@@ -358,7 +362,7 @@ export class AutoLoot implements SessionModule {
       const coin = block.groups['coin'];
       if (coin && this.wantsCoin(coin, state))
         this.take(
-          coin,
+          this.wordFor(coin),
           t('automation.loot.reasonCoinsDropped', { count: block.groups['count'] ?? '', coin })
         );
       return;
@@ -403,7 +407,7 @@ export class AutoLoot implements SessionModule {
         const coin = found?.['coin'];
         if (coin) {
           if (this.wantsCoin(coin, state)) {
-            const word = coin.toLowerCase();
+            const word = this.wordFor(coin);
             const count = found?.['count'];
             this.take(
               hidden && count !== undefined ? `${count} ${word}` : word,
@@ -607,6 +611,12 @@ export class AutoLoot implements SessionModule {
       expiresAt: Date.now() + tuning().loot.expiresMs,
       reason: t('automation.loot.reasonConvert', { item: held.name })
     });
+  }
+
+  /** The realm's word for a coin the line named, as `get` wants it. */
+  private wordFor(coin: string): string {
+    const named = coinNamed(coin);
+    return named === undefined ? coin.toLowerCase() : this.coinWord(named);
   }
 
   private take(name: string, reason: string, asked = name): void {

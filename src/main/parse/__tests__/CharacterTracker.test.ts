@@ -1,3 +1,4 @@
+import { coinReader, type CoinNames } from '../../../shared/coins';
 import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -3472,6 +3473,52 @@ describe('what is carried, between listings', () => {
     ]);
     // The coins still fold into the purse rather than the pack.
     expect(tracker.current.inventory.coins.runic).toBe(65);
+  });
+
+  /*
+   * Todo 830: captures/024:260, a realm that calls runic coins dime bags. With
+   * the realm's `coins:` stated they are counted as runic; without, they are
+   * an item, as they always were.
+   */
+  it("counts a realm's renamed coin once the realm names it", () => {
+    const read = (coins: CoinNames): CharacterTracker => {
+      const classifier = new Classifier(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => coinReader(coins)
+      );
+      const tracker = new CharacterTracker();
+      let seq = 0;
+      for (const text of [
+        '[HP=630]:',
+        'You are carrying 4 dime bags, 48 platinum pieces, 30 gold crowns, 5 silver',
+        'nobles, white gold ring (Finger)',
+        'You have no keys.',
+        'Encumbrance: 500/3360 - None [14%]',
+        '[HP=630]:'
+      ]) {
+        seq += 1;
+        const { block, batch } = classifier.classify({
+          seq,
+          at: 1_700_000_000_000 + seq,
+          text,
+          plain: text,
+          terminator: 'newline'
+        });
+        tracker.apply(block);
+        if (batch) tracker.apply(batch, batch.rows);
+      }
+      return tracker;
+    };
+    const named = read({ runic: 'dime bag' });
+    expect(named.current.inventory.coins.runic).toBe(4);
+    expect(held(named)).toEqual(['white gold ring']);
+    // The control: the same listing with no names stated counts no runic.
+    expect(read({}).current.inventory.coins.runic).not.toBe(4);
   });
 
   it('keeps one on the floor, and a key with the same shape', () => {

@@ -21,6 +21,7 @@ import { bool, int, isRecord, str } from './values';
 import { asEvents, type ScheduledEvent } from './events';
 import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
+import { asCoinNames, type CoinNames } from './coins';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 /*
  * `DENOMINATIONS` is the one *value* this module takes from `character.ts`, and
@@ -234,6 +235,8 @@ export interface Server {
    * realm with no such word. A character may state its own. See `shared/locate.ts`.
    */
   locate: LocateWord;
+  /** This realm's own words for the coins it renamed; absent, the stock ones. See `CoinNames`. */
+  coins: CoinNames;
   /**
    * This realm's teleport for the last-ditch escape, literally (`sys go 1
    * 297`); empty states none. A character's own replaces it. See `FleeGotoConfig`.
@@ -3359,6 +3362,7 @@ function normalizeServer(value: unknown): Server | null {
     mobRules: normalizeMobRules(value['mobRules']),
     hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
     locate: asLocateWord(value['locate']) ?? DEFAULT_LOCATE,
+    coins: asCoinNames(value['coins']),
     fleeGoto: str(value['fleeGoto'], '').trim()
   };
 }

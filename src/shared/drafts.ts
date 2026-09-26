@@ -46,6 +46,7 @@ import {
 
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
+import { asCoinNames, type CoinNames } from './coins';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 
 /**
@@ -159,6 +160,8 @@ export interface ServerDraft {
   hangPenalties: boolean | null;
   /** How this realm is asked where a character stands. See `Server.locate`. */
   locate: LocateWord;
+  /** What this realm calls the coins it renamed. See `Server.coins`. */
+  coins: CoinNames;
   /** This realm's teleport, literally; empty states none. See `Server.fleeGoto`. */
   fleeGoto: string;
 }
@@ -714,6 +717,7 @@ export function asServerDraft(value: unknown): ServerDraft | null {
     mobRules: normalizeMobRules(value['mobRules']),
     hangPenalties: typeof value['hangPenalties'] === 'boolean' ? value['hangPenalties'] : null,
     locate: asLocateWord(value['locate']) ?? DEFAULT_LOCATE,
+    coins: asCoinNames(value['coins']),
     fleeGoto: text(value['fleeGoto']).slice(0, 120)
   };
 }
