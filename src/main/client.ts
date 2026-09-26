@@ -58,7 +58,14 @@ import {
 import { Belongings, peekSpellbook } from './session/Belongings';
 import type { BelongingsSink } from '../shared/belongings';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
-import { SpellMessageBook, spellLoreOf, type SpellLore } from '../shared/spell-messages';
+import {
+  SpellMessageBook,
+  spellLoreOf,
+  withRealmSpellNames,
+  type SpellLore,
+  type SpellMessageRow
+} from '../shared/spell-messages';
+import { DESC_MESSAGE_ABILITY } from '../shared/abilities';
 import { loadSpellMessages } from './world/SpellMessages';
 import { loadShippedSentences } from './world/ShippedSentences';
 import type { ShippedSentences } from '../shared/sentences';
@@ -218,7 +225,11 @@ let worldBook: WorldBook | null = null;
  */
 let lore: RealmLore | null = null;
 /** The shipped spell message table, read once on first use. See `spellLoreFor`. */
-let spellMessages: SpellMessageBook | null = null;
+let spellMessages: SpellMessageRow[] | null = null;
+/** That table under each realm's own spell names too (todo 824), built once per realm. */
+const realmSpellMessages = new WeakMap<WorldGraph, SpellMessageBook>();
+/** The same table for a session with no realm. */
+let plainSpellMessages: SpellMessageBook | null = null;
 /** The shipped emote and death-sentence tables, read once on first use. See `sentences`. */
 let shippedSentences: ShippedSentences | null = null;
 /**
@@ -364,15 +375,29 @@ function loreFor(id: SessionId): RealmLoreView {
  * and what is learned then goes nowhere, which is the honest answer.
  */
 function spellLoreFor(id: SessionId): SpellLore {
-  spellMessages ??= loadSpellMessages(
+  const world = worldFor(id);
+  const shipped = shippedSpellMessages(world);
+  return (
+    lore?.spellsFor(world?.info.source ?? 'none', shipped) ??
+    spellLoreOf(shipped, new SpellMessageBook())
+  );
+}
+
+/** The shipped table, with the realm's renamed spells joined by message record. */
+function shippedSpellMessages(world: WorldGraph | undefined): SpellMessageBook {
+  const rows = (spellMessages ??= loadSpellMessages(
     path.join(resourcesDir(), 'world', 'spell-messages.csv'),
     (message) => announce('world', message)
-  );
-  const world = worldFor(id);
-  return (
-    lore?.spellsFor(world?.info.source ?? 'none', spellMessages) ??
-    spellLoreOf(spellMessages, new SpellMessageBook())
-  );
+  ));
+  if (world === undefined) return (plainSpellMessages ??= SpellMessageBook.fromRows(rows));
+  let book = realmSpellMessages.get(world);
+  if (book === undefined) {
+    book = SpellMessageBook.fromRows(
+      withRealmSpellNames(rows, world.spellsByMessage(DESC_MESSAGE_ABILITY))
+    );
+    realmSpellMessages.set(world, book);
+  }
+  return book;
 }
 
 /**

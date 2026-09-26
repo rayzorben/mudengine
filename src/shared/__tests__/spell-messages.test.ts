@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { parseSpellMessagesCsv, SpellMessageBook, spellLoreOf, wordsOf } from '../spell-messages';
+import {
+  parseSpellMessagesCsv,
+  SpellMessageBook,
+  spellLoreOf,
+  withRealmSpellNames,
+  wordsOf
+} from '../spell-messages';
 
 const SHIPPED = path.resolve('resources/world/spell-messages.csv');
 
@@ -33,12 +39,14 @@ describe('reading the shipped table', () => {
     expect(rows[2]).toEqual({
       spell: 'way of the bear',
       start: 'You feel strong, but clumsy!',
-      stop: 'The way of the bear wears off.'
+      stop: 'The way of the bear wears off.',
+      message: 590
     });
     expect(rows[5]).toEqual({
       spell: 'incense',
       start: null,
-      stop: 'The effects of the incense wear off.'
+      stop: 'The effects of the incense wear off.',
+      message: 8608
     });
     expect(rows[6]).toEqual({ spell: 'sunbolt wand', start: null, stop: null });
   });
@@ -47,6 +55,39 @@ describe('reading the shipped table', () => {
     const rows = parseSpellMessagesCsv('start,spell_name,stop\nYou glow.,glow,You dim.\n');
     expect(rows).toEqual([{ spell: 'glow', start: 'You glow.', stop: 'You dim.' }]);
     expect(parseSpellMessagesCsv('a,b\n1,2\n')).toEqual([]);
+  });
+});
+
+describe('a realm that renames a spell and keeps its message record', () => {
+  const rows = parseSpellMessagesCsv(csv);
+  const realm = new Map([
+    [8539, ['bless', 'heavenly favour']],
+    [590, ['bear stance']],
+    [4242, ['nothing shipped']]
+  ]);
+
+  it("adds the realm's name for a record the file holds, with the record's sentences", () => {
+    const joined = withRealmSpellNames(rows, realm);
+    expect(joined.slice(0, rows.length)).toEqual(rows);
+    expect(joined.slice(rows.length)).toEqual([
+      {
+        spell: 'heavenly favour',
+        start: 'You feel lucky!',
+        stop: 'The effects of bless wear off!',
+        message: 8539
+      },
+      {
+        spell: 'bear stance',
+        start: 'You feel strong, but clumsy!',
+        stop: 'The way of the bear wears off.',
+        message: 590
+      }
+    ]);
+  });
+
+  it('answers a sentence with the realm name beside the shipped ones', () => {
+    const book = SpellMessageBook.fromRows(withRealmSpellNames(rows, realm));
+    expect(book.match('You feel lucky!')?.starts).toEqual(['bless', 'chant', 'heavenly favour']);
   });
 });
 

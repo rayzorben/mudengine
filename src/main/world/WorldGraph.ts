@@ -527,8 +527,8 @@ export class WorldGraph {
     return this.catalogue.castableSpells();
   }
 
-  confusionMessages(): ReadonlySet<number> {
-    return this.catalogue.confusionMessages();
+  spellsByMessage(ability: number): ReadonlyMap<number, readonly string[]> {
+    return this.catalogue.spellsByMessage(ability);
   }
 
   get spellCount(): number {

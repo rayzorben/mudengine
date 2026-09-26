@@ -10,6 +10,7 @@ import { splitOntoChannel } from '../../shared/talk';
 import { macroLength, parseMacro } from '../../shared/macro';
 import {
   CLASS_STEALTH_ABILITY,
+  CONFUSE_MESSAGE_ABILITY,
   holdsAbility,
   poisonRefusesRest,
   restsInTheShadows
@@ -610,9 +611,8 @@ export class SessionManager {
       (text) => sentences.actions.match(text),
       // And, last, the server's own message table, fitted whole (todo 109).
       (text) => sentences.messages.match(text),
-      // And which of its rows a confusing spell prints when it throws a
-      // command away, so a fumble in any of the realm's words is read as one.
-      (row) => world?.confusionMessages().has(row) ?? false
+      // And the rows a confusing spell prints on a fumble, in the realm's words.
+      (row) => world?.spellsByMessage(CONFUSE_MESSAGE_ABILITY).has(row) ?? false
     );
     this.world = world;
     this.promptDesign = new PromptDesign(

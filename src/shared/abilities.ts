@@ -346,6 +346,12 @@ export const MIN_LEVEL_ABILITY = 135;
 export const CONFUSE_MESSAGE_ABILITY = 101;
 
 /**
+ * `DescMsg` — the `Messages` row a spell's start, stop and `st` sentences come
+ * from, the numbering `spell-messages.csv` keys as `desc_msg_id` (todo 824).
+ */
+export const DESC_MESSAGE_ABILITY = 115;
+
+/**
  * What a character can *do*, from the realm's own class and race rows
  * (todo 22, 2026-09-12).
  *

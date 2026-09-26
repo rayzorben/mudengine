@@ -49,7 +49,7 @@ import {
   itemInvocation,
   itemKind
 } from '../../shared/items';
-import { CONFUSE_MESSAGE_ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
+import { HAZARD_ABILITY } from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
 import { counterPriceInCopper, currencyOfCode } from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
@@ -64,7 +64,7 @@ export class Catalogue {
    * The catalogue a realm file's header states, each table read by its
    * loader in the order they depend on — a shop names items, so items first.
    * The rows are never written after; `droppers`, `summoners`, `stockists`
-   * and `confusionRows` are derived from them on first ask. `NO_HEADER`
+   * and `messageRows` are derived from them on first ask. `NO_HEADER`
    * states nothing, which every accessor answers as *the realm does not say*;
    * the header's own `v` is what the loaders' format gates read.
    */
@@ -1239,7 +1239,8 @@ export class Catalogue {
   private spells: WorldSpell[] = [];
   /** The same rows by id — see `spellById` for why this is not a scan. */
   private spellsById = new Map<number, WorldSpell>();
-  private confusionRows: ReadonlySet<number> | null = null;
+  /** `spellsByMessage`'s answer, per ability. */
+  private readonly messageRows = new Map<number, ReadonlyMap<number, readonly string[]>>();
 
   /** The spell index out of the header. Present from v4 on. */
   private loadSpells(raw: unknown): void {
@@ -1317,7 +1318,7 @@ export class Catalogue {
     }
     this.spells = spells;
     this.spellsById = new Map(spells.map((spell) => [spell.id, spell]));
-    this.confusionRows = null;
+    this.messageRows.clear();
   }
 
   /**
@@ -1410,22 +1411,29 @@ export class Catalogue {
   }
 
   /**
-   * The message rows this realm's spells print on a fumble — every
-   * `ConfuseMsg` value across the spell table (todo 05). Thirty-odd rows on
-   * Paradigm, `You retch uncontrollably!` among them; the classifier reads
-   * the character's own line of one as `command-fumbled`.
+   * Each `Messages` row a message ability names → the realm's spells naming
+   * it. `ConfuseMsg` (101) gives the rows a fumble prints (todo 05): thirty-odd
+   * on Paradigm, `You retch uncontrollably!` among them, which the classifier
+   * reads as `command-fumbled`. `DescMsg` (115) gives the record a spell's
+   * sentences come from, so a renamed spell is read by the stock sentences
+   * (`withRealmSpellNames`, todo 824).
    */
-  confusionMessages(): ReadonlySet<number> {
-    if (this.confusionRows === null) {
-      const rows = new Set<number>();
+  spellsByMessage(ability: number): ReadonlyMap<number, readonly string[]> {
+    let rows = this.messageRows.get(ability);
+    if (rows === undefined) {
+      const built = new Map<number, string[]>();
       for (const spell of this.spells) {
         for (const [id, value] of spell.abilities ?? []) {
-          if (id === CONFUSE_MESSAGE_ABILITY && value > 0) rows.add(value);
+          if (id !== ability || value <= 0) continue;
+          const names = built.get(value);
+          if (names === undefined) built.set(value, [spell.name]);
+          else names.push(spell.name);
         }
       }
-      this.confusionRows = rows;
+      rows = built;
+      this.messageRows.set(ability, rows);
     }
-    return this.confusionRows;
+    return rows;
   }
 
   /** How many spells the realm named. Zero on a realm built before v4. */
