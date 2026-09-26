@@ -304,3 +304,69 @@ describe('a peer that is not a browser', () => {
     socket.destroy();
   });
 });
+
+/* Todo 836: a tab is not closed by the reply it asked for. */
+describe('a reply the tab asked for', () => {
+  const stalledConnection = async () => {
+    const { Duplex } = await import('node:stream');
+    const stalled = new Duplex({
+      read() {},
+      write(_chunk, _encoding, _callback) {
+        // Never called back: the reply is still on its way out.
+      }
+    });
+    const connection = new WebSocketConnection(stalled, {
+      maxMessageBytes: 1024,
+      maxBufferedBytes: 2048
+    });
+    return { stalled, connection };
+  };
+
+  it('does not count against the cap, so the pushes behind it still go', async () => {
+    const { stalled, connection } = await stalledConnection();
+    // The backscroll a tab asks for on connecting, far over the cap.
+    connection.send('x'.repeat(12_000), true);
+    connection.send('a push');
+    connection.send('another push');
+    expect(connection.open).toBe(true);
+    stalled.destroy();
+  });
+
+  it('still closes a tab that stops taking what it did not ask for', async () => {
+    const { stalled, connection } = await stalledConnection();
+    connection.send('x'.repeat(12_000), true);
+    connection.send('x'.repeat(1500));
+    connection.send('x'.repeat(1500));
+    connection.send('one more');
+    expect(connection.open).toBe(false);
+    stalled.destroy();
+  });
+});
+
+describe('a reply the tab took', () => {
+  it('stops being excused once written, so a tab that then stalls is still closed', async () => {
+    const { Duplex } = await import('node:stream');
+    let taking = true;
+    const peer = new Duplex({
+      read() {},
+      write(_chunk, _encoding, callback) {
+        // Takes what it is sent until it stops, then never calls back again.
+        if (taking) callback();
+      }
+    });
+    const connection = new WebSocketConnection(peer, {
+      maxMessageBytes: 1024,
+      maxBufferedBytes: 2048
+    });
+    // Many small replies, all taken: none of them excuses anything later.
+    for (let n = 0; n < 20; n += 1) connection.send('x'.repeat(500), true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(connection.open).toBe(true);
+    taking = false;
+    connection.send('x'.repeat(1500));
+    connection.send('x'.repeat(1500));
+    connection.send('one more');
+    expect(connection.open).toBe(false);
+    peer.destroy();
+  });
+});

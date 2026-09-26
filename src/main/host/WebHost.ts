@@ -39,6 +39,8 @@ import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Ho
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
 import type { WebSocketConnection } from './web/sockets';
+import { TabOutbox } from './web/outbox';
+import { Send } from '../../shared/ipc';
 
 /** The one rail every tab draws. Tabs are numbered from the next id up. */
 export const WEB_RAIL = 1;
@@ -52,6 +54,8 @@ interface Tab {
   readonly connection: WebSocketConnection;
   /** Answered the last ping; cleared when the next one goes out. */
   alive: boolean;
+  /** What goes to this tab, and when: ready, and the repeats skipped. See `TabOutbox`. */
+  readonly outbox: TabOutbox;
 }
 
 /** `MUDENGINE_PORT`, or the default; `0` asks the system for a free one. */
@@ -185,7 +189,9 @@ export function createWebHost(layout: Layout): Host {
       }
       return;
     }
-    tab.connection.send(text);
+    if (!tab.outbox.admits(message, text)) return;
+    // A reply the tab asked for does not count against the cap (todo 836).
+    tab.connection.send(text, message.k === 'reply');
   };
 
   /** One message from a tab, parsed and dispatched. */
@@ -205,6 +211,8 @@ export function createWebHost(layout: Layout): Host {
     }
 
     if (request.k === 'send') {
+      // Ready before the listener runs, so the replay it starts reaches the tab.
+      if (request.c === Send.clientReady) tab.outbox.markReady();
       const listener = listeners.get(request.c);
       if (!listener) {
         say(`web: nothing listens on ${request.c}.`);
@@ -237,7 +245,7 @@ export function createWebHost(layout: Layout): Host {
   const attach = (hooks: ClientHooks, connection: WebSocketConnection, remote: string): void => {
     const id = nextId;
     nextId += 1;
-    const tab: Tab = { id, connection, alive: true };
+    const tab: Tab = { id, connection, alive: true, outbox: new TabOutbox() };
     tabs.set(id, tab);
     const caller: Caller = {
       windowId: id,
