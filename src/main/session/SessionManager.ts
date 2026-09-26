@@ -39,6 +39,7 @@ import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import { AutoInvoke } from '../automation/AutoInvoke';
 import { Blessings } from '../automation/Blessings';
+import { CastRound } from '../automation/CastRound';
 import { CombatLease } from '../automation/CombatLease';
 import { Cures } from '../automation/Cures';
 import { Potions } from '../automation/Potions';
@@ -445,6 +446,7 @@ export class SessionManager {
   private readonly remotes: Remotes;
   private readonly afk: Afk;
   private readonly heal: AutoHeal;
+  private readonly castRound: CastRound;
   private readonly potions: Potions;
   private readonly cures: Cures;
   /** Blessings kept up by events on this character and the party. */
@@ -1512,17 +1514,10 @@ export class SessionManager {
       },
       comeBack: (from, map, room) => this.travel.comeBack(from, map, room)
     });
-    /*
-     * All four casters share one realm lookup, and it hands over the realm's
-     * **row**, not a field off it.
-     *
-     * Three separate projections used to cross here — an abbreviation for the
-     * cast word, an id for telling `bles` from `bless`, and nothing at all for
-     * what a cast costs — so a module that needed a fact the wiring had not
-     * anticipated could not ask for it. Read at the point of use, because
-     * `this.world` arrives with `useRealm` and may not exist yet.
-     */
+    // All four casters share one realm lookup, handing over the realm's whole
+    // row, read at the point of use because `this.world` arrives with `useRealm`.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
+    this.castRound = new CastRound(reports);
     this.heal = new AutoHeal(
       automation.spells,
       automation.enabled,
@@ -1532,7 +1527,8 @@ export class SessionManager {
       { notice: (message) => this.sink.notice(message) },
       // The class row and the server's family, for `castOdds` — read at the
       // point of use, as `AutoCombat`'s is.
-      () => this.errands.realmClass()
+      () => this.errands.realmClass(),
+      this.castRound
     );
     this.potions = new Potions(automation.health, automation.enabled, this.queue);
     this.cures = new Cures(
@@ -1541,7 +1537,8 @@ export class SessionManager {
       this.queue,
       undefined,
       realmSpell,
-      { notice: (message) => this.sink.notice(message) }
+      { notice: (message) => this.sink.notice(message) },
+      this.castRound
     );
     this.blessings = new Blessings(automation.spells, automation.enabled, this.queue, {
       /*
@@ -1553,7 +1550,8 @@ export class SessionManager {
       learnedDuration: (spell) =>
         this.belongings.recallSpellDurations()[spell.trim().toLowerCase()] ?? null,
       realmSpell,
-      onTheGround
+      onTheGround,
+      castGate: this.castRound
     });
     /*
      * And the blessing a carried item can give, which is not a cast at all:
@@ -1866,6 +1864,7 @@ export class SessionManager {
       { module: this.remotes, configure: (a) => this.remotes.configure(a) },
       { module: this.afk, configure: (a) => this.afk.configure(a.afk, a.enabled) },
       { module: this.heal, configure: (a) => this.heal.configure(a.spells, a.enabled) },
+      { module: this.castRound },
       { module: this.potions, configure: (a) => this.potions.configure(a.health, a.enabled) },
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
@@ -2996,6 +2995,7 @@ export class SessionManager {
      * the only record of whom to notify.
      */
     this.blessings.onBlock(block, this.tracker.current);
+    this.castRound.onBlock(block);
     /*
      * A party forming or breaking up is the moment its roster becomes worth
      * having — and the moment it is emptiest, because nothing has asked.

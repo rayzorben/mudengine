@@ -52,7 +52,7 @@ import { t } from '../app/i18n';
 import type { ActiveBuff, CharacterState } from '../../shared/character';
 import type { BlessingConfig, SpellsConfig } from '../../shared/config';
 import type { Block } from '../../shared/blocks';
-import { resolveSpell, spellCost } from '../../shared/spellcraft';
+import { OPEN_CAST_GATE, resolveSpell, spellCost, type CastGate } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -105,19 +105,21 @@ export interface BlessingsDeps {
    * it would read a character down as standing.
    */
   readonly onTheGround: () => boolean;
+  /** The one heal, blessing or cure a round, asked at the send (`CastRound`); omitted, none. */
+  readonly castGate?: CastGate;
 }
 
 export class Blessings implements SessionModule {
   private timer: NodeJS.Timeout | null = null;
   private state: CharacterState | null = null;
-  /** When each clock last had its cast proposed — `clockKey` → epoch ms. */
+  /** When each clock last had its cast sent — `clockKey` → epoch ms. */
   private readonly proposedAt = new Map<string, number>();
   /** When each party clock last saw its cast *confirmed* — `clockKey` → epoch ms. */
   private readonly castAt = new Map<string, number>();
   /** Party clocks a peer notification has marked due right now. */
   private readonly dueNow = new Set<string>();
   /**
-   * The last cast this module proposed anything at, module-wide: one blessing
+   * When this module last sent a cast, module-wide: one blessing
    * at a time, so a caster with three down works through them in priority
    * order at the pace the server confirms them rather than as one burst two
    * thirds of which is refused.
@@ -128,6 +130,7 @@ export class Blessings implements SessionModule {
   private readonly learnedDuration: (spell: string) => number | null;
   private readonly realmSpell: (name: string) => WorldSpell | null;
   private readonly onTheGround: () => boolean;
+  private readonly gate: CastGate;
 
   constructor(
     private config: SpellsConfig,
@@ -139,6 +142,7 @@ export class Blessings implements SessionModule {
     this.learnedDuration = deps.learnedDuration ?? (() => null);
     this.realmSpell = deps.realmSpell ?? (() => null);
     this.onTheGround = deps.onTheGround;
+    this.gate = deps.castGate ?? OPEN_CAST_GATE;
     // The toolbar's Auto-Bless switch, under the master one — as `configure`
     // folds it, so the first pass and every later one agree.
     this.enabled = enabled && config.autoBless;
@@ -418,8 +422,8 @@ export class Blessings implements SessionModule {
    * A null target is this character: cast bare, which lands on the caster.
    *
    * Returns whether anything was proposed. A blessing that cannot be paid for
-   * is not one, and **no clock is spent on it**: `proposedAt` is set only on
-   * the way past the check, so the recast goes out on the first status line
+   * is not one, and **no clock is spent on it**: `proposedAt` is set only
+   * when a cast is sent, so the recast goes out on the first status line
    * that can afford it rather than waiting out `blessRetryMs` afterwards. The
    * captured failure this closes is `way of the owl` at `KAI=1` for a spell
    * costing 2 — the server answering `You do not have enough mana to cast that
@@ -434,8 +438,6 @@ export class Blessings implements SessionModule {
   ): boolean {
     const found = resolveSpell(entry.spell, state.spellbook, this.realmSpell);
     if (!canPayFor(state, spellCost(found))) return false;
-    this.proposedAt.set(key, now);
-    this.lastProposalAt = now;
     const word = found.word;
     this.queue.enqueue({
       command: target === null ? word : `${word} ${target}`,
@@ -444,7 +446,16 @@ export class Blessings implements SessionModule {
       priority: state.inCombat ? 'combat' : 'probe',
       coalesceKey: `blessing:${key}`,
       expiresAt: now + tuning().spells.buffExpiresMs,
-      reason: t('automation.blessing.reason', { name: entry.spell })
+      stillWanted: () => this.gate.mayCast(found.configured),
+      reason: t('automation.blessing.reason', { name: entry.spell }),
+      // The clocks are spent when the cast leaves, so one held for the round
+      // is proposed again rather than waiting out `blessRetryMs`.
+      onSent: () => {
+        const sentAt = this.now();
+        this.proposedAt.set(key, sentAt);
+        this.lastProposalAt = sentAt;
+        this.gate.noteCast();
+      }
     });
     return true;
   }

@@ -411,6 +411,10 @@ tuning:
     # the one round they are.
     roundMs: 100
 
+    # The quiet between two rounds' blows: the first blow after it opens a new
+    # round. Measured: inside a round at most 1.5 s, between rounds 2.5 s or more.
+    roundGapMs: 2000
+
     # The shortest gap between two attempts to open a fight on the same thing.
     # Not pacing — pacing comes from the prompt — but a floor on *asking*: an
     # attack refused for a reason this client cannot see leaves the room
@@ -554,6 +558,10 @@ tuning:
     # How far apart an unnameable effect ending and a condition ending may be
     # and still be read as one event, which is what confirms what it causes.
     effectCauseMs: 5000
+
+    # Out of a fight no blow marks a round, so a cast holds the next one for a
+    # round (hunting.roundSeconds) and this much more.
+    castSlackMs: 1000
 
   # Drinking on the character's behalf — `Potions`.
   potions:

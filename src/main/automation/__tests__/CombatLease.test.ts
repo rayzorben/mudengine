@@ -193,9 +193,9 @@ describe('hit for rounds without moving, with auto-combat off', () => {
     return { ...base, room: { ...base.room, arrival } };
   }
 
-  /** `rounds` rounds of blows, a second apart, from `from`. */
-  function hit(rounds: number, from = 10_000): void {
-    for (let i = 0; i < rounds; i++) lease.noteMonsterBlow(from + i * 1000);
+  /** `rounds` rounds of blows, a server round apart, from `from`. */
+  function hit(rounds: number, from = 50_000): void {
+    for (let i = 0; i < rounds; i++) lease.noteMonsterBlow(from + i * 5000);
   }
 
   let returned: boolean[];
@@ -224,14 +224,14 @@ describe('hit for rounds without moving, with auto-combat off', () => {
     lease.defend(inRoom(1), calm);
     // Positive control first: one round is below two, and nothing is asked.
     expect(flips).toEqual([]);
-    hit(1, 12_000);
+    hit(1, 60_000);
     lease.defend(inRoom(1), calm);
     expect(flips).toEqual([true]);
     expect(lease.lending).toBe(true);
     expect(decisions).toEqual([expect.objectContaining({ action: 'defend', acted: true })]);
     // The file answers; the character stays put and is hit again: no second ask.
     lease.configure(automation({ combat: true }));
-    hit(3, 20_000);
+    hit(3, 100_000);
     lease.defend(inRoom(1), calm);
     expect(flips).toEqual([true]);
     // Arrived in another room: handed back, the journey put back as it was.
@@ -242,9 +242,9 @@ describe('hit for rounds without moving, with auto-combat off', () => {
   });
 
   it('counts a burst of blows inside one round as one round', () => {
-    lease.noteMonsterBlow(10_000);
-    lease.noteMonsterBlow(10_020);
-    lease.noteMonsterBlow(10_040);
+    lease.noteMonsterBlow(50_000);
+    lease.noteMonsterBlow(50_100);
+    lease.noteMonsterBlow(50_200);
     lease.defend(inRoom(1), calm);
     expect(flips).toEqual([]);
   });
@@ -252,7 +252,7 @@ describe('hit for rounds without moving, with auto-combat off', () => {
   it('starts counting again from each arrival', () => {
     hit(1);
     lease.defend(inRoom(2), calm);
-    hit(1, 20_000);
+    hit(1, 100_000);
     lease.defend(inRoom(2), calm);
     expect(flips).toEqual([]);
   });
@@ -312,12 +312,12 @@ describe('hit for rounds without moving, with auto-combat off', () => {
     expect(lease.configure(automation({ combat: true }))).toBe(true);
     expect(lease.configure(automation({ combat: false }))).toBe(false);
     // Still in the same room and still being hit: not lent again.
-    hit(3, 30_000);
+    hit(3, 150_000);
     lease.defend(inRoom(1), calm);
     lease.defend(inRoom(2), calm);
     expect(flips).toEqual([true]);
     // The next room asks afresh.
-    hit(2, 60_000);
+    hit(2, 300_000);
     lease.defend(inRoom(2), calm);
     expect(flips).toEqual([true, true]);
   });
@@ -344,7 +344,7 @@ describe('hit for rounds without moving, with auto-combat off', () => {
     });
     stuck.configure(automation());
     stuck.defend(inRoom(1), calm);
-    for (let i = 0; i < 2; i++) stuck.noteMonsterBlow(10_000 + i * 1000);
+    for (let i = 0; i < 2; i++) stuck.noteMonsterBlow(50_000 + i * 5000);
     stuck.defend(inRoom(1), calm);
     stuck.configure(automation({ combat: true }));
     writable = false;
@@ -376,10 +376,10 @@ describe('hit for rounds without moving, with auto-combat off', () => {
     });
     refusing.configure(automation());
     refusing.defend(inRoom(1), calm);
-    for (let i = 0; i < 4; i++) refusing.noteMonsterBlow(10_000 + i * 1000);
+    for (let i = 0; i < 4; i++) refusing.noteMonsterBlow(50_000 + i * 5000);
     refusing.defend(inRoom(1), calm);
     // More rounds in the same room ask nothing again.
-    for (let i = 0; i < 4; i++) refusing.noteMonsterBlow(20_000 + i * 1000);
+    for (let i = 0; i < 4; i++) refusing.noteMonsterBlow(100_000 + i * 5000);
     refusing.defend(inRoom(1), calm);
     expect(decisions).toEqual([expect.objectContaining({ action: 'defend', acted: false })]);
     expect(said).toEqual([]);

@@ -4589,6 +4589,8 @@ automation:
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
+  castRound:
+    held: a heal, blessing or cure already went this round; casting it next round
   cure:
     reason: 'cure: {cure}'
     derived: Casting {spell} as the {cure} cure, the cheapest spell in your book that cures it.

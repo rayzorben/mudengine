@@ -29,11 +29,11 @@
  * for a hold and given back on arrival*.
  */
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { SessionModule } from './Module';
+import { RoundBeat } from './RoundBeat';
 
 export interface CombatLeaseEvents {
   /** Write the combat switch into the character's file; whether it was written. */
@@ -81,7 +81,7 @@ export class CombatLease implements SessionModule {
   private declinedAtLend = false;
   /** Rounds of monsters' blows since `arrival`, and when the last blow of the last one came. */
   private rounds = 0;
-  private lastBlowAt = 0;
+  private readonly beat = new RoundBeat();
   /** The arrival the rounds are counted from (`RoomState.arrival`). */
   private arrival: number | null = null;
   /**
@@ -152,13 +152,10 @@ export class CombatLease implements SessionModule {
 
   /**
    * A monster's blow on this character, hit or miss (`mob-hits`, `mob-misses`
-   * the tracker vouched for). Blows closer together than `tuning.combat.roundMs`
-   * are one round, as `AutoCombat`'s round beat reads them: the server prints
-   * a round's blows together, and it is the printed blows that are counted.
+   * the tracker vouched for), counted by the round they open (`RoundBeat`).
    */
   noteMonsterBlow(at: number): void {
-    if (at - this.lastBlowAt > tuning().combat.roundMs) this.rounds += 1;
-    this.lastBlowAt = at;
+    if (this.beat.blow(at)) this.rounds += 1;
   }
 
   /**
@@ -312,7 +309,7 @@ export class CombatLease implements SessionModule {
       this.giveBack(t('automation.combat.returnedAtReset'));
     }
     this.rounds = 0;
-    this.lastBlowAt = 0;
+    this.beat.reset();
     this.arrival = null;
     this.stoodBy = null;
     // A give-back the file still refuses outlives the session it was lent in.

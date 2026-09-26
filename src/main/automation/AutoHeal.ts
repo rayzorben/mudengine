@@ -84,9 +84,11 @@ import type { SpellsConfig } from '../../shared/config';
 import {
   castsBare,
   healFloor,
+  OPEN_CAST_GATE,
   resolveSpell,
   spellCost,
-  spellTargeting
+  spellTargeting,
+  type CastGate
 } from '../../shared/spellcraft';
 import { canPayFor } from './mana';
 import { chooseHealSpell, type HealAim, type HealChoice } from '../../shared/spellchoice';
@@ -147,7 +149,9 @@ export class AutoHeal implements SessionModule {
       combat: number | null;
       magery: number | null;
       family: RealmFamily | null;
-    } = () => ({ combat: null, magery: null, family: null })
+    } = () => ({ combat: null, magery: null, family: null }),
+    /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
+    private readonly gate: CastGate = OPEN_CAST_GATE
   ) {}
 
   configure(config: SpellsConfig, enabled: boolean): void {
@@ -465,16 +469,20 @@ export class AutoHeal implements SessionModule {
      * through to the named form, which is what the configuration asked for.
      */
     const bare = target === null || castsBare(spellTargeting(found.realm?.targets));
-    const taken = this.queue.enqueue({
+    // The cooldown is spent when the cast leaves: a refused enqueue or a
+    // round already cast is *not now*, never a cast (todo 113's rule).
+    this.queue.enqueue({
       command: bare ? word : `${word} ${target}`,
       priority: 'combat',
       coalesceKey: `heal:${key}`,
       expiresAt: at + tuning().spells.healExpiresMs,
+      stillWanted: () => this.gate.mayCast(found.configured),
       reason,
-      ...(onSent === undefined ? {} : { onSent })
+      onSent: () => {
+        this.lastCastAt.set(key, this.now());
+        this.gate.noteCast();
+        onSent?.();
+      }
     });
-    // A refused enqueue is *not now*, never a cast: the cooldown is for one
-    // that is on its way (todo 113's rule).
-    if (taken) this.lastCastAt.set(key, at);
   }
 }
