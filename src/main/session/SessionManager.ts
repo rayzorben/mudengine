@@ -2980,10 +2980,10 @@ export class SessionManager {
     this.remotes.onBlock(block, this.tracker.current);
     this.afk.onBlock(block, this.tracker.current);
     /*
-     * The spellbook ask correcting itself: a wrong-book refusal names the
-     * right listing, and a level-up invalidates the one on file.
+     * The spellbook ask correcting itself (a wrong-book refusal names the right
+     * listing, a level-up voids the one on file), and each listing's answer (835).
      */
-    this.routines.onBlock(block);
+    for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*

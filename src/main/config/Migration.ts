@@ -6341,6 +6341,9 @@ function theTuningBlockGainedKeys(
     // Where a round's blows begin, and how long a heal, blessing or cure
     // holds the next one when none are seen (todo 823).
     addKey('combat', 'roundGapMs', DEFAULT_INTERNAL.tuning.combat.roundGapMs);
+    // How long an entry st or i waits before it is asked again (todo 835).
+    addKey('queue', 'unreadRetryMs', DEFAULT_INTERNAL.tuning.queue.unreadRetryMs);
+    addKey('queue', 'unreadRetries', DEFAULT_INTERNAL.tuning.queue.unreadRetries);
     addKey('spells', 'castSlackMs', DEFAULT_INTERNAL.tuning.spells.castSlackMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */

@@ -53,7 +53,7 @@ import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
 import type { CharacterState } from '../../shared/character';
 import type { Block, BlockType } from '../../shared/blocks';
-import { REFRESH, staleAfter, type StaleFact } from '../../shared/staleness';
+import { READ, REFRESH, staleAfter, unread, type StaleFact } from '../../shared/staleness';
 import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -75,6 +75,12 @@ export interface RoutineEvents {
 export class Routines implements SessionModule {
   /** Whether the realm-entry probe has already run this session. */
   private probed = false;
+  /** What an answer has read this session (todo 835): `READ`, whatever it said. */
+  private readonly read = new Set<StaleFact>();
+  /** When the entry commands were last asked, or null before entering or once given up. See `askUnread`. */
+  private askedAt: number | null = null;
+  /** How many times `askUnread` has asked again this session. */
+  private unreadAsks = 0;
   /** Whether the character is in the realm: the only time the idle clock runs. */
   private inRealm = false;
   private idleTimer: NodeJS.Timeout | null = null;
@@ -155,6 +161,9 @@ export class Routines implements SessionModule {
   reset(): void {
     this.sheetAskedAt = null;
     this.probed = false;
+    this.read.clear();
+    this.askedAt = null;
+    this.unreadAsks = 0;
     this.toLookAt = [];
     this.lookedAt.clear();
     this.lookedAtAt = 0;
@@ -167,6 +176,43 @@ export class Routines implements SessionModule {
     this.inRealm = false;
     this.partyListing.reset();
     this.stopIdle();
+  }
+
+  /**
+   * What entering the realm asked for and nothing has answered, asked again
+   * once `tuning.queue.unreadRetryMs` has passed (todo 835), at most
+   * `tuning.queue.unreadRetries` times: an `st` or `i` that never came back
+   * (the stat screen's hold drops what is queued) leaves health unknown all
+   * session. Only what `onEnterRealm` asks, never once an answer came, and
+   * said only for what the queue took; one it refused is tried after the wait.
+   */
+  private askUnread(): void {
+    if (!this.config.enabled || this.askedAt === null) return;
+    if (Date.now() - this.askedAt < tuning().queue.unreadRetryMs) return;
+    const missing = unread(this.config.onEnterRealm, this.read);
+    if (missing.length === 0) return;
+    this.askedAt = Date.now();
+    const commands = missing.map((fact) => REFRESH[fact].command).join(', ');
+    if (this.unreadAsks >= tuning().queue.unreadRetries) {
+      this.askedAt = null;
+      this.events.notice?.(t('automation.routines.unreadGaveUp', { commands }));
+      return;
+    }
+    const queued = missing.filter(
+      (fact) =>
+        this.queue.offer({
+          ...REFRESH[fact],
+          priority: 'probe',
+          reason: t('automation.routines.reasonUnread')
+        }) === 'queued'
+    );
+    if (queued.length === 0) return;
+    this.unreadAsks += 1;
+    this.events.notice?.(
+      t('automation.routines.askingAgain', {
+        commands: queued.map((fact) => REFRESH[fact].command).join(', ')
+      })
+    );
   }
 
   /** A combat round has come round: the party listing, where it is asked for then. */
@@ -231,6 +277,7 @@ export class Routines implements SessionModule {
         this.events.notice?.(
           t('automation.routines.enteringRealm', { commands: commands.join(', ') })
         );
+        this.askedAt = Date.now();
       }
       this.askForTheStatline();
     }
@@ -249,6 +296,7 @@ export class Routines implements SessionModule {
      * busiest path in the client.
      */
     this.askRoster();
+    this.askUnread();
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);
   }
@@ -487,6 +535,9 @@ export class Routines implements SessionModule {
    * one-name row with the server's own listing.
    */
   onBlock(block: Block): void {
+    for (const fact of Object.keys(READ) as StaleFact[]) {
+      if (READ[fact] === block.type) this.read.add(fact);
+    }
     if (!this.config.enabled) return;
     if (block.type === 'spellbook-refused') {
       const book = block.groups?.['book'];
