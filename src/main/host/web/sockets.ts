@@ -108,6 +108,11 @@ export class WebSocketConnection {
   /** What this side said on the way out, so the end is reported as it was meant. */
   private saidGoodbye: { code: number; reason: string } | null = null;
   private readonly decoder = new TextDecoder('utf-8', { fatal: true });
+  /**
+   * Bytes of a reply the tab asked for still queued on the socket, each frame
+   * taken off in its own write's callback; the cap counts what is beyond them.
+   */
+  private requested = 0;
 
   constructor(
     private readonly socket: Duplex,
@@ -124,10 +129,23 @@ export class WebSocketConnection {
     return !this.closed && !this.closeSent;
   }
 
-  send(text: string): void {
+  /**
+   * A reply the tab asked for (`requested`) does not count against the cap
+   * (todo 836): 100,000 lines of backscroll is about 11.7 MB, and the tab that
+   * asked for it was closed by the next push behind it.
+   */
+  send(text: string, requested = false): void {
     if (!this.open) return;
     if (!this.roomToWrite()) return;
-    this.socket.write(frame(OPCODE.text, Buffer.from(text, 'utf8')));
+    const bytes = frame(OPCODE.text, Buffer.from(text, 'utf8'));
+    if (!requested) {
+      this.socket.write(bytes);
+      return;
+    }
+    this.requested += bytes.length;
+    this.socket.write(bytes, () => {
+      this.requested -= bytes.length;
+    });
   }
 
   /**
@@ -136,7 +154,7 @@ export class WebSocketConnection {
    * wrong, the tab simply stopped taking them.
    */
   private roomToWrite(): boolean {
-    if (this.socket.writableLength <= this.options.maxBufferedBytes) return true;
+    if (this.socket.writableLength - this.requested <= this.options.maxBufferedBytes) return true;
     this.close(1008, 'not reading');
     return false;
   }
