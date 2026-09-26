@@ -1045,11 +1045,19 @@ export const RULES: Rule[] = [
    * claimed by `user-misses` above and `The ... you` by `mob-misses`, so what
    * is left is a player at a monster or a monster at a player — the sixth of
    * the corpus that was unread (docs/capture-analysis.md §4).
+   *
+   * The attacker is found in the words before `at` from the room and the
+   * realm, as a monster's blow on this character is (`mob-misses`), because
+   * a verb can be two words: `The red wyvern swoops down at Fatty!` read with
+   * a one-word verb made a monster called `red wyvern swoops` (todo 834).
+   * A player's capitalised name is one by grammar; an article never is.
    */
   {
     type: 'player-misses',
     pattern:
-      /^\s*(?<attacker>(?!You\b)(?:The )?[\w'-]+(?: [\w'-]+)*?) (?<verb>\w+) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!$/
+      /^\s*(?<line>(?!You\b)(?:(?<first>[A-Z][\w'-]*)|[a-z][\w'-]*)(?: [\w'-]+)+?) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!$/,
+    resolve: 'attacker',
+    nameFallback: true
   },
   {
     type: 'player-misses',

@@ -6247,11 +6247,13 @@ describe('the opening of a PvP fight', () => {
     expect(names(t.current.room.occupants)).not.toContain('Rend');
   });
 
-  it('puts both sides of somebody else’s swing in the room', () => {
+  /*
+   * The player by the capital of the name; a monster nothing names is left
+   * out, since the words before `at` can hold a two-word verb (todo 834).
+   */
+  it('puts the player of somebody else’s swing in the room, and adds no unnamed monster', () => {
     const t = play(['[HP=159]:', 'The giant wasp lunges at Caligula!']);
-    expect(names(t.current.room.occupants)).toEqual(
-      expect.arrayContaining(['giant wasp', 'Caligula'])
-    );
+    expect(names(t.current.room.occupants)).toEqual(['Caligula']);
   });
 });
 
@@ -9774,7 +9776,13 @@ describe('what a party member was last seen fighting', () => {
    * pummelled without swinging back is exactly the case defending exists for.
    */
   it('records a monster’s blow on a member, with the article dropped', () => {
-    const tracker = play([...inParty, 'The massive ice dragon snaps at Soul with its fangs!']);
+    const tracker = play([
+      ...inParty,
+      'Frozen Lake',
+      'Also here: Soul, massive ice dragon.',
+      'Obvious exits: north',
+      'The massive ice dragon snaps at Soul with its fangs!'
+    ]);
     expect(tracker.current.party.threatened['Soul']?.target).toBe('massive ice dragon');
     // And the member's own fight is untouched: Soul has not swung.
     expect(tracker.current.party.engaged['Soul']).toBeUndefined();
