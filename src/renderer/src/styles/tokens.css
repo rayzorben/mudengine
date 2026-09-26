@@ -158,6 +158,10 @@
   --dur-control: 180ms;
   --dur-surface: 260ms;
   --dur-enter: 420ms;
+  /* How long a route is planned before the panel says so (todo 838): the stock
+     realm's median plan is 41ms, so most never show the line; Paradigm's
+     median is 184ms, so most do. */
+  --delay-planning: 100ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
 
