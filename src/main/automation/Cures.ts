@@ -31,9 +31,11 @@ import { CURES, type Cure, type SpellsConfig } from '../../shared/config';
 import {
   CURE_CONDITION,
   cureGates,
+  OPEN_CAST_GATE,
   resolveSpell,
   spellCost,
-  spellTargeting
+  spellTargeting,
+  type CastGate
 } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
@@ -63,7 +65,9 @@ export class Cures implements SessionModule {
      */
     private readonly realmSpell: (name: string) => WorldSpell | null = () => null,
     /** Where a derived cure is said, once (todo 09). */
-    private readonly events: { notice?(message: string): void } = {}
+    private readonly events: { notice?(message: string): void } = {},
+    /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
+    private readonly gate: CastGate = OPEN_CAST_GATE
   ) {}
 
   configure(config: SpellsConfig, enabled: boolean): void {
@@ -129,13 +133,18 @@ export class Cures implements SessionModule {
        * clock. See `canPayFor`.
        */
       if (!canPayFor(state, spellCost(found))) continue;
-      this.lastCastAt.set(cure, at);
+      // Spent when the cast leaves, so one held for the round stays due.
       this.queue.enqueue({
         command: found.word,
         priority: 'combat',
         coalesceKey: `cure:${cure}`,
         expiresAt: at + tuning().spells.cureExpiresMs,
-        reason: t('automation.cure.reason', { cure })
+        stillWanted: () => this.gate.mayCast(found.configured),
+        reason: t('automation.cure.reason', { cure }),
+        onSent: () => {
+          this.lastCastAt.set(cure, this.now());
+          this.gate.noteCast();
+        }
       });
     }
   }

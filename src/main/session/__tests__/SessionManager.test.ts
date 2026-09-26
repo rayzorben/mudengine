@@ -5413,6 +5413,11 @@ describe('auto-combat lent to a character hit and not moving', () => {
   });
 
   it('turns it on after two rounds, swings back, and hands it back on the next arrival', async () => {
+    // Rounds 150ms apart rather than the server's five seconds.
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      combat: { ...DEFAULT_INTERNAL.tuning.combat, roundGapMs: 100 }
+    });
     const collected = collect();
     const flips: boolean[] = [];
     const sink: SessionSink = {

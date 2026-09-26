@@ -419,3 +419,18 @@ export function healFloor(
 ): number {
   return inCombat && spells.healBelowInCombat > 0 ? spells.healBelowInCombat : spells.healBelow;
 }
+
+/**
+ * The one heal, blessing or cure a round the server allows (todo 823), as the
+ * casters see it. `CastRound` keeps it; see `mudengine-automation` ›
+ * *One heal, blessing or cure a round*.
+ */
+export interface CastGate {
+  /** Whether a cast sent now would be this round's only one. Asked at the send. */
+  mayCast(spell: string): boolean;
+  /** A heal, blessing or cure went out. */
+  noteCast(): void;
+}
+
+/** A gate that never closes, for a caster built with none. */
+export const OPEN_CAST_GATE: CastGate = { mayCast: () => true, noteCast: () => {} };

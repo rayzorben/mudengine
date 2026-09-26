@@ -474,6 +474,13 @@ const TUNING_DEFAULTS = {
      */
     roundMs: 100,
     /**
+     * The quiet that separates two rounds' blows (`RoundBeat`). Measured
+     * 2026-09-26 over 120 recorded sessions: gaps inside one round are under
+     * 250 ms in 99% of cases and at most 1.5 s, and gaps between rounds are
+     * 2.5 s at the least and 5 s typically.
+     */
+    roundGapMs: 2000,
+    /**
      * The shortest gap between two attempts to open a fight on the same thing.
      * Not pacing — pacing comes from the prompt — but a floor on *asking*: an
      * attack refused for a reason this client cannot see leaves the room
@@ -658,7 +665,13 @@ const TUNING_DEFAULTS = {
      * effect, and the confirmed verdict is what *clears* a condition — the
      * reassuring direction, which wants the higher bar.
      */
-    effectCauseMs: 5000
+    effectCauseMs: 5000,
+    /**
+     * How long past a round (`hunting.roundSeconds`) a cast holds the next
+     * one when no blow says a round began: out of a fight, where the room's
+     * tick prints nothing.
+     */
+    castSlackMs: 1000
   },
   /** Drinking on the character's behalf — `Potions`. */
   potions: {
