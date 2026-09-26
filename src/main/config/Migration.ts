@@ -244,6 +244,7 @@ function migrateAll(options: MigrationOptions): void {
   theHangPenaltyIsTheRealms(home, note);
   statedTheTeleport(home, note, options.template);
   statedTheFreedomCure(home, note);
+  statedTheMeditateCeiling(home, note, options.template);
 }
 
 /**
@@ -2684,37 +2685,74 @@ function dropTheRoundMacro(home: Home, note: (message: string) => void): void {
  * nothing stated is ever overwritten.
  */
 function statedTheRestCeiling(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const block = document.getIn(['automation', 'health'], true);
-      if (!isMap(block) || block.has('restTo')) return false;
-      const pair = document.createPair('restTo', 0) as Pair;
-      /*
-       * Beside `restBelow` rather than at the end of the block: the two are one
-       * pair and a ceiling filed under the potions reads as a third unrelated
-       * threshold. Falls back to appending when the file states the ceiling's
-       * partner nowhere.
-       */
-      const at = block.items.findIndex(
-        (item) => isScalar(item.key) && String(item.key.value) === 'restBelow'
-      );
-      if (at === -1) block.items.push(pair);
-      else block.items.splice(at + 1, 0, pair);
-      if (isScalar(pair.key)) pair.key.commentBefore = REST_TO_COMMENT;
-      stated.push(file);
-      return true;
-    });
-  }
-
+  // Beside `restBelow` rather than at the end of the block: the two are one
+  // pair and a ceiling filed under the potions reads as a third unrelated
+  // threshold.
+  const stated = stateInHealth(home, 'restTo', 0, 'restBelow', REST_TO_COMMENT);
   if (stated.length === 0) return;
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(
     stated.length === 1
       ? t('notices.migration.restCeiling.one', params)
       : t('notices.migration.restCeiling.many', params)
+  );
+}
+
+/**
+ * One key into `automation.health` of every file that states the block
+ * without it: at `value`, with `comment` above it, directly after its partner
+ * `after`, or appended where the file states the partner nowhere. Nothing
+ * stated is overwritten, and a file that inherits its health settings is left
+ * alone. Returns the files written, for the step's own notice.
+ */
+function stateInHealth(
+  home: Home,
+  key: string,
+  value: unknown,
+  after: string,
+  comment: string | undefined
+): string[] {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+  for (const file of files) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'health'], true);
+      if (!isMap(block) || block.has(key)) return false;
+      const pair = document.createPair(key, value) as Pair;
+      if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const at = block.items.findIndex((item) => keyText(item) === after);
+      if (at === -1) block.items.push(pair);
+      else block.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+  return stated;
+}
+
+/**
+ * `automation.health.meditateTo` into every file that states `health:`
+ * without it, at the shipped 0 and with the template's comment (todo 825).
+ * After `meditateBelow`, its pair; appended where the file states neither.
+ */
+function statedTheMeditateCeiling(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateInHealth(
+    home,
+    'meditateTo',
+    DEFAULT_CONFIG.automation.health.meditateTo,
+    'meditateBelow',
+    templateComments(template, 'automation').get('automation.health.meditateTo')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.meditateCeiling.one', params)
+      : t('notices.migration.meditateCeiling.many', params)
   );
 }
 
@@ -2729,28 +2767,13 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
  * file states neither partner.
  */
 function statedTheTrapRest(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
-  const stated: string[] = [];
-
-  for (const file of files) {
-    edit(file, (document) => {
-      const block = document.getIn(['automation', 'health'], true);
-      if (!isMap(block) || block.has('restBeforeTraps')) return false;
-      const pair = document.createPair(
-        'restBeforeTraps',
-        DEFAULT_CONFIG.automation.health.restBeforeTraps
-      ) as Pair;
-      const at = block.items.findIndex(
-        (item) => isScalar(item.key) && String(item.key.value) === 'restTo'
-      );
-      if (at === -1) block.items.push(pair);
-      else block.items.splice(at + 1, 0, pair);
-      if (isScalar(pair.key)) pair.key.commentBefore = REST_BEFORE_TRAPS_COMMENT;
-      stated.push(file);
-      return true;
-    });
-  }
-
+  const stated = stateInHealth(
+    home,
+    'restBeforeTraps',
+    DEFAULT_CONFIG.automation.health.restBeforeTraps,
+    'restTo',
+    REST_BEFORE_TRAPS_COMMENT
+  );
   if (stated.length === 0) return;
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(

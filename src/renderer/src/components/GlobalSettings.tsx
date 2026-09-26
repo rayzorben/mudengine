@@ -3,6 +3,7 @@ import Advanced from './Advanced';
 import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
+import RestFields from './RestFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import MobRuleList from './MobRuleList';
@@ -995,53 +996,21 @@ export default function GlobalSettings({
               <legend>{t('settings.health.recoverLegend')}</legend>
               <p className="settings-note">{t('settings.health.restingNote')}</p>
               <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.health.restBelowHint')}
-                  label={t('settings.health.restBelowLabel')}
-                  name="global-rest-below"
-                  onChange={(value) =>
+                <RestFields
+                  bands={draft.ui.vitals}
+                  namePrefix="global-"
+                  onChange={(field, value) =>
                     automation({
-                      health: { ...draft.automation.health, restBelow: fraction(value) }
+                      health: { ...draft.automation.health, [field]: fraction(value) }
                     })
                   }
-                  bar={barOfHealth(draft.automation.health.restBelow)}
-                  value={percent(draft.automation.health.restBelow)}
-                />
-                <NumberField
-                  hint={t('settings.health.restToHint')}
-                  label={t('settings.health.restToLabel')}
-                  name="global-rest-to"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, restTo: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.health.restTo)}
-                  value={percent(draft.automation.health.restTo)}
-                />
-                <NumberField
-                  hint={t('settings.health.restBeforeTrapsHint')}
-                  label={t('settings.health.restBeforeTrapsLabel')}
-                  name="global-rest-before-traps"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, restBeforeTraps: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.health.restBeforeTraps)}
-                  value={percent(draft.automation.health.restBeforeTraps)}
-                />
-                <NumberField
-                  hint={t('settings.health.meditateBelowHint')}
-                  label={t('settings.health.meditateBelowLabel')}
-                  name="global-med-below"
-                  onChange={(value) =>
-                    automation({
-                      health: { ...draft.automation.health, meditateBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfMana(draft.automation.health.meditateBelow)}
-                  value={percent(draft.automation.health.meditateBelow)}
+                  values={{
+                    restBelow: percent(draft.automation.health.restBelow),
+                    restTo: percent(draft.automation.health.restTo),
+                    restBeforeTraps: percent(draft.automation.health.restBeforeTraps),
+                    meditateBelow: percent(draft.automation.health.meditateBelow),
+                    meditateTo: percent(draft.automation.health.meditateTo)
+                  }}
                 />
               </div>
               <CheckField

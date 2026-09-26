@@ -18,7 +18,12 @@ import {
 import { roomAddress, trapOn, type RoomId, type RouteStep } from '../../../shared/world';
 import type { Block } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
-import { resumeAtHealth, type AutomationConfig } from '../../../shared/config';
+import {
+  holdsForVital,
+  resumeAtHealth,
+  resumeAtMana,
+  type AutomationConfig
+} from '../../../shared/config';
 import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -679,18 +684,21 @@ export class Holds {
    * while too hurt to travel*.
    */
   holdForHealth(state: CharacterState): boolean {
-    if (!this.wantsHealthHold(state)) {
+    // Mana holds a walk on the same terms, from `meditateBelow` to `meditateTo` (todo 825).
+    const wanted = this.wantsVitalHold(state);
+    const mine = this.hold === 'health' || this.hold === 'mana';
+    if (wanted === null) {
       // Only its own hold: a walk standing still blind is not one whose health
       // has come back.
-      if (this.hold === 'health') {
+      if (mine) {
         this.hold = null;
         this.walk.publish();
       }
       return false;
     }
 
-    if (this.hold === null) {
-      this.hold = 'health';
+    if (this.hold === null || (mine && this.hold !== wanted)) {
+      this.hold = wanted;
       this.walk.publish();
     }
 
@@ -879,18 +887,21 @@ export class Holds {
     this.walk.publish();
   }
 
-  /** Whether this character is below the figure it may travel at. */
-  private wantsHealthHold(state: CharacterState): boolean {
-    if (!this.holdWhenHurt) return false;
-    const { restBelow } = this.config.health;
-    if (restBelow <= 0) return false;
-    const { hp, hpMax } = state.vitals;
-    if (hp === null || hpMax === null || hpMax <= 0) return false;
-    const floor =
-      this.hold === 'health'
-        ? resumeAtHealth(this.config.health, tuning().loop.resumeMarginWhenUncapped)
-        : restBelow;
-    return hp / hpMax < floor;
+  /** Which vital this character is below the figure it may travel at, health first, or null. */
+  private wantsVitalHold(state: CharacterState): 'health' | 'mana' | null {
+    if (!this.holdWhenHurt) return null;
+    const { health } = this.config;
+    const margin = tuning().loop.resumeMarginWhenUncapped;
+    const { hp, hpMax, mana, manaMax } = state.vitals;
+    const resumeHp = resumeAtHealth(health, margin);
+    if (holdsForVital(hp, hpMax, health.restBelow, resumeHp, this.hold === 'health')) {
+      return 'health';
+    }
+    const resumeMana = resumeAtMana(health, margin);
+    if (holdsForVital(mana, manaMax, health.meditateBelow, resumeMana, this.hold === 'mana')) {
+      return 'mana';
+    }
+    return null;
   }
 
   /**

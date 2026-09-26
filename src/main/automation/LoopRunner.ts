@@ -50,7 +50,9 @@ import { fightIsRunning } from './Walker';
 import type { CharacterState } from '../../shared/character';
 import {
   DEFAULT_CONFIG,
+  holdsForVital,
   resumeAtHealth,
+  resumeAtMana,
   type HealthConfig,
   type MovementConfig,
   type WalkConfig
@@ -216,6 +218,8 @@ export class LoopRunner implements SessionModule {
   private asked = false;
   /** Holding for health; see `health.restBelow`. */
   private hurt = false;
+  /** Holding for mana, `meditateBelow` to `meditateTo` (todo 825). */
+  private drained = false;
   /**
    * Holding for a stated affliction — blind, held, poisoned or confused —
    * between legs; see `afflictionHolding`. The walker holds the step *within*
@@ -372,26 +376,28 @@ export class LoopRunner implements SessionModule {
             ? 'fight'
             : this.hurt
               ? 'health'
-              : this.afflicted !== null
-                ? this.afflicted
-                : this.escaped
-                  ? 'retreated'
-                  : this.errand
-                    ? 'errand'
-                    : /*
-                       * Asked of the planner rather than latched (todo 14).
-                       *
-                       * A flag would have to be cleared on every path that ends
-                       * the wait, and there are six: the timer, `onCharacter`
-                       * planning the leg the moment the rest lands, `stop`,
-                       * `skip`, `resume` and `reset` — five of which call
-                       * `clearTimer` and so kill the only thing that would have
-                       * cleared it. The window is the fact; reading it is
-                       * always true and never stale.
-                       */
-                      this.planner.restInFlight()
-                      ? 'resting'
-                      : null
+              : this.drained
+                ? 'mana'
+                : this.afflicted !== null
+                  ? this.afflicted
+                  : this.escaped
+                    ? 'retreated'
+                    : this.errand
+                      ? 'errand'
+                      : /*
+                         * Asked of the planner rather than latched (todo 14).
+                         *
+                         * A flag would have to be cleared on every path that ends
+                         * the wait, and there are six: the timer, `onCharacter`
+                         * planning the leg the moment the rest lands, `stop`,
+                         * `skip`, `resume` and `reset` — five of which call
+                         * `clearTimer` and so kill the only thing that would have
+                         * cleared it. The window is the fact; reading it is
+                         * always true and never stale.
+                         */
+                        this.planner.restInFlight()
+                        ? 'resting'
+                        : null
         : null,
       startedAt: this.startedAt,
       lapBegunAt: this.lapBegunAt,
@@ -410,6 +416,7 @@ export class LoopRunner implements SessionModule {
     this.failures = 0;
     this.locates = 0;
     this.hurt = false;
+    this.drained = false;
     this.afflicted = null;
     this.heldSince = null;
     this.escaped = false;
@@ -620,6 +627,7 @@ export class LoopRunner implements SessionModule {
     this.waiting = false;
     this.lingering = false;
     this.hurt = false;
+    this.drained = false;
     this.afflicted = null;
     this.heldSince = null;
     this.escaped = false;
@@ -1011,20 +1019,7 @@ export class LoopRunner implements SessionModule {
     }
     const fraction =
       state.vitals.hp !== null && state.vitals.hpMax ? state.vitals.hp / state.vitals.hpMax : null;
-    if (fraction !== null) {
-      if (this.hurt) {
-        if (fraction < this.resumeAt()) return;
-        this.hurt = false;
-        this.events.notice?.(t('automation.loops.mended'));
-        this.publish();
-      } else if (fraction < this.health.restBelow && this.status === 'running') {
-        this.hurt = true;
-        this.waiting = true;
-        this.events.notice?.(t('automation.loops.tooHurt'));
-        this.publish();
-        return;
-      }
-    }
+    if (this.holdForVital('health', state) || this.holdForVital('mana', state)) return;
     if (this.escaped) {
       /*
        * Three facts, and every one of them is *the reason for running away is
@@ -1331,7 +1326,7 @@ export class LoopRunner implements SessionModule {
     // is done. The errand was missing, and it is the one of the four that is
     // *started* by the character standing still — `Supplies.consider` refuses
     // while anything else has it — so a dwell is where it always begins.
-    if (this.fighting || this.hurt || this.escaped || this.standingAside()) return;
+    if (this.fighting || this.hurt || this.drained || this.escaped || this.standingAside()) return;
     this.lingering = false;
     this.waiting = false;
     this.step();
@@ -1367,6 +1362,41 @@ export class LoopRunner implements SessionModule {
    */
   private resumeAt(): number {
     return resumeAtHealth(this.health, tuning().loop.resumeMarginWhenUncapped);
+  }
+
+  /**
+   * Whether the lap waits for health or for mana (todo 825): under the floor
+   * to stop and back to the line to go on, one rule for both
+   * (`holdsForVital`). Taken only by a running lap; an unknown figure never
+   * holds and lets a held lap go.
+   */
+  private holdForVital(vital: 'health' | 'mana', state: CharacterState): boolean {
+    const { hp, hpMax, mana, manaMax } = state.vitals;
+    const was = vital === 'health' ? this.hurt : this.drained;
+    const held =
+      (was || this.status === 'running') &&
+      (vital === 'health'
+        ? holdsForVital(hp, hpMax, this.health.restBelow, this.resumeAt(), was)
+        : holdsForVital(
+            mana,
+            manaMax,
+            this.health.meditateBelow,
+            resumeAtMana(this.health, tuning().loop.resumeMarginWhenUncapped),
+            was
+          ));
+    if (held === was) return held;
+    if (vital === 'health') this.hurt = held;
+    else this.drained = held;
+    if (held) this.waiting = true;
+    if (vital === 'health') {
+      this.events.notice?.(held ? t('automation.loops.tooHurt') : t('automation.loops.mended'));
+    } else {
+      this.events.notice?.(
+        held ? t('automation.loops.tooDrained') : t('automation.loops.manaBack')
+      );
+    }
+    this.publish();
+    return held;
   }
 
   private publish(): void {

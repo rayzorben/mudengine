@@ -507,6 +507,8 @@ export type LoopStatus = 'idle' | 'running' | 'stopped';
 export type LoopHold =
   | 'fight'
   | 'health'
+  /** Mana under `meditateBelow`, until `meditateTo` (todo 825). */
+  | 'mana'
   | 'retreated'
   | 'errand'
   | 'offline'
@@ -523,6 +525,11 @@ export type LoopHold =
   /** Waiting out a stated affliction before the next leg — see `afflictionHolding` in `walk.ts`. */
   | AfflictionHold
   | null;
+
+/** A lap waiting for the character to be fit to walk on, drawn as resting. */
+export function loopIsResting(hold: LoopHold): boolean {
+  return hold === 'health' || hold === 'mana' || hold === 'resting';
+}
 
 export interface LoopProgress {
   status: LoopStatus;

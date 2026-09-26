@@ -490,6 +490,14 @@ describe('the resting pair', () => {
     });
   });
 
+  // Todo 825: the meditate pair on the same terms, 0 staying 0.
+  it('lifts a meditate line under its floor, and leaves 0 alone', () => {
+    expect(health({}).meditateTo).toBe(0);
+    expect(health({ meditateBelow: 0.4, meditateTo: 0.2 })).toMatchObject({ meditateTo: 0.4 });
+    expect(health({ meditateBelow: 0.4, meditateTo: 0.9 })).toMatchObject({ meditateTo: 0.9 });
+    expect(health({ meditateBelow: 0.4, meditateTo: 0 })).toMatchObject({ meditateTo: 0 });
+  });
+
   /*
    * 0 is the single sit-down, not a lower bound, so it is deliberately *not*
    * lifted to the floor the way any other under-figure is. This is the one

@@ -25,6 +25,7 @@ import Advanced from './Advanced';
 import CarrySections from './CarrySections';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
+import RestFields from './RestFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
@@ -759,41 +760,12 @@ export default function CharacterForm({
             <legend>{t('settings.health.recoverLegend')}</legend>
             <p className="settings-note">{t('settings.health.restingNote')}</p>
             <div className="settings-inline">
-              <NumberField
-                hint={t('settings.health.restBelowHint')}
-                label={t('settings.health.restBelowLabel')}
-                name="rest-below"
-                bar={barOfHealth(form.restBelow)}
-                figure={ofHealth(form.restBelow)}
-                onChange={(value) => patch({ restBelow: value })}
-                value={form.restBelow}
-              />
-              <NumberField
-                hint={t('settings.health.restToHint')}
-                label={t('settings.health.restToLabel')}
-                name="rest-to"
-                bar={barOfHealth(form.restTo)}
-                figure={ofHealth(form.restTo)}
-                onChange={(value) => patch({ restTo: value })}
-                value={form.restTo}
-              />
-              <NumberField
-                hint={t('settings.health.restBeforeTrapsHint')}
-                label={t('settings.health.restBeforeTrapsLabel')}
-                name="rest-before-traps"
-                bar={barOfHealth(form.restBeforeTraps)}
-                figure={ofHealth(form.restBeforeTraps)}
-                onChange={(value) => patch({ restBeforeTraps: value })}
-                value={form.restBeforeTraps}
-              />
-              <NumberField
-                hint={t('settings.health.meditateBelowHint')}
-                label={t('settings.health.meditateBelowLabel')}
-                name="med-below"
-                bar={barOfMana(form.meditateBelow)}
-                figure={ofMana(form.meditateBelow)}
-                onChange={(value) => patch({ meditateBelow: value })}
-                value={form.meditateBelow}
+              <RestFields
+                bands={bands}
+                maxima={maxima}
+                namePrefix=""
+                onChange={(field, value) => patch({ [field]: value })}
+                values={form}
               />
             </div>
             <CheckField

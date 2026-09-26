@@ -1839,3 +1839,55 @@ describe('a stop that states its own clock', () => {
     expect(walked).toEqual(['Arena', 'Road', 'Arena', 'Road']);
   });
 });
+
+/* Todo 825: a lap waits for mana as it waits for health, from `meditateBelow` to `meditateTo`. */
+describe('holding for mana', () => {
+  const vitals = (mana: number, manaMax: number | null) =>
+    state({ vitals: { ...EMPTY_CHARACTER.vitals, hp: 100, hpMax: 100, mana, manaMax } });
+
+  it('waits under the floor and walks on at the line', () => {
+    const { planner: p, walked } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.3, meditateTo: 0.8 });
+    runner.start(loop, state());
+    expect(walked).toEqual(['Arena']);
+    runner.onCharacter(vitals(20, 100));
+    expect(runner.progress.hold).toBe('mana');
+    // Over the floor and under the line: still waiting.
+    runner.onCharacter(vitals(50, 100));
+    expect(runner.progress.hold).toBe('mana');
+    expect(walked).toEqual(['Arena']);
+    runner.onCharacter(vitals(80, 100));
+    expect(notices).toContain(t('automation.loops.manaBack'));
+    expect(runner.progress.hold).toBeNull();
+    expect(walked).toEqual(['Arena', 'Arena']);
+  });
+
+  it('lets the dwell lapse without leaving while drained', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.3, meditateTo: 0.8 });
+    runner.start(loop, vitals(100, 100));
+    runner.onWalkEnded(true, null, vitals(20, 100));
+    runner.onCharacter(vitals(20, 100));
+    expect(runner.progress.hold).toBe('mana');
+    vi.advanceTimersByTime(10_000);
+    // The dwell lapsed, and the lap is still waiting for mana.
+    expect(walked).toEqual(['Arena']);
+    runner.onCharacter(vitals(80, 100));
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
+  it('never waits on a mana figure with no maximum', () => {
+    const { planner: p } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.3, meditateTo: 0.8 });
+    runner.start(loop, state());
+    // The positive control: the same figure with its maximum holds.
+    runner.onCharacter(vitals(20, 100));
+    expect(runner.progress.hold).toBe('mana');
+    runner.onCharacter(vitals(20, null));
+    expect(runner.progress.hold).toBeNull();
+  });
+});

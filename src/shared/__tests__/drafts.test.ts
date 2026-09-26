@@ -265,7 +265,7 @@ describe('a character', () => {
     it('takes them, as fractions', () => {
       const draft = asProfileDraft({
         ...good,
-        health: { restBelow: 0.5, meditateBelow: 0.25 },
+        health: { restBelow: 0.5, meditateBelow: 0.25, meditateTo: 0.6 },
         movement: { openDoors: true, openTries: 2, sneak: true },
         spells: { attack: 'ice blade', minMana: 0.2 }
       });
@@ -278,6 +278,7 @@ describe('a character', () => {
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
         meditateBelow: 0.25,
+        meditateTo: 0.6,
         // The rules list, empty where the payload states none.
         potions: [],
         // And the realm's own half of them: absent above, and on, on the
@@ -383,6 +384,7 @@ describe('a character', () => {
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
         meditateBelow: 0,
+        meditateTo: 0,
         // The rules list, empty where the payload states none.
         potions: [],
         useWards: true

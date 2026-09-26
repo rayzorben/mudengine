@@ -1288,6 +1288,11 @@ automation:
     # `Your command had no effect.` in the room.
     meditateBelow: 0
 
+    # Keep meditating to this share of mana, as restTo does for health: `med`
+    # goes out again after something interrupts it, and a walk or loop waits
+    # until mana is back here. 0 meditates once. Never below meditateBelow.
+    meditateTo: 0
+
     # Potions and anything else, with its own condition -- *use this when that
     # is true*. MegaMUD's Health tab had one row beside "Heal if below" and
     # this client had two named slots; this replaced both, because it says
