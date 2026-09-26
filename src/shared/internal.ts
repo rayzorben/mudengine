@@ -407,6 +407,16 @@ const TUNING_DEFAULTS = {
      */
     abandonedLineMs: 20_000,
     /**
+     * How long an `st` or `i` sent on entering the realm waits for its answer
+     * before it is asked again (todo 835), health staying unknown all session
+     * otherwise. The same wait as `abandonedLineMs`, the longest the queue
+     * itself holds a command for the player; once any answer has come back
+     * nothing is asked again.
+     */
+    unreadRetryMs: 20_000,
+    /** How many times it is asked again before the client gives up and says so. */
+    unreadRetries: 3,
+    /**
      * How long a command the server threw away waits before it is sent again.
      *
      * `You fumble in confusion!` is `ActionFigure.CheckConfusion` discarding

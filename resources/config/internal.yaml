@@ -363,6 +363,14 @@ tuning:
     # a whole evening because somebody typed two characters and walked away.
     abandonedLineMs: 20000
 
+    # How long an st or i sent on entering the realm waits for its answer
+    # before it is asked again. Once any answer has come back, it is not asked
+    # again.
+    unreadRetryMs: 20000
+
+    # How many times it is asked again before the client gives up and says so.
+    unreadRetries: 3
+
     # How long a command the server threw away waits before it is sent again.
     #
     # `You fumble in confusion!` is the server discarding whatever was sent

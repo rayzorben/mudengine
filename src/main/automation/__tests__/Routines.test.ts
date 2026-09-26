@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { Routines } from '../Routines';
+import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { SET_STATLINE } from '../../../shared/statline';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 /** Nothing sends: what matters here is what was *queued* and in which band. */
 function make(
@@ -867,5 +869,95 @@ describe('on the ground', () => {
     routines.askSheet(1_000);
     routines.askProfile();
     expect(commandsIn(queue)).toEqual([DEFAULT_CONFIG.automation.onPartyChange, 'st', 'pro']);
+  });
+});
+
+/*
+ * Todo 835: what entering the realm asked for and never read is asked again,
+ * once the wait is up, and never once any answer has come back.
+ */
+describe('asking again for what entering the realm never read', () => {
+  const block = (type: string) =>
+    ({ type, seq: 1, at: Date.now(), domain: 'status', groups: {} }) as never;
+  const sending = (onEnterRealm: string[]) => {
+    const config: AutomationConfig = {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm
+    };
+    const sent: string[] = [];
+    const queue = new CommandQueue(
+      { ...config, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      { send: (command) => sent.push(command) }
+    );
+    const routines = new Routines(config, queue, { onTheGround: () => false });
+    return { routines, sent };
+  };
+  const RETRY = DEFAULT_INTERNAL.tuning.queue.unreadRetryMs;
+
+  it('asks a lost st and i again after the wait, and not before', () => {
+    const { routines, sent } = sending(['st', 'i']);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['st', 'i']);
+    vi.advanceTimersByTime(RETRY - 1_000);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['st', 'i']);
+    vi.advanceTimersByTime(1_000);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['st', 'i', 'st', 'i']);
+  });
+
+  it('stops at an answer, whatever the answer says', () => {
+    const { routines, sent } = sending(['st', 'i']);
+    routines.onCharacter(inRealm);
+    // An `st` came back, one with no health in it; the pack never did.
+    routines.onBlock(block('player-status'));
+    vi.advanceTimersByTime(RETRY + 500);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['st', 'i', 'i']);
+  });
+
+  it('never sends what entering the realm does not ask for', () => {
+    const { routines, sent } = sending(['who']);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(RETRY * 3);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['who']);
+  });
+});
+
+describe('asking again, bounded', () => {
+  it('gives up after its tries, and says so', () => {
+    const config: AutomationConfig = {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm: ['st']
+    };
+    const sent: string[] = [];
+    const notices: string[] = [];
+    const queue = new CommandQueue(
+      { ...config, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      { send: (command) => sent.push(command) }
+    );
+    const routines = new Routines(config, queue, {
+      notice: (m) => notices.push(m),
+      onTheGround: () => false
+    });
+    const { unreadRetryMs, unreadRetries } = DEFAULT_INTERNAL.tuning.queue;
+    routines.onCharacter(inRealm);
+    for (let n = 0; n < unreadRetries + 3; n += 1) {
+      vi.advanceTimersByTime(unreadRetryMs);
+      routines.onCharacter(inRealm);
+      vi.advanceTimersByTime(500);
+    }
+    expect(sent).toEqual(Array.from({ length: unreadRetries + 1 }, () => 'st'));
+    expect(notices).toContain(t('automation.routines.unreadGaveUp', { commands: 'st' }));
   });
 });

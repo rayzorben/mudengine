@@ -93,3 +93,21 @@ export const STALE_AFTER: Partial<Record<BlockType, readonly StaleFact[]>> = {
 export function staleAfter(type: BlockType): readonly StaleFact[] {
   return STALE_AFTER[type] ?? [];
 }
+
+/**
+ * The block each fact's command is answered with (todo 835): an answer is an
+ * answer whatever it says, so an `st` with no health in it still reads the sheet.
+ */
+export const READ: Record<StaleFact, BlockType> = {
+  sheet: 'player-status',
+  experience: 'user-experience',
+  pack: 'user-inventory'
+};
+
+/** What entering the realm must read, or the client plays the session on unknowns. */
+export const REQUIRED: readonly StaleFact[] = ['sheet', 'pack'];
+
+/** The required facts among the commands `asked` that nothing has read yet. */
+export function unread(asked: readonly string[], read: ReadonlySet<StaleFact>): StaleFact[] {
+  return REQUIRED.filter((fact) => !read.has(fact) && asked.includes(REFRESH[fact].command));
+}
