@@ -24,7 +24,7 @@ import { NO_INSTANT_SPELLS, type InstantSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
 import type { RealmFamily } from '../../shared/realm';
-import { resolveSpell, spellCost } from '../../shared/spellcraft';
+import { resolveSpell, sameSpell, spellCost, spellingsOf } from '../../shared/spellcraft';
 import { spellKey } from '../../shared/spell-messages';
 import {
   chooseAttackSpell,
@@ -241,7 +241,11 @@ export class AttackSpells {
     const wanted = this.wanted(state, target, false);
     if (wanted !== null) {
       const instant = this.isInstant(wanted.spell, book);
-      if (!instant && repeating?.kind === 'spell' && this.same(repeating.spell, wanted.spell, book))
+      if (
+        !instant &&
+        repeating?.kind === 'spell' &&
+        sameSpell(repeating.spell, wanted.spell, book, this.realmSpell)
+      )
         return null;
       return {
         command: wanted.area ? wanted.word : `${wanted.word} ${target.name}`,
@@ -314,19 +318,13 @@ export class AttackSpells {
     return row !== null && spellKey(row.name) === spellKey(spell) ? row.name : null;
   }
 
-  /** Whether two names are the one spell, under any spelling the resolver knows. */
-  private same(a: string, b: string, book: CharacterState['spellbook']): boolean {
-    const known = this.spellings(b, book);
-    return this.spellings(a, book).some((name) => known.includes(name));
-  }
-
   /**
    * Whether the spell is instant: learned this connection, or read back from
    * what the realm taught an earlier one — said once when it is, since it is
    * why the fight opens with the attack verb instead.
    */
   private isInstant(spell: string, book: CharacterState['spellbook']): boolean {
-    const spellings = this.spellings(spell, book);
+    const spellings = spellingsOf(spell, book, this.realmSpell);
     if (spellings.some((name) => this.instant.has(name))) return true;
     const name = this.nameOf(spell, book);
     if (name === null || !this.realmInstants.isInstantSpell(name)) return false;
@@ -346,7 +344,7 @@ export class AttackSpells {
     const awaiting = this.awaiting;
     this.awaiting = null;
     if (awaiting === null || awaiting.afterOff) return;
-    const spellings = this.spellings(awaiting.spell, book);
+    const spellings = spellingsOf(awaiting.spell, book, this.realmSpell);
     if (!spellings.some((spelling) => this.instant.has(spelling))) return;
     for (const spelling of spellings) this.instant.delete(spelling);
     const name = this.nameOf(awaiting.spell, book);
@@ -365,7 +363,7 @@ export class AttackSpells {
     const awaiting = this.awaiting;
     const name = said.trim().toLowerCase();
     if (awaiting === null || awaiting.afterOff || name.length === 0) return false;
-    const spellings = this.spellings(awaiting.spell, book);
+    const spellings = spellingsOf(awaiting.spell, book, this.realmSpell);
     if (!spellings.includes(name)) return false;
     this.awaiting = null;
     this.repeating = null;
@@ -613,7 +611,7 @@ export class AttackSpells {
     const said = (block.groups['spell'] ?? '').trim().toLowerCase();
     if (this.noteInstant(said, book)) return;
     const cast = this.repeated;
-    if (cast === null || !this.spellings(cast.spell, book).includes(said)) return;
+    if (cast === null || !spellingsOf(cast.spell, book, this.realmSpell).includes(said)) return;
     this.count(cast.spell);
   }
 
@@ -627,7 +625,7 @@ export class AttackSpells {
     if (block.groups['attacker'] !== 'You') return;
     const line = (block.groups['line'] ?? '').trim().toLowerCase();
     const names = (spell: string): string | undefined =>
-      this.spellings(spell, book).find((name) => line.startsWith(`cast ${name} `));
+      spellingsOf(spell, book, this.realmSpell).find((name) => line.startsWith(`cast ${name} `));
     const awaited = this.awaiting === null ? undefined : names(this.awaiting.spell);
     if (awaited !== undefined && this.noteInstant(awaited, book)) return;
     const cast = this.repeated;
@@ -638,16 +636,5 @@ export class AttackSpells {
   private count(spell: string): void {
     const key = this.keyOf(spell);
     this.casts.set(key, (this.casts.get(key) ?? 0) + 1);
-  }
-
-  /**
-   * Every spelling the resolver knows for a spell: the confirmation names it
-   * in full where the configuration may hold the short word.
-   */
-  private spellings(spell: string, book: CharacterState['spellbook']): string[] {
-    const found = resolveSpell(spell, book, this.realmSpell);
-    return [spell, found.word, found.known?.name, found.known?.short, found.realm?.name]
-      .filter((name): name is string => typeof name === 'string' && name.length > 0)
-      .map((name) => name.trim().toLowerCase());
   }
 }

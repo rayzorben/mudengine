@@ -52,7 +52,13 @@ import { t } from '../app/i18n';
 import type { ActiveBuff, CharacterState } from '../../shared/character';
 import type { BlessingConfig, SpellsConfig } from '../../shared/config';
 import type { Block } from '../../shared/blocks';
-import { OPEN_CAST_GATE, resolveSpell, spellCost, type CastGate } from '../../shared/spellcraft';
+import {
+  OPEN_CAST_GATE,
+  resolveSpell,
+  sameSpell,
+  spellCost,
+  type CastGate
+} from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -149,20 +155,11 @@ export class Blessings implements SessionModule {
   }
 
   /**
-   * Whether a wire spelling and a configured spelling name the same spell.
-   *
-   * The realm accepts `bles` wherever it accepts `bless` and a MegaMUD-trained
-   * player configures the abbreviation, while the cast confirmation always
-   * prints the whole name — so equality alone would hold a configured `bles`
-   * against a recorded `bless` for ever, recasting on the retry clock all
-   * evening. A row the realm does not name answers null, and two nulls fall
-   * back to the words.
+   * Whether a wire spelling and a configured one name the same spell: the
+   * realm accepts `bles` and prints `bless` (`sameSpell`, `spellcraft.ts`).
    */
-  private sameSpell(wire: string, configured: string): boolean {
-    if (wire.trim().toLowerCase() === configured.trim().toLowerCase()) return true;
-    const a = this.realmSpell(wire)?.id ?? null;
-    const b = this.realmSpell(configured)?.id ?? null;
-    return a !== null && b !== null && a === b;
+  private same(wire: string, configured: string): boolean {
+    return sameSpell(wire, configured, this.state?.spellbook, this.realmSpell);
   }
 
   configure(config: SpellsConfig, enabled: boolean): void {
@@ -208,7 +205,7 @@ export class Blessings implements SessionModule {
       const spell = block.groups['spell']?.trim();
       if (spell === undefined || block.groups['target'] !== undefined) return;
       for (const entry of this.config.blessings) {
-        if (entry.target === 'self' && this.sameSpell(spell, entry.spell)) {
+        if (entry.target === 'self' && this.same(spell, entry.spell)) {
           this.proposedAt.delete(clockKey(entry, '@self'));
         }
       }
@@ -228,7 +225,7 @@ export class Blessings implements SessionModule {
       const lower = target.toLowerCase();
       if (lower === 'yourself' || lower === 'you' || lower === own) return;
       for (const entry of this.config.blessings) {
-        if (entry.target !== 'party' || !this.sameSpell(spell, entry.spell)) continue;
+        if (entry.target !== 'party' || !this.same(spell, entry.spell)) continue;
         const key = clockKey(entry, target);
         this.castAt.set(key, block.at);
         this.dueNow.delete(key);
@@ -246,7 +243,7 @@ export class Blessings implements SessionModule {
     if (!this.enabled) return;
     for (const entry of this.config.blessings) {
       if (entry.target !== 'party') continue;
-      if (!this.sameSpell(spell, entry.spell)) continue;
+      if (!this.same(spell, entry.spell)) continue;
       const key = clockKey(entry, from);
       this.dueNow.add(key);
       this.castAt.delete(key);
@@ -339,7 +336,7 @@ export class Blessings implements SessionModule {
     // meant: `You feel lucky!` is five spells, and a configured `bless` is up
     // whichever of them the server actually applied.
     const held = state.buffs.find((buff) =>
-      [buff.spell, ...(buff.candidates ?? [])].some((name) => this.sameSpell(name, entry.spell))
+      [buff.spell, ...(buff.candidates ?? [])].some((name) => this.same(name, entry.spell))
     );
     if (held !== undefined && !this.lapsed(held, entry, now)) return false;
 
@@ -469,7 +466,7 @@ export class Blessings implements SessionModule {
    */
   private notifyCaster(spell: string, before: CharacterState): void {
     if (!this.config.notifyPartyOnWearOff) return;
-    const held = before.buffs.find((buff) => this.sameSpell(buff.spell, spell));
+    const held = before.buffs.find((buff) => this.same(buff.spell, spell));
     const caster = held?.by ?? null;
     if (caster === null) return;
     const still = before.party.members.some(

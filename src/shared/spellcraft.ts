@@ -124,6 +124,51 @@ export function resolveSpell(
 }
 
 /**
+ * Every spelling a spell answers to here, lower-cased: as written, the word a
+ * cast sends, the book's name and short, and the realm's name.
+ */
+export function spellingsOf(
+  spell: string,
+  spellbook: ReadonlyArray<CastableSpell> | null | undefined,
+  realmSpell: (name: string) => WorldSpell | null = () => null
+): string[] {
+  const found = resolveSpell(spell, spellbook, realmSpell);
+  const word = found.word.trim().toLowerCase();
+  return word.length > 0 ? [...namesOf(found), word] : namesOf(found);
+}
+
+/** The names a resolved spell goes by, lower-cased, without the cast word. */
+function namesOf(spell: ResolvedSpell): string[] {
+  return [spell.configured, spell.known?.name, spell.known?.short, spell.realm?.name]
+    .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+    .map((name) => name.trim().toLowerCase());
+}
+
+/**
+ * Whether two spellings name one spell (todo 829): a configured `bles` and
+ * the `bless` the server prints, which, left unmatched, recast a blessing on
+ * the retry clock all evening. The character's own book decides where it lists
+ * both, the realm's row where it names both, and the names otherwise. A short
+ * word is never compared on its own: the realm gives `rcol` to both `resist
+ * cold` and `ice shield`. A shared prefix does not match (`bless`, `blessed
+ * light`).
+ */
+export function sameSpell(
+  a: string,
+  b: string,
+  spellbook: ReadonlyArray<CastableSpell> | null | undefined,
+  realmSpell: (name: string) => WorldSpell | null = () => null
+): boolean {
+  const one = resolveSpell(a, spellbook, realmSpell);
+  const other = resolveSpell(b, spellbook, realmSpell);
+  if (one.configured.toLowerCase() === other.configured.toLowerCase()) return true;
+  if (one.known !== null && other.known !== null) return one.known === other.known;
+  if (one.realm !== null && other.realm !== null) return one.realm.id === other.realm.id;
+  const theirs = namesOf(other);
+  return namesOf(one).some((name) => theirs.includes(name));
+}
+
+/**
  * The word a cast actually sends: the realm's short name.
  *
  * The `Cast` command reads **one word** as the spell, and that word is the
