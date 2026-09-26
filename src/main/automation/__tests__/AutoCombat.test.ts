@@ -1314,6 +1314,39 @@ describe('what to swing with', () => {
   });
 
   /*
+   * Todo 833: a look held back by the player's half-typed line has not been
+   * sent, so it spends nothing; the count restarts when it goes.
+   */
+  it('counts the rounds from when the look is sent, not when it is asked for', () => {
+    const auto = make(combat({ engage: 'none', refreshRounds: 2 }));
+    auto.onCharacter(
+      state({
+        room,
+        inCombat: true,
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'giant rat' }
+      })
+    );
+    queue.noteTyping(true);
+    for (let round = 0; round < 3; round += 1) {
+      auto.onBlock(block('mob-hits'));
+      vi.advanceTimersByTime(200);
+    }
+    expect(sent).toEqual([]);
+    queue.noteTyping(false);
+    drain();
+    // Held three rounds and sent once; the rounds it waited through are not spent.
+    expect(sent).toEqual(['']);
+    auto.onBlock(block('mob-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual(['']);
+    auto.onBlock(block('mob-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+    expect(sent).toEqual(['', '']);
+  });
+
+  /*
    * And the count is rounds **between looks**, not rounds of one fight.
    *
    * It restarted with every `*Combat Off*` — the very event that makes the

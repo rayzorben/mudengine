@@ -2409,20 +2409,21 @@ export class AutoCombat implements SessionModule {
   private refresh(): void {
     const every = this.config.refreshRounds;
     if (every <= 0 || this.rounds < every) return;
-    const asked = this.queue.enqueue({
+    this.queue.enqueue({
       command: REREAD_ROOM,
       priority: 'probe',
       coalesceKey: 'combat-refresh',
       // A read that arrives after the fight is a read of a room nothing is
       // deciding anything about.
       expiresAt: Date.now() + tuning().combat.roundMs * 20,
-      reason: t('automation.combat.reasonRefresh')
+      reason: t('automation.combat.reasonRefresh'),
+      // Only a look that went out spends the count (todo 833). Held by the
+      // player's half-typed line or refused, the rounds it waited through are
+      // still rounds without a look.
+      onSent: () => {
+        this.rounds = 0;
+      }
     });
-    // Only a look the arbiter agreed to carry spends the count. Refused — the
-    // stat screen has the keyboard, the player is mid-line — the next round
-    // asks again, which is what *rounds between looks* means when one of them
-    // never went out.
-    if (asked) this.rounds = 0;
   }
 
   /**
