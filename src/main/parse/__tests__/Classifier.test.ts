@@ -3292,3 +3292,63 @@ describe('the terminator reaches the block', () => {
     expect(closed.batch?.terminator).toBe('flush');
   });
 });
+
+/*
+ * Todo 826: players moving up and down, monsters leaving, and a room's own
+ * prose never read as either. Each line is quoted from where it was seen.
+ */
+describe('arrivals and departures', () => {
+  it('reads a player going up or down', () => {
+    // captures/006:40 and captures/113:5.
+    expect(expectType('FourQueTwo just left upwards.', 'player-leaves-room')['player']).toBe(
+      'FourQueTwo'
+    );
+    expect(
+      expectType('Alathar walks into the room from below.', 'player-arrives-room')
+    ).toMatchObject({ player: 'Alathar', vertical: 'below' });
+    // captures/001:2396: leaving the realm is not leaving the room.
+    expectType('Electra just left the Realm.', 'player-exits');
+  });
+
+  it('reads a monster leaving, named or not, with or without an article', () => {
+    // The wire, 2026-09-21_15-27-56_soul.log:1013, and captures/005:833.
+    expect(
+      expectType('big elite guardsman just left to the west.', 'mob-leaves-room')
+    ).toMatchObject({ mob: 'big elite guardsman', direction: 'west' });
+    expectType('angry warlock bandit just left to the south.', 'mob-leaves-room');
+    // captures/155:14: one lowercase word is a monster, not a player.
+    expectType('guardsman just left to the west.', 'mob-leaves-room');
+    // The realm's own departure verbs, on the wire (festus logs, 2026-09-18 and 09-21).
+    expectType('A giant crab scurries off to the north.', 'mob-leaves-room');
+    expectType('The large wild dog lopes out to the west!', 'mob-leaves-room');
+  });
+
+  it("reads the server's default departure and a way up or down", () => {
+    // Source only (`Mob.GetMobExitMessage`, `Exit.GetExitName`): no capture has these yet.
+    expectType('dark priest exits the room to the east.', 'mob-leaves-room');
+    expectType('A large lashworm crawls off to the above!', 'mob-leaves-room');
+    expectType('giant crab just left to the below.', 'mob-leaves-room');
+  });
+
+  it('reads a lowercase one-word arrival as a monster', () => {
+    // captures/002:548.
+    expectType('shade walks into the room from the north.', 'mob-arrives-room');
+  });
+
+  it("never reads a room's description as somebody leaving", () => {
+    // captures/005:287-293: the room's prose ends `leads out to the east.`
+    const classifier = new Classifier(NAMES);
+    const types = [
+      'Mossy Cave, Waterfall',
+      '    The dark brown walls of this naturally-formed cave are covered with a pale',
+      'down the side of the hole, following the waterfall into the darkness, and a',
+      'smooth tunnel leads out to the east.'
+    ].map((text) => classifier.classify(line(text)).block.type);
+    expect(types).toEqual([
+      'room-name',
+      'room-description',
+      'room-description',
+      'room-description'
+    ]);
+  });
+});

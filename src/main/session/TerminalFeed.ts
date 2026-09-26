@@ -107,6 +107,7 @@ export const VOLUNTEERED: ReadonlySet<BlockType> = new Set<BlockType>([
   'mob-hits',
   'mob-misses',
   'mob-arrives-room',
+  'mob-leaves-room',
   'user-hits',
   'user-misses',
   'combat-status',

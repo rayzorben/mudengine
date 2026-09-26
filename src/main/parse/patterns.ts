@@ -18,6 +18,7 @@
  */
 import type { BlockType } from '../../shared/blocks';
 import { ROOM_LIGHTS, type Afflictions } from '../../shared/character';
+import { DIRECTION_NAME } from '../../shared/world';
 
 export interface Rule {
   type: BlockType;
@@ -29,6 +30,13 @@ export interface Rule {
    * `attacker`, the only mode there used to be.
    */
   resolve?: 'attacker' | 'target' | 'both';
+  /**
+   * Never read inside a room's description: a frame that room prose can end
+   * the same way (`smooth tunnel leads out to the east.`, captures/005:293).
+   * The server writes a listing in one send, so nothing walks in or out
+   * inside one (todo 826).
+   */
+  outsideDescription?: true;
   /**
    * Whether the leading capitalised word may stand in as the attacker when
    * neither the room nor the realm can name one. Only for lines whose grammar
@@ -199,6 +207,15 @@ function onsetRule(condition: keyof Afflictions): Rule {
   if (!found) throw new Error(`No onset sentence for ${condition}.`);
   return { type: found.type, pattern: found.pattern };
 }
+
+/**
+ * The eight compass words, off the one direction table; up and down are worded
+ * apart (`upwards`, `from below`), and a monster's exit name for them is
+ * `above` / `below` (`Exit.GetExitName`).
+ */
+const COMPASS = Object.values(DIRECTION_NAME)
+  .filter((name) => name !== 'up' && name !== 'down')
+  .join('|');
 
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
@@ -1158,13 +1175,53 @@ export const RULES: Rule[] = [
    * realm is large and this room is where a fight happens. Captured verbatim
    * from `npm run probe:party` — two characters, one walking to the other.
    */
+  /*
+   * A player's name is capitalised; a lowercase word is a monster
+   * (`shade walks into the room from the north.`, captures/002:548), which
+   * the monster rules below read. Up and down are worded apart:
+   * `FourQueTwo just left upwards.` (captures/006:40), `Alathar walks into
+   * the room from below.` (captures/113:5) (todo 826).
+   */
   {
     type: 'player-arrives-room',
-    pattern: /^(?<player>\w+) walks into the room from the (?<direction>[\w ]+)\.$/
+    pattern: new RegExp(
+      `^(?<player>[A-Z]\\w*) +walks into the room from (?:the (?<direction>${COMPASS})|(?<vertical>above|below))\\.$`
+    )
   },
   {
     type: 'player-leaves-room',
-    pattern: /^(?<player>\w+) just left to the (?<direction>[\w ]+)\.$/
+    pattern: new RegExp(
+      `^(?<player>[A-Z]\\w*) +just left (?:to the (?<direction>${COMPASS})|(?<vertical>up|down)wards)\\.$`
+    )
+  },
+  /*
+   * A monster leaving (todo 826): the server's own `<mob> just left to the
+   * <dir>.` (`big elite guardsman just left to the west.`, the wire,
+   * 2026-09-21 soul log; captures/005:833), and the realm's departure verbs,
+   * which are per-monster data like the arrival's (`A giant crab scurries off
+   * to the north.`, `The large wild dog lopes out to the west!`, festus logs).
+   * A room's own prose can end the same way (`smooth tunnel leads out to the
+   * east.`, captures/005:293), so `Classifier` never reads either frame inside
+   * a description.
+   */
+  {
+    type: 'mob-leaves-room',
+    pattern: new RegExp(
+      `^(?:(?:A|An|The) )?(?<mob>.+?) just left to (?:the )?(?<direction>${COMPASS}|above|below)[.!]$`
+    ),
+    outsideDescription: true
+  },
+  /*
+   * And the realm's own verb (`MoveMessage.Line2`) or the server's default
+   * where a monster has none, `<mob> exits the room to the <exit>.`
+   * (`Mob.GetMobExitMessage`, source only).
+   */
+  {
+    type: 'mob-leaves-room',
+    pattern: new RegExp(
+      `^(?!You )(?:(?:A|An|The) )?(?<line>.+?)(?: (?:out|off|away)(?: of the room)?| the room) to (?:the )?(?<direction>${COMPASS}|above|below)[.!]$`
+    ),
+    outsideDescription: true
   },
   {
     type: 'player-looks',
@@ -1197,7 +1254,8 @@ export const RULES: Rule[] = [
   {
     type: 'mob-arrives-room',
     pattern:
-      /^(?:(?:A|An|The) )?(?<line>.+?) (?:in(?:to)? the room from|in from) (?:the )?(?<direction>[\w ]+)[.!]$/
+      /^(?:(?:A|An|The) )?(?<line>.+?) (?:in(?:to)? the room from|in from) (?:the )?(?<direction>[\w ]+)[.!]$/,
+    outsideDescription: true
   },
   /*
    * The one death sentence the server composes itself. `Mob.cs:1235` prints
@@ -1622,8 +1680,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'user-tracks',
-    pattern:
-      /^(?<player>[A-Z][\w'-]*) went (?<direction>north|south|east|west|northeast|northwest|southeast|southwest|up|down) from here\.$/
+    pattern: new RegExp(
+      `^(?<player>[A-Z][\\w'-]*) went (?<direction>${COMPASS}|up|down) from here\\.$`
+    )
   },
   { type: 'user-tracks-failed', pattern: /^Your tracking skills fail you this time\.$/ },
   {

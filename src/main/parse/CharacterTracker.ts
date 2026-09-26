@@ -1693,10 +1693,9 @@ export class CharacterTracker {
        * no disposition, still works the moment it hits back.
        */
       /*
-       * A monster's death sentence, learned (`mob`) or the server's own
-       * fallback (`line`, resolved against the room). The room said which
-       * thing died, whoever killed it — the case the experience line cannot
-       * reach: somebody else's kill, one worth nothing, the second of two.
+       * A monster's death sentence, learned (`mob`) or the server's fallback
+       * (`line`, resolved against the room): the kill the experience line cannot
+       * reach, somebody else's, one worth nothing, or the second of two.
        */
       case 'mob-dies': {
         const named = g['mob'] ?? g['attacker'] ?? g['line'] ?? '';
@@ -1708,7 +1707,8 @@ export class CharacterTracker {
       }
 
       case 'mob-arrives-room':
-        return this.room.mobArrives(s, g['attacker'], g['line']);
+      case 'mob-leaves-room':
+        return this.room.mobMoves(s, block.type === 'mob-arrives-room', g);
 
       case 'player-leaves-room':
         return playerLeaves(s, g['player']);
