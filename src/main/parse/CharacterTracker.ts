@@ -2391,7 +2391,7 @@ export class CharacterTracker {
       }
 
       /*
-       * A swing between two other parties says both of them are in this room,
+       * A swing between two other parties says the ones named are in this room,
        * whatever the last listing said — the maintained-listing shape again.
        * A monster's name arrives with its article, which is spelling and is
        * dropped; a name already listed is left exactly as it was.

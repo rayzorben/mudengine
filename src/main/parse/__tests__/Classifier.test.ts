@@ -27,7 +27,7 @@ function line(plain: string, raw = plain): StreamLine {
  * the line and names nobody, which is the honest degradation rather than the
  * behaviour under test.
  */
-const KNOWN = new Set(['orc rogue', 'giant rat', 'cave rat']);
+const KNOWN = new Set(['orc rogue', 'giant rat', 'cave rat', 'massive ice dragon']);
 const NAMES = {
   present: () => [],
   mob: (name: string) =>
@@ -3385,5 +3385,34 @@ describe('renamed coins', () => {
   it.each(DENOMINATIONS)('reads every stock %s phrase', (coin) => {
     expect(parseCoinEntry(`2 ${STOCK_COIN[coin]}s`)).toEqual({ denomination: coin, count: 2 });
     expect(classify(`You picked up 2 ${STOCK_COIN[coin]}s`).type).toBe('user-gets-coins');
+  });
+});
+
+/*
+ * Todo 834: a miss between two others whose verb is two words. No capture or
+ * log of ours has one (all of them searched 2026-09-26); the line is the
+ * fork author's, `The red wyvern swoops down at Fatty!`, with a monster this
+ * realm names.
+ */
+describe('a miss between two others with a two-word verb', () => {
+  it('names the monster, not the monster and its verb', () => {
+    // The article stays on the name, as the tracker expects and drops.
+    expect(expectType('The giant rat swoops down at Fatty!', 'player-misses')).toMatchObject({
+      attacker: 'The giant rat',
+      target: 'Fatty'
+    });
+  });
+
+  it('leaves the attacker out when the realm has no such monster', () => {
+    const g = expectType('The red wyvern swoops down at Fatty!', 'player-misses');
+    expect(g['attacker']).toBeUndefined();
+    expect(g['target']).toBe('Fatty');
+  });
+
+  it('still names a player swinging at a monster with one verb', () => {
+    expect(expectType('Soul swings at giant rat!', 'player-misses')).toMatchObject({
+      attacker: 'Soul',
+      target: 'giant rat'
+    });
   });
 });
