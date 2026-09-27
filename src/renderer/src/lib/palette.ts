@@ -323,7 +323,8 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
         : t('palette.character.connectLabel'),
       // Named, because with several characters loaded "connect" is ambiguous
       // and the answer is always "the one you are looking at".
-      hint: `${shownName} · ${chord('Enter')}`,
+      // Connected, it names Ctrl Q, the key that only hangs up.
+      hint: `${shownName} · ${connected ? chord('Q') : chord('Enter')}`,
       group: 'character',
       run: deps.toggleConnection
     },

@@ -1,6 +1,7 @@
 /**
  * Dialling and hanging up: the shown character's own, from the palette, the
- * status rail and `Ctrl/Cmd Enter`, and any character's from its own tab.
+ * status rail and its keys (`useConnectionKeys`), and any character's from its
+ * own tab.
  * Addressed throughout, since a button that acted on the shown character
  * would drop the wrong one.
  *
@@ -9,6 +10,7 @@
  */
 import { useCallback } from 'react';
 
+import { useConnectionKeys } from './useConnectionKeys';
 import type { SessionView, SessionViews } from './useSessionViews';
 import { EMPTY_CHARACTER } from '@shared/character';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
@@ -107,6 +109,8 @@ export function useConnection({
     if (connected) handleDisconnect();
     else handleConnect();
   }, [connected, handleConnect, handleDisconnect]);
+
+  useConnectionKeys(toggleConnection, handleDisconnect);
 
   return { dial, hangUp, handleConnect, toggleSessionConnection, toggleConnection };
 }

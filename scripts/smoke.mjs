@@ -16788,7 +16788,19 @@ const railCards = async () =>
     )
   );
 const railBeforeHangUp = await railCards();
-await evaluate(`(window.mudengine.disconnect('${SESSION}'), true)`);
+/*
+ * Hung up with the panic key (todo 04) rather than through the bridge, so the
+ * run also shows the window's default menu does not take `Ctrl Q` as Quit.
+ */
+for (const type of ['keyDown', 'keyUp']) {
+  await cdp('Input.dispatchKeyEvent', {
+    type,
+    key: 'q',
+    code: 'KeyQ',
+    windowsVirtualKeyCode: 81,
+    modifiers: 2
+  });
+}
 const closed = await readUntil(
   () =>
     evaluate(`
@@ -16797,7 +16809,7 @@ const closed = await readUntil(
 `),
   (closed) => closed
 );
-check(closed, 'disconnect returns the session to a closed state');
+check(closed, 'Ctrl Q hangs up and returns the session to a closed state');
 
 /*
  * The rail used to disappear entirely whenever a character was not in the realm.
